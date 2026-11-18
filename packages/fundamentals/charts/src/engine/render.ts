@@ -7,7 +7,7 @@ import { layoutGroupedBars, layoutGroupedBarsH, layoutStackLevels, layoutStackLe
 import type { StackLevels, StackSegment } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
-import { extent, isFiniteNumber, niceDomain, scaleLinear } from './scale'
+import { extent, isFiniteNumber, niceDomain, xPx, yPx } from './scale'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
 import { polygonCmd, rectCmd } from './corners'
@@ -855,14 +855,14 @@ export function spreadLabels(ys: Double[], gap: Double, top: Double, bottom: Dou
  */
 export function categoryXPixel(spec: ChartSpec, xDomain: Domain, plot: Rect, v: Double): Double {
   const n = seriesMaxLength(spec.series)
-  if ((spec.xValues ?? []).length > 0 || n === 0) return scaleLinear(xDomain, plot.x, plot.x + plot.w, v)
+  if ((spec.xValues ?? []).length > 0 || n === 0) return xPx(xDomain, plot, v)
   return plot.x + (plot.w / countToDouble(n)) * (v + 0.5)
 }
 
 /** A category span `[from, to]` in pixels: band start of the first to band end of the last. */
 export function categorySpanPixels(spec: ChartSpec, xDomain: Domain, plot: Rect, from: Double, to: Double): Pt {
   const n = seriesMaxLength(spec.series)
-  if ((spec.xValues ?? []).length > 0 || n === 0) return { x: scaleLinear(xDomain, plot.x, plot.x + plot.w, from), y: scaleLinear(xDomain, plot.x, plot.x + plot.w, to) }
+  if ((spec.xValues ?? []).length > 0 || n === 0) return { x: xPx(xDomain, plot, from), y: xPx(xDomain, plot, to) }
   const lo = from < to ? from : to
   const hi = from < to ? to : from
   const band = plot.w / countToDouble(n)
@@ -921,11 +921,11 @@ export function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain)
 export function growEdgeRect(r: Rect, dom: Domain, plot: Rect, horizontal: boolean): Rect {
   const zero = dom.min <= 0.0 && dom.max >= 0.0 ? 0.0 : dom.min > 0.0 ? dom.min : dom.max
   if (horizontal) {
-    const zx = scaleLinear(dom, plot.x, plot.x + plot.w, zero)
+    const zx = xPx(dom, plot, zero)
     const ex = r.x >= zx - 0.5 ? r.x : r.x + r.w
     return { x: ex, y: r.y, w: 0.0, h: r.h }
   }
-  const zy = scaleLinear(dom, plot.y + plot.h, plot.y, zero)
+  const zy = yPx(dom, plot, zero)
   const ey = r.y + r.h <= zy + 0.5 ? r.y + r.h : r.y
   return { x: r.x, y: ey, w: r.w, h: 0.0 }
 }
@@ -984,7 +984,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // instead of sliding in from above.
   const growRect = (r: Rect, dom: Domain): Rect => {
     if (progress >= 1.0) return r
-    const zeroY = scaleLinear(dom, plot.y + plot.h, plot.y, dom.min < 0.0 && dom.max > 0.0 ? 0.0 : dom.min)
+    const zeroY = yPx(dom, plot, dom.min < 0.0 && dom.max > 0.0 ? 0.0 : dom.min)
     const h = r.h * progress
     const top = r.y + r.h <= zeroY + 0.5 ? zeroY - h : zeroY
     return { x: r.x, y: top, w: r.w, h }
@@ -994,7 +994,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // which in this frame is a VERTICAL line — a negative bar grows leftward.
   const growRectH = (r: Rect): Rect => {
     if (progress >= 1.0) return r
-    const zeroX = scaleLinear(yDomain, plot.x, plot.x + plot.w, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
+    const zeroX = xPx(yDomain, plot, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
     const w = r.w * progress
     const left = r.x >= zeroX - 0.5 ? zeroX : zeroX - w
     return { x: left, y: r.y, w, h: r.h }
@@ -1084,8 +1084,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const yFrom = a.yFrom ?? 0.0
     const yTo = a.yTo ?? 0.0
     if (a.yFrom !== undefined && a.yTo !== undefined) {
-      const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yFrom)
-      const y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
+      const y1 = yPx(yDomain, plot, yFrom)
+      const y2 = yPx(yDomain, plot, yTo)
       const top = y1 < y2 ? y1 : y2
       out.push({
         kind: 'rect',
@@ -1112,7 +1112,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   for (const a of notes) {
     const ay = a.y ?? 0.0
     if (a.y !== undefined) {
-      const yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, ay)
+      const yPos = yPx(yDomain, plot, ay)
       out.push({
         kind: 'line',
         from: { x: plot.x, y: yPos },
@@ -1166,8 +1166,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const sx2 = a.x2 ?? 0.0
     const sy2 = a.y2 ?? 0.0
     if (a.x1 !== undefined && a.y1 !== undefined && a.x2 !== undefined && a.y2 !== undefined) {
-      const p1: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1) }
-      const p2: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2) }
+      const p1: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx1), y: yPx(yDomain, plot, sy1) }
+      const p2: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx2), y: yPx(yDomain, plot, sy2) }
       out.push({ kind: 'line', from: p1, to: p2, stroke: a.color ?? t.axis, width: 1.0, dash: [4.0, 4.0] })
       const segLabel = a.label ?? ''
       if (a.label !== undefined) {
@@ -1191,7 +1191,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const xsE = spec.xValues ?? []
     const hi = emph.highlight
     if (xsE.length > emph.highlight) {
-      const cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xsE[emph.highlight]!)
+      const cx = xPx(l.xDomainUsed, plot, xsE[emph.highlight]!)
       out.push({ kind: 'rect', rect: { x: cx - 6.0, y: plot.y, w: 12.0, h: plot.h }, fill: withAlpha(t.axis, 0.14) })
     } else if (spec.categories.length > emph.highlight) {
       const nb = spec.categories.length
@@ -1270,8 +1270,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const lo = isFiniteNumber(base[i]!) ? base[i]! : origin
         // A gap is a zero-height band: it sits on whatever it would have stacked on.
         const hiV = isFiniteNumber(top[i]!) ? top[i]! : k > 0 && isFiniteNumber(levels.tops[k - 1]![i]!) ? levels.tops[k - 1]![i]! : lo
-        upper.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, hiV) })
-        lower.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, isFiniteNumber(top[i]!) ? lo : hiV) })
+        upper.push({ x: xAt, y: yPx(yDomain, plot, hiV) })
+        lower.push({ x: xAt, y: yPx(yDomain, plot, isFiniteNumber(top[i]!) ? lo : hiV) })
       }
       if (upper.length > 1) {
         const poly: Pt[] = []
@@ -1405,7 +1405,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const fill = stateFill(s, st.datumIndex, st.value < 0.0 ? s.negativeColor ?? withAlpha(s.color, 0.55) : s.color)
         // Grows from its START level, not the axis zero: a step that begins
         // at 40 and adds 5 must rise from 40.
-        const startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
+        const startY = yPx(sDomain, plot, st.start)
         const grownH = st.rect.h * progress
         const grown: Rect = progress >= 1.0 ? st.rect : { x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH }
         out.push(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
@@ -1413,7 +1413,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (lvlW > 0) out.push(emphasisOutline(grown, lvlW, t.label))
         if (si + 1 < steps.length && progress >= 1.0) {
           const next = steps[si + 1]!
-          const level = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.end)
+          const level = yPx(sDomain, plot, st.end)
           out.push({ kind: 'line', from: { x: st.rect.x + st.rect.w, y: level }, to: { x: next.rect.x, y: level }, stroke: t.axis, width: 1.0, dash: [2.0, 2.0] })
         }
         if (s.showValues === true && progress >= 1.0) {
@@ -1517,7 +1517,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           // Close down to the baseline so the fill is a band under the line
           // rather than a polygon between the first and last data points.
           // The baseline is the domain's minimum.
-          const baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
+          const baseY = yPx(sDomain, plot, sDomain.min)
           poly.push({ x: pts[pts.length - 1]!.x, y: baseY })
           poly.push({ x: pts[0]!.x, y: baseY })
           // Translucent by default, so the grid and anything drawn under the
@@ -1619,8 +1619,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const hi = i < eHigh.length ? eHigh[i]! : 0.0 / 0.0
         if (!isFiniteValue(lo) || !isFiniteValue(hi)) continue
         const cx = centres[i]!
-        const yLo = scaleLinear(sDomain, plot.y + plot.h, plot.y, lo)
-        const yHi = scaleLinear(sDomain, plot.y + plot.h, plot.y, hi)
+        const yLo = yPx(sDomain, plot, lo)
+        const yHi = yPx(sDomain, plot, hi)
         out.push({ kind: 'line', from: { x: cx, y: yLo }, to: { x: cx, y: yHi }, stroke: t.text, width: 1.0 })
         out.push({ kind: 'line', from: { x: cx - cap, y: yLo }, to: { x: cx + cap, y: yLo }, stroke: t.text, width: 1.0 })
         out.push({ kind: 'line', from: { x: cx - cap, y: yHi }, to: { x: cx + cap, y: yHi }, stroke: t.text, width: 1.0 })

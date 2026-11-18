@@ -1017,6 +1017,10 @@ fun scaleLinear(d: Domain, r0: Double, r1: Double, v: Double): Double {
     return r0 + (((v - d.min)).toDouble() / (span).toDouble()) * (r1 - r0)
   }
 
+fun yPx(d: Domain, plot: PyreonChartRect, v: Double): Double = scaleLinear(d, plot.y + plot.h, plot.y, v)
+
+fun xPx(d: Domain, plot: PyreonChartRect, v: Double): Double = scaleLinear(d, plot.x, plot.x + plot.w, v)
+
 fun niceStep(raw: Double): Double {
     if (raw <= 0.0) {
       return 1.0
@@ -2393,11 +2397,11 @@ fun layoutBars(values: List<Double>, plot: PyreonChartRect, yDomain: Domain, gap
     val band = (plot.w).toDouble() / (n).toDouble()
     val bw = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
     val zero = if (yDomain.min < 0.0 && yDomain.max > 0.0) 0.0 else yDomain.min
-    val zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
+    val zeroY = yPx(yDomain, plot, zero)
     for (i in 0L until n) {
       val raw = values[(i).toInt()]
       val v = if (isFiniteNumber(raw)) raw else zero
-      val vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
+      val vy = yPx(yDomain, plot, v)
       val top = if (vy < zeroY) vy else zeroY
       val h = Math.abs(zeroY - vy)
       out.add(PyreonChartRect(x = plot.x + band * i + ((band - bw)).toDouble() / (2.0).toDouble(), y = top, w = bw, h = h))
@@ -2413,7 +2417,7 @@ fun layoutSeriesPoints(values: List<Double>, plot: PyreonChartRect, yDomain: Dom
     }
     val band = (plot.w).toDouble() / (n).toDouble()
     for (i in 0L until n) {
-      out.add(PyreonChartPt(x = plot.x + band * i + (band).toDouble() / (2.0).toDouble(), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, values[(i).toInt()])))
+      out.add(PyreonChartPt(x = plot.x + band * i + (band).toDouble() / (2.0).toDouble(), y = yPx(yDomain, plot, values[(i).toInt()])))
     }
     return out
   }
@@ -2425,11 +2429,11 @@ fun layoutSeriesPointsEdge(values: List<Double>, plot: PyreonChartRect, yDomain:
       return out
     }
     if (n == 1L) {
-      out.add(PyreonChartPt(x = plot.x + (plot.w).toDouble() / (2.0).toDouble(), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, values[0])))
+      out.add(PyreonChartPt(x = plot.x + (plot.w).toDouble() / (2.0).toDouble(), y = yPx(yDomain, plot, values[0])))
       return out
     }
     for (i in 0L until n) {
-      out.add(PyreonChartPt(x = plot.x + ((i).toDouble() / ((pyreonSub(n, 1L))).toDouble()) * plot.w, y = scaleLinear(yDomain, plot.y + plot.h, plot.y, values[(i).toInt()])))
+      out.add(PyreonChartPt(x = plot.x + ((i).toDouble() / ((pyreonSub(n, 1L))).toDouble()) * plot.w, y = yPx(yDomain, plot, values[(i).toInt()])))
     }
     return out
   }
@@ -2442,7 +2446,7 @@ fun layoutSeriesPointsH(values: List<Double>, plot: PyreonChartRect, vDomain: Do
     }
     val band = (plot.h).toDouble() / (n).toDouble()
     for (i in 0L until n) {
-      out.add(PyreonChartPt(x = scaleLinear(vDomain, plot.x, plot.x + plot.w, values[(i).toInt()]), y = plot.y + band * i + (band).toDouble() / (2.0).toDouble()))
+      out.add(PyreonChartPt(x = xPx(vDomain, plot, values[(i).toInt()]), y = plot.y + band * i + (band).toDouble() / (2.0).toDouble()))
     }
     return out
   }
@@ -2451,7 +2455,7 @@ fun layoutSeriesPointsAt(values: List<Double>, xs: List<Double>, plot: PyreonCha
     val n = Math.min(values.length, xs.length)
     val out: MutableList<PyreonChartPt> = mutableListOf()
     for (i in 0L until n) {
-      out.add(PyreonChartPt(x = scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[(i).toInt()]), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, values[(i).toInt()])))
+      out.add(PyreonChartPt(x = xPx(xDomain, plot, xs[(i).toInt()]), y = yPx(yDomain, plot, values[(i).toInt()])))
     }
     return out
   }
@@ -2466,11 +2470,11 @@ fun layoutBarsH(values: List<Double>, plot: PyreonChartRect, vDomain: Domain, ga
     val band = (plot.h).toDouble() / (n).toDouble()
     val bh = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
     val zero = if (vDomain.min < 0.0 && vDomain.max > 0.0) 0.0 else vDomain.min
-    val zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+    val zeroX = xPx(vDomain, plot, zero)
     for (i in 0L until n) {
       val raw = values[(i).toInt()]
       val v = if (isFiniteNumber(raw)) raw else zero
-      val vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+      val vx = xPx(vDomain, plot, v)
       val left = if (vx < zeroX) vx else zeroX
       out.add(PyreonChartRect(x = left, y = plot.y + band * i + ((band - bh)).toDouble() / (2.0).toDouble(), w = Math.abs(vx - zeroX), h = bh))
     }
@@ -2598,8 +2602,8 @@ fun layoutStackLevels(levels: StackLevels, values: List<List<Double>>, plot: Pyr
         }
         val b = levels.bases[(s).toInt()][(i).toInt()]
         val base = if (isFiniteNumber(b)) b else 0.0
-        val yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, top)
-        val yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, base)
+        val yTop = yPx(yDomain, plot, top)
+        val yBot = yPx(yDomain, plot, base)
         val own = values[(s).toInt()]
         out.add(StackSegment(rect = PyreonChartRect(x = plot.x + band * fi + ((band - bw)).toDouble() / (2.0).toDouble(), y = if (yTop < yBot) yTop else yBot, w = bw, h = (Math.abs(yBot - yTop)).toDouble()), seriesIndex = s, datumIndex = i, value = if (i < own.length) own[(i).toInt()] else 0.0))
       }
@@ -2631,8 +2635,8 @@ fun layoutStackLevelsH(levels: StackLevels, values: List<List<Double>>, plot: Py
         }
         val b = levels.bases[(s).toInt()][(i).toInt()]
         val base = if (isFiniteNumber(b)) b else 0.0
-        val xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, top)
-        val xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, base)
+        val xEnd = xPx(vDomain, plot, top)
+        val xStart = xPx(vDomain, plot, base)
         val own = values[(s).toInt()]
         out.add(StackSegment(rect = PyreonChartRect(x = if (xStart < xEnd) xStart else xEnd, y = plot.y + band * fi + ((band - bh)).toDouble() / (2.0).toDouble(), w = (Math.abs(xEnd - xStart)).toDouble(), h = bh), seriesIndex = s, datumIndex = i, value = if (i < own.length) own[(i).toInt()] else 0.0))
       }
@@ -2674,13 +2678,13 @@ fun layoutGroupedBarsH(seriesValues: List<List<Double>>, plot: PyreonChartRect, 
     val barH = barThickness(band * (1.0 - ratio), countOf(k), gapH, barWidth)
     val pitchH = barH * (1.0 + gapH)
     val zero = if (vDomain.min < 0.0 && vDomain.max > 0.0) 0.0 else vDomain.min
-    val zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+    val zeroX = xPx(vDomain, plot, zero)
     for (i in 0L until n) {
       val gy = plot.y + band * i + ((band - (barH + pitchH * (countOf(k) - 1.0)))).toDouble() / (2.0).toDouble()
       for (s in 0L until k) {
         val raw = (seriesValues[(s).toInt()][(i).toInt()] ?: 0.0)
         val v = if (raw == raw) raw else zero
-        val vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+        val vx = xPx(vDomain, plot, v)
         out.add(StackSegment(rect = PyreonChartRect(x = if (vx < zeroX) vx else zeroX, y = gy + pitchH * s, w = Math.abs(vx - zeroX), h = barH), seriesIndex = s, datumIndex = i, value = v))
       }
     }
@@ -2721,13 +2725,13 @@ fun layoutGroupedBars(seriesValues: List<List<Double>>, plot: PyreonChartRect, y
     val barW = barThickness(band * (1.0 - ratio), countOf(k), gapW, barWidth)
     val pitchW = barW * (1.0 + gapW)
     val zero = if (yDomain.min < 0.0 && yDomain.max > 0.0) 0.0 else yDomain.min
-    val zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
+    val zeroY = yPx(yDomain, plot, zero)
     for (i in 0L until n) {
       val gx = plot.x + band * i + ((band - (barW + pitchW * (countOf(k) - 1.0)))).toDouble() / (2.0).toDouble()
       for (s in 0L until k) {
         val raw = (seriesValues[(s).toInt()][(i).toInt()] ?: 0.0)
         val v = if (isFiniteNumber(raw)) raw else zero
-        val vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
+        val vy = yPx(yDomain, plot, v)
         out.add(StackSegment(rect = PyreonChartRect(x = gx + pitchW * s, y = if (vy < zeroY) vy else zeroY, w = barW, h = Math.abs(zeroY - vy)), seriesIndex = s, datumIndex = i, value = v))
       }
     }
@@ -2738,7 +2742,7 @@ fun layoutScatter(xs: List<Double>, ys: List<Double>, plot: PyreonChartRect, xDo
     val n = Math.min(xs.length, ys.length)
     val out: MutableList<PyreonChartPt> = mutableListOf()
     for (i in 0L until n) {
-      out.add(PyreonChartPt(x = scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[(i).toInt()]), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, ys[(i).toInt()])))
+      out.add(PyreonChartPt(x = xPx(xDomain, plot, xs[(i).toInt()]), y = yPx(yDomain, plot, ys[(i).toInt()])))
     }
     return out
   }
@@ -2791,8 +2795,8 @@ fun layoutWaterfall(values: List<Double>, plot: PyreonChartRect, yDomain: Domain
       }
       val start = acc
       val end = acc + v
-      val y0 = scaleLinear(yDomain, plot.y + plot.h, plot.y, start)
-      val y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, end)
+      val y0 = yPx(yDomain, plot, start)
+      val y1 = yPx(yDomain, plot, end)
       out.add(WaterfallStep(rect = PyreonChartRect(x = plot.x + band * i + ((band - bw)).toDouble() / (2.0).toDouble(), y = if (y0 < y1) y0 else y1, w = bw, h = (Math.abs(y1 - y0)).toDouble()), datumIndex = i, value = v, start = start, end = end))
       acc = end
     }
@@ -3546,7 +3550,7 @@ fun spreadLabels(ys: List<Double>, gap: Double, top: Double, bottom: Double): Li
 fun categoryXPixel(spec: ChartSpec, xDomain: Domain, plot: PyreonChartRect, v: Double): Double {
     val n = seriesMaxLength(spec.series)
     if (((spec.xValues ?: listOf())).length > 0L || n == 0L) {
-      return scaleLinear(xDomain, plot.x, plot.x + plot.w, v)
+      return xPx(xDomain, plot, v)
     }
     return plot.x + ((plot.w).toDouble() / (countToDouble(n)).toDouble()) * (v + 0.5)
   }
@@ -3554,7 +3558,7 @@ fun categoryXPixel(spec: ChartSpec, xDomain: Domain, plot: PyreonChartRect, v: D
 fun categorySpanPixels(spec: ChartSpec, xDomain: Domain, plot: PyreonChartRect, from: Double, to: Double): PyreonChartPt {
     val n = seriesMaxLength(spec.series)
     if (((spec.xValues ?: listOf())).length > 0L || n == 0L) {
-      return PyreonChartPt(x = scaleLinear(xDomain, plot.x, plot.x + plot.w, from), y = scaleLinear(xDomain, plot.x, plot.x + plot.w, to))
+      return PyreonChartPt(x = xPx(xDomain, plot, from), y = xPx(xDomain, plot, to))
     }
     val lo = if (from < to) from else to
     val hi = if (from < to) to else from
@@ -3601,11 +3605,11 @@ fun setLaidH(spec: ChartSpec, kind: String, plot: PyreonChartRect, dom: Domain):
 fun growEdgeRect(r: PyreonChartRect, dom: Domain, plot: PyreonChartRect, horizontal: Boolean): PyreonChartRect {
     val zero = if (dom.min <= 0.0 && dom.max >= 0.0) 0.0 else if (dom.min > 0.0) dom.min else dom.max
     if (horizontal) {
-      val zx = scaleLinear(dom, plot.x, plot.x + plot.w, zero)
+      val zx = xPx(dom, plot, zero)
       val ex = if (r.x >= zx - 0.5) r.x else r.x + r.w
       return PyreonChartRect(x = ex, y = r.y, w = 0.0, h = r.h)
     }
-    val zy = scaleLinear(dom, plot.y + plot.h, plot.y, zero)
+    val zy = yPx(dom, plot, zero)
     val ey = if (r.y + r.h <= zy + 0.5) r.y + r.h else r.y
     return PyreonChartRect(x = r.x, y = ey, w = r.w, h = 0.0)
   }
@@ -3637,7 +3641,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       if (progress >= 1.0) {
         return r
       }
-      val zeroY = scaleLinear(dom, plot.y + plot.h, plot.y, if (dom.min < 0.0 && dom.max > 0.0) 0.0 else dom.min)
+      val zeroY = yPx(dom, plot, if (dom.min < 0.0 && dom.max > 0.0) 0.0 else dom.min)
       val h = r.h * progress
       val top = if (r.y + r.h <= zeroY + 0.5) zeroY - h else zeroY
       return PyreonChartRect(x = r.x, y = top, w = r.w, h = h)
@@ -3646,7 +3650,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       if (progress >= 1.0) {
         return r
       }
-      val zeroX = scaleLinear(yDomain, plot.x, plot.x + plot.w, if (yDomain.min < 0.0 && yDomain.max > 0.0) 0.0 else yDomain.min)
+      val zeroX = xPx(yDomain, plot, if (yDomain.min < 0.0 && yDomain.max > 0.0) 0.0 else yDomain.min)
       val w = r.w * progress
       val left = if (r.x >= zeroX - 0.5) zeroX else zeroX - w
       return PyreonChartRect(x = left, y = r.y, w = w, h = r.h)
@@ -3697,8 +3701,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       val yFrom = (a.yFrom ?: 0.0)
       val yTo = (a.yTo ?: 0.0)
       if (a.yFrom != null && a.yTo != null) {
-        val y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yFrom)
-        val y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
+        val y1 = yPx(yDomain, plot, yFrom)
+        val y2 = yPx(yDomain, plot, yTo)
         val top = if (y1 < y2) y1 else y2
         out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = plot.x, y = top, w = plot.w, h = (Math.abs(y2 - y1)).toDouble()), fill = withAlpha((a.color ?: t.axis), 0.12)))
         when (val label = a.label) {
@@ -3727,7 +3731,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
     for (a in notes) {
       val ay = (a.y ?: 0.0)
       if (a.y != null) {
-        val yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, ay)
+        val yPos = yPx(yDomain, plot, ay)
         out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = yPos), to = PyreonChartPt(x = plot.x + plot.w, y = yPos), stroke = (a.color ?: t.axis), width = 1.0, dash = listOf(4.0, 4.0)))
         val yLabel = (a.label ?: "")
         if (a.label != null) {
@@ -3748,8 +3752,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       val sx2 = (a.x2 ?: 0.0)
       val sy2 = (a.y2 ?: 0.0)
       if (a.x1 != null && a.y1 != null && a.x2 != null && a.y2 != null) {
-        val p1 = PyreonChartPt(x = categoryXPixel(spec, l.xDomainUsed, plot, sx1), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1))
-        val p2 = PyreonChartPt(x = categoryXPixel(spec, l.xDomainUsed, plot, sx2), y = scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2))
+        val p1 = PyreonChartPt(x = categoryXPixel(spec, l.xDomainUsed, plot, sx1), y = yPx(yDomain, plot, sy1))
+        val p2 = PyreonChartPt(x = categoryXPixel(spec, l.xDomainUsed, plot, sx2), y = yPx(yDomain, plot, sy2))
         out.add(PyreonDrawCmd(kind = "line", from = p1, to = p2, stroke = (a.color ?: t.axis), width = 1.0, dash = listOf(4.0, 4.0)))
         val segLabel = (a.label ?: "")
         if (a.label != null) {
@@ -3762,7 +3766,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       val xsE = (spec.xValues ?: listOf())
       val hi = emph.highlight
       if (xsE.length > emph.highlight) {
-        val cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xsE[(emph.highlight).toInt()])
+        val cx = xPx(l.xDomainUsed, plot, xsE[(emph.highlight).toInt()])
         out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = cx - 6.0, y = plot.y, w = 12.0, h = plot.h), fill = withAlpha(t.axis, 0.14)))
       } else {
         if (spec.categories.length > emph.highlight) {
@@ -3824,8 +3828,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           val xAt = plot.x + ((plot.w).toDouble() / (Math.max(1.0, countToDouble(top.length))).toDouble()) * (countToDouble(i) + 0.5)
           val lo = if (isFiniteNumber(base[(i).toInt()])) base[(i).toInt()] else origin
           val hiV = if (isFiniteNumber(top[(i).toInt()])) top[(i).toInt()] else if (k > 0L && isFiniteNumber(levels.tops[(pyreonSub(k, 1L)).toInt()][(i).toInt()])) levels.tops[(pyreonSub(k, 1L)).toInt()][(i).toInt()] else lo
-          upper.add(PyreonChartPt(x = xAt, y = scaleLinear(yDomain, plot.y + plot.h, plot.y, hiV)))
-          lower.add(PyreonChartPt(x = xAt, y = scaleLinear(yDomain, plot.y + plot.h, plot.y, if (isFiniteNumber(top[(i).toInt()])) lo else hiV)))
+          upper.add(PyreonChartPt(x = xAt, y = yPx(yDomain, plot, hiV)))
+          lower.add(PyreonChartPt(x = xAt, y = yPx(yDomain, plot, if (isFiniteNumber(top[(i).toInt()])) lo else hiV)))
         }
         if (upper.length > 1L) {
           val poly: MutableList<PyreonChartPt> = mutableListOf()
@@ -3942,7 +3946,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           for (si in 0L until steps.length) {
             val st = steps[(si).toInt()]
             val fill = stateFill(s, st.datumIndex, if (st.value < 0.0) (s.negativeColor ?: withAlpha(s.color, 0.55)) else s.color)
-            val startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
+            val startY = yPx(sDomain, plot, st.start)
             val grownH = st.rect.h * progress
             val grown = if (progress >= 1.0) st.rect else PyreonChartRect(x = st.rect.x, y = if (st.value >= 0.0) startY - grownH else startY, w = st.rect.w, h = grownH)
             out.add(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
@@ -3952,7 +3956,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             }
             if (pyreonAdd(si, 1L) < steps.length && progress >= 1.0) {
               val next = steps[(pyreonAdd(si, 1L)).toInt()]
-              val level = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.end)
+              val level = yPx(sDomain, plot, st.end)
               out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = st.rect.x + st.rect.w, y = level), to = PyreonChartPt(x = next.rect.x, y = level), stroke = t.axis, width = 1.0, dash = listOf(2.0, 2.0)))
             }
             if (s.showValues == true && progress >= 1.0) {
@@ -4039,7 +4043,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
                     for (p in pts) {
                       poly.add(p)
                     }
-                    val baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
+                    val baseY = yPx(sDomain, plot, sDomain.min)
                     poly.add(PyreonChartPt(x = pts[(pts.length - 1L).toInt()].x, y = baseY))
                     poly.add(PyreonChartPt(x = pts[0].x, y = baseY))
                     out.add(polygonCmd(poly, withAlpha(s.color, (s.areaOpacity ?: AREA_MARK_OPACITY)), sGrad, s.pattern))
@@ -4122,8 +4126,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             continue
           }
           val cx = centres[(i).toInt()]
-          val yLo = scaleLinear(sDomain, plot.y + plot.h, plot.y, lo)
-          val yHi = scaleLinear(sDomain, plot.y + plot.h, plot.y, hi)
+          val yLo = yPx(sDomain, plot, lo)
+          val yHi = yPx(sDomain, plot, hi)
           out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = cx, y = yLo), to = PyreonChartPt(x = cx, y = yHi), stroke = t.text, width = 1.0))
           out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = cx - cap, y = yLo), to = PyreonChartPt(x = cx + cap, y = yLo), stroke = t.text, width = 1.0))
           out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = cx - cap, y = yHi), to = PyreonChartPt(x = cx + cap, y = yHi), stroke = t.text, width = 1.0))

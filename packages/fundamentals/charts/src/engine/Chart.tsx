@@ -31,7 +31,7 @@ import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
-import { scaleLinear } from './scale'
+import { xPx } from './scale'
 import { columnLength, isColumnMark, markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
@@ -1275,12 +1275,12 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (spec.xValues !== undefined && spec.xValues.length > 0) {
       const v = spec.xValues[idx]
       if (v === undefined) return []
-      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, v)
+      cx = xPx(l.xDomainUsed, plot, v)
     } else if (spec.categories.length > 0) {
       bw = plot.w / spec.categories.length
       cx = plot.x + bw * (idx + 0.5)
     } else {
-      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, idx)
+      cx = xPx(l.xDomainUsed, plot, idx)
     }
     const x0 = cx - bw / 2.0
     const x1 = cx + bw / 2.0
@@ -1411,12 +1411,12 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (spec.xValues !== undefined && spec.xValues.length > 0) {
       const v = spec.xValues[idx]
       if (v === undefined) return out
-      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, v)
+      cx = xPx(l.xDomainUsed, plot, v)
     } else if (spec.categories.length > 0) {
       const bw = plot.w / spec.categories.length
       cx = plot.x + bw * (idx + 0.5)
     } else {
-      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, idx)
+      cx = xPx(l.xDomainUsed, plot, idx)
     }
     if (cx < plot.x || cx > plot.x + plot.w) return out
     out.push({

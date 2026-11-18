@@ -4,7 +4,7 @@
 // a category axis and wrong for a scatter plot — there, x is a measured value
 // like y, and pretending otherwise silently redraws the data.
 
-import { barThickness, isFiniteNumber, scaleLinear } from './scale'
+import { barThickness, isFiniteNumber, xPx, yPx } from './scale'
 import type { Domain, Double, Pt, Rect } from './types'
 
 /** One band's worth of stacked segments, bottom to top. */
@@ -108,8 +108,8 @@ export function layoutStackLevels(levels: StackLevels, values: Double[][], plot:
       if (!isFiniteNumber(top)) continue
       const b = levels.bases[s]![i]!
       const base = isFiniteNumber(b) ? b : 0.0
-      const yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, top)
-      const yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, base)
+      const yTop = yPx(yDomain, plot, top)
+      const yBot = yPx(yDomain, plot, base)
       const own = values[s]!
       out.push({
         rect: { x: plot.x + band * fi + (band - bw) / 2.0, y: yTop < yBot ? yTop : yBot, w: bw, h: Math.abs(yBot - yTop) },
@@ -140,8 +140,8 @@ export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot
       if (!isFiniteNumber(top)) continue
       const b = levels.bases[s]![i]!
       const base = isFiniteNumber(b) ? b : 0.0
-      const xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, top)
-      const xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, base)
+      const xEnd = xPx(vDomain, plot, top)
+      const xStart = xPx(vDomain, plot, base)
       const own = values[s]!
       out.push({
         rect: { x: xStart < xEnd ? xStart : xEnd, y: plot.y + band * fi + (band - bh) / 2.0, w: Math.abs(xEnd - xStart), h: bh },
@@ -213,7 +213,7 @@ export function layoutGroupedBarsH(
   const barH = barThickness(band * (1.0 - ratio), countOf(k), gapH, barWidth)
   const pitchH = barH * (1.0 + gapH)
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
-  const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+  const zeroX = xPx(vDomain, plot, zero)
 
   for (let i = 0; i < n; i++) {
     const gy = plot.y + band * i + (band - (barH + pitchH * (countOf(k) - 1.0))) / 2.0
@@ -221,7 +221,7 @@ export function layoutGroupedBarsH(
       const raw = seriesValues[s]![i] ?? 0.0
       // A gap draws a zero-width bar at the zero line — nothing to see, nothing to hit.
       const v = raw === raw ? raw : zero
-      const vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+      const vx = xPx(vDomain, plot, v)
       out.push({
         rect: {
           x: vx < zeroX ? vx : zeroX,
@@ -272,7 +272,7 @@ export function layoutGroupedBars(
   const barW = barThickness(band * (1.0 - ratio), countOf(k), gapW, barWidth)
   const pitchW = barW * (1.0 + gapW)
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
-  const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
+  const zeroY = yPx(yDomain, plot, zero)
 
   for (let i = 0; i < n; i++) {
     const gx = plot.x + band * i + (band - (barW + pitchW * (countOf(k) - 1.0))) / 2.0
@@ -280,7 +280,7 @@ export function layoutGroupedBars(
       const raw = seriesValues[s]![i] ?? 0.0
       // A gap draws a zero-height bar at the zero line — nothing to see, nothing to hit.
       const v = isFiniteNumber(raw) ? raw : zero
-      const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
+      const vy = yPx(yDomain, plot, v)
       out.push({
         rect: {
           x: gx + pitchW * s,
@@ -315,8 +315,8 @@ export function layoutScatter(
   const out: Pt[] = []
   for (let i = 0; i < n; i++) {
     out.push({
-      x: scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[i]!),
-      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, ys[i]!),
+      x: xPx(xDomain, plot, xs[i]!),
+      y: yPx(yDomain, plot, ys[i]!),
     })
   }
   return out
@@ -392,8 +392,8 @@ export function layoutWaterfall(
     if (!isFiniteNumber(v)) continue
     const start = acc
     const end = acc + v
-    const y0 = scaleLinear(yDomain, plot.y + plot.h, plot.y, start)
-    const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, end)
+    const y0 = yPx(yDomain, plot, start)
+    const y1 = yPx(yDomain, plot, end)
     out.push({
       rect: { x: plot.x + band * i + (band - bw) / 2.0, y: y0 < y1 ? y0 : y1, w: bw, h: Math.abs(y1 - y0) },
       datumIndex: i,

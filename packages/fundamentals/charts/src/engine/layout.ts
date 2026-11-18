@@ -1,6 +1,6 @@
 // Plot-area layout and per-mark geometry.
 
-import { barThickness, isFiniteNumber, makeTicks, scaleLinear } from './scale'
+import { barThickness, isFiniteNumber, makeTicks, xPx, yPx } from './scale'
 import { logViewTicks, timeTicks } from './scale-extra'
 import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
@@ -472,14 +472,14 @@ export function layoutBars(
   // Bars are measured from the axis zero line when the domain straddles zero,
   // so a negative value draws downward from it rather than up from the floor.
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
-  const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
+  const zeroY = yPx(yDomain, plot, zero)
   for (let i = 0; i < n; i++) {
     const raw = values[i]!
     // A gap is a zero-height bar at the zero line: it draws nothing and no
     // pointer can land in it, which is what "no measurement" should look like.
     // An infinity is a gap too — scaled it is an infinite rect.
     const v = isFiniteNumber(raw) ? raw : zero
-    const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
+    const vy = yPx(yDomain, plot, v)
     const top = vy < zeroY ? vy : zeroY
     const h = Math.abs(zeroY - vy)
     out.push({ x: plot.x + band * i + (band - bw) / 2.0, y: top, w: bw, h })
@@ -500,7 +500,7 @@ export function layoutSeriesPoints(values: Double[], plot: Rect, yDomain: Domain
   for (let i = 0; i < n; i++) {
     out.push({
       x: plot.x + band * i + band / 2.0,
-      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
+      y: yPx(yDomain, plot, values[i]!),
     })
   }
   return out
@@ -515,13 +515,13 @@ export function layoutSeriesPointsEdge(values: Double[], plot: Rect, yDomain: Do
   const out: Pt[] = []
   if (n === 0) return out
   if (n === 1) {
-    out.push({ x: plot.x + plot.w / 2.0, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[0]!) })
+    out.push({ x: plot.x + plot.w / 2.0, y: yPx(yDomain, plot, values[0]!) })
     return out
   }
   for (let i = 0; i < n; i++) {
     out.push({
       x: plot.x + (i / (n - 1)) * plot.w,
-      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
+      y: yPx(yDomain, plot, values[i]!),
     })
   }
   return out
@@ -557,7 +557,7 @@ export function layoutSeriesPointsH(values: Double[], plot: Rect, vDomain: Domai
   const band = plot.h / n
   for (let i = 0; i < n; i++) {
     out.push({
-      x: scaleLinear(vDomain, plot.x, plot.x + plot.w, values[i]!),
+      x: xPx(vDomain, plot, values[i]!),
       y: plot.y + band * i + band / 2.0,
     })
   }
@@ -575,8 +575,8 @@ export function layoutSeriesPointsAt(
   const out: Pt[] = []
   for (let i = 0; i < n; i++) {
     out.push({
-      x: scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[i]!),
-      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
+      x: xPx(xDomain, plot, xs[i]!),
+      y: yPx(yDomain, plot, values[i]!),
     })
   }
   return out
@@ -601,11 +601,11 @@ export function layoutBarsH(
   const band = plot.h / n
   const bh = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
-  const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+  const zeroX = xPx(vDomain, plot, zero)
   for (let i = 0; i < n; i++) {
     const raw = values[i]!
     const v = isFiniteNumber(raw) ? raw : zero
-    const vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+    const vx = xPx(vDomain, plot, v)
     const left = vx < zeroX ? vx : zeroX
     out.push({
       x: left,

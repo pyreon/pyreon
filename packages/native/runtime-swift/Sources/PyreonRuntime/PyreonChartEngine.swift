@@ -3665,6 +3665,10 @@ public func scaleLinear(_ d: Domain, _ r0: Double, _ r1: Double, _ v: Double) ->
     return r0 + ((v - d.min) / span) * (r1 - r0)
   }
 
+public func yPx(_ d: Domain, _ plot: PyreonChartRect, _ v: Double) -> Double { scaleLinear(d, plot.y + plot.h, plot.y, v) }
+
+public func xPx(_ d: Domain, _ plot: PyreonChartRect, _ v: Double) -> Double { scaleLinear(d, plot.x, plot.x + plot.w, v) }
+
 public func niceStep(_ raw: Double) -> Double {
     if raw <= 0.0 {
       return 1.0
@@ -5041,11 +5045,11 @@ public func layoutBars(_ values: [Double], _ plot: PyreonChartRect, _ yDomain: D
     let band = plot.w / Double(n)
     let bw = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
     let zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
-    let zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
+    let zeroY = yPx(yDomain, plot, zero)
     for i in 0..<n {
       let raw = values[i]
       let v = isFiniteNumber(raw) ? raw : zero
-      let vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
+      let vy = yPx(yDomain, plot, v)
       let top = vy < zeroY ? vy : zeroY
       let h = abs(zeroY - vy)
       out.append(PyreonChartRect(x: plot.x + band * Double(i) + (band - bw) / 2.0, y: top, w: bw, h: h))
@@ -5061,7 +5065,7 @@ public func layoutSeriesPoints(_ values: [Double], _ plot: PyreonChartRect, _ yD
     }
     let band = plot.w / Double(n)
     for i in 0..<n {
-      out.append(PyreonChartPt(x: plot.x + band * Double(i) + band / 2.0, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i])))
+      out.append(PyreonChartPt(x: plot.x + band * Double(i) + band / 2.0, y: yPx(yDomain, plot, values[i])))
     }
     return out
   }
@@ -5073,11 +5077,11 @@ public func layoutSeriesPointsEdge(_ values: [Double], _ plot: PyreonChartRect, 
       return out
     }
     if n == 1 {
-      out.append(PyreonChartPt(x: plot.x + plot.w / 2.0, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[0])))
+      out.append(PyreonChartPt(x: plot.x + plot.w / 2.0, y: yPx(yDomain, plot, values[0])))
       return out
     }
     for i in 0..<n {
-      out.append(PyreonChartPt(x: plot.x + (Double(i) / Double((pyreonSub(n, 1)))) * plot.w, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i])))
+      out.append(PyreonChartPt(x: plot.x + (Double(i) / Double((pyreonSub(n, 1)))) * plot.w, y: yPx(yDomain, plot, values[i])))
     }
     return out
   }
@@ -5090,7 +5094,7 @@ public func layoutSeriesPointsH(_ values: [Double], _ plot: PyreonChartRect, _ v
     }
     let band = plot.h / Double(n)
     for i in 0..<n {
-      out.append(PyreonChartPt(x: scaleLinear(vDomain, plot.x, plot.x + plot.w, values[i]), y: plot.y + band * Double(i) + band / 2.0))
+      out.append(PyreonChartPt(x: xPx(vDomain, plot, values[i]), y: plot.y + band * Double(i) + band / 2.0))
     }
     return out
   }
@@ -5099,7 +5103,7 @@ public func layoutSeriesPointsAt(_ values: [Double], _ xs: [Double], _ plot: Pyr
     let n = min(values.count, xs.count)
     var out: [PyreonChartPt] = []
     for i in 0..<n {
-      out.append(PyreonChartPt(x: scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[i]), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i])))
+      out.append(PyreonChartPt(x: xPx(xDomain, plot, xs[i]), y: yPx(yDomain, plot, values[i])))
     }
     return out
   }
@@ -5114,11 +5118,11 @@ public func layoutBarsH(_ values: [Double], _ plot: PyreonChartRect, _ vDomain: 
     let band = plot.h / Double(n)
     let bh = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
     let zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
-    let zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+    let zeroX = xPx(vDomain, plot, zero)
     for i in 0..<n {
       let raw = values[i]
       let v = isFiniteNumber(raw) ? raw : zero
-      let vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+      let vx = xPx(vDomain, plot, v)
       let left = vx < zeroX ? vx : zeroX
       out.append(PyreonChartRect(x: left, y: plot.y + band * Double(i) + (band - bh) / 2.0, w: abs(vx - zeroX), h: bh))
     }
@@ -5246,8 +5250,8 @@ public func layoutStackLevels(_ levels: StackLevels, _ values: [[Double]], _ plo
         }
         let b = levels.bases[s][i]
         let base = isFiniteNumber(b) ? b : 0.0
-        let yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, top)
-        let yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, base)
+        let yTop = yPx(yDomain, plot, top)
+        let yBot = yPx(yDomain, plot, base)
         let own = values[s]
         out.append(StackSegment(rect: PyreonChartRect(x: plot.x + band * fi + (band - bw) / 2.0, y: yTop < yBot ? yTop : yBot, w: bw, h: Double(abs(yBot - yTop))), seriesIndex: s, datumIndex: i, value: i < own.count ? own[i] : 0.0))
       }
@@ -5279,8 +5283,8 @@ public func layoutStackLevelsH(_ levels: StackLevels, _ values: [[Double]], _ pl
         }
         let b = levels.bases[s][i]
         let base = isFiniteNumber(b) ? b : 0.0
-        let xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, top)
-        let xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, base)
+        let xEnd = xPx(vDomain, plot, top)
+        let xStart = xPx(vDomain, plot, base)
         let own = values[s]
         out.append(StackSegment(rect: PyreonChartRect(x: xStart < xEnd ? xStart : xEnd, y: plot.y + band * fi + (band - bh) / 2.0, w: Double(abs(xEnd - xStart)), h: bh), seriesIndex: s, datumIndex: i, value: i < own.count ? own[i] : 0.0))
       }
@@ -5322,13 +5326,13 @@ public func layoutGroupedBarsH(_ seriesValues: [[Double]], _ plot: PyreonChartRe
     let barH = barThickness(band * (1.0 - ratio), countOf(k), gapH, barWidth)
     let pitchH = barH * (1.0 + gapH)
     let zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
-    let zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+    let zeroX = xPx(vDomain, plot, zero)
     for i in 0..<n {
       let gy = plot.y + band * Double(i) + (band - (barH + pitchH * (countOf(k) - 1.0))) / 2.0
       for s in 0..<k {
         let raw = (seriesValues[s][i] ?? 0.0)
         let v = raw == raw ? raw : zero
-        let vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+        let vx = xPx(vDomain, plot, v)
         out.append(StackSegment(rect: PyreonChartRect(x: vx < zeroX ? vx : zeroX, y: gy + pitchH * Double(s), w: abs(vx - zeroX), h: barH), seriesIndex: s, datumIndex: i, value: v))
       }
     }
@@ -5369,13 +5373,13 @@ public func layoutGroupedBars(_ seriesValues: [[Double]], _ plot: PyreonChartRec
     let barW = barThickness(band * (1.0 - ratio), countOf(k), gapW, barWidth)
     let pitchW = barW * (1.0 + gapW)
     let zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
-    let zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
+    let zeroY = yPx(yDomain, plot, zero)
     for i in 0..<n {
       let gx = plot.x + band * Double(i) + (band - (barW + pitchW * (countOf(k) - 1.0))) / 2.0
       for s in 0..<k {
         let raw = (seriesValues[s][i] ?? 0.0)
         let v = isFiniteNumber(raw) ? raw : zero
-        let vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
+        let vy = yPx(yDomain, plot, v)
         out.append(StackSegment(rect: PyreonChartRect(x: gx + pitchW * Double(s), y: vy < zeroY ? vy : zeroY, w: barW, h: abs(zeroY - vy)), seriesIndex: s, datumIndex: i, value: v))
       }
     }
@@ -5386,7 +5390,7 @@ public func layoutScatter(_ xs: [Double], _ ys: [Double], _ plot: PyreonChartRec
     let n = min(xs.count, ys.count)
     var out: [PyreonChartPt] = []
     for i in 0..<n {
-      out.append(PyreonChartPt(x: scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[i]), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, ys[i])))
+      out.append(PyreonChartPt(x: xPx(xDomain, plot, xs[i]), y: yPx(yDomain, plot, ys[i])))
     }
     return out
   }
@@ -5439,8 +5443,8 @@ public func layoutWaterfall(_ values: [Double], _ plot: PyreonChartRect, _ yDoma
       }
       let start = acc
       let end = acc + v
-      let y0 = scaleLinear(yDomain, plot.y + plot.h, plot.y, start)
-      let y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, end)
+      let y0 = yPx(yDomain, plot, start)
+      let y1 = yPx(yDomain, plot, end)
       out.append(WaterfallStep(rect: PyreonChartRect(x: plot.x + band * Double(i) + (band - bw) / 2.0, y: y0 < y1 ? y0 : y1, w: bw, h: Double(abs(y1 - y0))), datumIndex: i, value: v, start: start, end: end))
       acc = end
     }
@@ -6195,7 +6199,7 @@ public func spreadLabels(_ ys: [Double], _ gap: Double, _ top: Double, _ bottom:
 public func categoryXPixel(_ spec: ChartSpec, _ xDomain: Domain, _ plot: PyreonChartRect, _ v: Double) -> Double {
     let n = seriesMaxLength(spec.series)
     if ((spec.xValues ?? [])).count > 0 || n == 0 {
-      return scaleLinear(xDomain, plot.x, plot.x + plot.w, v)
+      return xPx(xDomain, plot, v)
     }
     return plot.x + (plot.w / countToDouble(n)) * (v + 0.5)
   }
@@ -6203,7 +6207,7 @@ public func categoryXPixel(_ spec: ChartSpec, _ xDomain: Domain, _ plot: PyreonC
 public func categorySpanPixels(_ spec: ChartSpec, _ xDomain: Domain, _ plot: PyreonChartRect, _ from: Double, _ to: Double) -> PyreonChartPt {
     let n = seriesMaxLength(spec.series)
     if ((spec.xValues ?? [])).count > 0 || n == 0 {
-      return PyreonChartPt(x: scaleLinear(xDomain, plot.x, plot.x + plot.w, from), y: scaleLinear(xDomain, plot.x, plot.x + plot.w, to))
+      return PyreonChartPt(x: xPx(xDomain, plot, from), y: xPx(xDomain, plot, to))
     }
     let lo = from < to ? from : to
     let hi = from < to ? to : from
@@ -6250,11 +6254,11 @@ public func setLaidH(_ spec: ChartSpec, _ kind: String, _ plot: PyreonChartRect,
 public func growEdgeRect(_ r: PyreonChartRect, _ dom: Domain, _ plot: PyreonChartRect, _ horizontal: Bool) -> PyreonChartRect {
     let zero = dom.min <= 0.0 && dom.max >= 0.0 ? 0.0 : dom.min > 0.0 ? dom.min : dom.max
     if horizontal {
-      let zx = scaleLinear(dom, plot.x, plot.x + plot.w, zero)
+      let zx = xPx(dom, plot, zero)
       let ex = r.x >= zx - 0.5 ? r.x : r.x + r.w
       return PyreonChartRect(x: ex, y: r.y, w: 0.0, h: r.h)
     }
-    let zy = scaleLinear(dom, plot.y + plot.h, plot.y, zero)
+    let zy = yPx(dom, plot, zero)
     let ey = r.y + r.h <= zy + 0.5 ? r.y + r.h : r.y
     return PyreonChartRect(x: r.x, y: ey, w: r.w, h: 0.0)
   }
@@ -6287,7 +6291,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       if progress >= 1.0 {
         return r
       }
-      let zeroY = scaleLinear(dom, plot.y + plot.h, plot.y, dom.min < 0.0 && dom.max > 0.0 ? 0.0 : dom.min)
+      let zeroY = yPx(dom, plot, dom.min < 0.0 && dom.max > 0.0 ? 0.0 : dom.min)
       let h = r.h * progress
       let top = r.y + r.h <= zeroY + 0.5 ? zeroY - h : zeroY
       return PyreonChartRect(x: r.x, y: top, w: r.w, h: h)
@@ -6296,7 +6300,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       if progress >= 1.0 {
         return r
       }
-      let zeroX = scaleLinear(yDomain, plot.x, plot.x + plot.w, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
+      let zeroX = xPx(yDomain, plot, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
       let w = r.w * progress
       let left = r.x >= zeroX - 0.5 ? zeroX : zeroX - w
       return PyreonChartRect(x: left, y: r.y, w: w, h: r.h)
@@ -6347,8 +6351,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let yFrom = (a.yFrom ?? 0.0)
       let yTo = (a.yTo ?? 0.0)
       if a.yFrom != nil && a.yTo != nil {
-        let y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yFrom)
-        let y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
+        let y1 = yPx(yDomain, plot, yFrom)
+        let y2 = yPx(yDomain, plot, yTo)
         let top = y1 < y2 ? y1 : y2
         out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: plot.x, y: top, w: plot.w, h: Double(abs(y2 - y1))), fill: withAlpha((a.color ?? t.axis), 0.12)))
         if let label = a.label {
@@ -6371,7 +6375,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     for a in notes {
       let ay = (a.y ?? 0.0)
       if a.y != nil {
-        let yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, ay)
+        let yPos = yPx(yDomain, plot, ay)
         out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: plot.x, y: yPos), to: PyreonChartPt(x: plot.x + plot.w, y: yPos), stroke: (a.color ?? t.axis), width: 1.0, dash: [4.0, 4.0]))
         let yLabel = (a.label ?? "")
         if a.label != nil {
@@ -6392,8 +6396,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let sx2 = (a.x2 ?? 0.0)
       let sy2 = (a.y2 ?? 0.0)
       if a.x1 != nil && a.y1 != nil && a.x2 != nil && a.y2 != nil {
-        let p1 = PyreonChartPt(x: categoryXPixel(spec, l.xDomainUsed, plot, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1))
-        let p2 = PyreonChartPt(x: categoryXPixel(spec, l.xDomainUsed, plot, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2))
+        let p1 = PyreonChartPt(x: categoryXPixel(spec, l.xDomainUsed, plot, sx1), y: yPx(yDomain, plot, sy1))
+        let p2 = PyreonChartPt(x: categoryXPixel(spec, l.xDomainUsed, plot, sx2), y: yPx(yDomain, plot, sy2))
         out.append(PyreonDrawCmd(kind: "line", from: p1, to: p2, stroke: (a.color ?? t.axis), width: 1.0, dash: [4.0, 4.0]))
         let segLabel = (a.label ?? "")
         if a.label != nil {
@@ -6406,7 +6410,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       let xsE = (spec.xValues ?? [])
       let hi = emph.highlight
       if xsE.count > emph.highlight {
-        let cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xsE[emph.highlight])
+        let cx = xPx(l.xDomainUsed, plot, xsE[emph.highlight])
         out.append(PyreonDrawCmd(kind: "rect", rect: PyreonChartRect(x: cx - 6.0, y: plot.y, w: 12.0, h: plot.h), fill: withAlpha(t.axis, 0.14)))
       } else {
         if spec.categories.count > emph.highlight {
@@ -6468,8 +6472,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           let xAt = plot.x + (plot.w / max(1.0, countToDouble(top.count))) * (countToDouble(i) + 0.5)
           let lo = isFiniteNumber(base[i]) ? base[i] : origin
           let hiV = isFiniteNumber(top[i]) ? top[i] : k > 0 && isFiniteNumber(levels.tops[pyreonSub(k, 1)][i]) ? levels.tops[pyreonSub(k, 1)][i] : lo
-          upper.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, hiV)))
-          lower.append(PyreonChartPt(x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, isFiniteNumber(top[i]) ? lo : hiV)))
+          upper.append(PyreonChartPt(x: xAt, y: yPx(yDomain, plot, hiV)))
+          lower.append(PyreonChartPt(x: xAt, y: yPx(yDomain, plot, isFiniteNumber(top[i]) ? lo : hiV)))
         }
         if upper.count > 1 {
           var poly: [PyreonChartPt] = []
@@ -6586,7 +6590,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           for si in 0..<steps.count {
             let st = steps[si]
             let fill = stateFill(s, st.datumIndex, st.value < 0.0 ? (s.negativeColor ?? withAlpha(s.color, 0.55)) : s.color)
-            let startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
+            let startY = yPx(sDomain, plot, st.start)
             let grownH = st.rect.h * progress
             let grown = progress >= 1.0 ? st.rect : PyreonChartRect(x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH)
             out.append(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
@@ -6596,7 +6600,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             }
             if pyreonAdd(si, 1) < steps.count && progress >= 1.0 {
               let next = steps[pyreonAdd(si, 1)]
-              let level = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.end)
+              let level = yPx(sDomain, plot, st.end)
               out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: st.rect.x + st.rect.w, y: level), to: PyreonChartPt(x: next.rect.x, y: level), stroke: t.axis, width: 1.0, dash: [2.0, 2.0]))
             }
             if s.showValues == true && progress >= 1.0 {
@@ -6683,7 +6687,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
                     for p in pts {
                       poly.append(p)
                     }
-                    let baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
+                    let baseY = yPx(sDomain, plot, sDomain.min)
                     poly.append(PyreonChartPt(x: pts[pts.count - 1].x, y: baseY))
                     poly.append(PyreonChartPt(x: pts[0].x, y: baseY))
                     out.append(polygonCmd(poly, withAlpha(s.color, (s.areaOpacity ?? AREA_MARK_OPACITY)), sGrad, s.pattern))
@@ -6766,8 +6770,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
             continue
           }
           let cx = centres[i]
-          let yLo = scaleLinear(sDomain, plot.y + plot.h, plot.y, lo)
-          let yHi = scaleLinear(sDomain, plot.y + plot.h, plot.y, hi)
+          let yLo = yPx(sDomain, plot, lo)
+          let yHi = yPx(sDomain, plot, hi)
           out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: cx, y: yLo), to: PyreonChartPt(x: cx, y: yHi), stroke: t.text, width: 1.0))
           out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: cx - cap, y: yLo), to: PyreonChartPt(x: cx + cap, y: yLo), stroke: t.text, width: 1.0))
           out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: cx - cap, y: yHi), to: PyreonChartPt(x: cx + cap, y: yHi), stroke: t.text, width: 1.0))
