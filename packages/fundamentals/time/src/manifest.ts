@@ -1,7 +1,10 @@
 import { defineManifest } from '@pyreon/manifest'
 import type { ApiEntry } from '@pyreon/manifest'
 
-/** One `@pyreon/time/fp` entry. Named `fp.<name>` so it does not collide with the value-first function of the same name. */
+/** `@pyreon/time/fp` names with no value-first namesake: documented under their own name. */
+const FP_ONLY = ['isBetween', 'diffFrom', 'betweenFrom', 'by', 'pipe']
+
+/** One `@pyreon/time/fp` entry. Named `fp.<name>` so it does not collide with the value-first function of the same name; a name with no namesake keeps its own. */
 const FP_NAMES = ['add', 'subtract', 'startOf', 'endOf', 'isBefore', 'isAfter', 'isSame', 'isBetween', 'clamp', 'diffFrom', 'betweenFrom', 'by', 'compare', 'toInstant', 'toPlainDate', 'toPlainTime', 'toPlainDateTime', 'offsetAt', 'addInstant', 'monthGrid', 'fromDate', 'toDate', 'pipe']
 
 /** The `@pyreon/time/fp` names an example calls, as an import line (so the example typechecks against the fp entry). */
@@ -12,7 +15,7 @@ function fpImport(example: string): string {
 }
 
 function fp(name: string, signature: string, summary: string, example: string, seeAlso?: string[]): ApiEntry {
-  return { name: `fp.${name}`, kind: 'function', signature, summary, example: fpImport(example) + example, ...(seeAlso ? { seeAlso } : {}), stability: 'experimental', since: '0.53.0' }
+  return { name: FP_ONLY.includes(name) ? name : `fp.${name}`, kind: 'function', signature, summary, example: fpImport(example) + example, ...(seeAlso ? { seeAlso } : {}), stability: 'experimental', since: '0.53.0' }
 }
 
 const ADJ = '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T'

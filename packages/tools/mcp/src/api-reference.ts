@@ -10003,7 +10003,7 @@ endOf('month')('2026-11-18')               // => '2026-11-30'`,
     notes: '[EXPERIMENTAL] A predicate: true for values in the same unit as `other`. Added in v0.53.0.',
   },
 
-  'time/fp.isBetween': {
+  'time/isBetween': {
     signature: '(start: T, end: T) => (value: shape of T) => boolean',
     example: `import { isBetween } from '@pyreon/time/fp'
 ['2026-01-05', '2026-02-10', '2026-03-20'].filter(isBetween('2026-02-01', '2026-03-01'))  // => ['2026-02-10']`,
@@ -10017,21 +10017,21 @@ endOf('month')('2026-11-18')               // => '2026-11-30'`,
     notes: '[EXPERIMENTAL] Limit values to a range. Throws when `lo` is after `hi`. Added in v0.53.0.',
   },
 
-  'time/fp.diffFrom': {
+  'time/diffFrom': {
     signature: '(base: T, unit: Unit, options?: { zone?: TimeZone }) => (value: shape of T) => number',
     example: `import { diffFrom } from '@pyreon/time/fp'
 ['2026-01-10', '2026-01-03'].map(diffFrom('2026-01-01', 'day'))  // => [9, 2]`,
     notes: '[EXPERIMENTAL] Whole units from `base` to each value: `dates.map(diffFrom(today, "day"))` reads left to right. Added in v0.53.0.',
   },
 
-  'time/fp.betweenFrom': {
+  'time/betweenFrom': {
     signature: '(base: PlainDate | PlainDateTime) => (value: same shape) => Duration',
     example: `import { betweenFrom } from '@pyreon/time/fp'
 betweenFrom('2026-01-31')('2026-03-01')      // => { years: 0, months: 1, days: 1 }`,
     notes: '[EXPERIMENTAL] The Duration from `base` to each value. Added in v0.53.0.',
   },
 
-  'time/fp.by': {
+  'time/by': {
     signature: '(mapper: (item: A) => K) => (a: A, b: A) => -1 | 0 | 1',
     example: `import { by } from '@pyreon/time/fp'
 const events: { d: PlainDate }[] = [{ d: '2026-03-01' }, { d: '2026-01-01' }]
@@ -10110,7 +10110,7 @@ toDate('UTC')('1970-01-01').getTime()         // => 0`,
     notes: '[EXPERIMENTAL] Value-last `toDate`. Added in v0.53.0.',
   },
 
-  'time/fp.pipe': {
+  'time/pipe': {
     signature: '(f1: (a: A) => B, f2: (b: B) => C, ...up to eight steps) => (value: A) => result',
     example: `import { add, startOf, pipe } from '@pyreon/time/fp'
 const nextMonthStart = pipe(add({ months: 1 }), startOf('month'))

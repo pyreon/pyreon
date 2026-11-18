@@ -41,7 +41,7 @@ describe('manifest examples run and print what they claim', () => {
   it.each(entries)('%s', (name, example) => {
     const stripped = example.replace(/^import .*$/gm, '')
 
-    runExample(stripped, name.startsWith('fp.') ? { ...time, ...fpEntry } : time)
+    runExample(stripped, name.startsWith('fp.') || example.includes("from '@pyreon/time/fp'") ? { ...time, ...fpEntry } : time)
   })
 
   it('every runtime export of the package has an api entry, and every function entry is exported', () => {
