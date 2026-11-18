@@ -79,6 +79,7 @@ export function lockScroll(element?: HTMLElement | null): () => void {
   hold.count++
   const owned = hold
   let released = false
+
   return () => {
     if (released) return
     released = true

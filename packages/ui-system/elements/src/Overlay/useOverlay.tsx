@@ -680,10 +680,10 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
       if (active()) {
         if (releaseLocks) return
         const releasePage = locksPage ? lockScroll() : null
-        const releaseParent = locksParent ? lockScroll(parentContainer) : null
+        const releaseContainer = locksParent ? lockScroll(parentContainer) : null
         releaseLocks = () => {
           releasePage?.()
-          releaseParent?.()
+          releaseContainer?.()
         }
       } else if (releaseLocks) {
         releaseLocks()

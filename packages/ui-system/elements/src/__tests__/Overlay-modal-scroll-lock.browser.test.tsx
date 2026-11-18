@@ -22,10 +22,12 @@ type Api = { show: () => void; hide: () => void }
 
 function mountModal(type: 'modal' | 'popover' = 'modal'): { api: Api; unmount: () => void } {
   let api!: Api
+
   function Harness() {
     const o = useOverlay({ openOn: 'manual', closeOn: 'manual', type })
     api = { show: o.showContent, hide: o.hideContent }
     onMount(() => o.setupListeners())
+
     return (
       <div>
         <button ref={o.triggerRef}>Open</button>
@@ -34,10 +36,12 @@ function mountModal(type: 'modal' | 'popover' = 'modal'): { api: Api; unmount: (
     )
   }
   const { unmount } = mountInBrowser(<Harness />)
+
   return { api, unmount }
 }
 
 const bodyCanScroll = (): boolean => getComputedStyle(document.body).overflow !== 'hidden'
+
 const pageCanScroll = (): boolean =>
   bodyCanScroll() && getComputedStyle(document.documentElement).overflow !== 'hidden'
 

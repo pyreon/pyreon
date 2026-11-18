@@ -27,6 +27,7 @@ function mountNested() {
     const o = useOverlay({ openOn: 'manual', closeOn: 'manual', type: 'popover' })
     child = { show: o.showContent, hide: o.hideContent, active: o.active }
     onMount(() => o.setupListeners())
+
     return <button ref={o.triggerRef}>child trigger</button>
   }
 
@@ -34,6 +35,7 @@ function mountNested() {
     const o = useOverlay({ openOn: 'manual', closeOn: 'clickOutsideContent', type: 'popover' })
     parent = { show: o.showContent, hide: o.hideContent, active: o.active }
     onMount(() => o.setupListeners())
+
     return (
       <div>
         <button ref={o.triggerRef}>parent trigger</button>
@@ -50,6 +52,7 @@ function mountNested() {
   outside.textContent = 'outside'
   document.body.appendChild(outside)
   const { unmount } = mountInBrowser(<Parent />)
+
   return {
     parent: () => parent,
     child: () => child,
