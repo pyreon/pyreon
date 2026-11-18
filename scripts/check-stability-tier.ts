@@ -87,8 +87,6 @@ export const POLICY_URL = 'https://pyreon.dev/docs/stability-and-direction'
 export const DEPRECATED_ALLOWLIST: Record<string, string> = {
   '@pyreon/core#ForProps.key':
     'Not an API: a `key?: never` type guard that turns `<For key>` (React habit) into a type error pointing at `by`. Nothing to remove.',
-  '@pyreon/validation#StandardSchemaShape':
-    'Type alias with no manifest entry of its own. Removal is tracked with the Standard Schema type consolidation (1.0 readiness M2).',
   '@pyreon/native-compiler#NATIVE_COMPILER_PLUGIN_API_VERSION':
     'Experimental package with no manifest. Frozen at 1 on purpose: old plugins import it at runtime to declare API 1.',
   '@pyreon/cli#DoctorOptions.auditTests':
@@ -101,20 +99,6 @@ export const DEPRECATED_ALLOWLIST: Record<string, string> = {
     'Legacy `pyreon doctor` flag. `@pyreon/cli` has no manifest; removal is tracked in 1.0 readiness M7.',
   '@pyreon/cli#DoctorOptions.checkNative':
     'Legacy `pyreon doctor` flag. `@pyreon/cli` has no manifest; removal is tracked in 1.0 readiness M7.',
-  '@pyreon/styler#ThemeProvider':
-    'Source says deprecated, the manifest documents standalone use. Whether it is removed or undeprecated is undecided (1.0 readiness M4).',
-  '@pyreon/unistyle#Provider':
-    'Low-level provider with no manifest API entry (only a gotcha note). Its future is undecided (1.0 readiness M4).',
-  '@pyreon/zero-content#generateSitemap':
-    'Removed outright by #4554, which lands before this gate; the entry goes when this branch is rebased onto it.',
-  '@pyreon/zero-content#generateRssFeed':
-    'Removed outright by #4554, which lands before this gate; the entry goes when this branch is rebased onto it.',
-  '@pyreon/zero-content#toRfc822':
-    'Removed outright by #4554, which lands before this gate; the entry goes when this branch is rebased onto it.',
-  '@pyreon/zero-content#generateLlmsTxt':
-    'Removed outright by #4554, which lands before this gate; the entry goes when this branch is rebased onto it.',
-  '@pyreon/zero-content#shortId':
-    '`@internal` helper exported from `./plugin` for tests; not part of the documented surface (1.0 readiness M5).',
 }
 
 /**
