@@ -36,4 +36,19 @@ describe('anchor attributes', () => {
   it('<a> accepts type', () => {
     expectTypeOf<El['a']>().toHaveProperty('type')
   })
+
+  // #4392: the attribute is valid HTML and the runtime set it; only the type was missing.
+  it('<iframe> accepts srcdoc, as a value or an accessor', () => {
+    expectTypeOf<string>().toMatchTypeOf<El['iframe']['srcdoc']>()
+    expectTypeOf<() => string>().toMatchTypeOf<El['iframe']['srcdoc']>()
+  })
+
+  // #4369: the two events a native <dialog> exists to fire.
+  it('<dialog> accepts onClose and onCancel, typed to the dialog element', () => {
+    expectTypeOf<El['dialog']>().toHaveProperty('onClose')
+    expectTypeOf<El['dialog']>().toHaveProperty('onCancel')
+    expectTypeOf<(e: Event & { currentTarget: HTMLDialogElement }) => void>().toMatchTypeOf<
+      NonNullable<El['dialog']['onClose']>
+    >()
+  })
 })
