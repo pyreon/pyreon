@@ -546,6 +546,12 @@ describe('the marketing site carries the product count, the anti-pattern total a
     expect(drift(r, 'site-anti-pattern-count', `${SITE}/products/ai.json`)).toEqual([`site anti-pattern total: ${SITE}/products/ai.json claims 5, actual 7.`])
   })
 
+  it('reports a blog post whose package count was not moved with the constant', async () => {
+    const POST = 'docs/src/content/blog/introducing-pyreon.md'
+    build(files({ [POST]: '77 published packages, all versioned together:\n' }))
+    expect(drift(await run(), 'site-package-count', POST)).toEqual([`site package count (the content set constant): ${POST} claims 77, actual 80.`])
+  })
+
   it('checks the package count against the constant, not against the repository', async () => {
     // The site says 80 on purpose, ahead of npm: two published packages here, and 80 is still right.
     build(files({ 'packages/a/package.json': '{ "name": "@pyreon/a" }\n', 'packages/b/package.json': '{ "name": "@pyreon/b" }\n' }))

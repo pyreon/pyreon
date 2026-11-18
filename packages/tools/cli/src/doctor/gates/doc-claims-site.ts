@@ -123,4 +123,11 @@ export const SITE_PACKAGE_COUNT_CLAIMS: ClaimSpec[] = [
   { file: `${SITE}/pages/compare/react.json`, pattern: /(\d+) first-party packages/ },
   { file: `${SITE}/pages/compare/react.json`, pattern: /AGENTS\.md \((\d+) packages\)/ },
   { file: `${SITE}/_products.json`, pattern: /rest of the (\d+) published packages/ },
+  // The blog is Markdown and cannot read the constant, so its copies of the number are checked against it. The marketing
+  // pack's sources (05-blog/B03, B06) say the same number.
+  { file: `${BLOG}/introducing-pyreon.md`, pattern: /(\d+) published packages, all versioned together/ },
+  { file: `${BLOG}/2026-in-review.md`, pattern: /3,881 commits, (\d+) packages and one/ },
+  { file: `${BLOG}/2026-in-review.md`, pattern: /empty repository in March to (\d+) packages/ },
+  { file: `${BLOG}/2026-in-review.md`, pattern: /merged pull requests, (\d+) published packages/ },
+  { file: `${BLOG}/2026-in-review.md`, pattern: /\| published packages \| (\d+) \|/ },
 ]

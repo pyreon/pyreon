@@ -1,12 +1,12 @@
 ---
-title: "Pyreon’s 2026: 3,881 commits, 77 packages and one codebase for three platforms"
-description: "From an empty repository in March to 77 packages, a compiler that ships one .tsx file to the web, SwiftUI and Jetpack Compose, and a benchmark record that lists its own retractions. The year, counted from the repository."
+title: "Pyreon’s 2026: 3,881 commits, 80 packages and one codebase for three platforms"
+description: "From an empty repository in March to 80 packages, a compiler that ships one .tsx file to the web, SwiftUI and Jetpack Compose, and a benchmark record that lists its own retractions. The year, counted from the repository."
 date: 2026-12-28
 slug: 2026-in-review
 tags: [javascript, opensource, webdev, typescript]
 cover: /blog/covers/2026-in-review.png
 ---
-On 9 March 2026 the Pyreon repository did not exist. By 10 November it held 3,881 commits on `main`, 3,699 merged pull requests, 77 published packages and a framework that compiles one `.tsx` file to the web, SwiftUI and Jetpack Compose.
+On 9 March 2026 the Pyreon repository did not exist. By 10 November it held 3,881 commits on `main`, 3,699 merged pull requests, 80 published packages and a framework that compiles one `.tsx` file to the web, SwiftUI and Jetpack Compose.
 
 Most of those commits are mine. For most of the year Pyreon had one human contributor and a wall of automated checks. Here is what that year produced, month by month. Every count was taken from the repository and npm on 10 November 2026, the parts that did not go to plan included. For the numbers that move every day (stars, downloads, releases), [pyreon.dev/open](https://pyreon.dev/open) has them live, refreshed daily.
 
@@ -19,7 +19,7 @@ As of 10 November 2026:
 | commits on `main` | 3,881 |
 | merged pull requests | 3,699 |
 | issues opened / closed | 76 / 65 |
-| published packages | 77 |
+| published packages | 80 |
 | test files (`*.test.ts[x]`) | 3,736 |
 | of which run in real Chromium (`*.browser.test.ts[x]`) | 272 |
 | `@pyreon/core` releases on npm, 15 March to 13 October | 112 |
