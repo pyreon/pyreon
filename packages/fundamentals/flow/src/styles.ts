@@ -1,4 +1,69 @@
 /**
+ * The dark value of every `--pyreon-flow-*` variable, applied by
+ * `<Flow colorMode="dark">` and by `colorMode="system"` under a dark OS scheme.
+ * The native palettes (`PyreonFlowView.swift` / `.kt`) are held to these.
+ */
+const FLOW_DARK_PALETTE: Readonly<Record<string, string>> = {
+  'node-bg': '#1f2937',
+  'node-color': '#f3f4f6',
+  'node-border': '#374151',
+  'node-selected': '#60a5fa',
+  'edge': '#6b7280',
+  'edge-label': '#9ca3af',
+  'accent': '#60a5fa',
+  'accent-bg': 'rgba(96, 165, 250, 0.12)',
+  'selection-glow': 'rgba(96, 165, 250, 0.35)',
+  'handle-bg': '#374151',
+  'handle-border': '#6b7280',
+  'handle-valid': '#4ade80',
+  'panel-bg': '#111827',
+  'panel-border': '#374151',
+  'panel-shadow': '0 2px 8px rgba(0, 0, 0, 0.5)',
+  'control-color': '#e5e7eb',
+  'control-muted': '#9ca3af',
+  'controls-hover': '#1f2937',
+  'controls-active': '#374151',
+  'minimap-node': '#374151',
+  'minimap-mask': 'rgba(0, 0, 0, 0.4)',
+  'toolbar-bg': '#111827',
+  'toolbar-border': '#374151',
+  'bg-pattern': '#374151',
+  'resizer-bg': '#60a5fa',
+}
+
+/** The canvas background in dark mode. */
+const DARK_CANVAS = '#0b1220'
+
+/**
+ * The dark-mode rules for one selector.
+ *
+ * The dark values are NOT declared as the public variables on `.pyreon-flow`:
+ * a value declared on an element always beats one inherited from an ancestor,
+ * so an app that themed Flow from a wrapper (the documented way) lost every
+ * override in dark mode (#4427). Instead the element resolves each variable
+ * once into a private one — the public value if any ancestor (or the element
+ * itself) sets it, else the dark default — and its children get the public
+ * variable back as that resolved value. Everything inside the canvas, custom
+ * nodes and edges included, reads `var(--pyreon-flow-*)` and sees the value in
+ * force. `:where()` keeps the children rule at zero specificity, so a rule of
+ * yours on a panel (`.pyreon-flow-controls { … }`) still wins.
+ */
+function darkMode(selector: string, indent = ''): string {
+  const names = Object.keys(FLOW_DARK_PALETTE)
+  const lines = [
+    `${selector} {`,
+    ...names.map((n) => `  --_pyreon-flow-${n}: var(--pyreon-flow-${n}, ${FLOW_DARK_PALETTE[n]});`),
+    `  background: ${DARK_CANVAS};`,
+    '}',
+    `:where(${selector}) > * {`,
+    ...names.map((n) => `  --pyreon-flow-${n}: var(--_pyreon-flow-${n});`),
+    '}',
+  ]
+
+  return lines.map((l) => indent + l).join('\n')
+}
+
+/**
  * Default CSS styles for the flow diagram.
  * Inject via `<style>` tag or import in your CSS.
  *
@@ -122,65 +187,12 @@ export const flowStyles = `
 
 /* Dark values for every --pyreon-flow-* variable. Applied by
    <Flow colorMode="dark">, or by colorMode="system" under a dark OS scheme.
-   Set the same variables on an ancestor to override any of them. */
-.pyreon-flow[data-color-mode="dark"] {
-  --pyreon-flow-node-bg: #1f2937;
-  --pyreon-flow-node-color: #f3f4f6;
-  --pyreon-flow-node-border: #374151;
-  --pyreon-flow-node-selected: #60a5fa;
-  --pyreon-flow-edge: #6b7280;
-  --pyreon-flow-edge-label: #9ca3af;
-  --pyreon-flow-accent: #60a5fa;
-  --pyreon-flow-accent-bg: rgba(96, 165, 250, 0.12);
-  --pyreon-flow-selection-glow: rgba(96, 165, 250, 0.35);
-  --pyreon-flow-handle-bg: #374151;
-  --pyreon-flow-handle-border: #6b7280;
-  --pyreon-flow-handle-valid: #4ade80;
-  --pyreon-flow-panel-bg: #111827;
-  --pyreon-flow-panel-border: #374151;
-  --pyreon-flow-panel-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  --pyreon-flow-control-color: #e5e7eb;
-  --pyreon-flow-control-muted: #9ca3af;
-  --pyreon-flow-controls-hover: #1f2937;
-  --pyreon-flow-controls-active: #374151;
-  --pyreon-flow-minimap-node: #374151;
-  --pyreon-flow-minimap-mask: rgba(0, 0, 0, 0.4);
-  --pyreon-flow-toolbar-bg: #111827;
-  --pyreon-flow-toolbar-border: #374151;
-  --pyreon-flow-bg-pattern: #374151;
-  --pyreon-flow-resizer-bg: #60a5fa;
-  background: #0b1220;
-}
+   Set the same variables on an ancestor, or on the Flow element, to override
+   any of them in either mode. */
+${darkMode('.pyreon-flow[data-color-mode="dark"]')}
 
 @media (prefers-color-scheme: dark) {
-  .pyreon-flow[data-color-mode="system"] {
-    --pyreon-flow-node-bg: #1f2937;
-    --pyreon-flow-node-color: #f3f4f6;
-    --pyreon-flow-node-border: #374151;
-    --pyreon-flow-node-selected: #60a5fa;
-    --pyreon-flow-edge: #6b7280;
-    --pyreon-flow-edge-label: #9ca3af;
-    --pyreon-flow-accent: #60a5fa;
-    --pyreon-flow-accent-bg: rgba(96, 165, 250, 0.12);
-    --pyreon-flow-selection-glow: rgba(96, 165, 250, 0.35);
-    --pyreon-flow-handle-bg: #374151;
-    --pyreon-flow-handle-border: #6b7280;
-    --pyreon-flow-handle-valid: #4ade80;
-    --pyreon-flow-panel-bg: #111827;
-    --pyreon-flow-panel-border: #374151;
-    --pyreon-flow-panel-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-    --pyreon-flow-control-color: #e5e7eb;
-    --pyreon-flow-control-muted: #9ca3af;
-    --pyreon-flow-controls-hover: #1f2937;
-    --pyreon-flow-controls-active: #374151;
-    --pyreon-flow-minimap-node: #374151;
-    --pyreon-flow-minimap-mask: rgba(0, 0, 0, 0.4);
-    --pyreon-flow-toolbar-bg: #111827;
-    --pyreon-flow-toolbar-border: #374151;
-    --pyreon-flow-bg-pattern: #374151;
-    --pyreon-flow-resizer-bg: #60a5fa;
-    background: #0b1220;
-  }
+${darkMode('.pyreon-flow[data-color-mode="system"]', '  ')}
 }
 
 /* ── Accessibility ────────────────────────────────────────────────────────── */
@@ -188,7 +200,7 @@ export const flowStyles = `
 /* Keyboard focus is shown, pointer focus is not — the UA stylesheets already
    draw their default ring under :focus-visible only; these rules theme it. */
 .pyreon-flow:focus-visible {
-  outline: 2px solid var(--pyreon-flow-accent, #3b82f6);
+  outline: 2px solid var(--_pyreon-flow-accent, var(--pyreon-flow-accent, #3b82f6));
   outline-offset: -2px;
 }
 
