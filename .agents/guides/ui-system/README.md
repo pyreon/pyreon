@@ -35,6 +35,7 @@ Component libraries in `packages/ui/` (private):
 - `innerRef` is an alias of `ref` on `styled()` components.
 - On the server `DynamicStyled` (`IS_SERVER`) skips its reactive `computed`/`renderEffect` setup and emits the same class name.
 - The dev validator in `sheet.ts` flags `NaN` and malformed `var()` values in inserted CSS.
+- Layer order `LAYER_ORDER` = `elements, rocketstyle, instance`, emitted once per sheet (client `mount()`, SSR `getStyleTag` / `getStyles` / the streaming flush). A NAMED `@layer x { … }` block inside a component's CSS is hoisted by `splitAtRules` to the TOP-LEVEL layer `x` under the same class (not a sublayer of the component's own `layer`); elements uses it to put the instance `css` prop in `instance` (#4354). The docs site's `index.html` repeats the order with its own `docs` and `site` layers around it.
 
 ## @pyreon/unistyle
 

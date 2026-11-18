@@ -123,9 +123,15 @@ const BandTitle = txt
 const Cells = el
   .config({ name: 'ProofBandCells' })
   .attrs({ tag: 'ul', block: true })
-  // Columns come from the per-instance `css` (cell count); a theme value
-  // would win over it (the theme sits in a higher cascade layer, #4354).
-  .theme(() => ({ listStyle: 'none', margin: 0, padding: 0, display: 'grid' }))
+  // One column by default; the per-instance `css` sets the wide-screen column
+  // count (the cell count), and an instance `css` beats the theme.
+  .theme(() => ({
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
+  }))
 
 const Cell = el
   .config({ name: 'ProofBandCell' })
@@ -189,7 +195,7 @@ export function ProofBand(props: {
   // down, so the labels under the numbers start on one line.
   const size = items.some((i) => numeralSize(i.stat) === 'long') ? 'long' : 'default'
   // One column until 992px: a long numeral ("1.94–1.95×") does not fit a third of a tablet.
-  const cols = `grid-template-columns: minmax(0, 1fr); @media (min-width: ${breakpoints.lg}px) { grid-template-columns: repeat(${items.length}, minmax(0, 1fr)); }`
+  const cols = `@media (min-width: ${breakpoints.lg}px) { grid-template-columns: repeat(${items.length}, minmax(0, 1fr)); }`
   return (
     <Band id={props.id} aria-label={props.title ? undefined : 'In numbers'}>
       <Show when={() => !!props.title}>

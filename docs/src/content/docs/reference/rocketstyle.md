@@ -610,6 +610,8 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough
 
 > **Note:** useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both.
 
+> **Cascade order: theme &lt; instance css:** The theme renders into `@layer rocketstyle`, declared between `@layer elements` (an Element base layout) and `@layer instance` (a per-instance `css` prop): `@layer elements, rocketstyle, instance;`. A `css` passed on one instance therefore beats the component theme for the same property; a theme property no longer has to be left out of `.theme()` for an instance to override it.
+
 > **Layout vs CSS split:** With Element-based bases, layout props go in `.attrs()` (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block`) and visual CSS goes in `.theme()`. CSS property names follow the unistyle convention (`borderWidthTop`, not `borderTopWidth`).
 
 > **Cache keys post-normalization:** The `_rsMemo` dimension-prop memo keys on RESOLVED dimension values (after boolean-shorthand normalization), not raw props — under `useBooleans: true`, keying on raw props would collide every boolean variant onto the first cached entry (a real shipped bug, since fixed). Cache capacity is LRU 128 entries per theme; real apps need ONE shared `<PyreonUI>` for the memo to span instances.

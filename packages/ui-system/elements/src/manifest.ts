@@ -218,6 +218,10 @@ const users = [{ id: 1, name: "Ada" }, { id: 2, name: "Linus" }]
   ],
   gotchas: [
     {
+      label: 'Instance css beats the theme',
+      note: 'A per-instance `css` prop (Element `css` / `contentCss` / `beforeContentCss` / `afterContentCss`, Text `css`) renders into `@layer instance`, declared after `@layer elements` (base layout) and `@layer rocketstyle` (`.theme()`): `@layer elements, rocketstyle, instance;`. So `<Grid css="@media (min-width: 768px) { grid-template-columns: repeat(3, 1fr); }" />` overrides the component theme\'s `gridTemplateColumns`, pseudo-classes included. Unlayered CSS still beats every layer.',
+    },
+    {
       label: 'Layout in attrs, not theme',
       note: 'Element/Text/List layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) are primitive ATTRS — they target the inner flex wrapper. Colors / spacing / borders / shadows belong in the styler or rocketstyle `.theme()` layer. `direction` accepts `inline` / `rows` / `reverseInline` / `reverseRows` — `row` is invalid.',
     },

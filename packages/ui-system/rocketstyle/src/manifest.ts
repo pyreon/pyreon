@@ -437,6 +437,10 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
   gotchas: [
     'useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both.',
     {
+      label: 'Cascade order: theme < instance css',
+      note: 'The theme renders into `@layer rocketstyle`, declared between `@layer elements` (an Element base layout) and `@layer instance` (a per-instance `css` prop): `@layer elements, rocketstyle, instance;`. A `css` passed on one instance therefore beats the component theme for the same property; a theme property no longer has to be left out of `.theme()` for an instance to override it.',
+    },
+    {
       label: 'Layout vs CSS split',
       note: 'With Element-based bases, layout props go in `.attrs()` (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block`) and visual CSS goes in `.theme()`. CSS property names follow the unistyle convention (`borderWidthTop`, not `borderTopWidth`).',
     },

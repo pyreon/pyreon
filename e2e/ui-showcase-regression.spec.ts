@@ -929,9 +929,9 @@ test.describe('ui-showcase — SSR styler CSS emission', () => {
     expect(tag, 'no <style data-pyreon-styler> tag in the SSR response').not.toBeNull()
     const css = tag![1]!
     expect(css).toContain('background-color')
-    // `@layer elements, rocketstyle;` must precede the layered rules or the
+    // `@layer elements, rocketstyle, instance;` must precede the layered rules or the
     // cascade falls back to source order once the browser parses it.
-    expect(css.indexOf('@layer elements, rocketstyle;')).toBe(0)
+    expect(css.indexOf('@layer elements, rocketstyle, instance;')).toBe(0)
   })
 })
 

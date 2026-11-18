@@ -443,6 +443,8 @@ For component-to-component context, `.config({ provider: true })` exposes a comp
 
 Rocketstyle is built on `@pyreon/styler`. Resolved dimension style objects are handed to the styler's `styled` API, which produces scoped, deduplicated CSS classes with SSR support. You don't call styler directly — rocketstyle drives it — but the resolved theme follows the same value pipeline (`@pyreon/unistyle`'s responsive props, CSS-variable mode, etc.).
 
+Rocketstyle's CSS lives in `@layer rocketstyle`. The framework declares the order once, `@layer elements, rocketstyle, instance;`: the theme beats an `@pyreon/elements` primitive's base layout, and a per-instance `css` prop (`<Card css="color: red;" />`, rendered by the Element underneath into `@layer instance`) beats the theme for the same property. Unlayered CSS beats all three.
+
 When `init({ cssVariables: true })` is set on `@pyreon/ui-core`, `mode(light, dark)` pairs are emitted as hashed CSS custom properties so a dark/light flip is one attribute write with zero per-component re-resolution. The `resolveModeVar(value, mode)` export resolves a `var(--px-m-…)` mode-pair reference back to its raw value for non-CSS render targets (PDF / DOCX / email export).
 
 ## Compile-Time Collapse (opt-in)

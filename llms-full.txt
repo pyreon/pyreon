@@ -3049,6 +3049,8 @@ import { Util } from "@pyreon/elements"
 </Util>
 ```
 
+> **Instance css beats the theme**: A per-instance `css` prop (Element `css` / `contentCss` / `beforeContentCss` / `afterContentCss`, Text `css`) renders into `@layer instance`, declared after `@layer elements` (base layout) and `@layer rocketstyle` (`.theme()`): `@layer elements, rocketstyle, instance;`. So `<Grid css="@media (min-width: 768px) { grid-template-columns: repeat(3, 1fr); }" />` overrides the component theme's `gridTemplateColumns`, pseudo-classes included. Unlayered CSS still beats every layer.
+>
 > **Layout in attrs, not theme**: Element/Text/List layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) are primitive ATTRS — they target the inner flex wrapper. Colors / spacing / borders / shadows belong in the styler or rocketstyle `.theme()` layer. `direction` accepts `inline` / `rows` / `reverseInline` / `reverseRows` — `row` is invalid.
 >
 > **Simple-path fast path changed the VNode shape**: A non-compound, non-needsFix Element renders a VNode exposing the HTML tag as `props.as` and layout under `props.$element.{direction,alignX,alignY,block,equalCols,extraStyles}` — NOT flat `props.{tag,direction,…}`. Production styled-components consumers are unaffected (`as` is canonical); test/introspection code must read both shapes.
@@ -3677,6 +3679,8 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 ```
 
 > **Note**: useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both.
+>
+> **Cascade order: theme < instance css**: The theme renders into `@layer rocketstyle`, declared between `@layer elements` (an Element base layout) and `@layer instance` (a per-instance `css` prop): `@layer elements, rocketstyle, instance;`. A `css` passed on one instance therefore beats the component theme for the same property; a theme property no longer has to be left out of `.theme()` for an instance to override it.
 >
 > **Layout vs CSS split**: With Element-based bases, layout props go in `.attrs()` (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block`) and visual CSS goes in `.theme()`. CSS property names follow the unistyle convention (`borderWidthTop`, not `borderTopWidth`).
 >

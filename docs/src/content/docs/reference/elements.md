@@ -322,6 +322,8 @@ import { Util } from "@pyreon/elements"
 
 ## Package-level notes
 
+> **Instance css beats the theme:** A per-instance `css` prop (Element `css` / `contentCss` / `beforeContentCss` / `afterContentCss`, Text `css`) renders into `@layer instance`, declared after `@layer elements` (base layout) and `@layer rocketstyle` (`.theme()`): `@layer elements, rocketstyle, instance;`. So `<Grid css="@media (min-width: 768px) { grid-template-columns: repeat(3, 1fr); }" />` overrides the component theme's `gridTemplateColumns`, pseudo-classes included. Unlayered CSS still beats every layer.
+
 > **Layout in attrs, not theme:** Element/Text/List layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) are primitive ATTRS — they target the inner flex wrapper. Colors / spacing / borders / shadows belong in the styler or rocketstyle `.theme()` layer. `direction` accepts `inline` / `rows` / `reverseInline` / `reverseRows` — `row` is invalid.
 
 > **Simple-path fast path changed the VNode shape:** A non-compound, non-needsFix Element renders a VNode exposing the HTML tag as `props.as` and layout under `props.$element.{direction,alignX,alignY,block,equalCols,extraStyles}` — NOT flat `props.{tag,direction,…}`. Production styled-components consumers are unaffected (`as` is canonical); test/introspection code must read both shapes.

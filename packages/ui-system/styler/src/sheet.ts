@@ -7,6 +7,23 @@
  */
 import { hash } from './hash'
 import { clearNormCache } from './resolve'
+import { isUrlOpen, type LayeredRule, skipQuoted, splitAtRules } from './split-at-rules'
+
+/**
+ * The framework's cascade-layer order, lowest first:
+ *
+ * - `elements`: base layout of `@pyreon/elements` primitives;
+ * - `rocketstyle`: a component's own `.theme()` / dimension styles;
+ * - `instance`: a per-instance `css` prop (`<Grid css="…" />`), so the value
+ *   passed at the call site beats the component's theme for the same property.
+ *
+ * Emitted exactly ONCE per stylesheet: `mount()` on the client, and the SSR
+ * outputs (`getStyleTag` / `getStyles` / the streaming flush) on the server.
+ * Unlayered author CSS still beats every layer.
+ */
+export const LAYER_ORDER = ['elements', 'rocketstyle', 'instance'] as const
+const LAYER_ORDER_STATEMENT = `@layer ${LAYER_ORDER.join(', ')};`
+
 
 /**
  * A single `@layer <name>? { <inner> }` BLOCK spanning the whole (trimmed)
@@ -71,51 +88,6 @@ export function unwrapLayers(cssText: string, split: (s: string) => string[]): s
   return out
 }
 
-/**
- * Skip a quoted string starting at `i` (the opening quote). Returns the
- * index just past the closing quote. Backslash escapes are honored; an
- * unterminated string runs to end-of-input.
- */
-function skipQuoted(css: string, i: number): number {
-  const quote = css.charCodeAt(i)
-  const len = css.length
-  let j = i + 1
-  while (j < len) {
-    const c = css.charCodeAt(j)
-    if (c === 92 /* \ */) {
-      j += 2
-      continue
-    }
-    if (c === quote) return j + 1
-    j++
-  }
-
-  return len
-}
-
-/**
- * True when `css` has a `url(` token starting at `i` (case-insensitive)
- * that is NOT the tail of a longer ident (`image-url(`, `burl(` are plain
- * functions, not url tokens — only url tokens may contain unquoted braces).
- */
-function isUrlOpen(css: string, i: number): boolean {
-  if ((css.charCodeAt(i) | 32) !== 117 /* u */) return false
-  if ((css.charCodeAt(i + 1) | 32) !== 114 /* r */) return false
-  if ((css.charCodeAt(i + 2) | 32) !== 108 /* l */) return false
-  if (css.charCodeAt(i + 3) !== 40 /* ( */) return false
-  if (i > 0) {
-    const p = css.charCodeAt(i - 1)
-    const isIdent =
-      (p >= 48 && p <= 57) /* 0-9 */ ||
-      (p >= 65 && p <= 90) /* A-Z */ ||
-      (p >= 97 && p <= 122) /* a-z */ ||
-      p === 45 /* - */ ||
-      p === 95 /* _ */
-    if (isIdent) return false
-  }
-
-  return true
-}
 
 /**
  * Split CSS text into individual top-level rules.
@@ -530,14 +502,13 @@ export class StyleSheet {
       this.sheet = el.sheet ?? null
     }
 
-    // Inject CSS @layer ordering for the framework's cascade.
-    //
-    // Two layers: `elements` (base layout primitives) < `rocketstyle`
-    // (themed component styles). The explicit ordering declaration
-    // ensures rocketstyle theme styles always override element base
-    // styles regardless of source order, while media queries within
-    // each layer still work correctly (media conditions are evaluated
-    // within each layer independently).
+    // Inject CSS @layer ordering for the framework's cascade (`LAYER_ORDER`):
+    // `elements` (base layout primitives) < `rocketstyle` (themed component
+    // styles) < `instance` (a per-instance `css` prop). The explicit ordering
+    // declaration makes each layer override the ones before it regardless of
+    // source order, while media queries within each layer still work
+    // correctly (media conditions are evaluated within each layer
+    // independently).
     //
     // Previously this used a single `@layer pyreon` which put
     // rocketstyle and elements in the same layer, relying on source
@@ -547,7 +518,7 @@ export class StyleSheet {
     // base styles.
     if (this.sheet) {
       try {
-        this.sheet.insertRule('@layer elements, rocketstyle;', 0)
+        this.sheet.insertRule(LAYER_ORDER_STATEMENT, 0)
         this.supportsLayer = true
       } catch {
         // @layer not supported — falls back to source order
@@ -749,109 +720,18 @@ export class StyleSheet {
   }
 
   /**
-   * Extract nested at-rules (@media, @supports, @container) from CSS text
-   * and wrap their content in the given selector as separate top-level rules.
+   * The final rules for one class: the component's own rules wrapped in its
+   * layer, then the hoisted `@layer` rules in theirs. Where `@layer` is
+   * unsupported (happy-dom, pre-2022 engines) every rule is emitted unwrapped
+   * and source order decides, as for the component's own rules.
    */
-  private splitAtRules(cssText: string, selector: string): { base: string; atRules: string[] } {
-    // Fast path: no at-rules to split
-    if (cssText.indexOf('@') === -1) return { base: cssText, atRules: [] }
+  private layerRules(rules: string[], layered: LayeredRule[], layerName: string | undefined): string[] {
+    const own = layerName ? rules.map((r) => `@layer ${layerName}{${r}}`) : rules
+    if (layered.length === 0) return own
+    const layersOn = this.isSSR || this.supportsLayer
+    for (const l of layered) own.push(layersOn ? `@layer ${l.name}{${l.rule}}` : l.rule)
 
-    const atRules: string[] = []
-    const baseParts: string[] = []
-    const len = cssText.length
-    let depth = 0
-    let atStart = -1
-    let atOpen = -1
-    let lastBase = 0
-
-    // Same string/comment/url-aware scan as `splitTopLevelRules`. Braces
-    // inside quoted strings, block comments, or unquoted url(…) tokens must
-    // not move the depth counter — a `content:"}"` BEFORE the @media block
-    // poisoned depth negative so the at-rule was never extracted (it stayed
-    // NESTED inside the class rule and the browser dropped it), and a `}`
-    // inside a string WITHIN the @media body terminated the block early
-    // (garbage at-rule + mangled trailing base). The comment skip also
-    // stops a commented-out `@media {…}` from being extracted as a LIVE
-    // rule.
-    // `charCodeAt(i)` returns a primitive int; `cssText[i]` allocates a
-    // fresh 1-char string in V8 per iteration. On long stylesheets with
-    // at-rule blocks the per-char allocation dominates. Ported from
-    // vitus-labs `c483cabc`.
-    let i = 0
-    while (i < len) {
-      const ch = cssText.charCodeAt(i)
-
-      if (ch === 47 /* / */ && cssText.charCodeAt(i + 1) === 42 /* * */) {
-        const close = cssText.indexOf('*/', i + 2)
-        i = close === -1 ? len : close + 2
-        continue
-      }
-      if (ch === 34 /* " */ || ch === 39 /* ' */) {
-        i = skipQuoted(cssText, i)
-        continue
-      }
-      if ((ch === 117 || ch === 85) /* u/U */ && isUrlOpen(cssText, i)) {
-        let j = i + 4
-        while (j < len && cssText.charCodeAt(j) <= 32 /* ws */) j++
-        const q = cssText.charCodeAt(j)
-        if (q === 34 /* " */ || q === 39 /* ' */) {
-          // Quoted url — the generic string handler above covers the body.
-          i += 4
-        } else {
-          // Unquoted url TOKEN — may legally contain `{`/`}`; skip to `)`.
-          const close = cssText.indexOf(')', j)
-          i = close === -1 ? len : close + 1
-        }
-        continue
-      }
-
-      if (ch === 123 /* { */) {
-        depth++
-        // Record the tracked at-rule's REAL block opener via the state
-        // machine (the old `indexOf('{', atStart)` could land on a `{`
-        // inside a prelude string).
-        if (depth === 1 && atStart >= 0 && atOpen < 0) atOpen = i
-      } else if (ch === 125 /* } */) {
-        if (depth > 0) {
-          depth--
-          if (depth === 0 && atStart >= 0) {
-            // End of a tracked at-rule block — extract and wrap with selector
-            const atPrefix = cssText.slice(atStart, atOpen).trim()
-            const innerCSS = cssText.slice(atOpen + 1, i).trim()
-            if (innerCSS) {
-              atRules.push(`${atPrefix}{${selector}{${innerCSS}}}`)
-            }
-            atStart = -1
-            atOpen = -1
-            lastBase = i + 1
-          }
-        }
-        // A stray depth-0 `}` stays in the base text (the browser drops
-        // that bad declaration); crucially it no longer drives depth
-        // negative, which blocked ALL subsequent at-rule detection.
-      } else if (depth === 0 && ch === 64 /* @ */ && atStart < 0) {
-        // Check if this starts a splittable at-rule (not @keyframes, @font-face, etc.)
-        const remaining = cssText.slice(i, i + 20)
-        if (/^@(?:media|supports|container)\b/.test(remaining)) {
-          // Save any base CSS that precedes this at-rule
-          const baseBefore = cssText.slice(lastBase, i).trim()
-          if (baseBefore) baseParts.push(baseBefore)
-          atStart = i
-        }
-      }
-      i++
-    }
-
-    // Collect remaining base CSS after the last at-rule
-    if (lastBase < cssText.length && atStart < 0) {
-      const remaining = cssText.slice(lastBase).trim()
-      if (remaining) baseParts.push(remaining)
-    }
-
-    // If no at-rules were found, return original unchanged
-    if (atRules.length === 0) return { base: cssText, atRules: [] }
-
-    return { base: baseParts.join(' '), atRules }
+    return own
   }
 
   /**
@@ -974,7 +854,7 @@ export class StyleSheet {
     const selector = `.${className}`
 
     // Split nested at-rules into separate top-level rules
-    const { base, atRules } = this.splitAtRules(cssText, selector)
+    const { base, atRules, layered } = splitAtRules(cssText, selector)
 
     const rules: string[] = []
     if (base) rules.push(`${selector}{${base}}`)
@@ -983,8 +863,9 @@ export class StyleSheet {
     // Apply @layer wrapping — per-insert layer takes precedence over sheet-level layer.
     // In SSR, always apply layers (output goes to real browsers).
     // In client, skip if @layer isn't supported (e.g. happy-dom in tests).
+    // Hoisted `@layer <name>{…}` blocks from the CSS go into their own layer.
     const layerName = this.isSSR || this.supportsLayer ? (insertLayer ?? this.layer) : undefined
-    const finalRules = layerName ? rules.map((r) => `@layer ${layerName}{${r}}`) : rules
+    const finalRules = this.layerRules(rules, layered, layerName)
 
     if (this.isSSR) {
       this.ssrRules.set(className, finalRules)
@@ -1141,7 +1022,7 @@ export class StyleSheet {
     // is correct when the browser parses the SSR HTML. On the client side
     // this ordering is injected via insertRule in mount().
     const layerDecl = rules.some((r) => r.startsWith('@layer '))
-      ? '@layer elements, rocketstyle;'
+      ? LAYER_ORDER_STATEMENT
       : this.layer
         ? `@layer ${this.layer};`
         : ''
@@ -1311,8 +1192,8 @@ export class StyleSheet {
     // Emit the `@layer` ordering declaration ONCE per stream, as soon as it can
     // be decided — then never again (a second declaration is redundant).
     //
-    // The bug this guards: the default framework order (`@layer elements,
-    // rocketstyle;`) used to be gated on the FIRST flush only. A stream whose
+    // The bug this guards: the default framework order (`LAYER_ORDER`) used
+    // to be gated on the FIRST flush only. A stream whose
     // opening Suspense boundary flushed only keyframes / global CSS (neither is
     // a layered rule) therefore emitted the ordering statement NOWHERE — and if
     // a later boundary carried the first layered rule, its cascade fell back to
@@ -1327,10 +1208,10 @@ export class StyleSheet {
         .slice(this._ssr.flushedIdx)
         .some((r) => r.startsWith('@layer '))
       if (this.layer) {
-        prefix = sliceHasLayered ? '@layer elements, rocketstyle;' : `@layer ${this.layer};`
+        prefix = sliceHasLayered ? LAYER_ORDER_STATEMENT : `@layer ${this.layer};`
         this._ssr.layerDeclEmitted = true
       } else if (sliceHasLayered) {
-        prefix = '@layer elements, rocketstyle;'
+        prefix = LAYER_ORDER_STATEMENT
         this._ssr.layerDeclEmitted = true
       }
     }
@@ -1345,7 +1226,7 @@ export class StyleSheet {
     const rules = this.collectedRules()
     if (rules.length === 0) return ''
     const layerDecl = rules.some((r) => r.startsWith('@layer '))
-      ? '@layer elements, rocketstyle;'
+      ? LAYER_ORDER_STATEMENT
       : this.layer
         ? `@layer ${this.layer};`
         : ''
@@ -1426,13 +1307,14 @@ export class StyleSheet {
     const h = hash(cssText)
     const className = `${PREFIX}-${h}`
     const selector = `.${className}`
-    const { base, atRules } = this.splitAtRules(cssText, selector)
+    const { base, atRules, layered } = splitAtRules(cssText, selector)
 
     const allRules: string[] = []
     if (base) allRules.push(`${selector}{${base}}`)
     allRules.push(...atRules)
 
     const finalRules = this.layer ? allRules.map((r) => `@layer ${this.layer}{${r}}`) : allRules
+    for (const l of layered) finalRules.push(`@layer ${l.name}{${l.rule}}`)
 
     return { className, rules: finalRules.join('') }
   }
@@ -1452,8 +1334,9 @@ export class StyleSheet {
  * No default layer — each consumer specifies their own:
  *   Elements use `{ layer: 'elements' }`
  *   Rocketstyle uses `{ layer: 'rocketstyle' }`
- * The layer ordering `@layer elements, rocketstyle` is injected
- * in mount() so rocketstyle always overrides elements.
+ * The layer ordering `@layer elements, rocketstyle, instance` (`LAYER_ORDER`)
+ * is injected in mount() so rocketstyle overrides elements and a per-instance
+ * `css` prop overrides both.
  */
 // PURE: droppable exactly when NO styling API is used (then no <style> tag
 // belongs in the document and no SSR flush is needed). Any real consumer of
