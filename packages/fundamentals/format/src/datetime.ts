@@ -384,28 +384,29 @@ interface Moment {
 }
 
 /**
- * The words for two moments. A calendar value (date only) is the day it names: against an instant it is that day's midnight in
- * `zone`, so for a person in that zone "yesterday", "today" and "tomorrow" are literally true and a date seen from the far side
- * of the date line is not an hour or a day off (target `2026-11-18` at 10:00 in Tokyo is "10 hours ago", not the "1 hour ago"
- * that reading it as UTC midnight gave). Two calendar values compare as calendar days.
+ * The words for two moments. A calendar value (date only) is a DAY, not a moment: against an instant it is compared as a
+ * calendar day in `zone` (the instant's own date there) and never reads as hours, so "today", "tomorrow" and "in 3 days" are
+ * literally true for a person in that zone: `2026-11-18` at 10:00 in Tokyo is "today", not "10 hours ago", and a due date that
+ * is tomorrow's calendar day is "tomorrow" at any hour. Two calendar values compare as calendar days too. Instants (and a
+ * date-time without a zone, read as a moment) keep the elapsed-time tiers under 24 hours.
  */
 function relativeFrom(rtf: Intl.RelativeTimeFormat, target: Moment, base: Moment, zone: string): string {
-  const both = target.plain && base.plain
-  const t = target.plain && !both ? zoneMidnight(target.ms, zone) : target.ms
-  const b = base.plain && !both ? zoneMidnight(base.ms, zone) : base.ms
-  const plainT = both
-  const plainB = both
+  const calendar = target.plain || base.plain
+  const t = target.ms
+  const b = base.ms
+  const plainT = target.plain
+  const plainB = base.plain
   const diff = t - b
   const abs = diff < 0 ? -diff : diff
   let unit: RelativeUnit
   let n: number
-  if (abs < MIN) {
+  if (!calendar && abs < MIN) {
     unit = 'second'
     n = Math.trunc(diff / 1000)
-  } else if (abs < HOUR) {
+  } else if (!calendar && abs < HOUR) {
     unit = 'minute'
     n = Math.trunc(diff / MIN)
-  } else if (abs < DAY) {
+  } else if (!calendar && abs < DAY) {
     unit = 'hour'
     n = Math.trunc(diff / HOUR)
   } else {
@@ -544,11 +545,18 @@ function nextMidnight(ms: number, zone: string): number {
 export function nextRelativeChange(target: DateInput, base: number, zone: string, threshold: ResolvedThreshold | undefined): 'second' | number {
   const t0 = dateMs('useRelativeTime', target, false)
   if (t0 !== t0) return Infinity
-  const t = lastWasPlain() ? zoneMidnight(t0, zone) : t0
+  const dayOnly = lastWasPlain()
+  const t = dayOnly ? zoneMidnight(t0, zone) : t0
   const d = t - base
   const abs = d < 0 ? -d : d
   const past = d <= 0
   if (threshold !== undefined && abs >= threshold.ms) return past ? Infinity : t - threshold.ms + 1
+  // A date-only target is a day: its words change only at local midnight (and at the threshold).
+  if (dayOnly) {
+    const midnight = nextMidnight(base, zone)
+
+    return past && threshold !== undefined ? Math.min(midnight, t + threshold.ms) : midnight
+  }
   let next: number
   // The last second before a minute: aim at the minute itself, so "1 minute ago" is not up to a second late.
   if (abs < MIN) return past && abs >= MIN - 1000 ? t + MIN : 'second'

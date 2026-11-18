@@ -245,7 +245,7 @@ formatRelativeTo('2026-11-16T13:00:00Z', '2026-11-18T01:00:00Z', { locale: 'en-U
 formatRelativeTo('2026-10-05', '2026-11-18', { locale: 'en-US' }) // → "last month"
 formatRelativeTo('2025-12-15', '2026-12-20', { locale: 'en-US' }) // → "last year"
 formatRelativeTo('2026-12-25', '2026-11-18', { locale: 'en-US' }) // → "next month"
-formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "jetzt"`,
+formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "heute"`,
       mistakes: [
         "Expecting it to read the clock: it does not. Pass `Date.now()` (or a clock signal) as `base`",
         "Expecting 36 hours to be \"yesterday\": from 24 hours on the calendar decides, so it depends on the time of day of the base",
@@ -525,7 +525,7 @@ old() // → "Jan 5, 2020"`,
       mistakes: [
         "Calling it in an event handler or a timer: it needs the component's scope to release its timer; call it in setup",
         "Using `formatRelativeTo(value, Date.now())` in JSX and expecting it to tick: that is one reading; the label only changes when something else re-renders it",
-        "A date-only target such as `'2026-11-18'` is that day's midnight in the display zone: at 10:00 on the 18th it is \"10 hours ago\", and from midnight on the 19th it is \"yesterday\"",
+        "A date-only target such as `'2026-11-18'` is a DAY: it reads as today, tomorrow, yesterday or in 3 days in the display zone at any hour, never as hours (`2026-11-18` at 10:00 on the 18th is \"today\")",
       ],
       seeAlso: ["RelativeTime", "formatRelativeTo", "relativeFormatter"],
     },
@@ -635,7 +635,7 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
       summary: "A `<time>` that says how long ago (or how far ahead) a value is and keeps itself current. It is `useRelativeTime` in an element: `datetime` is the machine value, `title` the exact date and time (the full date, and for an instant the time with its zone name; a `title` you pass wins), the text updates by itself on the shared timers (two for the whole page), and `unicode-bidi: isolate` is on by default. Props: `value`, `numeric`, `locale`, `timeZone`, `threshold` (`{ after: { days: 7 }, as: 'medium' }`), `fallback`, `options` (`style` and the rest) and `isolate`; other props go to the element. A server render prints the request's clock and starts no timer; with `clockScript()` or `clockAttributes()` from `@pyreon/ambient` the page hydrates to the same text and then updates once to real time.",
       example: `// <RelativeTime value={comment.createdAt} />
 // <RelativeTime value={post.updatedAt} threshold={{ after: { days: 7 } }} />  // "3 hours ago" ... "Nov 12, 2026"
-// <RelativeTime value={issue.dueDate} numeric="always" />  // a date-only value is that day in the display zone`,
+// <RelativeTime value={issue.dueDate} />  // a date-only value is a day: "today", "tomorrow", "in 3 days"`,
       mistakes: [
         "Passing `style` for the Intl style: `style` is the element's style; use `options={{ style: 'short' }}`",
         "Server-rendering without handing the instant over: the client's first render reads its own clock and can differ from the server text; emit `clockScript()` (or spread `clockAttributes()`) from `@pyreon/ambient`",
@@ -738,7 +738,7 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
     },
     {
       label: 'A date-only target is that day in the display zone',
-      note: 'In relative time a date-only value (`2026-11-18`) is the midnight that starts that day in the display zone, so "yesterday", "today" and "tomorrow" are literally true for a person in that zone and `@pyreon/time`\'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). At 10:00 on the 18th it is "10 hours ago", not "today": a date-only value has no time of day, and under 24 hours the distance is elapsed time. Two date-only values compare as calendar days.',
+      note: 'In relative time a date-only value (`2026-11-18`) is a DAY, not a moment: it is compared as a calendar day in the display zone and never as hours, so "yesterday", "today", "tomorrow" and "in 3 days" are literally true for a person in that zone at any hour (`2026-11-18` at 10:00 on the 18th is "today", not "10 hours ago"). `@pyreon/time`\'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). A date-time without a zone is a moment: under 24 hours it is elapsed time. Two date-only values compare as calendar days.',
     },
     {
       label: 'Spaces in output are non-breaking and thin spaces',

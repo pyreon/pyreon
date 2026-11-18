@@ -446,7 +446,7 @@ formatRelativeTo('2026-11-16T13:00:00Z', '2026-11-18T01:00:00Z', { locale: 'en-U
 formatRelativeTo('2026-10-05', '2026-11-18', { locale: 'en-US' }) // → "last month"
 formatRelativeTo('2025-12-15', '2026-12-20', { locale: 'en-US' }) // → "last year"
 formatRelativeTo('2026-12-25', '2026-11-18', { locale: 'en-US' }) // → "next month"
-formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "jetzt"
+formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "heute"
 ```
 
 **Common mistakes**
@@ -958,7 +958,7 @@ old() // → "Jan 5, 2020"
 
 - Calling it in an event handler or a timer: it needs the component's scope to release its timer; call it in setup
 - Using `formatRelativeTo(value, Date.now())` in JSX and expecting it to tick: that is one reading; the label only changes when something else re-renders it
-- A date-only target such as `'2026-11-18'` is that day's midnight in the display zone: at 10:00 on the 18th it is "10 hours ago", and from midnight on the 19th it is "yesterday"
+- A date-only target such as `'2026-11-18'` is a DAY: it reads as today, tomorrow, yesterday or in 3 days in the display zone at any hour, never as hours (`2026-11-18` at 10:00 on the 18th is "today")
 
 **See also:** `RelativeTime` · `formatRelativeTo` · `relativeFormatter`
 
@@ -1161,7 +1161,7 @@ A `<time>` that says how long ago (or how far ahead) a value is and keeps itself
 ```tsx
 // <RelativeTime value={comment.createdAt} />
 // <RelativeTime value={post.updatedAt} threshold={{ after: { days: 7 } }} />  // "3 hours ago" ... "Nov 12, 2026"
-// <RelativeTime value={issue.dueDate} numeric="always" />  // a date-only value is that day in the display zone
+// <RelativeTime value={issue.dueDate} />  // a date-only value is a day: "today", "tomorrow", "in 3 days"
 ```
 
 **Common mistakes**
@@ -1335,7 +1335,7 @@ The shape `defineFormats` takes: a `kind` and the options of that formatter (`cu
 
 > **Relative time that updates itself:** `useRelativeTime` and `<RelativeTime>` are built on the shared clock of `@pyreon/ambient`: every label shares one timer for the target-relative minute and hour marks and one for seconds; the timers are created by the first reader, stop with the last, and never run on a server. A formatter call (`formatRelativeTo`, `relativeFormatter`) is ONE reading and does not tick. For a server-rendered page emit `clockScript()` (or spread `clockAttributes()`) from `@pyreon/ambient` so the first client render prints what the server printed; the page then updates once to real time.
 
-> **A date-only target is that day in the display zone:** In relative time a date-only value (`2026-11-18`) is the midnight that starts that day in the display zone, so "yesterday", "today" and "tomorrow" are literally true for a person in that zone and `@pyreon/time`'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). At 10:00 on the 18th it is "10 hours ago", not "today": a date-only value has no time of day, and under 24 hours the distance is elapsed time. Two date-only values compare as calendar days.
+> **A date-only target is that day in the display zone:** In relative time a date-only value (`2026-11-18`) is a DAY, not a moment: it is compared as a calendar day in the display zone and never as hours, so "yesterday", "today", "tomorrow" and "in 3 days" are literally true for a person in that zone at any hour (`2026-11-18` at 10:00 on the 18th is "today", not "10 hours ago"). `@pyreon/time`'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). A date-time without a zone is a moment: under 24 hours it is elapsed time. Two date-only values compare as calendar days.
 
 > **Spaces in output are non-breaking and thin spaces:** Intl writes U+00A0, U+2009 and U+202F where a plain space would sit: `formatDateRange` puts U+2009 around the en dash, `formatTime` writes U+202F before PM, Czech and French group digits with U+00A0 and U+202F. The examples in this documentation show them as plain spaces so they stay readable. Compare with `===` only against the platform's own output from the same process (`new Intl.DateTimeFormat(locale, options).formatRange(a, b)`), never against a typed literal; to see them in a failing test message, `text.replace(/[\u00a0\u2009\u202f]/g, '·')`.
 

@@ -227,18 +227,19 @@ formatRelativeTo('2025-12-15', '2026-12-20', { locale: 'en-US' })               
 formatRelativeTo('2026-10-22', '2026-11-18', { locale: 'en-US' })                                       // → "3 weeks ago"
 ```
 
-### A date-only target is that day in the display zone
+### A date-only target is a day
 
-In relative time a date-only value (`2026-11-18`) is the midnight that starts that day **in the display zone**, not UTC midnight. Seen from far from UTC the old reading was wrong by hours or a whole day (at 10:00 in Tokyo on the 18th the date was "1 hour ago"; at midnight on the 19th in Kiritimati it was "10 hours ago" although the 18th was already yesterday). With the day in the zone, "yesterday", "today" and "tomorrow" are literally true for the person reading, and `@pyreon/time`'s `relativeDistance` gives the same words: both packages test the same table of cases.
+In relative time a date-only value (`2026-11-18`) names a **day**, not a moment. It is compared as a calendar day in the display zone and never reads as hours, so "today", "tomorrow", "yesterday" and "in 3 days" are literally true for the person reading, at any hour. At 10:00 in Tokyo on the 18th, `2026-11-18` is "today", not "10 hours ago" (and not the "1 hour ago" that reading it as UTC midnight gave). `@pyreon/time`'s `relativeDistance` gives the same words: both packages test the same table of cases.
 
 ```ts
-formatRelativeTo('2026-11-18', '2026-11-18T01:00:00Z', { locale: 'en-US', timeZone: 'Asia/Tokyo' }) // → "10 hours ago"
+formatRelativeTo('2026-11-18', '2026-11-18T01:00:00Z', { locale: 'en-US', timeZone: 'Asia/Tokyo' }) // → "today"
 formatRelativeTo('2026-11-18', '2026-11-18T10:00:00Z', { locale: 'en-US', timeZone: 'Pacific/Kiritimati' }) // → "yesterday"
-formatRelativeTo('2026-11-18', '2026-11-17T20:00:00Z', { locale: 'en-US', timeZone: 'America/Los_Angeles' }) // → "in 12 hours"
+formatRelativeTo('2026-11-18', '2026-11-17T20:00:00Z', { locale: 'en-US', timeZone: 'America/Los_Angeles' }) // → "tomorrow"
+formatRelativeTo('2026-11-21', '2026-11-18T12:00:00Z', { locale: 'en-US', timeZone: 'UTC' }) // → "in 3 days"
 formatRelativeTo('2026-11-17', '2026-11-18', { locale: 'en-US' }) // → "yesterday"
 ```
 
-Under 24 hours the distance is still elapsed time, so a date-only value seen at 10:00 on its own day is "10 hours ago", not "today": it has no time of day to count from. Two date-only values compare as calendar days.
+A date-time (`2026-11-18T00:00:00Z`, a moment) keeps the elapsed-time tiers: under 24 hours it is minutes or hours. Two date-only values compare as calendar days.
 
 ### Reversed ranges
 
@@ -461,6 +462,7 @@ f.date('2026-11-18', 'long')   // "18. listopadu 2026"
 ## Components
 
 ```tsx
+import { dateFormatter } from '@pyreon/format'
 import { Num, DateTime, RelativeTime } from '@pyreon/format/components'
 
 <>
@@ -492,7 +494,7 @@ import { RelativeTime } from '@pyreon/format/components'
 function Comment(props: { comment: Comment }) {
   const ago = useRelativeTime(() => props.comment.createdAt)
 
-  return <span>{ago}</span> // "just now", "3 minutes ago", "yesterday" ... changes by itself
+  return <span>{ago}</span> // "now", "30 seconds ago", "3 minutes ago", "yesterday" ... changes by itself
 }
 
 <RelativeTime value={comment.createdAt} />
@@ -522,7 +524,7 @@ old() // → "Jan 5, 2020"
 - **Comment timestamps.** `<RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />`: relative for a week, then the date, one pair of timers for the whole thread.
 - **An "Updated just now" badge.** `<RelativeTime value={doc.savedAt} />` reads "now" for the first second, then "5 seconds ago" on the shared second timer, and flips to "1 minute ago" exactly when the save is a minute old. Wrap it for the wording around it: `<span>Saved <RelativeTime value={doc.savedAt} /></span>`.
 - **The exact time on hover.** `<RelativeTime>` sets `title` to the full date and time (with the zone name for an instant) and `datetime` to the machine value; pass your own `title` to replace it.
-- **A due date.** `<RelativeTime value="2026-11-20" numeric="always" />` counts the calendar in the display zone: "in 2 days", then from the day before "tomorrow", and from midnight on the day itself "in 3 hours".
+- **A due date.** `<RelativeTime value="2026-11-20" />` is a day: "in 2 days" from the 18th, "tomorrow" from the whole of the 19th, "today" on the day itself and "yesterday" the day after, at any hour in the display zone, and it changes at local midnight.
 
 ### Server rendering
 
