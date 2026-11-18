@@ -2618,19 +2618,11 @@ const dispose = mount(<App />, document.getElementById("app")!)
 
 // To unmount:
 dispose()`,
-    notes: 'Mount a VNode tree into a container element. Clears the container first, sets up event delegation, then mounts the given child. Returns an `unmount` function that removes everything and disposes all effects. In dev mode, throws if `container` is null/undefined with an actionable error message. See also: hydrateRoot, render.',
+    notes: 'Mount a VNode tree into a container element. Clears the container first, sets up event delegation, then mounts the given child. Returns an `unmount` function that removes everything and disposes all effects. In dev mode, throws if `container` is null/undefined with an actionable error message. See also: hydrateRoot.',
     mistakes: `- \`createRoot(container).render(<App />)\` — Pyreon uses a single function call: \`mount(<App />, container)\`
 - \`mount(<App />, document.getElementById("app"))\` without \`!\` — getElementById returns \`Element | null\`. The runtime throws in dev if null, but TypeScript needs the assertion
 - \`mount(<App />, document.body)\` — mounting directly to body is discouraged; use a dedicated container element
 - Forgetting to call the returned unmount function — leaks event listeners and effects. Store and call it on cleanup`,
-  },
-
-  'runtime-dom/render': {
-    signature: 'render(root: VNodeChild, container: Element): () => void',
-    example: `import { render } from "@pyreon/runtime-dom"
-render(<App />, document.getElementById("app")!)`,
-    notes: 'Alias for `mount`. Provided for API familiarity — both names point to the same function. See also: mount.',
-    mistakes: `- \`render\` is an EXACT alias for \`mount\` (same function reference) — its foot-guns are \`mount\`'s (null container throws; props are reactive-vs-static per the compiler; call the returned function to unmount + dispose effects). Do NOT expect any \`render\`-specific behavior`,
   },
 
   'runtime-dom/hydrateRoot': {
@@ -9147,23 +9139,11 @@ const tree = extractDocNode(() => (
 ))
 await download(tree, 'report.pdf')
 await download(tree, 'report.docx')`,
-    notes: `18 primitives: \`DocDocument\`, \`DocPage\`, \`DocSection\`, \`DocRow\`, \`DocColumn\`, \`DocHeading\`, \`DocText\`, \`DocLink\`, \`DocImage\`, \`DocTable\`, \`DocList\`, \`DocListItem\`, \`DocCode\`, \`DocDivider\`, \`DocSpacer\`, \`DocButton\`, \`DocQuote\`, \`DocPageBreak\`. Same component tree renders in browser AND exports — primitives carry \`_documentType\` statics that \`extractDocumentTree\` (from \`@pyreon/connector-document\`) walks to produce a \`DocNode\` for \`@pyreon/document\`\\'s \`render()\` to consume. \`DocDocument\`\\'s \`title\` / \`author\` / \`subject\` accept either a string OR a \`() => string\` accessor; function values are stored in \`_documentProps\` and resolved at extraction time so reactive metadata works without \`const initial = get()\` workarounds. PR #197 also fixed a latent bug in \`extractDocumentTree\`: it now CALLS rocketstyle component functions to read post-attrs \`_documentProps\`, where before it only looked at the JSX vnode\\'s props directly — every primitive\\'s metadata was silently dropped during export until that fix landed. See also: createDocumentExport.`,
+    notes: `18 primitives: \`DocDocument\`, \`DocPage\`, \`DocSection\`, \`DocRow\`, \`DocColumn\`, \`DocHeading\`, \`DocText\`, \`DocLink\`, \`DocImage\`, \`DocTable\`, \`DocList\`, \`DocListItem\`, \`DocCode\`, \`DocDivider\`, \`DocSpacer\`, \`DocButton\`, \`DocQuote\`, \`DocPageBreak\`. Same component tree renders in browser AND exports — primitives carry \`_documentType\` statics that \`extractDocumentTree\` (from \`@pyreon/connector-document\`) walks to produce a \`DocNode\` for \`@pyreon/document\`\\'s \`render()\` to consume. \`DocDocument\`\\'s \`title\` / \`author\` / \`subject\` accept either a string OR a \`() => string\` accessor; function values are stored in \`_documentProps\` and resolved at extraction time so reactive metadata works without \`const initial = get()\` workarounds. PR #197 also fixed a latent bug in \`extractDocumentTree\`: it now CALLS rocketstyle component functions to read post-attrs \`_documentProps\`, where before it only looked at the JSX vnode\\'s props directly — every primitive\\'s metadata was silently dropped during export until that fix landed. See also: DocumentPreview.`,
     mistakes: `- Calling \`props.title()\` at the top of a template body to "fix" reactivity — components run ONCE at mount, so this captures the initial value forever. Pass the accessor through to DocDocument as-is: \`<DocDocument title={() => get().name}>\`
 - DocRow direction: layout props (direction, gap) go in \`.attrs()\` not \`.theme()\`. Element accepts \`'inline'\` | \`'rows'\` | \`'reverseInline'\` | \`'reverseRows'\` — \`'row'\` is NOT valid
 - For text children reactivity, pass a signal accessor and read inside body: \`<DocText>{store.field()}</DocText>\`
-- Don't declare runtime-filled fields (\`tag\`, \`_documentProps\`) in the rocketstyle \`.attrs<P>()\` generic — they leak as required JSX props
-- Using \`createDocumentExport(...).getDocNode()\` in new code — prefer \`extractDocNode(fn)\` which is one call instead of two. \`createDocumentExport\` is kept for backward compat`,
-  },
-
-  'document-primitives/createDocumentExport': {
-    signature: 'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
-    example: `// Two-step form (kept for backward compat). New code should
-// prefer the one-step extractDocNode helper.
-import { createDocumentExport } from '@pyreon/document-primitives'
-
-const helper = createDocumentExport(() => <Resume name="Aisha" />)
-const tree = helper.getDocNode()`,
-    notes: 'Wrapper around `extractDocNode`. The wrapper-object form is kept for callers that want to pass the helper around (e.g. to wrapper components that take a `DocumentExport` instance). New code should use `extractDocNode(templateFn)` which is one call instead of two. See also: extractDocNode.',
+- Don't declare runtime-filled fields (\`tag\`, \`_documentProps\`) in the rocketstyle \`.attrs<P>()\` generic — they leak as required JSX props`,
   },
 
   'document-primitives/DocDocument': {
@@ -9387,8 +9367,8 @@ const tree = helper.getDocNode()`,
     <DocText>Preview me at real A4 dimensions.</DocText>
   </DocPage>
 </DocumentPreview>`,
-    notes: `A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the Doc* subtree as centered white pages (gray backdrop + drop-shadow) at real paper dimensions so you can preview a document in the browser before exporting. \`size\` picks the page format (\`'A4'\` default, plus A3/A5/letter/legal); \`showPageBreaks\` toggles page-break visualization. It carries the \`_documentType: 'document'\` static, so it ALSO serves as the extraction root — \`extractDocumentTree\` treats it like a \`DocDocument\`, so you typically do not nest a separate \`<DocDocument>\` inside it. See also: DocDocument, createDocumentExport.`,
-    mistakes: `- Treating it as export-only chrome — it is a BROWSER preview wrapper (paper backdrop + page sizing); the actual export runs through \`createDocumentExport\` / \`extractDocumentTree\`.
+    notes: `A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the Doc* subtree as centered white pages (gray backdrop + drop-shadow) at real paper dimensions so you can preview a document in the browser before exporting. \`size\` picks the page format (\`'A4'\` default, plus A3/A5/letter/legal); \`showPageBreaks\` toggles page-break visualization. It carries the \`_documentType: 'document'\` static, so it ALSO serves as the extraction root — \`extractDocumentTree\` treats it like a \`DocDocument\`, so you typically do not nest a separate \`<DocDocument>\` inside it. See also: DocDocument, extractDocNode.`,
+    mistakes: `- Treating it as export-only chrome — it is a BROWSER preview wrapper (paper backdrop + page sizing); the actual export runs through \`extractDocNode\` / \`extractDocumentTree\`.
 - Nesting a \`<DocDocument>\` inside it — \`DocumentPreview\` already carries \`_documentType: 'document'\` and is the extraction root, so wrapping it in another document root double-nests the document node.
 - Passing a size it does not define — only 'A4' / 'A3' / 'A5' / 'letter' / 'legal' map to paper dimensions; an unknown size falls back to the base with no page sizing.`,
   },

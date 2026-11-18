@@ -39,7 +39,6 @@ describe('gen-docs — document-primitives snapshot', () => {
       'document-primitives/DocTable',
       'document-primitives/DocText',
       'document-primitives/DocumentPreview',
-      'document-primitives/createDocumentExport',
       'document-primitives/documentTheme',
       'document-primitives/extractDocNode',
     ])

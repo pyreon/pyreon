@@ -753,7 +753,3 @@ export function createInstance(
 
   return instance
 }
-
-// Legacy alias — `ModelConfig` was the previous interface name. Re-exported
-// as `NormalizedConfig` for any external consumer.
-export type { NormalizedConfig as ModelConfig } from './model'

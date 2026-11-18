@@ -135,13 +135,13 @@ export const SCENARIOS: Scenario[] = [
     id: '@pyreon/runtime-dom::mount',
     pkg: '@pyreon/runtime-dom',
     dir: 'core/runtime-dom',
-    imports: ['mount', 'render'],
+    imports: ['mount'],
   },
   {
     id: '@pyreon/runtime-dom::mount+hydrate',
     pkg: '@pyreon/runtime-dom',
     dir: 'core/runtime-dom',
-    imports: ['mount', 'render', 'hydrateRoot'],
+    imports: ['mount', 'hydrateRoot'],
   },
   {
     id: '@pyreon/router::basic',

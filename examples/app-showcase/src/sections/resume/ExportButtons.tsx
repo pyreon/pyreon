@@ -8,10 +8,8 @@ import { ExportButton, ToolbarRow } from './styled'
 /**
  * Export buttons.
  *
- * Uses `extractDocNode(templateFn)` from `@pyreon/document-primitives`
- * — the one-step form that replaces the older
- * `createDocumentExport(...).getDocNode()` two-step pattern. The
- * same `<ResumeTemplate>` component renders the live preview AND
+ * Uses `extractDocNode(templateFn)` from `@pyreon/document-primitives`.
+ * The same `<ResumeTemplate>` component renders the live preview AND
  * gets walked by `extractDocNode` here, so the export is always
  * the exact tree the user sees on screen. No duplicated layout
  * code.
