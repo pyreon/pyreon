@@ -1,23 +1,26 @@
 import { For, Show } from '@pyreon/core'
 import { fill } from '../../content/fill'
 import type { BenchJumpId, BenchmarksPage as Data } from '../../content/types-site'
-import { el, focusRing, tone, txt, type LinkAttrs, tapArea } from '../../kit/bases'
+import { el, tone, txt } from '../../kit/bases'
 import { LimitNote, NumberedCards } from '../../kit/blocks'
 import { GlowCard } from '../../kit/cards'
 import { CodeCard } from '../../kit/code'
-import { Chip, Pill } from '../../kit/controls'
+import { Pill } from '../../kit/controls'
 import { Section, SectionHead } from '../../kit/layout'
-import { AutoGrid, Cluster, Stack, Text, Wrap } from '../../kit/primitives'
+import { AutoGrid, Box, Cluster, Stack, Text, Wrap } from '../../kit/primitives'
 import { Reveal } from '../../kit/motion'
-import { CaveatLine, Numeral } from '../../kit/proof'
+import { CaveatLine, StatBody } from '../../kit/proof'
 import { Diagram, InlineTextLink } from '../../kit/story'
-import { DataTable, TableDisclosure, TableNote } from '../../kit/table'
+import { DataTable, TableDisclosure } from '../../kit/table'
+import { Note } from '../../kit/note'
 import { Eyebrow, Heading, Lede, renderInline } from '../../kit/type'
-import { font, gradient, radius, text, weight } from '../../theme'
+import { font, gradient, radius } from '../../theme'
 import { usePageHead } from '../../head'
 import { BenchProducts, BenchReactivity, LiveRowBoard, LiveScaling } from './islands'
 import { formatMs, formatUs, prNumbers, sortedRowBoard, type ProductBenchSummary } from './model'
 import { VerdictNote } from './parts'
+import { Badge } from '../../kit/badge'
+import { Tag } from '../../kit/tag'
 
 /**
  * `/benchmarks` — every dataset in `content/pages/benchmarks.json`, in the
@@ -75,27 +78,6 @@ const JumpList = el
   .attrs({ tag: 'ul', block: true, contentDirection: 'inline', gap: 8 })
   .theme(() => ({ flexWrap: 'wrap', listStyle: 'none', margin: 0, marginTop: 36, padding: 0 }))
 
-const JumpLink = el
-  .config({ name: 'BenchJump' })
-  .attrs<LinkAttrs>({ tag: 'a' })
-  .theme((_t, m) => ({
-    display: 'inline-block',
-    paddingTop: 7,
-    paddingBottom: 7,
-    paddingLeft: 13,
-    paddingRight: 13,
-    borderRadius: radius.pill,
-    border: '1px solid',
-    borderColor: tone(m, 'line'),
-    fontFamily: font.mono,
-    fontSize: text.mono.size,
-    color: tone(m, 'mist'),
-    textDecoration: 'none',
-    hover: { color: tone(m, 'text'), borderColor: tone(m, 'lineHover') },
-    focus: focusRing(m),
-    extendCss: tapArea,
-  }))
-
 const HeroStats = el
   .config({ name: 'BenchHeroStats' })
   .attrs({ tag: 'ul', block: true })
@@ -115,16 +97,6 @@ const HeroStat = el
   .config({ name: 'BenchHeroStat' })
   .attrs({ tag: 'li', block: true, gap: 8, contentAlignY: 'top' })
   .theme((_t, m) => ({ minWidth: 0, paddingTop: 24, paddingBottom: 24, paddingRight: 24, borderBottom: '1px solid', borderColor: tone(m, 'line') }))
-
-const StatLabel = txt
-  .config({ name: 'BenchHeroStatLabel' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.sans, fontSize: 16, lineHeight: 1.35, fontWeight: weight.medium, color: tone(m, 'strong') }))
-
-const StatCondition = txt
-  .config({ name: 'BenchHeroStatCondition' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ display: 'block', fontFamily: font.mono, fontSize: text.caveat.size, lineHeight: 1.55, color: tone(m, 'fog') }))
 
 const ChartBox = el
   .config({ name: 'BenchChartBox' })
@@ -164,19 +136,6 @@ const Struck = txt
     extendCss: 'text-decoration-thickness: 1px;',
   }))
 
-const WithdrawnTag = txt
-  .config({ name: 'BenchWithdrawnTag' })
-  .attrs({ tag: 'span' })
-  .theme((_t, m) => ({
-    display: 'inline-block',
-    marginRight: 10,
-    fontFamily: font.mono,
-    fontSize: 10.5,
-    letterSpacing: '.12em',
-    textTransform: 'uppercase',
-    color: tone(m, 'err'),
-  }))
-
 const RuleLine = el
   .config({ name: 'BenchHeroRule' })
   .attrs({ block: true, 'aria-hidden': 'true' })
@@ -207,7 +166,11 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
 
   usePageHead({ path: '/benchmarks', title: T.meta.title, description: T.meta.description })
 
-  const runNote = (line: string) => <TableNote>{`${line} · ${d.caveat}`}</TableNote>
+  const runNote = (line: string) => (
+    <Box padTop={150}>
+      <Note>{`${line} · ${d.caveat}`}</Note>
+    </Box>
+  )
   const initial = T.rows.initial
 
   return (
@@ -224,10 +187,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
             <For each={d.heroStats} by={(s) => s.stat + s.label}>
               {(s) => (
                 <HeroStat>
-                  <span>
-                    <Numeral size="strip">{s.stat}</Numeral> <StatLabel>{renderInline(s.label)}</StatLabel>
-                  </span>
-                  <StatCondition>{s.condition}</StatCondition>
+                  <StatBody size="hero" numeral="strip" stat={s.stat} label={s.label} note={s.condition} />
                 </HeroStat>
               )}
             </For>
@@ -238,7 +198,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
               <For each={BENCH_SECTIONS} by={(id) => id}>
                 {(id) => (
                   <li>
-                    <JumpLink href={`#${id}`}>{T.jumps[id]}</JumpLink>
+                    <Tag href={`#${id}`}>{T.jumps[id]}</Tag>
                   </li>
                 )}
               </For>
@@ -252,9 +212,11 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
         <Wrap>
           <SectionHead label={T.method.label} title={T.method.title} text={T.method.text} />
           <NumberedCards items={d.method.map(([title, body]) => ({ title, text: body }))} />
-          <TableNote>
-            {d.krausest} {T.method.guide.text} <InlineTextLink href={T.method.guide.link.href}>{T.method.guide.link.label}</InlineTextLink>.
-          </TableNote>
+          <Box padTop={150}>
+            <Note>
+              {d.krausest} {T.method.guide.text} <InlineTextLink href={T.method.guide.link.href}>{T.method.guide.link.label}</InlineTextLink>.
+            </Note>
+          </Box>
         </Wrap>
       </Section>
 
@@ -296,14 +258,16 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
               {runNote(T.rows.run)}
             </ChartWithFallback>
             <Show when={() => !!d.rowBoard[initial]}>
-              <TableNote>
-                {fill(T.rows.fastestFirst, {
-                  op: initial,
-                  list: sortedRowBoard(d.frameworks, d.rowBoard[initial] ?? [])
-                    .map((b) => `${b.name} ${formatMs(b.ms)}`)
-                    .join(' · '),
-                })}
-              </TableNote>
+              <Box padTop={150}>
+                <Note>
+                  {fill(T.rows.fastestFirst, {
+                    op: initial,
+                    list: sortedRowBoard(d.frameworks, d.rowBoard[initial] ?? [])
+                      .map((b) => `${b.name} ${formatMs(b.ms)}`)
+                      .join(' · '),
+                  })}
+                </Note>
+              </Box>
             </Show>
           </Wrap>
         </Section>
@@ -494,7 +458,9 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
                 {(w) => (
                   <WithdrawnRow>
                     <div>
-                      <WithdrawnTag>{T.withdrawn.tag}</WithdrawnTag>
+                      <Badge tone="loss" bare placement="before">
+                        {T.withdrawn.tag}
+                      </Badge>
                       <Struck>{w[0]}</Struck>
                     </div>
                     <Lede size="small">{renderInline(w[1])}</Lede>
@@ -552,7 +518,7 @@ export function BenchmarksPage(props: { view: BenchmarksView }) {
               <For each={d.competitors} by={(c) => c}>
                 {(c) => (
                   <li>
-                    <Chip>{c}</Chip>
+                    <Tag>{c}</Tag>
                   </li>
                 )}
               </For>

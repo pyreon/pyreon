@@ -32,7 +32,7 @@ describe('styled -- SSR mode', () => {
     expect((Comp as any).displayName).toBe('styled(div)')
   })
 
-  it('static: boost option in SSR', async () => {
+  it('static: layer option in SSR', async () => {
     const { styled } = await import('../styled')
     const Comp = styled('div', { layer: 'rocketstyle' })`
       color: blue;

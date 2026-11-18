@@ -1,5 +1,3 @@
-import type { TProvider } from './context'
-import Provider, { context } from './context'
 import type {
   CssVarsTheme,
   CssVarsUnit,
@@ -14,7 +12,7 @@ import type { CpseStyledProps, ResponsiveStyleTheme, ResponsiveValue } from './c
 import { cpseStyled } from './cpse-styled'
 import type { PyreonTheme } from './enrichTheme'
 import { enrichTheme } from './enrichTheme'
-import { setThemeEngine } from '@pyreon/ui-core'
+import { context, setThemeEngine } from '@pyreon/ui-core'
 
 // ── Register the theme engine with @pyreon/ui-core ──────────────────────────
 // `<PyreonUI>` (in the base @pyreon/ui-core) reads enrichTheme/themeToCssVars/
@@ -105,7 +103,6 @@ export type {
   StylesTheme,
   ThemeToCssVarsOptions,
   ThemeToCssVarsResult,
-  TProvider,
   TransformTheme,
   UnitValue,
   Value,
@@ -129,7 +126,6 @@ export {
   extractStyleVar,
   makeItResponsive,
   normalizeTheme,
-  Provider,
   sortBreakpoints,
   resolveCssVarReferences,
   stripUnit,

@@ -22,7 +22,7 @@ import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
 import { onSheetClear, sheet } from './sheet'
-import { useThemeAccessor } from './ThemeProvider'
+import { useThemeAccessor } from './theme-context'
 
 // Dev-time counter sink — see packages/internals/perf-harness/COUNTERS.md.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -196,7 +196,7 @@ const createStyledComponent = (
     // a request's `<style>` only when a render marks it used (StaticStyled
     // below) — otherwise whichever request first evaluated this module would
     // carry the rules of every component the module DEFINES.
-    const staticClassName = hasCss ? sheet.insert(cssText, false, insertLayer, false) : ''
+    const staticClassName = hasCss ? sheet.insert(cssText, insertLayer, false) : ''
 
     // Hoisted out of the render fn: `tag` is known at component-creation time,
     // and `tag` matches `rawProps.as ?? tag` whenever rawProps is empty (the
@@ -231,7 +231,7 @@ const createStyledComponent = (
       // VNode carrying it — stay valid. A constant-true check until the
       // sheet's first removal.
       if (staticClassName && !sheet.isLive(staticClassName))
-        sheet.insert(cssText, false, insertLayer, false)
+        sheet.insert(cssText, insertLayer, false)
       // SSR: a render never calls `insert()` — tell the sheet this request
       // used the class (see `markUsed`).
       if (IS_SERVER && staticClassName) sheet.markUsed(staticClassName)
@@ -459,7 +459,7 @@ const createStyledComponent = (
           }
         }
       }
-      const className = cssText.length > 0 ? sheet.insert(cssText, false, insertLayer) : ''
+      const className = cssText.length > 0 ? sheet.insert(cssText, insertLayer) : ''
 
       if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
         let inner = classCache.get(rs)

@@ -67,6 +67,7 @@ export function unwrapLayers(cssText: string, split: (s: string) => string[]): s
     }
     out.push(rule)
   }
+
   return out
 }
 
@@ -88,6 +89,7 @@ function skipQuoted(css: string, i: number): number {
     if (c === quote) return j + 1
     j++
   }
+
   return len
 }
 
@@ -111,6 +113,7 @@ function isUrlOpen(css: string, i: number): boolean {
       p === 95 /* _ */
     if (isIdent) return false
   }
+
   return true
 }
 
@@ -310,6 +313,7 @@ export class StyleSheet {
   // The `<style>` element backing `sheet` (client only) — its document is the
   // one the live-DOM eviction guard scans.
   private styleEl: HTMLStyleElement | null = null
+
   // Per-request SSR accumulation state, reached ONLY through `_ssr`. The buffer
   // holds rules for `getStyleTag()` (SSG / string SSR) and the streaming flush
   // watermark (`flushedIdx`) lets the pipeline emit `<style>` inline per Suspense
@@ -330,6 +334,7 @@ export class StyleSheet {
     layerDeclEmitted: false,
     seen: new Set(),
   }
+
   // SSR only: the final rule text per cache key, so a request whose render
   // references a class the instance-wide `cache` already knows can still push
   // that class's rules into ITS OWN buffer (see `StylerSSRState.seen`).
@@ -393,8 +398,10 @@ export class StyleSheet {
         s = freshSSRState()
         bag.__pyreonStylerSSR = s
       }
+
       return s
     }
+
     return this._instanceSSR
   }
 
@@ -412,6 +419,7 @@ export class StyleSheet {
       const rules = this.ssrRules.get(this.ambientKeys[i] as string)
       if (rules) for (const r of rules) out.push(r)
     }
+
     return out
   }
 
@@ -425,6 +433,7 @@ export class StyleSheet {
     const st = this._ssr
     if (st === this._instanceSSR) return st.buffer
     const amb = this.ambientRules()
+
     return amb.length === 0 ? st.buffer : amb.concat(st.buffer)
   }
 
@@ -690,6 +699,7 @@ export class StyleSheet {
         if (c.startsWith(PREFIX)) live.add(c)
       }
     }
+
     return live
   }
 
@@ -851,23 +861,15 @@ export class StyleSheet {
     const cached = this.insertCache.get(cssText)
     if (cached) return cached
     const h = hash(cssText)
+
     return `${PREFIX}-${h}`
   }
 
-  /**
-   * Insert CSS rules for a component. Returns the class name (deterministic, hash-based).
-   * Deduplicates: same CSS text always produces the same class name and
-   * the rules are only injected once.
-   *
-   * @param cssText - CSS declarations to insert
-   * @param _unused - Reserved for backward compatibility (was `boost`)
-   * @param insertLayer - CSS @layer to wrap this rule in (e.g. 'rocketstyle').
-   *   Used by rocketstyle to ensure wrapper styles override inner component styles
-   *   via @layer order (base < rocketstyle) instead of specificity hacks.
-   */
   // Dedup set for the dev-mode resolved-CSS validator — one warning per
   // unique (finding, snippet) pair, so a hot re-render can't spam the console.
   private warnedInvalidCss = new Set<string>()
+  // One warning per sheet for a call still using the removed `boost` argument.
+  private warnedStaleInsertArgs = false
 
   /**
    * Dev-only sanity scan over resolved CSS text — the safety net for the
@@ -921,10 +923,29 @@ export class StyleSheet {
     )
   }
 
-  insert(cssText: string, _unused = false, insertLayer?: string, use = true): string {
+  /**
+   * Insert CSS rules for a component. Returns the class name (deterministic, hash-based).
+   * Deduplicates: same CSS text always produces the same class name and
+   * the rules are only injected once.
+   *
+   * @param cssText - CSS declarations to insert
+   * @param insertLayer - CSS @layer to wrap this rule in (e.g. 'rocketstyle').
+   *   Used by rocketstyle to ensure wrapper styles override inner component styles
+   *   via @layer order (base < rocketstyle) instead of specificity hacks.
+   */
+  insert(cssText: string, insertLayer?: string, use = true): string {
     if (process.env.NODE_ENV !== 'production') {
       _countSink.__pyreon_count__?.('styler.sheet.insert')
       this.validateDevCss(cssText)
+      // The old signature was `insert(css, boost, layer, use)`. A JavaScript
+      // caller still passing a boolean second argument would silently lose
+      // its layer (or wrap the rule in `@layer true`).
+      if ((typeof insertLayer === 'boolean' || typeof use === 'string') && !this.warnedStaleInsertArgs) {
+        this.warnedStaleInsertArgs = true
+        console.warn(
+          `[Pyreon] sheet.insert(cssText, insertLayer?, use?) was called with the removed \`boost\` argument (a boolean second argument). The layer is now the SECOND argument: change \`sheet.insert(css, false, 'layer')\` to \`sheet.insert(css, 'layer')\`.`,
+        )
+      }
     }
     // Fast path: skip hash computation on repeated insertions of same CSS text
     const icKey = insertLayer ? `${cssText}\0L:${insertLayer}` : cssText
@@ -943,6 +964,7 @@ export class StyleSheet {
       this.insertCache.set(icKey, className)
       this.trackIcKey(className, icKey)
       if (this.isSSR && use) this.pushSSR(className)
+
       return className
     }
 
@@ -983,6 +1005,7 @@ export class StyleSheet {
 
     this.insertCache.set(icKey, className)
     this.trackIcKey(className, icKey)
+
     return className
   }
 
@@ -1049,6 +1072,7 @@ export class StyleSheet {
         if (ambient) this.addAmbient(key)
         this.pushSSR(key)
       }
+
       return key
     }
 
@@ -1095,6 +1119,7 @@ export class StyleSheet {
         }
       }
     }
+
     return key
   }
 
@@ -1121,6 +1146,7 @@ export class StyleSheet {
         ? `@layer ${this.layer};`
         : ''
     const css = (layerDecl + rules.join('')).replace(/<\/style/gi, '<\\/style')
+
     return `<style ${ATTR}=""${nonceAttr}>${css}</style>`
   }
 
@@ -1168,6 +1194,7 @@ export class StyleSheet {
         if (ambient) this.addAmbient(ssrKey)
         this.pushSSR(ssrKey)
       }
+
       return
     }
     this.injectedBundles.add(key)
@@ -1175,6 +1202,7 @@ export class StyleSheet {
       this.ssrRules.set(ssrKey, [...rules])
       if (ambient) this.addAmbient(ssrKey)
       this.pushSSR(ssrKey)
+
       return
     }
     if (!this.sheet) return
@@ -1308,6 +1336,7 @@ export class StyleSheet {
     }
     const slice = this._ssr.buffer.slice(this._ssr.flushedIdx).join('')
     this._ssr.flushedIdx = this._ssr.buffer.length
+
     return prefix + ambient + slice
   }
 
@@ -1320,6 +1349,7 @@ export class StyleSheet {
       : this.layer
         ? `@layer ${this.layer};`
         : ''
+
     return layerDecl + rules.join('')
   }
 

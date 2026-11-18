@@ -21,7 +21,7 @@ const BarRow = el
     gap: 10,
     alignItems: 'center',
     fontFamily: font.mono,
-    fontSize: 11.5,
+    fontSize: text.caveat.size,
     color: tone(m, 'fog'),
   }))
   .states((_t, m) => ({ default: {}, pyreon: { color: tone(m, 'text') } }))
@@ -78,7 +78,7 @@ const Head = el
     borderBottom: '1px solid',
     borderColor: tone(m, 'line'),
     fontFamily: font.mono,
-    fontSize: 11.5,
+    fontSize: text.caveat.size,
     color: tone(m, 'fog'),
   }))
 
@@ -123,7 +123,7 @@ const VerdictCell = el
 const RowLabel = txt
   .config({ name: 'BenchmarkLabel' })
   .attrs({ tag: 'span' })
-  .theme((_t, m) => ({ fontFamily: font.sans, fontSize: 14, color: tone(m, 'mist'), minWidth: 0 }))
+  .theme((_t, m) => ({ fontFamily: font.sans, fontSize: text.uiLarge.size, color: tone(m, 'mist'), minWidth: 0 }))
 
 const Foot = el
   .config({ name: 'BenchmarkFoot' })

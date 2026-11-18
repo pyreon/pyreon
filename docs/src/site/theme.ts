@@ -257,6 +257,8 @@ export const display = {
   numeralStrip: { min: 40, vw: 4, max: 58 },
   /** A numeral inside a product card: one step under `numeralStrip`. */
   numeralCard: { min: 34, vw: 3, max: 44 },
+  /** A numeral set inside a line of copy (the home page's featured product cards): a fixed size, no clamp. */
+  numeralInline: 22,
   /** Room under a gradient numeral so `background-clip: text` does not cut its descenders. */
   numeralDescender: '0.08em',
   /** Quote block text. [C4] */
@@ -337,6 +339,8 @@ export const layout = {
   sheetPadTop: 88,
   /** Where an anchor target lands: below the fixed nav (navTop + navHeight) with a gap. */
   anchorOffset: 88,
+  /** The longest a note line runs under a full-width block (a code diff's caption). */
+  noteMeasure: 760,
   /** The narrowest a prose table cell gets; below it the table scrolls in its own box. */
   tableCellMin: '10ch',
 } as const
@@ -357,7 +361,12 @@ export const inset = {
   cellY: { xs: 26, md: 30 },
 } as const
 
-/** The pill-shaped verdict badge (`.bx-chip`): one size everywhere. [A7] */
+/**
+ * The pill-shaped badge (`.bx-chip`, verdicts and status markers). `md` is the
+ * verdict chip [A7]; `sm` the marker beside a name ("next release",
+ * "experimental"). The lettering (`size` / `tracking`, mono uppercase) is
+ * also the style of the site's small uppercase labels (`Text variant="badge"`).
+ */
 export const badge = {
   size: 10.5,
   tracking: '.12em',
@@ -365,12 +374,35 @@ export const badge = {
   padY: 4,
   padX: 9,
   border: 1,
+  sm: { size: 10, tracking: '.1em', lineHeight: 1, padY: 1, padX: 7 },
+  /** A badge inside a run of text keeps a word-sized gap to it; one after a name sits 2px up, on the name's optical centre. */
+  inlineGap: 8,
+  raise: '2px',
 } as const
 
-/** A stat block (numeral, label, detail lines, note, chart): `band` in a proof band cell, `card` in a stat card. */
+/**
+ * The mono tag (`Tag`): an API name, a topic or an in-page jump, in a pill.
+ * `md` is the API chip, `sm` the small tag under a card. A static tag is filled
+ * (`sheen`); a link tag is outlined and lifts its border on hover.
+ */
+export const tag = {
+  md: { size: 12, padY: 7, padX: 12 },
+  sm: { size: 11.5, padY: 5, padX: 11 },
+  static: { lineHeight: 1.4 },
+  /** A link tag keeps the font's own line box (it sits in a row of links, as the text beside it does). */
+  link: { lineHeight: 'normal' },
+} as const
+
+/**
+ * A stat block (numeral, label, detail lines, note, chart): `band` in a proof
+ * band cell, `strip` in a stat card, `product` in a product card's foot,
+ * `hero` in the benchmarks hero row.
+ */
 export const stat = {
   band: { labelSize: 17, labelGap: 6, labelMaxWidth: 380 },
-  card: { labelSize: 15, labelGap: 10 },
+  strip: { labelSize: 15, labelGap: 10 },
+  product: { labelSize: 13.5, labelLineHeight: 1.5 },
+  hero: { labelSize: 16 },
   labelLineHeight: 1.35,
   detailSize: 12,
   detailLineHeight: 1.55,

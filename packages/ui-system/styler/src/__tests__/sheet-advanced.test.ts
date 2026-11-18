@@ -275,14 +275,14 @@ describe('StyleSheet -- advanced features', () => {
 
     it('inserts rule with layer on client side', () => {
       const s = createSheet()
-      const cls = s.insert('color: red;', false, 'rocketstyle')
+      const cls = s.insert('color: red;', 'rocketstyle')
       expect(cls).toMatch(/^pyr-/)
     })
 
     it('deduplicates layered and non-layered separately via insertCache key', () => {
       const s = createSheet()
-      const cls1 = s.insert('color: green;', false)
-      const cls2 = s.insert('color: green;', false, 'rocketstyle')
+      const cls1 = s.insert('color: green;')
+      const cls2 = s.insert('color: green;', 'rocketstyle')
       // Same className (same hash) but both should work without error
       expect(cls1).toBe(cls2)
     })

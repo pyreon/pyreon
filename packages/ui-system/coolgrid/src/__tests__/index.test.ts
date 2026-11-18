@@ -19,10 +19,9 @@ describe('index exports', () => {
     expect(typeof mod.Col).toBe('function')
   })
 
-  it('exports Provider', async () => {
+  it('does not export the removed Provider (use PyreonUI from @pyreon/ui-core)', async () => {
     const mod = await import('../index')
-    expect(mod.Provider).toBeDefined()
-    expect(typeof mod.Provider).toBe('function')
+    expect('Provider' in mod).toBe(false)
   })
 
   it('exports theme', async () => {

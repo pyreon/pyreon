@@ -13,7 +13,6 @@ import {
   canIntrospect,
   controlsFromSchema,
   fieldToControl,
-  isStandardSchema,
   validateValues,
 } from '../schema-controls'
 
@@ -108,15 +107,15 @@ describe('validation is cross-library', () => {
 })
 
 describe('schema detection', () => {
-  it('accepts a CALLABLE schema — ArkType is a function carrying `~standard`', () => {
+  it('validates a CALLABLE schema — ArkType is a function carrying `~standard`', () => {
     const callable = Object.assign(() => {}, {
       '~standard': { validate: () => ({ value: {} }) },
     })
-    expect(isStandardSchema(callable)).toBe(true)
+    expect(validateValues(callable, {})).toEqual({ state: 'valid' })
   })
 
-  it('rejects a plain function without the brand', () => {
-    expect(isStandardSchema(() => {})).toBe(false)
-    expect(isStandardSchema(null)).toBe(false)
+  it('reports a plain function without the brand as unsupported', () => {
+    expect(validateValues(() => {}, {})).toEqual({ state: 'unsupported' })
+    expect(validateValues(null, {})).toEqual({ state: 'unsupported' })
   })
 })

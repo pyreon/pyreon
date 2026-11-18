@@ -44,6 +44,7 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
     return 'validate'
   if (/^(?:audit|formatTestAudit|formatIslandAudit|formatSsgAudit|generateContext)/.test(name))
     return 'audits'
+
   return 'analyze'
 }
 
@@ -1500,6 +1501,18 @@ const Page = lazy(() => import('./Page'))`,
     }),
   },
   {
+    // The native compiler binary is from a different release than
+    // `@pyreon/compiler` (load-native.ts). The backends are byte-identical
+    // per version only, so the loader falls back to the JS compiler.
+    pattern: /(@pyreon\/compiler-[a-z0-9-]+)@(\S+) does not match @pyreon\/compiler@(\S+);/,
+    diagnose: (m) => ({
+      cause: `The installed native compiler binary ${m[1]}@${m[2]} is from a different release than @pyreon/compiler@${m[3]}. The Rust and JavaScript backends produce identical output only within one version, so Pyreon is using the JavaScript compiler instead. Output is correct; builds are slower.`,
+      fix: `Reinstall so the lockfile resolves ${m[1]}@${m[3]} (delete the lockfile entry for ${m[1]} if needed), and remove any \`overrides\`/\`resolutions\` that pin it. Every @pyreon/* package should be on one version.`,
+      fixCode: `// package.json: no override for ${m[1]}; then reinstall
+// bun install   (or npm install / pnpm install)`,
+    }),
+  },
+  {
     // A subpath whose shipped `lib/` file came from the WRONG source entry
     // (#4283). The build takes each entry from the export KEY and the output
     // file from the `import` target, so two keys pointing at one target
@@ -2539,13 +2552,16 @@ export const collections = {
     }),
   },
   {
-    // jsx.ts `signal-method-reference` warning: `onInput={sig.set}` hands the
-    // method to the runtime without its signal, so `this` is gone when it runs.
-    pattern: /"([^"\n]+)" is passed by reference, so it runs without its signal and throws/,
+    // @pyreon/reactivity `_detached`: a signal method called without its signal
+    // (`promise.then(sig.set)`, `ref={props.sig.set}`). The compiler binds every
+    // reference it can prove is a signal's (`sig.set.bind(sig)`, #4356), so
+    // this is a reference it could not see: through props, an object, or code
+    // outside JSX.
+    pattern: /signal\.(\w+)\(\) was called without its signal/,
     diagnose: (m) => ({
-      cause: `\`${m[1]}\` is a signal method (set, update, peek, subscribe) passed by reference. A signal is a function with methods on it that read \`this\`; once the method is detached and called by the runtime as a plain handler, \`this\` is undefined and it throws.`,
-      fix: 'Pass an arrow that calls the method on the signal: `onInput={(v) => sig.set(v)}`. For a handler that ignores the event, `onClick={() => sig.set(0)}`.',
-      fixCode: `${m[1]?.replace(/\.[a-z]+$/i, '') ?? 'sig'}.set(value)`,
+      cause: `\`${m[1]}\` ran detached from its signal. Signal methods live on a shared prototype and read \`this\`; a reference such as \`promise.then(sig.${m[1]})\` or \`ref={props.sig.${m[1]}}\` loses it. Inside JSX the compiler binds a reference to a signal it knows (\`ref={el.set}\` works), but not one reached through props, an object or code outside JSX.`,
+      fix: `Call the method on the signal: \`(v) => sig.${m[1]}(v)\`, or bind it: \`sig.${m[1]}.bind(sig)\`.`,
+      fixCode: `(v) => sig.${m[1]}(v)`,
     }),
   },
 ]
@@ -2558,5 +2574,6 @@ export function diagnoseError(error: string): ErrorDiagnosis | null {
       return diagnose(match)
     }
   }
+
   return null
 }

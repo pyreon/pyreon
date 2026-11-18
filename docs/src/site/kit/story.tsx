@@ -8,7 +8,10 @@ import { Stack } from './primitives/stack'
 import { AutoGrid } from './primitives/auto-grid'
 import { artBox } from './media'
 import { useLinkClick } from './link'
-import { Eyebrow, Heading, Lede, renderInline, StatusBadge } from './type'
+import { Eyebrow, Heading, Lede, renderInline } from './type'
+import { Badge } from './badge'
+import { Note } from './note'
+import { keepRanges } from './stat'
 
 /**
  * Blocks for the story, migrate and project pages (visual-alignment.md,
@@ -67,16 +70,6 @@ const Figure = el
     `,
   }))
 
-const FigCaption = txt
-  .config({ name: 'DiagramCaption' })
-  .attrs({ tag: 'figcaption' })
-  .theme((_t, m) => ({
-    fontFamily: font.mono,
-    fontSize: text.caveat.size,
-    letterSpacing: text.caveat.tracking,
-    lineHeight: 1.6,
-    color: tone(m, 'fog'),
-  }))
 
 /**
  * An asset-set SVG (diagram, animated loop or measured chart), inlined so it
@@ -101,7 +94,7 @@ export function Diagram(props: {
         dangerouslySetInnerHTML={{ __html: props.svg }}
       />
       <Show when={() => !!props.caption}>
-        <FigCaption>{renderInline(props.caption ?? '')}</FigCaption>
+        <Note tag="figcaption">{keepRanges(props.caption ?? '')}</Note>
       </Show>
     </Figure>
   )
@@ -344,7 +337,7 @@ export function ItemCards(props: {
           <GlowCard padding="compact">
             <Heading tag="h3" size="step">
               {renderInline(i.title)}
-              {i.status ? <StatusBadge>{i.status}</StatusBadge> : null}
+              {i.status ? <Badge tone="experimental" size="sm" placement="after">{i.status}</Badge> : null}
             </Heading>
             <Lede size="small">{renderInline(i.text)}</Lede>
             {i.code ? (

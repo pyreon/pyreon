@@ -186,14 +186,6 @@
      "useSearch",
      "loadSearchIndex"
     ]
-   },
-   {
-    "name": "build outputs",
-    "items": [
-     "generateSitemap",
-     "generateRssFeed",
-     "generateLlmsTxt"
-    ]
    }
   ]
  },
@@ -293,7 +285,7 @@
   },
   {
    "q": "Can I use it without Zero?",
-   "a": "No. The integration with Zero (its file router, render modes and image handling) is the point of the package. The SEO generators are the exception: `generateSitemap`, `generateRssFeed` and `generateLlmsTxt` are plain functions you can call from any script."
+   "a": "No. The integration with Zero (its file router, render modes and image handling) is the point of the package. For SEO output from a standalone script, `@pyreon/zero` exports `generateRssFeed`, and `@pyreon/zero/server` exports `seoPlugin` and `aiPlugin`."
   },
   {
    "q": "Will my AI assistant see my content?",

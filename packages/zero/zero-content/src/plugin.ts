@@ -1633,16 +1633,10 @@ export function isMarkdownId(id: string): boolean {
  * below replaces this with a `Vite root`-relative path that IDEs
  * recognise as clickable.
  *
- * Kept exported for back-compat with downstream code that may have
- * imported it; new call sites should use `reportPath` (which falls
- * back to this when no root is known).
- *
- * @internal exported for testing
- * @deprecated prefer `reportPath(id, root)` — `shortId` is left in for
- *   back-compat and as a fallback used by `reportPath` when no Vite
- *   root has been resolved yet (config-resolution edge case).
+ * Module-private: `reportPath` falls back to it when no Vite root has
+ * been resolved yet (config-resolution edge case).
  */
-export function shortId(id: string): string {
+function shortId(id: string): string {
   const idx = id.lastIndexOf('/src/')
   if (idx >= 0) return id.slice(idx + 1)
   return id
