@@ -189,9 +189,13 @@ export async function runRivalBench<I extends string>(cfg: RivalBench<I>): Promi
 
   // ── orchestrator ─────────────────────────────────────────────────────────
   if (process.env.NODE_ENV !== 'production') {
+    // A bundle that folded `process.env.NODE_ENV` to "development" would respawn itself forever: stop after one respawn.
+    if (process.env.PYREON_BENCH_RESPAWNED === '1') {
+      throw new Error('[rivals-harness] NODE_ENV is not "production" after the respawn: the bundle folded process.env.NODE_ENV. Build the bench with NODE_ENV=production.')
+    }
     const r = run(
       [process.execPath, ...process.execArgv, cfg.file, ...process.argv.slice(2)],
-      { ...process.env, NODE_ENV: 'production' },
+      { ...process.env, NODE_ENV: 'production', PYREON_BENCH_RESPAWNED: '1' },
       true,
     )
     process.exit(r.exitCode)
