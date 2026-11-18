@@ -120,6 +120,7 @@ export const PreviewColumn = styled('div')`
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
 `
 
 export const PreviewLabel = styled('div')`
@@ -146,6 +147,14 @@ export const PreviewFrame = styled('div')`
   min-height: 720px;
   font-family: ${(p) => t(p).fontFamily.base};
   color: ${(p) => t(p).color.system.dark[800]};
+
+  /* The print margins are a third of a phone's width, and the document inside
+     has rows that do not wrap: tighter margins, and the page scrolls inside
+     its frame instead of widening the screen. */
+  @media (max-width: ${PHONE_MAX}px) {
+    padding: 24px 16px;
+    overflow-x: auto;
+  }
 `
 
 // ─── Form sections ───────────────────────────────────────────────────

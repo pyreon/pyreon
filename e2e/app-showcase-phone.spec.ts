@@ -23,4 +23,18 @@ for (const path of paths) {
     }))
     expect(scrollWidth).toBeLessThanOrEqual(innerWidth)
   })
+
+  // Font metrics differ per platform: CI's Linux fonts run wider than a Mac's,
+  // and `/dashboard` and `/resume` overflowed there by 15-25px while passing
+  // locally. Widening the text here makes that class fail on every machine.
+  test(`${path} fits a 390px viewport with wider text`, async ({ page }) => {
+    await page.goto(path)
+    await page.waitForLoadState('networkidle')
+    await page.addStyleTag({
+      content: '* { font-family: "Courier New", monospace !important; letter-spacing: 0.06em !important; }',
+    })
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth))
+      .toBeLessThanOrEqual(0)
+  })
 }

@@ -228,6 +228,8 @@ export const CountBadge = Badge.theme(() => ({
 // ─── Footer ──────────────────────────────────────────────────────────
 export const FooterBar = styled('div')`
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
   align-items: center;
   margin-top: 24px;
@@ -237,6 +239,7 @@ export const FooterBar = styled('div')`
 
 export const FooterActions = styled('div')`
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 `
 
