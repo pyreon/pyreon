@@ -4,6 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { unloweredSignalMethodWarning } from './signal-object-methods'
 import { bitwiseHelper, integerOpHelper, isNumericConstant, numericKind } from './integer-arithmetic'
 import { dateFieldWarning, kotlinDateSerializer } from './date-json'
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
@@ -148,6 +149,7 @@ import {
   isInlineObjectAnnotation,
   registerComponentFnReturns,
   widenFloatLocals,
+  rootedAtExtDecl,
   widenFloatSignals,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
@@ -4294,6 +4296,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}.value`
       }
+      // `count.subscribe(fn)`, `theme.remove()`, … — the rest of the signal OBJECT's API, called on the signal itself,
+      // has no native counterpart: natively the name is a plain property holding the value (signal-object-methods.ts).
+      if (e.callee.kind === 'member' && e.callee.object.kind === 'identifier' && _signalNames.has(e.callee.object.name)) {
+        const w = unloweredSignalMethodWarning(e.callee.object.name, e.callee.property, 'kotlin')
+        if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
+      }
       // `.update(fn)` lowering — mirror of emit-swift's (see its doc
       // comment): IR-level param substitution into an assignment.
       if (e.callee.kind === 'member' && e.callee.property === 'update' && e.args.length === 1) {
@@ -4495,6 +4503,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (prop === 'delete' && e.args.length === 1)
               return `${obj}${objDot}remove(${argExprs[0]!})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}clear()`
+          }
+          // `d.toJSON()` / `d.valueOf()` — natively a date IS its epoch milliseconds (date-lowering.ts). No JavaScript
+          // number has a `toJSON`, so on a number receiver it is a date's: the ISO string `d.toISOString()` lowers to. An
+          // UNKNOWN receiver is a date too: a signal seeded with `new Date(…)` infers no type here, and a plugin binding
+          // whose runtime defines `toJSON` (a flow) was lowered above. `valueOf()` is the receiver itself for every
+          // value — a date's milliseconds, a number, a string — so it needs no type.
+          if (e.args.length === 0 && e.callee.optional !== true) {
+            if (prop === 'toJSON' && (recvT.kind === 'number' || (recvT.kind === 'unknown' && !rootedAtExtDecl(e.callee.object, _kotlinExprInferCtx)))) {
+              return emitKotlinExpr({ kind: 'call', callee: { kind: 'identifier', name: 'pyreonDateISO' }, args: [e.callee.object] }, indent)
+            }
+            if (prop === 'valueOf') return `(${obj})`
           }
         }
         switch (prop) {

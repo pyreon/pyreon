@@ -8,6 +8,7 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { unloweredSignalMethodWarning } from './signal-object-methods'
 import { bitwiseHelper, integerOpHelper, isNumericConstant } from './integer-arithmetic'
 import { dateFieldWarning, swiftDateWrapper } from './date-json'
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
@@ -158,6 +159,7 @@ import {
   isInlineObjectAnnotation,
   registerComponentFnReturns,
   widenFloatLocals,
+  rootedAtExtDecl,
   widenFloatSignals,
 } from './infer-type'
 import {
@@ -5344,6 +5346,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
 
         return `(Double(${arg}) ?? 0)`
       }
+      // `count.subscribe(fn)`, `theme.remove()`, … — the rest of the signal OBJECT's API, called on the signal itself,
+      // has no native counterpart: natively the name is a plain property holding the value (signal-object-methods.ts).
+      if (e.callee.kind === 'member' && e.callee.object.kind === 'identifier' && _signalNames.has(e.callee.object.name)) {
+        const w = unloweredSignalMethodWarning(e.callee.object.name, e.callee.property, 'swift')
+        if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
+      }
       // `.update(fn)` lowering — `x.update((list) => EXPR)` lowers to
       // `x = EXPR[list := <read of x>]` by IR-level param substitution,
       // producing the SAME idiomatic emit the hand-written
@@ -5553,6 +5561,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (prop === 'delete' && e.args.length === 1)
               return `${obj}${objDot}remove(${argExprs[0]!})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
+          }
+          // `d.toJSON()` / `d.valueOf()` — natively a date IS its epoch milliseconds (date-lowering.ts). No JavaScript
+          // number has a `toJSON`, so on a number receiver it is a date's: the ISO string `d.toISOString()` lowers to. An
+          // UNKNOWN receiver is a date too: a signal seeded with `new Date(…)` infers no type here, and a plugin binding
+          // whose runtime defines `toJSON` (a flow) was lowered above. `valueOf()` is the receiver itself for every
+          // value — a date's milliseconds, a number, a string — so it needs no type.
+          if (e.args.length === 0 && e.callee.optional !== true) {
+            if (prop === 'toJSON' && (recvT.kind === 'number' || (recvT.kind === 'unknown' && !rootedAtExtDecl(e.callee.object, _activeInferCtx)))) {
+              return emitSwiftExpr({ kind: 'call', callee: { kind: 'identifier', name: 'pyreonDateISO' }, args: [e.callee.object] }, indent)
+            }
+            if (prop === 'valueOf') return `(${obj})`
           }
         }
         switch (prop) {
