@@ -584,14 +584,14 @@ describe('diagnoseError — <For> without by', () => {
   })
 })
 
-describe('diagnoseError — signal method passed by reference', () => {
+describe('diagnoseError — signal method called without its signal', () => {
   const message =
-    '"count.set" is passed by reference, so it runs without its signal and throws: signal methods read "this". Pass an arrow instead: onInput={(v) => count.set(v)}.'
+    '[Pyreon] signal.update() was called without its signal. Signal methods read `this`, so a detached reference such as promise.then(sig.update) or ref={props.sig.update} cannot work. Pass an arrow instead: (v) => sig.update(v).'
 
   it('explains the detached-method throw and names the arrow fix', () => {
     const result = diagnoseError(message)
-    expect(result?.cause).toContain('count.set')
-    expect(result?.fix).toContain('(v) => sig.set(v)')
-    expect(result?.fixCode).toBe('count.set(value)')
+    expect(result?.cause).toContain('`update` ran detached from its signal')
+    expect(result?.fix).toContain('(v) => sig.update(v)')
+    expect(result?.fixCode).toBe('(v) => sig.update(v)')
   })
 })
