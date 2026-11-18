@@ -6,7 +6,7 @@
  * (`2026-11-18`, `2026-11-18T14:30`) uses the variant `PLAIN` and is formatted
  * as UTC, so it can never shift.
  */
-import { clearTable, construct, createTable, resolve, type Table } from './cache'
+import { clearTable, construct, createTable, guarded, resolve, type Table } from './cache'
 import type { Core, KindDef } from './formatter'
 import { badLocale, fallbackOf, preset, fallbackText } from './number'
 import { daysFromCivil, lastWasPlain, lastWasTimeOnly, toMillis } from './input'
@@ -97,11 +97,11 @@ function makeDt(fn: string, kind: Defaults, locale: string, zone: string, option
   return withZoneFallback(zone, fn, (z) => build(z === '' ? undefined : z))
 }
 
-const dateTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDate', 'date', l, z, o))
-const timeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatTime', 'time', l, z, o))
-const dateTimeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateTime', 'dateTime', l, z, o))
-const rangeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateRange', 'date', l, z, o))
-const partsTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateToParts', 'dateTime', l, z, o))
+const dateTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>(/* @__PURE__ */ guarded((l, z, o) => makeDt('formatDate', 'date', l, z, o)))
+const timeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>(/* @__PURE__ */ guarded((l, z, o) => makeDt('formatTime', 'time', l, z, o)))
+const dateTimeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>(/* @__PURE__ */ guarded((l, z, o) => makeDt('formatDateTime', 'dateTime', l, z, o)))
+const rangeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>(/* @__PURE__ */ guarded((l, z, o) => makeDt('formatDateRange', 'date', l, z, o)))
+const partsTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>(/* @__PURE__ */ guarded((l, z, o) => makeDt('formatDateToParts', 'dateTime', l, z, o)))
 
 function missingOrInvalid(fn: string, value: DateInput, fallback: string): string {
   if (value != null) {
@@ -230,8 +230,8 @@ function makeRelative(fn: string, defaults: Intl.RelativeTimeFormatOptions, loca
   )
 }
 
-const relativeTable = /* @__PURE__ */ createTable<Intl.RelativeTimeFormat>((l, _v, o) => makeRelative('formatRelative', {}, l, o))
-const relativeToTable = /* @__PURE__ */ createTable<Intl.RelativeTimeFormat>((l, _v, o) => makeRelative('formatRelativeTo', { numeric: 'auto' }, l, o))
+const relativeTable = /* @__PURE__ */ createTable<Intl.RelativeTimeFormat>(/* @__PURE__ */ guarded((l, _v, o) => makeRelative('formatRelative', {}, l, o)))
+const relativeToTable = /* @__PURE__ */ createTable<Intl.RelativeTimeFormat>(/* @__PURE__ */ guarded((l, _v, o) => makeRelative('formatRelativeTo', { numeric: 'auto' }, l, o)))
 
 function formatRelativeValue(f: Intl.RelativeTimeFormat, fn: string, value: number, unit: RelativeUnit): string {
   try {

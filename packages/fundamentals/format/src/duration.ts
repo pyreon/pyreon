@@ -6,7 +6,7 @@
  * in the locales the tests compare.
  */
 import type { KindDef } from './formatter'
-import { clearTable, construct, createTable, resolve } from './cache'
+import { clearTable, construct, createTable, guarded, resolve } from './cache'
 import { badLocale, fallbackOf, fallbackText } from './number'
 import { describe, programmerError, quote, warnInvalid } from './warn'
 import type { Duration, DurationInput, DurationOptions, DurationStyle } from './types'
@@ -49,7 +49,7 @@ function badOptions(error: unknown): Error {
   )
 }
 
-const durationTable = /* @__PURE__ */ createTable<DurationPack>((locale, _variant, options) => {
+const durationTable = /* @__PURE__ */ createTable<DurationPack>(/* @__PURE__ */ guarded((locale, _variant, options) => {
   const o: DurationOptions =
     options === undefined ? {} : typeof options === 'string' ? { style: options as DurationStyle } : options
   const style = o.style ?? 'short'
@@ -93,7 +93,7 @@ const durationTable = /* @__PURE__ */ createTable<DurationPack>((locale, _varian
     list: undefined,
     digits: undefined,
   }
-})
+}))
 
 function numberFormat(locale: string, options: Intl.NumberFormatOptions): Intl.NumberFormat {
   return construct((l, o) => new Intl.NumberFormat(l, o), locale, options, badOptions, badLocale('formatDuration'))

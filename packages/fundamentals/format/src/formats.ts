@@ -100,8 +100,8 @@ function checkZone(zone: string | undefined): string {
 /** A bound, non-reactive formatter set: the base locale and time zone are fixed, per-call options still override them. */
 export function createFormatterWith(given: FormatterBase): BoundFormatters {
   const base: FormatterBase = typeof given === 'object' && given !== null ? given : {}
-  const locale = base.locale ?? ''
-  const zone = checkZone(base.timeZone)
+  const locale = localeOf(base)
+  const zone = checkZone(zoneOf(base))
   const L = (o: Parameters<typeof localeOf>[0]): string => localeOf(o) || locale
   const Z = (o: Parameters<typeof zoneOf>[0]): string => zoneOf(o) || zone
 

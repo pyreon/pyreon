@@ -1,6 +1,6 @@
 /** `formatList`: `Intl.ListFormat` with a cached formatter. */
 import type { KindDef } from './formatter'
-import { clearTable, construct, createTable, resolve } from './cache'
+import { clearTable, construct, createTable, guarded, resolve } from './cache'
 import { badLocale, fallbackOf, preset, fallbackText } from './number'
 import { programmerError, warnInvalid } from './warn'
 import type { ListInput, ListOptions, ListPreset } from './types'
@@ -11,7 +11,7 @@ const LIST_PRESETS: Record<ListPreset, Intl.ListFormatOptions> = {
   unit: { type: 'unit' },
 }
 
-const listTable = /* @__PURE__ */ createTable<Intl.ListFormat>((locale, _variant, options) => {
+const listTable = /* @__PURE__ */ createTable<Intl.ListFormat>(/* @__PURE__ */ guarded((locale, _variant, options) => {
   const o: Intl.ListFormatOptions =
     options === undefined ? {} : typeof options === 'string' ? preset(LIST_PRESETS, options, 'formatList') : options
 
@@ -26,7 +26,7 @@ const listTable = /* @__PURE__ */ createTable<Intl.ListFormat>((locale, _variant
       ),
     badLocale('formatList'),
   )
-})
+}))
 
 /**
  * Items become strings: strings stay, nullish entries are skipped, anything

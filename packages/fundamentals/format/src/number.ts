@@ -5,7 +5,7 @@
  * resolve it: core from `options.locale`, the reactive entry from the active
  * locale) so the hot path is one table lookup and one `format()` call.
  */
-import { clearTable, construct, createTable, resolve, tableStats, type Table } from './cache'
+import { clearTable, construct, createTable, guarded, resolve, tableStats, type Table } from './cache'
 import type { Core, KindDef } from './formatter'
 import { describe, programmerError, quote, warnInvalid, warnOnce } from './warn'
 import type {
@@ -54,12 +54,8 @@ export function badLocale(fn: string): (locale: string) => void {
   }
 }
 
-function badOptions(fn: string): (error: unknown) => Error {
-  return (error) =>
-    programmerError(
-      fn,
-      `${error instanceof Error ? error.message : String(error)}. Check the option values: Intl.supportedValuesOf('unit') lists the units.`,
-    )
+function badOptions(fn: string, hint: string): (error: unknown) => Error {
+  return (error) => programmerError(fn, `${error instanceof Error ? error.message : String(error)}. Check the option values${hint}.`)
 }
 
 /** Resolve a string preset against a table of presets (own keys only). */
@@ -71,7 +67,7 @@ export function preset<T extends object>(
   if (Object.hasOwn(presets, name)) return presets[name] as T
   throw programmerError(
     fn,
-    `unknown preset ${quote(name)}. Valid presets: ${Object.keys(presets).join(', ')}. Pass an options object for anything else.`,
+    `unknown preset ${JSON.stringify(name)}. Valid presets: ${Object.keys(presets).join(', ')}. Pass an options object for anything else.`,
   )
 }
 
@@ -93,8 +89,8 @@ function optionsOf<O extends object>(
   return options as O
 }
 
-function make(fn: string, locale: string, options: Opts): Intl.NumberFormat {
-  return construct(newNumberFormat, locale, options, badOptions(fn), badLocale(fn))
+function make(fn: string, locale: string, options: Opts, hint = ''): Intl.NumberFormat {
+  return construct(newNumberFormat, locale, options, badOptions(fn, hint), badLocale(fn))
 }
 
 // ─── formatNumber ────────────────────────────────────────────────────────────
@@ -265,7 +261,7 @@ const unitTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, unit, 
     ...optionsOf<Opts>(options, UNIT_PRESETS, 'formatUnit'),
     style: 'unit',
     unit,
-  }),
+  }, ": Intl.supportedValuesOf('unit') lists the units"),
 )
 
 export function unitIn(
@@ -326,7 +322,7 @@ function unitText(format: Intl.NumberFormat): string {
   return format.formatToParts(5).find((p) => p.type === 'unit')?.value ?? ''
 }
 
-const bytesTable = /* @__PURE__ */ createTable<BytesPack>((locale, _variant, options) => {
+const bytesTable = /* @__PURE__ */ createTable<BytesPack>(/* @__PURE__ */ guarded((locale, _variant, options) => {
   const o = optionsOf<BytesOptions>(options, NO_PRESETS, 'formatBytes') ?? {}
   const digits = o.maximumFractionDigits ?? Math.max(1, o.minimumFractionDigits ?? 0)
   const display: UnitDisplay = o.unitDisplay ?? 'short'
@@ -373,7 +369,7 @@ const bytesTable = /* @__PURE__ */ createTable<BytesPack>((locale, _variant, opt
   }
 
   return { locale, options: base, binary: o.binary === true, digits, display, formats, byteSymbol, bytePre, bytePost, byteNumber, bigSymbols, maxIndex }
-})
+}))
 
 function bytesFormatter(pack: BytesPack, index: number): Intl.NumberFormat {
   const at = index > 5 ? 5 : index
