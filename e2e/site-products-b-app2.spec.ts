@@ -126,7 +126,7 @@ test.describe('format demo', () => {
     await expect(parsed).toHaveText('parseNumber → 1234.5, printed back as 1,234.5')
     await expect(ran).toContainText('14')
     // A formatter built with .from(): the price stays in cents.
-    await expect(value('Price from cents')).toHaveText('€1,234.56')
+    await expect(value('Stored in cents')).toHaveText('€1,234.56')
     // <RelativeTime> starts after mount, posted 57 seconds ago, and flips to "1 minute ago" by itself.
     await expect(value('Posted')).toHaveText('1 minute ago', { timeout: 15_000 })
 
@@ -135,7 +135,7 @@ test.describe('format demo', () => {
     await page.keyboard.press('Enter')
     await expect(demo.getByRole('button', { name: 'Deutsch' })).toHaveAttribute('aria-pressed', 'true')
     await expect(value('Price')).toHaveText('1.234,50\u00a0€')
-    await expect(value('Price from cents')).toHaveText('1.234,56\u00a0€')
+    await expect(value('Stored in cents')).toHaveText('1.234,56\u00a0€')
     await expect(value('Posted')).toHaveText('vor 1 Minute')
     await expect(value('File size')).toHaveText('7,3 MB')
     await expect(value('Calendar date')).toHaveText('18. November 2026')

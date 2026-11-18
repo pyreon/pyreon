@@ -22,6 +22,7 @@ import {
 import { DemoSurface } from '../kit/cards'
 import { DemoGrid, PaperHint } from '../kit/demo'
 import { PaperList, PaperMono, PaperRow, PaperSegmented, PaperText, PaperToggle } from '../kit/demo-parts'
+import { Cluster } from '../kit/primitives/cluster'
 import { Grid } from '../kit/primitives/grid'
 import { Stack } from '../kit/primitives/stack'
 import { Text } from '../kit/primitives/text'
@@ -156,7 +157,7 @@ export default function DemoTime() {
               format={(v) => LANGUAGES[v]}
             />
             <Stack gap={100}>
-              <Grid columns={3} gap={100}>
+              <Cluster alignX="spaceBetween" alignY="center" nowrap gap={100}>
                 <PaperToggle type="button" aria-label="Previous month" onClick={() => move(add(focused(), { months: -1 }))}>
                   ‹
                 </PaperToggle>
@@ -166,7 +167,7 @@ export default function DemoTime() {
                 <PaperToggle type="button" aria-label="Next month" onClick={() => move(add(focused(), { months: 1 }))}>
                   ›
                 </PaperToggle>
-              </Grid>
+              </Cluster>
               <div dir={rtl()}>
                 <Stack gap={50} role="grid" aria-labelledby="time-month">
                   <Grid columns={7} gap={50} role="row">
@@ -260,7 +261,7 @@ export default function DemoTime() {
             <PaperList aria-label="Live clocks">
               <PaperRow tag="li">
                 <PaperText>Now in Prague</PaperText>
-                <PaperMono>{() => (ready() ? toPlainDateTime(nowSecond(), 'Europe/Prague') : dash)}</PaperMono>
+                <PaperMono>{() => (ready() ? toPlainDateTime(Math.floor(nowSecond() / 1000) * 1000, 'Europe/Prague') : dash)}</PaperMono>
               </PaperRow>
               <PaperRow tag="li">
                 <PaperText>Today in Tokyo</PaperText>

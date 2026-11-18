@@ -61,7 +61,8 @@ formatCurrency(1234.5, 'EUR')
 formatDate('2026-11-18', 'long')
 formatDateTime('2026-11-18T23:30:00Z')
 
-const fromCents = currencyFormatter('EUR').from((c: number) => c / 100)
+const fromCents = currencyFormatter('EUR')
+  .from((c: number) => c / 100)
 fromCents(123456)
 <RelativeTime value={postedAt()} />
 parseNumber(typed(), { locale: lang() })`
@@ -135,7 +136,7 @@ export default function DemoFormat() {
 
   const rows: { label: string; value: () => string }[] = [
     { label: 'Price', value: () => formatCurrency(1234.5, 'EUR') },
-    { label: 'Price from cents', value: () => fromCents(123456) },
+    { label: 'Stored in cents', value: () => fromCents(123456) },
     { label: 'Audience', value: () => formatCompact(1_240_000) },
     { label: 'Conversion', value: () => formatPercent(0.427, { maximumFractionDigits: 1 }) },
     { label: 'File size', value: () => formatBytes(7_340_032) },

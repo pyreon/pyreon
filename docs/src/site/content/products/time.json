@@ -6,7 +6,7 @@
  "category": "fundamentals · dates",
  "hero": {
   "title": "A date is a string. Date math should be too.",
-  "emberWord": "string",
+  "emberWord": "string.",
   "lede": "A date is `'2026-11-18'`, a time is `'14:30'`, an instant is the number `Date.now()` returns. `add`, `diff`, `startOf` and `toInstant` are plain functions over those values, with daylight-saving rules that follow Temporal's, and no `Date` object on the calendar path.",
   "install": "bun add @pyreon/time",
   "ctaShort": "Install",
