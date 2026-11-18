@@ -43,7 +43,7 @@ describe('Phase 5b — component-body plain-const capture', () => {
     ).code
     expect(out).toContain('let label = "Total: "')
     // reads @State `base` bare (no `.value` on Swift @Observable)
-    expect(out).toContain('let doubled = base * 2')
+    expect(out).toContain('let doubled = pyreonMul(base, 2)')
   })
 
   it('Swift: numeric const that used to be dropped now emits', () => {
@@ -65,7 +65,7 @@ describe('Phase 5b — component-body plain-const capture', () => {
     ).code
     expect(out).toContain('val label = "Total: "')
     // signal-backed state uses the `by remember` delegate → reads are bare
-    expect(out).toContain('val doubled = base * 2')
+    expect(out).toContain('val doubled = pyreonMul(base, 2L)')
   })
 
   it('Kotlin: numeric const that used to be dropped now emits', () => {

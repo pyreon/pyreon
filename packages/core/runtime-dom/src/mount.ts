@@ -9,6 +9,9 @@ import type {
   VNodeChild,
 } from '@pyreon/core'
 import {
+  _childText,
+  _isStructuralChild,
+  _isVNodeLike,
   dispatchToErrorBoundary,
   EMPTY_PROPS,
   ForSymbol,
@@ -93,6 +96,19 @@ if (process.env.NODE_ENV !== 'production') _devScopeIds = new WeakMap()
  * function call overhead in tight render loops (1000+ calls per list render).
  */
 /**
+ * `_setChild` / `_setChildAt` are emitted as STATEMENTS — the compiled template
+ * never receives a cleanup from them — so what they mount (an accessor's
+ * binding, a VNode's components) is owned by the ambient scope instead: the
+ * component's, or a `<For>` row's collector. Template bindings proper are
+ * owned by the template's cleanup and never register with the scope (see
+ * "Template-owned bindings" in @pyreon/reactivity), so this is the one place
+ * a mount made inside a template bind hands its cleanup to the scope.
+ */
+export function ownByScope(cleanup: () => void): void {
+  if (cleanup !== noop && cleanup !== _noopDispose) _currentScope()?.add(cleanup)
+}
+
+/**
  * Mount a STATIC child (a value, never an accessor) as part of a freshly built
  * element — the same depth window `mountElement` gives its own children, so
  * descendants return effect-only cleanups and their DOM leaves with the
@@ -138,7 +154,8 @@ export function mountChild(
   if (Array.isArray(child)) return mountChildren(child, parent, anchor)
 
   // Nothing to render
-  if (child == null || child === false) return noop
+  // `true` too: booleans render nothing (shared child-text rule, `_childText`).
+  if (child == null || typeof child === 'boolean') return noop
 
   // Primitive — text node (static, no reactive effects to tear down).
   if (typeof child !== 'object') {
@@ -263,14 +280,10 @@ export function mountChild(
     return mountComponent(vnode as VNode & { type: ComponentFn }, parent, anchor)
   }
 
-  if (process.env.NODE_ENV !== 'production' && typeof vnode.type !== 'string') {
-    console.warn(
-      `[Pyreon] Invalid VNode type: expected a string tag or component function, ` +
-        `received ${typeof vnode.type} (${String(vnode.type)}). ` +
-        `This usually means you passed an object or class instead of a component function.`,
-    )
-
-    return noop
+  // One `typeof` per element mount; the helper is off the element path.
+  if (typeof vnode.type !== 'string') {
+    const untyped = mountUntypedChild(vnode, parent, anchor)
+    if (untyped !== null) return untyped
   }
 
   return mountElement(vnode, parent, anchor)
@@ -386,6 +399,37 @@ function nsUriOf(ns: number, tag: string): string | null {
   if (ns === NS_SVG) return SVG_NS
   if (tag === 'svg') return SVG_NS
   if (ns === NS_MATHML || tag === 'math') return MATHML_NS
+
+
+  return null
+}
+
+/**
+ * A child object whose `type` is not a tag string (and not a component).
+ * Not a VNode at all (a `Date`, a plain object): TEXT, by the shared child-text
+ * rule (`_childText` in @pyreon/core), as SSR and the compiled path render it;
+ * this used to render nothing in dev and an `<undefined>` element in
+ * production. A VNode with an invalid type warns in dev and renders nothing;
+ * in production it returns `null` and falls through to `mountElement`, as
+ * before.
+ */
+function mountUntypedChild(vnode: VNode, parent: Node, anchor: Node | null): Cleanup | null {
+  if (!_isVNodeLike(vnode)) {
+    const tn = document.createTextNode(_childText(vnode))
+    parent.insertBefore(tn, anchor)
+    if (_elementDepth > 0) return noop
+
+    return () => detachNode(tn)
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(
+      `[Pyreon] Invalid VNode type: expected a string tag or component function, ` +
+        `received ${typeof vnode.type} (${String(vnode.type)}). ` +
+        `This usually means you passed an object or class instead of a component function.`,
+    )
+
+    return noop
+  }
 
   return null
 }
@@ -1060,11 +1104,12 @@ export interface PolyTextCore {
 
 /**
  * Whether a poly text binding renders `v` as TEXT (in place) rather than as a
- * mounted subtree. `null`/`undefined`/`false` render empty; any other
- * non-object, non-function value is stringified.
+ * mounted subtree.
  */
 export function isPolyTextish(v: unknown): boolean {
-  return v == null || v === false || (typeof v !== 'object' && typeof v !== 'function')
+  // The shared child-text rule: a primitive, or an object that is not
+  // structural (an array of primitives, a `Date`).
+  return (typeof v !== 'object' && typeof v !== 'function') || !_isStructuralChild(v)
 }
 
 /**
@@ -1076,7 +1121,9 @@ export function isPolyTextish(v: unknown): boolean {
  * is left untouched). Returns the new `written`.
  */
 export function writePolyText(text: Text, v: VNodeChild, written: string | null): string {
-  const next = v == null || v === false ? '' : String(v as string | number | boolean)
+  // An array of strings writes ONE text node holding their concatenation, the
+  // characters SSR renders, so an adopted server text node is kept as-is.
+  const next = typeof v === 'string' ? v : _childText(v)
   if (written === null) {
     written = text.data
     // Dev: inside a compiled template's ADOPTION bind this is server
@@ -1328,7 +1375,7 @@ function mountAccessorChild(
       // unconditional `text.data = String(v)` rendered "[object Object]" for
       // the VNode arm.
       if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-        written = v === false ? '' : String(v)
+        written = typeof v === 'boolean' ? '' : String(v)
         text = document.createTextNode(written)
         parent.insertBefore(text, anchor)
         _releaseRun(run)

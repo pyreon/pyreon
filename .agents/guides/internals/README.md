@@ -41,6 +41,8 @@ A `{value}` child is polymorphic: a `VNode`/`VNode[]` mounts, a primitive sets t
 
 `_bindText` upgrades permanently to a subtree mount the first time its value is a VNode, NativeItem or VNode array; before that it writes `.data` only.
 
+**The child-text rule** (`@pyreon/core` `child-text.ts`) is shared by every renderer: `h()` mount, the compiled setters and bindings, `_fuse`, `renderToString`/`renderToStream`/`_esc`, and hydration. A value is structural (mounted) when it is a VNode/NativeItem, a function, or an array holding one at any depth (`_isStructuralChild`); everything else is text (`_childText`): `null`/`undefined`/booleans render nothing, strings/numbers/bigints their `String()`, an array its items concatenated (`['a','b']` → `ab`, one text node on the compiled path), any other object its `String()`. Sinks never let the DOM coerce (`textContent = 0` differs between happy-dom and Chromium). Locked by `child-text-parity.test.tsx` and its `.browser` twin.
+
 ### Signals and props
 
 Expression slices use lexical signal scopes: parameters and named function/class bindings shadow only their scope, block/catch/loop bindings are restored on exit, and `var` remains function scoped. Native and JavaScript collectors visit class fields, methods and static blocks, while excluding declaration names and noncomputed property keys. Computed object keys participate in prop-derived inlining just like values.
@@ -228,7 +230,7 @@ The rule: hydration keeps server nodes wherever the client renders the same thin
 
 ### Hydrating compiled templates
 
-`_tpl` adopts server nodes at its cursor; verification is in `hydration-plan.ts`. Relaxations are declared by the compiler on the element, never inferred:
+`_tpl` adopts server nodes at its cursor; verification is in `hydration-plan.ts`. Its build is deferred while `_hydrationActive` is set: during the synchronous walk, and while an async component the walk met is still pending (`_holdTplDeferral`, released when its `.then` has hydrated the range, on rejection and on unmount), because the body's code after an `await` builds the templates that `.then` adopts (#4353). Relaxations are declared by the compiler on the element, never inferred:
 
 - `data-pyreon-hole`: a trailing mount hole for absorbed component children.
 - **A text slot holding server ELEMENTS** (#4385, `parked-text.ts`). A polymorphic text binding (`bindPolymorphicText`, `_bindText`, `_bindProp`) resolves its slot to one text node, but the server renders a structural value (`['a ', <Code/>]`) as elements. Sole slot (template `' '`): the verifier admits it (`TplSig.soleTexts`), inserts an empty placeholder text as the element's first child and parks it with `open = null`; such a row records no replay plan. Trailing or mid slot: `_textSlot` parks a placeholder against the range's open marker (a parked mid range included) instead of clearing the range. The binding that receives a parked placeholder removes it and hands its accessor to `hydrateMountSlot`, which adopts the content as a live slot and reports real divergences. A binding that writes `.data` directly (selector ternary, `_bindDirect` method call) never consumes one: `buildTpl` sweeps unconsumed placeholders after the bind (server content cleared, rewrite reported in dev). `_parkedPending` keeps every other binding at one integer compare. Not covered: a STATIC mid `<!>` slot (`_setChildAt`, `_mountSlot` with a non-accessor value) has no SSR range at all, so the verifier still refuses it (needs an SSR emit change).

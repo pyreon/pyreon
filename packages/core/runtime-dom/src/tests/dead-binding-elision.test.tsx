@@ -7,7 +7,7 @@
  * that reads a signal stays live, and a first value that MOUNTED a subtree
  * keeps a disposer that removes it.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import {
   _fuse,
@@ -132,14 +132,14 @@ describe('_bindProp on a data property', () => {
     expect(empty).toBe(true)
   })
 
-  it('coerces like the poly core: null / undefined / false → empty, numbers and true → String()', () => {
+  it('coerces like the poly core: null / undefined / booleans → empty, numbers → String()', () => {
     const el = document.createElement('span')
     for (const [v, out] of [
       [null, ''],
       [undefined, ''],
       [false, ''],
       [0, '0'],
-      [true, 'true'],
+      [true, ''],
       ['', ''],
     ] as const) {
       const t = textIn(el)

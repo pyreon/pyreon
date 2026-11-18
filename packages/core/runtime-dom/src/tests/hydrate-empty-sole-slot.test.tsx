@@ -22,7 +22,7 @@
  * `console.error` from `hydrateComponent`'s catch, then `expected 'off' to be
  * 'on'`) while the non-empty control stays green.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, h } from '@pyreon/core'
 import { _bind, renderEffect, signal } from '@pyreon/reactivity'

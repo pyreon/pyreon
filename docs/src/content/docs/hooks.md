@@ -2343,6 +2343,24 @@ onMount(() => crash.start())
 
 On the web, forward reports to a vendor (Sentry, your own endpoint) with `setCrashTransport(send)` from `@pyreon/hooks`. `send(report: string)` is called with the rehydrated report on `start()` and with each recorded error; pass `undefined` to unset it. It mirrors the native crash-transport registry.
 
+`lastCrash` (and what the transport receives) is a JSON-encoded `CrashReport`, the same object on web, iOS and Android:
+
+```ts
+interface CrashReport {
+  platform: 'web' | 'ios' | 'macos' | 'android'
+  message: string
+  stack: string            // minified / obfuscated in a native release build
+  breadcrumbs: string[]    // oldest first, at most 32
+  timestamp: string        // ISO-8601
+  // native only — which build crashed:
+  build?: { appId: string; version: string; buildNumber: string; mappingId?: string }
+  image?: { name: string; uuid: string; loadAddress: string; arch: string } // iOS
+  addresses?: string[]     // iOS: raw return addresses (hex)
+}
+```
+
+A native release stack is unreadable by design (R8 renames classes; an iOS release binary reports addresses). The `build` / `image` fields name the exact build, so `pyreon-native symbolicate crash.json --symbols=symbols` can pick that build's retained R8 `mapping.txt` or dSYM and print the original classes, methods and lines — see [Readable crash stacks](/docs/native-packages#readable-crash-stacks-symbolicate).
+
 ## API Reference
 
 | Hook                | Signature                                                      | Description                                         |

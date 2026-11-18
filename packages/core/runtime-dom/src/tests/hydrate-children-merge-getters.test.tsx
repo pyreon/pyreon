@@ -18,7 +18,7 @@
  * Bisect: restoring the spread in `hydrateComponent` fails the two `h()`
  * hydrate specs with `expected '/a' to be '/b'`.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, _fuse, _pp, _rp, _rpd, _wrapSpread, h } from '@pyreon/core'
 import { _bind, renderEffect, signal } from '@pyreon/reactivity'

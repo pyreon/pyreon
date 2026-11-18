@@ -56,7 +56,7 @@ describe('store v2 — Swift', () => {
     expect(out).toContain('func addTask(_ title: String)')
     expect(out).toContain('tasks = (tasks + [Task(id: nextId, title: title, done: false)])')
     // `.update` lowering composes inside store method bodies.
-    expect(out).toContain('nextId = nextId + 1')
+    expect(out).toContain('nextId = pyreonAdd(nextId, 1)')
     expect(out).toContain('func clear() { tasks = [] }')
     // The broken v1 passthrough must be gone.
     expect(out).not.toContain('defineStore(')

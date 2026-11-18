@@ -5,3 +5,5 @@ generated/*
 DerivedData/
 build/
 node_modules/
+# Retained release dSYMs (scripts/archive.sh) — archive with each release.
+symbols/

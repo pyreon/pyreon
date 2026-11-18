@@ -38,12 +38,16 @@ public enum PyreonJSON {
 
     /** The web's `JSON.stringify(value)`, byte for byte. */
     public static func stringify<T: Encodable>(_ value: T) -> String {
+        (try? serialize(value)) ?? "null"
+    }
+
+    /**
+     * `stringify` for a caller that has to know the encode failed (a value persisted by `PyreonStorage` keeps the
+     * old one rather than writing `null`): the same bytes, or the error the value's `encode(to:)` threw.
+     */
+    public static func serialize<T: Encodable>(_ value: T) throws -> String {
         let root = PyreonJSSlot()
-        do {
-            try value.encode(to: PyreonJSEncoder(slot: root, codingPath: []))
-        } catch {
-            return "null"
-        }
+        try value.encode(to: PyreonJSEncoder(slot: root, codingPath: []))
         var out = ""
         root.write(into: &out)
         return out
@@ -89,8 +93,17 @@ public enum PyreonJSON {
         return d
     }
 
+    /**
+     * The web's `JSON.parse` keeps the LAST value of a repeated key (at the key's first position); `JSONDecoder`
+     * keeps the first. So the text is scanned first, and a document that repeats a key is decoded with every earlier
+     * occurrence removed — the same bytes otherwise, so positions, errors and the key order are unchanged.
+     */
     public static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        try decoder(for: data).decode(T.self, from: data)
+        let order = PyreonJSONKeyOrder(data)
+        let d = JSONDecoder()
+        let lookup: ([CodingKey]) -> [String]? = { order.keys(at: $0) }
+        d.userInfo[pyreonJSONKeyOrderInfo] = lookup
+        return try d.decode(T.self, from: order.lastValueWins())
     }
 
     // ─── ECMAScript leaf formatting ─────────────────────────────────────────
@@ -377,19 +390,44 @@ let pyreonJSONKeyOrderInfo = CodingUserInfoKey(rawValue: "pyreon.jsonKeyOrder")!
 
 /// Every object's keys in document order, indexed by coding path; built on the first lookup.
 final class PyreonJSONKeyOrder {
+    private let data: Data
     private let bytes: [UInt8]
     private var index: [String: [String]]?
+    /// The byte ranges of members a later repeat of their key overrides (`{"a":1,"a":2}` → `"a":1,`).
+    private var overridden: [Range<Int>] = []
     private var i = 0
 
-    init(_ data: Data) { bytes = [UInt8](data) }
+    init(_ data: Data) {
+        self.data = data
+        bytes = [UInt8](data)
+    }
+
+    private func scan() {
+        guard index == nil else { return }
+        index = [:]
+        i = 0
+        scanValue(path: "")
+    }
 
     func keys(at path: [CodingKey]) -> [String]? {
-        if index == nil {
-            index = [:]
-            i = 0
-            scanValue(path: "")
-        }
+        scan()
         return index?[PyreonJSONKeyOrder.pathKey(path)]
+    }
+
+    /// The document with every overridden member removed, so a decoder sees each key once, with its LAST value.
+    func lastValueWins() -> Data {
+        scan()
+        if overridden.isEmpty { return data }
+        var out: [UInt8] = []
+        out.reserveCapacity(bytes.count)
+        var at = 0
+        // An overridden member can contain another (its own nested repeat); the outer range covers it.
+        for r in overridden.sorted(by: { $0.lowerBound < $1.lowerBound }) where r.lowerBound >= at {
+            out.append(contentsOf: bytes[at..<r.lowerBound])
+            at = r.upperBound
+        }
+        out.append(contentsOf: bytes[at...])
+        return Data(out)
     }
 
     /// A coding path as the scanner spells it: `[3]` for an array element, `.name` (escaped) for an object member.
@@ -416,13 +454,24 @@ final class PyreonJSONKeyOrder {
         case 0x7B: // {
             i += 1
             var keys: [String] = []
+            // Each member's key and where it starts; a member runs to the start of the next one.
+            var members: [(key: String, start: Int)] = []
+            var latest: [String: Int] = [:]
             skipSpace()
             if i < bytes.count, bytes[i] == 0x7D { i += 1; index?[path] = keys; return }
             while i < bytes.count {
                 skipSpace()
+                let start = i
                 guard i < bytes.count, bytes[i] == 0x22, let key = scanString() else { return }
-                // A repeated key keeps its FIRST position (the value is the decoder's: the last one).
-                if !keys.contains(key) { keys.append(key) }
+                // A repeated key keeps its FIRST position and its LAST value: the earlier member is dropped from
+                // the text the decoder reads (it is followed by a comma, since this member comes after it).
+                members.append((key, start))
+                if let earlier = latest[key] {
+                    overridden.append(members[earlier].start..<members[earlier + 1].start)
+                } else {
+                    keys.append(key)
+                }
+                latest[key] = members.count - 1
                 skipSpace()
                 guard i < bytes.count, bytes[i] == 0x3A else { return }
                 i += 1

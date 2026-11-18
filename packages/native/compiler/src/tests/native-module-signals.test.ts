@@ -35,8 +35,8 @@ describe('module-scope signals', () => {
     expect(code).toContain('final class PyreonModuleState {\n    static let shared = PyreonModuleState()')
     expect(code).toContain('    var count: Int = 0')
     expect(code).toContain('    var todos: [Todo] = []')
-    expect(code).toContain('    var doubled: Int { PyreonModuleState.shared.count * 2 }')
-    expect(code).toContain('PyreonModuleState.shared.count = PyreonModuleState.shared.count + 1')
+    expect(code).toContain('    var doubled: Int { pyreonMul(PyreonModuleState.shared.count, 2) }')
+    expect(code).toContain('PyreonModuleState.shared.count = pyreonAdd(PyreonModuleState.shared.count, 1)')
     expect(code).toContain('Text(verbatim: "\\(PyreonModuleState.shared.doubled)")')
     // B's own `count` shadows the module state; its `todos` does not.
     expect(code).toContain('@State private var count: String = "local"')
@@ -48,8 +48,8 @@ describe('module-scope signals', () => {
   it('Kotlin: one object with mutableStateOf; the same reads and writes', () => {
     const { code, warnings } = emit(app, 'kotlin')
     expect(code).toContain('object PyreonModuleState {\n    var count by mutableStateOf<Long>(0L)')
-    expect(code).toContain('    val doubled: Long get() = PyreonModuleState.count * 2L')
-    expect(code).toContain('PyreonModuleState.count = PyreonModuleState.count + 1L')
+    expect(code).toContain('    val doubled: Long get() = pyreonMul(PyreonModuleState.count, 2L)')
+    expect(code).toContain('PyreonModuleState.count = pyreonAdd(PyreonModuleState.count, 1L)')
     expect(code).toContain('var count by remember { mutableStateOf("local") }')
     expect(warnings).toEqual([])
   })

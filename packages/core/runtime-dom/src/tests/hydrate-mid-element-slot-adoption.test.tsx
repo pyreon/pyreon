@@ -20,7 +20,7 @@
  * ADOPT spec on retention (`expected 0 to be N`) while the DOM assertions
  * still pass — the rebuild is correct, just not an adoption.
  */
-import { _dispose2, _dispose3, _dispose4, _disposeN } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import { _fuse, _lc, For, Fragment, h } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
