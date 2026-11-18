@@ -9,6 +9,6 @@ New package `@pyreon/format` (Experimental): locale-aware formatting and parsing
 - **Reactive without ceremony:** `@pyreon/format` reads the active locale and time zone (`locale`, `setLocale`, `provideLocale`, `timeZone`, `setTimeZone`, `provideTimeZone`), so a formatter in an effect, computed or JSX binding updates when they change. `provideLocale` is request-scoped on the server.
 - **Calendar dates never shift:** a date-only string (`2026-11-18`) or a date-time without offset formats as that day or wall-clock time in every time zone.
 - **Never throws on data:** nullish input returns the `fallback`; invalid input returns it with a dev-only `[Pyreon]` warning. A bad option or unknown unit throws a `[Pyreon]` error that says how to fix it.
-- **Fast:** every `Intl.*Format` is cached in three bounded tiers (no options, preset string, options object by identity then structural key).
+- **Cached:** every `Intl.*Format` is cached in three bounded tiers (no options, preset string, options object by identity then structural key).
 - **Entries:** `@pyreon/format/core` (pure, no `@pyreon/*` import), `@pyreon/format` (reactive, plus `defineFormats`) and `@pyreon/format/components` (`<Num>`, `<DateTime>`).
 - `defineFormats` names a format set with inferred keys and typed overrides; `createFormatter` gives a bound non-reactive set for servers, scripts and tests.

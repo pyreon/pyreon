@@ -276,7 +276,7 @@ Formatters are cached in one bounded table per kind, keyed locale, then variant 
 - Hoist option objects and do not mutate them after the first call.
 - Every table is bounded (locales, variants, presets and option shapes), so request-derived locales and generated options cannot grow memory.
 
-The package ships a benchmark (`bench/format-bench.ts`); see the benchmark record for the measured numbers.
+The package ships benchmarks (`bench/format-rivals.ts`, `bench/format-reactive.ts`, `bench/format-size.ts`). No measured numbers are published yet.
 
 ## Multiplatform
 

@@ -110,7 +110,7 @@ import { Num, DateTime } from '@pyreon/format/components'
 
 ## Performance
 
-`Intl.*Format` construction costs microseconds; `format()` on a cached instance is the only real work on the hot path. Tiers: no options (the locale's default formatter), a preset string, an options object (by identity for hoisted objects, then by a structural key for inline literals). Every table is bounded. Hoist option objects and do not mutate them after the first call. Measurements and the bench: see `bench/format-bench.ts`.
+`Intl.*Format` construction costs microseconds; `format()` on a cached instance is the only real work on the hot path. Tiers: no options (the locale's default formatter), a preset string, an options object (by identity for hoisted objects, then by a structural key for inline literals). Every table is bounded. Hoist option objects and do not mutate them after the first call. Benchmarks (`bench/format-rivals.ts`, `bench/format-reactive.ts`, `bench/format-size.ts`) are runnable; no measured numbers are published yet.
 
 ## SSR
 
