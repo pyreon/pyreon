@@ -9,12 +9,18 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { runtimeDomRenderToMount } from './runtime-dom-render-to-mount'
 import type { Codemod } from './types'
+import { urlStateDebounceMs } from './url-state-debounce-ms'
 import { zeroPlaceholderColor } from './zero-placeholder-color'
 import { zeroRemoveViteOption } from './zero-remove-vite-option'
 
 export type { Codemod } from './types'
 
-export const CODEMODS: readonly Codemod[] = [zeroRemoveViteOption, zeroPlaceholderColor, runtimeDomRenderToMount]
+export const CODEMODS: readonly Codemod[] = [
+  zeroRemoveViteOption,
+  zeroPlaceholderColor,
+  urlStateDebounceMs,
+  runtimeDomRenderToMount,
+]
 
 function versionKey(v: string): number[] {
   return (/^(\d+)\.(\d+)\.(\d+)/.exec(v) ?? [0, 0, 0, 0]).slice(1).map(Number)
