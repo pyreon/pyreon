@@ -138,11 +138,11 @@ Found 5 issues:
 Reactivity map for UserList.tsx — 1 live · 2 baked-static · 3 footguns
 
   10 |       <h2>{title}</h2>
-                  ^ ○ baked once — baked once into the DOM — never re-renders (no signal read here)
+                  ^ ○ baked once into the DOM — never re-renders (no signal read here)
   11 |       <input value={query()} onChange={(e) => query(e.target.value)} />
-                           ^ ◆ live — live — re-evaluates whenever its signals change
+                           ^ ◆ live — re-evaluates whenever its signals change
   12 |       <For each={visible}>{(u) => <li>{u.name}</li>}</For>
-                                              ^ ○ baked once — baked once into the DOM — never re-renders (no signal read here)
+                                              ^ ○ baked once into the DOM — never re-renders (no signal read here)
 ```
 
 The full response also marks the three footguns inline. This is the compiler's own analysis, not a second heuristic: `analyzeReactivity` in `@pyreon/compiler` runs the same reactive-or-static decision the JSX transform uses to choose between a one-time write and a subscription, and both compiler backends (Rust and JavaScript) emit byte-identical verdicts. `{title}` is static because `title` was destructured. The heading will never change, and the tool tells you before anything runs.

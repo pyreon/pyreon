@@ -177,12 +177,20 @@ export function analyzeReactivity(
   return { findings, spans }
 }
 
+/**
+ * The mark in front of each finding. A structural finding's `detail` already
+ * names its kind ("live — …", "live prop — …", "baked once into the DOM — …",
+ * "static — hoisted once …"), because it is also read on its own (the LSP
+ * hint tooltip, LPIH). So those kinds get only a glyph: a word badge printed
+ * `◆ live — live — this text re-renders…` (#4307). A footgun's detail is
+ * the detector's message, which does not say what it is, so it keeps the word.
+ */
 const KIND_BADGE: Record<ReactivityFindingKind, string> = {
-  reactive: '◆ live',
-  'reactive-prop': '◆ live prop',
-  'reactive-attr': '◆ live attr',
-  'static-text': '○ baked once',
-  'hoisted-static': '○ hoisted static',
+  reactive: '◆',
+  'reactive-prop': '◆',
+  'reactive-attr': '◆',
+  'static-text': '○',
+  'hoisted-static': '○',
   footgun: '⚠ footgun',
 }
 
@@ -212,7 +220,8 @@ export function formatReactivityLens(
       for (const f of fs) {
         const pad = ' '.repeat(7 + f.column)
         const tag = f.code ? ` [${f.code}]` : ''
-        out.push(`${pad}^ ${KIND_BADGE[f.kind]}${tag} — ${f.detail}`)
+        const sep = f.kind === 'footgun' ? ' — ' : ' '
+        out.push(`${pad}^ ${KIND_BADGE[f.kind]}${tag}${sep}${f.detail}`)
       }
     }
   }
