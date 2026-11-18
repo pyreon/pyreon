@@ -12,8 +12,8 @@ import type { SankeyHit } from './sankey-hit'
 import type { Double } from './types'
 
 export interface SankeyChartProps extends CanvasHostProps {
-  nodes: SankeyNode[] | (() => SankeyNode[])
-  links: SankeyLink[] | (() => SankeyLink[])
+  nodes: readonly SankeyNode[] | (() => readonly SankeyNode[])
+  links: readonly SankeyLink[] | (() => readonly SankeyLink[])
   /** Space kept for labels on both sides; default 80. */
   gutter?: Double
   sankey?: SankeyOptions
@@ -26,8 +26,8 @@ export interface SankeyChartProps extends CanvasHostProps {
 }
 
 export function SankeyChart(props: SankeyChartProps): VNode {
-  const readNodes = (): SankeyNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
-  const readLinks = (): SankeyLink[] => (typeof props.links === 'function' ? props.links() : props.links)
+  const readNodes = (): readonly SankeyNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
+  const readLinks = (): readonly SankeyLink[] => (typeof props.links === 'function' ? props.links() : props.links)
   const opts = (t: ChartTheme): SankeyOptions => ({ palette: t.palette, labelColor: t.label, ...props.sankey })
   return canvasHost<SankeyLayout>({
     props,
