@@ -141,7 +141,14 @@ export function createUploader(options: UploaderOptions): Uploader {
     return added
   }
 
-  const dispose = (): void => disposeQ(q, { offline: onOffline, online: onOnline })
+  const dispose = (): void => {
+    if (q.listening && typeof window !== 'undefined') {
+      window.removeEventListener('offline', onOffline)
+      window.removeEventListener('online', onOnline)
+    }
+    q.listening = false
+    disposeQ(q)
+  }
   const progress = computed(() => sumProgress(q.list().map((f) => f.progress())))
   const status = computed((): 'idle' | 'uploading' | 'paused' | 'done' | 'failed' => {
     const states = q.list().map((f) => f.status())

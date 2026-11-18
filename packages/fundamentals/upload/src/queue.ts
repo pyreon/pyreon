@@ -1,4 +1,3 @@
-// pyreon-lint-disable-file pyreon/prefer-isserver -- the listeners are removed only where window exists
 /** The engine behind `createUploader`: state in one object, behaviour in small functions that take it. */
 import { batch, signal, type Signal } from '@pyreon/reactivity'
 import { defaultBackoff, toUploadError, uploadError } from './errors'
@@ -483,7 +482,7 @@ export function retryItems(q: Q, id?: string): void {
   pump(q)
 }
 
-export function disposeQ(q: Q, listeners: { offline(): void; online(): void }): void {
+export function disposeQ(q: Q): void {
   if (q.disposed) return
   q.disposed = true
   for (const it of all(q)) {
@@ -495,9 +494,4 @@ export function disposeQ(q: Q, listeners: { offline(): void; online(): void }): 
   q.wake = null
   if (q.frame !== null) q.frame()
   q.frame = null
-  if (q.listening && typeof window !== 'undefined') {
-    window.removeEventListener('offline', listeners.offline)
-    window.removeEventListener('online', listeners.online)
-  }
-  q.listening = false
 }
