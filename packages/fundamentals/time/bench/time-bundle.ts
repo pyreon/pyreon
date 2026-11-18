@@ -36,12 +36,13 @@ for (const arm of ARMS) {
   await Bun.write(entry, `import { ${arm.fn} } from './arms/${arm.file}'\nconsole.log(Object.values(${arm.fn}()))\n`)
   const result = await Bun.build({ entrypoints: [entry], minify: true, target: 'browser', define: { 'process.env.NODE_ENV': '"production"' } })
 
-  if (!result.success) throw new Error(`[bundle] ${arm.id} failed: ${result.logs.join('\n')}`)
+  if (!result.success) throw new Error(`[Pyreon] bench: bundle ${arm.id} failed: ${result.logs.join('\n')}`)
   const code = await result.outputs[0]!.text()
 
   rows.push({ label: arm.label, raw: code.length, gzip: gzipSync(code, { level: 9 }).length })
   await Bun.file(entry).delete()
 }
+
 console.log(`bun ${Bun.version} · ${new Date().toISOString().slice(0, 10)} · versions: ${ARMS.filter((a) => a.pkg).map((a) => `${a.pkg}@${versionOf(a.pkg!)}`).join(' · ')}`)
 console.log('| arm | minified | gzip -9 |\n| --- | ---: | ---: |')
 for (const r of [...rows].sort((a, b) => a.gzip - b.gzip)) console.log(`| ${r.label} | ${(r.raw / 1024).toFixed(1)} kB | ${(r.gzip / 1024).toFixed(2)} kB |`)

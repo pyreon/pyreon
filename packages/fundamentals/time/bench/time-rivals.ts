@@ -36,6 +36,7 @@ import { temporalApi } from './arms/temporal'
 import { type Api, DATES, INSTANTS, MONTH_ENDS, MONTHS, PAIRS, WALLS } from './arms/common'
 
 type Id = 'pyreon' | 'date' | 'temporal' | 'date-fns' | 'dayjs' | 'luxon'
+
 const ARMS: readonly Arm<Id>[] = [
   { id: 'pyreon', label: 'Pyreon' },
   { id: 'date', label: 'Date (hand-written UTC code)', ranking: false },
@@ -71,7 +72,7 @@ function gate(): void {
   for (const id of ARMS.map((a) => a.id)) {
     const api = build(id)
     const bad = (op: string, input: unknown, got: unknown, want: unknown): never => {
-      throw new Error(`[correctness] ${id} ${op}(${JSON.stringify(input)}): got ${JSON.stringify(got)}, Temporal says ${JSON.stringify(want)}`)
+      throw new Error(`[Pyreon] bench correctness: ${id} ${op}(${JSON.stringify(input)}): got ${JSON.stringify(got)}, Temporal says ${JSON.stringify(want)}`)
     }
     const check = <T>(op: string, input: unknown, got: T, want: T): void => {
       if (JSON.stringify(got) !== JSON.stringify(want)) bad(op, input, got, want)

@@ -62,9 +62,15 @@ function addDate(fn: string, value: string): PlainDate {
   }
   const q = shiftMonths(fn, p)
 
-  if (dur[W] === 0 && dur[D] === 0) return q === p ? (value as PlainDate) : writeYMD(q >> 9, (q >> 5) & 15, q & 31)
+  const days = dur[W]! * 7 + dur[D]!
 
-  return writeDay(checkDay(fn, daysFromCivil(q >> 9, (q >> 5) & 15, q & 31) + dur[W]! * 7 + dur[D]!))
+  if (days === 0) return q === p ? (value as PlainDate) : writeYMD(q >> 9, (q >> 5) & 15, q & 31)
+  const inMonth = (q & 31) + days
+
+  // The common case stays inside the month: no round trip through epoch days.
+  if (inMonth >= 1 && inMonth <= daysIn(q >> 9, (q >> 5) & 15)) return writeYMD(q >> 9, (q >> 5) & 15, inMonth)
+
+  return writeDay(checkDay(fn, daysFromCivil(q >> 9, (q >> 5) & 15, q & 31) + days))
 }
 
 function addDateTime(fn: string, value: string): PlainDateTime {

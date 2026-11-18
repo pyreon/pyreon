@@ -32,7 +32,7 @@ describe('bounded caches (leak class C): what evicts, and the proof', () => {
   it('offset slots that collide overwrite each other and stay correct', () => {
     clearZoneCache()
     const a = Date.UTC(2026, 0, 1)
-    const b = a + 600_000 * 32 * 7 // lands in the same slot
+    const b = a + 600_000 * 127 * 7 // lands in the same slot
     const c = Date.UTC(2026, 6, 1)
 
     for (let round = 0; round < 3; round++) {

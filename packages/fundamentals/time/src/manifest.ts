@@ -573,7 +573,7 @@ setClock(null)`,
     },
     {
       label: 'Time zones',
-      note: 'Offsets come from `Intl.DateTimeFormat`, so results follow the engine\'s tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 32-slot offset table. Zone-taking functions require an explicit `zone`; the active time zone arrives with the format integration.',
+      note: 'Offsets come from `Intl.DateTimeFormat`, so results follow the engine\'s tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 127-slot offset table. Zone-taking functions require an explicit `zone`; the active time zone arrives with the format integration.',
     },
     {
       label: 'Month arithmetic',
