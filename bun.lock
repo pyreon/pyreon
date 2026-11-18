@@ -2093,6 +2093,8 @@
       "devDependencies": {
         "@date-fns/tz": "1.5.0",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/rx": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@types/luxon": "3.7.6",

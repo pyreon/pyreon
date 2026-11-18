@@ -33,15 +33,21 @@ export type Unit = DateUnit | TimeUnit
  * rejected, as in Temporal). Use `subtract` to go backwards rather than negating by hand.
  */
 export interface Duration {
-  years?: number
-  months?: number
-  weeks?: number
-  days?: number
-  hours?: number
-  minutes?: number
-  seconds?: number
-  milliseconds?: number
+  years?: number | undefined
+  months?: number | undefined
+  weeks?: number | undefined
+  days?: number | undefined
+  hours?: number | undefined
+  minutes?: number | undefined
+  seconds?: number | undefined
+  milliseconds?: number | undefined
 }
+
+/** A value-to-same-value function: what the value-last forms in `@pyreon/time/fp` return (`add({ months: 1 })`). */
+export type Adjuster<T> = (value: T) => T
+
+/** A value-to-other-value function: `toPlainDate(zone)`, `diffFrom(base, 'day')`. */
+export type Mapper<A, B> = (value: A) => B
 
 /** How a wall-clock time that falls in a DST gap or overlap picks an instant (Temporal's `disambiguation`). */
 export type Disambiguation = 'compatible' | 'earlier' | 'later' | 'reject'

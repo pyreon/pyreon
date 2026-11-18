@@ -1,9 +1,11 @@
 export type {
+  Adjuster,
   Comparable,
   DateUnit,
   Disambiguation,
   Duration,
   Instant,
+  Mapper,
   PlainDate,
   PlainDateTime,
   PlainTime,
@@ -25,6 +27,7 @@ export { dayOfWeek, dayOfYear, daysInMonth, eachDay, isLeapYear, monthGrid, week
 export { clamp, compare, isAfter, isBefore, isSame, max, min } from './compare'
 export { between, diff } from './diff'
 export { toMilliseconds } from './duration'
+export { inZone, type ZonedToolkit } from './zoned'
 export { fromDate, localZone, parseInstant, toDate } from './interop'
 export { dateParts, isPlainDate, isPlainDateTime, isPlainTime, isPlainYearMonth, plainDate, plainTime, plainYearMonth, timeParts } from './text'
 export { now, today } from './system'

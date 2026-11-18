@@ -152,7 +152,7 @@ function regionOf(locale: string): string {
 /** The week data table used when the platform has none. Exported for tests, not part of the public API. */
 export function fallbackWeekInfo(region: string): WeekInfo {
   const firstDay: Weekday = SUNDAY_FIRST.has(region) ? 7 : SATURDAY_FIRST.has(region) ? 6 : 1
-  return { firstDay, weekend: fallbackWeekend(region) }
+  return { firstDay, weekend: Object.freeze(fallbackWeekend(region).slice() as Weekday[]) }
 }
 
 function fallbackWeekend(region: string): readonly Weekday[] {

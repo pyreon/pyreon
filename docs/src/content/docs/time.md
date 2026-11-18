@@ -31,7 +31,7 @@ yarn add @pyreon/time
 
 :::
 
-`@pyreon/time/core` has no dependencies and works anywhere JavaScript runs. `@pyreon/time` re-exports all of it and adds a pinnable clock (`setClock`, `now`, `today`).
+`@pyreon/time/core` has no dependencies and works anywhere JavaScript runs. `@pyreon/time` re-exports all of it and adds a pinnable clock (`setClock`, `now`, `today`). `@pyreon/time/fp` has the value-last forms of every operation and `pipe` (see [Composing operations](#composing-operations)).
 
 ## Quick start
 
@@ -205,6 +205,98 @@ setClock(null) // back to the system clock
 ```
 
 `setClock` is process-wide state: do not call it per request on a server.
+
+## Composing operations
+
+Every operation above takes the value first. `@pyreon/time/fp` has the value-last form of each one, so an operation can be built once, named, passed to `map`, `filter` and `groupBy`, and chained:
+
+```ts
+// @check
+import { add, endOf, isBetween, pipe, startOf } from '@pyreon/time/fp'
+import type { PlainDate } from '@pyreon/time/core'
+
+const nextMonthStart = pipe(add({ months: 1 }), startOf('month'))
+const dates: PlainDate[] = ['2026-01-31', '2026-11-18']
+
+dates.map(nextMonthStart) // ['2026-02-01', '2026-12-01']
+
+const inFebruary = isBetween('2026-02-01', '2026-02-28')
+dates.filter(inFebruary) // []
+```
+
+An `Adjuster<T>` is a plain `(value: T) => T` and a `Mapper<A, B>` a plain `(value: A) => B`; there are no classes and nothing to unwrap. The fp forms are thin wrappers over core, each is tree-shakeable on its own, and a built adjuster costs one extra function call per use, so build it once (module scope, not inside a loop). `add`, `subtract`, `startOf` and `endOf` keep the input's shape in the types. Binary questions put the value last so they read inside `filter` and `map`: `isBefore(limit)`, `isAfter`, `isSame(other, 'month')`, `isBetween(start, end)`, `clamp(lo, hi)`, `diffFrom(base, 'day')`, `betweenFrom(base)`. `compare` stays binary because it already is an `Array#sort` comparator, and `by(mapper)` makes a comparator from a mapper.
+
+Zone-taking functions take the zone first: `toInstant(zone, options?)`, `toPlainDate(zone)`, `toPlainDateTime(zone)`, `toPlainTime(zone)`, `offsetAt(zone)` and `addInstant(duration, zone?)`.
+
+### Building blocks
+
+Named adjusters from composition, all checked:
+
+```ts
+// @check
+import { add, endOf, pipe, startOf, toPlainDate, by } from '@pyreon/time/fp'
+import { dateParts } from '@pyreon/time/core'
+import type { PlainDate } from '@pyreon/time/core'
+
+const sameDayNextMonth = add({ months: 1 }) // '2026-01-31' -> '2026-02-28', clamped
+const startOfNextWeek = pipe(add({ weeks: 1 }), startOf('week')) // '2026-11-18' -> '2026-11-23'
+
+// The end of the quarter: step to the quarter's last month, then take the end of that month.
+const endOfQuarter = (d: PlainDate): PlainDate =>
+  endOf('month')(add({ months: Math.ceil(dateParts(d).month / 3) * 3 - dateParts(d).month })(d)) // '2026-11-18' -> '2026-12-31'
+
+// A comparator from a mapper: events ordered by their local day.
+const byDay = by((event: { at: number }) => toPlainDate('Europe/Prague')(event.at))
+
+// Bucket instants by local day: the zone-aware conversion is the groupBy key.
+const dayKey = toPlainDate('Europe/Prague')
+dayKey(Date.UTC(2026, 10, 18, 23, 30)) // '2026-11-19'
+```
+
+### With `@pyreon/rx`
+
+Adjusters are plain unary functions, so `@pyreon/rx`'s `map`, `groupBy` and `sortBy` take them directly, with a plain array or a signal source, and neither package depends on the other. `@pyreon/rx`'s own `pipe` takes a *source* first and runs steps over it, while `pipe` from `@pyreon/time/fp` composes functions into a new function; use whichever reads better, since adjusters work as the steps of either.
+
+```ts
+import { signal } from '@pyreon/reactivity'
+import { groupBy } from '@pyreon/rx'
+import { startOf } from '@pyreon/time/fp'
+
+const dates = signal(['2026-02-10', '2026-01-05', '2026-02-20'])
+const byMonth = groupBy(dates, startOf('month'))
+byMonth() // { '2026-02-01': ['2026-02-10', '2026-02-20'], '2026-01-01': ['2026-01-05'] }
+```
+
+### Working in one zone
+
+`inZone(zone)` returns the zone-taking functions with the zone applied. Create it once; the members are plain functions made by that call, so a conversion costs no more than the unbound function. The zone is validated at `inZone`, so a typo fails there. It is not reactive, and it pulls every zone function into the bundle: when you need one or two, import them directly.
+
+```ts
+// @check
+import { inZone } from '@pyreon/time/core'
+
+const prague = inZone('Europe/Prague')
+const t = prague.toInstant('2026-03-29T02:30') // 02:30 does not exist: 03:30 CEST
+prague.toPlainDate(t) // '2026-03-29'
+prague.offsetAt(t) // 120
+prague.startOfDay(t) // the instant of local midnight that day
+prague.today() // today's date in Prague
+```
+
+### Composing with `@pyreon/format`
+
+Values are plain strings and numbers, so `@pyreon/time` and `@pyreon/format` compose without depending on each other: a PlainDate, a PlainDateTime or an Instant is already a date input for a formatter, and `between(a, b)` is already the `Duration` shape `formatDuration` takes. The examples below require `@pyreon/format`; they are not executed by this package's tests (the shapes line up structurally, and a type test proves it).
+
+```ts
+import { between, toPlainDate } from '@pyreon/time/fp'
+import { formatDate, formatDuration } from '@pyreon/format'
+
+formatDate('2026-11-18', 'long') // a PlainDate is a date input
+formatDuration(between('2026-01-01', '2026-03-05')) // a Duration from between() is a duration input
+
+// A formatter that first converts an instant to a date in a zone:
+const tokyoDay = (instant: number) => formatDate(toPlainDate('Asia/Tokyo')(instant), 'long')
+```
 
 ## Errors and warnings
 

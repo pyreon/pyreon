@@ -27,6 +27,11 @@
       "bun": "./src/core.ts",
       "import": "./lib/core.js",
       "types": "./lib/types/core.d.ts"
+    },
+    "./fp": {
+      "bun": "./src/fp.ts",
+      "import": "./lib/fp.js",
+      "types": "./lib/types/fp.d.ts"
     }
   },
   "files": [
@@ -45,11 +50,14 @@
     "lint": "oxlint .",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "bench:rivals": "NODE_ENV=production bun bench/time-rivals.ts",
-    "bench:bundle": "bun bench/time-bundle.ts"
+    "bench:bundle": "bun bench/time-bundle.ts",
+    "bench:fp": "NODE_ENV=production bun bench/time-fp.ts"
   },
   "devDependencies": {
     "@date-fns/tz": "1.5.0",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/rx": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/luxon": "3.7.6",

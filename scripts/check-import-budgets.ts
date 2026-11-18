@@ -212,6 +212,23 @@ export const SCENARIOS: Scenario[] = [
     imports: ['add', 'diff', 'startOf', 'monthGrid', 'toInstant'],
   },
   {
+    // The value-last entry is a thin wrapper: one fp function must cost core's function plus a closure, and must not pull the
+    // other fp functions.
+    id: '@pyreon/time::fp-add',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'fp.js',
+    imports: ['add'],
+  },
+  {
+    // A typical pipeline: adjusters composed with pipe.
+    id: '@pyreon/time::fp-pipeline',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'fp.js',
+    imports: ['add', 'startOf', 'pipe', 'isBetween'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.

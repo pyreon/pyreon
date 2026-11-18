@@ -45,6 +45,20 @@ toPlainDateTime(t, 'Europe/Prague') // '2026-03-29T03:30:00'
 
 Months are 1-12 and weekdays are ISO 1 (Monday) to 7 (Sunday). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone.
 
+## Composing operations
+
+`@pyreon/time/fp` has the value-last form of each operation, so operations can be built once, named and chained. They are plain functions: no classes, nothing to unwrap.
+
+```ts
+import { add, startOf, pipe, isBetween } from '@pyreon/time/fp'
+
+const nextMonthStart = pipe(add({ months: 1 }), startOf('month'))
+['2026-01-31', '2026-11-18'].map(nextMonthStart) // ['2026-02-01', '2026-12-01']
+['2026-01-05', '2026-02-10'].filter(isBetween('2026-02-01', '2026-02-28')) // ['2026-02-10']
+```
+
+`inZone('Europe/Prague')` (core) returns the zone-taking functions with the zone applied. Adjusters work as `@pyreon/rx` `map` / `groupBy` / `sortBy` callbacks, and `between(a, b)` is already the duration `@pyreon/format` takes.
+
 ## Correctness
 
 Seeded randomized tests compare every arithmetic, comparison, week, grid and zone function with `Temporal` (`bun run test:oracle`; Node 24 has no `Temporal`, Bun 1.4 and Node 26 do), plus a hand-verified table of DST gaps and overlaps, 30- and 45-minute zones and the Apia skipped day that runs in Node and in real Chromium.

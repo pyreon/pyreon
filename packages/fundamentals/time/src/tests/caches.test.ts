@@ -76,6 +76,12 @@ describe('weekStartOf and weekendOf', () => {
     expect(weekendOf('he-IL')).toEqual([5, 6])
   })
 
+  it('the weekend array is shared and frozen, from the platform and from the fallback table', () => {
+    expect(Object.isFrozen(weekendOf('en-US'))).toBe(true)
+    expect(Object.isFrozen(fallbackWeekInfo('EG').weekend)).toBe(true)
+    expect(weekendOf('en-US')).toBe(weekendOf('en-US'))
+  })
+
   it('a malformed or unknown tag answers Monday and does not throw', () => {
     expect(weekStartOf('not a locale')).toBe(1)
     expect(weekStartOf('')).toBe(1)

@@ -9417,6 +9417,205 @@ setClock(null)`,
     example: `const m: Disambiguation = 'reject'`,
     notes: `[EXPERIMENTAL] How a wall-clock time in a DST gap or overlap picks an instant (Temporal's modes). Added in v0.53.0.`,
   },
+
+  'time/inZone': {
+    signature: '(zone: TimeZone) => { zone, today, toInstant, toPlainDate, toPlainTime, toPlainDateTime, addInstant, offsetAt, startOfDay, endOfDay }',
+    example: `const prague = inZone('Europe/Prague')
+const t = prague.toInstant('2026-03-29T02:30')  // 02:30 does not exist: 03:30 CEST
+new Date(t).toISOString()                      // => '2026-03-29T01:30:00.000Z'
+prague.toPlainDate(t)                          // => '2026-03-29'
+prague.offsetAt(t)                             // => 120
+new Date(prague.startOfDay(t)).toISOString()   // => '2026-03-28T23:00:00.000Z'`,
+    notes: '[EXPERIMENTAL] The zone-taking functions with one zone applied, for code that works in one zone. Create it once (module scope or a setup function): the members are plain functions created by the `inZone` call, so a conversion does no more work than the unbound function. The zone is validated at `inZone`, so a typo fails there. It is not reactive; it pulls every zone function into the bundle, so import the individual functions when you need one or two. See also: toInstant, toPlainDateTime. Added in v0.53.0.',
+  },
+
+  'time/Adjuster': {
+    signature: 'type Adjuster<T> = (value: T) => T',
+    example: `import { startOf } from '@pyreon/time/fp'
+const month: Adjuster<PlainDate> = startOf('month')`,
+    notes: '[EXPERIMENTAL] A value-to-same-value function, what `add({ months: 1 })` from `@pyreon/time/fp` returns. Added in v0.53.0.',
+  },
+
+  'time/Mapper': {
+    signature: 'type Mapper<A, B> = (value: A) => B',
+    example: `import { toPlainDate } from '@pyreon/time/fp'
+const day: Mapper<number, PlainDate> = toPlainDate('Europe/Prague')`,
+    notes: '[EXPERIMENTAL] A value-to-other-value function, such as `toPlainDate(zone)` or `diffFrom(base, "day")` from `@pyreon/time/fp`. Added in v0.53.0.',
+  },
+
+  'time/ZonedToolkit': {
+    signature: 'interface ZonedToolkit { readonly zone: TimeZone; today(): PlainDate; toInstant(...); toPlainDate(instant); ... }',
+    example: `const z: ZonedToolkit = inZone('UTC')`,
+    notes: '[EXPERIMENTAL] The object `inZone` returns. Added in v0.53.0.',
+  },
+
+  'time/fp.add': {
+    signature: '(duration: Duration) => <T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T',
+    example: `import { add } from '@pyreon/time/fp'
+const nextMonth = add({ months: 1 })
+nextMonth('2026-01-31')                       // => '2026-02-28'
+['2026-01-31', '2026-03-01'].map(nextMonth)   // => ['2026-02-28', '2026-04-01']`,
+    notes: '[EXPERIMENTAL] Value-last `add`: `add({ months: 1 })` is a function you can name, pass to `map` and chain with `pipe`. The result keeps the input shape. See also: add. Added in v0.53.0.',
+  },
+
+  'time/fp.subtract': {
+    signature: '(duration: Duration) => <T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T',
+    example: `import { subtract } from '@pyreon/time/fp'
+subtract({ days: 1 })('2026-03-01')      // => '2026-02-28'`,
+    notes: '[EXPERIMENTAL] Value-last `subtract`. Added in v0.53.0.',
+  },
+
+  'time/fp.startOf': {
+    signature: '(unit: Unit, options?: { weekStart?: Weekday }) => <T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T',
+    example: `import { startOf } from '@pyreon/time/fp'
+startOf('week')('2026-11-18')              // => '2026-11-16'
+startOf('week', { weekStart: 7 })('2026-11-18')  // => '2026-11-15'`,
+    notes: '[EXPERIMENTAL] Value-last `startOf`. Added in v0.53.0.',
+  },
+
+  'time/fp.endOf': {
+    signature: '(unit: Unit, options?: { weekStart?: Weekday }) => <T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T',
+    example: `import { endOf } from '@pyreon/time/fp'
+endOf('month')('2026-11-18')               // => '2026-11-30'`,
+    notes: '[EXPERIMENTAL] Value-last `endOf`. Added in v0.53.0.',
+  },
+
+  'time/fp.isBefore': {
+    signature: '(limit: T) => (value: shape of T) => boolean',
+    example: `import { isBefore } from '@pyreon/time/fp'
+['2026-01-01', '2026-06-01'].filter(isBefore('2026-03-01'))  // => ['2026-01-01']`,
+    notes: '[EXPERIMENTAL] A predicate: `isBefore(limit)(value)` is true for values before `limit`, so it reads correctly in `filter`. Added in v0.53.0.',
+  },
+
+  'time/fp.isAfter': {
+    signature: '(limit: T) => (value: shape of T) => boolean',
+    example: `import { isAfter } from '@pyreon/time/fp'
+['2026-01-01', '2026-06-01'].filter(isAfter('2026-03-01'))   // => ['2026-06-01']`,
+    notes: '[EXPERIMENTAL] A predicate: true for values after `limit`. Added in v0.53.0.',
+  },
+
+  'time/fp.isSame': {
+    signature: '(other: T, unit?: Unit, options?: { weekStart?: Weekday }) => (value: shape of T) => boolean',
+    example: `import { isSame } from '@pyreon/time/fp'
+['2026-11-02', '2026-12-01'].filter(isSame('2026-11-18', 'month'))  // => ['2026-11-02']`,
+    notes: '[EXPERIMENTAL] A predicate: true for values in the same unit as `other`. Added in v0.53.0.',
+  },
+
+  'time/fp.isBetween': {
+    signature: '(start: T, end: T) => (value: shape of T) => boolean',
+    example: `import { isBetween } from '@pyreon/time/fp'
+['2026-01-05', '2026-02-10', '2026-03-20'].filter(isBetween('2026-02-01', '2026-03-01'))  // => ['2026-02-10']`,
+    notes: '[EXPERIMENTAL] A predicate: true for values from `start` to `end`, both included. Added in v0.53.0.',
+  },
+
+  'time/fp.clamp': {
+    signature: '(lo: T, hi: T) => (value: shape of T) => shape of T',
+    example: `import { clamp } from '@pyreon/time/fp'
+['2025-05-01', '2026-02-01', '2027-01-01'].map(clamp('2026-01-01', '2026-03-01'))  // => ['2026-01-01', '2026-02-01', '2026-03-01']`,
+    notes: '[EXPERIMENTAL] Limit values to a range. Throws when `lo` is after `hi`. Added in v0.53.0.',
+  },
+
+  'time/fp.diffFrom': {
+    signature: '(base: T, unit: Unit, options?: { zone?: TimeZone }) => (value: shape of T) => number',
+    example: `import { diffFrom } from '@pyreon/time/fp'
+['2026-01-10', '2026-01-03'].map(diffFrom('2026-01-01', 'day'))  // => [9, 2]`,
+    notes: '[EXPERIMENTAL] Whole units from `base` to each value: `dates.map(diffFrom(today, "day"))` reads left to right. Added in v0.53.0.',
+  },
+
+  'time/fp.betweenFrom': {
+    signature: '(base: PlainDate | PlainDateTime) => (value: same shape) => Duration',
+    example: `import { betweenFrom } from '@pyreon/time/fp'
+betweenFrom('2026-01-31')('2026-03-01')      // => { years: 0, months: 1, days: 1 }`,
+    notes: '[EXPERIMENTAL] The Duration from `base` to each value. Added in v0.53.0.',
+  },
+
+  'time/fp.by': {
+    signature: '(mapper: (item: A) => K) => (a: A, b: A) => -1 | 0 | 1',
+    example: `import { by } from '@pyreon/time/fp'
+const events: { d: PlainDate }[] = [{ d: '2026-03-01' }, { d: '2026-01-01' }]
+events.sort(by((x) => x.d)).map((x) => x.d)  // => ['2026-01-01', '2026-03-01']`,
+    notes: '[EXPERIMENTAL] A comparator that orders items by a mapped value: `items.sort(by(toDay))`. Added in v0.53.0.',
+  },
+
+  'time/fp.compare': {
+    signature: '(a: T, b: T) => -1 | 0 | 1',
+    example: `import {  } from '@pyreon/time/fp'
+const days: PlainDate[] = ['2026-03-01', '2026-01-01']
+days.sort(compare)                            // => ['2026-01-01', '2026-03-01']`,
+    notes: '[EXPERIMENTAL] The same function as the value-first `compare`: it is already a comparator for `Array#sort`. Added in v0.53.0.',
+  },
+
+  'time/fp.toInstant': {
+    signature: '(zone: TimeZone, options?: { disambiguation? }) => (value: PlainDate | PlainDateTime) => Instant',
+    example: `import { toInstant } from '@pyreon/time/fp'
+new Date(toInstant('UTC')('2026-11-18T14:30')).toISOString()  // => '2026-11-18T14:30:00.000Z'`,
+    notes: '[EXPERIMENTAL] Value-last `toInstant`. Added in v0.53.0.',
+  },
+
+  'time/fp.toPlainDate': {
+    signature: '(zone: TimeZone) => (instant: Instant) => PlainDate',
+    example: `import { toPlainDate } from '@pyreon/time/fp'
+toPlainDate('Asia/Tokyo')(Date.UTC(2026, 10, 18, 23, 30))  // => '2026-11-19'`,
+    notes: '[EXPERIMENTAL] Value-last `toPlainDate`: a groupBy key for bucketing instants by local day. Added in v0.53.0.',
+  },
+
+  'time/fp.toPlainTime': {
+    signature: '(zone: TimeZone) => (instant: Instant) => PlainTime',
+    example: `import { toPlainTime } from '@pyreon/time/fp'
+toPlainTime('Europe/Prague')(Date.UTC(2026, 10, 18, 13, 30))  // => '14:30:00'`,
+    notes: '[EXPERIMENTAL] Value-last `toPlainTime`. Added in v0.53.0.',
+  },
+
+  'time/fp.toPlainDateTime': {
+    signature: '(zone: TimeZone) => (instant: Instant) => PlainDateTime',
+    example: `import { toPlainDateTime } from '@pyreon/time/fp'
+toPlainDateTime('Europe/Prague')(0)           // => '1970-01-01T01:00:00'`,
+    notes: '[EXPERIMENTAL] Value-last `toPlainDateTime`. Added in v0.53.0.',
+  },
+
+  'time/fp.offsetAt': {
+    signature: '(zone: TimeZone) => (instant: Instant) => number',
+    example: `import { offsetAt } from '@pyreon/time/fp'
+offsetAt('Asia/Kathmandu')(Date.UTC(2026, 0, 1))  // => 345`,
+    notes: '[EXPERIMENTAL] Value-last `offsetAt`. Added in v0.53.0.',
+  },
+
+  'time/fp.addInstant': {
+    signature: '(duration: Duration, zone?: TimeZone) => (instant: Instant) => Instant',
+    example: `import { addInstant } from '@pyreon/time/fp'
+new Date(addInstant({ days: 1 }, 'UTC')(Date.UTC(2026, 0, 31))).toISOString()  // => '2026-02-01T00:00:00.000Z'`,
+    notes: '[EXPERIMENTAL] Value-last `addInstant`. Added in v0.53.0.',
+  },
+
+  'time/fp.monthGrid': {
+    signature: '(options?: MonthGridOptions) => (month: PlainYearMonth | PlainDate) => PlainDate[][]',
+    example: `import { monthGrid } from '@pyreon/time/fp'
+monthGrid({ weekStart: 7 })('2026-11').length  // => 5`,
+    notes: '[EXPERIMENTAL] Value-last `monthGrid`. Added in v0.53.0.',
+  },
+
+  'time/fp.fromDate': {
+    signature: '(zone?: TimeZone) => (date: Date) => PlainDateTime',
+    example: `import { fromDate } from '@pyreon/time/fp'
+fromDate('UTC')(new Date(0))                  // => '1970-01-01T00:00:00'`,
+    notes: '[EXPERIMENTAL] Value-last `fromDate`. Added in v0.53.0.',
+  },
+
+  'time/fp.toDate': {
+    signature: '(zone?: TimeZone) => (value: PlainDate | PlainDateTime | Instant) => Date',
+    example: `import { toDate } from '@pyreon/time/fp'
+toDate('UTC')('1970-01-01').getTime()         // => 0`,
+    notes: '[EXPERIMENTAL] Value-last `toDate`. Added in v0.53.0.',
+  },
+
+  'time/fp.pipe': {
+    signature: '(f1: (a: A) => B, f2: (b: B) => C, ...up to eight steps) => (value: A) => result',
+    example: `import { add, startOf, pipe } from '@pyreon/time/fp'
+const nextMonthStart = pipe(add({ months: 1 }), startOf('month'))
+nextMonthStart('2026-01-31')                  // => '2026-02-01'
+['2026-01-31', '2026-11-18'].map(nextMonthStart)  // => ['2026-02-01', '2026-12-01']`,
+    notes: `[EXPERIMENTAL] Left-to-right composition of unary functions, typed for up to eight steps, so pipelines need no other package: \`pipe(add({ months: 1 }), startOf("month"))\` goes to the first of next month. The result is a plain function. One to three steps are direct closures. Not the same as \`@pyreon/rx\`'s \`pipe\`, which takes a source value (or signal) first and runs the steps over it; adjusters work as the steps and as the callbacks of rx's \`map\`, \`groupBy\` and \`sortBy\`. Added in v0.53.0.`,
+  },
   // <gen-docs:api-reference:end @pyreon/time>
 
   // <gen-docs:api-reference:start @pyreon/toast>
