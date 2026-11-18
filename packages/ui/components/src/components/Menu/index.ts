@@ -1,4 +1,4 @@
-import { disabledState, el } from '../../factory'
+import { disabledState, el, tones } from '../../factory'
 
 const Menu = el
   .config({ name: 'Menu' })
@@ -6,8 +6,9 @@ const Menu = el
     contentDirection: 'rows',
     contentAlignX: 'left',
     contentAlignY: 'center', block: true })
-  .theme((t) => ({
-    backgroundColor: t.color.system.light.base,
+  .theme((t, m) => ({
+    backgroundColor: tones(t, m).surface,
+    color: tones(t, m).text,
     boxShadow: t.shadows.medium,
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,
@@ -26,10 +27,10 @@ export const MenuItem = el
     contentDirection: 'inline',
     contentAlignX: 'left',
     contentAlignY: 'center', alignY: 'center', block: true })
-  .theme((t) => ({
+  .theme((t, m) => ({
     cursor: 'pointer',
     borderRadius: t.borderRadius.small,
-    color: t.color.system.base[700],
+    color: tones(t, m).text,
     transition: t.transition.fast,
     fontSize: t.fontSize.base,
     paddingTop: t.spacing.small,

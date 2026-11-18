@@ -6,9 +6,11 @@ const Tooltip = el
   // it as a tooltip (Radix Tooltip content convention). The TRIGGER still owns the
   // linkage — reference this bubble's `id` from the trigger's `aria-describedby`.
   .attrs({ tag: 'div', role: 'tooltip' })
-  .theme((t) => ({
-    backgroundColor: t.color.system.dark[800],
-    color: t.color.system.dark.contrast,
+  // An inverted bubble in both modes: slate on the light page, near-white on
+  // the dark one (a slate bubble on the slate page had no edge at all).
+  .theme((t, m) => ({
+    backgroundColor: m(t.color.system.dark[800], t.color.system.light[900]),
+    color: m(t.color.system.dark.contrast, t.color.system.dark.base),
     fontSize: t.fontSize.xSmall,
     borderRadius: t.borderRadius.small,
     paddingTop: t.spacing.xxxSmall,
