@@ -34,12 +34,12 @@ describe('_esc — matches renderNode per-value output', () => {
   test('escapes the five HTML metacharacters', () => {
     expect(_esc(`a&<>"'b`)).toBe('a&amp;&lt;&gt;&quot;&#39;b')
   })
-  test('primitives: number → String, null/false/undefined → "", true → "true"', () => {
+  test('primitives: number → String, null/undefined/booleans → ""', () => {
     expect(_esc(5)).toBe('5')
     expect(_esc(null)).toBe('')
     expect(_esc(undefined)).toBe('')
     expect(_esc(false)).toBe('')
-    expect(_esc(true)).toBe('true')
+    expect(_esc(true)).toBe('')
   })
   test('a VNode text value MOUNTS (delegates to renderNode)', async () => {
     const r = await (_esc(h('em', null, 'hi')) as Promise<string> | string)

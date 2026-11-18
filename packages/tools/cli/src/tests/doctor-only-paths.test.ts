@@ -1,9 +1,8 @@
 /**
- * Coverage tests for doctor()'s legacy-flag mapping + non-ci exit path.
+ * Coverage tests for doctor()'s `only` selection + non-ci exit path.
  *
- * - resolveOnly's `--check-islands` and `--check-ssg` legacy paths
- *   (doctor.ts L80-82).
- * - The non-`ci` return that sums errors+warnings+infos (L113).
+ * - `only: [gate]` runs exactly that gate.
+ * - The non-`ci` return that sums errors+warnings+infos.
  */
 import * as fs from 'node:fs'
 import * as os from 'node:os'
@@ -12,23 +11,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type DoctorOptions, doctor } from '../doctor'
 
 function makeTmpDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'cli-doctor-legacy-'))
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'cli-doctor-only-'))
 }
 
 function defaults(cwd: string): DoctorOptions {
   return { fix: false, json: false, ci: false, cwd }
 }
 
-describe('doctor — legacy flag mapping', () => {
+describe('doctor — only selection', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it('legacy --check-islands maps to --only islands-audit', async () => {
+  it('only: [islands-audit] runs just that gate', async () => {
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await doctor({
       ...defaults(cwd),
       json: true,
-      checkIslands: true,
+      only: ['islands-audit'],
     })
     const out = log.mock.calls.map((c) => c[0]).join('')
     log.mockRestore()
@@ -41,13 +40,13 @@ describe('doctor — legacy flag mapping', () => {
     expect(ranGates).toEqual(['islands-audit'])
   })
 
-  it('legacy --check-ssg maps to --only ssg-audit', async () => {
+  it('only: [ssg-audit] runs just that gate', async () => {
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await doctor({
       ...defaults(cwd),
       json: true,
-      checkSsg: true,
+      only: ['ssg-audit'],
     })
     const out = log.mock.calls.map((c) => c[0]).join('')
     log.mockRestore()
@@ -60,13 +59,13 @@ describe('doctor — legacy flag mapping', () => {
     expect(ranGates).toEqual(['ssg-audit'])
   })
 
-  it('non-ci exit returns totals.errors + warnings + infos (L113)', async () => {
+  it('non-ci exit returns totals.errors + warnings + infos', async () => {
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const ret = await doctor({
       ...defaults(cwd),
       ci: false,
-      checkIslands: true,
+      only: ['islands-audit'],
     })
     log.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })

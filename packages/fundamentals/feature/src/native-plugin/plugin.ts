@@ -487,6 +487,23 @@ const featureItem: ModuleItemEmitter = {
     lines.push(...swiftCodingKeysLines(f.fields.map((x) => x.name), '    '))
     lines.push(`}`)
     lines.push(``)
+    // A record that LACKS a field decodes it to the field's `initialValues` default, as Kotlin's data-class defaults do
+    // (kotlinx reads an absent key as its default). Swift's synthesized `init(from:)` would instead FAIL the whole
+    // decode — a list query erroring because one record omits one field. In an extension, so the memberwise and the
+    // no-argument `init()` stay. A field that is present decodes strictly on both targets: an explicit `null` or a
+    // wrong-typed value is a decode error, as a wrong-typed field is in kotlinx.
+    lines.push(`extension PyreonFeatureSchema_${f.bindingName} {`)
+    lines.push(`    init(from decoder: Decoder) throws {`)
+    lines.push(`        let c = try decoder.container(keyedBy: CodingKeys.self)`)
+    lines.push(`        self.init()`)
+    for (const field of f.fields) {
+      const id = swiftIdent(field.name)
+      const t = field.type === 'string' ? 'String' : field.type === 'number' ? 'Int' : 'Bool'
+      lines.push(`        if c.contains(.${id}) { self.${id} = try c.decode(${t}.self, forKey: .${id}) }`)
+    }
+    lines.push(`    }`)
+    lines.push(`}`)
+    lines.push(``)
     lines.push(`enum PyreonFeature_${f.bindingName} {`)
     lines.push(`    static let name = ${swiftStr(f.featureName)}`)
     lines.push(`    static let initialValues = PyreonFeatureSchema_${f.bindingName}()`)

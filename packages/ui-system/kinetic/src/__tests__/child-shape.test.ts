@@ -113,6 +113,13 @@ describe('cloneVNode over compiled static markup', () => {
     dispose()
   })
 
+  it('skips the empty tokens of a class with outer whitespace', () => {
+    const root = document.createElement('div')
+    const dispose = mount(cloneVNode(tpl('<b>x</b>') as never, { class: ' hidden  extra ' }), root)
+    expect(query<HTMLElement>(root, 'b').className).toBe('hidden extra')
+    dispose()
+  })
+
   it('returns a shape it cannot decorate (raw server HTML) unchanged', () => {
     const raw = { value: '<li>x</li>' }
     expect(cloneVNode(raw as never, { ref: () => {} })).toBe(raw)

@@ -77,7 +77,7 @@ export function App() {
   })
 })
 
-describe('Kotlin decls: useStorage picks rememberSaveable vs rememberPyreonStorage', () => {
+describe('Kotlin decls: useStorage is always the file-backed rememberPyreonStorage', () => {
   const ST = (decls: string, read: string) => `import { useStorage } from '@pyreon/storage'
 import { Stack, Text } from '@pyreon/primitives'
 type Todo = { id: string; done: boolean }
@@ -87,7 +87,10 @@ ${decls}
   return (<Stack><Text>{${read}}</Text></Stack>)
 }`
 
-  it('Bundle-native types (string/number/boolean/enum) take the direct rememberSaveable shape', () => {
+  // `rememberSaveable` is the saved-instance-state Bundle, not storage: a
+  // cold launch drops it. Bundle-friendly types used to take it and reset on
+  // every app start (router demo's process-death script caught it).
+  it('Bundle-native types (string/number/boolean/enum) are file-backed, not rememberSaveable', () => {
     const out = kt(ST(
       `  const s1 = useStorage<string>('k1', 'a')
   const s2 = useStorage<number>('k2', 1)
@@ -95,20 +98,20 @@ ${decls}
   const s4 = useStorage<Mode>('k4', 'light')`,
       `s1() + String(s2()) + String(s3()) + s4()`,
     )).code
-    expect(out).toContain('var s1 by rememberSaveable { mutableStateOf("a") }')
-    expect(out).toContain('var s2 by rememberSaveable { mutableStateOf(1L) }')
-    expect(out).toContain('var s3 by rememberSaveable { mutableStateOf(true) }')
-    // a known enum is Bundle-friendly via its name
-    expect(out).toContain('var s4 by rememberSaveable { mutableStateOf(Mode.light) }')
+    expect(out).toContain('var s1 by rememberPyreonStorage<String>("k1", "a")')
+    expect(out).toContain('var s2 by rememberPyreonStorage<Long>("k2", 1L)')
+    expect(out).toContain('var s3 by rememberPyreonStorage<Boolean>("k3", true)')
+    expect(out).toContain('var s4 by rememberPyreonStorage<Mode>("k4", Mode.light)')
+    expect(out).not.toContain('rememberSaveable')
   })
 
-  it('an OPTIONAL of a native type stays native; an optional of a data class does not', () => {
+  it('an OPTIONAL of a native type and of a data class are both file-backed', () => {
     const out = kt(ST(
       `  const s7 = useStorage<string | null>('k7', null)
   const s8 = useStorage<Todo | null>('k8', null)`,
       `String(s7 !== null)`,
     )).code
-    expect(out).toContain('var s7 by rememberSaveable { mutableStateOf<String?>(null) }')
+    expect(out).toContain('var s7 by rememberPyreonStorage<String?>("k7", null)')
     expect(out).toContain('var s8 by rememberPyreonStorage<Todo?>("k8", null)')
   })
 

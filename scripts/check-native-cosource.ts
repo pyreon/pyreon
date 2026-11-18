@@ -93,6 +93,7 @@ function filesUnder(dir: string, ext: string): string[] {
     }
   }
   if (existsSync(dir)) walk(dir)
+
   return out
 }
 
@@ -146,6 +147,7 @@ function scanCoSourcePackages(): CoSourcePkg[] {
       })
     }
   }
+
   return found
 }
 
@@ -154,8 +156,53 @@ function serviceName(file: string): string {
   return file.replace(/^.*\//, '').replace(/\.(kt|swift)$/, '')
 }
 
+// ── The base runtime as a module ─────────────────────────────────────────
+// In an iOS app the base runtime is its own SwiftPM module, `PyreonRuntime`, and the co-located sources compile into
+// the app target, which links it. A co-located file can therefore use base types through `import PyreonRuntime` —
+// and only through it, and only their `public` surface. Compiling base files ALONGSIDE the package's would accept
+// code a real build rejects (an `internal` member, a missing import), so the gate builds the module once, as SwiftPM
+// does, and hands its search and link paths to every package that imports it.
+const IMPORT_BASE = /^import PyreonRuntime$/m
+const BASE_RUNTIME_DIR = join(ROOT, 'packages', 'native', 'runtime-swift', 'Sources', 'PyreonRuntime')
+const baseRuntimeFiles = (): string[] => filesUnder(BASE_RUNTIME_DIR, '.swift').sort()
+let baseModule: { ok: true; args: string[] } | { ok: false; error: string } | undefined
+let baseModuleDir: string | undefined
+
+function baseRuntimeModule(): { ok: true; args: string[] } | { ok: false; error: string } {
+  if (baseModule !== undefined) return baseModule
+  baseModuleDir = mkdtempSync(join(tmpdir(), 'pyreon-base-module-'))
+  const r = spawnSync(
+    'swiftc',
+    [
+      '-parse-as-library',
+      '-emit-library',
+      '-static',
+      '-emit-module',
+      '-module-name',
+      'PyreonRuntime',
+      '-emit-module-path',
+      join(baseModuleDir, 'PyreonRuntime.swiftmodule'),
+      '-o',
+      join(baseModuleDir, 'libPyreonRuntime.a'),
+      ...baseRuntimeFiles(),
+    ],
+    { encoding: 'utf8', cwd: baseModuleDir },
+  )
+  baseModule =
+    r.status === 0
+      ? { ok: true, args: ['-I', baseModuleDir, '-L', baseModuleDir, '-lPyreonRuntime'] }
+      : { ok: false, error: `${r.stderr ?? ''}${r.error?.message ?? ''}` }
+
+  return baseModule
+}
+
+process.on('exit', () => {
+  if (baseModuleDir !== undefined) rmSync(baseModuleDir, { recursive: true, force: true })
+})
+
 let failures = 0
 const pkgs = scanCoSourcePackages()
+
 const companionPackages = new Map<string, CompanionPackage>(
   pkgs.map((p) => [
     p.name,
@@ -166,6 +213,7 @@ const companionPackages = new Map<string, CompanionPackage>(
     },
   ]),
 )
+
 const companionCtx = (pkg: CoSourcePkg): CompanionContext => ({
   root: ROOT,
   owner: { name: pkg.name, dependencies: pkg.dependencies },
@@ -179,6 +227,7 @@ if (pkgs.length === 0) {
 
 const kotlinc = has('kotlinc')
 const swiftc = has('swiftc')
+
 // On Linux CI `swiftc` EXISTS but the Apple SDK frameworks the co-located
 // runtimes import (SwiftUI, Observation) do NOT — a co-located `import SwiftUI`
 // file fails to compile there. Swift is verified on a real SDK by the macOS
@@ -206,6 +255,7 @@ const swiftFullSdk =
       return false
     }
   })()
+
 console.log(
   `[check-native-cosource] ${pkgs.length} co-located package(s); kotlinc=${kotlinc} swiftc=${swiftc} swiftFullSdk=${swiftFullSdk}`,
 )
@@ -235,16 +285,20 @@ const readOr = (f: string): string => {
     return ''
   }
 }
+
 const bytesOf = (files: readonly string[]): string =>
   files.map((f) => `${f.slice(ROOT.length)}\0${readOr(f)}`).join('\0')
+
 const toolVersion = (bin: string, flag: string): string => {
   const p = spawnSync(bin, [flag], { encoding: 'utf8' })
   if (p.status !== 0) {
     console.error(`[check-native-cosource] ${bin} ${flag} failed:\n${p.stderr ?? ''}${p.error?.message ?? ''}`)
     process.exit(1)
   }
+
   return `${p.stdout ?? ''}${p.stderr ?? ''}`.trim() || 'unknown'
 }
+
 const kotlincVersion = kotlinc ? toolVersion('kotlinc', '-version') : ''
 
 /**
@@ -278,6 +332,7 @@ const kotlinHarness = [readOr(verifyKotlin), readOr(join(ROOT, 'scripts/check-na
 const kotlinSmokeHarness = `${kotlinHarness}\0java\0${javaVersion}`
 const swiftHarness = readOr(join(ROOT, 'scripts', 'swift-cosource-smoke.ts'))
 let cacheHits = 0
+
 /** Run `compute` unless an OK verdict for exactly these inputs is cached; store an OK result. */
 function cachedKotlin(
   key: string,
@@ -292,6 +347,7 @@ function cachedKotlin(
     console.error(
       `  ✗ ${label}: the behaviour test cannot run — no working JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.`,
     )
+
     return false
   }
   if (readVerdict(key)?.ok === true) {
@@ -300,6 +356,7 @@ function cachedKotlin(
       `  ✓ ${label} (cached verdict)` +
         (hasTest && !javaRuns ? ' ⚠ typecheck-only — smoke SKIPPED, no JDK' : ''),
     )
+
     return true
   }
   const outcome = compute()
@@ -307,6 +364,7 @@ function cachedKotlin(
   // A child can lose Java after our probe; its skip must not populate the
   // stronger smokeRuns=true key. Known compile-only results remain reusable.
   if (ok && (outcome !== 'skipped' || !javaRuns)) writeVerdict(key, { ok: true })
+
   return ok
 }
 
@@ -341,6 +399,7 @@ for (const pkg of pkgs) {
         const r = resolveCompanion(f, 'kotlin', companionCtx(pkg))
         if (r.ok) return r.path
         companionErrors.push(r.error)
+
         return f
       }
       const ktTests = pkg.testsDir ? filesUnder(pkg.testsDir, '.kt') : []
@@ -416,6 +475,7 @@ for (const pkg of pkgs) {
               console.error(
                 `  ✗ ${pkg.name} [kotlin ${svc} · ${run.label}]:\n${r.stdout}\n${r.stderr}`,
               )
+
               return false
             }
             const skipped = !typecheckOnly && smokeSkipped(r.stdout ?? '')
@@ -423,12 +483,14 @@ for (const pkg of pkgs) {
               console.error(
                 `  ✗ ${pkg.name} [kotlin ${svc} · ${run.label}]: the behaviour test only TYPECHECKED — no JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.\n${r.stdout}`,
               )
+
               return false
             }
             console.log(
               `  ✓ ${pkg.name} [kotlin ${svc} · ${run.label}] (${files.length} file(s))` +
                 (skipped ? ' ⚠ typecheck-only — smoke SKIPPED, no JDK' : ''),
             )
+
             return skipped ? 'skipped' : true
           })
           if (!ok) failures++
@@ -471,12 +533,14 @@ for (const pkg of pkgs) {
             console.error(
               `  ✗ ${label}: the behaviour test only TYPECHECKED — no JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.\n${r.stdout}`,
             )
+
             return false
           }
           // Report what HAPPENED, not what the file layout implies. The old line
           // said "compiled + ran test" whenever a `*Test.kt` existed, whether or
           // not a JVM was there to run it.
           console.log(`  ✓ ${label}` + kotlinOutcomeLabel({ hasTest: Boolean(test), smokeSkipped: skipped }))
+
           return skipped ? 'skipped' : true
         })
         if (!ok) failures++
@@ -504,20 +568,30 @@ for (const pkg of pkgs) {
       // The package's own files plus what an app build compiles them with.
       const srcFiles = [...ownFiles, ...companionFiles]
       const testFiles = pkg.testsDir ? filesUnder(pkg.testsDir, '.swift') : []
+      // A file that `import PyreonRuntime` sees the base runtime the way the app target does: as a separate,
+      // already-built module (its `public` surface only).
+      const importsBase = [...srcFiles, ...testFiles].some((f) => IMPORT_BASE.test(readOr(f)))
       // Typecheck the source alone; if a test exists, compile source+test and RUN it.
       const swiftKey = verdictKey({
         kind: 'swift-cosource',
         compilerVersion: swiftcVersion,
         harness: swiftHarness,
-        source: bytesOf(srcFiles),
+        source: bytesOf(importsBase ? [...srcFiles, ...baseRuntimeFiles()] : srcFiles),
         test: bytesOf(testFiles),
         typecheckOnly: testFiles.length === 0,
       })
+      const base = importsBase && readVerdict(swiftKey)?.ok !== true ? baseRuntimeModule() : undefined
+      if (base !== undefined && !base.ok) {
+        failures++
+        console.error(`  ✗ ${pkg.name} [swift]: the base runtime module (PyreonRuntime) does not build:\n${base.error}`)
+        continue
+      }
+      const moduleArgs = base?.ok === true ? base.args : []
       if (readVerdict(swiftKey)?.ok === true) {
         cacheHits++
         console.log(`  ✓ ${pkg.name} [swift] (cached verdict)`)
       } else if (testFiles.length > 0) {
-        const result = runSwiftSmoke(srcFiles, testFiles)
+        const result = runSwiftSmoke(srcFiles, testFiles, undefined, moduleArgs)
         if (result.status !== 0) {
           failures++
           console.error(
@@ -528,7 +602,7 @@ for (const pkg of pkgs) {
           writeVerdict(swiftKey, { ok: true })
         }
       } else {
-        const r = spawnSync('swiftc', ['-typecheck', ...srcFiles], { encoding: 'utf8' })
+        const r = spawnSync('swiftc', ['-typecheck', ...moduleArgs, ...srcFiles], { encoding: 'utf8' })
         if (r.status !== 0) {
           failures++
           console.error(`  ✗ ${pkg.name} [swift] typecheck:\n${r.stderr}`)
@@ -545,6 +619,7 @@ if (failures > 0) {
   console.error(`[check-native-cosource] ${failures} failure(s)`)
   process.exit(1)
 }
+
 console.log(
   `[check-native-cosource] ✓ all co-located native sources verified (${cacheHits} cached verdict(s))`,
 )

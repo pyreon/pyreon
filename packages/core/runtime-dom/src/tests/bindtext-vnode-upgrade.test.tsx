@@ -294,10 +294,11 @@ export function App() {
     cleanup()
   })
 
-  it('non-VNode objects and plain string arrays keep the historical String() coercion', () => {
+  it('non-VNode objects stringify and plain string arrays concatenate (shared child-text rule)', () => {
     // Scope guard: the upgrade discriminator matches _setChild's — only
-    // VNode/NativeItem-bearing values mount. Plain objects/arrays stringify
-    // exactly as before (documented gap, consistent with the static path).
+    // VNode/NativeItem-bearing values mount. A plain object renders its
+    // String(); an array of primitives renders its items' text concatenated,
+    // as SSR and h() do (#4386: it used to be `a,b`).
     const obj = signal<unknown>({ a: 1 })
     const errors: unknown[] = []
     const warns: unknown[] = []
@@ -316,7 +317,7 @@ export function App() {
       expect(errors, 'mount errors').toEqual([])
       expect(strip(container.innerHTML)).toBe('<div>[object Object]</div>')
       capturingErrors(errors, () => obj.set(['a', 'b']))
-      expect(strip(container.innerHTML)).toBe('<div>a,b</div>')
+      expect(strip(container.innerHTML)).toBe('<div>ab</div>')
       cleanup()
     } finally {
       console.warn = origWarn

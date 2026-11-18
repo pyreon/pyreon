@@ -60,14 +60,14 @@ describe('Tier-2 — @pyreon/i18n/core Strategy-B emit (Gap 4 PR-3, v1)', () => 
   // and a read-only property both failed to compile, silently, on both targets.
   it('Swift: locale() reads the property and locale.set() assigns it', () => {
     const result = transform(readFileSync(FIXTURE, 'utf8'), { target: 'swift' })
-    expect(result.code).toContain('Text(verbatim: "\\(i18n.locale)")')
+    expect(result.code).toContain('Text(verbatim: "\\(pyreonOptionalText(i18n.locale, ""))")')
     expect(result.code).toContain('i18n.locale = "de"')
     expect(result.code).not.toContain('i18n.locale()')
   })
 
   it('Kotlin: locale() reads the property and locale.set() assigns it', () => {
     const result = transform(readFileSync(FIXTURE, 'utf8'), { target: 'kotlin' })
-    expect(result.code).toContain('"${i18n.locale}"')
+    expect(result.code).toContain('"${pyreonOptionalText(i18n.locale, "")}"')
     expect(result.code).toContain('i18n.locale = "de"')
     expect(result.code).not.toContain('i18n.locale()')
   })
@@ -147,7 +147,7 @@ export function Files() {
 
     it('Swift: the read drops the call parens, the write assigns the property', () => {
       const r = transform(SWITCH_SRC, { target: 'swift' })
-      expect(r.code).toContain('Text(verbatim: "\\(i18n.locale)")')
+      expect(r.code).toContain('Text(verbatim: "\\(pyreonOptionalText(i18n.locale, ""))")')
       expect(r.code).not.toContain('i18n.locale()')
       expect(r.code).toContain('i18n.locale = "en"')
       expect(r.warnings).toEqual([])
@@ -155,7 +155,7 @@ export function Files() {
 
     it('Kotlin: the read drops the call parens, the write assigns the property', () => {
       const r = transform(SWITCH_SRC, { target: 'kotlin' })
-      expect(r.code).toContain('Text(text = "${i18n.locale}")')
+      expect(r.code).toContain('Text(text = "${pyreonOptionalText(i18n.locale, "")}")')
       expect(r.code).not.toContain('i18n.locale()')
       expect(r.code).toContain('i18n.locale = "en"')
       expect(r.warnings).toEqual([])

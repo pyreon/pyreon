@@ -34,6 +34,19 @@
  *      without its trailing parenthetical — or full names), so the
  *      summaries on other pages cannot drift from the table either. The
  *      matrix page itself must carry at least one such summary.
+ *   7. The "## Road to Stable (closed scope)" section closes the scope.
+ *      Its three tables — `| (A) ID |` reachable without credentials,
+ *      `| (B) ID |` blocked on maintainer credentials or accounts, and
+ *      `| (C) ID |` out of native scope by architecture — must each name
+ *      an EXISTING matrix row in their "Matrix row" cell, carry a gain
+ *      (A/B) or share (C) above zero, and state Points = weight × gain.
+ *      Every row below 1.0 must be fully accounted for: its fraction plus
+ *      the gains and shares of all its items equals exactly 1.0, and a row
+ *      already at 1.0 carries no items. Landing an item therefore forces
+ *      the same edit to raise the row and delete the item. The section's
+ *      stated totals — `**(A) total:**`, `**(B) total:**`, `**(C)
+ *      remainder:**`, `**Projected after (A):**` and `**Projected after
+ *      (A) + (B):**` — must equal what the tables imply.
  *
  * Run:
  *   bun scripts/check-multiplatform-matrix.ts          # exit 1 on drift
@@ -324,6 +337,268 @@ export function verifyTierSummaries(
   return { issues, found }
 }
 
+// ─── Road to Stable (closed scope) ───────────────────────────────────────────
+
+export const SCOPE_HEADING = '## Road to Stable (closed scope)'
+
+export type ScopeClass = 'A' | 'B' | 'C'
+
+export interface ScopeItem {
+  cls: ScopeClass
+  id: string
+  row: string
+  /** Gain (A/B) or share (C) of the row's fraction. */
+  gain: number
+  /** The Points cell as written. */
+  points: number
+  /** Effort (A only): XS | S | M | L. Proposal (C only): stays scored | leaves the row. */
+  tag?: string
+}
+
+export interface ScopeParseResult {
+  items: ScopeItem[]
+  issues: string[]
+  /** The section's text (heading to the next `## ` heading), '' when absent. */
+  section: string
+}
+
+const SCOPE_TABLE_HEADER = /^\|\s*\((A|B|C)\) ID\s*\|/
+const EFFORTS = new Set(['XS', 'S', 'M', 'L'])
+const PROPOSALS = new Set(['stays scored', 'leaves the row'])
+
+function cells(line: string): string[] {
+  return line
+    .replace(/^\|/, '')
+    .replace(/\|\s*$/, '')
+    .split('|')
+    .map((c) => c.trim())
+}
+
+/** The section's text, from its heading to the next `## ` heading; '' when absent. */
+function scopeSection(md: string): string {
+  const at = md.indexOf(SCOPE_HEADING)
+  if (at === -1) return ''
+  const rest = md.slice(at + SCOPE_HEADING.length)
+  const next = rest.search(/\n## /)
+  return md.slice(at, at + SCOPE_HEADING.length + (next === -1 ? rest.length : next))
+}
+
+const NUMBER_CELL = /^\+?(\d+(?:\.\d+)?)$/
+
+/** One data row of a scope table: the item, or the reason it does not parse. */
+function parseScopeRow(cls: ScopeClass, line: string, n: number): ScopeItem | string {
+  const width = cls === 'B' ? 5 : 6
+  const c = cells(line)
+  const gain = NUMBER_CELL.exec(c[3] ?? '')
+  const points = NUMBER_CELL.exec(c[4] ?? '')
+  if (c.length !== width || !gain || !points || !c[0] || !c[1]) {
+    const shape = cls === 'B' ? '' : ', tag'
+    return `scope (${cls}) row ${n} does not parse (${width} cells: ID, Matrix row, text, gain, points${shape}): ${line.slice(0, 80)}…`
+  }
+  const item: ScopeItem = {
+    cls,
+    id: c[0],
+    row: c[1],
+    gain: Number(gain[1]),
+    points: Number(points[1]),
+  }
+  if (cls !== 'B') item.tag = c[5] ?? ''
+  return item
+}
+
+/** The data rows of the table whose header is at `headerIdx`, until the first non-table line. */
+function tableRows(lines: string[], headerIdx: number): string[] {
+  const out: string[] = []
+  for (let j = headerIdx + 1; j < lines.length; j++) {
+    const line = lines[j]!
+    if (!line.startsWith('|')) break
+    if (!/^\|\s*-{3,}/.test(line)) out.push(line)
+  }
+  return out
+}
+
+/**
+ * Parse the three scope tables. Columns, by class:
+ *   (A) | ID | Matrix row | Item | Gain | Points | Effort |
+ *   (B) | ID | Matrix row | Maintainer action | Gain | Points |
+ *   (C) | ID | Matrix row | Remainder | Share | Points | Proposal |
+ * Fail-closed: a missing section or table, an empty table, or a data row that
+ * does not parse is an issue.
+ */
+export function parseScope(md: string): ScopeParseResult {
+  const issues: string[] = []
+  const items: ScopeItem[] = []
+  const section = scopeSection(md)
+  if (section === '') {
+    return { items, issues: [`section heading "${SCOPE_HEADING}" not found`], section }
+  }
+  const lines = section.split('\n')
+  const seenTables = new Set<ScopeClass>()
+  lines.forEach((line, i) => {
+    const header = SCOPE_TABLE_HEADER.exec(line)
+    if (!header) return
+    const cls = header[1] as ScopeClass
+    if (seenTables.has(cls)) issues.push(`scope: more than one (${cls}) table`)
+    seenTables.add(cls)
+    const rows = tableRows(lines, i)
+    if (rows.length === 0) {
+      issues.push(`scope: the (${cls}) table has ZERO rows — an empty scope list is a failure`)
+    }
+    rows.forEach((row, n) => {
+      const parsed = parseScopeRow(cls, row, n + 1)
+      if (typeof parsed === 'string') issues.push(parsed)
+      else items.push(parsed)
+    })
+  })
+  for (const cls of ['A', 'B', 'C'] as const) {
+    if (!seenTables.has(cls)) issues.push(`scope: no (${cls}) table (header \`| (${cls}) ID | …\`)`)
+  }
+  return { items, issues, section }
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100
+
+export interface ScopeTotals {
+  a: number
+  b: number
+  c: number
+  /** Earned after all of (A) lands. */
+  afterA: number
+  /** Earned after (A) and (B) land. */
+  afterAB: number
+  total: number
+}
+
+export function computeScopeTotals(matrix: MatrixRow[], items: ScopeItem[]): ScopeTotals {
+  const weight = new Map(matrix.map((r) => [r.category, r.weight]))
+  const sum = (cls: ScopeClass): number =>
+    round2(
+      items
+        .filter((i) => i.cls === cls)
+        .reduce((acc, i) => acc + (weight.get(i.row) ?? 0) * i.gain, 0),
+    )
+  const base = computeTotals(matrix)
+  const a = sum('A')
+  const b = sum('B')
+  return {
+    a,
+    b,
+    c: sum('C'),
+    afterA: round2(base.earned + a),
+    afterAB: round2(base.earned + a + b),
+    total: base.total,
+  }
+}
+
+/** The checks on one item whose row exists: positive gain, Points = weight × gain, a valid Effort / Proposal. */
+function itemIssues(item: ScopeItem, row: MatrixRow): string[] {
+  const issues: string[] = []
+  const label = `scope (${item.cls}) ${item.id}`
+  if (!(item.gain > 0)) issues.push(`${label}: gain must be above zero, got ${item.gain}`)
+  const want = round2(row.weight * item.gain)
+  if (round2(item.points) !== want) {
+    issues.push(
+      `${label}: Points says ${item.points} but weight ${row.weight} × gain ${item.gain} = ${want.toFixed(2)}`,
+    )
+  }
+  const tag = item.tag ?? ''
+  if (item.cls === 'A' && !EFFORTS.has(tag)) {
+    issues.push(`${label}: Effort must be one of XS, S, M, L, got "${tag}"`)
+  }
+  if (item.cls === 'C' && !PROPOSALS.has(tag)) {
+    issues.push(`${label}: Proposal must be "stays scored" or "leaves the row", got "${tag}"`)
+  }
+  return issues
+}
+
+/** Every row below 1.0 closes to exactly 1.0; a row at 1.0 carries nothing. */
+function closureIssues(matrix: MatrixRow[], accounted: Map<string, number>): string[] {
+  const issues: string[] = []
+  for (const r of matrix) {
+    const items = round2(accounted.get(r.category) ?? 0)
+    const got = round2(r.fraction + items)
+    if (r.fraction >= 1 && accounted.has(r.category)) {
+      issues.push(`scope: "${r.category}" is already at 1.0 but still carries scope items`)
+    } else if (r.fraction < 1 && got !== 1) {
+      issues.push(
+        `scope: "${r.category}" does not close — fraction ${r.fraction} + items ${items} = ${got}, must be exactly 1.0 (every missing share is (A), (B) or (C))`,
+      )
+    }
+  }
+  return issues
+}
+
+/** Per-item and per-row checks: existing row, positive gain, points = weight × gain, rows close to exactly 1.0. */
+export function verifyScopeItems(matrix: MatrixRow[], items: ScopeItem[]): string[] {
+  const issues: string[] = []
+  const byCategory = new Map(matrix.map((r) => [r.category, r]))
+  const ids = new Set<string>()
+  const accounted = new Map<string, number>()
+  for (const item of items) {
+    if (ids.has(item.id)) issues.push(`scope (${item.cls}) ${item.id}: duplicate ID`)
+    ids.add(item.id)
+    const row = byCategory.get(item.row)
+    if (!row) {
+      issues.push(
+        `scope (${item.cls}) ${item.id}: "${item.row}" is not a matrix row (the Matrix row cell must be the exact category name)`,
+      )
+      continue
+    }
+    issues.push(...itemIssues(item, row))
+    accounted.set(item.row, (accounted.get(item.row) ?? 0) + item.gain)
+  }
+  return [...issues, ...closureIssues(matrix, accounted)]
+}
+
+/** The section's stated totals must equal what its tables imply. Each statement appears exactly once. */
+export function verifyScopeTotals(section: string, totals: ScopeTotals): string[] {
+  const issues: string[] = []
+  const pct = (earned: number): number => Math.round((earned / totals.total) * 100)
+  const checks: Array<{ label: string; re: RegExp; want: string[] }> = [
+    {
+      label: '**(A) total:** +P points',
+      re: /\*\*\(A\) total:\*\* \+(\d+\.\d{2}) points/g,
+      want: [totals.a.toFixed(2)],
+    },
+    {
+      label: '**(B) total:** +P points',
+      re: /\*\*\(B\) total:\*\* \+(\d+\.\d{2}) points/g,
+      want: [totals.b.toFixed(2)],
+    },
+    {
+      label: '**(C) remainder:** P points',
+      re: /\*\*\(C\) remainder:\*\* (\d+\.\d{2}) points/g,
+      want: [totals.c.toFixed(2)],
+    },
+    {
+      label: '**Projected after (A):** E / T ≈ N%',
+      re: /\*\*Projected after \(A\):\*\* (\d+\.\d{2}) \/ (\d+) ≈ (\d+)%/g,
+      want: [totals.afterA.toFixed(2), String(totals.total), String(pct(totals.afterA))],
+    },
+    {
+      label: '**Projected after (A) + (B):** E / T ≈ N%',
+      re: /\*\*Projected after \(A\) \+ \(B\):\*\* (\d+\.\d{2}) \/ (\d+) ≈ (\d+)%/g,
+      want: [totals.afterAB.toFixed(2), String(totals.total), String(pct(totals.afterAB))],
+    },
+  ]
+  for (const { label, re, want } of checks) {
+    const found = [...section.matchAll(re)]
+    if (found.length !== 1) {
+      issues.push(
+        `scope: the statement \`${label}\` must appear exactly once, found ${found.length}`,
+      )
+      continue
+    }
+    const got = found[0]!.slice(1)
+    if (got.join('|') !== want.join('|')) {
+      issues.push(
+        `scope: \`${label}\` says ${got.join(' / ')} but the tables imply ${want.join(' / ')}`,
+      )
+    }
+  }
+  return issues
+}
+
 function markdownFiles(dir: string): string[] {
   const out: string[] = []
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -370,8 +645,23 @@ function main(): void {
     }
   }
 
+  const scope = parseScope(md)
+  allIssues.push(...scope.issues)
+  let scopeTotals: ScopeTotals | undefined
+  if (rows.length > 0 && scope.items.length > 0) {
+    allIssues.push(...verifyScopeItems(rows, scope.items))
+    scopeTotals = computeScopeTotals(rows, scope.items)
+    allIssues.push(...verifyScopeTotals(scope.section, scopeTotals))
+  }
+
   if (process.argv.includes('--json')) {
-    console.log(JSON.stringify({ rows: rows.length, ...totals, issues: allIssues }, null, 2))
+    console.log(
+      JSON.stringify(
+        { rows: rows.length, ...totals, scope: scopeTotals, issues: allIssues },
+        null,
+        2,
+      ),
+    )
     process.exit(allIssues.length > 0 ? 1 : 0)
   }
 
@@ -389,7 +679,7 @@ function main(): void {
   }
 
   console.log(
-    `✓ Multiplatform matrix — ${rows.length} rows, headline matches the table: ≈ ${Math.round(totals.pct)}% (${totals.earned.toFixed(1)} / ${totals.total}); maturity tiers match tierFor(fraction).`,
+    `✓ Multiplatform matrix — ${rows.length} rows, headline matches the table: ≈ ${Math.round(totals.pct)}% (${totals.earned.toFixed(1)} / ${totals.total}); maturity tiers match tierFor(fraction); Road to Stable closes every row (${scope.items.length} items, after (A) ${scopeTotals?.afterA.toFixed(2)}, after (A) + (B) ${scopeTotals?.afterAB.toFixed(2)}).`,
   )
 }
 

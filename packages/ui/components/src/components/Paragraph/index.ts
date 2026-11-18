@@ -1,11 +1,11 @@
-import { txt } from '../../factory'
+import { tones, txt } from '../../factory'
 
 const Paragraph = txt
   .config({ name: 'Paragraph' })
   .attrs({ tag: 'p' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     fontSize: t.fontSize.base,
-    color: t.color.system.base[600],
+    color: tones(t, m).textMuted,
     lineHeight: t.lineHeight.base,
     margin: 0,
   }))

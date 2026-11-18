@@ -74,6 +74,7 @@ export function hookClaimsSource(hook: string, source: string): boolean {
     registries.calls.patternCalls.get(hook)?.modules ??
     registries.exprs.functions.get(hook)?.modules
   const registered = registries.services.has(hook) || registries.calls.names.has(hook) || registries.exprs.functions.has(hook)
+
   return modules?.some((m) => source === m || source.startsWith(`${m}/`)) ?? (registered && source.startsWith('@pyreon/'))
 }
 
@@ -144,11 +145,12 @@ export function serviceFor(hook: string): ServiceDescriptor {
       `[Pyreon] native service \`${hook}\` has no descriptor in the active compiler's service registry — a \`service\` declaration must name a hook a loaded plugin registered.`,
     )
   }
+
   return s
 }
 
 /** The lifecycle a `service` declaration needs started, if any. */
-export function serviceLifecycle(d: DeclIR): 'start' | 'start-stop' | undefined {
+export function serviceLifecycle(d: DeclIR): 'start' | 'start-stop' | 'stop' | undefined {
   return d.kind === 'service' ? serviceFor(d.hook).lifecycle : undefined
 }
 
@@ -202,6 +204,7 @@ export function hashServiceDeclsAsLegacy(_key: string, value: unknown): unknown 
       }
     }
   }
+
   return value
 }
 
@@ -248,6 +251,7 @@ export function findReceiverLowering(
   const receiver = scope.declByName(root)
   if (receiver === undefined) return undefined
   const lowering = receivers.get(receiver.plugin)?.get(receiver.type)
+
   return lowering === undefined ? undefined : { lowering, receiver }
 }
 
@@ -263,6 +267,7 @@ export function findFunctionLowering(
   const claimed = exprs.functions.has(name) ? name : exprs.functionsByIrName.get(name)
   if (claimed === undefined) return undefined
   const entry = exprs.functions.get(claimed)
+
   return entry === undefined ? undefined : { lowering: entry.lowering, claimed }
 }
 
@@ -353,6 +358,7 @@ export function lowerPluginReceiver(
     expr.kind === 'call'
       ? ({ kind: 'call', expr, receiver } as const)
       : ({ kind: 'member', expr, receiver } as const)
+
   return target === 'swift'
     ? lowering.swift?.expr?.(site, ctx() as SwiftEmitContext)
     : lowering.kotlin?.expr?.(site, ctx() as KotlinEmitContext)
@@ -405,6 +411,7 @@ export function lowerPluginAssignValue(
     emitted: assign.emitted,
     receiver: found.receiver,
   }
+
   return target === 'swift'
     ? found.lowering.swift?.assignValue?.(site, ctx() as SwiftEmitContext)
     : found.lowering.kotlin?.assignValue?.(site, ctx() as KotlinEmitContext)
@@ -433,6 +440,7 @@ export function pluginValueBinding(
   const decl = root === undefined ? undefined : scope.declByName(root)
   if (decl === undefined) return undefined
   const binding = activeRegistries().calls.emitter(decl.plugin, decl.type)?.valueBinding
+
   return target === 'swift'
     ? binding?.swift(value, decl, ctx())
     : binding?.kotlin(value, decl, ctx())
@@ -449,6 +457,7 @@ export function pluginIterationBinding(
   if (source === undefined || decl === undefined) return { name }
   const spec = activeRegistries().calls.emitter(decl.plugin, decl.type)?.iteration?.(source, decl)
   if (spec === undefined) return { name }
+
   return { name, declaration: stampExtDecl(activeRegistries().calls, decl.plugin, name, spec) }
 }
 
@@ -474,6 +483,7 @@ export function lowerPluginFunction(
   const found = findFunctionLowering(name)
   if (found === undefined) return undefined
   const site = { name: found.claimed, args }
+
   return target === 'swift'
     ? found.lowering.swift?.(site, ctx() as SwiftEmitContext)
     : found.lowering.kotlin?.(site, ctx() as KotlinEmitContext)
@@ -510,6 +520,7 @@ export function lowerPluginRefModifiers(
         : lowering.kotlin?.(attr.value, el, ctx() as KotlinEmitContext)
     if (modifier !== undefined) out.push(modifier)
   }
+
   return out
 }
 
@@ -559,6 +570,7 @@ export function lowerPluginMemberRead(
         : lowering.kotlin?.(e, ctx() as KotlinEmitContext)
     if (out !== undefined) return out
   }
+
   return undefined
 }
 
@@ -591,6 +603,7 @@ export function lowerPluginIntrinsic(
         : lowering.emit.kotlin?.(el, context as KotlinEmitContext)
     if (out !== undefined) return out
   }
+
   return undefined
 }
 
@@ -621,6 +634,7 @@ export function midLifecycleDecls(decls: readonly DeclIR[]): ExtDecl[] {
   const mid = decls.filter(
     (d): d is ExtDecl => d.kind === 'ext' && extDeclLifecycle(d)?.midOrder !== undefined,
   )
+
   return mid
     .map((d, i) => ({ d, i, order: extDeclLifecycle(d)!.midOrder! }))
     .sort((a, b) => a.order - b.order || a.i - b.i)
@@ -646,6 +660,7 @@ export function swiftInitDecls(
     const init = activeRegistries().calls.emitter(d.plugin, d.type)?.swiftInit
     if (init !== undefined) out.push({ decl: d, init, index })
   })
+
   return out
     .sort((a, b) => a.init.order - b.init.order || a.index - b.index)
     .map(({ decl, init }) => ({ decl, init }))
@@ -691,6 +706,7 @@ export function pluginAsyncState(
   if (d.kind !== 'ext') return undefined
   const emitter = activeRegistries().calls.emitter(d.plugin, d.type)?.asyncState
   if (emitter === undefined) return undefined
+
   return target === 'swift' ? emitter.swift(d, ctx) : emitter.kotlin(d, ctx)
 }
 
@@ -702,6 +718,7 @@ export function persistenceFor(key: string): SignalPersistence {
       `[Pyreon] a signal persists under the key ${JSON.stringify(key)} but no loaded plugin declares \`persistence\` — the plugin that recognized it must declare how it is rendered.`,
     )
   }
+
   return registered.persistence
 }
 
@@ -752,6 +769,7 @@ export function pluginResultTypeMember(t: Extract<TypeIR, { kind: 'typeRef' }>, 
       for (const rt of emitter.typing?.resultTypes ?? []) if (rt.name === t.name) return rt.member(t.args, property)
     }
   }
+
   return undefined
 }
 
@@ -860,9 +878,11 @@ export function emitPluginRoot(
         throw new Error(
           `[Pyreon] Plugin "${group[0]!.plugin}" root wrapper for "${group[0]!.type}" must return a string synchronously.`,
         )
+
       return output
     }
   }
+
   return wrapped(indent)
 }
 

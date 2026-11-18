@@ -149,7 +149,7 @@ const useApp = defineStore('app', () => {
   return { n, double }
 })
 export function App() { const s = useApp(); return (<Stack><Text>{String(s.store.double())}</Text></Stack>) }`).code
-    expect(out).toContain('val double get() = n * 2')
+    expect(out).toContain('val double get() = pyreonMul(n, 2L)')
     expect(out).toContain('PyreonStore_app.double')
   })
 })
@@ -165,8 +165,8 @@ export function App() {
   const b = computed(() => xs().map((i) => i + 1))
   return (<Stack><Text>{String(i()) + String(a().length) + String(b().length)}</Text></Stack>)
 }`).code
-    expect(out).toContain('(0 until 3L).map({ i -> i * 2L })')
-    expect(out).toContain('xs.map({ i -> i + 1L })')
+    expect(out).toContain('(0 until 3L).map({ i -> pyreonMul(i, 2L) })')
+    expect(out).toContain('xs.map({ i -> pyreonAdd(i, 1L) })')
     // the outer `i` still reads as the signal after both shadows unwind
     expect(out).toContain('(i).toString()')
   })

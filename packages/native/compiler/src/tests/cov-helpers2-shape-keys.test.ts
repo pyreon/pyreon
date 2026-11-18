@@ -229,11 +229,11 @@ export function App() {
       .find((l) => l.includes('private var v:')) ?? ''
 
   it('a BINARY operand is wrapped (Swift binds `&` tighter than `+`, unlike JS)', () => {
-    expect(bits('(n() + 1) & 3')).toContain('(n + 1) & 3')
+    expect(bits('(n() + 1) & 3')).toMatch(/pyreonBitAnd\(\(?pyreonAdd\(n, 1\)\)?, 3\)/)
   })
 
   it('a TERNARY operand is wrapped', () => {
-    expect(bits('(n() > 1 ? 2 : 3) | 4')).toContain('(n > 1 ? 2 : 3) | 4')
+    expect(bits('(n() > 1 ? 2 : 3) | 4')).toContain('pyreonBitOr((n > 1 ? 2 : 3), 4)')
   })
 
   it('a COMPARISON operand is wrapped', () => {
@@ -241,7 +241,7 @@ export function App() {
   })
 
   it('a SIMPLE atom is NOT wrapped — the false arm', () => {
-    expect(bits('n() & 3')).toContain('n & 3')
+    expect(bits('n() & 3')).toContain('pyreonBitAnd(n, 3)')
     expect(bits('n() & 3')).not.toContain('(n) & 3')
   })
 
@@ -253,7 +253,6 @@ export function App() {
   const v = computed(() => (n() + 1) & 3)
   return (<Stack><Text>{v()}</Text></Stack>)
 }`)
-    expect(out).toContain('(n + 1L)')
-    expect(out).toContain('and')
+    expect(out).toMatch(/pyreonBitAnd\(\(?pyreonAdd\(n, 1L\)\)?, 3L\)/)
   })
 })

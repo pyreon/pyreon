@@ -127,6 +127,261 @@ public sealed class PyreonHttpError(message: String) : Exception(message) {
 }
 
 /**
+ * A non-2xx answer whose MESSAGE the server's JSON body supplies — the error
+ * `@pyreon/feature`'s REST helper throws on the web, and what its lowered CRUD
+ * hooks reject with. Mirrors the Swift `PyreonHttpMessageError` (see there for
+ * the full contract): [message] is the body's non-empty string `message`, else
+ * `"<METHOD> <url> failed: <status>"`; [errors] is the JSON TEXT of a truthy
+ * `errors`. `e.message` is the message, so the lowered `error.message` reads
+ * the string the web shows.
+ */
+public class PyreonHttpMessageError(
+    message: String,
+    public val status: Int,
+    public val errors: String? = null,
+) : Exception(message) {
+    /** `String(error)` on the web: `Error: <message>`. */
+    override fun toString(): String = "Error: $message"
+
+    override fun equals(other: Any?): Boolean =
+        other is PyreonHttpMessageError && other.message == message && other.status == status && other.errors == errors
+
+    override fun hashCode(): Int = (message.hashCode() * 31 + status) * 31 + errors.hashCode()
+}
+
+/** The error `@pyreon/feature` throws for this (non-2xx) answer to `method url` (`url` as the web's message spells it). */
+public fun PyreonHttpResponse.messageError(method: String, url: String): PyreonHttpMessageError {
+    val fields = PyreonHttpErrorBody.read(body)
+    return PyreonHttpMessageError(
+        message = fields?.message ?: "$method $url failed: $status",
+        status = status,
+        errors = fields?.errors,
+    )
+}
+
+/**
+ * The two fields `@pyreon/feature` reads from an error body, by a small
+ * VALIDATING JSON scanner — dependency-free, and line for line the Swift
+ * `PyreonHttpErrorBody`: input `JSON.parse` would reject yields null (the
+ * web's `res.json()` throws and the default message stands), and a duplicate
+ * key keeps its LAST value.
+ */
+internal object PyreonHttpErrorBody {
+    class Fields(var message: String? = null, var errors: String? = null)
+
+    fun read(text: String): Fields? {
+        val s = Scanner(text)
+        // `res.json()` drops a leading byte-order mark.
+        if (text.startsWith("\uFEFF")) s.i = 1
+        s.ws()
+        if (s.peek != '{') return if (s.value() && s.end()) Fields() else null
+        s.i++
+        val fields = Fields()
+        s.ws()
+        if (s.peek == '}') {
+            s.i++
+            return if (s.end()) fields else null
+        }
+        while (true) {
+            s.ws()
+            val key = s.string() ?: return null
+            s.ws()
+            if (s.peek != ':') return null
+            s.i++
+            s.ws()
+            val start = s.i
+            if (key == "message") {
+                if (s.peek == '"') {
+                    val value = s.string() ?: return null
+                    // `if (body?.message)`: an empty string is falsy.
+                    fields.message = value.ifEmpty { null }
+                } else {
+                    if (!s.value()) return null
+                    // A non-string message is not read (documented narrowing).
+                    fields.message = null
+                }
+            } else if (!s.value()) {
+                return null
+            }
+            if (key == "errors") {
+                val raw = text.substring(start, s.i)
+                fields.errors = if (truthy(raw)) raw else null
+            }
+            s.ws()
+            when (s.peek) {
+                ',' -> s.i++
+                '}' -> {
+                    s.i++
+                    return if (s.end()) fields else null
+                }
+                else -> return null
+            }
+        }
+    }
+
+    /** JS truthiness of one raw JSON value: `false`, `null`, `0`, `""` are falsy. */
+    fun truthy(raw: String): Boolean {
+        if (raw == "false" || raw == "null" || raw == "\"\"") return false
+        val first = raw.firstOrNull() ?: return false
+        if (first == '-' || first in '0'..'9') return (raw.toDoubleOrNull() ?: 1.0) != 0.0
+        return true
+    }
+
+    class Scanner(private val text: String) {
+        var i = 0
+        val peek: Char? get() = if (i < text.length) text[i] else null
+
+        fun ws() {
+            while (true) {
+                val c = peek ?: return
+                if (c == ' ' || c == '\t' || c == '\n' || c == '\r') i++ else return
+            }
+        }
+
+        fun end(): Boolean {
+            ws()
+            return i == text.length
+        }
+
+        fun value(): Boolean {
+            ws()
+            return when (peek) {
+                '{' -> {
+                    i++
+                    ws()
+                    if (peek == '}') {
+                        i++
+                        return true
+                    }
+                    while (true) {
+                        ws()
+                        if (string() == null) return false
+                        ws()
+                        if (peek != ':') return false
+                        i++
+                        if (!value()) return false
+                        ws()
+                        when (peek) {
+                            ',' -> i++
+                            '}' -> {
+                                i++
+                                return true
+                            }
+                            else -> return false
+                        }
+                    }
+                    @Suppress("UNREACHABLE_CODE")
+                    false
+                }
+                '[' -> {
+                    i++
+                    ws()
+                    if (peek == ']') {
+                        i++
+                        return true
+                    }
+                    while (true) {
+                        if (!value()) return false
+                        ws()
+                        when (peek) {
+                            ',' -> i++
+                            ']' -> {
+                                i++
+                                return true
+                            }
+                            else -> return false
+                        }
+                    }
+                    @Suppress("UNREACHABLE_CODE")
+                    false
+                }
+                '"' -> string() != null
+                't' -> literal("true")
+                'f' -> literal("false")
+                'n' -> literal("null")
+                null -> false
+                else -> number()
+            }
+        }
+
+        private fun literal(word: String): Boolean {
+            if (!text.startsWith(word, i)) return false
+            i += word.length
+            return true
+        }
+
+        private fun digits(): Int {
+            val start = i
+            while (peek?.let { it in '0'..'9' } == true) i++
+            return i - start
+        }
+
+        /** `-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?` */
+        private fun number(): Boolean {
+            if (peek == '-') i++
+            val c = peek
+            when {
+                c == '0' -> i++
+                c != null && c in '1'..'9' -> digits()
+                else -> return false
+            }
+            if (peek == '.') {
+                i++
+                if (digits() == 0) return false
+            }
+            if (peek == 'e' || peek == 'E') {
+                i++
+                if (peek == '+' || peek == '-') i++
+                if (digits() == 0) return false
+            }
+            return true
+        }
+
+        /** A JSON string at [i] (which must be its opening quote), decoded; null when malformed. */
+        fun string(): String? {
+            if (peek != '"') return null
+            i++
+            val out = StringBuilder()
+            while (true) {
+                val c = peek ?: return null
+                i++
+                when {
+                    c == '"' -> return out.toString()
+                    c < ' ' -> return null
+                    c != '\\' -> out.append(c)
+                    else -> {
+                        val e = peek ?: return null
+                        i++
+                        when (e) {
+                            '"' -> out.append('"')
+                            '\\' -> out.append('\\')
+                            '/' -> out.append('/')
+                            'b' -> out.append('\b')
+                            'f' -> out.append('\u000C')
+                            'n' -> out.append('\n')
+                            'r' -> out.append('\r')
+                            't' -> out.append('\t')
+                            'u' -> {
+                                var unit = 0
+                                repeat(4) {
+                                    val h = peek ?: return null
+                                    val v = Character.digit(h, 16)
+                                    if (v < 0) return null
+                                    unit = unit * 16 + v
+                                    i++
+                                }
+                                out.append(unit.toChar())
+                            }
+                            else -> return null
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * The entry point the `useFetch` / `useQuery` emits call.
  *
  * Mirrors Swift's `PyreonHttp.send(_:)` so ONE shared source lowers to the same
@@ -467,6 +722,14 @@ public sealed class PyreonHttpMiddleware {
 
     /** `logger({ production })`; only when [PyreonHttpPipelineEnv.isDebug], unless [production]. */
     public class Logger(public val production: Boolean = false) : PyreonHttpMiddleware()
+
+    /**
+     * A non-2xx answer from the layers inside is THROWN as the error [error]
+     * builds from it. No `use: [...]` entry lowers to this: it is how a caller
+     * that owns its error contract (`@pyreon/feature`'s REST helper) runs
+     * through the same pipeline as every other request. The Swift `.reject`.
+     */
+    public class Reject(public val error: (PyreonHttpResponse) -> Throwable) : PyreonHttpMiddleware()
 }
 
 /** Everything the pipeline needs from the outside world, injectable for tests. */
@@ -537,6 +800,11 @@ public object PyreonHttpPipeline {
                 next()
             }
             is PyreonHttpMiddleware.Retry -> retry(mw.policy, box, env, next)
+            is PyreonHttpMiddleware.Reject -> {
+                val response = next()
+                if (!response.isOk) throw mw.error(response)
+                response
+            }
             is PyreonHttpMiddleware.Logger -> {
                 if (!mw.production && !env.isDebug) return next()
                 val started = env.now()

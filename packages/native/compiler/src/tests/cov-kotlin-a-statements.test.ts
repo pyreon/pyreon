@@ -57,8 +57,8 @@ describe('Kotlin statements: `i++` / `i--` as a STATEMENT', () => {
     i++
     i--
     n.set(i)`)
-    expect(out).toContain('i += 1')
-    expect(out).toContain('i -= 1')
+    expect(out).toContain('i = pyreonAdd(i, 1L)')
+    expect(out).toContain('i = pyreonSub(i, 1L)')
   })
 })
 

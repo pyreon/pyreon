@@ -12,6 +12,15 @@
 //     crash.recordError("…") // manual capture (caught errors, assertions)
 //     crash.breadcrumb("…")  // ring buffer, attached to the next report
 //
+// BUILD IDENTITY (what symbolication needs): a release binary's frames are
+// bare addresses, readable only against the dSYM of the exact build that
+// produced them. So every report carries `platform`, `build` (bundle id,
+// CFBundleShortVersionString, CFBundleVersion), `image` (the main
+// executable's name, LC_UUID, load address and arch) and `addresses` (the
+// raw return addresses). `pyreon-native symbolicate` picks the dSYM whose
+// UUID equals `image.uuid` and runs `atos -l <loadAddress>` over
+// `addresses`; a dSYM from any other build is refused, not used.
+//
 // HONEST SCOPE (v1): `NSSetUncaughtExceptionHandler` captures uncaught
 // NSExceptions; SIGNAL crashes (SIGSEGV/SIGABRT from Swift fatalError and
 // memory errors) are NOT captured — signal-safe crash handling is a
@@ -25,6 +34,7 @@
 // start()-idempotency + sticky-assertable-state design.
 
 import Foundation
+import MachO
 import Observation
 
 /// App-wired transport seam — same shape as the push/geolocation registries:
@@ -99,7 +109,8 @@ public final class PyreonCrashReporter {
         NSSetUncaughtExceptionHandler { exception in
             PyreonCrashReporter.active?.persist(
                 message: "\(exception.name.rawValue): \(exception.reason ?? "")",
-                stack: exception.callStackSymbols.joined(separator: "\n")
+                stack: exception.callStackSymbols.joined(separator: "\n"),
+                addresses: exception.callStackReturnAddresses.map { $0.uintValue }
             )
             // Forward LAST, so our report is on disk before the previous
             // handler does whatever it does — which may be to terminate.
@@ -118,7 +129,11 @@ public final class PyreonCrashReporter {
     /// Manual capture — caught errors, assertion failures, "should never
     /// happen" branches. Persists AND forwards to the transport when wired.
     public func recordError(_ message: String) {
-        persist(message: message, stack: Thread.callStackSymbols.joined(separator: "\n"))
+        persist(
+            message: message,
+            stack: Thread.callStackSymbols.joined(separator: "\n"),
+            addresses: Thread.callStackReturnAddresses.map { $0.uintValue }
+        )
         PyreonCrashTransportRegistry.send?(message)
     }
 
@@ -139,17 +154,83 @@ public final class PyreonCrashReporter {
 
     // MARK: - internals (pure vs the injected directory — unit-tested)
 
-    func persist(message: String, stack: String) {
+    func persist(message: String, stack: String, addresses: [UInt] = []) {
+        let image = PyreonCrashReporter.mainImage
         let report: [String: Any] = [
+            "platform": PyreonCrashReporter.platform,
             "message": message,
             "stack": stack,
             "breadcrumbs": breadcrumbs,
             "timestamp": ISO8601DateFormatter().string(from: Date()),
+            "build": PyreonCrashReporter.buildInfo,
+            "image": [
+                "name": image.name,
+                "uuid": image.uuid,
+                "loadAddress": PyreonCrashReporter.hex(image.loadAddress),
+                "arch": PyreonCrashReporter.arch,
+            ],
+            "addresses": addresses.map(PyreonCrashReporter.hex),
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: report) else { return }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? data.write(to: reportURL, options: .atomic)
     }
+
+    // MARK: - build identity
+
+    static var platform: String {
+        #if os(iOS)
+        return "ios"
+        #else
+        return "macos"
+        #endif
+    }
+
+    static var arch: String {
+        #if arch(arm64)
+        return "arm64"
+        #elseif arch(x86_64)
+        return "x86_64"
+        #else
+        return ""
+        #endif
+    }
+
+    static var buildInfo: [String: String] {
+        let info = Bundle.main.infoDictionary ?? [:]
+        return [
+            "appId": Bundle.main.bundleIdentifier ?? "",
+            "version": info["CFBundleShortVersionString"] as? String ?? "",
+            "buildNumber": info["CFBundleVersion"] as? String ?? "",
+        ]
+    }
+
+    static func hex(_ value: UInt) -> String { "0x" + String(value, radix: 16) }
+
+    /// The main executable's name, LC_UUID and load address (its mach
+    /// header). Computed once: none of it changes while the process lives,
+    /// and the crash path should not walk load commands twice.
+    static let mainImage: (name: String, uuid: String, loadAddress: UInt) = {
+        for i in 0..<_dyld_image_count() {
+            guard let header = _dyld_get_image_header(i),
+                  header.pointee.filetype == UInt32(MH_EXECUTE) else { continue }
+            let path = String(cString: _dyld_get_image_name(i))
+            let name = (path as NSString).lastPathComponent
+            var uuid = ""
+            var cursor = UnsafeRawPointer(header).advanced(by: MemoryLayout<mach_header_64>.size)
+            for _ in 0..<header.pointee.ncmds {
+                let command = cursor.loadUnaligned(as: load_command.self)
+                if command.cmd == UInt32(LC_UUID) {
+                    let bytes = cursor.loadUnaligned(as: uuid_command.self).uuid
+                    uuid = UUID(uuid: bytes).uuidString
+                    break
+                }
+                cursor = cursor.advanced(by: Int(command.cmdsize))
+            }
+            return (name, uuid, UInt(bitPattern: header))
+        }
+        return ("", "", 0)
+    }()
 
     func rehydrate() {
         guard let data = try? Data(contentsOf: reportURL),
