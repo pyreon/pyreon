@@ -475,7 +475,7 @@ export function _lc<T>(fn: () => T): () => T {
  * `() => _fuse("Hello ", name(), "!")`, so every consumer sees the sole-child
  * shape that renders and hydrates without `<!--$-->` range markers. Returns
  * the joined STRING when every part is text-ish — `null`/`undefined`/`false`
- * contribute nothing, `true` and numbers stringify — which is exactly how a
+ * and `true` contribute nothing, numbers stringify — which is exactly how a
  * lone `{x}` child coerces in `createPolyTextCore` and `_esc`, so a fused
  * element renders the same characters its unfused twin did.
  *
@@ -493,7 +493,7 @@ export function _fuse(...parts: unknown[]): string | unknown[] {
   let s = ''
   for (let i = 0; i < parts.length; i++) {
     const v = parts[i]
-    if (v == null || v === false) continue
+    if (v == null || typeof v === 'boolean') continue
     if (typeof v === 'object' || typeof v === 'function') return parts
     s += v as string | number | true
   }

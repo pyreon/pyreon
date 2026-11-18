@@ -42,3 +42,7 @@ export {
 export type { DiscoveredPlugin, PluginPackage } from './discover-plugins'
 export { explainReport, pluginsReport, verifyDiscovered } from './plugin-commands'
 export type { CommandReport } from './plugin-commands'
+
+// Crash-report symbolication — `pyreon-native symbolicate`.
+export { findRetrace, mappingIdOf, parseReport, symbolicate } from './symbolicate'
+export type { NativeCrashReport, SymbolicateOptions, SymbolicateResult } from './symbolicate'

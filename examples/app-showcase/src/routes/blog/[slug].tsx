@@ -31,7 +31,7 @@ interface PostData {
  * Enumerate the dynamic `:slug` values at build time. The SSG plugin
  * expands `/blog/:slug` × this list into one prerendered HTML file per
  * post. Without this export the route is silently skipped during SSG
- * auto-detect — `pyreon doctor --check-ssg` warns about it.
+ * auto-detect — `pyreon doctor --only ssg-audit` warns about it.
  *
  * The slugs come from `posts` exported by `../../sections/blog/content/posts`,
  * which is the same source the loader reads — keeping prerender and

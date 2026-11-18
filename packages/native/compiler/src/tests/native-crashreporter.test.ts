@@ -42,8 +42,8 @@ describe('useCrashReporter() emit', () => {
     expect(r.code).toContain('.onAppear { crash.start() }')
     expect(r.code).toContain('ZStack {')
     // Reactive reads are bare @Observable properties on Swift.
-    expect(r.code).toContain('Crashed: \\(crash.hadCrash)')
-    expect(r.code).toContain('Last: \\(crash.lastCrash)')
+    expect(r.code).toContain('Crashed: \\(pyreonOptionalText(crash.hadCrash, ""))')
+    expect(r.code).toContain('Last: \\(pyreonOptionalText(crash.lastCrash, ""))')
     // Imperative methods pass through unchanged.
     expect(r.code).toContain('crash.recordError("manual")')
     expect(r.code).toContain('crash.clear()')
@@ -55,8 +55,8 @@ describe('useCrashReporter() emit', () => {
     expect(r.code).toContain('val crash = rememberPyreonCrashReporter()')
     // Reactive member reads append .value (Compose MutableState) — a missing
     // .value renders the state object's toString instead of the value.
-    expect(r.code).toContain('Crashed: ${crash.hadCrash.value}')
-    expect(r.code).toContain('Last: ${crash.lastCrash.value}')
+    expect(r.code).toContain('Crashed: ${pyreonOptionalText(crash.hadCrash.value, "")}')
+    expect(r.code).toContain('Last: ${pyreonOptionalText(crash.lastCrash.value, "")}')
     // Methods read bare (no .value).
     expect(r.code).toContain('crash.recordError("manual")')
     expect(r.code).toContain('crash.clear()')

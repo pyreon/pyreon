@@ -70,16 +70,16 @@ const code = (target: 'swift' | 'kotlin') => emit(target).code
 describe('a chained model lowers instead of emitting itself verbatim', () => {
   it('Swift: views are computed properties, actions are methods', () => {
     const out = code('swift')
-    expect(out).toContain('var doubled: Int { total * 2 }')
-    expect(out).toContain('func add(_ n: Int) { total = total + n }')
+    expect(out).toContain('var doubled: Int { pyreonMul(total, 2) }')
+    expect(out).toContain('func add(_ n: Int) { total = pyreonAdd(total, n) }')
     expect(out).toContain('func reset() { total = 0 }')
   })
 
   it('Kotlin: views are reactive getters, actions are funs', () => {
     const out = code('kotlin')
-    expect(out).toContain('val doubled get() = total * 2')
+    expect(out).toContain('val doubled get() = pyreonMul(total, 2L)')
     expect(out).toContain('fun add(n: Long)')
-    expect(out).toContain('total = total + n')
+    expect(out).toContain('total = pyreonAdd(total, n)')
   })
 
   // The shape that shipped. `model(` surviving into the emit is the whole
@@ -105,9 +105,9 @@ describe('a state field is a signal: reads drop parens, actions keep them', () =
   it('Swift', () => {
     const out = code('swift')
     // Was `…shared.count()` — calling an Int.
-    expect(out).toContain('Text(verbatim: "\\(PyreonModel_cart.shared.total)")')
-    expect(out).toContain('Text(verbatim: "\\(PyreonModel_cart.shared.doubled)")')
-    expect(out).toContain('Text(verbatim: "\\(PyreonModel_cart.shared.note)")')
+    expect(out).toContain('Text(verbatim: "\\(pyreonOptionalText(PyreonModel_cart.shared.total, ""))")')
+    expect(out).toContain('Text(verbatim: "\\(pyreonOptionalText(PyreonModel_cart.shared.doubled, ""))")')
+    expect(out).toContain('Text(verbatim: "\\(pyreonOptionalText(PyreonModel_cart.shared.note, ""))")')
     // An ACTION is a call and must keep its parens + args.
     expect(out).toContain('PyreonModel_cart.shared.add(3)')
     expect(out).toContain('PyreonModel_cart.shared.reset()')
@@ -115,8 +115,8 @@ describe('a state field is a signal: reads drop parens, actions keep them', () =
 
   it('Kotlin', () => {
     const out = code('kotlin')
-    expect(out).toContain('Text(text = "${PyreonModel_cart.total}")')
-    expect(out).toContain('Text(text = "${PyreonModel_cart.doubled}")')
+    expect(out).toContain('Text(text = "${pyreonOptionalText(PyreonModel_cart.total, "")}")')
+    expect(out).toContain('Text(text = "${pyreonOptionalText(PyreonModel_cart.doubled, "")}")')
     expect(out).toContain('PyreonModel_cart.add(3L)')
     expect(out).toContain('PyreonModel_cart.reset()')
   })

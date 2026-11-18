@@ -179,7 +179,7 @@ describe('doctor() end-to-end', () => {
     expect(paths.some((p: string) => p.includes('react-compat'))).toBe(false)
   })
 
-  it('legacy --audit-tests maps to --only audit-tests', async () => {
+  it('only: [audit-tests] runs just that gate', async () => {
     const cwd = makeTmpDir()
     writeWorkspaceRoot(cwd)
     writePkg(cwd, 'packages/core/app')
@@ -192,7 +192,7 @@ describe('doctor() end-to-end', () => {
     await doctor({
       ...defaults(cwd),
       json: true,
-      auditTests: true,
+      only: ['audit-tests'],
     })
     const out = log.mock.calls.map((c) => c[0]).join('')
     log.mockRestore()

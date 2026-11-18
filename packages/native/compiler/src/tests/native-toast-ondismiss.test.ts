@@ -37,10 +37,10 @@ describe('toast() onDismiss on native', () => {
   it('a no-argument onDismiss lowers to the runtime callback on both targets', () => {
     const swift = transform(ONLY, { target: 'swift' })
     expect(swift.warnings).toEqual([])
-    expect(swift.code).toMatch(/PyreonToast\.shared\.add\("Saved", type: "info", onDismiss: \{[^}]*closed = closed \+ 1/)
+    expect(swift.code).toMatch(/PyreonToast\.shared\.add\("Saved", type: "info", onDismiss: \{[^}]*closed = pyreonAdd\(closed, 1\)/)
     const kotlin = transform(ONLY, { target: 'kotlin' })
     expect(kotlin.warnings).toEqual([])
-    expect(kotlin.code).toMatch(/PyreonToast\.add\("Saved", "info", onDismiss = \{ closed = closed \+ 1L \}/)
+    expect(kotlin.code).toMatch(/PyreonToast\.add\("Saved", "info", onDismiss = \{ closed = pyreonAdd\(closed, 1L\) \}/)
   })
 
   it('onDismiss follows description and action in the argument order', () => {

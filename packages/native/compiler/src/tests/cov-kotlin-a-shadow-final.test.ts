@@ -29,7 +29,7 @@ export function App() {
   return (<Stack><Press onPress={run}><Text>{String(xs().length)}</Text></Press></Stack>)
 }`).code
     expect(out).toContain('val i = "outer"')
-    expect(out).toContain('(0 until 3L).map({ i -> i * 2L })')
+    expect(out).toContain('(0 until 3L).map({ i -> pyreonMul(i, 2L) })')
     // `i.length` after both shadows unwind still resolves against the String
     expect(out).toContain('i.length')
   })

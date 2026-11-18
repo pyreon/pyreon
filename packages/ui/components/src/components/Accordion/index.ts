@@ -4,7 +4,7 @@ import {
   AccordionItemBase,
   AccordionTriggerBase,
 } from '@pyreon/ui-primitives'
-import { disabledState, el, focusRing } from '../../factory'
+import { disabledState, el, focusRing, tones } from '../../factory'
 
 /**
  * Accordion — a WAI-ARIA disclosure set that delegates ALL behavior + a11y to
@@ -54,7 +54,7 @@ export const AccordionItem = el
 
 export const AccordionTrigger = el
   .config({ name: 'AccordionTrigger', component: AccordionTriggerBase })
-  .theme((t) => ({
+  .theme((t, m) => ({
     // Was `.attrs({ direction:'inline', alignX:'spaceBetween', alignY:'center' })`.
     // AccordionTriggerBase owns the <button> now, so the layout is CSS —
     // Element layout props would otherwise ride `rest` onto the DOM as junk.
@@ -66,7 +66,7 @@ export const AccordionTrigger = el
     paddingBottom: t.spacing.xSmall,
     fontSize: t.fontSize.small,
     fontWeight: t.fontWeight.medium,
-    color: t.color.system.dark[800],
+    color: tones(t, m).text,
     cursor: 'pointer',
     transition: t.transition.fast,
     backgroundColor: 'transparent',
@@ -81,8 +81,8 @@ export const AccordionTrigger = el
 
 export const AccordionContent = el
   .config({ name: 'AccordionContent', component: AccordionContentBase })
-  .theme((t) => ({
+  .theme((t, m) => ({
     paddingBottom: t.spacing.xSmall,
     fontSize: t.fontSize.small,
-    color: t.color.system.base[700],
+    color: tones(t, m).textMuted,
   }))
