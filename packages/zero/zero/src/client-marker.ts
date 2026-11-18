@@ -65,7 +65,11 @@ interface HotContext {
  * `import.meta.hot` is undefined in a production build, so this compiles out.
  */
 function watchServerModules(): void {
-  const hot = (import.meta as { hot?: HotContext }).hot
+  // Through `unknown`: this source is typechecked under whatever `ImportMeta`
+  // the consuming program declares (Vite's, Bun's, or none), and Bun's `hot`
+  // does not overlap this shape. The cast erases to `import.meta.hot`, which is
+  // the exact text Vite replaces.
+  const hot = (import.meta as unknown as { hot?: HotContext }).hot
   // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- an HMR callback: only the dev server's browser client ever calls it
   if (hot) hot.on(SSR_UPDATE_EVENT, () => location.reload())
 }
