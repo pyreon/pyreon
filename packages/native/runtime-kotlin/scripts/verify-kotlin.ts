@@ -52,6 +52,7 @@ const PACKAGE_ROOT = resolve(HERE, '..')
 // collide. The workspace `test` script invokes this once per service.
 const SERVICE =
   process.argv.find((a) => a.startsWith('--service='))?.split('=')[1] ?? 'PyreonStorage'
+
 // `--files=a,b,c` compiles an EXPLICIT set of `.kt` together — the per-service
 // GROUP mode for a co-located package whose runtime is SEVERAL independent
 // services needing DIFFERENT mutually-exclusive stubs. In this mode the caller
@@ -68,6 +69,7 @@ const FILES_OVERRIDE = process.argv.find((a) => a.startsWith('--files='))?.split
 const SOURCE_DIR = process.argv.find((a) => a.startsWith('--source-dir='))?.split('=')[1]
 const SOURCE_OVERRIDE = process.argv.find((a) => a.startsWith('--source='))?.split('=')[1]
 const TEST_OVERRIDE = process.argv.find((a) => a.startsWith('--test='))?.split('=')[1]
+
 const SOURCE_FILES: string[] = FILES_OVERRIDE
   ? FILES_OVERRIDE.split(',')
       .map((f) => f.trim())
@@ -81,6 +83,7 @@ const SOURCE_FILES: string[] = FILES_OVERRIDE
           if (statSync(p).isDirectory()) out.push(...walk(p))
           else if (p.endsWith('.kt')) out.push(p)
         }
+
         return out
       })(resolve(SOURCE_DIR))
     : [
@@ -88,7 +91,9 @@ const SOURCE_FILES: string[] = FILES_OVERRIDE
           ? resolve(SOURCE_OVERRIDE)
           : resolve(PACKAGE_ROOT, `src/main/kotlin/com/pyreon/runtime/${SERVICE}.kt`),
       ]
+
 const SOURCE_FILE = SOURCE_FILES[0]!
+
 const TEST_FILE = TEST_OVERRIDE
   ? resolve(TEST_OVERRIDE)
   : resolve(PACKAGE_ROOT, `src/test/kotlin/com/pyreon/runtime/${SERVICE}Test.kt`)
@@ -386,6 +391,36 @@ open class Context {
   companion object {
     const val MODE_PRIVATE: Int = 0
   }
+}
+`
+
+// PyreonCrashReporterAndroid-only stubs — the Context the factory touches
+// (filesDir for the report file; packageName + packageManager for the build
+// identity stamped on every report) and the PackageManager/PackageInfo
+// surface it reads, mirrored EXACTLY (no superset). Own Context rather than
+// widening the database one: a stub broader than a service's real surface
+// masks breakage in that service.
+const ANDROID_CRASH_CONTEXT_STUBS = `package android.content
+
+import java.io.File
+
+open class Context {
+  open val filesDir: File get() = File(System.getProperty("java.io.tmpdir"), "pyreon-stub-files")
+  open val packageName: String get() = "com.pyreon.stub"
+  open val packageManager: android.content.pm.PackageManager get() = android.content.pm.PackageManager()
+}
+`
+
+const ANDROID_CRASH_PM_STUBS = `package android.content.pm
+
+open class PackageInfo {
+  @JvmField var versionName: String? = null
+  @Deprecated("API 28: longVersionCode") @JvmField var versionCode: Int = 0
+}
+
+open class PackageManager {
+  open fun getPackageInfo(packageName: String, flags: Int): PackageInfo = PackageInfo()
+  open class NameNotFoundException : Exception()
 }
 `
 
@@ -1071,11 +1106,13 @@ interface Modifier {
     companion object : Modifier
 }
 `
+
 const SELECT_COMPOSE_LAYOUT_STUBS = `package androidx.compose.foundation.layout
 import androidx.compose.ui.Modifier
 interface ColumnScope
 fun Modifier.fillMaxWidth(fraction: Float = 1f): Modifier = this
 `
+
 const SELECT_MATERIAL3_STUBS = `package androidx.compose.material3
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
@@ -1159,6 +1196,7 @@ open class Currency {
     }
 }
 `
+
 const ICU_TEXT_STUBS = `package android.icu.text
 import android.icu.util.Currency
 import android.icu.util.TimeZone
@@ -1201,6 +1239,7 @@ abstract class NumberFormat {
     }
 }
 `
+
 const ICU_MATH_STUBS = `package android.icu.math
 class BigDecimal {
     companion object {
@@ -1400,6 +1439,7 @@ class ActivityResultContracts {
 const DATEFIELD_ANDROID_STUBS = `package android.content
 open class Context
 `
+
 const DATEFIELD_ANDROID_R_STUBS = `package android
 object R {
     object string {
@@ -1408,6 +1448,7 @@ object R {
     }
 }
 `
+
 const DATEFIELD_ANDROID_FORMAT_STUBS = `package android.text.format
 import android.content.Context
 open class DateFormat {
@@ -1416,11 +1457,13 @@ open class DateFormat {
     }
 }
 `
+
 const DATEFIELD_COMPOSE_UI_STUBS = `package androidx.compose.ui
 interface Modifier {
     companion object : Modifier
 }
 `
+
 const DATEFIELD_COMPOSE_PLATFORM_STUBS = `package androidx.compose.ui.platform
 import android.content.Context
 import androidx.compose.runtime.Composable
@@ -1428,17 +1471,21 @@ object LocalContext {
     val current: Context @Composable get() = Context()
 }
 `
+
 const DATEFIELD_COMPOSE_RES_STUBS = `package androidx.compose.ui.res
 import androidx.compose.runtime.Composable
 @Composable fun stringResource(id: Int): String = ""
 `
+
 const DATEFIELD_COMPOSE_GRAPHICS_STUBS = `package androidx.compose.ui.graphics.vector
 class ImageVector
 `
+
 const DATEFIELD_FOUNDATION_STUBS = `package androidx.compose.foundation
 import androidx.compose.ui.Modifier
 fun Modifier.clickable(enabled: Boolean = true, onClick: () -> Unit): Modifier = this
 `
+
 const DATEFIELD_LAYOUT_STUBS = `package androidx.compose.foundation.layout
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -1455,16 +1502,19 @@ fun Modifier.fillMaxWidth(fraction: Float = 1f): Modifier = this
 @Composable fun Box(modifier: Modifier) {}
 @Composable fun Row(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {}
 `
+
 const DATEFIELD_ICONS_STUBS = `package androidx.compose.material.icons
 object Icons {
     object Filled
 }
 `
+
 const DATEFIELD_ICONS_FILLED_STUBS = `package androidx.compose.material.icons.filled
 import androidx.compose.material.icons.Icons
 import androidx.compose.ui.graphics.vector.ImageVector
 val Icons.Filled.Clear: ImageVector get() = ImageVector()
 `
+
 const DATEFIELD_MATERIAL3_STUBS = `package androidx.compose.material3
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
@@ -1535,6 +1585,7 @@ fun OutlinedTextField(
 @Composable
 fun Text(text: String, modifier: Modifier = Modifier) {}
 `
+
 const DATEFIELD_STUB_FILES: ReadonlyArray<readonly [string, string]> = [
   ['DateFieldAndroidContent.kt', DATEFIELD_ANDROID_STUBS],
   ['DateFieldAndroidR.kt', DATEFIELD_ANDROID_R_STUBS],
@@ -1756,13 +1807,16 @@ try {
     SERVICE === 'PyreonDatabaseAndroid' ||
     SERVICE === 'PyreonStorageAndroid' ||
     SERVICE === 'PyreonStorage' ||
-    SERVICE === 'PyreonSecureStorageAndroid' ||
-    SERVICE === 'PyreonCrashReporterAndroid'
+    SERVICE === 'PyreonSecureStorageAndroid'
   ) {
     writeFileSync(androidContentDatabasePath, ANDROID_CONTENT_DATABASE_STUBS, 'utf8')
   }
-  // PyreonCrashReporterAndroid also needs the Compose LocalContext platform stub.
+  // PyreonCrashReporterAndroid: its own Context + PackageManager stubs, and
+  // the Compose LocalContext platform stub.
+  const androidCrashPmPath = join(tempDir, 'AndroidContentPm.kt')
   if (SERVICE === 'PyreonCrashReporterAndroid') {
+    writeFileSync(androidContentDatabasePath, ANDROID_CRASH_CONTEXT_STUBS, 'utf8')
+    writeFileSync(androidCrashPmPath, ANDROID_CRASH_PM_STUBS, 'utf8')
     writeFileSync(composePlatformPath, ANDROIDX_COMPOSE_PLATFORM_STUBS, 'utf8')
   }
   const androidKeystorePath = join(tempDir, 'AndroidKeystore.kt')
@@ -2123,6 +2177,7 @@ try {
     SERVICE === 'PyreonCrashReporterAndroid'
       ? [
           androidContentDatabasePath,
+          androidCrashPmPath,
           composePlatformPath,
           resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonCrashReporter.kt'),
           resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonStorageBackends.kt'),

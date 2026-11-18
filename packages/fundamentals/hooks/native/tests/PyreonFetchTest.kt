@@ -8,6 +8,20 @@
 
 package com.pyreon.runtime
 
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.startCoroutine
+import kotlin.coroutines.suspendCoroutine
+
+/** Start a suspend block on the calling thread; it runs until its first suspension. */
+private fun start(block: suspend () -> Unit) {
+    block.startCoroutine(Continuation(EmptyCoroutineContext) { it.getOrThrow() })
+}
+
+/** The launcher the emitted harness passes (`scope.launch`), stood in by [start]. */
+private val launchNow: (suspend () -> Unit) -> Unit = { start(it) }
+
 fun testFetchInitialState() {
     val f = PyreonFetch<Int>()
     check(f.data.value == null) { "fresh data should be null" }
@@ -98,6 +112,45 @@ fun testFetchRejectKeepsStaleData() {
     check(f.error.value != null) { "reject → error set" }
 }
 
+// The emitted harness: `LaunchedEffect(Unit) { x.run(launch = { scope.launch { it() } }) { request } }`.
+
+fun testFetchRunRegistersTheRequestSoRefetchReRunsIt() {
+    // The compiled `refetch()` was a silent no-op: the harness fetched inline (begin/resolve) and never
+    // registered the request, so `refetch()` found no fetcher.
+    var calls = 0
+    val f = PyreonFetch<Int>()
+    start { f.run(launchNow) { calls += 1; calls } }
+    check(f.data.value == 1) { "run fetched: data 1" }
+    check(calls == 1) { "one request on mount" }
+    f.refetch()
+    check(calls == 2) { "refetch re-ran the registered request" }
+    check(f.data.value == 2) { "refetch replaced data" }
+    check(!f.isPending.value) { "refetch settled" }
+}
+
+fun testFetchRunFailureThenRefetchRecovers() {
+    var fail = true
+    val f = PyreonFetch<Int>()
+    start { f.run(launchNow) { if (fail) throw RuntimeException("down") else 5 } }
+    check(f.error.value != null) { "a failed request records error" }
+    fail = false
+    f.refetch()
+    check(f.data.value == 5) { "refetch recovered" }
+    check(f.error.value == null) { "refetch cleared the error" }
+}
+
+fun testFetchSlowFirstResponseCannotOverwriteRefetch() {
+    val parked = ArrayList<Continuation<Int>>()
+    val f = PyreonFetch<Int>()
+    start { f.run(launchNow) { suspendCoroutine { parked.add(it) } } }
+    f.refetch()
+    check(parked.size == 2) { "two requests in flight" }
+    parked[1].resume(2)
+    check(f.data.value == 2) { "the newer response lands" }
+    parked[0].resume(1)
+    check(f.data.value == 2) { "a SLOW first response must not overwrite the newer one" }
+}
+
 fun main() {
     testFetchInitialState()
     testFetchLoadSuccess()
@@ -109,5 +162,8 @@ fun main() {
     testFetchResolveLandsValue()
     testFetchRejectRecordsError()
     testFetchRejectKeepsStaleData()
+    testFetchRunRegistersTheRequestSoRefetchReRunsIt()
+    testFetchRunFailureThenRefetchRecovers()
+    testFetchSlowFirstResponseCannotOverwriteRefetch()
     println("[PyreonFetchTest] all smoke tests passed")
 }

@@ -3136,16 +3136,16 @@ lathe generate · 1 project
 Loom reads a workspace the way an install tool does — root workspace globs (npm/bun/yarn array + object forms, `packages/*/*`-style nesting, negations, pnpm-workspace.yaml) and every member manifest — and turns the dependency fabric into DATA: the internal graph (longest-path depths, RUNTIME cycles with dev edges deliberately excluded, transitive blast radius), the external version-usage map (every dep → every declared range → who declares it), and a detector-driven issue list with honest severities. `loom scan` writes `loom-report.json` and exits non-zero on error findings, so wiring it into CI gates the fabric; `loom dev` serves the five-view observatory UI over the same report. Loom reads DECLARED truth only — no lockfile parsing, no registry calls (outdated/duplicate-install analysis are documented future layers).
 
 ```typescript
-$ loom scan . --no-write
-loom scan · . · 148 packages
+$ loom scan . --no-write     # the Pyreon repository itself, November 2026
+loom scan · . · 129 packages
 
-  workspace packages  148
-  external deps       227
-  internal edges      858
+  workspace packages  129
+  external deps       229
+  internal edges      751
   depth                11
   runtime cycles        0
 
-  ℹ 305 info
+  ℹ 183 info
   ℹ phantom-dep · `@pyreon/example-react-compat` imports `react-dom` in shipping source but never
      declares it — resolvable only through hoisting luck (ignored: `@pyreon/vite-plugin` with
      compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
@@ -3158,7 +3158,7 @@ loom scan · . · 148 packages
      ↳ packages/zero/create-zero/templates/app/src/routes/(admin)/dashboard.tsx
   …
 
-✓ no errors or warnings · 305 info · 148 packages · 392 ms
+✓ no errors or warnings · 183 info · 129 packages · 531 ms
 
 $ loom scan . --strict     # warnings gate too (red exit)
 $ loom scan . --json       # the full report as machine-readable JSON

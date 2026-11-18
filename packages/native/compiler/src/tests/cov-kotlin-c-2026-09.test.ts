@@ -1012,10 +1012,10 @@ export function App(props: { cfg: Record<string, number> }) {
 }`)
     expect(r.code).toContain('val b1 = (name ?: "").isNotEmpty()')
     expect(r.code).toContain('val b2 = ((age ?: 0L) != 0L)')
-    // A `Record<string, number>` is a map, so these are its own keys / values in insertion order
-    // (`native-ordered-collections.test.ts`); they used to degrade to empty lists with a warning.
-    expect(r.code).toContain('val k = cfg.keys.toList()')
-    expect(r.code).toContain('val v = cfg.values.toList()')
+    // A `Record<string, number>` is a map, so these are its own keys / values in the web's own-property order
+    // (`native-property-order.test.ts`); they used to degrade to empty lists with a warning.
+    expect(r.code).toContain('val k = pyreonRecordKeys(cfg)')
+    expect(r.code).toContain('val v = pyreonRecordValues(cfg)')
     expect(r.warnings.join('\n')).not.toContain('has no native equivalent')
   })
 
@@ -1028,7 +1028,8 @@ export function App() {
   const tree = signal({ title: 'x', child: [{ id: 1 }], items: [{ name: 'b' }] })
   return <Text>{tree().title}</Text>
 }`)
-    expect(out).toContain('fun describeErr(err: Throwable): String = err.message')
+    // `Throwable.message` is `String?`, so the read goes through the accessor that returns a `String`.
+    expect(out).toContain('fun describeErr(err: Throwable): String = pyreonErrorMessage(err)')
     // `child` does not end in `s`, so it is used as-is; `items` singularizes
     expect(out).toContain('data class AppTreeChild(val id: Long)')
     expect(out).toContain('data class AppTreeItem(val name: String)')

@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing, solidFill } from '../../factory'
+import { disabledState, el, focusRing, solidFill, tones } from '../../factory'
 
 const Pagination = el
   .config({ name: 'Pagination' })
@@ -50,7 +50,7 @@ export const PaginationItem = el
     type: 'button',
     'aria-current': props.state === 'active' ? ('page' as const) : undefined,
   }))
-  .theme((t) => ({
+  .theme((t, m) => ({
     minWidth: 32,
     minHeight: 32,
     paddingLeft: t.spacing.xxSmall,
@@ -58,7 +58,7 @@ export const PaginationItem = el
     borderRadius: t.borderRadius.base,
     borderWidth: 0,
     backgroundColor: 'transparent',
-    color: t.color.system.base[700],
+    color: tones(t, m).text,
     fontSize: t.fontSize.small,
     cursor: 'pointer',
     transition: t.transition.fast,
@@ -84,9 +84,9 @@ export const PaginationNext = PaginationItem.config({ name: 'PaginationNext' }).
 export const PaginationEllipsis = el
   .config({ name: 'PaginationEllipsis' })
   .attrs({ tag: 'span', 'aria-hidden': 'true' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     minWidth: 32,
     textAlign: 'center',
-    color: t.color.system.base[400],
+    color: tones(t, m).textMuted,
     fontSize: t.fontSize.small,
   }))

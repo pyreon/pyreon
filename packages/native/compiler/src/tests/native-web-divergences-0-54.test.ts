@@ -101,7 +101,7 @@ describe('1 — a string `.length` inside an array callback is a Long on Kotlin'
     const out = transform(lengthInCallback, { target: 'kotlin' })
     expect(out.code).toContain('return@map t.length.toLong()')
     expect(out.code).toContain('names.map({ n -> n.length.toLong() })')
-    expect(out.code).toContain('acc + n.length.toLong()')
+    expect(out.code).toContain('pyreonAdd(acc, n.length.toLong())')
   })
 
   it.runIf(kotlincOk)('kotlinc compiles it', () => {

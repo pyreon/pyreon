@@ -23,7 +23,7 @@ const SWIFT_RUNTIME = ['PyreonNumber', 'PyreonCollections', 'PyreonDate', 'Pyreo
   (f) => join(NATIVE, 'runtime-swift/Sources/PyreonRuntime', `${f}.swift`),
 )
 
-const KOTLIN_RUNTIME = ['PyreonNumber', 'PyreonSlice', 'PyreonDate', 'PyreonDateValue', 'PyreonJson'].map((f) =>
+const KOTLIN_RUNTIME = ['PyreonNumber', 'PyreonSlice', 'PyreonDate', 'PyreonDateValue', 'PyreonDateJson', 'PyreonJson'].map((f) =>
   join(NATIVE, 'runtime-kotlin/src/main/kotlin/com/pyreon/runtime', `${f}.kt`),
 )
 

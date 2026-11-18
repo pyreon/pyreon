@@ -90,7 +90,30 @@ fun testMutationReset() {
     check(m.isIdle.value && m.data.value == null) { "reset returns to idle" }
 }
 
+/** No content (a 204 on `@pyreon/feature`'s create / update): a `null` is a SUCCESS with no data, and onSuccess fires with null. */
+fun testMutationNoContentIsSuccessWithoutData() {
+    val m = PyreonMutation<String>()
+    val log = ArrayList<String>()
+    val r = drive {
+        m.runAsyncOrEmpty(
+            "req",
+            { _: String -> null },
+            PyreonMutationCallbacksOrEmpty<String>(
+                onSuccess = { log.add("options.onSuccess:$it") },
+                onSettled = { d, e -> log.add("options.onSettled:$d:$e") },
+            ),
+            PyreonMutationCallbacksOrEmpty<String>(onSuccess = { log.add("call.onSuccess:$it:${m.status.value}") }),
+        )
+    }
+    check(r.isSuccess && r.getOrNull() == null) { "runAsyncOrEmpty resolves null, not a throw: $r" }
+    check(m.isSuccess.value && m.data.value == null && m.error.value == null) { "no content is success with no data" }
+    check(log == listOf("options.onSuccess:null", "options.onSettled:null:null", "call.onSuccess:null:success")) { "no-content callbacks: $log" }
+    drive { m.runOrEmpty(m.begin(), "x", { x: String -> "ok:$x" }) }
+    check(m.isSuccess.value && m.data.value == "ok:x") { "orEmpty with data" }
+}
+
 fun main() {
+    testMutationNoContentIsSuccessWithoutData()
     testMutationSuccessOrderAndState()
     testMutationFailureIsCapturedByRunAndThrownByRunAsync()
     testMutationStaleCallDoesNotClobber()

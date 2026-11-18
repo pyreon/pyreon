@@ -12,16 +12,18 @@ package com.pyreon
 
 import android.graphics.Color
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.Modifier
+import androidx.fragment.app.FragmentActivity
 import com.pyreon.generated.Counter
 
-class MainActivity : ComponentActivity() {
+// FragmentActivity (a ComponentActivity subclass): useBiometrics shows
+// BiometricPrompt, which needs a fragment host.
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Edge-to-edge on EVERY API level, then pad the content into the

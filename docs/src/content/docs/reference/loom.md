@@ -34,16 +34,16 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 A full, end-to-end usage of the package:
 
 ```tsx
-$ loom scan . --no-write
-loom scan · . · 148 packages
+$ loom scan . --no-write     # the Pyreon repository itself, November 2026
+loom scan · . · 129 packages
 
-  workspace packages  148
-  external deps       227
-  internal edges      858
+  workspace packages  129
+  external deps       229
+  internal edges      751
   depth                11
   runtime cycles        0
 
-  ℹ 305 info
+  ℹ 183 info
   ℹ phantom-dep · `@pyreon/example-react-compat` imports `react-dom` in shipping source but never
      declares it — resolvable only through hoisting luck (ignored: `@pyreon/vite-plugin` with
      compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
@@ -56,7 +56,7 @@ loom scan · . · 148 packages
      ↳ packages/zero/create-zero/templates/app/src/routes/(admin)/dashboard.tsx
   …
 
-✓ no errors or warnings · 305 info · 148 packages · 392 ms
+✓ no errors or warnings · 183 info · 129 packages · 531 ms
 
 $ loom scan . --strict     # warnings gate too (red exit)
 $ loom scan . --json       # the full report as machine-readable JSON
@@ -202,7 +202,7 @@ loom dev: 142 package(s) → http://localhost:5230/
 loom build [dir] [--out=<dir>] [--base=<path>]
 ```
 
-Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact / manifest table), so a specific view has its own shareable URL instead of living behind a client-side signal. Output goes to `<dir>/loom-dist` by default (`--out=<dir>` to change it); `--base=<path>` sets the public base path for a subdirectory deploy. Needs `vite` + `@pyreon/vite-plugin` + `@pyreon/zero` as dev dependencies — `loom scan` needs NONE of them, so a CI gate that only runs `scan` is unaffected. The five views + the scan report are baked into the build so the output also works opened directly from `file://`, with no server.
+Prerenders the observatory to a STANDALONE STATIC SITE — one prerendered page per view (graph / matrix / cycles / impact / manifest table), so a specific view has its own shareable URL instead of living behind a client-side signal. Output goes to `<dir>/loom-dist` by default (`--out=<dir>` to change it); `--base=<path>` sets the public base path for a subdirectory deploy (an absolute path such as `/deps/`). Needs `vite` + `@pyreon/vite-plugin` + `@pyreon/zero` as dev dependencies — `loom scan` needs NONE of them, so a CI gate that only runs `scan` is unaffected. The five views + the scan report are baked into the build, so any static host serves it with no backend. It must be served over HTTP: opened from `file://` the browser blocks its module scripts and the root-absolute view links, so you get one view as inert HTML, and a relative `--base ./` does not change that.
 
 **Example**
 

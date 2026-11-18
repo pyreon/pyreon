@@ -41,6 +41,22 @@ const _warnedDefaultCacheKeyHandlers = new WeakSet<(req: Request, url: URL) => s
 // it.
 const _warnedCredentialRefusalHandlers = new WeakSet<(req: Request, url: URL) => string>()
 
+// Test-only size probes (leak locks): the memory store's tag index and the
+// handler's epoch map. WeakMaps keyed by the store / handler, so a probe never
+// keeps either alive.
+const _tagIndexProbes = new WeakMap<object, () => number>()
+const _epochProbes = new WeakMap<object, () => number>()
+
+/** @internal Test-only: number of tags a `createMemoryStore` store indexes. */
+export function _isrTagIndexSize(store: ISRStore<unknown>): number {
+  return _tagIndexProbes.get(store)?.() ?? -1
+}
+
+/** @internal Test-only: number of per-key epoch entries a handler holds. */
+export function _isrEpochEntryCount(handler: ISRHandler): number {
+  return _epochProbes.get(handler)?.() ?? -1
+}
+
 // ─── ISR Cache ───────────────────────────────────────────────────────────────
 
 /** Serialized SSR response cached by the ISR layer (one per cache key). */
@@ -115,30 +131,54 @@ export function createMemoryStore<E = ISRCacheEntry>(opts: {
   // SizedMap in LRU-on-read mode mirrors the original delete + re-set
   // touch the docstring above promises (frequently-read entries survive
   // eviction). `set` handles cap-enforced eviction internally.
-  const cache = new SizedMap<string, E>({
-    maxEntries: opts.maxEntries ?? 1000,
-    lru: true,
-  })
-  // Phase 6 — tag index for revalidateTag. tag → Set<key>. Pruned lazily:
-  // keysByTag drops keys that no longer exist (evicted/deleted), so the
-  // index can't outgrow tags-actually-used × live-keys for long.
+  const maxEntries = Math.max(1, opts.maxEntries ?? 1000)
+  const cache = new SizedMap<string, E>({ maxEntries, lru: true })
+  // Phase 6 — tag index for revalidateTag: tag → keys, plus the reverse
+  // key → tags so a key leaving the cache (delete, LRU eviction, clear) is
+  // unindexed at once. The index therefore never holds more than the cached
+  // keys' tags. (It used to grow forever: only a later `keysByTag` for that
+  // exact tag pruned, and through `cache.get`, which bumped LRU order.)
   const tagIndex = new Map<string, Set<string>>()
-  return {
+  const tagsByKey = new Map<string, readonly string[]>()
+  const unindex = (key: string): void => {
+    const tags = tagsByKey.get(key)
+    if (!tags) return
+    tagsByKey.delete(key)
+    for (const tag of tags) {
+      const keys = tagIndex.get(tag)
+      if (!keys) continue
+      keys.delete(key)
+      if (keys.size === 0) tagIndex.delete(tag)
+    }
+  }
+  const store: ISRStore<E> = {
     get(key) {
       return cache.get(key)
     },
     set(key, entry) {
+      // The key SizedMap evicts to make room (its oldest), if any.
+      const evicted =
+        !cache.has(key) && cache.size >= maxEntries ? (cache.keys().next().value as string) : null
       cache.set(key, entry)
+      if (evicted !== null && !cache.has(evicted)) unindex(evicted)
     },
     delete(key) {
       cache.delete(key)
+      unindex(key)
     },
     clear() {
       cache.clear()
       tagIndex.clear()
+      tagsByKey.clear()
     },
     setTags(key, tags) {
-      for (const tag of tags) {
+      // Tags belong to the CACHED entry: replace the key's previous set, and
+      // index nothing for a key that is not (or no longer) cached.
+      unindex(key)
+      if (!cache.has(key) || tags.length === 0) return
+      const own = [...new Set(tags)]
+      tagsByKey.set(key, own)
+      for (const tag of own) {
         let keys = tagIndex.get(tag)
         if (!keys) {
           keys = new Set()
@@ -148,17 +188,15 @@ export function createMemoryStore<E = ISRCacheEntry>(opts: {
       }
     },
     keysByTag(tag) {
+      // `has`, not `get`: a tag lookup is not a use of the page and must not
+      // refresh its LRU position.
       const keys = tagIndex.get(tag)
-      if (!keys) return []
-      const live: string[] = []
-      for (const key of keys) {
-        if (cache.get(key) !== undefined) live.push(key)
-        else keys.delete(key) // lazy prune of evicted entries
-      }
-      if (keys.size === 0) tagIndex.delete(tag)
-      return live
+      return keys ? [...keys].filter((key) => cache.has(key)) : []
     },
   }
+  _tagIndexProbes.set(store, () => tagIndex.size)
+
+  return store
 }
 
 /**
@@ -194,16 +232,38 @@ export function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E> {
         return new Map()
       }
     })())
-  const persistTags = async (tags: Map<string, string[]>): Promise<void> => {
-    try {
-      const { writeFile, mkdir } = await fsp()
-      await mkdir(dir, { recursive: true })
-      await writeFile(tagsFile, JSON.stringify(Object.fromEntries(tags)), 'utf-8')
-    } catch {
-      // Best-effort — a failed tag persist degrades revalidateTag after a
-      // restart, never caching itself.
+  // Writes are serialized and each one writes the index as it is WHEN it
+  // runs, so the file always ends at the latest state even when two misses
+  // persist concurrently (a slower earlier write can no longer land last).
+  let persisting: Promise<void> = Promise.resolve()
+  const persistTags = (tags: Map<string, string[]>): Promise<void> =>
+    (persisting = persisting.then(async () => {
+      try {
+        const { writeFile, mkdir } = await fsp()
+        await mkdir(dir, { recursive: true })
+        await writeFile(tagsFile, JSON.stringify(Object.fromEntries(tags)), 'utf-8')
+      } catch {
+        // Best-effort — a failed tag persist degrades revalidateTag after a
+        // restart, never caching itself.
+      }
+    }))
+  // Remove `key` from every tag except `keep`; true when anything changed.
+  // The index is tag → keys, so this scans the tags — fine for a call that
+  // runs on cache misses and invalidations, not per request.
+  const dropKey = (index: Map<string, string[]>, key: string, keep: ReadonlySet<string>): boolean => {
+    let changed = false
+    for (const [tag, keys] of index) {
+      if (keep.has(tag)) continue
+      const at = keys.indexOf(key)
+      if (at < 0) continue
+      keys.splice(at, 1)
+      if (keys.length === 0) index.delete(tag)
+      changed = true
     }
+
+    return changed
   }
+
   return {
     async get(key) {
       try {
@@ -229,6 +289,10 @@ export function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E> {
       } catch {
         /* already gone */
       }
+      // The key's tags go with it — `_tags.json` used to keep every key ever
+      // tagged, for the life of the cache directory.
+      const index = await loadTags()
+      if (dropKey(index, key, new Set())) await persistTags(index)
     },
     async clear() {
       try {
@@ -241,13 +305,22 @@ export function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E> {
       }
     },
     async setTags(key, tags) {
+      // Replaces the key's tags, and writes the file only when the index
+      // actually changed (it was rewritten in full on every cache miss).
       const index = await loadTags()
-      for (const tag of tags) {
-        const keys = index.get(tag) ?? []
-        if (!keys.includes(key)) keys.push(key)
-        index.set(tag, keys)
+      const own = new Set(tags)
+      let changed = dropKey(index, key, own)
+      for (const tag of own) {
+        const keys = index.get(tag)
+        if (!keys) {
+          index.set(tag, [key])
+          changed = true
+        } else if (!keys.includes(key)) {
+          keys.push(key)
+          changed = true
+        }
       }
-      await persistTags(index)
+      if (changed) await persistTags(index)
     },
     async keysByTag(tag) {
       const index = await loadTags()
@@ -344,16 +417,42 @@ export function createISRHandler(
   const revalidating = new Set<string>()
   const revalidateMs = config.revalidate * 1000
 
-  // PR-S5: per-key epoch counter for the revalidateNow / in-flight
-  // revalidation race. revalidateNow() bumps the epoch BEFORE
-  // delete()-ing — a revalidation that started before the bump captures
-  // the old epoch and skips its store.set() when it sees the epoch has
-  // changed. Without this, the in-flight revalidation could re-populate
-  // the cache AFTER revalidateNow() deleted, defeating the invalidation.
-  const _keyEpoch = new Map<string, number>()
-  const _currentEpoch = (key: string): number => _keyEpoch.get(key) ?? 0
+  // PR-S5: invalidation epochs for the revalidateNow / in-flight render
+  // race. A render (cold miss or background revalidation) takes a TICKET
+  // when it starts; `revalidateNow(key)` bumps that key's epoch and
+  // `revalidateAll()` the global one, and a render whose ticket is stale
+  // skips its store.set(). Without this, a render that started before the
+  // invalidation re-populated the cache AFTER the delete.
+  //
+  // An epoch only matters while a render for its key is in flight, so the
+  // per-key entry exists exactly that long (refcounted by renders, dropped by
+  // the last one). It used to be a map with one entry per key EVER
+  // invalidated, kept for the process lifetime, and `revalidateAll` bumped
+  // only keys found there or in `revalidating`, missing a cold render in
+  // flight — which then stored its pre-purge result.
+  type EpochSlot = { epoch: number; renders: number }
+  type RenderTicket = { key: string; slot: EpochSlot; epoch: number; all: number }
+  const _keyEpoch = new Map<string, EpochSlot>()
+  let _allEpoch = 0
+  const _beginRender = (key: string): RenderTicket => {
+    let slot = _keyEpoch.get(key)
+    if (!slot) {
+      slot = { epoch: 0, renders: 0 }
+      _keyEpoch.set(key, slot)
+    }
+    slot.renders++
+
+    return { key, slot, epoch: slot.epoch, all: _allEpoch }
+  }
+  const _ticketCurrent = (t: RenderTicket): boolean =>
+    t.slot.epoch === t.epoch && t.all === _allEpoch
+  const _endRender = (t: RenderTicket): void => {
+    t.slot.renders--
+    if (t.slot.renders === 0 && _keyEpoch.get(t.key) === t.slot) _keyEpoch.delete(t.key)
+  }
   const _bumpEpoch = (key: string): void => {
-    _keyEpoch.set(key, _currentEpoch(key) + 1)
+    const slot = _keyEpoch.get(key)
+    if (slot) slot.epoch++
   }
   // Bounded background-revalidation timeout. Without it, a handler that
   // hangs forever leaves its key permanently in `revalidating` (the
@@ -608,7 +707,7 @@ export function createISRHandler(
     // revalidateAll bumps the epoch mid-revalidation, our store.set() is
     // skipped — the invalidator's intent (this key MUST miss next time)
     // wins over a re-populating revalidation that started before the bump.
-    const startEpoch = _currentEpoch(key)
+    const ticket = _beginRender(key)
     try {
       // Default: forward the original request shape (headers + method)
       // so the re-render sees the same auth context as the user's read.
@@ -677,7 +776,7 @@ export function createISRHandler(
       // would re-populate the cache AFTER the delete, defeating the
       // invalidation's intent.
       const finalRes = config.responseFilter ? (config.responseFilter(res) ?? null) : res
-      if (finalRes !== null && isCacheable(finalRes, originalReq) && _currentEpoch(key) === startEpoch) {
+      if (finalRes !== null && isCacheable(finalRes, originalReq) && _ticketCurrent(ticket)) {
         const html = await finalRes.text()
         const headers: Record<string, string> = {}
         finalRes.headers.forEach((v, k) => {
@@ -715,6 +814,7 @@ export function createISRHandler(
         // clearTimeout failed to fire — the orphan-timer leak is back.
         if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('isr.revalidate.timerClear')
       }
+      _endRender(ticket)
       revalidating.delete(key)
     }
   }
@@ -803,15 +903,33 @@ export function createISRHandler(
       })
       inflight.set(key, promise)
       let shared: MissSnapshot | null = null
+      // Followers wait at most `revalidateTimeoutMs`, like a background
+      // revalidation. Past it the key is released: waiting followers get
+      // `null` and render for themselves, and new requests stop joining a
+      // render that may never settle (they used to wait on it forever). The
+      // leader's own request keeps awaiting its render, as uncached SSR
+      // would; it is not aborted, because the gate carries the request's
+      // middleware state by Request IDENTITY, so it cannot be re-created
+      // with an AbortSignal.
+      const release = (): void => {
+        if (inflight.get(key) === promise) inflight.delete(key)
+      }
+      const timer = setTimeout(() => {
+        release()
+        settle(null)
+      }, REVALIDATE_TIMEOUT_MS)
       try {
         const res = await renderMiss(req, url, key, (snap) => {
           shared = snap
         })
         return res
       } finally {
-        // Cleared on BOTH settle paths (leak class F): a thrown render must
-        // not strand followers or pin the key.
-        inflight.delete(key)
+        // Cleared on BOTH settle paths (leak classes F and I): a thrown
+        // render must not strand followers or pin the key, and the timer
+        // never outlives the render. `release` checks identity, so a render
+        // settling after its timeout never evicts a NEWER leader.
+        clearTimeout(timer)
+        release()
         settle(shared)
       }
     }
@@ -827,11 +945,25 @@ export function createISRHandler(
     key: string,
     onCached?: (snap: MissSnapshot) => void,
   ): Promise<Response> {
-    // Epoch snapshot BEFORE rendering, as the revalidation path does: a
+    // Ticket BEFORE rendering, as the revalidation path does: a
     // `revalidateNow`/`revalidateAll` landing while this render runs must
     // win, instead of the slow render re-populating the entry it cleared.
-    const startEpoch = _currentEpoch(key)
+    // Released on both settle paths so the epoch entry never outlives it.
+    const ticket = _beginRender(key)
     void url
+    try {
+      return await renderMissWith(req, key, ticket, onCached)
+    } finally {
+      _endRender(ticket)
+    }
+  }
+
+  async function renderMissWith(
+    req: Request,
+    key: string,
+    ticket: RenderTicket,
+    onCached?: (snap: MissSnapshot) => void,
+  ): Promise<Response> {
     const rawRes = await handler(req)
 
     // PR-S4: apply responseFilter BEFORE consuming the body so the user
@@ -867,7 +999,7 @@ export function createISRHandler(
       })
     }
 
-    if (_currentEpoch(key) === startEpoch) {
+    if (_ticketCurrent(ticket)) {
       await store.set(key, { html, headers, timestamp: Date.now() })
       await recordTags(key, req)
     }
@@ -884,6 +1016,7 @@ export function createISRHandler(
   // `.revalidateNow(key)` and `.revalidateAll()` for webhook-driven
   // cache busting.
   const isrHandler = fetch as ISRHandler
+  _epochProbes.set(isrHandler, () => _keyEpoch.size)
 
   isrHandler.revalidateTag = async (tag: string) => {
     if (!store.keysByTag || !store.setTags) {
@@ -946,17 +1079,10 @@ export function createISRHandler(
         '[Pyreon ISR] revalidateAll() called against a store that does not implement `clear()`. The default in-memory store supports this; external stores (Redis/KV/etc.) must opt in by implementing `ISRStore.clear()`.',
       )
     }
-    // PR-S5: bump epochs for every IN-FLIGHT revalidation AND every
-    // key we've ever bumped before, so any racing store.set lands
-    // with a stale snapshot and the epoch guard skips it. The
-    // `revalidating` Set is the authoritative source of "what's about
-    // to write" — `_currentEpoch` is a pure read that doesn't seed
-    // the map, so `_keyEpoch.keys()` alone misses every key that has
-    // never been individually invalidated. The union (revalidating ∪
-    // _keyEpoch.keys) covers both: in-flight reads-pending-write +
-    // history of prior revalidateNow targets.
-    for (const key of revalidating) _bumpEpoch(key)
-    for (const key of _keyEpoch.keys()) _bumpEpoch(key)
+    // PR-S5: one global bump invalidates the ticket of EVERY render in
+    // flight (cold misses and background revalidations alike), so none of
+    // them stores its pre-purge result after the clear.
+    _allEpoch++
     await store.clear()
     // Drop every in-flight revalidation flag — fresh requests should
     // re-render rather than waiting on stale resolve callbacks pointing

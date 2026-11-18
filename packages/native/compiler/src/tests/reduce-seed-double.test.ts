@@ -86,13 +86,13 @@ describe('Double-aware reduce-seed typing', () => {
   it('Swift: Double reduce → reduce(0.0, …); Int reduce → reduce(0, …)', () => {
     const out = transform(SRC, { target: 'swift' }).code
     expect(out).toContain('metrics.reduce(0.0, { s, m in s + m.growth })')
-    expect(out).toContain('metrics.reduce(0, { s, m in s + m.revenue })')
+    expect(out).toContain('metrics.reduce(0, { s, m in pyreonAdd(s, m.revenue) })')
   })
 
   it('Kotlin: Double reduce → fold(0.0, …); Int reduce → fold(0, …)', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
     expect(out).toContain('metrics.fold(0.0, { s, m -> s + m.growth })')
-    expect(out).toContain('metrics.fold(0L, { s, m -> s + m.revenue })')
+    expect(out).toContain('metrics.fold(0L, { s, m -> pyreonAdd(s, m.revenue) })')
   })
 
   it('zero-regression: an all-Int reduce keeps its 0 seed on both targets', () => {
@@ -104,10 +104,10 @@ export function C() {
   return <Stack><Text>{String(rows().reduce((s, r) => s + r.n, 0))}</Text></Stack>
 }`
     expect(transform(intSrc, { target: 'swift' }).code).toContain(
-      'rows.reduce(0, { s, r in s + r.n })',
+      'rows.reduce(0, { s, r in pyreonAdd(s, r.n) })',
     )
     expect(transform(intSrc, { target: 'kotlin' }).code).toContain(
-      'rows.fold(0L, { s, r -> s + r.n })',
+      'rows.fold(0L, { s, r -> pyreonAdd(s, r.n) })',
     )
   })
 })

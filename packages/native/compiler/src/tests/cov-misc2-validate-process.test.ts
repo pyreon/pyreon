@@ -23,6 +23,7 @@ interface FakeError {
   signal?: string
   code?: string
 }
+
 type Behaviour = { out?: string; err?: FakeError }
 
 /** Routed per (binary, args) so the version probes can succeed while a compile fails. */
@@ -42,6 +43,7 @@ const spawnSyncMock = vi.fn((file: string, args: readonly string[] = []) => {
   if (!b.err) return { status: 0, signal: null, stdout: b.out ?? '', stderr: '' }
   const e = b.err
   const spawnFailed = e.status === undefined && e.signal === undefined
+
   return {
     status: spawnFailed ? null : (e.status ?? null),
     signal: e.signal ?? null,
@@ -75,6 +77,7 @@ const {
 
 const PRIVATE_CACHE = mkdtempSync(join(tmpdir(), 'cov-misc2-validate-'))
 const saved: Record<string, string | undefined> = {}
+
 const ENV_KEYS = [
   'PYREON_VALIDATE_NO_CACHE',
   'PYREON_VALIDATE_CACHE_DIR',
@@ -121,6 +124,7 @@ beforeEach(() => {
   spawnSyncMock.mockClear()
   route = () => ({})
 })
+
 afterEach(() => {
   delete process.env.PYREON_SKIP_NATIVE_VALIDATE
   delete process.env.PYREON_REQUIRE_NATIVE_VALIDATE
@@ -133,6 +137,7 @@ afterEach(() => {
  *  (both are a two-argument `swiftc -typecheck`). */
 const isProbe = (a: readonly string[], kind: 'swiftui' | 'observation'): boolean =>
   a.some((x) => x.includes(`pyreon-${kind}-probe-`))
+
 const isProbeCompile = (a: readonly string[]): boolean =>
   isProbe(a, 'swiftui') || isProbe(a, 'observation')
 
@@ -283,6 +288,7 @@ describe('validate — the absent-tool policy', () => {
       if (isProbe(a, 'observation')) {
         return { err: { status: 1, stderr: 'no such module Observation' } }
       }
+
       return {}
     }
     expect(validateSwiftWithStubs('@Observable final class S { var x = 0 }\n')).toEqual({
@@ -309,6 +315,7 @@ describe('interrupted native capability probes', () => {
               message: 'probe interrupted',
             },
           }
+
         return {}
       }
       const validate =
@@ -349,6 +356,7 @@ describe('interrupted native capability probes', () => {
         return ++attempts === 1
           ? { err: { status: null, signal: 'SIGTERM', code: 'ETIMEDOUT' } }
           : { out: 'toolchain version' }
+
       return {}
     }
     const available = binary === 'swiftc' ? isSwiftcAvailable : isKotlincAvailable
@@ -401,10 +409,14 @@ describe('validate — failure-diagnostic assembly', () => {
   })
 
   it('falls back to the thrown message when there is no captured output at all', () => {
-    for (const [name, run] of SWIFT_VALIDATORS) {
+    // The two TYPECHECK validators run swiftc through `spawnSync` (they read the warnings of a successful compile),
+    // which reports a failure as a result, not a thrown message — so a message-only failure reaches them as a spawn
+    // failure with no output, and they fall back to their own literal.
+    const expected = ['Command failed: swiftc', 'swiftc -typecheck failed with no output', 'swiftc -typecheck (stubs) failed with no output']
+    SWIFT_VALIDATORS.forEach(([name, run], i) => {
       failCompile('swiftc', { message: 'Command failed: swiftc' })
-      expect(run('let x = 1\n').error, name).toBe('Command failed: swiftc')
-    }
+      expect(run('let x = 1\n').error, name).toBe(expected[i])
+    })
     failCompile('kotlinc', { message: 'Command failed: kotlinc' })
     expect(validateKotlin('fun main() {}\n').error).toBe('Command failed: kotlinc')
   })

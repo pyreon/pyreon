@@ -20,14 +20,17 @@ import { transform, validateKotlin, validateSwiftWithStubs } from './first-party
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 
 const NATIVE = resolve(import.meta.dirname, '../../..')
+
 const RUNTIME_SWIFT = readFileSync(
   resolve(NATIVE, 'router-swift/Sources/PyreonRouter/PyreonUrlState.swift'),
   'utf8',
 )
+
 const RUNTIME_KOTLIN = readFileSync(
   resolve(NATIVE, 'router-kotlin/src/main/kotlin/com/pyreon/router/PyreonUrlState.kt'),
   'utf8',
 )
+
 /** A top-level declaration of any url-state helper, in either language. */
 const HELPER_DECL =
   /^(?:public |private |internal )?(?:struct|class|func|fun) (?:PyreonUrlState\w*|pyreonUrlNumber)\b/m
@@ -65,8 +68,8 @@ describe('useUrlState lowering', () => {
   // and must read on both native targets too. Emitting a bare `q` would
   // interpolate the container instead of the value — wrong, and silent.
   it('preserves the CALL, so `q()` reads the value on both targets', () => {
-    expect(transform(SRC, { target: 'swift' }).code).toContain('\\(q())')
-    expect(transform(SRC, { target: 'kotlin' }).code).toContain('${q()}')
+    expect(transform(SRC, { target: 'swift' }).code).toContain('\\(pyreonOptionalText(q(), ""))')
+    expect(transform(SRC, { target: 'kotlin' }).code).toContain('${pyreonOptionalText(q(), "")}')
   })
 
   it('no longer warns, now that the binding lowers', () => {
