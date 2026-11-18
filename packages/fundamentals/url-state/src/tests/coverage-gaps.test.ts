@@ -83,7 +83,7 @@ describe('coverage gaps', () => {
       const scope = effectScope()
       let page!: UrlStateSignal<number>
       scope.runInScope(() => {
-        page = useUrlState('page', 1, { debounce: 100 })
+        page = useUrlState('page', 1, { debounceMs: 100 })
       })
 
       // Start a debounce timer that has NOT yet fired.

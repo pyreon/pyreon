@@ -63,7 +63,7 @@
    },
    {
     "title": "One history write per click",
-    "text": "Writes use `replaceState` unless you ask for `push`. `batchUrlUpdates(() => { … })` folds several params into one history operation; `debounce: 300` keeps a search box from writing on every key."
+    "text": "Writes use `replaceState` unless you ask for `push`. `batchUrlUpdates(() => { … })` folds several params into one history operation; `debounceMs: 300` keeps a search box from writing on every key."
    }
   ]
  },
@@ -85,7 +85,7 @@
    "lib": "nuqs",
    "title": "Parsers become defaults; setters become `.set()`.",
    "before": "import { debounce, parseAsArrayOf, parseAsString, useQueryState } from 'nuqs'\n\nconst [tags, setTags] = useQueryState(\n  'tags',\n  parseAsArrayOf(parseAsString).withDefault([]),\n)\nconst [q, setQ] = useQueryState(\n  'q',\n  parseAsString.withDefault('').withOptions({ limitUrlUpdates: debounce(300) }),\n)\nsetTags(['red', 'blue'])",
-   "after": "import { useUrlState } from '@pyreon/url-state'\n\nconst tags = useUrlState('tags', [] as string[])\nconst q = useUrlState('q', '', { debounce: 300 })\n\ntags.set(['red', 'blue'])   // ?tags=red%2Cblue\ntags()                      // ['red', 'blue']",
+   "after": "import { useUrlState } from '@pyreon/url-state'\n\nconst tags = useUrlState('tags', [] as string[])\nconst q = useUrlState('q', '', { debounceMs: 300 })\n\ntags.set(['red', 'blue'])   // ?tags=red%2Cblue\ntags()                      // ['red', 'blue']",
    "note": "nuqs ships more built-in parsers (dates, string literals, enums). Here those are a `serialize`/`deserialize` pair on the option, and a plain object default goes through JSON on its own. Both libraries drop a param that equals its default."
   }
  ],
@@ -123,7 +123,7 @@
     "text": "On by default: the URL holds only what differs from the default."
    },
    {
-    "name": "`debounce`",
+    "name": "`debounceMs`",
     "text": "One URL write after the user stops typing."
    },
    {
@@ -170,7 +170,7 @@
    {
     "name": "options",
     "items": [
-     "debounce",
+     "debounceMs",
      "replace",
      "arrayFormat",
      "clearOnDefault",
@@ -206,13 +206,13 @@
   },
   {
    "title": "The address bar is a web thing",
-   "text": "On iOS and Android (experimental), `useUrlState` with a literal key and a string, number or boolean default binds to the native router's query; literal-array defaults join them in the next release. An object default stays web with a named warning, and `debounce`, `clearOnDefault: false` and custom serializers have no effect there."
+   "text": "On iOS and Android (experimental), `useUrlState` with a literal key and a string, number or boolean default binds to the native router's query; literal-array defaults join them in the next release. An object default stays web with a named warning, and `debounceMs`, `clearOnDefault: false` and custom serializers have no effect there."
   }
  ],
  "faq": [
   {
    "q": "Does every keystroke add a history entry?",
-   "a": "No. Writes default to `replaceState`, and `debounce` delays the write until typing stops. Pass `replace: false` only where the back button should step through changes."
+   "a": "No. Writes default to `replaceState`, and `debounceMs` delays the write until typing stops. Pass `replace: false` only where the back button should step through changes."
   },
   {
    "q": "What if the URL holds garbage, like `?page=abc`?",
@@ -365,7 +365,7 @@
    "path": "packages/fundamentals/url-state/src/manifest.ts description; docs/src/content/docs/url-state.md \"SSR\""
   },
   {
-   "claim": "Native: scalar and literal-array defaults bind to PyreonRouter query; object defaults, debounce, clearOnDefault, serializers stay web",
+   "claim": "Native: scalar and literal-array defaults bind to PyreonRouter query; object defaults, debounceMs, clearOnDefault, serializers stay web",
    "path": "packages/fundamentals/url-state/src/manifest.ts multiplatform.nativeFrontend"
   },
   {
