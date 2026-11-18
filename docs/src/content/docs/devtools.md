@@ -53,9 +53,8 @@ Computeds and effects carry no runtime name, so the panel names them by where th
 
 ### Limits
 
-- The inspector traces text bindings only. Attribute, class and style bindings, text that a component receives as children, and multi-signal text expressions are not linked to a component.
-- Component props and the effects a component owns are not exposed by the hook, so the inspector does not show them ([#4446](https://github.com/pyreon/pyreon/issues/4446)).
-- Components mounted by `hydrateRoot` (SSR and Zero apps) are not registered yet, so the Components tab is empty there; the reactive tabs work ([#4444](https://github.com/pyreon/pyreon/issues/4444)).
+- The reactive reads come from text bindings only: text a compiled template binds directly to one signal or computed. Attribute, class and style bindings, and text expressions that read more than one signal, are not correlated to their signals, so neither the inspector nor `nodesForElement` lists them.
+- The hook exposes a component's props (`getComponentProps(id)`) and the signals, computeds and effects it owns (`reactive.nodesForComponent(id)`), but the panel's inspector does not show them yet ([#4446](https://github.com/pyreon/pyreon/issues/4446)).
 - The Console only sees what is logged after the panel opens.
 
 ## Programmatic API

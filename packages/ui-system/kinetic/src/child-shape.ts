@@ -1,5 +1,6 @@
 import type { Ref, VNode } from '@pyreon/core'
 import { Fragment, h, onMount } from '@pyreon/core'
+import { _declareRootDecoration } from '@pyreon/runtime-dom'
 
 type RefLike<T> = ((node: T | null) => void) | Ref<T>
 
@@ -58,6 +59,7 @@ export const flattenChildren = (children: unknown): unknown[] => {
     out.push(child)
   }
   walk(children)
+
   return out
 }
 
@@ -86,8 +88,10 @@ const NativeChild = (props: Record<string, unknown>): VNode => {
     }
     const ref = props.ref as RefLike<HTMLElement> | undefined
     setRef(ref, el)
+
     return () => setRef(ref, null)
   })
+
   return item as unknown as VNode
 }
 
@@ -102,8 +106,12 @@ const setRef = (ref: RefLike<HTMLElement> | undefined, el: HTMLElement | null): 
  * a renderer needs: they are set on its element at mount, ADDED to the
  * element's own class and style. `cloneVNode` routes such items here.
  */
-export const wrapNativeItem = (item: NativeChildItem, extra: Record<string, unknown>): VNode =>
-  h(NativeChild, { ...extra, item })
+export const wrapNativeItem = (item: NativeChildItem, extra: Record<string, unknown>): VNode => {
+  // The server added the same class/style to this element's root tag
+  // (`withRootAttrs`), so hydration must adopt a root that carries them.
+  if (extra.class !== undefined || extra.style !== undefined) _declareRootDecoration(item as never)
+  return h(NativeChild, { ...extra, item })
+}
 
 /** The child's own `ref` / `style` / `class`, whatever its shape. */
 export const childProps = (child: unknown): Record<string, unknown> =>

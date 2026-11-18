@@ -172,6 +172,65 @@ describe('runDoctor — doc-claims does not drag a consumer app grade', () => {
   })
 })
 
+// #4396: `doctor --fix` wrote lint fixes without listing them, and the
+// pyreon-patterns gate (run in parallel) read the pre-fix source, so the report
+// listed a finding the same run had already fixed.
+describe('runDoctor --fix — the report matches what the run wrote', () => {
+  const PLANTED = [
+    "import { signal } from '@pyreon/reactivity'",
+    '',
+    'const views = signal(0)',
+    '',
+    'export function Planted() {',
+    '  return (',
+    '    <div>',
+    '      <input',
+    '        value="x"',
+    '        autoFocus',
+    '        data-testid="a"',
+    '      />',
+    '      <button onClick={() => views(views() + 1)}>bump</button>',
+    '    </div>',
+    '  )',
+    '}',
+    '',
+  ].join('\n')
+
+  it('lists every applied lint fix and reports nothing the run already fixed', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-doctor-fix-'))
+    try {
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({ name: 'doctor-fix-fixture', private: true, type: 'module' }),
+      )
+      const file = path.join(cwd, 'src', 'Planted.tsx')
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, PLANTED)
+
+      const report = await runDoctor({
+        cwd,
+        fix: true,
+        only: ['react-patterns', 'pyreon-patterns', 'lint'],
+      })
+      const codes = report.findings.map((f) => f.code)
+
+      const after = fs.readFileSync(file, 'utf-8')
+      expect(after).toContain('views.set(views() + 1)')
+      expect(after).not.toContain('autoFocus')
+
+      // Every edit the run made is in the report…
+      expect(codes).toContain('lint/auto-fixed-pyreon/no-autofocus')
+      expect(codes).toContain('lint/auto-fixed-pyreon/no-signal-call-write')
+      // …and nothing it fixed is still reported as a problem.
+      expect(codes).not.toContain('pyreon-patterns/signal-write-as-call')
+      expect(codes).not.toContain('lint/pyreon/no-signal-call-write')
+      expect(codes).not.toContain('lint/pyreon/no-autofocus')
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('gate set consistency', () => {
   it('check-dedup is in the default (fast) set — it must be a valid --only/--skip target', () => {
     // Regression: the CLI's VALID_GATES used to be a hand-kept duplicate

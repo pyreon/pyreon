@@ -572,6 +572,36 @@ describe('diagnoseError — keyed <For> row keeps the first value of a replaced 
   })
 })
 
+describe('diagnoseError — run-once early return and props copies (#4254)', () => {
+  it.each([
+    'props-early-return-conditional',
+    'static-early-return-conditional',
+    'my component is stuck on the skeleton after loading finishes',
+    'early return on props.loading never updates',
+  ])('explains the pinned early return for %s', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('run ONCE')
+    expect(result?.fix).toContain('props-early-return-conditional')
+    expect(result?.fixCode).toContain('return () =>')
+  })
+
+  it.each([
+    'props-object-copy',
+    'const merged = Object.assign({}, props, { extra: 1 }) — title never updates',
+    'spreading props into an object lost reactivity',
+  ])('explains the props copy for %s', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('copied into a plain object')
+    expect(result?.fix).toContain('mergeProps(props')
+  })
+
+  it('leaves the body destructure to its own entry', () => {
+    expect(diagnoseError('props destructured in the body, value frozen')?.cause).toContain(
+      'destructured `props`',
+    )
+  })
+})
+
 describe('diagnoseError — <For> without by', () => {
   it.each([
     '[Pyreon] <For> requires a `by` prop: a function returning a stable, unique key for each item (got no `by`).',

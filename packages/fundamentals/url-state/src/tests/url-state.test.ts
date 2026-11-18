@@ -253,7 +253,7 @@ describe('useUrlState', () => {
   describe('debounce', () => {
     it('batches rapid writes', async () => {
       vi.useFakeTimers()
-      const page = useUrlState('page', 1, { debounce: 50 })
+      const page = useUrlState('page', 1, { debounceMs: 50 })
 
       page.set(2)
       page.set(3)
@@ -319,7 +319,7 @@ describe('useUrlState', () => {
 
     it('cancels pending debounced write', () => {
       vi.useFakeTimers()
-      const page = useUrlState('page', 1, { debounce: 100 })
+      const page = useUrlState('page', 1, { debounceMs: 100 })
 
       page.set(5) // starts debounce timer
       page.remove() // should cancel the debounce and remove immediately

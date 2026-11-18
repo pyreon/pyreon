@@ -50,6 +50,23 @@ describe('mergeStyles', () => {
   })
 })
 
+describe('mergeStyles — a string own style (#4382)', () => {
+  it('keeps the string and appends the added declarations, normalized like the renderer', () => {
+    const added = {
+      opacity: 0,
+      transitionDelay: '50ms',
+      '--stagger-index': 2,
+      width: 10,
+      skipped: undefined,
+      empty: '',
+    } as unknown as CSSProperties
+    expect(mergeStyles('color: red;', added)).toBe(
+      'color: red; opacity: 0; transition-delay: 50ms; --stagger-index: 2; width: 10px',
+    )
+    expect(mergeStyles('color: red', { opacity: 1 } as CSSProperties)).toBe('color: red; opacity: 1')
+  })
+})
+
 describe('addClasses', () => {
   it('adds space-separated classes to an element', () => {
     const el = document.createElement('div')

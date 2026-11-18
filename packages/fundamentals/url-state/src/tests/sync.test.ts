@@ -206,7 +206,7 @@ describe('batchUrlUpdates', () => {
 
   it('bypasses debounce (writes land in the batch synchronously)', () => {
     const spy = vi.spyOn(history, 'replaceState')
-    const page = useUrlState('page', 1, { debounce: 500 })
+    const page = useUrlState('page', 1, { debounceMs: 500 })
     const before = spy.mock.calls.length
 
     batchUrlUpdates(() => {

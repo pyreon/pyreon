@@ -187,6 +187,32 @@ describe('reactivity-lens — formatter', () => {
     expect(out).toContain('live')
     expect(out).toContain('1 |')
   })
+
+  it('names each finding once (#4307: it printed "◆ live — live — …")', () => {
+    const src = [
+      `function C() {`,
+      `  return <div><a class={() => cls()}>x</a>{count()} <b>{x}</b>`,
+      `    <Comp value={count()}>{<b class="x">hi</b>}</Comp></div>`,
+      `}`,
+    ].join('\n')
+    const result = analyzeReactivity(src)
+    const kinds = new Set(result.findings.map((f) => f.kind))
+    // The snippet must exercise every structural kind the badge map covers.
+    expect([...kinds].sort()).toEqual(['hoisted-static', 'reactive', 'reactive-attr', 'reactive-prop', 'static-text'])
+    // The contract the glyph-only badge relies on: a structural detail names its kind.
+    for (const f of result.findings) {
+      expect(f.detail).toMatch(/^(live|live prop|live attribute|baked once into the DOM|static) — /)
+    }
+
+    // Each note is the glyph and the detail, nothing restating it in between.
+    const notes = formatReactivityLens(src, result)
+      .split('\n')
+      .filter((l) => l.trimStart().startsWith('^'))
+      .map((l) => l.trim())
+    const expected = result.findings.map((f) => `^ ${f.kind.startsWith('reactive') ? '◆' : '○'} ${f.detail}`)
+    expect(notes.sort()).toEqual(expected.sort())
+    expect(notes.join('\n')).not.toMatch(/live — live|live prop — live prop|baked once — baked once|static — static/)
+  })
 })
 
 describe('Plain-Mode files', () => {

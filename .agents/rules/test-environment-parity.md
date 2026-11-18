@@ -22,7 +22,7 @@ These run in Node/Bun in production, so vitest in Node is production: `@pyreon/r
 
 ### Universal packages
 
-Environment-independent; vitest is sufficient. Examples: `@pyreon/reactivity`, `@pyreon/core` (mostly), `@pyreon/compiler`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/query`, `@pyreon/table`, `@pyreon/i18n`, `@pyreon/hotkeys`, `@pyreon/permissions`, `@pyreon/machine`, `@pyreon/document` (the renderer; primitives are in `document-primitives`), `@pyreon/rx`, `@pyreon/url-state`, `@pyreon/storage`, `@pyreon/feature`.
+Environment-independent; vitest is sufficient. Examples: `@pyreon/reactivity`, `@pyreon/core` (mostly), `@pyreon/compiler`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/query`, `@pyreon/table`, `@pyreon/i18n`, `@pyreon/hotkeys`, `@pyreon/permissions`, `@pyreon/machine`, `@pyreon/rx`, `@pyreon/url-state`, `@pyreon/storage`, `@pyreon/feature`.
 
 Exception — a code path that branches on the environment needs a test in each branch:
 

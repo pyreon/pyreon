@@ -331,13 +331,13 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
     | 'time'
     | (() => Booleanish | 'page' | 'step' | 'location' | 'date' | 'time' | undefined)
     | undefined
-  'aria-live'?: 'off' | 'assertive' | 'polite' | undefined
-  'aria-atomic'?: Booleanish | undefined
-  'aria-busy'?: Booleanish | undefined
-  'aria-controls'?: string | undefined
+  'aria-live'?: 'off' | 'assertive' | 'polite' | (() => 'off' | 'assertive' | 'polite' | undefined) | undefined
+  'aria-atomic'?: Booleanish | (() => Booleanish | undefined) | undefined
+  'aria-busy'?: Booleanish | (() => Booleanish | undefined) | undefined
+  'aria-controls'?: string | (() => string | undefined) | undefined
   'aria-describedby'?: string | (() => string | undefined) | undefined
-  'aria-labelledby'?: string | undefined
-  'aria-placeholder'?: string | undefined
+  'aria-labelledby'?: string | (() => string | undefined) | undefined
+  'aria-placeholder'?: string | (() => string | undefined) | undefined
   'aria-required'?: Booleanish | (() => Booleanish | undefined) | undefined
   'aria-invalid'?:
     | Booleanish
@@ -345,26 +345,26 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
     | 'spelling'
     | (() => Booleanish | 'grammar' | 'spelling' | undefined)
     | undefined
-  'aria-valuemin'?: number | undefined
-  'aria-valuemax'?: number | undefined
-  'aria-valuenow'?: number | undefined
-  'aria-valuetext'?: string | undefined
-  'aria-haspopup'?: Booleanish | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog' | undefined
-  'aria-posinset'?: number | undefined
-  'aria-setsize'?: number | undefined
-  'aria-level'?: number | undefined
-  'aria-multiline'?: Booleanish | undefined
-  'aria-multiselectable'?: Booleanish | undefined
-  'aria-orientation'?: 'horizontal' | 'vertical' | undefined
+  'aria-valuemin'?: number | (() => number | undefined) | undefined
+  'aria-valuemax'?: number | (() => number | undefined) | undefined
+  'aria-valuenow'?: number | (() => number | undefined) | undefined
+  'aria-valuetext'?: string | (() => string | undefined) | undefined
+  'aria-haspopup'?: Booleanish | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog' | (() => Booleanish | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog' | undefined) | undefined
+  'aria-posinset'?: number | (() => number | undefined) | undefined
+  'aria-setsize'?: number | (() => number | undefined) | undefined
+  'aria-level'?: number | (() => number | undefined) | undefined
+  'aria-multiline'?: Booleanish | (() => Booleanish | undefined) | undefined
+  'aria-multiselectable'?: Booleanish | (() => Booleanish | undefined) | undefined
+  'aria-orientation'?: 'horizontal' | 'vertical' | (() => 'horizontal' | 'vertical' | undefined) | undefined
   'aria-readonly'?: Booleanish | (() => Booleanish | undefined) | undefined
-  'aria-sort'?: 'none' | 'ascending' | 'descending' | 'other' | undefined
-  'aria-autocomplete'?: 'none' | 'inline' | 'list' | 'both' | undefined
-  'aria-colcount'?: number | undefined
-  'aria-colindex'?: number | undefined
-  'aria-colspan'?: number | undefined
-  'aria-rowcount'?: number | undefined
-  'aria-rowindex'?: number | undefined
-  'aria-rowspan'?: number | undefined
+  'aria-sort'?: 'none' | 'ascending' | 'descending' | 'other' | (() => 'none' | 'ascending' | 'descending' | 'other' | undefined) | undefined
+  'aria-autocomplete'?: 'none' | 'inline' | 'list' | 'both' | (() => 'none' | 'inline' | 'list' | 'both' | undefined) | undefined
+  'aria-colcount'?: number | (() => number | undefined) | undefined
+  'aria-colindex'?: number | (() => number | undefined) | undefined
+  'aria-colspan'?: number | (() => number | undefined) | undefined
+  'aria-rowcount'?: number | (() => number | undefined) | undefined
+  'aria-rowindex'?: number | (() => number | undefined) | undefined
+  'aria-rowspan'?: number | (() => number | undefined) | undefined
   // DOM lifecycle ref — object ref or callback ref
   ref?: RefProp<E> | undefined
   // Key for list reconciliation
@@ -630,6 +630,8 @@ interface IframeAttributes extends PyreonHTMLAttributes<HTMLIFrameElement> {
   sandbox?: string | undefined
   referrerPolicy?: string | undefined
   title?: string | undefined
+  /** Inline document for the frame. The browser prefers it over `src`. */
+  srcdoc?: string | (() => string) | undefined
 }
 
 interface LinkAttributes extends PyreonHTMLAttributes<HTMLLinkElement> {
@@ -690,6 +692,10 @@ interface DetailsAttributes extends PyreonHTMLAttributes<HTMLDetailsElement> {
 
 interface DialogAttributes extends PyreonHTMLAttributes<HTMLDialogElement> {
   open?: boolean | (() => boolean) | undefined
+  /** Fired after the dialog closes, by `close()`, a form with `method="dialog"` or Escape. */
+  onClose?: ((e: TargetedEvent<HTMLDialogElement>) => void) | undefined
+  /** Fired when the user asks to dismiss it (Escape). `preventDefault()` keeps it open. */
+  onCancel?: ((e: TargetedEvent<HTMLDialogElement>) => void) | undefined
 }
 
 interface OlAttributes extends PyreonHTMLAttributes<HTMLOListElement> {

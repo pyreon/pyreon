@@ -28,8 +28,12 @@ describe('jsx.ts (SSR) — attributes rendered as NOTHING server-side', () => {
     expect(out).not.toContain('ref')
   })
 
-  it('drops `key` from the baked tag', () => {
-    expect(s('<div key="k">x</div>')).toContain('_ssr(["<div>x</div>"])')
+  it('drops `key` from a nested baked tag', () => {
+    expect(s('<section><div key="k">x</div></section>')).toContain('_ssr(["<section><div>x</div></section>"])')
+  })
+
+  it('keeps a KEYED root on the h() path, as the client compile does (#4382)', () => {
+    expect(s('<div key="k">x</div>')).not.toContain('_ssr(')
   })
 
   it('drops an `on*` handler from the baked tag', () => {

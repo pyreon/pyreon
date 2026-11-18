@@ -8284,6 +8284,12 @@ fn find_jsx_element_by_span_in<'a>(
 }
 
 fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
+    // A KEYED root stays a JSX element, as the client compile keeps it on the
+    // h() path. The root is the value a parent component receives as a child,
+    // and `_ssr` carries no key (#4382). Mirrors the JS `trySsrTemplateEmit`.
+    if !ssr_component_child_eligible(el) {
+        return false;
+    }
     // Self-closing roots are eligible — `ssr_serialize_element` already emits
     // both forms (void → `<img … />`, non-void → `<div …></div>`). Mirrors the
     // JS backend; byte-identity is locked by `ssr-template-differential`.
