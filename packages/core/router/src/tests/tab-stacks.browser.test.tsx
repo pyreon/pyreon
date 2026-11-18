@@ -9,7 +9,7 @@
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createRouter, RouterProvider, RouterView } from '../index'
+import { createRouter, RouterProvider, RouterView, routerTabs } from '../index'
 import { setActiveRouter } from '../router'
 import type { Router } from '../types'
 
@@ -20,10 +20,10 @@ const routes = [
   { path: '/me', component: page('me') },
   { path: '/me/settings', component: page('settings') },
 ]
-const tabs = [
+const tabs = routerTabs([
   { name: 'feed', root: '/feed' },
   { name: 'me', root: '/me' },
-]
+])
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const waitUntil = async (pred: () => boolean, label: string, budgetMs = 4000): Promise<void> => {

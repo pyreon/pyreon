@@ -100,7 +100,7 @@ interface RouterOptions {
   onError?: (err: unknown, route: ResolvedRoute) => undefined | false
   maxCacheSize?: number
   links?: LinkConfig
-  tabs?: RouterTab[]
+  tabs?: RouterTabs // routerTabs([{ name, root }, …])
 }
 ```
 
@@ -116,7 +116,7 @@ interface RouterOptions {
 | `onError`        | `(err, route) => undefined \| false`               | -         | Global loader error handler. Return `false` to cancel navigation.                                                                                  |
 | `maxCacheSize`   | `number`                                           | `100`     | Max number of resolved lazy components to cache (LRU eviction)                                                                                     |
 | `links`          | `LinkConfig`                                       | -         | `<RouterLink>` external-link behaviour — `sameOriginAbsolute` (`'internal'` \| `'external'`), `externalNewTab`, `externalRel`. See [External links](#external-links). |
-| `tabs`           | `{ name: string; root: string }[]`                 | -         | One back stack per tab for a tab-bar app. See [Tab stacks](#tab-stacks). |
+| `tabs`           | `RouterTabs` (from `routerTabs([{ name, root }])`) | -         | One back stack per tab for a tab-bar app. See [Tab stacks](#tab-stacks). |
 
 **Hash mode vs history mode:**
 
@@ -176,11 +176,11 @@ const router = createRouter({
 
 ### Tab stacks
 
-A tab-bar app wants every tab to keep its own stack of screens: push a post in the Feed tab, switch to Me, come back, and Feed is still on the post. Configure the tabs on the router and bind a `<Tabs>` from `@pyreon/primitives` to it:
+A tab-bar app wants every tab to keep its own stack of screens: push a post in the Feed tab, switch to Me, come back, and Feed is still on the post. Configure the tabs on the router with `routerTabs()` and bind a `<Tabs>` from `@pyreon/primitives` to it:
 
 ```tsx
 import { Tab, Tabs } from '@pyreon/primitives'
-import { createRouter, RouterProvider, RouterView } from '@pyreon/router'
+import { createRouter, RouterProvider, RouterView, routerTabs } from '@pyreon/router'
 
 const router = createRouter({
   mode: 'history',
@@ -190,10 +190,10 @@ const router = createRouter({
     { path: '/me', component: MeHome },
     { path: '/me/settings', component: Settings },
   ],
-  tabs: [
+  tabs: routerTabs([
     { name: 'feed', root: '/feed' },
     { name: 'me', root: '/me' },
-  ],
+  ]),
 })
 
 export function App() {
@@ -232,7 +232,9 @@ How navigation maps onto the stacks:
 
 **Android.** Each tab keeps its own back stack. The system Back pops the active tab's stack first; at another tab's root it returns to the first tab; at the first tab's root it leaves the app.
 
-**Native requirements.** `tabs` must be an array literal of `{ name, root }` with string-literal values. Each `<Tab value>` must name a configured tab, and each tab needs a top-level literal route at its `root` (the stack's root screen). Shapes outside that are named in a compiler warning.
+`tabs` takes the value `routerTabs()` returns rather than a plain array so that the tab engine is in a bundle only when an app uses tabs; a plain array throws with that fix.
+
+**Native requirements.** `tabs` must be `routerTabs([...])` with an array literal of `{ name, root }` and string-literal values. Each `<Tab value>` must name a configured tab, and each tab needs a top-level literal route at its `root` (the stack's root screen). Shapes outside that are named in a compiler warning.
 
 ## Route Records
 

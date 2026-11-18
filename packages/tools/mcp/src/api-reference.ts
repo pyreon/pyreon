@@ -1484,12 +1484,12 @@ const base = signal(1.0)
   <Tab value="feed" label="Feed" icon="home"><FeedScreen /></Tab>
   <Tab value="me" label="Me" icon="person"><ProfileScreen /></Tab>
 </Tabs>`,
-    notes: `Top-level tab navigation; children are literal \`<Tab value label icon?>\` entries whose children are the tab content. Web: the WAI-ARIA tabs pattern (tablist / tab / tabpanel, roving tabindex, arrow keys + Home/End) as a bottom bar below 600px of viewport width and a side rail at 600px+. iOS: \`TabView(selection:)\` (iOS 18+ \`.sidebarAdaptable\`, a sidebar on iPad). Android: Material \`BottomNavigation\` below 600dp of window width, \`NavigationRail\` at 600dp+ (the \`useSizeClass()\` breakpoint). A visited tab stays MOUNTED while hidden on every target, so its local state, typed text and scroll position survive switching away and back. Router-agnostic: the selection is your signal; a string-literal-union signal lowers to the native enum. OR router-bound: \`<Tabs router={router}>\` with a \`createRouter({ tabs })\` router gives every tab its own back stack — the selection is \`router.activeTab()\`, a tap goes through \`router.selectTab\` (re-tapping the active tab pops it to its root), and a \`<RouterView />\` in each \`<Tab>\` shows THAT tab's stack. iOS: one \`NavigationStack\` per tab inside the \`TabView\` (a push stays inside its tab, the bar stays visible); Android: per-tab stacks, the system Back pops the active tab first. See also: Split, Link.`,
+    notes: `Top-level tab navigation; children are literal \`<Tab value label icon?>\` entries whose children are the tab content. Web: the WAI-ARIA tabs pattern (tablist / tab / tabpanel, roving tabindex, arrow keys + Home/End) as a bottom bar below 600px of viewport width and a side rail at 600px+. iOS: \`TabView(selection:)\` (iOS 18+ \`.sidebarAdaptable\`, a sidebar on iPad). Android: Material \`BottomNavigation\` below 600dp of window width, \`NavigationRail\` at 600dp+ (the \`useSizeClass()\` breakpoint). A visited tab stays MOUNTED while hidden on every target, so its local state, typed text and scroll position survive switching away and back. Router-agnostic: the selection is your signal; a string-literal-union signal lowers to the native enum. OR router-bound: \`<Tabs router={router}>\` with a \`createRouter({ tabs: routerTabs([...]) })\` router gives every tab its own back stack — the selection is \`router.activeTab()\`, a tap goes through \`router.selectTab\` (re-tapping the active tab pops it to its root), and a \`<RouterView />\` in each \`<Tab>\` shows THAT tab's stack. iOS: one \`NavigationStack\` per tab inside the \`TabView\` (a push stays inside its tab, the bar stays visible); Android: per-tab stacks, the system Back pops the active tab first. See also: Split, Link.`,
     mistakes: `- Generating the \`<Tab>\`s with \`<For>\` or a helper — native targets build the tab bar at compile time, so each \`<Tab>\` must be written out (anything else is dropped with a warning)
 - A computed \`<Tab value>\` / \`label\` icon — \`value\` and \`icon\` must be string literals (the \`value\` is the native \`case\` / \`when\` branch)
 - Expecting \`data-testid\` on a \`<Tab>\` to identify the iOS tab bar button — SwiftUI gives tab bar items no identifier; query them by label (it lands on the web button and the Android bar item)
-- Using a SIGNAL-bound \`<Tabs>\` around routed screens and expecting each tab to keep its own route stack — the router has ONE stack, so on iOS/Android a push from inside a tab covers the TabView. Configure \`createRouter({ tabs })\` and bind \`<Tabs router={router}>\` instead
-- A \`<Tabs router>\` \`<Tab value>\` that names no tab of \`createRouter({ tabs })\` — it has no stack, so native drops it with a warning
+- Using a SIGNAL-bound \`<Tabs>\` around routed screens and expecting each tab to keep its own route stack — the router has ONE stack, so on iOS/Android a push from inside a tab covers the TabView. Configure \`createRouter({ tabs: routerTabs([...]) })\` and bind \`<Tabs router={router}>\` instead
+- A \`<Tabs router>\` \`<Tab value>\` that names no tab of \`createRouter({ tabs: routerTabs([...]) })\` — it has no stack, so native drops it with a warning
 - Passing both \`router\` and \`value\`/\`onChange\` — \`router\` wins; the selection is the router's active tab`,
   },
 
@@ -1926,6 +1926,22 @@ return json({ data: result.data }) // keyed by matched-chain index`,
 - Expecting isomorphic \`loader\`s to run here — deliberately excluded (double-fire prevention); they run on the client during navigation`,
   },
 
+  'router/routerTabs': {
+    signature: 'routerTabs(tabs: RouterTab[]): RouterTabs',
+    example: `import { createRouter, routerTabs } from '@pyreon/router'
+
+const router = createRouter({
+  routes,
+  tabs: routerTabs([
+    { name: 'feed', root: '/feed' },
+    { name: 'me', root: '/me' },
+  ]),
+})`,
+    notes: `The \`tabs\` option of \`createRouter\`: one back stack per tab for a tab-bar app (\`createRouter({ routes, tabs: routerTabs([{ name: 'feed', root: '/feed' }, …]) })\`). \`push\` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab's exact root pops it to the root), \`router.selectTab(name)\` switches tabs keeping every stack, and \`<Tabs router={router}>\` from \`@pyreon/primitives\` binds the tab bar. A function rather than a plain array so the tab engine is in a bundle only when an app uses tabs; \`createRouter\` throws on a plain array. Native (PMTC) lowers the same call: iOS \`NavigationStack\` per tab inside the \`TabView\`, Android per-tab stacks.`,
+    mistakes: `- Passing a plain array (\`tabs: [{ name, root }]\`, the pre-0.54 shape) — \`createRouter\` throws; wrap it in \`routerTabs(...)\` (\`pyreon upgrade\` rewrites it)
+- A \`<Tab value>\` that names no configured tab — it has no stack; \`selectTab\` cancels and native drops the tab with a warning`,
+  },
+
   'router/createRouter': {
     signature: 'createRouter(options: RouterOptions | RouteRecord[]): Router',
     example: `const router = createRouter([
@@ -1935,7 +1951,7 @@ return json({ data: result.data }) // keyed by matched-chain index`,
     { path: "settings", component: Settings },
   ]},
 ])`,
-    notes: `Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full \`RouterOptions\` object with \`routes\`, \`mode\` (\`"history"\` | \`"hash"\`), \`scrollBehavior\`, and global \`beforeEach\` / \`afterEach\` guard arrays (which run before any added later with \`router.beforeEach()\` / \`router.afterEach()\`, and are the form the native targets lower). Middleware is per-route (\`RouteRecord.middleware\`), not a router option. The returned \`Router\` is generic over route names for typed programmatic navigation. \`tabs: [{ name, root }]\` gives a tab-bar app one back stack per tab: \`push\` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), \`selectTab(name)\` switches and keeps every stack (re-selecting the active tab pops to root), and \`<Tabs router={router}>\` from \`@pyreon/primitives\` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a \`NavigationStack\` per tab inside the \`TabView\`; Android: per-tab stacks with the system Back popping the active tab first. See also: RouterProvider, useRouter, useRoute.`,
+    notes: `Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full \`RouterOptions\` object with \`routes\`, \`mode\` (\`"history"\` | \`"hash"\`), \`scrollBehavior\`, and global \`beforeEach\` / \`afterEach\` guard arrays (which run before any added later with \`router.beforeEach()\` / \`router.afterEach()\`, and are the form the native targets lower). Middleware is per-route (\`RouteRecord.middleware\`), not a router option. The returned \`Router\` is generic over route names for typed programmatic navigation. \`tabs: routerTabs([{ name, root }])\` gives a tab-bar app one back stack per tab: \`push\` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), \`selectTab(name)\` switches and keeps every stack (re-selecting the active tab pops to root), and \`<Tabs router={router}>\` from \`@pyreon/primitives\` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a \`NavigationStack\` per tab inside the \`TabView\`; Android: per-tab stacks with the system Back popping the active tab first. See also: RouterProvider, useRouter, useRoute.`,
     mistakes: `- \`createRouter({ routes: [...], mode: "hash" })\` and using \`window.location.hash\` elsewhere — hash mode uses \`history.pushState\`, not \`location.hash\`. Reading \`location.hash\` directly will not reflect router state
 - Defining route paths without leading \`/\` in root routes — all root-level paths must start with \`/\`
 - Using \`redirect: "/target"\` with a guard on the same route — redirects bypass guards. Use \`beforeEnter\` to conditionally redirect instead

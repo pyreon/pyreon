@@ -5251,25 +5251,47 @@ function lowerGuardFn(
  * (see `inlineGuardHelper`) and its generated name kept. Anything else is warned and dropped.
  */
 /**
- * `createRouter({ tabs: [{ name: 'feed', root: '/feed' }, …] })` → the tab
- * list, or undefined when the config has no `tabs`. Every entry must be an
- * object LITERAL with string-literal `name` and `root`: the native router is
- * constructed with them and each `<Tab value>` is matched against `name` at
- * compile time. Anything else is NAMED and dropped — a tab silently missing
- * from the router would push every one of its routes into another tab.
+ * The array literal inside `tabs: routerTabs([...])`, or undefined (with a
+ * warning naming the fix) for any other shape. A bare array is the pre-0.54
+ * form, which the web router now throws on.
+ */
+function routerTabsArray(raw: AnyNode | undefined, warnings: string[]): AnyNode | undefined {
+  if (raw?.type === 'ArrayExpression') {
+    warnings.push(
+      '[pyreon-native] createRouter `tabs` takes `routerTabs([...])` from @pyreon/router, not a bare array (the web router throws on one; `pyreon upgrade` rewrites it). Per-tab stacks are DROPPED here, so every route pushes onto one stack.',
+    )
+
+    return undefined
+  }
+  const callee = raw?.type === 'CallExpression' ? (raw.callee as AnyNode | undefined) : undefined
+  const arg =
+    callee?.type === 'Identifier' && callee.name === 'routerTabs'
+      ? ((raw!.arguments as AnyNode[] | undefined)?.[0] as AnyNode | undefined)
+      : undefined
+  if (arg?.type === 'ArrayExpression') return arg
+  warnings.push(
+    '[pyreon-native] createRouter `tabs` must be `routerTabs([...])` with an array LITERAL of `{ name, root }` objects on iOS/Android — the router is built with them at compile time. Per-tab stacks are DROPPED here, so every route pushes onto one stack.',
+  )
+
+  return undefined
+}
+
+/**
+ * `createRouter({ tabs: routerTabs([{ name: 'feed', root: '/feed' }, …]) })` →
+ * the tab list, or undefined when the config has no `tabs`. The argument of
+ * `routerTabs` must be an array literal and every entry an object LITERAL with
+ * string-literal `name` and `root`: the native router is constructed with them
+ * and each `<Tab value>` is matched against `name` at compile time. Anything
+ * else is NAMED and dropped — a tab silently missing from the router would
+ * push every one of its routes into another tab. A bare array (the pre-0.54
+ * shape) is refused the same way, since the web router throws on it.
  */
 function tryExtractRouterTabs(arg: AnyNode | undefined, warnings: string[]): { name: string; root: string }[] | undefined {
   if (!arg || arg.type !== 'ObjectExpression') return undefined
   const prop = (arg.properties as AnyNode[] | undefined)?.find((p) => p?.type === 'Property' && staticPropKey(p) === 'tabs')
   if (!prop) return undefined
-  const value = prop.value as AnyNode | undefined
-  if (!value || value.type !== 'ArrayExpression') {
-    warnings.push(
-      '[pyreon-native] createRouter `tabs` must be an array LITERAL of `{ name, root }` objects on iOS/Android — the router is built with them at compile time. Per-tab stacks are DROPPED here, so every route pushes onto one stack.',
-    )
-
-    return undefined
-  }
+  const value = routerTabsArray(prop.value as AnyNode | undefined, warnings)
+  if (value === undefined) return undefined
   const out: { name: string; root: string }[] = []
   const literal = (obj: AnyNode, key: string): string | undefined => {
     const p = (obj.properties as AnyNode[] | undefined)?.find((x) => x?.type === 'Property' && staticPropKey(x) === key)

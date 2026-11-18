@@ -947,7 +947,7 @@ a `<Toaster />`) persists across navigation natively, as it does on the web:
 route dispatch on Android) wherever it sits, and its siblings render around it
 with the router in scope.
 
-**Per-tab back stacks.** `createRouter({ routes, tabs: [{ name, root }] })`
+**Per-tab back stacks.** `createRouter({ routes, tabs: routerTabs([{ name, root }]) })`
 with a `<Tabs router={router}>` and a `<RouterView />` in each `<Tab>` gives
 every tab its own stack. iOS lowers each tab to its own `NavigationStack`
 inside the `TabView` (`PyreonRouterTabs` / `PyreonTabStack`), so a push from

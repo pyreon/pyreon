@@ -7,6 +7,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { routerTabsFunction } from './router-tabs-function'
 import { runtimeDomRenderToMount } from './runtime-dom-render-to-mount'
 import type { Codemod } from './types'
 import { urlStateDebounceMs } from './url-state-debounce-ms'
@@ -20,6 +21,7 @@ export const CODEMODS: readonly Codemod[] = [
   zeroPlaceholderColor,
   urlStateDebounceMs,
   runtimeDomRenderToMount,
+  routerTabsFunction,
 ]
 
 function versionKey(v: string): number[] {

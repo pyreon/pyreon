@@ -100,11 +100,31 @@ if (result.kind === 'redirect') return jsonRedirect(result)
 return json({ data: result.data }) // keyed by matched-chain index`,
     },
     {
+      name: 'routerTabs',
+      kind: 'function',
+      signature: 'routerTabs(tabs: RouterTab[]): RouterTabs',
+      summary:
+        "The `tabs` option of `createRouter`: one back stack per tab for a tab-bar app (`createRouter({ routes, tabs: routerTabs([{ name: 'feed', root: '/feed' }, …]) })`). `push` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab's exact root pops it to the root), `router.selectTab(name)` switches tabs keeping every stack, and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. A function rather than a plain array so the tab engine is in a bundle only when an app uses tabs; `createRouter` throws on a plain array. Native (PMTC) lowers the same call: iOS `NavigationStack` per tab inside the `TabView`, Android per-tab stacks.",
+      mistakes: [
+        'Passing a plain array (`tabs: [{ name, root }]`, the pre-0.54 shape) — `createRouter` throws; wrap it in `routerTabs(...)` (`pyreon upgrade` rewrites it)',
+        'A `<Tab value>` that names no configured tab — it has no stack; `selectTab` cancels and native drops the tab with a warning',
+      ],
+      example: `import { createRouter, routerTabs } from '@pyreon/router'
+
+const router = createRouter({
+  routes,
+  tabs: routerTabs([
+    { name: 'feed', root: '/feed' },
+    { name: 'me', root: '/me' },
+  ]),
+})`,
+    },
+    {
       name: 'createRouter',
       kind: 'function',
       signature: 'createRouter(options: RouterOptions | RouteRecord[]): Router',
       summary:
-        'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: [{ name, root }]` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab\'s root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab\'s top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first.',
+        'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: routerTabs([{ name, root }])` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab\'s root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab\'s top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first.',
       example: `const router = createRouter([
   { path: "/", component: Home },
   { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) },
