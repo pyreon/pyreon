@@ -68,7 +68,7 @@ describe('the locale and the time zone are one value', () => {
     expect(relativeFormatter({ locale: 'en-US' })('2026-11-19')).toBe('2 days ago')
     ambient.setClock(() => Date.UTC(2026, 10, 18, 12, 0, 0))
     expect(time.today()).toBe('2026-11-19')
-    expect(relativeFormatter({ locale: 'en-US' })('2026-11-19')).toBe('2 hours ago') // the 19th began in Kiritimati at 10:00 UTC
+    expect(relativeFormatter({ locale: 'en-US' })('2026-11-19')).toBe('today') // a date-only target is a day: the 19th in Kiritimati is today at any hour
 
     // The locale and zone the other way: format's setters move time's default zone.
     format.setTimeZone('UTC')
@@ -102,7 +102,7 @@ describe('relativeFormatter defaults to the ambient clock in the reactive entry'
     expect(since(Date.UTC(2026, 10, 18, 11, 57, 0))).toBe('13 minutes ago')
     expect(relativeFormatter({ locale: 'en-US', timeZone: 'UTC', base: '2026-11-17' })('2026-11-18')).toBe('tomorrow')
     // an unset base (with({ base: undefined })) falls back to the clock again
-    expect(relativeFormatter({ locale: 'en-US', timeZone: 'UTC', base: '2026-11-17' }).with({ base: undefined })('2026-11-18')).toBe('12 hours ago')
+    expect(relativeFormatter({ locale: 'en-US', timeZone: 'UTC', base: '2026-11-17' }).with({ base: undefined })('2026-11-18')).toBe('today')
   })
 
   it('defineFormats takes the same default', () => {

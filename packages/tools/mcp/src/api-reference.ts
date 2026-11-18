@@ -7203,7 +7203,7 @@ formatRelativeTo('2026-11-16T13:00:00Z', '2026-11-18T01:00:00Z', { locale: 'en-U
 formatRelativeTo('2026-10-05', '2026-11-18', { locale: 'en-US' }) // → "last month"
 formatRelativeTo('2025-12-15', '2026-12-20', { locale: 'en-US' }) // → "last year"
 formatRelativeTo('2026-12-25', '2026-11-18', { locale: 'en-US' }) // → "next month"
-formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "jetzt"`,
+formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "heute"`,
     notes: `Describe \`target\` relative to an explicit \`base\`. Under a minute it is seconds, under an hour minutes, under 24 hours hours (elapsed time, truncated toward zero, so 59 minutes 40 seconds is \`59 minutes\`). From 24 hours on the distance is counted by the CALENDAR in the zone (\`timeZone\`, else the active zone; calendar strings in UTC), so "yesterday", "tomorrow" and "last month" are literally true: under 7 calendar days it is days; then weeks (7-day blocks) while the distance is under 30 days or the calendar month is the same; then calendar months up to 11, then calendar years (\`last year\` is the previous calendar year). \`numeric: 'auto'\` by default. The base is explicit so the function stays pure; pass the current time yourself. See also: formatRelative, relativeFormatter.`,
     mistakes: `- Expecting it to read the clock: it does not. Pass \`Date.now()\` (or a clock signal) as \`base\`
 - Expecting 36 hours to be "yesterday": from 24 hours on the calendar decides, so it depends on the time of day of the base`,
@@ -7421,7 +7421,7 @@ old() // → "Jan 5, 2020"`,
     notes: `A relative label that keeps itself current: an accessor returning \`"3 minutes ago"\`, updated by the shared clock of \`@pyreon/ambient\`. The text is \`formatRelativeTo\` against the clock, so it is calendar-true ("yesterday" in the time zone). It updates at the moment the text changes: each second under a minute, at the TARGET'S OWN minute and hour marks ("1 minute ago" appears when the target is one minute old, not at the next wall-clock minute), at local midnight once it counts days, when a future target comes within a day, and at the \`threshold\`. Every label shares one timer for those marks and one for seconds, so 200 labels cost two timers. \`target\` and \`options\` may be accessors (tracked). Options are \`numeric\` (\`'auto'\` by default), \`style\`, \`locale\`, \`timeZone\`, \`fallback\` and \`threshold: { after, as? }\`: once the target is \`after\` away (milliseconds or \`{ seconds, minutes, hours, days, weeks }\`, in either direction) the label is the date, formatted \`as\` (a date style or \`Intl.DateTimeFormat\` options, default \`'medium'\`). Call it in a component's setup and read the accessor in JSX. On a server it prints the request's clock (\`provideClock\`) and starts no timer; outside a component it is a plain reading. See also: RelativeTime, formatRelativeTo, relativeFormatter.`,
     mistakes: `- Calling it in an event handler or a timer: it needs the component's scope to release its timer; call it in setup
 - Using \`formatRelativeTo(value, Date.now())\` in JSX and expecting it to tick: that is one reading; the label only changes when something else re-renders it
-- A date-only target such as \`'2026-11-18'\` is that day's midnight in the display zone: at 10:00 on the 18th it is "10 hours ago", and from midnight on the 19th it is "yesterday"`,
+- A date-only target such as \`'2026-11-18'\` is a DAY: it reads as today, tomorrow, yesterday or in 3 days in the display zone at any hour, never as hours (\`2026-11-18\` at 10:00 on the 18th is "today")`,
   },
 
   'format/locale': {
@@ -7501,7 +7501,7 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
     signature: '(props: RelativeTimeProps) => VNode',
     example: `// <RelativeTime value={comment.createdAt} />
 // <RelativeTime value={post.updatedAt} threshold={{ after: { days: 7 } }} />  // "3 hours ago" ... "Nov 12, 2026"
-// <RelativeTime value={issue.dueDate} numeric="always" />  // a date-only value is that day in the display zone`,
+// <RelativeTime value={issue.dueDate} />  // a date-only value is a day: "today", "tomorrow", "in 3 days"`,
     notes: `A \`<time>\` that says how long ago (or how far ahead) a value is and keeps itself current. It is \`useRelativeTime\` in an element: \`datetime\` is the machine value, \`title\` the exact date and time (the full date, and for an instant the time with its zone name; a \`title\` you pass wins), the text updates by itself on the shared timers (two for the whole page), and \`unicode-bidi: isolate\` is on by default. Props: \`value\`, \`numeric\`, \`locale\`, \`timeZone\`, \`threshold\` (\`{ after: { days: 7 }, as: 'medium' }\`), \`fallback\`, \`options\` (\`style\` and the rest) and \`isolate\`; other props go to the element. A server render prints the request's clock and starts no timer; with \`clockScript()\` or \`clockAttributes()\` from \`@pyreon/ambient\` the page hydrates to the same text and then updates once to real time. See also: useRelativeTime, DateTime.`,
     mistakes: `- Passing \`style\` for the Intl style: \`style\` is the element's style; use \`options={{ style: 'short' }}\`
 - Server-rendering without handing the instant over: the client's first render reads its own clock and can differ from the server text; emit \`clockScript()\` (or spread \`clockAttributes()\`) from \`@pyreon/ambient\``,
@@ -9958,7 +9958,7 @@ isToday(Date.UTC(2026, 10, 18, 23, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 
     example: `relativeDistance(Date.UTC(2026, 10, 18, 11, 58), Date.UTC(2026, 10, 18, 12), 'UTC')  // => { value: -2, unit: 'minute' }
 relativeDistance('2026-11-17', Date.UTC(2026, 10, 18, 23, 59), 'UTC')   // => { value: -1, unit: 'day' }
 relativeDistance('2026-12-20', Date.UTC(2026, 10, 18, 12), 'UTC')       // => { value: 1, unit: 'month' }`,
-    notes: '[EXPERIMENTAL] How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDate or PlainDateTime target is a wall-clock value in `zone`. These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words. See also: useRelative, daysFromToday. Added in v0.53.0.',
+    notes: '[EXPERIMENTAL] How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDateTime target is a wall-clock value in `zone`; a PlainDate target is a DAY, compared as a calendar day in `zone` and never as hours (today, tomorrow, in 3 days). These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words. See also: useRelative, daysFromToday. Added in v0.53.0.',
   },
 
   'time/useToday': {
@@ -10263,7 +10263,7 @@ endOf('month')('2026-11-18')               // => '2026-11-30'`,
     notes: '[EXPERIMENTAL] A predicate: true for values in the same unit as `other`. Added in v0.53.0.',
   },
 
-  'time/fp.isBetween': {
+  'time/isBetween': {
     signature: '(start: T, end: T) => (value: shape of T) => boolean',
     example: `import { isBetween } from '@pyreon/time/fp'
 ['2026-01-05', '2026-02-10', '2026-03-20'].filter(isBetween('2026-02-01', '2026-03-01'))  // => ['2026-02-10']`,
@@ -10277,21 +10277,21 @@ endOf('month')('2026-11-18')               // => '2026-11-30'`,
     notes: '[EXPERIMENTAL] Limit values to a range. Throws when `lo` is after `hi`. Added in v0.53.0.',
   },
 
-  'time/fp.diffFrom': {
+  'time/diffFrom': {
     signature: '(base: T, unit: Unit, options?: { zone?: TimeZone }) => (value: shape of T) => number',
     example: `import { diffFrom } from '@pyreon/time/fp'
 ['2026-01-10', '2026-01-03'].map(diffFrom('2026-01-01', 'day'))  // => [9, 2]`,
     notes: '[EXPERIMENTAL] Whole units from `base` to each value: `dates.map(diffFrom(today, "day"))` reads left to right. Added in v0.53.0.',
   },
 
-  'time/fp.betweenFrom': {
+  'time/betweenFrom': {
     signature: '(base: PlainDate | PlainDateTime) => (value: same shape) => Duration',
     example: `import { betweenFrom } from '@pyreon/time/fp'
 betweenFrom('2026-01-31')('2026-03-01')      // => { years: 0, months: 1, days: 1 }`,
     notes: '[EXPERIMENTAL] The Duration from `base` to each value. Added in v0.53.0.',
   },
 
-  'time/fp.by': {
+  'time/by': {
     signature: '(mapper: (item: A) => K) => (a: A, b: A) => -1 | 0 | 1',
     example: `import { by } from '@pyreon/time/fp'
 const events: { d: PlainDate }[] = [{ d: '2026-03-01' }, { d: '2026-01-01' }]
@@ -10370,7 +10370,7 @@ toDate('UTC')('1970-01-01').getTime()         // => 0`,
     notes: '[EXPERIMENTAL] Value-last `toDate`. Added in v0.53.0.',
   },
 
-  'time/fp.pipe': {
+  'time/pipe': {
     signature: '(f1: (a: A) => B, f2: (b: B) => C, ...up to eight steps) => (value: A) => result',
     example: `import { add, startOf, pipe } from '@pyreon/time/fp'
 const nextMonthStart = pipe(add({ months: 1 }), startOf('month'))
