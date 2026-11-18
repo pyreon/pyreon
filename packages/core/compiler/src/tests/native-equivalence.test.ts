@@ -333,6 +333,12 @@ describe('JS syntax and optional native parity — template emission', () => {
   test('void element', () => compare('<div><br /><span>text</span></div>'))
   test('ref in template (object)', () => compare('<div ref={myRef}><span /></div>'))
   test('ref in template (arrow)', () => compare('<div ref={(el) => { myEl = el }}><span /></div>'))
+  // #4390: every ref lowers to a `_ref` disposer, so several refs, a ref beside
+  // other disposers, a ref after a slot and a ref in a <For> row all combine.
+  test('two refs in one template', () => compare('<div ref={a}><span ref={(el) => b.set(el)} /></div>'))
+  test('ref after a slot', () => compare('<div>{items().map((i) => <b>{i}</b>)}<span ref={r} /></div>'))
+  test('ref beside a reactive text', () => compare('<p ref={r}>{count()}</p>'))
+  test('ref in a For row', () => compare('<ul><For each={rows} by={(x) => x}>{(x) => <li ref={r}>{x}</li>}</For></ul>'))
 
   // Regression: a child element with a block-arrow ref AND adjacent
   // reactive props used to emit `const __e0 = __root.children[N]`

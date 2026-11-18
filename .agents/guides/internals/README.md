@@ -17,6 +17,7 @@ Both backends return the same V3 source map. The JS backend builds it with magic
 - **Two-phase binds.** All node captures from the pristine clone (`__eN`, `__tN`, `__pN`) are emitted before any `_mountSlot`/`replaceChild`, so a slot cannot corrupt a later sibling's ref walk.
 - `as`, `satisfies`, `!` and parentheses are transparent at child and attribute seams: `{(() => x()) as never}` compiles like `{() => x()}`.
 - Element-conditional and `.map` children stay on `_tpl` via `_mountSlot` and a `<!>` placeholder.
+- **Refs** lower to `const __dN = _ref(el, ref)`: the h() path's semantics (callback called, object `.current` set), returning the disposer that hands back `null` on unmount. Template clone sources are imported into the page document once at parse (`_tpl`'s `_root`, `createTemplate`), so a ref and every bind see `ownerDocument === document`; `tpl.content` stays as parsed for the adoption verifier. Contract (both paths): fires once at mount, page-document-owned, not guaranteed connected (layout in `onMount`), `null` on unmount. Locked by `compiled-ref-contract.test.tsx` and its `.browser` twin (#4390).
 
 ### Text fusion (`fuseTextChildren` / `fuse_text_children`)
 
