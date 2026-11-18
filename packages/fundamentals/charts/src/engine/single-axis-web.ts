@@ -6,7 +6,7 @@ import type { Double, MeasureText } from './types'
 
 export interface SingleAxisToSvgOptions {
   axis: SingleAxisSpec
-  points: SingleAxisPoint[]
+  points: readonly SingleAxisPoint[]
   width?: Double
   height?: Double
   options?: SingleAxisOptions

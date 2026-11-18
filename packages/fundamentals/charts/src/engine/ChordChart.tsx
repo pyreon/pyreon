@@ -10,8 +10,8 @@ import type { ChordArc, ChordLayout, ChordLink, ChordNode, ChordOptions } from '
 import type { ChartTheme } from './render'
 
 export interface ChordChartProps extends CanvasHostProps {
-  nodes: ChordNode[] | (() => ChordNode[])
-  links: ChordLink[] | (() => ChordLink[])
+  nodes: readonly ChordNode[] | (() => readonly ChordNode[])
+  links: readonly ChordLink[] | (() => readonly ChordLink[])
   chord?: ChordOptions
   /** Fired with the node arc under the click, or null for a miss. */
   onSelect?: (arc: ChordArc | null) => void
@@ -20,8 +20,8 @@ export interface ChordChartProps extends CanvasHostProps {
 }
 
 export function ChordChart(props: ChordChartProps): VNode {
-  const readNodes = (): ChordNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
-  const readLinks = (): ChordLink[] => (typeof props.links === 'function' ? props.links() : props.links)
+  const readNodes = (): readonly ChordNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
+  const readLinks = (): readonly ChordLink[] => (typeof props.links === 'function' ? props.links() : props.links)
   const opts = (t: ChartTheme): ChordOptions => ({ palette: t.palette, labelColor: t.label, ...props.chord })
   return canvasHost<ChordLayout>({
     props,

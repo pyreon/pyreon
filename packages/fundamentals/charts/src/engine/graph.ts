@@ -95,7 +95,7 @@ function graphSeedState(seed: Double): Double {
 }
 
 /** Node index by id, or -1. */
-function graphIndexOf(nodes: GraphNode[], id: string): number {
+function graphIndexOf(nodes: readonly GraphNode[], id: string): number {
   // Returns at the first match: the guard form kept walking every node per
   // lookup, and a layout does two lookups per LINK, so the scan was O(L·N).
   for (let i = 0; i < nodes.length; i++) if (nodes[i]!.id === id) return i
@@ -110,7 +110,7 @@ function graphRadius(value: Double, hasValue: boolean, maxValue: Double, base: D
 }
 
 /** Lay out the network into `box`. */
-export function layoutGraph(nodes: GraphNode[], links: GraphLink[], box: Rect, options?: GraphOptions): GraphLayout {
+export function layoutGraph(nodes: readonly GraphNode[], links: readonly GraphLink[], box: Rect, options?: GraphOptions): GraphLayout {
   const palette = options?.palette ?? DEFAULT_PALETTE
   const mode = options?.layout ?? 'force'
   const base = options?.symbolSize ?? 10.0
