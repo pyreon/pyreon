@@ -9326,6 +9326,124 @@ effect(() => { void throttled() })
   // @pyreon/toast
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/ambient>
+
+  'ambient/locale': {
+    signature: '() => string',
+    example: `setLocale('cs-cz')
+locale()                                      // => 'cs-CZ'`,
+    notes: '[EXPERIMENTAL] The active locale as a reactive read: the nearest `provideLocale`, then the app default from `setLocale`, then `navigator.language` on the client or the runtime default on the server. Read it inside an effect, a computed or a JSX accessor and it re-runs when the locale changes. See also: setLocale, provideLocale. Added in v0.53.0.',
+  },
+
+  'ambient/setLocale': {
+    signature: '(tag: string) => void',
+    example: `setLocale('de')
+locale()                                      // => 'de'`,
+    notes: '[EXPERIMENTAL] Set the app-level default locale (client). A malformed tag throws a `[Pyreon]` error. On a server it is a no-op with a development warning, because one process serves many requests: use `provideLocale` there. Added in v0.53.0.',
+  },
+
+  'ambient/provideLocale': {
+    signature: '(tag: string | (() => string)) => void',
+    example: `// in a root component
+provideLocale(() => 'cs')`,
+    notes: `[EXPERIMENTAL] Scope a subtree to a locale: a tag, or an accessor (\`() => i18n.locale()\`) that is tracked. Call it in a component's setup. Owner-based on the client and request-scoped on a server, so two requests never see each other's locale. Added in v0.53.0.`,
+    mistakes: '- Calling it outside a component: it then applies to the whole page for good (a development warning says so). Use `setLocale` for the app default',
+  },
+
+  'ambient/timeZone': {
+    signature: '() => string',
+    example: `setTimeZone('Asia/Tokyo')
+timeZone()                                    // => 'Asia/Tokyo'`,
+    notes: `[EXPERIMENTAL] The active IANA time zone as a reactive read: the nearest \`provideTimeZone\`, then the app default from \`setTimeZone\`, then the runtime's zone. See also: setTimeZone, provideTimeZone. Added in v0.53.0.`,
+  },
+
+  'ambient/setTimeZone': {
+    signature: '(zone: string) => void',
+    example: `setTimeZone('Europe/Prague')
+timeZone()                                    // => 'Europe/Prague'`,
+    notes: '[EXPERIMENTAL] Set the app-level default time zone (client). An unknown zone throws a `[Pyreon]` error; on a server it is a no-op with a development warning. Added in v0.53.0.',
+  },
+
+  'ambient/provideTimeZone': {
+    signature: '(zone: string | (() => string)) => void',
+    example: `// in a root component
+provideTimeZone('America/New_York')`,
+    notes: '[EXPERIMENTAL] Scope a subtree to a time zone: a name, or a tracked accessor. Request-scoped on a server. Added in v0.53.0.',
+  },
+
+  'ambient/activeZone': {
+    signature: '() => string',
+    example: `setTimeZone('UTC')
+activeZone()                                  // => 'UTC'`,
+    notes: `[EXPERIMENTAL] The active zone as a formatter argument: \`''\` means "the runtime zone", so a hot path never builds a name. Used by \`@pyreon/format\`; apps want \`timeZone()\`. Added in v0.53.0.`,
+  },
+
+  'ambient/now': {
+    signature: '() => number',
+    example: `typeof now()                                  // => 'number'`,
+    notes: `[EXPERIMENTAL] The current instant in epoch milliseconds: a plain read, not reactive, starting no timer. Resolution: the nearest \`provideClock\`, then the pin from \`setClock\`, then the server's instant on a page that received one (until it is released), then \`Date.now()\`. See also: setClock, useNow. Added in v0.53.0.`,
+  },
+
+  'ambient/setClock': {
+    signature: '(source: (() => number) | null) => void',
+    example: `setClock(() => 1_000_000)
+now()                                         // => 1000000
+setClock(null)`,
+    notes: '[EXPERIMENTAL] Pin the clock `now()` and every ticker read, for tests; `null` restores `Date.now()`. Process-wide: on a server it would pin every request, so use `provideClock` there (a development warning says so). Added in v0.53.0.',
+  },
+
+  'ambient/provideClock': {
+    signature: '(instant: number | (() => number)) => void',
+    example: `// in a root component, on the server
+provideClock(Date.now())`,
+    notes: `[EXPERIMENTAL] Scope a subtree (and, on a server, one request) to a start instant. On a server this is the instant the page was rendered at; emit it with \`clockScript()\` or \`clockAttributes()\` so the client's first render reads the same instant. Call it in a root component's setup. See also: clockScript, releaseClock. Added in v0.53.0.`,
+  },
+
+  'ambient/useNow': {
+    signature: '(options?: { every?: Every | (() => Every); zone?: string | (() => string) }) => () => number',
+    example: `typeof useNow({ every: 'second' })()          // => 'number'`,
+    notes: `[EXPERIMENTAL] A reactive reading of the clock: an accessor that updates on a shared ticker. \`every\` is \`"second"\`, \`"minute"\` (default), \`"hour"\`, \`"day"\` or a number of milliseconds; \`"hour"\` and \`"day"\` align to the local hour and midnight of \`zone\` (default: the active zone, tracked), and a function \`every\` is read reactively so a reader can move to a slower ticker as it ages. One timer serves every reader of the same granularity; each tick is scheduled from the clock to the next boundary, so a late timer does not drift; the ticker stops when its last reader goes; no timer runs while the page is hidden, and on becoming visible every reader is updated once. Call it in a component's setup: the ticker is released with the scope. Outside a scope, and on a server, it returns the plain \`now\` read: no subscription, no timer. See also: now, provideClock. Added in v0.53.0.`,
+    mistakes: `- Calling it inside an effect that re-runs: each run takes a new reference. Call it once in setup
+- Expecting it to tick on a server: nothing runs there; the HTML carries the instant of \`provideClock\``,
+  },
+
+  'ambient/clockScript': {
+    signature: '(options?: { instant?: number; nonce?: string }) => string',
+    example: `clockScript({ instant: 1000 })                // => '<script>window.__PYREON_CLOCK__=1000</script>'`,
+    notes: `[EXPERIMENTAL] The inline script that hands the server's instant to the client: \`window.__PYREON_CLOCK__ = <epoch ms>\`. Put it in the page head, before the app script. The client reads it on its first \`now()\` or \`useNow()\`, before hydration, and releases it one macrotask later so real time takes over with one update. See also: clockAttributes, provideClock. Added in v0.53.0.`,
+  },
+
+  'ambient/clockAttributes': {
+    signature: '(instant?: number) => { "data-pyreon-clock": string }',
+    example: `clockAttributes(1000)                         // => { 'data-pyreon-clock': '1000' }`,
+    notes: '[EXPERIMENTAL] The same hand-over as an attribute, for a page that cannot emit a script (strict CSP): spread it on the `<html>` or `<body>` element. Added in v0.53.0.',
+  },
+
+  'ambient/releaseClock': {
+    signature: '() => void',
+    example: 'releaseClock()                                // after a custom async hydration step',
+    notes: `[EXPERIMENTAL] Hand real time back to the page after hydration: \`now()\` stops returning the server's instant and every ticker is updated once. It runs by itself one macrotask after the first read of a hand-over; call it yourself if your hydration is not synchronous. Added in v0.53.0.`,
+  },
+
+  'ambient/Every': {
+    signature: `type Every = 'second' | 'minute' | 'hour' | 'day' | number`,
+    example: `const e: Every = 'minute'`,
+    notes: '[EXPERIMENTAL] How often `useNow` updates. Added in v0.53.0.',
+  },
+
+  'ambient/NowOptions': {
+    signature: 'interface NowOptions { every?: Every | (() => Every); zone?: string | (() => string) }',
+    example: `const o: NowOptions = { every: 'second' }`,
+    notes: '[EXPERIMENTAL] Options of `useNow`. Added in v0.53.0.',
+  },
+
+  'ambient/ClockScriptOptions': {
+    signature: 'interface ClockScriptOptions { instant?: number; nonce?: string }',
+    example: `const o: ClockScriptOptions = { nonce: 'abc' }`,
+    notes: '[EXPERIMENTAL] Options of `clockScript`. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/ambient>
+
   // <gen-docs:api-reference:start @pyreon/a11y>
 
   'a11y/announce': {
@@ -9762,6 +9880,75 @@ isToday(Date.UTC(2026, 10, 18, 23, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 
     notes: `[EXPERIMENTAL] Whether \`value\` falls on tomorrow's date in \`zone\`. Added in v0.53.0.`,
   },
 
+  'time/relativeDistance': {
+    signature: '(target: Instant | PlainDate | PlainDateTime, base: Instant, zone: TimeZone) => { value: number; unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year" }',
+    example: `relativeDistance(Date.UTC(2026, 10, 18, 11, 58), Date.UTC(2026, 10, 18, 12), 'UTC')  // => { value: -2, unit: 'minute' }
+relativeDistance('2026-11-17', Date.UTC(2026, 10, 18, 23, 59), 'UTC')   // => { value: -1, unit: 'day' }
+relativeDistance('2026-12-20', Date.UTC(2026, 10, 18, 12), 'UTC')       // => { value: 1, unit: 'month' }`,
+    notes: '[EXPERIMENTAL] How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDate or PlainDateTime target is a wall-clock value in `zone`. These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words. See also: useRelative, daysFromToday. Added in v0.53.0.',
+  },
+
+  'time/useToday': {
+    signature: '(zone?: TimeZone) => () => PlainDate',
+    example: `typeof useToday('Europe/Prague')              // => 'function'`,
+    notes: `[EXPERIMENTAL] Today's date as an accessor that flips at the local midnight of the zone (default: the active time zone of \`@pyreon/ambient\`), on one shared ticker; correct on 23- and 25-hour days. Reactive entry (\`@pyreon/time\`) only. Call it in a component's setup: the ticker is released when the component goes away. Outside a component, or on a server, it returns a plain accessor and starts nothing. See also: today, useRelative. Added in v0.53.0.`,
+    mistakes: '- Reading `today()` once in a component body for a "today" badge: the component runs once, so the badge never flips. Use `useToday()` and read it inside JSX or an effect',
+  },
+
+  'time/useCountdown': {
+    signature: '(target: When | (() => When), options?: { zone?: TimeZone; every?: Every }) => { remaining: () => Duration; totalMs: () => number; done: () => boolean }',
+    example: `typeof useCountdown(Date.UTC(2031, 0, 1)).done   // => 'function'`,
+    notes: `[EXPERIMENTAL] A countdown to \`target\` (an Instant, a Date, or a wall-clock PlainDate or PlainDateTime read in the zone): the time left in days, hours, minutes, seconds and milliseconds, all zero once it has passed. Updates every second by default on a shared ticker, so a thousand countdowns are one timer. Reactive entry only; call it in a component's setup. Invalid targets throw a \`[Pyreon]\` error when read. See also: useElapsed. Added in v0.53.0.`,
+  },
+
+  'time/useElapsed': {
+    signature: '(since: When | (() => When), options?: { zone?: TimeZone; every?: Every }) => () => Duration',
+    example: `typeof useElapsed(Date.UTC(2020, 0, 1))      // => 'function'`,
+    notes: '[EXPERIMENTAL] The stopwatch counterpart of `useCountdown`: the time since `since` in days to milliseconds (zero before it), updating every second by default. See also: useCountdown. Added in v0.53.0.',
+  },
+
+  'time/useRelative': {
+    signature: '(target: When | (() => When), options?: { zone?: TimeZone }) => () => { value: number; unit: RelativeUnit }',
+    example: `typeof useRelative(Date.now() - 60_000)       // => 'function'`,
+    notes: `[EXPERIMENTAL] The structured relative distance to \`target\`, self-updating: \`{ value: -2, unit: "minute" }\` (negative is the past). Calendar-true from a day on. The cadence adapts to the distance on shared tickers: every second under a minute, every minute under an hour, every hour under a day, then at local midnight; as the distance grows the reader moves to the slower ticker, so an old timestamp never holds a per-second timer and 200 labels share a handful of timers. A displayed value can lag the true boundary by up to one tick of its ticker. It produces no text: \`@pyreon/format\` turns \`{ value, unit }\` into words. Reactive entry only; call it in a component's setup. See also: relativeDistance, useNow. Added in v0.53.0.`,
+  },
+
+  'time/RelativeDistance': {
+    signature: 'interface RelativeDistance { value: number; unit: RelativeUnit }',
+    example: `const d: RelativeDistance = { value: -2, unit: 'minute' }`,
+    notes: '[EXPERIMENTAL] A signed whole number of one unit; negative is the past. Added in v0.53.0.',
+  },
+
+  'time/RelativeUnit': {
+    signature: `type RelativeUnit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'`,
+    example: `const unit: RelativeUnit = 'week'`,
+    notes: '[EXPERIMENTAL] The units of a relative distance. Added in v0.53.0.',
+  },
+
+  'time/When': {
+    signature: 'type When = Instant | Date | PlainDate | PlainDateTime',
+    example: `const at: When = '2026-12-24T18:00'`,
+    notes: '[EXPERIMENTAL] A moment a clock hook can aim at. A PlainDate or PlainDateTime is a wall-clock value read in the zone. Added in v0.53.0.',
+  },
+
+  'time/ClockOptions': {
+    signature: 'interface ClockOptions { zone?: TimeZone }',
+    example: `const o: ClockOptions = { zone: 'Europe/Prague' }`,
+    notes: '[EXPERIMENTAL] Options shared by the clock hooks. Added in v0.53.0.',
+  },
+
+  'time/TickOptions': {
+    signature: 'interface TickOptions extends ClockOptions { every?: Every }',
+    example: `const o: TickOptions = { every: 'minute' }`,
+    notes: '[EXPERIMENTAL] Options of `useCountdown` and `useElapsed`. Added in v0.53.0.',
+  },
+
+  'time/Countdown': {
+    signature: 'interface Countdown { remaining: () => Duration; totalMs: () => number; done: () => boolean }',
+    example: 'const c: Countdown = useCountdown(Date.UTC(2031, 0, 1))',
+    notes: '[EXPERIMENTAL] What `useCountdown` returns. Added in v0.53.0.',
+  },
+
   'time/toInstant': {
     signature: '(value: PlainDate | PlainDateTime, zone: TimeZone, options?: { disambiguation?: "compatible" | "earlier" | "later" | "reject" }) => Instant',
     example: `const gap = toInstant('2026-03-29T02:30', 'Europe/Prague')           // 02:30 does not exist
@@ -9842,7 +10029,7 @@ toMilliseconds({ weeks: 1 })                  // => 604800000`,
   'time/now': {
     signature: '() => Instant',
     example: `typeof now()                                  // => 'number'`,
-    notes: `[EXPERIMENTAL] The current instant. \`@pyreon/time/core\` returns \`Date.now()\`; \`@pyreon/time\` returns the pinned clock's value when \`setClock\` is active. See also: setClock, today. Added in v0.53.0.`,
+    notes: `[EXPERIMENTAL] The current instant. \`@pyreon/time/core\` returns \`Date.now()\`; \`@pyreon/time\` reads the ambient clock of \`@pyreon/ambient\`: the pin from \`setClock\`, the request's \`provideClock\` instant, or the server's hand-over on a hydrating page. See also: setClock, today. Added in v0.53.0.`,
   },
 
   'time/today': {
@@ -9856,7 +10043,7 @@ toMilliseconds({ weeks: 1 })                  // => 604800000`,
     example: `setClock(() => Date.UTC(2031, 5, 18, 16, 0))
 today('Asia/Tokyo')                           // => '2031-06-19'
 setClock(null)`,
-    notes: '[EXPERIMENTAL] Pin the clock `now()` and `today()` read from `@pyreon/time` (not `/core`), for tests and previews; `null` restores the system clock. The source may read signals, so a `now()` inside an effect tracks them. Process-wide state: do not call it per request on a server. Added in v0.53.0.',
+    notes: `[EXPERIMENTAL] Pin the clock of the whole app, for tests and previews; \`null\` restores the system clock. It is \`@pyreon/ambient\`'s \`setClock\`, re-exported, so \`@pyreon/format\`, \`@pyreon/i18n\` and every hook read the same pin. Process-wide state: on a server use \`provideClock\` from \`@pyreon/ambient\` per request. Added in v0.53.0.`,
     mistakes: '- Calling it per request on a server: the pin is shared by every request in the process',
   },
 

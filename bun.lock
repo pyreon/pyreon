@@ -1418,6 +1418,7 @@
       "name": "@pyreon/ambient",
       "version": "0.53.0",
       "devDependencies": {
+        "@happy-dom/global-registrator": "21.0.4",
         "@pyreon/core": "workspace:*",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
@@ -2141,10 +2142,17 @@
     "packages/fundamentals/time": {
       "name": "@pyreon/time",
       "version": "0.53.0",
+      "dependencies": {
+        "@pyreon/ambient": "workspace:^",
+      },
       "devDependencies": {
         "@date-fns/tz": "1.5.0",
+        "@happy-dom/global-registrator": "21.0.4",
+        "@pyreon/core": "workspace:*",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
         "@pyreon/rx": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
@@ -2152,6 +2160,7 @@
         "@vitest/browser-playwright": "^5.1.0",
         "date-fns": "4.4.0",
         "dayjs": "1.11.23",
+        "happy-dom": "^21.0.4",
         "luxon": "3.7.2",
       },
     },

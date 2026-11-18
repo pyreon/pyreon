@@ -5,7 +5,7 @@ description: "Dates and times as plain strings and numbers: ISO values, DST-corr
 
 > **Generated** from `time`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [time](/docs/time).
 
-Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal's four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` has no dependencies; `@pyreon/time` adds a pinnable clock (`setClock`, `now`, `today`). Experimental: the clocks (`useNow`, `useCountdown`, ...) and the active time zone follow in later releases.
+Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal's four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` and `/fp` have no dependencies; `@pyreon/time` reads the ambient clock and time zone of `@pyreon/ambient` and adds the clock hooks `useToday`, `useCountdown`, `useElapsed` and `useRelative`, which update on shared, aligned tickers. Experimental.
 
 ## Multiplatform
 
@@ -89,6 +89,17 @@ offsetAt(t, 'Europe/Prague')                        // => 120
 | [`isToday`](#istoday-function-experimental) | function | Whether `value` falls on today's date in `zone`. |
 | [`isYesterday`](#isyesterday-function-experimental) | function | Whether `value` falls on yesterday's date in `zone`. |
 | [`isTomorrow`](#istomorrow-function-experimental) | function | Whether `value` falls on tomorrow's date in `zone`. |
+| [`relativeDistance`](#relativedistance-function-experimental) | function | How far `target` is from `base`, counted the way a person says it. |
+| [`useToday`](#usetoday-hook-experimental) | hook | Today's date as an accessor that flips at the local midnight of the zone (default: the active time zone of… |
+| [`useCountdown`](#usecountdown-hook-experimental) | hook | A countdown to `target` (an Instant, a Date, or a wall-clock PlainDate or PlainDateTime read in the zone): the time left… |
+| [`useElapsed`](#useelapsed-hook-experimental) | hook | The stopwatch counterpart of `useCountdown`: the time since `since` in days to milliseconds (zero before it), updating… |
+| [`useRelative`](#userelative-hook-experimental) | hook | The structured relative distance to `target`, self-updating: `{ value: -2, unit: "minute" }` (negative is the past). |
+| [`RelativeDistance`](#relativedistance-type-experimental) | type | A signed whole number of one unit; negative is the past. |
+| [`RelativeUnit`](#relativeunit-type-experimental) | type | The units of a relative distance. |
+| [`When`](#when-type-experimental) | type | A moment a clock hook can aim at. |
+| [`ClockOptions`](#clockoptions-type-experimental) | type | Options shared by the clock hooks. |
+| [`TickOptions`](#tickoptions-type-experimental) | type | Options of `useCountdown` and `useElapsed`. |
+| [`Countdown`](#countdown-type-experimental) | type | What `useCountdown` returns. |
 | [`toInstant`](#toinstant-function-experimental) | function | The instant at which a wall-clock time happens in a zone. |
 | [`toPlainDateTime`](#toplaindatetime-function-experimental) | function | The wall-clock date and time of an instant in a zone. |
 | [`toPlainDate`](#toplaindate-function-experimental) | function | The calendar date of an instant in a zone. |
@@ -102,7 +113,7 @@ offsetAt(t, 'Europe/Prague')                        // => 120
 | [`toMilliseconds`](#tomilliseconds-function-experimental) | function | The length of a duration in milliseconds. |
 | [`now`](#now-function-experimental) | function | The current instant. |
 | [`today`](#today-function-experimental) | function | Today's date in `zone` (default: the runtime's local zone). |
-| [`setClock`](#setclock-function-experimental) | function | Pin the clock `now()` and `today()` read from `@pyreon/time` (not `/core`), for tests and previews; `null` restores the… |
+| [`setClock`](#setclock-function-experimental) | function | Pin the clock of the whole app, for tests and previews; `null` restores the system clock. |
 | [`Instant`](#instant-type-experimental) | type | Epoch milliseconds, the same number as `Date.now()`. |
 | [`PlainDate`](#plaindate-type-experimental) | type | `2026-11-18`. |
 | [`PlainTime`](#plaintime-type-experimental) | type | `14:30`, `14:30:05` or `14:30:05.250`. |
@@ -905,6 +916,198 @@ isTomorrow('2026-11-19', 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => tru
 
 ---
 
+### `relativeDistance` `function` — **experimental**
+
+```ts
+(target: Instant | PlainDate | PlainDateTime, base: Instant, zone: TimeZone) => { value: number; unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year" }
+```
+
+How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDate or PlainDateTime target is a wall-clock value in `zone`. These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words.
+
+**Example**
+
+```tsx
+relativeDistance(Date.UTC(2026, 10, 18, 11, 58), Date.UTC(2026, 10, 18, 12), 'UTC')  // => { value: -2, unit: 'minute' }
+relativeDistance('2026-11-17', Date.UTC(2026, 10, 18, 23, 59), 'UTC')   // => { value: -1, unit: 'day' }
+relativeDistance('2026-12-20', Date.UTC(2026, 10, 18, 12), 'UTC')       // => { value: 1, unit: 'month' }
+```
+
+**See also:** `useRelative` · `daysFromToday`
+
+---
+
+### `useToday` `hook` — **experimental**
+
+```ts
+(zone?: TimeZone) => () => PlainDate
+```
+
+Today's date as an accessor that flips at the local midnight of the zone (default: the active time zone of `@pyreon/ambient`), on one shared ticker; correct on 23- and 25-hour days. Reactive entry (`@pyreon/time`) only. Call it in a component's setup: the ticker is released when the component goes away. Outside a component, or on a server, it returns a plain accessor and starts nothing.
+
+**Example**
+
+```tsx
+typeof useToday('Europe/Prague')              // => 'function'
+```
+
+**Common mistakes**
+
+- Reading `today()` once in a component body for a "today" badge: the component runs once, so the badge never flips. Use `useToday()` and read it inside JSX or an effect
+
+**See also:** `today` · `useRelative`
+
+---
+
+### `useCountdown` `hook` — **experimental**
+
+```ts
+(target: When | (() => When), options?: { zone?: TimeZone; every?: Every }) => { remaining: () => Duration; totalMs: () => number; done: () => boolean }
+```
+
+A countdown to `target` (an Instant, a Date, or a wall-clock PlainDate or PlainDateTime read in the zone): the time left in days, hours, minutes, seconds and milliseconds, all zero once it has passed. Updates every second by default on a shared ticker, so a thousand countdowns are one timer. Reactive entry only; call it in a component's setup. Invalid targets throw a `[Pyreon]` error when read.
+
+**Example**
+
+```tsx
+typeof useCountdown(Date.UTC(2031, 0, 1)).done   // => 'function'
+```
+
+**See also:** `useElapsed`
+
+---
+
+### `useElapsed` `hook` — **experimental**
+
+```ts
+(since: When | (() => When), options?: { zone?: TimeZone; every?: Every }) => () => Duration
+```
+
+The stopwatch counterpart of `useCountdown`: the time since `since` in days to milliseconds (zero before it), updating every second by default.
+
+**Example**
+
+```tsx
+typeof useElapsed(Date.UTC(2020, 0, 1))      // => 'function'
+```
+
+**See also:** `useCountdown`
+
+---
+
+### `useRelative` `hook` — **experimental**
+
+```ts
+(target: When | (() => When), options?: { zone?: TimeZone }) => () => { value: number; unit: RelativeUnit }
+```
+
+The structured relative distance to `target`, self-updating: `{ value: -2, unit: "minute" }` (negative is the past). Calendar-true from a day on. The cadence adapts to the distance on shared tickers: every second under a minute, every minute under an hour, every hour under a day, then at local midnight; as the distance grows the reader moves to the slower ticker, so an old timestamp never holds a per-second timer and 200 labels share a handful of timers. A displayed value can lag the true boundary by up to one tick of its ticker. It produces no text: `@pyreon/format` turns `{ value, unit }` into words. Reactive entry only; call it in a component's setup.
+
+**Example**
+
+```tsx
+typeof useRelative(Date.now() - 60_000)       // => 'function'
+```
+
+**See also:** `relativeDistance` · `useNow`
+
+---
+
+### `RelativeDistance` `type` — **experimental**
+
+```ts
+interface RelativeDistance { value: number; unit: RelativeUnit }
+```
+
+A signed whole number of one unit; negative is the past.
+
+**Example**
+
+```tsx
+const d: RelativeDistance = { value: -2, unit: 'minute' }
+```
+
+---
+
+### `RelativeUnit` `type` — **experimental**
+
+```ts
+type RelativeUnit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'
+```
+
+The units of a relative distance.
+
+**Example**
+
+```tsx
+const unit: RelativeUnit = 'week'
+```
+
+---
+
+### `When` `type` — **experimental**
+
+```ts
+type When = Instant | Date | PlainDate | PlainDateTime
+```
+
+A moment a clock hook can aim at. A PlainDate or PlainDateTime is a wall-clock value read in the zone.
+
+**Example**
+
+```tsx
+const at: When = '2026-12-24T18:00'
+```
+
+---
+
+### `ClockOptions` `type` — **experimental**
+
+```ts
+interface ClockOptions { zone?: TimeZone }
+```
+
+Options shared by the clock hooks.
+
+**Example**
+
+```tsx
+const o: ClockOptions = { zone: 'Europe/Prague' }
+```
+
+---
+
+### `TickOptions` `type` — **experimental**
+
+```ts
+interface TickOptions extends ClockOptions { every?: Every }
+```
+
+Options of `useCountdown` and `useElapsed`.
+
+**Example**
+
+```tsx
+const o: TickOptions = { every: 'minute' }
+```
+
+---
+
+### `Countdown` `type` — **experimental**
+
+```ts
+interface Countdown { remaining: () => Duration; totalMs: () => number; done: () => boolean }
+```
+
+What `useCountdown` returns.
+
+**Example**
+
+```tsx
+const c: Countdown = useCountdown(Date.UTC(2031, 0, 1))
+```
+
+---
+
 ### `toInstant` `function` — **experimental**
 
 ```ts
@@ -1110,7 +1313,7 @@ toMilliseconds({ weeks: 1 })                  // => 604800000
 () => Instant
 ```
 
-The current instant. `@pyreon/time/core` returns `Date.now()`; `@pyreon/time` returns the pinned clock's value when `setClock` is active.
+The current instant. `@pyreon/time/core` returns `Date.now()`; `@pyreon/time` reads the ambient clock of `@pyreon/ambient`: the pin from `setClock`, the request's `provideClock` instant, or the server's hand-over on a hydrating page.
 
 **Example**
 
@@ -1146,7 +1349,7 @@ isPlainDate(today('Europe/Prague'))           // => true
 (clock: (() => Instant) | null) => void
 ```
 
-Pin the clock `now()` and `today()` read from `@pyreon/time` (not `/core`), for tests and previews; `null` restores the system clock. The source may read signals, so a `now()` inside an effect tracks them. Process-wide state: do not call it per request on a server.
+Pin the clock of the whole app, for tests and previews; `null` restores the system clock. It is `@pyreon/ambient`'s `setClock`, re-exported, so `@pyreon/format`, `@pyreon/i18n` and every hook read the same pin. Process-wide state: on a server use `provideClock` from `@pyreon/ambient` per request.
 
 **Example**
 
@@ -1801,7 +2004,7 @@ nextMonthStart('2026-01-31')                  // => '2026-02-01'
 
 > **Throws versus returns:** The `isPlain*` guards, `isTimeZone`, `parseInstant` and `parseISO` never throw. Every other function throws a `[Pyreon]` error on a value of the wrong shape (validate user input with a guard first), an unknown unit or zone, a mixed-sign duration, or a result outside years 0001-9999. Rendering code that must not throw belongs behind a guard or in `@pyreon/format`.
 
-> **Time zones:** Offsets come from `Intl.DateTimeFormat`, so results follow the engine's tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 127-slot offset table. Zone-taking functions require an explicit `zone`; the active time zone arrives with the format integration.
+> **Time zones:** Offsets come from `Intl.DateTimeFormat`, so results follow the engine's tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 127-slot offset table. Core functions require an explicit `zone`; the reactive entry (`@pyreon/time`) defaults it to the active time zone of `@pyreon/ambient`.
 
 > **Month arithmetic:** `add` clamps the day (Jan 31 + 1 month = Feb 28). `diff` counts a month as complete when that clamped addition does not pass the end, which is Temporal's truncated `until`; `between` returns Temporal's unrounded breakdown, where a month ends only when the day number is reached (2012-08-31 to 2051-02-28 is 38 years, 5 months, 28 days). The two can differ by one month at month ends, exactly as in Temporal.
 
@@ -1811,4 +2014,4 @@ nextMonthStart('2026-01-31')                  // => '2026-02-01'
 
 > **Operations as values:** `@pyreon/time/fp` has the value-last form of every operation (`add({ months: 1 })` returns a function), `pipe` and `by`; they are thin wrappers over core, each tree-shakes alone, and a built adjuster costs one extra call per use, so build it once. `inZone(zone)` binds the zone-taking functions and pulls all of them. Because values are plain strings and numbers, `between(a, b)` is already the Duration `@pyreon/format` takes, and PlainDate, PlainDateTime and Instant are already its date inputs: neither package depends on the other.
 
-> **Not included yet:** `fromTemporal` / `toTemporal` are left out: typing them without depending on Temporal typings is not clean, and a Plain value maps to Temporal with one `Temporal.PlainDate.from(value)`. Clocks (`useNow`, `useToday`, `useRelativeTime`, `useCountdown`) and the active time zone follow in later releases.
+> **Not included yet:** `fromTemporal` / `toTemporal` are left out: typing them without depending on Temporal typings is not clean, and a Plain value maps to Temporal with one `Temporal.PlainDate.from(value)`. Text for relative times (`useRelativeTime`, `<RelativeTime>`) belongs to `@pyreon/format`, built on `@pyreon/ambient`'s clock.

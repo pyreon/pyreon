@@ -51,12 +51,17 @@
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "bench:rivals": "NODE_ENV=production bun bench/time-rivals.ts",
     "bench:bundle": "bun bench/time-bundle.ts",
-    "bench:fp": "NODE_ENV=production bun bench/time-fp.ts"
+    "bench:fp": "NODE_ENV=production bun bench/time-fp.ts",
+    "bench:clocks": "NODE_ENV=production bun bench/clocks-bench.ts"
   },
   "devDependencies": {
     "@date-fns/tz": "1.5.0",
+    "@happy-dom/global-registrator": "21.0.4",
+    "@pyreon/core": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
     "@pyreon/rx": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
@@ -64,9 +69,13 @@
     "@vitest/browser-playwright": "^5.1.0",
     "date-fns": "4.4.0",
     "dayjs": "1.11.23",
+    "happy-dom": "^21.0.4",
     "luxon": "3.7.2"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@pyreon/ambient": "workspace:^"
   }
 }

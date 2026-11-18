@@ -1,21 +1,5 @@
 import { defineManifest } from '@pyreon/manifest'
-import type { ApiEntry } from '@pyreon/manifest'
-
-/** One `@pyreon/time/fp` entry. Named `fp.<name>` so it does not collide with the value-first function of the same name. */
-const FP_NAMES = ['add', 'subtract', 'startOf', 'endOf', 'isBefore', 'isAfter', 'isSame', 'isBetween', 'clamp', 'diffFrom', 'betweenFrom', 'by', 'compare', 'toInstant', 'toPlainDate', 'toPlainTime', 'toPlainDateTime', 'offsetAt', 'addInstant', 'monthGrid', 'fromDate', 'toDate', 'pipe']
-
-/** The `@pyreon/time/fp` names an example calls, as an import line (so the example typechecks against the fp entry). */
-function fpImport(example: string): string {
-  const used = FP_NAMES.filter((n) => new RegExp(`(^|[^.\\w])${n}\\(`).test(example) || (n === 'compare' && /\\.sort\\(compare\\)/.test(example)))
-
-  return `import { ${used.join(', ')} } from '@pyreon/time/fp'\n`
-}
-
-function fp(name: string, signature: string, summary: string, example: string, seeAlso?: string[]): ApiEntry {
-  return { name: `fp.${name}`, kind: 'function', signature, summary, example: fpImport(example) + example, ...(seeAlso ? { seeAlso } : {}), stability: 'experimental', since: '0.53.0' }
-}
-
-const ADJ = '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T'
+import { fpEntries } from './manifest-fp'
 
 /**
  * Every `// =>` line in an example is executed by `src/tests/manifest-examples.test.ts` and compared with the value after
@@ -26,7 +10,7 @@ export default defineManifest({
   title: 'Dates and Times',
   tagline: 'Dates and times as plain strings and numbers: ISO values, DST-correct zone math, calendar grids, no classes',
   description:
-    'Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal\'s four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` has no dependencies; `@pyreon/time` adds a pinnable clock (`setClock`, `now`, `today`). Experimental: the clocks (`useNow`, `useCountdown`, ...) and the active time zone follow in later releases.',
+    'Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal\'s four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` and `/fp` have no dependencies; `@pyreon/time` reads the ambient clock and time zone of `@pyreon/ambient` and adds the clock hooks `useToday`, `useCountdown`, `useElapsed` and `useRelative`, which update on shared, aligned tickers. Experimental.',
   category: 'universal',
   multiplatform: {
     tier: 'web-only',
@@ -515,6 +499,66 @@ isToday(Date.UTC(2026, 10, 18, 23, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 
       since: '0.53.0',
     },
     {
+      name: 'relativeDistance',
+      kind: 'function',
+      signature: '(target: Instant | PlainDate | PlainDateTime, base: Instant, zone: TimeZone) => { value: number; unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year" }',
+      summary:
+        'How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDate or PlainDateTime target is a wall-clock value in `zone`. These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words.',
+      example: `relativeDistance(Date.UTC(2026, 10, 18, 11, 58), Date.UTC(2026, 10, 18, 12), 'UTC')  // => { value: -2, unit: 'minute' }
+relativeDistance('2026-11-17', Date.UTC(2026, 10, 18, 23, 59), 'UTC')   // => { value: -1, unit: 'day' }
+relativeDistance('2026-12-20', Date.UTC(2026, 10, 18, 12), 'UTC')       // => { value: 1, unit: 'month' }`,
+      seeAlso: ['useRelative', 'daysFromToday'],
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    {
+      name: 'useToday',
+      kind: 'hook',
+      signature: '(zone?: TimeZone) => () => PlainDate',
+      summary: 'Today\'s date as an accessor that flips at the local midnight of the zone (default: the active time zone of `@pyreon/ambient`), on one shared ticker; correct on 23- and 25-hour days. Reactive entry (`@pyreon/time`) only. Call it in a component\'s setup: the ticker is released when the component goes away. Outside a component, or on a server, it returns a plain accessor and starts nothing.',
+      example: `typeof useToday('Europe/Prague')              // => 'function'`,
+      mistakes: ['Reading `today()` once in a component body for a "today" badge: the component runs once, so the badge never flips. Use `useToday()` and read it inside JSX or an effect'],
+      seeAlso: ['today', 'useRelative'],
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    {
+      name: 'useCountdown',
+      kind: 'hook',
+      signature: '(target: When | (() => When), options?: { zone?: TimeZone; every?: Every }) => { remaining: () => Duration; totalMs: () => number; done: () => boolean }',
+      summary: 'A countdown to `target` (an Instant, a Date, or a wall-clock PlainDate or PlainDateTime read in the zone): the time left in days, hours, minutes, seconds and milliseconds, all zero once it has passed. Updates every second by default on a shared ticker, so a thousand countdowns are one timer. Reactive entry only; call it in a component\'s setup. Invalid targets throw a `[Pyreon]` error when read.',
+      example: `typeof useCountdown(Date.UTC(2031, 0, 1)).done   // => 'function'`,
+      seeAlso: ['useElapsed'],
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    {
+      name: 'useElapsed',
+      kind: 'hook',
+      signature: '(since: When | (() => When), options?: { zone?: TimeZone; every?: Every }) => () => Duration',
+      summary: 'The stopwatch counterpart of `useCountdown`: the time since `since` in days to milliseconds (zero before it), updating every second by default.',
+      example: `typeof useElapsed(Date.UTC(2020, 0, 1))      // => 'function'`,
+      seeAlso: ['useCountdown'],
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    {
+      name: 'useRelative',
+      kind: 'hook',
+      signature: '(target: When | (() => When), options?: { zone?: TimeZone }) => () => { value: number; unit: RelativeUnit }',
+      summary: 'The structured relative distance to `target`, self-updating: `{ value: -2, unit: "minute" }` (negative is the past). Calendar-true from a day on. The cadence adapts to the distance on shared tickers: every second under a minute, every minute under an hour, every hour under a day, then at local midnight; as the distance grows the reader moves to the slower ticker, so an old timestamp never holds a per-second timer and 200 labels share a handful of timers. A displayed value can lag the true boundary by up to one tick of its ticker. It produces no text: `@pyreon/format` turns `{ value, unit }` into words. Reactive entry only; call it in a component\'s setup.',
+      example: `typeof useRelative(Date.now() - 60_000)       // => 'function'`,
+      seeAlso: ['relativeDistance', 'useNow'],
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    { name: 'RelativeDistance', kind: 'type', signature: 'interface RelativeDistance { value: number; unit: RelativeUnit }', summary: 'A signed whole number of one unit; negative is the past.', example: `const d: RelativeDistance = { value: -2, unit: 'minute' }`, stability: 'experimental', since: '0.53.0' },
+    { name: 'RelativeUnit', kind: 'type', signature: "type RelativeUnit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'", summary: 'The units of a relative distance.', example: `const unit: RelativeUnit = 'week'`, stability: 'experimental', since: '0.53.0' },
+    { name: 'When', kind: 'type', signature: 'type When = Instant | Date | PlainDate | PlainDateTime', summary: 'A moment a clock hook can aim at. A PlainDate or PlainDateTime is a wall-clock value read in the zone.', example: `const at: When = '2026-12-24T18:00'`, stability: 'experimental', since: '0.53.0' },
+    { name: 'ClockOptions', kind: 'type', signature: 'interface ClockOptions { zone?: TimeZone }', summary: 'Options shared by the clock hooks.', example: `const o: ClockOptions = { zone: 'Europe/Prague' }`, stability: 'experimental', since: '0.53.0' },
+    { name: 'TickOptions', kind: 'type', signature: 'interface TickOptions extends ClockOptions { every?: Every }', summary: 'Options of `useCountdown` and `useElapsed`.', example: `const o: TickOptions = { every: 'minute' }`, stability: 'experimental', since: '0.53.0' },
+    { name: 'Countdown', kind: 'type', signature: 'interface Countdown { remaining: () => Duration; totalMs: () => number; done: () => boolean }', summary: 'What `useCountdown` returns.', example: `const c: Countdown = useCountdown(Date.UTC(2031, 0, 1))`, stability: 'experimental', since: '0.53.0' },
+    {
       name: 'toInstant',
       kind: 'function',
       signature: '(value: PlainDate | PlainDateTime, zone: TimeZone, options?: { disambiguation?: "compatible" | "earlier" | "later" | "reject" }) => Instant',
@@ -633,7 +677,7 @@ toMilliseconds({ weeks: 1 })                  // => 604800000`,
       name: 'now',
       kind: 'function',
       signature: '() => Instant',
-      summary: 'The current instant. `@pyreon/time/core` returns `Date.now()`; `@pyreon/time` returns the pinned clock\'s value when `setClock` is active.',
+      summary: 'The current instant. `@pyreon/time/core` returns `Date.now()`; `@pyreon/time` reads the ambient clock of `@pyreon/ambient`: the pin from `setClock`, the request\'s `provideClock` instant, or the server\'s hand-over on a hydrating page.',
       example: `typeof now()                                  // => 'number'`,
       seeAlso: ['setClock', 'today'],
       stability: 'experimental',
@@ -653,7 +697,7 @@ toMilliseconds({ weeks: 1 })                  // => 604800000`,
       name: 'setClock',
       kind: 'function',
       signature: '(clock: (() => Instant) | null) => void',
-      summary: 'Pin the clock `now()` and `today()` read from `@pyreon/time` (not `/core`), for tests and previews; `null` restores the system clock. The source may read signals, so a `now()` inside an effect tracks them. Process-wide state: do not call it per request on a server.',
+      summary: 'Pin the clock of the whole app, for tests and previews; `null` restores the system clock. It is `@pyreon/ambient`\'s `setClock`, re-exported, so `@pyreon/format`, `@pyreon/i18n` and every hook read the same pin. Process-wide state: on a server use `provideClock` from `@pyreon/ambient` per request.',
       example: `setClock(() => Date.UTC(2031, 5, 18, 16, 0))
 today('Asia/Tokyo')                           // => '2031-06-19'
 setClock(null)`,
@@ -692,41 +736,7 @@ const month: Adjuster<PlainDate> = startOf('month')`, stability: 'experimental',
     { name: 'Mapper', kind: 'type', signature: 'type Mapper<A, B> = (value: A) => B', summary: 'A value-to-other-value function, such as `toPlainDate(zone)` or `diffFrom(base, "day")` from `@pyreon/time/fp`.', example: `import { toPlainDate } from '@pyreon/time/fp'
 const day: Mapper<number, PlainDate> = toPlainDate('Europe/Prague')`, stability: 'experimental', since: '0.53.0' },
     { name: 'ZonedToolkit', kind: 'type', signature: 'interface ZonedToolkit { readonly zone: TimeZone; today(): PlainDate; toInstant(...); toPlainDate(instant); ... }', summary: 'The object `inZone` returns.', example: `const z: ZonedToolkit = inZone('UTC')`, stability: 'experimental', since: '0.53.0' },
-    fp('add', `(duration: Duration) => ${ADJ}`, 'Value-last `add`: `add({ months: 1 })` is a function you can name, pass to `map` and chain with `pipe`. The result keeps the input shape.', `const nextMonth = add({ months: 1 })
-nextMonth('2026-01-31')                       // => '2026-02-28'
-['2026-01-31', '2026-03-01'].map(nextMonth)   // => ['2026-02-28', '2026-04-01']`, ['add']),
-    fp('subtract', `(duration: Duration) => ${ADJ}`, 'Value-last `subtract`.', `subtract({ days: 1 })('2026-03-01')      // => '2026-02-28'`),
-    fp('startOf', `(unit: Unit, options?: { weekStart?: Weekday }) => ${ADJ}`, 'Value-last `startOf`.', `startOf('week')('2026-11-18')              // => '2026-11-16'
-startOf('week', { weekStart: 7 })('2026-11-18')  // => '2026-11-15'`),
-    fp('endOf', `(unit: Unit, options?: { weekStart?: Weekday }) => ${ADJ}`, 'Value-last `endOf`.', `endOf('month')('2026-11-18')               // => '2026-11-30'`),
-    fp('isBefore', '(limit: T) => (value: shape of T) => boolean', 'A predicate: `isBefore(limit)(value)` is true for values before `limit`, so it reads correctly in `filter`.', `['2026-01-01', '2026-06-01'].filter(isBefore('2026-03-01'))  // => ['2026-01-01']`),
-    fp('isAfter', '(limit: T) => (value: shape of T) => boolean', 'A predicate: true for values after `limit`.', `['2026-01-01', '2026-06-01'].filter(isAfter('2026-03-01'))   // => ['2026-06-01']`),
-    fp('isSame', '(other: T, unit?: Unit, options?: { weekStart?: Weekday }) => (value: shape of T) => boolean', 'A predicate: true for values in the same unit as `other`.', `['2026-11-02', '2026-12-01'].filter(isSame('2026-11-18', 'month'))  // => ['2026-11-02']`),
-    fp('isBetween', '(start: T, end: T) => (value: shape of T) => boolean', 'A predicate: true for values from `start` to `end`, both included.', `['2026-01-05', '2026-02-10', '2026-03-20'].filter(isBetween('2026-02-01', '2026-03-01'))  // => ['2026-02-10']`),
-    fp('clamp', '(lo: T, hi: T) => (value: shape of T) => shape of T', 'Limit values to a range. Throws when `lo` is after `hi`.', `['2025-05-01', '2026-02-01', '2027-01-01'].map(clamp('2026-01-01', '2026-03-01'))  // => ['2026-01-01', '2026-02-01', '2026-03-01']`),
-    fp('diffFrom', '(base: T, unit: Unit, options?: { zone?: TimeZone }) => (value: shape of T) => number', 'Whole units from `base` to each value: `dates.map(diffFrom(today, "day"))` reads left to right.', `['2026-01-10', '2026-01-03'].map(diffFrom('2026-01-01', 'day'))  // => [9, 2]`),
-    fp('betweenFrom', '(base: PlainDate | PlainDateTime) => (value: same shape) => Duration', 'The Duration from `base` to each value.', `betweenFrom('2026-01-31')('2026-03-01')      // => { years: 0, months: 1, days: 1 }`),
-    fp('by', '(mapper: (item: A) => K) => (a: A, b: A) => -1 | 0 | 1', 'A comparator that orders items by a mapped value: `items.sort(by(toDay))`.', `const events: { d: PlainDate }[] = [{ d: '2026-03-01' }, { d: '2026-01-01' }]
-events.sort(by((x) => x.d)).map((x) => x.d)  // => ['2026-01-01', '2026-03-01']`),
-    fp('compare', '(a: T, b: T) => -1 | 0 | 1', 'The same function as the value-first `compare`: it is already a comparator for `Array#sort`.', `const days: PlainDate[] = ['2026-03-01', '2026-01-01']
-days.sort(compare)                            // => ['2026-01-01', '2026-03-01']`),
-    fp('toInstant', '(zone: TimeZone, options?: { disambiguation? }) => (value: PlainDate | PlainDateTime) => Instant', 'Value-last `toInstant`.', `new Date(toInstant('UTC')('2026-11-18T14:30')).toISOString()  // => '2026-11-18T14:30:00.000Z'`),
-    fp('toPlainDate', '(zone: TimeZone) => (instant: Instant) => PlainDate', 'Value-last `toPlainDate`: a groupBy key for bucketing instants by local day.', `toPlainDate('Asia/Tokyo')(Date.UTC(2026, 10, 18, 23, 30))  // => '2026-11-19'`),
-    fp('toPlainTime', '(zone: TimeZone) => (instant: Instant) => PlainTime', 'Value-last `toPlainTime`.', `toPlainTime('Europe/Prague')(Date.UTC(2026, 10, 18, 13, 30))  // => '14:30'`),
-    fp('toPlainDateTime', '(zone: TimeZone) => (instant: Instant) => PlainDateTime', 'Value-last `toPlainDateTime`.', `toPlainDateTime('Europe/Prague')(0)           // => '1970-01-01T01:00'`),
-    fp('offsetAt', '(zone: TimeZone) => (instant: Instant) => number', 'Value-last `offsetAt`.', `offsetAt('Asia/Kathmandu')(Date.UTC(2026, 0, 1))  // => 345`),
-    fp('addInstant', '(duration: Duration, zone?: TimeZone) => (instant: Instant) => Instant', 'Value-last `addInstant`.', `new Date(addInstant({ days: 1 }, 'UTC')(Date.UTC(2026, 0, 31))).toISOString()  // => '2026-02-01T00:00:00.000Z'`),
-    fp('monthGrid', '(options?: MonthGridOptions) => (month: PlainYearMonth | PlainDate) => PlainDate[][]', 'Value-last `monthGrid`.', `monthGrid({ weekStart: 7 })('2026-11').length  // => 5`),
-    fp('fromDate', '(zone?: TimeZone) => (date: Date) => PlainDateTime', 'Value-last `fromDate`.', `fromDate('UTC')(new Date(0))                  // => '1970-01-01T00:00'`),
-    fp('toDate', '(zone?: TimeZone) => (value: PlainDate | PlainDateTime | Instant) => Date', 'Value-last `toDate`.', `toDate('UTC')('1970-01-01').getTime()         // => 0`),
-    fp(
-      'pipe',
-      '(f1: (a: A) => B, f2: (b: B) => C, ...up to eight steps) => (value: A) => result',
-      'Left-to-right composition of unary functions, typed for up to eight steps, so pipelines need no other package: `pipe(add({ months: 1 }), startOf("month"))` goes to the first of next month. The result is a plain function. One to three steps are direct closures. Not the same as `@pyreon/rx`\'s `pipe`, which takes a source value (or signal) first and runs the steps over it; adjusters work as the steps and as the callbacks of rx\'s `map`, `groupBy` and `sortBy`.',
-      `const nextMonthStart = pipe(add({ months: 1 }), startOf('month'))
-nextMonthStart('2026-01-31')                  // => '2026-02-01'
-['2026-01-31', '2026-11-18'].map(nextMonthStart)  // => ['2026-02-01', '2026-12-01']`,
-    ),
+    ...fpEntries,
   ],
   gotchas: [
     {
@@ -739,7 +749,7 @@ nextMonthStart('2026-01-31')                  // => '2026-02-01'
     },
     {
       label: 'Time zones',
-      note: 'Offsets come from `Intl.DateTimeFormat`, so results follow the engine\'s tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 127-slot offset table. Zone-taking functions require an explicit `zone`; the active time zone arrives with the format integration.',
+      note: 'Offsets come from `Intl.DateTimeFormat`, so results follow the engine\'s tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 127-slot offset table. Core functions require an explicit `zone`; the reactive entry (`@pyreon/time`) defaults it to the active time zone of `@pyreon/ambient`.',
     },
     {
       label: 'Month arithmetic',
@@ -759,7 +769,7 @@ nextMonthStart('2026-01-31')                  // => '2026-02-01'
     },
     {
       label: 'Not included yet',
-      note: '`fromTemporal` / `toTemporal` are left out: typing them without depending on Temporal typings is not clean, and a Plain value maps to Temporal with one `Temporal.PlainDate.from(value)`. Clocks (`useNow`, `useToday`, `useRelativeTime`, `useCountdown`) and the active time zone follow in later releases.',
+      note: '`fromTemporal` / `toTemporal` are left out: typing them without depending on Temporal typings is not clean, and a Plain value maps to Temporal with one `Temporal.PlainDate.from(value)`. Text for relative times (`useRelativeTime`, `<RelativeTime>`) belongs to `@pyreon/format`, built on `@pyreon/ambient`\'s clock.',
     },
   ],
   since: '0.53.0',

@@ -369,6 +369,13 @@ export function _tickerStats(): { active: number; timers: number; shared: number
   return { active: active.size, timers, shared: tickers.size }
 }
 
+/** Test and bench hook: publish the current instant to every ticker with a reader, as a tick would. */
+export function _fireAll(): void {
+  const n = now()
+
+  for (const t of active) t.value.set(n)
+}
+
 /** Test hook: drop every ticker, the pin, the provide flag and the hand-over. */
 export function _resetClockState(): void {
   for (const t of active) if (t.timer !== null) clearTimeout(t.timer)

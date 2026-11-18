@@ -2137,6 +2137,35 @@ interpolate('Hello, {{name}}!', { name: 'Server' })  // 'Hello, Server!'
 >
 > **Devtools**: Import `@pyreon/i18n/devtools` for a WeakRef-based registry of live i18n instances. Tree-shakeable — zero cost unless imported.
 
+## @pyreon/ambient — Ambient values
+
+The values that formatting, dates and translations all read but none of them owns: the active locale, the active time zone and the clock. Each has an app default (`setLocale`, `setTimeZone`, `setClock`), a subtree scope that is request-scoped on a server (`provideLocale`, `provideTimeZone`, `provideClock`), and a reactive read. `useNow` is the reactive clock: one shared ticker per granularity, aligned to the wall-clock boundary (local hour and midnight in the active zone, exact on 23- and 25-hour days), refcounted, paused while the page is hidden, and never created on a server or at import. A server-to-client hand-over (`clockScript`) makes the first client render read the instant the server rendered at, so relative times hydrate without a mismatch. Most apps reach it through `@pyreon/format`, `@pyreon/time`, `@pyreon/i18n` or `@pyreon/zero`; the non-reactive story is to pass options explicitly to those packages' core entries.
+
+```typescript
+import { provideLocale, provideTimeZone, setClock, useNow, now } from '@pyreon/ambient'
+
+// App root: one place says which locale and zone everything below formats in.
+provideLocale(() => 'cs')
+provideTimeZone('Europe/Prague')
+
+// A live clock: one shared ticker serves every reader of the same granularity.
+const seconds = useNow({ every: 'second' })
+
+// Tests: pin the clock for the whole app.
+setClock(() => Date.UTC(2026, 10, 18, 12))
+now()                                         // => 1795003200000
+```
+
+> **Peer dep**: @pyreon/reactivity
+>
+> **Server and client**: On a server nothing ticks: `useNow()` returns the plain read, which is the `provideClock` instant when one is provided and `Date.now()` otherwise. Provide the render instant per request and emit it with `clockScript()` or `clockAttributes()`; otherwise a relative time such as "2 sec ago" can differ between the server HTML and the first client render. Capturing the instant automatically at the first read of a request needs a request-scoped store in `@pyreon/runtime-server`, which does not exist yet.
+>
+> **Hydration**: The hand-over is read on the first client `now()` and released one macrotask later. Components that first read the clock later than that (lazy islands) see real time and may mismatch against server HTML rendered at the older instant; call `releaseClock()` yourself after your own async hydration if needed.
+>
+> **Tickers are bounded**: `second` and `minute` tickers are always shared. Up to 16 other tickers (custom intervals and per-zone `hour`/`day` tickers) are shared; a reader beyond that gets a private ticker that is stopped with it.
+>
+> **Peer dependencies**: `@pyreon/reactivity` is required. `@pyreon/core` is an optional peer in the metadata but the `provide*` functions import it, so install it when you use them (every Pyreon app has it). The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
+
 ## @pyreon/a11y — Accessibility Primitives
 
 Zero-setup accessibility building blocks for Pyreon. `announce(message)` speaks status updates and errors to screen readers via an `aria-live` region that is created lazily on first call — no provider, no component to mount, SSR-safe (no-op on the server). `<VisuallyHidden>` renders content that is invisible on screen but kept in the accessibility tree (unlike `display:none`). `<LiveRegion>` is the declarative complement to `announce()` — a persistent `aria-live` region you place in your tree and drive with a signal, so screen readers announce every content change with zero wiring. `createA11yId(prefix?)` produces stable, SSR-safe ids for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `for`). The shared foundation other Pyreon packages build on for out-of-the-box accessibility.
@@ -2692,7 +2721,7 @@ authorize: ({ room, token, req }) => verify(room, token)
 
 ## @pyreon/time — Dates and Times
 
-Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal's four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` has no dependencies; `@pyreon/time` adds a pinnable clock (`setClock`, `now`, `today`). Experimental: the clocks (`useNow`, `useCountdown`, ...) and the active time zone follow in later releases.
+Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal's four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` and `/fp` have no dependencies; `@pyreon/time` reads the ambient clock and time zone of `@pyreon/ambient` and adds the clock hooks `useToday`, `useCountdown`, `useElapsed` and `useRelative`, which update on shared, aligned tickers. Experimental.
 
 ```typescript
 import { add, diff, startOf, monthGrid, toInstant, toPlainDateTime, offsetAt } from '@pyreon/time/core'
@@ -2712,7 +2741,7 @@ offsetAt(t, 'Europe/Prague')                        // => 120
 >
 > **Throws versus returns**: The `isPlain*` guards, `isTimeZone`, `parseInstant` and `parseISO` never throw. Every other function throws a `[Pyreon]` error on a value of the wrong shape (validate user input with a guard first), an unknown unit or zone, a mixed-sign duration, or a result outside years 0001-9999. Rendering code that must not throw belongs behind a guard or in `@pyreon/format`.
 >
-> **Time zones**: Offsets come from `Intl.DateTimeFormat`, so results follow the engine's tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 127-slot offset table. Zone-taking functions require an explicit `zone`; the active time zone arrives with the format integration.
+> **Time zones**: Offsets come from `Intl.DateTimeFormat`, so results follow the engine's tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 127-slot offset table. Core functions require an explicit `zone`; the reactive entry (`@pyreon/time`) defaults it to the active time zone of `@pyreon/ambient`.
 >
 > **Month arithmetic**: `add` clamps the day (Jan 31 + 1 month = Feb 28). `diff` counts a month as complete when that clamped addition does not pass the end, which is Temporal's truncated `until`; `between` returns Temporal's unrounded breakdown, where a month ends only when the day number is reached (2012-08-31 to 2051-02-28 is 38 years, 5 months, 28 days). The two can differ by one month at month ends, exactly as in Temporal.
 >
@@ -2722,7 +2751,7 @@ offsetAt(t, 'Europe/Prague')                        // => 120
 >
 > **Operations as values**: `@pyreon/time/fp` has the value-last form of every operation (`add({ months: 1 })` returns a function), `pipe` and `by`; they are thin wrappers over core, each tree-shakes alone, and a built adjuster costs one extra call per use, so build it once. `inZone(zone)` binds the zone-taking functions and pulls all of them. Because values are plain strings and numbers, `between(a, b)` is already the Duration `@pyreon/format` takes, and PlainDate, PlainDateTime and Instant are already its date inputs: neither package depends on the other.
 >
-> **Not included yet**: `fromTemporal` / `toTemporal` are left out: typing them without depending on Temporal typings is not clean, and a Plain value maps to Temporal with one `Temporal.PlainDate.from(value)`. Clocks (`useNow`, `useToday`, `useRelativeTime`, `useCountdown`) and the active time zone follow in later releases.
+> **Not included yet**: `fromTemporal` / `toTemporal` are left out: typing them without depending on Temporal typings is not clean, and a Plain value maps to Temporal with one `Temporal.PlainDate.from(value)`. Text for relative times (`useRelativeTime`, `<RelativeTime>`) belongs to `@pyreon/format`, built on `@pyreon/ambient`'s clock.
 
 ## @pyreon/toast — Toast Notifications
 

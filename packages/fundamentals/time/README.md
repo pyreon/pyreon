@@ -2,7 +2,7 @@
 
 Dates and times as plain strings and numbers: ISO values, DST-correct zone math, calendar grids. No classes, no method chains, one tree-shakeable function per operation.
 
-> **Experimental.** The value layer is complete and checked against `Temporal`. Clocks (`useNow`, `useCountdown`, ...) and the active time zone follow in later releases.
+> **Experimental.** The value layer is complete and checked against `Temporal`. The clock hooks read `@pyreon/ambient`.
 
 A date is `"2026-11-18"`, a time is `"14:30"`, an instant is the epoch-millisecond number `Date.now()` returns. Literals type-check without casts, and `add('2026-01-31', { months: 1 })` is a `PlainDate`.
 
@@ -12,7 +12,7 @@ A date is `"2026-11-18"`, a time is `"14:30"`, an instant is the epoch-milliseco
 bun add @pyreon/time
 ```
 
-`@pyreon/time/core` has no dependencies. `@pyreon/time` re-exports it and adds a pinnable clock (`setClock`, `now`, `today`).
+`@pyreon/time/core` and `/fp` have no dependencies. `@pyreon/time` re-exports core, reads the clock and time zone of `@pyreon/ambient` and adds `useToday`, `useCountdown`, `useElapsed` and `useRelative`, which update on shared, aligned tickers (one timer serves every reader of a granularity).
 
 ## Quick start
 
@@ -41,7 +41,7 @@ toPlainDateTime(t, 'Europe/Prague') // '2026-03-29T03:30'
 | Calendar | `dayOfWeek`, `dayOfYear`, `weekOfYear`, `yearOfWeek`, `daysInMonth`, `isLeapYear`, `eachDay`, `monthGrid`, `weekStartOf`, `weekendOf` |
 | Zones and instants | `toInstant`, `toPlainDateTime`, `toPlainDate`, `toPlainTime`, `offsetAt`, `addInstant`, `isTimeZone`, `localZone` |
 | `Date` interop | `fromDate`, `toDate` |
-| Clock (`@pyreon/time` only) | `setClock`, `now`, `today` |
+| Clock and hooks (`@pyreon/time` only) | `setClock`, `now`, `today`, `useToday`, `useCountdown`, `useElapsed`, `useRelative`, `relativeDistance` (core) |
 
 Months are 1-12 and weekdays are ISO 1 (Monday) to 7 (Sunday). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone.
 

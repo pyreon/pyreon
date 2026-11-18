@@ -4,7 +4,7 @@ description: Public Pyreon framework packages, with links to their guides or sou
 generated_by: docs/scripts/gen-package-catalog.ts
 ---
 
-78 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
+79 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
 
 The platform-specific compiler binaries under `packages/core/compiler/npm/` are optional dependencies of [@pyreon/compiler](/docs/compiler) and are not included in this framework package count.
 
@@ -25,11 +25,12 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/server](/docs/server) | SSR handler, SSG prerender, and island architecture for Pyreon |
 | [@pyreon/sized-map](/docs/sized-map) | Bounded `Map<K, V>` primitive — FIFO (default) or LRU-on-read mode. Used internally across Pyreon packages for sized cache eviction; safe to use directly. |
 
-## fundamentals (29)
+## fundamentals (30)
 
 | Package | Description |
 | --- | --- |
 | [@pyreon/a11y](/docs/a11y) | Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup |
+| [@pyreon/ambient](/docs/ambient) | The ambient values every formatted thing depends on for Pyreon: locale, time zone and a shared clock with self-updating tickers, SSR-safe and request-scoped |
 | [@pyreon/charts](/docs/charts) | Charts for Pyreon on the web, iOS and Android: &lt;Chart&gt; with mark children over a first-party engine (21 chart families, one flat draw list), canvas and SVG, tree-shakeable marks |
 | [@pyreon/code](/docs/code) | Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages |
 | [@pyreon/dnd](/docs/dnd) | Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop |

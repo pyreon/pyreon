@@ -229,6 +229,20 @@ export const SCENARIOS: Scenario[] = [
     imports: ['add', 'startOf', 'pipe', 'isBetween'],
   },
   {
+    // The ambient clock hook alone: the shared ticker machinery, without the locale and zone context.
+    id: '@pyreon/ambient::useNow',
+    pkg: '@pyreon/ambient',
+    dir: 'fundamentals/ambient',
+    imports: ['useNow'],
+  },
+  {
+    // The reactive time entry with one clock hook: the hook, the ambient clock it sits on, and the date math it needs.
+    id: '@pyreon/time::reactive-useRelative',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    imports: ['useRelative'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.

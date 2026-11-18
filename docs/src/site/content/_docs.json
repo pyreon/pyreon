@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 229,
+  "pageCount": 231,
   "pages": [
    {
     "path": "a11y.md",
@@ -16,6 +16,11 @@
     "path": "accessibility.md",
     "title": "Accessibility",
     "href": "/docs/accessibility"
+   },
+   {
+    "path": "ambient.md",
+    "title": "Ambient values",
+    "href": "/docs/ambient"
    },
    {
     "path": "architecture-and-prior-art.md",
@@ -571,6 +576,11 @@
     "path": "reference/a11y.md",
     "title": "Accessibility Primitives — API Reference",
     "href": "/docs/reference/a11y"
+   },
+   {
+    "path": "reference/ambient.md",
+    "title": "Ambient values — API Reference",
+    "href": "/docs/reference/ambient"
    },
    {
     "path": "reference/atlas.md",
@@ -1372,7 +1382,8 @@
       "rich-text",
       "flow",
       "feature",
-      "a11y"
+      "a11y",
+      "ambient"
      ],
      "source": "docs/src/sidebar-config.ts"
     },
@@ -1466,6 +1477,7 @@
      "collapsed": true,
      "slugs": [
       "reference/a11y",
+      "reference/ambient",
       "reference/charts",
       "reference/code",
       "reference/connector-document",
@@ -1817,6 +1829,10 @@
      "title": "Accessibility",
      "href": "/docs/a11y",
      "productId": "a11y"
+    },
+    {
+     "title": "Ambient values",
+     "href": "/docs/ambient"
     }
    ]
   },
@@ -2351,6 +2367,10 @@
       {
        "title": "Accessibility Primitives",
        "href": "/docs/reference/a11y"
+      },
+      {
+       "title": "Ambient values",
+       "href": "/docs/reference/ambient"
       },
       {
        "title": "Component Workbench",

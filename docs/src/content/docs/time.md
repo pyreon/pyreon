@@ -7,7 +7,7 @@ description: Dates and times as plain strings and numbers for Pyreon — ISO val
 
 `@pyreon/time` treats a date as what it already is in your props, your JSON and your URL: a string. `"2026-11-18"` is a date, `"14:30"` is a time of day, and an instant is the epoch-millisecond number `Date.now()` returns. Every operation is one plain function, so there is nothing to construct, nothing to clone and nothing to unwrap, and a bundler keeps only the functions you import.
 
-> **Experimental.** The value layer described here is complete and checked against `Temporal`. The clocks (`useNow`, `useToday`, `useRelativeTime`, `useCountdown`) and the active time zone arrive in later releases, so the API may still change in a minor version.
+> **Experimental.** The value layer described here is complete and checked against `Temporal`. The clock hooks sit on `@pyreon/ambient`. The API may still change in a minor version.
 
 ## Installation
 
@@ -31,7 +31,7 @@ yarn add @pyreon/time
 
 :::
 
-`@pyreon/time/core` has no dependencies and works anywhere JavaScript runs. `@pyreon/time` re-exports all of it and adds a pinnable clock (`setClock`, `now`, `today`). `@pyreon/time/fp` has the value-last forms of every operation and `pipe` (see [Composing operations](#composing-operations)).
+`@pyreon/time/core` has no dependencies and works anywhere JavaScript runs. `@pyreon/time` re-exports all of it, reads the clock and time zone of `@pyreon/ambient` (it depends on that package) and adds the clock hooks. `@pyreon/time/fp` has the value-last forms of every operation and `pipe` (see [Composing operations](#composing-operations)).
 
 ## Quick start
 
@@ -206,7 +206,7 @@ Core functions take the zone as an argument. `fromDate`, `toDate` and `today` us
 
 ### The clock
 
-In `@pyreon/time` (not `/core`), `now()` and `today(zone)` read a pinnable clock, so tests and previews are deterministic:
+In `@pyreon/time` (not `/core`), `now()` and `today(zone)` read the ambient clock, so tests and previews are deterministic:
 
 ```ts
 // @check
@@ -496,6 +496,79 @@ Months are 1-12 and weekdays are 1 (Monday) to 7 (Sunday) here. Every call in th
 | Temporal `Instant.fromEpochMilliseconds(t).toZonedDateTimeISO(z).toPlainDateTime()` | `toPlainDateTime(t, z)` |
 
 Formatting (`format('yyyy-MM-dd')`, `toLocaleString`) lives in `@pyreon/format`.
+
+## Clocks
+
+The reactive entry, `@pyreon/time`, reads the ambient clock and time zone of [`@pyreon/ambient`](/docs/ambient): `now()`, `today()`, `isToday()` and the other relative-day helpers default their zone to the active one and read the pinned clock, and `setClock` is the same one clock for the whole app (formatting, translations and these hooks all read it). The hooks update on shared tickers: one timer per granularity serves every reader, aligned to the wall-clock boundary, stopped when the last reader goes, paused while the page is hidden, and never started on a server. Call a hook in a component's setup; the ticker is released when the component goes away. `@pyreon/time/core` and `/fp` stay dependency-free and take their zone explicitly.
+
+`@pyreon/time` produces no text. `useRelative` gives the structured distance, and `@pyreon/format` turns it into words in the active locale.
+
+**A live clock** (`useNow` is in `@pyreon/ambient`):
+
+```tsx
+import { useNow } from '@pyreon/ambient'
+import { toPlainTime } from '@pyreon/time/core'
+
+function Clock() {
+  const seconds = useNow({ every: 'second' })
+
+  return <time>{() => toPlainTime(seconds(), 'Europe/Prague')}</time>
+}
+```
+
+**A "today" badge that flips at midnight:**
+
+```tsx
+import { useToday } from '@pyreon/time'
+
+function Day(props: { date: string }) {
+  const today = useToday('Europe/Prague') // flips at Prague midnight, on 23- and 25-hour days too
+
+  return <span class={() => (props.date === today() ? 'badge today' : 'badge')}>{props.date}</span>
+}
+```
+
+**A countdown to a launch** (a wall-clock target is read in the zone; every countdown on the page shares one timer):
+
+```tsx
+import { useCountdown } from '@pyreon/time'
+
+function Launch() {
+  const left = useCountdown('2026-12-24T18:00', { zone: 'Europe/Prague' })
+
+  return <p>{() => (left.done() ? 'Launched' : `${left.remaining().days} d ${left.remaining().hours} h ${left.remaining().minutes} min`)}</p>
+}
+```
+
+**An elapsed timer:**
+
+```tsx
+import { useElapsed } from '@pyreon/time'
+
+function Uptime(props: { since: number }) {
+  const up = useElapsed(props.since)
+
+  return <p>{() => `${up().hours} h ${up().minutes} min ${up().seconds} s`}</p>
+}
+```
+
+**Relative timestamps in a list of 200 items.** Each label's cadence adapts to its age (every second under a minute, every minute under an hour, every hour under a day, then at local midnight), and labels of the same tier share a ticker, so 200 items cost a handful of timers, and an old item never holds a per-second one:
+
+```tsx
+import { useRelative } from '@pyreon/time'
+
+const words = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+
+function Ago(props: { at: number }) {
+  const distance = useRelative(props.at) // { value: -2, unit: 'minute' }
+
+  return <time>{() => words.format(distance().value, distance().unit)}</time>
+}
+```
+
+With `@pyreon/format` the last line becomes its relative formatter; the thresholds are the same as `formatRelativeTo`, so the same two moments give the same words (the rule is tested against its cases). A displayed value can lag the true boundary by up to one tick of its ticker. For a server-rendered page, provide the render instant and emit it with the page so the first client render matches (see [the clock hand-over](/docs/ambient)). In tests, `setClock(() => instant)` pins every one of these.
+
+`relativeDistance(target, base, zone)` is the same calculation as a plain function in `@pyreon/time/core`.
 
 ## Errors and warnings
 

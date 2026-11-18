@@ -10,6 +10,7 @@
   "fixed": [
     [
       "@pyreon/a11y",
+      "@pyreon/ambient",
       "@pyreon/atlas",
       "@pyreon/attrs",
       "@pyreon/charts",

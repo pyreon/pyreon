@@ -22,6 +22,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./testing": {
+      "bun": "./src/testing.ts",
+      "import": "./lib/testing.js",
+      "types": "./lib/types/testing.d.ts"
     }
   },
   "files": [
@@ -50,6 +55,7 @@
     }
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "21.0.4",
     "@pyreon/core": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:*",

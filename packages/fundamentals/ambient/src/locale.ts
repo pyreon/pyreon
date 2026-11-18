@@ -72,13 +72,9 @@ export function _resetLocaleState(): void {
 }
 
 /**
- * The active locale (a reactive read): an explicit `options.locale`, the nearest `provideLocale`, the app default from `setLocale`, then `navigator.language` (client) or the runtime default (server).
+ * The active locale (a reactive read): the nearest `provideLocale`, then the app default from `setLocale`, then `navigator.language` (client) or the runtime default (server).
  *
- * @example
- * ```ts
- * setLocale('cs')
- * locale() // "cs"
- * ```
+ * @example setLocale('cs'); locale() // => 'cs'
  */
 export function locale(): string {
   if (localeProvided) {
@@ -90,8 +86,9 @@ export function locale(): string {
 }
 
 /**
- * The active zone as a formatter argument: `''` means "the runtime zone"
- * (what `Intl` uses when told nothing), so the hot path never builds a name.
+ * The active zone as a formatter argument: `''` means "the runtime zone" (what `Intl` uses when told nothing), so the hot path never builds a name.
+ *
+ * @example setTimeZone('UTC'); activeZone() // => 'UTC'
  */
 export function activeZone(): string {
   if (zoneProvided) {
@@ -105,11 +102,7 @@ export function activeZone(): string {
 /**
  * The active IANA time zone (a reactive read).
  *
- * @example
- * ```ts
- * setTimeZone('Asia/Tokyo')
- * timeZone() // "Asia/Tokyo"
- * ```
+ * @example setTimeZone('Asia/Tokyo'); timeZone() // => 'Asia/Tokyo'
  */
 export function timeZone(): string {
   const z = activeZone()
@@ -135,7 +128,11 @@ function checkedZone(zone: string, fn: string): string {
   }
 }
 
-/** Set the app-level default locale (client). On the server this is a no-op with a dev warning: use `provideLocale`. */
+/**
+ * Set the app-level default locale (client). A malformed tag throws a `[Pyreon]` error. On the server this is a no-op with a dev warning: use `provideLocale`.
+ *
+ * @example setLocale('de-de'); locale() // => 'de-DE'
+ */
 export function setLocale(tag: string): void {
   if (isServer) {
     if (process.env.NODE_ENV !== 'production') warnOnce('setLocale:server', '[Pyreon] setLocale() does nothing on the server (one process serves many requests). Call provideLocale() in the root component instead.')
@@ -144,7 +141,11 @@ export function setLocale(tag: string): void {
   appLocale.set(canonicalLocale(tag, 'setLocale'))
 }
 
-/** Set the app-level default time zone (client). On the server this is a no-op with a dev warning: use `provideTimeZone`. */
+/**
+ * Set the app-level default time zone (client). An unknown zone throws a `[Pyreon]` error. On the server this is a no-op with a dev warning: use `provideTimeZone`.
+ *
+ * @example setTimeZone('Europe/Prague'); timeZone() // => 'Europe/Prague'
+ */
 export function setTimeZone(zone: string): void {
   if (isServer) {
     if (process.env.NODE_ENV !== 'production') warnOnce('setTimeZone:server', '[Pyreon] setTimeZone() does nothing on the server (one process serves many requests). Call provideTimeZone() in the root component instead.')
@@ -168,7 +169,11 @@ function warnOutsideComponent(fn: string): void {
   }
 }
 
-/** Scope a subtree to a locale: a tag, or an accessor (`() => i18n.locale()`) that is tracked. Call it in a component's setup. */
+/**
+ * Scope a subtree to a locale: a tag, or an accessor (`() => i18n.locale()`) that is tracked. Call it in a component's setup.
+ *
+ * @example typeof provideLocale // => 'function'
+ */
 export function provideLocale(tag: string | (() => string)): void {
   warnOutsideComponent('provideLocale')
   const value = typeof tag === 'function' ? tag : constant(canonicalLocale(tag, 'provideLocale'))
@@ -176,7 +181,11 @@ export function provideLocale(tag: string | (() => string)): void {
   provide(LocaleContext, value)
 }
 
-/** Scope a subtree to a time zone: a name, or an accessor that is tracked. Call it in a component's setup. */
+/**
+ * Scope a subtree to a time zone: a name, or an accessor that is tracked. Call it in a component's setup.
+ *
+ * @example typeof provideTimeZone // => 'function'
+ */
 export function provideTimeZone(zone: string | (() => string)): void {
   warnOutsideComponent('provideTimeZone')
   const value = typeof zone === 'function' ? zone : constant(checkedZone(zone, 'provideTimeZone'))

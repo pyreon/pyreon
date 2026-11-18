@@ -5,7 +5,7 @@ description: A signal-based UI framework with fine-grained reactivity and a rich
 
 Pyreon is a signal-based UI framework that renders directly to the DOM without a virtual DOM. It provides fine-grained reactivity, streaming SSR, a JSX compiler, and compatibility layers for React, Preact, Vue, Solid, and Svelte.
 
-The tables below group the 78 published packages by area; the [package catalog](/docs/package-catalog) lists every one of them.
+The tables below group the 79 published packages by area; the [package catalog](/docs/package-catalog) lists every one of them.
 
 <div class="flex flex-wrap gap-2 my-6">
   <PackageBadge name="@pyreon/core" href="/docs/core" />
