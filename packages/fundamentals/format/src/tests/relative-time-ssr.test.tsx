@@ -6,6 +6,7 @@
 import { clockAttributes, provideClock, provideLocale, provideTimeZone } from '@pyreon/ambient'
 import { _resetClockState, _tickerStats } from '@pyreon/ambient/testing'
 import { h } from '@pyreon/core'
+import { effectScope } from '@pyreon/reactivity'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import { RelativeTime } from '../components'
 import { useRelativeTime } from '../index'
@@ -43,6 +44,18 @@ describe('server render', () => {
     await renderToString(h(Page, { at: SERVER_AT, target: SERVER_AT - 5 * MIN }))
     expect(vi.getTimerCount()).toBe(0)
     expect(_tickerStats()).toEqual({ active: 0, timers: 0, shared: 0 })
+  })
+
+  it('even inside a reactive scope (a scope on a server is never disposed) no timer starts', () => {
+    vi.useFakeTimers({ now: SERVER_AT })
+    const scope = effectScope()
+
+    scope.runInScope(() => {
+      useRelativeTime(SERVER_AT - 30 * 1000)(); useRelativeTime(SERVER_AT - 5 * MIN)(); useRelativeTime(SERVER_AT + 3 * 86_400_000)()
+    })
+    expect(vi.getTimerCount()).toBe(0)
+    expect(_tickerStats()).toEqual({ active: 0, timers: 0, shared: 0 })
+    scope.stop()
   })
 
   it('two interleaved requests with different instants never see each other\'s', async () => {
