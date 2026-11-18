@@ -257,6 +257,29 @@ describe('a hedged count is refused outright', () => {
     })
   })
 
+  it('rejects a hedge in wording no explicit rejector names (#4315)', () => {
+    // The document-primitives manifest kept "14+ output formats" against a
+    // real 20 because its rejector only knew "N+ formats" and its pattern
+    // only "N formats"; the README's "14+ formats" was not a claim site at
+    // all. Every claim now refuses its own "N+" form.
+    const formats = Array.from({ length: 20 }, (_, i) => `  | 'f${i}'`).join('\n')
+    build({
+      'packages/fundamentals/document/src/types.ts': `export type OutputFormat =\n${formats}\n\nexport interface X {}\n`,
+      'packages/ui-system/document-primitives/src/manifest.ts':
+        `export default { tagline: 'export to 20 formats', description: 'exports to 14+ output formats (PDF, …)' }\n`,
+      'packages/ui-system/document-primitives/README.md': `# document-primitives\n\nexport to 14+ formats.\n`,
+    })
+
+    return run().then((r) => {
+      const hedged = forCheck(r, 'doc-format-count').filter((f) => f.code.endsWith('-hedged'))
+      expect(hedged.map((f) => f.location?.relPath).sort()).toEqual([
+        'packages/ui-system/document-primitives/README.md',
+        'packages/ui-system/document-primitives/src/manifest.ts',
+      ])
+      expect(hedged[0]?.fix).toContain('20')
+    })
+  })
+
   it('does not also report drift for the same claim', () => {
     // One problem, one finding. Reporting the hedge AND a drift for the
     // hedged text doubles the noise for a single edit.

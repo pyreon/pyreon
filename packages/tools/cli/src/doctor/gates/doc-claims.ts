@@ -565,10 +565,21 @@ const checks: ClaimCheck[] = [
         rejectHedged: /one template, (\d+)\+ output formats/,
       },
       {
-        // It said "14+ formats" (4 places) against 20 (#4315).
+        // It said "14+ formats" (4 places) against 20 (#4315), and kept one
+        // "14+ output formats" that a pattern without the adjective missed.
         file: 'packages/ui-system/document-primitives/src/manifest.ts',
-        pattern: /(\d+) formats/,
-        rejectHedged: /(\d+)\+ formats/,
+        pattern: /(\d+) (?:output )?formats/,
+        all: true,
+      },
+      {
+        file: 'packages/ui-system/document-primitives/README.md',
+        pattern: /(\d+) (?:output )?formats/,
+        all: true,
+      },
+      {
+        // The hand-written package table and the generated manifest section.
+        file: 'llms-full.txt',
+        pattern: /AND exports? to (\d+) (?:output )?formats/,
         all: true,
       },
     ],
@@ -847,6 +858,22 @@ export interface DocClaimsGateOptions {
 }
 
 /**
+ * The "N+" form of a claim pattern: its first `(\d+)` followed by a literal `+`.
+ *
+ * Every claim rejects the hedge, not only the ones that remember to say so. An
+ * opt-in `rejectHedged` covered the shapes someone had already seen, so a
+ * hedge in any other wording slipped through: the document-primitives manifest
+ * kept "14+ output formats" (against 20) behind a rejector that only knew
+ * "14+ formats" (#4315). A claim with an explicit `rejectHedged` keeps it.
+ */
+export function hedgedVariant(pattern: RegExp): RegExp | undefined {
+  const at = pattern.source.indexOf('(\\d+)')
+  if (at < 0) return undefined
+  const source = `${pattern.source.slice(0, at)}(\\d+)\\+${pattern.source.slice(at + '(\\d+)'.length)}`
+  return new RegExp(source, pattern.flags.replace('g', ''))
+}
+
+/**
  * A claim file's text, with a JSON file's ESCAPES decoded first.
  *
  * The patterns here are written against what a reader SEES, and for a `.json`
@@ -934,8 +961,9 @@ export const runDocClaimsGate = async (
       }
       const content = readClaimText(filePath)
 
-      if (claim.rejectHedged) {
-        const hedged = content.match(claim.rejectHedged)
+      const rejectHedged = claim.rejectHedged ?? hedgedVariant(claim.pattern)
+      if (rejectHedged) {
+        const hedged = content.match(rejectHedged)
         if (hedged?.[1]) {
           findings.push({
             category: 'documentation',
