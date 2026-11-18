@@ -291,6 +291,20 @@ describe('useOverlay', () => {
       expect(mockSetUnblocked).toHaveBeenCalledOnce()
     })
 
+    it('hideContent on an overlay that never opened releases no block (it holds none)', () => {
+      const o = useOverlay()
+      o.hideContent()
+      expect(mockSetUnblocked).not.toHaveBeenCalled()
+    })
+
+    it('an initially open overlay holds its parent block; detaching while open releases it', () => {
+      const o = useOverlay({ isOpen: true })
+      expect(mockSetBlocked).toHaveBeenCalledOnce()
+      const cleanup = o.setupListeners()
+      cleanup()
+      expect(mockSetUnblocked).toHaveBeenCalledOnce()
+    })
+
     it('toggle between show and hide works', () => {
       const o = useOverlay()
       o.showContent()

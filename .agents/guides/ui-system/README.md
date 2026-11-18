@@ -81,6 +81,7 @@ Component libraries in `packages/ui/` (private):
 - Content receives `align` / `alignX` / `alignY` as live reactive props, so a viewport-edge flip restyles it in place without a remount (`Overlay-content-reactive-align.browser.test.tsx`).
 - Content hover listeners re-bind whenever `isContentLoaded` changes, so moving the pointer from trigger to content keeps a hover overlay open (`Overlay-hover-content.browser.test.tsx`).
 - `OverlayProvider` coordination props (`blocked` / `setBlocked` / `setUnblocked`) are optional; the default context is a working no-op.
+- A nested overlay holds at most ONE block on its parent while open, released on hide or when it unmounts open (`Overlay-nested-unmount-block.browser.test.tsx`).
 
 ## @pyreon/ui-core — `<PyreonUI>`
 

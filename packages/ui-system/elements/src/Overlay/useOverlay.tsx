@@ -263,6 +263,25 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
   const setBlocked = () => blockedCount.update((c) => c + 1)
   const setUnblocked = () => blockedCount.update((c) => Math.max(0, c - 1))
 
+  // This instance's block on its PARENT overlay (nested overlays). A child
+  // holds at most ONE block, taken when it opens and released exactly once:
+  // on hide, or on detach (the `setupListeners` cleanup, which runs on
+  // unmount) if it is removed while open (route change, conditional render). Before, `showContent` blocked and only
+  // `hideContent` unblocked, so a child unmounted while open left the parent
+  // blocked forever (it never closed on outside click or Escape again), and
+  // a child shown twice without a hide double-counted its block.
+  let holdsParentBlock = false
+  const blockParent = () => {
+    if (holdsParentBlock) return
+    holdsParentBlock = true
+    ctx.setBlocked?.()
+  }
+  const releaseParent = () => {
+    if (!holdsParentBlock) return
+    holdsParentBlock = false
+    ctx.setUnblocked?.()
+  }
+
   const showContent = () => {
     // Targeted misuse signal: opening with listeners never attached means
     // positioning, click-outside, ESC, and hover-close are all dead — the
@@ -304,7 +323,7 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
       /* v8 ignore stop */
     }
     props.onOpen?.()
-    ctx.setBlocked?.()
+    blockParent()
   }
 
   const hideContent = () => {
@@ -331,7 +350,7 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
     })
     if (shouldRestore && prev && typeof prev.focus === 'function') prev.focus()
     props.onClose?.()
-    ctx.setUnblocked?.()
+    releaseParent()
   }
 
   // Position calculation helpers
@@ -671,6 +690,10 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
         releaseLocks = null
       }
     }
+    // Removed while open: give back the block this instance holds on its
+    // parent overlay (see `releaseParent`).
+    cleanups.push(releaseParent)
+
     if (locksPage || locksParent) {
       syncScrollLocks()
       cleanups.push(active.subscribe(syncScrollLocks))
@@ -739,6 +762,11 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
   if (readDisabled()) {
     active.set(false)
   }
+
+  // An overlay that STARTS open holds its parent's block like one opened by
+  // `showContent`, so its first hide releases a block it actually took
+  // (before, that hide released a block it never took — another child's).
+  if (active() && !isServer) blockParent()
 
   return {
     triggerRef,
