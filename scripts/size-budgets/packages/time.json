@@ -1,0 +1,8 @@
+{
+  "package": "@pyreon/time",
+  "bundle": 8909,
+  "imports": {
+    "add": 2778,
+    "typical": 5607
+  }
+}

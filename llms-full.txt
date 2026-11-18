@@ -2639,6 +2639,36 @@ authorize: ({ room, token, req }) => verify(room, token)
 >
 > **Native / PMTC sync is out of near-term scope**: The `CrdtAdapter` seam keeps a future Loro-via-FFI native engine door open, but compiler WS-emit + a native WS runtime + a CRDT-via-FFI engine are not in scope yet.
 
+## @pyreon/time — Dates and Times
+
+Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal's four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` has no dependencies; `@pyreon/time` adds a pinnable clock (`setClock`, `now`, `today`). Experimental: the clocks (`useNow`, `useCountdown`, ...) and the active time zone follow in later releases.
+
+```typescript
+import { add, diff, startOf, monthGrid, toInstant, toPlainDateTime, offsetAt } from '@pyreon/time/core'
+
+add('2026-01-31', { months: 1 })                    // => '2026-02-28'
+diff('2026-11-18', '2026-12-24', 'day')             // => 36
+startOf('2026-11-18', 'week')                       // => '2026-11-16'
+monthGrid('2026-11')[0]![0]                         // => '2026-10-26'
+
+// Zones: wall-clock time in, instant out; DST gaps and overlaps follow Temporal's rules.
+const t = toInstant('2026-03-29T02:30', 'Europe/Prague')   // 02:30 does not exist: shifts forward to 03:30
+toPlainDateTime(t, 'Europe/Prague')                 // => '2026-03-29T03:30:00'
+offsetAt(t, 'Europe/Prague')                        // => 120
+```
+
+> **Accepted ISO forms**: PlainDate `YYYY-MM-DD` (year 0001-9999, a real day); PlainYearMonth `YYYY-MM`; PlainTime `HH:MM`, `HH:MM:SS` or `HH:MM:SS.f` to `.fff` (hour 00-23, second 00-59, no `24:00`, no leap second); PlainDateTime a PlainDate, an upper-case `T`, a PlainTime. No offsets or zone names, no lower-case `t`, no space separator, no unpadded fields: `isPlainDate("2026-2-3")` is false. Temporal accepts more; this package is strict so a value is always canonical and `compare` can be a string comparison. `parseInstant` is the one parser for timestamps with an offset.
+>
+> **Throws versus returns**: The `isPlain*` guards, `isTimeZone` and `parseInstant` never throw. Every other function throws a `[Pyreon]` error on a value of the wrong shape (validate user input with a guard first), an unknown unit or zone, a mixed-sign duration, or a result outside years 0001-9999. Rendering code that must not throw belongs behind a guard or in `@pyreon/format`.
+>
+> **Time zones**: Offsets come from `Intl.DateTimeFormat`, so results follow the engine's tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 127-slot offset table. Zone-taking functions require an explicit `zone`; the active time zone arrives with the format integration.
+>
+> **Month arithmetic**: `add` clamps the day (Jan 31 + 1 month = Feb 28). `diff` counts a month as complete when that clamped addition does not pass the end, which is Temporal's truncated `until`; `between` returns Temporal's unrounded breakdown, where a month ends only when the day number is reached (2012-08-31 to 2051-02-28 is 38 years, 5 months, 28 days). The two can differ by one month at month ends, exactly as in Temporal.
+>
+> **Precision**: A PlainDateTime result keeps the precision of its input (`14:30` stays minutes) unless the result needs more (adding seconds), and `endOf` returns milliseconds. Fractions are at most three digits: finer values are rejected, not rounded.
+>
+> **Not included yet**: `fromTemporal` / `toTemporal` are left out: typing them without depending on Temporal typings is not clean, and a Plain value maps to Temporal with one `Temporal.PlainDate.from(value)`. Clocks (`useNow`, `useToday`, `useRelativeTime`, `useCountdown`) and the active time zone follow in later releases.
+
 ## @pyreon/toast — Toast Notifications
 
 Imperative toast notifications for Pyreon. Call `toast()` from anywhere in your app — no provider or context needed. Preset variants (`toast.success`, `toast.error`, etc.), a `toast.promise()` helper for async operations, and `toast.update()` for loading-to-success patterns. Render `<Toaster />` once at the app root — it uses Portal, animated enter/leave CSS transitions, auto-dismiss, and a countdown that suspends on hover, on keyboard focus, and while the tab is hidden. Accessible with a type-aware live-region role — `role="alert"` (assertive) for error/warning, `role="status"` (polite) for info/success — plus `aria-atomic`.

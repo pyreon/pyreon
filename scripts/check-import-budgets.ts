@@ -195,6 +195,23 @@ export const SCENARIOS: Scenario[] = [
     imports: ['defineStore'],
   },
   {
+    // Date arithmetic on plain strings: parsing, the padded writer and the duration loader, and nothing of the zone code.
+    // `add` must not drag `Intl.DateTimeFormat` handling in; zone conversion is a separate import.
+    id: '@pyreon/time::add',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'core.js',
+    imports: ['add'],
+  },
+  {
+    // The typical set a calendar or scheduler writes: arithmetic, truncation, a grid and one zone conversion.
+    id: '@pyreon/time::typical',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'core.js',
+    imports: ['add', 'diff', 'startOf', 'monthGrid', 'toInstant'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.

@@ -145,7 +145,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
-### `web-only` — architecturally coupled to the web platform (35)
+### `web-only` — architecturally coupled to the web platform (36)
 
 | Package | Why |
 | --- | --- |
@@ -176,6 +176,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/sync` | the Yjs engine + IndexedDB/WebSocket transports stay web; the engine-neutral PyreonCrdt core + `syncedSignal` lower to a native runtime, cross-device transport tracked |
 | `@pyreon/table` | the TanStack-backed `useTable` (row model / faceting / virtual sizing) stays web; the dependency-free `createTableState` engine lowers to the native PyreonTableState port, rendered with `<For>` + primitives |
 | `@pyreon/testing` | the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory |
+| `@pyreon/time` | not lowered by PMTC yet: the package is pure computation on strings and numbers (an Instant is epoch milliseconds, exactly how a date is represented natively), so it can become `shared` once the Swift and Kotlin ports of the same functions exist; until then the compiler warns on import rather than miscompiling |
 | `@pyreon/toast` | the core `toast(...)` + `<Toaster>` lower to the native PyreonToast runtime: a screen-anchored overlay (a pass-through window on iOS, a window-anchored Popup on Android) styled per type, honouring literal position / max / gap / offset / duration, animating in and out, with a dismiss button (a literal `dismissible: false` hides it), a text `description` line, an `action` button (its `onClick` may take the `&#123; id, dismiss &#125;` context), an `onDismiss` callback that fires once however the toast leaves, `toast.dismiss(id)` / `toast.dismiss()`, and visible on every screen; the rich surface (toast.promise/update, a JSX description, icon, the hover/focus countdown pause) stays web, each warned by name natively |
 | `@pyreon/unistyle` | responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model |
 | `@pyreon/url-state` | the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters |

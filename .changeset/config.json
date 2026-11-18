@@ -80,6 +80,7 @@
       "@pyreon/sync",
       "@pyreon/table",
       "@pyreon/testing",
+      "@pyreon/time",
       "@pyreon/toast",
       "@pyreon/typescript",
       "@pyreon/ui-core",

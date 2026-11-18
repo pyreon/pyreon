@@ -48,6 +48,7 @@ export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/runtime-server', "server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue"],
   ['@pyreon/server', "SSR handler + islands for web deployments; native apps have no server-rendered HTML"],
   ['@pyreon/testing', "the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory"],
+  ['@pyreon/time', "not lowered by PMTC yet: the package is pure computation on strings and numbers (an Instant is epoch milliseconds, exactly how a date is represented natively), so it can become `shared` once the Swift and Kotlin ports of the same functions exist; until then the compiler warns on import rather than miscompiling"],
   ['@pyreon/ui-components', ""],
   ['@pyreon/ui-primitives', ""],
   ['@pyreon/unistyle', "responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model"],

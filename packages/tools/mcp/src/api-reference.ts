@@ -9008,6 +9008,413 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
   },
   // <gen-docs:api-reference:end @pyreon/rich-text>
 
+  // <gen-docs:api-reference:start @pyreon/time>
+
+  'time/add': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T, duration: Duration) => same shape as T',
+    example: `add('2026-01-31', { months: 1 })              // => '2026-02-28'
+add('2024-02-29', { years: 1 })               // => '2025-02-28'
+add('2026-12-31', { days: 1 })                // => '2027-01-01'
+add('2026-11-18T23:30', { minutes: 45 })      // => '2026-11-19T00:15'
+add('2026-11', { months: 3 })                 // => '2027-02'`,
+    notes: `[EXPERIMENTAL] Add a duration to a PlainDate, PlainDateTime or PlainYearMonth; the result has the same shape. Years and months are applied first and clamp the day to the target month (Temporal's \`constrain\`), then weeks, days and the time fields. Every field is an integer and all non-zero fields share one sign. Throws a \`[Pyreon]\` error for an invalid value, a mixed-sign or fractional duration, time fields on a PlainDate, days on a PlainYearMonth, and a result outside years 0001-9999. See also: subtract, addInstant, diff. Added in v0.53.0.`,
+    mistakes: `- Passing a plain \`string\` from user input: the type rejects it. Narrow it with \`isPlainDate(x)\` first; at runtime an invalid string throws
+- Mixing signs (\`{ months: 1, days: -1 }\`): it has no single meaning and throws. Call \`add\` and \`subtract\` separately
+- Adding hours to a PlainDate: a date has no time of day. Use a PlainDateTime`,
+  },
+
+  'time/subtract': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T, duration: Duration) => same shape as T',
+    example: `subtract('2000-03-01', { days: 1 })           // => '2000-02-29'
+subtract('2026-03-31', { months: 1 })         // => '2026-02-28'`,
+    notes: '[EXPERIMENTAL] `add` with every field negated: `subtract(date, { days: 1 })` is yesterday. See also: add. Added in v0.53.0.',
+  },
+
+  'time/diff': {
+    signature: '(a: T, b: T, unit: Unit, options?: { zone?: TimeZone }) => number',
+    example: `diff('2026-11-18', '2026-12-24', 'day')       // => 36
+diff('2026-12-24', '2026-11-18', 'day')       // => -36
+diff('2026-01-31', '2026-02-28', 'month')     // => 1
+diff('2026-11-18T10:00', '2026-11-18T12:59', 'hour')  // => 2
+diff('10:00', '12:30', 'minute')              // => 150
+diff(Date.UTC(2026, 2, 28, 11), Date.UTC(2026, 2, 29, 10), 'day', { zone: 'Europe/Prague' })  // => 1`,
+    notes: `[EXPERIMENTAL] Whole \`unit\`s from \`a\` to \`b\`, truncated toward zero; the sign is the direction. Works on PlainDate, PlainDateTime, PlainYearMonth, PlainTime and Instant (an Instant needs \`options.zone\` for year, month, week and day, because a calendar day is not always 24 hours). A month or year counts as complete when \`add(a, { months: n })\` (day clamped) does not pass \`b\`, which is what Temporal's \`until\` with \`smallestUnit\` and truncation returns, so it is not antisymmetric at month ends: January 31 to February 28 is 1 month, February 28 back to January 31 is 0. See also: between, add. Added in v0.53.0.`,
+    mistakes: '- Diffing two Instants in days without a zone throws: pass `{ zone }`, or use `{ hours }` for an exact 24-hour count',
+  },
+
+  'time/between': {
+    signature: '(a: PlainDate | PlainDateTime, b: same shape) => Duration',
+    example: `between('2026-01-31', '2026-03-01')           // => { years: 0, months: 1, days: 1 }
+between('2020-01-01', '2026-11-18')           // => { years: 6, months: 10, days: 17 }
+between('2026-01-01T10:00', '2026-01-02T09:30')  // => { years: 0, months: 0, days: 0, hours: 23, minutes: 30, seconds: 0, milliseconds: 0 }`,
+    notes: `[EXPERIMENTAL] The span from \`a\` to \`b\` broken down from years to days (and hours to milliseconds for a PlainDateTime), matching Temporal's \`until\` with \`largestUnit: "year"\`. All fields share the sign of the direction; every field is present. See also: diff. Added in v0.53.0.`,
+  },
+
+  'time/startOf': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T, unit: Unit, options?: { weekStart?: Weekday }) => same shape as T',
+    example: `startOf('2026-11-18', 'week')                 // => '2026-11-16'
+startOf('2026-11-18', 'week', { weekStart: 7 })  // => '2026-11-15'
+startOf('2026-11-18', 'month')                // => '2026-11-01'
+startOf('2026-11-18T14:30:05', 'hour')        // => '2026-11-18T14:00:00'`,
+    notes: '[EXPERIMENTAL] The first moment of the `unit` containing `value`. Weeks start on `options.weekStart` (1 Monday ... 7 Sunday, default Monday). A PlainDateTime keeps the precision it came in with. A PlainDate has no time units; a PlainYearMonth has only year and month. See also: endOf, weekStartOf. Added in v0.53.0.',
+  },
+
+  'time/endOf': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T, unit: Unit, options?: { weekStart?: Weekday }) => same shape as T',
+    example: `endOf('2026-11-18', 'month')                  // => '2026-11-30'
+endOf('2024-02-10', 'month')                  // => '2024-02-29'
+endOf('2026-11-18T14:30', 'day')              // => '2026-11-18T23:59:59.999'`,
+    notes: '[EXPERIMENTAL] The last moment of the `unit` containing `value`. For a PlainDateTime that is the last millisecond (`.999`). See also: startOf. Added in v0.53.0.',
+  },
+
+  'time/compare': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth | PlainTime | Instant>(a: T, b: T) => -1 | 0 | 1',
+    example: `compare('2026-11-18', '2026-11-19')           // => -1
+compare('14:30', '14:30:00')                  // => 0
+compare('2026-11-18T14:30', '2026-11-18T14:30:00.001')  // => -1
+['2026-03-01', '2026-01-01'].sort(compare)    // => ['2026-01-01', '2026-03-01']`,
+    notes: '[EXPERIMENTAL] Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30:00`) are parsed. Usable as an `Array#sort` comparator. See also: isBefore, isAfter, isSame, min, max, clamp. Added in v0.53.0.',
+  },
+
+  'time/isBefore': {
+    signature: '<T extends Comparable>(a: T, b: T) => boolean',
+    example: `isBefore('2026-01-01', '2026-01-02')          // => true`,
+    notes: '[EXPERIMENTAL] Whether `a` is strictly before `b`. Added in v0.53.0.',
+  },
+
+  'time/isAfter': {
+    signature: '<T extends Comparable>(a: T, b: T) => boolean',
+    example: `isAfter('2026-01-01', '2026-01-02')           // => false`,
+    notes: '[EXPERIMENTAL] Whether `a` is strictly after `b`. Added in v0.53.0.',
+  },
+
+  'time/isSame': {
+    signature: '<T extends Comparable>(a: T, b: T, unit?: Unit, options?: { weekStart?: Weekday }) => boolean',
+    example: `isSame('2026-11-18', '2026-11-30', 'month')   // => true
+isSame('2026-11-15', '2026-11-16', 'week')    // => false
+isSame('2026-11-15', '2026-11-16', 'week', { weekStart: 7 })  // => true`,
+    notes: '[EXPERIMENTAL] Whether `a` and `b` are the same moment, or, with a `unit`, fall in the same year, month, week, day (or hour, minute, second, millisecond for a PlainDateTime). Added in v0.53.0.',
+  },
+
+  'time/min': {
+    signature: '<T extends Comparable>(...values: [T, ...T[]]) => T',
+    example: `min('2026-03-01', '2026-01-01', '2026-02-01') // => '2026-01-01'`,
+    notes: '[EXPERIMENTAL] The earliest value; at least one is required. Added in v0.53.0.',
+  },
+
+  'time/max': {
+    signature: '<T extends Comparable>(...values: [T, ...T[]]) => T',
+    example: `max('2026-03-01', '2026-01-01', '2026-02-01') // => '2026-03-01'`,
+    notes: '[EXPERIMENTAL] The latest value; at least one is required. Added in v0.53.0.',
+  },
+
+  'time/clamp': {
+    signature: '<T extends Comparable>(value: T, lo: T, hi: T) => T',
+    example: `clamp('2026-05-01', '2026-01-01', '2026-03-01') // => '2026-03-01'`,
+    notes: '[EXPERIMENTAL] `value` limited to `lo` ... `hi` inclusive. Throws when `lo` is after `hi`. Added in v0.53.0.',
+  },
+
+  'time/eachDay': {
+    signature: '(start: PlainDate, end: PlainDate) => PlainDate[]',
+    example: `eachDay('2026-02-27', '2026-03-02')           // => ['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02']`,
+    notes: '[EXPERIMENTAL] Every date from `start` to `end`, both included; empty when `end` is before `start`. Added in v0.53.0.',
+  },
+
+  'time/monthGrid': {
+    signature: '(month: PlainYearMonth | PlainDate, options?: { weekStart?: Weekday; weeks?: 6 | "auto" }) => PlainDate[][]',
+    example: `const grid = monthGrid('2026-11')
+grid.length                                   // => 6
+grid[0]                                       // => ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01']
+monthGrid('2026-11', { weekStart: 7 }).length // => 5
+monthGrid('2026-02', { weekStart: 7 })[3]![6] // => '2026-02-28'`,
+    notes: '[EXPERIMENTAL] The weeks of a month as rows of seven dates, including the days of the neighbouring months that fill the first and last row. `weeks: "auto"` (default) returns only the weeks the month occupies (4 to 6 rows); `weeks: 6` always returns six rows so a date picker keeps its height. Throws for the first and last months of the supported range when the grid would leave it. See also: weekStartOf, eachDay. Added in v0.53.0.',
+  },
+
+  'time/weekStartOf': {
+    signature: '(locale: string) => Weekday',
+    example: `weekStartOf('en-US')                          // => 7
+weekStartOf('cs')                             // => 1`,
+    notes: '[EXPERIMENTAL] First day of the week for a locale as an ISO weekday (`en-US` is 7, `cs` is 1). Reads `Intl.Locale` week data and falls back to a built-in region table when the platform has none; a malformed tag gives Monday. Cached in a bounded table. See also: weekendOf, monthGrid. Added in v0.53.0.',
+  },
+
+  'time/weekendOf': {
+    signature: '(locale: string) => readonly Weekday[]',
+    example: `weekendOf('en-US')                            // => [6, 7]
+weekendOf('he-IL')                            // => [5, 6]`,
+    notes: '[EXPERIMENTAL] The weekend days of a locale as ISO weekdays (`en-US` is `[6, 7]`, `ar-EG` is `[5, 6]`). The array is shared and frozen. Added in v0.53.0.',
+  },
+
+  'time/dayOfWeek': {
+    signature: '(value: PlainDate | PlainDateTime) => Weekday',
+    example: `dayOfWeek('2026-11-18')                       // => 3
+dayOfWeek('2026-11-22')                       // => 7`,
+    notes: '[EXPERIMENTAL] ISO weekday: 1 is Monday, 7 is Sunday (unlike `Date#getDay`). Added in v0.53.0.',
+  },
+
+  'time/dayOfYear': {
+    signature: '(value: PlainDate | PlainDateTime) => number',
+    example: `dayOfYear('2024-12-31')                       // => 366`,
+    notes: '[EXPERIMENTAL] 1 for January 1st through 365 or 366. Added in v0.53.0.',
+  },
+
+  'time/weekOfYear': {
+    signature: '(value: PlainDate | PlainDateTime) => number',
+    example: `weekOfYear('2026-11-18')                      // => 47
+weekOfYear('2027-01-01')                      // => 53
+weekOfYear('2024-12-30')                      // => 1`,
+    notes: `[EXPERIMENTAL] ISO 8601 week number, 1-53: week 1 contains the year's first Thursday and weeks start on Monday. Days at the turn of the year can belong to a week of the neighbouring year: see \`yearOfWeek\`. See also: yearOfWeek. Added in v0.53.0.`,
+  },
+
+  'time/yearOfWeek': {
+    signature: '(value: PlainDate | PlainDateTime) => number',
+    example: `yearOfWeek('2027-01-01')                      // => 2026
+yearOfWeek('2024-12-30')                      // => 2025`,
+    notes: '[EXPERIMENTAL] The ISO week-based year: 2027-01-01 belongs to week 53 of 2026, and 2024-12-30 to week 1 of 2025. Use it with `weekOfYear` to label a week. See also: weekOfYear. Added in v0.53.0.',
+  },
+
+  'time/daysInMonth': {
+    signature: '(value: PlainDate | PlainDateTime | PlainYearMonth) => number',
+    example: `daysInMonth('2024-02')                        // => 29
+daysInMonth('2100-02')                        // => 28`,
+    notes: '[EXPERIMENTAL] Number of days in the month of the value. Added in v0.53.0.',
+  },
+
+  'time/isLeapYear': {
+    signature: '(value: number | PlainDate | PlainDateTime | PlainYearMonth) => boolean',
+    example: `isLeapYear(2000)                              // => true
+isLeapYear(1900)                              // => false`,
+    notes: '[EXPERIMENTAL] Whether a year, or the year of a value, is a Gregorian leap year (1900 and 2100 are not, 2000 is). Added in v0.53.0.',
+  },
+
+  'time/plainDate': {
+    signature: '(year: number, month: number, day: number) => PlainDate',
+    example: `plainDate(2026, 11, 18)                       // => '2026-11-18'`,
+    notes: '[EXPERIMENTAL] Build a PlainDate from numbers (month 1-12). Throws on an impossible date. Added in v0.53.0.',
+    mistakes: '- Passing a 0-based month as `Date` does: `plainDate(2026, 0, 1)` throws, months are 1-12',
+  },
+
+  'time/plainYearMonth': {
+    signature: '(year: number, month: number) => PlainYearMonth',
+    example: `plainYearMonth(2026, 11)                      // => '2026-11'`,
+    notes: '[EXPERIMENTAL] Build a PlainYearMonth from numbers. Added in v0.53.0.',
+  },
+
+  'time/plainTime': {
+    signature: '(hour: number, minute?: number, second?: number, millisecond?: number) => PlainTime',
+    example: `plainTime(14, 30)                             // => '14:30'
+plainTime(14, 30, 5)                          // => '14:30:05'
+plainTime(14, 30, 0, 250)                     // => '14:30:00.250'`,
+    notes: '[EXPERIMENTAL] Build a PlainTime, written at the least precision that holds the value: `14:30`, `14:30:05` or `14:30:05.250`. Added in v0.53.0.',
+  },
+
+  'time/dateParts': {
+    signature: '(value: PlainDate | PlainDateTime) => { year: number; month: number; day: number }',
+    example: `dateParts('2026-11-18')                       // => { year: 2026, month: 11, day: 18 }`,
+    notes: '[EXPERIMENTAL] The numeric fields of a date. Months are 1-12. Added in v0.53.0.',
+  },
+
+  'time/timeParts': {
+    signature: '(value: PlainTime | PlainDateTime) => { hour: number; minute: number; second: number; millisecond: number }',
+    example: `timeParts('14:30:05.250')                     // => { hour: 14, minute: 30, second: 5, millisecond: 250 }`,
+    notes: '[EXPERIMENTAL] The numeric fields of a time of day. Added in v0.53.0.',
+  },
+
+  'time/isPlainDate': {
+    signature: '(x: unknown) => x is PlainDate',
+    example: `isPlainDate('2026-11-18')                     // => true
+isPlainDate('2026-02-30')                     // => false
+isPlainDate('2026-2-3')                       // => false`,
+    notes: '[EXPERIMENTAL] Strict guard: exactly `YYYY-MM-DD`, zero-padded, a real calendar day, years 0001-9999. Never throws. The other guards (`isPlainTime`, `isPlainDateTime`, `isPlainYearMonth`) follow the grammar in the gotchas. Added in v0.53.0.',
+  },
+
+  'time/isPlainTime': {
+    signature: '(x: unknown) => x is PlainTime',
+    example: `isPlainTime('14:30:05.250')                   // => true
+isPlainTime('24:00')                          // => false`,
+    notes: '[EXPERIMENTAL] Guard for `HH:MM`, `HH:MM:SS` or `HH:MM:SS.f` to `.fff`. Added in v0.53.0.',
+  },
+
+  'time/isPlainDateTime': {
+    signature: '(x: unknown) => x is PlainDateTime',
+    example: `isPlainDateTime('2026-11-18T14:30')           // => true
+isPlainDateTime('2026-11-18T14:30Z')          // => false`,
+    notes: '[EXPERIMENTAL] Guard for a PlainDate, an upper-case `T`, a PlainTime. Offsets and zone names are not part of a PlainDateTime. Added in v0.53.0.',
+  },
+
+  'time/isPlainYearMonth': {
+    signature: '(x: unknown) => x is PlainYearMonth',
+    example: `isPlainYearMonth('2026-11')                   // => true
+isPlainYearMonth('2026-13')                   // => false`,
+    notes: '[EXPERIMENTAL] Guard for `YYYY-MM`. Added in v0.53.0.',
+  },
+
+  'time/parseInstant': {
+    signature: '(text: string) => Instant | null',
+    example: `parseInstant('2026-11-18T14:30:05Z')          // => Date.UTC(2026, 10, 18, 14, 30, 5)
+parseInstant('2026-11-18T14:30:05.250+01:00') // => Date.UTC(2026, 10, 18, 13, 30, 5, 250)
+parseInstant('2026-11-18T14:30:05')           // => null`,
+    notes: '[EXPERIMENTAL] Parse an ISO 8601 timestamp that names its offset into an Instant, or `null`. Strict: upper-case `T` and `Z`, a `+hh:mm` offset with a colon, seconds required, an optional fraction of 1-9 digits truncated to milliseconds. A string without an offset is a wall-clock value, not a moment, so it is `null`: use `toInstant(value, zone)`. Never throws. See also: toInstant. Added in v0.53.0.',
+  },
+
+  'time/toInstant': {
+    signature: '(value: PlainDate | PlainDateTime, zone: TimeZone, options?: { disambiguation?: "compatible" | "earlier" | "later" | "reject" }) => Instant',
+    example: `const gap = toInstant('2026-03-29T02:30', 'Europe/Prague')           // 02:30 does not exist
+new Date(gap).toISOString()                   // => '2026-03-29T01:30:00.000Z'
+new Date(toInstant('2026-03-29T02:30', 'Europe/Prague', { disambiguation: 'earlier' })).toISOString()  // => '2026-03-29T00:30:00.000Z'
+new Date(toInstant('2026-10-25T02:30', 'Europe/Prague', { disambiguation: 'later' })).toISOString()    // => '2026-10-25T01:30:00.000Z'`,
+    notes: '[EXPERIMENTAL] The instant at which a wall-clock time happens in a zone. A PlainDate means its midnight (its start of day). When the clocks go forward a time can not exist, and when they go back it happens twice; `disambiguation` follows Temporal exactly: `compatible` (default) takes the first of two and shifts a missing time forward by the length of the gap, `earlier` and `later` pick a side, `reject` throws. See also: toPlainDateTime, addInstant. Added in v0.53.0.',
+    mistakes: `- Using \`new Date("2026-03-29T02:30")\`: it reads the machine's zone, not the zone you name, and silently shifts in a gap`,
+  },
+
+  'time/toPlainDateTime': {
+    signature: '(instant: Instant, zone: TimeZone) => PlainDateTime',
+    example: `toPlainDateTime(0, 'Europe/Prague')           // => '1970-01-01T01:00:00'
+toPlainDateTime(0, 'America/St_Johns')        // => '1969-12-31T20:30:00'`,
+    notes: '[EXPERIMENTAL] The wall-clock date and time of an instant in a zone. Seconds are always written, milliseconds only when non-zero. See also: toPlainDate, toPlainTime, offsetAt. Added in v0.53.0.',
+  },
+
+  'time/toPlainDate': {
+    signature: '(instant: Instant, zone: TimeZone) => PlainDate',
+    example: `toPlainDate(Date.UTC(2026, 10, 18, 23, 30), 'Asia/Tokyo') // => '2026-11-19'`,
+    notes: '[EXPERIMENTAL] The calendar date of an instant in a zone. Added in v0.53.0.',
+  },
+
+  'time/toPlainTime': {
+    signature: '(instant: Instant, zone: TimeZone) => PlainTime',
+    example: `toPlainTime(Date.UTC(2026, 10, 18, 13, 30), 'Europe/Prague') // => '14:30:00'`,
+    notes: '[EXPERIMENTAL] The time of day of an instant in a zone. Added in v0.53.0.',
+  },
+
+  'time/offsetAt': {
+    signature: '(instant: Instant, zone: TimeZone) => number',
+    example: `offsetAt(Date.UTC(2026, 6, 1), 'Europe/Prague')  // => 120
+offsetAt(Date.UTC(2026, 0, 1), 'Asia/Kathmandu') // => 345`,
+    notes: '[EXPERIMENTAL] Minutes east of UTC at an instant: 120 for Europe/Prague in summer, 345 for Asia/Kathmandu. Fractional only in the pre-1900 local-mean-time eras of some zones. Added in v0.53.0.',
+  },
+
+  'time/addInstant': {
+    signature: '(instant: Instant, duration: Duration, zone?: TimeZone) => Instant',
+    example: `const noon = Date.UTC(2026, 2, 28, 11, 0)    // 12:00 in Prague, the day before the clocks change
+new Date(addInstant(noon, { days: 1 }, 'Europe/Prague')).toISOString()  // => '2026-03-29T10:00:00.000Z'
+new Date(addInstant(noon, { hours: 24 })).toISOString()                 // => '2026-03-29T11:00:00.000Z'`,
+    notes: `[EXPERIMENTAL] Move an instant by a duration. Years, months, weeks and days move the zone's wall clock (so "one day later" keeps the time of day across a DST change, and the 23- or 25-hour day is handled) and need \`zone\`; hours, minutes, seconds and milliseconds move the instant itself. The resulting wall time is resolved with the \`compatible\` rule. See also: add, toInstant. Added in v0.53.0.`,
+    mistakes: '- Expecting `{ days: 1 }` to be 24 hours: it is one calendar day. Use `{ hours: 24 }` for an exact span',
+  },
+
+  'time/isTimeZone': {
+    signature: '(x: unknown) => x is TimeZone',
+    example: `isTimeZone('Europe/Prague')                   // => true
+isTimeZone('Mars/Olympus')                    // => false`,
+    notes: '[EXPERIMENTAL] Whether the platform knows this time zone name. Never throws; use it to validate user input before calling the zone functions, which throw on an unknown zone. Added in v0.53.0.',
+  },
+
+  'time/fromDate': {
+    signature: '(date: Date, zone?: TimeZone) => PlainDateTime',
+    example: `fromDate(new Date(Date.UTC(2026, 10, 18, 13, 30)), 'Europe/Prague') // => '2026-11-18T14:30:00'`,
+    notes: `[EXPERIMENTAL] The wall-clock date and time of a \`Date\` in \`zone\` (default: the runtime's local zone). Added in v0.53.0.`,
+  },
+
+  'time/toDate': {
+    signature: '(value: PlainDate | PlainDateTime | Instant, zone?: TimeZone) => Date',
+    example: `toDate('2026-11-18T14:30', 'Europe/Prague').toISOString() // => '2026-11-18T13:30:00.000Z'`,
+    notes: `[EXPERIMENTAL] A \`Date\` for an Instant, or for a wall-clock value in \`zone\` (default: the runtime's local zone, like \`new Date(y, m, d)\`). Added in v0.53.0.`,
+  },
+
+  'time/localZone': {
+    signature: '() => TimeZone',
+    example: `typeof localZone()                            // => 'string'`,
+    notes: `[EXPERIMENTAL] The runtime's own time zone name (\`"UTC"\` when the platform cannot say). Core functions never read it implicitly except \`fromDate\`, \`toDate\` and \`today\` when you omit the zone. Added in v0.53.0.`,
+  },
+
+  'time/toMilliseconds': {
+    signature: '(duration: Duration) => number',
+    example: `toMilliseconds({ hours: 1, minutes: 30 })     // => 5400000
+toMilliseconds({ weeks: 1 })                  // => 604800000`,
+    notes: '[EXPERIMENTAL] The length of a duration in milliseconds. Only fixed-length fields count (a week is seven 24-hour days, a day is 24 hours); years and months throw because they have no fixed length: use `diff` or `addInstant`. Added in v0.53.0.',
+  },
+
+  'time/now': {
+    signature: '() => Instant',
+    example: `typeof now()                                  // => 'number'`,
+    notes: `[EXPERIMENTAL] The current instant. \`@pyreon/time/core\` returns \`Date.now()\`; \`@pyreon/time\` returns the pinned clock's value when \`setClock\` is active. See also: setClock, today. Added in v0.53.0.`,
+  },
+
+  'time/today': {
+    signature: '(zone?: TimeZone) => PlainDate',
+    example: `isPlainDate(today('Europe/Prague'))           // => true`,
+    notes: `[EXPERIMENTAL] Today's date in \`zone\` (default: the runtime's local zone). In \`@pyreon/time\` it reads the pinned clock. See also: now, setClock. Added in v0.53.0.`,
+  },
+
+  'time/setClock': {
+    signature: '(clock: (() => Instant) | null) => void',
+    example: `setClock(() => Date.UTC(2031, 5, 18, 16, 0))
+today('Asia/Tokyo')                           // => '2031-06-19'
+setClock(null)`,
+    notes: '[EXPERIMENTAL] Pin the clock `now()` and `today()` read from `@pyreon/time` (not `/core`), for tests and previews; `null` restores the system clock. The source may read signals, so a `now()` inside an effect tracks them. Process-wide state: do not call it per request on a server. Added in v0.53.0.',
+    mistakes: '- Calling it per request on a server: the pin is shared by every request in the process',
+  },
+
+  'time/Instant': {
+    signature: 'type Instant = number',
+    example: 'const t: Instant = Date.now()',
+    notes: '[EXPERIMENTAL] Epoch milliseconds, the same number as `Date.now()`. Added in v0.53.0.',
+  },
+
+  'time/PlainDate': {
+    signature: 'type PlainDate = `${number}-${number}-${number}`',
+    example: `const d: PlainDate = '2026-11-18'`,
+    notes: '[EXPERIMENTAL] `2026-11-18`. The type is looser than the runtime check (`"2026-1-3"` type-checks and fails `isPlainDate`), because template literal types cannot count digits. Added in v0.53.0.',
+  },
+
+  'time/PlainTime': {
+    signature: 'type PlainTime = `${number}:${number}` | `${number}:${number}:${number}` | `${number}:${number}:${number}.${number}`',
+    example: `const t: PlainTime = '14:30'`,
+    notes: '[EXPERIMENTAL] `14:30`, `14:30:05` or `14:30:05.250`. Added in v0.53.0.',
+  },
+
+  'time/PlainDateTime': {
+    signature: 'type PlainDateTime = `${PlainDate}T${PlainTime}`',
+    example: `const dt: PlainDateTime = '2026-11-18T14:30'`,
+    notes: '[EXPERIMENTAL] `2026-11-18T14:30`: no offset, no zone name. Added in v0.53.0.',
+  },
+
+  'time/PlainYearMonth': {
+    signature: 'type PlainYearMonth = `${number}-${number}`',
+    example: `const ym: PlainYearMonth = '2026-11'`,
+    notes: '[EXPERIMENTAL] `2026-11`. Added in v0.53.0.',
+  },
+
+  'time/TimeZone': {
+    signature: 'type TimeZone = string',
+    example: `const z: TimeZone = 'Europe/Prague'`,
+    notes: '[EXPERIMENTAL] An IANA zone name such as `Europe/Prague`, or `UTC`. Added in v0.53.0.',
+  },
+
+  'time/Duration': {
+    signature: 'interface Duration { years?: number; months?: number; weeks?: number; days?: number; hours?: number; minutes?: number; seconds?: number; milliseconds?: number }',
+    example: 'const d: Duration = { months: 1, days: 2 }',
+    notes: '[EXPERIMENTAL] A span of time. Every field is an integer and every non-zero field shares one sign. Added in v0.53.0.',
+  },
+
+  'time/Unit': {
+    signature: `type Unit = 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second' | 'millisecond'`,
+    example: `const u: Unit = 'day'`,
+    notes: '[EXPERIMENTAL] Singular unit names (`DateUnit` and `TimeUnit` are the two halves). A plural such as `"days"` is a programmer error and throws. Added in v0.53.0.',
+  },
+
+  'time/Weekday': {
+    signature: 'type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7',
+    example: 'const w: Weekday = 7',
+    notes: '[EXPERIMENTAL] ISO weekday: 1 Monday ... 7 Sunday. Added in v0.53.0.',
+  },
+
+  'time/Disambiguation': {
+    signature: `type Disambiguation = 'compatible' | 'earlier' | 'later' | 'reject'`,
+    example: `const m: Disambiguation = 'reject'`,
+    notes: `[EXPERIMENTAL] How a wall-clock time in a DST gap or overlap picks an instant (Temporal's modes). Added in v0.53.0.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/time>
+
   // <gen-docs:api-reference:start @pyreon/toast>
 
   'toast/toast': {
