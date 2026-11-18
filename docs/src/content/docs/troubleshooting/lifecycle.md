@@ -83,6 +83,12 @@ Solid-compat's `onCleanup` always meant "component unmount", so a cleanup regist
 
 ---
 
+### A refcounted shared resource created inside the FIRST consumer's `onMount` is owned by that consumer
+
+Zero's `initTheme()` ran its shared setup (matchMedia listener + the effect that keeps `<html data-theme>` following the theme) when the refcount went 0 -&gt; 1, inside the first `<ThemeToggle>`'s `onMount`. An `effect()` created there registers with that component's scope, so unmounting the first toggle disposed the effect while the others still held the refcount, and `data-theme` stopped following changes. Rule: anything whose lifetime is a refcount must be created in its own `effectScope()` (`scope.runInScope(...)`) and stopped by the refcount's teardown, never left to the ambient owner. Reference: `packages/zero/zero/src/theme.tsx` (`_setupShared`); locked by `src/tests/theme-shared-effect-owner.test.tsx`.
+
+---
+
 ### Two sources suspending one timer through one shared flag
 
 `<Toaster>` paused auto-dismiss on hover and focus through a single `_paused` boolean, so `mouseleave` cleared a keyboard user's focus hold and the toast dismissed under them. Key holds by source identity (`'hover' | 'focus' | 'hidden'`), release individually, restart the clock only when the set is empty. Do not use a depth counter: removing a focused element need not fire `focusout`, so a count can stick above zero and freeze every later toast, while a stranded `'focus'` hold is cleared by the next `focusout`. Pause while the tab is hidden (`visibilitychange`), make the handler idempotent against its own last-known state, read `document.visibilityState` at setup, and release a held hold in `onCleanup`. `document.visibilityState` is read-only in a real browser, so the spec redefines it — read it back before asserting. Reference: `packages/fundamentals/toast/src/toast.ts` (`PauseSource`, `_pauseHolds`) + `toaster.tsx` (`syncVisibility`); `tests/pause-sources.test.ts` + `tests/toaster.browser.test.tsx`.

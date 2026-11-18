@@ -1,9 +1,8 @@
 import type { VNodeChild } from '@pyreon/core'
 import { onMount } from '@pyreon/core'
-import { effect, isClient, isServer, signal } from '@pyreon/reactivity'
+import { effect, effectScope, isClient, isServer, signal } from '@pyreon/reactivity'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // ─── Theme system ───────────────────────────────────────────────────────────
@@ -137,8 +136,15 @@ function _setupShared(): () => void {
   }
   mq.addEventListener('change', onChange)
 
-  // Re-apply when theme signal changes — updates data-theme + favicons
-  const dispose = effect(() => {
+  // Re-apply when theme signal changes — updates data-theme + favicons.
+  //
+  // Created in its OWN scope: `_setupShared` runs inside the first
+  // ThemeToggle's `onMount`, where an effect would be owned by THAT toggle
+  // and disposed when it unmounts — while other toggles still hold the
+  // refcount, so `data-theme` stopped following the theme. The shared effect
+  // belongs to the refcount; the returned teardown stops it.
+  const scope = effectScope()
+  scope.runInScope(() => effect(() => {
     const mode = resolvedTheme()
     applyThemeToDocument(mode)
 
@@ -147,11 +153,11 @@ function _setupShared(): () => void {
     for (const link of faviconLinks) {
       link.media = link.dataset.faviconTheme === mode ? '' : 'not all'
     }
-  })
+  }))
 
   return () => {
     mq.removeEventListener('change', onChange)
-    dispose?.dispose()
+    scope.stop()
   }
 }
 
@@ -184,13 +190,13 @@ export function initTheme() {
     // bounded by the user's UI shape. Steady-state monotonic growth
     // signals the refcount guard regressed (every mount registers a
     // fresh listener again).
-    if (__DEV__) _countSink.__pyreon_count__?.('theme.initRefAcquire')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('theme.initRefAcquire')
 
     return () => {
       _initRefCount--
       // Pair with `theme.initRefAcquire`. Equal counts at process exit
       // = healthy lifecycle. Diff = active subscribers / orphan inits.
-      if (__DEV__) _countSink.__pyreon_count__?.('theme.initRefRelease')
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('theme.initRefRelease')
       if (_initRefCount === 0 && _disposeShared) {
         _disposeShared()
         _disposeShared = null
