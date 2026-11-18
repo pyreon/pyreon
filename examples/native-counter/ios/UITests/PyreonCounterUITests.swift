@@ -980,11 +980,11 @@ final class PyreonCounterUITests: XCTestCase {
     func test_databaseGetFindUpdateDeleteRunOnDevice() throws {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.staticTexts["Count: 0"].waitForExistence(timeout: 30), "App did not render")
+        XCTAssertTrue(app.staticTexts["Count: 0"].waitToExist(timeout: 30), "App did not render")
 
         let run = app.buttons["Run CRUD"]
         bringFullyOnScreen(run, in: app)
-        XCTAssertTrue(run.waitForExistence(timeout: 10), "Run CRUD button missing")
+        XCTAssertTrue(run.waitToExist(timeout: 10), "Run CRUD button missing")
         run.tap()
 
         let predicate = NSPredicate(format: "label BEGINSWITH %@", "CRUD ")
@@ -1059,7 +1059,7 @@ final class PyreonCounterUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(
-            app.staticTexts["Size: regular"].waitForExistence(timeout: 30),
+            app.staticTexts["Size: regular"].waitToExist(timeout: 30),
             "Expected \"Size: regular\" on an iPad — useSizeClass did not read the regular horizontal size class"
         )
         XCTAssertFalse(app.staticTexts["Size: compact"].exists, "an iPad rendered the compact size class")
@@ -1072,7 +1072,7 @@ final class PyreonCounterUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(
-            app.staticTexts["Layout: wide"].waitForExistence(timeout: 30),
+            app.staticTexts["Layout: wide"].waitToExist(timeout: 30),
             "Adaptive Stack↔Inline did not render the regular branch on an iPad"
         )
         XCTAssertFalse(app.staticTexts["Layout: narrow"].exists, "the compact branch rendered on an iPad")
@@ -1315,11 +1315,11 @@ final class PyreonCounterUITests: XCTestCase {
     func test_rocketstyleSizeDimensionMeasuredFromScreenshotBand() throws {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.staticTexts["Count: 0"].waitForExistence(timeout: 30), "App did not render")
+        XCTAssertTrue(app.staticTexts["Count: 0"].waitToExist(timeout: 30), "App did not render")
 
         for (id, expected) in [("sized-narrow", 120.0), ("sized-wide", 240.0)] {
             let rule = app.otherElements[id].firstMatch
-            XCTAssertTrue(rule.waitForExistence(timeout: 10), "\(id) missing")
+            XCTAssertTrue(rule.waitToExist(timeout: 10), "\(id) missing")
             bringFullyOnScreen(rule, in: app)
             let shot = app.windows.firstMatch.screenshot()
             let window = app.windows.firstMatch.frame
@@ -1342,7 +1342,7 @@ final class PyreonCounterUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         let ok = app.staticTexts["Badge: ok"]
-        XCTAssertTrue(ok.waitForExistence(timeout: 30), "badge did not render")
+        XCTAssertTrue(ok.waitToExist(timeout: 30), "badge did not render")
         bringFullyOnScreen(ok, in: app)
         let okShot = ok.screenshot().pngRepresentation
         XCTAssertGreaterThan(colorPixels(okShot, 22, 101, 52), 20, "the ok badge did not paint #166534")
@@ -1352,14 +1352,14 @@ final class PyreonCounterUITests: XCTestCase {
         bringFullyOnScreen(increment, in: app)
         for _ in 0..<3 { increment.tap() }
         let warn = app.staticTexts["Badge: warn"]
-        XCTAssertTrue(warn.waitForExistence(timeout: 10), "badge did not flip to warn")
+        XCTAssertTrue(warn.waitToExist(timeout: 10), "badge did not flip to warn")
         bringFullyOnScreen(warn, in: app)
         let warnShot = warn.screenshot().pngRepresentation
         XCTAssertGreaterThan(colorPixels(warnShot, 180, 83, 9), 20, "the warn badge did not paint #b45309")
         XCTAssertEqual(colorPixels(warnShot, 22, 101, 52), 0, "the warn badge still painted the ok colour")
 
         let chip = app.buttons["press-chip"]
-        XCTAssertTrue(chip.waitForExistence(timeout: 10), "press chip missing")
+        XCTAssertTrue(chip.waitToExist(timeout: 10), "press chip missing")
         bringFullyOnScreen(chip, in: app)
         XCTAssertGreaterThan(
             colorPixels(chip.screenshot().pngRepresentation, 29, 78, 216), 500,

@@ -18,6 +18,7 @@
 
 package com.pyreon
 
+import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -75,7 +76,11 @@ class BiometricPromptInstrumentedTest {
         }
         // Back dismisses the system prompt (it is not in this app's window, so
         // the key goes through the shell rather than the compose rule).
-        InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("input keyevent 4").close()
+        // Read the output to the end: closing the descriptor does not wait for
+        // the command, and the assertion below would race the key event.
+        ParcelFileDescriptor.AutoCloseInputStream(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("input keyevent 4"),
+        ).use { it.readBytes() }
         waitForText("Lock: denied", 10_000)
     }
 }

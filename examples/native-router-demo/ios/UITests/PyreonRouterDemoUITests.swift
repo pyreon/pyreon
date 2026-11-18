@@ -378,18 +378,18 @@ final class PyreonRouterDemoUITests: XCTestCase {
     func test_slideAndScalePresetsShowAndHideAndReducedMotionReads() throws {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30), "Home page did not render")
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30), "Home page did not render")
         app.buttons["View presets"].tap()
-        XCTAssertTrue(app.otherElements["presets-page"].firstMatch.waitForExistence(timeout: 15), "Presets page did not render")
+        XCTAssertTrue(app.otherElements["presets-page"].firstMatch.waitToExist(timeout: 15), "Presets page did not render")
         XCTAssertEqual(app.staticTexts["reduced-motion"].label, "Reduced motion: false")
 
         for (box, toggle) in [("slide-box", "slide-toggle"), ("scale-box", "scale-toggle")] {
             let el = app.staticTexts[box]
-            XCTAssertTrue(el.waitForExistence(timeout: 10), "\(box) missing before the toggle")
+            XCTAssertTrue(el.waitToExist(timeout: 10), "\(box) missing before the toggle")
             app.buttons[toggle].tap()
             XCTAssertTrue(el.waitForNonExistence(timeout: 6), "\(box) did not leave after hide")
             app.buttons[toggle].tap()
-            XCTAssertTrue(el.waitForExistence(timeout: 6), "\(box) did not return after show")
+            XCTAssertTrue(el.waitToExist(timeout: 6), "\(box) did not return after show")
         }
     }
 
@@ -1577,13 +1577,13 @@ final class PyreonRouterDemoUITests: XCTestCase {
         try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad lane only")
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30))
         app.buttons["home-to-navigation"].tap()
-        XCTAssertTrue(app.staticTexts["nav-feed-title"].waitForExistence(timeout: 15), "Feed tab did not render")
+        XCTAssertTrue(app.staticTexts["nav-feed-title"].waitToExist(timeout: 15), "Feed tab did not render")
 
         let window = app.windows.firstMatch.frame
         let mailTab = app.buttons["Mail"].firstMatch
-        XCTAssertTrue(mailTab.waitForExistence(timeout: 10), "no Mail tab item")
+        XCTAssertTrue(mailTab.waitToExist(timeout: 10), "no Mail tab item")
         XCTAssertLessThan(
             mailTab.frame.midY, window.midY,
             "the iPad tab bar is not at the top of the window: Mail tab \(mailTab.frame) in window \(window)"
@@ -1592,8 +1592,8 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
         let welcome = app.buttons["nav-mail-row-welcome"]
         let subject = app.staticTexts["nav-mail-subject"]
-        XCTAssertTrue(welcome.waitForExistence(timeout: 10), "Split list did not render")
-        XCTAssertTrue(subject.waitForExistence(timeout: 10), "Split detail is not shown beside the list with no selection")
+        XCTAssertTrue(welcome.waitToExist(timeout: 10), "Split list did not render")
+        XCTAssertTrue(subject.waitToExist(timeout: 10), "Split detail is not shown beside the list with no selection")
         XCTAssertEqual(subject.label, "Subject: none")
         XCTAssertLessThanOrEqual(
             welcome.frame.maxX, subject.frame.minX,
