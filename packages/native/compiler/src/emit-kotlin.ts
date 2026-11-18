@@ -3805,7 +3805,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // on Kotlin (verbatim emit failed) — lower to
       // `System.currentTimeMillis().toDouble()` (Double: Kotlin Int is
       // 32-bit, ms-since-epoch overflows it; the inference types this
-      // float). Other `Date.*` statics → NAMED warning (mirror of Swift).
+      // float). `Date.parse` / `Date.UTC` lower at parse time
+      // (date-lowering.ts); any other `Date.*` static that reaches here → NAMED
+      // warning (mirror of Swift).
       if (
         e.callee.kind === 'member' &&
         e.callee.object.kind === 'identifier' &&
@@ -3815,7 +3817,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return 'System.currentTimeMillis().toDouble()'
         }
         _emitWarnings.push(
-          `Date.${e.callee.property}(...) has no native lowering — only Date.now() (epoch milliseconds, a Double) is supported. Format or parse dates in display logic on the platform side.`,
+          `Date.${e.callee.property}(...) has no native lowering — the supported statics are Date.now(), Date.parse(text) and Date.UTC(year, month, …) with up to seven arguments (a date is its epoch milliseconds, a Double). Format or parse dates in display logic on the platform side.`,
         )
       }
       // `Math.<fn>(args)` — DOUBLE-DOMAIN math. The generic passthrough

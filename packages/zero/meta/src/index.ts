@@ -275,7 +275,7 @@ export {
 
 // ─── Document Primitives ─────────────────────────────────────────────────────
 // The `Doc*`-prefixed JSX primitives (the rocketstyle-based components that
-// render in the browser AND export to 14+ formats via `extractDocNode`).
+// render in the browser AND export to 20 formats via `extractDocNode`).
 
 export type {
   DocumentExport,

@@ -53,7 +53,7 @@
 | @pyreon/kinetic | kinetic(), .preset(), .enter(), .leave(), .collapse(), .stagger() | CSS-transition animations |
 | @pyreon/kinetic-presets | fade, slideUp, slideDown, scaleIn, 120+ presets | Animation presets |
 | @pyreon/connector-document | extractDocumentTree(vnode) — invokes component functions to read post-attrs `_documentProps`, resolves function values for reactive metadata | Walks rocketstyle component tree → DocNode |
-| @pyreon/document-primitives | DocDocument (reactive title/author/subject accessors), DocPage, DocHeading, DocText, DocList, DocTable, DocRow, DocColumn (18 total) + extractDocNode(fn) one-step helper | Same tree renders in browser AND exports to 14+ formats |
+| @pyreon/document-primitives | DocDocument (reactive title/author/subject accessors), DocPage, DocHeading, DocText, DocList, DocTable, DocRow, DocColumn (18 total) + extractDocNode(fn) one-step helper | Same tree renders in browser AND exports to 20 formats |
 
 ## @pyreon/reactivity — Complete API
 
@@ -3280,7 +3280,7 @@ MCP server (stdio transport) that exposes Pyreon\'s structured knowledge to AI c
 
 ## @pyreon/document-primitives — Document Primitives
 
-18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 14+ output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.
+18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 20 output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.
 
 ```typescript
 import {
