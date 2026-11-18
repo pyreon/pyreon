@@ -57,8 +57,8 @@ describe('styler — scoped SSR collection edges', () => {
     s.insert('color: sienna;') // caches the class under the plain insert key
     const tag = await runWithRequestContext(async () => {
       // Different insertCache key (layer), same hash → the className-cache path.
-      const cls = s.insert('color: sienna;', false, 'elements')
-      s.insert('color: sienna;', false, 'rocketstyle', false) // define-only: no push
+      const cls = s.insert('color: sienna;', 'elements')
+      s.insert('color: sienna;', 'rocketstyle', false) // define-only: no push
       return [cls, s.getStyleTag()] as const
     })
     expect(count(tag[1], 'color: sienna;')).toBe(1)
@@ -68,15 +68,15 @@ describe('styler — scoped SSR collection edges', () => {
   it('define-only inserts (`use = false`) never enter the request buffer', async () => {
     const s = createSheet()
     const tag = await runWithRequestContext(async () => {
-      s.insert('color: olive;', false, undefined, false)
+      s.insert('color: olive;', undefined, false)
       // …including on the insertCache-hit path.
-      s.insert('color: olive;', false, undefined, false)
+      s.insert('color: olive;', undefined, false)
       return s.getStyleTag()
     })
     expect(tag).not.toContain('olive')
     // …but `markUsed` pulls a defined class into the request that renders it.
     const used = await runWithRequestContext(async () => {
-      s.markUsed(s.insert('color: olive;', false, undefined, false))
+      s.markUsed(s.insert('color: olive;', undefined, false))
       return s.getStyleTag()
     })
     expect(count(used, 'color: olive;')).toBe(1)
@@ -198,9 +198,9 @@ describe('styler — scoped SSR collection edges', () => {
   it('a configured layer with layered rules emits the framework ordering once', async () => {
     const s = createSheet({ layer: 'app' })
     const [first, second] = await runWithRequestContext(async () => {
-      s.insert('color: salmon;', false, 'elements')
+      s.insert('color: salmon;', 'elements')
       const f = s.flushSSRPending()
-      s.insert('color: khaki;', false, 'rocketstyle')
+      s.insert('color: khaki;', 'rocketstyle')
       return [f, s.flushSSRPending()]
     })
     expect(first.startsWith('@layer elements, rocketstyle;')).toBe(true)

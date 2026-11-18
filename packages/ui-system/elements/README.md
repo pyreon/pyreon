@@ -13,9 +13,10 @@ bun add @pyreon/elements @pyreon/core @pyreon/reactivity @pyreon/ui-core @pyreon
 ## Quick start
 
 ```tsx
-import { Element, Text, List, Overlay, Portal, Provider } from '@pyreon/elements'
+import { PyreonUI } from '@pyreon/ui-core'
+import { Element, Text, List, Overlay, Portal } from '@pyreon/elements'
 
-<Provider>
+<PyreonUI theme={theme}>
   <Element
     tag="button"
     direction="inline"
@@ -27,10 +28,10 @@ import { Element, Text, List, Overlay, Portal, Provider } from '@pyreon/elements
   >
     Click me
   </Element>
-</Provider>
+</PyreonUI>
 ```
 
-`Provider` is re-exported from `@pyreon/unistyle` — set it once near the app root to scope breakpoints, root-size, and theme defaults.
+Render `<PyreonUI>` from `@pyreon/ui-core` once near the app root — it provides breakpoints, root-size, and theme defaults to every element.
 
 ## `Element` — three-section flex layout
 

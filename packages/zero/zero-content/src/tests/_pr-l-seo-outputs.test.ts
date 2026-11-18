@@ -2,9 +2,10 @@
 //
 // Three pure builders + their Vite plugin auto-emit hook:
 //
-//  - generateSitemap — sitemap.xml per sitemap.org spec
+//  - generateSitemap — sitemap.xml per sitemap.org spec (internal)
 //  - generateRssFeed — RSS 2.0 with ISO→RFC-822 date conversion
-//  - generateLlmsTxt — llmstxt.org index format
+//                       (`@pyreon/zero`'s generator, which the plugin calls)
+//  - generateLlmsTxt — llmstxt.org index format (internal)
 //  - emitSeoOutputs  — plugin closeBundle hook honoring the
 //                       `seo: { sitemap, rss, llms }` opt-ins
 
@@ -12,13 +13,10 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  generateLlmsTxt,
-  generateRssFeed,
-  generateSitemap,
-  joinUrl,
-  toRfc822,
-} from '../index'
+import { generateRssFeed, toRfc822 } from '@pyreon/zero'
+import { joinUrl } from '../index'
+import { generateLlmsTxt } from '../seo/llms-txt'
+import { generateSitemap } from '../seo/sitemap'
 import { emitSeoOutputs } from '../plugin'
 
 describe('PR-L — joinUrl helper', () => {
@@ -87,11 +85,12 @@ describe('PR-L — generateSitemap', () => {
   })
 })
 
-describe('PR-L — generateRssFeed', () => {
+// The plugin's `seo.rss` output goes through `@pyreon/zero`'s generator.
+describe('PR-L — generateRssFeed (@pyreon/zero)', () => {
   it('emits a minimal feed with channel metadata + one item', () => {
     const xml = generateRssFeed({
       title: 'Blog',
-      baseUrl: 'https://x.com',
+      origin: 'https://x.com',
       items: [{ title: 'Post', link: '/blog/post' }],
     })
     expect(xml).toContain('<rss version="2.0">')
@@ -116,7 +115,7 @@ describe('PR-L — generateRssFeed', () => {
   it('emits lastBuildDate from explicit override OR first item pubDate', () => {
     const explicit = generateRssFeed({
       title: 't',
-      baseUrl: 'https://x.com',
+      origin: 'https://x.com',
       items: [],
       lastBuildDate: '2025-06-01T00:00:00Z',
     })
@@ -124,7 +123,7 @@ describe('PR-L — generateRssFeed', () => {
 
     const fromItem = generateRssFeed({
       title: 't',
-      baseUrl: 'https://x.com',
+      origin: 'https://x.com',
       items: [{ title: 'p', link: '/p', pubDate: '2024-01-02T00:00:00Z' }],
     })
     expect(fromItem).toContain('<lastBuildDate>Tue, 02 Jan 2024 00:00:00 GMT</lastBuildDate>')
@@ -133,7 +132,7 @@ describe('PR-L — generateRssFeed', () => {
   it('renders item categories', () => {
     const xml = generateRssFeed({
       title: 't',
-      baseUrl: 'https://x.com',
+      origin: 'https://x.com',
       items: [
         {
           title: 'p',
@@ -149,7 +148,7 @@ describe('PR-L — generateRssFeed', () => {
   it('honors a custom GUID with isPermaLink=false', () => {
     const xml = generateRssFeed({
       title: 't',
-      baseUrl: 'https://x.com',
+      origin: 'https://x.com',
       items: [{ title: 'p', link: '/p', guid: 'urn:custom-id' }],
     })
     expect(xml).toContain('<guid isPermaLink="false">urn:custom-id</guid>')

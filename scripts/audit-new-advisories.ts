@@ -30,10 +30,30 @@
 // the base is audited from `git show <base>:bun.lock` in a scratch directory —
 // no second checkout, no install.
 //
+// ## Advisories with no fixed release
+//
+// Strict mode has one failure it cannot be allowed to have: an advisory whose
+// vulnerable range covers EVERY published version. No lockfile bump clears it,
+// so main and the release workflow stay red until upstream ships, and a gate
+// that is red for a reason nobody can act on hides the next real failure
+// (GHSA-fc5q-39xc-vjpf, picomatch `<=4.0.7` with 4.0.7 the newest release,
+// kept `Release Build` and the release PR red on main).
+//
+// `scripts/advisory-acceptances.json` records such an advisory, and an entry
+// holds only while BOTH are true:
+//
+//   - the advisory's vulnerable range is still the one that was reviewed. A
+//     fixed release changes the range (`<=4.0.7` becomes `<4.0.8`), the entry
+//     stops matching, and the gate fails again until the lockfile is bumped;
+//   - it has not passed `expires`, at most 30 days after `accepted`, so nothing
+//     is waved through indefinitely.
+//
+// An accepted advisory is still printed as a `::warning::` on every run.
+//
 // Usage: bun scripts/audit-new-advisories.ts [--base <git-ref>] [--level high]
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -47,6 +67,99 @@ export interface Advisory {
   severity: string
   title: string
   url: string
+  /** The advisory's vulnerable range, as `bun audit` reports it. */
+  vulnerableVersions: string
+}
+
+/** One reviewed advisory that has no fixed release yet. */
+export interface Acceptance {
+  /** Package name as `bun audit` keys it. */
+  pkg: string
+  /** GHSA id, the last segment of the advisory URL. */
+  ghsa: string
+  /** The vulnerable range that was reviewed; the entry lapses when it changes. */
+  vulnerableVersions: string
+  /** ISO date the entry was reviewed. */
+  accepted: string
+  /** ISO date after which the entry no longer holds. */
+  expires: string
+  /** Why the exposure is tolerable until a fix ships. */
+  reason: string
+}
+
+export const ACCEPTANCES_FILE = join(import.meta.dirname, 'advisory-acceptances.json')
+
+/** Longest an entry may stand before someone has to look again. */
+export const MAX_ACCEPTANCE_DAYS = 30
+
+const DAY_MS = 86_400_000
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Problems with the acceptance list itself; empty when it is well-formed. */
+export function acceptanceProblems(list: Acceptance[]): string[] {
+  const problems: string[] = []
+  for (const a of list) {
+    const where = `${a.pkg} ${a.ghsa}`
+    for (const field of ['pkg', 'ghsa', 'vulnerableVersions', 'reason'] as const) {
+      if (typeof a[field] !== 'string' || a[field].trim() === '') problems.push(`${where}: ${field} is empty`)
+    }
+    if (!ISO_DATE.test(a.accepted) || !ISO_DATE.test(a.expires)) {
+      problems.push(`${where}: accepted and expires must be YYYY-MM-DD`)
+      continue
+    }
+    const days = (Date.parse(a.expires) - Date.parse(a.accepted)) / DAY_MS
+    if (!(days > 0 && days <= MAX_ACCEPTANCE_DAYS)) {
+      problems.push(`${where}: expires must be 1-${MAX_ACCEPTANCE_DAYS} days after accepted (is ${days})`)
+    }
+  }
+  return problems
+}
+
+const ghsaOf = (a: Advisory): string => a.url.slice(a.url.lastIndexOf('/') + 1)
+
+/**
+ * Split advisories into the ones that block and the ones a live acceptance
+ * covers. `lapsed` lists entries that name a reported advisory but no longer
+ * hold, with the reason, so the failure says what to do.
+ */
+export function applyAcceptances(
+  list: Advisory[],
+  acceptances: Acceptance[],
+  today: string,
+): { blocking: Advisory[]; accepted: Advisory[]; lapsed: string[] } {
+  const blocking: Advisory[] = []
+  const accepted: Advisory[] = []
+  const lapsed: string[] = []
+  for (const a of list) {
+    const entry = acceptances.find((e) => e.pkg === a.pkg && e.ghsa === ghsaOf(a))
+    if (!entry) {
+      blocking.push(a)
+    } else if (entry.vulnerableVersions !== a.vulnerableVersions) {
+      blocking.push(a)
+      lapsed.push(
+        `${a.pkg} ${entry.ghsa}: the vulnerable range changed from "${entry.vulnerableVersions}" to ` +
+          `"${a.vulnerableVersions}", so a fixed release probably exists. Bump the lockfile and delete the entry.`,
+      )
+    } else if (today > entry.expires) {
+      blocking.push(a)
+      lapsed.push(
+        `${a.pkg} ${entry.ghsa}: the acceptance expired on ${entry.expires}. Review the advisory again ` +
+          `and renew the entry, or remove the dependency.`,
+      )
+    } else {
+      accepted.push(a)
+    }
+  }
+  return { blocking, accepted, lapsed }
+}
+
+function loadAcceptances(): Acceptance[] {
+  const list = JSON.parse(readFileSync(ACCEPTANCES_FILE, 'utf8')) as Acceptance[]
+  const problems = acceptanceProblems(list)
+  if (problems.length) {
+    throw new Error(`[audit-new-advisories] ${ACCEPTANCES_FILE} is malformed:\n  ${problems.join('\n  ')}`)
+  }
+  return list
 }
 
 /** Flatten `bun audit --json` output (`{ [pkg]: Advisory[] }`) to a list. */
@@ -55,13 +168,20 @@ export function parseAudit(json: string): Advisory[] {
   if (trimmed === '') return []
   const data = JSON.parse(trimmed) as Record<
     string,
-    Array<{ id: number; severity: string; title?: string; url?: string }>
+    Array<{ id: number; severity: string; title?: string; url?: string; vulnerable_versions?: string }>
   >
   const out: Advisory[] = []
   for (const [pkg, list] of Object.entries(data)) {
     if (!Array.isArray(list)) continue
     for (const a of list) {
-      out.push({ pkg, id: a.id, severity: a.severity, title: a.title ?? '', url: a.url ?? '' })
+      out.push({
+        pkg,
+        id: a.id,
+        severity: a.severity,
+        title: a.title ?? '',
+        url: a.url ?? '',
+        vulnerableVersions: a.vulnerable_versions ?? '',
+      })
     }
   }
   return out
@@ -145,7 +265,19 @@ function main(argv: string[]): number {
   }
   const base = arg('--base')
 
-  const head = atLeast(runAudit(process.cwd()), level)
+  const today = new Date().toISOString().slice(0, 10)
+  const { blocking: head, accepted, lapsed } = applyAcceptances(
+    atLeast(runAudit(process.cwd()), level),
+    loadAcceptances(),
+    today,
+  )
+  for (const a of accepted) console.log(`::warning::accepted, no fixed release yet: ${line(a)}`)
+  for (const l of lapsed) console.log(`::error::acceptance no longer holds: ${l}`)
+  if (accepted.length)
+    {summary(
+      `## Accepted advisories with no fixed release\n\n${accepted.map((a) => `- ${line(a)}`).join('\n')}\n\n` +
+        'Recorded in `scripts/advisory-acceptances.json`; each entry lapses when a fix ships or on its expiry date.',
+    )}
 
   if (!base) {
     if (head.length === 0) {
@@ -169,11 +301,11 @@ function main(argv: string[]): number {
       : '### Introduced by this change\n\nNone.',
   )
   if (preexisting.length)
-    parts.push(
+    {parts.push(
       `### Already on the base — not blocking this PR\n\n${preexisting
         .map((a) => `- ${line(a)}`)
         .join('\n')}\n\nThese are tracked by \`dependency-audit.yml\` and enforced on pushes to main.`,
-    )
+    )}
   summary(parts.join('\n\n'))
 
   if (introduced.length) return 1

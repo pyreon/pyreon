@@ -3,7 +3,7 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
 /**
  * Real-app e2e gate for the Atlas Component Workshop (`examples/atlas-workshop`)
  * — the Storybook-alternative UI built entirely on the Pyreon stack (zero SSR +
- * rocketstyle-on-elements + styler `ThemeProvider`, no inline styles).
+ * rocketstyle-on-elements + `PyreonUI` theme, no inline styles).
  *
  * This is the AUTHORITATIVE proof the workshop actually WORKS in a real browser:
  * the rocketstyle `.theme()` → `extendCss` → unistyle pipeline emits real CSS

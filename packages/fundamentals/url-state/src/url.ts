@@ -212,8 +212,14 @@ function commit(params: URLSearchParams, replace: boolean): void {
     return
   }
 
+  // A replace rewrites the URL of the CURRENT entry, whose `history.state`
+  // belongs to whoever created it (@pyreon/router's `__pyreonIdx` stamp, another
+  // library's per-entry state) — keep it. Writing `null` here erased the
+  // router's stamp in every router app that never called `setUrlRouter`, such
+  // as a Zero island (#4388). A push creates a NEW entry, which starts empty;
+  // the entry it leaves keeps its own state.
   if (replace) {
-    history.replaceState(null, '', url)
+    history.replaceState(history.state, '', url)
   } else {
     history.pushState(null, '', url)
   }

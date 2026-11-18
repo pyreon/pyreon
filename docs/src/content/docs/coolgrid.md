@@ -32,9 +32,10 @@ yarn add @pyreon/coolgrid
 ## Quick Start
 
 ```tsx
-import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
+import { PyreonUI } from '@pyreon/ui-core'
+import { Container, Row, Col, theme } from '@pyreon/coolgrid'
 
-;<Provider theme={theme}>
+;<PyreonUI theme={theme}>
   <Container gap={16}>
     <Row>
       <Col size={{ xs: 12, md: 6, lg: 4 }}>Column 1</Col>
@@ -42,12 +43,12 @@ import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
       <Col size={{ xs: 12, md: 12, lg: 4 }}>Column 3</Col>
     </Row>
   </Container>
-</Provider>
+</PyreonUI>
 ```
 
 This creates a three-column layout that collapses to two columns at medium screens and one column on mobile.
 
-The grid resolves its configuration (column count, container widths, breakpoints) from the theme context, falling back to coolgrid's own defaults — 12 columns, the xs–xl breakpoints and the Bootstrap-4 container widths of the `theme` export — for anything the theme does not define. In an app that already renders `<PyreonUI>` (from `@pyreon/ui-core`) at the root, skip `Provider` — PyreonUI sets up the same context, and an app theme without grid keys still gets the default grid. If the theme defines its own `breakpoints`, those are used, and the default container widths (keyed xs–xl) are not applied; set `grid.container` with your breakpoint names. Use a standalone `Provider` only when coolgrid is used without the rest of the UI system, or to scope different breakpoints to a subtree.
+The grid resolves its configuration (column count, container widths, breakpoints) from the theme context, falling back to coolgrid's own defaults — 12 columns, the xs–xl breakpoints and the Bootstrap-4 container widths of the `theme` export — for anything the theme does not define. coolgrid has no provider of its own: `<PyreonUI>` (from `@pyreon/ui-core`) provides the theme, and an app theme without grid keys still gets the default grid. If the theme defines its own `breakpoints`, those are used, and the default container widths (keyed xs–xl) are not applied; set `grid.container` with your breakpoint names. To scope different breakpoints to a subtree, nest another `<PyreonUI theme={…}>` there.
 
 <Example file="./examples/coolgrid/12-column-responsive-grid" title="12-column responsive grid" />
 
@@ -195,7 +196,7 @@ Note there is no horizontal padding on the Container itself — edge spacing com
 ### Common mistakes
 
 - **Expecting `gutter` to be horizontal container padding.** `gutter` feeds the Row's *vertical* margins (`spacingY = gutter - gap/2`); the Container itself only sets a responsive max-width plus auto horizontal centering.
-- **Rendering without a theme context.** Grid defaults (`columns`, container widths) resolve from `theme.grid.*` / `theme.coolgrid.*`, so mount `<PyreonUI>` (or coolgrid's `Provider`) above the Container.
+- **Rendering without a theme context.** Grid defaults (`columns`, container widths) resolve from `theme.grid.*` / `theme.coolgrid.*`, so mount `<PyreonUI>` above the Container.
 - **Setting a non-default `columns` on a Row instead of the Container.** It works for that Row only, but the visual cascade gets hard to reason about — keep `columns` at Container level.
 - **Using CSS keyword values for `contentAlignX`** (`'space-between'`). The accepted keys are camelCase: `'spaceAround'` / `'spaceBetween'` (plus `'center'` / `'left'` / `'right'`).
 
@@ -417,34 +418,16 @@ Grid columns and container widths resolve through a three-layer fallback:
 2. `theme.grid.columns` / `theme.grid.container`
 3. `theme.coolgrid.columns` / `theme.coolgrid.container`
 
-### Provider vs PyreonUI
+### Scoping a different theme to a subtree
 
-`Provider` (re-exported from `@pyreon/unistyle`) enriches the theme with pre-computed breakpoints and media-query helpers and provides it to the subtree. It is **deprecated in source** — prefer `<PyreonUI theme={theme} mode="light">` from `@pyreon/ui-core`, which handles all the context layers (styler, core, mode) in one component:
-
-```tsx
-// Standalone (no PyreonUI at the root):
-import { Provider, Container, theme } from '@pyreon/coolgrid'
-
-<Provider theme={theme}>
-  <Container>…</Container>
-</Provider>
-
-// Preferred in real apps:
-import { PyreonUI } from '@pyreon/ui-core'
-
-<PyreonUI theme={appTheme} mode="light">
-  <Container>…</Container>
-</PyreonUI>
-```
-
-The remaining legitimate use of a nested `Provider` is scoping *different* breakpoints or grid defaults to a subtree. Note that context is per-Provider — a nested `Provider` starts fresh from its own `theme`; it does not inherit the outer Provider's overrides.
+coolgrid has no provider of its own. To give a subtree different breakpoints or grid defaults, nest another `<PyreonUI theme={…}>` there. A nested theme starts fresh from its own `theme`; it does not merge the outer theme's overrides.
 
 ### Custom Breakpoints and Column Counts
 
 Ship your own theme with the same shape (`rootSize`, `breakpoints`, `grid.columns`, `grid.container`) for custom breakpoint names and column counts:
 
 ```tsx
-<Provider
+<PyreonUI
   theme={{
     rootSize: 16,
     breakpoints: { phone: 0, tablet: 600, desktop: 1024 },
@@ -457,7 +440,7 @@ Ship your own theme with the same shape (`rootSize`, `breakpoints`, `grid.column
       <Col size={8}>One third of 24</Col>
     </Row>
   </Container>
-</Provider>
+</PyreonUI>
 ```
 
 Two things to keep consistent in a custom theme: include `grid.container` (without it the Container has no max-width source and renders full-width at every breakpoint), and key it by the same breakpoint names as `breakpoints` — the responsive engine resolves widths per breakpoint name.
@@ -657,7 +640,7 @@ You could achieve the same layouts with raw flexbox styles, but Coolgrid encapsu
 
 ## Standalone Row + Col
 
-Row and Col work without a Container — they still need a theme context (`Provider` or `PyreonUI`) to resolve defaults like the column count, but the Container's centering and max-width are simply absent:
+Row and Col work without a Container — they still need a theme context (`PyreonUI`) to resolve defaults like the column count, but the Container's centering and max-width are simply absent:
 
 ```tsx
 // Standalone Row with explicit config
@@ -679,7 +662,6 @@ The Cols read the Row's config from context; width calculations work the same.
 | `Container` | Component | Outermost grid boundary — centered flex column with responsive max-width. Provides the grid config via context.                      |
 | `Row`       | Component | Flex-wrap row. Reads the Container cascade, merges its own props, re-provides for Cols. Applies the negative-margin gap technique.   |
 | `Col`       | Component | Grid column with responsive `size` and `padding`. Reads the Row cascade for columns/gap; auto column without a `size`; `0` hides it.  |
-| `Provider`  | Component | Theme provider (re-export of `@pyreon/unistyle`'s). Deprecated — prefer `PyreonUI` from `@pyreon/ui-core`.                            |
 | `theme`     | Object    | Default Bootstrap-4-style theme: `rootSize: 16`, breakpoints xs--xl, 12 columns, responsive container widths.                          |
 
 ## Prop Value Shapes
