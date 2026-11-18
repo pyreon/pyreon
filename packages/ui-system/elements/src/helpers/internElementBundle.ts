@@ -31,7 +31,7 @@ export const internElementBundle = <T extends Record<string, unknown>>(bundle: T
     const v = bundle[k]
     if (typeof v === 'function') return bundle
     if (v != null && typeof v === 'object' && (k !== 'instanceStyles' || internedStylesKey(v) === undefined))
-      return bundle
+      {return bundle}
   }
   const key = JSON.stringify(bundle, keyReplacer)
   const existing = _bundleCache.get(key)

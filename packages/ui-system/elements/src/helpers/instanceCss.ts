@@ -13,14 +13,15 @@ let warnedRawCss = false
 
 /** Dev only, once per page: a raw CSS string reached `css` (the type no longer allows it). */
 const warnRawCss = (text: string): void => {
-  if (warnedRawCss) return
-  warnedRawCss = true
-  // oxlint-disable-next-line no-console
-  console.warn(
-    `[Pyreon] A raw CSS string was passed to the \`css\` prop ("${text.slice(0, 60)}"). ` +
-      'Use the typed `styles` prop (`styles={{ gridTemplateColumns: { md: "repeat(3, 1fr)" } }}`), ' +
-      'or write the escape hatch as a tagged template: css={css`…`} or css={(css) => css`…`}.',
-  )
+  if (process.env.NODE_ENV !== 'production' && !warnedRawCss) {
+    warnedRawCss = true
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] A raw CSS string was passed to the \`css\` prop ("${text.slice(0, 60)}"). ` +
+        'Use the typed `styles` prop (`styles={{ gridTemplateColumns: { md: "repeat(3, 1fr)" } }}`), ' +
+        'or write the escape hatch as a tagged template: css={css`…`} or css={(css) => css`…`}.',
+    )
+  }
 }
 
 /**
@@ -37,7 +38,7 @@ export const instanceCss = <R>(
   cssFn: (strings: TemplateStringsArray, ...values: unknown[]) => R,
   styles: unknown,
 ): R | '' => {
-  if (process.env.NODE_ENV !== 'production' && typeof styles === 'string') warnRawCss(styles)
+  if (typeof styles === 'string') warnRawCss(styles)
   const value = extendCss(styles as Parameters<typeof extendCss>[0])
   return value ? cssFn`@layer ${INSTANCE_LAYER}{${value}}` : ''
 }

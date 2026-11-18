@@ -26,7 +26,8 @@ export function AutoGrid(props: AutoGridProps) {
     ? { xs: `repeat(${props.colsBelow ?? 1},minmax(0,1fr))`, lg: `repeat(${props.cols},minmax(0,1fr))` }
     : `repeat(auto-fit,minmax(min(${props.min ?? 250}px,100%),1fr))`
   // A number is px and renders as rem against the theme's rootSize, as in a `.theme()`.
-  const styles = { gap: space[props.gap ?? 175], gridTemplateColumns }
+  const gap = space[props.gap ?? 175]
+  const styles = { gap, gridTemplateColumns }
 
   return h(AutoGridBase, { ...gridAttrs(props), multiple: gridFlagsOf(props), styles }, props.children)
 }

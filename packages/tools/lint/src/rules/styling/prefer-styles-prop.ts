@@ -30,6 +30,23 @@ const MESSAGE =
 
 const isComponentName = (name: string): boolean => /^[A-Z]/.test(name)
 
+/** A non-computed `css` key in an object literal (`{ css: … }` or `{ 'css': … }`). */
+function isCssProperty(prop: any): boolean {
+  if (prop.type !== 'Property' || prop.computed) return false
+  const key = prop.key
+
+  return (key?.type === 'Identifier' && key.name === 'css') || (key?.type === 'Literal' && key.value === 'css')
+}
+
+/** `h(Component, { … })` with a capitalized identifier: the props object, else `null`. */
+function componentPropsOfH(node: any, exempt: ReadonlySet<string>): any {
+  if (node.callee?.type !== 'Identifier' || node.callee.name !== 'h') return null
+  const [component, props] = node.arguments ?? []
+  if (component?.type !== 'Identifier' || !isComponentName(component.name) || exempt.has(component.name)) return null
+
+  return props?.type === 'ObjectExpression' ? props : null
+}
+
 /** The root identifier of a JSX tag name (`Foo` / `Foo.Bar` → `Foo`), or `null` for an HTML tag. */
 function jsxComponentRoot(name: any): string | null {
   if (name?.type === 'JSXIdentifier') return isComponentName(name.name) ? name.name : null
@@ -74,18 +91,8 @@ export const preferStylesProp: Rule = {
         }
       },
       CallExpression(node: any) {
-        if (node.callee?.type !== 'Identifier' || node.callee.name !== 'h') return
-        const [component, props] = node.arguments ?? []
-        if (component?.type !== 'Identifier' || !isComponentName(component.name) || exempt.has(component.name)) return
-        if (props?.type !== 'ObjectExpression') return
-        for (const prop of props.properties ?? []) {
-          const key = prop.key
-          const isCss =
-            prop.type === 'Property' &&
-            !prop.computed &&
-            ((key?.type === 'Identifier' && key.name === 'css') || (key?.type === 'Literal' && key.value === 'css'))
-          if (isCss) report(prop)
-        }
+        const props = componentPropsOfH(node, exempt)
+        for (const prop of props?.properties ?? []) if (isCssProperty(prop)) report(prop)
       },
     }
 

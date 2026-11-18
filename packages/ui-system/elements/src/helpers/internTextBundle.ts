@@ -34,7 +34,7 @@ const _withStyles = /* @__PURE__ */ new SizedMap<string, TextBundle>({ maxEntrie
 const internWithStyles = (css: unknown, styles: StyleOverride): TextBundle => {
   const stylesKey = internedStylesKey(styles)
   if (stylesKey === undefined || (css !== undefined && typeof css !== 'string'))
-    return { extraStyles: css, instanceStyles: styles }
+    {return { extraStyles: css, instanceStyles: styles }}
   const key = JSON.stringify([css ?? null, stylesKey])
   let b = _withStyles.get(key)
   if (!b) {
