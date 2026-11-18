@@ -164,13 +164,13 @@ describe('2b. arguments JS itself ignores are dropped (and named), never re-emit
   it('Swift lowers the core arity', () => {
     expect(rhs(sw.code, 'h')).toBe('s.uppercased()')
     expect(rhs(sw.code, 'i')).toBe('xs.filter({ x in x > 1 })')
-    expect(rhs(sw.code, 'j')).toBe('xs.enumerated().map({ (k, x) in x + k })')
+    expect(rhs(sw.code, 'j')).toBe('xs.enumerated().map({ (k, x) in pyreonAdd(x, k) })')
     expect(rhs(sw.code, 'k')).toBe('s.trimmingCharacters(in: .whitespacesAndNewlines)')
   })
   it('Kotlin lowers the core arity', () => {
     expect(rhs(kt.code, 'h')).toBe('s.uppercase()')
     expect(rhs(kt.code, 'i')).toBe('xs.filter({ x -> x > 1L })')
-    expect(rhs(kt.code, 'j')).toBe('xs.mapIndexed({ pyreonIdx, x -> val k = pyreonIdx.toLong(); x + k })')
+    expect(rhs(kt.code, 'j')).toBe('xs.mapIndexed({ pyreonIdx, x -> val k = pyreonIdx.toLong(); pyreonAdd(x, k) })')
   })
   it('names each dropped argument on both targets', () => {
     for (const w of [sw.warnings, kt.warnings]) {

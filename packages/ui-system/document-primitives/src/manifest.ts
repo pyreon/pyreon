@@ -17,7 +17,6 @@ export default defineManifest({
     '18 primitives covering structure, text, lists, tables, code, layout',
     'Same component tree renders in browser AND exports to 20 formats',
     'extractDocNode(templateFn) — one-step extraction (recommended)',
-    'createDocumentExport(templateFn) — two-step form (backward compat)',
     'DocDocument accepts reactive accessors for title / author / subject',
     'PR #197 fix: extractDocumentTree now calls rocketstyle components to read post-attrs metadata',
     'Layout props in .attrs() (direction / gap), CSS in .theme()',
@@ -86,24 +85,8 @@ await download(tree, 'report.docx')`,
         "DocRow direction: layout props (direction, gap) go in `.attrs()` not `.theme()`. Element accepts `'inline'` | `'rows'` | `'reverseInline'` | `'reverseRows'` — `'row'` is NOT valid",
         "For text children reactivity, pass a signal accessor and read inside body: `<DocText>{store.field()}</DocText>`",
         "Don't declare runtime-filled fields (`tag`, `_documentProps`) in the rocketstyle `.attrs<P>()` generic — they leak as required JSX props",
-        'Using `createDocumentExport(...).getDocNode()` in new code — prefer `extractDocNode(fn)` which is one call instead of two. `createDocumentExport` is kept for backward compat',
       ],
-      seeAlso: ['createDocumentExport'],
-    },
-    {
-      name: 'createDocumentExport',
-      kind: 'function',
-      signature:
-        'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
-      summary:
-        'Wrapper around `extractDocNode`. The wrapper-object form is kept for callers that want to pass the helper around (e.g. to wrapper components that take a `DocumentExport` instance). New code should use `extractDocNode(templateFn)` which is one call instead of two.',
-      example: `// Two-step form (kept for backward compat). New code should
-// prefer the one-step extractDocNode helper.
-import { createDocumentExport } from '@pyreon/document-primitives'
-
-const helper = createDocumentExport(() => <Resume name="Aisha" />)
-const tree = helper.getDocNode()`,
-      seeAlso: ['extractDocNode'],
+      seeAlso: ['DocumentPreview'],
     },
     {
       name: 'DocDocument',
@@ -399,11 +382,11 @@ const tree = helper.getDocNode()`,
   </DocPage>
 </DocumentPreview>`,
       mistakes: [
-        'Treating it as export-only chrome — it is a BROWSER preview wrapper (paper backdrop + page sizing); the actual export runs through `createDocumentExport` / `extractDocumentTree`.',
+        'Treating it as export-only chrome — it is a BROWSER preview wrapper (paper backdrop + page sizing); the actual export runs through `extractDocNode` / `extractDocumentTree`.',
         "Nesting a `<DocDocument>` inside it — `DocumentPreview` already carries `_documentType: 'document'` and is the extraction root, so wrapping it in another document root double-nests the document node.",
         "Passing a size it does not define — only 'A4' / 'A3' / 'A5' / 'letter' / 'legal' map to paper dimensions; an unknown size falls back to the base with no page sizing.",
       ],
-      seeAlso: ['DocDocument', 'createDocumentExport'],
+      seeAlso: ['DocDocument', 'extractDocNode'],
     },
     {
       name: 'documentTheme',

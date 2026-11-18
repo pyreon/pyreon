@@ -55,9 +55,17 @@ public final class PyreonFetch<T> {
     /// True while a fetch is in flight.
     public private(set) var isPending: Bool = false
 
-    /// The last fetcher passed to `run`, retained so `refetch()` can
+    /// The last fetcher passed to `load`, retained so `refetch()` can
     /// re-invoke it. Excluded from observation — it isn't view state.
     @ObservationIgnored private var lastFetcher: (() throws -> T)?
+    /// The request the emitted `.task` harness registered through `run(_:)`;
+    /// `refetch()` re-runs it. Without it a compiled `refetch()` was a silent
+    /// no-op: the harness fetched inline and nothing kept the request.
+    @ObservationIgnored private var asyncFetcher: (() async throws -> T)?
+    /// Bumped by every async fetch: a response settles state only while its
+    /// own generation is still the latest (a slow first response cannot
+    /// overwrite a newer refetch).
+    @ObservationIgnored private var generation = 0
 
     public init() {}
 
@@ -105,11 +113,49 @@ public final class PyreonFetch<T> {
         reload()
     }
 
-    /// Re-run the last `load` fetcher. No-op if `load` was never called
-    /// (the async-harness path re-runs by re-triggering its `.task`, not
-    /// through here).
-    public func refetch() {
+    /// Register the request and fetch it. The compiler-emitted `.task`
+    /// harness calls this with the request it builds; the container keeps it
+    /// so `refetch()` re-runs the same request (reading current values of
+    /// anything the closure reads).
+    @MainActor
+    public func run(_ fetcher: @escaping () async throws -> T) async {
+        asyncFetcher = fetcher
+        await fetch(fetcher)
+    }
+
+    /// Re-run the registered request: the async one from `run`, else the
+    /// last synchronous `load` fetcher. A no-op before either. Returns the
+    /// running task for the async path so a caller can await it; emitted
+    /// code ignores it.
+    @discardableResult
+    public func refetch() -> _Concurrency.Task<Void, Never>? {
+        if let fetcher = asyncFetcher {
+            return _Concurrency.Task { @MainActor [weak self] in
+                await self?.fetch(fetcher)
+            }
+        }
         reload()
+        return nil
+    }
+
+    @MainActor
+    private func fetch(_ fetcher: () async throws -> T) async {
+        generation += 1
+        let mine = generation
+        begin()
+        do {
+            let value = try await fetcher()
+            guard mine == generation else { return } // superseded by a newer fetch
+            resolve(value)
+        } catch let failure {
+            guard mine == generation else { return }
+            if _Concurrency.Task.isCancelled {
+                // The view went away: not a failure to show.
+                isPending = false
+            } else {
+                reject(failure)
+            }
+        }
     }
 
     private func reload() {

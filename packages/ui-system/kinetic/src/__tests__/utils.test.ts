@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CSSProperties } from '../types'
-import { addClasses, mergeClassNames, mergeStyles, nextFrame, removeClasses } from '../utils'
+import { createRef } from '@pyreon/core'
+import { addClasses, mergeClassNames, mergeRefs, mergeStyles, nextFrame, removeClasses } from '../utils'
 
 describe('mergeClassNames', () => {
   it('merges two class strings', () => {
@@ -47,6 +48,23 @@ describe('mergeStyles', () => {
   it('returns a when b is undefined', () => {
     const a = { color: 'red' } as CSSProperties
     expect(mergeStyles(a, undefined)).toBe(a)
+  })
+})
+
+describe('mergeStyles — a string own style (#4382)', () => {
+  it('keeps the string and appends the added declarations, normalized like the renderer', () => {
+    const added = {
+      opacity: 0,
+      transitionDelay: '50ms',
+      '--stagger-index': 2,
+      width: 10,
+      skipped: undefined,
+      empty: '',
+    } as unknown as CSSProperties
+    expect(mergeStyles('color: red;', added)).toBe(
+      'color: red; opacity: 0; transition-delay: 50ms; --stagger-index: 2; width: 10px',
+    )
+    expect(mergeStyles('color: red', { opacity: 1 } as CSSProperties)).toBe('color: red; opacity: 1')
   })
 })
 
@@ -213,6 +231,34 @@ describe('nextFrame — shared batch (regression: 2 rAFs for N same-burst callba
     expect(b).toHaveBeenCalledTimes(1)
   })
 
+  it('a stale outer frame from a swapped-out rAF does not close the newer batch', () => {
+    const a = vi.fn()
+    const b = vi.fn()
+    const c = vi.fn()
+    nextFrame(a) // batch 1, scheduled on the first rAF
+
+    const second: (() => void)[] = []
+    globalThis.requestAnimationFrame = ((cb: () => void) => {
+      second.push(cb)
+      return second.length
+    }) as typeof requestAnimationFrame
+    nextFrame(b) // the global changed: batch 2 opens on the new rAF
+    expect(second.length).toBe(1)
+
+    callbacks[0]?.() // batch 1's outer fires late; its inner lands on the current rAF
+    expect(second.length).toBe(2)
+    nextFrame(c) // must still join batch 2: no new outer frame
+    expect(second.length).toBe(2)
+
+    second[0]?.() // batch 2 outer → its inner (second[2])
+    second[1]?.() // batch 1 inner → a runs alone
+    expect(a).toHaveBeenCalledTimes(1)
+    expect(b).not.toHaveBeenCalled()
+    second[2]?.() // batch 2 inner → b and c run together
+    expect(b).toHaveBeenCalledTimes(1)
+    expect(c).toHaveBeenCalledTimes(1)
+  })
+
   it('is SSR-safe: no requestAnimationFrame → no-op cancel, no throw', () => {
     const raf = globalThis.requestAnimationFrame
     // @ts-expect-error — simulating SSR
@@ -223,5 +269,20 @@ describe('nextFrame — shared batch (regression: 2 rAFs for N same-burst callba
     } finally {
       globalThis.requestAnimationFrame = raf
     }
+  })
+})
+
+describe('mergeRefs', () => {
+  it('skips an absent ref and forwards the node to callback and object refs', () => {
+    const seen: (HTMLElement | null)[] = []
+    const objectRef = createRef<HTMLElement>()
+    const merged = mergeRefs<HTMLElement>(undefined, (el) => seen.push(el), objectRef)
+    const el = document.createElement('div')
+    merged(el)
+    expect(seen).toEqual([el])
+    expect(objectRef.current).toBe(el)
+    merged(null)
+    expect(seen).toEqual([el, null])
+    expect(objectRef.current).toBeNull()
   })
 })

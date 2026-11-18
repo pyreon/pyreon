@@ -1,6 +1,6 @@
 import { styled } from '@pyreon/styler'
 import { Card, Paragraph, Title } from '@pyreon/ui-components'
-import { t } from '../../styles'
+import { PHONE_MAX, t } from '../../styles'
 import type { ConnectionState } from './connectionMachine'
 
 /**
@@ -23,6 +23,14 @@ export const ChatLayout = styled('div')`
   overflow: hidden;
   margin: 32px 40px;
   max-width: 1080px;
+
+  /* Phone: the channel list becomes a short scrollable strip above the
+     messages instead of a 220px column that left the messages 90px. */
+  @media (max-width: ${PHONE_MAX}px) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    margin: 16px;
+  }
 `
 
 // ─── Sidebar ─────────────────────────────────────────────────────────
@@ -34,6 +42,11 @@ export const ChannelSidebar = styled('aside')`
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    max-height: 168px;
+    padding: 12px 0;
+  }
 `
 
 export const SidebarHeader = styled('div')`

@@ -48,11 +48,11 @@ export function App() {
     expect(out).toContain('var label: String = "x"')
     // `n()` inside the store body is a FIELD read — the parens must drop, or
     // the emit calls an Int.
-    expect(out).toContain('var doubled: Int { n * 2 }')
+    expect(out).toContain('var doubled: Int { pyreonMul(n, 2) }')
     // a LATER computed may read an EARLIER one — the name set grows as it goes
-    expect(out).toContain('var quad: Int { doubled * 2 }')
+    expect(out).toContain('var quad: Int { pyreonMul(doubled, 2) }')
     expect(out).toContain('func inc() {')
-    expect(out).toContain('n = n + 1')
+    expect(out).toContain('n = pyreonAdd(n, 1)')
   })
 
   it('a store with NO computeds and NO methods skips the swap and emits only its fields', () => {
@@ -97,8 +97,8 @@ export function App() {
     expect(out).toContain('final class PyreonModel_m: PyreonModelProtocol')
     expect(out).toContain('var count: Int = 1')
     expect(out).toContain('var tag: String = "a"')
-    expect(out).toContain('var double: Int { count * 2 }')
-    expect(out).toContain('var quad: Int { double * 2 }')
+    expect(out).toContain('var double: Int { pyreonMul(count, 2) }')
+    expect(out).toContain('var quad: Int { pyreonMul(double, 2) }')
     expect(out).toContain('func bump() {')
   })
 
@@ -144,7 +144,7 @@ export function App() {
     expect(out).toContain('final class PyreonModel_onlyActions')
     expect(out).toContain('func inc() {')
     expect(out).toContain('final class PyreonModel_onlyViews')
-    expect(out).toContain('var dbl: Int { d * 2 }')
+    expect(out).toContain('var dbl: Int { pyreonMul(d, 2) }')
   })
 
   it('a store with methods but no computeds, and one with computeds but no methods', () => {
@@ -161,6 +161,6 @@ export function App() {
     expect(out).toContain('final class PyreonStore_fns')
     expect(out).toContain('func bump() {')
     expect(out).toContain('final class PyreonStore_cmp')
-    expect(out).toContain('var dy: Int { y * 2 }')
+    expect(out).toContain('var dy: Int { pyreonMul(y, 2) }')
   })
 })

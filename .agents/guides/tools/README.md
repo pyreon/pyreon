@@ -35,7 +35,7 @@ Derives a verified, machine-readable component catalog from source. You write no
 - `N verified` counts scenarios, not checks. A scenario that ran two of six checks still counts as verified, so read the `not run` rows.
 - Findings are `{ code, message, fix? }` (catalog v2); `code` is stable. MCP refuses a v1 catalog.
 - `atlas verify <Component>` verifies only the match and never writes the catalog. An unmatched name or a run that verified nothing exits non-zero.
-- `--check` (on `scan` and `verify`) ratchets against the committed catalog: non-zero on regression, never rewrites the baseline, missing baseline = exit 0. A check that stopped running counts as a regression — losing coverage makes the counts improve.
+- `--check` (on `scan` and `verify`) ratchets against the committed catalog: non-zero on a regression or a failure the baseline did not have (a failing new scenario included), zero for failures the baseline already has, never rewrites the baseline, missing baseline = exit 0. A check that stopped running counts as a regression — losing coverage makes the counts improve.
 - `atlas verify-browser` measures reactive coverage on the page's own devtools-bridge instance and diffs snapshots against `./atlas-snapshots`, merging verdicts into `atlas-catalog.json`.
 
 ### Workbench and static build
@@ -148,8 +148,8 @@ A new tool or command that reports "clean" for source text must do the same.
 ## `pyreon doctor`
 
 - 15 gates: react-patterns, pyreon-patterns, lint, distribution, doc-claims, islands-audit, ssg-audit, content-audit, native-audit (needs the optional peer `@pyreon/native-compiler`; skips with an install hint when absent), audit-tests, check-dedup, audit-leak-classes, dependency-fabric, plus the slow audit-types and bundle-budgets. Sources: `packages/tools/cli/src/doctor/gates/`.
-- `doctor --check-islands` audits the nearest package manifest, including flat apps and author `src/lib`; pass the workspace root explicitly to compare packages and examples across the repo.
-- Flags: `--full`, `--fix`, `--json`, `--gha`, `--ci`, `--only`, `--skip`, `--roots`, `--check-ssg`, `--check-islands`, `--audit-tests`.
+- `doctor --only islands-audit` audits the nearest package manifest, including flat apps and author `src/lib`; pass the workspace root explicitly to compare packages and examples across the repo.
+- Flags: `--full`, `--fix`, `--json`, `--gha`, `--ci`, `--only`, `--skip`, `--roots`, `--format`, `--audit-min-risk`. Anything else is a usage error (an ignored selector would widen the run to every gate).
 - `--fix`: the writing gates (react-patterns, then lint — they scan the same files) run first and in sequence; every other gate runs after them, so it reads the fixed source. Every applied edit is an `info` finding (`react-patterns/auto-fixed-*`, `lint/auto-fixed-<rule>`), and nothing the run fixed is reported as still open.
 - 0–100 score. The advisory `best-practices` category is excluded from the grade and from `--ci`.
 - `dependency-fabric` runs the project's own `@pyreon/loom` (resolved, never fetched) and skips when absent.

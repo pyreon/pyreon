@@ -1,5 +1,5 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
-import { getEntry, getScopedMap, releaseEntry, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
+import { getEntry, getScopedMap, releaseWithOwner, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { StorageBackend, StorageOptions, StorageSignal } from './types'
 import { deserialize, serialize } from './utils'
 
@@ -31,17 +31,15 @@ export function createStorage(
     defaultValue: T,
     options?: StorageOptions<T>,
   ): StorageSignal<T> {
-    // Same-key consumers each retain the per-key registry refcount, so the entry
-    // is destroyed on the LAST `.remove()` and not the first. `useStorage` was
-    // fixed this way in #725/#729 and the registry's own docstring states the
-    // contract ("per-consumer `.remove()` goes through `releaseEntry`") — this
-    // backend kept the pre-fix shape, so one consumer's `.remove()` orphaned
-    // every sibling: `clearStorage`/`removeStorage` stopped seeing their signal,
-    // and the next call for the same key minted a SECOND, independent one.
+    // Every call holds one refcount on the shared per-key entry, released when
+    // the calling owner scope is disposed (`releaseWithOwner`), never by
+    // `.remove()`: removing the value keeps the binding alive (#4381).
     const existing = getEntry<T>(name, key)
     if (existing) {
       warnIfOptionsDiffer(name, key, existing, defaultValue, options)
       retainEntry(name, key)
+      releaseWithOwner(name, key)
+
       return existing.signal
     }
 
@@ -79,10 +77,10 @@ export function createStorage(
       } catch {
         // Remove failed
       }
-      releaseEntry(name, key)
     }
 
     setEntry(name, key, storageSig, defaultValue, options)
+    releaseWithOwner(name, key)
 
     return storageSig
   }

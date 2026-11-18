@@ -103,7 +103,6 @@ const KNOWN_NARROW: Record<'swift' | 'kotlin', ReadonlySet<string>> = {
     'PyreonAppState.stop',
     'PyreonAppState.update',
     'PyreonCrashReporter.isMonitoring',
-    'PyreonFetch.load',
     'PyreonNetworkStatus.isMonitoring',
     'PyreonNetworkStatus.start',
     'PyreonNetworkStatus.stop',
@@ -155,6 +154,7 @@ export function typeBody(src: string, type: string): string | null {
       if (depth === 0) return src.slice(open + 1, i)
     }
   }
+
   return null
 }
 
@@ -192,6 +192,7 @@ export function depthZeroProjection(body: string): string {
     }
     if (depth === 0) out += ch
   }
+
   return out
 }
 
@@ -204,6 +205,7 @@ export function swiftMembers(src: string, type: string): Set<string> {
   // emit can touch.
   const re = /public\s+(?:private\(set\)\s+)?(?:static\s+)?(?:func|var|let)\s+([A-Za-z_][A-Za-z0-9_]*)/g
   for (const m of depthZeroProjection(body).matchAll(re)) out.add(m[1]!)
+
   return out
 }
 
@@ -218,6 +220,7 @@ export function kotlinMembers(src: string, type: string): Set<string> {
   const re =
     /(?<!\b(?:private|internal|protected)\s+(?:(?:suspend|inline|override|open|final|abstract|lateinit|const|operator|infix|tailrec)\s+)*)\b(?:fun|val|var)\s+([A-Za-z_][A-Za-z0-9_]*)/g
   for (const m of depthZeroProjection(body).matchAll(re)) out.add(m[1]!)
+
   return out
 }
 
@@ -243,6 +246,7 @@ function runtimeTypeNames(kind: 'swift' | 'kotlin'): string[] {
       if (m) names.add(m[1]!)
     }
   }
+
   return [...names].sort()
 }
 

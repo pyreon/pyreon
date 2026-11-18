@@ -229,8 +229,10 @@ describe('kinetic stagger / group — compiled raw-HTML children on the server',
     const html = await renderToString(
       h(List, { show: () => true }, raw('<li>Install</li>'), raw('<li>Ship it</li>')),
     )
-    expect(html).toContain('<li>Install</li>')
-    expect(html).toContain('<li>Ship it</li>')
+    // Rendered, and decorated like a VNode child would be (#4382: the
+    // per-item stagger style reaches the raw HTML's root tag).
+    expect(html).toMatch(/<li style="--stagger-index: 0;[^"]*">Install<\/li>/)
+    expect(html).toMatch(/<li style="--stagger-index: 1;[^"]*">Ship it<\/li>/)
   })
 
   it('group renders compiled children', async () => {

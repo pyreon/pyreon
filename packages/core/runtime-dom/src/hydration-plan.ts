@@ -1057,7 +1057,11 @@ function matchingCloseIsLastChild(open: Comment, el: Element): boolean {
   return false
 }
 
-function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | null {
+function matchDomAgainstTemplate(
+  root: Element,
+  expected: TplSig,
+  rootDecorated = false,
+): AdoptMatch | null {
   let removals: Text[] | null = null
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
   let midSlots: { open: Comment; text: Text | null; close: Comment }[] | null = null
@@ -1088,6 +1092,8 @@ function matchDomAgainstTemplate(root: Element, expected: TplSig): AdoptMatch | 
     const wantAttrs = expected.attrs[at] as [string, string][]
     for (let i = 0; i < wantAttrs.length; i++) {
       const pair = wantAttrs[i] as [string, string]
+      // A DECLARED root decoration owns the root's class and style.
+      if (at === 0 && rootDecorated && (pair[0] === 'class' || pair[0] === 'style')) continue
       if (el.getAttribute(pair[0]) !== pair[1]) return false
     }
     // DECLARED innerHTML ELEMENT. The template leaves it empty and the bind's
@@ -1473,6 +1479,12 @@ export function tplAdoptVerify(
   // Defaults to the SAFE path on purpose: a caller that forgets the flag gets
   // the full skeleton verify, never the unverified replay.
   allowPlanReplay = false,
+  // Declared by the component that decorates this item (`_declareRootDecoration`
+  // in template.ts): the root's `class` / `style` are not compared. It never
+  // arrives together with `allowPlanReplay`: only `deferTpl`'s `__adoptAt` sets
+  // it, and that adoption is always a full verify. It must stay so, because a
+  // replay plan is shared per template and a declaration is per item.
+  rootDecorated = false,
 ): boolean {
   // The plan fast path is OPT-IN, and the opt-in means "successive targets are
   // structurally identical" — which only `<For>` rows can promise. The plan is
@@ -1524,7 +1536,7 @@ export function tplAdoptVerify(
   const troot = tpl.content.firstElementChild
   if (!troot || target.tagName !== troot.tagName) return false
   const sig = templateSignature(tpl)
-  const match = sig !== null ? matchDomAgainstTemplate(target, sig) : null
+  const match = sig !== null ? matchDomAgainstTemplate(target, sig, rootDecorated) : null
   if (match === null) return false
   // A row matched through the sole-text relaxation records no plan: the plan's
   // spot checks are a text-node invariant this row does not satisfy; a later

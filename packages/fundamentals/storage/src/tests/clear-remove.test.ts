@@ -66,14 +66,16 @@ describe('removeStorage — comprehensive', () => {
     expect(localStorage.getItem('default-type')).toBeNull()
   })
 
-  it('after removeStorage, a new useStorage call creates fresh signal', () => {
+  it('after removeStorage, a new useStorage call shares the still-live signal (#4381)', () => {
     const a = useStorage('resettable', 'first')
     a.set('modified')
     removeStorage('resettable')
 
-    const b = useStorage('resettable', 'second')
-    expect(b()).toBe('second')
-    expect(a).not.toBe(b)
+    const b = useStorage('resettable', 'first')
+    expect(b()).toBe('first')
+    expect(b).toBe(a)
+    b.set('again')
+    expect(localStorage.getItem('resettable')).toBe(JSON.stringify('again'))
   })
 })
 

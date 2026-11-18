@@ -178,7 +178,7 @@ const myTheme: Theme = {
 <PyreonUI theme={theme} mode="light" inversed>…</PyreonUI>  // flips
 ```
 
-`useMode()` returns the resolved mode. Fills (`base`, `hover`) and the text on them (`contrast`) are the same in both modes. Text in a tone is not: components read `text` in light mode and `textDark` in dark mode through rocketstyle's `mode(light, dark)` helper. The neutral palettes (`light`, `dark`, `base`) are light-only today; most components still draw light surfaces in dark mode (#4340), and `<PyreonUI>` does not paint the page, so set the app background to match the mode.
+`useMode()` returns the resolved mode. Fills (`base`, `hover`) and the text on them (`contrast`) are the same in both modes. Text in a tone is not: components read `text` in light mode and `textDark` in dark mode through rocketstyle's `mode(light, dark)` helper. The neutral palettes (`light`, `dark`, `base`) are light-only: `@pyreon/ui-components` takes its opaque neutrals (surfaces, text) from mode-aware tones instead (`tones(t, m)` in its `factory.ts`), and reads the `base` steps only as translucent tints, which composite correctly on either page. `<PyreonUI>` does not paint the page, so set the app background to match the mode.
 
 ## Gotchas
 

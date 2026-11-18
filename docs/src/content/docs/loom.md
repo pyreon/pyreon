@@ -139,7 +139,7 @@ A `pyreon.config.*` that exists but fails to load is a **named error**, never a 
 
 - The import scan is **lexical** — comments and template-literal contents are stripped and specifier grammar is validated (an import line inside a recipe string doesn't count), but an import mentioned in an ordinary-quoted string can still false-positive. That's why `unused-dep` stays `info` and every finding carries its file evidence.
 - Loom reads **declared** truth: no lockfile parsing, no registry calls. Outdated-vs-latest, duplicate-install analysis, and advisory feeds are explicitly future layers, not quietly half-done.
-- Depth is longest-path from the entry points, hard-bounded at V−1 — packages inside a cycle keep the depth their first visit found.
+- Depth is the longest path from the entry points, computed with each cycle collapsed to one node: every package in a cycle shares one depth, and a cycle never makes the packages below it deeper.
 
 ## CI wiring
 

@@ -33,5 +33,5 @@ export { default as DocText } from './primitives/DocText'
 export type { DocumentTheme } from './theme'
 export { documentTheme } from './theme'
 // Export helper
-export type { DocumentExport, DocumentExportOptions } from './useDocumentExport'
-export { createDocumentExport, extractDocNode } from './useDocumentExport'
+export type { DocumentExportOptions } from './useDocumentExport'
+export { extractDocNode } from './useDocumentExport'

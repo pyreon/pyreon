@@ -25,7 +25,7 @@ export const meta = { title: 'Invoice' }
  * Enumerate the dynamic `:id` values for SSG prerendering. The dashboard
  * scaffolds in `mode: 'ssr'` by default (invoices are tenant-scoped and
  * fetched per-request), so this export is unused at runtime. It exists
- * so that `pyreon doctor --check-ssg` doesn't warn AND so the route still
+ * so that `pyreon doctor --only ssg-audit` doesn't warn AND so the route still
  * works under `mode: 'ssg'` if you swap to a fully-static deploy with
  * known invoice IDs.
  *

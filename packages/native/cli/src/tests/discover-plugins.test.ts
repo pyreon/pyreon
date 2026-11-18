@@ -889,7 +889,8 @@ describe('package-owned state and styling frontends', () => {
       expect(run.status, run.stdout + run.stderr).toBe(0)
       const code = readFileSync(join(out, `Example.${target === 'ios' ? 'swift' : 'kt'}`), 'utf8')
       expect(code).toContain(target === 'ios' ? '@State private var n: Int = 2' : 'mutableStateOf(2L)')
-      expect(code).toContain(target === 'ios' ? 'n * 2' : 'n * 2L')
+      // Integer `*` lowers through the overflow-safe helper (the web's result, never a trap or a wrap).
+      expect(code).toContain(target === 'ios' ? 'pyreonMul(n, 2)' : 'pyreonMul(n, 2L)')
       expect(code).not.toMatch(/\b(?:signal|state|derived)\(/)
     }
   })

@@ -76,7 +76,7 @@ describe('SSR per-request registry isolation', () => {
   it('keeps the process default OUTSIDE a request scope', () => {
     // No request scope ⇒ the provider answers `undefined` ⇒ the module-level
     // registry, i.e. the pre-isolation behaviour, which the refcount contract
-    // (`retainEntry`/`releaseEntry`) depends on. A provider that fabricated a
+    // (`retainEntry`/`releaseWithOwner`) depends on. A provider that fabricated a
     // throwaway Map here would mint a NEW signal on every call.
     const first = useMemoryStorage('outside', 'd')
     const second = useMemoryStorage('outside', 'd')

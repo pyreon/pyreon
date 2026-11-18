@@ -43,7 +43,7 @@ describe('EmitContext members both targets supply (Kotlin)', () => {
       }),
       '<Toy value={n() + 1} />',
     )
-    expect(out.code).toContain('Marker(n + 1L, n + 1L)')
+    expect(out.code).toContain('Marker(pyreonAdd(n, 1L), pyreonAdd(n, 1L))')
   })
 
   it('stringAttr returns a literal or an interpolation, undefined when absent', () => {

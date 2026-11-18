@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing, focusRingTone, neutralToneKeys, solidFill, toneKeys, toneVariant } from '../../factory'
+import { disabledState, el, focusRing, focusRingTone, neutralToneKeys, solidFill, toneKeys, toneVariant, tones } from '../../factory'
 
 const ActionIcon = el
   .config({ name: 'ActionIcon' })
@@ -29,7 +29,7 @@ const ActionIcon = el
     secondary: {
       ...neutralToneKeys(t, m),
       backgroundColor: t.color.system.base[100],
-      color: t.color.system.base[700],
+      color: tones(t, m).text,
       hover: {
         backgroundColor: t.color.system.base[200],
       },
@@ -48,7 +48,7 @@ const ActionIcon = el
     xLarge: { width: '48px', height: '48px', fontSize: t.fontSize.large },
   }))
   // `outline` / `subtle` are drawn in the active state's tone (`toneKeys`).
-  .variants((t) => ({
+  .variants((t, m) => ({
     filled: {},
     outline: toneVariant((tone) => ({
       backgroundColor: t.color.system.transparent,
@@ -67,11 +67,11 @@ const ActionIcon = el
     })),
     transparent: {
       backgroundColor: t.color.system.transparent,
-      color: t.color.system.base[500],
+      color: tones(t, m).textMuted,
       hover: {
         backgroundColor: t.color.system.base[100],
 
-        color: t.color.system.dark.base,
+        color: tones(t, m).text,
       },
     },
   }))

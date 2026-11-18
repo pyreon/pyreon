@@ -10,6 +10,7 @@
     "@pyreon/rich-text",
     "@pyreon/charts",
     "@pyreon/virtual",
+    "@pyreon/document",
     "@pyreon/document-primitives",
     "@pyreon/connector-document",
     "@pyreon/dnd",

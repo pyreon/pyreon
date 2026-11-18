@@ -3,6 +3,7 @@ package com.pyreon.runtime
 import android.Manifest
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import android.content.pm.PackageManager
@@ -162,5 +163,9 @@ public fun installDefaultGeolocationSource(context: Context) {
 public fun rememberPyreonGeolocation(): PyreonGeolocation {
     val appContext = LocalContext.current
     remember(appContext) { installDefaultGeolocationSource(appContext); appContext }
-    return remember { PyreonGeolocation() }
+    val geo = remember { PyreonGeolocation() }
+    // A watch the app started ends with the screen, as the web hook's cleanup ends it: a LocationManager listener left
+    // registered keeps the GPS on after the user navigated away. `stop()` is a no-op when nothing is watching.
+    DisposableEffect(geo) { onDispose { geo.stop() } }
+    return geo
 }

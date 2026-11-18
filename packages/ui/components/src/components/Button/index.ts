@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing, neutralToneKeys, solidFill, toneKeys, toneVariant } from '../../factory'
+import { disabledState, el, focusRing, neutralToneKeys, solidFill, toneKeys, toneVariant, tones } from '../../factory'
 
 const Button = el
   .config({ name: 'Button' })
@@ -28,7 +28,7 @@ const Button = el
     secondary: {
       ...neutralToneKeys(t, m),
       backgroundColor: t.color.system.base[100],
-      color: t.color.system.dark[800],
+      color: tones(t, m).text,
       hover: {
         backgroundColor: t.color.system.base[200],
       },
@@ -106,9 +106,9 @@ export default Button
 export const IconButton = el
   .config({ name: 'IconButton' })
   .attrs({ tag: 'button', type: 'button', direction: 'inline', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center', alignX: 'center', alignY: 'center' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     backgroundColor: t.color.system.transparent,
-    color: t.color.system.base[600],
+    color: tones(t, m).textMuted,
     borderRadius: t.borderRadius.base,
     borderWidth: 0,
     cursor: 'pointer',
@@ -117,7 +117,7 @@ export const IconButton = el
     hover: {
       backgroundColor: t.color.system.base[50],
 
-      color: t.color.system.dark.base,
+      color: tones(t, m).text,
     },
     focus: focusRing(t),
     disabled: disabledState(),
@@ -131,9 +131,9 @@ export const IconButton = el
 export const CloseButton = el
   .config({ name: 'CloseButton' })
   .attrs({ tag: 'button', type: 'button', 'aria-label': 'Close', direction: 'inline', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center', alignX: 'center', alignY: 'center' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     backgroundColor: t.color.system.transparent,
-    color: t.color.system.base[400],
+    color: tones(t, m).textMuted,
     borderRadius: t.borderRadius.small,
     borderWidth: 0,
     cursor: 'pointer',
@@ -142,7 +142,7 @@ export const CloseButton = el
     hover: {
       backgroundColor: t.color.system.base[50],
 
-      color: t.color.system.dark[700],
+      color: tones(t, m).text,
     },
     focus: focusRing(t),
     disabled: disabledState(),

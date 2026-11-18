@@ -1,6 +1,6 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
 import { registerPendingFlush, unregisterPendingFlush } from './local'
-import { getEntry, releaseEntry, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
+import { getEntry, releaseWithOwner, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { IndexedDBOptions, IndexedDBSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
 
@@ -135,17 +135,15 @@ export function useIndexedDB<T>(
   defaultValue: T,
   options: IndexedDBOptions<T> = {},
 ): IndexedDBSignal<T> {
-  // Same-key consumers each retain the per-key registry refcount, so the entry
-  // is destroyed on the LAST `.remove()` and not the first. `useStorage` was
-  // fixed this way in #725/#729 and the registry's own docstring states the
-  // contract ("per-consumer `.remove()` goes through `releaseEntry`") — this
-  // backend kept the pre-fix shape, so one consumer's `.remove()` orphaned
-  // every sibling: `clearStorage`/`removeStorage` stopped seeing their signal,
-  // and the next call for the same key minted a SECOND, independent one.
+  // Every call holds one refcount on the shared per-key entry, released when
+  // the calling owner scope is disposed (`releaseWithOwner`), never by
+  // `.remove()`: removing the value keeps the binding alive (#4381).
   const existing = getEntry<T>('indexeddb', key)
   if (existing) {
     warnIfOptionsDiffer('indexeddb', key, existing, defaultValue, options)
     retainEntry('indexeddb', key)
+    releaseWithOwner('indexeddb', key)
+
     return existing.signal as IndexedDBSignal<T>
   }
 
@@ -259,8 +257,6 @@ export function useIndexedDB<T>(
         })
       /* v8 ignore stop */
     }
-
-    releaseEntry('indexeddb', key)
   }
 
   storageSig.ready = () => readySig()
@@ -268,6 +264,7 @@ export function useIndexedDB<T>(
   storageSig.flush = flushWrite
 
   setEntry('indexeddb', key, storageSig, defaultValue, options)
+  releaseWithOwner('indexeddb', key)
 
   return storageSig
 }

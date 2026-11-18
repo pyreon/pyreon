@@ -92,7 +92,7 @@ export type FieldProps = SingleLineFieldProps | MultilineFieldProps | DateFieldP
  *
  * Per-platform mapping:
  * - Web: `<input type="checkbox" role="switch">`
- * - iOS: `Toggle("", isOn: ...)`
+ * - iOS: `Toggle("", isOn: ...).labelsHidden()` (sized to the switch)
  * - Android: `Switch(checked=..., onCheckedChange=...)`
  */
 export interface ToggleProps extends HtmlPassthroughProps {

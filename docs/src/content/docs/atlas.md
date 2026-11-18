@@ -207,11 +207,16 @@ atlas scan · . · static (--no-mount) · ratchet (--check)
 
 Delete a wrapper from `atlas.config.ts` and every mount-dependent check drops to `skip`: the failures vanish, the counts improve, and the catalog looks better than it did. Losing coverage is the one way to "fix" a red catalog that must never read as green.
 
-Three deliberate behaviours:
+The exit code:
+
+- **Non-zero on a regression**: a check that started failing, a check that stopped running, or a scenario that disappeared (a vanished component is how a whole catalog collapses to "0 failing"; a deliberate deletion or rename accepts the new baseline by re-running `atlas scan`).
+- **Non-zero on a new failure**: a check that fails now and did not fail in the committed catalog, including a failing scenario the catalog does not have yet (a new component). The diff lists a new scenario as added, not as a regression, but its failure is still new red.
+- **Zero for failures the committed catalog already has.** A check that failed in the baseline and still fails is the status quo, not a regression. The run says how many it carried over and does not fail on them, so `--check` can be adopted on a catalog that is not green yet.
+
+Two more deliberate behaviours:
 
 - **`--check` never writes the catalog.** A ratchet that overwrites its own baseline compares a run against itself and can never report a regression again.
-- **A missing baseline is exit 0**, with a note. Making the very first `--check` run red for everybody is how a ratchet gets disabled on day one.
-- **A new or removed scenario is not a regression.** Adding a component with a failing edge case is new information, and deleting one is a legitimate edit; flagging either would make the ratchet fire on ordinary refactors until people stopped believing it.
+- **A missing baseline is exit 0**, with a note. Making the very first `--check` run red for everybody is how a ratchet gets disabled on day one. With no baseline every failure is new, so a failing scenario still exits non-zero.
 
 ### Path aliases
 

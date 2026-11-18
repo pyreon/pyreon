@@ -149,7 +149,7 @@ describe('parse.ts — tryStructFromObjectUnion', () => {
 describe('parse.ts — tryHelperFnFromArrowConst', () => {
   it('routes a param-taking arrow const to a native func (the positive control)', () => {
     const r = swift(`export const dbl = (x: number) => x * 2\nexport function App(){ return <Text>{String(dbl(2))}</Text> }`)
-    expect(r.code).toContain('func dbl(_ x: Int) -> Int { x * 2 }')
+    expect(r.code).toContain('func dbl(_ x: Int) -> Int { pyreonMul(x, 2) }')
   })
 
   it('declines a `let` binding — only `const` is routed', () => {

@@ -1,4 +1,4 @@
-import { tintText, txt } from '../../factory'
+import { tintText, tones, txt } from '../../factory'
 
 const Badge = txt
   .config({ name: 'Badge' })
@@ -23,7 +23,7 @@ const Badge = txt
     },
     secondary: {
       backgroundColor: t.color.system.base[100],
-      color: t.color.system.base[800],
+      color: tones(t, m).text,
     },
     success: {
       backgroundColor: t.color.system.success[100],
