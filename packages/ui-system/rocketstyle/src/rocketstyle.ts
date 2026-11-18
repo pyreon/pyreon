@@ -121,6 +121,30 @@ const defaultThemeBridge = (css: any) => css`
 
 // rocketComponent
 // --------------------------------------------------------
+/**
+ * The `.params()` props of one render: their values and the memo-key segment.
+ * Values join the key by VALUE (JSON: `1` and `'1'` differ, a breakpoint
+ * object or array by content), so equal values across instances share the
+ * memo entry, the `$rocketstyle` identity and the class. Reading a
+ * signal-driven param here tracks it, like a dimension prop.
+ */
+const readParams = (
+  keys: string[],
+  props: Record<string, unknown>,
+): { key: string; values: Record<string, unknown> } | undefined => {
+  if (keys.length === 0) return undefined
+  let key = ''
+  const values: Record<string, unknown> = {}
+  for (const k of keys) {
+    let v = props[k]
+    if (typeof v === 'function') v = (v as () => unknown)()
+    key += '|' + (v == null ? '' : JSON.stringify(v))
+    if (v != null) values[k] = v
+  }
+
+  return { key, values }
+}
+
 // @ts-expect-error
 const rocketComponent: RocketComponent = (options) => {
   const { component, styles } = options
@@ -366,10 +390,7 @@ const rocketComponent: RocketComponent = (options) => {
       // `rocketstateRaw[dimName]` gives the resolved string and partitions
       // them correctly.
       // Resolved from props (not localCtx which has pseudo getters).
-      const rocketstateRaw = _calculateStylingAttrs({
-        props: pickStyledAttrs(propsRec, reservedPropNames),
-        dimensions,
-      })
+      const rocketstateRaw = _calculateStylingAttrs({ props: pickStyledAttrs(propsRec, reservedPropNames), dimensions })
 
       // Build key: mode | dimensionValues | pseudoState. Reading dimension
       // props + pseudo signals here tracks them in the surrounding computed
@@ -405,17 +426,8 @@ const rocketComponent: RocketComponent = (options) => {
         const v = propV !== undefined ? propV : localV
         key += '|' + (v === undefined ? '' : v ? '1' : '0')
       }
-      // Param values join the key by VALUE (JSON: `1` and `'1'` differ, a
-      // breakpoint object or array by content), so equal values across
-      // instances share the entry, the `$rocketstyle` identity and the class.
-      // Reading a signal-driven param here tracks it, like a dimension prop.
-      let paramValues: Record<string, unknown> | undefined
-      for (const k of PARAM_KEYS) {
-        let v = propsRec[k]
-        if (typeof v === 'function') v = (v as () => unknown)()
-        key += '|' + (v == null ? '' : JSON.stringify(v))
-        if (v != null) (paramValues ??= {})[k] = v
-      }
+      const paramValues = readParams(PARAM_KEYS, propsRec)
+      if (paramValues) key += paramValues.key
 
       // Cache lookup. SizedMap with lru:true does the touch-on-read
       // internally, so the get() hit path no longer needs the explicit
@@ -494,7 +506,7 @@ const rocketComponent: RocketComponent = (options) => {
         baseTheme: currentModeBaseTheme,
         transformKeys: options.transformKeys,
         appTheme: theme,
-        params: paramValues && getParamsTheme(options.params!, paramValues, theme, mode, cssVarsOn),
+        params: paramValues && getParamsTheme(options.params!, paramValues.values, theme, mode, cssVarsOn),
         multiKeys: options.multiKeys,
       })
 
@@ -740,6 +752,7 @@ const rocketComponent: RocketComponent = (options) => {
           )
         }
       }
+
       return cloneAndEnhance(options, { params: map })
     },
 
