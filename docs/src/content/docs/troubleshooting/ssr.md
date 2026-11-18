@@ -148,6 +148,12 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] A polymorphic text slot whose server content is elements was rebuilt, not adopted
+
+(#4385): `{parts(row)}` lowers to a text binding over one `' '` placeholder, but renders `['a ', <Code/>, ' b']` as elements. The verifier refused the element (sole slot) and `_textSlot` cleared the range (trailing/mid), so every such cell was re-created at hydration, identical and unreported (pyreon.dev's comparison table, every row). Park a placeholder where the content is and let the binding adopt it through the slot hydrator; sweep placeholders a raw `.data` binding cannot adopt, or the server's nodes stay beside the written text. Code: `runtime-dom/src/parked-text.ts`, `hydration-plan.ts` (`soleTexts`), `template.ts` (`_textSlot`, `buildTpl`). Tests: `compiled-text-slot-adopts-elements.test.tsx` + `.browser`.
+
+---
+
 ### [FIXED, 2026-11] A renderer coercing a child value on its own
 
 (#4386): ten pieces of code turn a child value into text (`mountChild`, `_setChild`, `_setChildAt`, both `_bindText` tiers, the poly text core, `_fuse`, `renderNode`, `streamNode`, `_esc`, hydration), and each had its own rule. `['a', 'b']` rendered `a,b` through the compiled text sinks (`String(array)`, or the DOM's `textContent =` coercion) and `ab` through SSR and `h()`. `true` rendered "true" on the server and nothing in a compiled template, which bakes a literal `{true}` away. `false` at a `_setChildAt` slot rendered "false". A bigint or a `Date` threw a `TypeError` inside `renderElement`. A component's server HTML and client DOM differed in characters, and hydration rewrote the adopted text silently.

@@ -45,6 +45,7 @@ import {
   type RunCapture,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
+import { _adoptParkedText, _parkedPending } from './parked-text'
 import { _adoptingCompiledBind, reportFirstText } from './hydration-debug'
 import { _devInspectable, registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
@@ -376,6 +377,7 @@ function nsUriOf(ns: number, tag: string): string | null {
   if (ns === NS_SVG) return SVG_NS
   if (tag === 'svg') return SVG_NS
   if (ns === NS_MATHML || tag === 'math') return MATHML_NS
+
 
   return null
 }
@@ -1117,6 +1119,11 @@ export function bindPolymorphicText(
   text: Text,
   parentAtSetup: Node,
 ): Cleanup {
+  // A parked slot placeholder (#4385): adopt the server content instead.
+  if (_parkedPending > 0) {
+    const adopted = _adoptParkedText(text, child)
+    if (adopted !== null) return adopted
+  }
   const core = createPolyTextCore(text, parentAtSetup, getContextOwner())
   const dispose = renderEffect(() => core.apply(child()))
   // Dev: a text binding at its caller (the compiled template, for the emitted

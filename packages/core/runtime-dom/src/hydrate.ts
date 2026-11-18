@@ -2370,6 +2370,8 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   _setSlotHydrator(
     process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountSlot) : hydrateMountSlot,
   )
+  // (A compiled text slot whose server content is elements adopts it through
+  // this same hydrator: #4385, `parked-text.ts`.)
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
   // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
   // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent

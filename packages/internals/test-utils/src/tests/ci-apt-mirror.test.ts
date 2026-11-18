@@ -14,6 +14,27 @@ describe('CI Ubuntu APT archive configuration', () => {
     expect(ubuntuArchiveSource(deb822)).toBe(deb822.replace(OLD, CURRENT))
   })
 
+  it('rewrites every regional mirror, not only the Azure one', () => {
+    // us-east-2.ec2 is the mirror that served a us-west-2 runner at ~250 kB/s.
+    for (const host of [
+      'us-east-2.ec2.archive.ubuntu.com',
+      'eu-west-1.ec2.archive.ubuntu.com',
+      'us.archive.ubuntu.com',
+      'azure.archive.ubuntu.com',
+    ]) {
+      const line = `http://${host}/ubuntu\t priority:1\n`
+      expect(ubuntuArchiveSource(line)).toBe(`${CURRENT}\t priority:1\n`)
+      expect(ubuntuArchiveSource(`deb https://${host}/ubuntu resolute main\n`)).toBe(
+        `deb ${CURRENT} resolute main\n`,
+      )
+    }
+  })
+
+  it('leaves the security and ports archives alone', () => {
+    const source = `deb https://security.ubuntu.com/ubuntu resolute-security main\ndeb http://ports.ubuntu.com/ubuntu-ports resolute main\n`
+    expect(ubuntuArchiveSource(source)).toBe(source)
+  })
+
   it('leaves other hosts, lookalike hosts and unrelated paths unchanged', () => {
     const source = `deb https://repo.example.org/ubuntu noble main\ndeb http://azure.archive.ubuntu.com.evil/ubuntu noble main\ndeb http://azure.archive.ubuntu.com/custom noble main\n`
     expect(ubuntuArchiveSource(source)).toBe(source)
