@@ -100,15 +100,42 @@ export function specifiersOf(code: string, filename = 'chunk.js'): { statics: st
   return { statics, dynamics }
 }
 
-/** Every undeclared (or wrongly statically imported optional) bare specifier reached by the entries of one package. */
-export function undeclaredImports(pkgDir: string, pkg: PackageJson): { offenders: Offender[]; built: boolean } {
-  const required = new Set([...Object.keys(pkg.dependencies ?? {})])
+interface Declared {
+  pkg: PackageJson
+  required: Set<string>
+  optional: Set<string>
+}
+
+function declaredOf(pkg: PackageJson): Declared {
+  const required = new Set(Object.keys(pkg.dependencies ?? {}))
   const optional = new Set(Object.keys(pkg.optionalDependencies ?? {}))
 
   for (const name of Object.keys(pkg.peerDependencies ?? {})) {
     if (pkg.peerDependenciesMeta?.[name]?.optional === true) optional.add(name)
     else required.add(name)
   }
+
+  return { pkg, required, optional }
+}
+
+/** Why a bare specifier reached by `subpath` is a problem, or `undefined` when it is fine. */
+function problemWith(specifier: string, subpath: string, dynamic: boolean, declared: Declared): string | undefined {
+  const name = packageOf(specifier)
+
+  if (BUILTINS.has(specifier) || BUILTINS.has(name) || name === declared.pkg.name || declared.required.has(name)) return undefined
+  if (declared.optional.has(name)) {
+    return dynamic || subpath !== '.'
+      ? undefined
+      : `${name} is an OPTIONAL peer but the root entry imports it statically (the import throws when it is not installed): make it a required peer, move the import behind a subpath, or load it with a dynamic import()`
+  }
+  if (dynamic && USER_SUPPLIED[declared.pkg.name]?.[name] !== undefined) return undefined
+
+  return `${name} is not in dependencies or peerDependencies`
+}
+
+/** Every undeclared (or wrongly static) bare specifier reached by the entries of one package. */
+export function undeclaredImports(pkgDir: string, pkg: PackageJson): { offenders: Offender[]; built: boolean } {
+  const declared = declaredOf(pkg)
   const offenders: Offender[] = []
   let built = false
 
@@ -126,34 +153,19 @@ export function undeclaredImports(pkgDir: string, pkg: PackageJson): { offenders
       if (seen.has(current)) continue
       seen.add(current)
       const { statics, dynamics } = specifiersOf(readFileSync(current, 'utf8'), current)
+      const where = current.slice(pkgDir.length + 1)
 
       for (const s of statics) {
-        if (s.startsWith('.')) {
-          const next = resolve(dirname(current), s)
+        if (!s.startsWith('.')) {
+          const reason = problemWith(s, subpath, false, declared)
 
-          if (existsSync(next)) queue.push(next)
-          continue
-        }
-        const name = packageOf(s)
-
-        if (BUILTINS.has(s) || BUILTINS.has(name) || name === pkg.name || required.has(name)) continue
-        if (subpath !== '.' && optional.has(name)) continue
-        offenders.push({
-          pkg: pkg.name,
-          subpath,
-          file: current.slice(pkgDir.length + 1),
-          specifier: s,
-          reason: optional.has(name)
-            ? `${name} is an OPTIONAL peer but the root entry imports it statically (the import throws when it is not installed): make it a required peer, move the import behind a subpath, or load it with a dynamic import()`
-            : `${name} is not in dependencies or peerDependencies`,
-        })
+          if (reason !== undefined) offenders.push({ pkg: pkg.name, subpath, file: where, specifier: s, reason })
+        } else if (existsSync(resolve(dirname(current), s))) queue.push(resolve(dirname(current), s))
       }
-      for (const s of dynamics) {
-        const name = packageOf(s)
+      for (const s of dynamics.filter((d) => !d.startsWith('.'))) {
+        const reason = problemWith(s, subpath, true, declared)
 
-        if (s.startsWith('.') || BUILTINS.has(s) || BUILTINS.has(name) || name === pkg.name || required.has(name) || optional.has(name)) continue
-        if (USER_SUPPLIED[pkg.name]?.[name] !== undefined) continue
-        offenders.push({ pkg: pkg.name, subpath, file: current.slice(pkgDir.length + 1), specifier: s, reason: `${name} is not declared in dependencies or peerDependencies (a dynamic import still needs a declaration)` })
+        if (reason !== undefined) offenders.push({ pkg: pkg.name, subpath, file: where, specifier: s, reason })
       }
     }
   }

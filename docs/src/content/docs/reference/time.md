@@ -7,6 +7,8 @@ description: "Dates and times as plain strings and numbers: ISO values, DST-corr
 
 Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal's four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` and `/fp` have no dependencies; `@pyreon/time` reads the ambient clock and time zone of `@pyreon/ambient` and adds the clock hooks `useToday`, `useCountdown`, `useElapsed` and `useRelative`, which update on shared, aligned tickers. Experimental.
 
+> **Peer dependencies:** `@pyreon/core`, `@pyreon/reactivity` — install alongside this package.
+
 ## Multiplatform
 
 **Tier:** Web-only — the browser package; the native story is stated below
