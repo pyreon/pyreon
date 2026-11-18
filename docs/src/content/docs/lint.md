@@ -590,7 +590,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | --------------------------------------- | -------- | ----------------------------------------------------------------------------------- |
 | `pyreon/no-missing-cleanup`             | warn     | `onMount` with timer/listener but no cleanup return                               |
 | `pyreon/no-mount-in-effect`             | warn     | `onMount()` inside `effect()` runs every re-execution                             |
-| `pyreon/no-effect-in-mount`             | info     | `effect()` inside `onMount()` is redundant                                        |
+| `pyreon/no-effect-in-mount`             | info     | A pure reactive `effect()` inside `onMount()` belongs at setup                    |
 | `pyreon/no-dom-in-setup`                | warn     | DOM access in component setup — use `onMount`                                     |
 | `pyreon/no-imperative-effect-on-create` | warn     | `effect()` doing DOM/IO/timer work at component setup — move it into `onMount()`  |
 | `pyreon/init-fn-needs-idempotency`      | warn     | Exported `init*` fn called without a refcount/boolean guard registers effects N times |
@@ -918,6 +918,8 @@ onMount(() => {
   return () => document.removeEventListener('keydown', onKey)
 })
 ```
+
+Work that must re-run when a signal changes stays an effect, created after mount: `onMount(() => { effect(() => { el.scrollTop = offset() }) })`. `pyreon/no-effect-in-mount` judges an effect by the same detector, so it accepts an imperative effect inside `onMount` and flags only a pure one there; every effect is accepted in exactly one placement. For `document.title` and other head tags, use `useHead(() => ({ title: 'Count: ' + count() }))` from `@pyreon/head`.
 
 Pure effects (`effect(() => sum.set(a() + b()))`, `effect(() => console.log(count()))`) are **not** flagged. Foundation hooks (`@pyreon/hooks`, `@pyreon/rx`) are exempt via `exemptPaths` — they're the abstraction layer that wraps timers/listeners for users.
 
