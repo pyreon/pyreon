@@ -56,6 +56,11 @@ const KNOWN_DETECTOR_CODES = new Set([
   'query-options-as-function',
   'accessor-uncalled-in-template',
   'accessor-uncalled-in-condition',
+  'charts-legacy-import',
+  'plain-mode',
+  'for-stale-item-field',
+  'props-early-return-conditional',
+  'props-object-copy',
 ])
 
 describe('patterns content — structural shape', () => {
