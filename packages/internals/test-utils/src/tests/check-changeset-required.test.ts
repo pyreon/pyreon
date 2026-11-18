@@ -12,6 +12,7 @@ import {
   isConsumerAffectingFile,
   isRepoTsconfigPath,
   isTestRunnerConfigPath,
+  isTestRunnerOutputPath,
   isBenchPath,
   readChangesetIgnore,
   type GateInputs,
@@ -314,6 +315,28 @@ describe('isConsumerAffectingFile', () => {
           REPO,
         ),
       ).toBe(true)
+    })
+  })
+
+  describe('Vitest output directory in a published package — NOT consumer-affecting', () => {
+    // `.vitest/attachments/*.png` is gitignored runner output; removing a copy
+    // committed by mistake must not demand a changeset (#4571).
+    it('rejects a file under .vitest/ in a published package', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/.vitest/attachments/abc.png',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(false)
+    })
+
+    it('isTestRunnerOutputPath matches the .vitest directory only', () => {
+      expect(isTestRunnerOutputPath('packages/x/.vitest/attachments/a.png')).toBe(true)
+      expect(isTestRunnerOutputPath('.vitest/a.png')).toBe(true)
+      expect(isTestRunnerOutputPath('packages/x/src/.vitestrc.ts')).toBe(false)
+      expect(isTestRunnerOutputPath('packages/x/src/vitest/index.ts')).toBe(false)
     })
   })
 
