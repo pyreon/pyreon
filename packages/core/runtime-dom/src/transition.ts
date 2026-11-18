@@ -85,6 +85,8 @@ function Transition(props: TransitionProps): VNodeChild {
   let pendingEnterCancel: (() => void) | null = null
   let pendingLeaveCancel: (() => void) | null = null
   let initialized = false
+  // Set on unmount: an enter queued in a microtask must not start afterwards.
+  let unmounted = false
 
   const applyEnter = (el: HTMLElement) => {
     pendingLeaveCancel?.()
@@ -94,7 +96,16 @@ function Transition(props: TransitionProps): VNodeChild {
     props.onBeforeEnter?.(el)
     el.classList.remove(cls.lf, cls.la, cls.lt)
     el.classList.add(cls.ef, cls.ea)
-    requestAnimationFrame(() => {
+    // The pending FRAME is cancellable too: an unmount (or a superseding
+    // transition) before it runs must not let it attach listeners and arm the
+    // safety timer on a detached element, which fired onAfterEnter after unmount.
+    // Installed BEFORE the request, so the frame's own cancel replaces it.
+    let frame = 0
+    pendingEnterCancel = () => {
+      cancelAnimationFrame(frame)
+      el.classList.remove(cls.ef, cls.ea)
+    }
+    frame = requestAnimationFrame(() => {
       el.classList.remove(cls.ef)
       el.classList.add(cls.et)
       let safetyTimer: ReturnType<typeof setTimeout> | null = null
@@ -137,7 +148,13 @@ function Transition(props: TransitionProps): VNodeChild {
     props.onBeforeLeave?.(el)
     el.classList.remove(cls.ef, cls.ea, cls.et)
     el.classList.add(cls.lf, cls.la)
-    requestAnimationFrame(() => {
+    // Cancellable before it runs — see applyEnter.
+    let frame = 0
+    pendingLeaveCancel = () => {
+      cancelAnimationFrame(frame)
+      el.classList.remove(cls.lf, cls.la)
+    }
+    frame = requestAnimationFrame(() => {
       el.classList.remove(cls.lf)
       el.classList.add(cls.lt)
       let safetyTimer: ReturnType<typeof setTimeout> | null = null
@@ -178,6 +195,7 @@ function Transition(props: TransitionProps): VNodeChild {
   // assumptions — passing null to applyEnter would crash on `.classList`.
   const MAX_REF_RETRIES = 16
   const safeApplyEnter = (retries = MAX_REF_RETRIES) => {
+    if (unmounted) return
     const el = ref.current
     if (el) {
       applyEnter(el)
@@ -219,8 +237,9 @@ function Transition(props: TransitionProps): VNodeChild {
   })
 
   onUnmount(() => {
-    // Cancel both pending transitions so neither fires its onAfterX
-    // callback on a now-detached element after the 5s safety window.
+    unmounted = true
+    // Cancel both pending transitions (a frame not yet run, or listeners and
+    // the safety timer) so neither fires its onAfterX on a detached element.
     pendingEnterCancel?.()
     pendingEnterCancel = null
     pendingLeaveCancel?.()
