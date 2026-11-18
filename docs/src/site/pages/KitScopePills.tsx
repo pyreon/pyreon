@@ -12,16 +12,17 @@ import { KitScope } from '../kit/scope'
  * the server and in the browser); `KitScope` gives the island the site theme
  * when it hydrates as its own root.
  *
- * The root is a real box (`Row`), not the provider: a nested provider's
- * wrapper is `display: contents`, and the `visible` trigger cannot see an
- * island whose content starts under one (pyreon/pyreon#4435), so the island
- * never hydrated.
+ * The root is a real box (`Row`) that lays the Pills out in a row. (It was
+ * first added because the `visible` trigger could not see an island whose
+ * content started under a nested provider's `display: contents` wrapper;
+ * since pyreon/pyreon#4435 the trigger walks through those wrappers.)
  */
 const Row = el.config({ name: 'KitScopePills' }).attrs({ block: true, contentDirection: 'inline', contentAlignY: 'center', gap: 12 })
 
 export default function KitScopePills(props: { mode: 'dark' | 'light' }) {
   const solid = signal(0)
   const ghost = signal(0)
+
   return (
     <KitScope>
       <Row>
