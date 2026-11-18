@@ -33,7 +33,7 @@ import { dayjsApi } from './arms/dayjs'
 import { luxonApi } from './arms/luxon'
 import { pyreonApi } from './arms/pyreon'
 import { temporalApi } from './arms/temporal'
-import { type Api, DATES, INSTANTS, MONTH_ENDS, MONTHS, PAIRS, WALLS } from './arms/common'
+import { type Api, DATES, INSTANTS, MONTH_ENDS, MONTHS, PAIRS, WALLS, ZONE } from './arms/common'
 
 type Id = 'pyreon' | 'date' | 'temporal' | 'date-fns' | 'dayjs' | 'luxon'
 
@@ -95,6 +95,11 @@ function gate(): void {
   }
 }
 
+/** Loads ICU's en-US and Prague data in this process, so a cold row measures a library's own initialisation and not who touched ICU first. */
+function warmIcu(): void {
+  sink += new Intl.DateTimeFormat('en-US', { timeZone: ZONE, year: 'numeric' }).format(0).length
+}
+
 function cycle<T>(items: readonly T[]): () => T {
   let i = 0
 
@@ -111,7 +116,7 @@ await runRivalBench<Id>({
   footnotes: [
     'Every arm matches Temporal on every input (gate above). Plain-date rows: date-fns, Day.js and Luxon run in the local zone (their default); Pyreon, Temporal and Date are zone-free.',
     'Date is a hand-written floor (non-ranking). Zone rows avoid DST transitions on purpose; the libraries differ in how they resolve a gap or overlap (only Pyreon and Temporal implement all four Temporal modes).',
-    'Cold rows are the first call in a fresh process (5 samples): they include each library\'s lazy initialisation (formatter construction, zone-table fill).',
+    'Cold rows are the first call in a fresh process (5 samples, one per round) after ICU en-US and Prague data were warmed for every arm: they include each library\'s own lazy initialisation (its formatter construction and caches).',
   ],
   ops: {
     'add 1 day': { make: (id) => { const a = build(id); const n = cycle(DATES); return () => { sink += a.addDays(n()).length } } },
@@ -134,13 +139,15 @@ await runRivalBench<Id>({
       iters: 1,
       runs: 1,
       warmup: 0,
-      make: (id) => { const a = build(id); return () => { sink += a.toWall(INSTANTS[0]).length } },
+      note: 'ICU locale and zone data are warmed for every arm first (see footnote), so this is each library\'s own first-call work',
+      make: (id) => { const a = build(id); warmIcu(); return () => { sink += a.toWall(INSTANTS[0]).length } },
     },
     'Prague wall time to instant (cold, first call)': {
       iters: 1,
       runs: 1,
       warmup: 0,
-      make: (id) => { const a = build(id); return () => { sink += a.toInstant(WALLS[0]) } },
+      note: 'ICU locale and zone data are warmed for every arm first (see footnote)',
+      make: (id) => { const a = build(id); warmIcu(); return () => { sink += a.toInstant(WALLS[0]) } },
     },
   },
 })
