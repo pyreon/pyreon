@@ -9,7 +9,7 @@ import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { _resetClockState, _tickerStats } from '@pyreon/ambient/testing'
 import { RelativeTime } from '../components'
-import { useRelativeTime } from '../index'
+import { formatRelativeTo, relativeFormatter, useRelativeTime } from '../index'
 import { _resetLocaleState } from '../locale'
 import { _resetWarnings } from '../warn'
 
@@ -243,6 +243,14 @@ describe('threshold: an absolute date after a distance', () => {
 
     expect(text()).toBe('Nov 1, 2026')
     done()
+  })
+})
+
+describe('options', () => {
+  it('only a style (or only a locale) keeps the numeric: auto default', () => {
+    expect(formatRelativeTo('2026-11-16', '2026-11-17', { locale: 'en-US', style: 'short' })).toBe('yesterday')
+    expect(relativeFormatter({ locale: 'en-US', base: '2026-11-17', style: 'narrow' })('2026-11-16')).toBe('yesterday')
+    expect(formatRelativeTo('2026-11-16', '2026-11-17', { locale: 'en-US', numeric: 'always' })).toBe('1 day ago')
   })
 })
 
