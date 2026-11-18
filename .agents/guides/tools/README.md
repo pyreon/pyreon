@@ -35,7 +35,7 @@ Derives a verified, machine-readable component catalog from source. You write no
 - `N verified` counts scenarios, not checks. A scenario that ran two of six checks still counts as verified, so read the `not run` rows.
 - Findings are `{ code, message, fix? }` (catalog v2); `code` is stable. MCP refuses a v1 catalog.
 - `atlas verify <Component>` verifies only the match and never writes the catalog. An unmatched name or a run that verified nothing exits non-zero.
-- `--check` (on `scan` and `verify`) ratchets against the committed catalog: non-zero on regression, never rewrites the baseline, missing baseline = exit 0. A check that stopped running counts as a regression — losing coverage makes the counts improve.
+- `--check` (on `scan` and `verify`) ratchets against the committed catalog: non-zero on a regression or a failure the baseline did not have (a failing new scenario included), zero for failures the baseline already has, never rewrites the baseline, missing baseline = exit 0. A check that stopped running counts as a regression — losing coverage makes the counts improve.
 - `atlas verify-browser` measures reactive coverage on the page's own devtools-bridge instance and diffs snapshots against `./atlas-snapshots`, merging verdicts into `atlas-catalog.json`.
 
 ### Workbench and static build
