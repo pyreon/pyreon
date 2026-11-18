@@ -54,6 +54,7 @@ function notIgnored(repo: string, paths: string[]): string[] {
   // Only the scaffolded rules count: no global excludes file from the machine.
   const r = git('-c', 'core.excludesFile=/dev/null', 'check-ignore', '--no-index', ...paths)
   const ignored = new Set(r.stdout.split('\n').filter(Boolean))
+
   return paths.filter((p) => !ignored.has(p))
 }
 
