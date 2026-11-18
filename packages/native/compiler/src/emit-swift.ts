@@ -21,6 +21,7 @@ import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
 import { resolveDateFieldShape, type DateBound } from './date-field-shape'
+import { componentNamesTakingAValue, namesTakingAValue, withValueArgument } from './value-change-handler'
 import { resolveFieldShape } from './field-shape'
 import { resolveSelectOptions } from './select-shape'
 import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
@@ -664,6 +665,10 @@ const _argExpectedTypes: WeakMap<object, TypeIR> = new WeakMap()
 let _zeroArgFnNames: Set<string> = new Set()
 /** File-scope half of `_zeroArgFnNames`, re-seeded per component. */
 let _zeroArgHelperNames: Set<string> = new Set()
+/** Per-component: the function names in scope that take a value (`value-change-handler.ts`). */
+let _valueArgFnNames: Set<string> = new Set()
+/** File-scope half of `_valueArgFnNames`. */
+let _valueArgHelperNames: Set<string> = new Set()
 /**
  * Per-component: set to true when the component declares any router
  * hook (`useNavigate()` / `useParams()`). When set, the View struct
@@ -1169,6 +1174,7 @@ export function emitSwift(
   // type-gated lowering downstream of it went dark.
 
   _zeroArgHelperNames = new Set(helperFns.filter((h) => h.params.length === 0).map((h) => h.name))
+  _valueArgHelperNames = namesTakingAValue(helperFns)
   _fontMap = fonts
   _constStringMap = new Map()
   for (const md of moduleDecls) {
@@ -1862,6 +1868,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = moduleFunctionNamesSwift()
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
+  _valueArgFnNames = componentNamesTakingAValue(c, _valueArgHelperNames)
   _serviceBindings = bindServices(c.decls)
   _asyncDeclsSwift = []
   // C4: reset router-usage tracking. Set during decl-pass if any
@@ -8118,6 +8125,19 @@ function emitSwiftCallbackArg(handler: ExprIR, indent: number): string {
   return `{ ${params} in${action.slice(1)}`
 }
 
+/**
+ * A value-change event (`<Field onChangeText>`, `<Toggle|Select|Tabs onChange>`) whose by-reference handler takes the
+ * value, rewritten to pass it: `onChangeText={save}` → `(newValue) => save(newValue)`, and a signal setter `draft.set` alike
+ * (value-change-handler.ts, #4544).
+ */
+function swiftValueChangeEvent<A extends Extract<AttrIR, { kind: 'event' }> | undefined>(attr: A): A {
+  return withValueArgument(attr, {
+    takesValue: (n) => _valueArgFnNames.has(n) && _functionNames.has(n),
+    isSignal: (n) => _signalNames.has(n),
+    propsParam: _activePropsParamName,
+  })
+}
+
 function emitSwiftAction(handler: ExprIR, indent: number): string {
   return withSwiftThrowCtx('none', () => emitSwiftActionBody(handler, indent))
 }
@@ -8254,10 +8274,13 @@ function swiftProjectedSignal(value: ExprIR, handler: ExprIR | undefined): strin
   const name = value.kind === 'identifier' ? value.name : called ? (value.callee as { name: string }).name : undefined
   if (name === undefined || !_signalNames.has(name)) return undefined
   if (handler === undefined) return called ? undefined : name
-  // A handler passed by reference (`onChangeText={save}`): the `Binding` shape
-  // would call it as `save()`, without the value, so the bare signal keeps the
-  // projection (the earlier behaviour) and the called read keeps the Binding.
-  if (handler.kind !== 'arrow') return called ? undefined : name
+  // A handler passed by reference whose callee takes the value arrives here as
+  // `(newValue) => save(newValue)` (swiftValueChangeEvent), so it takes the
+  // Binding below. A zero-parameter function reference (`onChange={props.onToggle}`)
+  // must run too, as it does on Android and the web, so it takes the Binding
+  // (`set: { _ in onToggle() }`). Any other reference keeps the projection on a
+  // bare signal and the Binding on the called read.
+  if (handler.kind !== 'arrow') return called || resolveFunctionHandler(handler) !== undefined ? undefined : name
   if (handler.params.length !== 1) return undefined
   const body = stripSwiftClosureBody(emitSwiftAction(handler, 0))
 
@@ -10397,8 +10420,10 @@ function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const valueAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  const onChange = swiftValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+    ),
   )
   const { tabs, warnings } = planTabs(e)
   for (const w of warnings) pushEmitWarning(w)
@@ -10907,9 +10932,11 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // broken generic `Field(value: …)` on iOS — a "one code, run everywhere"
   // break. Accept both (canonical `changetext` first, web-style `change` for
   // compat).
-  const onChangeAttr = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> =>
-      a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
+  const onChangeAttr = swiftValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> =>
+        a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
+    ),
   )
   const projected = valueAttr === undefined ? undefined : swiftProjectedSignal(valueAttr.value, onChangeAttr?.handler)
   let textArg: string
@@ -11035,8 +11062,10 @@ function emitSwiftSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const attr = (n: string) =>
     e.attrs.find((a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n)
   const valueAttr = attr('value')
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  const onChange = swiftValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+    ),
   )
   if (valueAttr === undefined || onChange === undefined) {
     _emitWarnings.push(
@@ -11145,8 +11174,10 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   //    reads via the expression + writes via the `onChange` handler.
   //    This unblocks <Checkbox> → <Toggle> migration for the common
   //    parent-owns-state shape.
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  const onChange = swiftValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+    ),
   )
   const projected = swiftProjectedSignal(valueAttr.value, onChange?.handler)
   if (projected !== undefined) {
