@@ -41,14 +41,14 @@ export interface GeoPointsOptions {
 }
 
 /** Radius of each point at the shared value scale. */
-export function geoPointRadii(points: GeoPoint[], base: Double): Double[] {
+export function geoPointRadii(points: readonly GeoPoint[], base: Double): Double[] {
   let hi = 0.0
   for (const p of points) if (p.value !== undefined && p.value > hi) hi = p.value
   return points.map((p) => (p.value === undefined || hi <= 0.0 ? base : base * (0.6 + 1.4 * Math.sqrt(Math.max(0.0, p.value) / hi))))
 }
 
 /** Render points over an already-laid-out map. */
-export function renderGeoPoints(layout: GeoLayout, points: GeoPoint[], options?: GeoPointsOptions, measure?: MeasureText): DrawCmd[] {
+export function renderGeoPoints(layout: GeoLayout, points: readonly GeoPoint[], options?: GeoPointsOptions, measure?: MeasureText): DrawCmd[] {
   const out: DrawCmd[] = []
   const base = options?.radius ?? 5.0
   const color = options?.color ?? '#b42318'
@@ -76,7 +76,7 @@ export function renderGeoPoints(layout: GeoLayout, points: GeoPoint[], options?:
 }
 
 /** Render `lines`-series paths over an already-laid-out map (drawn before points). */
-export function renderGeoPaths(layout: GeoLayout, paths: GeoPath[], options?: GeoPointsOptions): DrawCmd[] {
+export function renderGeoPaths(layout: GeoLayout, paths: readonly GeoPath[], options?: GeoPointsOptions): DrawCmd[] {
   const out: DrawCmd[] = []
   const color = options?.color ?? '#b42318'
   const rawP = options?.progress ?? 1.0
@@ -109,12 +109,12 @@ export function hitGeoPoint(layout: GeoLayout, points: GeoPoint[], px: Double, p
 
 export interface GeoPointsToSvgOptions {
   geo: GeoJson
-  points: GeoPoint[]
-  paths?: GeoPath[] | undefined
-  heat?: GeoHeatPoint[] | undefined
+  points: readonly GeoPoint[]
+  paths?: readonly GeoPath[] | undefined
+  heat?: readonly GeoHeatPoint[] | undefined
   heatRadius?: Double | undefined
   heatStops?: readonly string[] | undefined
-  pies?: GeoPie[] | undefined
+  pies?: readonly GeoPie[] | undefined
   /** Region values from a map series on the geo (`geoIndex`). */
   values?: Record<string, Double> | undefined
   width?: Double

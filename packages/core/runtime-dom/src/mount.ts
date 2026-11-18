@@ -618,9 +618,11 @@ function mountComponent(
   // the unmount closure (`_isDroppable` below). The hooks object is lazy too
   // (`_runHooked` in `@pyreon/core`).
   const prevOwner = getContextOwner()
-  // RESTORED on exit, never reset to null: this component may be mounting from
-  // inside its parent's template bind, and a parent binding or effect created
-  // after this child returns must still register where it did before the child.
+  // RESTORED on every exit, never reset to null: a component can mount while
+  // another scope is current (inside a parent's onMount via a signal write
+  // that flips a <Show>, inside a <For> row's collector, inside a parent's
+  // compiled template), and nulling it there left everything that scope's
+  // owner created afterwards with no owner — never disposed.
   const prevScope = _currentScope()
   const scope = effectScope()
   scope._parent = prevOwner

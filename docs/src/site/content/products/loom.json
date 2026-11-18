@@ -25,18 +25,18 @@
    },
    {
     "key": "our own repo",
-    "value": "148 packages<small>858 internal edges, 0 cycles</small>"
+    "value": "129 packages<small>751 internal edges, 0 cycles</small>"
    }
   ]
  },
  "proof": [
   {
-   "stat": "858",
-   "label": "internal dependency edges mapped across Pyreon's own 148-package workspace, with 0 runtime cycles and 0 errors",
-   "source": "loom scan . on main (e314cc619), 2026-11-11"
+   "stat": "751",
+   "label": "internal dependency edges mapped across Pyreon's own 129-package workspace, with 0 runtime cycles and 0 errors",
+   "source": "loom scan . on main (7cc82420e), 2026-11-18"
   },
   {
-   "stat": "106",
+   "stat": "98",
    "label": "workspace packages downstream of @pyreon/reactivity: its blast radius, counted",
    "source": "report.graph.reach from the same scan"
   },
@@ -63,7 +63,7 @@
    },
    {
     "title": "Blast radius, counted",
-    "text": "Every package gets its transitive dependents. In Pyreon's own repo, a change to `@pyreon/reactivity` reaches 106 of 148 packages. Rank the list, gate on it, or hand it to your AI assistant."
+    "text": "Every package gets its transitive dependents. In Pyreon's own repo, a change to `@pyreon/reactivity` reaches 98 of 129 packages. Rank the list, gate on it, or hand it to your AI assistant."
    }
   ]
  },
@@ -234,7 +234,7 @@
   },
   {
    "title": "Rank packages by blast radius",
-   "text": "The graph behind `loom scan`, as data. On this repo the top of the list is the compiler's seven per-platform binaries (116 dependents each) and `@pyreon/compiler` (115); `@pyreon/reactivity` reaches 106.",
+   "text": "The graph behind `loom scan`, as data. On this repo the top of the list is the compiler's seven per-platform binaries (108 dependents each) and `@pyreon/compiler` (107); `@pyreon/reactivity` reaches 98.",
    "code": "// scripts/blast-radius.ts\nimport { buildReport, loadSharedLoomConfig, mergeLoomSettings, readManifestLoomSection, validateLoomSection } from '@pyreon/loom/core'\n\n// the settings `loom scan` applies: pyreon.config.* merged with the package.json `loom` key\nconst shared = await loadSharedLoomConfig('.')\nconst manifest = validateLoomSection(readManifestLoomSection('.'), 'package.json')\nconst report = buildReport('.', { settings: mergeLoomSettings(shared, manifest) })\n\n// The ten packages whose change reaches the most of the workspace.\nconst top = Object.entries(report.graph.reach)\n  .sort(([, a], [, b]) => b - a)\n  .slice(0, 10)\nfor (const [pkg, dependents] of top) console.log(`${dependents}\\t${pkg}`)\n\nconst errors = report.issues.filter((i) => i.severity === 'error')\nif (errors.length > 0) process.exitCode = 1"
   },
   {
@@ -311,12 +311,12 @@
  "glyphSvg": "<path d=\"M30 12 V108 M90 12 V108 M12 30 H108 M12 90 H108\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\" stroke-linecap=\"square\"/><circle cx=\"60\" cy=\"60\" r=\"18\" fill=\"url(#eg)\"/>",
  "sources": [
   {
-   "claim": "Pyreon repo: 148 workspace packages, 196 external deps, 858 internal edges, depth 11, 0 cycles, 0 errors, 0 warnings, 278 infos",
-   "path": "node packages/tools/loom/bin/loom.js scan . --no-write in /tmp/wt-site-content (main e314cc619), 2026-11-11"
+   "claim": "Pyreon repo: 129 workspace packages, 229 external deps, 751 internal edges, depth 11, 0 cycles, 0 errors, 0 warnings, 183 infos",
+   "path": "loom scan . --no-write on main (7cc82420e), 2026-11-18"
   },
   {
-   "claim": "@pyreon/reactivity reach 106; @pyreon/compiler 115; native compiler binaries 116",
-   "path": "buildReport(\".\").graph.reach, same checkout (.scratch/tools/loom-migrate/recipe-reach.ts output)"
+   "claim": "@pyreon/reactivity reach 98; @pyreon/compiler 107; native compiler binaries 108",
+   "path": "buildReport(\".\").graph.reach, same checkout"
   },
   {
    "claim": "374 ms warm scan, 98.3% import scanning",

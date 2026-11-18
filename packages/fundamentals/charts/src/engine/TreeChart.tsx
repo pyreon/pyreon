@@ -10,7 +10,7 @@ import type { TreeLayout, TreeLayoutNode, TreeOptions } from './tree'
 import type { TreeNode } from './treemap'
 
 export interface TreeChartProps extends CanvasHostProps {
-  data: TreeNode[] | (() => TreeNode[])
+  data: readonly TreeNode[] | (() => readonly TreeNode[])
   tree?: TreeOptions
   /** Fired with the node under the click, or null for a miss. */
   onSelect?: (node: TreeLayoutNode | null) => void
@@ -19,7 +19,7 @@ export interface TreeChartProps extends CanvasHostProps {
 }
 
 export function TreeChart(props: TreeChartProps): VNode {
-  const readData = (): TreeNode[] => (typeof props.data === 'function' ? (props.data as () => TreeNode[])() : props.data)
+  const readData = (): readonly TreeNode[] => (typeof props.data === 'function' ? (props.data as () => readonly TreeNode[])() : props.data)
   const opts = (t: ChartTheme): TreeOptions => ({ palette: t.palette, labelColor: t.label, linkColor: t.label, ...props.tree })
   return canvasHost<TreeLayout>({
     props,
