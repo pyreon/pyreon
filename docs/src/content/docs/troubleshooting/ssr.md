@@ -154,6 +154,12 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] Cloning a `<template>`'s content and handing the clone to user code before insertion
+
+(#4390): a clone of `template.content` belongs to the template's INERT document (`ownerDocument.defaultView === null`) until it is inserted, and compiled refs run on the clone. `@pyreon/virtual`'s TanStack core read the window from the scroll element's document at ref time, found `null` and never observed scroll. happy-dom gives template content the page document, so only a browser shows it. Import the clone SOURCE into the page document once at parse (`document.importNode`), never per clone. Same PR: a compiled ref never received `null` on unmount (the bind returned no disposer for it); refs now lower to `_ref`, which returns one.
+
+---
+
 ### [FIXED, 2026-11] A renderer coercing a child value on its own
 
 (#4386): ten pieces of code turn a child value into text (`mountChild`, `_setChild`, `_setChildAt`, both `_bindText` tiers, the poly text core, `_fuse`, `renderNode`, `streamNode`, `_esc`, hydration), and each had its own rule. `['a', 'b']` rendered `a,b` through the compiled text sinks (`String(array)`, or the DOM's `textContent =` coercion) and `ab` through SSR and `h()`. `true` rendered "true" on the server and nothing in a compiled template, which bakes a literal `{true}` away. `false` at a `_setChildAt` slot rendered "false". A bigint or a `Date` threw a `TypeError` inside `renderElement`. A component's server HTML and client DOM differed in characters, and hydration rewrote the adopted text silently.
