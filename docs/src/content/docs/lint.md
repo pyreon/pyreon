@@ -984,7 +984,7 @@ for (const rule of listRules()) {
 | `config`               | `string`                              | Path to a specific config file (skips auto-discovery)                    |
 | `ignore`               | `string`                              | Path to a custom ignore file                                             |
 
-Returns `LintResult`: `{ files, totalErrors, totalWarnings, totalInfos, configDiagnostics }`. Each `files[i]` is a `LintFileResult` (`{ filePath, diagnostics, fixedSource? }`).
+Returns `LintResult`: `{ files, totalErrors, totalWarnings, totalInfos, configDiagnostics }`. Each `files[i]` is a `LintFileResult` (`{ filePath, diagnostics, fixed?, fixedSource? }`). With `fix: true`, the diagnostics whose fix was written move from `diagnostics` to `fixed` (not counted in the totals); a fixable diagnostic whose fix was deferred because it overlapped another fix stays in `diagnostics`, so a second `--fix` pass applies it.
 
 ```ts
 // Severity + options overrides on a single run
@@ -1179,7 +1179,7 @@ The server also advertises `textDocumentSync: full` and `inlayHintProvider: true
 | --------------------------------------------- | ----------------------------------------------------------------- |
 | `LintOptions`                                 | Input to `lint` (`paths` required; preset/fix/quiet/overrides/…)  |
 | `LintResult`                                  | `{ files, totalErrors, totalWarnings, totalInfos, configDiagnostics }` |
-| `LintFileResult`                              | `{ filePath, diagnostics, fixedSource? }`                         |
+| `LintFileResult`                              | `{ filePath, diagnostics, fixed?, fixedSource? }`                 |
 | `Diagnostic`                                  | `{ ruleId, severity, message, span, loc, fix? }`                  |
 | `ConfigDiagnostic`                            | Config-level diagnostic (malformed rule options)                  |
 | `Fix`                                         | `{ span, replacement }`                                           |

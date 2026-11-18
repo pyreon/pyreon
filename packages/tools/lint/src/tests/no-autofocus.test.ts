@@ -109,4 +109,34 @@ describe('pyreon/no-autofocus (frontend, fixable)', () => {
     expect(fixed).not.toContain('autoFocus')
     expect(fixed).not.toContain('  ')
   })
+
+  // #4396: an attribute alone on its line used to leave a whitespace-only line.
+  it('autofix removes an attribute alone on its line together with that line', () => {
+    const source = [
+      'function App() {',
+      '  return (',
+      '    <input',
+      '      value="x"',
+      '      autoFocus',
+      '      data-testid="a"',
+      '    />',
+      '  )',
+      '}',
+    ].join('\n')
+    const fixed = applyFixes(source, lint(source).diagnostics)
+    expect(fixed).toBe(source.replace('\n      autoFocus', ''))
+    expect(fixed.split('\n').some((line) => line.trim() === '')).toBe(false)
+  })
+
+  it('autofix keeps CRLF line endings intact when removing a whole line', () => {
+    const source = 'const a = (\r\n  <input\r\n    autoFocus={true}\r\n  />\r\n)\r\n'
+    const fixed = applyFixes(source, lint(source).diagnostics)
+    expect(fixed).toBe('const a = (\r\n  <input\r\n  />\r\n)\r\n')
+  })
+
+  it('autofix on a line shared with another attribute removes only the attribute', () => {
+    const source = 'const a = (\n  <input\n    autoFocus value="x"\n  />\n)\n'
+    const fixed = applyFixes(source, lint(source).diagnostics)
+    expect(fixed).toBe('const a = (\n  <input\n    value="x"\n  />\n)\n')
+  })
 })

@@ -4,8 +4,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
-import { applyFixes, fixEdits, lintFile } from '../runner'
-import type { Diagnostic, LintConfig } from '../types'
+import { applyFileFixes, applyFixes, fixEdits, lintFile } from '../runner'
+import type { Diagnostic, LintConfig, LintFileResult } from '../types'
 import { _resetProjectDepsCache } from '../utils/project-deps'
 
 /**
@@ -55,6 +55,46 @@ describe('applyFixes — overlap handling', () => {
     const a = diag({ span: { start: 0, end: 3 }, replacement: 'XXX' })
     const b = diag({ span: { start: 8, end: 11 }, replacement: 'ZZZ' })
     expect(applyFixes(src, [a, b])).toBe(applyFixes(src, [b, a]))
+  })
+})
+
+// #4396: a fix run must say what it changed and must keep reporting what it
+// did not change. Before, every diagnostic carrying a fix was dropped after the
+// write, so applied fixes went unreported and DEFERRED ones vanished unfixed.
+describe('applyFileFixes — splits diagnostics by outcome', () => {
+  function fileResult(diagnostics: Diagnostic[]): LintFileResult {
+    return { filePath: 'x.ts', diagnostics }
+  }
+
+  it('moves applied fixes to `fixed` and keeps a deferred one in `diagnostics`', () => {
+    // Source order, shorter span first: the `window` edit wins, the wider
+    // overlapping one is deferred.
+    const deferred = diag({ span: { start: 10, end: 26 }, replacement: 'W' })
+    const applied = diag({ span: { start: 10, end: 16 }, replacement: 'globalThis' })
+    const plain = diag(undefined)
+    const fr = fileResult([deferred, applied, plain])
+    const out = applyFileFixes(fr, 'const x = window.innerWidth')
+    expect(out).toBe('const x = globalThis.innerWidth')
+    expect(fr.fixedSource).toBe(out)
+    expect(fr.fixed).toEqual([applied])
+    expect(fr.diagnostics).toEqual([deferred, plain])
+  })
+
+  it('counts an identical edit collapsed into an earlier one as fixed', () => {
+    const a = diag({ span: { start: 3, end: 3 }, replacement: '\n' })
+    const b = diag({ span: { start: 3, end: 3 }, replacement: '\n' })
+    const fr = fileResult([a, b])
+    expect(applyFileFixes(fr, 'abcdef')).toBe('abc\ndef')
+    expect(fr.fixed).toEqual([a, b])
+    expect(fr.diagnostics).toEqual([])
+  })
+
+  it('returns undefined and leaves the result alone when nothing is fixable', () => {
+    const plain = diag(undefined)
+    const fr = fileResult([plain])
+    expect(applyFileFixes(fr, 'abc')).toBeUndefined()
+    expect(fr.fixed).toBeUndefined()
+    expect(fr.diagnostics).toEqual([plain])
   })
 })
 
