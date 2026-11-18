@@ -229,6 +229,39 @@ export const SCENARIOS: Scenario[] = [
     imports: ['add', 'startOf', 'pipe', 'isBetween'],
   },
   {
+    // Exact money arithmetic on plain data: parsing, the canonical writer and one fast-path add and multiply. Rounding is one
+    // bigint routine shared by every function, so this is the floor of the package.
+    id: '@pyreon/money::add-multiply',
+    pkg: '@pyreon/money',
+    dir: 'fundamentals/money',
+    entry: 'index.js',
+    imports: ['money', 'add', 'multiply'],
+  },
+  {
+    // Allocation adds the largest-remainder loop and the ratio reader on top of the floor.
+    id: '@pyreon/money::allocate',
+    pkg: '@pyreon/money',
+    dir: 'fundamentals/money',
+    entry: 'index.js',
+    imports: ['money', 'allocate'],
+  },
+  {
+    // The decimal entry alone: strings in, strings out, no currency table.
+    id: '@pyreon/money::decimal',
+    pkg: '@pyreon/money',
+    dir: 'fundamentals/money',
+    entry: 'decimal.js',
+    imports: ['add', 'multiply', 'divide', 'round'],
+  },
+  {
+    // The whole value layer: every function of the main entry.
+    id: '@pyreon/money::everything',
+    pkg: '@pyreon/money',
+    dir: 'fundamentals/money',
+    entry: 'index.js',
+    imports: ['money', 'fromMinor', 'toMinor', 'isMoney', 'zero', 'add', 'subtract', 'negate', 'abs', 'sum', 'multiply', 'divide', 'allocate', 'split', 'percentage', 'ratio', 'compare', 'equals', 'min', 'max', 'isZero', 'isPositive', 'isNegative', 'round', 'convert', 'defineCurrency', 'currencyDigits', 'isCurrency'],
+  },
+  {
     // The ambient clock hook alone: the shared ticker machinery, without the locale and zone context.
     id: '@pyreon/ambient::useNow',
     pkg: '@pyreon/ambient',

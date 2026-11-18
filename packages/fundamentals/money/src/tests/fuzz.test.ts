@@ -11,6 +11,7 @@ import { pick, rng, int } from './rng'
 const NULL_PROTO = Object.create(null) as object
 const THROWING = { toString() { throw new Error('boom') }, valueOf() { throw new Error('boom') } }
 const E = { amount: '9.99', currency: 'EUR' }
+
 const POOL: unknown[] = [
   undefined, null, true, 0, -0, 1, -1, 1.5, 0.1, 7, 100, 1e15, 1e21, 1e308, -1e308, 1e-7, 2 ** 53, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY,
   0n, 5n, -7n, 10n ** 40n, Symbol('s'), '', ' ', 'x', '0', '-0', '-0.00', '9.99', '9.995', '+5', '.5', '5.', '1e3', '1e-3', '1e999999999', '1e9999999999999', '5,50', ' 5', '0x10', 'NaN', 'Infinity',

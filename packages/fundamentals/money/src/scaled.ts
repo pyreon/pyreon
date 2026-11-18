@@ -39,6 +39,15 @@ export function pow10(k: number): bigint {
   return 10n ** BigInt(k)
 }
 
+/** The index after the run of ASCII digits that starts at `from`. */
+function digitsEnd(text: string, from: number): number {
+  let i = from
+
+  while (i < text.length && text.charCodeAt(i) - 48 >>> 0 <= 9) i++
+
+  return i
+}
+
 /**
  * Read decimal text. Strict mode accepts exactly the canonical form (`-?(0|[1-9][0-9]*)(\.[0-9]+)?`, no `-0`). Lenient mode
  * also accepts a leading `+`, `.5`, `5.`, leading zeros and an exponent (`1e-3`, `1.5E+2`). Returns `null` when the text is not
@@ -58,47 +67,68 @@ export function readDecimal(fn: string, text: string, lenient: boolean): Scaled 
   } else if (first === 43 && lenient) i = 1
   const intStart = i
 
-  while (i < len && text.charCodeAt(i) - 48 >>> 0 <= 9) i++
+  i = digitsEnd(text, i)
   const intLen = i - intStart
   let fracStart = i
   let fracLen = 0
 
   if (i < len && text.charCodeAt(i) === 46) {
     fracStart = ++i
-    while (i < len && text.charCodeAt(i) - 48 >>> 0 <= 9) i++
+    i = digitsEnd(text, i)
     fracLen = i - fracStart
     if (fracLen === 0 && !lenient) return null
   }
   if (intLen === 0 && fracLen === 0) return null
-  if (!lenient) return i === len && intLen > 0 ? strictShape(text, neg, intStart, intLen, fracLen, fn) : null
-  let exp = 0
+  const parts: Parts = { text, neg, intStart, intLen, fracStart, fracLen, exp: 0 }
 
+  if (!lenient) return i === len && intLen > 0 ? strictShape(fn, parts) : null
   if (i < len && (text.charCodeAt(i) | 32) === 101) {
-    let j = i + 1
-    let eneg = false
+    const end = readExponent(fn, text, i + 1, parts)
 
-    if (j < len && (text.charCodeAt(j) === 43 || text.charCodeAt(j) === 45)) eneg = text.charCodeAt(j++) === 45
-    const expStart = j
-
-    while (j < len && text.charCodeAt(j) - 48 >>> 0 <= 9) j++
-    if (j === expStart || j - expStart > 9) return j === expStart ? null : badRange(fn, `the exponent in ${JSON.stringify(text.slice(0, 40))} is too large`)
-    exp = Number(text.slice(expStart, j)) * (eneg ? -1 : 1)
-    i = j
+    if (end < 0) return null
+    i = end
   }
-  if (i !== len) return null
 
-  return build(fn, text, neg, intStart, intLen, fracStart, fracLen, exp)
+  return i === len ? build(fn, parts) : null
 }
 
-function strictShape(text: string, neg: boolean, intStart: number, intLen: number, fracLen: number, fn: string): Scaled | null {
+/** Where the digits of a number sit in its text. */
+interface Parts {
+  text: string
+  neg: boolean
+  intStart: number
+  intLen: number
+  fracStart: number
+  fracLen: number
+  exp: number
+}
+
+/** Read the exponent digits that start at `from` into `parts.exp`; returns the end index, or -1 when there are none. */
+function readExponent(fn: string, text: string, from: number, parts: Parts): number {
+  let j = from
+  let eneg = false
+
+  if (j < text.length && (text.charCodeAt(j) === 43 || text.charCodeAt(j) === 45)) eneg = text.charCodeAt(j++) === 45
+  const expStart = j
+
+  j = digitsEnd(text, j)
+  if (j === expStart) return -1
+  if (j - expStart > 9) return badRange(fn, `the exponent in ${JSON.stringify(text.slice(0, 40))} is too large`)
+  parts.exp = Number(text.slice(expStart, j)) * (eneg ? -1 : 1)
+
+  return j
+}
+
+function strictShape(fn: string, parts: Parts): Scaled | null {
   // Canonical: no leading zero before other digits, and no negative zero.
-  if (intLen > 1 && text.charCodeAt(intStart) === 48) return null
-  const scaled = build(fn, text, neg, intStart, intLen, intStart + intLen + 1, fracLen, 0)
+  if (parts.intLen > 1 && parts.text.charCodeAt(parts.intStart) === 48) return null
+  const scaled = build(fn, parts)
 
-  return scaled !== null && scaled.n === 0n && neg ? null : scaled
+  return scaled !== null && scaled.n === 0n && parts.neg ? null : scaled
 }
 
-function build(fn: string, text: string, neg: boolean, intStart: number, intLen: number, fracStart: number, fracLen: number, exp: number): Scaled | null {
+function build(fn: string, parts: Parts): Scaled | null {
+  const { text, neg, intStart, intLen, fracStart, fracLen, exp } = parts
   let digits = text.slice(intStart, intStart + intLen) + (fracLen > 0 ? text.slice(fracStart, fracStart + fracLen) : '')
   let s = fracLen - exp
 
@@ -167,7 +197,9 @@ function tie(mode: RoundingMode, q: bigint, away: bigint, negative: boolean): bi
   if (mode === 'halfTrunc') return q
   if (mode === 'halfCeil') return negative ? q : away
 
-  return mode === 'halfFloor' ? (negative ? away : q) : (q % 2n === 0n ? q : away)
+  if (mode === 'halfFloor') return negative ? away : q
+
+  return q % 2n === 0n ? q : away
 }
 
 /** A whole number in `lo..hi`, or a thrown error naming the function and option. */

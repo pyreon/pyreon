@@ -21,6 +21,7 @@ import { runRivalBench, type Arm } from '../../../../scripts/bench/rivals-harnes
 import { add, allocate, money, multiply } from '../src/index'
 
 type Id = 'pyreon' | 'dinero' | 'currencyjs' | 'bigjs'
+
 const ARMS: readonly Arm<Id>[] = [
   { id: 'pyreon', label: 'Pyreon' },
   { id: 'dinero', label: 'dinero.js v2', pkg: 'dinero.js' },

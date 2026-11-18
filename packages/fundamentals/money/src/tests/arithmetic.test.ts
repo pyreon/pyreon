@@ -20,6 +20,7 @@ function q(text: string): Q {
 const qAdd = (a: Q, b: Q): Q => ({ num: a.num * b.den + b.num * a.den, den: a.den * b.den })
 const qMul = (a: Q, b: Q): Q => ({ num: a.num * b.num, den: a.den * b.den })
 const qEq = (a: Q, b: Q): boolean => a.num * b.den === b.num * a.den
+
 const qCmp = (a: Q, b: Q): -1 | 0 | 1 => {
   const l = a.num * b.den
   const r = b.num * a.den

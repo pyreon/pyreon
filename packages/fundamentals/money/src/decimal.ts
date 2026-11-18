@@ -1,4 +1,4 @@
-import { badRange, badValue } from './errors'
+import { badRange } from './errors'
 import { checkMode, divRound, formatScaled, pow10, readDecimal, type RoundingMode, type Scaled, toScaled, wholeIn } from './scaled'
 
 /**

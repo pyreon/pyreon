@@ -28,16 +28,24 @@ function notCanonical(fn: string, m: Money, digits: number): never {
 }
 
 /** The minor units of an amount: a `number` when it has at most 15 digits, else a `bigint`. Validates the canonical shape. */
+/** The cheap checks of a canonical amount: length, a dot where the digits say, an integer part without a leading zero. */
+function shapeOk(text: string, start: number, dot: number, digits: number): boolean {
+  const intEnd = digits > 0 ? dot : text.length
+
+  if (text.length > MAX_DIGITS + 2 || intEnd - start < 1) return false
+  if (digits > 0 && text.charCodeAt(dot) !== 46) return false
+
+  return intEnd - start === 1 || text.charCodeAt(start) !== 48
+}
+
 function readMinor(fn: string, m: Money, digits: number): number | bigint {
   const text = m.amount
   const len = text.length
   const neg = len > 0 && text.charCodeAt(0) === 45
   const start = neg ? 1 : 0
   const dot = digits > 0 ? len - digits - 1 : -1
-  const intEnd = digits > 0 ? dot : len
 
-  if (len > MAX_DIGITS + 2 || intEnd - start < 1 || (digits > 0 && text.charCodeAt(dot) !== 46)) return notCanonical(fn, m, digits)
-  if (intEnd - start > 1 && text.charCodeAt(start) === 48) return notCanonical(fn, m, digits)
+  if (!shapeOk(text, start, dot, digits)) return notCanonical(fn, m, digits)
   let n = 0
   let nonzero = false
 
@@ -107,13 +115,23 @@ export interface MoneyOptions {
   rounding?: RoundingMode
 }
 
-function toMinorScaled(fn: string, value: Scaled, digits: number, currency: string, rounding: RoundingMode | undefined, isNumber: boolean, original: unknown): bigint {
+/** What `toMinorScaled` needs to know about the call: the currency, the explicit rounding, and the value as it was given. */
+interface MinorContext {
+  currency: string
+  digits: number
+  mode: RoundingMode | undefined
+  original: unknown
+}
+
+function toMinorScaled(fn: string, value: Scaled, ctx: MinorContext): bigint {
+  const { currency, digits, mode, original } = ctx
+
   if (value.s <= digits) return value.n * pow10(digits - value.s)
   const unit = pow10(value.s - digits)
 
   if (value.n % unit === 0n) return value.n / unit
-  if (rounding !== undefined) return divRound(value.n, unit, rounding)
-  const why = isNumber
+  if (mode !== undefined) return divRound(value.n, unit, mode)
+  const why = typeof original === 'number'
     ? `${String(original)} has more decimals than ${currency} has (${digits}): that is floating-point noise (0.1 + 0.2 is 0.30000000000000004 in binary floating point), not an amount.`
     : `${JSON.stringify(original)} has more decimals than ${currency} has (${digits}), so it would lose value.`
 
@@ -133,10 +151,10 @@ function toMinorScaled(fn: string, value: Scaled, digits: number, currency: stri
  */
 export function money(amount: number | string | bigint, currency: CurrencyCode, options?: MoneyOptions): Money {
   const digits = digitsOf('money', currency)
-  const rounding = options?.rounding === undefined ? undefined : checkMode('money', options.rounding)
+  const mode = options?.rounding === undefined ? undefined : checkMode('money', options.rounding)
   const value = toScaled('money', 'amount', amount)
 
-  return { amount: formatScaled(toMinorScaled('money', value, digits, currency, rounding, typeof amount === 'number', amount), digits), currency }
+  return { amount: formatScaled(toMinorScaled('money', value, { currency, digits, mode, original: amount }), digits), currency }
 }
 
 /**

@@ -9,6 +9,7 @@ interface FormatMoneyInput {
   amount: string
   currency: string
 }
+
 interface FormatMoneyInputReadonly {
   readonly amount: string
   readonly currency: string
