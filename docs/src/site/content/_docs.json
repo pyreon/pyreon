@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 226,
+  "pageCount": 229,
   "pages": [
    {
     "path": "a11y.md",
@@ -423,6 +423,11 @@
     "href": "/docs/patterns/data-fetching"
    },
    {
+    "path": "patterns/dates-and-times.md",
+    "title": "Dates and times",
+    "href": "/docs/patterns/dates-and-times"
+   },
+   {
     "path": "patterns/dev-warnings.md",
     "title": "Dev-mode warnings",
     "href": "/docs/patterns/dev-warnings"
@@ -813,6 +818,11 @@
     "href": "/docs/reference/testing"
    },
    {
+    "path": "reference/time.md",
+    "title": "Dates and Times — API Reference",
+    "href": "/docs/reference/time"
+   },
+   {
     "path": "reference/toast.md",
     "title": "Toast Notifications — API Reference",
     "href": "/docs/reference/toast"
@@ -956,6 +966,11 @@
     "path": "table.md",
     "title": "Table",
     "href": "/docs/table"
+   },
+   {
+    "path": "time.md",
+    "title": "Time",
+    "href": "/docs/time"
    },
    {
     "path": "toast.md",
@@ -1194,6 +1209,7 @@
       "patterns/dynamic-fields",
       "patterns/routing-setup",
       "patterns/data-fetching",
+      "patterns/dates-and-times",
       "patterns/styler-theming",
       "patterns/ssr-safe-hooks",
       "patterns/islands",
@@ -1316,6 +1332,7 @@
       "auth",
       "hotkeys",
       "format",
+      "time",
       "toast",
       "rx",
       "url-state",
@@ -1419,6 +1436,7 @@
       "reference/hooks",
       "reference/hotkeys",
       "reference/format",
+      "reference/time",
       "reference/http",
       "reference/i18n",
       "reference/kinetic-presets",
@@ -1982,6 +2000,10 @@
      "href": "/docs/format"
     },
     {
+     "title": "Time",
+     "href": "/docs/time"
+    },
+    {
      "title": "Drag and Drop",
      "href": "/docs/dnd",
      "productId": "dnd"
@@ -2152,6 +2174,10 @@
     {
      "title": "useQuery and useMutation",
      "href": "/docs/patterns/data-fetching"
+    },
+    {
+     "title": "Dates and times",
+     "href": "/docs/patterns/dates-and-times"
     },
     {
      "title": "Forms and validation",
@@ -2409,6 +2435,10 @@
       {
        "title": "Formatting and Parsing",
        "href": "/docs/reference/format"
+      },
+      {
+       "title": "Dates and Times",
+       "href": "/docs/reference/time"
       },
       {
        "title": "HTTP Client",
