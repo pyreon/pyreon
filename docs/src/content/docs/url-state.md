@@ -385,7 +385,7 @@ The listener is registered inside an `effect`, so it's tied to the owning reacti
 
 ## Router Integration
 
-By default URL writes go through `history.replaceState` / `history.pushState`. If you use `@pyreon/router`, call `setUrlRouter(router)` once at app setup so URL updates route through the router instead — keeping route guards, middleware, and scroll management consistent:
+By default URL writes go through `history.replaceState` / `history.pushState`. A replace keeps the entry's `history.state` (a router's per-entry stamp, another library's state); a push starts a new entry with no state. If you use `@pyreon/router`, call `setUrlRouter(router)` once at app setup so URL updates route through the router instead — keeping route guards, middleware, and scroll management consistent:
 
 ```tsx
 import { useRouter } from '@pyreon/router'

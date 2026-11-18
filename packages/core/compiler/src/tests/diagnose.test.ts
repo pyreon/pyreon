@@ -584,14 +584,30 @@ describe('diagnoseError — <For> without by', () => {
   })
 })
 
-describe('diagnoseError — signal method passed by reference', () => {
+describe('diagnoseError — signal method called without its signal', () => {
   const message =
-    '"count.set" is passed by reference, so it runs without its signal and throws: signal methods read "this". Pass an arrow instead: onInput={(v) => count.set(v)}.'
+    '[Pyreon] signal.update() was called without its signal. Signal methods read `this`, so a detached reference such as promise.then(sig.update) or ref={props.sig.update} cannot work. Pass an arrow instead: (v) => sig.update(v).'
 
   it('explains the detached-method throw and names the arrow fix', () => {
     const result = diagnoseError(message)
-    expect(result?.cause).toContain('count.set')
-    expect(result?.fix).toContain('(v) => sig.set(v)')
-    expect(result?.fixCode).toBe('count.set(value)')
+    expect(result?.cause).toContain('`update` ran detached from its signal')
+    expect(result?.fix).toContain('(v) => sig.update(v)')
+    expect(result?.fixCode).toBe('(v) => sig.update(v)')
+  })
+})
+
+describe('diagnoseError — visible island with nothing to observe (#4435)', () => {
+  const message =
+    "[Pyreon] island \"Tagline\" uses hydrate: 'visible' but nothing in it can be observed: the island is `display: contents` and holds no element (only text, or nothing). It will hydrate when its nearest boxed ancestor scrolls into view. Wrap the content in an element, or use hydrate: 'idle' or 'load'. (Reported once per page.)"
+
+  it('names the island, the fallback and the fix', () => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('island "Tagline"')
+    expect(result?.cause).toContain('nearest ancestor that has a box')
+    expect(result?.fix).toContain('real element root')
+  })
+
+  it('does not fire on unrelated visible-strategy text', () => {
+    expect(diagnoseError("island uses hydrate: 'visible' and loads late")?.cause ?? '').not.toContain('box-less')
   })
 })

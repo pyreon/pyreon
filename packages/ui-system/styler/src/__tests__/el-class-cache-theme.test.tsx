@@ -12,7 +12,7 @@ import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import { sheet } from '../sheet'
 import { styled } from '../styled'
-import { ThemeProvider } from '../ThemeProvider'
+import { TestThemeProvider } from './index'
 
 type AnyComp = (props: Record<string, unknown>) => ReturnType<typeof h>
 
@@ -26,7 +26,7 @@ const classUnder = (theme: object, bundle: object): string => {
   const root = document.createElement('div')
   document.body.appendChild(root)
   const dispose = mount(
-    h(ThemeProvider as never, { theme }, h(Box as never, { $element: bundle })),
+    h(TestThemeProvider as never, { theme }, h(Box as never, { $element: bundle })),
     root,
   )
   cleanups.push(() => {

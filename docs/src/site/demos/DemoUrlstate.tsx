@@ -133,11 +133,10 @@ const Empty = txt
  * client renders the defaults too (`ready` is false until mount) and then
  * switches to the URL's values, so hydration never sees the query.
  *
- * Writes go through `setUrlRouter` with a minimal history bridge that keeps
- * `history.state`: url-state's own raw-history branch writes `null` state (#4388),
- * which would erase @pyreon/router's `__pyreonIdx` stamp on this entry
- * (reported with the products-b demos). The bridge also shows on screen the
- * exact URL each write produced.
+ * Writes go through `setUrlRouter` with a minimal history bridge, so the demo
+ * can show on screen the exact URL each write produced and drop writes once
+ * the page is gone (below). It keeps `history.state`, as url-state's own
+ * raw-history branch also does.
  *
  * Teardown: the four signals live in an `effectScope` this demo stops itself.
  * A zero island is never unmounted on client-side navigation (#4387; its hydration

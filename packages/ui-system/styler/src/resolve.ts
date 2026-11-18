@@ -4,7 +4,7 @@
  * primitive values.
  */
 
-import type { DefaultTheme } from './ThemeProvider'
+import type { DefaultTheme } from './theme-context'
 
 // Dev-time counter sink — populated by `@pyreon/perf-harness` on install().
 // Guarded on call sites with `process.env.NODE_ENV !== 'production'` so prod bundles

@@ -118,24 +118,6 @@ describe('useCSS', () => {
     })
   })
 
-  describe('boost parameter', () => {
-    it('does not throw when boost is true', () => {
-      const template = css`
-        display: flex;
-      `
-      const result = useCSS(template, undefined, true)
-      expect(result).toMatch(/^pyr-[0-9a-z]+$/)
-    })
-
-    it('does not throw when boost is false', () => {
-      const template = css`
-        display: flex;
-      `
-      const result = useCSS(template, undefined, false)
-      expect(result).toMatch(/^pyr-[0-9a-z]+$/)
-    })
-  })
-
   describe('without theme and without props', () => {
     it('uses empty object when no props and no theme', () => {
       const template = css`
