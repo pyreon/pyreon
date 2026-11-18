@@ -25,18 +25,12 @@ import { describe, expect, it } from 'vitest'
 import { transformJSX, transformJSX_JS } from '../jsx'
 import { collectTsx, templateBailCensus } from './_template-bail-census'
 
-type NativeTransform = (
-  code: string,
-  filename: string,
-  ssr: boolean,
-  known: string[] | null,
-  lens?: boolean,
-  collapse?: undefined,
-  ssrTemplate?: boolean,
-  tcc?: boolean,
-) => { code: string; mapMappings?: string | null }
+/** `(code, filename, ssr, knownSignals, lens, collapse, ssrTemplate, templatizeComponentChildren)` */
+type NativeArgs = [string, string, boolean, string[] | null, boolean?, undefined?, boolean?, boolean?]
+type NativeTransform = (...args: NativeArgs) => { code: string; mapMappings?: string | null }
 
 let nativeTransform: NativeTransform | null = null
+
 try {
   const requireAddon = createRequire(import.meta.url)
   const here = dirname(fileURLToPath(import.meta.url))
@@ -49,6 +43,7 @@ try {
 
 const client = (src: string, tcc = true) =>
   transformJSX_JS(src, 'hole.tsx', { templatizeComponentChildren: tcc }).code
+
 const ssrH = (src: string) => transformJSX_JS(src, 'hole.tsx', { ssr: true }).code
 const ssrT = (src: string) => transformJSX_JS(src, 'hole.tsx', { ssr: true, ssrTemplate: true }).code
 

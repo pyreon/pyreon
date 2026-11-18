@@ -14,6 +14,7 @@ import { transformJSX } from '@pyreon/compiler'
 import * as core from '@pyreon/core'
 import * as reactivity from '@pyreon/reactivity'
 import * as server from '@pyreon/runtime-server'
+import { query } from '@pyreon/test-utils'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as dom from '../index'
@@ -138,7 +139,7 @@ describe('a walked hole renders and updates like h()', () => {
       `const App = () => <select value={v()}>{['a', 'b', 'c'].map((o) => <option value={o}>{o}</option>)}</select>`,
       { v },
     )
-    const select = host.querySelector('select') as HTMLSelectElement
+    const select = query(host, 'select')
     expect(select.value).toBe('b')
     v.set('c')
     expect(select.value).toBe('c')
@@ -155,9 +156,11 @@ describe('the SSR emit of a walked hole hydrates under the client emit', () => {
   </ul>
 )`
 
+  /** Fresh state per side: the server and the client each get their own signals. */
+  const mk = () => ({ xs: signal([1, 2, 3]), sel: signal(2), on: signal(true) })
+
   for (const ssrTemplate of [false, true]) {
     it(`every server node is kept and nothing is reported (ssrTemplate=${ssrTemplate})`, async () => {
-      const mk = () => ({ xs: signal([1, 2, 3]), sel: signal(2), on: signal(true) })
       const serverApp = build(SOURCE, { ssr: true, ssrTemplate, templatizeComponentChildren: true }, SSR_DEPS, mk())
       const html = await server.renderToString(h(serverApp as never, null))
       // The nested templates' placeholders carry their server ranges.

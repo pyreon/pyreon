@@ -33,6 +33,7 @@ for (const root of targets) {
           } catch {
             return []
           }
+
           return pkgs.flatMap((pkg) => collectTsx(join(REPO, 'packages', group, pkg, 'src')))
         })
       : collectTsx(join(REPO, root))

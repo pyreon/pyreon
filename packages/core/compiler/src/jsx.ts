@@ -2918,24 +2918,7 @@ export function transformJSX_JS(
     // a `.map` item takes a `<For>` row's semantics, and anything else lowers
     // or is kept as a range and walked under no template, like a component hole.
     if (ssrClient === SSR_CLIENT_IN && clientWalksHole(child)) {
-      if (ssrTryMap(buf, expr, sole, true)) return true
-      // The walked JSX lowered to strings, with nothing left as source: the
-      // same lowering an h()-path child the walk visits gets.
-      const lowered = ssrLowerNestedIn(expr, SSR_CLIENT_NONE)
-      if (lowered !== null && !ssrLowerResidualJsx) {
-        ssrEmitExprHole(buf, lowered, expr, sole, marks)
-
-        return true
-      }
-      // Generated item bodies (`foritem`) have nowhere to keep a range, and a
-      // preserved hole's own templates are built when this call's arguments
-      // evaluate — BEFORE `_esc(…, ns)` enters a baked foreign namespace, so
-      // under one they would escape for HTML. Bail in both cases; the h() walk
-      // keeps the range and evaluates the hole inside the element's render.
-      if (mode !== 'recursed' || ssrNsPath !== '') return false
-      ssrEmitPreservedExprHole(buf, expr, sole, marks, SSR_CLIENT_NONE)
-
-      return true
+      return ssrSerializeWalkedHole(buf, expr, mode, sole, marks)
     }
     // What the client does with the JSX inside this expression: an accessor
     // child is sliced, so it is not walked (RAW); anything else is walked
@@ -2982,6 +2965,31 @@ export function transformJSX_JS(
       buf.deferJsx = true
     }
     ssrEmitExprHole(buf, lowered ?? sliceExpr(expr), expr, sole, marks)
+
+    return true
+  }
+
+  /**
+   * An expression child the client walks (`clientWalksHole`), serialized the
+   * way the h() walk of it renders: a `.map` as a `<For>`-row item, else the
+   * conditional lowering when it leaves nothing as source, else a preserved
+   * range walked under no template. False = bail.
+   */
+  function ssrSerializeWalkedHole(buf: SsrBuf, expr: N, mode: SsrMode, sole: boolean, marks: boolean): boolean {
+    if (ssrTryMap(buf, expr, sole, true)) return true
+    const lowered = ssrLowerNestedIn(expr, SSR_CLIENT_NONE)
+    if (lowered !== null && !ssrLowerResidualJsx) {
+      ssrEmitExprHole(buf, lowered, expr, sole, marks)
+
+      return true
+    }
+    // Generated item bodies (`foritem`) have nowhere to keep a range, and a
+    // preserved hole's own templates are built when this call's arguments
+    // evaluate — BEFORE `_esc(…, ns)` enters a baked foreign namespace, so
+    // under one they would escape for HTML. Bail in both cases; the h() walk
+    // keeps the range and evaluates the hole inside the element's render.
+    if (mode !== 'recursed' || ssrNsPath !== '') return false
+    ssrEmitPreservedExprHole(buf, expr, sole, marks, SSR_CLIENT_NONE)
 
     return true
   }
