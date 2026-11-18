@@ -28,12 +28,12 @@ export interface TextProps extends ChildrenProp, HtmlPassthroughProps {
 
 /**
  * `<Heading>` — semantic heading. Maps to platform-canonical heading
- * typography per level.
+ * typography per level, bold at every level on every platform.
  *
  * Per-platform mapping:
- * - Web: `<h1>` .. `<h6>`
- * - iOS: `Text(...).font(.largeTitle | .title2 | ...)`
- * - Android: `Text(style=MaterialTheme.typography.headlineLarge | headlineMedium | ...)`
+ * - Web: `<h1>` .. `<h6>`, weight 700
+ * - iOS: `Text(...).font(.largeTitle | .title | ...).bold()`
+ * - Android: `Text(style = MaterialTheme.typography.h4 | h5 | ..., fontWeight = FontWeight.Bold)`
  */
 export interface HeadingProps extends ChildrenProp, HtmlPassthroughProps {
   level?: 1 | 2 | 3 | 4 | 5 | 6

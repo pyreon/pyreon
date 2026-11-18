@@ -40,7 +40,7 @@ export interface UrlStateOptions<T = unknown> {
    * Debounce URL writes by this many milliseconds.
    * @default 0
    */
-  debounce?: number
+  debounceMs?: number
   /**
    * Encoding strategy for array values.
    * - `"comma"` — comma-separated: `?tags=a,b` (default)

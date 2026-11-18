@@ -2,7 +2,7 @@
 
 Chrome DevTools extension for Pyreon: the component tree with "why did this update?", the reactive graph, signals, effects, a profiler and a console.
 
-`@pyreon/devtools` is a private workspace package — a Chrome DevTools extension that adds a **Pyreon** panel for inspecting running Pyreon apps. It reads `window.__PYREON_DEVTOOLS__` (installed by `@pyreon/runtime-dom` on first `mount()`) and bridges page → content-script → background service worker → DevTools panel. The panel has six tabs (Components, Graph, Signals, Effects, Profiler, Console); Graph, Signals, Effects and Profiler read the reactive bridge (`__PYREON_DEVTOOLS__.reactive`) on `@pyreon/reactivity`. Not published to npm — built unpacked and loaded via `chrome://extensions`.
+`@pyreon/devtools` is a private workspace package — a Chrome DevTools extension that adds a **Pyreon** panel for inspecting running Pyreon apps. It reads `window.__PYREON_DEVTOOLS__` (installed by `@pyreon/runtime-dom` on the first `mount()` or `hydrateRoot()`) and bridges page → content-script → background service worker → DevTools panel. The panel has six tabs (Components, Graph, Signals, Effects, Profiler, Console); Graph, Signals, Effects and Profiler read the reactive bridge (`__PYREON_DEVTOOLS__.reactive`) on `@pyreon/reactivity`. Not published to npm — built unpacked and loaded via `chrome://extensions`.
 
 ## Features
 
@@ -16,7 +16,7 @@ Six tabs, all fed by the running page (nothing sampled or simulated):
 - **Console**: `[Pyreon]` warnings and errors logged while the panel is open, and an input that evaluates in the page.
 - **Element picker**: the toolbar button drives the framework's overlay (`Ctrl+Shift+P`).
 
-Computeds and effects have no runtime name, so they are shown by where they were created (`Composer.tsx:31`). Limits: the inspector traces text bindings only (no attribute bindings, no text passed as component children), and it cannot show props or owned effects because the hook does not expose them. Components mounted by `hydrateRoot` are not registered by the framework yet, so the Components tab is empty for SSR apps (#4444). Props and owned effects: #4446.
+Computeds and effects have no runtime name, so they are shown by where they were created (`Composer.tsx:31`). Components mounted by `hydrateRoot` are registered like mounted ones, so SSR, SSG, island and Zero apps show the same tree. Limits: the reactive reads come from text bindings only (text a compiled template binds directly to one signal or computed); attribute, class and style bindings and text that reads more than one signal are not correlated to their signals (`runtime-dom/src/binding-registry.ts`). The hook exposes props (`getComponentProps(id)`) and owned signals, computeds and effects (`reactive.nodesForComponent(id)`), but the inspector does not show them yet (#4446).
 
 ## Development install
 

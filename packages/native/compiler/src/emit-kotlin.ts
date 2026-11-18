@@ -7925,7 +7925,7 @@ function kotlinTextArg(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 
 /**
  * Emit `<Heading level={N}>text</Heading>` as Compose
- * `Text(text = ..., style = MaterialTheme.typography.h4|…)`.
+ * `Text(text = ..., style = MaterialTheme.typography.h4|…, fontWeight = FontWeight.Bold)`.
  * `level` → Material 2 typography role; `color` → `color =` arg.
  */
 function emitKotlinHeading(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -7941,7 +7941,10 @@ function emitKotlinHeading(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       (v) =>
         `MaterialTheme.typography.${HEADING_TYPOGRAPHY[(typeof v === 'number' ? v : 1) as 1 | 2 | 3 | 4 | 5 | 6] ?? 'h4'}`,
     ) ?? 'MaterialTheme.typography.h4'
-  const args = [`text = ${kotlinTextArg(e, indent)}`, `style = ${style}`]
+  // Bold at every level, as on web (weight 700) and iOS (`.bold()`): the
+  // Material 2 roles above are mostly `FontWeight.Normal`, so the role alone
+  // rendered a regular-weight heading on Android only.
+  const args = [`text = ${kotlinTextArg(e, indent)}`, `style = ${style}`, 'fontWeight = FontWeight.Bold']
   // Heading `color` — static token OR a ternary of two literal tokens
   // (`color={err() ? "danger" : "text"}`); pre-fix static-only, so a dynamic
   // value SILENTLY dropped the color (same class as Icon color, #2032).

@@ -11,7 +11,7 @@ import { resolveColor } from './tokens'
  * sizes are inconsistent (and `<h4>`–`<h6>` render SMALLER than body
  * text), so a cross-platform design primitive sets an explicit scale —
  * matching the intent of iOS `.largeTitle`/`.title`/`.title2`… and
- * Compose `headlineLarge`/`headlineMedium`… All weights are bold.
+ * Material 2 `h4`/`h5`/`h6`… All weights are bold.
  */
 const LEVEL_FONT_SIZE: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
   1: '32px',
@@ -29,8 +29,8 @@ const LEVEL_FONT_SIZE: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
  *
  * Compiles to:
  * - Web (this impl): `<h1>` … `<h6>` with explicit size + weight 700
- * - iOS (via PMTC): `Text(...).font(.largeTitle | .title2 | …)`
- * - Android (via PMTC): `Text(style = MaterialTheme.typography.headlineLarge | …)`
+ * - iOS (via PMTC): `Text(...).font(.largeTitle | .title | …).bold()`
+ * - Android (via PMTC): `Text(style = MaterialTheme.typography.h4 | …, fontWeight = FontWeight.Bold)`
  */
 export const Heading = (props: HeadingProps): VNode => {
   const level = props.level ?? 1

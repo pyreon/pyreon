@@ -254,7 +254,7 @@ describe('popstate sync', () => {
 describe('debounce', () => {
   it('batches rapid writes to URL', () => {
     vi.useFakeTimers()
-    const page = useUrlState('page', 1, { debounce: 50 })
+    const page = useUrlState('page', 1, { debounceMs: 50 })
 
     page.set(2)
     page.set(3)
@@ -273,7 +273,7 @@ describe('debounce', () => {
 
   it('.remove() cancels pending debounced write', () => {
     vi.useFakeTimers()
-    const page = useUrlState('page', 1, { debounce: 100 })
+    const page = useUrlState('page', 1, { debounceMs: 100 })
 
     page.set(5)
     page.remove()
