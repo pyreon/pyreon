@@ -132,6 +132,8 @@ describe('the shared date-only table agrees with @pyreon/format', () => {
     const { value, unit } = relativeDistance(t, Date.parse(base), zone)
 
     expect(auto.format(value, unit)).toBe(words)
+  })
+})
 
 describe('a date-only target is a day: compared as a calendar day, never as hours', () => {
   it('today, tomorrow and yesterday are the display zone\'s calendar, whatever the hour', () => {
