@@ -26,7 +26,7 @@ function evaluate(example: string): Array<{ expr: string; shown: string; actual:
       body.push(line)
       continue
     }
-    const expr = line.slice(0, at)
+    const expr = line.slice(0, at).replace(/^;/, '')
     const shown = line.slice(at + ' // → '.length)
     body.push(`__check(${JSON.stringify(expr)}, ${JSON.stringify(shown)}, () => (${expr}))`)
   }

@@ -2233,7 +2233,7 @@ setLocale('en-US')
 // A formatter is a value: a plain (value) => string you can pass anywhere.
 const price = currencyFormatter('EUR')
 price(1234.5) // → "€1,234.50"
-[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
+;[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
 price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
 // A named format set (each key is a formatter):
 const f = defineFormats({ price: { kind: 'currency', currency: 'EUR' }, priceShort: { extends: 'price', notation: 'compact' } })

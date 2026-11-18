@@ -7258,7 +7258,7 @@ f.parseNumber('1 234,5') // → 1234.5`,
     signature: `(options?: NumberOptions | NumberPreset) => Formatter<NumberInput, 'number'>`,
     example: `const n = numberFormatter({ locale: 'en-US', maximumFractionDigits: 1 })
 n(1234.5678) // → "1,234.6"
-[1000, 2500.55].map(n) // → ["1,000","2,500.6"]
+;[1000, 2500.55].map(n) // → ["1,000","2,500.6"]
 n.with({ maximumFractionDigits: 0 })(1234.5678) // → "1,235"
 n.range(3, 5) // → "3–5"
 n.parts(1.5).map((p) => p.type) // → ["integer","decimal","fraction"]`,
@@ -7273,7 +7273,7 @@ n.parts(1.5).map((p) => p.type) // → ["integer","decimal","fraction"]`,
 price(9.99) // → "€9.99"
 price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
 price.from((cents) => cents / 100)(999) // → "€9.99"
-[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
+;[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
 price.range(10, 20) // → "€10.00 – €20.00"
 price.parts(9.99).map((p) => p.type) // → ["currency","integer","decimal","fraction"]`,
     notes: 'A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. A malformed code returns the fallback with a dev warning. See also: formatCurrency, numberFormatter.',
@@ -7309,7 +7309,7 @@ speed.with({ unitDisplay: 'long' })(72) // → "72 kilometers per hour"`,
     example: `const size = bytesFormatter({ locale: 'en-US' })
 size(1536) // → "1.5 kB"
 size.with({ binary: true })(1536) // → "1.5 KiB"
-[1536, 5000000].map(size) // → ["1.5 kB","5 MB"]`,
+;[1536, 5000000].map(size) // → ["1.5 kB","5 MB"]`,
     notes: 'A reusable byte-size formatter (decimal, or `binary: true`). `parts` carries the IEC symbol for binary. See also: formatBytes.',
   },
 

@@ -50,7 +50,7 @@ setLocale('en-US')
 // A formatter is a value: a plain (value) => string you can pass anywhere.
 const price = currencyFormatter('EUR')
 price(1234.5) // → "€1,234.50"
-[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
+;[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
 price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
 // A named format set (each key is a formatter):
 const f = defineFormats({ price: { kind: 'currency', currency: 'EUR' }, priceShort: { extends: 'price', notation: 'compact' } })
@@ -601,7 +601,7 @@ A reusable number formatter: a plain `(value) => string` that follows the active
 ```tsx
 const n = numberFormatter({ locale: 'en-US', maximumFractionDigits: 1 })
 n(1234.5678) // → "1,234.6"
-[1000, 2500.55].map(n) // → ["1,000","2,500.6"]
+;[1000, 2500.55].map(n) // → ["1,000","2,500.6"]
 n.with({ maximumFractionDigits: 0 })(1234.5678) // → "1,235"
 n.range(3, 5) // → "3–5"
 n.parts(1.5).map((p) => p.type) // → ["integer","decimal","fraction"]
@@ -631,7 +631,7 @@ const price = currencyFormatter('EUR', { locale: 'en-US' })
 price(9.99) // → "€9.99"
 price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
 price.from((cents) => cents / 100)(999) // → "€9.99"
-[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
+;[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
 price.range(10, 20) // → "€10.00 – €20.00"
 price.parts(9.99).map((p) => p.type) // → ["currency","integer","decimal","fraction"]
 ```
@@ -718,7 +718,7 @@ A reusable byte-size formatter (decimal, or `binary: true`). `parts` carries the
 const size = bytesFormatter({ locale: 'en-US' })
 size(1536) // → "1.5 kB"
 size.with({ binary: true })(1536) // → "1.5 KiB"
-[1536, 5000000].map(size) // → ["1.5 kB","5 MB"]
+;[1536, 5000000].map(size) // → ["1.5 kB","5 MB"]
 ```
 
 **See also:** `formatBytes`
