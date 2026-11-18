@@ -30,11 +30,11 @@ describe('pyreon/no-theme-outside-provider', () => {
     ).toHaveLength(0)
   })
 
-  it('is silenced by a ThemeProvider import', () => {
+  it('is NOT silenced by a ThemeProvider import (styler no longer exports one)', () => {
     expect(
-      lint(`import { ThemeProvider } from '@pyreon/ui-core'
-            const C = () => { const t = useTheme(); return t }`),
-    ).toHaveLength(0)
+      lint(`import { ThemeProvider } from './theme'
+            const C = () => { const t = useTheme(); return t }`).length,
+    ).toBeGreaterThan(0)
   })
 
   it('does NOT fire inside a hook DECLARATION (delegates to its caller)', () => {

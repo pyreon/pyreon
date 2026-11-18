@@ -1124,13 +1124,14 @@ describe('JSX transform — template emission', () => {
     const result = t('<div ref={myRef}><span /></div>')
     // Object refs go through a runtime check (could also be a function)
     expect(result).toContain('myRef')
-    expect(result).toContain('.current = __root')
+    // `_ref` applies it as the h() path does and returns its null-on-unmount disposer (#4390).
+    expect(result).toContain('_ref(__root, myRef)')
   })
 
   test('ref attribute in template calls function refs', () => {
     const result = t('<div ref={(el) => { myEl = el }}><span /></div>')
     // Arrow function refs are called with the element
-    expect(result).toContain('((el) => { myEl = el })(__root)')
+    expect(result).toContain('_ref(__root, (el) => { myEl = el })')
   })
 
   test('block-arrow ref on a child element with adjacent reactive props compiles cleanly', () => {
@@ -1152,8 +1153,9 @@ describe('JSX transform — template emission', () => {
     const result = t('<div><span ref={(el) => { x = el }} data-state={cls()} /></div>')
     // Const declaration must terminate before the ref IIFE.
     expect(result).toMatch(/const __e0 = __root\.firstElementChild;\s*\n/)
-    // The ref IIFE is its own statement, calling __e0 (not chained).
-    expect(result).toContain('((el) => { x = el })(__e0)')
+    // The ref is its own statement on __e0 (not chained). Since #4390 it is a
+    // `_ref` call whose disposer hands the ref null on unmount.
+    expect(result).toContain('_ref(__e0, (el) => { x = el })')
     // And the chained-call shape MUST NOT appear (the bug pattern).
     expect(result).not.toMatch(/__root\.firstElementChild\(\(/)
   })

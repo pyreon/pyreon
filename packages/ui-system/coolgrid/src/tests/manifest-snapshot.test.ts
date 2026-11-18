@@ -19,12 +19,12 @@ describe('gen-docs — coolgrid snapshot', () => {
       Bootstrap-style flexbox grid for Pyreon where every numeric prop is responsive (single value, mobile-first array, or breakpoint-keyed object). Configuration (\`columns\`, \`gap\`, \`gutter\`, \`padding\`, \`contentAlignX\`) cascades through Pyreon context — set it on \`Container\` and every nested \`Row\` / \`Col\` inherits, with per-element overrides for that subtree only. Breakpoint names and column counts are theme-driven, not hardcoded: ship with the default Bootstrap-4 theme (12 columns, xs–xl) or define your own (\`{ phone: 0, tablet: 600 }\` × \`columns: 24\`). Built on \`@pyreon/unistyle\` + \`@pyreon/styler\`.
 
       \`\`\`typescript
-      import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
+      import { PyreonUI } from '@pyreon/ui-core'
+      import { Container, Row, Col, theme } from '@pyreon/coolgrid'
 
-      // Provider scopes breakpoints, rootSize, and grid defaults to the subtree.
-      // In an app that already renders <PyreonUI> at the root, skip Provider —
-      // PyreonUI sets up the same unistyle context.
-      <Provider theme={theme}>
+      // PyreonUI provides breakpoints, rootSize, and grid defaults to the subtree.
+      // A theme without grid keys falls back to coolgrid's defaults.
+      <PyreonUI theme={theme}>
         <Container gap={16} gutter={24} padding={16}>
           <Row>
             {/* Responsive size — breakpoint-keyed object */}
@@ -44,10 +44,10 @@ describe('gen-docs — coolgrid snapshot', () => {
             <Col>Half</Col>
           </Row>
         </Container>
-      </Provider>
+      </PyreonUI>
 
       // Custom breakpoints + column count via a custom theme:
-      <Provider
+      <PyreonUI
         theme={{
           rootSize: 16,
           breakpoints: { phone: 0, tablet: 600, desktop: 1024 },
@@ -60,7 +60,7 @@ describe('gen-docs — coolgrid snapshot', () => {
             <Col size={8}>One third of 24</Col>
           </Row>
         </Container>
-      </Provider>
+      </PyreonUI>
       \`\`\`
 
       > **Note**: Every numeric grid prop (size/gap/gutter/padding/columns) is responsive — a single number, a mobile-first array ([12, 6, 4]), or a breakpoint-keyed object ({ xs: 12, md: 6 }); size 0 hides the column at that breakpoint.
@@ -69,14 +69,14 @@ describe('gen-docs — coolgrid snapshot', () => {
       >
       > **CSS-variables theming**: Under \`init({ cssVariables: true })\` gap/gutter can arrive as \`var(--…)\` reference strings — the styled helpers detect them (\`isCssVarValue\`) and express the grid math in native \`calc()\` (halving via \`* 0.5\` / \`* -0.5\`; a negative \`calc()\` divisor is invalid CSS). JS arithmetic on a var() string would produce NaN — the historical coolgrid bug class, fixed via the calc() path.
       >
-      > **Provider vs PyreonUI**: coolgrid re-exports the low-level unistyle \`Provider\` (deprecated in source). Apps rendering \`<PyreonUI>\` at the root already have the required context — add a nested \`Provider\` only to scope different breakpoints to a subtree.
+      > **Theme context comes from PyreonUI**: coolgrid has no provider of its own — Container / Row / Col read breakpoints and grid defaults from the \`<PyreonUI theme={…}>\` (from \`@pyreon/ui-core\`) above them. To scope different breakpoints to a subtree, nest another \`<PyreonUI theme={…}>\` there.
       "
     `)
   })
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(5)
+    expect(Object.keys(record).length).toBe(4)
     expect(record['coolgrid/Container']!.notes).toContain('grid')
     expect(record['coolgrid/Container']!.mistakes?.split('\n').length).toBe(4)
   })
