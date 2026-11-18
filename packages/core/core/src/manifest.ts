@@ -497,6 +497,24 @@ cx(["a", ["b", { c: true }]])            // nested arrays
       seeAlso: ['splitProps', 'mergeProps'],
     },
     {
+      name: 'lockScroll',
+      kind: 'function',
+      signature: 'lockScroll(element?: HTMLElement | null): () => void',
+      summary:
+        "The ONE scroll lock every package shares. `lockScroll()` takes a hold on the PAGE (`overflow: hidden` on `<body>` and `<html>`, `<body>` padded by the scrollbar width); `lockScroll(el)` holds one element's `overflow`. Holds are counted per target: the first saves the target's inline styles, the last release restores them, and each returned release function releases its own hold once. `@pyreon/hooks` `useScrollLock` and `@pyreon/elements` `useOverlay({ type: 'modal' })` both go through it, so a closing modal never unlocks the page under another dialog. No-op on the server.",
+      example: `import { lockScroll } from '@pyreon/core'
+
+let release: (() => void) | null = null
+const open = () => { release ??= lockScroll() }
+const close = () => { release?.(); release = null }`,
+      mistakes: [
+        "Writing `document.body.style.overflow = 'hidden'` / `''` by hand — it clobbers every other owner's lock and the value the page had; take a hold instead",
+        'Taking the hold when a modal MOUNTS rather than when it OPENS — a closed modal then blocks page scrolling for as long as it is on the page',
+        'Dropping the release function — the page stays locked; release it on close AND on unmount',
+      ],
+      seeAlso: ['useScrollLock'],
+    },
+    {
       name: 'useColorMode',
       kind: 'function',
       signature:

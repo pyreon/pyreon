@@ -1230,14 +1230,27 @@ describe('useOverlay', () => {
   // 16. Parent container
   // =========================================================================
   describe('parentContainer', () => {
-    it('sets overflow hidden on parent when closeOn is not hover', () => {
+    it('leaves a CLOSED overlay\'s parent scrollable (it used to lock at mount)', () => {
       const parent = document.createElement('div')
+      parent.style.overflow = 'auto'
       const o = useOverlay({ parentContainer: parent, closeOn: 'click' })
       const cleanup = o.setupListeners()
+      expect(parent.style.overflow).toBe('auto')
+      cleanup()
+      expect(parent.style.overflow).toBe('auto')
+    })
 
+    it('locks the parent while open (closeOn is not hover) and restores its value on detach', () => {
+      // This file mocks signals with a no-op `subscribe`, so open/close
+      // transitions are covered in Overlay-modal-scroll-lock.browser.test.tsx;
+      // here the overlay starts open.
+      const parent = document.createElement('div')
+      parent.style.overflow = 'auto'
+      const o = useOverlay({ parentContainer: parent, closeOn: 'click', isOpen: true })
+      const cleanup = o.setupListeners()
       expect(parent.style.overflow).toBe('hidden')
       cleanup()
-      expect(parent.style.overflow).toBe('')
+      expect(parent.style.overflow).toBe('auto')
     })
 
     it('does not set overflow hidden on parent when closeOn is hover', () => {
