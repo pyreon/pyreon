@@ -9,7 +9,10 @@
  *   timer does not drift the next one;
  * - a ticker with no readers stops its timer and is dropped; while the document is hidden no timer runs, and on becoming
  *   visible every ticker is recomputed once (no missed tick is replayed);
- * - distinct custom intervals and zones are bounded: past the cap a reader gets a private ticker that is stopped with it.
+ * - distinct custom intervals and zones are bounded: past the cap a reader gets a private ticker that is stopped with it;
+ * - a one-shot (`{ at }`, returned by a function-valued `every`) is kept in a sorted list served by ONE timer, so any number
+ *   of readers that each want their own boundary (a relative label that must flip exactly when its target turns a minute old)
+ *   cost one timer, and a reader is dropped from the list when it fires or goes away.
  */
 import { createReactiveContext, provide, useContext } from '@pyreon/core'
 import { effect, getCurrentScope, isServer, onScopeDispose, signal, isClient } from '@pyreon/reactivity'
@@ -20,12 +23,21 @@ import { nextLocalBoundary } from './zone-math'
 /** How often `useNow` updates: a named granularity or a number of milliseconds. */
 export type Every = 'second' | 'minute' | 'hour' | 'day' | number
 
+/**
+ * What a function-valued `every` may return: a granularity, or `{ at }`, one update at that instant (epoch ms), after which the
+ * function is read again for the next one. `{ at: Infinity }` never updates. An instant already past is clamped to the next
+ * millisecond.
+ */
+export type EveryOrAt = Every | { at: number }
+
 export interface NowOptions {
   /**
    * Default `'minute'`. `'hour'` and `'day'` align to the local hour and midnight of the zone. A function is read reactively:
-   * the reader moves to the ticker the new value names (this is how a relative-time label slows down as it ages).
+   * the reader moves to the ticker the new value names (this is how a relative-time label slows down as it ages). It is also read
+   * again after every update of the ticker the reader holds, so it can use the plain `now()` and need not track the tick. It may return
+   * `{ at }` to be updated at one exact instant (see {@link EveryOrAt}): readers that each ask for their own instant share one timer.
    */
-  every?: Every | (() => Every)
+  every?: Every | (() => EveryOrAt)
   /** The zone `'hour'` and `'day'` align to. Default: the active time zone, tracked. */
   zone?: string | (() => string)
 }
@@ -190,6 +202,10 @@ interface Ticker {
   /** The instant this tick is aimed at. */
   target: number
   shared: boolean
+  /** A one-shot kept in `waiting` (no timer of its own). */
+  once: boolean
+  /** A one-shot that has fired: its reader must take a new one even when it asks for the same instant. */
+  spent: boolean
 }
 
 const tickers = new Map<string, Ticker>()
@@ -210,7 +226,7 @@ function nextTarget(t: Ticker): number {
 }
 
 function schedule(t: Ticker): void {
-  if (t.timer !== null || t.refs === 0 || isHidden()) return
+  if (t.once || t.timer !== null || t.refs === 0 || isHidden()) return
   const n = now()
 
   if (t.target <= n) t.target = nextTarget(t)
@@ -240,10 +256,60 @@ function onVisibility(): void {
     } else {
       // A tick may have been missed while hidden: recompute once and aim at the next boundary, do not replay.
       t.value.set(now())
-      t.target = 0
+      if (!t.once) t.target = 0
       schedule(t)
     }
   }
+  arm()
+}
+
+// ─── one-shots: one timer for every reader that wants its own instant ───────────────────────────────────────────────────
+
+/** One-shot readers ordered by the instant they want to be updated at. */
+const waiting: Ticker[] = []
+let beat: ReturnType<typeof setTimeout> | null = null
+
+function arm(): void {
+  if (beat !== null) clearTimeout(beat)
+  beat = null
+  const first = waiting[0]
+
+  if (first !== undefined && !isHidden()) beat = setTimeout(wake, Math.min(2 ** 31 - 1, Math.max(1, first.target - now())))
+}
+
+function wake(): void {
+  const n = now()
+
+  beat = null
+  while (waiting.length > 0 && (waiting[0] as Ticker).target <= n) {
+    const t = waiting.shift() as Ticker
+
+    t.spent = true
+    t.value.set(n)
+  }
+  arm()
+}
+
+function acquireAt(at: number): Ticker {
+  const target = Math.max(at, now() + 1)
+  const t: Ticker = { key: `at:${at}`, every: 0, zone: '', value: signal(now()), refs: 1, timer: null, target, shared: false, once: true, spent: false }
+  let lo = 0
+  let hi = waiting.length
+
+  active.add(t)
+  listenVisibility(true)
+  if (Number.isFinite(at)) {
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+
+      if ((waiting[mid] as Ticker).target <= target) lo = mid + 1
+      else hi = mid
+    }
+    waiting.splice(lo, 0, t)
+    if (lo === 0 || beat === null) arm()
+  }
+
+  return t
 }
 
 function listenVisibility(on: boolean): void {
@@ -253,7 +319,8 @@ function listenVisibility(on: boolean): void {
   else document.removeEventListener('visibilitychange', onVisibility)
 }
 
-function keyOf(every: Every, zone: string): string {
+function keyOf(every: EveryOrAt, zone: string): string {
+  if (typeof every === 'object') return `at:${every.at}`
   if (every === 'second' || every === 'minute') return every
   if (every === 'hour' || every === 'day') return `${every}:${zone}`
 
@@ -278,7 +345,7 @@ function acquire(every: Every, zone: string): Ticker {
     const shared = named || tickers.size < MAX_SHARED_TICKERS
     const aligned = every === 'hour' || every === 'day' ? zone : ''
 
-    t = { key, every: everyMs(every), zone: aligned, value: signal(now()), refs: 0, timer: null, target: 0, shared }
+    t = { key, every: everyMs(every), zone: aligned, value: signal(now()), refs: 0, timer: null, target: 0, shared, once: false, spent: false }
     if (shared) tickers.set(key, t)
   }
   if (t.refs === 0) {
@@ -294,6 +361,12 @@ function acquire(every: Every, zone: string): Ticker {
 
 function release(t: Ticker): void {
   if (--t.refs > 0) return
+  if (t.once) {
+    const i = waiting.indexOf(t)
+
+    if (i >= 0) waiting.splice(i, 1)
+    arm()
+  }
   if (t.timer !== null) clearTimeout(t.timer)
   t.timer = null
   t.target = 0
@@ -302,12 +375,13 @@ function release(t: Ticker): void {
   if (active.size === 0) listenVisibility(false)
 }
 
-function checkEvery(every: unknown): Every {
+function checkEvery(every: unknown, fromFunction = false): EveryOrAt {
   if (every === undefined) return 'minute'
+  if (fromFunction && typeof every === 'object' && every !== null && typeof (every as { at?: unknown }).at === 'number' && !Number.isNaN((every as { at: number }).at)) return every as { at: number }
   if (every === 'second' || every === 'minute' || every === 'hour' || every === 'day') return every
   if (typeof every === 'number' && Number.isFinite(every) && every >= 1) return every
 
-  throw programmerError('useNow', `every must be 'second', 'minute', 'hour', 'day' or a number of milliseconds of at least 1, got ${quote(every)}.`)
+  throw programmerError('useNow', `every must be 'second', 'minute', 'hour', 'day', a number of milliseconds of at least 1${fromFunction ? ' or { at: instant }' : ''}, got ${quote(every)}.`)
 }
 
 /**
@@ -324,32 +398,35 @@ export function useNow(options?: NowOptions): () => number {
 
   if (typeof everyOption !== 'function') checkEvery(everyOption)
   if (isServer || getCurrentScope() === null) return now
-  const needsZone = (e: Every): boolean => e === 'hour' || e === 'day'
-  const everyNow = (): Every => checkEvery(typeof everyOption === 'function' ? everyOption() : everyOption)
+  const needsZone = (e: EveryOrAt): boolean => e === 'hour' || e === 'day'
+  const everyNow = (): EveryOrAt => checkEvery(typeof everyOption === 'function' ? everyOption() : everyOption, typeof everyOption === 'function')
+  const take = (e: EveryOrAt, zone: string): Ticker => (typeof e === 'object' ? acquireAt(e.at) : acquire(e, zone))
   const zoneNow = (): string => (zoneOption === undefined ? timeZone() : typeof zoneOption === 'function' ? zoneOption() : zoneOption)
   const first = everyNow()
 
   if (typeof everyOption !== 'function' && !needsZone(first)) {
-    const t = acquire(first, '')
+    const t = take(first, '')
 
     onScopeDispose(() => release(t))
 
     return () => t.value()
   }
-  let held = acquire(first, needsZone(first) ? zoneNow() : '')
+  let held = take(first, needsZone(first) ? zoneNow() : '')
   const current = signal<Ticker>(held)
 
   // Reactive reader: the granularity and the zone are tracked, and a change moves the reader to the matching ticker.
   const stop = effect(() => {
     const every = everyNow()
     const zone = needsZone(every) ? zoneNow() : ''
-    if (held.key !== keyOf(every, zone)) {
-      const next = acquire(every, zone)
+    if (held.spent || held.key !== keyOf(every, zone)) {
+      const next = take(every, zone)
 
       release(held)
       held = next
       current.set(next)
     }
+    // The function is read again after every update of the ticker the reader now holds: it sees the new instant and may move on.
+    held.value()
   })
 
   onScopeDispose(() => {
@@ -365,6 +442,7 @@ export function _tickerStats(): { active: number; timers: number; shared: number
   let timers = 0
 
   for (const t of active) if (t.timer !== null) timers++
+  if (beat !== null) timers++
 
   return { active: active.size, timers, shared: tickers.size }
 }
@@ -379,6 +457,9 @@ export function _fireAll(): void {
 /** Test hook: drop every ticker, the pin, the provide flag and the hand-over. */
 export function _resetClockState(): void {
   for (const t of active) if (t.timer !== null) clearTimeout(t.timer)
+  if (beat !== null) clearTimeout(beat)
+  beat = null
+  waiting.length = 0
   active.clear()
   tickers.clear()
   listenVisibility(false)

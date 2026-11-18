@@ -27,6 +27,10 @@ setClock(null)
 
 // In a component's setup: one shared, aligned ticker serves every reader of a granularity.
 const seconds = useNow({ every: 'second' })
+
+// Or an exact instant: readers that each want their own (a relative label flipping when its target turns a minute old)
+// share ONE timer. The function is read again after every update.
+const label = useNow({ every: () => ({ at: nextChangeOfMyLabel() }) })
 ```
 
 | Area | Functions |
@@ -36,6 +40,6 @@ const seconds = useNow({ every: 'second' })
 | Clock | `now`, `setClock`, `provideClock`, `useNow` |
 | Server hand-over | `clockScript`, `clockAttributes`, `releaseClock` |
 
-Tickers: one per granularity, aligned to the wall-clock boundary (local hour and midnight in the active zone, exact on 23- and 25-hour days), refcounted, paused while the page is hidden, never created on a server or at import. On a server, `provideClock(instant)` plus `clockScript()` make the client's first render read the instant the server rendered at, so relative times hydrate without a mismatch.
+Tickers: one per granularity (and one timer in total for every reader that asks for its own instant with `{ at }`), aligned to the wall-clock boundary (local hour and midnight in the active zone, exact on 23- and 25-hour days), refcounted, paused while the page is hidden, never created on a server or at import. On a server, `provideClock(instant)` plus `clockScript()` make the client's first render read the instant the server rendered at, so relative times hydrate without a mismatch.
 
 Full guide: [docs/ambient](https://pyreon.dev/docs/ambient).

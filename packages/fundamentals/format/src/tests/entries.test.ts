@@ -48,14 +48,16 @@ describe('entries', () => {
     }
   })
 
-  it('/ and /components import only @pyreon/core and @pyreon/reactivity', async () => {
+  it('/ and /components import only @pyreon/core, @pyreon/reactivity and @pyreon/ambient', async () => {
     for (const entry of ['index.ts', 'components.ts']) {
       const r = await bundle(entry, 'dev')
       const external = new Set<string>()
       for (const file of Object.values(r.metafile.inputs)) {
         for (const imp of file.imports) if (imp.external) external.add(imp.path)
       }
-      expect([...external].every((p) => p === '@pyreon/core' || p === '@pyreon/reactivity'), `${entry}: ${[...external]}`).toBe(true)
+      // `@pyreon/ambient/testing` is the test hook `locale.ts` re-exports for the suite; no entry re-exports it, so it never reaches a bundle.
+      const allowed = ['@pyreon/core', '@pyreon/reactivity', '@pyreon/ambient', '@pyreon/ambient/testing']
+      expect([...external].every((p) => allowed.includes(p)), `${entry}: ${[...external]}`).toBe(true)
     }
   })
 

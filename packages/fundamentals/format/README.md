@@ -31,8 +31,8 @@ The same function works in JSX and effects (it reads the active locale and time 
 | Entry | Depends on | What |
 | --- | --- | --- |
 | `@pyreon/format/core` | nothing | Every formatter and parser as a pure function. Locale and time zone come from the options; default is the runtime's. |
-| `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity` | The same names, defaulting to the active locale and zone. Plus the locale API. |
-| `@pyreon/format/components` | `@pyreon/core` | `<Num>` and `<DateTime>`. |
+| `@pyreon/format` | `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/ambient` | The same names, defaulting to the active locale and zone. Plus the locale API (re-exported from `@pyreon/ambient`) and `useRelativeTime`. |
+| `@pyreon/format/components` | `@pyreon/core`, `@pyreon/ambient` | `<Num>`, `<DateTime>` and `<RelativeTime>`. |
 
 ## Formatters
 
@@ -72,6 +72,8 @@ setLocale('cs')            // app default (client); a warned no-op on the server
 provideLocale('de')        // scope a subtree, in a component's setup; or () => i18n.locale()
 timeZone() / setTimeZone('Asia/Tokyo') / provideTimeZone('Europe/Prague')
 ```
+
+These are the functions of `@pyreon/ambient`, re-exported: the locale, time zone and clock are shared with `@pyreon/time` (and `@pyreon/i18n` will feed them), so one `setLocale` changes everything that is formatted.
 
 Resolution order: explicit `options.locale`, then `provideLocale`, then `setLocale`, then `navigator.language` (client) or the runtime default (server). A formatter called from an event handler outside any component scope sees the app default, not a provided locale.
 
@@ -150,9 +152,14 @@ import { Num, DateTime } from '@pyreon/format/components'
 <Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
 <DateTime value="2026-11-18" kind="date" format="long" />   // <time datetime="2026-11-18">November 18, 2026</time>
 <DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
+<RelativeTime value={comment.createdAt} threshold={{ after: { days: 7 } }} />   // "3 minutes ago" ... "Nov 12, 2026", updates itself
 ```
 
-`parts` keys are the `Intl` part types; unwrapped parts are joined into one text node so server and client markup agree. `<DateTime>` sets `title` to the exact date and time unless you pass one; `<Num tabular>` renders a span with `tabular-nums`; `class`, `id` and other props are forwarded.
+`parts` keys are the `Intl` part types; unwrapped parts are joined into one text node so server and client markup agree. `<DateTime>` sets `title` to the exact date and time unless you pass one; `<Num tabular>` renders a span with `tabular-nums`; `class`, `id` and other props are forwarded. `<RelativeTime>` is `useRelativeTime` in a `<time>`: the text updates at the moment it changes (the target's own minute and hour marks, local midnight) on timers shared by every label on the page, never on a server.
+
+```ts
+const ago = useRelativeTime(() => post.createdAt, { threshold: { after: { days: 7 }, as: 'medium' } })   // an accessor: "3 hours ago" ... "last week" ... "Nov 12, 2026"
+```
 
 ## Performance
 
@@ -160,7 +167,7 @@ import { Num, DateTime } from '@pyreon/format/components'
 
 ## SSR
 
-`provideLocale` and `provideTimeZone` use the request-scoped context stack on the server, never module state. Intl output is CLDR data and differs between engines and ICU versions, so pass the same locale and time zone on both sides.
+`provideLocale` and `provideTimeZone` use the request-scoped context stack on the server, never module state. A relative label prints the request's clock (`provideClock` from `@pyreon/ambient`), starts no timer, and hydrates without a mismatch when the page carries `clockScript()`. Intl output is CLDR data and differs between engines and ICU versions, so pass the same locale and time zone on both sides.
 
 ## Multiplatform
 

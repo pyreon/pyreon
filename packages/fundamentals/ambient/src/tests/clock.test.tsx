@@ -369,3 +369,130 @@ describe('the server-to-client hand-over', () => {
     expect(() => clockAttributes(Number.POSITIVE_INFINITY)).toThrow(/\[Pyreon\] clockAttributes\(\)/)
   })
 })
+
+describe('one-shots: { at } returned by a function-valued every', () => {
+  // Each label wants to be updated at its own instant: 200 of them must cost one timer.
+  const Once = (props: { at: () => number; log?: number[] }) => {
+    const n = useNow({ every: () => ({ at: props.at() }) })
+
+    return h('span', null, () => {
+      props.log?.push(n())
+
+      return String(n())
+    })
+  }
+
+  it('updates at exactly that instant, not on a wall-clock boundary', () => {
+    const { root, done } = render(h(Once, { at: () => T0 + 7_300 }))
+
+    vi.advanceTimersByTime(7_299)
+    expect(root.textContent).toBe(String(T0))
+    vi.advanceTimersByTime(1)
+    expect(root.textContent).toBe(String(T0 + 7_300))
+    done()
+  })
+
+  it('re-reads the function after each update and aims at the next instant', () => {
+    const Chain = () => {
+      // Reads the plain now(): the reader re-reads the function after each update by itself.
+      const read = useNow({ every: () => ({ at: now() + 2_500 }) })
+
+      return h('span', null, () => String(read()))
+    }
+    const { root, done } = render(h(Chain, null))
+
+    vi.advanceTimersByTime(2_500)
+    expect(root.textContent).toBe(String(T0 + 2_500))
+    vi.advanceTimersByTime(2_500)
+    expect(root.textContent).toBe(String(T0 + 5_000))
+    expect(vi.getTimerCount()).toBe(1)
+    done()
+  })
+
+  it('200 readers with 200 different instants share one timer', () => {
+    const roots = Array.from({ length: 200 }, (_, i) => render(h(Once, { at: () => T0 + 1_000 + i * 137 })))
+
+    expect(vi.getTimerCount()).toBe(1)
+    expect(_tickerStats().timers).toBe(1)
+    vi.advanceTimersByTime(1_000)
+    expect(roots[0]?.root.textContent).toBe(String(T0 + 1_000))
+    expect(roots[1]?.root.textContent).toBe(String(T0)) // 1_137 is not due yet
+    vi.advanceTimersByTime(137)
+    expect(roots[1]?.root.textContent).toBe(String(T0 + 1_137))
+    expect(vi.getTimerCount()).toBeLessThanOrEqual(2)
+    for (const r of roots) r.done()
+    expect(vi.getTimerCount()).toBe(0)
+    expect(_tickerStats()).toEqual({ active: 0, timers: 0, shared: 0 })
+  })
+
+  it('the earliest instant wins when a reader with an earlier one arrives later', () => {
+    const late = render(h(Once, { at: () => T0 + 5_000 }))
+    const early = render(h(Once, { at: () => T0 + 1_000 }))
+
+    expect(vi.getTimerCount()).toBe(1)
+    vi.advanceTimersByTime(1_000)
+    expect(early.root.textContent).toBe(String(T0 + 1_000))
+    expect(late.root.textContent).toBe(String(T0))
+    vi.advanceTimersByTime(4_000)
+    expect(late.root.textContent).toBe(String(T0 + 5_000))
+    late.done()
+    early.done()
+  })
+
+  it('a reader that unmounts leaves the list; the last one leaves no timer', () => {
+    const a = render(h(Once, { at: () => T0 + 1_000 }))
+    const b = render(h(Once, { at: () => T0 + 9_000 }))
+
+    a.done()
+    expect(vi.getTimerCount()).toBe(1)
+    vi.advanceTimersByTime(1_000)
+    b.done()
+    expect(vi.getTimerCount()).toBe(0)
+    expect(_tickerStats()).toEqual({ active: 0, timers: 0, shared: 0 })
+  })
+
+  it('an instant that is already past is clamped to the next millisecond', () => {
+    const { root, done } = render(h(Once, { at: () => T0 - 5_000 }))
+
+    expect(vi.getTimerCount()).toBe(1)
+    vi.advanceTimersByTime(1)
+    expect(Number(root.textContent)).toBeGreaterThanOrEqual(T0)
+    vi.advanceTimersByTime(20)
+    expect(vi.getTimerCount()).toBe(1) // a function that keeps returning a past instant is read again each millisecond: one timer, no pile-up
+    done()
+  })
+
+  it('{ at: Infinity } never updates and starts no timer', () => {
+    const { root, done } = render(h(Once, { at: () => Number.POSITIVE_INFINITY }))
+
+    expect(vi.getTimerCount()).toBe(0)
+    vi.advanceTimersByTime(86_400_000)
+    expect(root.textContent).toBe(String(T0))
+    done()
+  })
+
+  it('a hidden page runs no timer and updates once on becoming visible', () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+    const { root, done } = render(h(Once, { at: () => T0 + 1_000 }))
+
+    expect(vi.getTimerCount()).toBe(0)
+    vi.advanceTimersByTime(5_000)
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(root.textContent).toBe(String(T0 + 5_000))
+    done()
+  })
+
+  it('an invalid value from the function is a [Pyreon] error', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { done } = render(h(() => {
+      useNow({ every: (() => ({ at: Number.NaN })) as never })
+
+      return h('i', null)
+    }, null))
+
+    expect(error.mock.calls.some((c) => /\[Pyreon\] useNow\(\): every must be/.test(String(c[0]) + String(c[1])))).toBe(true)
+    error.mockRestore()
+    done()
+  })
+})

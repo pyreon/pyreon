@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 231,
+  "pageCount": 232,
   "pages": [
    {
     "path": "a11y.md",
@@ -451,6 +451,11 @@
     "path": "patterns/form-fields.md",
     "title": "Form fields",
     "href": "/docs/patterns/form-fields"
+   },
+   {
+    "path": "patterns/formatting.md",
+    "title": "Formatting numbers, dates and money",
+    "href": "/docs/patterns/formatting"
    },
    {
     "path": "patterns/imperative-toasts.md",
@@ -1225,6 +1230,7 @@
       "patterns/islands",
       "patterns/event-listeners",
       "patterns/imperative-toasts",
+      "patterns/formatting",
       "patterns/multiplatform",
       "accessibility"
      ],
@@ -2013,8 +2019,7 @@
     },
     {
      "title": "Format",
-     "href": "/docs/format",
-     "productId": "format"
+     "href": "/docs/format"
     },
     {
      "title": "Time",
@@ -2239,6 +2244,10 @@
     {
      "title": "Imperative toasts",
      "href": "/docs/patterns/imperative-toasts"
+    },
+    {
+     "title": "Formatting",
+     "href": "/docs/patterns/formatting"
     },
     {
      "title": "One source, web + iOS + Android",
@@ -3311,27 +3320,6 @@
     "validation",
     "content",
     "a11y"
-   ]
-  },
-  {
-   "productId": "format",
-   "name": "Format",
-   "docsPage": null,
-   "docsHref": "/docs/format",
-   "gapNote": "The Format docs page (format.md) is a guide and carries none of the six selling slots yet; the product page's call to action links to it.",
-   "closestPage": "format.md",
-   "pitch": "content/format.json#hero",
-   "demo": "content/format.json#demo",
-   "bench": "content/format.json#benchmarks",
-   "benchNote": "No benchmark has been run for @pyreon/format (benchmarks written, not run): no figure may be added until a recorded result exists.",
-   "comingFrom": {
-    "lib": "Intl",
-    "ref": "content/format.json#comingFrom[0]"
-   },
-   "crossSell": [
-    "i18n",
-    "table",
-    "zero"
    ]
   },
   {

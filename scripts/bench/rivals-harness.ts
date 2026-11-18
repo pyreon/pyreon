@@ -173,6 +173,16 @@ async function measure(spec: OpSpec<string>, fn: ArmFn): Promise<number[]> {
   return samples
 }
 
+/**
+ * A bench is re-launched once with NODE_ENV=production and the marker below. If it still sees a non-production NODE_ENV after that
+ * (a bundle that folded `process.env.NODE_ENV` to "development"), launching again would recurse forever: throw instead.
+ */
+export function assertNotRespawned(env: Record<string, string | undefined>): void {
+  if (env.PYREON_BENCH_RESPAWNED === '1') {
+    throw new Error('[rivals-harness] NODE_ENV is not "production" after the respawn: the bundle folded process.env.NODE_ENV. Build the bench with NODE_ENV=production.')
+  }
+}
+
 export async function runRivalBench<I extends string>(cfg: RivalBench<I>): Promise<void> {
   const args = process.argv.slice(2).filter((a) => !a.startsWith('--'))
 
@@ -189,9 +199,10 @@ export async function runRivalBench<I extends string>(cfg: RivalBench<I>): Promi
 
   // ── orchestrator ─────────────────────────────────────────────────────────
   if (process.env.NODE_ENV !== 'production') {
+    assertNotRespawned(process.env)
     const r = run(
       [process.execPath, ...process.execArgv, cfg.file, ...process.argv.slice(2)],
-      { ...process.env, NODE_ENV: 'production' },
+      { ...process.env, NODE_ENV: 'production', PYREON_BENCH_RESPAWNED: '1' },
       true,
     )
     process.exit(r.exitCode)

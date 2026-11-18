@@ -133,9 +133,9 @@ provideClock(Date.now())`,
     {
       name: 'useNow',
       kind: 'hook',
-      signature: '(options?: { every?: Every | (() => Every); zone?: string | (() => string) }) => () => number',
+      signature: '(options?: { every?: Every | (() => EveryOrAt); zone?: string | (() => string) }) => () => number',
       summary:
-        'A reactive reading of the clock: an accessor that updates on a shared ticker. `every` is `"second"`, `"minute"` (default), `"hour"`, `"day"` or a number of milliseconds; `"hour"` and `"day"` align to the local hour and midnight of `zone` (default: the active zone, tracked), and a function `every` is read reactively so a reader can move to a slower ticker as it ages. One timer serves every reader of the same granularity; each tick is scheduled from the clock to the next boundary, so a late timer does not drift; the ticker stops when its last reader goes; no timer runs while the page is hidden, and on becoming visible every reader is updated once. Call it in a component\'s setup: the ticker is released with the scope. Outside a scope, and on a server, it returns the plain `now` read: no subscription, no timer.',
+        'A reactive reading of the clock: an accessor that updates on a shared ticker. `every` is `"second"`, `"minute"` (default), `"hour"`, `"day"` or a number of milliseconds; `"hour"` and `"day"` align to the local hour and midnight of `zone` (default: the active zone, tracked), and a function `every` is read reactively (and again after every update of the ticker the reader holds) so a reader can move to a slower ticker as it ages. It may also return `{ at: instant }`: one update at that exact instant, then the function is read again. Readers that each want their own instant (a relative label that must flip when its target turns a minute old) are kept in a sorted list served by ONE timer, so 200 of them cost one timer; `{ at: Infinity }` never updates and a past instant is clamped to the next millisecond. One timer serves every reader of the same granularity; each tick is scheduled from the clock to the next boundary, so a late timer does not drift; the ticker stops when its last reader goes; no timer runs while the page is hidden, and on becoming visible every reader is updated once. Call it in a component\'s setup: the ticker is released with the scope. Outside a scope, and on a server, it returns the plain `now` read: no subscription, no timer.',
       example: `typeof useNow({ every: 'second' })()          // => 'number'`,
       mistakes: [
         'Calling it inside an effect that re-runs: each run takes a new reference. Call it once in setup',
@@ -174,7 +174,8 @@ provideClock(Date.now())`,
       since: '0.53.0',
     },
     { name: 'Every', kind: 'type', signature: "type Every = 'second' | 'minute' | 'hour' | 'day' | number", summary: 'How often `useNow` updates.', example: `const e: Every = 'minute'`, stability: 'experimental', since: '0.53.0' },
-    { name: 'NowOptions', kind: 'type', signature: 'interface NowOptions { every?: Every | (() => Every); zone?: string | (() => string) }', summary: 'Options of `useNow`.', example: `const o: NowOptions = { every: 'second' }`, stability: 'experimental', since: '0.53.0' },
+    { name: 'EveryOrAt', kind: 'type', signature: "type EveryOrAt = Every | { at: number }", summary: 'What a function-valued `every` may return: a granularity, or `{ at }` for one update at an exact instant (epoch ms), after which the function is read again.', example: `const e: EveryOrAt = { at: Date.now() + 60_000 }`, stability: 'experimental', since: '0.53.0' },
+    { name: 'NowOptions', kind: 'type', signature: 'interface NowOptions { every?: Every | (() => EveryOrAt); zone?: string | (() => string) }', summary: 'Options of `useNow`.', example: `const o: NowOptions = { every: 'second' }`, stability: 'experimental', since: '0.53.0' },
     { name: 'ClockScriptOptions', kind: 'type', signature: 'interface ClockScriptOptions { instant?: number; nonce?: string }', summary: 'Options of `clockScript`.', example: `const o: ClockScriptOptions = { nonce: 'abc' }`, stability: 'experimental', since: '0.53.0' },
   ],
   gotchas: [

@@ -1727,6 +1727,9 @@
     "packages/fundamentals/format": {
       "name": "@pyreon/format",
       "version": "0.53.0",
+      "dependencies": {
+        "@pyreon/ambient": "workspace:^",
+      },
       "devDependencies": {
         "@formatjs/intl": "6.1.5",
         "@pyreon/core": "workspace:*",
@@ -1735,6 +1738,7 @@
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/runtime-server": "workspace:*",
+        "@pyreon/time": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@types/humanize-duration": "3.27.4",

@@ -100,3 +100,36 @@ describe('thresholds', () => {
     expect(relativeDistance(Date.UTC(2026, 10, 18, 12, 0, 30), Date.UTC(2026, 10, 18, 12), 'UTC')).toEqual({ value: 30, unit: 'second' })
   })
 })
+
+/**
+ * The shared table of `@pyreon/format`'s `date-only-rule.test.ts`, copied verbatim (neither package may import the other): a
+ * date-only target is the day it names, read as that day's midnight in the display zone, so both packages give the same words.
+ * Change both copies together.
+ */
+type SharedRow = readonly [target: string, base: string, zone: string, words: string]
+
+const SHARED_TABLE: readonly SharedRow[] = [
+  ['2026-11-18', '2026-11-18T01:00:00Z', 'Asia/Tokyo', '10 hours ago'],
+  ['2026-11-18', '2026-11-18T01:00:00Z', 'UTC', '1 hour ago'],
+  ['2026-11-18', '2026-11-17T20:00:00Z', 'America/Los_Angeles', 'in 12 hours'],
+  ['2026-11-18', '2026-11-18T10:00:00Z', 'Pacific/Kiritimati', 'yesterday'],
+  ['2026-11-19', '2026-11-18T09:59:00Z', 'Pacific/Kiritimati', 'in 1 minute'],
+  ['2026-11-19', '2026-11-19T07:00:00Z', 'America/Los_Angeles', 'in 1 hour'],
+  ['2026-11-17', '2026-11-18T07:59:00Z', 'America/Los_Angeles', '23 hours ago'],
+  ['2026-11-17', '2026-11-18T08:00:00Z', 'America/Los_Angeles', 'yesterday'],
+  ['2026-11-19', '2026-11-18T08:00:00Z', 'America/Los_Angeles', 'tomorrow'],
+  ['2026-09-06', '2026-09-06T05:00:00Z', 'America/Santiago', '1 hour ago'], // midnight does not exist (spring forward): the first instant after
+  ['2026-11-01', '2026-11-01T06:00:00Z', 'America/Havana', '2 hours ago'], // midnight happens twice (fall back): the first
+  ['2026-11-11', '2026-11-18T12:00:00Z', 'Pacific/Kiritimati', 'last week'],
+  ['2026-11-18T12:00:00Z', '2026-11-18T13:00:00Z', 'Pacific/Kiritimati', '1 hour ago'], // instants are unchanged
+  ['2026-11-16T13:00:00Z', '2026-11-18T01:00:00Z', 'UTC', '2 days ago'],
+]
+
+describe('the shared date-only table agrees with @pyreon/format', () => {
+  it.each(SHARED_TABLE)('%s from %s in %s: %s', (target, base, zone, words) => {
+    const t = target.endsWith('Z') ? Date.parse(target) : (target as PlainDate)
+    const { value, unit } = relativeDistance(t, Date.parse(base), zone)
+
+    expect(auto.format(value, unit)).toBe(words)
+  })
+})

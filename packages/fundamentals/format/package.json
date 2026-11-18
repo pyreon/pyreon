@@ -48,8 +48,8 @@
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench": "bun run build && bun build bench/format-rivals.ts --target=node --outfile=node_modules/.bench/format-rivals.mjs && NODE_ENV=production node node_modules/.bench/format-rivals.mjs",
-    "bench:reactive": "bun run build && bun build bench/format-reactive.ts --target=node --outfile=node_modules/.bench/format-reactive.mjs && NODE_ENV=production node node_modules/.bench/format-reactive.mjs"
+    "bench": "bun run build && NODE_ENV=production bun build bench/format-rivals.ts --target=node --outfile=node_modules/.bench/format-rivals.mjs && NODE_ENV=production node node_modules/.bench/format-rivals.mjs",
+    "bench:reactive": "bun run build && NODE_ENV=production bun build bench/format-reactive.ts --target=node --outfile=node_modules/.bench/format-reactive.mjs && NODE_ENV=production node node_modules/.bench/format-reactive.mjs"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
@@ -71,6 +71,7 @@
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/time": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/humanize-duration": "3.27.4",
@@ -85,5 +86,8 @@
   },
   "pyreon": {
     "stability": "experimental"
+  },
+  "dependencies": {
+    "@pyreon/ambient": "workspace:^"
   }
 }

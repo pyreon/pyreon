@@ -5,6 +5,7 @@
  * updates when they change. An explicit `locale` / `timeZone` option wins and
  * does not subscribe. Plus the locale API and `defineFormats`.
  */
+import { now, useNow } from '@pyreon/ambient'
 import { durationIn, durationKind, durationSpec } from './duration'
 import {
   dateIn,
@@ -14,10 +15,13 @@ import {
   dateTimeIn,
   dateTimeKind,
   dateToPartsIn,
+  nextRelativeChange,
   relativeIn,
   relativeKind,
   relativeSpec,
+  relativeTimeIn,
   relativeToIn,
+  thresholdOf,
   timeIn,
   timeKind,
 } from './datetime'
@@ -81,6 +85,7 @@ import type {
   RelativeFormatterOptions,
   RelativeOptions,
   RelativePreset,
+  RelativeTimeOptions,
   RelativeUnit,
   Unit,
   UnitOptions,
@@ -88,7 +93,7 @@ import type {
 } from './types'
 
 /** The reactive entry follows the active locale and zone. */
-const REACTIVE_ENV: Env = { locale, zone: activeZone }
+const REACTIVE_ENV: Env = { locale, zone: activeZone, clock: now }
 
 export type * from './types'
 
@@ -506,7 +511,7 @@ export function dateTimeFormatter(options?: DateTimeOptions | DateStylePreset): 
 }
 
 /**
- * A reusable relative-time formatter: the target against `options.base` (a date-like value, or an accessor that is tracked). Follows the active locale and time zone.
+ * A reusable relative-time formatter: the target against `options.base` (a date-like value, or an accessor that is tracked). Follows the active locale and time zone. Without a `base` it reads the ambient clock (`now()` of `@pyreon/ambient`, on every call; it does not tick, so for a label that updates itself use `useRelativeTime` or `<RelativeTime>`).
  *
  * @example
  * ```ts
@@ -515,6 +520,39 @@ export function dateTimeFormatter(options?: DateTimeOptions | DateStylePreset): 
  */
 export function relativeFormatter(options: RelativeFormatterOptions): Formatter<DateInput, 'relative'> {
   return makeFormatter(relativeKind, relativeSpec(options), REACTIVE_ENV)
+}
+
+/**
+ * A relative label that keeps itself current: `() => string` such as `"3 minutes ago"`, updated by the shared clock of `@pyreon/ambient`. Call it in a component's setup and read it in JSX. `target` may be an accessor (tracked). The text is `formatRelativeTo` against the clock, so "yesterday" is calendar-true in the time zone.
+ *
+ * It updates exactly when the text would change: each second under a minute, at the target's own minute and hour marks (so "1 minute ago" appears when the target is one minute old), at local midnight once it counts days, and when a future target comes within a day. All labels share one timer for those marks and one for the seconds, so a page of 200 costs two timers. `threshold` switches to an absolute date after a distance: `{ after: { days: 7 }, as: 'medium' }`. On a server it reads the request clock and starts no timer; outside a component it is a plain reading.
+ *
+ * @example
+ * ```ts
+ * const ago = useRelativeTime(Date.now() - 180_000, { locale: 'en-US' })
+ * ago() // "3 minutes ago"
+ * ```
+ */
+export function useRelativeTime(
+  target: DateInput | (() => DateInput),
+  options?: RelativeTimeOptions | (() => RelativeTimeOptions | undefined),
+): () => string {
+  const targetNow = (): DateInput => (typeof target === 'function' ? target() : target)
+  const optionsNow = (): RelativeTimeOptions | undefined => (typeof options === 'function' ? options() : options)
+  const zoneNow = (): string => zoneOf(optionsNow()) || activeZone()
+  const tick = useNow({
+    every: () => {
+      const next = nextRelativeChange(targetNow(), now(), zoneNow(), thresholdOf('useRelativeTime', optionsNow()))
+
+      return next === 'second' ? 'second' : { at: next }
+    },
+  })
+
+  return () => {
+    const o = optionsNow()
+
+    return relativeTimeIn(localeOf(o) || locale(), zoneNow(), targetNow(), tick(), o)
+  }
 }
 
 /**

@@ -97,7 +97,17 @@ function Clock() {
 - **Never on a server.** `useNow()` there returns the plain read, even inside a reactive scope.
 - **Bounded.** `second` and `minute` are always shared; up to 16 other tickers (custom intervals, per-zone `hour` and `day`) are shared; a reader beyond that gets a private ticker that is stopped with it.
 
-A function `every` is read reactively, so a reader can move to a slower ticker as its subject ages: this is how `useRelative` in `@pyreon/time` avoids holding a per-second timer for an old timestamp.
+A function `every` is read reactively (and again after every update of the ticker the reader holds), so a reader can move to a slower ticker as its subject ages: this is how `useRelative` in `@pyreon/time` avoids holding a per-second timer for an old timestamp.
+
+### One update at an exact instant
+
+A shared ticker fires on the wall-clock boundary, so a label that must change when ITS OWN subject crosses a mark (a comment that turns one minute old at 12:03:41, not at the next wall minute) would be up to a minute late. A function `every` may therefore return `{ at: instant }`: one update at exactly that instant, after which the function is read again for the next one.
+
+```tsx
+const label = useNow({ every: () => ({ at: nextChangeOf(target) }) })
+```
+
+Readers that each ask for their own instant do not each get a timer: they are kept in a sorted list served by **one** timer, so 200 labels with 200 different instants cost one timer (and the list entry is dropped when a reader fires or goes away). `{ at: Infinity }` never updates and starts nothing; an instant already past is clamped to the next millisecond, so a function that keeps returning a past instant is read again each millisecond rather than looping. The same rules apply as for tickers: nothing on a server, nothing while hidden (one update on becoming visible), the timer is stopped when the last reader goes. `@pyreon/format`'s `useRelativeTime` is built on this.
 
 ## Server rendering: the clock hand-over
 
