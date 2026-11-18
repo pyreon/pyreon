@@ -160,6 +160,18 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] Treating a missing range marker as "unknown extent, rebuild"
+
+(#4448): an accessor whose server content carries no `<!--$-->` markers (the server rendered the same content without an accessor: `props.children` on one side, `<Provider>{props.children}</Provider>` on the other) removed ONE server node and mounted fresh, silently, in dev and production. A multi-node value also re-created the following sibling. The markers only say where output ENDS; the first value says the same, as a static child's vnode does. Walk the first value against the server nodes inside `mountReactive`'s first run (`adoptUnmarkedRange` in `hydrate.ts`), then place the boundary after what the walk claimed, never past the parent's own boundary (the walk's cursor skips comments, including the enclosing range's markers; a boundary placed beyond it made the range's cleanup delete the parent's marker, caught by the compiled parity fuzz, seed 297). Test: `runtime-dom/src/tests/hydrate-adopt-not-remount.test.tsx`.
+
+---
+
+### [FIXED, 2026-11] A polymorphic text slot whose server content is elements was rebuilt, not adopted
+
+(#4385): `{parts(row)}` lowers to a text binding over one `' '` placeholder, but renders `['a ', <Code/>, ' b']` as elements. The verifier refused the element (sole slot) and `_textSlot` cleared the range (trailing/mid), so every such cell was re-created at hydration, identical and unreported (pyreon.dev's comparison table, every row). Park a placeholder where the content is and let the binding adopt it through the slot hydrator; sweep placeholders a raw `.data` binding cannot adopt, or the server's nodes stay beside the written text. Code: `runtime-dom/src/parked-text.ts`, `hydration-plan.ts` (`soleTexts`), `template.ts` (`_textSlot`, `buildTpl`). Tests: `compiled-text-slot-adopts-elements.test.tsx` + `.browser`.
+
+---
+
 ### [FIXED, 2026-11] A component that decorates its child assumed the child is a VNode
 
 (#4382): a literal element child compiles to a `_tpl` item on the client and to raw HTML (`_ssr`) on the server, neither of which has props to merge. Kinetic's per-item hidden class/style was dropped on the server (initially-hidden items prerendered VISIBLE, a flash before hydration); runtime-dom's `<Transition><div/></Transition>` treated the `_tpl` item as a component, warned, and never animated; `_ssr` dropped `key` while the client kept the keyed element on `h()`, so a group saw different keys on each side.
@@ -174,6 +186,7 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 `packages/core/runtime-dom/src/tests/hydration-parity-fuzz.test.tsx` (and `hydration-parity-fuzz-compiled.test.tsx`) hydrate each seeded tree and compare against a fresh client mount: zero mismatches, identical normalized DOM, identical DOM after identical flips, root identity reused, plus a ground-truth fresh mount with flipped values. `PYREON_FUZZ_SEEDS` raises the seed count; CI's count is not a proof.
   - Any SSR construct whose client extent is ambiguous (0, 1 or many nodes) needs a range marker (`<!--$-->…<!--/$-->`, `<!--k:-->`, `<!--pyreon-for-->`).
   - Markers must be uniform per construct; a value-conditional scheme reopens cursor gaps.
+  - **A client `<!>` placeholder pairs with a server range, by construction** (#4385 D). Every non-sole, non-literal expression child of an element the client lowers to `_tpl` is a placeholder, whatever its value; the server brackets it in exactly one `<!--$-->…<!--/$-->` (a sole child is elided on both sides). An accessor gets its range from `renderNode`; a FIXED child (`{flag ? <b/> : null}`, `{row.name}`, `{children}`) used to get none, so the verifier swapped in a clone (identical, unreported, the whole element re-created). The SSR compile now tracks which elements the client templates (`ssrEnterElement` / `ssr_enter_element`: the client's own `tryTemplateEmit` gate, its `templatizeComponentChildren`, text fusion, and RAW inside anything the client slices into a bind) and emits `_slot(x)` (h() path) or `<!--$-->` + `_escSole(x)` + `<!--/$-->` (`_ssr` path). The state only ever errs toward "not templated", which keeps the old bytes: a range where the client walks an h() child would break that walk. Never make the verifier guess an unmarked extent instead. Tests: `runtime-dom/src/tests/ssr-placeholder-markers.test.tsx` (matrix + a pairing oracle that reads only client templates and server HTML) + `.browser`.
   - The HTML parser merges adjacent text children; hydration must `splitText` each child's prefix.
   - A text node mounted into a live parent through a reactive boundary must return a real remover; `noop` is valid only under `_elementDepth > 0`.
   - A reactive text binding is polymorphic (`bindPolymorphicText`); it may later yield a VNode.

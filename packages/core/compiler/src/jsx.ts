@@ -1373,6 +1373,9 @@ export function transformJSX_JS(
   // already, so there is nothing to absorb there (and `_ssr`'s preserved-hole
   // machinery has its own component-child bail).
   const tplComponentChildren = !ssr && options.templatizeComponentChildren === true
+  // The CLIENT compile's value of the option, read by the SSR emit to work out
+  // which elements the client lowers to templates (see `ssrEnterElement`).
+  const clientTplComponents = options.templatizeComponentChildren === true
 
   let program: N
   try {
@@ -1489,6 +1492,9 @@ export function transformJSX_JS(
   let needsPpImport = false
   let needsLcImport = false
   let needsFuseImport = false
+  // `_slot` (`@pyreon/core`): the SSR emit's range for a fixed child the client
+  // lowers to a `<!>` placeholder (see `ssrEnterElement`).
+  let needsSlotImport = false
   let needsWrapSpreadImport = false
   let needsBindTextImportGlobal = false
   let needsBindPropImportGlobal = false
@@ -2085,7 +2091,16 @@ export function transformJSX_JS(
      * replacements instead of replacing across it.
      */
     holeSrc: (
-      | { start: number; end: number; node: N; open: string; close: string; ns: string }
+      | {
+          start: number
+          end: number
+          node: N
+          open: string
+          close: string
+          ns: string
+          /** `ssrClient` for the later walk of the preserved range. */
+          client: number
+        }
       | null
     )[]
     /**
@@ -2145,7 +2160,13 @@ export function transformJSX_JS(
     return true
   }
 
-  function ssrEmitSourceHole(buf: SsrBuf, el: N, open = '_ssrNode(', close = ')'): void {
+  function ssrEmitSourceHole(
+    buf: SsrBuf,
+    el: N,
+    open = '_ssrNode(',
+    close = ')',
+    client = ssrClient === SSR_CLIENT_RAW ? SSR_CLIENT_RAW : SSR_CLIENT_NONE,
+  ): void {
     buf.holes.push('')
     buf.holeStr.push(false)
     buf.holeSrc.push({
@@ -2155,6 +2176,7 @@ export function transformJSX_JS(
       open,
       close,
       ns: ssrNsPath,
+      client,
     })
     buf.statics.push('')
   }
@@ -2684,7 +2706,7 @@ export function transformJSX_JS(
    * → tie / 1.21× ahead. The SSR and h() emits are unchanged: a static mix
    * already serializes to one marker-free text run there.
    */
-  function fuseTextChildren(el: N, allowStatic = false): string | null {
+  function fuseTextChildren(el: N, allowStatic = false, probe = false): string | null {
     const kids = jsxChildren(el)
     if (kids.length < 2) return null
     type Part = { lit: string } | { expr: string }
@@ -2756,6 +2778,9 @@ export function transformJSX_JS(
       if (reactive) anyReactive = true
     }
     if ((!anyReactive && !allowStatic) || parts.length < 2) return null
+    // `probe`: the caller only asks WHETHER the element fuses (the SSR emit's
+    // `ssrEnterElement`), so no lens span and no import.
+    if (probe) return ''
     for (const sp of spans) {
       if (sp.reactive)
         lens(sp.start, sp.end, 'reactive', 'live — this text re-renders whenever its signals change')
@@ -2860,13 +2885,21 @@ export function transformJSX_JS(
 
       return true
     }
+    // A client `<!>` placeholder whose value is not an accessor: bracket it
+    // (see `ssrEnterElement`). Byte-identical to the h() path's `_slot(x)`.
+    const marks = ssrSlotNeedsMarkers(child, expr)
+    // What the client does with the JSX inside this expression: a templated
+    // element slices it into its bind and an accessor child is sliced, so
+    // neither is walked (RAW); anything else is walked like the h() path.
+    const inner =
+      ssrClient === SSR_CLIENT_NONE && !shouldWrap(expr) ? SSR_CLIENT_NONE : SSR_CLIENT_RAW
     // recursed mode: matches handleJsxExpression's wrap decision.
     if (ssrTryMap(buf, expr, sole)) return true
     // Lower an eligible DOM element nested in a conditional (`cond && <el>`,
     // `cond ? <el> : …`) so the taken branch builds a string, not a VNode. The
     // reconstructed text is byte-identical through `_esc`/`_escSole` (see
     // `ssrLowerNestedElements`); null keeps the pre-existing `sliceExpr` path.
-    const lowered = ssrLowerNestedElements(expr)
+    const lowered = ssrLowerNestedIn(expr, inner)
     if (lowered === null && containsJsx(expr)) {
       // JSX the two lowerings above could not turn into a string — a `.map`
       // whose item holds a COMPONENT (`items.map(i => <li><Link/></li>)`), a
@@ -2887,18 +2920,7 @@ export function transformJSX_JS(
         mode === 'recursed' &&
         sliceExpr(expr) === code.slice(expr.start as number, expr.end as number)
       ) {
-        if (sole) {
-          needsEscSoleImport = true
-          ssrEmitSourceHole(buf, expr, '_escSole(')
-        } else {
-          // Same marker decision as the generated path below.
-          const wrapped = shouldWrap(expr)
-          needsEscImport = true
-          if (wrapped) ssrEmitStatic(buf, '<!--$-->')
-          ssrEmitSourceHole(buf, expr, '_esc(')
-          if (wrapped) ssrEmitStatic(buf, '<!--/$-->')
-        }
-
+        ssrEmitPreservedExprHole(buf, expr, sole, marks, inner)
         return true
       }
       // Kept as generated text: the hole RENDERS whatever VNodes it builds as
@@ -2910,14 +2932,53 @@ export function transformJSX_JS(
     } else if (lowered !== null && ssrLowerResidualJsx) {
       buf.deferJsx = true
     }
-    const exprText = lowered ?? sliceExpr(expr)
+    ssrEmitExprHole(buf, lowered ?? sliceExpr(expr), expr, sole, marks)
+
+    return true
+  }
+
+  /** `ssrLowerNestedElements` under the client-template state of the JSX inside. */
+  function ssrLowerNestedIn(expr: N, inner: number): string | null {
+    const outerClient = ssrClient
+    const outerOwner = ssrOwner
+    ssrClient = inner
+    ssrOwner = null
+    try {
+      return ssrLowerNestedElements(expr)
+    } finally {
+      ssrClient = outerClient
+      ssrOwner = outerOwner
+    }
+  }
+
+  /** A PRESERVED expression hole (see `ssrSerializeExprChild`), bracketed like the generated one. */
+  function ssrEmitPreservedExprHole(buf: SsrBuf, expr: N, sole: boolean, marks: boolean, inner: number): void {
+    if (sole || marks) {
+      needsEscSoleImport = true
+      if (marks) ssrEmitStatic(buf, '<!--$-->')
+      ssrEmitSourceHole(buf, expr, '_escSole(', ')', inner)
+      if (marks) ssrEmitStatic(buf, '<!--/$-->')
+
+      return
+    }
+    // Same marker decision as the generated path.
+    const wrapped = shouldWrap(expr)
+    needsEscImport = true
+    if (wrapped) ssrEmitStatic(buf, '<!--$-->')
+    ssrEmitSourceHole(buf, expr, '_esc(', ')', inner)
+    if (wrapped) ssrEmitStatic(buf, '<!--/$-->')
+  }
+
+  /** A GENERATED expression hole and the range markers its position takes. */
+  function ssrEmitExprHole(buf: SsrBuf, exprText: string, expr: N, sole: boolean, marks: boolean): void {
     // SOLE child of this element → no markers on EITHER side, whatever the
     // expression's static shape; `_escSole` decides from the runtime value
     // kind, which is the only thing that determines whether `_esc` would have
     // added them. See `soleAccessorChild` in @pyreon/runtime-server.
     if (sole) {
       emitEscSoleHole(buf, exprText)
-      return true
+
+      return
     }
     if (shouldWrap(expr)) {
       // The h() path wraps a dynamic child in `() => expr` → renderNode adds
@@ -2927,11 +2988,16 @@ export function transformJSX_JS(
       ssrEmitStatic(buf, '<!--$-->')
       emitEscHole(buf, exprText)
       ssrEmitStatic(buf, '<!--/$-->')
+    } else if (marks) {
+      // `_escSole` unwraps a function value WITHOUT its own range, so the
+      // value renders inside exactly one range whatever it is, as `_slot`'s
+      // accessor does on the h() path.
+      ssrEmitStatic(buf, '<!--$-->')
+      emitEscSoleHole(buf, exprText)
+      ssrEmitStatic(buf, '<!--/$-->')
     } else {
       emitEscHole(buf, exprText)
     }
-
-    return true
   }
 
   /**
@@ -2981,8 +3047,19 @@ export function transformJSX_JS(
     const body = unwrapTypeLayers(cb.body)
     if (body.type !== 'JSXElement') return false
     // Self-closing `<For>` item bodies are eligible for the same reason as the
-    // `.map` case above.
-    const itemBuf = buildSsrBuf(body, 'foritem')
+    // `.map` case above. The client walks a component's render callback
+    // unsliced, so the row is a template root of its own when it qualifies.
+    const outerClient = ssrClient
+    const outerOwner = ssrOwner
+    if (ssrClient !== SSR_CLIENT_RAW) ssrClient = SSR_CLIENT_NONE
+    ssrOwner = null
+    let itemBuf: SsrBuf | null
+    try {
+      itemBuf = buildSsrBuf(body, 'foritem')
+    } finally {
+      ssrClient = outerClient
+      ssrOwner = outerOwner
+    }
     if (itemBuf === null) return false
     if (itemBuf.deferJsx) buf.deferJsx = true
     const params = cb.params ?? []
@@ -3043,6 +3120,22 @@ export function transformJSX_JS(
 
   /** Serialize an element (open tag + attrs + children + close). False = bail. */
   function ssrSerializeElement(buf: SsrBuf, el: N, mode: SsrMode): boolean {
+    // The same client-template state the h() walk keeps (`ssrEnterElement`).
+    // A `.map` item is sliced on the client (into the slot's or the wrapped
+    // accessor's source), so it is never a template.
+    const prevClient = ssrClient
+    const prevOwner = ssrOwner
+    if (mode === 'mapitem') ssrClient = SSR_CLIENT_RAW
+    ssrEnterElement(el)
+    try {
+      return ssrSerializeElementBody(buf, el, mode)
+    } finally {
+      ssrClient = prevClient
+      ssrOwner = prevOwner
+    }
+  }
+
+  function ssrSerializeElementBody(buf: SsrBuf, el: N, mode: SsrMode): boolean {
     const tag = jsxTagName(el)
     if (!tag || !isLowerCase(tag)) return false // component / empty → bail
     // Self-closing is NOT a bail. It used to be ("rare"), but `<img/>`,
@@ -3335,7 +3428,18 @@ export function transformJSX_JS(
     // The preserved subtrees are NOT covered by any replacement above, so they
     // still need their normal visit — reactive props, nested templates, signal
     // auto-call. This is the whole point of preserving rather than re-emitting.
-    for (const p of preserved) walkUnslicedExpr(p.node)
+    for (const p of preserved) {
+      const prevClient = ssrClient
+      const prevOwner = ssrOwner
+      ssrClient = p.client
+      ssrOwner = null
+      try {
+        walkUnslicedExpr(p.node)
+      } finally {
+        ssrClient = prevClient
+        ssrOwner = prevOwner
+      }
+    }
 
     needsSsrImport = true
 
@@ -3483,12 +3587,122 @@ export function transformJSX_JS(
     }
   }
 
+  // ── SSR range markers for client placeholders (#4385 case D) ───────────────
+  //
+  // The contract: every child the CLIENT template lowers to a `<!>` placeholder
+  // is a `<!--$-->…<!--/$-->` range in the server HTML, or its element's SOLE
+  // child, whose markers both sides elide. Hydration finds a placeholder's
+  // server content by its range, so a placeholder with no range cannot be
+  // adopted (the verifier refuses the template and swaps in a clone), and
+  // guessing where unmarked content ends is unsound.
+  //
+  // A reactive child already gets its range (it is an accessor on the server).
+  // A FIXED child (`{flag ? <b/> : null}`, `{row.label}`, `{children}`) did not:
+  // the server rendered it as a plain child. So the SSR emit works out, for
+  // each element, whether the client lowers it to a template, and brackets the
+  // fixed children that become placeholders there: `_slot(x)` on the h() path,
+  // `<!--$-->` + `_escSole(x)` + `<!--/$-->` on the `_ssr` path (byte-identical:
+  // `_slot` returns an accessor, so `renderNode` adds exactly one range, and a
+  // value that is ALREADY a function keeps its one range on both).
+  //
+  // Where the client does NOT template (an `h()` element, JSX the client slices
+  // into a template bind as raw source), the server must NOT add a range: the
+  // h() hydration walk of a fixed child does not expect one. So the state below
+  // errs only one way: anything not provably inside a client template is
+  // `NONE` or `RAW`, which keeps today's bytes.
+  //
+  //   NONE: the client walks this code unsliced and outside any template;
+  //   IN:   inside a client template (its root and its DOM descendants through
+  //         element and fragment children);
+  //   RAW:  the client never walks it (an expression or attribute inside a
+  //         template, a sliced accessor), so no element in it is a template.
+  const SSR_CLIENT_NONE = 0
+  const SSR_CLIENT_IN = 1
+  const SSR_CLIENT_RAW = 2
+  let ssrClient = SSR_CLIENT_NONE
+  /** The element whose expression children are being emitted, when it is IN a
+   *  client template and not text-fused; `sole` is its SSR sole child. */
+  let ssrOwner: { sole: N | null } | null = null
+
+  /** Would the client's `tryTemplateEmit` lower this element to a template root? */
+  function clientTemplatesRoot(el: N): boolean {
+    if (isSelfClosing(el)) return false
+    if (clientTplComponents && templateAbsorbsComponent(el) && templateMountIsEagerlyOrdered(el)) {
+      return false
+    }
+
+    return templateElementCount(el, true, clientTplComponents) >= 1
+  }
+
+  /** Enter a JSX element on the SSR walk (caller saves and restores the state). */
+  function ssrEnterElement(el: N): void {
+    if (ssrClient === SSR_CLIENT_RAW) {
+      ssrOwner = null
+      return
+    }
+    const tag = jsxTagName(el)
+    if (tag === '' || !isLowerCase(tag)) {
+      ssrClient = SSR_CLIENT_NONE
+      ssrOwner = null
+      return
+    }
+    if (ssrClient !== SSR_CLIENT_IN && clientTemplatesRoot(el)) ssrClient = SSR_CLIENT_IN
+    // A text-fused element has no placeholders: the client binds one text
+    // node (or `_setChild`s the static mix into the empty element).
+    ssrOwner =
+      ssrClient === SSR_CLIENT_IN && !isSelfClosing(el) && fuseTextChildren(el, true, true) === null
+        ? { sole: ssrSoleChild(el) }
+        : null
+  }
+
+  /**
+   * Does this expression child of the current owner take a client `<!>`
+   * placeholder that its server output does not already bracket? Every
+   * non-sole, non-literal expression child of a templated element is a
+   * placeholder (`processOneChild`); an accessor (`shouldWrap`, a function)
+   * already renders as a range. `wrapNode` is the node the caller's own wrap
+   * decision reads.
+   */
+  function ssrSlotNeedsMarkers(container: N, wrapNode: N): boolean {
+    if (ssrClient !== SSR_CLIENT_IN || ssrOwner === null || container === ssrOwner.sole) return false
+    const expr = container.expression
+    if (!expr || expr.type === 'JSXEmptyExpression') return false
+    const u = unwrapTypeLayers(expr)
+    if (literalChildText(u) !== null) return false
+    if (u.type === 'ArrowFunctionExpression' || u.type === 'FunctionExpression') return false
+
+    return !shouldWrap(wrapNode)
+  }
+
   function handleJsxExpression(node: N, parentJsx?: N): void {
+    if (ssr && ssrClient === SSR_CLIENT_IN) {
+      const marks = ssrSlotNeedsMarkers(node, node.expression)
+      // The client slices a template's expression children into the bind as
+      // raw source, so nothing inside one is a template.
+      ssrClient = SSR_CLIENT_RAW
+      try {
+        handleJsxExpressionChild(node, parentJsx, marks)
+      } finally {
+        ssrClient = SSR_CLIENT_IN
+      }
+
+      return
+    }
+    handleJsxExpressionChild(node, parentJsx, false)
+  }
+
+  function handleJsxExpressionChild(node: N, parentJsx: N | undefined, marks: boolean): void {
     const expr = node.expression
     if (!expr || expr.type === 'JSXEmptyExpression') return
     const hoistName = maybeHoist(expr)
     if (hoistName) {
-      replacements.push({ start: expr.start as number, end: expr.end as number, text: hoistName })
+      if (marks) needsSlotImport = true
+      replacements.push({
+        start: expr.start as number,
+        end: expr.end as number,
+        text: marks ? `_slot(${hoistName})` : hoistName,
+      })
+
       return
     }
     if (shouldWrap(expr)) {
@@ -3552,6 +3766,18 @@ export function transformJSX_JS(
         return
       }
       wrap(expr)
+      return
+    }
+    if (marks) {
+      // Zero-width edits around the untouched range, so the walk below still
+      // transforms the inside. The closer is pushed AFTER the walk: an edit the
+      // walk inserts at the same offset (a signal auto-call's `()`) must land
+      // inside it.
+      needsSlotImport = true
+      replacements.push({ start: expr.start as number, end: expr.start as number, text: '_slot(' })
+      walkUnslicedExpr(expr)
+      replacements.push({ start: expr.end as number, end: expr.end as number, text: ')' })
+
       return
     }
     walkUnslicedExpr(expr)
@@ -5112,46 +5338,20 @@ export function transformJSX_JS(
 
     // ── JSX processing (was pass 3) ──
     if (node.type === 'JSXElement') {
-      if (tryRocketstyleCollapse(node)) {
-        // Collapsed to _rsCollapse — children are baked into the SSR-
-        // resolved template; do not recurse into the subtree.
+      if (!ssr) {
+        walkJsxElement(node)
         return
       }
-      // Compile-to-string SSR fast path (opt-in via `options.ssrTemplate`).
-      // Emits `_ssr(...)` for eligible static-skeleton subtrees; falls through
-      // to the h() path on any non-eligible shape.
-      if (ssrTemplate && trySsrTemplateEmit(node)) {
-        return
+      const prevClient = ssrClient
+      const prevOwner = ssrOwner
+      ssrEnterElement(node)
+      try {
+        walkJsxElement(node)
+      } finally {
+        ssrClient = prevClient
+        ssrOwner = prevOwner
       }
-      if (!isSelfClosing(node) && tryTemplateEmit(node)) {
-        // Template emitted — don't recurse into this subtree (JSXElement is never a function)
-        return
-      }
-      checkForWarnings(node)
-      for (const attr of jsxAttrs(node)) {
-        if (attr.type === 'JSXAttribute') handleJsxAttribute(attr, node)
-        else if (attr.type === 'JSXSpreadAttribute') handleJsxSpreadAttribute(attr, node)
-      }
-      // Text fusion on the h() path (see `fuseTextChildren`): the whole child
-      // span becomes ONE accessor child, so `renderElement` elides its markers
-      // (byte-identical to the `_ssr` emit) and hydration adopts the one text.
-      // DOM elements only — a component's children are its props.
-      const hTag = jsxTagName(node)
-      const fusedH = hTag !== '' && isLowerCase(hTag) && !isSelfClosing(node) ? fuseTextChildren(node) : null
-      if (fusedH !== null) {
-        replacements.push({
-          start: node.openingElement.end as number,
-          end: node.closingElement.start as number,
-          text: `{() => ${fusedH}}`,
-        })
 
-        return
-      }
-      for (const child of jsxChildren(node)) {
-        if (child.type === 'JSXExpressionContainer') handleJsxExpression(child, node)
-        else walkNode(child)
-      }
-      // Note: JSXElement is never a function, so no callback depth or scope cleanup needed here
       return
     }
     if (node.type === 'JSXExpressionContainer') {
@@ -5188,6 +5388,57 @@ export function transformJSX_JS(
     if (scopeShadows) for (const name of scopeShadows) shadowedSignals.delete(name)
     // Restore JSX-returning fn shadowing
     if (scopeJsxFnShadows) for (const name of scopeJsxFnShadows) shadowedJsxFns.delete(name)
+  }
+
+  function walkJsxElement(node: N): void {
+    if (tryRocketstyleCollapse(node)) {
+      // Collapsed to _rsCollapse — children are baked into the SSR-
+      // resolved template; do not recurse into the subtree.
+      return
+    }
+    // Compile-to-string SSR fast path (opt-in via `options.ssrTemplate`).
+    // Emits `_ssr(...)` for eligible static-skeleton subtrees; falls through
+    // to the h() path on any non-eligible shape.
+    if (ssrTemplate && trySsrTemplateEmit(node)) {
+      return
+    }
+    if (!isSelfClosing(node) && tryTemplateEmit(node)) {
+      // Template emitted — don't recurse into this subtree (JSXElement is never a function)
+      return
+    }
+    checkForWarnings(node)
+    // A templated element's attributes are sliced into the client bind as
+    // raw source: nothing inside them is a client template.
+    const attrClient = ssrClient
+    if (ssrClient === SSR_CLIENT_IN) ssrClient = SSR_CLIENT_RAW
+    try {
+      for (const attr of jsxAttrs(node)) {
+        if (attr.type === 'JSXAttribute') handleJsxAttribute(attr, node)
+        else if (attr.type === 'JSXSpreadAttribute') handleJsxSpreadAttribute(attr, node)
+      }
+    } finally {
+      ssrClient = attrClient
+    }
+    // Text fusion on the h() path (see `fuseTextChildren`): the whole child
+    // span becomes ONE accessor child, so `renderElement` elides its markers
+    // (byte-identical to the `_ssr` emit) and hydration adopts the one text.
+    // DOM elements only — a component's children are its props.
+    const hTag = jsxTagName(node)
+    const fusedH = hTag !== '' && isLowerCase(hTag) && !isSelfClosing(node) ? fuseTextChildren(node) : null
+    if (fusedH !== null) {
+      replacements.push({
+        start: node.openingElement.end as number,
+        end: node.closingElement.start as number,
+        text: `{() => ${fusedH}}`,
+      })
+
+      return
+    }
+    for (const child of jsxChildren(node)) {
+      if (child.type === 'JSXExpressionContainer') handleJsxExpression(child, node)
+      else walkNode(child)
+    }
+    // Note: JSXElement is never a function, so no callback depth or scope cleanup needed here
   }
 
   walkNode(program)
@@ -5275,7 +5526,7 @@ export function transformJSX_JS(
     preamble = `import { ${ssrImports.join(', ')} } from "@pyreon/runtime-server";\n` + preamble
   }
 
-  if (needsRpImport || needsRpdImport || needsPkImport || needsPpImport || needsLcImport || needsFuseImport || needsWrapSpreadImport || needsCxImportGlobal) {
+  if (needsRpImport || needsRpdImport || needsPkImport || needsPpImport || needsLcImport || needsFuseImport || needsSlotImport || needsWrapSpreadImport || needsCxImportGlobal) {
     const coreImports: string[] = []
     // Alias to an internal name — `cx` is a PUBLIC export users import
     // directly (e.g. a hand-written component that also uses `class={…}`),
@@ -5287,6 +5538,7 @@ export function transformJSX_JS(
     if (needsPpImport) coreImports.push('_pp')
     if (needsRpImport) coreImports.push('_rp')
     if (needsRpdImport) coreImports.push('_rpd')
+    if (needsSlotImport) coreImports.push('_slot')
     if (needsWrapSpreadImport) coreImports.push('_wrapSpread')
     preamble = `import { ${coreImports.join(', ')} } from "@pyreon/core";\n` + preamble
   }
@@ -5425,7 +5677,11 @@ export function transformJSX_JS(
     return true
   }
 
-  function countChildForTemplate(child: N, absorbComponents: boolean): number {
+  function countChildForTemplate(
+    child: N,
+    absorbComponents: boolean,
+    tplComp: boolean = tplComponentChildren,
+  ): number {
     if (child.type === 'JSXText') return 0
     if (child.type === 'JSXElement') {
       // A COMPONENT child no longer bails the whole element: it is mounted into
@@ -5434,7 +5690,7 @@ export function transformJSX_JS(
       // — absorption is a property of the whole child list (see
       // `absorbsComponentChildren`), so it cannot be decided per child.
       if (absorbComponents && isAbsorbableComponentChild(child)) return 0
-      return templateElementCount(child)
+      return templateElementCount(child, false, tplComp)
     }
     if (child.type === 'JSXExpressionContainer') {
       const expr = child.expression
@@ -5452,12 +5708,22 @@ export function transformJSX_JS(
       // jsx runtime. (Previously this whole branch returned -1 → bail.)
       return 0
     }
-    if (child.type === 'JSXFragment') return templateFragmentCount(child, absorbComponents)
+    if (child.type === 'JSXFragment') return templateFragmentCount(child, absorbComponents, tplComp)
 
     return -1
   }
 
-  function templateElementCount(node: N, isRoot = false): number {
+  /**
+   * `tplComp` is the `templatizeComponentChildren` option the count is taken
+   * for: the client's own value when the client emit asks, and the CLIENT's
+   * value (not `false`) when the SSR emit asks which elements the client
+   * templates (`ssrEnterElement`).
+   */
+  function templateElementCount(
+    node: N,
+    isRoot = false,
+    tplComp: boolean = tplComponentChildren,
+  ): number {
     const tag = jsxTagName(node)
     if (!tag || !isLowerCase(tag)) return -1
     if (hasBailAttr(node, isRoot)) return -1
@@ -5475,9 +5741,9 @@ export function transformJSX_JS(
     // re-derives this from the same predicate over the same flattened list and
     // bails if it disagrees, so a prescan/emit drift costs a template rather
     // than correctness (the repo's documented misaligned-prescan bug class).
-    const absorb = tplComponentChildren && absorbsComponentChildren(jsxChildren(node))
+    const absorb = tplComp && absorbsComponentChildren(jsxChildren(node))
     for (const child of jsxChildren(node)) {
-      const c = countChildForTemplate(child, absorb)
+      const c = countChildForTemplate(child, absorb, tplComp)
       if (c === -1) return -1
       count += c
     }
@@ -5485,10 +5751,14 @@ export function transformJSX_JS(
     return count
   }
 
-  function templateFragmentCount(frag: N, absorbComponents: boolean): number {
+  function templateFragmentCount(
+    frag: N,
+    absorbComponents: boolean,
+    tplComp: boolean = tplComponentChildren,
+  ): number {
     let count = 0
     for (const child of jsxChildren(frag)) {
-      const c = countChildForTemplate(child, absorbComponents)
+      const c = countChildForTemplate(child, absorbComponents, tplComp)
       if (c === -1) return -1
       count += c
     }

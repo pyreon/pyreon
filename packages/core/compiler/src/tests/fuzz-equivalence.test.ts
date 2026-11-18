@@ -126,6 +126,30 @@ interface Ctx {
    * detached. Its own stream keeps every earlier draw sequence unchanged.
    */
   rnd6: () => number
+  /**
+   * A SEVENTH independent stream for FIXED (non-reactive) children in placeholder
+   * positions (#4385 D): the SSR emit brackets them only where the client
+   * templates the element, so the arm crosses child kind × position × the
+   * template decision. Its own stream keeps every earlier draw unchanged.
+   */
+  rnd7: () => number
+}
+
+/** A fixed child the client template lowers to a `<!>` placeholder when it is
+ *  not its element's sole child. Free identifiers are static to both backends. */
+function genFixedChild(c: Ctx): string {
+  return pick(c.rnd7, [
+    '{fixC ? <b>{fixV}</b> : null}',
+    '{fixC && <i>x</i>}',
+    '{fixV}',
+    '{fixV as never}',
+    '{(<u>u</u>) as never}',
+    '<>{fixV}</>',
+    'a{fixC ? <b /> : null}b',
+    '{children}',
+    '{row.label}',
+    `<For each={fixList} by={(r) => r.id}>{(r) => <li><b />{r.name}<i /></li>}</For>`,
+  ])
 }
 
 /** A signal method passed by reference — bound by the auto-call pass. */
@@ -360,6 +384,7 @@ function genAttrs(c: Ctx): string {
 }
 
 function genChild(c: Ctx): string {
+  if (c.rnd7() < 0.12) return genFixedChild(c)
   if (c.pd && c.rnd2() < 0.12) {
     const e = PD_EXPRS[Math.floor(c.rnd2() * PD_EXPRS.length)]!
     return c.rnd2() < 0.3 ? `{() => ${e}}` : `{${e}}`
@@ -508,7 +533,8 @@ function genComponent(seed: number): string {
   const rnd5 = mulberry32((seed ^ 0x6c8e9cf5) >>> 0)
   const pq = props && rnd5() < 0.5
   const rnd6 = mulberry32((seed ^ 0x5f3759df) >>> 0)
-  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4, rnd5, pq, rnd6 }
+  const rnd7 = mulberry32((seed ^ 0x7f4a7c15) >>> 0)
+  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers, pd, rnd2, rnd3, rnd4, rnd5, pq, rnd6, rnd7 }
   const lines: string[] = [`import { signal, computed } from "@pyreon/reactivity"`]
   lines.push(...helperLines)
   const body: string[] = []
@@ -611,12 +637,34 @@ const MODES: {
   // parent kinds × child kinds, which is exactly where the space between the
   // known shapes lives.
   { label: 'client-tpl-components', ssr: false, ssrTemplate: false, templatizeComponentChildren: true },
+  // The SSR emit reads the CLIENT's option to work out which elements the
+  // client templates, and brackets their fixed placeholder children (#4385 D),
+  // so both SSR emits are a function of it too.
+  { label: 'ssr-tpl-components', ssr: true, ssrTemplate: false, templatizeComponentChildren: true },
+  {
+    label: 'ssr-template-tpl-components',
+    ssr: true,
+    ssrTemplate: true,
+    templatizeComponentChildren: true,
+  },
 ]
+
+/**
+ * Reach of the fixed-child arm (#4385 D): both SSR emits must actually bracket
+ * a placeholder child somewhere in the sweep, or the arm proves nothing about
+ * them. The `_ssr` form is a hole between `<!--$-->` and `<!--/$-->` statics in
+ * an emit carrying `_escSole` (a sole hole never has markers).
+ */
+function noteSlotReach(reach: { slot: number; baked: number }, js: string, ssr: boolean, ssrTemplate: boolean) {
+  if (ssr && !ssrTemplate && js.includes('_slot(')) reach.slot++
+  if (ssrTemplate && js.includes('<!--$-->", "<!--/$-->') && js.includes('_escSole(')) reach.baked++
+}
 
 describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
   test(`${SEEDS} seeds × ${MODES.length} modes are byte-identical`, { timeout: SWEEP_TIMEOUT_MS }, () => {
     const failures: string[] = []
     let firstDivergence = ''
+    const reach = { slot: 0, baked: 0 }
     for (let seed = 1; seed <= SEEDS; seed++) {
       const src = genComponent(seed)
       for (const { label, ssr, ssrTemplate, templatizeComponentChildren: tcc } of MODES) {
@@ -626,6 +674,7 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
           templatizeComponentChildren: tcc === true,
         })
         const js = jsResult.code
+        noteSlotReach(reach, js, ssr, ssrTemplate)
         let rs: string
         let rsMappings: string | undefined
         try {
@@ -683,6 +732,8 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
       }
     }
     expect(failures, `divergent seeds: ${failures.join(', ')}${firstDivergence}`).toEqual([])
+    expect(reach.slot).toBeGreaterThan(0)
+    expect(reach.baked).toBeGreaterThan(0)
   })
 
 })
