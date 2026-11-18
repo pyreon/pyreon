@@ -662,7 +662,7 @@ zero({
 await isrHandler.revalidateTag('posts') // drops every page that rendered posts
 ```
 
-`tagsForRequest` records tags at cache-set time; `revalidateTag(tag)` drops every entry carrying the tag — the webhook-ergonomic unit (no path enumeration). Both shipped stores (`createMemoryStore`, `createFsStore`) implement the tag index; custom stores add `setTags`/`keysByTag`. `createFsStore(dir)` persists entries (and the tag index) as JSON files so a restart doesn't cold-start the cache — multi-instance deploys still want a shared external store (Redis/KV).
+`tagsForRequest` records tags at cache-set time; `revalidateTag(tag)` drops every entry carrying the tag — the webhook-ergonomic unit (no path enumeration). Both shipped stores (`createMemoryStore`, `createFsStore`) implement the tag index; custom stores add `setTags`/`keysByTag`. `createFsStore(dir, { maxEntries })` persists entries (and their tags) as JSON files so a restart doesn't cold-start the cache, and keeps at most `maxEntries` of them on disk (default `1000`, least recently used evicted first, also across restarts) — multi-instance deploys still want a shared external store (Redis/KV).
 
 ## Server Loaders
 

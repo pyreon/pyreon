@@ -91,7 +91,13 @@ Solid-compat's `onCleanup` always meant "component unmount", so a cleanup regist
 
 ### Side indexes and guards that outlive the entries they describe (Class C)
 
-The ISR memory store capped its cache at `maxEntries` but its tag index only grew (`setTags` added; `delete()` and LRU eviction never pruned), `createFsStore`'s `_tags.json` likewise, and `createISRHandler` kept one invalidation epoch per key EVER passed to `revalidateNow`, though an epoch only guards a render in flight. Rules: every index keyed by a cached entry is pruned on EVERY path that removes the entry (delete, eviction, clear), via a reverse key → index map; a guard for in-flight work lives exactly as long as that work (refcounted ticket, released in `finally`); a read-only lookup must not refresh LRU order. Reference: `packages/zero/zero/src/isr.ts` (`createMemoryStore`, `createFsStore`, `_beginRender`/`_endRender`); locked by `isr-store-bounds.test.ts`, which also caught `revalidateAll` missing a cold render in flight.
+The ISR memory store capped its cache at `maxEntries` but its tag index only grew (`setTags` added; `delete()` and LRU eviction never pruned), `createFsStore`'s `_tags.json` likewise, and `createISRHandler` kept one invalidation epoch per key EVER passed to `revalidateNow`, though an epoch only guards a render in flight. Rules: every index keyed by a cached entry is pruned on EVERY path that removes the entry (delete, eviction, clear), via a reverse key → index map; a guard for in-flight work lives exactly as long as that work (refcounted ticket, released in `finally`); a read-only lookup must not refresh LRU order. Reference: `packages/zero/zero/src/isr.ts` (`createMemoryStore`, `_beginRender`/`_endRender`); locked by `isr-store-bounds.test.ts`, which also caught `revalidateAll` missing a cold render in flight.
+
+---
+
+### A disk-backed cache is a cache too (Class C)
+
+`createFsStore` wrote one file per cache key and never evicted, so under the default `pathname + search` key an anonymous visitor could fill the disk with distinct query strings; it also rewrote one shared `_tags.json` index on every tagged miss (O(N) bytes per miss). Rules: a persistent cache gets the same cap as its in-memory sibling, and the cap is enforced against what is ON DISK — count the directory at start and trim, so a restart (or an older version's directory) cannot reset it; eviction removes the entry and every file that references it; keep per-entry metadata in per-entry files so a write costs O(1), not O(cached); write tmp+rename so a crash leaves no torn file, and sweep leftover temp files at start; serialize fs mutations per key so a later `delete` cannot be overtaken by an earlier `set`. Reference: `packages/zero/zero/src/isr-fs-store.ts`; locked by `isr-fs-store-bounds.test.ts`.
 
 ---
 

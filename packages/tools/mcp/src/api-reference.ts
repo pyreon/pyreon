@@ -9617,21 +9617,23 @@ createISRHandler(handler, { revalidate: 60, store: redisStore })`,
   'zero/createMemoryStore': {
     signature: 'function createMemoryStore<E = ISRCacheEntry>(opts?: { maxEntries?: number }): ISRStore<E>',
     example: 'createISRHandler(handler, { revalidate: 60, store: createMemoryStore({ maxEntries: 5000 }) })',
-    notes: 'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index prunes evicted keys lazily). Per-process — fine for single-instance deploys; multi-instance wants a shared external store. See also: createISRHandler, ISRStore, createFsStore.',
+    notes: 'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index drops a key the moment it is deleted, evicted or cleared). Per-process — fine for single-instance deploys; multi-instance wants a shared external store. See also: createISRHandler, ISRStore, createFsStore.',
   },
 
   'zero/createFsStore': {
-    signature: 'function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E>',
+    signature: 'function createFsStore<E = ISRCacheEntry>(dir: string, opts?: { maxEntries?: number }): ISRStore<E>',
     example: `import { createFsStore } from '@pyreon/zero/server'
 
 createISRHandler(handler, {
   revalidate: 60,
-  store: createFsStore('./.isr-cache'),
+  store: createFsStore('./.isr-cache', { maxEntries: 5000 }),
   tagsForRequest: (req) => (new URL(req.url).pathname.startsWith('/posts/') ? ['posts'] : []),
 })`,
-    notes: `Filesystem-backed ISR store for self-hosted node/bun: cache entries (and the tag index) persist as JSON files under \`dir\`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). One file per key (fs-safe encoded; over-length keys hash to a fixed name so long query strings can't silently ENAMETOOLONG-drop), \`_tags.json\` sidecar written atomically (tmp+rename). EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV. See also: createISRHandler, ISRStore, createMemoryStore.`,
+    notes: 'Filesystem-backed ISR store for self-hosted node/bun: cache entries (and their tags) persist as JSON files under `dir`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). Bounded like `createMemoryStore`: at most `maxEntries` entries (default 1000) on disk, least recently written or read evicted first (its file AND its tags); the cap holds across restarts because a new store counts what is already in `dir` and trims it. One file per entry (fs-safe encoded; a long key or one with upper-case letters gets a SHA-256 name, so a long query string cannot ENAMETOOLONG-drop and `/About` never shares a file with `/about` on a case-insensitive file system) plus a small per-entry tags sidecar, so a tagged miss writes O(1) bytes. Writes go through tmp+rename (a crash never leaves a torn entry; leftover temp files are removed at start), run in call order per key, and an older `_tags.json` index is migrated. EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV. See also: createISRHandler, ISRStore, createMemoryStore.',
     mistakes: `- Using it across multiple instances — each box has its own directory; tag invalidation on one box does not reach the others
-- Pointing \`dir\` at a tmpfs that clears on reboot — defeats the restart-survival purpose`,
+- Pointing \`dir\` at a tmpfs that clears on reboot — defeats the restart-survival purpose
+- Keeping the default \`pathname + search\` cache key on pages that ignore their query string — every distinct query string is its own entry, so random \`?x=\` requests evict real pages (the disk stays bounded by \`maxEntries\`); supply a \`cacheKey\` that keeps only the parameters the page reads
+- Sharing one \`dir\` between processes and expecting one cap — the index and \`maxEntries\` are per process (each adopts entries it reads), and a tag recorded by another process is only seen after a restart`,
   },
 
   'zero/vercelAdapter': {

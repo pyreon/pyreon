@@ -5,20 +5,16 @@
  * - The memory store's tag index only ever grew: `setTags` added, while
  *   `delete()` and LRU eviction never pruned (only a later `keysByTag` for
  *   that exact tag did, and it refreshed LRU order as a side effect).
- * - The fs store's `_tags.json` was never pruned either, and was rewritten
- *   on every cache miss even when nothing changed.
+ * - The fs store's bounds (entries, tags, write cost) are locked in
+ *   `isr-fs-store-bounds.test.ts`.
  * - The handler's per-key epoch map kept one entry per key ever invalidated
  *   (`revalidateNow`), forever, though an epoch only guards a render that is
  *   in flight.
  */
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   _isrEpochEntryCount,
   _isrTagIndexSize,
-  createFsStore,
   createISRHandler,
   createMemoryStore,
 } from '../isr'
@@ -141,46 +137,5 @@ describe('createISRHandler — epochs only for renders in flight', () => {
     await handler(new Request('http://x/a'))
     expect(renders).toBe(2)
     expect(_isrEpochEntryCount(handler)).toBe(0)
-  })
-})
-
-describe('createFsStore — _tags.json bounded and written only on change', () => {
-  let dir: string
-  afterEach(() => rmSync(dir, { recursive: true, force: true }))
-  const tagsOnDisk = () => JSON.parse(readFileSync(join(dir, '_tags.json'), 'utf-8')) as Record<string, string[]>
-
-  it('delete() prunes the key from the persisted index', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'pyreon-isr-fs-'))
-    const store = createFsStore(dir)
-    await store.set('/a', entry())
-    await store.setTags?.('/a', ['posts'])
-    await store.set('/b', entry())
-    await store.setTags?.('/b', ['posts'])
-    await store.delete?.('/a')
-    expect(tagsOnDisk()).toEqual({ posts: ['/b'] })
-    await store.delete?.('/b')
-    expect(tagsOnDisk()).toEqual({})
-    // A restarted instance agrees.
-    expect(await createFsStore(dir).keysByTag?.('posts')).toEqual([])
-  })
-
-  it('setTags replaces the key\'s tags', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'pyreon-isr-fs-'))
-    const store = createFsStore(dir)
-    await store.set('/a', entry())
-    await store.setTags?.('/a', ['old'])
-    await store.setTags?.('/a', ['new'])
-    expect(tagsOnDisk()).toEqual({ new: ['/a'] })
-  })
-
-  it('re-recording the same tags does not rewrite the file', async () => {
-    dir = mkdtempSync(join(tmpdir(), 'pyreon-isr-fs-'))
-    const store = createFsStore(dir)
-    await store.set('/a', entry())
-    await store.setTags?.('/a', ['posts'])
-    const before = statSync(join(dir, '_tags.json')).mtimeMs
-    await new Promise((r) => setTimeout(r, 20))
-    await store.setTags?.('/a', ['posts'])
-    expect(statSync(join(dir, '_tags.json')).mtimeMs).toBe(before)
   })
 })
