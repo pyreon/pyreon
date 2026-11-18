@@ -178,11 +178,15 @@ const nativePlugin = {
       ],
     },
     // M3.5 — biometric gate. `authenticate(reason)` is async/suspend, awaited in
-    // an `async` handler. The v1 Kotlin runtime needs no Context.
+    // an `async` handler. Android needs a Context: BiometricManager reads the
+    // enrolment, and BiometricPrompt is shown from the host FragmentActivity.
     useBiometrics: {
       legacyKind: 'biometrics',
       swift: 'PyreonBiometrics()',
-      kotlin: ['val {id} = remember { PyreonBiometrics() }'],
+      kotlin: [
+        'val {id}Ctx = LocalContext.current',
+        'val {id} = remember { PyreonBiometrics({id}Ctx) }',
+      ],
     },
     // M3.4 — photo picker. `pick()` is async. Android delivers the asset through
     // an ActivityResult callback whose launcher MUST be registered at composition
@@ -419,13 +423,15 @@ const nativePlugin = {
       lifecycle: 'start',
       destructure: true,
     },
-    // Location. Permission-gated, so `start()` stays an explicit user action (not
-    // a `lifecycle`); Android's factory installs the platform LocationManager
-    // source (an app-chosen registry source wins).
+    // Location. Permission-gated, so `start()` stays an explicit user action; but a
+    // watch the app started ends with the screen, as the web hook's cleanup ends it
+    // (`lifecycle: 'stop'` on iOS; Android's factory disposes it). Android's factory
+    // installs the platform LocationManager source (an app-chosen registry source wins).
     useGeolocation: {
       legacyKind: 'geolocation',
       swift: 'PyreonGeolocation()',
       kotlin: ['val {id} = rememberPyreonGeolocation()'],
+      lifecycle: 'stop',
       kotlinState: ['latitude', 'longitude', 'accuracy', 'isAuthorized', 'error'],
       destructure: true,
       optionalFields: { latitude: num, longitude: num, accuracy: num, error: ERROR_OBJECT },

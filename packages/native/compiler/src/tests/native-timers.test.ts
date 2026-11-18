@@ -103,7 +103,7 @@ describe('a timer started in the component body starts once, at mount', () => {
   it('Swift: the id is state assigned in .onAppear; nothing starts a timer in body; clear reads the state', () => {
     const { code, warnings } = emit(bodyTimers, 'swift')
     expect(code).toContain('@State private var id: Int = 0')
-    expect(code).toContain('id = PyreonTimers.setInterval(1000, { n = n + 1 })')
+    expect(code).toContain('id = PyreonTimers.setInterval(1000, { n = pyreonAdd(n, 1) })')
     expect(code).toContain('t = PyreonTimers.setTimeout(500, { n = 0 })')
     expect(code).toContain('PyreonTimers.clear(id)')
     expect(code).not.toContain('PyreonTimers.clear(PyreonTimers')

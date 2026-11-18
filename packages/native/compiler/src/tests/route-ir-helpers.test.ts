@@ -155,4 +155,41 @@ describe('flattenRouteTree', () => {
       { path: '/users/:id', component: 'User', layout: [], isPattern: true },
     ])
   })
+
+  // The documented contract the nested dispatch relies on. Before, a top-level redirect was skipped ("left to the
+  // emitter", which had no redirect handling on the nested path) and a top-level wildcard became a `matchPath(p, "*")`
+  // branch: any router with one nested route dropped every redirect, so the path fell through to the 404 page.
+  it('aliases a top-level redirect to its (nested) target, in declaration order, and omits the wildcard', () => {
+    const routes: RouteIR[] = [
+      { path: '/', component: comp('Home') },
+      { path: '/old', redirect: '/older' },
+      { path: '/older', redirect: '/mail/inbox' },
+      { path: '/mail', component: comp('Shell'), children: [{ path: 'inbox', component: comp('Inbox') }] },
+      { path: '/loop', redirect: '/loop2' },
+      { path: '/loop2', redirect: '/loop' },
+      { path: '/dangling', redirect: '/nowhere' },
+      { path: '*', component: comp('NotFound') },
+    ]
+    expect(view(routes)).toEqual([
+      { path: '/', component: 'Home', layout: [], isPattern: false },
+      { path: '/old', component: 'Inbox', layout: ['Shell'], isPattern: false },
+      { path: '/older', component: 'Inbox', layout: ['Shell'], isPattern: false },
+      { path: '/mail', component: 'Shell', layout: [], isPattern: false },
+      { path: '/mail/inbox', component: 'Inbox', layout: ['Shell'], isPattern: false },
+    ])
+    expect(flattenRouteTree(routes)[1]!.redirectFrom).toBe('/old')
+  })
+
+  it('carries each route\'s loader, so the nested dispatch can wrap it', () => {
+    const load: ExprIR = { kind: 'literal', value: 1 } as ExprIR
+    const routes: RouteIR[] = [
+      { path: '/loaded', component: comp('Loaded'), loader: load },
+      { path: '/u/:id', component: comp('User'), loader: load, loaderUsesParams: true },
+      { path: '/mail', component: comp('Shell'), children: [{ path: 'inbox', component: comp('Inbox') }] },
+    ]
+    const flat = flattenRouteTree(routes)
+    expect(flat[0]!.loader).toBe(load)
+    expect(flat[1]!.loaderUsesParams).toBe(true)
+    expect(flat[2]!.loader).toBeUndefined()
+  })
 })

@@ -68,7 +68,7 @@ describe('P1 — Int×Double coercion in an element-callback body (Swift)', () =
 
   // Control — a pure Int×Int body must stay BARE (no spurious Double wrap).
   it('Swift: `.map(x => x * 2)` (Int×Int) stays bare `x * 2` (no coercion)', () => {
-    expect(sw(mapInt)).toContain('nums.map({ x in x * 2 })')
+    expect(sw(mapInt)).toContain('nums.map({ x in pyreonMul(x, 2) })')
     expect(sw(mapInt)).not.toContain('Double(x)')
     expect(sw(mapInt)).toContain('var out: [Int] {')
   })

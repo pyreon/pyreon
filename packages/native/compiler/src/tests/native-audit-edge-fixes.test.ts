@@ -79,10 +79,10 @@ describe('audit edge fixes — Math coercion / unary literal / i++ / array destr
   it('GAP-2: bare i++ STATEMENT emits `i += 1` (not the value-position IIFE) and promotes i to var', () => {
     const sw = transform(wrap(`const s=computed(()=>{let i=0;while(i<3){i++}return i})`), { target: 'swift' }).code
     expect(sw).toContain('var i = 0') // promoted from let
-    expect(sw).toContain('i += 1')
+    expect(sw).toContain('i = pyreonAdd(i, 1)')
     expect(sw).not.toContain('let __v') // not the IIFE
     const kt = transform(wrap(`const s=computed(()=>{let i=0;while(i<3){i++}return i})`), { target: 'kotlin' }).code
-    expect(kt).toContain('i += 1')
+    expect(kt).toContain('i = pyreonAdd(i, 1L)')
   })
 
   it('ARRDES: array destructure expands to a synthetic container + indexed lets', () => {
