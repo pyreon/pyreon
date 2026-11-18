@@ -3092,6 +3092,363 @@ export const useCounter = defineStore('counter', () => {
   // @pyreon/state-tree
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/money>
+
+  'money/money': {
+    signature: '(amount: number | string | bigint, currency: CurrencyCode, options?: { rounding?: RoundingMode }) => Money',
+    example: `money(9.99, 'EUR')                        // => { amount: '9.99', currency: 'EUR' }
+money('10', 'EUR')                        // => { amount: '10.00', currency: 'EUR' }
+money(100, 'JPY')                         // => { amount: '100', currency: 'JPY' }
+money('9.995', 'EUR', { rounding: 'halfExpand' })   // => { amount: '10.00', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] Build a Money. A string is exact; a number is read by its shortest round-trip text (\`9.99\` is exactly 9.99); a bigint is whole units. A number or string with more decimals than the currency has throws (floating-point noise such as \`0.1 + 0.2\` is explained) unless \`rounding\` is given; trailing zeros that lose nothing are fine. The result has exactly the currency's digits. Input is at most 4096 digits. See also: fromMinor, add. Added in v0.53.0.`,
+    mistakes: `- Doing arithmetic on \`number\` prices and wrapping the result: \`money(price * qty, "EUR")\` is float arithmetic first. Keep amounts as Money and use \`multiply\`
+- Passing \`0.1 + 0.2\`: it throws on purpose. Round deliberately with \`{ rounding }\`, or better, never compute in floats`,
+  },
+
+  'money/fromMinor': {
+    signature: '(units: number | bigint | string, currency: CurrencyCode) => Money',
+    example: `fromMinor(999, 'EUR')                     // => { amount: '9.99', currency: 'EUR' }
+fromMinor('123456789012345678901', 'EUR') // => { amount: '1234567890123456789.01', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] A Money from minor units (cents), the Stripe style. A number must be a safe integer; use a bigint or a digit string above 2^53. See also: toMinor. Added in v0.53.0.',
+  },
+
+  'money/toMinor': {
+    signature: '(m: Money) => bigint',
+    example: `toMinor(money('9.99', 'EUR'))             // => 999n`,
+    notes: '[EXPERIMENTAL] The amount in minor units as a bigint. See also: toMinorNumber, fromMinor. Added in v0.53.0.',
+  },
+
+  'money/toMinorNumber': {
+    signature: '(m: Money) => number',
+    example: `toMinorNumber(money('9.99', 'EUR'))       // => 999`,
+    notes: '[EXPERIMENTAL] The amount in minor units as a number; throws beyond the safe integer range and says to use `toMinor`. Added in v0.53.0.',
+  },
+
+  'money/isMoney': {
+    signature: '(x: unknown) => x is Money',
+    example: `isMoney({ amount: '9.99', currency: 'EUR' })   // => true
+isMoney({ amount: '9.9', currency: 'EUR' })    // => false
+isMoney({ amount: 9.99, currency: 'EUR' })     // => false`,
+    notes: `[EXPERIMENTAL] Strict guard: exactly the fields \`amount\` and \`currency\`, a known currency, a canonical amount with exactly that currency's digits. Never throws. Use it at every boundary where data comes in. Added in v0.53.0.`,
+  },
+
+  'money/zero': {
+    signature: '(currency: CurrencyCode) => Money',
+    example: `zero('EUR')                               // => { amount: '0.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Zero in a currency. Added in v0.53.0.',
+  },
+
+  'money/add': {
+    signature: '(a: Money, b: Money) => Money',
+    example: `add(money('0.10', 'EUR'), money('0.20', 'EUR'))   // => { amount: '0.30', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Exact sum of two amounts of one currency. Mixing currencies throws and names both. See also: sum, subtract. Added in v0.53.0.',
+    mistakes: '- Adding amounts of different currencies: it throws. Convert one side first with `convert`',
+  },
+
+  'money/subtract': {
+    signature: '(a: Money, b: Money) => Money',
+    example: `subtract(money('1.00', 'EUR'), money('0.01', 'EUR'))   // => { amount: '0.99', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Exact difference `a - b`. Added in v0.53.0.',
+  },
+
+  'money/negate': {
+    signature: '(m: Money) => Money',
+    example: `negate(money('5', 'EUR'))                 // => { amount: '-5.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The amount with the opposite sign; never produces a negative zero. Added in v0.53.0.',
+  },
+
+  'money/abs': {
+    signature: '(m: Money) => Money',
+    example: `abs(money('-5', 'EUR'))                  // => { amount: '5.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The amount without its sign. Added in v0.53.0.',
+  },
+
+  'money/sum': {
+    signature: '(list: Iterable<Money>, currency?: CurrencyCode) => Money',
+    example: `sum([money('1.10', 'EUR'), money('2.20', 'EUR')])   // => { amount: '3.30', currency: 'EUR' }
+sum([], 'EUR')                            // => { amount: '0.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The sum of a list of one currency. An empty list needs `currency`. Added in v0.53.0.',
+    mistakes: '- Summing rounded parts and expecting the rounded total: round once at the end, or allocate',
+  },
+
+  'money/multiply': {
+    signature: '(m: Money, factor: number | string | bigint, options?: { rounding?: RoundingMode }) => Money',
+    example: `multiply(money('19.99', 'EUR'), 3)        // => { amount: '59.97', currency: 'EUR' }
+multiply(money('10.00', 'EUR'), '1.21')   // => { amount: '12.10', currency: 'EUR' }
+multiply(money('0.05', 'EUR'), '0.5', { rounding: 'halfEven' })   // => { amount: '0.02', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] The amount times a plain number, rounded to the currency's digits (default \`halfExpand\`: round half away from zero). Prefer a string factor; a number is read by its shortest text. See also: percentage, allocate. Added in v0.53.0.`,
+  },
+
+  'money/divide': {
+    signature: '(m: Money, divisor: number | string | bigint, options?: { rounding?: RoundingMode }) => Money',
+    example: `divide(money('10.00', 'EUR'), 3)          // => { amount: '3.33', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] The amount divided by a plain number, rounded to the currency's digits. A zero divisor throws. To split without losing a cent use \`allocate\`: dividing three ways and multiplying back does not give the amount. See also: allocate, split. Added in v0.53.0.`,
+  },
+
+  'money/allocate': {
+    signature: '(m: Money, ratios: readonly (number | string)[]) => Money[]',
+    example: `allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount)   // => ['33.34', '33.33', '33.33']
+allocate(money('0.05', 'EUR'), [3, 7]).map((p) => p.amount)         // => ['0.02', '0.03']`,
+    notes: '[EXPERIMENTAL] Share an amount by ratios so the parts sum EXACTLY to it. Each part is its floor share in minor units; the minor units left over go one each to the parts with the largest fractional remainders, ties to the first. A negative amount is shared by its absolute value and the parts take its sign. A ratio of zero gets zero; negative or all-zero ratios throw. Each part is within one minor unit of its exact share. See also: split. Added in v0.53.0.',
+  },
+
+  'money/split': {
+    signature: '(m: Money, parts: number) => Money[]',
+    example: `split(money('100.00', 'EUR'), 3).map((p) => p.amount)   // => ['33.34', '33.33', '33.33']`,
+    notes: '[EXPERIMENTAL] Split into equal parts that sum exactly to the amount; the first parts get the extra cent. Added in v0.53.0.',
+  },
+
+  'money/percentage': {
+    signature: '(m: Money, percent: number | string | bigint, options?: { rounding?: RoundingMode }) => Money',
+    example: `percentage(money('200.00', 'EUR'), 21)    // => { amount: '42.00', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] \`percent\` percent of an amount, rounded to the currency's digits. Over 100 and negative percentages work. Added in v0.53.0.`,
+  },
+
+  'money/ratio': {
+    signature: '(a: Money, b: Money, options?: { scale?: number; rounding?: RoundingMode }) => Decimal',
+    example: `ratio(money('1.00', 'EUR'), money('4.00', 'EUR'))   // => '0.25'
+ratio(money('1.00', 'EUR'), money('3.00', 'EUR'), { scale: 4 })   // => '0.3333'`,
+    notes: '[EXPERIMENTAL] `a / b` as a decimal string with trailing zeros removed, rounded to `scale` digits (default 10). Both amounts must be one currency; a zero `b` throws. Added in v0.53.0.',
+  },
+
+  'money/compare': {
+    signature: '(a: Money, b: Money) => -1 | 0 | 1',
+    example: `compare(money('1.00', 'EUR'), money('2.00', 'EUR'))   // => -1`,
+    notes: '[EXPERIMENTAL] Order two amounts of one currency (usable as an `Array#sort` comparator). Different currencies throw. Added in v0.53.0.',
+  },
+
+  'money/equals': {
+    signature: '(a: Money, b: Money) => boolean',
+    example: `equals(money('1.5', 'EUR'), money('1.50', 'EUR'))   // => true
+equals(money('1', 'EUR'), money('1', 'USD'))        // => false`,
+    notes: '[EXPERIMENTAL] Whether two amounts are equal; different currencies are not equal (this does not throw). Added in v0.53.0.',
+  },
+
+  'money/min': {
+    signature: '(...amounts: [Money, ...Money[]]) => Money',
+    example: `min(money('3', 'EUR'), money('2', 'EUR'))   // => { amount: '2.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The smallest amount. Added in v0.53.0.',
+  },
+
+  'money/max': {
+    signature: '(...amounts: [Money, ...Money[]]) => Money',
+    example: `max(money('3', 'EUR'), money('2', 'EUR'))   // => { amount: '3.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The largest amount. Added in v0.53.0.',
+  },
+
+  'money/isZero': {
+    signature: '(m: Money) => boolean',
+    example: `isZero(zero('EUR'))                       // => true`,
+    notes: '[EXPERIMENTAL] Whether the amount is zero. Added in v0.53.0.',
+  },
+
+  'money/isPositive': {
+    signature: '(m: Money) => boolean',
+    example: `isPositive(money('0.01', 'EUR'))          // => true`,
+    notes: '[EXPERIMENTAL] Whether the amount is above zero. Added in v0.53.0.',
+  },
+
+  'money/isNegative': {
+    signature: '(m: Money) => boolean',
+    example: `isNegative(money('-0.01', 'EUR'))         // => true`,
+    notes: '[EXPERIMENTAL] Whether the amount is below zero. Added in v0.53.0.',
+  },
+
+  'money/round': {
+    signature: '(m: Money, options?: { digits?: number; increment?: string | number; mode?: RoundingMode }) => Money',
+    example: `round(money('12.34', 'EUR'), { digits: 0 })                  // => { amount: '12.00', currency: 'EUR' }
+round(money('1.23', 'CHF'), { increment: '0.05' })           // => { amount: '1.25', currency: 'CHF' }
+round(money('2.50', 'EUR'), { digits: 0, mode: 'halfEven' }) // => { amount: '2.00', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] Round to fewer digits or to a multiple of an increment (cash rounding), by one of the nine modes named as \`Intl.NumberFormat\` names them: \`ceil\`, \`floor\`, \`expand\`, \`trunc\`, \`halfCeil\`, \`halfFloor\`, \`halfExpand\` (default, "round half up"), \`halfTrunc\`, \`halfEven\` (banker's rounding). \`digits\` and \`increment\` do not combine; an increment finer than the currency's minor unit throws. With no options it is the amount itself. Added in v0.53.0.`,
+    mistakes: '- `toFixed(2)` as rounding: it works on the binary float, so `(1.005).toFixed(2)` is "1.00". Use `money("1.005", "EUR", { rounding: "halfExpand" })`',
+  },
+
+  'money/convert': {
+    signature: '(m: Money, to: CurrencyCode, rate: number | string | bigint, options?: { rounding?: RoundingMode }) => Money',
+    example: `convert(money('100.00', 'EUR'), 'USD', '1.0842')   // => { amount: '108.42', currency: 'USD' }
+convert(money('100.00', 'EUR'), 'JPY', '162.5')     // => { amount: '16250', currency: 'JPY' }`,
+    notes: `[EXPERIMENTAL] Convert with a rate (\`1 unit of m.currency = rate units of to\`), rounded to the target's digits. Give the rate as a decimal string. Keep \`{ from, to, rate }\` next to the result: it is the audit trail. Added in v0.53.0.`,
+  },
+
+  'money/currencyDigits': {
+    signature: '(code: CurrencyCode) => number',
+    example: `currencyDigits('EUR')                     // => 2
+currencyDigits('JPY')                     // => 0
+currencyDigits('KWD')                     // => 3`,
+    notes: '[EXPERIMENTAL] The minor-unit digits of a currency from the platform (`Intl`; no table is shipped) or `defineCurrency`. Added in v0.53.0.',
+  },
+
+  'money/isCurrency': {
+    signature: '(code: string) => boolean',
+    example: `isCurrency('EUR')                         // => true
+isCurrency('eur')                         // => false`,
+    notes: '[EXPERIMENTAL] Whether `code` is an upper-case ISO 4217 code the platform knows, or a registered one. Never throws. Added in v0.53.0.',
+  },
+
+  'money/defineCurrency': {
+    signature: '(code: string, spec: { digits: number }) => void',
+    example: `defineCurrency('PTS', { digits: 0 })
+currencyDigits('PTS')                     // => 0`,
+    notes: '[EXPERIMENTAL] Register a currency the platform does not know (crypto, points, a test currency). The code is 2 to 12 upper-case letters or digits starting with a letter. Re-registering with the same digits is fine; different digits throw, as does changing an ISO currency. At most 64 are registered. Added in v0.53.0.',
+  },
+
+  'money/Money': {
+    signature: 'interface Money { readonly amount: string; readonly currency: CurrencyCode }',
+    example: `const price: Money = { amount: '9.99', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] Exact money as plain data. The amount is canonical decimal text with exactly the currency's digits. A Money is structurally the \`{ amount, currency }\` shape payment APIs and \`@pyreon/format\` use. Added in v0.53.0.`,
+  },
+
+  'money/Decimal': {
+    signature: 'type Decimal = string',
+    example: `const d: Decimal = '9.90'`,
+    notes: '[EXPERIMENTAL] Canonical decimal text: optional `-`, digits, optional `.` and digits; no exponent, no `+`, no leading zeros, never `-0`. Added in v0.53.0.',
+  },
+
+  'money/CurrencyCode': {
+    signature: 'type CurrencyCode = string',
+    example: `const c: CurrencyCode = 'EUR'`,
+    notes: '[EXPERIMENTAL] An ISO 4217 code (`"EUR"`) or a code registered with `defineCurrency`. Added in v0.53.0.',
+  },
+
+  'money/RoundingMode': {
+    signature: `type RoundingMode = 'ceil' | 'floor' | 'expand' | 'trunc' | 'halfCeil' | 'halfFloor' | 'halfExpand' | 'halfTrunc' | 'halfEven'`,
+    example: `const mode: RoundingMode = 'halfEven'`,
+    notes: `[EXPERIMENTAL] The nine rounding modes, named as \`Intl.NumberFormat\`'s \`roundingMode\` names them. The default is \`halfExpand\`. Added in v0.53.0.`,
+  },
+
+  'money/decimal.isDecimal': {
+    signature: '(x: unknown) => x is Decimal',
+    example: `import { isDecimal } from '@pyreon/money/decimal'
+isDecimal('9.90')   // => true
+isDecimal('.5')     // => false
+isDecimal('1e3')    // => false`,
+    notes: '[EXPERIMENTAL] Whether `x` is a canonical decimal string: an optional `-`, digits with no leading zero, an optional `.` and digits; no `+`, no exponent, never `-0`. Never throws. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.normalize': {
+    signature: '(value: number | string | bigint) => Decimal',
+    example: `import { normalize } from '@pyreon/money/decimal'
+normalize('+.5')      // => '0.5'
+normalize('1.5e2')    // => '150'
+normalize('-0.00')    // => '0.00'`,
+    notes: '[EXPERIMENTAL] The canonical form of a decimal given as text (a leading `+`, `.5`, an exponent are accepted), a number (by its shortest text) or a bigint. The scale is kept: `"1.50"` stays `"1.50"`. At most 4096 digits. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.add': {
+    signature: '(a, b) => Decimal',
+    example: `import { add } from '@pyreon/money/decimal'
+add('0.1', '0.2')      // => '0.3'`,
+    notes: '[EXPERIMENTAL] Exact sum of two decimals of any size. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.subtract': {
+    signature: '(a, b) => Decimal',
+    example: `import { subtract } from '@pyreon/money/decimal'
+subtract('0.3', '0.1') // => '0.2'`,
+    notes: '[EXPERIMENTAL] Exact difference. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.multiply': {
+    signature: '(a, b) => Decimal',
+    example: `import { multiply } from '@pyreon/money/decimal'
+multiply('19.99', '3') // => '59.97'`,
+    notes: '[EXPERIMENTAL] Exact product; the scale is the sum of the scales. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.divide': {
+    signature: '(a, b, options?: { scale?: number; rounding?: RoundingMode }) => Decimal',
+    example: `import { divide } from '@pyreon/money/decimal'
+divide('1', '3', { scale: 4 })  // => '0.3333'`,
+    notes: '[EXPERIMENTAL] The quotient rounded to `scale` digits (default 20) by `rounding` (default `halfExpand`). A zero divisor throws. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.compare': {
+    signature: '(a, b) => -1 | 0 | 1',
+    example: `import { compare } from '@pyreon/money/decimal'
+compare('9.90', '9.9')   // => 0`,
+    notes: '[EXPERIMENTAL] Compare two decimals by value (`"9.90"` equals `"9.9"`). See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.round': {
+    signature: '(value, options?: { digits?: number; increment?: number | string; mode?: RoundingMode }) => Decimal',
+    example: `import { round } from '@pyreon/money/decimal'
+round('2.5')                          // => '3'
+round('2.5', { mode: 'halfEven' })     // => '2'
+round('1.23', { increment: '0.05' })   // => '1.25'`,
+    notes: '[EXPERIMENTAL] Round to `digits` fraction digits (default 0) or to a multiple of `increment`, by one of the nine `Intl` rounding modes (default `halfExpand`). The result has the target scale. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/fp.add': {
+    signature: '(b: Money) => (m: Money) => Money',
+    example: `import { add } from '@pyreon/money/fp'
+add({ amount: '1.00', currency: 'EUR' })({ amount: '2.50', currency: 'EUR' })   // => { amount: '3.50', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `add`. Added in v0.53.0.',
+  },
+
+  'money/fp.subtract': {
+    signature: '(b: Money) => (m: Money) => Money',
+    example: `import { subtract } from '@pyreon/money/fp'
+subtract({ amount: '1.00', currency: 'EUR' })({ amount: '2.50', currency: 'EUR' })   // => { amount: '1.50', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `subtract`. Added in v0.53.0.',
+  },
+
+  'money/fp.multiply': {
+    signature: '(factor, options?) => (m: Money) => Money',
+    example: `import { multiply } from '@pyreon/money/fp'
+multiply('1.21')({ amount: '10.00', currency: 'EUR' })   // => { amount: '12.10', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `multiply`: `multiply("1.21")` is a function you can name, map and compose. Added in v0.53.0.',
+  },
+
+  'money/fp.divide': {
+    signature: '(divisor, options?) => (m: Money) => Money',
+    example: `import { divide } from '@pyreon/money/fp'
+divide(3)({ amount: '10.00', currency: 'EUR' })   // => { amount: '3.33', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `divide`. Added in v0.53.0.',
+  },
+
+  'money/fp.percentage': {
+    signature: '(percent, options?) => (m: Money) => Money',
+    example: `import { percentage } from '@pyreon/money/fp'
+percentage(21)({ amount: '200.00', currency: 'EUR' })   // => { amount: '42.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `percentage`. Added in v0.53.0.',
+  },
+
+  'money/fp.round': {
+    signature: '(options?) => (m: Money) => Money',
+    example: `import { round } from '@pyreon/money/fp'
+round({ increment: '0.05' })({ amount: '1.23', currency: 'CHF' })   // => { amount: '1.25', currency: 'CHF' }`,
+    notes: '[EXPERIMENTAL] Value-last `round`, including cash rounding. Added in v0.53.0.',
+  },
+
+  'money/fp.convert': {
+    signature: '(to, rate, options?) => (m: Money) => Money',
+    example: `import { convert } from '@pyreon/money/fp'
+convert('USD', '1.0842')({ amount: '100.00', currency: 'EUR' })   // => { amount: '108.42', currency: 'USD' }`,
+    notes: '[EXPERIMENTAL] Value-last `convert`. Added in v0.53.0.',
+  },
+
+  'money/fp.allocate': {
+    signature: '(ratios) => (m: Money) => Money[]',
+    example: `import { allocate } from '@pyreon/money/fp'
+allocate([1, 1, 1])({ amount: '100.00', currency: 'EUR' }).map((p) => p.amount)   // => ['33.34', '33.33', '33.33']`,
+    notes: '[EXPERIMENTAL] Value-last `allocate`. Added in v0.53.0.',
+  },
+
+  'money/fp.split': {
+    signature: '(parts) => (m: Money) => Money[]',
+    example: `import { split } from '@pyreon/money/fp'
+split(2)({ amount: '0.01', currency: 'EUR' }).map((p) => p.amount)   // => ['0.01', '0.00']`,
+    notes: '[EXPERIMENTAL] Value-last `split`. Added in v0.53.0.',
+  },
+
+  'money/fp.equals': {
+    signature: '(other: Money) => (m: Money) => boolean',
+    example: `import { equals } from '@pyreon/money/fp'
+equals({ amount: '1.00', currency: 'EUR' })({ amount: '1.00', currency: 'EUR' })   // => true`,
+    notes: '[EXPERIMENTAL] A predicate: true for an amount equal to `other`. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/money>
+
   // <gen-docs:api-reference:start @pyreon/state-tree>
 
   'state-tree/model': {

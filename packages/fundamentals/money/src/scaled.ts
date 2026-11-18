@@ -188,5 +188,5 @@ export function toScaled(fn: string, what: string, value: unknown): Scaled {
   }
   const parsed = typeof value === 'string' ? readDecimal(fn, value, true) : null
 
-  return parsed ?? badValue(fn, `${what} to be a number, a decimal string such as "1.21" or a bigint`, value)
+  return parsed ?? badValue(fn, `${what} to be a number, a decimal string such as "1.21" or a bigint`, value, typeof value === 'string' && value.includes(',') ? 'Use a dot as the decimal mark, and no thousands separators.' : typeof value === 'string' && value !== value.trim() ? 'Remove the surrounding spaces.' : '')
 }

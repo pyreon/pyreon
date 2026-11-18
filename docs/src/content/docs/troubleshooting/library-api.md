@@ -239,3 +239,21 @@ The body runs once, so the value freezes at mount, and on a server-rendered page
 It is today in UTC, not in the user's zone. Use `today(zone)` from `@pyreon/time`.
 
 ---
+
+### Float arithmetic on prices
+
+`0.1 + 0.2` is `0.30000000000000004`, so adding, multiplying by a tax rate or dividing prices as `number` drifts by a cent and the error shows up on an invoice. Keep money as `{ amount: "9.99", currency: "EUR" }` and use `@pyreon/money` (`add`, `multiply`, `percentage`), which computes on `bigint`; `money(0.1 + 0.2, "EUR")` throws on purpose.
+
+---
+
+### `toFixed` (or `Math.round(x * 100) / 100`) as money rounding
+
+It rounds the binary float, so `(1.005).toFixed(2)` is `"1.00"` and `(2.675).toFixed(2)` is `"2.67"`. Round the exact decimal with an explicit mode: `money("1.005", "EUR", { rounding: "halfExpand" })` is `1.01`.
+
+---
+
+### Summing rounded parts, or dividing a total and multiplying back
+
+Three parts of `100 / 3` rounded to 33.33 lose a cent, and per-line VAT summed differs from VAT on the total (three 9.99 lines at 21% give 6.30 against 6.29). Share a total with `allocate` or `split` (the parts sum exactly), and decide whether rounding happens per line or once.
+
+---

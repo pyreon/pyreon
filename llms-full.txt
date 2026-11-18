@@ -1203,6 +1203,30 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 >
 > **HMR / same-id redefinition**: Redefining a store id from a DIFFERENT setup function dev-warns once per id: the registered instance keeps the OLD setup (state preserved, edited actions/computeds silently inert) until `resetStore(id)` or a full reload.
 
+## @pyreon/money — Money
+
+A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits come from `Intl` (no table is shipped); `defineCurrency` adds custom ones. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `@pyreon/format` displays a Money.
+
+```typescript
+import { money, add, multiply, allocate, round } from '@pyreon/money'
+
+add(money('0.10', 'EUR'), money('0.20', 'EUR'))      // => { amount: '0.30', currency: 'EUR' }
+multiply(money('19.99', 'EUR'), 3)                  // => { amount: '59.97', currency: 'EUR' }
+allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount)   // => ['33.34', '33.33', '33.33']
+```
+
+> **The float-input rule**: A `number` is read by its shortest round-trip text, so `money(9.99, "EUR")` is exactly 9.99. A number (or string) with more decimals than the currency has throws unless `rounding` is given: `money(0.1 + 0.2, "EUR")` is `0.30000000000000004`, which is floating-point noise, not an amount. Trailing zeros that lose nothing (`"9.990"`) are accepted.
+>
+> **Rounding**: The default mode is `halfExpand` (round half away from zero: 2.5 to 3, -2.5 to -3), what people call "round half up" and what `Intl` does by default. `halfEven` is banker's rounding. Rounding is implemented once on integers and verified against `Intl.NumberFormat` for all nine modes.
+>
+> **Order of rounding**: Rounding each line and then summing is not the same as summing and then rounding. Decide which one the invoice means, state it, and use `allocate` when parts must add up to a total.
+>
+> **Limits**: Inputs may have at most 4096 digits (a bigger one, or an exponent that would build one, throws a RangeError that says so). Amounts are bigint internally, so size is otherwise unbounded. The currency registry holds at most 64 custom currencies.
+>
+> **Defaults**: `divide` of decimals and `ratio` need a scale: 20 digits for `decimal.divide`, 10 for `ratio`, both overridable. `divide(Money, n)` rounds to the currency's digits.
+>
+> **Formatting**: This package formats nothing. `@pyreon/format` will take a `{ amount, currency }` directly; until then use `Intl.NumberFormat` with the amount STRING (`new Intl.NumberFormat("en", { style: "currency", currency: "EUR" }).format("9.99")`), which formats decimal strings exactly. `formatCurrency(Number(m.amount), ...)` loses precision for large amounts.
+
 ## @pyreon/state-tree — State Tree
 
 MobX-State-Tree-inspired structured state management built on Pyreon signals. Models compose state (signals), views (computeds), and actions into self-contained units that support typed snapshots, JSON-patch record/replay, and action interception middleware. Models can nest other models for tree-shaped state, and `.asHook(id)` provides singleton instances scoped to a store-like registry — per process in a browser, and per REQUEST on a server under `@pyreon/runtime-server`, which isolates that registry automatically.

@@ -433,6 +433,11 @@
     "href": "/docs/patterns/dates-and-times"
    },
    {
+    "path": "patterns/money.md",
+    "title": "Money",
+    "href": "/docs/patterns/money"
+   },
+   {
     "path": "patterns/dev-warnings.md",
     "title": "Dev-mode warnings",
     "href": "/docs/patterns/dev-warnings"
@@ -838,6 +843,11 @@
     "href": "/docs/reference/time"
    },
    {
+    "path": "reference/money.md",
+    "title": "Money",
+    "href": "/docs/reference/money"
+   },
+   {
     "path": "reference/toast.md",
     "title": "Toast Notifications — API Reference",
     "href": "/docs/reference/toast"
@@ -986,6 +996,11 @@
     "path": "time.md",
     "title": "Time",
     "href": "/docs/time"
+   },
+   {
+    "path": "money.md",
+    "title": "Money",
+    "href": "/docs/money"
    },
    {
     "path": "toast.md",
@@ -1225,6 +1240,7 @@
       "patterns/routing-setup",
       "patterns/data-fetching",
       "patterns/dates-and-times",
+      "patterns/money",
       "patterns/styler-theming",
       "patterns/ssr-safe-hooks",
       "patterns/islands",
@@ -1349,6 +1365,7 @@
       "hotkeys",
       "format",
       "time",
+      "money",
       "toast",
       "rx",
       "url-state",
@@ -1454,6 +1471,7 @@
       "reference/hotkeys",
       "reference/format",
       "reference/time",
+      "reference/money",
       "reference/http",
       "reference/i18n",
       "reference/kinetic-presets",
@@ -2026,6 +2044,10 @@
      "href": "/docs/time"
     },
     {
+     "title": "Money",
+     "href": "/docs/money"
+    },
+    {
      "title": "Drag and Drop",
      "href": "/docs/dnd",
      "productId": "dnd"
@@ -2200,6 +2222,10 @@
     {
      "title": "Dates and times",
      "href": "/docs/patterns/dates-and-times"
+    },
+    {
+     "title": "Money",
+     "href": "/docs/patterns/money"
     },
     {
      "title": "Forms and validation",
@@ -2469,6 +2495,10 @@
       {
        "title": "Dates and Times",
        "href": "/docs/reference/time"
+      },
+      {
+       "title": "Money",
+       "href": "/docs/reference/money"
       },
       {
        "title": "HTTP Client",

@@ -22,7 +22,7 @@ describe('loadPatternRegistry — real repo docs/patterns', () => {
     expect(registry.root).toContain('docs/patterns')
   })
 
-  it('loads all 18 seeded patterns', () => {
+  it('loads all 19 seeded patterns', () => {
     const names = registry.patterns.map((p) => p.name).sort()
     expect(names).toEqual([
       'controllable-state',
@@ -36,6 +36,7 @@ describe('loadPatternRegistry — real repo docs/patterns', () => {
       'imperative-toasts',
       'islands',
       'keyed-lists',
+      'money',
       'multiplatform',
       'reactive-context',
       'reactive-spread',

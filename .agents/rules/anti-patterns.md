@@ -1147,6 +1147,10 @@ A 27-package audit of `packages/fundamentals` (PRs #3642–#3653) found the same
 - **`new Date()` or `Date.now()` read in a component body**: the body runs once, so the value freezes at mount, and on a server-rendered page the server's and the client's reads differ, which is a hydration mismatch. Read the clock inside an effect or an event handler, and pin it in tests with `setClock`.
 - **`toISOString().slice(0, 10)` as today's date**: it is today in UTC, not in the user's zone. Use `today(zone)` from `@pyreon/time`.
 
+- **Float arithmetic on prices**: `0.1 + 0.2` is `0.30000000000000004`, so adding, multiplying by a tax rate or dividing prices as `number` drifts by a cent and the error shows up on an invoice. Keep money as `{ amount: "9.99", currency: "EUR" }` and use `@pyreon/money` (`add`, `multiply`, `percentage`), which computes on `bigint`; `money(0.1 + 0.2, "EUR")` throws on purpose.
+- **`toFixed` (or `Math.round(x * 100) / 100`) as money rounding**: it rounds the binary float, so `(1.005).toFixed(2)` is `"1.00"` and `(2.675).toFixed(2)` is `"2.67"`. Round the exact decimal with an explicit mode: `money("1.005", "EUR", { rounding: "halfExpand" })` is `1.01`.
+- **Summing rounded parts, or dividing a total and multiplying back**: three parts of `100 / 3` rounded to 33.33 lose a cent, and per-line VAT summed differs from VAT on the total (three 9.99 lines at 21% give 6.30 against 6.29). Share a total with `allocate` or `split` (the parts sum exactly), and decide whether rounding happens per line or once.
+
 ## Documentation Mistakes
 - **Demote body headings when a markdown level is structural**: `@pyreon/mcp`'s changelog splits versions on `## `. A changeset body with its own `## Title` is indented under a bullet, the parser strips the indent, and the heading becomes a fake version. `demoteBodyHeadings` (`packages/tools/mcp/src/changelog.ts`) demotes h2→h3 and floors at h3. Test with synthetic bodies that plant a heading; a spec over the real CHANGELOG only covers its current state.
 

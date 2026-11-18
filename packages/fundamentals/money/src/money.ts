@@ -27,38 +27,31 @@ function notCanonical(fn: string, m: Money, digits: number): never {
   return badValue(fn, `an amount written with exactly ${digits} fraction digit${digits === 1 ? '' : 's'} for ${m.currency}`, m.amount, 'Build a Money with money(), fromMinor() or zero(), and check data with isMoney().')
 }
 
-/** The minor units of an amount: a `number` when it has at most 15 digits, else a `bigint`. */
+/** The minor units of an amount: a `number` when it has at most 15 digits, else a `bigint`. Validates the canonical shape. */
 function readMinor(fn: string, m: Money, digits: number): number | bigint {
   const text = m.amount
   const len = text.length
-  let i = 0
-  let neg = false
-
-  if (len > 0 && text.charCodeAt(0) === 45) {
-    neg = true
-    i = 1
-  }
-  if (len - i < digits + 1 + (digits > 0 ? 1 : 0) - 1 || len > MAX_DIGITS) return notCanonical(fn, m, digits)
+  const neg = len > 0 && text.charCodeAt(0) === 45
+  const start = neg ? 1 : 0
   const dot = digits > 0 ? len - digits - 1 : -1
+  const intEnd = digits > 0 ? dot : len
+
+  if (len > MAX_DIGITS + 2 || intEnd - start < 1 || (digits > 0 && text.charCodeAt(dot) !== 46)) return notCanonical(fn, m, digits)
+  if (intEnd - start > 1 && text.charCodeAt(start) === 48) return notCanonical(fn, m, digits)
   let n = 0
-  let count = 0
+  let nonzero = false
 
-  for (; i < len; i++) {
-    const c = text.charCodeAt(i)
-
-    if (i === dot) {
-      if (c !== 46) return notCanonical(fn, m, digits)
-      continue
-    }
-    const d = c - 48
+  for (let i = start; i < len; i++) {
+    if (i === dot) continue
+    const d = text.charCodeAt(i) - 48
 
     if (d >>> 0 > 9) return notCanonical(fn, m, digits)
     n = n * 10 + d
-    count++
+    if (d !== 0) nonzero = true
   }
-  if (count === 0 || (count > 1 && text.charCodeAt(neg ? 1 : 0) === 48 && (digits === 0 || count > digits + 1)) || (neg && n === 0 && count < 16)) return notCanonical(fn, m, digits)
-  if (count <= 15) return neg ? -n : n
-  const big = BigInt(digits > 0 ? text.slice(neg ? 1 : 0, dot) + text.slice(dot + 1) : text.slice(neg ? 1 : 0))
+  if (neg && !nonzero) return notCanonical(fn, m, digits)
+  if (len - start - (digits > 0 ? 1 : 0) <= 15) return neg ? -n : n
+  const big = BigInt(digits > 0 ? text.slice(start, dot) + text.slice(dot + 1) : text.slice(start))
 
   return neg ? -big : big
 }

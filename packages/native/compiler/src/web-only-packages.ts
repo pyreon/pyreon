@@ -46,6 +46,7 @@ export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
   ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
   ['@pyreon/mcp', "the MCP server — dev/AI tooling, not app runtime"],
+  ['@pyreon/money', "not lowered by PMTC yet: pure computation on strings and bigint, so it can become `shared` once Swift and Kotlin ports of the same functions exist (a Money is already how payment APIs send amounts); until then the compiler warns on import rather than miscompiling"],
   ['@pyreon/runtime-dom', "the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns)"],
   ['@pyreon/runtime-server', "server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue"],
   ['@pyreon/server', "SSR handler + islands for web deployments; native apps have no server-rendered HTML"],

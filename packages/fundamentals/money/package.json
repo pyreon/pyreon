@@ -52,7 +52,11 @@
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
-    "@pyreon/vitest-config": "workspace:*"
+    "@pyreon/vitest-config": "workspace:*",
+    "@types/big.js": "7.0.0",
+    "big.js": "7.0.1",
+    "currency.js": "2.0.4",
+    "dinero.js": "2.0.2"
   },
   "publishConfig": {
     "access": "public"

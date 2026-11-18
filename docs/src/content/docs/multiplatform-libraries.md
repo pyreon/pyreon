@@ -145,7 +145,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
-### `web-only` — architecturally coupled to the web platform (38)
+### `web-only` — architecturally coupled to the web platform (39)
 
 | Package | Why |
 | --- | --- |
@@ -170,6 +170,7 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/lint` | lint tooling — runs at dev time, not app runtime |
 | `@pyreon/loom` | the dependency observatory — dev tooling, not app runtime |
 | `@pyreon/mcp` | the MCP server — dev/AI tooling, not app runtime |
+| `@pyreon/money` | not lowered by PMTC yet: pure computation on strings and bigint, so it can become `shared` once Swift and Kotlin ports of the same functions exist (a Money is already how payment APIs send amounts); until then the compiler warns on import rather than miscompiling |
 | `@pyreon/query` | wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime |
 | `@pyreon/rich-text` | wraps TipTap/ProseMirror (DOM editor, so the editor itself stays web); the `@pyreon/rich-text/webview` bridge crosses — see nativeFrontend |
 | `@pyreon/runtime-dom` | the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns) |
