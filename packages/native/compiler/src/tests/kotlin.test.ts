@@ -56,7 +56,7 @@ describe('Pyreon → Kotlin emit', () => {
       @Composable
       fun Doubled() {
         var count by remember { mutableStateOf(0L) }
-        val doubled by remember { derivedStateOf { count * 2L } }
+        val doubled by remember { derivedStateOf { pyreonMul(count, 2L) } }
         Text(text = "\${doubled}")
       }"
     `)
@@ -70,7 +70,7 @@ describe('Pyreon → Kotlin emit', () => {
       @Composable
       fun Increment() {
         var count by remember { mutableStateOf(0L) }
-        Button(onClick = { count = count + 1L }) {
+        Button(onClick = { count = pyreonAdd(count, 1L) }) {
           Text("Increment")
         }
       }"
@@ -86,7 +86,7 @@ describe('Pyreon → Kotlin emit', () => {
       fun Sum() {
         var a by remember { mutableStateOf(1L) }
         var b by remember { mutableStateOf(2L) }
-        val total by remember { derivedStateOf { a + b } }
+        val total by remember { derivedStateOf { pyreonAdd(a, b) } }
         Text(text = "\${total}")
       }"
     `)

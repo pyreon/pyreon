@@ -40,6 +40,8 @@ export const EXEMPT: Record<string, string> = {
     'Compose MutableInteractionSource + collectIsPressedAsState — real-SDK surface, device-gate territory (the kotlinSdkOnly twin in package.json); the counter example\'s pressed-style device test exercises it',
   PyreonTimers:
     'android.os.Handler (the main looper) — real-SDK surface (the kotlinSdkOnly twin in package.json); its whole contract RUNS on a plain JVM in @pyreon/native-compiler native-timers.test.ts, through the replaceable `scheduler` seam with stand-in android.os classes',
+  PyreonDateJson:
+    'kotlinx-serialization KSerializer / descriptors / JsonDecoder — a stub of that surface would be the drift-prone copy the harness warns about; compiled and RUN against the REAL kotlinx-serialization jars by @pyreon/native-compiler native-date-json.test.ts (and the differential harness links it)',
   PyreonChartEngine:
     'GENERATED (gen-native-engine.ts) — references the canvas-owned PyreonChartPt/Rect/DrawCmd, so a single-file stub compile would need a drift-prone copy; verified END-TO-END by @pyreon/native-compiler native-chart-engine-generated.test.ts (regenerate + byte-equality + kotlinc compile with the canvas types extracted verbatim)',
 }

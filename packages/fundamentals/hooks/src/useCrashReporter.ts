@@ -13,7 +13,10 @@ import { onHookCleanup } from './lifecycle'
  * reactive fields behave (the useAuth pattern).
  */
 export interface UseCrashReporterResult {
-  /** The PREVIOUS session's crash report (JSON string); `''` when none. */
+  /**
+   * The PREVIOUS session's crash report as a JSON string (`''` when none) —
+   * a {@link CrashReport} object, the same shape on web, iOS and Android.
+   */
   readonly lastCrash: string
   /** True once THIS session found a persisted report from the last one. */
   readonly hadCrash: boolean
@@ -32,6 +35,38 @@ export interface UseCrashReporterResult {
 }
 
 const KEY = 'pyreon.crash.last'
+
+/**
+ * The report every platform persists (and `lastCrash` / the transport
+ * receive, JSON-encoded). The shared fields are the same on web, iOS and
+ * Android; `build`, `image` and `addresses` are what `pyreon-native
+ * symbolicate` needs to turn a native release stack back into source names.
+ */
+export interface CrashReport {
+  platform: 'web' | 'ios' | 'macos' | 'android'
+  message: string
+  /** Raw stack text — minified/obfuscated in a native release build. */
+  stack: string
+  /** The breadcrumb ring at capture time (oldest first, at most 32). */
+  breadcrumbs: string[]
+  /** ISO-8601 capture time. */
+  timestamp: string
+  /**
+   * Native only: which build crashed. `appId` (bundle id / package name),
+   * `version` (CFBundleShortVersionString / versionName), `buildNumber`
+   * (CFBundleVersion / versionCode); Android adds `mappingId`, the R8
+   * `pg_map_id` the minified frames name (`r8-map-id-<id>`), `''` for an
+   * unminified build.
+   */
+  build?: { appId: string; version: string; buildNumber: string; mappingId?: string }
+  /**
+   * iOS only: the main executable — `uuid` (LC_UUID, equals the dSYM's
+   * UUID), `loadAddress` (hex), `arch` — for `atos -l`.
+   */
+  image?: { name: string; uuid: string; loadAddress: string; arch: string }
+  /** iOS only: the raw return addresses (hex), outermost last. */
+  addresses?: string[]
+}
 
 /**
  * The web half of the cross-platform crash-reporter story. Capture (via
@@ -61,9 +96,15 @@ export function useCrashReporter(): UseCrashReporterResult {
 
   const persist = (message: string, stack: string): void => {
     if (!isClient) return
-    const report = JSON.stringify([message, stack, breadcrumbs.join('\n')])
+    const report: CrashReport = {
+      platform: 'web',
+      message,
+      stack,
+      breadcrumbs: [...breadcrumbs],
+      timestamp: new Date().toISOString(),
+    }
     try {
-      window.localStorage.setItem(KEY, report)
+      window.localStorage.setItem(KEY, JSON.stringify(report))
     } catch {
       /* quota / disabled storage — a crash reporter must never itself throw */
     }

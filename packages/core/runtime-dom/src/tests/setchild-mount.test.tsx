@@ -54,20 +54,22 @@ describe('universal VNode[] child helpers', () => {
   it('_setChild treats a primitive-only array as text (no VNode → no mount)', () => {
     const el = document.createElement('div')
     _setChild(el, [1, 2, 3])
-    // `.some(_looksLikeVNode)` is false → falls to `textContent = arr` (Array
-    // toString comma-joins), exactly as the historical text path did.
-    expect(el.textContent).toBe('1,2,3')
+    // Not structural → the text path, with the shared child-text rule: the
+    // items' text concatenated, as SSR renders it (#4386: it used to be the
+    // DOM's `String(array)`, `1,2,3`).
+    expect(el.textContent).toBe('123')
     expect(el.children.length).toBe(0)
   })
   it('_setChild handles null/false/empty-array via the text path (no mount, no crash)', () => {
-    // These all fall to `textContent = value` — the historical path, unchanged.
-    // The exact coercion of `false`/`null` is DOM-impl-dependent (real browsers
-    // stringify `false`→"false"; happy-dom yields ""), so assert only the
-    // impl-independent invariant: nothing is MOUNTED and nothing throws.
+    // All take the text path with the shared child-text rule, which renders
+    // nothing for `null`/`false` in every DOM (the DOM's own coercion wrote
+    // "false" in real browsers and '' in happy-dom).
     const el = document.createElement('div')
     _setChild(el, null)
+    expect(el.textContent).toBe('')
     expect(el.children.length).toBe(0)
     _setChild(el, false)
+    expect(el.textContent).toBe('')
     expect(el.children.length).toBe(0)
     _setChild(el, [])
     expect(el.textContent).toBe('') // empty array → '' (no VNode → text path)

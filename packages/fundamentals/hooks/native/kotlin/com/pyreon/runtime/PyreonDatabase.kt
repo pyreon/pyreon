@@ -75,8 +75,10 @@ public interface PyreonDatabaseBackend {
     /** All records in [collection] (insertion order). */
     public fun all(collection: String): List<PyreonRecord>
 
-    /** Delete a record by id. Returns true on success OR if already absent
-     * (idempotent). */
+    /** Delete a record by id. Returns whether a record was removed, matching
+     * the web's `delete`; an absent id is a no-op that returns false. Until
+     * 2026-11 this returned true for an absent id, so `if (db.delete(…))`
+     * took a different branch on native than on the web. */
     public fun delete(collection: String, id: String): Boolean
 
     /** All records in [collection] whose [field] equals [value]. */
@@ -107,9 +109,9 @@ public class InMemoryDatabaseBackend : PyreonDatabaseBackend {
     }
 
     override fun delete(collection: String, id: String): Boolean {
-        store[collection]?.remove(id)
+        val removed = store[collection]?.remove(id) != null
         order[collection]?.remove(id)
-        return true // idempotent
+        return removed
     }
 
     override fun find(collection: String, field: String, value: String): List<PyreonRecord> =
@@ -373,10 +375,10 @@ public class FileDatabaseBackend(
 
     override fun delete(collection: String, id: String): Boolean {
         load(collection)
-        store[collection]?.remove(id)
+        val removed = store[collection]?.remove(id) != null
         order[collection]?.remove(id)
-        flush(collection)
-        return true // idempotent
+        if (removed) flush(collection)
+        return removed
     }
 
     override fun find(collection: String, field: String, value: String): List<PyreonRecord> =
@@ -407,7 +409,8 @@ public class PyreonDatabase(private val backend: PyreonDatabaseBackend) {
     /** All records in [collection]. */
     public fun all(collection: String): List<PyreonRecord> = backend.all(collection)
 
-    /** Delete a record by id (idempotent). */
+    /** Delete a record by id. Returns whether a record was removed, as on the
+     *  web; deleting an absent id is a no-op that returns false. */
     public fun delete(collection: String, id: String): Boolean = backend.delete(collection, id)
 
     /** All records whose [field] equals [value]. */

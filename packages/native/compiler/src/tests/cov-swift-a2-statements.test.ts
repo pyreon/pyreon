@@ -40,8 +40,8 @@ describe('`i++` / `i--` as a STATEMENT', () => {
     i++
     i--
     n.set(i)`)
-    expect(code).toContain('i += 1')
-    expect(code).toContain('i -= 1')
+    expect(code).toContain('i = pyreonAdd(i, 1)')
+    expect(code).toContain('i = pyreonSub(i, 1)')
     // the IIFE form would not compile as a statement
     expect(code).not.toContain('i++')
     expect(code).not.toContain('}()')

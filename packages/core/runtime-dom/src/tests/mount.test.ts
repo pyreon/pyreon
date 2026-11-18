@@ -2457,12 +2457,15 @@ describe('mountReactive — edge cases', () => {
 
   test('reactive boolean text fast path', () => {
     const el = container()
-    const val = signal(true)
+    const val = signal<boolean | number>(true)
     mount(
       h('div', null, () => val()),
       el,
     )
-    expect(el.querySelector('div')?.textContent).toBe('true')
+    // Booleans render nothing (shared child-text rule, #4386).
+    expect(el.querySelector('div')?.textContent).toBe('')
+    val.set(1)
+    expect(el.querySelector('div')?.textContent).toBe('1')
     val.set(false)
     expect(el.querySelector('div')?.textContent).toBe('')
   })

@@ -75,13 +75,19 @@ describe('@pyreon/native-cli build', () => {
     )
     expect(nonTier2Warnings).toEqual([])
 
-    // Every output exists + has the .swift extension + carries the
-    // source-map directive.
+    // Every output exists + has the .swift extension + names its source
+    // in a provenance COMMENT — never a `#sourceLocation` directive. With
+    // no per-statement line map, `#sourceLocation(file: "App.tsx", line: 1)`
+    // relabels generated line N as App.tsx line N, so compile errors and
+    // symbolicated crash frames (atos over the dSYM) pointed at whatever
+    // the .tsx held on that line — observed: a release-archive frame in
+    // `TodoApp.addTodo()` resolved to `TodoApp.tsx:31`, a comment.
     for (const output of result.outputs) {
       expect(output.output.endsWith('.swift')).toBe(true)
       const written = readFileSync(output.output, 'utf8')
       expect(written).toBe(output.code)
-      expect(written.startsWith('#sourceLocation(file: "')).toBe(true)
+      expect(written.startsWith('// pyreon-source: ')).toBe(true)
+      expect(written).not.toContain('#sourceLocation')
     }
   })
 
@@ -189,7 +195,7 @@ describe('@pyreon/native-cli build', () => {
     const direct = transform(source, { target: 'swift' }).code
     // The build prepends a source-map header + an import preamble; strip
     // both before comparing. Format:
-    //   line 0: #sourceLocation(...)
+    //   line 0: // pyreon-source: <path>
     //   lines 1..N: imports
     //   blank line
     //   then: emitted code
@@ -318,6 +324,33 @@ describe('@pyreon/native-cli build', () => {
     // One import per detector even when a detector appears twice.
     const twice = conditionalKotlinImports('detectTapGestures { } ; detectTapGestures { }')
     expect(twice.split('detectTapGestures').length - 1).toBe(1)
+  })
+
+  it('Kotlin conditional imports: every Compose enter/exit transition builder the emit names', () => {
+    // A `slide-*` or `scale-in` <Transition> lowered to slideInHorizontally /
+    // scaleIn with no import, so the real `gradle assembleDebug` failed with
+    // `Unresolved reference 'slideInHorizontally'` while the stub-concatenating
+    // kotlinc gate passed. Only fadeIn/fadeOut had an arm.
+    const slide = conditionalKotlinImports(
+      'AnimatedVisibility(visible = v, enter = slideInHorizontally(animationSpec = s) { it } + fadeIn(animationSpec = s), exit = slideOutHorizontally(animationSpec = s) { it } + fadeOut(animationSpec = s))',
+    )
+    for (const fn of ['slideInHorizontally', 'slideOutHorizontally', 'fadeIn', 'fadeOut']) {
+      expect(slide).toContain(`import androidx.compose.animation.${fn}`)
+    }
+    const scale = conditionalKotlinImports('enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()')
+    expect(scale).toContain('import androidx.compose.animation.scaleIn')
+    expect(scale).toContain('import androidx.compose.animation.scaleOut')
+    const vertical = conditionalKotlinImports('enter = slideInVertically { it }, exit = slideOutVertically { it }')
+    expect(vertical).toContain('import androidx.compose.animation.slideInVertically')
+    expect(vertical).toContain('import androidx.compose.animation.slideOutVertically')
+    // A builder no emit uses yet resolves by its name shape.
+    expect(conditionalKotlinImports('enter = expandVertically()')).toContain(
+      'import androidx.compose.animation.expandVertically',
+    )
+    // The `.scale(` transform modifier is ui.draw's, never an animation import.
+    const transform = conditionalKotlinImports('Modifier.scale(2f)')
+    expect(transform).not.toContain('import androidx.compose.animation.scale')
+    expect(transform).toContain('import androidx.compose.ui.draw.scale')
   })
 
   it('Kotlin conditional imports: <Field kind> pulls PasswordVisualTransformation + VisualTransformation', () => {

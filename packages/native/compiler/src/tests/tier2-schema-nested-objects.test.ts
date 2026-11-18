@@ -29,7 +29,7 @@ export const userSchema = zodSchema(z.object({
     // Nested aux schema is emitted as its own struct
     expect(r.code).toContain('struct PyreonZodSchema_userSchema_Address')
     expect(r.code).toContain('var street: String')
-    expect(r.code).toContain('var zip: Int')
+    expect(r.code).toContain('var zip: Double')
     // Parent references it
     expect(r.code).toContain('var address: PyreonZodSchema_userSchema_Address')
     // Order: aux schema comes BEFORE parent
@@ -91,7 +91,7 @@ export const userSchema = zodSchema(z.object({
     const r = transform(src, { target: 'kotlin' })
     expect(r.code).toContain('data class PyreonZodSchema_userSchema_Address')
     expect(r.code).toContain('var street: String')
-    expect(r.code).toContain('var zip: Long')
+    expect(r.code).toContain('var zip: Double')
     expect(r.code).toContain('var address: PyreonZodSchema_userSchema_Address')
     const auxIdx = r.code.indexOf('data class PyreonZodSchema_userSchema_Address')
     const mainIdx = r.code.indexOf('data class PyreonZodSchema_userSchema(')
@@ -136,7 +136,7 @@ export const userSchema = zodSchema(z.object({
     // Aux schema for the array item
     expect(r.code).toContain('struct PyreonZodSchema_userSchema_Posts_Item')
     expect(r.code).toContain('var title: String')
-    expect(r.code).toContain('var views: Int')
+    expect(r.code).toContain('var views: Double')
     // Parent field references the array of item-schema instances
     expect(r.code).toContain(
       'var posts: [PyreonZodSchema_userSchema_Posts_Item]',

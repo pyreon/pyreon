@@ -51,7 +51,7 @@ describe('a recognizer that returns a signal', () => {
     expect(swift).toContain('@State private var gone: Int = 5')
     expect(swift).toContain('@State private var inferred: String = "abc"')
     expect(swift).toContain('@State private var missing: Int = 0')
-    expect(swift).toContain('Button("go") { n = n + 1 }')
+    expect(swift).toContain('Button("go") { n = pyreonAdd(n, 1) }')
     const kotlin = compile('kotlin')
     expect(kotlin).toContain('var gone by remember { mutableStateOf(5L) }')
     expect(kotlin).toContain('var missing by remember { mutableStateOf(0L) }')

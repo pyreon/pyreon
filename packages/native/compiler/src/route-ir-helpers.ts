@@ -101,6 +101,15 @@ export interface FlatRouteEntry {
   guard?: ExprIR
   /** True when the source route was a `:param`-bearing pattern. */
   isPattern: boolean
+  /** The route's `loader`, carried so the nested dispatch wraps it exactly as the flat one does. */
+  loader?: ExprIR
+  /** True when that loader reads `ctx.params.*`, so the branch must bind `params`. */
+  loaderUsesParams?: boolean
+  /**
+   * Set on a redirect ALIAS: the source path whose branch renders the target's component (and layout chain). The
+   * branch carries no guard or loader of its own: those belong to the target route, which has its own branch.
+   */
+  redirectFrom?: string
 }
 
 /**
@@ -135,13 +144,22 @@ export function joinRoutePath(parent: string, child: string): string {
  *   - redirect / wildcard routes nested under a layout (no clean alias site)
  *   - a nested route whose own segment is a `:param` (the parent's params
  *     aren't in scope at the wrap site) — top-level params still flatten.
- * Top-level redirect / wildcard routes are PASSED THROUGH untouched (their
- * existing dispatch handling in the emitters is preserved) — they're returned
- * with `component` from {@link resolveRouteTarget} and an empty `layoutChain`,
- * or, for wildcards, omitted here and handled by the emitter's else-branch.
+ * A top-level redirect becomes an ALIAS entry (`redirectFrom` set) at its
+ * declaration position, carrying the target's component and layout chain — the
+ * target may itself be nested (`{ path: '/old', redirect: '/app/inbox' }`). A
+ * top-level wildcard is omitted: the emitters render it as the else-branch.
+ * Each entry carries its route's guard and loader, so the nested dispatch
+ * lowers everything the flat dispatch does.
  */
 export function flattenRouteTree(routes: readonly RouteIR[]): FlatRouteEntry[] {
-  const out: FlatRouteEntry[] = []
+  // Each slot is a rendered entry, or a top-level redirect resolved once every entry exists (its target may be a
+  // nested route declared later). Slots keep declaration order, which is the dispatch's first-match order.
+  const slots: (FlatRouteEntry | RouteIR)[] = []
+  const carry = (route: RouteIR): Partial<FlatRouteEntry> => ({
+    ...(route.guard !== undefined ? { guard: route.guard } : {}),
+    ...(route.loader !== undefined ? { loader: route.loader } : {}),
+    ...(route.loaderUsesParams === true ? { loaderUsesParams: true } : {}),
+  })
   const walk = (
     nodes: readonly RouteIR[],
     parentPath: string,
@@ -158,15 +176,17 @@ export function flattenRouteTree(routes: readonly RouteIR[]): FlatRouteEntry[] {
       // Conservative bail for nested redirect / wildcard / param routes.
       if (isNested && (route.redirect !== undefined || isWildcardRoute(route))) continue
       if (isNested && route.path.includes(':')) continue
+      // A top-level wildcard is the dispatch's ELSE branch, never a path branch.
+      if (isWildcardRoute(route)) continue
 
       if (hasChildren) {
         // Layout route. Its own component (if any) is an index entry.
         if (route.component !== undefined) {
-          out.push({
+          slots.push({
             path: fullPath,
             component: route.component,
             layoutChain: [...chain],
-            ...(route.guard !== undefined ? { guard: route.guard } : {}),
+            ...carry(route),
             isPattern: fullPath.includes(':'),
           })
         }
@@ -177,19 +197,50 @@ export function flattenRouteTree(routes: readonly RouteIR[]): FlatRouteEntry[] {
           route.component !== undefined ? [...chain, route.component] : [...chain]
         walk(route.children!, fullPath, nextChain)
       } else if (route.component !== undefined) {
-        out.push({
+        slots.push({
           path: fullPath,
           component: route.component,
           layoutChain: [...chain],
-          ...(route.guard !== undefined ? { guard: route.guard } : {}),
+          ...carry(route),
           isPattern: fullPath.includes(':'),
         })
+      } else if (isRedirectRoute(route)) {
+        slots.push(route)
       }
-      // Leaf with no component (redirect-only top-level) is left to the
-      // emitter's existing redirect handling — not flattened here.
     }
   }
   walk(routes, '', [])
+  const rendered = slots.filter((s): s is FlatRouteEntry => 'layoutChain' in s)
+  const redirects = slots.filter((s): s is RouteIR => !('layoutChain' in s))
+  const out: FlatRouteEntry[] = []
+  for (const slot of slots) {
+    if ('layoutChain' in slot) {
+      out.push(slot)
+      continue
+    }
+    // A redirect is a compile-time alias, as in the flat dispatch: the source path renders the target's component in
+    // the target's layout chain. Chains resolve through other redirects; a cycle, a dangling target or a `:param` on
+    // either side has no alias site and is skipped, so the path falls through to the wildcard.
+    const seen = new Set<string>([slot.path])
+    let target = slot.redirect!
+    let entry: FlatRouteEntry | undefined
+    for (;;) {
+      entry = rendered.find((e) => e.path === target)
+      if (entry !== undefined) break
+      const next = redirects.find((r) => r.path === target)
+      if (next === undefined || seen.has(next.path)) break
+      seen.add(next.path)
+      target = next.redirect!
+    }
+    if (entry === undefined || slot.path.includes(':') || entry.path.includes(':')) continue
+    out.push({
+      path: slot.path,
+      component: entry.component,
+      layoutChain: entry.layoutChain,
+      isPattern: false,
+      redirectFrom: slot.path,
+    })
+  }
   return out
 }
 
