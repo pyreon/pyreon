@@ -320,6 +320,13 @@ describe('runCli', () => {
       await runCli(['scan', dir])
       expect(await runCli(['verify', 'Card', '--cwd', dir, '--check'])).toBe(0)
       expect(await runCli(['verify', 'Card', '--cwd', dir])).toBe(1)
+      // `ok` agrees with the exit code.
+      stdout = ''
+      expect(await runCli(['verify', 'Card', '--cwd', dir, '--check', '--json'])).toBe(0)
+      expect(JSON.parse(stdout).ok).toBe(true)
+      stdout = ''
+      expect(await runCli(['verify', 'Card', '--cwd', dir, '--json'])).toBe(1)
+      expect(JSON.parse(stdout).ok).toBe(false)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

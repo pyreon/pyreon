@@ -1203,20 +1203,9 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     }
 
     const report = buildVerifyReport(result.graph.scenarios())
-    if (json) {
-      out(
-        `${JSON.stringify(
-          {
-            ok: report.failed === 0 && report.verified > 0,
-            component: name ?? null,
-            ...(result.focusNote ? { note: result.focusNote } : {}),
-            ...report,
-          },
-          null,
-          2,
-        )}\n`,
-      )
-    } else {
+    // Under --json the document is written by `finish`, once the exit code is
+    // known, so `ok` agrees with it (under --check, inherited failures exit 0).
+    if (!json) {
       // Rule 1: what ran first; the verdict comes last, after the ratchet.
       out(
         `${commandHeader(t, `atlas verify${name ? ` ${name}` : ''}`, [
@@ -1238,7 +1227,20 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       }
     }
     const finish = (code: number, regressed = false): number => {
-      if (!json) {
+      if (json) {
+        out(
+          `${JSON.stringify(
+            {
+              ok: code === 0,
+              component: name ?? null,
+              ...(result.focusNote ? { note: result.focusNote } : {}),
+              ...report,
+            },
+            null,
+            2,
+          )}\n`,
+        )
+      } else {
         out(
           `\n${verdictLine(t, {
             failed: report.failed,
