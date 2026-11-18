@@ -45,6 +45,7 @@ function aliasInnerRef(rawProps: Record<string, any>): Record<string, any> {
   // Guarded above (rawProps.innerRef != null) ⇒ the own descriptor exists.
   descs.ref = descs.innerRef!
   delete descs.innerRef
+
   return Object.defineProperties({}, descs)
 }
 
@@ -59,6 +60,7 @@ function aliasInnerRef(rawProps: Record<string, any>): Record<string, any> {
 // still resolves per distinct $element, so resolve stays O(N) (documented).
 let _cpseEnabled = false
 let _cpseRewrite: ((cssText: string, varsOut: Record<string, string>) => string) | null = null
+
 /** @internal Wired by `@pyreon/ui-core` `init({ styleExtraction })`. */
 export const setStyleExtraction = (
   enabled: boolean,
@@ -67,9 +69,164 @@ export const setStyleExtraction = (
   _cpseEnabled = enabled
   if (rewrite) _cpseRewrite = rewrite
 }
+
 // Theme key for the per-definition `$element` cache when no theme object is
 // provided (WeakMap keys must be objects).
 const NO_THEME = {}
+
+/**
+ * One class in the Tier-2 rocketstyle class cache, with the props its styles
+ * read besides `$rocketstyle` / `$rocketstate`. A `.styles()` callback may
+ * read any prop: the documented `cursor: pointer` gate reads `onClick` /
+ * `href`, and templates read `theme`. Keyed on the two rocketstyle objects
+ * alone, every instance with the same dimension tuple got the class of the
+ * first one resolved (#4434). An entry is reused only when each recorded prop
+ * still has the same value: primitives by value, objects by identity (held as
+ * an id, so the cache never retains a prop object), and functions by presence
+ * (a handler's identity changes per instance and cannot shape the CSS).
+ */
+interface ClassEntry {
+  readonly className: string
+  readonly keys: readonly string[]
+  /** Per key: the primitive value, `FN_TOKEN` for a function, or an `ObjToken`. */
+  readonly tokens: readonly unknown[]
+}
+
+const FN_TOKEN = Symbol('fn')
+
+class ObjToken {
+  constructor(readonly id: number) {}
+}
+
+const _objIds = new WeakMap<object, number>()
+let _nextObjId = 0
+
+const propToken = (v: unknown): unknown => {
+  if (typeof v === 'function') return FN_TOKEN
+  if (v === null || typeof v !== 'object') return v
+  let id = _objIds.get(v)
+  if (id === undefined) {
+    id = ++_nextObjId
+    _objIds.set(v, id)
+  }
+
+  return new ObjToken(id)
+}
+
+const tokenMatches = (token: unknown, v: unknown): boolean => {
+  if (token instanceof ObjToken) return v !== null && typeof v === 'object' && _objIds.get(v) === token.id
+  if (token === FN_TOKEN) return typeof v === 'function'
+  return Object.is(token, v)
+}
+
+// Variants kept per `$rocketstyle` × `$rocketstate` pair (one per distinct set
+// of read prop values); the oldest goes first.
+const MAX_CLASS_VARIANTS = 16
+type ClassCache = WeakMap<object, WeakMap<object, ClassEntry[]>>
+/** Passed for `$element` / `$text` when that axis is static (read from the raw props). */
+const NOT_OVERRIDDEN = Symbol('not-overridden')
+
+/**
+ * The cached class whose recorded props all still have the same value, read
+ * the way `DynamicStyled` builds the resolve props. An entry whose rule the
+ * sheet evicted is dropped (`isLive`), so the caller re-resolves and re-inserts.
+ */
+const lookupClass = (
+  variants: ClassEntry[] | undefined,
+  rawProps: Record<string, unknown>,
+  t: unknown,
+  elVal: unknown,
+  textVal: unknown,
+): string | undefined => {
+  if (!variants) return undefined
+  for (let i = 0; i < variants.length; i++) {
+    const { className, keys, tokens } = variants[i]!
+    let matches = true
+    for (let j = 0; j < keys.length && matches; j++) {
+      const key = keys[j]!
+      const now =
+        key === 'theme'
+          ? t
+          : key === '$element' && elVal !== NOT_OVERRIDDEN
+            ? elVal
+            : key === '$text' && textVal !== NOT_OVERRIDDEN
+              ? textVal
+              : rawProps[key]
+      matches = tokenMatches(tokens[j], now)
+    }
+    if (!matches) continue
+    if (sheet.isLive(className)) return className
+    variants.splice(i, 1)
+
+    return undefined
+  }
+
+  return undefined
+}
+
+/**
+ * Resolve through a Proxy that records the props the styles read (besides the
+ * two rocketstyle objects, which key the cache themselves). `reads` is null
+ * when the styles enumerated the props (a rest spread, `Object.keys`).
+ */
+const resolveRecordingReads = (
+  strings: TemplateStringsArray,
+  values: Interpolation[],
+  props: Record<string, any>,
+): { css: string; reads: string[] | null } => {
+  const read = new Set<string>()
+  let enumerated = false
+  const seen = new Proxy(props, {
+    get(target, key, receiver) {
+      if (typeof key === 'string') read.add(key)
+
+      return Reflect.get(target, key, receiver)
+    },
+    has(target, key) {
+      if (typeof key === 'string') read.add(key)
+
+      return Reflect.has(target, key)
+    },
+    ownKeys(target) {
+      enumerated = true
+
+      return Reflect.ownKeys(target)
+    },
+  })
+  const css = resolve(strings, values, seen)
+  read.delete('$rocketstyle')
+  read.delete('$rocketstate')
+
+  return { css, reads: enumerated ? null : [...read] }
+}
+
+/** The variant list for one `$rocketstyle` × `$rocketstate` pair, created on first use. */
+const variantsFor = (cache: ClassCache, rs: object, rsState: object): ClassEntry[] => {
+  let inner = cache.get(rs)
+  if (!inner) {
+    inner = new WeakMap()
+    cache.set(rs, inner)
+  }
+  let variants = inner.get(rsState)
+  if (!variants) {
+    variants = []
+    inner.set(rsState, variants)
+  }
+
+  return variants
+}
+
+/** Store a resolved class under the values its styles read; the oldest variant goes first. */
+const rememberClass = (
+  variants: ClassEntry[],
+  className: string,
+  reads: readonly string[],
+  props: Record<string, unknown>,
+): void => {
+  if (variants.length >= MAX_CLASS_VARIANTS) variants.shift()
+  variants.push({ className, keys: reads, tokens: reads.map((key) => propToken(props[key])) })
+}
+
 /** Merge CPSE custom-property vars into a finalProps `style` (object | string | absent). */
 const mergeCpseStyle = (finalProps: Record<string, any>, vars: Record<string, string>): void => {
   const existing = finalProps.style
@@ -144,6 +301,7 @@ const _hotCache: {
 // `styled()` call both caches are empty, so a `clearAll()` in that window has
 // nothing to invalidate.
 let _clearHookRegistered = false
+
 const registerClearHook = (): void => {
   if (_clearHookRegistered) return
   _clearHookRegistered = true
@@ -175,6 +333,7 @@ const createStyledComponent = (
         _hotCache.strings = strings
         _hotCache.tag = tag
         _hotCache.component = cached
+
         return cached
       }
     }
@@ -251,6 +410,7 @@ const createStyledComponent = (
       if (!hasExtraProps && rawProps.ref == null) {
         if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('styler.staticVNode.hit')
+
         return cachedEmptyVNode
       }
 
@@ -291,9 +451,10 @@ const createStyledComponent = (
   }
 
   // ─── Tier 2: Per-definition class cache ───────────────────────────────────
-  // Two-level WeakMap: $rocketstyle → $rocketstate → className.
+  // Two-level WeakMap: $rocketstyle → $rocketstate → variants, one per set of
+  // values of the other props the styles read (see `ClassEntry`).
   // 50 identical Items with the same resolved theme → 1 resolve + 49 hits.
-  const classCache = new WeakMap<object, WeakMap<object, string>>()
+  const classCache: ClassCache = new WeakMap()
   // Cache for non-rocketstyle styled components (e.g. Element's Wrapper,
   // which depends on `$element` + `$childFix` + the THEME). Keyed theme →
   // `$element` identity → `$childFix`. The theme level is load-bearing: the
@@ -378,15 +539,18 @@ const createStyledComponent = (
     // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
     const doResolve = (rs: unknown, rsState: unknown, t: unknown, elVal?: unknown, textVal?: unknown): string => {
       pendingCpseVars = null
-      // Tier 2 cache: skip resolve if same object identity seen before
-      if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
-        const inner = classCache.get(rs)
-        if (inner) {
-          const cached = inner.get(rsState)
-          // `isLive`: the sheet may have evicted the rule since this name was
-          // cached — then fall through, re-resolve and re-insert it.
-          if (cached !== undefined && sheet.isLive(cached)) return cached
-        }
+      // Tier 2 cache: skip resolve if the same object identities were seen
+      // before AND every other prop the styles read still has the same value.
+      const rsCacheable = !!rs && typeof rs === 'object' && !!rsState && typeof rsState === 'object'
+      if (rsCacheable) {
+        const cached = lookupClass(
+          classCache.get(rs)?.get(rsState),
+          rawProps,
+          t,
+          isReactiveEl ? elVal : NOT_OVERRIDDEN,
+          isReactiveText ? textVal : NOT_OVERRIDDEN,
+        )
+        if (cached !== undefined) return cached
       }
 
       // Element-layer cache (no rocketstyle props, but $element — or, for
@@ -414,6 +578,7 @@ const createStyledComponent = (
             // the cache hit.
             if (_cpseEnabled)
               pendingCpseVars = cpseVarsCache.get(themeKey)?.get($el as object)?.get($childFix) ?? null
+
             return cached
           }
         }
@@ -427,7 +592,18 @@ const createStyledComponent = (
         ...(isReactiveText ? { $text: textVal } : {}),
         theme: t,
       }
-      let cssText = normalizeCSS(resolve(strings, values, resolveProps))
+      // On the rocketstyle cache path, record which props the styles read so
+      // the class is cached under their values (`reads` is null when they
+      // enumerated the props and so could depend on any of them).
+      let reads: string[] | null = null
+      let cssText: string
+      if (rsCacheable) {
+        const tracked = resolveRecordingReads(strings, values, resolveProps)
+        reads = tracked.reads
+        cssText = normalizeCSS(tracked.css)
+      } else {
+        cssText = normalizeCSS(resolve(strings, values, resolveProps))
+      }
       // CPSE (non-reactive path only — excludes the rocketstyle classCache
       // path): rewrite the resolved declarations to a value-agnostic rule
       // (`prop: var(--u-…)`) and collect the per-instance values. The agnostic
@@ -461,13 +637,8 @@ const createStyledComponent = (
       }
       const className = cssText.length > 0 ? sheet.insert(cssText, insertLayer) : ''
 
-      if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
-        let inner = classCache.get(rs)
-        if (!inner) {
-          inner = new WeakMap()
-          classCache.set(rs, inner)
-        }
-        inner.set(rsState, className)
+      if (rsCacheable) {
+        if (reads) rememberClass(variantsFor(classCache, rs, rsState), className, reads, resolveProps)
       } else if (useElCache) {
         let byEl = elClassCache.get(themeKey)
         if (!byEl) {
@@ -481,6 +652,7 @@ const createStyledComponent = (
         }
         inner.set($childFix, className)
       }
+
       return className
     }
 
@@ -510,6 +682,7 @@ const createStyledComponent = (
       const finalProps = buildProps(rawProps, className, typeof finalTag === 'string', customFilter)
       // CPSE: surface the per-instance custom properties into the SSR style attr.
       if (pendingCpseVars) mergeCpseStyle(finalProps, pendingCpseVars)
+
       return h(
         finalTag as string,
         finalProps,
@@ -629,6 +802,7 @@ const createStyledComponent = (
 
   ;(DynamicStyled as ComponentFn & { displayName?: string }).displayName =
     `styled(${getDisplayName(tag)})`
+
   return DynamicStyled
 }
 
@@ -773,6 +947,7 @@ export const styled: StyledFunction = /* @__PURE__ */ new Proxy(styledFactory as
         createStyledComponent(prop, strings, values)) as TagTemplateFn
       proxyCache.set(prop, fn)
     }
+
     return fn
   },
 })

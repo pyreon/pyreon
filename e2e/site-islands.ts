@@ -62,6 +62,56 @@ export async function trackIslandRoots(page: Page): Promise<void> {
   })
 }
 
+/**
+ * Record, from page start, the class each server-rendered element inside an
+ * island carries, and compare it with its class at the moment its island
+ * reports hydrated. Adopting the server DOM is not enough: when the server and
+ * the client resolve a different style for the same component (a different
+ * theme, mode or cached rule), hydration keeps the element and rewrites its
+ * class, which a removal check cannot see (#4434). Elements the client creates
+ * are not compared; changes after hydration (a toggle, a timer) are not either,
+ * nor an element marked `data-live`, whose class follows live state that a
+ * demo may change while it mounts (a meter that pulses when its value moves).
+ * Call before `page.goto`.
+ */
+export async function trackIslandClasses(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __islandClassChanges: string[] }
+    w.__islandClassChanges = []
+    // The class an element had before its first change: the class the server sent.
+    const original = new WeakMap<Element, string | null>()
+    let server: WeakSet<Element> | null = null
+    document.addEventListener('DOMContentLoaded', () => {
+      server = new WeakSet(document.querySelectorAll('pyreon-island *'))
+    })
+    new MutationObserver((list) => {
+      for (const m of list) {
+        const el = m.target as Element
+        if (m.attributeName === 'class') {
+          if (!original.has(el)) original.set(el, m.oldValue)
+          continue
+        }
+        // `data-island-hydrated` set: @pyreon/server's hydrateRoot has returned.
+        if (el.tagName !== 'PYREON-ISLAND' || m.oldValue !== null) continue
+        const name = el.getAttribute('data-component') ?? '?'
+        for (const n of el.querySelectorAll('*')) {
+          // Created by the client, or a class that follows live state (`data-live`, a meter's pulse).
+          if ((server && !server.has(n)) || !original.has(n) || n.closest('[data-live]')) continue
+          // No class and an empty one are the same.
+          const sent = original.get(n) || ''
+          const now = n.getAttribute('class') || ''
+          if (sent !== now) w.__islandClassChanges.push(`${name}: <${n.tagName.toLowerCase()}> class "${sent}" became "${now}"`)
+        }
+      }
+    }).observe(document, { subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['class', 'data-island-hydrated'] })
+  })
+}
+
+/** What `trackIslandClasses` recorded: every server element whose class hydration changed. */
+export async function changedIslandClasses(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { __islandClassChanges: string[] }).__islandClassChanges)
+}
+
 /** Islands (by `data-component`) that are live but no longer hold their server root elements. */
 export async function replacedIslandRoots(page: Page): Promise<string[]> {
   return page.evaluate(() => {
