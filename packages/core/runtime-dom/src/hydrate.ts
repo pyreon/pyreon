@@ -39,6 +39,7 @@ import {
   type EffectScope,
   effectScope,
   getContextOwner,
+  getCurrentScope,
   type RunCapture,
   type SubscriberHost,
   runWithContextOwner,
@@ -2081,6 +2082,12 @@ function hydrateComponent(
   // during hydration too. Owner stays `scope` through `runWithHooks` +
   // `hydrateChild` + onMount, restored to `prevOwner` on every exit.
   const prevOwner = getContextOwner()
+  // RESTORED on every exit, never reset to null: a component can mount while
+  // another scope is current (inside a parent's onMount via a signal write
+  // that flips a <Show>, inside a <For> row's collector, inside a parent's
+  // compiled template), and nulling it there left everything that scope's
+  // owner created afterwards with no owner — never disposed.
+  const prevScope = getCurrentScope()
   const scope = effectScope()
   scope._parent = prevOwner
   setCurrentScope(scope)
@@ -2120,7 +2127,7 @@ function hydrateComponent(
     hooks = _takeHooks()
   } catch (err) {
     if (adoptTarget !== null) _setTplAdoptTarget(null)
-    setCurrentScope(null)
+    setCurrentScope(prevScope)
     setContextOwner(prevOwner)
     scope.stop()
 
@@ -2139,7 +2146,7 @@ function hydrateComponent(
   // Disarm unconditionally: a component that produced no root `_tpl` must not
   // leave a live target for an unrelated later call.
   if (adoptTarget !== null) _setTplAdoptTarget(null)
-  setCurrentScope(null)
+  setCurrentScope(prevScope)
 
 
   // Register onUpdate hooks with the scope
