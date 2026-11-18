@@ -1,6 +1,6 @@
 import { Element, Text } from '@pyreon/elements'
 import rocketstyle, { type ThemeModeCallback } from '@pyreon/rocketstyle'
-import { makeItResponsive, styles } from '@pyreon/unistyle'
+import { type ITheme, makeItResponsive, styles } from '@pyreon/unistyle'
 import { color, touch, type ColorKey } from '../theme'
 
 /**
@@ -14,6 +14,13 @@ import { color, touch, type ColorKey } from '../theme'
  * `.theme()`; they become `:hover` / `:focus-visible` / `:active` / `:disabled`.
  */
 const rs = rocketstyle({ useBooleans: false })
+
+// Theme slices (dimensions, `.multiple()` modifiers, `.params()` mappers) are
+// type-checked against unistyle's property names, so a misspelt key is an
+// error. Same augmentation as `@pyreon/ui-theme`'s.
+declare module '@pyreon/rocketstyle' {
+  interface StylesDefault extends ITheme {}
+}
 
 
 function split(theme: Record<string, unknown> = {}) {

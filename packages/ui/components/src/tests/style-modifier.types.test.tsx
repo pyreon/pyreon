@@ -59,3 +59,34 @@ describe('style modifier typing', () => {
     expect([unknown, conditional, boolean]).toHaveLength(3)
   })
 })
+
+const ParamGrid = Grid.params({
+  columns: (n: number) => ({ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }),
+  pad: (step: 'small' | 'large', t) => ({ padding: t.spacing[step] }),
+  tint: (c: string, _t, m) => ({ color: c, hover: { color: m(c, 'white') } }),
+})
+
+describe('.params() typing', () => {
+  it('a param prop is typed from the mapper and widened to the responsive forms', () => {
+    const one = <ParamGrid columns={3} />
+    const object = <ParamGrid columns={{ xs: 1, md: 3 }} pad="small" />
+    const array = <ParamGrid columns={[1, null, 3]} tint="red" />
+    const signal = <ParamGrid columns={compact() ? 2 : 4} />
+    const withLook = <ParamGrid columns={3} multiple={['threeUp']} />
+    expect([one, object, array, signal, withLook]).toHaveLength(5)
+  })
+
+  it('rejects a wrong value type, an unknown param, and a misspelt key in a mapper', () => {
+    // @ts-expect-error `columns` takes a number
+    const wrongType = <ParamGrid columns="3" />
+    // @ts-expect-error per breakpoint too
+    const wrongBp = <ParamGrid columns={{ md: '3' }} />
+    // @ts-expect-error `pad` takes 'small' | 'large'
+    const wrongUnion = <ParamGrid pad="huge" />
+    // @ts-expect-error no such param
+    const unknown = <ParamGrid rows={2} />
+    // @ts-expect-error a mapper returns theme keys, checked like a slice
+    const misspelt = Base.params({ cols: (n: number) => ({ gridTemplateColumn: `${n}` }) })
+    expect([wrongType, wrongBp, wrongUnion, unknown, misspelt]).toHaveLength(5)
+  })
+})

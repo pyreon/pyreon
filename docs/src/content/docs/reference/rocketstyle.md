@@ -21,6 +21,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Chainable immutable builder — every method returns a NEW component, bases fork cleanly into variants
 - Five built-in dimensions: states/sizes/variants (single-value), multiple (multi-value), modifiers (multi + transform)
 - One-off looks as named `.multiple()` modifiers — typed, responsive, composable (`multiple={["threeUp", cond && "dense"]}`), merged over the theme; no styles through props
+- Caller-chosen values as typed `.params()` — `columns={{ xs: 1, md: 3 }}` from `.params({ columns: (n: number) => ({ … }) })`, responsive forms split by the framework, memoized by value
 - Custom dimensions at factory init — each key becomes a chain method + a typed consumer prop
 - Dark/light via the mode(light, dark) helper in .theme() and dimension callbacks; .config(&#123; inversed &#125;) inverts the mode for that component's OWN styles (use &lt;PyreonUI inversed&gt; for a whole subtree)
 - Nested pseudo-state objects (hover/focus/active/pressed/disabled/readOnly) compile to CSS pseudo-selectors
@@ -98,6 +99,7 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 | [`.theme()`](#theme-function) | function | Always-applied base styles, merged under every dimension slice. |
 | [`.states() / .sizes() / .variants()`](#states-sizes-variants-function) | function | Single-value dimension definition methods (from the default dimension map). |
 | [`.multiple() / .modifiers()`](#multiple-modifiers-function) | function | Multi-value dimension definition methods (from the default dimension map). |
+| [`.params()`](#params-function) | function | Caller-chosen VALUES mapped into the theme. |
 | [`.styles()`](#styles-function) | function | Raw-CSS escape hatch for what the dimension model can't express. |
 | [`.compose()`](#compose-function) | function | Wrap the component in named higher-order components. |
 | [`.statics()`](#statics-function) | function | Attach arbitrary static metadata. |
@@ -372,10 +374,45 @@ const Button2 = rs({ name: 'Button2', component: Element })
 
 - Passing a single string to a multi dimension and expecting array semantics — `multiple="rounded"` and `multiple={["rounded"]}` both work, but composing several values requires the array form
 - Expecting a transform value fn to see the raw app theme — transform-dimension value functions receive the theme accumulated from PRIOR dimensions (base + active state/size/variant), which is the whole point; read app-theme tokens in a dimension-level callback instead
-- Passing CSS to one instance (`css="…"`, `style={{ padding: 4 }}`) for a one-off look — add a named `.multiple()` modifier to the component and apply it by name. A caller-chosen VALUE is a typed prop of the primitive mapped to a modifier list; a product-wide look is a variant
+- Passing CSS to one instance (`css="…"`, `style={{ padding: 4 }}`) for a one-off look — add a named `.multiple()` modifier to the component and apply it by name. A caller-chosen VALUE is a `.params()` param; a product-wide look is a variant
 - Declaring a custom multi dimension as a bare string — `{ decorations: "decoration" }` is single-value; multi needs the object form `{ propName: "decoration", multi: true }`
 
 **See also:** `.states() / .sizes() / .variants()` · `rocketstyle`
+
+---
+
+### `.params()` `function`
+
+```ts
+<P extends Record<string, (value: V, theme, mode) => ThemeSlice>>(mappers: P) => RocketStyleComponent // adds props { [K in keyof P]?: V | (V | null)[] | Partial<Record<Breakpoint, V>> }
+```
+
+Caller-chosen VALUES mapped into the theme. Each key becomes an optional prop typed from the mapper's first parameter and widened to the responsive forms (single value, mobile-first array with `null` = inherit, breakpoint object); the framework splits a responsive value per breakpoint, so the mapper always sees ONE value, plus the app theme and the `mode(light, dark)` helper, and returns the same slice a `.theme()` / dimension value takes (pseudo groups included). Resolved with the dimension props into `$rocketstyle` and memoized by value (JSON of the prop), so equal values share one class and a signal-driven value swaps the class on the same node. Order: base theme → state / size / variant → params → `multiple` → transform `modifiers`; between params, a later-declared param wins within a breakpoint. Param props never reach the DOM. A later `.params()` overrides by key. A param named like a dimension or pseudo prop throws in dev. A look is a `.multiple()` modifier; a value is a param; a product-wide look is a variant.
+
+**Example**
+
+```tsx
+const Grid = el.config({ name: 'Grid' })
+  .theme(() => ({ display: 'grid' }))
+  .params({
+    columns: (n: number) => ({ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }),
+    min: (px: number) => ({ gridTemplateColumns: `repeat(auto-fit, minmax(${px}px, 1fr))` }),
+    pad: (step: 'small' | 'large', t) => ({ padding: t.spacing[step] }),
+  })
+
+<Grid columns={3} />
+<Grid columns={{ xs: 1, md: 3 }} />   // the mapper sees 1, then 3
+<Grid columns={[1, null, 3]} pad="small" />
+<Grid columns={cols()} />             // signal-driven: class swaps in place
+```
+
+**Common mistakes**
+
+- Reading a prop inside `.styles()` to vary CSS per instance — that path is not in the memo key, so instances with the same resolved theme share the first one's class; declare the value with `.params()`
+- Passing an object or array as ONE value — a param value is a scalar; an array or plain object is read as a responsive value (per breakpoint)
+- Naming a param like an Element prop the base also takes (`gap`, `tag`) — the param swallows it (params are never forwarded)
+
+**See also:** `.multiple() / .modifiers()` · `.theme()` · `.attrs()`
 
 ---
 
@@ -620,7 +657,7 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough
 
 > **Note:** useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both.
 
-> **No styles through props: a one-off look is a .multiple() modifier:** A look for some instances is a named, typed modifier (`.multiple({ threeUp: { … } })`, applied as `multiple="threeUp"` or `multiple={["threeUp", compact() && "dense"]}`); it is a theme slice, so it is type-checked, composes, and always beats `.theme()` and state / size / variant. A responsive slice wins from its first breakpoint up and keeps the earlier value below it (`mergeTheme` in utils/theme.ts; a mobile-first array survives the light/dark walk). A caller-chosen value is a typed prop of the primitive mapped to a modifier list; a product-wide look is a variant. The `css` prop of the Element underneath remains the escape hatch for a selector or an at-rule (tagged template or callback, no raw string), rendered into `@layer instance` after `@layer rocketstyle`: `@layer elements, rocketstyle, instance;`.
+> **No styles through props: a one-off look is a .multiple() modifier:** A look for some instances is a named, typed modifier (`.multiple({ threeUp: { … } })`, applied as `multiple="threeUp"` or `multiple={["threeUp", compact() && "dense"]}`); it is a theme slice, so it is type-checked, composes, and always beats `.theme()` and state / size / variant. A responsive slice wins from its first breakpoint up and keeps the earlier value below it (`mergeTheme` in utils/theme.ts; a mobile-first array survives the light/dark walk). A caller-chosen value is a `.params()` param (`columns={{ xs: 1, md: 3 }}`, typed from its mapper, after variants and before `multiple`); a product-wide look is a variant. The `css` prop of the Element underneath remains the escape hatch for a selector or an at-rule (tagged template or callback, no raw string), rendered into `@layer instance` after `@layer rocketstyle`: `@layer elements, rocketstyle, instance;`.
 
 > **Layout vs CSS split:** With Element-based bases, layout props go in `.attrs()` (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block`) and visual CSS goes in `.theme()`. CSS property names follow the unistyle convention (`borderWidthTop`, not `borderTopWidth`).
 

@@ -73,6 +73,27 @@ export type DimensionStyle<CT> = [keyof CT] extends [never]
   ? DeepPartial<CT>
   : DeepPartial<CT> & { [P in Exclude<PseudoGroup, keyof CT>]?: DeepPartial<CT> | undefined }
 
+/**
+ * A `.params()` mapper: one caller-chosen value (plus the app theme and the
+ * `mode(light, dark)` helper) to a theme slice.
+ */
+export type ParamMapper<TH = any, CT = any> = (value: any, theme: TH, mode: ThemeModeCallback) => DimensionStyle<CT>
+
+/**
+ * The prop a `.params()` mapper gets: its value type, or one per breakpoint
+ * (mobile-first array, `null` = keep the smaller breakpoint's value, or a
+ * breakpoint object). The framework splits a responsive value; the mapper
+ * always sees one value.
+ */
+export type ParamValue<V> =
+  | V
+  | readonly (V | null | undefined)[]
+  | Partial<Record<BreakpointKeys, V | null | undefined>>
+
+export type ParamProps<P extends Record<string, ParamMapper>> = {
+  [K in keyof P]?: ParamValue<Parameters<P[K]>[0]> | undefined
+}
+
 export type DimensionResult<CT, T = any> = Record<
   string,
   | boolean

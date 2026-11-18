@@ -19,7 +19,7 @@ const warnRawCss = (text: string): void => {
     console.warn(
       `[Pyreon] A raw CSS string was passed to the \`css\` prop ("${text.slice(0, 60)}"). ` +
         'Give the component a named modifier instead (`.multiple({ threeUp: { gridTemplateColumns: { md: "repeat(3, 1fr)" } } })`, ' +
-        "applied as multiple={['threeUp']}), or write the escape hatch as a tagged template: css={css`…`} or css={(css) => css`…`}.",
+        "applied as multiple={['threeUp']}), a typed .params() param for a caller-chosen value (columns={3}), or write the escape hatch as a tagged template: css={css`…`} or css={(css) => css`…`}.",
     )
   }
 }

@@ -101,7 +101,7 @@ export const noThemePropsInStyle: Rule = {
             message:
               `Inline \`style\` on <${tag}> sets ${owned.map((k: string) => `\`${k}\``).join(', ')}, which the theme owns. ` +
               `Give the component a named modifier (\`${tag}.multiple({ look: { ${owned[0]}: … } })\`, applied as \`multiple="look"\`), ` +
-              'a typed prop, or a variant. Inline style stays for computed values (a transform, a measured size).',
+              `a typed param (\`${tag}.params({ value: (v) => ({ ${owned[0]}: v }) })\`), or a variant. Inline style stays for computed values (a transform, a measured size).`,
             span: getSpan(attr),
           })
         }

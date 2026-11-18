@@ -761,7 +761,7 @@ function detectCssPropOnComponent(ctx: DetectContext, node: ts.JsxAttribute): vo
     ctx,
     node,
     'css-prop-on-component',
-    `\`css\` on <${tagName}> passes CSS through a prop. A one-off look is a named, typed modifier on the component, applied by name: \`const Styled = ${tagName}.multiple({ look: { gridTemplateColumns: { md: 'repeat(3, 1fr)' } } })\` then \`<Styled multiple="look" />\` (compose with \`multiple={['look', cond && 'other']}\`). A caller-chosen value is a typed prop of the component; a product-wide look is a variant. Keep \`css\` (a tagged \`css\` template or a callback, never a raw string) only for a selector or an at-rule.`,
+    `\`css\` on <${tagName}> passes CSS through a prop. A one-off look is a named, typed modifier on the component, applied by name: \`const Styled = ${tagName}.multiple({ look: { gridTemplateColumns: { md: 'repeat(3, 1fr)' } } })\` then \`<Styled multiple="look" />\` (compose with \`multiple={['look', cond && 'other']}\`). A caller-chosen value is a typed \`.params()\` param (\`${tagName}.params({ columns: (n: number) => ({ … }) })\` then \`columns={{ xs: 1, md: 3 }}\`); a product-wide look is a variant. Keep \`css\` (a tagged \`css\` template or a callback, never a raw string) only for a selector or an at-rule.`,
     getNodeText(ctx, node),
     `multiple="look" /* after ${tagName}.multiple({ look: { … } }) */`,
     false,

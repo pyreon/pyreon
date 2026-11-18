@@ -26,7 +26,7 @@ import { calculateHocsFuncs } from './utils/compose'
 import { getDimensionsMap } from './utils/dimensions'
 import { createStaticsChainingEnhancers, createStaticsEnhancers } from './utils/statics'
 import { calculateStyles } from './utils/styles'
-import { getDimensionThemes, getTheme, getThemeByMode, getThemeFromChain } from './utils/theme'
+import { getDimensionThemes, getParamsTheme, getTheme, getThemeByMode, getThemeFromChain } from './utils/theme'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -77,6 +77,8 @@ const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) => {
       ? chainOptions(opts.priorityAttrs, [])
       : chainOptions(opts.priorityAttrs, defaultOpts.priorityAttrs),
     statics: { ...defaultOpts.statics, ...opts.statics },
+    // `.params()` merges by key: a later call overrides a param of the same name.
+    params: opts.params ? { ...defaultOpts.params, ...opts.params } : defaultOpts.params,
     compose: componentChanged ? { ...opts.compose } : { ...defaultOpts.compose, ...opts.compose },
     ...chainOrOptions(CONFIG_KEYS, opts, defaultOpts),
     ...chainReservedKeyOptions([...defaultOpts.dimensionKeys, ...STYLING_KEYS], opts, defaultOpts),
@@ -189,7 +191,9 @@ const rocketComponent: RocketComponent = (options) => {
   // Static portion of omit keys — PSEUDO_KEYS + filterAttrs + 'pseudo' are definition-scoped.
   // RESERVED_STYLING_PROPS_KEYS is dimension-dependent but also cached per definition.
   // 'pseudo' is included here so we can skip the destructuring spread of mergedProps.
-  const STATIC_OMIT_KEYS = ['pseudo', ...PSEUDO_KEYS, ...(options.filterAttrs ?? [])]
+  // `.params()` names: read into the theme below, never forwarded (no DOM attribute).
+  const PARAM_KEYS = options.params ? Object.keys(options.params) : []
+  const STATIC_OMIT_KEYS = ['pseudo', ...PSEUDO_KEYS, ...PARAM_KEYS, ...(options.filterAttrs ?? [])]
   // Pre-built Set for omit() — avoids per-call Set allocation. Built once the
   // dimension-dependent reserved keys are known (first mount), then reused.
   const _omitSetCache = new WeakMap<string[], Set<string>>()
@@ -401,6 +405,17 @@ const rocketComponent: RocketComponent = (options) => {
         const v = propV !== undefined ? propV : localV
         key += '|' + (v === undefined ? '' : v ? '1' : '0')
       }
+      // Param values join the key by VALUE (JSON: `1` and `'1'` differ, a
+      // breakpoint object or array by content), so equal values across
+      // instances share the entry, the `$rocketstyle` identity and the class.
+      // Reading a signal-driven param here tracks it, like a dimension prop.
+      let paramValues: Record<string, unknown> | undefined
+      for (const k of PARAM_KEYS) {
+        let v = propsRec[k]
+        if (typeof v === 'function') v = (v as () => unknown)()
+        key += '|' + (v == null ? '' : JSON.stringify(v))
+        if (v != null) (paramValues ??= {})[k] = v
+      }
 
       // Cache lookup. SizedMap with lru:true does the touch-on-read
       // internally, so the get() hit path no longer needs the explicit
@@ -479,6 +494,8 @@ const rocketComponent: RocketComponent = (options) => {
         baseTheme: currentModeBaseTheme,
         transformKeys: options.transformKeys,
         appTheme: theme,
+        params: paramValues && getParamsTheme(options.params!, paramValues, theme, mode, cssVarsOn),
+        multiKeys: options.multiKeys,
       })
 
       // $rocketstate carries dimension state + pseudo flags so the styler
@@ -707,6 +724,24 @@ const rocketComponent: RocketComponent = (options) => {
     },
 
     statics: (opts: any) => cloneAndEnhance(options, { statics: opts }),
+
+    params: (map: NonNullable<Configuration['params']>) => {
+      if (process.env.NODE_ENV !== 'production') {
+        const taken = new Set<string>([
+          ...(options.dimensionValues as string[]),
+          ...PSEUDO_AND_META_KEYS,
+          'pseudo',
+        ])
+        const clashing = Object.keys(map).filter((k) => taken.has(k))
+        if (clashing.length > 0) {
+          throw new Error(
+            `[Pyreon] rocketstyle "${componentName}": .params() name(s) ${clashing.map((k) => `\`${k}\``).join(', ')} ` +
+              'collide with a dimension or pseudo-state prop of this component. Rename the param.',
+          )
+        }
+      }
+      return cloneAndEnhance(options, { params: map })
+    },
 
     getStaticDimensions: (theme: any) => {
       const themes = getDimensionThemes(theme, options)

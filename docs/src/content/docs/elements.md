@@ -206,7 +206,7 @@ const Grid = el
 <Grid multiple={['threeUp', compact() && 'dense']} />
 ```
 
-A modifier is a theme slice: it takes every value form a `.theme()` value takes, its keys are type-checked, and it is merged over the theme and the `state` / `size` / `variant` slices, so it always wins. A caller-chosen value (a column count, a padding step) is a typed prop of the primitive that maps to a modifier list; a product-wide look is a variant. See [Rocketstyle](/docs/rocketstyle#one-off-looks-add-a-modifier-do-not-pass-styles).
+A modifier is a theme slice: it takes every value form a `.theme()` value takes, its keys are type-checked, and it is merged over the theme and the `state` / `size` / `variant` slices, so it always wins. A caller-chosen value (a column count, a padding step) is a `.params()` param (`<Grid columns={{ xs: 1, md: 3 }} />`); a product-wide look is a variant. See [Rocketstyle](/docs/rocketstyle#one-off-looks-add-a-modifier-do-not-pass-styles).
 
 Elements' base layout, a rocketstyle component's `.theme()` and the `css` escape hatch each render into their own cascade layer, declared once as `@layer elements, rocketstyle, instance;`. When you need CSS a theme value cannot express (a selector, an at-rule), `css` is the escape hatch, written as a tagged template (``css={css`…`}`` or ``css={(css) => css`…`}``); it lands in `instance`, above the theme. A raw CSS string is not accepted. CSS that is not in a layer (your own stylesheet) still beats all three layers.
 

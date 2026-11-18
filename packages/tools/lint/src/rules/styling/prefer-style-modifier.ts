@@ -16,10 +16,11 @@ import {
 /**
  * No styles through props. A one-off look of a rocketstyle component is a
  * named, typed modifier on the component (`.multiple({ threeUp: { … } })`),
- * applied by name (`<Grid multiple="threeUp" />`); it goes through the theme
- * pipeline, so it is type-checked, composes, and cannot lose to `.theme()`.
- * A caller-chosen value is a typed prop of the component; a product-wide look
- * is a variant. The `css` prop stays as the escape hatch for a selector or an
+ * applied by name (`<Grid multiple="threeUp" />`); a caller-chosen value is a
+ * typed `.params()` param (`<Grid columns={{ xs: 1, md: 3 }} />`); a
+ * product-wide look is a variant. All go through the theme pipeline, so they
+ * are type-checked, compose, and cannot lose to `.theme()`. The message puts
+ * the param snippet first when the CSS interpolates a value. The `css` prop stays as the escape hatch for a selector or an
  * at-rule a theme value cannot express; this rule flags every use on a
  * component so each one carries a suppression comment with its reason.
  *
@@ -58,13 +59,26 @@ function declarationsOf(value: any): string | null {
   return `{ ${entries.join(', ')} }`
 }
 
+/** Whether the CSS depends on a value computed at the call site (an interpolation or a callback). */
+function dependsOnValue(value: any): boolean {
+  const v = unwrapTs(value)
+  if (v?.type === 'TaggedTemplateExpression') return (v.quasi?.expressions?.length ?? 0) > 0
+  return v?.type === 'ArrowFunctionExpression' || v?.type === 'FunctionExpression' || v?.type === 'TemplateLiteral'
+}
+
 function message(tag: string, value: any): string {
   const body = declarationsOf(value) ?? '{ /* the declarations, as .theme() keys */ }'
+  const look =
+    `a fixed look is a named modifier: \`const Styled = ${tag}.multiple({ look: ${body} })\` then \`<Styled multiple="look" />\` ` +
+    "(compose with `multiple={['look', cond && 'other']}`)"
+  const param =
+    `a caller-chosen value is a typed param: \`const Styled = ${tag}.params({ value: (v: number) => ({ /* theme keys using v */ }) })\` ` +
+    'then `<Styled value={…} />` (responsive forms like `value={{ xs: 1, md: 3 }}` work)'
+  const [first, second] = dependsOnValue(value) ? [param, look] : [look, param]
+
   return (
-    `\`css\` on <${tag}> passes CSS through a prop. Give the component a named modifier and apply it by name: ` +
-    `\`const Styled = ${tag}.multiple({ look: ${body} })\` then \`<Styled multiple="look" />\` ` +
-    "(compose with `multiple={['look', cond && 'other']}`). Keys are unistyle's (`borderWidthTop`), values may be responsive (`{ md: … }`). " +
-    'A caller-chosen value belongs in a typed prop of the component; a product-wide look in `.variants()`. ' +
+    `\`css\` on <${tag}> passes CSS through a prop. Instead, ${first}; ${second}; a product-wide look is a variant. ` +
+    "Keys are unistyle's (`borderWidthTop`). " +
     'Keep `css` only for a selector or an at-rule, with `// pyreon-lint-disable-next-line pyreon/prefer-style-modifier` and the reason.'
   )
 }

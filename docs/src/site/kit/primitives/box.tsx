@@ -1,11 +1,21 @@
 import { h } from '@pyreon/core'
-import type { SpaceKey } from '../../theme'
+import { space, type SpaceKey } from '../../theme'
 import { el } from '../bases'
-import { paddingModifiers, paddingOf } from './modifiers'
 import { flagsOf, layoutFlags, type LayoutProps, passThrough } from './shared'
 import type { Responsive } from './space'
 
-const BoxBase = el.config({ name: 'Box' }).multiple(() => ({ ...layoutFlags(), ...paddingModifiers() }))
+// Declaration order is priority order: within a breakpoint a later param
+// wins, so the more specific sides come after `pad`.
+const BoxBase = el
+  .config({ name: 'Box' })
+  .multiple(layoutFlags)
+  .params({
+    pad: (k: SpaceKey) => ({ paddingTop: space[k], paddingRight: space[k], paddingBottom: space[k], paddingLeft: space[k] }),
+    padY: (k: SpaceKey) => ({ paddingTop: space[k], paddingBottom: space[k] }),
+    padX: (k: SpaceKey) => ({ paddingLeft: space[k], paddingRight: space[k] }),
+    padTop: (k: SpaceKey) => ({ paddingTop: space[k] }),
+    padBottom: (k: SpaceKey) => ({ paddingBottom: space[k] }),
+  })
 
 type Padding = Responsive<SpaceKey>
 
@@ -24,18 +34,14 @@ export interface BoxProps extends LayoutProps {
 
 /**
  * A block with padding from the space scale, and nothing else: its children
- * stretch to its width and stack without a gap (use `Stack` for a gap). The
- * padding props map to `pad-<side>-<bp>-<key>` modifiers; within a breakpoint
- * the more specific prop wins.
+ * stretch to its width and stack without a gap (use `Stack` for a gap).
  */
 export function Box(props: BoxProps) {
-  const padding = paddingOf([
-    [props.pad, ['top', 'right', 'bottom', 'left']],
-    [props.padY, ['top', 'bottom']],
-    [props.padX, ['left', 'right']],
-    [props.padTop, ['top']],
-    [props.padBottom, ['bottom']],
-  ])
+  const { pad, padX, padY, padTop, padBottom } = props
 
-  return h(BoxBase, { ...passThrough(props), contentAlignX: 'block', multiple: [...flagsOf(props), ...padding] }, props.children)
+  return h(
+    BoxBase,
+    { ...passThrough(props), contentAlignX: 'block', multiple: flagsOf(props), pad, padX, padY, padTop, padBottom },
+    props.children,
+  )
 }

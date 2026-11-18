@@ -2,7 +2,24 @@
 '@pyreon/rocketstyle': minor
 ---
 
-A one-off look is a named, typed `.multiple()` modifier, and that now works for every value a `.theme()` takes:
+New `.params()` for caller-chosen values, and a one-off look as a named, typed `.multiple()` modifier now works for every value a `.theme()` takes.
+
+```tsx
+const Grid = el.config({ name: 'Grid' })
+  .theme(() => ({ display: 'grid' }))
+  .params({
+    columns: (n: number) => ({ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }),
+    pad: (step: 'small' | 'large', t) => ({ padding: t.spacing[step] }),
+  })
+
+<Grid columns={{ xs: 1, md: 3 }} pad="small" />
+<Grid columns={cols()} />   // signal-driven: the class swaps on the same node
+```
+
+- **`.params(mappers)`**: each key becomes an optional prop typed from the mapper's first parameter and widened to the responsive forms (single value, mobile-first array, breakpoint object). The framework splits a responsive value per breakpoint; the mapper gets one value, the app theme and `mode`, and returns a theme slice (pseudo groups included). Params resolve into `$rocketstyle` with the dimension props, after state / size / variant and before `multiple`, and join the memo key by value, so equal values share one class. Param props are never forwarded. A later `.params()` overrides by name; a param named like a dimension or pseudo-state prop throws in development. `params` is now a reserved dimension name.
+- **Native**: `.multiple()` / `.modifiers()` looks and `.params()` values are not lowered to iOS / Android yet. Each is now a named compile warning and its props are stripped at the use site (before: dropped silently, props passed to the primitive).
+
+The modifier fixes:
 
 ```tsx
 const Grid = BaseGrid.multiple({

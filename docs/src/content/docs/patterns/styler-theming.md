@@ -71,7 +71,13 @@ const both = <Grid multiple={['threeUp', compact() && 'dense']} />   // falsy en
 
 A modifier takes everything a `.theme()` value takes (single value, mobile-first array, breakpoint object, `mode(light, dark)`, `hover` / `focus` / `active` / `disabled` groups), its keys are type-checked, and it is merged over the theme, so it always wins over `.theme()` and over `state` / `size` / `variant`. A responsive modifier wins from its first breakpoint up and keeps the theme's value below it. A signal-driven list swaps the class on the same node.
 
-- A **caller-chosen value** (a column count, a padding step) is a typed prop of the primitive that maps to a modifier list in its render function.
+- A **caller-chosen value** (a column count, a padding step) is a `.params()` param: a mapper from one value to a theme slice, typed and responsive at the call site.
+
+```tsx
+const Grid = BaseGrid.params({ columns: (n: number) => ({ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }) })
+
+const responsive = <Grid columns={{ xs: 1, md: 3 }} />   // the mapper sees 1, then 3
+```
 - A **product-wide look** is a variant (`.variants()`).
 - `css` stays as the escape hatch for a selector or an at-rule, written as a tagged template or callback (a raw string does not type-check), with a lint suppression saying why. `pyreon/prefer-style-modifier` flags it; `pyreon/no-raw-css-string` errors on raw CSS text.
 - Under `rocketstyle({ useBooleans: true })` a modifier is also a boolean prop (`<Grid threeUp />`); Pyreon's own factories use the default `useBooleans: false`.

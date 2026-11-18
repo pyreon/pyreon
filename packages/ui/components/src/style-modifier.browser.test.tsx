@@ -12,6 +12,7 @@ import {
   ESCAPE_CSS,
   Grid,
   HoverSwatch,
+  ParamGrid,
   SSR_CSS,
   SSR_HTML,
   styleModifierTree,
@@ -150,6 +151,49 @@ describe.skipIf(!IS_BROWSER_RUNNER)('style modifiers (real Chromium)', () => {
     expect(style(container, 'bool').rowGap).toBe('4px')
   })
 
+  it('params: a responsive column count at three widths', async () => {
+    const container = mount(h(ParamGrid, { id: 'p', columns: { xs: 1, md: 2, lg: 4 } }, ...cells(), h('i', {}, 'd')))
+    expect(columns(container, 'p')).toBe(4) // 1024px
+    await viewport(800)
+    expect(columns(container, 'p')).toBe(2)
+    await viewport(400)
+    expect(columns(container, 'p')).toBe(1)
+  })
+
+  it('params: a mobile-first array keeps the theme value where it says null', async () => {
+    const container = mount(h(ParamGrid, { id: 'p', gapPx: [null, null, 12] }, ...cells()))
+    expect(style(container, 'p').rowGap).toBe('12px')
+    await viewport(400)
+    expect(style(container, 'p').rowGap).toBe('4px')
+  })
+
+  it('params: a signal-driven value swaps the class on the same node', () => {
+    const n = signal(2)
+    const container = mount(h(ParamGrid, withGetter({ id: 'p' }, 'columns', () => n()), ...cells(), h('i', {}, 'd')))
+    const node = container.querySelector('#p')
+    const cls = node!.className
+    expect(columns(container, 'p')).toBe(2)
+    n.set(4)
+    expect(container.querySelector('#p')).toBe(node)
+    expect(node!.className).not.toBe(cls)
+    expect(columns(container, 'p')).toBe(4)
+    expect(node!.hasAttribute('columns')).toBe(false)
+  })
+
+  it('params: a pseudo group from the mapper, and the order variant < param < multiple', async () => {
+    const container = mount(
+      h(ParamGrid, { id: 'v', variant: 'loud' }, 'x'),
+      h(ParamGrid, { id: 'p', variant: 'loud', tint: 'rgb(3, 4, 5)' }, 'x'),
+      h(ParamGrid, { id: 'm', variant: 'loud', tint: 'rgb(3, 4, 5)', multiple: ['accent'] }, 'x'),
+    )
+    expect(style(container, 'v').color).toBe('rgb(8, 8, 8)')
+    expect(style(container, 'p').color).toBe('rgb(3, 4, 5)')
+    expect(style(container, 'm').color).toBe('rgb(200, 100, 50)')
+    const { userEvent } = await import('vitest/browser')
+    await userEvent.hover(container.querySelector<HTMLElement>('#p')!)
+    expect(style(container, 'p').color).toBe('rgb(1, 150, 2)')
+  })
+
   it('the css escape hatch (a css`…` result) still beats the theme', () => {
     const container = mount(h(Swatch as never, { id: 'escape', css: ESCAPE_CSS }, 'x'))
     expect(style(container, 'escape').color).toBe('rgb(5, 6, 7)')
@@ -174,6 +218,7 @@ describe.skipIf(!IS_BROWSER_RUNNER)('style modifiers (real Chromium)', () => {
       bare: columns(host, 'bare'),
       bool: style(host, 'bool').rowGap,
       escape: style(host, 'escape').color,
+      params: [columns(host, 'params'), style(host, 'params').color],
       classes: [...host.querySelectorAll('[id]')].map((n) => n.className),
     })
     const beforeHydrate = read()

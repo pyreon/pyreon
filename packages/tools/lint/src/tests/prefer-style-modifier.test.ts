@@ -53,10 +53,22 @@ describe('pyreon/prefer-style-modifier', () => {
     expect(out[0]!.message).toContain('<Styled multiple="look" />')
   })
 
-  it('a css with a selector or interpolation gets the generic snippet', () => {
-    const out = findings(`export const A = () => <Card css={(c) => c\`&:hover { color: red; }\`} />`)
+  it('a css with a selector gets the generic modifier snippet; both snippets are always offered', () => {
+    const out = findings(`export const A = () => <Card css={css\`&:hover { color: red; }\`} />`)
     expect(out).toHaveLength(1)
     expect(out[0]!.message).toContain('Card.multiple({ look: { /* the declarations, as .theme() keys */ } })')
+    expect(out[0]!.message).toContain('Card.params({ value: (v: number) =>')
+    expect(out[0]!.message.indexOf('.multiple(')).toBeLessThan(out[0]!.message.indexOf('.params('))
+  })
+
+  it('a css that interpolates a value (or is a callback) puts the param snippet first', () => {
+    for (const src of [
+      `export const A = (p) => <Grid css={css\`grid-template-columns: repeat(\${p.n}, 1fr);\`} />`,
+      `export const A = () => <Grid css={(c) => c\`gap: 8px;\`} />`,
+    ]) {
+      const [d] = findings(src)
+      expect(d!.message.indexOf('.params(')).toBeLessThan(d!.message.indexOf('.multiple('))
+    }
   })
 
   it('fires on a member-expression component', () => {

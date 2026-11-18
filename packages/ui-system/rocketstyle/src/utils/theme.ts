@@ -172,13 +172,17 @@ const overlayResponsive = (base: unknown, top: unknown, order: string[]): unknow
 
 // `merge(target, source)` from ui-core (in place, plain objects deep-merged),
 // with the responsive rule above. Without breakpoints it is exactly `merge`.
+const breakpointOrder = (theme: Record<string, any> | undefined): string[] => {
+  const bps = theme?.breakpoints
+  return isObj(bps) ? Object.keys(bps).sort((a, b) => bps[a] - bps[b]) : []
+}
+
 export const mergeTheme = (
   target: Record<string, any>,
   source: Record<string, any> | null | undefined,
   theme: Record<string, any> | undefined,
 ): Record<string, any> => {
-  const bps = theme?.breakpoints
-  const order = isObj(bps) ? Object.keys(bps).sort((a, b) => bps[a] - bps[b]) : []
+  const order = breakpointOrder(theme)
   if (order.length === 0 || source == null) return merge(target, source as Record<string, any>)
   const run = (tgt: Record<string, any>, src: Record<string, any>): Record<string, any> => {
     for (const key of Object.keys(src)) {
@@ -195,6 +199,51 @@ export const mergeTheme = (
   }
 
   return run(target, source)
+}
+
+// --------------------------------------------------------
+// Params: caller-chosen values mapped to a theme slice
+// --------------------------------------------------------
+// `.params({ columns: (n) => ({ … }) })`. The mapper sees ONE value; a
+// responsive prop (mobile-first array or breakpoint object) is mapped per
+// breakpoint and each slice's leaves are placed at that breakpoint, then the
+// slices overlay in breakpoint order (`mergeTheme`). Pseudo groups (plain
+// objects) are walked, so `hover: { color }` lands as `hover: { color: { md } }`.
+type ParamMapper = (value: any, theme: any, mode: ThemeModeCallback) => Record<string, any>
+
+const atBreakpoint = (slice: Record<string, any>, bp: string): Record<string, any> => {
+  const out: Record<string, any> = {}
+  for (const k in slice) out[k] = isObj(slice[k]) ? atBreakpoint(slice[k], bp) : { [bp]: slice[k] }
+  return out
+}
+
+export const getParamsTheme = (
+  mappers: Record<string, ParamMapper>,
+  values: Record<string, unknown>,
+  appTheme: Record<string, any>,
+  mode: 'light' | 'dark',
+  cssVars: boolean,
+): Record<string, any> => {
+  const modeFactory = cssVars ? varThemeModeCallback : themeModeCallback
+  const order = breakpointOrder(appTheme)
+  const keys = Object.keys(values)
+  const map = (key: string, v: unknown) => mappers[key]!(v, appTheme, modeFactory)
+  const out: Record<string, any> = {}
+
+  if (order.length === 0 || keys.every((k) => !Array.isArray(values[k]) && !isObj(values[k]))) {
+    for (const k of keys) mergeTheme(out, map(k, values[k]), appTheme)
+  } else {
+    // Breakpoint by breakpoint, params in declaration order: within one
+    // breakpoint a later param wins, as later declarations in one media rule.
+    order.forEach((bp, i) => {
+      for (const k of keys) {
+        const v = valueAt(values[k], order, i)
+        if (v != null) mergeTheme(out, atBreakpoint(map(k, v), bp), appTheme)
+      }
+    })
+  }
+
+  return cssVars ? out : getThemeByMode(out, mode)
 }
 
 // --------------------------------------------------------
@@ -288,13 +337,16 @@ export type GetTheme = (params: {
   transformKeys?: Partial<Record<string, true>>
   /** App theme from context — passed to transform dimension callbacks. */
   appTheme?: Record<string, any>
+  /** The `.params()` slice; merged after the single-value dimensions, before the first multi-value one. */
+  params?: Record<string, any> | undefined
+  multiKeys?: Partial<Record<string, true>> | undefined
 }) => Record<string, unknown>
 
 // Shared empty object for pseudo-state defaults — allocated once, reused by
 // every getTheme call. Frozen to prevent accidental mutation.
 const EMPTY_PSEUDO: Record<string, never> = Object.freeze({}) as Record<string, never>
 
-export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKeys, appTheme }) => {
+export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKeys, appTheme, params, multiKeys }) => {
   // Spread baseTheme into result — this is unavoidable (we must not mutate
   // the cached baseTheme). But we merge dimension slices in-place onto
   // finalTheme instead of creating a new {} target each merge() call.
@@ -307,7 +359,17 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
   ) => Record<string, any>
   const deferredTransforms: TransformFn[] = []
 
+  // Order: base theme → single-value dimensions (state, size, variant) →
+  // params → multi-value dimensions (multiple; a look can still override a
+  // parameter) → transform dimensions last.
+  let pendingParams = params
+
   for (const key in rocketstate) {
+    if (pendingParams && multiKeys?.[key]) {
+      mergeTheme(finalTheme, pendingParams, appTheme)
+      pendingParams = undefined
+    }
+
     const value = rocketstate[key]
     if (value == null) continue
     const keyTheme: Record<string, any> = themes[key] ?? {}
@@ -332,6 +394,8 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
       mergeValue(value as string)
     }
   }
+
+  if (pendingParams) mergeTheme(finalTheme, pendingParams, appTheme)
 
   // Apply transform dimension values last with the fully accumulated theme
   for (let i = 0; i < deferredTransforms.length; i++) {

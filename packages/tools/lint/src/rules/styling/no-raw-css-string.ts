@@ -30,6 +30,7 @@ const PROPS = new Set(['css', ...SLOT_CSS_PROPS])
 const message = (prop: string) =>
   `Raw CSS text in \`${prop}\` is unchecked. For a look, give the component a named modifier ` +
   "(`.multiple({ look: { gridTemplateColumns: { md: 'repeat(3, 1fr)' } } })`, applied as `multiple=\"look\"`); " +
+  'for a caller-chosen value, a typed param (`.params({ columns: (n: number) => ({ … }) })`, applied as `columns={3}`); ' +
   `for a selector or an at-rule, write the escape hatch as a tagged template (\`${prop}={css\`…\`}\` or \`${prop}={(css) => css\`…\`}\`).`
 
 export const noRawCssString: Rule = {
