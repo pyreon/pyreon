@@ -1,6 +1,6 @@
 import { weekStartOption, type WeekOptions } from './arith'
 import { daysFromCivil, daysIn, dayOfYearOf, isLeap, isoWeeksInYear, weekdayOf } from './civil'
-import { badRange, badValue, DATE_HINT, DATETIME_HINT } from './errors'
+import { badRange, badValue, DATE_HINT, DATETIME_HINT, show } from './errors'
 import { checkDay, isPlainDateTime, isPlainYearMonth, packedYearMonth, parseDateAt, writeDay, writeYMD } from './text'
 import type { PlainDate, PlainDateTime, PlainYearMonth, Weekday } from './types'
 
@@ -11,26 +11,46 @@ function civilOf(fn: string, value: unknown): number {
   return ok ? parseDateAt(value as string) : badValue(fn, `${DATE_HINT} or ${DATETIME_HINT}`, value)
 }
 
-/** ISO weekday: 1 Monday ... 7 Sunday. */
+/**
+ * ISO weekday: 1 is Monday, 7 is Sunday (unlike `Date#getDay`, where Sunday is 0).
+ *
+ * @example dayOfWeek('2026-11-18') // => 3
+ * @example dayOfWeek('2026-11-22') // => 7
+ */
 export function dayOfWeek(value: PlainDate | PlainDateTime): Weekday {
   const p = civilOf('dayOfWeek', value)
 
   return weekdayOf(daysFromCivil(p >> 9, (p >> 5) & 15, p & 31)) as Weekday
 }
 
-/** 1 for January 1st ... 365 or 366. */
+/**
+ * 1 for January 1st through 365 or 366.
+ *
+ * @example dayOfYear('2024-12-31') // => 366
+ */
 export function dayOfYear(value: PlainDate | PlainDateTime): number {
   const p = civilOf('dayOfYear', value)
 
   return dayOfYearOf(p >> 9, (p >> 5) & 15, p & 31)
 }
 
-/** ISO 8601 week number, 1-53: week 1 is the week with the year's first Thursday, and weeks start on Monday. */
+/**
+ * ISO 8601 week number, 1-53: week 1 contains the year's first Thursday and weeks start on Monday. Days at the turn of the
+ * year can belong to a week of the neighbouring year: see `yearOfWeek`.
+ *
+ * @example weekOfYear('2027-01-01') // => 53
+ * @example weekOfYear('2024-12-30') // => 1
+ */
 export function weekOfYear(value: PlainDate | PlainDateTime): number {
   return isoWeek('weekOfYear', value) % 100
 }
 
-/** The ISO week-based year: 2025-12-29 belongs to week 1 of 2026, and 2027-01-01 to week 53 of 2026. */
+/**
+ * The ISO week-based year of a date: 2027-01-01 belongs to week 53 of 2026.
+ *
+ * @example yearOfWeek('2027-01-01') // => 2026
+ * @example yearOfWeek('2024-12-30') // => 2025
+ */
 export function yearOfWeek(value: PlainDate | PlainDateTime): number {
   return Math.floor(isoWeek('yearOfWeek', value) / 100)
 }
@@ -47,13 +67,24 @@ function isoWeek(fn: string, value: unknown): number {
   return week > isoWeeksInYear(year) ? (year + 1) * 100 + 1 : year * 100 + week
 }
 
+/**
+ * Number of days in the month of the value (months are 1-12 in the strings it reads).
+ *
+ * @example daysInMonth('2024-02') // => 29
+ * @example daysInMonth('2026-11-18') // => 30
+ */
 export function daysInMonth(value: PlainDate | PlainDateTime | PlainYearMonth): number {
   const p = typeof value === 'string' && value.length === 7 ? packedYearMonth('daysInMonth', value) : civilOf('daysInMonth', value)
 
   return daysIn(p >> 9, (p >> 5) & 15)
 }
 
-/** Whether a year (or the year of a date) is a Gregorian leap year. */
+/**
+ * Whether a year, or the year of a value, is a Gregorian leap year (1900 and 2100 are not, 2000 is).
+ *
+ * @example isLeapYear(2000) // => true
+ * @example isLeapYear('2100-06') // => false
+ */
 export function isLeapYear(value: number | PlainDate | PlainDateTime | PlainYearMonth): boolean {
   if (typeof value === 'number') return Number.isInteger(value) && value >= 1 && value <= 9999 ? isLeap(value) : badRange('isLeapYear', `year must be an integer from 1 to 9999, got ${value}`)
   if (isPlainYearMonth(value)) return isLeap(packedYearMonth('isLeapYear', value) >> 9)
@@ -61,7 +92,11 @@ export function isLeapYear(value: number | PlainDate | PlainDateTime | PlainYear
   return isLeap(civilOf('isLeapYear', value) >> 9)
 }
 
-/** Every date from `start` to `end`, both included; empty when `end` is before `start`. */
+/**
+ * Every date from `start` to `end`, both included; empty when `end` is before `start`.
+ *
+ * @example eachDay('2026-02-27', '2026-03-02') // => ['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02']
+ */
 export function eachDay(start: PlainDate, end: PlainDate): PlainDate[] {
   const ps = civilOf('eachDay', start)
   const pe = civilOf('eachDay', end)
@@ -86,20 +121,28 @@ export function eachDay(start: PlainDate, end: PlainDate): PlainDate[] {
   return out
 }
 
+/**
+ * Options of `monthGrid`: `weekStart` (ISO weekday, 1 Monday ... 7 Sunday) and `weeks` (`'auto'` or 6).
+ *
+ * @example const options: MonthGridOptions = { weekStart: 7, weeks: 6 }
+ */
 export interface MonthGridOptions extends WeekOptions {
   /** `'auto'` (default): only the weeks the month occupies (4 to 6 rows). `6`: always six rows, so a picker keeps its height. */
   weeks?: 6 | 'auto'
 }
 
 /**
- * The weeks of a month as rows of seven dates, including the days of the neighbouring months that fill the first and
- * last row. `weekStart` is 1 (Monday, default) to 7 (Sunday).
+ * The weeks of a month as rows of seven dates, including the days of the neighbouring months that fill the first and last
+ * row. `weekStart` is an ISO weekday (1 Monday, the default, to 7 Sunday); `weeks: 6` always returns six rows.
+ *
+ * @example monthGrid('2026-11')[0] // => ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01']
+ * @example monthGrid('2026-02', { weekStart: 7 }).length // => 4
  */
 export function monthGrid(month: PlainYearMonth | PlainDate, options?: MonthGridOptions): PlainDate[][] {
   const weekStart = weekStartOption('monthGrid', options)
   const weeks = options?.weeks ?? 'auto'
 
-  if (weeks !== 'auto' && weeks !== 6) return badRange('monthGrid', `weeks must be 'auto' or 6, got ${String(weeks)}`)
+  if (weeks !== 'auto' && weeks !== 6) return badRange('monthGrid', `weeks must be 'auto' or 6, got ${show(weeks)}`)
   const p = typeof month === 'string' && month.length === 7 ? packedYearMonth('monthGrid', month) : civilOf('monthGrid', month)
   const first = daysFromCivil(p >> 9, (p >> 5) & 15, 1)
   const lead = (weekdayOf(first) - weekStart + 7) % 7
@@ -183,6 +226,7 @@ function platformWeekInfo(locale: string): WeekInfo | undefined {
 }
 
 function weekInfoOf(locale: string): WeekInfo {
+  if (typeof locale !== 'string') return badValue('weekStartOf', 'a locale tag such as "en-US"', locale)
   const cached = weekCache.get(locale)
 
   if (cached !== undefined) return cached
@@ -195,12 +239,22 @@ function weekInfoOf(locale: string): WeekInfo {
   return info
 }
 
-/** First day of the week for a locale (`cs` is 1, `en-US` is 7). An unknown or malformed tag gives Monday. */
+/**
+ * First day of the week for a locale as an ISO weekday (1 Monday ... 7 Sunday). A malformed tag gives Monday.
+ *
+ * @example weekStartOf('en-US') // => 7
+ * @example weekStartOf('cs') // => 1
+ */
 export function weekStartOf(locale: string): Weekday {
   return weekInfoOf(locale).firstDay
 }
 
-/** The weekend days of a locale as ISO weekdays (`en-US` is `[6, 7]`). The array is shared and frozen. */
+/**
+ * The weekend days of a locale as ISO weekdays (1 Monday ... 7 Sunday). The array is shared and frozen.
+ *
+ * @example weekendOf('en-US') // => [6, 7]
+ * @example weekendOf('he-IL') // => [5, 6]
+ */
 export function weekendOf(locale: string): readonly Weekday[] {
   return weekInfoOf(locale).weekend
 }

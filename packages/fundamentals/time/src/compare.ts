@@ -1,8 +1,9 @@
 import { startOf, weekStartOption, type WeekOptions } from './arith'
 import { badRange, badValue } from './errors'
 import { packedYearMonth, parseDateAt, parseTimeAt, parseWall, SHAPE_DATE, SHAPE_DT, SHAPE_TIME, SHAPE_YM, shapeOf } from './text'
-import type { Comparable, Unit } from './types'
-import { unitSlot } from './duration'
+import type { Comparable, TimeZone, Unit } from './types'
+import { unitMs, unitSlot } from './duration'
+import { toPlainDateTime } from './zone'
 
 const KINDS = 'a PlainDate, PlainDateTime, PlainYearMonth, PlainTime or Instant'
 
@@ -36,9 +37,11 @@ function compareMixed(a: string, b: string): -1 | 0 | 1 {
 }
 
 /**
- * -1, 0 or 1. Two values of the same shape and the same length (the common case) compare as plain strings, which is
- * correct because every field is fixed-width and zero-padded; that fast path does not validate, so validate at the
- * boundary with `isPlainDate` and friends. Values written at different precision (`'14:30'` and `'14:30:00'`) are parsed.
+ * -1, 0 or 1. Same-length strings compare as plain strings (every field is fixed-width and zero-padded); that fast path does
+ * not validate, so validate at the boundary with `isPlainDate` and friends. Values written at different precision are parsed.
+ *
+ * @example compare('2026-11-18', '2026-11-19') // => -1
+ * @example compare('14:30', '14:30:00') // => 0
  */
 export function compare<T extends Comparable>(a: T, b: T): -1 | 0 | 1 {
   if (typeof a === 'number' && typeof b === 'number') return order(a, b)
@@ -49,10 +52,20 @@ export function compare<T extends Comparable>(a: T, b: T): -1 | 0 | 1 {
   return order2(a, b)
 }
 
+/**
+ * Whether `a` is strictly before `b`.
+ *
+ * @example isBefore('2026-01-01', '2026-01-02') // => true
+ */
 export function isBefore<T extends Comparable>(a: T, b: T): boolean {
   return compare(a, b) < 0
 }
 
+/**
+ * Whether `a` is strictly after `b`.
+ *
+ * @example isAfter('2026-01-01', '2026-01-02') // => false
+ */
 export function isAfter<T extends Comparable>(a: T, b: T): boolean {
   return compare(a, b) > 0
 }
@@ -68,12 +81,39 @@ function civilOf(fn: string, v: string): number {
 }
 
 /**
- * Whether `a` and `b` are the same moment, or, with a `unit`, fall in the same year, month, week or day (or hour, minute,
- * second, millisecond for a PlainDateTime).
+ * Options of `isSame`: `weekStart` (ISO weekday) and `zone`, required to compare Instants by a calendar unit.
+ *
+ * @example const options: IsSameOptions = { zone: 'Europe/Prague' }
  */
-export function isSame<T extends Comparable>(a: T, b: T, unit?: Unit, options?: WeekOptions): boolean {
+export interface IsSameOptions extends WeekOptions {
+  zone?: TimeZone
+}
+
+/** Instants fall in the same minute, second or millisecond in every zone; larger units depend on the zone. */
+function isSameInstant(a: number, b: number, unit: Unit, options: IsSameOptions | undefined): boolean {
+  const slot = unitSlot('isSame', unit)
+
+  if (slot >= 5) return Math.floor(a / unitMs(slot)) === Math.floor(b / unitMs(slot))
+  const zone = options?.zone
+
+  if (zone === undefined) {
+    return badRange('isSame', `comparing Instants by "${unit}" needs a time zone, because the calendar ${unit} depends on where you are: isSame(a, b, "${unit}", { zone: "Europe/Prague" }).`)
+  }
+
+  return isSame<Comparable>(toPlainDateTime(a, zone), toPlainDateTime(b, zone), unit, options)
+}
+
+/**
+ * Whether `a` and `b` are the same moment, or, with a `unit`, fall in the same year, month, week, day (or hour, minute,
+ * second, millisecond for a PlainDateTime). Two Instants compared by a calendar unit need `options.zone`.
+ *
+ * @example isSame('2026-11-18', '2026-11-30', 'month') // => true
+ * @example isSame(Date.UTC(2026, 10, 18, 22, 30), Date.UTC(2026, 10, 18, 23, 30), 'day', { zone: 'Europe/Prague' }) // => false
+ */
+export function isSame<T extends Comparable>(a: T, b: T, unit?: Unit, options?: IsSameOptions): boolean {
   if (unit === undefined) return compare(a, b) === 0
-  if (typeof a !== 'string' || typeof b !== 'string') return badRange('isSame', 'a unit needs PlainDate, PlainDateTime or PlainYearMonth values, not Instants')
+  if (typeof a === 'number' && typeof b === 'number') return isSameInstant(a, b, unit, options)
+  if (typeof a !== 'string' || typeof b !== 'string') return badValue('isSame', 'two values of the same shape', typeof a === 'string' ? b : a)
   const slot = unitSlot('isSame', unit)
 
   if (slot === 0 || slot === 1) {
@@ -91,12 +131,20 @@ export function isSame<T extends Comparable>(a: T, b: T, unit?: Unit, options?: 
   return compare(startOf(a as never, unit), startOf(b as never, unit)) === 0
 }
 
-/** The earliest value. At least one is required. */
+/**
+ * The earliest value. At least one is required.
+ *
+ * @example min('2026-03-01', '2026-01-01', '2026-02-01') // => '2026-01-01'
+ */
 export function min<T extends Comparable>(...values: [T, ...T[]]): T {
   return pick('min', values, -1)
 }
 
-/** The latest value. At least one is required. */
+/**
+ * The latest value. At least one is required.
+ *
+ * @example max('2026-03-01', '2026-01-01', '2026-02-01') // => '2026-03-01'
+ */
 export function max<T extends Comparable>(...values: [T, ...T[]]): T {
   return pick('max', values, 1)
 }
@@ -112,7 +160,11 @@ function pick<T extends Comparable>(fn: string, values: readonly T[], direction:
   return best
 }
 
-/** `value` limited to the range `lo` ... `hi` (inclusive). */
+/**
+ * `value` limited to `lo` ... `hi` inclusive. Throws when `lo` is after `hi`.
+ *
+ * @example clamp('2026-05-01', '2026-01-01', '2026-03-01') // => '2026-03-01'
+ */
 export function clamp<T extends Comparable>(value: T, lo: T, hi: T): T {
   if (compare(lo, hi) > 0) return badRange('clamp', 'the lower bound is after the upper bound')
 

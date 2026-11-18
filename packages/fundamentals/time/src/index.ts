@@ -1,2 +1,2 @@
 export * from './core'
-export { now, setClock, today } from './clock'
+export { daysFromToday, isToday, isTomorrow, isYesterday, now, setClock, today } from './clock'

@@ -1,9 +1,13 @@
 import { add } from './arith'
 import { isTimeZone, toInstant, toPlainDate, toPlainDateTime, toPlainTime, addInstant, offsetAt } from './zone'
-import { badRange } from './errors'
+import { badRange, show } from './errors'
 import type { Disambiguation, Duration, Instant, PlainDate, PlainDateTime, PlainTime, TimeZone } from './types'
 
-/** The zone-taking functions with one zone applied. Every member is a plain function created once by `inZone`. */
+/**
+ * The object `inZone` returns.
+ *
+ * @example const z: ZonedToolkit = inZone('UTC')
+ */
 export interface ZonedToolkit {
   readonly zone: TimeZone
   /** Today's date in the zone (`Date.now()`). */
@@ -21,13 +25,13 @@ export interface ZonedToolkit {
 }
 
 /**
- * The zone-taking functions bound to `zone`, for code that works in one zone. Create it once (module scope or a setup
- * function) and call the members; a call does no more work than the unbound function. The zone is validated here, so a typo
- * fails at the `inZone` call and not at some later conversion. Importing it pulls every zone function into the bundle.
+ * The zone-taking functions with one zone applied. Create it once; the zone is validated here.
+ *
+ * @example inZone('Europe/Prague').toPlainDate(Date.UTC(2026, 10, 18, 23, 30)) // => '2026-11-19'
  */
 export function inZone(zone: TimeZone): ZonedToolkit {
   if (!isTimeZone(zone)) {
-    return badRange('inZone', `unknown time zone ${JSON.stringify(zone)}. Use an IANA name such as "Europe/Prague" or "UTC"; check user input with isTimeZone().`)
+    return badRange('inZone', `unknown time zone ${show(zone)}. Use an IANA name such as "Europe/Prague" or "UTC"; check user input with isTimeZone().`)
   }
   const startOfDay = (instant: Instant): Instant => toInstant(toPlainDate(instant, zone), zone)
 

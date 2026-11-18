@@ -17,6 +17,11 @@ import {
 import type { Comparable, Duration, PlainDate, PlainDateTime, TimeZone, Unit } from './types'
 import { offsetMsAt } from './zone'
 
+/**
+ * Options of `diff`: `zone`, needed to diff two Instants in years, months, weeks or days.
+ *
+ * @example const options: DiffOptions = { zone: 'Europe/Prague' }
+ */
 export interface DiffOptions {
   /** Needed to diff two Instants in years, months, weeks or days (a calendar day depends on the zone). */
   zone?: TimeZone
@@ -119,16 +124,18 @@ function diffInstants(fn: string, a: number, b: number, slot: number, zone: Time
 }
 
 /**
- * Whole `unit`s from `a` to `b`, truncated toward zero; the sign is the direction (`diff('2026-11-18', '2026-12-24',
- * 'day')` is 36, swap the arguments for -36). Works on PlainDate, PlainDateTime, PlainYearMonth, PlainTime and
- * Instant (Instants need `options.zone` for calendar units). A month or year is complete only when the later value's day
- * and time have reached the earlier one's, as in Temporal: `diff('2026-01-31', '2026-02-28', 'month')` is 0.
+ * Whole `unit`s from `a` to `b`, truncated toward zero; the sign is the direction. Works on PlainDate, PlainDateTime,
+ * PlainYearMonth, PlainTime and Instant (Instants need `options.zone` for year, month, week and day). A month counts as complete
+ * when adding it (day clamped) does not pass `b`, as in Temporal's truncated `until`.
+ *
+ * @example diff('2026-11-18', '2026-12-24', 'day') // => 36
+ * @example diff('2026-01-31', '2026-02-28', 'month') // => 1
  */
 export function diff<T extends Comparable>(a: T, b: T, unit: Unit, options?: DiffOptions): number {
   const slot = unitSlot('diff', unit)
   const shape = shapeOfAny('diff', a)
 
-  if (shapeOfAny('diff', b) !== shape && !(shape === SHAPE_DT || shape === SHAPE_TIME)) {
+  if (shapeOfAny('diff', b) !== shape) {
     return badValue('diff', 'two values of the same shape', b)
   }
   if (shape === SHAPE_INSTANT) return diffInstants('diff', a as number, b as number, slot, options?.zone)
@@ -142,7 +149,12 @@ export function diff<T extends Comparable>(a: T, b: T, unit: Unit, options?: Dif
   return shape === SHAPE_TIME ? diffTimes('diff', x, y, slot) : badValue('diff', 'a PlainDate, PlainDateTime, PlainYearMonth, PlainTime or Instant', a)
 }
 
-/** The span from `a` to `b` broken down from years to days (and hours to milliseconds for a PlainDateTime). */
+/**
+ * The span from `a` to `b` broken down from years to days (and hours to milliseconds for a PlainDateTime), as Temporal's
+ * `until` with `largestUnit: 'year'`. All fields share the direction's sign.
+ *
+ * @example between('2026-01-31', '2026-03-01') // => { years: 0, months: 1, days: 1 }
+ */
 export function between(a: PlainDate | PlainDateTime, b: PlainDate | PlainDateTime): Duration {
   const shape = typeof a === 'string' ? shapeOf(a) : -1
 

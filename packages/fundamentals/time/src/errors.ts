@@ -1,8 +1,19 @@
 /** A value of the wrong shape: a programmer error, so it throws. Validate user input with the `isPlain*` guards first. */
 export function badValue(fn: string, expected: string, got: unknown): never {
-  const shown = typeof got === 'string' ? JSON.stringify(got) : String(got)
+  const shown = show(got)
 
   throw new TypeError(`[Pyreon] ${fn}: expected ${expected}, got ${shown}. Check user input with the matching isPlain* guard before calling.`)
+}
+
+/** A short, safe rendering of any value for an error message: it never throws, whatever the value's `toString` does. */
+export function show(value: unknown): string {
+  try {
+    const text = typeof value === 'string' ? JSON.stringify(value) : typeof value === 'object' && value !== null ? Object.prototype.toString.call(value) : String(value)
+
+    return text.length > 60 ? `${text.slice(0, 57)}...` : text
+  } catch {
+    return '(a value that cannot be printed)'
+  }
 }
 
 /** A well-formed value that falls outside what the package can represent or an option that is not allowed. */

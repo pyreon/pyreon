@@ -1,4 +1,4 @@
-import { badRange, badValue } from './errors'
+import { badRange, badValue, show } from './errors'
 import type { Duration, Unit } from './types'
 
 /** Slots of the normalised duration in `dur`. */
@@ -20,14 +20,34 @@ export const dur = new Float64Array(8)
 
 const MS_PER_UNIT = [0, 0, 604_800_000, 86_400_000, 3_600_000, 60_000, 1000, 1]
 
+/** Milliseconds carried by the fractional part of weeks, days, hours, minutes and seconds in the duration being loaded. */
+let fractionMs = 0
+
+/**
+ * One field of the duration. Years and months must be whole (a fractional month has no fixed length). Weeks, days, hours,
+ * minutes and seconds may be fractional: the whole part stays in its field and the fraction becomes milliseconds
+ * (`{ days: 1.5 }` is one day and twelve hours), rounded to the nearest millisecond once all fields are read. Milliseconds
+ * must be whole.
+ */
 function put(fn: string, key: string, slot: number, v: number | undefined, sign: number): void {
   if (v === undefined) {
     dur[slot] = 0
 
     return
   }
-  if (!Number.isInteger(v)) badRange(fn, `duration.${key} must be an integer, got ${v}. Whole units only: use milliseconds for a finer step.`)
-  dur[slot] = v * sign + 0
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
+    badRange(fn, `duration.${key} must be a finite number, got ${show(v)}. Use whole numbers such as { ${key}: 2 }.`)
+  }
+  const whole = Math.trunc(v)
+
+  if (whole !== v) {
+    if (slot === Y || slot === MO) {
+      badRange(fn, `duration.${key} must be a whole number, got ${v}: a fractional ${key === 'years' ? 'year' : 'month'} has no fixed length (months are 28 to 31 days). Use { days } or { weeks } for a fraction of a month, or { months: 1, days: 15 }.`)
+    }
+    if (slot === MS) badRange(fn, `duration.milliseconds must be a whole number, got ${v}: the finest unit is one millisecond.`)
+    fractionMs += (v - whole) * unitMs(slot) * sign
+  }
+  dur[slot] = whole * sign + 0
 }
 
 const DURATION_KEYS = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds']
@@ -47,6 +67,7 @@ function warnUnknownKeys(fn: string, d: Duration): void {
  */
 export function loadDuration(fn: string, d: Duration, sign: number): number {
   if (d === null || typeof d !== 'object') return badValue(fn, 'a Duration such as { days: 1 }', d)
+  fractionMs = 0
   put(fn, 'years', Y, d.years, sign)
   put(fn, 'months', MO, d.months, sign)
   put(fn, 'weeks', W, d.weeks, sign)
@@ -55,6 +76,7 @@ export function loadDuration(fn: string, d: Duration, sign: number): number {
   put(fn, 'minutes', MI, d.minutes, sign)
   put(fn, 'seconds', S, d.seconds, sign)
   put(fn, 'milliseconds', MS, d.milliseconds, sign)
+  if (fractionMs !== 0) dur[MS] = dur[MS]! + Math.round(fractionMs)
   if (process.env.NODE_ENV !== 'production') warnUnknownKeys(fn, d)
 
   return durationSign(fn)
@@ -106,7 +128,7 @@ export function unitSlot(fn: string, unit: Unit): number {
     case 'millisecond':
       return MS
     default:
-      return badRange(fn, `unknown unit ${JSON.stringify(unit)}. Use year, month, week, day, hour, minute, second or millisecond (singular).`)
+      return badRange(fn, `unknown unit ${show(unit)}. Use year, month, week, day, hour, minute, second or millisecond (singular).`)
   }
 }
 
@@ -116,8 +138,11 @@ export function unitMs(slot: number): number {
 }
 
 /**
- * The length of a duration in milliseconds. Only fixed-length fields count: a week is seven 24-hour days and a day is
- * 24 hours. Months and years have no fixed length, so they throw.
+ * The length of a duration in milliseconds. A week is seven 24-hour days and a day is 24 hours; years and months have no
+ * fixed length and throw.
+ *
+ * @example toMilliseconds({ hours: 1, minutes: 30 }) // => 5400000
+ * @example toMilliseconds({ days: 1.5 }) // => 129600000
  */
 export function toMilliseconds(duration: Duration): number {
   loadDuration('toMilliseconds', duration, 1)

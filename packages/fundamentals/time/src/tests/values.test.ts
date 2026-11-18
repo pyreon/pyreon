@@ -153,9 +153,10 @@ describe('add and subtract', () => {
   })
 
   it('rejects fractional and non-finite fields, time on a PlainDate, days on a PlainYearMonth', () => {
-    expect(() => add('2026-01-01', { days: 1.5 })).toThrow(/\[Pyreon\] add: duration.days must be an integer/)
-    expect(() => add('2026-01-01', { days: Number.NaN })).toThrow(/integer/)
-    expect(() => add('2026-01-01', { days: Number.POSITIVE_INFINITY })).toThrow(/integer/)
+    expect(() => add('2026-01-01', { days: 1.5 })).toThrow(/\[Pyreon\] add: a PlainDate has no time of day/)
+    expect(() => add('2026-01-01', { months: 1.5 })).toThrow(/\[Pyreon\] add: duration.months must be a whole number/)
+    expect(() => add('2026-01-01', { days: Number.NaN })).toThrow(/finite number/)
+    expect(() => add('2026-01-01', { days: Number.POSITIVE_INFINITY })).toThrow(/finite number/)
     expect(() => add('2026-01-01', { hours: 1 })).toThrow(/PlainDate has no time of day/)
     expect(() => add('2026-01', { days: 1 })).toThrow(/PlainYearMonth moves by years and months only/)
     expect(() => add('2026-01-01', null as unknown as { days: 1 })).toThrow(/\[Pyreon\] add: expected a Duration/)
@@ -313,7 +314,7 @@ describe('compare and friends', () => {
     expect(isSame('2026-11-18T10:00', '2026-11-18T10:59', 'hour')).toBe(true)
     expect(isSame('2026-11-18T10:00', '2026-11-18T11:00', 'hour')).toBe(false)
     expect(isSame('2026-11', '2026-11', 'month')).toBe(true)
-    expect(() => isSame(1, 2, 'day')).toThrow(/not Instants/)
+    expect(() => isSame(1, 2, 'day')).toThrow(/needs a time zone/)
   })
 })
 

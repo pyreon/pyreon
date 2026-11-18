@@ -1,5 +1,5 @@
 import { civilFromDays, daysFromCivil, daysIn, MAX_DAY, MIN_DAY, MS_PER_DAY } from './civil'
-import { badRange, badValue, DATE_HINT, DATETIME_HINT, TIME_HINT, YEARMONTH_HINT } from './errors'
+import { badRange, badValue, show, DATE_HINT, DATETIME_HINT, TIME_HINT, YEARMONTH_HINT } from './errors'
 import type { PlainDate, PlainDateTime, PlainTime, PlainYearMonth } from './types'
 
 /**
@@ -115,10 +115,21 @@ export function parseWall(s: string): number {
   return p < 0 || tod < 0 ? Number.NaN : daysFromCivil(p >> 9, (p >> 5) & 15, p & 31) * MS_PER_DAY + tod
 }
 
+/**
+ * Strict guard: exactly `YYYY-MM-DD`, zero-padded, a real calendar day, years 0001-9999. Never throws.
+ *
+ * @example isPlainDate('2026-02-30') // => false
+ * @example isPlainDate('2026-11-18') // => true
+ */
 export function isPlainDate(x: unknown): x is PlainDate {
   return typeof x === 'string' && x.length === 10 && parseDateAt(x) >= 0
 }
 
+/**
+ * Guard for `YYYY-MM` (month 01-12). Never throws.
+ *
+ * @example isPlainYearMonth('2026-13') // => false
+ */
 export function isPlainYearMonth(x: unknown): x is PlainYearMonth {
   return (
     typeof x === 'string' &&
@@ -130,10 +141,22 @@ export function isPlainYearMonth(x: unknown): x is PlainYearMonth {
   )
 }
 
+/**
+ * Guard for `HH:MM`, `HH:MM:SS` or `HH:MM:SS.f` to `.fff`. Never throws.
+ *
+ * @example isPlainTime('14:30:05.250') // => true
+ * @example isPlainTime('24:00') // => false
+ */
 export function isPlainTime(x: unknown): x is PlainTime {
   return typeof x === 'string' && parseTimeAt(x, 0) >= 0
 }
 
+/**
+ * Guard for a PlainDate, an upper-case `T`, a PlainTime. Offsets and zone names are not allowed. Never throws.
+ *
+ * @example isPlainDateTime('2026-11-18T14:30') // => true
+ * @example isPlainDateTime('2026-11-18T14:30Z') // => false
+ */
 export function isPlainDateTime(x: unknown): x is PlainDateTime {
   return typeof x === 'string' && !Number.isNaN(parseWall(x))
 }
@@ -232,10 +255,14 @@ export function packedYearMonth(fn: string, s: unknown): number {
 // ---------------------------------------------------------------------------------------------------------------------
 
 function intIn(fn: string, name: string, v: number, lo: number, hi: number): number {
-  return Number.isInteger(v) && v >= lo && v <= hi ? v : badRange(fn, `${name} must be an integer from ${lo} to ${hi}, got ${v}`)
+  return Number.isInteger(v) && v >= lo && v <= hi ? v : badRange(fn, `${name} must be an integer from ${lo} to ${hi}, got ${show(v)}`)
 }
 
-/** Build a PlainDate from numbers. Throws on an impossible date (`plainDate(2026, 2, 30)`). */
+/**
+ * Build a PlainDate from numbers. The month is 1-12. Throws on an impossible date.
+ *
+ * @example plainDate(2026, 11, 18) // => '2026-11-18'
+ */
 export function plainDate(year: number, month: number, day: number): PlainDate {
   const y = intIn('plainDate', 'year', year, 1, 9999)
   const m = intIn('plainDate', 'month', month, 1, 12)
@@ -244,11 +271,20 @@ export function plainDate(year: number, month: number, day: number): PlainDate {
   return writeYMD(y, m, d)
 }
 
+/**
+ * Build a PlainYearMonth from numbers. The month is 1-12.
+ *
+ * @example plainYearMonth(2026, 11) // => '2026-11'
+ */
 export function plainYearMonth(year: number, month: number): PlainYearMonth {
   return writeYM(intIn('plainYearMonth', 'year', year, 1, 9999), intIn('plainYearMonth', 'month', month, 1, 12))
 }
 
-/** Build a PlainTime from numbers, written at the least precision that holds the value: `14:30`, `14:30:05`, `14:30:05.250`. */
+/**
+ * Build a PlainTime from numbers, written at the least precision that holds the value.
+ *
+ * @example plainTime(14, 30, 0, 250) // => '14:30:00.250'
+ */
 export function plainTime(hour: number, minute = 0, second = 0, millisecond = 0): PlainTime {
   const h = intIn('plainTime', 'hour', hour, 0, 23)
   const mi = intIn('plainTime', 'minute', minute, 0, 59)
@@ -258,6 +294,11 @@ export function plainTime(hour: number, minute = 0, second = 0, millisecond = 0)
   return writeTod(h * 3_600_000 + mi * 60_000 + s * 1000 + ms, LEVEL_MINUTE) as PlainTime
 }
 
+/**
+ * The numeric fields of a date. The month is 1-12 (not 0-11 as in `Date`).
+ *
+ * @example dateParts('2026-11-18') // => { year: 2026, month: 11, day: 18 }
+ */
 export function dateParts(value: PlainDate | PlainDateTime): { year: number; month: number; day: number } {
   const ok = typeof value === 'string' && (value.length === 10 ? parseDateAt(value) >= 0 : isPlainDateTime(value))
 
@@ -267,6 +308,11 @@ export function dateParts(value: PlainDate | PlainDateTime): { year: number; mon
   return { year: p >> 9, month: (p >> 5) & 15, day: p & 31 }
 }
 
+/**
+ * The numeric fields of a time of day.
+ *
+ * @example timeParts('14:30:05.250') // => { hour: 14, minute: 30, second: 5, millisecond: 250 }
+ */
 export function timeParts(value: PlainTime | PlainDateTime): { hour: number; minute: number; second: number; millisecond: number } {
   const dt = typeof value === 'string' && value.length >= 16 && value.charCodeAt(10) === 84
   const tod = typeof value === 'string' && (!dt || parseDateAt(value) >= 0) ? parseTimeAt(value, dt ? 11 : 0) : -1

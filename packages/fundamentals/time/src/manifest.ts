@@ -177,11 +177,12 @@ compare('2026-11-18T14:30', '2026-11-18T14:30:00.001')  // => -1
     {
       name: 'isSame',
       kind: 'function',
-      signature: '<T extends Comparable>(a: T, b: T, unit?: Unit, options?: { weekStart?: Weekday }) => boolean',
-      summary: 'Whether `a` and `b` are the same moment, or, with a `unit`, fall in the same year, month, week, day (or hour, minute, second, millisecond for a PlainDateTime).',
+      signature: '<T extends Comparable>(a: T, b: T, unit?: Unit, options?: { weekStart?: Weekday; zone?: TimeZone }) => boolean',
+      summary: 'Whether `a` and `b` are the same moment, or, with a `unit`, fall in the same year, month, week, day (or hour, minute, second, millisecond for a PlainDateTime). Two Instants compared by year, month, week, day or hour need `options.zone`, because the calendar day depends on where you are; without it the call throws and says so.',
       example: `isSame('2026-11-18', '2026-11-30', 'month')   // => true
 isSame('2026-11-15', '2026-11-16', 'week')    // => false
-isSame('2026-11-15', '2026-11-16', 'week', { weekStart: 7 })  // => true`,
+isSame('2026-11-15', '2026-11-16', 'week', { weekStart: 7 })  // => true
+isSame(Date.UTC(2026, 10, 18, 22, 30), Date.UTC(2026, 10, 18, 23, 30), 'day', { zone: 'Europe/Prague' })  // => false`,
       stability: 'experimental',
       since: '0.53.0',
     },
@@ -411,13 +412,66 @@ isPlainYearMonth('2026-13')                   // => false`,
     {
       name: 'parseInstant',
       kind: 'function',
-      signature: '(text: string) => Instant | null',
+      signature: '(text: string, options?: { lenient?: boolean }) => Instant | null',
       summary:
-        'Parse an ISO 8601 timestamp that names its offset into an Instant, or `null`. Strict: upper-case `T` and `Z`, a `+hh:mm` offset with a colon, seconds required, an optional fraction of 1-9 digits truncated to milliseconds. A string without an offset is a wall-clock value, not a moment, so it is `null`: use `toInstant(value, zone)`. Never throws.',
+        'Parse an ISO 8601 timestamp that names its offset into an Instant, or `null`. Strict: upper-case `T` and `Z`, a `+hh:mm` offset with a colon, seconds required, an optional fraction of 1-9 digits truncated to milliseconds. A string without an offset is a wall-clock value, not a moment, so it is `null`: use `toInstant(value, zone)`. With `{ lenient: true }` it also accepts a space or lower-case `t` and `z`, `+0100` and `+01` offsets, missing seconds and unpadded fields. Never throws.',
       example: `parseInstant('2026-11-18T14:30:05Z')          // => Date.UTC(2026, 10, 18, 14, 30, 5)
 parseInstant('2026-11-18T14:30:05.250+01:00') // => Date.UTC(2026, 10, 18, 13, 30, 5, 250)
-parseInstant('2026-11-18T14:30:05')           // => null`,
+parseInstant('2026-11-18T14:30:05')           // => null
+parseInstant('2026-11-18 14:30:05+0100', { lenient: true })  // => Date.UTC(2026, 10, 18, 13, 30, 5)`,
       seeAlso: ['toInstant'],
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    {
+      name: 'parseISO',
+      kind: 'function',
+      signature: '(text: string) => PlainDate | PlainDateTime | PlainYearMonth | PlainTime | null',
+      summary:
+        'The lenient door: read an ISO-like string people and other systems produce and return the strict value it denotes, or `null`. Accepts a space or lower-case `t` between date and time, unpadded months, days and hours, a comma as the decimal mark, up to nine fraction digits (cut to milliseconds) and surrounding spaces. It never guesses: a string with an offset or `Z` is a moment, not a wall-clock value, so it is `null` (use `parseInstant(text, { lenient: true })`), and an impossible date is `null`. The strict guards stay strict. Never throws.',
+      example: `parseISO('2026-11-18 14:30')                  // => '2026-11-18T14:30'
+parseISO(' 2026-2-3 ')                        // => '2026-02-03'
+parseISO('2026-11-18T14:30Z')                 // => null`,
+      seeAlso: ['parseInstant', 'isPlainDate'],
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    {
+      name: 'daysFromToday',
+      kind: 'function',
+      signature: '(value: PlainDate | PlainDateTime | Instant, zone: TimeZone, now?: Instant) => number',
+      summary: 'Calendar days from today to the day `value` falls on, in `zone`: 0 today, -1 yesterday, 1 tomorrow. It counts calendar days, not 24-hour spans, so it is right on the 23- and 25-hour days of a DST change and around local midnight. An Instant is read in `zone`; a plain value is taken as the local date already. `now` is for tests; in `@pyreon/time` it defaults to the pinned clock.',
+      example: `daysFromToday('2026-11-17', 'Europe/Prague', Date.UTC(2026, 10, 18, 12))   // => -1
+daysFromToday(Date.UTC(2026, 10, 18, 23, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => 1`,
+      seeAlso: ['isToday', 'isSame'],
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    {
+      name: 'isToday',
+      kind: 'function',
+      signature: '(value: PlainDate | PlainDateTime | Instant, zone: TimeZone, now?: Instant) => boolean',
+      summary: 'Whether `value` falls on today\'s date in `zone`. 23:30 UTC is already tomorrow in Prague; this knows.',
+      example: `isToday(Date.UTC(2026, 10, 18, 22, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => true
+isToday(Date.UTC(2026, 10, 18, 23, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => false`,
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    {
+      name: 'isYesterday',
+      kind: 'function',
+      signature: '(value: PlainDate | PlainDateTime | Instant, zone: TimeZone, now?: Instant) => boolean',
+      summary: 'Whether `value` falls on yesterday\'s date in `zone`.',
+      example: `isYesterday('2026-11-17', 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => true`,
+      stability: 'experimental',
+      since: '0.53.0',
+    },
+    {
+      name: 'isTomorrow',
+      kind: 'function',
+      signature: '(value: PlainDate | PlainDateTime | Instant, zone: TimeZone, now?: Instant) => boolean',
+      summary: 'Whether `value` falls on tomorrow\'s date in `zone`.',
+      example: `isTomorrow('2026-11-19', 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => true`,
       stability: 'experimental',
       since: '0.53.0',
     },
@@ -642,7 +696,7 @@ nextMonthStart('2026-01-31')                  // => '2026-02-01'
     },
     {
       label: 'Throws versus returns',
-      note: 'The `isPlain*` guards, `isTimeZone` and `parseInstant` never throw. Every other function throws a `[Pyreon]` error on a value of the wrong shape (validate user input with a guard first), an unknown unit or zone, a mixed-sign duration, or a result outside years 0001-9999. Rendering code that must not throw belongs behind a guard or in `@pyreon/format`.',
+      note: 'The `isPlain*` guards, `isTimeZone`, `parseInstant` and `parseISO` never throw. Every other function throws a `[Pyreon]` error on a value of the wrong shape (validate user input with a guard first), an unknown unit or zone, a mixed-sign duration, or a result outside years 0001-9999. Rendering code that must not throw belongs behind a guard or in `@pyreon/format`.',
     },
     {
       label: 'Time zones',
@@ -651,6 +705,10 @@ nextMonthStart('2026-01-31')                  // => '2026-02-01'
     {
       label: 'Month arithmetic',
       note: '`add` clamps the day (Jan 31 + 1 month = Feb 28). `diff` counts a month as complete when that clamped addition does not pass the end, which is Temporal\'s truncated `until`; `between` returns Temporal\'s unrounded breakdown, where a month ends only when the day number is reached (2012-08-31 to 2051-02-28 is 38 years, 5 months, 28 days). The two can differ by one month at month ends, exactly as in Temporal.',
+    },
+    {
+      label: 'Durations',
+      note: 'Years and months must be whole numbers (a fractional month has no fixed length: use days or weeks). Weeks, days, hours, minutes and seconds may be fractional and balance down: `{ days: 1.5 }` is one day and twelve hours, rounded to the nearest millisecond. `{ milliseconds: 0.5 }`, NaN, Infinity and non-numbers throw. `-0` is `0`. A fraction that leaves a time of day cannot be added to a PlainDate, which throws and says to use a PlainDateTime.',
     },
     {
       label: 'Precision',

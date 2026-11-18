@@ -1,16 +1,22 @@
 import { badValue } from './errors'
+import { strictInstantText } from './lenient'
 import { parseDateAt, parseWall, SHAPE_DATE, SHAPE_DT, shapeOf } from './text'
 import { toInstant, toPlainDateTime } from './zone'
 import type { Instant, PlainDate, PlainDateTime, TimeZone } from './types'
 
-/** The runtime's own time zone, as `new Date(2026, 0, 1)` sees it (`'UTC'` when the platform cannot say). */
+/**
+ * The runtime's own time zone name (`'UTC'` when the platform cannot say).
+ *
+ * @example typeof localZone() // => 'string'
+ */
 export function localZone(): TimeZone {
   return new Intl.DateTimeFormat('en-US').resolvedOptions().timeZone || 'UTC'
 }
 
 /**
- * The wall-clock date and time of a `Date` in `zone` (default: the runtime's local zone). The inverse of `toDate` for a
- * PlainDateTime.
+ * The wall-clock date and time of a `Date` in `zone` (default: the runtime's local zone).
+ *
+ * @example fromDate(new Date(Date.UTC(2026, 10, 18, 13, 30)), 'Europe/Prague') // => '2026-11-18T14:30:00'
  */
 export function fromDate(date: Date, zone?: TimeZone): PlainDateTime {
   const t = date instanceof Date ? date.getTime() : Number.NaN
@@ -22,7 +28,8 @@ export function fromDate(date: Date, zone?: TimeZone): PlainDateTime {
 
 /**
  * A `Date` for an Instant, or for a wall-clock value in `zone` (default: the runtime's local zone, like `new Date(y, m, d)`).
- * A wall-clock time in a DST gap or overlap uses the `compatible` rule.
+ *
+ * @example toDate('2026-11-18T14:30', 'Europe/Prague').toISOString() // => '2026-11-18T13:30:00.000Z'
  */
 export function toDate(value: PlainDate | PlainDateTime | Instant, zone?: TimeZone): Date {
   if (typeof value === 'number') return new Date(value)
@@ -63,13 +70,31 @@ function parseOffset(s: string, at: number): number {
 }
 
 /**
- * Parse an ISO 8601 timestamp that names its offset (`'2026-11-18T14:30:05Z'`, `'2026-11-18T14:30:05.250+01:00'`) into an
- * Instant, or `null` when it is not one. Strict: upper-case `T` and `Z`, a two-digit offset with a colon, seconds
- * required, optional fraction of 1-9 digits (truncated to milliseconds), years 0001-9999. A string without an offset is a
- * wall-clock value, not a moment, so it is `null` here: use `toInstant(value, zone)`. Never throws.
+ * Parse an ISO 8601 timestamp that names its offset into an Instant, or `null`. Strict by default; `{ lenient: true }` also
+ * accepts a space or lower-case `t` and `z`, `+0100` and `+01` offsets, missing seconds and unpadded fields. Never throws.
+ *
+ * @example parseInstant('2026-11-18T14:30:05Z') // => Date.UTC(2026, 10, 18, 14, 30, 5)
+ * @example parseInstant('2026-11-18 14:30:05+0100', { lenient: true }) // => Date.UTC(2026, 10, 18, 13, 30, 5)
  */
-export function parseInstant(text: string): Instant | null {
-  if (typeof text !== 'string' || text.length < 20) return null
+export function parseInstant(text: string, options?: ParseInstantOptions): Instant | null {
+  if (typeof text !== 'string') return null
+  if (options?.lenient === true) return parseStrictInstant(strictInstantText(text) ?? text)
+
+  return parseStrictInstant(text)
+}
+
+/**
+ * Options of `parseInstant`: `lenient` (default false).
+ *
+ * @example const options: ParseInstantOptions = { lenient: true }
+ */
+export interface ParseInstantOptions {
+  /** Also accept a space or lower-case `t`/`z`, `+0100` and `+01` offsets, missing seconds and unpadded fields. Default false. */
+  lenient?: boolean
+}
+
+function parseStrictInstant(text: string): Instant | null {
+  if (text.length < 20) return null
   const wall = parseWall(text.slice(0, 19))
   let at = 19
   let ms = 0

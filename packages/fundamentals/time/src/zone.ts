@@ -1,7 +1,7 @@
 import { civilFromDays, daysFromCivil, MAX_DAY, MIN_DAY, MS_PER_DAY } from './civil'
 import { D, dur, loadDuration, loadedTimeMs, MO, W, Y } from './duration'
 import { shiftDay } from './arith'
-import { badRange, badValue, DATE_HINT, DATETIME_HINT } from './errors'
+import { badRange, badValue, DATE_HINT, DATETIME_HINT, show } from './errors'
 import { LEVEL_SECOND, parseDateAt, parseWall, SHAPE_DATE, SHAPE_DT, shapeOf, writeDay, writeTod, writeWall } from './text'
 import type { Disambiguation, Duration, Instant, PlainDate, PlainDateTime, PlainTime, TimeZone } from './types'
 
@@ -59,7 +59,7 @@ function entryOf(fn: string, zone: unknown): ZoneEntry {
   const made = build(zone)
 
   if (made === undefined) {
-    return badRange(fn, `unknown time zone ${JSON.stringify(zone)}. Use an IANA name such as "Europe/Prague" or "UTC"; check user input with isTimeZone().`)
+    return badRange(fn, `unknown time zone ${show(zone)}. Use an IANA name such as "Europe/Prague" or "UTC"; check user input with isTimeZone().`)
   }
   if (zones.size >= ZONE_LIMIT) zones.delete(zones.keys().next().value as string)
   zones.set(zone, made)
@@ -77,7 +77,13 @@ export function clearZoneCache(): void {
   zones.clear()
 }
 
-/** Whether the platform knows this time zone name. Never throws. */
+/**
+ * Whether the platform knows this time zone name. Never throws; use it to check data before calling the zone functions,
+ * which throw on an unknown zone.
+ *
+ * @example isTimeZone('Europe/Prague') // => true
+ * @example isTimeZone('Mars/Olympus') // => false
+ */
 export function isTimeZone(x: unknown): x is TimeZone {
   return typeof x === 'string' && x !== '' && (zones.has(x) || build(x) !== undefined)
 }
@@ -128,8 +134,14 @@ export function offsetMsAt(fn: string, zone: unknown, t: number): number {
   return zone === 'UTC' ? 0 : offsetIn(entryOf(fn, zone), fn, t)
 }
 
-/** Minutes east of UTC at `instant`: 120 for Europe/Prague in summer. (Fractional only in the pre-1900 local-mean-time eras of some zones.) */
+/**
+ * Minutes east of UTC at an instant.
+ *
+ * @example offsetAt(Date.UTC(2026, 6, 1), 'Europe/Prague') // => 120
+ */
 export function offsetAt(instant: Instant, zone: TimeZone): number {
+  if (typeof instant !== 'number' || !Number.isFinite(instant)) return badValue('offsetAt', 'an Instant (epoch milliseconds)', instant)
+
   return offsetMsAt('offsetAt', zone, instant) / 60_000 + 0
 }
 
@@ -140,18 +152,32 @@ function wallOfInstant(fn: string, instant: number, zone: unknown): number {
   if (typeof instant !== 'number' || !Number.isFinite(instant)) return badValue(fn, 'an Instant (epoch milliseconds)', instant)
   const wall = Math.floor(instant) + offsetMsAt(fn, zone, instant)
 
-  return wall >= MIN_WALL && wall < MAX_WALL ? wall : badRange(fn, `the local time of instant ${instant} in ${String(zone)} is outside years 0001-9999`)
+  return wall >= MIN_WALL && wall < MAX_WALL ? wall : badRange(fn, `the local time of instant ${instant} in ${show(zone)} is outside years 0001-9999`)
 }
 
-/** The wall-clock date and time of an instant in a zone: `toPlainDateTime(0, 'Europe/Prague')` is `'1970-01-01T01:00:00'`. */
+/**
+ * The wall-clock date and time of an instant in a zone.
+ *
+ * @example toPlainDateTime(0, 'Europe/Prague') // => '1970-01-01T01:00:00'
+ */
 export function toPlainDateTime(instant: Instant, zone: TimeZone): PlainDateTime {
   return writeWall(wallOfInstant('toPlainDateTime', instant, zone), LEVEL_SECOND)
 }
 
+/**
+ * The calendar date of an instant in a zone.
+ *
+ * @example toPlainDate(Date.UTC(2026, 10, 18, 23, 30), 'Asia/Tokyo') // => '2026-11-19'
+ */
 export function toPlainDate(instant: Instant, zone: TimeZone): PlainDate {
   return writeDay(Math.floor(wallOfInstant('toPlainDate', instant, zone) / MS_PER_DAY))
 }
 
+/**
+ * The time of day of an instant in a zone.
+ *
+ * @example toPlainTime(Date.UTC(2026, 10, 18, 13, 30), 'Europe/Prague') // => '14:30:00'
+ */
 export function toPlainTime(instant: Instant, zone: TimeZone): PlainTime {
   const wall = wallOfInstant('toPlainTime', instant, zone)
 
@@ -205,6 +231,11 @@ function wallText(wall: number): string {
   return writeWall(wall, LEVEL_SECOND)
 }
 
+/**
+ * Options of `toInstant`: `disambiguation` for a wall-clock time that does not exist or happens twice.
+ *
+ * @example const options: ToInstantOptions = { disambiguation: 'later' }
+ */
 export interface ToInstantOptions {
   /** Default `'compatible'`: the first of two, and the shifted-forward instant for a time that does not exist. */
   disambiguation?: Disambiguation
@@ -215,12 +246,15 @@ function modeOf(fn: string, options: ToInstantOptions | undefined): Disambiguati
 
   return mode === 'compatible' || mode === 'earlier' || mode === 'later' || mode === 'reject'
     ? mode
-    : badRange(fn, `disambiguation must be 'compatible', 'earlier', 'later' or 'reject', got ${JSON.stringify(mode)}`)
+    : badRange(fn, `disambiguation must be 'compatible', 'earlier', 'later' or 'reject', got ${show(mode)}`)
 }
 
 /**
- * The instant at which a wall-clock time happens in a zone. A PlainDate means its midnight. A time that falls in a DST
- * gap or overlap follows `options.disambiguation` (Temporal's four modes).
+ * The instant at which a wall-clock time happens in a zone. A PlainDate means its midnight. A time in a DST gap or overlap
+ * follows `options.disambiguation`: `compatible` (default), `earlier`, `later` or `reject` (Temporal's modes).
+ *
+ * @example toInstant('2026-03-29T02:30', 'Europe/Prague') // => Date.UTC(2026, 2, 29, 1, 30)
+ * @example toInstant('2026-03-29T02:30', 'Europe/Prague', { disambiguation: 'earlier' }) // => Date.UTC(2026, 2, 29, 0, 30)
  */
 export function toInstant(value: PlainDate | PlainDateTime, zone: TimeZone, options?: ToInstantOptions): Instant {
   const mode = modeOf('toInstant', options)
@@ -242,9 +276,11 @@ function daysFromDate(value: string): number {
 }
 
 /**
- * Move an instant by a duration. Calendar fields (years, months, weeks, days) move the zone's wall clock, so "one day
- * later" keeps the time of day across a DST change and the 23- or 25-hour day is handled; they need `zone`. Time fields
- * move the instant itself. The wall time that results is resolved with the `compatible` rule.
+ * Move an instant by a duration. Years, months, weeks and days move the zone's wall clock and need `zone`; hours and finer
+ * move the instant itself.
+ *
+ * @example addInstant(Date.UTC(2026, 2, 28, 11, 0), { days: 1 }, 'Europe/Prague') // => Date.UTC(2026, 2, 29, 10, 0)
+ * @example addInstant(Date.UTC(2026, 2, 28, 11, 0), { hours: 24 }) // => Date.UTC(2026, 2, 29, 11, 0)
  */
 export function addInstant(instant: Instant, duration: Duration, zone?: TimeZone): Instant {
   if (typeof instant !== 'number' || !Number.isFinite(instant)) return badValue('addInstant', 'an Instant (epoch milliseconds)', instant)
@@ -252,7 +288,7 @@ export function addInstant(instant: Instant, duration: Duration, zone?: TimeZone
   const calendar = dur[Y] !== 0 || dur[MO] !== 0 || dur[W] !== 0 || dur[D] !== 0
   const time = loadedTimeMs()
 
-  if (!calendar) return instant + time
+  if (!calendar) return checkInstant(instant + time)
   if (zone === undefined) {
     return badRange('addInstant', 'adding years, months, weeks or days to an Instant needs a time zone, because a day is not always 24 hours: addInstant(now, { days: 1 }, "Europe/Prague"). For exactly 24 hours use { hours: 24 }.')
   }
@@ -262,5 +298,10 @@ export function addInstant(instant: Instant, duration: Duration, zone?: TimeZone
   const moved = shiftDay('addInstant', p) * MS_PER_DAY + (wall - ms * MS_PER_DAY)
   const base = zone === 'UTC' ? moved : resolveWall('addInstant', entryOf('addInstant', zone), moved, 'compatible')
 
-  return base + time + (instant - Math.floor(instant))
+  return checkInstant(base + time + (instant - Math.floor(instant)))
+}
+
+/** An Instant must stay inside what a `Date` can hold (about 275,760 years either side of 1970). */
+function checkInstant(t: number): number {
+  return Math.abs(t) <= 8.64e15 ? t : badRange('addInstant', 'the result is outside the range of a Date (about 275,760 years from 1970)')
 }

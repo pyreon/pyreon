@@ -1,6 +1,6 @@
 import { daysFromCivil, daysIn, MS_PER_DAY, weekdayOf } from './civil'
 import { D, dur, hasLoadedTime, loadDuration, loadedTimeMs, MO, unitMs, unitSlot, W, Y } from './duration'
-import { ANY_HINT, badRange, badValue } from './errors'
+import { ANY_HINT, badRange, badValue, show } from './errors'
 import {
   checkDay,
   checkWall,
@@ -20,7 +20,11 @@ import {
 } from './text'
 import type { Duration, PlainDate, PlainDateTime, PlainValue, PlainYearMonth, ShapeOf, Unit, Weekday } from './types'
 
-/** A week starts on `weekStart` (1 Monday ... 7 Sunday; default Monday, as in ISO 8601). */
+/**
+ * Options for the functions that find a week. `weekStart` is an ISO weekday: 1 is Monday ... 7 is Sunday. Default 1.
+ *
+ * @example const options: WeekOptions = { weekStart: 7 }
+ */
 export interface WeekOptions {
   weekStart?: Weekday
 }
@@ -28,7 +32,7 @@ export interface WeekOptions {
 export function weekStartOption(fn: string, options: WeekOptions | undefined): number {
   const ws = options?.weekStart ?? 1
 
-  return Number.isInteger(ws) && ws >= 1 && ws <= 7 ? ws : badRange(fn, `weekStart must be 1 (Monday) to 7 (Sunday), got ${ws}`)
+  return Number.isInteger(ws) && ws >= 1 && ws <= 7 ? ws : badRange(fn, `weekStart must be 1 (Monday) to 7 (Sunday), got ${show(ws)}`)
 }
 
 /** Apply the loaded years and months to a packed civil date, clamping the day to the target month (Temporal's `constrain`). */
@@ -108,14 +112,23 @@ function addImpl(fn: string, value: unknown, duration: Duration, sign: number): 
 
 /**
  * Add a duration to a PlainDate, PlainDateTime or PlainYearMonth; the result has the same shape. Years and months are
- * applied first and clamp the day to the target month (`add('2026-01-31', { months: 1 })` is `'2026-02-28'`), then
- * weeks, days and the time fields.
+ * applied first and clamp the day to the target month (Temporal's `constrain`), then weeks, days and the time fields.
+ * Fractions of weeks, days, hours, minutes and seconds balance down (`{ days: 1.5 }` is one day and twelve hours); years and
+ * months must be whole. Months are 1-12 everywhere in this package.
+ *
+ * @example add('2026-01-31', { months: 1 }) // => '2026-02-28'
+ * @example add('2026-11-18T10:00', { days: 1.5 }) // => '2026-11-19T22:00'
  */
 export function add<T extends PlainValue>(value: T, duration: Duration): ShapeOf<T> {
   return addImpl('add', value, duration, 1) as ShapeOf<T>
 }
 
-/** `add` with every field of `duration` negated. */
+/**
+ * `add` with every field of `duration` negated.
+ *
+ * @example subtract('2026-03-31', { months: 1 }) // => '2026-02-28'
+ * @example subtract('2026-11-18T00:00', { minutes: 1 }) // => '2026-11-17T23:59'
+ */
 export function subtract<T extends PlainValue>(value: T, duration: Duration): ShapeOf<T> {
   return addImpl('subtract', value, duration, -1) as ShapeOf<T>
 }
@@ -197,16 +210,21 @@ function boundary(fn: string, value: unknown, unit: Unit, options: WeekOptions |
 }
 
 /**
- * The first moment of the `unit` containing `value`: `startOf('2026-11-18', 'month')` is `'2026-11-01'`. A PlainDateTime
- * keeps the precision it came in with; weeks start on `options.weekStart` (default Monday).
+ * The first moment of the `unit` containing `value`. Weeks start on `options.weekStart` (ISO weekday: 1 is Monday, 7 is
+ * Sunday; default Monday). A PlainDateTime keeps the precision it came in with.
+ *
+ * @example startOf('2026-11-18', 'week') // => '2026-11-16'
+ * @example startOf('2026-11-18T14:30:05', 'hour') // => '2026-11-18T14:00:00'
  */
 export function startOf<T extends PlainValue>(value: T, unit: Unit, options?: WeekOptions): ShapeOf<T> {
   return boundary('startOf', value, unit, options, false) as ShapeOf<T>
 }
 
 /**
- * The last moment of the `unit` containing `value`: `endOf('2026-11-18', 'month')` is `'2026-11-30'`. For a
- * PlainDateTime that is the last millisecond (`'2026-11-30T23:59:59.999'`).
+ * The last moment of the `unit` containing `value`. For a PlainDateTime that is the last millisecond.
+ *
+ * @example endOf('2026-11-18', 'month') // => '2026-11-30'
+ * @example endOf('2026-11-18T14:30', 'day') // => '2026-11-18T23:59:59.999'
  */
 export function endOf<T extends PlainValue>(value: T, unit: Unit, options?: WeekOptions): ShapeOf<T> {
   return boundary('endOf', value, unit, options, true) as ShapeOf<T>
