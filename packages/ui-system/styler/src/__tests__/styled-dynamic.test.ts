@@ -21,7 +21,7 @@ import { signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { sheet } from '../sheet'
 import { styled } from '../styled'
-import { ThemeContext } from '../ThemeProvider'
+import { ThemeContext } from '../theme-context'
 
 // A minimal element double that records classList mutations, so the
 // renderEffect's `el.classList.remove/add` can be asserted without a real

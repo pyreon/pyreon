@@ -274,6 +274,19 @@ describe('JS syntax and optional native parity — components', () => {
   test('spread on component', () => compare('<Comp {...getProps()} label="hi" />'))
   test('ternary in component prop', () => compare("<Comp x={a() ? 'yes' : 'no'} />"))
   test('template literal in component prop', () => compare('<Comp label={`${count()} items`} />'))
+  // #4368: one rule for every component form — a member tag is a component,
+  // and an identifier is a DOM element only when it starts with [a-z].
+  test('member-tag component props', () =>
+    compare('function A(props) { return <div><m.X a={props.b} /><UI.Btn a={props.b + 1} {...props} /><a.b.C>{props.x}</a.b.C></div> }'))
+  test('lowercase member tag is a component', () =>
+    compare('function A(props) { return <motion.div a={props.b} {...props} /> }'))
+  test('member-tag sole template child is _lc-deferred', () =>
+    compare('function A(props) { return <Ctx.Provider value={1}><div class={props.c}>x</div></Ctx.Provider> }'))
+  test('underscore / dollar identifiers are components', () =>
+    compare('function A(props) { return <section><_Foo a={props.b}>{props.x}</_Foo><$Bar {...props} /></section> }'))
+  test('member-tag component child under SSR template', () => {
+    compareSsrTemplate('function A(props) { return <section><m.X a={props.b} /><b>{props.c}</b></section> }')
+  })
 })
 
 describe('JS syntax and optional native parity — template emission', () => {
@@ -414,6 +427,15 @@ describe('JS syntax and optional native parity — props detection', () => {
 })
 
 describe('JS syntax and optional native parity — transitive derivation', () => {
+  // #4300: a JSX-bearing prop-derived const is referenced, never inlined.
+  test('element const nested in another const, passed as a component prop (issue shape)', () =>
+    compare(
+      'export function W(props) { const img = useImage(props); const imgEl = <img src={img.src} alt={props.alt} />; const imageEl = img.hasFormats ? <picture>{imgEl}</picture> : imgEl; return <C image={imageEl} /> }',
+    ))
+  test('JSX ternary / logical / function const under SSR', () =>
+    compareSsr(
+      'function W(props) { const a = props.f ? <b>t</b> : <i>u</i>; const b = props.f && <b>{props.x}</b>; const c = () => <b>{props.x}</b>; return <div>{a}{b}{c()}<C p={a} /></div> }',
+    ))
   test('simple chain', () =>
     compare('function Comp(props) { const a = props.x; const b = a + 1; return <div>{b}</div> }'))
   test('non-prop const', () =>
@@ -1016,6 +1038,13 @@ describe('JS syntax and optional native parity — additional edge cases', () =>
 // ─── Signal auto-call cross-backend equivalence ─────────────────────────────
 
 describe('JS syntax and optional native parity — signal auto-call', () => {
+  // #4356: a signal method passed by reference is bound to its signal.
+  test('signal method references bound on every path', () =>
+    compare(
+      'function C(props) { const el = signal(null); const n = signal(0); return <div ref={el.set} onClick={n?.update}><input {...props} ref={(el.set as any)} /><Comp cb={n.trigger} f={() => [1].forEach(n.set)} />{[1].map((i) => <i ref={el.set} />)}</div> }',
+    ))
+  test('signal method references bound under SSR', () =>
+    compareSsr('function C() { const el = signal(null); return <Comp cb={el.set} ref={(el).set} /> }'))
   test('bare signal in text child', () =>
     compare('function C() { const name = signal("Vít"); return <div>{name}</div> }'))
   test('signal in attribute', () =>

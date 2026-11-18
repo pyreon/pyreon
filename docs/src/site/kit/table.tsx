@@ -1,7 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, Show } from '@pyreon/core'
 import { breakpoints, font, radius, text, touch, weight } from '../theme'
-import { el, tone, txt } from './bases'
+import { el, tone } from './bases'
 import { renderInline } from './type'
 
 /**
@@ -150,16 +150,3 @@ export function TableDisclosure(props: { summary: string; children?: VNodeChild 
   )
 }
 
-/** Small mono line used under tables and charts. */
-export const TableNote = txt
-  .config({ name: 'TableNote' })
-  .attrs({ tag: 'p' })
-  .theme((_t, m) => ({
-    margin: 0,
-    marginTop: 12,
-    fontFamily: font.mono,
-    fontSize: text.caveat.size,
-    letterSpacing: text.caveat.tracking,
-    lineHeight: 1.6,
-    color: tone(m, 'fog'),
-  }))

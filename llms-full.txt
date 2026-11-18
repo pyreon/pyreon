@@ -306,6 +306,11 @@ const src = emitValidator(info.node)
 const validate = new Function("return " + src)()
 validate("a@b.co").length // 0
 
+import { findSyntaxErrors } from "@pyreon/compiler/analyze"
+
+findSyntaxErrors("export const C = () => <div>", "C.tsx")[0]
+// { message: "JSX element 'div' has no corresponding closing tag.", line: 1, column: 24 }
+
 import { detectReactPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
@@ -902,7 +907,7 @@ const WindowList = () => {
 
 ## @pyreon/validation — Universal Validation Gate
 
-The stack-wide validation gate — the library-agnostic contract every Pyreon data package (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/feature`) consumes. Owns the validation contract types (`ValidationError` / `ValidateFn` / `SchemaValidateFn`) and the Standard Schema bridge, with ZERO pyreon dependencies (the consumers depend on it, not the reverse). Accept a RAW Standard Schema (Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) directly — no wrapper, no cast — via `standardSchemaToValidator`, or use the duck-typed `zodSchema` / `valibotSchema` / `arktypeSchema` adapters (which add the `_infer` brand + a sync `parse` for schema-driven state). Zero dependencies — schema libraries are detected by duck-typing the `~standard` contract, with no peer-dependency records declared.
+The stack-wide validation gate — the library-agnostic contract every Pyreon data package (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/feature`) consumes. Owns the validation contract types (`ValidationError` / `ValidateFn` / `SchemaValidateFn`) and the Standard Schema bridge, with ZERO pyreon dependencies (the consumers depend on it, not the reverse). Accept a RAW Standard Schema (Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) directly — no wrapper, no cast — via `standardSchemaToValidator`, or use the duck-typed `zodSchema` / `valibotSchema` / `arktypeSchema` adapters (which add the `_infer` brand + a sync `parse` for schema-driven state). Zero runtime dependencies — its one dependency is the types-only `@standard-schema/spec` (the contract's official type, erased at build); schema libraries are detected by duck-typing the `~standard` contract, with no peer-dependency records declared.
 
 ```typescript
 import { useForm } from '@pyreon/form'
@@ -954,7 +959,7 @@ const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record
 // => { email: 'Invalid email', age: 'Too small: ...' }
 ```
 
-> **Note**: Zero dependencies — no peer-dependency records at all: schema libraries are detected by duck-typing the `~standard` (Standard Schema) contract. Install only the one you use — the adapters are tree-shaken per import path (`@pyreon/validation/zod`, `@pyreon/validation/valibot`, `@pyreon/validation/arktype`).
+> **Note**: Zero runtime dependencies — the one dependency is the types-only `@standard-schema/spec` (the Standard Schema contract's official type, erased at build), and there are no peer-dependency records: schema libraries are detected by duck-typing the `~standard` (Standard Schema) contract. Install only the one you use — the adapters are tree-shaken per import path (`@pyreon/validation/zod`, `@pyreon/validation/valibot`, `@pyreon/validation/arktype`).
 >
 > **Raw Standard Schema needs no wrapper**: Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, and `@pyreon/validate`'s `s` all expose `~standard`, so you can pass the schema DIRECTLY (`useForm({ schema: z.object(...) })`) — the gate bridges it via `standardSchemaToValidator`. Reach for `zodSchema()` / `valibotSchema()` / `arktypeSchema()` when you want the `_infer`-branded typed adapter, the sync `parse` path (schema-driven `@pyreon/store` / `@pyreon/state-tree`), or a library that is not Standard-Schema-compliant.
 >
@@ -2007,7 +2012,7 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 
 ## @pyreon/http — HTTP Client
 
-The request/response layer beneath @pyreon/query. It owns how a request is made — URL building, headers, body encoding, cancellation, typed errors and optional response validation — and deliberately owns no cache, no dedup-by-key and no reactive container, because those already have owners. Mirrors the split the native runtime already made, where PyreonFetch is the reactive result container and PyreonHttp is the request/response layer beneath it. The core has zero dependencies; retry, schema validation, TanStack adapters, mocking and SSR each live behind their own entry so an unused one costs nothing.
+The request/response layer beneath @pyreon/query. It owns how a request is made — URL building, headers, body encoding, cancellation, typed errors and optional response validation — and deliberately owns no cache, no dedup-by-key and no reactive container, because those already have owners. Mirrors the split the native runtime already made, where PyreonFetch is the reactive result container and PyreonHttp is the request/response layer beneath it. The core has zero runtime dependencies (only the types-only `@standard-schema/spec`); retry, schema validation, TanStack adapters, mocking and SSR each live behind their own entry so an unused one costs nothing.
 
 ```typescript
 import { createHttp } from '@pyreon/http'
@@ -2850,17 +2855,14 @@ import { effect } from "@pyreon/reactivity"
 const theme = useThemeAccessor()
 effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap
 
-import { ThemeProvider } from "@pyreon/styler"
-
-// Standalone styler use, outside any <PyreonUI>:
-<ThemeProvider theme={{ colors: { primary: "#06f" } }}>
-  <App />
-</ThemeProvider>
-
 import { ThemeContext } from "@pyreon/styler"
-import { useContext } from "@pyreon/core"
+import { provide, useContext } from "@pyreon/core"
 
 const themeAccessor = useContext(ThemeContext) // () => Theme
+
+// Low-level provide, without <PyreonUI> (read the theme lazily so a
+// signal-driven theme stays live):
+provide(ThemeContext, () => currentTheme())
 
 import { createSheet } from "@pyreon/styler"
 
@@ -2962,7 +2964,7 @@ const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})` // proportion
 >
 > **CSS property naming**: Unistyle uses property-first naming (`borderWidthTop`, `borderColorLeft`) rather than CSS-spec order (`borderTopWidth`, `borderLeftColor`). Stick to the unistyle convention when authoring components — the responsive transformer expects it.
 >
-> **Deprecated internal Provider / context**: The package exports a low-level `Provider` (default export) + `context` (re-exported from `@pyreon/ui-core`) that `<PyreonUI>` no longer calls directly — it is `@deprecated`-tagged and dev-warns on mount. There is no reason to import it: use `<PyreonUI theme={theme}>` instead.
+> **No provider here — use PyreonUI**: Unistyle has no provider component. `<PyreonUI theme={theme}>` from `@pyreon/ui-core` enriches the theme through unistyle (registered at module load) and provides it to styler, ui-core and the mode context. The `context` export is a re-export of `@pyreon/ui-core`'s internal context.
 >
 > **Responsive-pipeline internals (normalizeTheme / sortBreakpoints / transformTheme)**: These three are re-exported for advanced consumers but are the internal steps `makeItResponsive()` already runs for you: `sortBreakpoints` orders breakpoint keys by their min-width, `normalizeTheme` expands a mobile-first array/breakpoint-object value into a per-breakpoint map (carrying forward the "null slot inherits the previous breakpoint" rule), `transformTheme` maps a normalized per-breakpoint theme through a `styles`-shaped callback. Reach for `makeItResponsive()` first; use these directly only when building a custom responsive pipeline outside the styled-component path.
 
@@ -3045,13 +3047,6 @@ import { Util } from "@pyreon/elements"
 <Util className="highlight" style={{ opacity: 0.5 }}>
   <SomeChild />
 </Util>
-
-import { Provider } from "@pyreon/elements"
-
-// Only outside <PyreonUI> — e.g. an isolated test or embed:
-<Provider theme={{ rootSize: 16, breakpoints: { xs: 0, md: 768 } }}>
-  <App />
-</Provider>
 ```
 
 > **Layout in attrs, not theme**: Element/Text/List layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) are primitive ATTRS — they target the inner flex wrapper. Colors / spacing / borders / shadows belong in the styler or rocketstyle `.theme()` layer. `direction` accepts `inline` / `rows` / `reverseInline` / `reverseRows` — `row` is invalid.
@@ -3696,12 +3691,12 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 Bootstrap-style flexbox grid for Pyreon where every numeric prop is responsive (single value, mobile-first array, or breakpoint-keyed object). Configuration (`columns`, `gap`, `gutter`, `padding`, `contentAlignX`) cascades through Pyreon context — set it on `Container` and every nested `Row` / `Col` inherits, with per-element overrides for that subtree only. Breakpoint names and column counts are theme-driven, not hardcoded: ship with the default Bootstrap-4 theme (12 columns, xs–xl) or define your own (`{ phone: 0, tablet: 600 }` × `columns: 24`). Built on `@pyreon/unistyle` + `@pyreon/styler`.
 
 ```typescript
-import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
+import { PyreonUI } from '@pyreon/ui-core'
+import { Container, Row, Col, theme } from '@pyreon/coolgrid'
 
-// Provider scopes breakpoints, rootSize, and grid defaults to the subtree.
-// In an app that already renders <PyreonUI> at the root, skip Provider —
-// PyreonUI sets up the same unistyle context.
-<Provider theme={theme}>
+// PyreonUI provides breakpoints, rootSize, and grid defaults to the subtree.
+// A theme without grid keys falls back to coolgrid's defaults.
+<PyreonUI theme={theme}>
   <Container gap={16} gutter={24} padding={16}>
     <Row>
       {/* Responsive size — breakpoint-keyed object */}
@@ -3721,10 +3716,10 @@ import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
       <Col>Half</Col>
     </Row>
   </Container>
-</Provider>
+</PyreonUI>
 
 // Custom breakpoints + column count via a custom theme:
-<Provider
+<PyreonUI
   theme={{
     rootSize: 16,
     breakpoints: { phone: 0, tablet: 600, desktop: 1024 },
@@ -3737,7 +3732,7 @@ import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
       <Col size={8}>One third of 24</Col>
     </Row>
   </Container>
-</Provider>
+</PyreonUI>
 ```
 
 > **Note**: Every numeric grid prop (size/gap/gutter/padding/columns) is responsive — a single number, a mobile-first array ([12, 6, 4]), or a breakpoint-keyed object ({ xs: 12, md: 6 }); size 0 hides the column at that breakpoint.
@@ -3746,7 +3741,7 @@ import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
 >
 > **CSS-variables theming**: Under `init({ cssVariables: true })` gap/gutter can arrive as `var(--…)` reference strings — the styled helpers detect them (`isCssVarValue`) and express the grid math in native `calc()` (halving via `* 0.5` / `* -0.5`; a negative `calc()` divisor is invalid CSS). JS arithmetic on a var() string would produce NaN — the historical coolgrid bug class, fixed via the calc() path.
 >
-> **Provider vs PyreonUI**: coolgrid re-exports the low-level unistyle `Provider` (deprecated in source). Apps rendering `<PyreonUI>` at the root already have the required context — add a nested `Provider` only to scope different breakpoints to a subtree.
+> **Theme context comes from PyreonUI**: coolgrid has no provider of its own — Container / Row / Col read breakpoints and grid defaults from the `<PyreonUI theme={…}>` (from `@pyreon/ui-core`) above them. To scope different breakpoints to a subtree, nest another `<PyreonUI theme={…}>` there.
 
 ## @pyreon/kinetic — CSS-Transition Animations
 

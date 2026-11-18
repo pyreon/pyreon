@@ -1,6 +1,7 @@
 import { CodeCard } from './code'
 import { el } from './bases'
-import { StatusBadge } from './type'
+import {} from './type'
+import { Badge } from './badge'
 
 /**
  * Small additions to the product template's recipes and coming-from sections.
@@ -13,7 +14,7 @@ export function comingFromTitle(libs: readonly string[]): string {
   return `Coming from ${list}?`
 }
 
-const BadgeRow = el.config({ name: 'RecipeBadgeRow' }).attrs({ block: true }).theme(() => ({ marginBottom: 8, extendCss: '& > span { margin-left: 0; }' }))
+const BadgeRow = el.config({ name: 'RecipeBadgeRow' }).attrs({ block: true }).theme(() => ({ marginBottom: 8 }))
 const RecipeBox = el.config({ name: 'Recipe' }).attrs({ block: true }).theme(() => ({ minWidth: 0 }))
 
 /** A recipe's code card; a `status` (e.g. "next release") shows as the template's status badge above it. */
@@ -22,7 +23,7 @@ export function RecipeCard(props: { title: string; text: string; code: string; c
     <RecipeBox>
       {props.status ? (
         <BadgeRow>
-          <StatusBadge>{props.status}</StatusBadge>
+          <Badge tone="experimental" size="sm">{props.status}</Badge>
         </BadgeRow>
       ) : null}
       <CodeCard label={props.title} caption={props.text} code={props.code} html={props.codeHtml} />

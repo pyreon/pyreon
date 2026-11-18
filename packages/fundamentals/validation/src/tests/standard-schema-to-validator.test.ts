@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { isStandardSchema, standardSchemaToValidator } from '../schema'
-import type { StandardSchemaLike } from '../types'
+import type { StandardSchemaV1 } from '../types'
 
 // `standardSchemaToValidator` is the bridge that lets any consumer
 // (@pyreon/form, @pyreon/store) accept a RAW Standard Schema (zod/valibot/
 // arktype/`s`) with no adapter and no cast. It flattens issue paths to
 // dot-strings so a nested error routes to its ancestor field downstream.
 
-const emailSchema: StandardSchemaLike<{ email: string }> = {
+const emailSchema: StandardSchemaV1<unknown, { email: string }> = {
   '~standard': {
+    version: 1,
+    vendor: 'test',
     validate: (v: unknown) => {
       const email = (v as { email?: string }).email
-      return email ? { value: v } : { issues: [{ message: 'Email required', path: ['email'] }] }
+      return email ? { value: v as { email: string } } : { issues: [{ message: 'Email required', path: ['email'] }] }
     },
   },
 }
@@ -37,8 +39,10 @@ describe('standardSchemaToValidator', () => {
     expect(await v({ email: '' })).toEqual({ email: 'Email required' })
   })
   it('flattens a nested path to a dot-string', async () => {
-    const nested: StandardSchemaLike = {
+    const nested: StandardSchemaV1 = {
       '~standard': {
+        version: 1,
+        vendor: 'test',
         validate: () => ({ issues: [{ message: 'City required', path: ['address', 'city'] }] }),
       },
     }
@@ -46,8 +50,10 @@ describe('standardSchemaToValidator', () => {
     expect(await v({})).toEqual({ 'address.city': 'City required' })
   })
   it('handles the object-segment path shape `{ key }`', async () => {
-    const s: StandardSchemaLike = {
+    const s: StandardSchemaV1 = {
       '~standard': {
+        version: 1,
+        vendor: 'test',
         validate: () => ({ issues: [{ message: 'bad', path: [{ key: 'items' }, { key: 0 }] }] }),
       },
     }
@@ -55,8 +61,10 @@ describe('standardSchemaToValidator', () => {
     expect(await v({})).toEqual({ 'items.0': 'bad' })
   })
   it('awaits an async Standard Schema', async () => {
-    const asyncSchema: StandardSchemaLike = {
+    const asyncSchema: StandardSchemaV1 = {
       '~standard': {
+        version: 1,
+        vendor: 'test',
         validate: async () => ({ issues: [{ message: 'nope', path: ['x'] }] }),
       },
     }
@@ -64,8 +72,10 @@ describe('standardSchemaToValidator', () => {
     expect(await v({})).toEqual({ x: 'nope' })
   })
   it('first message per path wins', async () => {
-    const s: StandardSchemaLike = {
+    const s: StandardSchemaV1 = {
       '~standard': {
+        version: 1,
+        vendor: 'test',
         validate: () => ({
           issues: [
             { message: 'first', path: ['x'] },

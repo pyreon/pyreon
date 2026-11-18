@@ -894,10 +894,11 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
       if (!attr.value) continue
       if (attr.value.type === 'JSXExpressionContainer') {
         if (isComponentTag(node.openingElement?.name)) {
-          // A COMPONENT prop receives the signal itself in classic code (the
-          // compiler then auto-calls it). Its declared type may be an accessor
-          // (`when: () => boolean`), so keep identity with signalOf — runtime
-          // identical, and exactly the classic type.
+          // A COMPONENT prop: classic code passes a bare signal (the compiler
+          // auto-calls it into a live getter), and its declared type must
+          // accept a callable for that to typecheck (`when: () => boolean`,
+          // a MaybeAccessor). `signalOf` keeps exactly the classic type and
+          // passes the signal itself, which such a prop reads the same way.
           const inner = unwrapTs(attr.value.expression)
           const c = inner?.type === 'Identifier' ? lookup(inner.name) : null
           inferenceContextDepth++
@@ -933,7 +934,8 @@ export function migrateToPlain(code: string, filename = 'input.tsx'): MigrateToP
   /**
    * A reference that needs the signal ITSELF (passed to a function, stored,
    * returned). Classic code hands over the signal object; the plain form
-   * `signalOf(x)` compiles back to exactly that bare reference.
+   * `signalOf(x)` compiles back to that bare reference (prefixed with the
+   * `SIGNAL_OF_MARK` comment that keeps the JSX pass from auto-calling it).
    */
   function identityUse(c: Candidate, node: N, shorthandKey: string | null): void {
     c.usesSignalOf = true

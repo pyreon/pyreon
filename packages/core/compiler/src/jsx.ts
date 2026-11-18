@@ -29,7 +29,7 @@
  */
 
 import MagicString, { SourceMap } from 'magic-string'
-import { detectPlain, transformPlain, type PlainTransformResult } from './plain'
+import { detectPlain, SIGNAL_OF_MARK, transformPlain, type PlainTransformResult } from './plain'
 import { parseSync } from 'oxc-parser'
 import { REACT_EVENT_REMAP } from './event-names'
 import { loadNativeBinding } from './load-native'
@@ -70,6 +70,7 @@ interface NativeCollapseSite {
   rules: string[]
   ruleKey: string
 }
+
 interface NativeCollapseConfig {
   candidates: string[]
   sites: Record<string, NativeCollapseSite>
@@ -77,6 +78,7 @@ interface NativeCollapseConfig {
   runtimeDomSource?: string
   stylerSource?: string
 }
+
 type NativeTransformFn = (
   code: string,
   filename: string,
@@ -87,18 +89,23 @@ type NativeTransformFn = (
   ssrTemplate?: boolean,
   templatizeComponentChildren?: boolean,
 ) => NativeTransformResult
+
 /** What the napi `transformJsx` returns: the JS result shape, except that the
  * source map arrives as its bare `mappings` string (see `wrapNativeMap`). */
 type NativeTransformResult = Omit<TransformResult, 'map'> & { mapMappings?: string | null }
+
 type NativeTransformPlainFn = (
   code: string,
   filename: string,
   knownSignals: string[] | null,
 ) => (Omit<PlainTransformResult, 'map'> & { mapMappings?: string | null }) | null
+
 const nativeBinding = loadNativeBinding(import.meta.url)
+
 const nativeTransformJsx: NativeTransformFn | null = nativeBinding
   ? (nativeBinding.transformJsx as NativeTransformFn)
   : null
+
 // The native plain pre-pass shipped AFTER transformJsx — an older binary
 // (per-platform npm package lagging a release) simply lacks the export, so
 // the typeof gate keeps the JS pre-pass as the fallback AND the oracle.
@@ -122,7 +129,6 @@ export interface CompilerWarning {
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
     | 'plain-mode'
-    | 'signal-method-reference'
 }
 
 /**
@@ -216,6 +222,7 @@ export const TPL_HOLE_ATTR = 'data-pyreon-hole'
  * defensive re-check.
  */
 export const TPL_HTML_ATTR = 'data-pyreon-html'
+
 // Events delegated to the container — must match runtime DELEGATED_EVENTS set
 const DELEGATED_EVENTS = new Set([
   'click',
@@ -391,6 +398,7 @@ export function rocketstyleCollapseKey(
     h ^= src.charCodeAt(i)
     h = Math.imul(h, 16777619)
   }
+
   return (h >>> 0).toString(36)
 }
 
@@ -425,6 +433,7 @@ function makeLineIndex(code: string): (offset: number) => { line: number; column
   for (let i = 0; i < code.length; i++) {
     if (code[i] === '\n') lineStarts.push(i + 1)
   }
+
   return (offset: number) => {
     let lo = 0
     let hi = lineStarts.length - 1
@@ -433,6 +442,7 @@ function makeLineIndex(code: string): (offset: number) => { line: number; column
       if (lineStarts[mid]! <= offset) lo = mid + 1
       else hi = mid - 1
     }
+
     return { line: lo, column: offset - lineStarts[lo - 1]! }
   }
 }
@@ -474,7 +484,42 @@ function jsxTagName(node: N): string {
   const opening = node.openingElement
   if (!opening) return ''
   const name = opening.name
+
   return name?.type === 'JSXIdentifier' ? name.name : ''
+}
+
+/**
+ * The ONE tag rule, shared by every "is this a component?" decision (#4368).
+ * An identifier tag names a DOM element when its first character is an ASCII
+ * lowercase letter (`div`, `my-el`) — the rule the downstream JSX transforms
+ * (TypeScript, esbuild, oxc, Babel) use to choose a string tag over a value —
+ * and a component otherwise (`Comp`, `_Comp`, `$Comp`). Mirrors
+ * `is_lower_case` / `is_component_tag` in `native/src/lib.rs`.
+ */
+function isLowerCase(s: string): boolean {
+  const c = s.charCodeAt(0)
+  return c >= 97 && c <= 122
+}
+
+/** Identifier tag that names a component (see `isLowerCase`). */
+function isComponentTag(tag: string): boolean {
+  return tag.length > 0 && !isLowerCase(tag)
+}
+
+/**
+ * Is this JSX element a COMPONENT? A member tag (`<m.X>`, `<UI.Button>`,
+ * `<Ctx.Provider>`, `<motion.div>`, `<this.X>`) always is — it names a value,
+ * as in every JSX dialect — and an identifier tag is by `isComponentTag`. A
+ * namespaced tag (`<svg:a>`) is not. Every component form compiles the same:
+ * `_rp` / `_pp` / `_rpd` props, `_wrapSpread` spreads, accessor children,
+ * `_lc` for a sole template child. Mirrors `is_component_element` (lib.rs).
+ */
+function isComponentElement(node: N): boolean {
+  const name = node?.openingElement?.name
+  if (!name) return false
+  if (name.type === 'JSXMemberExpression') return true
+
+  return name.type === 'JSXIdentifier' && isComponentTag(name.name as string)
 }
 
 /**
@@ -507,6 +552,7 @@ function jsxAttrName(attr: N): string {
   if (name.type === 'JSXIdentifier') return name.name as string
   if (name.type === 'JSXNamespacedName')
     return `${name.namespace?.name ?? ''}:${name.name?.name ?? ''}`
+
   return ''
 }
 
@@ -572,6 +618,7 @@ function collectImportTable(program: N): Map<string, { imported: string; source:
       if (typeof local === 'string') table.set(local, { imported, source })
     }
   }
+
   return table
 }
 
@@ -604,8 +651,7 @@ export function scanCollapsibleSites(
       const tag = jsxTagName(node)
       const imp = tag ? imports.get(tag) : undefined
       if (
-        tag &&
-        tag.charAt(0) !== tag.charAt(0).toLowerCase() &&
+        isComponentTag(tag) &&
         imp &&
         collapsibleSources.has(imp.source)
       ) {
@@ -671,6 +717,7 @@ export function scanCollapsibleSites(
     }
   }
   visit(program)
+
   return out
 }
 
@@ -706,6 +753,7 @@ function detectCollapsibleShape(
     if (c.type === 'JSXText') childrenText += (c.value ?? '') as string
     else return null // element / expression child → bail
   }
+
   return { props, childrenText: childrenText.trim() }
 }
 
@@ -744,7 +792,7 @@ export function detectStaticElementChild(node: N): StaticChildNode | null {
   if (node?.type !== 'JSXElement') return null
   const tag = jsxTagName(node)
   // Component (uppercase first char) → has its own reactivity → bail.
-  if (!tag || tag.charAt(0) !== tag.charAt(0).toLowerCase()) return null
+  if (!tag || !isLowerCase(tag)) return null
 
   const props: Record<string, string> = {}
   for (const attr of jsxAttrs(node)) {
@@ -768,6 +816,7 @@ export function detectStaticElementChild(node: N): StaticChildNode | null {
 
   const children = collectStaticChildren(node)
   if (children === null) return null
+
   return { tag, props, children }
 }
 
@@ -798,6 +847,7 @@ export function collectStaticChildren(parent: N): StaticChild[] | null {
     // JSXExpressionContainer / JSXFragment / JSXSpreadChild → bail.
     return null
   }
+
   return out
 }
 
@@ -822,6 +872,7 @@ export function serializeStaticChildren(children: StaticChild[]): string {
       parts.push(`e\u0002${c.tag}\u0003${propStr}\u0004${serializeStaticChildren(c.children)}`)
     }
   }
+
   return parts.join('\u0005')
 }
 
@@ -869,6 +920,7 @@ export function detectElementChildCollapsibleShape(
   // Must contain ≥1 element child — a text-only list is the FULL-collapse
   // shape; defer to `detectCollapsibleShape` so that path stays unchanged.
   if (!childTree.some((c) => typeof c !== 'string')) return null
+
   return { props, childTree, childrenKey: serializeStaticChildren(childTree) }
 }
 
@@ -944,6 +996,7 @@ export function detectPartialCollapsibleShape(
       handlers.push({ name: nm, exprStart: v.expression.start, exprEnd: v.expression.end })
       continue
     }
+
     return null // `{expr}` non-handler / dynamic → bail
   }
   let childrenText = ''
@@ -954,6 +1007,7 @@ export function detectPartialCollapsibleShape(
   // Zero handlers ⇒ this is the FULL-collapse shape; defer to
   // `detectCollapsibleShape` so the existing path stays byte-unchanged.
   if (handlers.length === 0) return null
+
   return { props, childrenText: childrenText.trim(), handlers }
 }
 
@@ -1094,6 +1148,7 @@ export function detectDynamicCollapsibleShape(
         }
       }
     }
+
     return null // `{expr}` non-handler non-ternary, or non-literal ternary branch → bail
   }
   let childrenText = ''
@@ -1105,6 +1160,7 @@ export function detectDynamicCollapsibleShape(
   // the existing detectors (full / on*-handler partial); 2+ ⇒ bail
   // (multi-axis combinatorics is a separable scope).
   if (dynamicProps.length !== 1) return null
+
   return {
     props,
     childrenText: childrenText.trim(),
@@ -1202,6 +1258,7 @@ export function transformJSX(
       // Native transform failed — fall through to JS implementation
     }
   }
+
   return mergePlain(transformJSX_JS(code, filename, options))
 }
 
@@ -1241,6 +1298,7 @@ function wrapNativeMap(
   const { mapMappings, ...rest } = native
   const result: TransformResult = rest
   if (typeof mapMappings === 'string') result.map = buildSourceMap(mapMappings, code, filename)
+
   return result
 }
 
@@ -1285,6 +1343,7 @@ function toNativeCollapse(
   }
   if (c.runtimeDomSource !== undefined) out.runtimeDomSource = c.runtimeDomSource
   if (c.stylerSource !== undefined) out.stylerSource = c.stylerSource
+
   return out
 }
 
@@ -1510,7 +1569,7 @@ export function transformJSX_JS(
     const cfg = options.collapseRocketstyle
     if (!cfg) return false
     const tag = jsxTagName(node)
-    if (!tag || tag.charAt(0) === tag.charAt(0).toLowerCase()) return false
+    if (!isComponentTag(tag)) return false
     if (!cfg.candidates.has(tag)) return false
     // Shared bail catalogue — IDENTICAL to scanCollapsibleSites (the
     // plugin scans with the same predicate, so its resolved `sites`
@@ -1544,6 +1603,7 @@ export function transformJSX_JS(
       collapseRuleKeys.add(site.ruleKey)
       collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
     }
+
     return true
   }
 
@@ -1565,8 +1625,8 @@ export function transformJSX_JS(
    */
   /**
    * Re-emit a collapse site's peeled attribute expression as the component's
-   * normal (h()-path) mount would: an `on*` handler gets the signal auto-call
-   * (`autoCallUnwrappedAttrValue`), a dynamic prop's ternary test the full
+   * normal (h()-path) mount would: an `on*` handler the `sliceExpr` of
+   * `sliceUnwrappedAttrValue`, a dynamic prop's ternary test the full
    * `sliceExpr` its `_rp(() => …)` wrap would get. A verbatim source slice left
    * `count + 1` in a handler and `() => (active) ? 0 : 1` in the dispatcher
    * (always the truthy variant). The span always names a node of `node`'s own
@@ -1578,11 +1638,7 @@ export function transformJSX_JS(
       if (attr.type !== 'JSXAttribute' || attr.value?.type !== 'JSXExpressionContainer') continue
       const e = attr.value.expression
       if (!e || e.type === 'JSXEmptyExpression') continue
-      if (e.start === start && e.end === end) {
-        const raw = code.slice(start, end)
-
-        return signalVars.size > shadowedSignals.size ? autoCallSignals(raw, e) : raw
-      }
+      if (e.start === start && e.end === end) return sliceExpr(e)
       if (e.type === 'ConditionalExpression' && e.test.start === start && e.test.end === end) {
         return sliceExpr(e.test)
       }
@@ -1621,6 +1677,7 @@ export function transformJSX_JS(
       collapseRuleKeys.add(site.ruleKey)
       collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
     }
+
     return true
   }
 
@@ -1740,6 +1797,7 @@ export function transformJSX_JS(
         collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
       }
     }
+
     return true
   }
 
@@ -1776,6 +1834,7 @@ export function transformJSX_JS(
       collapseRuleKeys.add(site.ruleKey)
       collapseRules.push({ ruleKey: site.ruleKey, rules: site.rules })
     }
+
     return true
   }
 
@@ -1790,8 +1849,10 @@ export function transformJSX_JS(
         'hoisted-static',
         'static — hoisted once to module scope, never re-evaluated',
       )
+
       return name
     }
+
     return null
   }
 
@@ -1841,10 +1902,11 @@ export function transformJSX_JS(
   function isSoleComponentChild(node: N): boolean {
     const parent = findParent(node)
     if (!parent || parent.type !== 'JSXElement') return false
-    if (!isComponentTag(jsxTagName(parent))) return false
+    if (!isComponentElement(parent)) return false
     const kids = jsxChildren(parent).filter(
       (c: N) => !(c.type === 'JSXText' && !cleanJsxText(c.value ?? c.raw ?? '')),
     )
+
     return kids.length === 1 && kids[0] === node
   }
 
@@ -1857,6 +1919,7 @@ export function transformJSX_JS(
     if (!needsBraces) return call
     if (!isSoleComponentChild(node)) return `{${call}}`
     needsLcImport = true
+
     return `{_lc(() => ${call})}`
   }
 
@@ -1885,14 +1948,12 @@ export function transformJSX_JS(
     if (parent.type === 'JSXFragment') return true
     if (parent.type === 'JSXExpressionContainer') return true
     if (parent.type !== 'JSXElement') return false
-    const tag = jsxTagName(parent)
-    // `jsxTagName` reports '' for a member/namespaced tag (`<Ctx.Provider>`),
-    // which `isComponentTag` would then read as "not a component". Those parents
-    // ARE components and are NEVER `_lc`-wrapped (the compiler classifies no
-    // member tag as a component anywhere), so they are always eager.
-    if (tag === '') return true
-    if (!isComponentTag(tag)) return false
-    return !isSoleComponentChild(node)
+    // A component parent — identifier or member tag (`<Ctx.Provider>`), one
+    // rule (`isComponentElement`) — is eager unless this is its `_lc`-deferred
+    // sole child. A namespaced tag (`<svg:a>`, `jsxTagName` == '') stays eager.
+    if (isComponentElement(parent)) return !isSoleComponentChild(node)
+
+    return jsxTagName(parent) === ''
   }
 
   /** Does this element tree absorb any COMPONENT child into its template? */
@@ -1910,6 +1971,7 @@ export function transformJSX_JS(
         return true
       }
     }
+
     return false
   }
 
@@ -1973,6 +2035,7 @@ export function transformJSX_JS(
     // text is headed for an argument, not a JSX child slot.
     for (const hole of holes) argPositionNodes.add(hole)
     for (const hole of holes) walkUnslicedExpr(hole)
+
     return true
   }
 
@@ -2077,6 +2140,7 @@ export function transformJSX_JS(
         return false
       }
     }
+
     return true
   }
 
@@ -2102,6 +2166,7 @@ export function transformJSX_JS(
     if (name === 'class' || name === 'style') return false
     if (name.charCodeAt(0) === 97 && name.startsWith('aria-')) return false
     if (SSR_URL_ATTRS.has(name)) return false
+
     return true
   }
 
@@ -2130,6 +2195,7 @@ export function transformJSX_JS(
       v = !new RegExp(`(?<![\\w$.])${name}\\b(?!\\s*\\()|\\b(?:function|class)\\s+${name}\\b`).test(code)
       ssrGlobalIntactMemo.set(name, v)
     }
+
     return v
   }
 
@@ -2164,6 +2230,7 @@ export function transformJSX_JS(
     if (node.type === 'ConditionalExpression') {
       return ssrProvablyString(node.consequent) && ssrProvablyString(node.alternate)
     }
+
     return false
   }
 
@@ -2192,6 +2259,7 @@ export function transformJSX_JS(
         ssrProvablyNonNullNonBoolean(node.alternate)
       )
     }
+
     return false
   }
 
@@ -2225,6 +2293,7 @@ export function transformJSX_JS(
     if (node.type === 'ConditionalExpression') {
       return ssrProvablySafeUrl(node.consequent) && ssrProvablySafeUrl(node.alternate)
     }
+
     return false
   }
 
@@ -2240,6 +2309,7 @@ export function transformJSX_JS(
     ssrEmitStatic(buf, ` ${name}="`)
     emitEscHole(buf, valueText, false)
     ssrEmitStatic(buf, '"')
+
     return true
   }
 
@@ -2344,6 +2414,7 @@ export function transformJSX_JS(
       // runs the SAME url-guard / name-map renderProp does).
       if (!hasUpper && ssrBakeStringAttr(buf, name, v)) return true
       emitSsrAttr(buf, tag, name, escapeJsString(v))
+
       return true
     }
     // Expression container.
@@ -2417,8 +2488,10 @@ export function transformJSX_JS(
       const valueText = sliceExpr(expr)
       if (ssrTryBakeDynamicAttr(buf, name, valueText, expr)) return true
       emitSsrAttr(buf, tag, name, valueText)
+
       return true
     }
+
     return false
   }
 
@@ -2434,6 +2507,7 @@ export function transformJSX_JS(
     const text = ssrBakeStringAttrText(name, value)
     if (text === null) return false
     if (text !== '') ssrEmitStatic(buf, text)
+
     return true
   }
 
@@ -2463,8 +2537,10 @@ export function transformJSX_JS(
       // static literal because `@pyreon/lathe` generates JSX from OpenAPI specs.
       if (SSR_UNSAFE_URL_RE.test(value) || SSR_UNSAFE_URL_RE.test(stripUrlSchemeNoise(value)))
         return null
+
       return ` ${name}="${escapeHtmlSsr(value)}"`
     }
+
     return ` ${name}="${escapeHtmlSsr(value)}"`
   }
 
@@ -2511,6 +2587,7 @@ export function transformJSX_JS(
     ssrEmitHole(buf, `_ssrChildren(${recv}.map((${paramText}) => ${itemBody}))`)
     if (!sole) ssrEmitStatic(buf, '<!--/$-->')
     needsSsrChildrenImport = true
+
     return true
   }
 
@@ -2559,6 +2636,7 @@ export function transformJSX_JS(
       if (only !== null) return null
       only = c
     }
+
     return only
   }
 
@@ -2684,6 +2762,7 @@ export function transformJSX_JS(
         lens(sp.start, sp.end, 'static-text', 'baked once into the DOM — never re-renders (no signal read here)')
     }
     needsFuseImport = true
+
     return `_fuse(${parts.map((p) => ('lit' in p ? ssrStaticLit(p.lit) : p.expr)).join(', ')})`
   }
 
@@ -2706,6 +2785,7 @@ export function transformJSX_JS(
     // which only a whole-call `_ssrDeferred` gives, not an operand string.
     if (eb.deferJsx) return null
     needsSsrImport = true
+
     return ssrCallText(eb, 'recursed')
   }
 
@@ -2740,6 +2820,7 @@ export function transformJSX_JS(
       const lowered = ssrLowerElementText(right)
       if (lowered === null) return null
       ssrLowerResidualJsx = containsJsx(expr.left)
+
       return `${sliceExpr(expr.left)} && ${lowered}`
     }
     if (expr.type === 'ConditionalExpression') {
@@ -2755,8 +2836,10 @@ export function transformJSX_JS(
         (loweredAlt === null && containsJsx(expr.alternate))
       const consText = loweredCons ?? sliceExpr(expr.consequent)
       const altText = loweredAlt ?? sliceExpr(expr.alternate)
+
       return `${sliceExpr(expr.test)} ? ${consText} : ${altText}`
     }
+
     return null
   }
 
@@ -2773,6 +2856,7 @@ export function transformJSX_JS(
       if (containsJsx(expr)) buf.deferJsx = true
       if (sole) emitEscSoleHole(buf, sliceExpr(expr))
       else emitEscHole(buf, sliceExpr(expr))
+
       return true
     }
     // recursed mode: matches handleJsxExpression's wrap decision.
@@ -2813,6 +2897,7 @@ export function transformJSX_JS(
           ssrEmitSourceHole(buf, expr, '_esc(')
           if (wrapped) ssrEmitStatic(buf, '<!--/$-->')
         }
+
         return true
       }
       // Kept as generated text: the hole RENDERS whatever VNodes it builds as
@@ -2844,6 +2929,7 @@ export function transformJSX_JS(
     } else {
       emitEscHole(buf, exprText)
     }
+
     return true
   }
 
@@ -2912,6 +2998,7 @@ export function transformJSX_JS(
       `_ssrForKeyed(${sliceExpr(eachExpr)}, ${sliceExpr(byExpr)}, (${paramText}) => ${itemBody})`,
     )
     needsSsrForKeyedImport = true
+
     return true
   }
 
@@ -2926,6 +3013,7 @@ export function transformJSX_JS(
       // error); a JS-string child (`{'a & b'}`) is a hole, unaffected.
       if (cleaned.includes('&')) return false
       if (cleaned) ssrEmitStatic(buf, escapeHtmlSsr(cleaned))
+
       return true
     }
     if (child.type === 'JSXElement') {
@@ -2936,13 +3024,14 @@ export function transformJSX_JS(
       // so the bytes (including a sync child's absence of markers and an async
       // child's `<!--$pas-->`/`<!--$pae-->` sentinels) are identical by
       // construction rather than by re-derivation.
-      const childTag = jsxTagName(child)
-      if (mode === 'recursed' && childTag && !isLowerCase(childTag)) {
+      if (mode === 'recursed' && isComponentElement(child)) {
         if (!ssrComponentChildEligible(child)) return false
         ssrEmitSourceHole(buf, child)
         needsSsrNodeImport = true
+
         return true
       }
+
       return ssrSerializeElement(buf, child, mode)
     }
     if (child.type === 'JSXExpressionContainer')
@@ -3027,6 +3116,7 @@ export function transformJSX_JS(
       }
     }
     ssrEmitStatic(buf, `</${tag}>`)
+
     return true
   }
 
@@ -3071,6 +3161,7 @@ export function transformJSX_JS(
     const holesArr = buf.holes.length > 0 ? `, ${buf.holes.join(', ')}` : ''
     const fn = mode === 'recursed' ? '_ssr' : '_ssrItem'
     if (fn === '_ssrItem') needsSsrItemImport = true
+
     return `${fn}([${staticsArr}]${holesArr})`
   }
 
@@ -3130,6 +3221,7 @@ export function transformJSX_JS(
     // (all `: string`-typed helpers) and no text children, so they land on the
     // no-guard branch essentially every time.
     if (guards.length > 0) needsSsrItemImport = true
+
     return `{ const ${temps}; return ${body} }`
   }
 
@@ -3163,6 +3255,7 @@ export function transformJSX_JS(
       }
       replacements.push({ start, end, text: braceTemplateChild(call, node, !!needsBraces) })
       needsSsrImport = true
+
       return true
     }
 
@@ -3193,6 +3286,7 @@ export function transformJSX_JS(
       for (; hole < stop; hole++) {
         if (buf.holeSrc[hole] === null) out += `, ${buf.holes[hole]}`
       }
+
       return out
     }
     const indexOfHole = (h: (typeof preserved)[number]): number => buf.holeSrc.indexOf(h)
@@ -3236,72 +3330,8 @@ export function transformJSX_JS(
     for (const p of preserved) walkUnslicedExpr(p.node)
 
     needsSsrImport = true
-    return true
-  }
 
-  /**
-   * `ref={panel.set}` / `onClick={count.update}`: a signal METHOD passed as an
-   * attribute value by reference. Signal methods read `this` (they live on a
-   * shared prototype, not on each signal), so the detached reference throws
-   * when the runtime calls it. Warn with the arrow that works (#4356).
-   *
-   * Runs at the head of every JSX element the walk reaches, BEFORE template
-   * emission (which swallows the subtree), and covers the element's attributes
-   * plus its directly nested elements; `_methodRefScanned` keeps an element
-   * from being reported twice when the walk later reaches it. JSX inside an
-   * expression container is reached by the walk itself. Mirrors
-   * `check_signal_method_refs` in native/src/lib.rs.
-   */
-  const _methodRefScanned = new Set<number>()
-  function checkSignalMethodRefs(el: N): void {
-    if (_methodRefScanned.has(el.start as number)) return
-    const unwrap = (e: N): N => {
-      let cur = e
-      while (
-        cur &&
-        (cur.type === 'ParenthesizedExpression' ||
-          cur.type === 'TSAsExpression' ||
-          cur.type === 'TSSatisfiesExpression' ||
-          cur.type === 'TSNonNullExpression' ||
-          cur.type === 'TSTypeAssertion')
-      )
-        cur = cur.expression
-      return cur
-    }
-    const visit = (node: N): void => {
-      _methodRefScanned.add(node.start as number)
-      for (const attr of jsxAttrs(node)) {
-        if (attr.type !== 'JSXAttribute' || attr.value?.type !== 'JSXExpressionContainer') continue
-        const value = attr.value.expression
-        if (!value || value.type === 'JSXEmptyExpression') continue
-        const member = unwrap(value)
-        if (
-          member?.type !== 'MemberExpression' ||
-          member.computed ||
-          member.optional ||
-          member.property?.type !== 'Identifier' ||
-          !SIGNAL_METHOD_NAMES.has(member.property.name as string)
-        )
-          continue
-        const object = unwrap(member.object)
-        if (object?.type !== 'Identifier' || !isActiveSignal(object.name)) continue
-        const ref = `${object.name}.${member.property.name as string}`
-        const attrName = jsxAttrName(attr)
-        warn(
-          member,
-          `"${ref}" is passed by reference, so it runs without its signal and throws: signal methods read "this". Pass an arrow instead: ${attrName}={(v) => ${ref}(v)}.`,
-          'signal-method-reference',
-        )
-      }
-      const visitChildren = (children: N[] | undefined): void => {
-        for (const child of children ?? []) {
-          if (child.type === 'JSXElement') visit(child)
-          else if (child.type === 'JSXFragment') visitChildren(child.children)
-        }
-      }
-      visitChildren(node.children)
-    }
-    visit(el)
+    return true
   }
 
   function checkForWarnings(node: N): void {
@@ -3340,9 +3370,7 @@ export function transformJSX_JS(
    * wrap there.
    */
   function handleJsxSpreadAttribute(attr: N, parentElement: N): void {
-    const tagName = jsxTagName(parentElement)
-    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
-    if (!isComponent) return
+    if (!isComponentElement(parentElement)) return
     const arg = attr.argument
     if (!arg) return
     // Skip already-wrapped sources (idempotent compilation guard).
@@ -3360,29 +3388,27 @@ export function transformJSX_JS(
   }
 
   /**
-   * Auto-call the bare signals of an h()-path attribute value the walk does NOT
-   * wrap or hoist — an `on*` handler, a `ref`, a function-valued prop
-   * (`render={() => …}`), or a static value holding one — with the same
-   * `autoCallSignals` pass the template path runs over the identical attribute
-   * (`emitEventListener` / `emitRef` slice the whole value). Before this the
+   * Slice an h()-path attribute value the walk does NOT wrap or hoist — an
+   * `on*` handler, a `ref`, a function-valued prop (`render={() => …}`), or a
+   * static value holding one — through `sliceExpr`, exactly as the template
+   * path slices the identical attribute (`emitEventListener` / `emitRef`): bare
+   * signals are auto-called and prop-derived consts inlined. Before #4536 the
    * h() path left the value verbatim, so `onClick={() => count.set(count + 1)}`
    * auto-called `count` on `<button>x</button>` and set the signal to its own
    * source text plus "1" on `<Button/>`, a childless `<div/>`, a
-   * spread-carrying element and every SSR render. Nested JSX in the value stays
-   * as written (not walked), exactly as inside a template-path handler.
-   *
-   * Auto-call only: prop-derived inlining inside handlers still differs between
-   * the paths (the template path inlines, this one does not) — inlining a
-   * stateful initializer there would mint a new signal per call, so it is not
-   * extended here. Pushes nothing when nothing needs calling.
+   * spread-carrying element and every SSR render; until the stateful-initializer
+   * rule (`initMintsState`) a handler there also read a prop-derived const's
+   * SETUP value (`const label = props.label`) where the template element read
+   * the live prop. One function for every element path, so they cannot drift.
+   * Nested JSX in the value stays as written (not walked), exactly as inside a
+   * template-path handler. Pushes nothing when the slice is the source text.
    */
-  function autoCallUnwrappedAttrValue(expr: N): void {
-    if (signalVars.size === 0 || signalVars.size <= shadowedSignals.size) return
+  function sliceUnwrappedAttrValue(expr: N): void {
     const start = expr.start as number
     const end = expr.end as number
     const raw = code.slice(start, end)
-    const called = autoCallSignals(raw, expr)
-    if (called !== raw) replacements.push({ start, end, text: called })
+    const sliced = sliceExpr(expr)
+    if (sliced !== raw) replacements.push({ start, end, text: sliced })
   }
 
   function handleJsxAttribute(node: N, parentElement: N): void {
@@ -3392,13 +3418,12 @@ export function transformJSX_JS(
     const expr = node.value.expression
     if (!expr || expr.type === 'JSXEmptyExpression') return
     if (name === 'ref' || EVENT_RE.test(name)) {
-      autoCallUnwrappedAttrValue(expr)
+      sliceUnwrappedAttrValue(expr)
 
       return
     }
 
-    const tagName = jsxTagName(parentElement)
-    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
+    const isComponent = isComponentElement(parentElement)
 
     if (isComponent) {
       const isSingleJsx = expr.type === 'JSXElement' || expr.type === 'JSXFragment'
@@ -3436,7 +3461,7 @@ export function transformJSX_JS(
           'live prop — signal reads here are tracked into the component',
         )
       } else {
-        autoCallUnwrappedAttrValue(expr)
+        sliceUnwrappedAttrValue(expr)
       }
     } else {
       const hoistName = maybeHoist(expr)
@@ -3445,7 +3470,7 @@ export function transformJSX_JS(
       } else if (shouldWrap(expr)) {
         wrap(expr)
       } else {
-        autoCallUnwrappedAttrValue(expr)
+        sliceUnwrappedAttrValue(expr)
       }
     }
   }
@@ -3475,7 +3500,7 @@ export function transformJSX_JS(
       // reactive end-to-end.
       if (
         parentJsx &&
-        isComponentTag(jsxTagName(parentJsx)) &&
+        isComponentElement(parentJsx) &&
         isStableReference(expr) &&
         !referencesSignalVar(expr)
       ) {
@@ -3498,6 +3523,7 @@ export function transformJSX_JS(
           const sliced = sliceExpr(unwrapped)
           replacements.push({ start, end, text: `() => ${sliced}` })
           lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
+
           return
         }
         // Skip the carve-out for signal references — `<Comp>{count}</Comp>` (bare
@@ -3514,6 +3540,7 @@ export function transformJSX_JS(
         const unwrapped = unwrapTypeLayers(expr)
         const sliced = sliceExpr(unwrapped)
         replacements.push({ start, end, text: sliced })
+
         return
       }
       wrap(expr)
@@ -3525,29 +3552,40 @@ export function transformJSX_JS(
   /**
    * Walk a JSX expression the emit does NOT slice (a function child —
    * `<Comp>{() => count + 1}</Comp>`, `<For>{(r) => …}</For>` — or any other
-   * unwrapped value), auto-calling its bare signals first.
+   * unwrapped value), applying `sliceExpr`'s identifier edits first.
    *
-   * A sliced expression gets `autoCallSignals` over its whole span, nested
-   * functions included. An unsliced one is WALKED instead (so its nested JSX
-   * still compiles to templates), and the walk itself never rewrites an
-   * identifier — so a bare signal inside a function child was auto-called on
-   * a template element and left as the function on every other path. The
-   * identifiers come from the same collector `sliceExpr` uses (same scope,
-   * identity and write-target rules); those inside nested JSX are left to
-   * that JSX's own emit, which the walk reaches next. Each is a zero-width
-   * `()` insertion, disjoint from every edit the walk makes (those cover JSX
-   * only). Mirrored by `auto_call_unsliced` in the Rust backend.
+   * A sliced expression gets the signal auto-call and prop-derived inlining
+   * over its whole span, nested functions included. An unsliced one is WALKED
+   * instead (so its nested JSX still compiles to templates), and the walk
+   * itself never rewrites an identifier — so a bare signal (or a prop-derived
+   * const) inside a function child was rewritten on a template element and
+   * left as written on every other path. `sliceUnsliced` makes the same
+   * identifier edits, leaving those inside nested JSX to that JSX's own emit,
+   * which the walk reaches next.
    */
   function walkUnslicedExpr(expr: N): void {
-    autoCallUnsliced(expr)
+    sliceUnsliced(expr)
     walkNode(expr)
   }
 
-  function autoCallUnsliced(expr: N): void {
-    if (signalVars.size === 0 || signalVars.size <= shadowedSignals.size) return
+  /**
+   * The identifier edits `sliceExpr` would make, applied to a WALKED
+   * expression: bare signals get a zero-width `()`, and — under the same
+   * `accessesProps` gate `sliceExpr` uses — prop-derived consts are inlined, so
+   * `<Comp>{() => label}</Comp>` reads the live prop exactly as
+   * `<div>{() => label}</div>` does. Edits inside nested JSX are left to that
+   * JSX's own emit, which the walk reaches next; the rest cover identifiers
+   * only, disjoint from the walk's edits (those cover JSX only). Mirrored by
+   * `slice_unsliced` in the Rust backend.
+   */
+  function sliceUnsliced(expr: N): void {
     if (expr.type === 'JSXElement' || expr.type === 'JSXFragment') return
-    const idents = collectSignalCallIdents(expr)
-    if (idents.length === 0) return
+    const callSignals = signalVars.size > 0 && signalVars.size > shadowedSignals.size
+    const inline = propDerivedVars.size > 0 && accessesProps(expr)
+    if (!callSignals && !inline) return
+    const idents = callSignals ? collectSignalCallIdents(expr) : []
+    const pdEdits = inline ? propDerivedEdits(expr.start as number, expr.end as number, expr) : []
+    if (idents.length === 0 && pdEdits.length === 0) return
     const jsxSpans: { start: number; end: number }[] = []
     const findJsx = (n: N): void => {
       if (n.type === 'JSXElement' || n.type === 'JSXFragment') {
@@ -3558,15 +3596,16 @@ export function transformJSX_JS(
       forEachChildFast(n, findJsx)
     }
     findJsx(expr)
+    const inJsx = (start: number, end: number): boolean =>
+      jsxSpans.some((sp) => start >= sp.start && end <= sp.end)
     for (const id of idents) {
-      if (jsxSpans.some((sp) => id.start >= sp.start && id.end <= sp.end)) continue
-      replacements.push({ start: id.end, end: id.end, text: '()' })
+      if (inJsx(id.start, id.end)) continue
+      replacements.push({ start: id.end, end: id.end, text: signalEditSuffix(id.start, id.end) })
     }
-  }
-
-  /** Component tag — uppercase first letter. Lowercase = DOM element. */
-  function isComponentTag(tag: string): boolean {
-    return tag.length > 0 && tag.charAt(0) !== tag.charAt(0).toLowerCase()
+    for (const e of pdEdits) {
+      if (inJsx(e.start, e.end)) continue
+      replacements.push(e)
+    }
   }
 
   /**
@@ -3586,7 +3625,8 @@ export function transformJSX_JS(
     // element — `jsxTagName` reports '' for it, so the uppercase test alone
     // would misread it as "not a component".
     if (name.type !== 'JSXIdentifier') return true
-    return isComponentTag(name.name)
+
+    return isComponentTag(name.name as string)
   }
 
   /**
@@ -3617,8 +3657,10 @@ export function transformJSX_JS(
         if (cur.property?.type !== 'Identifier') return false
         cur = cur.object
       }
+
       return cur.type === 'Identifier' || cur.type === 'ThisExpression'
     }
+
     return false
   }
 
@@ -3658,12 +3700,51 @@ export function transformJSX_JS(
     ) {
       cur = cur.expression
     }
+
     return cur
   }
 
   // ── Prop-derived variable tracking (collected during the single walk) ─────
   const propsNames = new Set<string>()
   const propDerivedVars = new Map<string, { start: number; end: number }>()
+  /**
+   * Hygiene for the inliner: every identifier name an alias's INLINED text
+   * mentions (its initializer's identifiers plus, transitively, those of the
+   * aliases it references), keyed by the initializer's start (per binding,
+   * never per name). Inlining splices that text at a use site, so a binding
+   * between the declaration and the use that re-binds one of these names would
+   * CAPTURE it: `const lbl = props.l + tag` inlined into
+   * `items.map((tag) => <li title={lbl}/>)` read the map parameter. Such a use
+   * keeps the const (the value captured at setup) — see `enterPropDerivedScope`
+   * and `propDerivedEdits`. Written once per binding at registration.
+   */
+  const aliasFreeNames = new Map<number, Set<string>>()
+  function collectAliasFreeNames(init: N): Set<string> {
+    const out = new Set<string>()
+    const visit = (n: N): void => {
+      if (n.type === 'Identifier') {
+        const p = findParent(n)
+        if (!(p && p.type === 'MemberExpression' && p.property === n && !p.computed)) {
+          out.add(n.name)
+          const alias = propDerivedVars.get(n.name)
+          const transitive = alias ? aliasFreeNames.get(alias.start) : undefined
+          if (transitive) for (const x of transitive) out.add(x)
+        }
+      }
+      forEachChildFast(n, visit)
+    }
+    visit(init)
+
+    return out
+  }
+  /** Does a binding of any of `names` capture a name `alias`'s inlined text mentions? */
+  function aliasCapturedBy(span: { start: number }, names: Iterable<string>): boolean {
+    const free = aliasFreeNames.get(span.start)
+    if (!free) return false
+    for (const n of names) if (free.has(n)) return true
+
+    return false
+  }
   // Lexical scoping of the registry above (issue #3815). The map is keyed by
   // NAME, but a prop-derived const is only in scope inside the block that
   // declares it — without scoping, `function A(props){ const label = props.label }`
@@ -3755,6 +3836,7 @@ export function transformJSX_JS(
     if (u.type === 'ConditionalExpression')
       return returnsJsxValue(u.consequent) || returnsJsxValue(u.alternate)
     if (u.type === 'LogicalExpression') return returnsJsxValue(u.left) || returnsJsxValue(u.right)
+
     return false
   }
 
@@ -3787,6 +3869,7 @@ export function transformJSX_JS(
       forEachChildFast(n, visitStmt)
     }
     visitStmt(body)
+
     return found
   }
 
@@ -3796,6 +3879,7 @@ export function transformJSX_JS(
     while (node?.type === 'ParenthesizedExpression') node = node.expression
     if (!node) return false
     if (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression') return false
+
     return fnReturnsJsx(node)
   }
 
@@ -3835,6 +3919,7 @@ export function transformJSX_JS(
         }
       }
     }
+
     return false
   }
 
@@ -3849,6 +3934,7 @@ export function transformJSX_JS(
     for (const { name, init } of collectFunctionBindings(node)) {
       if (jsxFnVars.has(name) && !(init && isJsxFnInit(init))) shadows.push(name)
     }
+
     return shadows
   }
 
@@ -3866,6 +3952,7 @@ export function transformJSX_JS(
     }
     if (inner.type !== 'CallExpression') return false
     const callee = inner.callee
+
     return callee?.type === 'Identifier' && isActiveJsxFn(callee.name)
   }
 
@@ -3899,11 +3986,31 @@ export function transformJSX_JS(
     return signalVars.has(name) && !shadowedSignals.has(name)
   }
 
+  /**
+   * A bare identifier the Plain Mode pre-pass wrote for `signalOf(x)`
+   * (`/*@pyreon:signal*\/x`, see `SIGNAL_OF_MARK`): the signal ITSELF, never a
+   * read. Every place that treats a bare known signal as a read — the
+   * auto-call collector, the dynamic / fixed-deps classifiers, the bare
+   * `_bindText` / `_bindDirect` fast path, the component-child carve-out —
+   * goes through `isSignalRead`, so identity survives on every element path.
+   * Mirrored by `is_identity_ref` in the Rust backend.
+   */
+  function isIdentityRef(node: N): boolean {
+    const start = node.start as number
+    return start >= SIGNAL_OF_MARK.length && code.startsWith(SIGNAL_OF_MARK, start - SIGNAL_OF_MARK.length)
+  }
+
+  /** A bare identifier that READS an active signal (not a `signalOf` identity). */
+  function isSignalRead(node: N): boolean {
+    return node.type === 'Identifier' && isActiveSignal(node.name) && !isIdentityRef(node)
+  }
+
   /** `sig()` — a zero-arg call of an active signal/computed — returns the callee name, else null. */
   function bareSignalCallee(node: N): string | null {
     if (node.type !== 'CallExpression' || (node.arguments?.length ?? 0) !== 0) return null
     const callee = node.callee
     if (!callee || callee.type !== 'Identifier' || !isActiveSignal(callee.name)) return null
+
     return callee.name
   }
 
@@ -3922,6 +4029,7 @@ export function transformJSX_JS(
     for (const { name, init } of collectFunctionBindings(node)) {
       if (signalVars.has(name) && !(init && isSignalCall(init))) shadows.push(name)
     }
+
     return shadows
   }
 
@@ -3937,6 +4045,7 @@ export function transformJSX_JS(
     if (inner.type !== 'MemberExpression' || inner.computed) return null
     if (inner.object?.type !== 'Identifier' || !propsNames.has(inner.object.name)) return null
     if (inner.property?.type !== 'Identifier') return null
+
     return { obj: inner.object.name, key: inner.property.name }
   }
 
@@ -3948,6 +4057,7 @@ export function transformJSX_JS(
     if (kids) for (let i = 0; i < kids.length; i++) {
       if (readsFromProps(kids[i]!)) return true
     }
+
     return false
   }
 
@@ -3965,10 +4075,16 @@ export function transformJSX_JS(
    * (`p1`) that does not exist in that scope, so the page failed to render
    * with `ReferenceError: p1 is not defined`.
    *
-   * Only applied under `ssr`. On the DOM path the same inlining is
-   * load-bearing — it is what keeps a prop-derived value reactive at the use
-   * site — but SSR renders once, so referencing the const by name there is
-   * both correct and sufficient.
+   * Applied on EVERY path (#4300). On the DOM path the inlined copy is not
+   * lowered either: `const el = <img alt={props.alt}/>` used as `{el}` became
+   * `_mountSlot((<img alt={props.alt}/>), …)`, a plain `h()` that reads
+   * `props.alt` once, while the const's own JSX compiles to the reactive
+   * `alt={() => props.alt}`. And each read re-creates the element (and any
+   * component in it, with its state). So the const keeps its one element,
+   * whose own bindings are live. JSX anywhere counts, a function body
+   * included: `const row = () => <b>{props.x}</b>` keeps `row`, whose JSX
+   * compiles with its own accessor. Native mirrors this with
+   * `contains_jsx_in_expr` (a full walk, like this one).
    */
   function containsJsx(node: N): boolean {
     if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
@@ -3976,7 +4092,65 @@ export function transformJSX_JS(
     if (kids) for (let i = 0; i < kids.length; i++) {
       if (containsJsx(kids[i]!)) return true
     }
+
     return false
+  }
+
+  /**
+   * Would evaluating this initializer TWICE be observable — does it mint
+   * state anywhere, not only at its root?
+   *
+   * Prop-derived inlining re-evaluates the initializer at every JSX use site.
+   * `isStatefulCall` keeps a ROOT factory call (`const m = createModel(props.x)`)
+   * out of it, but a factory one level down was still inlined:
+   * `const count = props.shared ?? signal(0)` became `(props.shared ?? signal(0))`
+   * at each use, so with no `shared` prop the click updated one fresh signal and
+   * the text read another (the documented standalone `<Example>` counter never
+   * updated). The rule is "anywhere in the expression": either side of
+   * `??`/`||`/`&&`, ternary branches, call arguments and callees, object/array
+   * and template literals, and the body of a function the evaluation can
+   * invoke — one passed to a call or used as its callee
+   * (`Array.from({ length: props.n }, () => signal(0))`, an IIFE). Stateful means a call `isStatefulCall` classifies (STATEFUL_CALLS
+   * and the `useX`/`createX` convention, identifier or member callee) or a
+   * `new` (each evaluation constructs a distinct object: `new Map()`,
+   * `new AbortController()`, `new IntersectionObserver(…)`) other than a
+   * value constructor (`isValueConstructor`: `Date`, `URL`, `RegExp`,
+   * `Intl.*`, whose results are used as values — `new Date(props.ts)` stays
+   * inlined and live), and so does a
+   * class expression (a new constructor identity, static blocks run). A write in the
+   * initializer (`=`, `+=`, `++`, `delete`) is observable the same way, and
+   * `await` / `yield` cannot move into the synchronous accessor the use site
+   * becomes, so those keep the const too.
+   *
+   * Two things stay inlinable, as before: a call to an unrecognised callee
+   * (`cx(props.a)`, see `isFactoryConventionName`), and a function that is
+   * only created, never invoked, by the evaluation — the initializer itself
+   * (`const f = () => signal(props.x)`) or an object-literal method:
+   * evaluating a function expression runs nothing, so inlining it is
+   * equivalent to reading the const. Native mirrors this in
+   * `init_mints_state` (`native/src/lib.rs`).
+   */
+  function initMintsState(init: N): boolean {
+    // `invocable`: can evaluating the initializer run this node's function
+    // body? Only as a call/`new` callee or argument (through parentheses and
+    // type layers). A function anywhere else — the initializer itself, an
+    // object-literal method, a `??` fallback — is only CREATED by evaluation.
+    const visit = (node: N, invocable: boolean): boolean => {
+      const t = node.type
+      if (FUNCTION_NODE_TYPES.has(t)) {
+        if (!invocable) return false
+      } else if (mintsStateHere(node)) {
+        return true
+      }
+      const kidsInvocable = TYPE_LAYER_NODE_TYPES.has(t) ? invocable : t === 'CallExpression'
+      for (const kid of childrenMap.get(node) ?? []) {
+        if (visit(kid, kidsInvocable)) return true
+      }
+
+      return false
+    }
+
+    return visit(init, false)
   }
 
   /** Check if an expression references any prop-derived variable.
@@ -3993,6 +4167,7 @@ export function transformJSX_JS(
     if (kids) for (let i = 0; i < kids.length; i++) {
       if (referencesPropDerived(kids[i]!)) return true
     }
+
     return false
   }
 
@@ -4055,15 +4230,17 @@ export function transformJSX_JS(
           }
           continue
         }
-        // Under SSR, a JSX-bearing initializer is never inlinable — see
-        // containsJsx. The DOM path still inlines it, and must: there the
-        // inlining is what keeps a prop-derived value REACTIVE at the use
-        // site (locked by the Round-15 characterization). SSR renders once,
-        // so referencing the const by name is both correct and sufficient —
-        // there is no reactivity to preserve and nothing to gain.
-        if (ssr && containsJsx(decl.init)) continue
+        // A JSX-bearing initializer is never inlinable, on any path — see
+        // containsJsx. Its own JSX compiles with live bindings; an inlined
+        // copy would be raw, un-lowered JSX re-created per read (#4300).
+        if (containsJsx(decl.init)) continue
+        // A factory call or `new` ANYWHERE in the initializer (not only at
+        // its root, checked above): inlining would mint fresh state per use
+        // site. The const keeps the value it captured at setup.
+        if (initMintsState(decl.init)) continue
         // Direct prop read OR transitive (references another prop-derived var)
         if (readsFromProps(decl.init) || referencesPropDerived(decl.init)) {
+          aliasFreeNames.set(decl.init.start as number, collectAliasFreeNames(decl.init))
           propDerivedLog.push({ name: decl.id.name, prev: propDerivedVars.get(decl.id.name) })
           propDerivedVars.set(decl.id.name, {
             start: decl.init.start as number,
@@ -4090,6 +4267,7 @@ export function transformJSX_JS(
       name = parent.id.name
     if (!name) return false
     const c = name.charCodeAt(0)
+
     return c >= 65 && c <= 90
   }
 
@@ -4129,6 +4307,7 @@ export function transformJSX_JS(
             seen.add(k)
             reads.push(k)
           }
+
           return true
         }
         case 'TemplateLiteral':
@@ -4148,6 +4327,7 @@ export function transformJSX_JS(
     if (!ok(top) || reads.length === 0) return null
     needsPkImport = true
     needsRpImport = true
+
     return `${reads.map((r) => `_pk(${r})`).join(' && ')} ? (${inner}) : _rp(() => ${inner})`
   }
 
@@ -4229,6 +4409,7 @@ export function transformJSX_JS(
           'circular-prop-derived',
         )
       }
+
       return varName
     }
     resolving.add(varName)
@@ -4237,6 +4418,7 @@ export function transformJSX_JS(
     const resolved = resolveIdentifiersInText(rawText, span.start, sourceNode)
     resolving.delete(varName)
     resolvedCache.set(cacheKey, resolved)
+
     return resolved
   }
 
@@ -4313,16 +4495,22 @@ export function transformJSX_JS(
       visit(program)
       asiHazardStarts = found
     }
+
     return asiHazardStarts.has(start)
   }
 
-  function resolveIdentifiersInText(
-    text: string,
+  /**
+   * The inlining edits for every prop-derived reference in `[baseOffset,
+   * endOffset)` — scope-aware (a same-named inner binding is never inlined),
+   * each in ORIGINAL source positions. `resolveIdentifiersInText` splices them
+   * into a sliced expression; `inlineUnsliced` pushes the ones outside nested
+   * JSX as replacements of a walked expression.
+   */
+  function propDerivedEdits(
     baseOffset: number,
+    endOffset: number,
     sourceNode?: N,
-    signalIdents: { start: number; end: number }[] = [],
-  ): string {
-    const endOffset = baseOffset + text.length
+  ): { start: number; end: number; text: string }[] {
     const idents: {
       start: number
       end: number
@@ -4337,6 +4525,24 @@ export function transformJSX_JS(
     // idiomatic code: `const a = props.x; items.map(a => <li>{a}</li>)` would
     // rewrite the arrow PARAMETER `a` into `(props.x)`, an invalid arrow head.
     const shadowed = new Set<string>()
+    /** Every name bound anywhere inside the span (params, declarators, catch,
+     *  function and class names) — the hygiene check below. */
+    const spanBound = new Set<string>()
+    function collectSpanBindings(node: N): void {
+      const t = node.type
+      const out: string[] = []
+      if (t === 'ArrowFunctionExpression' || t === 'FunctionExpression' || t === 'FunctionDeclaration') {
+        for (const p of node.params ?? []) patternBindingNames(p, out)
+        if (node.id?.type === 'Identifier') out.push(node.id.name)
+      } else if (t === 'ClassExpression' || t === 'ClassDeclaration') {
+        if (node.id?.type === 'Identifier') out.push(node.id.name)
+      } else if (t === 'VariableDeclarator') {
+        patternBindingNames(node.id, out)
+      } else if (t === 'CatchClause') {
+        patternBindingNames(node.param, out)
+      }
+      for (const n of out) spanBound.add(n)
+    }
 
     /** Collect identifier names bound by a pattern (params / declarators). */
     function patternBindingNames(p: N, out: string[]): void {
@@ -4359,6 +4565,9 @@ export function transformJSX_JS(
           break
         case 'RestElement':
           patternBindingNames(p.argument, out)
+          break
+        case 'TSParameterProperty':
+          patternBindingNames(p.parameter, out)
           break
       }
     }
@@ -4407,6 +4616,7 @@ export function transformJSX_JS(
         }
       }
       if (out.length === 0) return out
+
       return out.filter((n) => propDerivedVars.has(n))
     }
 
@@ -4461,6 +4671,7 @@ export function transformJSX_JS(
       // module-level `const label` declared AFTER a component shadow that
       // component's own alias (#3815).
       const inSpan = nodeStart >= baseOffset && nodeEnd <= endOffset
+      if (inSpan) collectSpanBindings(node)
       const introduced = inSpan ? scopeBoundPropDerived(node).filter((n) => !shadowed.has(n)) : []
       for (const n of introduced) shadowed.add(n)
       forEachChildFast(node, (child) => findIdents(child, node))
@@ -4468,11 +4679,15 @@ export function transformJSX_JS(
     }
     findIdents(program, null)
 
-    if (idents.length === 0 && signalIdents.length === 0) return text
+    // Hygiene (see `aliasFreeNames`): an alias whose inlined text mentions a
+    // name bound anywhere inside this span is not inlined here. Coarser than
+    // per-scope on purpose — the native backend applies the identical rule.
+    const kept =
+      spanBound.size === 0
+        ? idents
+        : idents.filter((id) => !aliasCapturedBy(propDerivedVars.get(id.name)!, spanBound))
 
-    // Both rewrites use ORIGINAL AST positions. Applying signal edits after
-    // prop expansion loses the expansion and can slice past the expression.
-    const edits = idents.map((id) => {
+    return kept.map((id) => {
       const resolved = resolveVarToString(id.name, sourceNode)
       return {
         start: id.start,
@@ -4482,8 +4697,22 @@ export function transformJSX_JS(
           : `${needsLeadingSemicolon(id.start) ? ';' : ''}(${resolved})`,
       }
     })
+  }
+
+  function resolveIdentifiersInText(
+    text: string,
+    baseOffset: number,
+    sourceNode?: N,
+    signalIdents: { start: number; end: number }[] = [],
+  ): string {
+    const endOffset = baseOffset + text.length
+    const edits = propDerivedEdits(baseOffset, endOffset, sourceNode)
+    if (edits.length === 0 && signalIdents.length === 0) return text
+
+    // Both rewrites use ORIGINAL AST positions. Applying signal edits after
+    // prop expansion loses the expansion and can slice past the expression.
     for (const id of signalIdents) {
-      edits.push({ start: id.start, end: id.end, text: `${code.slice(id.start, id.end)}()` })
+      edits.push({ start: id.start, end: id.end, text: `${code.slice(id.start, id.end)}${signalEditSuffix(id.start, id.end)}` })
     }
     edits.sort((a, b) => a.start - b.start)
     const parts: string[] = []
@@ -4493,6 +4722,7 @@ export function transformJSX_JS(
       lastPos = edit.end
     }
     parts.push(code.slice(lastPos, endOffset))
+
     return parts.join('')
   }
 
@@ -4508,6 +4738,7 @@ export function transformJSX_JS(
     if (cached !== undefined) return cached
     const result = _isDynamicImpl(node)
     _isDynamicCache.set(key, result)
+
     return result
   }
 
@@ -4526,6 +4757,7 @@ export function transformJSX_JS(
     ) {
       return parent.key === node && !parent.computed
     }
+
     return false
   }
 
@@ -4568,7 +4800,7 @@ export function transformJSX_JS(
       }
     }
     // Signal variable reference — treated as dynamic (will be auto-called)
-    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+    if (isSignalRead(node)) {
       const parent = findParent(node)
       if (
         parent &&
@@ -4595,6 +4827,7 @@ export function transformJSX_JS(
       if (found) return
       if (isDynamic(child)) found = true
     })
+
     return found
   }
 
@@ -4612,6 +4845,7 @@ export function transformJSX_JS(
         !parent.computed
       )
         return false
+
       return true
     }
     const kids = childrenMap.get(node)
@@ -4620,6 +4854,7 @@ export function transformJSX_JS(
       if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') continue
       if (accessesProps(child)) return true
     }
+
     return false
   }
 
@@ -4627,6 +4862,7 @@ export function transformJSX_JS(
     if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return false
     if (isStatic(node)) return false
     if (node.type === 'CallExpression' && isPureStaticCall(node)) return false
+
     return isDynamic(node)
   }
 
@@ -4668,13 +4904,14 @@ export function transformJSX_JS(
         }
         if (isPureStaticCall(node)) return true
         if (isPureCoercionCall(node)) return args.every((a) => hasFixedDeps(a, cond))
+
         return false
       }
       case 'Identifier': {
         if (!isDynamic(node)) return true
         // A bare known signal is auto-called (one stable dep); a prop-derived
         // const is an opaque getter chain.
-        if (isActiveSignal(node.name) && !propDerivedVars.has(node.name)) return !cond
+        if (isSignalRead(node) && !propDerivedVars.has(node.name)) return !cond
         return false
       }
       case 'MemberExpression': {
@@ -4735,6 +4972,7 @@ export function transformJSX_JS(
     if (exprNode.type === 'ArrowFunctionExpression' || exprNode.type === 'FunctionExpression') {
       return false // block body is emitted as an IIFE — an opaque call
     }
+
     return hasFixedDeps(exprNode, false)
   }
 
@@ -4792,6 +5030,7 @@ export function transformJSX_JS(
       default:
         return null
     }
+
     return names
   }
 
@@ -4805,6 +5044,17 @@ export function transformJSX_JS(
         propDerivedVars.delete(name)
       }
     }
+    // Hygiene: an alias whose inlined text mentions a name this scope re-binds
+    // would be captured by that binding here — hide it for the scope too.
+    if (names.length > 0 && propDerivedVars.size > 0) {
+      for (const [name, prev] of [...propDerivedVars]) {
+        if (aliasCapturedBy(prev, names)) {
+          propDerivedLog.push({ name, prev })
+          propDerivedVars.delete(name)
+        }
+      }
+    }
+
     return true
   }
 
@@ -4854,7 +5104,6 @@ export function transformJSX_JS(
 
     // ── JSX processing (was pass 3) ──
     if (node.type === 'JSXElement') {
-      checkSignalMethodRefs(node)
       if (tryRocketstyleCollapse(node)) {
         // Collapsed to _rsCollapse — children are baked into the SSR-
         // resolved template; do not recurse into the subtree.
@@ -4887,6 +5136,7 @@ export function transformJSX_JS(
           end: node.closingElement.start as number,
           text: `{() => ${fusedH}}`,
         })
+
         return
       }
       for (const child of jsxChildren(node)) {
@@ -5084,6 +5334,7 @@ export function transformJSX_JS(
           sawSpread = true
           continue
         }
+
         return true
       }
       if (attr.type !== 'JSXAttribute') continue
@@ -5107,6 +5358,7 @@ export function transformJSX_JS(
       const attrName = jsxAttrName(attr)
       if (attrName === 'key' || TPL_PROPERTY_ONLY_ATTRS.has(attrName)) return true
     }
+
     return false
   }
 
@@ -5160,6 +5412,7 @@ export function transformJSX_JS(
     for (let i = 0; i < first; i++) if (kinds[i] !== 'element') return false
     // … and nothing but components from it to the end.
     for (let i = first; i < kinds.length; i++) if (kinds[i] !== 'component') return false
+
     return true
   }
 
@@ -5191,6 +5444,7 @@ export function transformJSX_JS(
       return 0
     }
     if (child.type === 'JSXFragment') return templateFragmentCount(child, absorbComponents)
+
     return -1
   }
 
@@ -5218,6 +5472,7 @@ export function transformJSX_JS(
       if (c === -1) return -1
       count += c
     }
+
     return count
   }
 
@@ -5228,6 +5483,7 @@ export function transformJSX_JS(
       if (c === -1) return -1
       count += c
     }
+
     return count
   }
 
@@ -5370,6 +5626,7 @@ export function transformJSX_JS(
             const next = mixed ? '.nextSibling' : '.nextElementSibling'
             const expr = held + next.repeat(k - j)
             const r = renderLevels(levels)
+
             return { expr: expr + r.text, hops: k - j + r.hops }
           }
         }
@@ -5382,6 +5639,7 @@ export function transformJSX_JS(
         cur = parent
       }
       const r = renderLevels(levels)
+
       return { expr: cur + r.text, hops: r.hops }
     }
 
@@ -5394,6 +5652,7 @@ export function transformJSX_JS(
         text += (mixed ? '.firstChild' : '.firstElementChild') + (mixed ? '.nextSibling' : '.nextElementSibling').repeat(k)
         hops += k
       }
+
       return { text, hops }
     }
 
@@ -5409,6 +5668,7 @@ export function transformJSX_JS(
       refLines.push(`const ${varName} = ${expr}`)
       canonicalOf.set(varName, canonical)
       if (!capturedRefs.has(canonical)) capturedRefs.set(canonical, varName)
+
       return varName
     }
 
@@ -5537,6 +5797,7 @@ export function transformJSX_JS(
         if (isSelectValue) return null
         const cooked = exprNode.quasis?.[0]?.value?.cooked
         if (typeof cooked === 'string') return ` ${htmlAttrName}="${escapeLiteralAttr(cooked)}"`
+
         return null
       }
       // Signed numeric literal: `tabIndex={-1}` — trivially foldable, bake it.
@@ -5606,7 +5867,7 @@ export function transformJSX_JS(
       // `_bindText` is text-FIRST, not text-only (it upgrades to a subtree
       // mount on the first VNode-shaped value), so it covers every value a
       // bare signal child can hold, exactly like the general path did.
-      if (allowBareSignal && inner.type === 'Identifier' && isActiveSignal(inner.name)) {
+      if (allowBareSignal && isSignalRead(inner)) {
         return { ref: inner.name, isMember: false, receiver: null }
       }
       if (inner.type !== 'CallExpression') return null
@@ -5667,8 +5928,10 @@ export function transformJSX_JS(
         // not worth the semantic risk.
         const receiver =
           callee.object?.type === 'Identifier' ? sliceExpr(callee.object) : null
+
         return { ref: sliceExpr(callee), isMember: true, receiver }
       }
+
       return null
     }
 
@@ -5715,6 +5978,7 @@ export function transformJSX_JS(
       if (kids) for (let i = 0; i < kids.length; i++) {
         if (containsSignalCall(kids[i]!)) return true
       }
+
       return false
     }
 
@@ -5755,6 +6019,7 @@ export function transformJSX_JS(
       // Apply the same conservative check: bail on signal calls only.
       if (containsSignalCall(inner.consequent)) return null
       if (containsSignalCall(inner.alternate)) return null
+
       return {
         selectorRef: sliceExpr(callee),
         keyExpr: sliceExpr(keyArg),
@@ -5818,6 +6083,7 @@ export function transformJSX_JS(
       const methodCallStart = methodCallee.property.start as number
       const methodCallEnd = inner.end as number
       const methodCall = `.${code.slice(methodCallStart, methodCallEnd)}`
+
       return {
         signalRef: sliceExpr(sigCallee),
         methodCall,
@@ -5831,6 +6097,7 @@ export function transformJSX_JS(
       if (exprNode.type === 'ArrowFunctionExpression' || exprNode.type === 'FunctionExpression') {
         return { expr: `(${sliceExpr(exprNode)})()`, isReactive: true }
       }
+
       return { expr: sliceExpr(exprNode), isReactive: isDynamic(exprNode) }
     }
 
@@ -5921,6 +6188,7 @@ export function transformJSX_JS(
       // `_setStyle`. Static string/number/bool LITERALS still bake into the
       // template HTML (staticAttrToHtml) — this fires only for dynamic values.
       needsSetAttr = true
+
       return `_setAttr(${varName}, "${htmlAttrName}", ${expr})`
     }
 
@@ -5957,6 +6225,7 @@ export function transformJSX_JS(
           return
         }
         bindLines.push(attrSetter(htmlAttrName, varName, expr, tag, false))
+
         return
       }
       lens(
@@ -5995,6 +6264,7 @@ export function transformJSX_JS(
             ? `, () => ${directRef.ref}()`
             : ''
         bindLines.push(`const ${d} = _bindDirect(${directRef.ref}, ${updater}${callerArg})`)
+
         return
       }
       // Selector-ternary auto-promotion: `selector(k) ? a : b` becomes
@@ -6015,6 +6285,7 @@ export function transformJSX_JS(
         bindLines.push(
           `const ${d} = ${selTernary.selectorRef}.subscribe(${selTernary.keyExpr}, (m) => { ${setterBody} })`,
         )
+
         return
       }
       const line = attrSetter(htmlAttrName, varName, expr, tag)
@@ -6054,6 +6325,7 @@ export function transformJSX_JS(
       // A dynamic object style (`style={{ color: theme() }}`) falls through to
       // emitDynamicAttr → the object-aware attrSetter → reactive `_bind`.
       emitDynamicAttr(sliceExpr(exprNode), exprNode, htmlAttrName, varName, tag)
+
       return ''
     }
 
@@ -6066,6 +6338,7 @@ export function transformJSX_JS(
         emitEventListener(attr, attrName, varName)
         return true
       }
+
       return false
     }
 
@@ -6080,6 +6353,7 @@ export function transformJSX_JS(
           bindLines.push(attrSetter(htmlAttrName, varName, 'true', tag, false))
           return ''
         }
+
         return ` ${htmlAttrName}`
       }
       // JSX string attribute: class="foo"
@@ -6101,6 +6375,7 @@ export function transformJSX_JS(
           bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value), tag, false))
           return ''
         }
+
         return ` ${htmlAttrName}="${escapeHtmlAttr(attr.value.value)}"`
       }
       if (attr.value.type === 'JSXExpressionContainer') {
@@ -6108,6 +6383,7 @@ export function transformJSX_JS(
         if (expr && expr.type !== 'JSXEmptyExpression')
           return emitAttrExpression(expr, htmlAttrName, varName, tag)
       }
+
       return ''
     }
 
@@ -6132,12 +6408,14 @@ export function transformJSX_JS(
           needsApplyPropsImport = true
           bindLines.push(`const ${d} = _applyProps(${varName}, ${expr})`)
         }
+
         return ''
       }
       if (attr.type !== 'JSXAttribute') return ''
       const attrName = jsxAttrName(attr)
       if (attrName === 'key') return ''
       if (tryEmitSpecialAttr(attr, attrName, varName)) return ''
+
       return attrInitializerToHtml(attr, JSX_TO_HTML_ATTR[attrName] ?? attrName, varName, tag)
     }
 
@@ -6191,6 +6469,7 @@ export function transformJSX_JS(
         }
         htmlAttrs += processOneAttr(a, varName, tag)
       }
+
       return htmlAttrs
     }
 
@@ -6249,6 +6528,7 @@ export function transformJSX_JS(
             ? `, () => ${directRef.ref}()`
             : ''
         bindLines.push(`const ${d} = _bindText(${directRef.ref}, ${tVar}${callerArg})`)
+
         return needsPlaceholder ? '<!>' : ' '
       }
       // PROP read — `{props.value}` (or its accessor form): bind by
@@ -6259,6 +6539,7 @@ export function transformJSX_JS(
         needsBindPropImport = true
         const d = nextDisp()
         bindLines.push(`const ${d} = _bindProp(${propRead.obj}, ${JSON.stringify(propRead.key)}, ${tVar}, ${parentRef})`)
+
         return needsPlaceholder ? '<!>' : ' '
       }
       // Selector-ternary auto-promotion (companion to the className
@@ -6272,6 +6553,7 @@ export function transformJSX_JS(
         bindLines.push(
           `const ${d} = ${selTernary.selectorRef}.subscribe(${selTernary.keyExpr}, (m) => { ${tVar}.data = (m ? ${selTernary.consequent} : ${selTernary.alternate}) })`,
         )
+
         return needsPlaceholder ? '<!>' : ' '
       }
       // Signal-method-call auto-promotion: `<span>{count().toFixed(2)}</span>`
@@ -6287,6 +6569,7 @@ export function transformJSX_JS(
         bindLines.push(
           `const ${d} = _bindDirect(${sigMethod.signalRef}, (v) => { ${tVar}.data = v${sigMethod.methodCall} })`,
         )
+
         return needsPlaceholder ? '<!>' : ' '
       }
       // General reactive text child — polymorphic: primitives take the text
@@ -6307,6 +6590,7 @@ export function transformJSX_JS(
       needsBindPolyImportGlobal = true
       const d = nextDisp()
       bindLines.push(`const ${d} = bindPolymorphicText(() => (${expr}), ${tVar}, ${parentRef})`)
+
       return needsPlaceholder ? '<!>' : ' '
     }
 
@@ -6323,6 +6607,7 @@ export function transformJSX_JS(
       needsBindPolyImportGlobal = true
       const d = nextDisp()
       bindLines.push(`const ${d} = bindPolymorphicText(() => (${fused}), ${tVar}, ${parentRef})`)
+
       return ' '
     }
 
@@ -6341,6 +6626,7 @@ export function transformJSX_JS(
         // `items` is a VNode array.
         needsSetChildAtImportGlobal = true
         bindLines.push(`_setChildAt(${parentRef}, ${pVar}, ${expr})`)
+
         return '<!>'
       }
       // Sole static child — `_setChild` mounts a VNode/VNode[] value into the
@@ -6348,6 +6634,7 @@ export function transformJSX_JS(
       // renders the elements), else sets `textContent` exactly as before.
       needsSetChildImportGlobal = true
       bindLines.push(`_setChild(${varName}, ${expr})`)
+
       return ''
     }
 
@@ -6375,6 +6662,7 @@ export function transformJSX_JS(
         const raw = child.value ?? child.raw ?? ''
         const cleaned = cleanJsxText(raw)
         if (cleaned) pushText(out, escapeHtmlText(cleaned))
+
         return
       }
       if (child.type === 'JSXElement') {
@@ -6412,6 +6700,7 @@ export function transformJSX_JS(
           }
           out.push({ kind: 'expression', expression: expr })
         }
+
         return
       }
       if (child.type === 'JSXFragment') recurse(jsxChildren(child))
@@ -6431,6 +6720,7 @@ export function transformJSX_JS(
         for (const child of kids) classifyJsxChild(child, flatList, elemIdxRef, addChildren)
       }
       addChildren(children)
+
       return flatList
     }
 
@@ -6459,6 +6749,7 @@ export function transformJSX_JS(
       // like `<p>foo {x()} bar</p>` (rendered "foo  barX" instead of
       // "foo X bar"). Discovered by Phase B2's whitespace tests.
       const present = (hasElem ? 1 : 0) + (hasText ? 1 : 0) + (exprCount > 0 ? 1 : 0)
+
       return { useMixed: present > 1, useMultiExpr: exprCount > 1 }
     }
 
@@ -6491,6 +6782,7 @@ export function transformJSX_JS(
       // static ones staticAttrToHtml routed to null above — emits a deferred
       // property bind line, so the element needs a ref.
       if ((tag === 'select' || tag === 'textarea') && name === 'value') return true
+
       return !isStatic(expr)
     }
 
@@ -6513,6 +6805,7 @@ export function transformJSX_JS(
           return true
         }
       }
+
       return false
     }
 
@@ -6547,6 +6840,7 @@ export function transformJSX_JS(
         // or into the `<!--pyreon-->` marker where it vanished silently.
         if (tplComponentChildren && absorbsComponentChild(node)) return true
       }
+
       return false
     }
 
@@ -6599,6 +6893,7 @@ export function transformJSX_JS(
       // canonical walk rather than on the shortened text.
       // The compact key never equals an emitted expression, so always record it.
       canonicalOf.set(expr, canonical)
+
       return expr
     }
 
@@ -6645,12 +6940,14 @@ export function transformJSX_JS(
         // `templateSignature`, so the subtree cloned and swapped.
         needsMountComponentImport = true
         bindLines.push(`const ${d} = _mountChild(${vnode}, ${parentRef}, null)`)
+
         return ''
       }
       if (child.kind === 'element') {
         const childAccessor = useMixed
           ? childNodeAccessor(parentRef, childNodeIdx, true)
           : childNodeAccessor(parentRef, child.elemIdx, false)
+
         return processElement(child.node, childAccessor)
       }
       // A lone text expression that SSR does NOT treat as sole (`{null}{n()}`,
@@ -6696,6 +6993,7 @@ export function transformJSX_JS(
         const slotArg =
           isChildrenExpression(childExpr, expr) && shouldWrap(childExpr) ? `() => (${expr})` : expr
         bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`)
+
         return '<!>'
       }
       // PZ-02 fix: a call to an in-file JSX-returning helper (`{cell(x)}`,
@@ -6713,6 +7011,7 @@ export function transformJSX_JS(
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
         bindLines.push(`const ${d} = _mountSlot(() => (${expr}), ${parentRef}, ${placeholder}${soleArg})`)
+
         return '<!>'
       }
       // Element-conditional / inline-JSX child (`{cond() ? <A/> : <B/>}`,
@@ -6735,6 +7034,7 @@ export function transformJSX_JS(
         const d = nextDisp()
         const slotArg = isReactive ? `() => (${expr})` : expr
         bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`)
+
         return '<!>'
       }
       const cx = childExpr
@@ -6745,6 +7045,7 @@ export function transformJSX_JS(
           'reactive',
           'live — this text re-renders whenever its signals change',
         )
+
         return emitReactiveTextChild(
           expr,
           childExpr,
@@ -6760,6 +7061,7 @@ export function transformJSX_JS(
         'static-text',
         'baked once into the DOM — never re-renders (no signal read here)',
       )
+
       return emitStaticTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
     }
 
@@ -6831,6 +7133,7 @@ export function transformJSX_JS(
       // or a path, so the declaration can never be attributed to a different
       // element than the one it was computed for.
       const isHole = !useMixed && hasComponent
+
       return { html, isHole }
     }
 
@@ -6868,6 +7171,7 @@ export function transformJSX_JS(
       let html = `<${tag}${htmlAttrs}${isHole ? ` ${TPL_HOLE_ATTR}` : ''}${isHtmlEl ? ` ${TPL_HTML_ATTR}` : ''}>${childHtml}`
       if (deferredLines.length > 0) bindLines.push(...deferredLines)
       if (!VOID_ELEMENTS.has(tag)) html += `</${tag}>`
+
       return html
     }
 
@@ -6953,6 +7257,7 @@ export function transformJSX_JS(
       const end = expr.end as number
       const signalIdents =
         signalVars.size > shadowedSignals.size ? collectSignalCallIdents(expr) : []
+
       return resolveIdentifiersInText(code.slice(start, end), start, expr, signalIdents)
     } else {
       result = code.slice(expr.start as number, expr.end as number)
@@ -6977,7 +7282,7 @@ export function transformJSX_JS(
 
   /** Check if an expression references any tracked signal variable. */
   function referencesSignalVar(node: N): boolean {
-    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+    if (isSignalRead(node)) {
       const parent = findParent(node)
       if (
         parent &&
@@ -7011,6 +7316,7 @@ export function transformJSX_JS(
         !parent.computed
       )
         return false
+
       return true
     }
     const kids = childrenMap.get(node)
@@ -7019,6 +7325,7 @@ export function transformJSX_JS(
       if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') continue
       if (referencesSignalVar(child)) return true
     }
+
     return false
   }
 
@@ -7109,6 +7416,7 @@ export function transformJSX_JS(
       }
     }
     if (out.length === 0) return out
+
     return out.filter((n) => signalVars.has(n))
   }
 
@@ -7160,12 +7468,14 @@ export function transformJSX_JS(
       if (!opening || opening.type !== 'JSXOpeningElement') return false
       const name = opening.name
       const tag = name?.type === 'JSXIdentifier' ? (name.name as string) : ''
+
       return tag.length > 0 && !isComponentTag(tag)
     }
     if (owner.type === 'JSXElement') {
       const tag = jsxTagName(owner)
       return tag.length > 0 && !isComponentTag(tag)
     }
+
     return false
   }
 
@@ -7211,6 +7521,7 @@ export function transformJSX_JS(
             if (pr.type === 'RestElement') markAssignTarget(pr.argument)
             else markAssignTarget(pr.value)
           }
+
           return
         // MemberExpression targets: the object and computed key are reads and
         // are walked by the generic recursion; nothing to mark here.
@@ -7234,12 +7545,7 @@ export function transformJSX_JS(
         node.left.type !== 'VariableDeclaration'
       )
         markAssignTarget(node.left)
-      if (
-        node.type === 'Identifier' &&
-        isActiveSignal(node.name) &&
-        !shadowed.has(node.name) &&
-        !assignTargets.has(node)
-      ) {
+      if (isSignalRead(node) && !shadowed.has(node.name) && !assignTargets.has(node)) {
         const parent = findParent(node)
         // Skip property name positions (obj.name)
         if (
@@ -7252,8 +7558,14 @@ export function transformJSX_JS(
         // Preserve called signal references through type and optional-chain
         // wrappers; computed keys and call arguments still read signal values.
         if (isSignalCallTarget(node)) return
-        // `sig.set` passed by reference — the signal's method, not a value read.
-        if (isSignalMethodRef(node)) return
+        // `sig.set` passed by reference — the signal's own method, not a value
+        // read. Recorded over the whole member so the edit BINDS it to its
+        // signal (`sig.set.bind(sig)`, see `signalEditSuffix`).
+        const methodRef = signalMethodRefMember(node)
+        if (methodRef) {
+          idents.push({ start: node.start as number, end: methodRef.end as number })
+          return
+        }
         // Skip declaration positions
         if (parent && parent.type === 'VariableDeclarator' && parent.id === node) return
         // Skip object property keys and shorthand properties ({ name } or { name: val })
@@ -7281,6 +7593,7 @@ export function transformJSX_JS(
       for (const n of introduced) shadowed.delete(n)
     }
     findSignalIdents(expr)
+
     return idents
   }
 
@@ -7290,10 +7603,20 @@ export function transformJSX_JS(
    * of a field on the signal's value. Auto-calling it emitted `panel().set`,
    * which is `undefined` (or throws on `null`). Only the Signal / Computed API
    * names are exempt, so `user.name` still reads `user().name`. A CALLED
-   * member (`sig.anything(...)`) is handled by `isSignalCallTarget`. Optional
-   * chains are not exempt (`sig?.set` keeps the old reading in both backends).
+   * member (`sig.anything(...)`) is handled by `isSignalCallTarget`. An
+   * optional chain (`sig?.set`) is the same reference: a known signal is never
+   * nullish.
+   *
+   * The auto-call pass BINDS such a reference (#4356): signal methods live on
+   * a shared prototype and read `this`, so the bare member would throw when
+   * the runtime calls it detached (`ref`, `on*`, a component callback prop).
    */
   function isSignalMethodRef(node: N): boolean {
+    return signalMethodRefMember(node) !== null
+  }
+
+  /** The `sig.<method>` member `node` (a known signal) is the object of, or null. */
+  function signalMethodRefMember(node: N): N | null {
     let outer = node
     let parent = findParent(outer)
     while (
@@ -7307,15 +7630,31 @@ export function transformJSX_JS(
       outer = parent
       parent = findParent(outer)
     }
+
     return (
       !!parent &&
       parent.type === 'MemberExpression' &&
       parent.object === outer &&
       !parent.computed &&
-      !parent.optional &&
       parent.property?.type === 'Identifier' &&
       SIGNAL_METHOD_NAMES.has(parent.property.name as string)
+        ? parent
+        : null
     )
+  }
+
+  /**
+   * The text an auto-call edit appends at the end of its range. A signal read
+   * (`count`) gets `()`. A signal-method reference is recorded over the whole
+   * member (`panel.set`, `panel?.set`, `(panel as P).set`), so its range is
+   * longer than the identifier it starts with, and it gets `.bind(panel)`.
+   * Mirrors `signal_edit_suffix` in native/src/lib.rs.
+   */
+  function signalEditSuffix(start: number, end: number): string {
+    // The identifier ends at the first character no identifier contains:
+    // `.` / `?.` / `)` / `!` / a comment or whitespace before `as`.
+    const name = /^[^.?)!/\s]*/u.exec(code.slice(start, end))?.[0] ?? ''
+    return start + name.length === end ? '()' : `.bind(${name})`
   }
 
   function isSignalCallTarget(node: N): boolean {
@@ -7334,6 +7673,7 @@ export function transformJSX_JS(
         outer = parent
         parent = findParent(outer)
       }
+
       return outer
     }
     let target = outsideTypeLayers(node)
@@ -7342,6 +7682,7 @@ export function transformJSX_JS(
       target = outsideTypeLayers(parent)
       parent = findParent(target)
     }
+
     return parent?.type === 'CallExpression' && parent.callee === target
   }
 
@@ -7356,10 +7697,11 @@ export function transformJSX_JS(
     let lastPos = start
     for (const id of idents) {
       parts.push(code.slice(lastPos, id.end))
-      parts.push('()') // auto-call
+      parts.push(signalEditSuffix(id.start, id.end)) // auto-call, or bind a method reference
       lastPos = id.end
     }
     parts.push(code.slice(lastPos, start + text.length))
+
     return parts.join('')
   }
 }
@@ -7496,6 +7838,54 @@ function isFactoryConventionName(name: string): boolean {
   return /^(?:use|create)[A-Z]/.test(name)
 }
 
+/**
+ * `new` callees whose instances are used as VALUES (formatted, compared by
+ * value), so re-constructing one per read is not observable in practice and
+ * the prop-derived const stays inlined (and live). Every other `new` mints an
+ * identity — a container, controller, observer, socket — and keeps its const.
+ * A callee missing here costs reactivity (the const is captured once), never
+ * correctness. Mirrors `is_value_constructor` in `native/src/lib.rs`.
+ */
+function isValueConstructor(callee: N): boolean {
+  if (callee?.type === 'Identifier') return callee.name === 'Date' || callee.name === 'URL' || callee.name === 'RegExp'
+  return (
+    callee?.type === 'MemberExpression' &&
+    !callee.computed &&
+    callee.object?.type === 'Identifier' &&
+    callee.object.name === 'Intl'
+  )
+}
+
+/** Function nodes: their body runs only when called. */
+const FUNCTION_NODE_TYPES = new Set(['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration'])
+
+/** Layers that are transparent to evaluation: parentheses and TS wrappers. */
+const TYPE_LAYER_NODE_TYPES = new Set([
+  'ParenthesizedExpression',
+  'TSAsExpression',
+  'TSSatisfiesExpression',
+  'TSNonNullExpression',
+  'TSTypeAssertion',
+])
+
+/** Node types whose evaluation is observable on its own (see `initMintsState`). */
+const EFFECTFUL_NODE_TYPES = new Set([
+  'ClassExpression',
+  'AssignmentExpression',
+  'UpdateExpression',
+  'AwaitExpression',
+  'YieldExpression',
+])
+
+/** Does evaluating THIS node (not its children) mint state or have an effect? */
+function mintsStateHere(node: N): boolean {
+  const t = node.type
+  if (t === 'NewExpression') return !isValueConstructor(node.callee)
+  if (t === 'UnaryExpression') return node.operator === 'delete'
+
+  return EFFECTFUL_NODE_TYPES.has(t) || isStatefulCall(node)
+}
+
 function isStatefulCall(node: N): boolean {
   if (node.type !== 'CallExpression') return false
   const callee = node.callee
@@ -7509,6 +7899,7 @@ function isStatefulCall(node: N): boolean {
     callee.property?.type === 'Identifier'
   )
     return isFactoryConventionName(callee.property.name)
+
   return false
 }
 
@@ -7552,11 +7943,8 @@ function isChildrenExpression(node: N, expr: string): boolean {
     return true
   if (node.type === 'Identifier' && node.name === 'children') return true
   if (expr.endsWith('.children') || expr === 'children') return true
-  return false
-}
 
-function isLowerCase(s: string): boolean {
-  return s.length > 0 && s[0] === s[0]?.toLowerCase()
+  return false
 }
 
 function containsJSXInExpr(node: N): boolean {
@@ -7566,6 +7954,7 @@ function containsJSXInExpr(node: N): boolean {
     if (found) return
     if (containsJSXInExpr(child)) found = true
   })
+
   return found
 }
 
@@ -7584,6 +7973,7 @@ function collectPatternNames(p: N | null | undefined, out: string[]): void {
         if (prop.type === 'RestElement') collectPatternNames(prop.argument, out)
         else collectPatternNames(prop.value ?? prop.key, out)
       }
+
       return
     case 'ArrayPattern':
       for (const el of p.elements ?? []) collectPatternNames(el, out)
@@ -7694,6 +8084,7 @@ function countBindingsAndWrites(
     forEachChildFast(n, visit)
   }
   visit(fn)
+
   return count
 }
 
@@ -7705,6 +8096,7 @@ function collectFunctionBindings(fn: N): FunctionBinding[] {
   const body = fn.body
   const stmts = body?.body ?? body?.statements
   if (Array.isArray(stmts)) collectStatementBindings(stmts, out)
+
   return out
 }
 
@@ -7725,6 +8117,7 @@ function collectStatementBinding(stmt: N | null | undefined, out: FunctionBindin
           for (const name of names) out.push({ name, init: null })
         }
       }
+
       return
     case 'FunctionDeclaration':
     case 'ClassDeclaration':
@@ -7760,6 +8153,7 @@ function collectStatementBinding(stmt: N | null | undefined, out: FunctionBindin
         collectStatementBinding(stmt.handler.body, out)
       }
       collectStatementBinding(stmt.finalizer, out)
+
       return
     case 'SwitchStatement':
       for (const c of stmt.cases ?? []) collectStatementBindings(c.consequent ?? [], out)
@@ -7840,6 +8234,7 @@ function literalChildText(node: N): string | null {
       if (v === null) return ''
       if (typeof v === 'boolean') return ''
       if (typeof v === 'number') return bakeableNumberRaw(node.raw)
+
       return null
     }
     case 'NullLiteral':
@@ -7914,6 +8309,7 @@ function escapeHtmlSsr(s: string): string {
     else if (c === 39) out += '&#39;'
     else out += s[i]
   }
+
   return out
 }
 
@@ -8003,6 +8399,7 @@ export const SSR_URL_ATTRS = new Set([
   'data',
   'xlink:href',
 ])
+
 // Methods that ALWAYS return a string on an unambiguous receiver — used to prove
 // a dynamic attr value is non-null-non-boolean (so its attr name+quotes can bake).
 // `Number#toFixed`/`Array#join`/`String#*` all return string; `slice`/`concat`/
@@ -8037,6 +8434,7 @@ function cleanJsxText(raw: string): string {
       str += line
     }
   }
+
   return str
 }
 
@@ -8053,6 +8451,7 @@ function isStaticJSXNode(node: N): boolean {
       (node.children ?? []).every(isStaticChild)
     )
   }
+
   return false
 }
 
@@ -8070,6 +8469,7 @@ function isStaticAttrs(attrs: N[]): boolean {
       if (!expr || expr.type === 'JSXEmptyExpression') return true
       return isStatic(expr)
     }
+
     return false
   })
 }
@@ -8083,6 +8483,7 @@ function isStaticChild(child: N): boolean {
     if (!expr || expr.type === 'JSXEmptyExpression') return true
     return isStatic(expr)
   }
+
   return false
 }
 
@@ -8204,6 +8605,7 @@ function isPureStaticCall(node: N): boolean {
     name = `${callee.object.name}.${callee.property.name}`
   }
   if (!PURE_CALLS.has(name)) return false
+
   return (node.arguments ?? []).every((arg: N) => arg.type !== 'SpreadElement' && isStatic(arg))
 }
 
@@ -8230,5 +8632,6 @@ function isPureCoercionCall(node: N): boolean {
   const args = node.arguments ?? []
   if (args.length > 1) return false
   if (args.length === 1 && args[0].type === 'SpreadElement') return false
+
   return true
 }

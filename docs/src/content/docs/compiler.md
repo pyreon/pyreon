@@ -71,6 +71,7 @@ This makes Pyreon the first signal framework where JSX looks like plain JavaScri
 - **Scope-aware** — inner variables that shadow a signal name are NOT auto-called
 - **Cross-module** — the Vite plugin pre-scans all files for `export const x = signal(...)` exports and resolves imports
 - **Safe** — already-called signals (`count()`) are NOT double-called; `import type` is excluded
+- **Method references are bound** — a signal's own method passed without a call (`ref={el.set}`, `onInput={value.set}`, `onClick={count.update}`, `cb={sig?.trigger}`, `[1].forEach(count.set)` inside a handler) compiles to `el.set.bind(el)`. Signal methods read `this`, so the bare reference would run without its signal. Covered: `set`, `update`, `peek`, `trigger`, `subscribe`, `direct`, `debug`, `dispose` on a known signal or computed. A method reached through props or an object (`ref={props.sig.set}`) is not known to be a signal's and stays as written; calling it detached fails in dev with `[Pyreon] signal.set() was called without its signal`
 - **Function-deep** — inside a function nested in JSX (`onClick={() => count.set(count + 1)}`, `ref`, render props, `{() => count + 1}` children) a bare signal is read the same way on every element: a DOM element with or without children, a component, a spread-carrying element, and the SSR output. `count.set(…)`, the shorthand `{ count }`, assignment targets and shadowing parameters keep their meaning. To pass the signal itself (`subscribe(count)`), build that function outside the JSX: `const bind = () => subscribe(count)` then `onClick={bind}`
 
 Auto-call is a safety net, not the taught form. It reaches only `const x = signal()` / `computed()` names (and imports the Vite plugin registers), never an object field, store or hook result, `<For>` row item, parameter or destructured name; and TypeScript still types the bare name as the signal. Write `count()`: it compiles to the same binding (to the faster `_rpd` direct tier on a component prop), and `pyreon/consistent-signal-read` in the `readable` preset enforces it. [Plain Mode](/docs/plain-mode) is the paren-free dialect.
@@ -164,7 +165,16 @@ Both DOM elements (lowercase tags like `div`, `span`) and component elements (up
 <Button onClick={() => doThing()} />     // unchanged — already a function (and `on*` is never wrapped, see below)
 ```
 
-This distinction is made by checking the first character of the tag name. Uppercase tags are treated as components; lowercase tags as DOM elements.
+One rule decides which kind a tag is, for every form of tag:
+
+| Tag | Kind |
+| --- | --- |
+| `<div>`, `<my-el>` — identifier starting with an ASCII lowercase letter | DOM element |
+| `<MyComp>`, `<_Comp>`, `<$Comp>` — any other identifier | component |
+| `<m.Chart>`, `<UI.Button>`, `<Ctx.Provider>`, `<motion.div>`, `<this.Item>` — member tag | component |
+| `<svg:a>` — namespaced tag | DOM element |
+
+It is the rule TypeScript, esbuild and oxc use to choose a string tag over a value. A member tag is a component even when it starts lowercase (`<motion.div>` names a value), so `<m.Chart data={props.data} />` compiles exactly like `const Chart = m.Chart; <Chart data={props.data} />`: `_pp`/`_rp`/`_rpd` props, `_wrapSpread` spreads, accessor children and `_lc` for a sole template child.
 
 Children in expression containers on components are still wrapped, since the runtime processes them as DOM content:
 
@@ -633,7 +643,6 @@ interface CompilerWarning {
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
     | 'plain-mode'
-    | 'signal-method-reference'
 }
 ```
 
@@ -645,7 +654,6 @@ Currently-emitted codes:
 | `circular-prop-derived` | A prop-derived `const` chain that references itself (`const a = b + props.x; const b = a + 1`). The cyclic identifier keeps its captured value instead of being reactively inlined — restructure the chain or read `props.*` directly. |
 | `duplicate-jsx-attr`    | The same JSX attribute name written twice on one element (`<div id="a" id="b" />`). The later one wins (matches JS object-literal semantics), the earlier one is flagged as ignored. |
 | `plain-mode`            | Emitted by the [Plain Mode](/docs/plain-mode) pre-pass for a declined/unconvertible shape — prefixed with `[plain]` in the message. |
-| `signal-method-reference` | A signal's own method passed by reference as an attribute value (`ref={panel.set}`, `onInput={value.set}`). Signal methods read `this`, so the detached reference throws when called (dev builds name it: `[Pyreon] signal.set() was called without its signal`). Pass an arrow: `ref={(el) => panel.set(el)}`. The compiler leaves such a member as written; any other member of a signal (`user.name`) still reads the value (`user().name`). |
 
 `signal-call-in-jsx` and `signal-in-static-prop` are declared in the type but are not currently emitted by either backend — reserved for future diagnostics. Don't build tooling that assumes they fire today.
 
@@ -724,7 +732,6 @@ interface CompilerWarning {
     | 'circular-prop-derived'
     | 'duplicate-jsx-attr'
     | 'plain-mode'
-    | 'signal-method-reference'
 }
 ```
 
@@ -894,11 +901,48 @@ function Profile(props) {
 | `const a = props.x; const b = a + 1` | Yes | Transitive resolution |
 | `let x = props.y` | No | `let` is mutable — unsafe to inline |
 | `var x = props.y` | No | `var` is mutable — unsafe to inline |
+| `const m = createModel(props.y)`, `const s = useThing(props.y)` | No | A stateful call: re-running it per use would create a new instance each time |
+| `const count = props.shared ?? signal(0)` | No | The same, ANYWHERE in the initializer (see below) |
+| `const d = new Date(props.ts)`, `new Intl.NumberFormat(props.locale)` | Yes | Value constructors (`Date`, `URL`, `RegExp`, `Intl.*`) |
+| `const c = props.cache ?? new Map()` | No | Any other `new` creates a new object per evaluation |
+| `const label = cx(props.a)` | Yes | An unrecognised call is assumed to compute a value |
+| `const el = <img alt={props.alt} />`, `const el = props.f ? <b /> : <i />`, `const row = () => <li>{props.x}</li>` | No | JSX anywhere in the initializer: the element's own bindings are already live (see below) |
 | `console.log(x)` where `x` is prop-derived | No | Non-JSX usage stays static (captured value) |
+
+### Initializers that create state are never inlined
+
+Inlining re-evaluates the initializer at every use. That is only the same as reading the `const` when evaluating it twice is not observable. So a `const` whose initializer contains, anywhere — either side of `??`/`||`/`&&`, a ternary branch, a call argument, an object, array or template literal, or a callback the expression calls (`Array.from({ length: props.n }, () => signal(0))`) — any of the following keeps the value it captured at setup:
+
+- a stateful call: `signal`, `computed`, `effect`, `batch`, `defineStore`, or any `useX(…)` / `createX(…)` (also as a member, `api.useX(…)`)
+- a `new` other than `Date`, `URL`, `RegExp` or `Intl.*`, or a class expression
+- a write (`=`, `+=`, `++`, `delete`), an `await` or a `yield`
+
+The common case is a component that can share state with its parent or own it:
+
+```tsx
+function Counter(props: { shared?: Signal<number> }) {
+  const count = props.shared ?? signal(0) // evaluated once: ONE signal
+  return <button onClick={() => count.update((n) => n + 1)}>{count()}</button>
+}
+```
+
+`props.shared` is read once, at setup. That is what this pattern wants (the parent decides at mount); if the parent may later pass a different signal, read `props.shared` where you use it instead.
+
+### Initializers that hold JSX are never inlined
+
+A `const` whose initializer contains JSX anywhere (an element, a fragment, a ternary or `&&` branch, a `.map` callback, an array or object entry, a function body) is referenced, not inlined, on every path. The JSX inside it compiles once, with its own live bindings: `const el = <img alt={props.alt} />` emits `alt={() => props.alt}`, so `{el}` follows the prop. An inlined copy was the original source, so its JSX was never lowered. It read `props.alt` once, and it built a new element, with new component state, on every read.
+
+The one thing a `const` cannot do is choose a different element later. `const el = props.f ? <b /> : <i />` picks its branch at setup. When the choice must follow the prop, put it where it is used, `{() => (props.f ? <b /> : <i />)}` or `<Show when={() => props.f}>`, or make the `const` a function and call it: `const el = () => (props.f ? <b /> : <i />)` with `{el()}`.
+
+### Every use site, the same rule
+
+An inlinable `const` is inlined wherever JSX uses it: text, attributes, component props and children, and inside handlers, `ref` callbacks, render props and function children on any element (template element, component, childless or spread-carrying element), so a handler reads the current prop, not the value at setup.
+
+A use where inlining would change what a name means keeps the `const`: if the initializer mentions a name that a binding between the declaration and the use re-binds (`const lbl = props.label + tag` used inside `items.map((tag) => …)`), the inlined text would read that binding, so the `const`'s captured value is used there instead.
 
 ### Non-JSX Usage
 
-The inlining only applies to JSX text and attribute positions. Using a prop-derived variable in regular JavaScript code (e.g., `console.log(x)`, passing to a function) still uses the captured value. This is correct — those contexts are not reactive scopes:
+The inlining only applies to JSX. Using a prop-derived variable in regular JavaScript code (e.g., `console.log(x)`, passing to a function) still uses the captured value. This is correct — those contexts are not reactive scopes:
 
 ```tsx
 function MyComponent(props) {

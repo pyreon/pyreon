@@ -132,16 +132,22 @@ Example output:
 ```
 pyreon check · 3 files · git-changed files
 
-  ✗ signal-write-as-call · `count(value)` does NOT write the signal — use `count.set(value)` …
+  ✗ signal-write-as-call · `count(value)` does NOT write the signal — `signal()` is the read-only
+     callable surface and ignores its arguments. Use `count.set(value)` to assign or
+     `count.update((prev) => …)` to derive from the previous value. Pyreon's runtime warns about
+     this pattern in dev, but the warning fires AFTER the silent no-op.
      ↳ src/Counter.tsx:4:2
      fix: count.set(5) (auto-fixable: run with --fix)
 
-  ✗ for-missing-by · <For each={...}> requires a `by` prop so the keyed reconciler can preserve …
+  ✗ for-missing-by · <For each={...}> requires a `by` prop: it keys the rows, and a <For> without
+     one throws when it mounts.
      ↳ src/Counter.tsx:5:9
-     fix: <For each={items} by={(item) => item.id}>
+     fix: <For each={items()} by={(item) => item.id}>
 
 ✗ 2 findings in 1 file · 1 auto-fixable with --fix · 3 files checked · 41 ms
 ```
+
+A file that does not parse is a `syntax-error` finding (the parser's first error and its position) and fails the run: the detectors parse with an error-recovering parser and would otherwise find nothing in it and pass it. `--fix` leaves such a file untouched.
 
 Each finding follows the shared terminal theme: symbol and code, the message, `↳ file:line:col` (a clickable link in terminals that support OSC 8), then `fix:`. An empty run prints `ℹ No changed .ts/.tsx files to check · …` rather than a success mark, and Ctrl-C ends the run with `! interrupted` and exit code 130.
 
@@ -625,6 +631,7 @@ Codemods only make changes that keep behaviour the same, and skip `node_modules`
 | Id | Since | What it does |
 | --- | --- | --- |
 | `zero-remove-vite-option` | 0.52.0 | Removes the `vite` option from `zero({...})` in `vite.config.*`. `zero()` never read it; the old value is kept as a comment so you can move it into `defineConfig`. |
+| `zero-placeholder-color` | 0.54.0 | Rewrites the image option `placeholder: 'dominant-color'` to `placeholder: 'color'`. The removed name was an alias, so behaviour is unchanged. |
 
 Every `@pyreon/zero` changeset that bumps a minor version (a breaking change while Pyreon is 0.x) states how to upgrade in an `Upgrade:` line: `none`, the codemod id, or the manual step. That line appears in the changelog.
 

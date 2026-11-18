@@ -122,7 +122,7 @@ const Plot = el
 
 function codeFor(mark: Mark, field: Field): string {
   return [
-    '<Chart data={rows} x="month" by="month">',
+    '<Chart data={rows()} x="month" by="month">',
     `  <${mark} y="${field}" label="${field}" />`,
     '  <Line y="target" label="target" dash={[5, 4]} />',
     `  <Axis y format={${FORMAT[field].name}} />`,

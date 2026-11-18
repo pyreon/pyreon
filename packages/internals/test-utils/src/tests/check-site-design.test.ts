@@ -144,6 +144,11 @@ describe('site design — structure', () => {
     expect(galleryMissing([primitive, internal, gallery, primitivesGallery]).map((f) => f.detail)).toEqual(['Cluster'])
   })
 
+  it('counts the family specimens file as gallery', () => {
+    const familiesGallery = file('site/pages/KitGalleryFamilies.tsx', '<Badge tone="win">win</Badge>')
+    expect(galleryMissing([kit, gallery, familiesGallery]).map((f) => f.detail)).toEqual([])
+  })
+
   it('flags an interactive definition without a focus style', () => {
     const f = file('site/kit/x.tsx', "export const Go = el\n  .config({ name: 'Go' })\n  .attrs({ tag: 'button' })\n  .theme(() => ({ color: 'red' }))\nexport const Ok = el\n  .config({ name: 'Ok' })\n  .attrs({ tag: 'a' })\n  .theme((_t, m) => ({ focus: focusRing(m) }))")
     expect(focusMissing([f]).map((x) => x.detail)).toEqual(['Go'])
@@ -182,11 +187,11 @@ describe('site design — the ratchet', () => {
     const dir = mkdtempSync(join(tmpdir(), 'site-design-'))
     const path = join(dir, 'baseline.json')
     const cfg = { label: 't', description: 'd', updateCommand: 'u', fixHint: [] }
-    writeFileSync(path, JSON.stringify({ description: 'd', total: 1, files: { a: { 'literal/space': 1 } } }))
+    writeFileSync(path, JSON.stringify({ description: 'd', files: { a: { 'literal/space': 1 } } }))
     expect(updatePerFile({ a: { 'literal/space': 2 } }, path, cfg)).toBe(false)
     expect(readReadableBaseline(path)?.files).toEqual({ a: { 'literal/space': 1 } })
     expect(updatePerFile({}, path, cfg)).toBe(true)
-    expect(readReadableBaseline(path)?.total).toBe(0)
+    expect(readReadableBaseline(path)?.files).toEqual({})
   })
 
   it('the committed baseline matches the site today (no file above it)', () => {

@@ -15,8 +15,7 @@ import gridTheme from '../theme'
 // absolute pixels to a Container max-width that gets capped by the
 // viewport.
 //
-// Wraps in `PyreonUI` (the unified provider that replaces the
-// deprecated `<Provider>` from @pyreon/unistyle), matching production
+// Wraps in `PyreonUI` (the unified theme provider), matching production
 // usage.
 
 describe('@pyreon/coolgrid in real browser', () => {

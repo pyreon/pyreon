@@ -26,6 +26,27 @@
 
 import XCTest
 
+private extension XCUIElement {
+    /// `waitForExistence(timeout:)` with the same contract and none of its
+    /// flat cost: true as soon as the element exists, false at the deadline.
+    ///
+    /// XCTest evaluates that wait's predicate for the FIRST time one second
+    /// after the call, so an element that is already on screen still costs
+    /// 1.03 s. In one CI job (2026-11-17) 427 of 456 such waits were answered
+    /// by that first poll and took 487 s between them. This asks at once, then
+    /// ten times a second. Held for every suite by
+    /// `ios-device-test-harness.test.ts`.
+    func waitToExist(timeout: TimeInterval) -> Bool {
+        if exists { return true }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            if exists { return true }
+        }
+        return false
+    }
+}
+
 final class PyreonTodoMVCUITests: XCTestCase {
     override func setUpWithError() throws {
         // Stop each test on first failure — every assertion below is a
@@ -45,7 +66,7 @@ final class PyreonTodoMVCUITests: XCTestCase {
         // appears more than once in the accessibility tree.
         let root = app.otherElements["todo-app"].firstMatch
         XCTAssertTrue(
-            root.waitForExistence(timeout: 30),
+            root.waitToExist(timeout: 30),
             "Root view (accessibilityIdentifier=\"todo-app\") did not appear within 30s"
         )
     }
@@ -64,7 +85,7 @@ final class PyreonTodoMVCUITests: XCTestCase {
 
         let root = app.otherElements["todo-app"].firstMatch
         XCTAssertTrue(
-            root.waitForExistence(timeout: 30),
+            root.waitToExist(timeout: 30),
             "Root view did not appear within 30s"
         )
 
@@ -74,13 +95,13 @@ final class PyreonTodoMVCUITests: XCTestCase {
         let marker = "persist-\(UUID().uuidString.prefix(8))"
         let field = app.textFields["new-todo"].firstMatch
         XCTAssertTrue(
-            field.waitForExistence(timeout: 10),
+            field.waitToExist(timeout: 10),
             "new-todo field did not appear"
         )
         field.tap()
         field.typeText(marker + "\n")
         XCTAssertTrue(
-            app.staticTexts[marker].firstMatch.waitForExistence(timeout: 10),
+            app.staticTexts[marker].firstMatch.waitToExist(timeout: 10),
             "Added todo did not render before the relaunch"
         )
 
@@ -91,7 +112,7 @@ final class PyreonTodoMVCUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.staticTexts[marker].firstMatch.waitForExistence(timeout: 30),
+            app.staticTexts[marker].firstMatch.waitToExist(timeout: 30),
             "Todo '\(marker)' did not survive relaunch — useStorage persistence broken"
         )
     }
@@ -116,17 +137,17 @@ final class PyreonTodoMVCUITests: XCTestCase {
         app.launch()
 
         let root = app.otherElements["todo-app"].firstMatch
-        XCTAssertTrue(root.waitForExistence(timeout: 30), "Root view did not appear")
+        XCTAssertTrue(root.waitToExist(timeout: 30), "Root view did not appear")
 
         let marker = "anim-\(UUID().uuidString.prefix(8))"
         let field = app.textFields["new-todo"].firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 10), "new-todo field did not appear")
+        XCTAssertTrue(field.waitToExist(timeout: 10), "new-todo field did not appear")
         field.tap()
         field.typeText(marker + "\n")
 
         // (1) ENTER — the new row appears in the TransitionGroup-wrapped list.
         XCTAssertTrue(
-            app.staticTexts[marker].firstMatch.waitForExistence(timeout: 10),
+            app.staticTexts[marker].firstMatch.waitToExist(timeout: 10),
             "Added todo '\(marker)' did not enter the animated list"
         )
 

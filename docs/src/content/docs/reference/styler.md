@@ -22,8 +22,8 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - css`...` — lazy CSSResult, resolved on use (NOT a string)
 - keyframes`...` — returns the generated @keyframes animation-name string
 - createGlobalStyle`...` — returns a ComponentFn that injects global CSS when mounted
-- useCSS(template, props?, boost?) — resolve a CSSResult to a class name inside a component
-- Reactive theming — useTheme() snapshot vs useThemeAccessor() accessor; ThemeProvider follows a changing `theme` prop, while most apps provide it through &lt;PyreonUI&gt;
+- useCSS(template, props?) — resolve a CSSResult to a class name inside a component
+- Reactive theming — useTheme() snapshot vs useThemeAccessor() accessor; the theme is provided by &lt;PyreonUI&gt; from @pyreon/ui-core
 - Singleton StyleSheet (FNV-1a dedup, SSR) + createSheet() for isolated instances
 - buildProps / filterProps — $-transient + shouldForwardProp DOM prop forwarding (descriptor-preserving)
 
@@ -39,7 +39,6 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`useCSS`](#usecss-hook) | hook | Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. |
 | [`useTheme`](#usetheme-hook) | hook | Returns the current theme as a SNAPSHOT at call time. |
 | [`useThemeAccessor`](#usethemeaccessor-hook) | hook | Returns the raw `() => T` theme accessor (not a snapshot). |
-| [`ThemeProvider`](#themeprovider-component) | component | Provides a theme to the reactive `ThemeContext`. |
 | [`ThemeContext`](#themecontext-constant) | constant | The reactive context backing the theme. |
 | [`createSheet`](#createsheet-function) | function | Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton… |
 | [`StyleSheet`](#stylesheet-class) | class | The CSS injection engine: FNV-1a content hashing, a dedup cache (identical CSS → one rule), and SSR support (collect… |
@@ -210,10 +209,10 @@ const GlobalReset = createGlobalStyle`
 ### `useCSS` `hook`
 
 ```ts
-useCSS(template: CSSResult, props?: Record<string, any>, boost?: boolean): string
+useCSS(template: CSSResult, props?: Record<string, any>): string
 ```
 
-Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. Function interpolations receive `props` merged with a snapshot of the current theme. It resolves ONCE, when called — the returned string is a plain value, not a reactive binding, so later prop or theme changes do not re-resolve it. The third `boost` parameter is accepted for compatibility but currently has no effect. The returned class is deduped/hashed by the singleton `sheet`.
+Resolves a `CSSResult` (from the `css` tagged template) to an injected class-name string inside a component. Function interpolations receive `props` merged with a snapshot of the current theme. It resolves ONCE, when called — the returned string is a plain value, not a reactive binding, so later prop or theme changes do not re-resolve it. The returned class is deduped/hashed by the singleton `sheet`.
 
 **Example**
 
@@ -230,7 +229,6 @@ function Box(props) {
 
 - Forgetting to pass `props` when the template has function interpolations — they then resolve against the theme alone and the prop-driven values are lost
 - Expecting `useCSS(box, props)` to update when `props.danger` flips — it resolves once at setup; for signal-driven styles use a `styled()` component (its resolver tracks props and theme)
-- Passing `boost: true` expecting a faster path — the parameter is ignored by the current sheet
 - Calling `useCSS` outside a component setup — it depends on the active sheet/theme context like any hook
 
 **See also:** `css` · `styled`
@@ -261,7 +259,7 @@ function Badge() {
 - Destructuring `const { colors } = useTheme()` and expecting it to update on a user-preference theme swap — the snapshot is captured once. Use `useThemeAccessor()` and read inside the reactive scope, or rely on rocketstyle-backed components (their reactive resolver tracks the theme — a plain `styled()` with no reactive axis resolves once at mount)
 - Calling `useTheme()` at module scope — it must run during component setup where the context is available
 
-**See also:** `useThemeAccessor` · `ThemeProvider` · `styled`
+**See also:** `useThemeAccessor` · `ThemeContext` · `styled`
 
 ---
 
@@ -288,36 +286,7 @@ effect(() => applyChartPalette(theme().colors)) // re-runs on theme swap
 - Calling the accessor once at setup and caching the result — that defeats the point; call it INSIDE the reactive scope every time so the dependency is tracked
 - Reaching for this when a `styled` template would do — the template resolver already tracks the theme; use the accessor only for imperative/non-CSS theme reads
 
-**See also:** `useTheme` · `ThemeProvider`
-
----
-
-### `ThemeProvider` `component`
-
-```ts
-ThemeProvider(props: { theme: Theme; children?: VNodeChild }): VNode | null
-```
-
-Provides a theme to the reactive `ThemeContext`. The provided accessor reads `props.theme` LAZILY, so a signal-driven `theme={current()}` stays live: consumers that read the theme inside a tracking scope — `useThemeAccessor()` in an `effect` / `computed` / JSX thunk, and rocketstyle-backed components (whose reactive `$rocketstyle` axis tracks the theme) — follow a later `theme` change without a remount. A plain `styled()` component with no reactive axis resolves its class ONCE at mount (the static fast path), so it does not re-resolve on a swap. A nested provider REPLACES the theme for its subtree — there is no merge and no `(parent) => theme` function form. Marked `nativeCompat` so it works inside `@pyreon/{react,preact,vue,solid}-compat` apps.
-
-**Example**
-
-```tsx
-import { ThemeProvider } from "@pyreon/styler"
-
-// Standalone styler use, outside any <PyreonUI>:
-<ThemeProvider theme={{ colors: { primary: "#06f" } }}>
-  <App />
-</ThemeProvider>
-```
-
-**Common mistakes**
-
-- Expecting a nested provider to MERGE with its parent — it replaces the theme for its subtree. To extend, read the parent with `useTheme()` and spread it yourself: `theme={{ ...parent, colors: { ...parent.colors, accent: "#0a0" } }}` (there is no function `theme` form)
-- Expecting a plain `styled()` component (no rocketstyle, no reactive axis) to re-resolve when the `theme` prop changes — it resolves once at mount; read the theme through `useThemeAccessor()` inside a reactive scope, or use `<PyreonUI>` + rocketstyle components for live whole-theme swaps
-- Expecting most apps to mount this directly — `<PyreonUI>` wraps it; use `ThemeProvider` standalone only outside the `@pyreon/ui-core` provider
-
-**See also:** `useTheme` · `useThemeAccessor` · `ThemeContext`
+**See also:** `useTheme` · `ThemeContext`
 
 ---
 
@@ -327,22 +296,26 @@ import { ThemeProvider } from "@pyreon/styler"
 ThemeContext: ReactiveContext<Theme>
 ```
 
-The reactive context backing the theme. Created via `createReactiveContext<Theme>` — `useContext(ThemeContext)` returns a `() => Theme` accessor (which is what `useTheme()` / `useThemeAccessor()` wrap). Exposed for advanced consumers building their own theme-aware primitives; prefer the hooks for app code.
+The reactive context backing the theme. Created via `createReactiveContext<Theme>` — `useContext(ThemeContext)` returns a `() => Theme` accessor (which is what `useTheme()` / `useThemeAccessor()` wrap). Exposed for advanced consumers building their own theme-aware primitives; prefer the hooks for app code. Styler ships no provider component: apps provide the theme with `<PyreonUI theme={…}>` from `@pyreon/ui-core`; low-level code (an isolated test, an embed without the UI system) can call `provide(ThemeContext, () => theme)` during component setup. A nested provide REPLACES the theme for its subtree — there is no merge.
 
 **Example**
 
 ```tsx
 import { ThemeContext } from "@pyreon/styler"
-import { useContext } from "@pyreon/core"
+import { provide, useContext } from "@pyreon/core"
 
 const themeAccessor = useContext(ThemeContext) // () => Theme
+
+// Low-level provide, without <PyreonUI> (read the theme lazily so a
+// signal-driven theme stays live):
+provide(ThemeContext, () => currentTheme())
 ```
 
 **Common mistakes**
 
 - Treating `useContext(ThemeContext)` as the theme object — it is the ACCESSOR `() => Theme` (reactive context). Call it to read
 
-**See also:** `useTheme` · `useThemeAccessor` · `ThemeProvider`
+**See also:** `useTheme` · `useThemeAccessor` · `@pyreon/ui-core`
 
 ---
 
