@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path'
 import { compileKotlinViaDaemon } from './kotlin-daemon'
 import { KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
 import { SWIFT_UI_STUBS } from './swift-stubs'
+import { execSwiftToolSync } from './swift-tool'
 import { kotlinAugmentation, swiftAugmentation, type ValidateOptions } from './stub-augmentation'
 import {
   readToolProbe,
@@ -103,7 +104,7 @@ export function isSwiftcAvailable(): boolean {
     // Capture stdout rather than discarding it: the version string is needed
     // as a verdict-cache key component anyway, so taking it here costs
     // nothing and saves a second spawn.
-    _swiftcVersion = execFileSync('swiftc', ['--version'], {
+    _swiftcVersion = execSwiftToolSync('swiftc', ['--version'], {
       stdio: ['ignore', 'pipe', 'ignore'],
       encoding: 'utf8',
       timeout: PROBE_TIMEOUT_MS,
@@ -179,7 +180,7 @@ function validateSwiftUncached(source: string): ValidationResult {
   writeFileSync(filename, source, 'utf8')
 
   try {
-    execFileSync(
+    execSwiftToolSync(
       'swiftc',
       ['-module-cache-path', join(tempDir, 'module-cache'), '-parse', filename],
       { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
@@ -224,7 +225,7 @@ export function isSwiftUIAvailable(): boolean {
   const filename = join(tempDir, 'probe.swift')
   writeFileSync(filename, 'import SwiftUI\nlet _pyreonSwiftUIProbe = 0\n', 'utf8')
   try {
-    execFileSync(
+    execSwiftToolSync(
       'swiftc',
       ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename],
       { stdio: 'pipe', timeout: PROBE_TIMEOUT_MS },
@@ -290,7 +291,7 @@ export function isObservationAvailable(): boolean {
     'utf8',
   )
   try {
-    execFileSync(
+    execSwiftToolSync(
       'swiftc',
       ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename],
       { stdio: 'pipe', timeout: PROBE_TIMEOUT_MS },
@@ -495,7 +496,7 @@ function validateSwiftTypecheckUncached(source: string): ValidationResult {
   writeFileSync(filename, preamble + source, 'utf8')
 
   try {
-    execFileSync(
+    execSwiftToolSync(
       'swiftc',
       ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename],
       { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
@@ -717,7 +718,7 @@ function compileSwiftStubs(stub: string, inputText: string): ValidationResult {
     // Keep Clang/Swift modules beside the disposable inputs. Sandboxed local
     // runs and hermetic CI workers may not be allowed to write the toolchain's
     // default user cache; typechecking must not depend on that ambient path.
-    execFileSync(
+    execSwiftToolSync(
       'swiftc',
       ['-module-cache-path', join(tempDir, 'ModuleCache'), '-typecheck', stubsPath, inputPath],
       {
@@ -812,7 +813,7 @@ function compileSwiftFiles(stub: string, inputs: readonly string[]): ValidationR
     return p
   })
   try {
-    execFileSync(
+    execSwiftToolSync(
       'swiftc',
       ['-module-cache-path', join(tempDir, 'ModuleCache'), '-typecheck', stubsPath, ...paths],
       {
