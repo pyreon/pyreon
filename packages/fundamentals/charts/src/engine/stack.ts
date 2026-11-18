@@ -4,7 +4,7 @@
 // a category axis and wrong for a scatter plot — there, x is a measured value
 // like y, and pretending otherwise silently redraws the data.
 
-import { clampBarWidth, isFiniteNumber, scaleLinear } from './scale'
+import { barSlot, isFiniteNumber, scaleLinear } from './scale'
 import type { Domain, Double, Pt, Rect } from './types'
 
 /** One band's worth of stacked segments, bottom to top. */
@@ -100,7 +100,7 @@ export function layoutStackLevels(levels: StackLevels, values: Double[][], plot:
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / countOf(n)
-  const bw = clampBarWidth(band * (1.0 - ratio), barWidth)
+  const bw = barSlot(band * (1.0 - ratio), 1.0, barWidth).bar
   let fi = 0.0
   for (let i = 0; i < n; i++) {
     for (let s = 0; s < levels.tops.length; s++) {
@@ -132,7 +132,7 @@ export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / countOf(n)
-  const bh = clampBarWidth(band * (1.0 - ratio), barWidth)
+  const bh = barSlot(band * (1.0 - ratio), 1.0, barWidth).bar
   let fi = 0.0
   for (let i = 0; i < n; i++) {
     for (let s = 0; s < levels.tops.length; s++) {
@@ -153,28 +153,6 @@ export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot
     fi = fi + 1.0
   }
   return out
-}
-
-/** How wide one bar, a whole group, and one bar-to-bar step are, in px. */
-export interface GroupSlot {
-  bar: Double
-  group: Double
-  pitch: Double
-}
-
-/**
- * The geometry of a `k`-bar group inside a band: each bar's thickness, the
- * group's total thickness and the step from one bar to the next. With neither
- * `barWidth` nor `barGap` set it is the original arithmetic (bars abut and fill
- * the band's slot), so a chart that sets neither lays out exactly as before.
- */
-export function groupSlot(slot: Double, k: number, barWidth?: Double, barGap?: Double): GroupSlot {
-  const gap = (barGap ?? 0.0) > 0.0 ? barGap ?? 0.0 : 0.0
-  const kF = countOf(k)
-  const bar = clampBarWidth(gap > 0.0 ? slot / (kF + (kF - 1.0) * gap) : slot / k, barWidth)
-  const custom = gap > 0.0 || (barWidth ?? 0.0) > 0.0
-
-  return { bar, group: custom ? bar * kF + bar * gap * (kF - 1.0) : slot, pitch: bar * (1.0 + gap) }
 }
 
 /** A count as a Double, for pixel arithmetic (the native targets will not mix Int into Double math). */
@@ -231,7 +209,7 @@ export function layoutGroupedBarsH(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / n
-  const slotH = groupSlot(band * (1.0 - ratio), k, barWidth, barGap)
+  const slotH = barSlot(band * (1.0 - ratio), countOf(k), barWidth, barGap)
   const barH = slotH.bar
   const groupH = slotH.group
   const pitchH = slotH.pitch
@@ -291,7 +269,7 @@ export function layoutGroupedBars(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const slotW = groupSlot(band * (1.0 - ratio), k, barWidth, barGap)
+  const slotW = barSlot(band * (1.0 - ratio), countOf(k), barWidth, barGap)
   const barW = slotW.bar
   const groupW = slotW.group
   const pitchW = slotW.pitch
@@ -409,7 +387,7 @@ export function layoutWaterfall(
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const bw = clampBarWidth(band * (1.0 - ratio), barWidth)
+  const bw = barSlot(band * (1.0 - ratio), 1.0, barWidth).bar
   let acc = 0.0
   for (let i = 0; i < n; i++) {
     const v = values[i]!

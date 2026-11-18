@@ -8,6 +8,7 @@ import { defaultTheme, renderChart, stateFill } from './render'
 import type { ChartSpec, Series } from './render'
 import { tooltipAt, tooltipLines } from './tooltip'
 import { renderSvg } from './svg'
+import { chartToSvg } from './svg-chart'
 
 interface Row { m: string; v: number; tone?: string; heat?: number }
 
@@ -29,11 +30,11 @@ const fills = (cmds: ReturnType<typeof renderChart>): string[] => cmds.flatMap((
 describe('fillBy', () => {
   it('reads a colour off the row; a missing one leaves the datum in the series colour', () => {
     const p = fillBy<Row>('tone').resolve(ROWS)
-    expect(p.colors).toEqual(['#ff0000', '#00ff00', ''])
+    expect(p.itemColors).toEqual(['#ff0000', '#00ff00', ''])
     expect(p.shades).toBeUndefined()
   })
   it('takes an accessor, and ignores a non-string result', () => {
-    expect(fillBy<Row>((d, i) => (i === 1 ? d.tone : undefined)).resolve(ROWS).colors).toEqual(['', '#00ff00', ''])
+    expect(fillBy<Row>((d, i) => (i === 1 ? d.tone : undefined)).resolve(ROWS).itemColors).toEqual(['', '#00ff00', ''])
   })
 })
 
@@ -41,24 +42,24 @@ describe('shadeBy', () => {
   it('maps the value through the ramp over the data extent, and keeps the values', () => {
     const p = shadeBy<Row>('heat', { ramp: ['#000000', '#ffffff'] }).resolve(ROWS)
     expect(p.shades).toEqual([10, 20, 30])
-    expect(p.colors[0]).toBe('rgb(0, 0, 0)')
-    expect(p.colors[2]).toBe('rgb(255, 255, 255)')
-    expect(p.colors[1]).toBe('rgb(128, 128, 128)')
+    expect(p.itemColors[0]).toBe('rgb(0, 0, 0)')
+    expect(p.itemColors[2]).toBe('rgb(255, 255, 255)')
+    expect(p.itemColors[1]).toBe('rgb(128, 128, 128)')
   })
   it('a pinned domain clamps outside values to the end stops', () => {
     const p = shadeBy<Row>('heat', { ramp: ['#000000', '#ffffff'], domain: { min: 20, max: 30 } }).resolve(ROWS)
-    expect(p.colors[0]).toBe('rgb(0, 0, 0)')
-    expect(p.colors[2]).toBe('rgb(255, 255, 255)')
+    expect(p.itemColors[0]).toBe('rgb(0, 0, 0)')
+    expect(p.itemColors[2]).toBe('rgb(255, 255, 255)')
   })
   it('a missing value is a gap (no colour, NaN shade), not a zero', () => {
     const p = shadeBy<Row>((d) => (d.m === 'b' ? undefined : d.heat)).resolve(ROWS)
-    expect(p.colors[1]).toBe('')
+    expect(p.itemColors[1]).toBe('')
     expect(Number.isNaN(p.shades![1]!)).toBe(true)
   })
   it('a constant series takes the middle of the ramp rather than dividing by zero', () => {
     const p = shadeBy<Row>(() => 5, { ramp: ['#000000', '#ffffff'] }).resolve(ROWS)
-    expect(new Set(p.colors).size).toBe(1)
-    expect(p.colors[0]).toBe('rgb(128, 128, 128)')
+    expect(new Set(p.itemColors).size).toBe(1)
+    expect(p.itemColors[0]).toBe('rgb(128, 128, 128)')
   })
   it('a non-number result keeps the series colour and does not throw', () => {
     // @ts-expect-error a string is not a number; the chart must still draw
@@ -104,19 +105,47 @@ describe('the series and the draw list', () => {
 })
 
 describe('the value behind a shade reaches the reader', () => {
-  const s = resolveMarks(ROWS, [bars((d: Row) => d.v, { label: 'Revenue', fill: shadeBy<Row>('heat') as never })])
-  it('the accessible table has a (shade) column with the raw values', () => {
-    const t = chartTable({ categories: ['a', 'b', 'c'], series: s })
+  const desc = shadeBy<Row>('heat')
+  const s = resolveMarks(ROWS, [bars((d: Row) => d.v, { label: 'Revenue', fill: desc as never })])
+  const withCompanion = desc.companions!(s)
+  it('a shaded series is followed by a (shade) companion holding the raw values', () => {
+    expect(withCompanion.map((x) => x.label)).toEqual(['Revenue', 'Revenue (shade)'])
+    expect(withCompanion[1]!.values).toEqual([10, 20, 30])
+  })
+  it('so the accessible table gets a (shade) column and the tooltip a (shade) row', () => {
+    const t = chartTable({ categories: ['a', 'b', 'c'], series: withCompanion })
     expect(t.headers).toEqual(['Category', 'Revenue', 'Revenue (shade)'])
     expect(t.rows.map((r) => r[2])).toEqual(['10', '20', '30'])
+    expect(tooltipLines(tooltipAt(1, ['a', 'b', 'c'], withCompanion))).toEqual(['b', 'Revenue: 6', 'Revenue (shade): 20'])
   })
-  it('the tooltip names it', () => {
-    expect(tooltipLines(tooltipAt(1, ['a', 'b', 'c'], s))).toEqual(['b', 'Revenue: 6 (shade 20)'])
-  })
-  it('an unshaded series prints exactly what it always did', () => {
+  it('an unshaded series is untouched, and a fillBy descriptor has no companions at all', () => {
     const plain = resolveMarks(ROWS, [bars((d: Row) => d.v, { label: 'Revenue' })])
-    expect(tooltipLines(tooltipAt(1, ['a', 'b', 'c'], plain))).toEqual(['b', 'Revenue: 6'])
-    expect(chartTable({ categories: ['a'], series: plain }).headers).toEqual(['Category', 'Revenue'])
+    expect(desc.companions!(plain)).toEqual(plain)
+    expect(fillBy<Row>('tone').companions).toBeUndefined()
+    expect(fillBy<Row>('tone').legend).toBeUndefined()
+  })
+})
+
+describe('the ramp legend', () => {
+  const s = resolveMarks(ROWS, [bars((d: Row) => d.v, { fill: shadeBy<Row>('heat', { ramp: ['#000000', '#ffffff'] }) as never })])
+  const lg = shadeBy<Row>('heat', { ramp: ['#000000', '#ffffff'] })
+  lg.resolve(ROWS)
+  it('is a strip above the plot with the low and high ends labelled', () => {
+    const l = lg.legend!(s, { x: 0, y: 0, w: 400 }, defaultTheme)
+    const texts = l.cmds.flatMap((c) => (c.kind === 'text' ? [c.text] : []))
+    expect(texts).toEqual(expect.arrayContaining(['10', '30']))
+    expect(l.height).toBeGreaterThan(0)
+    expect(l.cmds.some((c) => c.kind === 'rect')).toBe(true)
+  })
+  it('shift moves a plot down by exactly the legend height', () => {
+    const l = lg.legend!(s, { x: 0, y: 0, w: 400 }, defaultTheme)
+    const moved = l.shift([{ kind: 'line', from: { x: 0, y: 0 }, to: { x: 5, y: 5 }, stroke: '#000', width: 1 }])[0]
+    expect(moved).toMatchObject({ from: { x: 0, y: l.height } })
+  })
+  it('chartToSvg carries it: the end labels are in the SVG', () => {
+    const svg = chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.v, { fill: shadeBy<Row>('heat') as never })], x: (d) => d.m, width: 400, height: 220 })
+    expect(svg).toContain('>10<')
+    expect(svg).toContain('>30<')
   })
 })
 

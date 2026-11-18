@@ -172,14 +172,24 @@ export function roundTo(v: Double, digits: Double): Double {
   return Math.floor(v * k + 0.5) / k
 }
 
+/** How wide one bar, a whole group of them, and one bar-to-bar step are, in px. */
+export interface BarSlot {
+  bar: Double
+  group: Double
+  pitch: Double
+}
+
 /**
- * A bar's thickness once the user's `barWidth` (px) is applied: the width asked
- * for, never wider than the slot the band leaves, and the slot itself when no
- * width was asked for (so a chart that does not set it lays out exactly as it
- * always did). Thickness runs across the band: x on a vertical chart, y on a
- * horizontal one.
+ * The geometry of `k` bars sharing a `slot` of a band: each bar's thickness,
+ * the group's total thickness and the step between bars. `barWidth` (px) is a
+ * ceiling on one bar, `barGap` the space between bars as a fraction of a bar;
+ * with neither set the bars abut and fill the slot, as they always did.
  */
-export function clampBarWidth(natural: Double, barWidth?: Double): Double {
+export function barSlot(slot: Double, k: Double, barWidth?: Double, barGap?: Double): BarSlot {
+  const g = (barGap ?? 0.0) > 0.0 ? barGap ?? 0.0 : 0.0
   const w = barWidth ?? 0.0
-  return w > 0.0 && w < natural ? w : natural
+  const natural = slot / (k + (k - 1.0) * g)
+  const bar = w > 0.0 && w < natural ? w : natural
+
+  return { bar, group: bar * k + bar * g * (k - 1.0), pitch: bar * (1.0 + g) }
 }

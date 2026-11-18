@@ -45,12 +45,6 @@ export interface A11ySeries {
    * second cell, like the value it sits beside.
    */
   rValues?: Double[] | undefined
-  /**
-   * The values a `shadeBy` colour was mapped from. A colour is the one channel
-   * a reader who cannot see it can never recover, so it reads as a cell beside
-   * the value it colours.
-   */
-  shades?: Double[] | undefined
 }
 
 export interface A11yInput {
@@ -242,7 +236,6 @@ export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
   for (const s of input.series) {
     const other: Double[] = s.values2 ?? []
     const rs: Double[] = s.rValues ?? []
-    const shs: Double[] = s.shades ?? []
     // Independent columns, not a chain: a series carrying BOTH a second
     // bound and a size channel must contribute both, and an `else if` here
     // silently dropped the size for any series that also had bounds.
@@ -253,7 +246,6 @@ export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
       headers.push(s.label)
     }
     if (rs.length > 0) headers.push(`${s.label} (size)`)
-    if (shs.length > 0) headers.push(`${s.label} (shade)`)
   }
 
   const n = chartRowCount(input)
@@ -278,14 +270,6 @@ export function chartRowCount(input: A11yInput): number {
  * reader that needs ONE row (a keyboard focus move announcing the focused
  * item), which used to format every row of the table to read one.
  */
-/** One `(shade)` cell: the value a `shadeBy` colour was mapped from, '' for a gap or a short series. */
-function shadeCell(shades: Double[], i: number, fmt: Formatter): string {
-  if (i >= shades.length) return ''
-  const c = shades[i]!
-
-  return isFiniteNumber(c) ? fmt(c) : ''
-}
-
 export function chartTableRow(input: A11yInput, i: number): string[] {
   const fmt = input.format ?? groupThousands
   // Bounds-checked, not coalesced: a subscript past the end is a crash on
@@ -295,15 +279,12 @@ export function chartTableRow(input: A11yInput, i: number): string[] {
   for (const s of input.series) {
     const other: Double[] = s.values2 ?? []
     const rs: Double[] = s.rValues ?? []
-    const shs: Double[] = s.shades ?? []
     const two = other.length > 0
     const sized = rs.length > 0
-    const shaded = shs.length > 0
     if (i >= s.values.length) {
       row.push('')
       if (two) row.push('')
       if (sized) row.push('')
-      if (shaded) row.push('')
       continue
     }
     const v = s.values[i]!
@@ -324,7 +305,6 @@ export function chartTableRow(input: A11yInput, i: number): string[] {
         row.push(isFiniteNumber(r) ? fmt(r) : '')
       }
     }
-    if (shaded) row.push(shadeCell(shs, i, fmt))
   }
   return row
 }

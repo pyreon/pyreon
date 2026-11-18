@@ -40,6 +40,7 @@ import type { A11yInput } from './a11y'
 import type { BrushArea } from './brush-area'
 import { hideHiddenSeries, legendEntriesGrouped, legendHitIndex, legendToggleGroup, pagerHit, pinSelection } from './legend-toggle'
 import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, windowOfRows, zoomWindow } from './zoom'
+import type { ItemFill } from './item-colors'
 import { ALL_PLOT_FEATURES } from './plot-features'
 import type { BandFeature, PlotFeatures } from './plot-features'
 import type { ZoomWindow } from './zoom'
@@ -855,6 +856,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // it. Read inside the draw effect so a mode flip repaints.
   const themeOf = useChartTheme()
   const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  // The per-datum colour descriptor a mark carries (`fill`), if any: its table / tooltip companions and ramp legend ride on it, so a chart without one never references them.
+  const paintOf = (): ItemFill<T> | undefined => props.marks.find((m) => m.options.fill !== undefined)?.options.fill as ItemFill<T> | undefined
 
   /**
    * The visible slice of the data under the zoom window.
@@ -971,7 +974,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       column: undefined,
       y: (d: T, i: number) => m.y(d, gi(i)),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
-    })), theme().palette)
+    })), theme().palette, theme().ramp)
     const resolvedCats = full !== null ? full.categories : resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i)))
     return {
     width: w,
@@ -1115,7 +1118,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     let legendLeft = 0.0
     let legendRight = 0.0
     if (props.showLegend === true) {
-      const series = resolveMarks(rows, props.marks, theme().palette)
+      const series = resolveMarks(rows, props.marks, theme().palette, theme().ramp)
       const hidden = hiddenSeries()
       // One entry per LABEL (ECharts' rule): an area and a line both labelled
       // Revenue are one Revenue entry, and a tap toggles both.
@@ -1144,7 +1147,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       legendRight = placed.right
     }
 
-    const top = titleH + legendH
+    const shadeLegend = paintOf()?.legend?.(resolveFull(rows).series, { x: 0, y: titleH + legendH, w }, theme())
+    for (const c of shadeLegend?.cmds ?? []) legendCmds.push(c)
+    const top = titleH + legendH + (shadeLegend?.height ?? 0)
     topOffset = top
     leftOffset = legendLeft
     const pw = Math.max(0.0, w - legendLeft - legendRight)
@@ -1756,7 +1761,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (f === null) return
     const hidden = hiddenSeries()
     const series = f.spec.series.filter((_x, i) => !hidden.includes(i))
-    const content = tooltipAt(idx, f.spec.categories, series)
+    const content = tooltipAt(idx, f.spec.categories, paintOf()?.companions?.(series) ?? series)
     const custom = props.tooltipFormatter
     box.textContent = custom === undefined ? tooltipLines(content, resolvedFormat()).join('\n') : custom(content)
     box.style.display = 'block'
@@ -1968,7 +1973,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const palette = theme().palette
     const m = lastFull
     if (m !== null && m.rows === rows && m.marks === props.marks && m.x === props.x && m.palette === palette) return m
-    const next = { rows, marks: props.marks, x: props.x, palette, series: resolveMarks(rows, props.marks, palette), categories: resolveCategories(rows, props.x) }
+    const next = { rows, marks: props.marks, x: props.x, palette, series: resolveMarks(rows, props.marks, palette, theme().ramp), categories: resolveCategories(rows, props.x) }
     lastFull = next
     return next
   }
@@ -1987,7 +1992,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       // chart to a sighted reader and another to a screen-reader user.
       format: fmtNow,
       categories: full.categories,
-      series: resolved.map((s, i) => ({
+      series: (paintOf()?.companions?.(resolved) ?? resolved).map((s, i) => ({
         // The mark's own label (`line(y, { label })`, `<Line label>`) — what the
         // legend and tooltip show. It used to fall straight to "Series N", so a
         // screen reader heard names no sighted reader ever saw.
@@ -2000,7 +2005,6 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         ...(s.errLow !== undefined ? { errLow: s.errLow } : {}),
         ...(s.errHigh !== undefined ? { errHigh: s.errHigh } : {}),
         ...(s.rValues !== undefined ? { rValues: s.rValues } : {}),
-        ...(s.shades !== undefined ? { shades: s.shades } : {}),
       })),
     }
     a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }

@@ -19,7 +19,7 @@ import { tooltipAt, tooltipLines } from './tooltip'
 import type { Series } from './render'
 import type { A11ySeries } from './a11y'
 
-type Role = 'data' | 'presentation'
+type Role = 'data' | 'presentation' | 'companion'
 
 /**
  * What each `Series` field IS. `data` means a reader must be able to get the
@@ -37,8 +37,10 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   errLow: 'data',
   errHigh: 'data',
   rValues: 'data',
-  shades: 'data',
-  // Painted by `stateFill`; the numbers behind a shade are `shades`.
+  // The numbers behind a `shadeBy` colour are DATA, but they reach the reader as a companion series
+  // (`<label> (shade)`) built by the descriptor the host calls, not by the shared a11y / tooltip code
+  // (which would put the bytes in every chart); the spec below asserts that route.
+  shades: 'companion',
   itemColors: 'presentation',
 
   radii: 'presentation',
@@ -74,7 +76,6 @@ function loaded(): Series {
     errLow: [2, 5],
     errHigh: [4, 7],
     rValues: [11, 22],
-    shades: [33, 44],
     color: '#111',
     width: 2,
     radius: 3,
@@ -89,7 +90,6 @@ const PRINTED: Readonly<Record<string, string[]>> = {
   errLow: ['2', '5'],
   errHigh: ['4', '7'],
   rValues: ['11', '22'],
-  shades: ['33', '44'],
 }
 
 describe('every data channel reaches the reader', () => {

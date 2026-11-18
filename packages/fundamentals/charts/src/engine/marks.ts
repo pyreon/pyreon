@@ -461,16 +461,7 @@ function fillAccessor<T>(data: readonly T[], acc: (d: T, index: number) => unkno
   }
 }
 
-/** The series fields a mark's `fill` descriptor sets — nothing at all when the mark has none, so an unpainted chart builds the same series as before. */
-function itemPaint<T>(data: readonly T[], m: Mark<T>): { itemColors?: string[]; shades?: Double[] } {
-  const f = m.options.fill as ItemFill<T> | undefined
-  if (f === undefined) return {}
-  const p = f.resolve(data)
-
-  return { itemColors: p.colors, ...(p.shades !== undefined ? { shades: p.shades } : {}) }
-}
-
-export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
+export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE, ramp?: readonly string[]): Series[] {
   // Colour follows the LABEL (`labelSlots`): marks sharing a label share a colour.
   const slots = labelSlots(marks.map((m, k) => markLabel(m, k)))
   return marks.map((m, seriesIndex) => {
@@ -572,7 +563,7 @@ export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], p
       areaOpacity: m.options.areaOpacity,
       negativeColor: m.options.negativeColor,
       connectNulls: m.options.connectNulls,
-      ...itemPaint(data, m),
+      ...(m.options.fill as ItemFill<T> | undefined)?.resolve(data, ramp),
       errLow,
       errHigh,
     }

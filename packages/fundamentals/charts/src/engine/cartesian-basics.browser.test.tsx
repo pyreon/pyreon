@@ -99,7 +99,7 @@ describe('per-datum colour in real Chromium', () => {
     for (let x = 20; x < W; x += 6) canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: r.left + x, clientY: r.top + H - 40, bubbles: true }))
     await flush()
     const tip = query<HTMLElement>(container, '[data-pyreon-chart-tooltip]')
-    expect(tip.textContent).toMatch(/Revenue: 90 \(shade \d+\)/)
+    expect(tip.textContent).toMatch(/Revenue \(shade\): \d+/)
     unmount()
   })
 

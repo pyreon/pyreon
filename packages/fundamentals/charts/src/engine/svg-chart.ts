@@ -6,6 +6,7 @@
 // text is wired by default instead of by remembering to.
 
 import { describeChart } from './a11y'
+import type { ItemFill } from './item-colors'
 import type { Mark } from './marks'
 import { resolveCategories, resolveMarks } from './marks'
 import { defaultTheme, renderChart } from './render'
@@ -88,13 +89,16 @@ export interface ChartToSvgOptions<T> {
 export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
   const width = options.width ?? 640
   const height = options.height ?? 320
-  const series = resolveMarks(options.data, options.marks)
+  const theme = options.theme ?? defaultTheme
+  const series = resolveMarks(options.data, options.marks, undefined, theme.ramp)
+  // A per-datum colour descriptor adds its ramp legend above the plot (see `item-colors.ts`).
+  const legend = (options.marks.find((m) => m.options.fill !== undefined)?.options.fill as ItemFill<T> | undefined)?.legend?.(series, { x: 0, y: 0, w: width }, theme)
   const spec = {
     width,
-    height,
+    height: height - (legend?.height ?? 0),
     series,
     categories: resolveCategories(options.data, options.x),
-    theme: options.theme ?? defaultTheme,
+    theme,
     showXAxis: options.showXAxis ?? true,
     showYAxis: options.showYAxis ?? true,
     showGrid: options.showGrid ?? true,
@@ -115,7 +119,8 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
   const measure = options.measure ?? measureApprox()
   // Same seam as the canvas host's `present`: RTL is the mirror of the
   // finished list, so the static path and the live one cannot drift.
-  const drawn = renderChart(spec, measure)
+  const plotted = renderChart(spec, measure)
+  const drawn = legend === undefined ? plotted : [...legend.cmds, ...legend.shift(plotted)]
   const cmds = options.rtl === true ? mirrorCmds(drawn, width) : drawn
 
   const description =
