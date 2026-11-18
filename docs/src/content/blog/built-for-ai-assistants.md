@@ -94,13 +94,13 @@ Reactivity map for badge.tsx — 3 live · 2 baked-static · 1 footgun
    4 |   const { label } = props
                ^ ⚠ footgun [props-destructured-body] — Destructuring `props` in the component body captures the values ONCE during setup …
    9 |       {props.count} / {doubled} / {tripled}
-              ^ ◆ live — live — this text re-renders whenever its signals change
-                              ^ ◆ live — live — this text re-renders whenever its signals change
-                                          ^ ○ baked once — baked once into the DOM — never re-renders (no signal read here)
+              ^ ◆ live — this text re-renders whenever its signals change
+                              ^ ◆ live — this text re-renders whenever its signals change
+                                          ^ ○ baked once into the DOM — never re-renders (no signal read here)
   19 |       <Badge label="clicks" count={count()} />
                                           ^ ◆ live prop — live prop — signal reads here are tracked into the component
   20 |       <p>{snapshot}</p>
-                 ^ ○ baked once — baked once into the DOM — never re-renders (no signal read here)
+                 ^ ○ baked once into the DOM — never re-renders (no signal read here)
 ```
 
 Read that line 9 closely. `const doubled` stays live because the compiler inlines a `const` derived from props at its use site. `let tripled` does not, and the tool says so. This is not a guess: it is the same reactive-or-static decision the JSX compiler makes when it emits the bindings. "Baked once" here means baked once in your bundle.
