@@ -13,6 +13,7 @@ import * as schedule from '../index'
  * shows is what the package prints, and every block imports what it uses.
  */
 const PAGE = join(import.meta.dirname, '..', '..', '..', '..', '..', 'docs', 'src', 'content', 'docs', 'schedule.md')
+
 const MODULES: Record<string, unknown> = {
   '@pyreon/schedule': schedule,
   '@pyreon/schedule/core': schedule,
