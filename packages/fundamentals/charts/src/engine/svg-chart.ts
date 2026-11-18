@@ -51,6 +51,12 @@ export interface ChartToSvgOptions<T> {
   markers?: readonly PointMarker[]
   /** Flip the frame — categories on Y, bars growing rightward. Bar marks only. */
   horizontal?: boolean
+  /** Bar thickness in px (a ceiling) — see `PlotChartProps.barWidth`. */
+  barWidth?: number
+  /** Space between the bars of a group, as a fraction of a bar — see `PlotChartProps.barGap`. */
+  barGap?: number
+  /** Space between categories, as a fraction of the band — see `PlotChartProps.barCategoryGap`. */
+  barCategoryGap?: number
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -102,6 +108,9 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     annotations: options.annotations,
     markers: options.markers,
     horizontal: options.horizontal === true,
+    barWidth: options.barWidth,
+    barGap: options.barGap,
+    barCategoryGap: options.barCategoryGap,
   }
   const measure = options.measure ?? measureApprox()
   // Same seam as the canvas host's `present`: RTL is the mirror of the

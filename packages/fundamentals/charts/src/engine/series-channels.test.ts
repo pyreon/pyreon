@@ -59,6 +59,7 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   pattern: 'presentation',
   dash: 'presentation',
   negativeColor: 'presentation',
+  connectNulls: 'presentation',
   inBrush: 'presentation',
   brushOpacity: 'presentation',
   seriesSelected: 'presentation',

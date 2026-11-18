@@ -88,7 +88,7 @@ data class DialSpec(var start: Double, var sweep: Double, var clockwise: Boolean
 
 data class Layered(var z: Double, var seq: Double, var cmd: PyreonDrawCmd)
 
-data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var areaOpacity: Double? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var seriesSelected: Boolean? = null, var inBrush: List<Long>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var itemColors: List<String>? = null, var shades: List<Double>? = null)
+data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var areaOpacity: Double? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var connectNulls: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Long>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var itemColors: List<String>? = null, var shades: List<Double>? = null)
 
 data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var xFrom: Double? = null, var xTo: Double? = null, var x1: Double? = null, var y1: Double? = null, var x2: Double? = null, var y2: Double? = null, var label: String? = null, var color: String? = null)
 
@@ -3973,8 +3973,8 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           if (s.kind == "line") {
             val direct = if (s.curve == null && xs.length == 0L) m4CategoryPoints(s.values, plot, sDomain, m4Density(spec)) else listOf()
             val useDirect = direct.length > 0L
-            val runs = if (useDirect) listOf(direct) else splitRuns(s.values, place)
-            val keyedLine = rowKeys.length == s.values.length && s.curve == null
+            val runs = if (useDirect) listOf(direct) else bridgeRuns(splitRuns(s.values, place), s.connectNulls == true)
+            val keyedLine = rowKeys.length == s.values.length && s.curve == null && s.connectNulls != true
             var runFrom = 0L
             for (run in runs) {
               while (runFrom < s.values.length && !isFiniteValue(s.values[(runFrom).toInt()])) {
@@ -4039,7 +4039,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
               }
             } else {
               if (s.kind == "area") {
-                for (run in splitRuns(s.values, place)) {
+                for (run in bridgeRuns(splitRuns(s.values, place), s.connectNulls == true)) {
                   val pts = reveal(curveFn(run))
                   if (pts.length > 1L) {
                     val poly: MutableList<PyreonChartPt> = mutableListOf()
@@ -4252,6 +4252,19 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       out.add(PyreonDrawCmd(kind = "text", fill = t.label, text = y2Title, at = PyreonChartPt(x = spec.width - t.fontSize * 0.9, y = plot.y + (plot.h).toDouble() / (2.0).toDouble()), size = t.fontSize, align = "middle", baseline = "middle", rotate = 90.0))
     }
     return out
+  }
+
+fun bridgeRuns(runs: List<List<PyreonChartPt>>, connect: Boolean): List<List<PyreonChartPt>> {
+    if (!connect || runs.length < 2L) {
+      return runs
+    }
+    val all: MutableList<PyreonChartPt> = mutableListOf()
+    for (run in runs) {
+      for (p in run) {
+        all.add(p)
+      }
+    }
+    return listOf(all)
   }
 
 fun splitRuns(values: List<Double>, place: (List<Double>) -> List<PyreonChartPt>): List<List<PyreonChartPt>> {

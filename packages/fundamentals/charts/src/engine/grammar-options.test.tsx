@@ -42,6 +42,7 @@ const EVERY: Readonly<Record<keyof MarkOptions, unknown>> = {
   negativeColor: '#ff0000',
   areaOpacity: 0.55,
   fill: fillBy<Row>(() => '#123456'),
+  connectNulls: true,
 }
 
 describe('grammar ⇄ array option parity', () => {

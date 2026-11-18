@@ -1959,6 +1959,7 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'symbol', kind: 'string' },
   { name: 'symbolRepeat', kind: 'boolean' },
   { name: 'negativeColor', kind: 'string' },
+  { name: 'connectNulls', kind: 'boolean' },
 ]
 
 /**

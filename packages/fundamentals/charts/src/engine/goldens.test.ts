@@ -15,7 +15,8 @@
 // INTENTIONAL geometry change, and read the diff of the golden in review.
 import { describe, expect, it } from 'vitest'
 import { chartToSvg } from './svg-chart'
-import { area, bars, line, points, stackedBars } from './marks'
+import { area, bars, groupedBars, line, points, stackedBars } from './marks'
+import { fillBy, shadeBy } from './item-colors'
 import {
   calendarToSvg, candlestickToSvg, funnelToSvg, ganttToSvg, gaugeToSvg, graphToSvg, heatmapToSvg, parallelToSvg,
   chordToSvg,
@@ -56,6 +57,13 @@ const GOLDENS: Record<string, () => string> = {
   'plot-stacked': () => chartToSvg({ data: ROWS, marks: [stackedBars<Row>((d) => d.revenue), stackedBars<Row>((d) => d.cost)], x: (d) => d.month, ...SIZE }),
   'plot-horizontal': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, horizontal: true, ...SIZE }),
   'plot-horizontal-stacked': () => chartToSvg({ data: ROWS, marks: [stackedBars<Row>((d) => d.revenue), stackedBars<Row>((d) => d.cost)], x: (d) => d.month, horizontal: true, ...SIZE }),
+  // Bar thickness and per-datum colour — each new option has a golden of its own, so the draw list a user gets is committed.
+  'plot-bar-geometry': () => chartToSvg({ data: ROWS, marks: [groupedBars<Row>((d) => d.revenue), groupedBars<Row>((d) => d.cost)], x: (d) => d.month, barWidth: 18, barGap: 0.4, barCategoryGap: 0.3, ...SIZE }),
+  'plot-bar-geometry-horizontal': () => chartToSvg({ data: ROWS, marks: [groupedBars<Row>((d) => d.revenue), groupedBars<Row>((d) => d.cost)], x: (d) => d.month, horizontal: true, barWidth: 12, barGap: 0.5, ...SIZE }),
+  'plot-bar-geometry-stacked-rtl': () => chartToSvg({ data: ROWS, marks: [stackedBars<Row>((d) => d.revenue), stackedBars<Row>((d) => d.cost)], x: (d) => d.month, rtl: true, barWidth: 20, ...SIZE }),
+  'plot-item-fill': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue, { label: 'Revenue', fill: shadeBy<Row>('cost', { ramp: ['#fde68a', '#b45309'] }) as never })], x: (d) => d.month, ...SIZE }),
+  'plot-item-fill-horizontal': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue, { label: 'Revenue', fill: fillBy<Row>((d, i) => ['#2563eb', '#16a34a', '', '#dc2626'][i]) as never })], x: (d) => d.month, horizontal: true, ...SIZE }),
+  'plot-connect-nulls': () => chartToSvg({ data: [{ month: 'Jan', revenue: 120, cost: 80 }, { month: 'Feb', revenue: Number.NaN, cost: 70 }, { month: 'Mar', revenue: 160, cost: Number.NaN }, { month: 'Apr', revenue: 140, cost: 100 }] as Row[], marks: [line<Row>((d) => d.revenue, { label: 'Revenue', connectNulls: true }), area<Row>((d) => d.cost, { label: 'Cost', connectNulls: true })], x: (d) => d.month, ...SIZE }),
   'plot-annotated': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, annotations: [{ y: 100, label: 'goal' }, { yFrom: 130, yTo: 150 }], ...SIZE }),
   pie: () => pieToSvg({ data: ROWS, value: (d) => d.revenue, label: (d) => d.month, innerRadius: 0.5, showLabels: true, ...SIZE }),
   gauge: () => gaugeToSvg({ value: 0.72, max: 1, showValue: true, ...SIZE }),

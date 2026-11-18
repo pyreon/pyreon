@@ -144,6 +144,13 @@ export interface MarkOptions {
    * series colour and the compiler names the prop.
    */
   fill?: ItemFill<never>
+  /**
+   * `line` and `area`: draw ONE stroke or fill through the finite points,
+   * bridging each gap, instead of breaking there (the default). The bridge is
+   * straight between the neighbours; the missing datum still has no tooltip row
+   * and no table value.
+   */
+  connectNulls?: boolean
 }
 
 /**
@@ -563,6 +570,7 @@ export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], p
       dash: m.options.dash,
       areaOpacity: m.options.areaOpacity,
       negativeColor: m.options.negativeColor,
+      connectNulls: m.options.connectNulls,
       ...itemPaint(data, m),
       errLow,
       errHigh,

@@ -680,6 +680,7 @@ public struct Series {
   public var pattern: PyreonChartPattern? = nil
   public var dash: [Double]? = nil
   public var negativeColor: String? = nil
+  public var connectNulls: Bool? = nil
   public var seriesSelected: Bool? = nil
   public var inBrush: [Int]? = nil
   public var brushOpacity: Double? = nil
@@ -688,7 +689,7 @@ public struct Series {
   public var values2: [Double]? = nil
   public var itemColors: [String]? = nil
   public var shades: [Double]? = nil
-  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, areaOpacity: Double? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, itemColors: [String]? = nil, shades: [Double]? = nil) {
+  public init(kind: String, values: [Double], color: String, width: Double, radius: Double, label: String, curve: (([PyreonChartPt]) -> [PyreonChartPt])? = nil, areaOpacity: Double? = nil, showValues: Bool? = nil, rValues: [Double]? = nil, radii: [Double]? = nil, axis: String? = nil, effect: Bool? = nil, symbol: String? = nil, symbolRepeat: Bool? = nil, corners: [Double]? = nil, gradient: SeriesGradient? = nil, pattern: PyreonChartPattern? = nil, dash: [Double]? = nil, negativeColor: String? = nil, connectNulls: Bool? = nil, seriesSelected: Bool? = nil, inBrush: [Int]? = nil, brushOpacity: Double? = nil, errLow: [Double]? = nil, errHigh: [Double]? = nil, values2: [Double]? = nil, itemColors: [String]? = nil, shades: [Double]? = nil) {
     self.kind = kind
     self.values = values
     self.color = color
@@ -709,6 +710,7 @@ public struct Series {
     self.pattern = pattern
     self.dash = dash
     self.negativeColor = negativeColor
+    self.connectNulls = connectNulls
     self.seriesSelected = seriesSelected
     self.inBrush = inBrush
     self.brushOpacity = brushOpacity
@@ -6621,8 +6623,8 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
           if s.kind == "line" {
             let direct = s.curve == nil && xs.count == 0 ? m4CategoryPoints(s.values, plot, sDomain, m4Density(spec)) : []
             let useDirect = direct.count > 0
-            let runs = useDirect ? [direct] : splitRuns(s.values, place)
-            let keyedLine = rowKeys.count == s.values.count && s.curve == nil
+            let runs = useDirect ? [direct] : bridgeRuns(splitRuns(s.values, place), s.connectNulls == true)
+            let keyedLine = rowKeys.count == s.values.count && s.curve == nil && s.connectNulls != true
             var runFrom = 0
             for run in runs {
               while runFrom < s.values.count && !isFiniteValue(s.values[runFrom]) {
@@ -6687,7 +6689,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
               }
             } else {
               if s.kind == "area" {
-                for run in splitRuns(s.values, place) {
+                for run in bridgeRuns(splitRuns(s.values, place), s.connectNulls == true) {
                   let pts = reveal(curveFn(run))
                   if pts.count > 1 {
                     var poly: [PyreonChartPt] = []
@@ -6900,6 +6902,19 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       out.append(PyreonDrawCmd(kind: "text", fill: t.label, text: y2Title, at: PyreonChartPt(x: spec.width - t.fontSize * 0.9, y: plot.y + plot.h / 2.0), size: t.fontSize, align: "middle", baseline: "middle", rotate: 90.0))
     }
     return out
+  }
+
+public func bridgeRuns(_ runs: [[PyreonChartPt]], _ connect: Bool) -> [[PyreonChartPt]] {
+    if !connect || runs.count < 2 {
+      return runs
+    }
+    var all: [PyreonChartPt] = []
+    for run in runs {
+      for p in run {
+        all.append(p)
+      }
+    }
+    return [all]
   }
 
 public func splitRuns(_ values: [Double], _ place: ([Double]) -> [PyreonChartPt]) -> [[PyreonChartPt]] {

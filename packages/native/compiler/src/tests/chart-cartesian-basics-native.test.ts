@@ -79,6 +79,34 @@ describe.each(['swift', 'kotlin'] as const)('per-datum fill on %s is declined by
   })
 })
 
+const BRIDGE = `import { Chart, Line } from '@pyreon/charts'
+interface Row { m: string; a: number }
+const ROWS: Row[] = [{ m: 'Jan', a: 3 }, { m: 'Feb', a: 4 }]
+export function App() {
+  return (
+    <Chart<Row> data={ROWS} x="m" height={200}>
+      <Line<Row> y="a" connectNulls />
+    </Chart>
+  )
+}
+`
+
+describe.each(['swift', 'kotlin'] as const)('connectNulls on %s', (target) => {
+  it('lowers as a literal Series field and compiles', () => {
+    const r = transform(BRIDGE, { target })
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(target === 'swift' ? 'connectNulls: true' : 'connectNulls = true')
+    if (target === 'swift' && isSwiftUIAvailable()) {
+      const v = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + r.code)
+      expect(v.ok, v.error ?? '').toBe(true)
+    }
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+  it('an unset chart emits no connectNulls (byte-stable)', () => {
+    expect(transform(BRIDGE.replace(' connectNulls', ''), { target }).code).not.toContain('connectNulls')
+  })
+})
+
 describe('the emit compiles', () => {
   it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts the grouped / horizontal emit', () => {
     const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(GROUPED, { target: 'swift' }).code)

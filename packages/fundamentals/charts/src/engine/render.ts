@@ -78,6 +78,15 @@ export interface Series {
   dash?: Double[] | undefined
   /** The fill a `waterfall` step takes when its value is negative; `color` otherwise. */
   negativeColor?: string | undefined
+  /**
+   * Bridge the gaps of a `line` or `area`: one continuous stroke (or fill)
+   * through the finite points, instead of a break at every missing value. The
+   * gap is still missing data: it has no tooltip row and no table value, and
+   * the bridge is drawn straight between its neighbours. Default off (a gap
+   * breaks the line), which is the honest reading of a measurement that is
+   * absent.
+   */
+  connectNulls?: boolean | undefined
   /** `selectedMode: 'series'`: every datum of this series draws in its selected state. Set by `applySeriesSelection`. */
   seriesSelected?: boolean | undefined
   /** The brushed datums, in VISUAL indices; set with `brushOpacity` by `applyBrushSelection`. */
@@ -1422,10 +1431,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // places, then reduces.
       const direct: Pt[] = s.curve === undefined && xs.length === 0 ? m4CategoryPoints(s.values, plot, sDomain, m4Density(spec)) : []
       const useDirect = direct.length > 0
-      const runs: Pt[][] = useDirect ? [direct] : splitRuns(s.values, place)
+      const runs: Pt[][] = useDirect ? [direct] : bridgeRuns(splitRuns(s.values, place), s.connectNulls === true)
       // Each run is a maximal stretch of finite values, so the rows it draws
       // are the next finite one onward: that is how a keyed run names them.
-      const keyedLine = rowKeys.length === s.values.length && s.curve === undefined
+      const keyedLine = rowKeys.length === s.values.length && s.curve === undefined && s.connectNulls !== true
       let runFrom = 0
       for (const run of runs) {
         while (runFrom < s.values.length && !isFiniteValue(s.values[runFrom]!)) runFrom = runFrom + 1
@@ -1500,7 +1509,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // Gap-splitting (a non-finite value breaks the fill into runs, same
       // as the line branch above) combined with gradient fill support — two
       // independent fixes to this branch that landed as separate PRs.
-      for (const run of splitRuns(s.values, place)) {
+      for (const run of bridgeRuns(splitRuns(s.values, place), s.connectNulls === true)) {
         const pts = reveal(curveFn(run))
         if (pts.length > 1) {
           const poly: Pt[] = []
@@ -1761,6 +1770,17 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
  * every point at the x it would have had, so a gap removes a segment without
  * shifting its neighbours.
  */
+/**
+ * `connectNulls`: the runs a gap split apart, joined into one. Absent or off, the
+ * runs come back untouched, so a series that does not ask draws as it always did.
+ */
+function bridgeRuns(runs: Pt[][], connect: boolean): Pt[][] {
+  if (!connect || runs.length < 2) return runs
+  const all: Pt[] = []
+  for (const run of runs) for (const p of run) all.push(p)
+  return [all]
+}
+
 function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] {
   const runs: Pt[][] = []
   let hasGap = false
