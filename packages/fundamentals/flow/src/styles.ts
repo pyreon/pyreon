@@ -64,20 +64,14 @@ function darkMode(selector: string, indent = ''): string {
 }
 
 /**
- * Default CSS styles for the flow diagram.
- * Inject via `<style>` tag or import in your CSS.
- *
- * @example
- * ```tsx
- * import { flowStyles } from '@pyreon/flow'
- *
- * // Inject once at app root
- * const style = document.createElement('style')
- * style.textContent = flowStyles
- * document.head.appendChild(style)
- * ```
+ * Built by one call marked pure, so a bundle that never reads `flowStyles`
+ * drops the whole sheet. The dark rules are generated (`darkMode`), and a
+ * template with calls in it is not something a bundler will discard by itself:
+ * without the marker the sheet stayed in every `@pyreon/flow` import, used or
+ * not (+1.6 kB gzipped on the `createFlow` + `<Flow>` import).
  */
-export const flowStyles = `
+// The sheet in three literal parts, around the two generated dark blocks.
+const SHEET_BEFORE_DARK = `
 /* Marker: <Flow> checks for it in dev and warns when this sheet is missing. */
 .pyreon-flow {
   --pyreon-flow-styles: 1;
@@ -189,10 +183,14 @@ export const flowStyles = `
    <Flow colorMode="dark">, or by colorMode="system" under a dark OS scheme.
    Set the same variables on an ancestor, or on the Flow element, to override
    any of them in either mode. */
-${darkMode('.pyreon-flow[data-color-mode="dark"]')}
+`
+
+const SHEET_BETWEEN_DARK = `
 
 @media (prefers-color-scheme: dark) {
-${darkMode('.pyreon-flow[data-color-mode="system"]', '  ')}
+`
+
+const SHEET_AFTER_DARK = `
 }
 
 /* ── Accessibility ────────────────────────────────────────────────────────── */
@@ -243,3 +241,29 @@ ${darkMode('.pyreon-flow[data-color-mode="system"]', '  ')}
   }
 }
 `
+
+function buildFlowStyles(): string {
+  return (
+    SHEET_BEFORE_DARK +
+    darkMode('.pyreon-flow[data-color-mode="dark"]') +
+    SHEET_BETWEEN_DARK +
+    darkMode('.pyreon-flow[data-color-mode="system"]', '  ') +
+    SHEET_AFTER_DARK
+  )
+}
+
+/**
+ * Default CSS styles for the flow diagram.
+ * Inject via `<style>` tag or import in your CSS.
+ *
+ * @example
+ * ```tsx
+ * import { flowStyles } from '@pyreon/flow'
+ *
+ * // Inject once at app root
+ * const style = document.createElement('style')
+ * style.textContent = flowStyles
+ * document.head.appendChild(style)
+ * ```
+ */
+export const flowStyles: string = /* @__PURE__ */ buildFlowStyles()
