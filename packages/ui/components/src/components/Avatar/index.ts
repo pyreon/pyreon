@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { el, tones } from '../../factory'
 
 const Avatar = el
   .config({ name: 'Avatar' })
@@ -6,9 +6,9 @@ const Avatar = el
     contentDirection: 'inline',
     contentAlignX: 'center',
     contentAlignY: 'center', alignX: 'center', alignY: 'center' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     backgroundColor: t.color.system.base[200],
-    color: t.color.system.base[600],
+    color: tones(t, m).text,
     fontWeight: t.fontWeight.medium,
     overflow: 'hidden',
     flexShrink: 0,

@@ -145,14 +145,14 @@ describe('useCookie — options', () => {
       expect(sig()).toBe('default')
     })
 
-    it('after remove(), a new useCookie call creates a fresh signal', () => {
+    it('after remove(), a new useCookie call shares the still-live signal (#4381)', () => {
       const a = useCookie('temp-cookie', 'first')
       a.set('modified')
       a.remove()
 
-      const b = useCookie('temp-cookie', 'second')
-      expect(b()).toBe('second')
-      expect(a).not.toBe(b)
+      const b = useCookie('temp-cookie', 'first')
+      expect(b()).toBe('first')
+      expect(b).toBe(a)
     })
   })
 

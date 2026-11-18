@@ -84,7 +84,7 @@ Also lowering today (each verified against real `swiftc`/`kotlinc`): object-shap
 | destructured props `function C({ x }) {}` | `function C(props) { … props.x … }` (destructure loses reactivity) |
 | a bare object literal whose field PMTC cannot type (`{ nodes, edges: [] }`, a `null` field) | annotate it: `const g: Graph = { … }` / `signal<Graph>({ … })` |
 
-Do not rely on the absence of a warning as proof it compiles: run `pyreon doctor --check-native` (project scan) or the MCP `validate` tool (per-snippet) before the device build.
+Do not rely on the absence of a warning as proof it compiles: run `pyreon doctor --only native-audit` (project scan) or the MCP `validate` tool (per-snippet) before the device build.
 
 ## Per-target hooks + services (these DO work on native)
 
@@ -233,7 +233,7 @@ This compiles to web + iOS + Android from one source: canonical primitives, a `t
 
 ## Anti-pattern
 
-Reaching outside the multiplatform lane — the native build breaks (the compiler warns by name for most of these; run `pyreon doctor --check-native`):
+Reaching outside the multiplatform lane — the native build breaks (the compiler warns by name for most of these; run `pyreon doctor --only native-audit`):
 
 ```tsx
 // ❌ DON'T — every line here breaks the native (iOS/Android) build:
@@ -262,7 +262,7 @@ function Dashboard(props: { title: string }) {            // props.x stays react
 // Charts work natively: import { Chart } from '@pyreon/charts'. A code editor? Host it: <WebView html={EDITOR_HTML} data={doc()} onMessage={...} />
 ```
 
-Catch these BEFORE the device build with `pyreon doctor --check-native` (project scan) or the MCP `validate` tool (per-snippet) — both flag web-only imports + out-of-subset `enum`/`class` in files importing `@pyreon/primitives`.
+Catch these BEFORE the device build with `pyreon doctor --only native-audit` (project scan) or the MCP `validate` tool (per-snippet) — both flag web-only imports + out-of-subset `enum`/`class` in files importing `@pyreon/primitives`.
 
 ## Related
 

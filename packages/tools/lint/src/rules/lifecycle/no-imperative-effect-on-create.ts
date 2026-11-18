@@ -104,7 +104,10 @@ function isIIFE(node: any): boolean {
  * and doesn't run synchronously at effect setup. The exception is
  * IIFE callees: those run at the call site, so we descend into them.
  */
-function findImperativePattern(node: any, insideIIFE = false): { node: any; label: string } | null {
+export function findImperativePattern(
+  node: any,
+  insideIIFE = false,
+): { node: any; label: string } | null {
   if (!node || typeof node !== 'object') return null
 
   // Stop descent into nested functions — their bodies run later — UNLESS
@@ -260,7 +263,7 @@ export const noImperativeEffectOnCreate: Rule = {
 
         context.report({
           message:
-            `\`effect()\` at component body level contains ${found.label} — imperative work belongs in \`onMount\`. Pyreon's \`effect()\` runs synchronously per instance during component setup; per-instance imperative work (DOM access, IO, scheduling) accumulates O(N) at mount under load (cf. PR #268). Wrap the imperative call in \`onMount(() => { ... })\` and keep \`effect()\` for pure signal-tracking subscriptions.`,
+            `\`effect()\` at component body level contains ${found.label} — imperative work belongs in \`onMount\`. Pyreon's \`effect()\` runs synchronously per instance during component setup; per-instance imperative work (DOM access, IO, scheduling) accumulates O(N) at mount under load (cf. PR #268). One-shot work: call it from \`onMount(() => { ... })\` with no \`effect()\`. Work that must re-run when a signal changes: create the effect after mount, \`onMount(() => { effect(() => { ... }) })\` (\`no-effect-in-mount\` accepts an imperative effect there). For \`document.title\` and other head tags, use \`useHead(() => ({ title: ... }))\` from \`@pyreon/head\`.`,
           span: getSpan(node),
         })
       },

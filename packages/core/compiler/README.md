@@ -137,11 +137,12 @@ const diags = detectPyreonPatterns(
   `const C = ({ state }) => <div>{state}</div>`,
   'C.tsx',
 )
-// PyreonDiagnostic[] — 21 codes today: 'for-missing-by', 'for-with-key',
+// PyreonDiagnostic[] — 23 codes today: 'for-missing-by', 'for-with-key',
 // 'props-destructured', 'props-destructured-body', 'process-dev-gate',
 // 'empty-theme', 'raw-add-event-listener', 'raw-remove-event-listener',
 // 'date-math-random-id', 'on-click-undefined', 'signal-write-as-call',
 // 'static-return-null-conditional', 'static-early-return-conditional',
+// 'props-early-return-conditional', 'props-object-copy',
 // 'as-unknown-as-vnodechild', 'island-never-with-registry-entry',
 // 'query-options-as-function', 'accessor-uncalled-in-template',
 // 'accessor-uncalled-in-condition', 'charts-legacy-import', 'plain-mode',
@@ -160,7 +161,7 @@ const ssgResult = auditSsg(projectRoot)
 const testResult = auditTestEnvironment(projectRoot, { minRisk: 'high' })
 ```
 
-Three syntactic project-wide audits consumed by `pyreon doctor --check-islands` / `--check-ssg` / `--audit-tests`. Pure-AST, no type-check pass — designed for CI speed.
+Three syntactic project-wide audits consumed by `pyreon doctor --only islands-audit` / `--only ssg-audit` / `--only audit-tests`. Pure-AST, no type-check pass — designed for CI speed.
 
 ## Compiler-emitted runtime helpers
 

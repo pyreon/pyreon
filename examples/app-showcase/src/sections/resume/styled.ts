@@ -1,6 +1,6 @@
 import { styled } from '@pyreon/styler'
 import { Card, Paragraph, Title } from '@pyreon/ui-components'
-import { t } from '../../styles'
+import { PHONE_MAX, t } from '../../styles'
 
 /**
  * Styled components for the Resume section.
@@ -16,6 +16,10 @@ import { t } from '../../styles'
 export const ResumePage = styled('div')`
   padding: 24px 32px 48px;
   max-width: 1280px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    padding: 24px 16px 48px;
+  }
 `
 
 export const Header = styled('header')`
@@ -24,6 +28,10 @@ export const Header = styled('header')`
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 24px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    flex-wrap: wrap;
+  }
 `
 
 export const HeaderText = styled('div')`
@@ -94,6 +102,10 @@ export const Workspace = styled('div')`
   grid-template-columns: 380px 1fr;
   gap: 24px;
   align-items: start;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 `
 
 export const FormColumn = styled('div')`
@@ -108,6 +120,7 @@ export const PreviewColumn = styled('div')`
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
 `
 
 export const PreviewLabel = styled('div')`
@@ -134,6 +147,14 @@ export const PreviewFrame = styled('div')`
   min-height: 720px;
   font-family: ${(p) => t(p).fontFamily.base};
   color: ${(p) => t(p).color.system.dark[800]};
+
+  /* The print margins are a third of a phone's width, and the document inside
+     has rows that do not wrap: tighter margins, and the page scrolls inside
+     its frame instead of widening the screen. */
+  @media (max-width: ${PHONE_MAX}px) {
+    padding: 24px 16px;
+    overflow-x: auto;
+  }
 `
 
 // ─── Form sections ───────────────────────────────────────────────────

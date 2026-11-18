@@ -26,6 +26,19 @@ import type { YjsCrdtDoc } from './yjs-adapter'
  *
  * `disconnect()` detaches the live relay (the offline case); state already
  * exchanged stays. A later reconnect re-runs the initial merge.
+ *
+ * **Pairwise only — it does not relay.** The link carries edits made ON `a`
+ * or `b` themselves. An update that `b` received over this link (or over any
+ * other `connectYDocs` link, all of which apply under the shared
+ * {@link REMOTE_ORIGIN}) is never forwarded again. So a chain built from two
+ * calls, `connectYDocs(device1, relay)` + `connectYDocs(relay, device2)`, does
+ * NOT pass live edits from `device1` to `device2`: they reach `relay` and stop
+ * there (`device2` only catches up when the `relay ↔ device2` link is
+ * connected again, whose initial state merge carries everything `relay` has). For more than two documents, either link EVERY pair
+ * directly (a full mesh: `n·(n-1)/2` calls, each doc's local edits go straight
+ * to every other doc), or use a real transport with a relaying hub:
+ * `connectViaWebSocket` against `createSyncServer` (`@pyreon/sync/server`),
+ * or {@link connectViaBroadcastChannel} for same-origin tabs.
  */
 export function connectYDocs(a: YjsCrdtDoc, b: YjsCrdtDoc): { disconnect: () => void } {
   let connected = true

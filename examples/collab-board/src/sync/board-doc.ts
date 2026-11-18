@@ -106,8 +106,15 @@ export function newCardId(): string {
 /**
  * Build the sync layer for one board (room). `relayUrl` enables cross-device
  * sync; when null, only same-origin cross-tab sync (BroadcastChannel) is active.
+ * `initialTitle` is the board's server-owned name (from the board list); it
+ * seeds the synced title of a room that has none yet, so "Demo board" opens
+ * titled "Demo board" rather than empty.
  */
-export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDoc {
+export function createBoardDoc(
+  roomId: string,
+  relayUrl: string | null,
+  initialTitle: Promise<string>,
+): BoardDoc {
   const doc = createYjsDoc()
   const persist = persistViaIndexedDB(doc, `collab-board:${roomId}`)
 
@@ -127,10 +134,12 @@ export function createBoardDoc(roomId: string, relayUrl: string | null): BoardDo
   // to load first — otherwise the create-if-missing seed could race the async
   // IndexedDB load and clobber a previously-saved title. This is the documented
   // `whenSynced` contract, and the reason the board shows a brief loading gate.
+  // The seed is the board's name from the list (an unknown room seeds '').
   let ready = state(false)
   let titleStore: SyncedStore<{ title: string }> | null = null
-  void persist.whenSynced.then(() => {
-    titleStore = syncedStore({ title: '' }, { doc })
+  void Promise.all([persist.whenSynced, initialTitle.catch(() => '')]).then(([, title]) => {
+    if (disposed) return // the route moved on before the load finished
+    titleStore = syncedStore({ title }, { doc })
     ready = true
   })
 

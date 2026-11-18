@@ -3,6 +3,7 @@ import { ganttDurationDays, ganttTicks, layoutGantt, renderGantt } from './gantt
 import { hitGantt } from './gantt-web'
 import { ganttToSvg } from './family-svg'
 import { daysFromCivil } from './calendar'
+import { approxTextWidth } from './treemap'
 import type { GanttTask } from './gantt'
 
 const tasks: GanttTask[] = [
@@ -93,5 +94,47 @@ describe('renderGantt + hit + svg', () => {
     expect(svg).toContain('3 tasks')
     for (const t of tasks) expect(svg).toContain('>' + t.name + '<')
     expect(svg).toContain('<polygon')
+  })
+})
+
+describe('gantt tick labels stay inside the plot (#4269)', () => {
+  const short: GanttTask[] = [
+    { id: 'a', name: 'Design', start: '2024-01-01', end: '2024-01-10' },
+    { id: 'c', name: 'Ship', start: '2024-01-25', end: '2024-01-30' },
+  ]
+  it('pulls the last label back so it ends at the plot edge, and leaves the others at tick + 3', () => {
+    const l = layoutGantt(short, { x: 4, y: 4, w: 350, h: 152 })
+    const right = l.plot.x + l.plot.w
+    const last = l.ticks.at(-1)!
+    expect(last.label).toBe('29 Jan')
+    // Unclamped, it would start at tick + 3 and run past the edge.
+    expect(last.x + 3 + approxTextWidth(last.label, 11)).toBeGreaterThan(right)
+    expect(last.labelX + approxTextWidth(last.label, 11)).toBeCloseTo(right, 6)
+    for (const t of l.ticks.slice(0, -1)) expect(t.labelX).toBe(t.x + 3)
+    expect(l.ticks.every((t) => t.labelShown)).toBe(true)
+    const text = renderGantt(l).find((c) => c.kind === 'text' && c.text === '29 Jan')
+    expect(text?.kind === 'text' ? text.at.x : Number.NaN).toBe(last.labelX)
+  })
+  it('a pulled-back label that would land on the one before it is left out, never stacked', () => {
+    // Day ticks ~21px apart with ~30px labels: the last two both overflow and
+    // would pull back onto the same spot.
+    const crowded: GanttTask[] = [
+      { id: '1', name: 'Design', start: '2024-01-01', end: '2024-01-10' },
+      { id: '2', name: 'Build', start: '2024-01-08', end: '2024-01-20' },
+    ]
+    const l = layoutGantt(crowded, { x: 0, y: 0, w: 480, h: 280 })
+    const right = l.plot.x + l.plot.w
+    expect(l.ticks.some((t) => !t.labelShown)).toBe(true)
+    const shown = l.ticks.filter((t) => t.labelShown)
+    for (const t of shown) expect(t.labelX + approxTextWidth(t.label, 11)).toBeLessThanOrEqual(right + 1e-9)
+    const drawn = renderGantt(l).filter((c) => c.kind === 'text' && l.ticks.some((t) => t.label === c.text))
+    expect(drawn).toHaveLength(shown.length)
+    const xs = drawn.map((c) => (c.kind === 'text' ? c.at.x : 0))
+    expect(new Set(xs).size).toBe(xs.length)
+  })
+  it('a label wider than the whole plot starts at the plot edge rather than left of it', () => {
+    const l = layoutGantt(short, { x: 4, y: 4, w: 120, h: 152 }, { fontSize: 40 })
+    for (const t of l.ticks) expect(t.labelX).toBeGreaterThanOrEqual(l.plot.x)
+    expect(l.ticks.some((t) => t.labelX === l.plot.x)).toBe(true)
   })
 })

@@ -1,4 +1,4 @@
-import { isServer } from '@pyreon/reactivity'
+import { getCurrentScope, isServer, onScopeDispose } from '@pyreon/reactivity'
 import type { StorageOptions, StorageSignal } from './types'
 
 // ─── Signal Registry ─────────────────────────────────────────────────────────
@@ -16,12 +16,13 @@ export interface RegistryEntry<T = unknown> {
    */
   options?: StorageOptions<T>
   /**
-   * Per-key consumer refcount. Incremented each `useStorage(key, …)` call
-   * (including same-key cached returns); decremented on each `.remove()`.
-   * The entry is destroyed only when the count drops to 0 — keeping it
-   * alive while N-1 consumers still hold the signal preserves cross-tab
-   * sync routing for surviving consumers. See the entry's prose comment
-   * in `local.ts:useStorage` for the bug class (post-#725/#729 sweep).
+   * Per-key consumer refcount. Incremented by each `useX(key, …)` call
+   * (including same-key cached returns); decremented when that call's OWNER
+   * scope is disposed (`releaseWithOwner`). The entry is destroyed only when
+   * the count drops to 0, so it lives exactly as long as some consumer does.
+   * `.remove()` does NOT touch it: removing the stored value keeps the binding
+   * alive (#4381). A call made outside any owner scope (module level) is never
+   * released — it lives for the page, like any module-level signal.
    */
   refCount: number
   /**
@@ -60,7 +61,7 @@ let _registryProvider: () => Map<string, unknown> | undefined = () => _defaultRe
  * is out of scope for every call that is not inside a render, and the obvious
  * spelling (`() => als.getStore() ?? new Map()`) fabricates a THROWAWAY map for
  * those calls, so a signal created outside a render would be dropped on the
- * next read — breaking the refcount contract `retainEntry`/`releaseEntry` rely
+ * next read — breaking the refcount contract `retainEntry`/`releaseWithOwner` rely
  * on. `undefined` keeps the pre-isolation behaviour exactly where isolation has
  * nothing to say.
  */
@@ -181,30 +182,40 @@ export function retainEntry(backend: string, key: string): void {
 }
 
 /**
- * Decrement the per-key consumer refcount. Returns `true` if the entry
- * was removed (count reached 0), `false` if the entry remains (other
- * consumers exist). Used by `.remove()` to gate listener-detach +
- * registry-delete behind a true LAST-consumer release.
+ * Tie ONE consumer's hold on the `backend:key` entry to the current owner scope
+ * (the component being set up, or any `effectScope().runInScope`). When that
+ * scope is disposed the hold is released, `onRelease` runs (the cross-tab
+ * listener's own refcount for `useStorage`), and the entry is deleted once the
+ * last hold is gone. Call it once per `useX(key)` call, AFTER the entry exists.
+ *
+ * This is the ONLY release path. `.remove()` deletes the stored value and keeps
+ * the binding (#4381), so without this every entry and the cross-tab listener
+ * would live forever. Outside any scope (module level) nothing is registered:
+ * that consumer lives for the page, which is what a module-level signal means.
+ *
+ * Captures the registry map and the entry object at call time, so a dispose
+ * that runs later (another SSR request's provider active, or after a test's
+ * `_resetRegistry` minted a fresh entry for the same key) releases what THIS
+ * call retained and never deletes someone else's entry.
  */
-export function releaseEntry(backend: string, key: string): boolean {
-  const composite = registryKey(backend, key)
+export function releaseWithOwner(backend: string, key: string, onRelease?: () => void): void {
+  if (getCurrentScope() === null) return
   const registry = getRegistry()
+  const composite = registryKey(backend, key)
   const entry = registry.get(composite) as RegistryEntry | undefined
-  /* v8 ignore next — defensive null entry guard; release pairs with retain */
-  if (!entry) return false
-  entry.refCount--
-  if (entry.refCount <= 0) {
-    registry.delete(composite)
-    return true
-  }
-  return false
+  /* v8 ignore next — defensive: every caller creates or retains the entry first */
+  if (!entry) return
+  onScopeDispose(() => {
+    onRelease?.()
+    entry.refCount--
+    if (entry.refCount <= 0 && registry.get(composite) === entry) registry.delete(composite)
+  })
 }
 
 /**
  * Remove an entry from the registry unconditionally (bypasses refcount).
- * Used by `removeStorage(key)` — the user-facing "destroy this key
- * everywhere" API — and by test cleanup. Per-consumer `.remove()` goes
- * through `releaseEntry` instead.
+ * Used by `removeStorage(key)` when no signal is registered for the key.
+ * Consumers release their hold through `releaseWithOwner` instead.
  */
 export function removeEntry(backend: string, key: string): void {
   getRegistry().delete(registryKey(backend, key))

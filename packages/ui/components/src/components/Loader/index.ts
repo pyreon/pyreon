@@ -1,4 +1,4 @@
-import { txt } from '../../factory'
+import { tones, txt } from '../../factory'
 
 const Loader = txt
   .config({ name: 'Loader' })
@@ -16,9 +16,9 @@ const Loader = txt
     borderRadius: '50%',
     animation: 'spin 0.6s linear infinite',
   }))
-  .states((t) => ({
+  .states((t, m) => ({
     primary: { color: t.color.system.primary.base },
-    secondary: { color: t.color.system.base[500] },
+    secondary: { color: tones(t, m).textMuted },
   }))
   .sizes(() => ({
     small: { width: '16px', height: '16px', borderWidth: 2 },

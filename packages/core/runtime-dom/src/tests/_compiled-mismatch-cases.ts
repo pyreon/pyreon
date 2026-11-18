@@ -79,8 +79,8 @@ export const COMPILED_MISMATCH_CASES: CompiledMismatchCase[] = [
     name: "mid static text (`_setChildAt`)",
     source: "export const App = () => <p><b>a</b>{typeof window === 'undefined' ? 'server' : 'browser'}<i>b</i></p>",
     compiled: "const App = () => _tpl(\"<p><b>a</b><!><i>b</i></p>\", (__root) => {\n  const __p0 = __root.firstChild.nextSibling;\n  _setChildAt(__root, __p0, typeof window === \"undefined\" ? \"server\" : \"browser\");\n  return null;\n});\n",
-    match: "<p><b>a</b>browser<i>b</i></p>",
-    server: "<p><b>a</b>server<i>b</i></p>",
+    match: "<p><b>a</b><!--$-->browser<!--/$--><i>b</i></p>",
+    server: "<p><b>a</b><!--$-->server<!--/$--><i>b</i></p>",
     reports: [{ type: "text", expected: "browser", actual: "server", path: "root > p > text" }],
   },
   {

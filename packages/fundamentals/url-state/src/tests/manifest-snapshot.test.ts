@@ -38,7 +38,7 @@ describe('gen-docs — url-state snapshot', () => {
       tags.set(['typescript', 'pyreon'])  // ?tags=typescript&tags=pyreon
 
       // Debounce for high-frequency updates (e.g. search input)
-      const search = useUrlState('q', '', { debounce: 300 })
+      const search = useUrlState('q', '', { debounceMs: 300 })
       // typing "hello" fires one URL update after 300ms pause, not 5
 
       // Batch — collapse a multi-param update into ONE history entry
@@ -70,7 +70,7 @@ describe('gen-docs — url-state snapshot', () => {
       >
       > **SSR**: SSR-safe out of the box. On the SERVER it does NOT read the request URL — every signal initializes to its default value (no popstate listener, no history calls). On the CLIENT it reads from \`window.location.search\`. No environment checks needed in component code. If a param must be present in the server-rendered HTML (e.g. SEO of a filtered list), seed the render from your route/loader layer instead.
       >
-      > **Debounce**: For high-frequency updates (search inputs, sliders), pass \`{ debounce: 300 }\` to coalesce URL writes. Without debounce, every keystroke triggers a replaceState call. The signal itself updates synchronously — only the URL write is delayed.
+      > **Debounce**: For high-frequency updates (search inputs, sliders), pass \`{ debounceMs: 300 }\` to coalesce URL writes. Without debounce, every keystroke triggers a replaceState call. The signal itself updates synchronously — only the URL write is delayed.
       >
       > **Cross-hook sync**: Two \`useUrlState("page", 1)\` calls in different components are independent signals bound to the same param — and they stay in sync. When one writes, the other re-reads the URL and updates (firing its \`onChange\`). No store lifting required.
       >

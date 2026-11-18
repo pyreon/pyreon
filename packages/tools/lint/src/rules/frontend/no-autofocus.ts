@@ -19,8 +19,10 @@ import { getSpan } from '../../utils/ast'
  * expression container) — the attribute is explicitly disabled, so
  * there's no a11y problem and nothing to flag.
  *
- * The autofix removes the entire attribute, also consuming the single
- * leading whitespace so no double space is left behind.
+ * The autofix removes the entire attribute. An attribute alone on its line
+ * takes the whole line with it (otherwise the fix leaves a whitespace-only
+ * line behind); an inline one takes a single leading space or tab, so no
+ * double space is left.
  */
 export const noAutofocus: Rule = {
   meta: {
@@ -61,14 +63,7 @@ export const noAutofocus: Rule = {
         }
 
         const attrSpan = getSpan(node)
-        const source = context.getSourceText()
-        // Consume a single leading whitespace char so removing the
-        // attribute doesn't leave a double space behind.
-        const prevChar = source[attrSpan.start - 1]
-        const removalSpan: Span =
-          prevChar === ' ' || prevChar === '\t'
-            ? { start: attrSpan.start - 1, end: attrSpan.end }
-            : { start: attrSpan.start, end: attrSpan.end }
+        const removalSpan = attributeRemovalSpan(context.getSourceText(), attrSpan)
 
         context.report({
           message:
@@ -81,4 +76,35 @@ export const noAutofocus: Rule = {
 
     return callbacks
   },
+}
+
+/**
+ * The span to delete so the attribute disappears without leaving debris: its
+ * whole line (indentation and newline) when nothing else shares that line,
+ * otherwise the attribute plus one leading space or tab.
+ */
+function attributeRemovalSpan(source: string, attr: Span): Span {
+  let lineStart = attr.start
+  while (lineStart > 0 && (source[lineStart - 1] === ' ' || source[lineStart - 1] === '\t')) {
+    lineStart--
+  }
+  let lineEnd = attr.end
+  while (lineEnd < source.length && (source[lineEnd] === ' ' || source[lineEnd] === '\t')) {
+    lineEnd++
+  }
+  const ownLine =
+    (lineStart === 0 || source[lineStart - 1] === '\n') &&
+    lineEnd < source.length &&
+    (source[lineEnd] === '\n' || source[lineEnd] === '\r')
+  if (ownLine && lineStart > 0) {
+    // Delete from the previous line's newline through the attribute's trailing
+    // blanks: the line vanishes and the following newline keeps the layout.
+    const nl = source[lineStart - 2] === '\r' ? lineStart - 2 : lineStart - 1
+    return { start: nl, end: lineEnd }
+  }
+  const prevChar = source[attr.start - 1]
+
+  return prevChar === ' ' || prevChar === '\t'
+    ? { start: attr.start - 1, end: attr.end }
+    : { start: attr.start, end: attr.end }
 }

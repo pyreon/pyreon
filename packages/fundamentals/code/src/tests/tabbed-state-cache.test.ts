@@ -84,3 +84,34 @@ describe('createTabbedEditor per-tab state cache', () => {
     tabbed.dispose()
   })
 })
+
+// `tabs` is a public writable signal, so a tab can be added through it
+// directly instead of through `openTab`. Such a tab has no cached buffer;
+// switching to it must load the tab's own `value` (both into the swapped-in
+// state and into the editor), not an empty or stale buffer.
+describe('createTabbedEditor — a tab added through the tabs signal', () => {
+  it('switching to it loads its own value', () => {
+    const tabbed = createTabbedEditor({ tabs: [{ name: 'a', value: 'A' }] })
+    const docs: string[] = []
+    ;(tabbed.editor as unknown as { _swapState: (n: unknown, d: string) => unknown })._swapState = (
+      _next,
+      doc,
+    ) => {
+      docs.push(doc)
+      return null
+    }
+    tabbed.tabs.update((t) => [...t, { id: 'x', name: 'x.ts', value: 'from the signal', language: 'typescript' }])
+    tabbed.switchTab('x')
+    expect(docs).toEqual(['from the signal'])
+    expect(tabbed.activeTabId()).toBe('x')
+    expect(tabbed.editor.value()).toBe('from the signal')
+    expect(tabbed.editor.language()).toBe('typescript')
+    // Its edits are cached from then on: switching away and back restores them.
+    tabbed.editor.value.set('edited')
+    tabbed.switchTab('a')
+    expect(tabbed.editor.value()).toBe('A')
+    tabbed.switchTab('x')
+    expect(tabbed.editor.value()).toBe('edited')
+    tabbed.dispose()
+  })
+})

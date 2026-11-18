@@ -143,7 +143,7 @@ hydrateIslandsAuto(registry)
 
 The Vite plugin scans every `island(() => import('PATH'), { name })` call at `buildStart` and emits the registry as a virtual module — no manual sync needed. Drop-in replacement for `hydrateIslands({ ... })`.
 
-For project-wide foot-gun detection (duplicate names, nested islands, dead islands, registry mismatch, never-with-registry-entry), run `pyreon doctor --check-islands`.
+For project-wide foot-gun detection (duplicate names, nested islands, dead islands, registry mismatch, never-with-registry-entry), run `pyreon doctor --only islands-audit`.
 
 ## startClient — full hydration
 

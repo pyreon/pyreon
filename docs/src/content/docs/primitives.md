@@ -846,7 +846,7 @@ export function WifiSetting() {
 ```
 
 - **Web**: `<input type="checkbox" role="switch">`.
-- **iOS**: `Toggle("", isOn: $on)`. **Android**: `Switch(checked = on, onCheckedChange = …)`.
+- **iOS**: `Toggle("", isOn: $on).labelsHidden()` (sized to the switch, like the web checkbox and the Compose `Switch`). **Android**: `Switch(checked = on, onCheckedChange = …)`.
 
 ### Select
 

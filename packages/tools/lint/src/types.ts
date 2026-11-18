@@ -378,7 +378,16 @@ export type PresetName =
 
 export interface LintFileResult {
   filePath: string
+  /** What is still wrong with the file (after `--fix`, what the fix left). */
   diagnostics: Diagnostic[]
+  /**
+   * `--fix` only: the diagnostics whose fix was written to disk. They are no
+   * longer in `diagnostics` and not counted in the totals, but a caller that
+   * reports a fix run must list them — a fix that changes code without saying
+   * so is a silent edit. A fixable diagnostic whose fix was deferred (it
+   * overlapped another fix) stays in `diagnostics`.
+   */
+  fixed?: Diagnostic[] | undefined
   fixedSource?: string | undefined
 }
 

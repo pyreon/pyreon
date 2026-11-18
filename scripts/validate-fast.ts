@@ -52,7 +52,7 @@
  *                            manifest edits leave the docs-site reference,
  *                            troubleshooting and examples pages stale)
  *
- * 66 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
+ * 67 gates, ~4-15s warm on an unloaded machine. The point is: catch ALL the
  * cheap-to-detect failures locally with ONE command before pushing.
  *
  * That number is worth keeping honest, because it is what decides whether
@@ -165,6 +165,9 @@ const GATES: Gate[] = [
   { name: 'check-no-legacy-playground', cmd: 'bun scripts/check-no-legacy-playground.ts' },
   { name: 'check-changeset-required', cmd: 'bun scripts/check-changeset-required.ts' },
   { name: 'check-lockfile-version', cmd: 'bun scripts/check-lockfile-version.ts' },
+  // A tracked file that .gitignore excludes stays tracked (the rule does not
+  // apply to it), so a test artifact committed once keeps churning (#4571).
+  { name: 'check-no-tracked-ignored', cmd: 'bun scripts/check-no-tracked-ignored.ts' },
   // Pairs with the one above: having a changeset is not enough, its SEVERITY
   // must be legal for 0.x. Pure file read, milliseconds — and without it the
   // only feedback on a `major` bump is a CI round trip.

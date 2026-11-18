@@ -35,6 +35,7 @@
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
@@ -52,6 +53,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/pdfmake": "^0.3.3",
+    "@vitest/browser-playwright": "^5.1.0",
     "docx": "^9.15.4",
     "exceljs": "^4.4.0",
     "pdfmake": "^0.3.14",

@@ -7,7 +7,12 @@ import type { Signal } from '@pyreon/reactivity'
  * but persists writes to the underlying storage mechanism.
  */
 export interface StorageSignal<T> extends Signal<T> {
-  /** Remove the value from storage and reset to the default value */
+  /**
+   * Delete the stored value and reset the signal to its default. The binding
+   * stays live: a later `.set()` persists again, and (for `useStorage`) other
+   * tabs' writes still arrive. It is released when the owner scope that called
+   * the hook is disposed, not by `remove()`.
+   */
   remove(): void
 }
 

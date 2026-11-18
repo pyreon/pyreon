@@ -248,10 +248,12 @@ describe('useFocusTrap — focusin containment', () => {
 })
 
 describe('useFocusTrap — initialFocus [data-autofocus]', () => {
-  it('initialFocus:true prefers a [data-autofocus] descendant over the first tabbable', () => {
+  it('initialFocus:true prefers a [data-autofocus] descendant over the first tabbable', async () => {
     const c = makeContainer(['d1', 'd2'])
     c.querySelector('#d2')!.setAttribute('data-autofocus', '')
     disposers.push(armTrap(() => c, { initialFocus: true }))
+    // Initial focus is placed one microtask after activation (#4355).
+    await tick()
     expect(document.activeElement).toBe(c.querySelector('#d2'))
   })
 })

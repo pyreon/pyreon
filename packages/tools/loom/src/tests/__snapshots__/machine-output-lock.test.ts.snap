@@ -212,10 +212,10 @@ exports[`loom scan --json is locked > --json --no-write: the report on stdout, t
   "graph": {
     "depths": {
       "@fix/app": 0,
+      "@fix/auth": 1,
+      "@fix/data": 1,
       "@fix/plugin": 0,
-      "@fix/util": 1,
-      "@fix/auth": 3,
-      "@fix/data": 4
+      "@fix/util": 1
     },
     "cycles": [
       [
@@ -434,7 +434,7 @@ exports[`loom scan --json is locked > --json --no-write: the report on stdout, t
     "internal": 5,
     "external": 5,
     "edges": 5,
-    "depth": 4,
+    "depth": 1,
     "cycles": 1,
     "errors": 5,
     "warnings": 3,
@@ -650,10 +650,10 @@ exports[`loom scan --json is locked > --json --strict --no-imports > stdout 1`] 
   "graph": {
     "depths": {
       "@fix/app": 0,
+      "@fix/auth": 1,
+      "@fix/data": 1,
       "@fix/plugin": 0,
-      "@fix/util": 1,
-      "@fix/auth": 3,
-      "@fix/data": 4
+      "@fix/util": 1
     },
     "cycles": [
       [
@@ -799,7 +799,7 @@ exports[`loom scan --json is locked > --json --strict --no-imports > stdout 1`] 
     "internal": 5,
     "external": 5,
     "edges": 5,
-    "depth": 4,
+    "depth": 1,
     "cycles": 1,
     "errors": 4,
     "warnings": 2,

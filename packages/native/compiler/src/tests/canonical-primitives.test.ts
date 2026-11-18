@@ -295,12 +295,23 @@ describe('Phase P2.1 — <Heading> emit (semantic heading)', () => {
     expect(out).toMatch(/\.foregroundColor\(Color\(red: [\d.]+, green: [\d.]+, blue: [\d.]+\)\)/)
   })
 
-  it('Kotlin: <Heading>Title</Heading> → Text(style = MaterialTheme.typography.h4) (default level 1)', () => {
+  it('Kotlin: <Heading>Title</Heading> → Text(style = MaterialTheme.typography.h4, fontWeight = FontWeight.Bold) (default level 1)', () => {
     const out = tx(`<Heading>Title</Heading>`, 'kotlin')
     // Material 2 typography role (the emit base is androidx.compose.material.*,
     // NOT material3 — Material 3's `headlineLarge` is not a member of M2's
     // Typography and fails a real `gradle assembleDebug`).
-    expect(out).toContain('Text(text = "Title", style = MaterialTheme.typography.h4)')
+    expect(out).toContain('Text(text = "Title", style = MaterialTheme.typography.h4, fontWeight = FontWeight.Bold)')
+  })
+
+  it('Kotlin: every level is bold, as on web (weight 700) and iOS (.bold())', () => {
+    // Material 2's h4/h5/subtitle1/body1/body2 are FontWeight.Normal (h6 is
+    // Medium), so the typography role alone rendered a regular-weight heading.
+    for (const level of [1, 2, 3, 4, 5, 6]) {
+      const out = tx(`<Heading level={${level}}>x</Heading>`, 'kotlin')
+      expect(out, `level ${level}`).toMatch(/style = MaterialTheme\.typography\.\w+, fontWeight = FontWeight\.Bold\)/)
+    }
+    const withColor = tx(`<Heading level={2} color="primary">x</Heading>`, 'kotlin')
+    expect(withColor).toMatch(/style = MaterialTheme\.typography\.h5, fontWeight = FontWeight\.Bold, color = Color\(/)
   })
 
   it('Kotlin: level maps to the Material 2 typography role', () => {
@@ -609,6 +620,20 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
   it('Swift: <Toggle value={done}> → Toggle("", isOn: $done)', () => {
     const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} />`, 'swift')
     expect(out).toContain('Toggle("", isOn: $done)')
+  })
+
+  // #4344 — `<Toggle>` has no label, and a SwiftUI `Toggle("")` still lays out
+  // label + spacer + switch, so it filled its HStack on iOS while the web
+  // checkbox and the Compose Switch hug the control. Both Swift shapes (the
+  // `$signal` projection and the custom Binding) must hide the empty label.
+  it('Swift: a label-less <Toggle> hides its empty label in both binding shapes (#4344)', () => {
+    const projected = tx(`<Toggle value={done} onChange={(b) => done.set(b)} />`, 'swift')
+    expect(projected).toMatch(/Toggle\("", isOn: \$done\)\n\s*\.labelsHidden\(\)/)
+    const custom = txWithTodoProps(
+      `<Toggle value={props.todo.done} onChange={props.onToggle} />`,
+      'swift',
+    )
+    expect(custom).toMatch(/Toggle\("", isOn: Binding\([\s\S]*?\n\s*\)\)\n\s*\.labelsHidden\(\)/)
   })
 
   it('Swift: <Toggle disabled> → .disabled(true) modifier', () => {

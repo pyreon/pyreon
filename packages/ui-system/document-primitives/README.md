@@ -95,20 +95,11 @@ The same accessor pattern works for reactive children — pass a thunk inside th
 
 ### `extractDocNode(templateFn, options?)`
 
-One-step helper — wrap your template render in a thunk and get a serializable `DocNode`.
+Wrap your template render in a thunk and get a serializable `DocNode`.
 
 ```ts
 const tree = extractDocNode(() => <ReportTemplate data={store.report} />)
 await render(tree, 'pdf')
-```
-
-### `createDocumentExport(templateFn, options?)`
-
-Two-step form — returns `{ getDocNode(): DocNode }`. Kept for callers that need to pass the helper object around (e.g. an "Export" component that takes a `DocumentExport` prop). New code should prefer `extractDocNode`.
-
-```ts
-const doc = createDocumentExport(() => <ReportTemplate data={store.report} />)
-const tree = doc.getDocNode()
 ```
 
 `DocumentExportOptions` extends `ExtractOptions` from `@pyreon/connector-document` (`rootSize`, `includeStyles`) plus `theme` and `mode: 'light' | 'dark'` for export-time theming.

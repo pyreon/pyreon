@@ -1,6 +1,7 @@
 # @pyreon/storage
 
 - `useStorage(key, default, opts?)`, `useSessionStorage`, `useCookie`, `useIndexedDB`, `useMemoryStorage`; `createStorage(backend)` for a custom backend (`{ get, set, remove }`). All return `StorageSignal<T>` (a `Signal<T>` plus `.remove()`).
+- Binding lifetime: same-key calls share one signal; each call holds a refcount on the registry entry (and, for `useStorage`, the cross-tab listener) that is released ONLY by the calling owner scope's disposal (`releaseWithOwner` in `registry.ts`). `.remove()` deletes the value and resets to the default and keeps the binding (#4381); never release from `.remove()` again, and give any new backend the same `releaseWithOwner` call (locked by `refcount-parity.test.ts`). A call outside any scope holds the key for the page.
 - `writeDebounceMs` (opt-in, local/session) coalesces the synchronous `setItem`; pending writes flush on `pagehide`/`beforeunload` through one shared listener.
 - `version` + `migrate` (all backends, cross-tab aware): a versioned value is stored in a JSON envelope (`__pyreonStorageV`/`__pyreonStorageD`). Reading at a higher `version` runs `migrate(oldValue, fromVersion)`; a pre-versioning value migrates `from 0`. The storage-event handler migrates cross-tab values too.
 - `onError` also fires on write failures (quota, blocked `setItem`) as a notification; the signal has already updated.

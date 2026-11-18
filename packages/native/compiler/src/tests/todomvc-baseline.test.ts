@@ -138,6 +138,7 @@ describe('TodoMVC compile baseline', () => {
                 get: { done },
                 set: { _ in onToggle() }
               ))
+              .labelsHidden()
             Text(verbatim: "\\(todo.text)")
             Button("Remove") { onRemove() }.buttonStyle(.borderedProminent)
           }

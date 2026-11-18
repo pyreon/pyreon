@@ -1,7 +1,7 @@
 import { RouterLink, type RouterLinkProps } from '@pyreon/router'
 import { styled } from '@pyreon/styler'
 import { Card, Paragraph, Title } from '@pyreon/ui-components'
-import { t } from '../../styles'
+import { PHONE_MAX, t } from '../../styles'
 
 /**
  * Styled components for the Blog section.
@@ -21,6 +21,11 @@ export const BlogPage = styled('div')`
   gap: 32px;
   padding: 32px 40px;
   max-width: 1080px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 24px 16px;
+  }
 `
 
 export const BlogSidebar = styled('aside')`

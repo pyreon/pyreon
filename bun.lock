@@ -1589,6 +1589,7 @@
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "@types/pdfmake": "^0.3.3",
+        "@vitest/browser-playwright": "^5.1.0",
         "docx": "^9.15.4",
         "exceljs": "^4.4.0",
         "pdfmake": "^0.3.14",
@@ -2924,6 +2925,7 @@
         "@pyreon/sized-map": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/compiler": "workspace:^",
         "@pyreon/hooks": "workspace:^",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
@@ -2935,6 +2937,7 @@
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^5.1.0",
         "@vitus-labs/tools-rolldown": "^2.8.0",
+        "esbuild": "^0.28.2",
         "motion": "^14.14.0",
       },
       "peerDependencies": {

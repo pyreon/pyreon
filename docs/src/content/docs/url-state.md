@@ -160,7 +160,7 @@ Schema mode is exactly `useUrlState(key, default)` called once per key — each 
 Options apply to **all** keys in the schema (the second argument):
 
 ```tsx
-const filters = useUrlState({ q: '', sort: 'name' }, { debounce: 300 })
+const filters = useUrlState({ q: '', sort: 'name' }, { debounceMs: 300 })
 // both q and sort debounce their URL writes by 300ms
 ```
 
@@ -273,7 +273,7 @@ Without a batch, a three-parameter update with `replace: false` pushes **three**
 
 ```tsx
 const q = useUrlState('q', '', {
-  debounce: 300,
+  debounceMs: 300,
   replace: true,
   arrayFormat: 'comma',
   serialize: (v) => v,
@@ -285,7 +285,7 @@ const q = useUrlState('q', '', {
 | Option           | Type                     | Default     | Description                                                              |
 | ---------------- | ------------------------ | ----------- | ------------------------------------------------------------------------ |
 | `replace`        | `boolean`                | `true`      | `true` → `history.replaceState` (no history entry); `false` → `history.pushState` |
-| `debounce`       | `number`                 | `0`         | Debounce URL writes by this many milliseconds (signal still updates instantly) |
+| `debounceMs`       | `number`                 | `0`         | Debounce URL writes by this many milliseconds (signal still updates instantly) |
 | `arrayFormat`    | `'comma' \| 'repeat'`    | `'comma'`   | Array encoding: `?tags=a,b` vs `?tags=a&tags=b`                           |
 | `clearOnDefault` | `boolean`                | `true`      | Drop the param from the URL when it equals the default. `false` keeps it written |
 | `serialize`      | `(value: T) => string`   | inferred    | Custom value → string. Must be paired with `deserialize`                 |
@@ -298,11 +298,11 @@ Custom (de)serialization only takes effect when **both** `serialize` and `deseri
 
 ## Debounced Updates
 
-High-frequency inputs (search boxes, sliders) would otherwise fire a `replaceState` on every keystroke. `debounce` batches URL writes — the **signal updates synchronously** (so the input stays responsive), and only the URL write is delayed until the user pauses:
+High-frequency inputs (search boxes, sliders) would otherwise fire a `replaceState` on every keystroke. `debounceMs` batches URL writes — the **signal updates synchronously** (so the input stays responsive), and only the URL write is delayed until the user pauses:
 
 ```tsx
 function Search() {
-  const q = useUrlState('q', '', { debounce: 300 })
+  const q = useUrlState('q', '', { debounceMs: 300 })
   return (
     <input
       value={q()}                                   // signal updates instantly
@@ -450,7 +450,7 @@ import type { UrlRouter } from '@pyreon/url-state' // the setUrlRouter argument 
 
 ## On iOS and Android
 
-The address bar is the web's own surface, so history entries, `popstate`, `batchUrlUpdates` and custom serializers stay web. On iOS and Android (PMTC), `useUrlState(key, default)` with a literal **string, number or boolean** default lowers to the native router's query parameters (`PyreonRouter.query` / `setQueryParam`), with the same coercion as the web (an integer default lowers to an Int, a fractional one to a Double). Object defaults and a non-literal key or default stay web. Native writes are immediate and replace the current entry, lists use the comma format, and the codec is the one inferred from the default; the options that ask for something else (`serialize`, `deserialize`, `debounce` other than 0, `replace: false`, `arrayFormat: 'repeat'`, `onChange`) are not applied natively, and the compiler warns about each one by name. `clearOnDefault` only changes the URL text, never the value read.
+The address bar is the web's own surface, so history entries, `popstate`, `batchUrlUpdates` and custom serializers stay web. On iOS and Android (PMTC), `useUrlState(key, default)` with a literal **string, number or boolean** default lowers to the native router's query parameters (`PyreonRouter.query` / `setQueryParam`), with the same coercion as the web (an integer default lowers to an Int, a fractional one to a Double). Object defaults and a non-literal key or default stay web. Native writes are immediate and replace the current entry, lists use the comma format, and the codec is the one inferred from the default; the options that ask for something else (`serialize`, `deserialize`, `debounceMs` other than 0, `replace: false`, `arrayFormat: 'repeat'`, `onChange`) are not applied natively, and the compiler warns about each one by name. `clearOnDefault` only changes the URL text, never the value read.
 
 ## API Reference
 
@@ -515,7 +515,7 @@ The callable signal returned for each parameter.
 | Member       | Signature              | Description                                                                 |
 | ------------ | ---------------------- | --------------------------------------------------------------------------- |
 | `()`         | `() => T`              | Read the current value reactively                                           |
-| `.set(value)`| `(value: T) => void`   | Update the signal and write the URL (debounced if `debounce` is set)        |
+| `.set(value)`| `(value: T) => void`   | Update the signal and write the URL (debounced if `debounceMs` is set)        |
 | `.reset()`   | `() => void`           | Set the signal to the default; the param is removed from the URL            |
 | `.remove()`  | `() => void`           | Reset the signal to the default and **immediately** remove the param (cancels any pending debounced write) |
 
@@ -524,7 +524,7 @@ The callable signal returned for each parameter.
 | Property         | Type                   | Default   | Description                                                              |
 | ---------------- | ---------------------- | --------- | ------------------------------------------------------------------------ |
 | `replace`        | `boolean`              | `true`    | `replaceState` (true) vs `pushState` (false). Ignored when a router is set |
-| `debounce`       | `number`               | `0`       | Milliseconds to debounce URL writes (signal updates stay synchronous)    |
+| `debounceMs`       | `number`               | `0`       | Milliseconds to debounce URL writes (signal updates stay synchronous)    |
 | `arrayFormat`    | `ArrayFormat`          | `'comma'` | Array encoding strategy                                                  |
 | `clearOnDefault` | `boolean`              | `true`    | Drop the param when it equals the default; `false` keeps it written      |
 | `serialize`      | `(value: T) => string` | inferred  | Custom serializer; only used when paired with `deserialize`              |

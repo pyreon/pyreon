@@ -89,16 +89,6 @@ export const DEPRECATED_ALLOWLIST: Record<string, string> = {
     'Not an API: a `key?: never` type guard that turns `<For key>` (React habit) into a type error pointing at `by`. Nothing to remove.',
   '@pyreon/native-compiler#NATIVE_COMPILER_PLUGIN_API_VERSION':
     'Experimental package with no manifest. Frozen at 1 on purpose: old plugins import it at runtime to declare API 1.',
-  '@pyreon/cli#DoctorOptions.auditTests':
-    'Legacy `pyreon doctor` flag. `@pyreon/cli` has no manifest; removal is tracked in 1.0 readiness M7.',
-  '@pyreon/cli#DoctorOptions.checkIslands':
-    'Legacy `pyreon doctor` flag. `@pyreon/cli` has no manifest; removal is tracked in 1.0 readiness M7.',
-  '@pyreon/cli#DoctorOptions.checkSsg':
-    'Legacy `pyreon doctor` flag. `@pyreon/cli` has no manifest; removal is tracked in 1.0 readiness M7.',
-  '@pyreon/cli#DoctorOptions.checkContent':
-    'Legacy `pyreon doctor` flag. `@pyreon/cli` has no manifest; removal is tracked in 1.0 readiness M7.',
-  '@pyreon/cli#DoctorOptions.checkNative':
-    'Legacy `pyreon doctor` flag. `@pyreon/cli` has no manifest; removal is tracked in 1.0 readiness M7.',
 }
 
 /**
