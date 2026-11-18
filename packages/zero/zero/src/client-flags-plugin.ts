@@ -29,6 +29,20 @@ import type { ZeroConfig } from './types'
  * `@pyreon/router` (a `<RouterLink>` in a kit component) shared a chunk with
  * all of it. `true` on any doubt.
  */
+/** Any module under `@pyreon/server`'s `src/` or `lib/`, in a workspace or in `node_modules`. */
+const SERVER_CLIENT_DIR = /[\\/](?:core|@pyreon)[\\/]server[\\/](?:src|lib)[\\/]/
+
+/**
+ * Zero's own `client-islands` module: its source file, or its hashed lib chunk.
+ * Its own expression, joined to the directory one below with each side in a
+ * group: written as one literal `a|b$`, the `$` binds to `b` only and reads as
+ * if the whole pattern were anchored.
+ */
+const ZERO_ISLANDS_FILE = /[\\/]client-islands(?:-[\w-]+)?\.[cm]?[jt]s$/
+
+/** Either of the two, each kept whole inside its own group. */
+const ISLANDS_RUNTIME_MODULE = new RegExp(`(?:${SERVER_CLIENT_DIR.source})|(?:${ZERO_ISLANDS_FILE.source})`)
+
 export function clientFlagsPlugin(userConfig: ZeroConfig, appMode: string): Plugin {
   return {
     name: 'pyreon-zero:client-flags',
@@ -188,7 +202,7 @@ export function islandsRuntimeChunk(): { rolldownOptions: { output: { codeSplitt
               priority: 1,
               // `@pyreon/server/client`, and zero's own `client-islands` (its
               // source, or its lib chunk) so it is not a request of its own.
-              test: /[\\/](?:core|@pyreon)[\\/]server[\\/](?:src|lib)[\\/]|[\\/]client-islands(?:-[\w-]+)?\.[cm]?[jt]s$/,
+              test: ISLANDS_RUNTIME_MODULE,
             },
           ],
         },
