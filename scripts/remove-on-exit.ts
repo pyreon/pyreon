@@ -60,7 +60,7 @@ let installed = false
 function removeNow(path: string, options: RemoveOnExitOptions): void {
   const repo = options.gitWorktree
   if (repo !== undefined)
-    spawnSync('git', ['worktree', 'remove', '--force', path], { cwd: repo, stdio: 'ignore' })
+    {spawnSync('git', ['worktree', 'remove', '--force', path], { cwd: repo, stdio: 'ignore' })}
   try {
     rmSync(path, { recursive: true, force: true })
   } catch {
@@ -101,9 +101,9 @@ function install(): void {
 function assertRemovable(path: string): void {
   const forbidden = new Set(['/', resolve(homedir()), resolve(tmpdir())])
   if (!isAbsolute(path) || forbidden.has(resolve(path)))
-    throw new Error(
+    {throw new Error(
       `[Pyreon] removeOnExit refuses ${JSON.stringify(path)}: pass an absolute path to a directory the script created (a mkdtemp directory or a path inside one).`,
-    )
+    )}
 }
 
 /**

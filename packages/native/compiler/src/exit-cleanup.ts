@@ -32,6 +32,7 @@ export function onProcessEnd(cleanup: () => void): () => void {
   }
   process.on('exit', run)
   for (const s of SIGNALS) process.on(s, onSignal)
+
   return () => {
     done = true
     unregister()
