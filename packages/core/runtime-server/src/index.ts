@@ -3,7 +3,8 @@
  *
  * Walks a VNode tree and produces HTML strings.
  * Signal accessors (reactive getters `() => value`) are called synchronously
- * to snapshot their current value — no effects are set up on the server.
+ * to snapshot their current value. An `effect()` / `computed()` a component
+ * creates is owned by the request and disposed when the request ends.
  *
  * Async components (`async function Component()`) are fully supported:
  * renderToString will await them before continuing the tree walk.
@@ -14,7 +15,7 @@
  */
 
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
-import { registerSingleton } from '@pyreon/reactivity'
+import { _setRequestOwnerReader, EffectScope, registerSingleton } from '@pyreon/reactivity'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/runtime-server
 // instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
@@ -355,17 +356,85 @@ async function untilInDocument(frame: BufferFrame | undefined): Promise<void> {
 }
 
 // ─── Concurrent SSR context isolation ────────────────────────────────────────
-// Each renderToString call runs in its own ALS store (a fresh empty stack[]).
-// Concurrent requests never share context frames.
+// Each request (a bare `renderToString` / `renderToStream`, or a
+// `runWithRequestContext` call) runs in its own ALS store. Concurrent requests
+// never share context frames, registries or reactive owners.
 
-const _contextAls = new AsyncLocalStorage<Map<symbol, unknown>[]>()
+/** One server request: what everything rendered inside it is scoped to. */
+interface RequestCtx {
+  /** The request-scoped context stack (`provide()` frames). */
+  readonly stack: Map<symbol, unknown>[]
+  /**
+   * Owner of every `effect()` / `computed()` created during the request with no
+   * other owner. A server render never mounts, so a component's nodes have no
+   * component scope; without this owner each one over a signal that outlives
+   * the request (module state, `systemColorMode()`) kept a subscriber — and its
+   * closure — per request, forever. Read through `_setRequestOwnerReader`, i.e.
+   * from the ASYNC context, never from a module slot a renderer sets: renders
+   * interleave across awaits. Stopped by `releaseRequest`.
+   */
+  readonly scope: EffectScope
+  /**
+   * Open holds. The call that opened the request holds it, and so does every
+   * render inside it until that render ends — a streaming handler returns its
+   * Response from inside `runWithRequestContext`, so the request must outlive
+   * the callback until the stream closes, errors or is cancelled.
+   */
+  holds: number
+  /** Per-request registries opened with it; disposed with it (`releaseRequest`). */
+  readonly registries: [RegistrySeam, Map<string, unknown>][]
+}
+
+const _contextAls = new AsyncLocalStorage<RequestCtx>()
 const _fallbackStack: Map<symbol, unknown>[] = []
 
 // `?? _fallbackStack` only fires when the provider is called with no active ALS
 // run (a bare `provide()` at module scope, outside any render) — defensive; all
 // render paths run inside `_contextAls.run(...)`.
 /* v8 ignore next */
-setContextStackProvider(() => _contextAls.getStore() ?? _fallbackStack)
+setContextStackProvider(() => _contextAls.getStore()?.stack ?? _fallbackStack)
+_setRequestOwnerReader(() => _contextAls.getStore()?.scope)
+
+function newRequestCtx(): RequestCtx {
+  return { stack: [_requestIdFrame()], scope: new EffectScope(), holds: 1, registries: [] }
+}
+
+/** Take one more hold on `req` (a render starting inside it). */
+function holdRequest(req: RequestCtx): RequestCtx {
+  req.holds++
+  return req
+}
+
+/**
+ * Drop one hold. The last one ends the request: its owner scope stops (every
+ * ownerless effect / computed created during it is disposed) and each
+ * per-request registry is handed to its package's disposer. A throwing cleanup
+ * is reported, never allowed to fail a render that already produced its HTML.
+ */
+function releaseRequest(req: RequestCtx): void {
+  if (--req.holds > 0) return
+  try {
+    req.scope.stop()
+  } catch (err) {
+    console.error('[Pyreon SSR] An effect cleanup threw while a request ended:', err)
+  }
+  for (const [seam, map] of req.registries) {
+    const dispose =
+      seam.disposeKey === undefined
+        ? undefined
+        : (globalThis as unknown as Record<string, undefined | ((m: Map<string, unknown>) => void)>)[
+            seam.disposeKey
+          ]
+    if (typeof dispose !== 'function') continue
+    try {
+      // Inside the registry's own scope, so a disposer that looks itself up
+      // (a store deleting its entry) finds this request's map.
+      seam.als.run(map, dispose, map)
+    } catch (err) {
+      console.error(`[Pyreon SSR] Disposing the request registry (${seam.disposeKey}) threw:`, err)
+    }
+  }
+}
 
 // ─── Per-request registry isolation ──────────────────────────────────────────
 // A fundamentals package whose public API is keyed by a USER-CHOSEN key
@@ -385,6 +454,14 @@ setContextStackProvider(() => _contextAls.getStore() ?? _fallbackStack)
 interface RegistrySeam {
   /** The `globalThis` property the owning package publishes its setter on. */
   readonly seamKey: string
+  /**
+   * The `globalThis` property the owning package publishes its registry
+   * DISPOSER on, called with a request's map when the request ends. Only a
+   * package whose entries own something beyond the map (a store's own
+   * `effectScope` and plugin cleanups) needs one: dropping the map would leave
+   * those subscribed to whatever outlives the request.
+   */
+  readonly disposeKey?: string
   readonly als: AsyncLocalStorage<Map<string, unknown>>
   active: boolean
 }
@@ -392,7 +469,12 @@ interface RegistrySeam {
 const _storeAls = new AsyncLocalStorage<Map<string, unknown>>()
 
 const _registrySeams: RegistrySeam[] = [
-  { seamKey: '__PYREON_STORE_SET_REGISTRY_PROVIDER__', als: _storeAls, active: false },
+  {
+    seamKey: '__PYREON_STORE_SET_REGISTRY_PROVIDER__',
+    disposeKey: '__PYREON_STORE_DISPOSE_REGISTRY__',
+    als: _storeAls,
+    active: false,
+  },
   {
     seamKey: '__PYREON_STORAGE_SET_REGISTRY_PROVIDER__',
     als: new AsyncLocalStorage<Map<string, unknown>>(),
@@ -460,23 +542,44 @@ function tryAutoWireRegistryIsolation(seam: RegistrySeam): void {
 }
 
 /**
- * Wrap a call in a fresh per-request registry for every isolatable package that
- * is actually loaded (a no-op for each one that is absent).
+ * Open a request — a fresh context stack and owner scope, plus a fresh
+ * per-request registry for every isolatable package that is actually loaded (a
+ * no-op for each one that is absent) — and run `fn` inside it. The opener holds
+ * the request and must `releaseRequest` it exactly once.
  *
  * Nested `als.run` rather than one shared Map: a single map would let two
  * packages collide on the same user key, and each package's provider must be
  * able to answer `undefined` for its own scope independently.
  */
-function withIsolatedRegistries<T>(fn: () => T): T {
-  let call = fn
+function openRequest<T>(fn: (req: RequestCtx) => T): T {
+  const req = newRequestCtx()
+  let call = (): T => _contextAls.run(req, fn, req)
   for (const seam of _registrySeams) {
     if (!seam.active) tryAutoWireRegistryIsolation(seam)
     if (!seam.active) continue
+    const map = new Map<string, unknown>()
+    req.registries.push([seam, map])
     const inner = call
-    call = () => seam.als.run(new Map(), inner)
+    call = () => seam.als.run(map, inner)
   }
 
   return call()
+}
+
+/** Render `root` under `req`, which the caller holds; release it when the render ends. */
+function renderHeld(req: RequestCtx, root: VNode): MaybeAsync {
+  let r: MaybeAsync
+  try {
+    r = renderNode(root)
+  } catch (err) {
+    releaseRequest(req)
+    throw err
+  }
+  if (typeof r === 'string') {
+    releaseRequest(req)
+    return r
+  }
+  return r.finally(() => releaseRequest(req))
 }
 
 // ─── Per-request styler SSR scope ───────────────────────────────────────────
@@ -627,11 +730,12 @@ export async function renderToString(root: VNode | null): Promise<string> {
   // Per-component trims restore the stack to each component's entry length, so
   // inherited request frames survive the render untouched. Bare calls (no
   // surrounding request context) keep the fresh isolated stack.
-  if (_contextAls.getStore() !== undefined) return renderNode(root)
+  const active = _contextAls.getStore()
+  if (active !== undefined) return renderHeld(holdRequest(active), root)
   // NOT `withStylerSSRScope` — see its doc comment. String-mode SSR reads the
   // buffer AFTER this returns, which is the documented pattern; scoping here
   // hides every rule from that read.
-  return withIsolatedRegistries(() => _contextAls.run([_requestIdFrame()], () => renderNode(root)))
+  return openRequest((req) => renderHeld(req, root))
 }
 
 /**
@@ -645,7 +749,18 @@ export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
   // styles inside this call, so the rules one request inserts can no longer
   // leak into the next request's `<style>` (the shared instance buffer was
   // never reset — a page's CSS grew with every other page rendered before it).
-  return withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([_requestIdFrame()], fn)))
+  //
+  // The request ends when `fn` settles — unless a stream started inside it is
+  // still running, which holds it until the stream ends (see `RequestCtx.holds`).
+  return withStylerSSRScope(() =>
+    openRequest(async (req) => {
+      try {
+        return await fn()
+      } finally {
+        releaseRequest(req)
+      }
+    }),
+  )
 }
 
 /**
@@ -759,6 +874,8 @@ export function renderToStream(
   // Sanitized to a bare token so it can never break out of the attribute.
   const nonce = options.nonce ? options.nonce.replace(/["'<>\s]/g, '') : ''
   const nonceAttr = nonce ? ` nonce="${nonce}"` : ''
+  // Set by `start` (which runs synchronously in the constructor); see `release`.
+  let releaseStream = (): void => {}
 
   return new ReadableStream<string>({
     start(controller) {
@@ -795,6 +912,17 @@ export function renderToStream(
             signal.addEventListener('abort', () => resolve(), { once: true })
           })
 
+      // The request this stream holds (its own, or the inherited one), released
+      // exactly once: when the body settles, or on cancel — a shell parked on an
+      // await that never settles would otherwise hold it forever.
+      let req: RequestCtx | undefined
+      const release = (): void => {
+        const r = req
+        req = undefined
+        if (r !== undefined) releaseRequest(r)
+      }
+      releaseStream = release
+
       // Same request-context inheritance as `renderToString`: inside
       // `runWithRequestContext`, reuse the active request stack + store so
       // request-level `provide()` frames reach streamed components.
@@ -829,7 +957,9 @@ export function renderToStream(
             // ALWAYS close — gracefully on natural completion AND on abort.
             // (`if (!aborted) close()` left the stream open forever on cancel,
             // hanging the reader.) Wrapped because `cancel()` may have closed it.
+            // The request ends BEFORE the reader can observe the end.
             flush()
+            release()
             try {
               controller.close()
             } catch {
@@ -839,6 +969,7 @@ export function renderToStream(
           .catch((err) => {
             // Aborts are expected, not errors — close silently to mirror
             // a normal end-of-stream when the consumer hung up.
+            release()
             if (signal.aborted) {
               try {
                 controller.close()
@@ -853,15 +984,24 @@ export function renderToStream(
             controller.error(err)
           })
 
-      return _contextAls.getStore() !== undefined
-        ? streamBody()
-        : withStylerSSRScope(() => withIsolatedRegistries(() => _contextAls.run([_requestIdFrame()], streamBody)))
+      const active = _contextAls.getStore()
+      if (active !== undefined) {
+        req = holdRequest(active)
+        return streamBody()
+      }
+      return withStylerSSRScope(() =>
+        openRequest((r) => {
+          req = r
+          return streamBody()
+        }),
+      )
     },
     cancel(reason) {
       // Consumer (browser fetch reader) closed the stream — propagate to
       // the internal controller so in-flight Suspense work stops being
       // awaited.
       ac.abort(reason)
+      releaseStream()
     },
   })
 }
@@ -1231,7 +1371,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   // `?? []` is defensive — the streaming pipeline always runs inside an active
   // `_contextAls` run, so `getStore()` is defined here.
   /* v8 ignore next */
-  const ctxStore = _contextAls.getStore() ?? [_requestIdFrame()]
+  const ctxStore = _contextAls.getStore() ?? newRequestCtx()
 
   // Queue async resolution — runs in parallel, emits to the main stream when done.
   // Errors are caught per-boundary so one failing Suspense doesn't abort the

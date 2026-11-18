@@ -164,7 +164,7 @@ Signal ~152 B, signal + effect ~690 B, signal + computed ~688 B (a computed is â
 `renderToString(vnode)` and `renderToStream(vnode)` (Suspense streaming, 30s default timeout).
 
 - `renderToString` is maybe-sync: only a real `async function Component()` makes its subtree async.
-- Call `mergeChildrenIntoProps(vnode)` before `runWithHooks`. `runWithRequestContext(fn)` isolates context and store state per request; both renderers inherit an active request context.
+- Call `mergeChildrenIntoProps(vnode)` before `runWithHooks`. `runWithRequestContext(fn)` isolates context and store state per request; both renderers inherit an active request context. A request owns every `effect()`/`computed()` created during it with no current scope, and disposes them (and its stores) when its last hold ends: the opening call, plus each render or stream inside it until that render ends.
 - `renderPage()` (`@pyreon/server`) is the one string-mode page pipeline, used by `createHandler`, SSG prerender and zero dev SSR.
 - Resolve lazy route components before rendering with `router.preload(path, req)`, not loaders-only `prefetchLoaderData`; an unresolved `lazy()` route renders blank.
 - A still-loading `@pyreon/core` `lazy()` is WAITED for, like an async component, through its `__load()` settle promise: the stream resolves it inside its Suspense boundary after the fallback flushed; the string renderer awaits it (and, for a `<Suspense>` whose direct child is one, before `Suspense`'s own accessor would pick the fallback). Every compat lazy implements `__load` too. A lazy's output is an ACCESSOR, so its server HTML is bracketed `<!--$-->â€¦<!--/$-->`.
