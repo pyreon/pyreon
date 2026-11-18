@@ -36,6 +36,7 @@ export class EffectScope {
       const c = s._contexts
       if (c !== null && c.has(id)) return { found: true, value: c.get(id) }
     }
+
     return { found: false, value: undefined }
   }
 
@@ -144,6 +145,7 @@ interface ScopeFrame {
   /** The server request-owner reader (see `_setRequestOwnerReader`). */
   r: (() => EffectScope | undefined) | null
 }
+
 const _sc: ScopeFrame = {
   s: null,
   o: null,
@@ -188,6 +190,7 @@ export function _ownerScope(): EffectScope | null {
   const s = _sc.s
   if (s !== null) return s
   const r = _sc.r
+
   return r === null ? null : (r() ?? null)
 }
 
@@ -256,6 +259,7 @@ export function onScopeDispose(fn: () => void): void {
           'Wrap the call in `scope.runInScope(() => { ... })` or check `getCurrentScope()` before calling.',
       )
     }
+
     return
   }
   scope.add(fn)

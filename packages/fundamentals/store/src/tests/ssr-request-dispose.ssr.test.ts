@@ -29,6 +29,7 @@ describe('SSR: a request disposes the stores it created', () => {
         shared()
       })
       const total = computed(() => shared() + items().length)
+
       return { items, total }
     })
     const Page = (): VNodeChild => h('p', null, String(useCart().store.total()))
@@ -44,6 +45,7 @@ describe('SSR: a request disposes the stores it created', () => {
       effect(() => {
         shared()
       })
+
       return { name }
     })
     for (let i = 0; i < 20; i++) {
@@ -68,6 +70,7 @@ describe('SSR: a request disposes the stores it created', () => {
       effect(() => {
         shared()
       })
+
       return { n: signal(0) }
     })
     const Page = (): VNodeChild => h('p', null, String(useFeed().store.n()))

@@ -579,6 +579,7 @@ function renderHeld(req: RequestCtx, root: VNode): MaybeAsync {
     releaseRequest(req)
     return r
   }
+
   return r.finally(() => releaseRequest(req))
 }
 
@@ -874,8 +875,7 @@ export function renderToStream(
   // Sanitized to a bare token so it can never break out of the attribute.
   const nonce = options.nonce ? options.nonce.replace(/["'<>\s]/g, '') : ''
   const nonceAttr = nonce ? ` nonce="${nonce}"` : ''
-  // Set by `start` (which runs synchronously in the constructor); see `release`.
-  let releaseStream = (): void => {}
+  const hold = new StreamRequestHold()
 
   return new ReadableStream<string>({
     start(controller) {
@@ -911,17 +911,6 @@ export function renderToStream(
         : new Promise<void>((resolve) => {
             signal.addEventListener('abort', () => resolve(), { once: true })
           })
-
-      // The request this stream holds (its own, or the inherited one), released
-      // exactly once: when the body settles, or on cancel — a shell parked on an
-      // await that never settles would otherwise hold it forever.
-      let req: RequestCtx | undefined
-      const release = (): void => {
-        const r = req
-        req = undefined
-        if (r !== undefined) releaseRequest(r)
-      }
-      releaseStream = release
 
       // Same request-context inheritance as `renderToString`: inside
       // `runWithRequestContext`, reuse the active request stack + store so
@@ -959,7 +948,7 @@ export function renderToStream(
             // hanging the reader.) Wrapped because `cancel()` may have closed it.
             // The request ends BEFORE the reader can observe the end.
             flush()
-            release()
+            hold.release()
             try {
               controller.close()
             } catch {
@@ -969,7 +958,7 @@ export function renderToStream(
           .catch((err) => {
             // Aborts are expected, not errors — close silently to mirror
             // a normal end-of-stream when the consumer hung up.
-            release()
+            hold.release()
             if (signal.aborted) {
               try {
                 controller.close()
@@ -984,26 +973,47 @@ export function renderToStream(
             controller.error(err)
           })
 
-      const active = _contextAls.getStore()
-      if (active !== undefined) {
-        req = holdRequest(active)
-        return streamBody()
-      }
-      return withStylerSSRScope(() =>
-        openRequest((r) => {
-          req = r
-          return streamBody()
-        }),
-      )
+      return hold.run(streamBody)
     },
     cancel(reason) {
       // Consumer (browser fetch reader) closed the stream — propagate to
       // the internal controller so in-flight Suspense work stops being
       // awaited.
       ac.abort(reason)
-      releaseStream()
+      hold.release()
     },
   })
+}
+
+/**
+ * The request a stream holds: the active one it inherits (held until the
+ * stream ends), or its own. Released exactly once — when the body settles, or
+ * on cancel, since a shell parked on an await that never settles would
+ * otherwise hold it forever.
+ */
+class StreamRequestHold {
+  private req: RequestCtx | undefined
+
+  run(body: () => Promise<void>): Promise<void> {
+    const active = _contextAls.getStore()
+    if (active !== undefined) {
+      this.req = holdRequest(active)
+      return body()
+    }
+
+    return withStylerSSRScope(() =>
+      openRequest((r) => {
+        this.req = r
+        return body()
+      }),
+    )
+  }
+
+  release(): void {
+    const r = this.req
+    this.req = undefined
+    if (r !== undefined) releaseRequest(r)
+  }
 }
 
 // ─── Streaming renderer ───────────────────────────────────────────────────────

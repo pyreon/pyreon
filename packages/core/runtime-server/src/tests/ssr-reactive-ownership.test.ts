@@ -54,6 +54,7 @@ describe('SSR reactive ownership', () => {
         effect(() => {
           g()
         })
+
         return 'x'
       })
     for (let i = 0; i < 20; i++) await renderToString(h(Holder, null))
@@ -81,6 +82,7 @@ describe('SSR reactive ownership', () => {
       effect(() => {
         g()
       })
+
       return h('i', null, 'x')
     }
     for (let i = 0; i < 20; i++) {
@@ -101,6 +103,7 @@ describe('SSR reactive ownership', () => {
       effect(() => {
         g()
       })
+
       return h('i', null, 'x')
     }
     for (let i = 0; i < 20; i++) await drain(renderToStream(h(Holder, null)))
@@ -122,6 +125,7 @@ describe('SSR reactive ownership', () => {
       effect(() => {
         g()
       })
+
       return h('b', null, 'late')
     })
     const stream = await runWithRequestContext(async () =>
@@ -140,6 +144,7 @@ describe('SSR reactive ownership', () => {
       effect(() => {
         g()
       })
+
       return h('i', null, 'x')
     }
     const Never = asyncComp(async () => new Promise<VNodeChild>(() => {}))
@@ -166,6 +171,7 @@ describe('SSR reactive ownership', () => {
       effect(() => {
         g()
       })
+
       return 'before'
     }
     const AfterAwait = asyncComp(async () => {
@@ -174,6 +180,7 @@ describe('SSR reactive ownership', () => {
       effect(() => {
         g()
       })
+
       return 'after'
     })
     const renderA = renderToString(h('div', null, h(Before, null), h(AfterAwait, null)))
