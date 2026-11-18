@@ -1,10 +1,10 @@
-import { txt } from '../../factory'
+import { tones, txt } from '../../factory'
 
 const Title = txt
   .config({ name: 'Title' })
   .attrs({ tag: 'h2' })
-  .theme((t) => ({
-    color: t.color.system.dark[800],
+  .theme((t, m) => ({
+    color: tones(t, m).text,
     fontWeight: t.fontWeight.bold,
     lineHeight: t.lineHeight.small,
     margin: 0,
