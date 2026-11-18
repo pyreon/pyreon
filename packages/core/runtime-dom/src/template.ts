@@ -794,14 +794,45 @@ let _tplRootDecorated = false
 // Deliberately NOT derived from `_tplAdoptVerifier !== null`: the verifier
 // stays registered after hydration completes, and keying deferral on it would
 // defer every post-hydration client render too.
+//
+// It is also held while an ASYNC component that the walk met is still pending
+// (#4353). Its body's code after an `await` runs in a later microtask, outside
+// the synchronous walk, and builds the templates the component's `.then` then
+// hydrates against the server range; built eagerly they could only clone and
+// swap. The flag `_tpl` reads stays ONE boolean, recomputed here on the cold
+// enter/leave paths, so a mount outside hydration pays nothing for this. A
+// template built for an unrelated client render inside that window defers too,
+// and its first `.el` read builds it un-armed: the same clone, built at mount.
 let _hydrationActive = false
+let _walkActive = false
+let _asyncPending = 0
 
 /** Set the hydration-active flag; returns the PREVIOUS value so callers can
  *  save/restore (frame discipline — hydration roots can nest via islands). */
 export function _setHydrationActive(v: boolean): boolean {
-  const prev = _hydrationActive
-  _hydrationActive = v
+  const prev = _walkActive
+  _walkActive = v
+  _hydrationActive = v || _asyncPending > 0
   return prev
+}
+
+/**
+ * Keep `_tpl` deferring until the returned release runs: called by hydration
+ * for an async component whose output is still pending. The release is
+ * idempotent, and hydration calls it on every settle path and on unmount, so a
+ * hold cannot outlive its component (a promise that never settles holds until
+ * the component unmounts; deferral is only slower then, never wrong).
+ */
+export function _holdTplDeferral(): () => void {
+  _asyncPending++
+  _hydrationActive = true
+  let held = true
+  return () => {
+    if (!held) return
+    held = false
+    _asyncPending--
+    _hydrationActive = _walkActive || _asyncPending > 0
+  }
 }
 
 // ─── MOUNT HOLES ─────────────────────────────────────────────────────────────

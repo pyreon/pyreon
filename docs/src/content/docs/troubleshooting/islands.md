@@ -29,6 +29,12 @@ Runtime-server wraps an async component's output in `<!--$pas-->…<!--$pae-->`;
 
 ---
 
+### [FIXED, 2026-11] An async component's compiled templates built after its `await` (#4353).
+
+`_tpl` defers its build while `_hydrationActive` is set, so each template adopts the server node at its own cursor. An async body's code after an `await` runs in a later microtask, after the synchronous walk has ended, so its `_tpl` calls built clones eagerly; the component's `.then` then hydrated that output against the `<!--$pas-->` range and every compiled element took the swap fallback (replaced by an identical node, no report; on the zero-content blog index, the header and empty state). A body that resolves before its first real `await` was unaffected, which is why the earlier async-hydration tests passed. **Rule: a window in which code builds templates that a LATER hydration step adopts must hold the template deferral until that step has run.** `hydrateComponent` takes `_holdTplDeferral()` (`template.ts`) for a pending async output over a marked range and releases it on every settle path and on unmount. The flag `_tpl` reads stays one boolean, recomputed on those cold enter/leave paths, so a mount outside hydration pays nothing; an unrelated render inside the window gets a deferred item whose first `.el` read builds the usual clone. Locks: `runtime-dom/src/tests/hydrate-async-component-tpl-adoption.test.tsx` (real compiler + SSR, late resolve, `<Suspense>`, an unrelated mount inside the window, the release on unmount) and its `.browser` twin.
+
+---
+
 ### Deferred island hydration without the marker's context owner
 
 Context is owner-based, and a late `hydrateRoot` has no parent owner, so `useContext()` cannot reach ancestor providers (rocketstyle crashes reading the theme: `Cannot read properties of undefined (reading 'base')`).
