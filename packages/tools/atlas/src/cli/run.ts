@@ -24,7 +24,7 @@ import {
   verdictLine,
 } from './render'
 import { version as atlasVersion } from '../../package.json' with { type: 'json' }
-import { diffVerdicts, formatDiff, readBaselineScenarios, summarizeDiff } from '../verify/diff'
+import { diffVerdicts, failingChecks, formatDiff, newFailures, readBaselineScenarios, summarizeDiff } from '../verify/diff'
 import { buildVerifyReport } from '../verify/report'
 import type { WorkbenchPresets } from '../ui/catalog'
 import type { AgentAsset } from '../plugins'
@@ -570,27 +570,30 @@ export async function runScan(options: ScanOptions = {}): Promise<ScanResult> {
  * would be one more artifact to keep in sync — with the two disagreeing as the
  * failure mode.
  *
- * Returns the exit code. A MISSING or unreadable baseline is exit 0 with a
- * note: nothing to compare is not a regression, and making the first `--check`
- * run red for everybody is how a ratchet gets disabled on day one.
+ * Returns the exit code, and the checks the baseline already failed (so the
+ * caller exits on new failures only — see `newFailures`). A MISSING or
+ * unreadable baseline is exit 0 with a note: nothing to compare is not a
+ * regression, and making the first `--check` run red for everybody is how a
+ * ratchet gets disabled on day one. It has no failures to inherit, either.
  */
 function reportRatchet(
   catalogPath: string,
   current: readonly Scenario[],
   options: { scope?: ReadonlySet<string>; say?: (text: string) => void } = {},
-): number {
+): { code: number; baselineFailing: ReadonlySet<string> } {
+  const none = { code: 0, baselineFailing: new Set<string>() }
   const say = options.say ?? out
   let raw: unknown
   try {
     raw = JSON.parse(readFileSync(catalogPath, 'utf8'))
   } catch {
     problem('info', `no readable baseline at ${catalogPath} — nothing to compare against.`, 'run `atlas scan` and commit the catalog to enable --check')
-    return 0
+    return none
   }
   const baseline = readBaselineScenarios(raw)
   if (!baseline) {
     problem('warning', `${catalogPath} is not a readable catalog — skipping the comparison.`, 'regenerate it with `atlas scan`')
-    return 0
+    return none
   }
   // A scoped run (`atlas verify Card --check`) holds one component, so it is
   // compared against that component's slice of the baseline. Against the
@@ -602,7 +605,15 @@ function reportRatchet(
   say(`\n${ratchetLines(t, summarizeDiff(diff), formatDiff(diff), diff.regressed).join('\n')}\n`)
   // Only a REGRESSION is a red exit. An improvement is information, and an
   // unchanged run is the common case — neither should fail a build.
-  return diff.regressed ? 1 : 0
+  return { code: diff.regressed ? 1 : 0, baselineFailing: failingChecks(scoped) }
+}
+
+/** Under `--check`, the failures inherited from the baseline are named, not counted. */
+function noteInherited(total: number, fresh: number): void {
+  const inherited = total - fresh
+  if (inherited > 0) {
+    problem('info', `${plural(inherited, 'failing scenario')} already failed the same check in the committed catalog — not a regression, so --check does not fail on ${inherited === 1 ? 'it' : 'them'}.`)
+  }
 }
 
 /** Group `framework-warning` findings by message, for the scan summary. */
@@ -1116,16 +1127,20 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       }
       return code
     }
+    // Under --check only the failures the baseline did not already have count.
+    let counted = report.failures
     if (ratchet) {
       // Reported BEFORE the absolute failures below: a reader running --check
       // is asking "did I change anything", and the answer has to lead.
-      const code = reportRatchet(join(dir ?? '.', 'atlas-catalog.json'), result.graph.scenarios(), {
+      const { code, baselineFailing } = reportRatchet(join(dir ?? '.', 'atlas-catalog.json'), result.graph.scenarios(), {
         ...(json ? { say: err } : {}),
       })
       if (code !== 0) {
         verdictOf({ regressed: true })
         return emitJson(code)
       }
+      counted = newFailures(report.failures, baselineFailing)
+      noteInherited(report.failures.length, counted.length)
     }
     if (brokenComponents.length > 0) {
       problem(
@@ -1136,7 +1151,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       verdictOf({ failedToLoad: brokenComponents.length })
       return emitJson(1)
     }
-    if (result.failed > 0) {
+    if (counted.length > 0) {
       // A red scan is a red exit — otherwise wiring `atlas scan` into CI gates
       // nothing. The FINDINGS make the failure actionable without opening the
       // JSON; a bare id list named the scenario and withheld the diagnosis.
@@ -1145,7 +1160,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       // thousand of them buries the summary that explains them. The cap reports
       // itself — a silently truncated list reads as a complete one.
       err('\n')
-      for (const line of failureLines(et, report.failures, { limit: FAILURE_PRINT_LIMIT, sourceOf: sourceOf(result.graph, dir ?? '.') })) {
+      for (const line of failureLines(et, counted, { limit: FAILURE_PRINT_LIMIT, sourceOf: sourceOf(result.graph, dir ?? '.') })) {
         err(`${line}\n`)
       }
       err(`  ${et.dim('Run')} atlas verify <Component> ${et.dim('to re-check one component on its own.')}\n`)
@@ -1245,7 +1260,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
     // narration goes to stderr so stdout stays one JSON document. It used to be
     // skipped entirely, so `--check --json` silently never ratcheted.
     if (rest.includes('--check')) {
-      const code = reportRatchet(
+      const { code, baselineFailing } = reportRatchet(
         join(flagValue(rest, '--cwd') ?? '.', 'atlas-catalog.json'),
         result.graph.scenarios(),
         {
@@ -1254,8 +1269,12 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         },
       )
       if (code !== 0) return finish(code, true)
+      const counted = newFailures(report.failures, baselineFailing)
+      if (!json) noteInherited(report.failures.length, counted.length)
+      if (counted.length > 0) return finish(1)
+    } else if (report.failed > 0) {
+      return finish(1)
     }
-    if (report.failed > 0) return finish(1)
     // Nothing verified is NOT a pass. A dual-instance workspace, a component
     // that cannot mount, a scan that found no scenarios — each produces zero
     // failures, and exiting 0 would report "green" for a run that established
