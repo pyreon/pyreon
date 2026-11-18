@@ -645,6 +645,7 @@ struct Ctx<'a> {
     needs_set_prop_import: bool,
     needs_set_prop_static_import: bool,
     needs_set_html_import: bool,
+    needs_ref_import: bool,
     needs_bind_text_import: bool,
     needs_bind_prop_import: bool,
     needs_bind_direct_import: bool,
@@ -902,6 +903,7 @@ impl<'a> Ctx<'a> {
             needs_set_prop_import: false,
             needs_set_prop_static_import: false,
             needs_set_html_import: false,
+            needs_ref_import: false,
             needs_bind_text_import: false,
             needs_bind_prop_import: false,
             needs_bind_direct_import: false,
@@ -1090,6 +1092,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_set_html_import {
                 imports.push("_setHtml");
+            }
+            if self.needs_ref_import {
+                imports.push("_ref");
             }
             let mut reactivity_specs: Vec<&str> = Vec::new();
             if self.needs_bind_import {
@@ -8582,6 +8587,7 @@ struct TemplateBuilder {
     needs_set_prop: bool,
     needs_set_prop_static: bool,
     needs_set_html: bool,
+    needs_ref: bool,
     /// Preserved holes — absorbed COMPONENT children whose source range must
     /// survive into the output so the walk can transform them in place. Each is
     /// represented in the generated body by a `HOLE_SENTINEL`-delimited index
@@ -8623,6 +8629,7 @@ impl TemplateBuilder {
             needs_set_prop: false,
             needs_set_prop_static: false,
             needs_set_html: false,
+            needs_ref: false,
             hole_spans: Vec::new(),
         }
     }
@@ -8791,6 +8798,9 @@ fn build_template_call(
     }
     if tb.needs_set_html {
         ctx.needs_set_html_import = true;
+    }
+    if tb.needs_ref {
+        ctx.needs_ref_import = true;
     }
     if tb.needs_set_attr {
         ctx.needs_set_attr_import = true;
@@ -9227,18 +9237,12 @@ fn emit_ref(
         _ => return,
     };
     let expr_text = slice_expr(expr, ctx);
-    match expr {
-        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {
-            tb.bind_lines
-                .push(format!("({})({})", expr_text, var_name));
-        }
-        _ => {
-            tb.bind_lines.push(format!(
-                "{{ const __r = {}; if (typeof __r === \"function\") __r({}); else if (__r) __r.current = {} }}",
-                expr_text, var_name, var_name
-            ));
-        }
-    }
+    // `_ref` applies the ref as the h() path does and returns the disposer that
+    // hands it `null` on unmount (#4390). Mirrors the JS `emitRef`.
+    tb.needs_ref = true;
+    let d = tb.next_disp();
+    tb.bind_lines
+        .push(format!("const {} = _ref({}, {})", d, var_name, expr_text));
 }
 
 fn emit_event_listener(

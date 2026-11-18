@@ -154,6 +154,12 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] Cloning a `<template>`'s content and handing the clone to user code before insertion
+
+(#4390): a clone of `template.content` belongs to the template's INERT document (`ownerDocument.defaultView === null`) until it is inserted, and compiled refs run on the clone. `@pyreon/virtual`'s TanStack core read the window from the scroll element's document at ref time, found `null` and never observed scroll. happy-dom gives template content the page document, so only a browser shows it. Import the clone SOURCE into the page document once at parse (`document.importNode`), never per clone. Same PR: a compiled ref never received `null` on unmount (the bind returned no disposer for it); refs now lower to `_ref`, which returns one.
+
+---
+
 ### [FIXED, 2026-11] A component that decorates its child assumed the child is a VNode
 
 (#4382): a literal element child compiles to a `_tpl` item on the client and to raw HTML (`_ssr`) on the server, neither of which has props to merge. Kinetic's per-item hidden class/style was dropped on the server (initially-hidden items prerendered VISIBLE, a flash before hydration); runtime-dom's `<Transition><div/></Transition>` treated the `_tpl` item as a component, warned, and never animated; `_ssr` dropped `key` while the client kept the keyed element on `h()`, so a group saw different keys on each side.

@@ -69,6 +69,7 @@ export {
   _bindDirect,
   _bindText,
   _bindProp,
+  _ref,
   _declareRootDecoration,
   _mountChild,
   _mountSlot,
