@@ -44,6 +44,7 @@ Read before touching `packages/zero/**`, a build adapter, SSG/SSR/ISR output, or
   - `cacheKey: 'path-only'` strips the query. It does not count as a custom key for the auth refusal.
   - `expireOnTimeout` drops a stale entry when revalidation times out (default: keep stale).
   - Storage is a pluggable `ISRStore` (default `createMemoryStore`).
+  - Bookkeeping is bounded by what is cached or in flight: the memory store's tag index drops a key on delete, LRU eviction and clear (`setTags` replaces a key's tags; `keysByTag` never refreshes LRU order); `createFsStore`'s `_tags.json` drops a key on delete and is rewritten only when it changes; the handler's invalidation epochs exist only while a render for that key is in flight (a ticket per render, `revalidateAll` bumps one global epoch). Locked by `isr-store-bounds.test.ts`.
 - Two different revalidate layers:
   - route `export const revalidate` → build-time `dist/_pyreon-revalidate.json` for `Adapter.revalidate(path)`; `vercelRevalidateHandler` validates the path against that manifest;
   - `isr.revalidate` → the runtime stale-while-revalidate TTL.
