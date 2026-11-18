@@ -48,7 +48,8 @@
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench": "NODE_ENV=production node --experimental-strip-types bench/format-bench.ts"
+    "bench": "bun run build && bun build bench/format-rivals.ts --target=node --outfile=node_modules/.bench/format-rivals.mjs && NODE_ENV=production node node_modules/.bench/format-rivals.mjs",
+    "bench:reactive": "bun run build && bun build bench/format-reactive.ts --target=node --outfile=node_modules/.bench/format-reactive.mjs && NODE_ENV=production node node_modules/.bench/format-reactive.mjs"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

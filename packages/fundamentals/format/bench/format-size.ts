@@ -29,7 +29,8 @@ declare const Bun: {
 }
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)))
-const OUT = join(ROOT, '.out', 'size')
+// Under node_modules (git-ignored and never linted); bare imports resolve from the package.
+const OUT = join(ROOT, '..', 'node_modules', '.bench', 'size')
 rmSync(OUT, { recursive: true, force: true })
 mkdirSync(OUT, { recursive: true })
 
