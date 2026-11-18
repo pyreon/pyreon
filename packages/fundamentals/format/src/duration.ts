@@ -5,6 +5,7 @@
  * `Intl.DurationFormat` for the `long` / `short` / `narrow` / `digital` styles
  * in the locales the tests compare.
  */
+import type { KindDef } from './formatter'
 import { clearTable, construct, createTable, resolve } from './cache'
 import { badLocale, fallbackOf } from './number'
 import { programmerError, warnInvalid } from './warn'
@@ -172,20 +173,23 @@ export function _clearDurationTable(): void {
   clearTable(durationTable)
 }
 
-export function durationIn(locale: string, value: DurationInput, options: DurationOptions | DurationStyle | undefined): string {
-  if (value == null) return fallbackOf(options)
-  const f: number[] = [0, 0, 0, 0, 0, 0, 0, 0]
+/** The fields of a non-nullish input and its sign, or `undefined` (with a dev warning). */
+function durationFields(value: Duration | number, f: number[]): -1 | 1 | undefined {
   const sign = fieldsOf(value, f)
-  if (sign === undefined) {
-    if (process.env.NODE_ENV !== 'production') warnInvalid('formatDuration', value, 'a Duration object (finite numbers sharing one sign) or a finite number of milliseconds')
-    return fallbackOf(options)
+  if (sign === undefined && process.env.NODE_ENV !== 'production') {
+    warnInvalid('formatDuration', value, 'a Duration object (finite numbers sharing one sign) or a finite number of milliseconds')
   }
-  const pack = resolve(durationTable, locale, '', options)
+
+  return sign
+}
+
+function durationRender(pack: DurationPack, f: number[], sign: -1 | 1, value: Duration | number, fb: string): string {
   if (pack.style === 'digital') {
     const text = formatDigital(pack, f, sign)
     if (text === undefined) {
       if (process.env.NODE_ENV !== 'production') warnInvalid('formatDuration', value, "a duration without years or months for style 'digital' (they have no fixed length)")
-      return fallbackOf(options)
+
+      return fb
     }
 
     return text
@@ -194,6 +198,46 @@ export function durationIn(locale: string, value: DurationInput, options: Durati
   if (first === -1) return unitFormat(pack, 6).format(0)
 
   return formatUnits(pack, f, sign, first)
+}
+
+export function durationIn(locale: string, value: DurationInput, options: DurationOptions | DurationStyle | undefined): string {
+  if (value == null) return fallbackOf(options)
+  const f: number[] = [0, 0, 0, 0, 0, 0, 0, 0]
+  const sign = durationFields(value, f)
+  if (sign === undefined) return fallbackOf(options)
+
+  return durationRender(resolve(durationTable, locale, '', options), f, sign, value, fallbackOf(options))
+}
+
+/** Spec of `durationFormatter`: an options object, or a style name. */
+export function durationSpec(options: DurationOptions | DurationStyle | undefined): DurationOptions {
+  if (typeof options === 'string') return { style: options }
+
+  return options ?? {}
+}
+
+export const durationKind: KindDef<'duration'> = {
+  create(spec, locale) {
+    const fb = spec.fallback ?? ''
+    let at = ''
+    let pack: DurationPack | undefined
+
+    return {
+      call: (value) => {
+        const l = locale()
+        if (value == null) return fb
+        const f: number[] = [0, 0, 0, 0, 0, 0, 0, 0]
+        const sign = durationFields(value, f)
+        if (sign === undefined) return fb
+        if (pack === undefined || l !== at) {
+          pack = resolve(durationTable, l, '', spec)
+          at = l
+        }
+
+        return durationRender(pack, f, sign, value, fb)
+      },
+    }
+  },
 }
 
 /** Zero every field after the `largest` most significant non-zero ones; the index of the first non-zero field, or `-1`. */

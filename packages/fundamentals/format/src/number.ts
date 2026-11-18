@@ -5,14 +5,17 @@
  * resolve it: core from `options.locale`, the reactive entry from the active
  * locale) so the hot path is one table lookup and one `format()` call.
  */
-import { clearTable, construct, createTable, resolve, tableStats } from './cache'
+import { clearTable, construct, createTable, resolve, tableStats, type Table } from './cache'
+import type { Core, KindDef } from './formatter'
 import { programmerError, warnInvalid, warnOnce } from './warn'
 import type {
+  BaseOptions,
   BytesOptions,
   CompactOptions,
   CompactPreset,
   CurrencyOptions,
   CurrencyPreset,
+  KindInfo,
   NumberInput,
   NumberOptions,
   NumberPreset,
@@ -106,20 +109,20 @@ const numberTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _var
 )
 
 /** Invalid: not a number, not a bigint, not NaN. Nullish is "missing", not invalid. */
-function badNumber(fn: string, value: unknown, options: unknown): string {
+export function badNumber(fn: string, value: unknown, fallback: string): string {
   if (value != null) {
     if (process.env.NODE_ENV !== 'production') warnInvalid(fn, value, 'a number or bigint (NaN is not a number)')
   }
 
-  return fallbackOf(options)
+  return fallback
 }
 
-function isUsable(value: unknown): value is number | bigint {
+export function isUsable(value: unknown): value is number | bigint {
   return typeof value === 'bigint' || (typeof value === 'number' && value === value)
 }
 
 export function numberIn(locale: string, value: NumberInput, options: NumberOptions | NumberPreset | undefined): string {
-  if (!isUsable(value)) return badNumber('formatNumber', value, options)
+  if (!isUsable(value)) return badNumber('formatNumber', value, fallbackOf(options))
   return resolve(numberTable, locale, '', options).format(value)
 }
 
@@ -129,7 +132,7 @@ export function numberToPartsIn(
   options: NumberOptions | NumberPreset | undefined,
 ): Intl.NumberFormatPart[] {
   if (!isUsable(value)) {
-    badNumber('formatNumberToParts', value, options)
+    badNumber('formatNumberToParts', value, fallbackOf(options))
     return []
   }
 
@@ -177,7 +180,7 @@ const currencyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, cu
 )
 
 /** A currency code is three ASCII letters (ISO 4217 shape); `Intl` rejects anything else. */
-function isCurrencyCode(c: unknown): c is string {
+export function isCurrencyCode(c: unknown): c is string {
   if (typeof c !== 'string' || c.length !== 3) return false
   for (let i = 0; i < 3; i++) {
     const k = c.charCodeAt(i) | 32
@@ -193,7 +196,7 @@ export function currencyIn(
   currency: string,
   options: CurrencyOptions | CurrencyPreset | undefined,
 ): string {
-  if (!isUsable(value)) return badNumber('formatCurrency', value, options)
+  if (!isUsable(value)) return badNumber('formatCurrency', value, fallbackOf(options))
   if (!isCurrencyCode(currency)) {
     if (process.env.NODE_ENV !== 'production') warnInvalid('formatCurrency', currency, 'a three-letter ISO 4217 currency code such as "EUR"')
     return fallbackOf(options)
@@ -212,7 +215,7 @@ const percentTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _va
 )
 
 export function percentIn(locale: string, value: NumberInput, options: PercentOptions | undefined): string {
-  if (!isUsable(value)) return badNumber('formatPercent', value, options)
+  if (!isUsable(value)) return badNumber('formatPercent', value, fallbackOf(options))
   return resolve(percentTable, locale, '', options).format(value)
 }
 
@@ -235,7 +238,7 @@ export function compactIn(
   value: NumberInput,
   options: CompactOptions | CompactPreset | undefined,
 ): string {
-  if (!isUsable(value)) return badNumber('formatCompact', value, options)
+  if (!isUsable(value)) return badNumber('formatCompact', value, fallbackOf(options))
   return resolve(compactTable, locale, '', options).format(value)
 }
 
@@ -262,7 +265,7 @@ export function unitIn(
   unit: Unit,
   options: UnitOptions | UnitPreset | undefined,
 ): string {
-  if (!isUsable(value)) return badNumber('formatUnit', value, options)
+  if (!isUsable(value)) return badNumber('formatUnit', value, fallbackOf(options))
   if (typeof unit !== 'string' || !unit) {
     throw programmerError('formatUnit', `the unit must be a string such as "kilometer" or "kilometer-per-hour", got ${String(unit)}. See Intl.supportedValuesOf('unit').`)
   }
@@ -307,14 +310,12 @@ function bytesFormatter(pack: BytesPack, index: number): Intl.NumberFormat {
   }))
 }
 
-export function bytesIn(locale: string, bytes: NumberInput, options: BytesOptions | undefined): string {
-  if (bytes == null) return fallbackOf(options)
-  const value = typeof bytes === 'bigint' ? Number(bytes) : bytes
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    if (process.env.NODE_ENV !== 'production') warnInvalid('formatBytes', bytes, 'a finite number of bytes')
-    return fallbackOf(options)
-  }
-  const pack = resolve(bytesTable, locale, '', options)
+/** The unit chosen by {@link bytesPick}: the scaled value and the byte-unit index (module scratch: synchronous, no allocation). */
+let pickedValue = 0
+let pickedIndex = 0
+
+/** Scale `value` to the largest fitting unit (carrying when rounding reaches the next step); returns that unit's formatter. */
+function bytesPick(pack: BytesPack, value: number): Intl.NumberFormat {
   const base = pack.binary ? 1024 : 1000
   let scaled = value < 0 ? -value : value
   let index = 0
@@ -331,16 +332,193 @@ export function bytesIn(locale: string, bytes: NumberInput, options: BytesOption
       index++
     }
   }
-  const shown = value < 0 ? -scaled : scaled
-  const format = bytesFormatter(pack, index)
-  if (!pack.binary || index === 0) return format.format(shown)
-  // No Intl unit exists for KiB/MiB: let Intl place the number and unit
-  // (spacing and order are per locale), and swap the unit text for the IEC symbol.
-  const parts = format.formatToParts(shown)
+  pickedValue = value < 0 ? -scaled : scaled
+  pickedIndex = index
+
+  return bytesFormatter(pack, index)
+}
+
+/**
+ * No Intl unit exists for KiB/MiB: let Intl place the number and unit
+ * (spacing and order are per locale), and swap the unit text for the IEC symbol.
+ */
+function bytesParts(pack: BytesPack, format: Intl.NumberFormat): Intl.NumberFormatPart[] {
+  const parts = format.formatToParts(pickedValue)
+  if (!pack.binary || pickedIndex === 0) return parts
+
+  return parts.map((part) => (part.type === 'unit' ? { type: 'unit', value: BYTE_SYMBOLS_BINARY[pickedIndex] as string } : part))
+}
+
+function bytesText(pack: BytesPack, format: Intl.NumberFormat): string {
+  if (!pack.binary || pickedIndex === 0) return format.format(pickedValue)
   let out = ''
-  for (const part of parts) out += part.type === 'unit' ? (BYTE_SYMBOLS_BINARY[index] as string) : part.value
+  for (const part of bytesParts(pack, format)) out += part.value
 
   return out
+}
+
+/** A finite byte count, or `undefined` (with a dev warning for non-nullish input). */
+function bytesValue(bytes: NumberInput): number | undefined {
+  if (bytes == null) return undefined
+  const value = typeof bytes === 'bigint' ? Number(bytes) : bytes
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (process.env.NODE_ENV !== 'production') warnInvalid('formatBytes', bytes, 'a finite number of bytes')
+
+  return undefined
+}
+
+export function bytesIn(locale: string, bytes: NumberInput, options: BytesOptions | undefined): string {
+  const value = bytesValue(bytes)
+  if (value === undefined) return fallbackOf(options)
+  const pack = resolve(bytesTable, locale, '', options)
+
+  return bytesText(pack, bytesPick(pack, value))
+}
+
+// ─── Formatters as values ────────────────────────────────────────────────────
+
+/** Spec of `numberFormatter`: an options object, or a preset name resolved once. */
+export function numberSpec(options: NumberOptions | NumberPreset | undefined): NumberOptions {
+  return optionsOf<NumberOptions>(options, NUMBER_PRESETS, 'numberFormatter') ?? {}
+}
+
+export function currencySpec(currency: string, options: CurrencyOptions | CurrencyPreset | undefined): KindInfo['currency']['spec'] {
+  return { ...optionsOf<CurrencyOptions>(options, CURRENCY_PRESETS, 'currencyFormatter'), currency }
+}
+
+export function percentSpec(options: PercentOptions | undefined): PercentOptions {
+  return optionsOf<PercentOptions>(options, NO_PRESETS, 'percentFormatter') ?? {}
+}
+
+export function compactSpec(options: CompactOptions | CompactPreset | undefined): CompactOptions {
+  return optionsOf<CompactOptions>(options, COMPACT_PRESETS, 'compactFormatter') ?? {}
+}
+
+export function unitSpec(unit: Unit, options: UnitOptions | UnitPreset | undefined): KindInfo['unit']['spec'] {
+  if (typeof unit !== 'string' || !unit) {
+    throw programmerError('unitFormatter', `the unit must be a string such as "kilometer" or "kilometer-per-hour", got ${String(unit)}. See Intl.supportedValuesOf('unit').`)
+  }
+
+  return { ...optionsOf<UnitOptions>(options, UNIT_PRESETS, 'unitFormatter'), unit }
+}
+
+export function bytesSpec(options: BytesOptions | undefined): BytesOptions {
+  return optionsOf<BytesOptions>(options, NO_PRESETS, 'bytesFormatter') ?? {}
+}
+
+/**
+ * The core of every number-style formatter: the `Intl.NumberFormat` is looked up
+ * once per locale (a cheap string compare per call) and then `format()`.
+ */
+function numberCore(
+  table: Table<Intl.NumberFormat>,
+  fn: string,
+  variant: string,
+  spec: Readonly<BaseOptions>,
+  locale: () => string,
+): Core<NumberInput> {
+  const fb = spec.fallback ?? ''
+  let at = ''
+  let intl: Intl.NumberFormat | undefined
+  const get = (l: string): Intl.NumberFormat => {
+    if (intl === undefined || l !== at) {
+      intl = resolve(table, l, variant, spec)
+      at = l
+    }
+
+    return intl
+  }
+
+  return {
+    call: (value) => {
+      const l = locale()
+      if (!isUsable(value)) return badNumber(fn, value, fb)
+
+      return get(l).format(value)
+    },
+    parts: (value) => {
+      const l = locale()
+      if (!isUsable(value)) return []
+
+      return get(l).formatToParts(value)
+    },
+    range: (start, end) => {
+      const l = locale()
+      if (!isUsable(start) || !isUsable(end)) return fb
+
+      return get(l).formatRange(start, end)
+    },
+  }
+}
+
+export const numberKind: KindDef<'number'> = {
+  create: (spec, locale) => numberCore(numberTable, 'numberFormatter', '', spec, locale),
+}
+
+export const currencyKind: KindDef<'currency'> = {
+  create(spec, locale) {
+    if (isCurrencyCode(spec.currency)) return numberCore(currencyTable, 'currencyFormatter', spec.currency, spec, locale)
+    const fb = spec.fallback ?? ''
+
+    return {
+      call: (value) => {
+        locale()
+        if (process.env.NODE_ENV !== 'production') warnInvalid('currencyFormatter', spec.currency, 'a three-letter ISO 4217 currency code such as "EUR"')
+        void value
+
+        return fb
+      },
+      parts: () => [],
+      range: () => fb,
+    }
+  },
+}
+
+export const percentKind: KindDef<'percent'> = {
+  create: (spec, locale) => numberCore(percentTable, 'percentFormatter', '', spec, locale),
+}
+
+export const compactKind: KindDef<'compact'> = {
+  create: (spec, locale) => numberCore(compactTable, 'compactFormatter', '', spec, locale),
+}
+
+export const unitKind: KindDef<'unit'> = {
+  create: (spec, locale) => numberCore(unitTable, 'unitFormatter', spec.unit, spec, locale),
+}
+
+export const bytesKind: KindDef<'bytes'> = {
+  create(spec, locale) {
+    const fb = spec.fallback ?? ''
+    let at = ''
+    let pack: BytesPack | undefined
+    const get = (l: string): BytesPack => {
+      if (pack === undefined || l !== at) {
+        pack = resolve(bytesTable, l, '', spec)
+        at = l
+      }
+
+      return pack
+    }
+
+    return {
+      call: (value) => {
+        const l = locale()
+        const v = bytesValue(value)
+        if (v === undefined) return fb
+        const p = get(l)
+
+        return bytesText(p, bytesPick(p, v))
+      },
+      parts: (value) => {
+        const l = locale()
+        const v = bytesValue(value)
+        if (v === undefined) return []
+        const p = get(l)
+
+        return bytesParts(p, bytesPick(p, v))
+      },
+    }
+  },
 }
 
 /** Test hooks. */

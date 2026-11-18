@@ -215,24 +215,98 @@ parseDate('31. 2. 2026', { locale: 'cs' })        // null
 
 `parseDate` reads numeric dates in the locale's day, month, year order, or ISO `YYYY-MM-DD` in any locale, and returns `YYYY-MM-DD`. Impossible dates are `null`. A two-digit year follows the POSIX rule: `00`-`68` is 2000-2068, `69`-`99` is 1969-1999. Buddhist and Minguo years are converted. Month names and other non-Gregorian calendars return `null`.
 
-## Named formats and bound formatters
+## Composing formatters
+
+A formatter is a value: a plain `(value) => string` that follows the active locale and time zone like the free functions. Because it is just a function it drops into every place that takes a formatting callback (`Array#map`, a chart axis, a table column, an `@pyreon/rx` pipe) with no adapter. There is one factory per kind, each exported on its own so each tree-shakes:
+
+| Factory | Input | Extra methods |
+| --- | --- | --- |
+| `numberFormatter`, `currencyFormatter(currency)`, `percentFormatter`, `compactFormatter`, `unitFormatter(unit)` | number | `parts`, `range` |
+| `bytesFormatter` | number | `parts` |
+| `durationFormatter` | duration or milliseconds | none |
+| `listFormatter` | an iterable of strings | `parts` |
+| `dateFormatter`, `timeFormatter`, `dateTimeFormatter` | date-like | `parts`, `range` |
+| `relativeFormatter({ base })` | date-like, measured against `base` | none |
+
+Every formatter also has `with`, `from`, `fallback` and `options`. A method that does not exist for a kind is absent from its type.
+
+```ts
+import { currencyFormatter, bytesFormatter, percentFormatter, listFormatter } from '@pyreon/format'
+
+const price = currencyFormatter('EUR', { locale: 'en-US' })
+price(9.99)                                    // "€9.99"
+price.range(10, 20)                            // "€10.00 – €20.00"
+price.parts(9.99).map((p) => p.type)           // ["currency", "integer", "decimal", "fraction"]
+```
+
+### Derive with `with`, adapt with `from`
+
+`with(overrides)` returns a new formatter with options merged over the original's; the original is untouched, and `undefined` unsets an option. `from(map)` adapts the input: the result takes whatever `map` takes.
+
+```ts
+const rounded = price.with({ maximumFractionDigits: 0 })
+rounded(9.99)                                  // "€10"
+
+const fromCents = price.from((cents: number) => cents / 100)
+fromCents(999)                                 // "€9.99"
+;[999, 1250].map(fromCents)                    // ["€9.99", "€12.50"]  (a plain callback)
+
+const fromRow = fromCents.from((row: { total: number }) => row.total)   // chain adapters
+fromRow({ total: 1250 })                       // "€12.50"
+```
+
+`with`, `from` and `fallback` commute: `price.with(a).from(m).fallback(t)` and `price.fallback(t).from(m).with(a)` format identically. `fallback(text)` sets what nullish and invalid input render as.
+
+### Compose through plain values
+
+Formatters return strings, so they compose with each other and with the free functions:
+
+```ts
+const size = bytesFormatter({ locale: 'en-US' })
+const pct = percentFormatter({ locale: 'en-US' })
+const usage = (used: number, total: number) => `${size(used)} of ${size(total)} (${pct(used / total)})`
+usage(1536, 4096)                              // "1.5 kB of 4.1 kB (38%)"
+
+listFormatter({ locale: 'en-US' })([1250, 2500].map(fromCents))   // "€12.50 and €25.00"
+```
+
+### Cost
+
+A formatter freezes a copy of its options when it is created and looks its `Intl` object up once per locale (and zone). A call is a locale read, a string compare and one `format()`; nothing is hashed or allocated per call. `with`, `from` and `fallback` create a small function and share the underlying cache entries, so creating thousands of identical derived formatters constructs one `Intl` object and adds one cache entry. A formatter whose options name a `locale` does not subscribe to the active locale.
+
+### Named formats: `defineFormats`
+
+Each key is a real formatter. A spec may extend another by name: it inherits the kind and merges options over the base's. An unknown name is a type error, and a cycle throws a `[Pyreon]` error at definition time.
 
 ```ts
 import { defineFormats } from '@pyreon/format'
 
 const f = defineFormats({
   price: { kind: 'currency', currency: 'EUR' },
+  priceShort: { extends: 'price', notation: 'compact' },
   size: { kind: 'bytes' },
-  day: { kind: 'date', dateStyle: 'long' },
 })
 
-f.price(9.99)                     // follows the active locale
-f.price(9.99, { currency: 'USD' }) // per-call overrides
+f.price(9.99)
+f.priceShort(1_234_567)                        // "€1.2M" under en-US
+f.price.with({ currency: 'USD' })(9.99)        // "$9.99" under en-US
+f.price.from((cents: number) => cents / 100)
 ```
 
-`kind` selects the formatter (`number`, `currency`, `percent`, `compact`, `unit`, `bytes`, `duration`, `list`, `date`, `time`, `dateTime`, `relative`); the other fields are that formatter's options. Keys, value types and overrides are inferred, and a wrong `kind` or `unit` is a type error. Define the specs once at module level: the hoisted spec object is what the cache keys on.
+`kind` selects the factory (`number`, `currency`, `percent`, `compact`, `unit`, `bytes`, `duration`, `list`, `date`, `time`, `dateTime`, `relative`); the other fields are that factory's options. Entries take exactly one argument, so `[...].map(f.price)` is safe; per-call overrides are `.with()`, hoisted. Define the specs once at module level.
 
-`createFormatter` gives a bound, non-reactive set for servers, scripts and tests:
+### What is deliberately missing: "per month" currency
+
+There is no per-unit currency helper ("€9.99/month"). The platform exposes no locale data for the "per" pattern outside unit formatting, so a hand-made pattern would be wrong in many languages (word order, the preposition, spacing). Format the value and embed it in a translated message:
+
+```ts
+const price = currencyFormatter('EUR')
+t('billing.perMonth', { price: price(9.99) })   // "{{price}} per month" in the message catalog
+```
+
+### `createFormatter`
+
+`createFormatter({ locale, timeZone })` is a bound, non-reactive set of the one-off functions (`number`, `currency`, `date`, `parseNumber`, ...) for servers, scripts and tests. It never reads the active locale or zone.
 
 ```ts
 import { createFormatter } from '@pyreon/format'
@@ -242,19 +316,21 @@ f.number(1234567.5)            // "1 234 567,5"
 f.date('2026-11-18', 'long')   // "18. listopadu 2026"
 ```
 
-It never reads the active locale or zone, and per-call options still override its base.
-
 ## Components
 
 ```tsx
 import { Num, DateTime } from '@pyreon/format/components'
 
 <Num value={total()} kind="currency" currency="EUR" />
-<Num value={size()} kind="bytes" />
+<Num value={total()} format={price} />
+<Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
 <DateTime value="2026-11-18" kind="date" format="long" />
+<DateTime value="2026-11-18" format={dateFormatter('long')} parts={{ month: (t) => <b>{t}</b> }} />
 ```
 
-`<Num>` renders reactive text with no wrapper element. `kind` is `number` (default), `currency`, `percent`, `compact`, `unit` or `bytes`. `<DateTime>` renders `<time datetime="…">` with a machine-readable value whatever the display locale: the calendar string as given, or the UTC ISO instant. An invalid value renders the `fallback` and no `datetime`.
+`<Num>` renders reactive text with no wrapper element. `kind` is `number` (default), `currency`, `percent`, `compact`, `unit` or `bytes`. Pass a built formatter as `format` and it replaces `kind`, `options`, `locale` and `fallback`: configure those on the formatter. `parts` wraps parts of the output (the keys are the `Intl` part types, typed per component): a part without a wrapper stays plain text, and the plain parts between wrapped ones are joined into one text node, so the server HTML and the client agree and hydration adopts it.
+
+`<DateTime>` renders `<time datetime="…">` with a machine-readable value whatever the display locale: the calendar string as given, or the UTC ISO instant. `format` is a `dateStyle`/`timeStyle` shorthand or a built date formatter. An invalid value renders the `fallback` and no `datetime`.
 
 ## Never throws on data
 

@@ -2230,9 +2230,15 @@ setLocale('de')
 formatNumber(1234567.891) // → "1.234.567,891"
 formatDate('2026-11-18', 'long') // → "18. November 2026"
 setLocale('en-US')
-// A named format set:
-const f = defineFormats({ price: { kind: 'currency', currency: 'EUR' } })
+// A formatter is a value: a plain (value) => string you can pass anywhere.
+const price = currencyFormatter('EUR')
+price(1234.5) // → "€1,234.50"
+[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
+price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
+// A named format set (each key is a formatter):
+const f = defineFormats({ price: { kind: 'currency', currency: 'EUR' }, priceShort: { extends: 'price', notation: 'compact' } })
 f.price(1234.5) // → "€1,234.50"
+f.priceShort(1234567) // → "€1.2M"
 // Parsing is the inverse:
 parseNumber('1 234,5', { locale: 'cs' }) // → 1234.5
 parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
@@ -2251,6 +2257,8 @@ parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
 > **Locale tags from data**: A tag you hand to setLocale / provideLocale (static) / setTimeZone is validated and throws a [Pyreon] error if malformed. A tag that arrives at format time (an accessor value, an options.locale) may be request data, so a malformed one degrades to the runtime default with a dev warning instead of throwing.
 >
 > **Engines differ in CLDR data**: Intl output is CLDR data and V8, JavaScriptCore and ICU versions differ (for example a narrow no-break space before PM). For SSR, pass the same locale and time zone on both sides; the hydration test in this package runs real Chromium against Node-rendered markup shape, not byte equality across ICU versions.
+>
+> **Composing formatters**: A formatter is a plain function, so compose with plain values: `listFormatter()(items.map(price))`, `bytesFormatter()(used)` inside a template string, `price.from(row => row.total)` as a table column. There is deliberately NO per-unit currency helper ("€9.99/month"): the platform has no locale data for the "per" pattern outside unit formatting, and a hand-made pattern is wrong in many languages. Format the value and embed it in a translated message ("{price} per month").
 >
 > **Native**: Not lowered by PMTC yet (tier web-only). A core set of Intl calls already lowers natively without this package; mapping these functions onto that set is the planned native work.
 

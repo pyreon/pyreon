@@ -1,8 +1,8 @@
 import * as core from '../core'
 import * as reactive from '../index'
 import { _resetLocaleState } from '../locale'
-import { clearAllTables } from './helpers'
 import { _numberTables, tableStats } from '../number'
+import { clearAllTables } from './helpers'
 
 afterEach(() => {
   _resetLocaleState()
@@ -21,16 +21,15 @@ const specs = {
   day: { kind: 'date', dateStyle: 'full', timeZone: 'UTC' },
   clock: { kind: 'time', timeStyle: 'short', timeZone: 'UTC' },
   stamp: { kind: 'dateTime', timeZone: 'UTC' },
-  ago: { kind: 'relative', unit: 'day', numeric: 'auto' },
+  ago: { kind: 'relative', base: '2026-11-18' },
 } as const
 
 describe.each([['core', core], ['reactive', reactive]] as const)('defineFormats (%s)', (_n, f) => {
-  const loc = { locale: 'en-US' } as const
-  const withLocale = Object.fromEntries(Object.entries(specs).map(([k, v]) => [k, { ...v, ...loc }])) as unknown as typeof specs
+  const withLocale = Object.fromEntries(Object.entries(specs).map(([k, v]) => [k, { ...v, locale: 'en-US' }])) as unknown as typeof specs
   const fmt = f.defineFormats(withLocale)
   const at = Date.UTC(2026, 10, 18, 14, 30)
 
-  it('each key calls its formatter with the spec options', () => {
+  it('each key is a formatter built from the spec options', () => {
     expect(fmt.price(9.99)).toBe(new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' }).format(9.99))
     expect(fmt.size(1536)).toBe('1.5 KiB')
     expect(fmt.count(1234.56)).toBe('1,235')
@@ -42,35 +41,76 @@ describe.each([['core', core], ['reactive', reactive]] as const)('defineFormats 
     expect(fmt.day(at)).toBe(new Intl.DateTimeFormat('en-US', { dateStyle: 'full', timeZone: 'UTC' }).format(at))
     expect(fmt.clock(at)).toBe(new Intl.DateTimeFormat('en-US', { timeStyle: 'short', timeZone: 'UTC' }).format(at))
     expect(fmt.stamp(at)).toBe(new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' }).format(at))
-    expect(fmt.ago(-1)).toBe('yesterday')
+    expect(fmt.ago('2026-11-17')).toBe('yesterday')
   })
 
-  it('overrides win, per call', () => {
-    expect(fmt.price(9.99, { currency: 'USD' })).toBe(new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(9.99))
-    expect(fmt.count(1234.56, { maximumFractionDigits: 1 })).toBe('1,234.6')
-    expect(fmt.price(9.99, { locale: 'de' })).toBe(new Intl.NumberFormat('de', { style: 'currency', currency: 'EUR' }).format(9.99))
-    expect(fmt.speed(72, { unit: 'mile-per-hour' })).toBe('72 mph')
-    expect(fmt.ago(3, { unit: 'week' })).toBe('in 3 weeks')
-    expect(fmt.price(9.99)).toBe(new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' }).format(9.99))
+  it('entries are real Formatters: with, from, fallback, range, parts', () => {
+    expect(fmt.price.with({ currency: 'USD' })(9.99)).toBe('$9.99')
+    expect(fmt.price.from((c: number) => c / 100)(999)).toBe('€9.99')
+    expect(fmt.price.fallback('n/a')(null)).toBe('n/a')
+    expect(fmt.price.range(10, 20)).toBe(new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' }).formatRange(10, 20))
+    expect(fmt.price.parts(1)[0]?.type).toBe('currency')
+    expect(fmt.day.range('2026-11-12', '2026-11-15')).toBe(
+      new Intl.DateTimeFormat('en-US', { dateStyle: 'full', timeZone: 'UTC' }).formatRange(Date.UTC(2026, 10, 12), Date.UTC(2026, 10, 15)),
+    )
+  })
+
+  it('works as a callback', () => {
+    expect([1, 2].map(fmt.count)).toEqual(['1', '2'])
   })
 
   it('nullish returns the spec fallback', () => {
     const g = f.defineFormats({ price: { kind: 'currency', currency: 'EUR', fallback: 'n/a' } })
     expect(g.price(null)).toBe('n/a')
-    expect(g.price(undefined, { fallback: '-' })).toBe('-')
+    expect(g.price.fallback('-')(undefined)).toBe('-')
   })
 
-  it('a call without overrides hits the identity tier of the cache (the spec object is hoisted)', () => {
-    const g = f.defineFormats({ n: { kind: 'number', locale: 'en-US', maximumFractionDigits: 2 } })
-    g.n(1)
-    const before = tableStats(_numberTables().number).keyed
-    for (let i = 0; i < 100; i++) g.n(i)
-    expect(tableStats(_numberTables().number).keyed).toBe(before)
+  it('an unknown kind is a programmer error at definition time', () => {
+    expect(() => f.defineFormats({ bad: { kind: 'nope' } as never })).toThrow(/\[Pyreon\] defineFormats\(\): the format "bad" has unknown kind "nope"/)
+    expect(() => f.defineFormats({ bad: 5 as never })).toThrow(/must be an object/)
+  })
+})
+
+describe('extends', () => {
+  const g = core.defineFormats({
+    price: { kind: 'currency', currency: 'EUR', locale: 'en-US' },
+    priceShort: { extends: 'price', notation: 'compact' },
+    priceWhole: { extends: 'price', maximumFractionDigits: 0 },
+    priceWholeCode: { extends: 'priceWhole', currencyDisplay: 'code' },
+    big: { kind: 'number', locale: 'en-US' },
   })
 
-  it('an unknown kind is a programmer error', () => {
-    const g = f.defineFormats({ bad: { kind: 'nope' } as never })
-    expect(() => g.bad(1 as never)).toThrow(/\[Pyreon\] defineFormats\(\): unknown kind "nope"/)
+  it('inherits the kind and merges options over the base', () => {
+    expect(g.priceShort(1234567)).toBe('€1.2M')
+    expect(g.priceWhole(9.99)).toBe('€10')
+    expect(g.priceWholeCode(9.99)).toBe(new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0, currencyDisplay: 'code' }).format(9.99))
+    expect(g.priceWholeCode.options).toEqual({ locale: 'en-US', currency: 'EUR', maximumFractionDigits: 0, currencyDisplay: 'code' })
+  })
+
+  it('the base is unchanged and a derived spec can override its base options', () => {
+    expect(g.price(9.99)).toBe('€9.99')
+    const h = core.defineFormats({ a: { kind: 'number', maximumFractionDigits: 3, locale: 'en-US' }, b: { extends: 'a', maximumFractionDigits: 1 } })
+    expect(h.b(1.23456)).toBe('1.2')
+    expect(h.a(1.23456)).toBe('1.235')
+  })
+
+  it('definition order does not matter', () => {
+    const h = core.defineFormats({ b: { extends: 'a', maximumFractionDigits: 0 }, a: { kind: 'number', locale: 'en-US' } })
+    expect(h.b(1.5)).toBe('2')
+  })
+
+  it('an unknown name is a [Pyreon] error at definition time', () => {
+    expect(() => core.defineFormats({ a: { extends: 'nope' } } as never)).toThrow(/\[Pyreon\] defineFormats\(\): the format "a" extends "nope", which is not defined in the same set\. Defined: a/)
+  })
+
+  it('cycles are rejected', () => {
+    expect(() => core.defineFormats({ a: { extends: 'b' }, b: { extends: 'a' } } as never)).toThrow(/form a cycle/)
+    expect(() => core.defineFormats({ a: { extends: 'a' } } as never)).toThrow(/form a cycle/)
+    expect(() => core.defineFormats({ a: { extends: 'b' }, b: { extends: 'c' }, c: { extends: 'a' } } as never)).toThrow(/form a cycle/)
+  })
+
+  it('an inherited name is not a format (own keys only)', () => {
+    expect(() => core.defineFormats({ a: { extends: 'constructor' } } as never)).toThrow(/not defined in the same set/)
   })
 })
 
@@ -83,46 +123,12 @@ describe('defineFormats (reactive) follows the active locale', () => {
     expect(fmt.price(1234.5)).toBe(new Intl.NumberFormat('de', { style: 'currency', currency: 'EUR' }).format(1234.5))
     expect(en).toBe(new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' }).format(1234.5))
   })
-})
 
-describe('createFormatter', () => {
-  const at = Date.UTC(2026, 10, 18, 23, 30)
-
-  it('binds locale and time zone for every method', () => {
-    const f = core.createFormatter({ locale: 'cs', timeZone: 'Asia/Tokyo' })
-    expect(f.number(1234.5)).toBe(new Intl.NumberFormat('cs').format(1234.5))
-    expect(f.currency(9.99, 'CZK')).toBe(new Intl.NumberFormat('cs', { style: 'currency', currency: 'CZK' }).format(9.99))
-    expect(f.percent(0.5)).toBe(new Intl.NumberFormat('cs', { style: 'percent' }).format(0.5))
-    expect(f.compact(1240000)).toBe(new Intl.NumberFormat('cs', { notation: 'compact' }).format(1240000))
-    expect(f.unit(5, 'kilometer')).toBe(new Intl.NumberFormat('cs', { style: 'unit', unit: 'kilometer', unitDisplay: 'short' }).format(5))
-    expect(f.bytes(1536)).toBe(core.formatBytes(1536, { locale: 'cs' }))
-    expect(f.duration({ hours: 1 })).toBe(core.formatDuration({ hours: 1 }, { locale: 'cs' }))
-    expect(f.list(['a', 'b'])).toBe(new Intl.ListFormat('cs').format(['a', 'b']))
-    expect(f.date(at)).toBe(new Intl.DateTimeFormat('cs', { dateStyle: 'medium', timeZone: 'Asia/Tokyo' }).format(at))
-    expect(f.time(at)).toBe(new Intl.DateTimeFormat('cs', { timeStyle: 'short', timeZone: 'Asia/Tokyo' }).format(at))
-    expect(f.dateTime(at)).toBe(new Intl.DateTimeFormat('cs', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tokyo' }).format(at))
-    expect(f.relative(-3, 'day')).toBe(new Intl.RelativeTimeFormat('cs').format(-3, 'day'))
-    expect(f.relativeTo(at - 3600000, at)).toBe(new Intl.RelativeTimeFormat('cs', { numeric: 'auto' }).format(-1, 'hour'))
-    expect(f.dateRange(at, at + 86400000 * 3)).toBe(new Intl.DateTimeFormat('cs', { dateStyle: 'medium', timeZone: 'Asia/Tokyo' }).formatRange(at, at + 86400000 * 3))
-    expect(f.numberRange(1, 5)).toBe(new Intl.NumberFormat('cs').formatRange(1, 5))
-    expect(f.numberToParts(1.5)).toEqual(new Intl.NumberFormat('cs').formatToParts(1.5))
-    expect(f.dateToParts(at)).toEqual(new Intl.DateTimeFormat('cs', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tokyo' }).formatToParts(at))
-    expect(f.parseNumber('1 234,5')).toBe(1234.5)
-    expect(f.parseDate('18. 11. 2026')).toBe('2026-11-18')
-  })
-
-  it('per-call options override the base', () => {
-    const f = core.createFormatter({ locale: 'cs', timeZone: 'Asia/Tokyo' })
-    expect(f.number(1234.5, { locale: 'de' })).toBe(new Intl.NumberFormat('de').format(1234.5))
-    expect(f.date(at, { timeZone: 'UTC' })).toBe(new Intl.DateTimeFormat('cs', { dateStyle: 'medium', timeZone: 'UTC' }).format(at))
-  })
-
-  it('no base: the runtime defaults', () => {
-    const f = core.createFormatter()
-    expect(f.number(1234.5)).toBe(new Intl.NumberFormat().format(1234.5))
-  })
-
-  it('a calendar date never shifts, whatever the bound zone', () => {
-    expect(core.createFormatter({ locale: 'en-US', timeZone: 'Pacific/Kiritimati' }).date('2026-11-18')).toBe('Nov 18, 2026')
+  it('shares cache entries with the free functions', () => {
+    const fmt = reactive.defineFormats({ n: { kind: 'number', locale: 'en-US', maximumFractionDigits: 2 } })
+    fmt.n(1)
+    const before = tableStats(_numberTables().number).keyed
+    for (let i = 0; i < 100; i++) fmt.n(i)
+    expect(tableStats(_numberTables().number).keyed).toBe(before)
   })
 })

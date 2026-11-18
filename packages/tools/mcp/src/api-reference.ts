@@ -7244,25 +7244,135 @@ parseDate('2026-11-18', { locale: 'de' }) // → "2026-11-18"`,
   },
 
   'format/createFormatter': {
-    signature: '(base?: { locale?: string; timeZone?: string }) => Formatter',
+    signature: '(base?: { locale?: string; timeZone?: string }) => BoundFormatters',
     example: `const f = createFormatter({ locale: 'cs', timeZone: 'Europe/Prague' })
 f.number(1234567.5) // → "1 234 567,5"
 f.currency(99, 'CZK') // → "99,00 Kč"
 f.date('2026-11-18', 'long') // → "18. listopadu 2026"
 f.parseNumber('1 234,5') // → 1234.5`,
-    notes: 'A bound, NON-reactive set of formatters (`number`, `currency`, `percent`, `compact`, `unit`, `bytes`, `duration`, `list`, `date`, `time`, `dateTime`, `relative`, `relativeTo`, `dateRange`, `numberRange`, `numberToParts`, `dateToParts`, `parseNumber`, `parseDate`) for servers, scripts and tests. It never reads the active locale or zone. Per-call options still override the base. See also: defineFormats.',
+    notes: 'A bound, NON-reactive set of one-off functions (`number`, `currency`, `percent`, `compact`, `unit`, `bytes`, `duration`, `list`, `date`, `time`, `dateTime`, `relative`, `relativeTo`, `dateRange`, `numberRange`, `numberToParts`, `dateToParts`, `parseNumber`, `parseDate`) for servers, scripts and tests. It never reads the active locale or zone. Per-call options still override the base. For reusable single-purpose formatters use the `*Formatter` factories. See also: defineFormats, numberFormatter.',
     mistakes: '- Using it in a component and expecting the app locale to apply: it is fixed on purpose; use the top-level functions',
   },
 
+  'format/numberFormatter': {
+    signature: `(options?: NumberOptions | NumberPreset) => Formatter<NumberInput, 'number'>`,
+    example: `const n = numberFormatter({ locale: 'en-US', maximumFractionDigits: 1 })
+n(1234.5678) // → "1,234.6"
+[1000, 2500.55].map(n) // → ["1,000","2,500.6"]
+n.with({ maximumFractionDigits: 0 })(1234.5678) // → "1,235"
+n.range(3, 5) // → "3–5"
+n.parts(1.5).map((p) => p.type) // → ["integer","decimal","fraction"]`,
+    notes: 'A reusable number formatter: a plain `(value) => string` that follows the active locale like `formatNumber`, with `.with(overrides)`, `.from(map)`, `.fallback(text)`, `.parts(value)`, `.range(a, b)` and `.options`. Because it is just a function it drops into `Array#map`, a chart axis or a table column. The `Intl` formatter is looked up once per locale; a call is a string compare and one `format()`. Every `*Formatter` factory has this shape. See also: formatNumber, currencyFormatter, defineFormats.',
+    mistakes: `- Creating a formatter per render to "configure" it: create it once at module level, then call it (creation is cheap and shares the cache, but a hoisted formatter is clearer)
+- Mutating the options object you passed: a formatter freezes its own copy, so later mutation changes nothing; derive with \`.with()\``,
+  },
+
+  'format/currencyFormatter': {
+    signature: `(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<NumberInput, 'currency'>`,
+    example: `const price = currencyFormatter('EUR', { locale: 'en-US' })
+price(9.99) // → "€9.99"
+price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
+price.from((cents) => cents / 100)(999) // → "€9.99"
+[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
+price.range(10, 20) // → "€10.00 – €20.00"
+price.parts(9.99).map((p) => p.type) // → ["currency","integer","decimal","fraction"]`,
+    notes: 'A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. A malformed code returns the fallback with a dev warning. See also: formatCurrency, numberFormatter.',
+    mistakes: `- Building "€9.99 per month" by concatenation: the platform has no locale data for a currency "per" pattern; format the value and put it in a translated message
+- Passing cents without \`.from\`: \`price(999)\` is nine hundred ninety-nine euros`,
+  },
+
+  'format/percentFormatter': {
+    signature: `(options?: PercentOptions) => Formatter<NumberInput, 'percent'>`,
+    example: `const pct = percentFormatter({ locale: 'en-US', maximumFractionDigits: 1 })
+pct(0.4234) // → "42.3%"`,
+    notes: 'A reusable percent formatter: `percentFormatter()(0.42)` is `42%`. See also: formatPercent.',
+  },
+
+  'format/compactFormatter': {
+    signature: `(options?: CompactOptions | CompactPreset) => Formatter<NumberInput, 'compact'>`,
+    example: `const short = compactFormatter({ locale: 'en-US' })
+short(1240000) // → "1.2M"
+short.with({ compactDisplay: 'long' })(1240000) // → "1.2 million"`,
+    notes: 'A reusable compact-notation formatter: `1_240_000` is `1.2M`. See also: formatCompact.',
+  },
+
+  'format/unitFormatter': {
+    signature: `(unit: Unit, options?: UnitOptions | UnitPreset) => Formatter<NumberInput, 'unit'>`,
+    example: `const speed = unitFormatter('kilometer-per-hour', { locale: 'en-US' })
+speed(72) // → "72 km/h"
+speed.with({ unitDisplay: 'long' })(72) // → "72 kilometers per hour"`,
+    notes: 'A reusable unit formatter. An unknown unit is a type error and throws a `[Pyreon]` error. See also: formatUnit.',
+  },
+
+  'format/bytesFormatter': {
+    signature: `(options?: BytesOptions) => Formatter<NumberInput, 'bytes'>`,
+    example: `const size = bytesFormatter({ locale: 'en-US' })
+size(1536) // → "1.5 kB"
+size.with({ binary: true })(1536) // → "1.5 KiB"
+[1536, 5000000].map(size) // → ["1.5 kB","5 MB"]`,
+    notes: 'A reusable byte-size formatter (decimal, or `binary: true`). `parts` carries the IEC symbol for binary. See also: formatBytes.',
+  },
+
+  'format/durationFormatter': {
+    signature: `(options?: DurationOptions | DurationStyle) => Formatter<DurationInput, 'duration'>`,
+    example: `const took = durationFormatter({ locale: 'en-US', style: 'narrow' })
+took(3905000) // → "1h 5m 5s"
+took.from((seconds) => seconds * 1000)(3905) // → "1h 5m 5s"`,
+    notes: 'A reusable duration formatter. It has no `parts` or `range`: `Intl.DurationFormat` is not available everywhere and has no range. See also: formatDuration.',
+  },
+
+  'format/listFormatter': {
+    signature: `(options?: ListOptions | ListPreset) => Formatter<ListInput, 'list'>`,
+    example: `const or = listFormatter({ locale: 'en-US', type: 'disjunction' })
+or(['red', 'green', 'blue']) // → "red, green, or blue"
+or.parts(['a', 'b']).map((p) => p.type) // → ["element","literal","element"]`,
+    notes: 'A reusable list formatter. Formatters compose through plain values: `listFormatter()(items.map(price))`. See also: formatList.',
+  },
+
+  'format/dateFormatter': {
+    signature: `(options?: DateTimeOptions | DateStylePreset) => Formatter<DateInput, 'date'>`,
+    example: `const day = dateFormatter({ locale: 'en-US', dateStyle: 'long' })
+day('2026-11-18') // → "November 18, 2026"
+day.range('2026-11-12', '2026-11-15') // → "November 12 – 15, 2026"
+day.with({ dateStyle: 'short' })('2026-11-18') // → "11/18/26"
+day.parts('2026-11-18').map((p) => p.type) // → ["month","literal","day","literal","year"]`,
+    notes: 'A reusable date formatter (the date part). Calendar strings never shift with the zone; `range` collapses shared parts. See also: formatDate, timeFormatter, dateTimeFormatter.',
+  },
+
+  'format/timeFormatter': {
+    signature: `(options?: DateTimeOptions | DateStylePreset) => Formatter<DateInput, 'time'>`,
+    example: `const clock = timeFormatter({ locale: 'de', timeZone: 'UTC' })
+clock('2026-11-18T14:30:00Z') // → "14:30"`,
+    notes: 'A reusable time formatter (the time part). See also: formatTime.',
+  },
+
+  'format/dateTimeFormatter': {
+    signature: `(options?: DateTimeOptions | DateStylePreset) => Formatter<DateInput, 'dateTime'>`,
+    example: `const stamp = dateTimeFormatter({ locale: 'de' })
+stamp('2026-11-18T14:30') // → "18.11.2026, 14:30"`,
+    notes: 'A reusable date-and-time formatter. See also: formatDateTime.',
+  },
+
+  'format/relativeFormatter': {
+    signature: `(options: RelativeFormatterOptions) => Formatter<DateInput, 'relative'>`,
+    example: `const since = relativeFormatter({ locale: 'en-US', base: '2026-11-18' })
+since('2026-11-17') // → "yesterday"
+since('2026-11-25') // → "next week"`,
+    notes: 'A reusable relative-time formatter: the target is measured against `options.base`, a date-like value or an accessor (`base: () => now()` is tracked, so a clock signal keeps it current). `numeric` defaults to `auto`. It has no `parts` or `range`. See also: formatRelativeTo.',
+    mistakes: '- Omitting `base`: every call returns the fallback (dev warning)',
+  },
+
   'format/defineFormats': {
-    signature: '<const T extends Record<string, FormatSpec>>(specs: T) => DefinedFormats<T>',
-    example: `const f = defineFormats({ price: { kind: 'currency', currency: 'EUR', locale: 'en-US' }, size: { kind: 'bytes', locale: 'en-US' }, day: { kind: 'date', dateStyle: 'long', locale: 'en-US' } })
+    signature: '<const T extends Record<string, FormatSpec | ExtendedSpec<keyof T>>>(specs: T) => DefinedFormats<T>',
+    example: `const f = defineFormats({ price: { kind: 'currency', currency: 'EUR', locale: 'en-US' }, priceShort: { extends: 'price', notation: 'compact' }, size: { kind: 'bytes', locale: 'en-US' }, day: { kind: 'date', dateStyle: 'long', locale: 'en-US' } })
 f.price(9.99) // → "€9.99"
-f.price(9.99, { currency: 'USD' }) // → "$9.99"
+f.priceShort(1234567) // → "€1.2M"
+f.price.with({ currency: 'USD' })(9.99) // → "$9.99"
 f.size(1536) // → "1.5 kB"
 f.day('2026-11-18') // → "November 18, 2026"`,
-    notes: `Name a set of formats once and call them anywhere: each key becomes \`(value, overrides?) => string\`. \`kind\` selects the formatter (\`number\`, \`currency\`, \`percent\`, \`compact\`, \`unit\`, \`bytes\`, \`duration\`, \`list\`, \`date\`, \`time\`, \`dateTime\`, \`relative\`); the rest are that formatter's options. Keys, value types and overrides are inferred, and a wrong \`kind\` or \`unit\` is a type error. A call without overrides reuses the spec object, so it is served by the identity tier of the cache. The reactive entry follows the active locale; the \`/core\` one uses the options or the runtime default. See also: createFormatter.`,
-    mistakes: '- Defining the specs inside a component: define them once at module level (the hoisted spec object is what the cache keys on)',
+    notes: `Name a set of formats once: each key is a real \`Formatter\` (\`f.price(9.99)\`, \`f.price.with(...)\`, \`f.price.from(...)\`). \`kind\` selects the factory (\`number\`, \`currency\`, \`percent\`, \`compact\`, \`unit\`, \`bytes\`, \`duration\`, \`list\`, \`date\`, \`time\`, \`dateTime\`, \`relative\`); the rest are that formatter's options. A spec may extend another by name: \`{ extends: 'price', notation: 'compact' }\` inherits the kind and merges options. An unknown name or a cycle throws a \`[Pyreon]\` error at definition time, and the type rejects an unknown name. Entries take ONE argument (they are callbacks-safe); per-call overrides are \`.with()\`, hoisted. See also: createFormatter, numberFormatter.`,
+    mistakes: `- Passing overrides as a second argument (\`f.price(9.99, { currency: 'USD' })\`): entries take one argument so \`Array#map\` cannot pass an index as options; derive with \`.with()\` and hoist it
+- Defining the specs inside a component: define them once at module level`,
   },
 
   'format/locale': {
@@ -7322,8 +7432,9 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
   'format/Num': {
     signature: '(props: NumProps) => VNodeChild',
     example: `// <Num value={total()} kind="currency" currency="EUR" />
-// <Num value={bytes()} kind="bytes" />`,
-    notes: 'A formatted number as reactive text (no wrapper element). `kind` is `number` (default), `currency`, `percent`, `compact`, `unit` or `bytes`; `currency` / `unit` are the extra props those need; `options` are the Intl options; `locale` and `fallback` as everywhere. Import from `@pyreon/format/components`. See also: DateTime, formatNumber.',
+// <Num value={total()} format={price} />
+// <Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />`,
+    notes: 'A formatted number as reactive text (no wrapper element). `kind` is `number` (default), `currency`, `percent`, `compact`, `unit` or `bytes`; `currency` / `unit` are the extra props those need; `options` are the Intl options; `locale` and `fallback` as everywhere. Pass a built formatter as `format` (it then replaces `kind`/`options`/`locale`/`fallback`), and `parts` to wrap a part of the output without string surgery (`parts={{ currency: (text) => <sup>{text}</sup> }}`; unwrapped parts are joined into one text node so server and client markup agree). Import from `@pyreon/format/components`. See also: DateTime, formatNumber.',
     mistakes: '- Passing the signal itself (`value={n}`): pass the read, `value={n()}`',
   },
 
@@ -7331,7 +7442,7 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
     signature: '(props: DateTimeProps) => VNode',
     example: `// <DateTime value="2026-11-18" kind="date" format="long" />
 // <DateTime value={post.publishedAt} class="meta" />`,
-    notes: 'A `<time datetime="…">` element with the formatted value as text. `datetime` is machine-readable whatever the display locale: the calendar string as given, or the UTC ISO instant. `kind` is `date`, `time` or `dateTime` (default); `format` is a `dateStyle`/`timeStyle` shorthand; `options`, `locale`, `timeZone`, `fallback`; other props go to the `<time>` element. Invalid values render the fallback and no `datetime`. See also: Num, formatDate.',
+    notes: `A \`<time datetime="…">\` element with the formatted value as text. \`datetime\` is machine-readable whatever the display locale: the calendar string as given, or the UTC ISO instant. \`kind\` is \`date\`, \`time\` or \`dateTime\` (default); \`format\` is a \`dateStyle\`/\`timeStyle\` shorthand; \`options\`, \`locale\`, \`timeZone\`, \`fallback\`; other props go to the \`<time>\` element. \`format\` may also be a built formatter (\`dateFormatter('long')\`), with \`parts={{ month: (t) => <b>{t}</b> }}\` to wrap parts. Invalid values render the fallback and no \`datetime\`. See also: Num, formatDate.`,
     mistakes: '- Expecting the server and the browser to agree without a locale: they agree when the same locale and zone are provided on both sides (and ICU versions match)',
   },
 
@@ -7368,11 +7479,17 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
     notes: 'A duration as plain data. Fields share one sign. See also: formatDuration.',
   },
 
+  'format/Formatter': {
+    signature: 'type Formatter<In, K extends FormatterKind> = ((value: In) => string) & { with, from, fallback, options, parts?, range? }',
+    example: `// const price: Formatter<NumberInput, 'currency'> = currencyFormatter('EUR')`,
+    notes: 'A reusable formatter: a plain function plus `with(overrides)`, `from(map)`, `fallback(text)` and `options`. `parts(value)` exists on number-style, date-style and list kinds, `range(a, b)` on number-style and date-style kinds, and is absent from the type elsewhere. See also: numberFormatter.',
+  },
+
   'format/FormatSpec': {
     signature: `type FormatSpec = { kind: 'number' | 'currency' | … } & that formatter's options`,
     example: `// { kind: 'currency', currency: 'EUR' }
 // { kind: 'date', dateStyle: 'long' }`,
-    notes: 'The shape `defineFormats` takes: a `kind` and the options of that formatter (`currency` is required for `currency`, `unit` for `unit` and `relative`). See also: defineFormats.',
+    notes: 'The shape `defineFormats` takes: a `kind` and the options of that formatter (`currency` is required for `currency`, `unit` for `unit`, `base` for `relative`), or `{ extends: name, ...options }`. See also: defineFormats.',
   },
   // <gen-docs:api-reference:end @pyreon/format>
 

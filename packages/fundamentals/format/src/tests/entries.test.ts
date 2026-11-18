@@ -67,13 +67,15 @@ describe('entries', () => {
     }
   })
 
-  it('the core entry is exactly the spec surface', () => {
+  it('the core entry is exactly the documented surface', () => {
     expect(Object.keys(core).sort()).toEqual(
       [
         'createFormatter', 'defineFormats', 'formatBytes', 'formatCompact', 'formatCurrency', 'formatDate', 'formatDateRange',
         'formatDateTime', 'formatDateToParts', 'formatDuration', 'formatList', 'formatNumber', 'formatNumberRange',
         'formatNumberToParts', 'formatPercent', 'formatRelative', 'formatRelativeTo', 'formatTime', 'formatUnit',
-        'parseDate', 'parseNumber',
+        'parseDate', 'parseNumber', 'numberFormatter', 'currencyFormatter', 'percentFormatter', 'compactFormatter',
+        'unitFormatter', 'bytesFormatter', 'durationFormatter', 'listFormatter', 'dateFormatter', 'timeFormatter',
+        'dateTimeFormatter', 'relativeFormatter',
       ].sort(),
     )
   })

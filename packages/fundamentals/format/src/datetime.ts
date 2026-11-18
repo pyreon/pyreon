@@ -6,11 +6,13 @@
  * (`2026-11-18`, `2026-11-18T14:30`) uses the variant `PLAIN` and is formatted
  * as UTC, so it can never shift.
  */
-import { clearTable, construct, createTable, resolve } from './cache'
+import { clearTable, construct, createTable, resolve, type Table } from './cache'
+import type { Core, KindDef } from './formatter'
 import { badLocale, fallbackOf, preset } from './number'
 import { lastWasPlain, toMillis } from './input'
-import { programmerError, warnInvalid } from './warn'
+import { programmerError, warnInvalid, warnOnce } from './warn'
 import type {
+  DateBaseOptions,
   DateInput,
   DateRangeOptions,
   DateStylePreset,
@@ -94,12 +96,12 @@ const dateTimeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o)
 const rangeTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateRange', 'date', l, z, o))
 const partsTable = /* @__PURE__ */ createTable<Intl.DateTimeFormat>((l, z, o) => makeDt('formatDateToParts', 'dateTime', l, z, o))
 
-function missingOrInvalid(fn: string, value: DateInput, options: unknown): string {
+function missingOrInvalid(fn: string, value: DateInput, fallback: string): string {
   if (value != null) {
     if (process.env.NODE_ENV !== 'production') warnInvalid(fn, value, 'a Date, epoch milliseconds, or an ISO 8601 string such as "2026-11-18" or "2026-11-18T14:30:00Z"')
   }
 
-  return fallbackOf(options)
+  return fallback
 }
 
 type DateArg = DateTimeOptions | DateStylePreset | undefined
@@ -110,26 +112,26 @@ function zoneOf(zone: string): string {
 
 export function dateIn(locale: string, zone: string, value: DateInput, options: DateArg): string {
   const ms = toMillis(value)
-  if (ms !== ms) return missingOrInvalid('formatDate', value, options)
+  if (ms !== ms) return missingOrInvalid('formatDate', value, fallbackOf(options))
   return resolve(dateTable, locale, zoneOf(zone), options).format(ms)
 }
 
 export function timeIn(locale: string, zone: string, value: DateInput, options: DateArg): string {
   const ms = toMillis(value)
-  if (ms !== ms) return missingOrInvalid('formatTime', value, options)
+  if (ms !== ms) return missingOrInvalid('formatTime', value, fallbackOf(options))
   return resolve(timeTable, locale, zoneOf(zone), options).format(ms)
 }
 
 export function dateTimeIn(locale: string, zone: string, value: DateInput, options: DateArg): string {
   const ms = toMillis(value)
-  if (ms !== ms) return missingOrInvalid('formatDateTime', value, options)
+  if (ms !== ms) return missingOrInvalid('formatDateTime', value, fallbackOf(options))
   return resolve(dateTimeTable, locale, zoneOf(zone), options).format(ms)
 }
 
 export function dateToPartsIn(locale: string, zone: string, value: DateInput, options: DateArg): Intl.DateTimeFormatPart[] {
   const ms = toMillis(value)
   if (ms !== ms) {
-    missingOrInvalid('formatDateToParts', value, options)
+    missingOrInvalid('formatDateToParts', value, fallbackOf(options))
     return []
   }
 
@@ -148,8 +150,8 @@ export function dateRangeIn(
   const b = toMillis(end)
   const plainB = lastWasPlain()
   if (a !== a || b !== b) {
-    if (a !== a) missingOrInvalid('formatDateRange', start, options)
-    else missingOrInvalid('formatDateRange', end, options)
+    if (a !== a) missingOrInvalid('formatDateRange', start, fallbackOf(options))
+    else missingOrInvalid('formatDateRange', end, fallbackOf(options))
 
     return fallbackOf(options)
   }
@@ -225,19 +227,15 @@ const YEAR = 31557600000
  * under a month weeks, under a year months, then years. Truncation (not
  * rounding) so 59 min 40 s is "59 minutes", never "60 minutes".
  */
-export function relativeToIn(
-  locale: string,
-  target: DateInput,
-  base: DateInput,
-  options: RelativeOptions | RelativePreset | undefined,
-): string {
+/** `target` relative to `base` through `rtf`: picks the unit and truncates; `fallback` for a missing or invalid date. */
+function relativeToValue(rtf: Intl.RelativeTimeFormat, target: DateInput, base: DateInput, fallback: string): string {
   const t = toMillis(target)
   const b = toMillis(base)
   if (t !== t || b !== b) {
-    if (t !== t) missingOrInvalid('formatRelativeTo', target, options)
-    else missingOrInvalid('formatRelativeTo', base, options)
+    if (t !== t) missingOrInvalid('formatRelativeTo', target, fallback)
+    else missingOrInvalid('formatRelativeTo', base, fallback)
 
-    return fallbackOf(options)
+    return fallback
   }
   const diff = t - b
   const abs = diff < 0 ? -diff : diff
@@ -252,7 +250,131 @@ export function relativeToIn(
   else { unit = 'year'; size = YEAR }
   const n = Math.trunc(diff / size)
 
-  return formatRelativeValue(resolve(relativeToTable, locale, '', options), 'formatRelativeTo', n === 0 ? 0 : n, unit)
+  return formatRelativeValue(rtf, 'formatRelativeTo', n === 0 ? 0 : n, unit)
+}
+
+export function relativeToIn(
+  locale: string,
+  target: DateInput,
+  base: DateInput,
+  options: RelativeOptions | RelativePreset | undefined,
+): string {
+  return relativeToValue(resolve(relativeToTable, locale, '', options), target, base, fallbackOf(options))
+}
+
+// ─── Formatters as values ────────────────────────────────────────────────────
+
+type DateKind = 'date' | 'time' | 'dateTime'
+
+/** Spec of `dateFormatter` / `timeFormatter` / `dateTimeFormatter`: an options object, or a style name. */
+export function dateSpec(kind: DateKind, options: DateTimeOptions | DateStylePreset | undefined): DateTimeOptions {
+  if (typeof options === 'string') return styleOf(options, kind, `${kind}Formatter`)
+
+  return options ?? {}
+}
+
+const zoneFn = (spec: Readonly<DateBaseOptions>, active: () => string): (() => string) =>
+  typeof spec.timeZone === 'string' && spec.timeZone !== '' ? () => spec.timeZone as string : active
+
+function dateCore(
+  table: Table<Intl.DateTimeFormat>,
+  fn: string,
+  spec: Readonly<DateTimeOptions>,
+  locale: () => string,
+  activeZone: () => string,
+): Core<DateInput> {
+  const fb = spec.fallback ?? ''
+  const zone = zoneFn(spec, activeZone)
+  // Calendar values and instants use different formatters (UTC vs the zone): memoize each.
+  let plainAt = ''
+  let plainIntl: Intl.DateTimeFormat | undefined
+  let zonedAt = ''
+  let zonedZone = ''
+  let zonedIntl: Intl.DateTimeFormat | undefined
+  const intlFor = (l: string, z: string, plain: boolean): Intl.DateTimeFormat => {
+    if (plain) {
+      if (plainIntl === undefined || l !== plainAt) {
+        plainIntl = resolve(table, l, PLAIN, spec)
+        plainAt = l
+      }
+
+      return plainIntl
+    }
+    if (zonedIntl === undefined || l !== zonedAt || z !== zonedZone) {
+      zonedIntl = resolve(table, l, z, spec)
+      zonedAt = l
+      zonedZone = z
+    }
+
+    return zonedIntl
+  }
+
+  return {
+    call: (value) => {
+      const l = locale()
+      const z = zone()
+      const ms = toMillis(value)
+      if (ms !== ms) return missingOrInvalid(fn, value, fb)
+
+      return intlFor(l, z, lastWasPlain()).format(ms)
+    },
+    parts: (value) => {
+      const l = locale()
+      const z = zone()
+      const ms = toMillis(value)
+      if (ms !== ms) {
+        missingOrInvalid(fn, value, fb)
+
+        return []
+      }
+
+      return intlFor(l, z, lastWasPlain()).formatToParts(ms)
+    },
+    range: (start, end) => {
+      const l = locale()
+      const z = zone()
+      const a = toMillis(start)
+      const plainA = lastWasPlain()
+      const b = toMillis(end)
+      const plainB = lastWasPlain()
+      if (a !== a || b !== b) return missingOrInvalid(fn, a !== a ? start : end, fb)
+
+      return intlFor(l, z, plainA && plainB).formatRange(a, b)
+    },
+  }
+}
+
+export const dateKind: KindDef<'date'> = { create: (spec, locale, zone) => dateCore(dateTable, 'dateFormatter', spec, locale, zone) }
+export const timeKind: KindDef<'time'> = { create: (spec, locale, zone) => dateCore(timeTable, 'timeFormatter', spec, locale, zone) }
+
+export const dateTimeKind: KindDef<'dateTime'> = {
+  create: (spec, locale, zone) => dateCore(dateTimeTable, 'dateTimeFormatter', spec, locale, zone),
+}
+
+export const relativeKind: KindDef<'relative'> = {
+  create(spec, locale) {
+    const fb = spec.fallback ?? ''
+    if (process.env.NODE_ENV !== 'production' && spec.base === undefined) {
+      warnOnce('relativeFormatter:base', '[Pyreon] relativeFormatter(): no `base` was given, so every call returns the fallback. Pass { base: Date.now() } or an accessor such as { base: () => now() }.')
+    }
+    // `base` is data, not an Intl option: keep it out of the cache key.
+    const rtfSpec = { numeric: spec.numeric, style: spec.style }
+    let at = ''
+    let rtf: Intl.RelativeTimeFormat | undefined
+
+    return {
+      call: (target) => {
+        const l = locale()
+        const base = typeof spec.base === 'function' ? spec.base() : spec.base
+        if (rtf === undefined || l !== at) {
+          rtf = resolve(relativeToTable, l, '', rtfSpec)
+          at = l
+        }
+
+        return relativeToValue(rtf, target, base, fb)
+      },
+    }
+  },
 }
 
 export const PLAIN_VARIANT = PLAIN

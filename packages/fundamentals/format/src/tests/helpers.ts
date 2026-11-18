@@ -15,3 +15,26 @@ export function clearAllTables(): void {
 }
 
 export { clearTable }
+
+type Ctor = 'NumberFormat' | 'DateTimeFormat' | 'ListFormat' | 'RelativeTimeFormat'
+
+/** How many `Intl[name]` objects `run` constructs (a counting `Proxy` for its duration). */
+export function constructions(name: Ctor, run: () => void): number {
+  const Original = Intl[name] as unknown as new (...args: unknown[]) => object
+  let count = 0
+  const Counting = new Proxy(Original, {
+    construct(target, args) {
+      count++
+
+      return Reflect.construct(target, args) as object
+    },
+  })
+  Reflect.set(Intl, name, Counting)
+  try {
+    run()
+  } finally {
+    Reflect.set(Intl, name, Original)
+  }
+
+  return count
+}

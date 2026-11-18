@@ -58,7 +58,7 @@ describe('manifest examples are true', () => {
   it('every export of the reactive entry and the components entry has a manifest entry', () => {
     const documented = new Set(manifest.api.map((a) => a.name))
     for (const name of [...Object.keys(format), ...Object.keys(components)]) {
-      if (name === 'machineValue') continue // internal helper, exported for the browser test
+      if (name === 'machineValue' || name === 'partsToChildren') continue // internal helpers, exported for tests
       expect(documented, name).toContain(name)
     }
   })

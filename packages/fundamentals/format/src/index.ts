@@ -5,24 +5,51 @@
  * updates when they change. An explicit `locale` / `timeZone` option wins and
  * does not subscribe. Plus the locale API and `defineFormats`.
  */
-import { durationIn } from './duration'
-import { dateIn, dateRangeIn, dateTimeIn, dateToPartsIn, relativeIn, relativeToIn, timeIn } from './datetime'
+import { durationIn, durationKind, durationSpec } from './duration'
+import {
+  dateIn,
+  dateKind,
+  dateRangeIn,
+  dateSpec,
+  dateTimeIn,
+  dateTimeKind,
+  dateToPartsIn,
+  relativeIn,
+  relativeKind,
+  relativeToIn,
+  timeIn,
+  timeKind,
+} from './datetime'
 import { createFormatterWith, defineFormatsWith } from './formats'
-import { listIn } from './list'
+import { type Env, makeFormatter } from './formatter'
+import { listIn, listKind, listSpec } from './list'
 import {
   bytesIn,
+  bytesKind,
+  bytesSpec,
   compactIn,
+  compactKind,
+  compactSpec,
   currencyIn,
+  currencyKind,
+  currencySpec,
   numberIn,
+  numberKind,
   numberRangeIn,
+  numberSpec,
   numberToPartsIn,
   percentIn,
+  percentKind,
+  percentSpec,
   unitIn,
+  unitKind,
+  unitSpec,
 } from './number'
 import { parseDateIn, parseNumberIn } from './parse'
 import { activeZone, locale } from './locale'
 import { localeOf, zoneOf } from './pick'
 import type {
+  BoundFormatters,
   BytesOptions,
   CompactOptions,
   CompactPreset,
@@ -36,6 +63,7 @@ import type {
   DurationInput,
   DurationOptions,
   DurationStyle,
+  ExtendedSpec,
   Formatter,
   FormatterBase,
   FormatSpec,
@@ -49,6 +77,7 @@ import type {
   ParseOptions,
   PercentOptions,
   PlainDateString,
+  RelativeFormatterOptions,
   RelativeOptions,
   RelativePreset,
   RelativeUnit,
@@ -56,6 +85,9 @@ import type {
   UnitOptions,
   UnitPreset,
 } from './types'
+
+/** The reactive entry follows the active locale and zone. */
+const REACTIVE_ENV: Env = { locale, zone: activeZone }
 
 export type * from './types'
 
@@ -137,27 +169,89 @@ export function parseDate(text: string | null | undefined, options?: ParseOption
   return parseDateIn(options?.locale ?? locale(), text)
 }
 
-/** A bound, NON-reactive formatter set for servers, scripts and tests: it never reads the active locale or zone. */
-export function createFormatter(base: FormatterBase = {}): Formatter {
+/** A bound, NON-reactive set of one-off functions for servers, scripts and tests: it never reads the active locale or zone. */
+export function createFormatter(base: FormatterBase = {}): BoundFormatters {
   return createFormatterWith(base)
 }
 
-/** Name a set of formats once (each call follows the active locale and zone): `const f = defineFormats({ price: { kind: 'currency', currency: 'EUR' } })`, then `f.price(9.99)`. */
-export function defineFormats<const T extends Record<string, FormatSpec>>(specs: T): DefinedFormats<T> {
+// ─── Formatters as values ────────────────────────────────────────────────────
+
+/** A reusable number formatter: `const n = numberFormatter({ maximumFractionDigits: 1 })`, then `n(1234.56)`. */
+export function numberFormatter(options?: NumberOptions | NumberPreset): Formatter<NumberInput, 'number'> {
+  return makeFormatter(numberKind, numberSpec(options), REACTIVE_ENV)
+}
+
+/** A reusable currency formatter: `const price = currencyFormatter('EUR')`, then `price(9.99)`. */
+export function currencyFormatter(currency: string, options?: CurrencyOptions | CurrencyPreset): Formatter<NumberInput, 'currency'> {
+  return makeFormatter(currencyKind, currencySpec(currency, options), REACTIVE_ENV)
+}
+
+/** A reusable percent formatter: `percentFormatter()(0.42)` is `42%`. */
+export function percentFormatter(options?: PercentOptions): Formatter<NumberInput, 'percent'> {
+  return makeFormatter(percentKind, percentSpec(options), REACTIVE_ENV)
+}
+
+/** A reusable compact-number formatter: `compactFormatter()(1_240_000)` is `1.2M`. */
+export function compactFormatter(options?: CompactOptions | CompactPreset): Formatter<NumberInput, 'compact'> {
+  return makeFormatter(compactKind, compactSpec(options), REACTIVE_ENV)
+}
+
+/** A reusable unit formatter: `unitFormatter('kilometer-per-hour')(72)` is `72 km/h`. */
+export function unitFormatter(unit: Unit, options?: UnitOptions | UnitPreset): Formatter<NumberInput, 'unit'> {
+  return makeFormatter(unitKind, unitSpec(unit, options), REACTIVE_ENV)
+}
+
+/** A reusable byte-size formatter: `bytesFormatter()(1536)` is `1.5 kB`. */
+export function bytesFormatter(options?: BytesOptions): Formatter<NumberInput, 'bytes'> {
+  return makeFormatter(bytesKind, bytesSpec(options), REACTIVE_ENV)
+}
+
+/** A reusable duration formatter: `durationFormatter({ style: 'digital' })(3_905_000)` is `1:05:05`. */
+export function durationFormatter(options?: DurationOptions | DurationStyle): Formatter<DurationInput, 'duration'> {
+  return makeFormatter(durationKind, durationSpec(options), REACTIVE_ENV)
+}
+
+/** A reusable list formatter: `listFormatter('or')(['a', 'b'])` is `a or b`. */
+export function listFormatter(options?: ListOptions | ListPreset): Formatter<ListInput, 'list'> {
+  return makeFormatter(listKind, listSpec(options), REACTIVE_ENV)
+}
+
+/** A reusable date formatter (the date part): `dateFormatter('long')('2026-11-18')`. */
+export function dateFormatter(options?: DateTimeOptions | DateStylePreset): Formatter<DateInput, 'date'> {
+  return makeFormatter(dateKind, dateSpec('date', options), REACTIVE_ENV)
+}
+
+/** A reusable time formatter (the time part). */
+export function timeFormatter(options?: DateTimeOptions | DateStylePreset): Formatter<DateInput, 'time'> {
+  return makeFormatter(timeKind, dateSpec('time', options), REACTIVE_ENV)
+}
+
+/** A reusable date-and-time formatter. */
+export function dateTimeFormatter(options?: DateTimeOptions | DateStylePreset): Formatter<DateInput, 'dateTime'> {
+  return makeFormatter(dateTimeKind, dateSpec('dateTime', options), REACTIVE_ENV)
+}
+
+/** A reusable relative-time formatter: elapsed time of the target against `options.base` (a date-like value, or an accessor that is tracked). */
+export function relativeFormatter(options: RelativeFormatterOptions): Formatter<DateInput, 'relative'> {
+  return makeFormatter(relativeKind, options, REACTIVE_ENV)
+}
+
+/** Name a set of formats once: `const f = defineFormats({ price: { kind: 'currency', currency: 'EUR' } })`; each key is a real `Formatter` (`f.price(9.99)`, `f.price.with(...)`). A spec may `extends` another by name. */
+export function defineFormats<const T extends Record<string, FormatSpec | ExtendedSpec<Extract<keyof T, string>>>>(specs: T): DefinedFormats<T> {
   return defineFormatsWith(
     {
-      number: formatNumber,
-      currency: formatCurrency,
-      percent: formatPercent,
-      compact: formatCompact,
-      unit: formatUnit,
-      bytes: formatBytes,
-      duration: formatDuration,
-      list: formatList,
-      date: formatDate,
-      time: formatTime,
-      dateTime: formatDateTime,
-      relative: formatRelative,
+      number: (spec) => makeFormatter(numberKind, spec, REACTIVE_ENV),
+      currency: (spec) => makeFormatter(currencyKind, spec, REACTIVE_ENV),
+      percent: (spec) => makeFormatter(percentKind, spec, REACTIVE_ENV),
+      compact: (spec) => makeFormatter(compactKind, spec, REACTIVE_ENV),
+      unit: (spec) => makeFormatter(unitKind, spec, REACTIVE_ENV),
+      bytes: (spec) => makeFormatter(bytesKind, spec, REACTIVE_ENV),
+      duration: (spec) => makeFormatter(durationKind, spec, REACTIVE_ENV),
+      list: (spec) => makeFormatter(listKind, spec, REACTIVE_ENV),
+      date: (spec) => makeFormatter(dateKind, spec, REACTIVE_ENV),
+      time: (spec) => makeFormatter(timeKind, spec, REACTIVE_ENV),
+      dateTime: (spec) => makeFormatter(dateTimeKind, spec, REACTIVE_ENV),
+      relative: (spec) => makeFormatter(relativeKind, spec, REACTIVE_ENV),
     },
     specs,
   )

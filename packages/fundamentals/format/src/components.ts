@@ -14,6 +14,7 @@ import type {
   DateInput,
   DateStylePreset,
   DateTimeOptions,
+  Formatter,
   NumberInput,
   NumberOptions,
   PercentOptions,
@@ -21,7 +22,51 @@ import type {
   UnitOptions,
 } from './types'
 
+/** A formatter of any number-style kind: number, currency, percent, compact, unit or bytes. */
+export type NumFormatter = Formatter<NumberInput, 'number' | 'currency' | 'percent' | 'compact' | 'unit' | 'bytes'>
+
+/** Wrap a part of the formatted text: `{ currency: (text) => <sup>{text}</sup> }`. Keys are the `Intl` part types. */
+export type NumParts = { [T in Intl.NumberFormatPartTypes]?: (text: string) => VNodeChild }
+
+/** A formatter of date, time or dateTime kind. */
+export type DateFormatter = Formatter<DateInput, 'date' | 'time' | 'dateTime'>
+
+/** Wrap a part of the formatted date: `{ month: (text) => <b>{text}</b> }`. Keys are the `Intl` part types. */
+export type DateParts = { [T in Intl.DateTimeFormatPartTypes]?: (text: string) => VNodeChild }
+
+/**
+ * The formatted parts as children: parts without a wrapper are joined into ONE
+ * string (adjacent text nodes would merge in server HTML and break hydration),
+ * wrapped parts become the wrapper's output.
+ */
+export function partsToChildren(
+  parts: readonly { type: string; value: string }[],
+  wrap: { readonly [type: string]: ((text: string) => VNodeChild) | undefined },
+): VNodeChild[] {
+  const out: VNodeChild[] = []
+  let text = ''
+  for (const part of parts) {
+    const wrapper = Object.hasOwn(wrap, part.type) ? wrap[part.type] : undefined
+    if (wrapper === undefined) {
+      text += part.value
+      continue
+    }
+    if (text !== '') {
+      out.push(text)
+      text = ''
+    }
+    out.push(wrapper(part.value))
+  }
+  if (text !== '') out.push(text)
+
+  return out
+}
+
 export interface NumProps {
+  /** A built formatter (`currencyFormatter('EUR')`, `bytesFormatter()`, ...). Replaces `kind`, `currency`, `unit`, `options`, `locale` and `fallback`: configure those on the formatter. */
+  format?: NumFormatter | undefined
+  /** Wrap parts of the formatted text (needs `format`): `parts={{ currency: (t) => <sup>{t}</sup> }}`. */
+  parts?: NumParts | undefined
   /** The number. Nullish or invalid renders `fallback`. */
   value: NumberInput
   /** Which formatter. Default `'number'`. */
@@ -47,6 +92,14 @@ export interface NumProps {
  */
 export function Num(props: NumProps): VNodeChild {
   return () => {
+    const format = props.format
+    if (format !== undefined) {
+      const wrap = props.parts
+      if (wrap === undefined) return format(props.value)
+      const parts = format.parts(props.value)
+
+      return parts.length === 0 ? format(props.value) : partsToChildren(parts, wrap)
+    }
     const o = {
       ...props.options,
       locale: props.locale ?? props.options?.locale,
@@ -74,8 +127,10 @@ export interface DateTimeProps extends Props {
   value: DateInput
   /** What to show. Default `'dateTime'`. */
   kind?: 'date' | 'time' | 'dateTime' | undefined
-  /** `dateStyle` / `timeStyle` shorthand. */
-  format?: DateStylePreset | undefined
+  /** A `dateStyle` / `timeStyle` shorthand, or a built formatter (`dateFormatter('long')`); a formatter replaces `kind`, `options`, `locale`, `timeZone` and `fallback`. */
+  format?: DateStylePreset | DateFormatter | undefined
+  /** Wrap parts of the formatted date (needs a formatter as `format`). */
+  parts?: DateParts | undefined
   /** Intl.DateTimeFormat options (take precedence over `format`). */
   options?: DateTimeOptions | undefined
   /** Overrides the active locale. */
@@ -108,18 +163,26 @@ export function machineValue(value: DateInput): string | undefined {
  * <DateTime value="2026-11-18" kind="date" format="long" />
  */
 export function DateTime(props: DateTimeProps) {
-  const [own, rest] = splitProps(props, ['value', 'kind', 'format', 'options', 'locale', 'timeZone', 'fallback'])
-  const text = (): string => {
+  const [own, rest] = splitProps(props, ['value', 'kind', 'format', 'parts', 'options', 'locale', 'timeZone', 'fallback'])
+  const text = (): string | VNodeChild[] => {
+    const format = own.format
+    if (typeof format === 'function') {
+      const wrap = own.parts
+      if (wrap === undefined) return format(own.value)
+      const parts = format.parts(own.value)
+
+      return parts.length === 0 ? format(own.value) : partsToChildren(parts, wrap)
+    }
     const hasOptions = own.options !== undefined || own.locale !== undefined || own.timeZone !== undefined || own.fallback !== undefined
     const arg: DateTimeOptions | DateStylePreset | undefined = hasOptions
       ? {
-          ...styleFields(own.kind, own.format),
+          ...styleFields(own.kind, format),
           ...own.options,
           locale: own.locale ?? own.options?.locale,
           timeZone: own.timeZone ?? own.options?.timeZone,
           fallback: own.fallback ?? own.options?.fallback,
         }
-      : own.format
+      : format
     switch (own.kind) {
       case 'date':
         return formatDate(own.value, arg)

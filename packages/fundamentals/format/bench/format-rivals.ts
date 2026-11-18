@@ -46,10 +46,11 @@ const core = await import('../lib/core.js')
 reactive.setLocale('en-US')
 reactive.setTimeZone('UTC')
 
-type Id = 'pyreon' | 'pyreon-core' | 'raw-cached' | 'tolocale' | 'raw-percall' | 'formatjs' | 'pretty-bytes' | 'pretty-ms' | 'humanize-duration'
+type Id = 'pyreon' | 'pyreon-fmt' | 'pyreon-core' | 'raw-cached' | 'tolocale' | 'raw-percall' | 'formatjs' | 'pretty-bytes' | 'pretty-ms' | 'humanize-duration'
 
 const ARMS: readonly Arm<Id>[] = [
   { id: 'pyreon', label: '@pyreon/format (reactive entry)' },
+  { id: 'pyreon-fmt', label: '@pyreon/format built formatter (numberFormatter, ...)', ranking: false },
   { id: 'pyreon-core', label: '@pyreon/format/core', ranking: false },
   { id: 'raw-cached', label: 'raw Intl, cached instance', ranking: false },
   { id: 'tolocale', label: 'toLocaleString' },
@@ -109,6 +110,11 @@ const OPS: Record<string, { note: string; arms: Maker; inputs: number; divide?: 
     inputs: NUMBERS.length,
     arms: {
       pyreon: () => (i) => reactive.formatNumber(pick(NUMBERS, i)),
+      'pyreon-fmt': () => {
+        const f = reactive.numberFormatter()
+
+        return (i) => f(pick(NUMBERS, i))
+      },
       'pyreon-core': () => (i) => core.formatNumber(pick(NUMBERS, i), { locale: L }),
       'raw-cached': () => (i) => nf.format(pick(NUMBERS, i)),
       tolocale: () => (i) => pick(NUMBERS, i).toLocaleString(L),
@@ -121,6 +127,11 @@ const OPS: Record<string, { note: string; arms: Maker; inputs: number; divide?: 
     inputs: NUMBERS.length,
     arms: {
       pyreon: () => (i) => reactive.formatNumber(pick(NUMBERS, i), FRACTION),
+      'pyreon-fmt': () => {
+        const f = reactive.numberFormatter(FRACTION)
+
+        return (i) => f(pick(NUMBERS, i))
+      },
       'pyreon-core': () => (i) => core.formatNumber(pick(NUMBERS, i), { ...FRACTION, locale: L }),
       'raw-cached': () => (i) => nfFraction.format(pick(NUMBERS, i)),
       tolocale: () => (i) => pick(NUMBERS, i).toLocaleString(L, FRACTION),
@@ -145,6 +156,11 @@ const OPS: Record<string, { note: string; arms: Maker; inputs: number; divide?: 
     inputs: AMOUNTS.length,
     arms: {
       pyreon: () => (i) => reactive.formatCurrency(pick(AMOUNTS, i), 'EUR'),
+      'pyreon-fmt': () => {
+        const f = reactive.currencyFormatter('EUR')
+
+        return (i) => f(pick(AMOUNTS, i))
+      },
       'pyreon-core': () => (i) => core.formatCurrency(pick(AMOUNTS, i), 'EUR', { locale: L }),
       'raw-cached': () => (i) => nfEur.format(pick(AMOUNTS, i)),
       tolocale: () => (i) => pick(AMOUNTS, i).toLocaleString(L, { style: 'currency', currency: 'EUR' }),
@@ -157,6 +173,11 @@ const OPS: Record<string, { note: string; arms: Maker; inputs: number; divide?: 
     inputs: BYTES.length,
     arms: {
       pyreon: () => (i) => reactive.formatBytes(pick(BYTES, i), { unitDisplay: 'narrow' }),
+      'pyreon-fmt': () => {
+        const f = reactive.bytesFormatter({ unitDisplay: 'narrow' })
+
+        return (i) => f(pick(BYTES, i))
+      },
       'pyreon-core': () => (i) => core.formatBytes(pick(BYTES, i), { locale: L, unitDisplay: 'narrow' }),
       'pretty-bytes': () => (i) => prettyBytes(pick(BYTES, i), { maximumFractionDigits: 1, space: false, locale: L }),
     },
@@ -193,6 +214,11 @@ const OPS: Record<string, { note: string; arms: Maker; inputs: number; divide?: 
     inputs: INSTANTS.length,
     arms: {
       pyreon: () => (i) => reactive.formatDate(pick(INSTANTS, i), DATE_OPTS),
+      'pyreon-fmt': () => {
+        const f = reactive.dateFormatter(DATE_OPTS)
+
+        return (i) => f(pick(INSTANTS, i))
+      },
       'pyreon-core': () => (i) => core.formatDate(pick(INSTANTS, i), DATE_OPTS),
       'raw-cached': () => (i) => dtf.format(pick(INSTANTS, i)),
       tolocale: () => (i) => new Date(pick(INSTANTS, i)).toLocaleDateString(L, DATE_INTL),
@@ -240,6 +266,11 @@ const OPS: Record<string, { note: string; arms: Maker; inputs: number; divide?: 
     inputs: LISTS.length,
     arms: {
       pyreon: () => (i) => reactive.formatList(pick(LISTS, i)),
+      'pyreon-fmt': () => {
+        const f = reactive.listFormatter()
+
+        return (i) => f(pick(LISTS, i))
+      },
       'pyreon-core': () => (i) => core.formatList(pick(LISTS, i), { locale: L }),
       'raw-cached': () => (i) => lf.format(pick(LISTS, i)),
       'raw-percall': () => (i) => new Intl.ListFormat(L).format(pick(LISTS, i)),
