@@ -689,6 +689,8 @@ extension View {
   public func cornerRadius(_ radius: Double, antialiased: Bool = true) -> some View { self }
   public func sheet<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> C) -> some View { self }
   public func disabled(_ disabled: Bool) -> some View { self }
+  // labelsHidden — chained on every <Toggle> emit (its label is always "").
+  public func labelsHidden() -> some View { self }
   // navigationDestination(for:destination:) — the multi-screen router emit's
   // push target. \`D: Hashable\` mirrors SwiftUI's real constraint (route values
   // must be Hashable to key the navigation path); a loose \`D\` would let an

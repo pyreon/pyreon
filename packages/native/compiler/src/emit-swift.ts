@@ -10827,6 +10827,11 @@ function emitSwiftSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
  * Emit `<Toggle value={signal} onChange={fn}>` as SwiftUI's
  * `Toggle("", isOn: $signal)` with a two-way binding to the signal.
  *
+ * `<Toggle>` has no label prop, so the emit always chains `.labelsHidden()`:
+ * a SwiftUI `Toggle` with an empty label still lays out label + spacer +
+ * switch and takes the free width of its row, where the web checkbox and the
+ * Compose `Switch` hug the control (#4344).
+ *
  * Canonical contract: `value` MUST name a signal in scope (matches the
  * `<Field value={signal}>` shape). The two-way binding via SwiftUI's
  * `$signal` projection writes back automatically, so an `onChange` that only
@@ -10869,7 +10874,7 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   if (projected !== undefined) {
     // Shape 1 — signal binding projection.
     const sig = swiftIdent(projected)
-    let result = `Toggle("", isOn: $${sig})`
+    let result = `Toggle("", isOn: $${sig})\n${' '.repeat(indent + 2)}.labelsHidden()`
     const disabledMod = swiftDisabledModifier(e)
     if (disabledMod) {
       result += `\n${' '.repeat(indent + 2)}${disabledMod}`
@@ -10909,7 +10914,8 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
     `Toggle("", isOn: Binding(\n` +
     `${inner}get: { ${valueExpr} },\n` +
     `${inner}set: { ${handlerParam} in ${writeBody} }\n` +
-    `${pad}))`
+    `${pad}))\n` +
+    `${pad}.labelsHidden()`
   const disabledMod = swiftDisabledModifier(e)
   if (disabledMod) {
     result += `\n${pad}${disabledMod}`
