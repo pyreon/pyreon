@@ -32,6 +32,7 @@ xcodebuild archive \
   -scheme PyreonTodoMVC \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \
+  -derivedDataPath build/DerivedData \
   CODE_SIGNING_ALLOWED=NO \
   | tail -5
 

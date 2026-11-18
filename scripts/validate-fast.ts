@@ -22,7 +22,7 @@
  *   - check-manifest-depth  (LOCKED package density regressed)
  *   - check-manifest-examples (a manifest api[].example no longer typechecks vs the shipped export)
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
- *   - check-ios-signing-policy (unsigned test step -> CI-only Keychain denial)
+ *   - check-ios-signing-policy (unsigned test step -> CI-only Keychain denial; xcodebuild without -derivedDataPath)
  *   - check-shared-source-deps (tri-target shared source unbuildable for web)
  *   - check-native-srcdirs-drift (an example's Gradle srcDirs disagree with `wire`)
  *   - check-lathe-fresh     (committed generated client drifted from its OpenAPI spec)
