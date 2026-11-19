@@ -2049,6 +2049,7 @@ public struct GeoOptions: Codable {
   public var stops: [String]? = nil
   public var domain: Domain? = nil
   public var emptyColor: String? = nil
+  public var hatchColor: String? = nil
   public var borderColor: String? = nil
   public var borderWidth: Double? = nil
   public var showLabels: Bool? = nil
@@ -2065,7 +2066,7 @@ public struct GeoOptions: Codable {
   public var inRange: Domain? = nil
   public var outBands: [Double]? = nil
   public var outColor: String? = nil
-  public init(projection: GeoProjection? = nil, padding: Double? = nil, centerLon: Double? = nil, centerLat: Double? = nil, parallel1: Double? = nil, parallel2: Double? = nil, nameProperty: String? = nil, idProperty: String? = nil, stops: [String]? = nil, domain: Domain? = nil, emptyColor: String? = nil, borderColor: String? = nil, borderWidth: Double? = nil, showLabels: Bool? = nil, fontSize: Double? = nil, labelColor: String? = nil, progress: Double? = nil, zoom: Double? = nil, panX: Double? = nil, panY: Double? = nil, hover: Int? = nil, selected: [Int]? = nil, emphasisColor: String? = nil, selectColor: String? = nil, inRange: Domain? = nil, outBands: [Double]? = nil, outColor: String? = nil) {
+  public init(projection: GeoProjection? = nil, padding: Double? = nil, centerLon: Double? = nil, centerLat: Double? = nil, parallel1: Double? = nil, parallel2: Double? = nil, nameProperty: String? = nil, idProperty: String? = nil, stops: [String]? = nil, domain: Domain? = nil, emptyColor: String? = nil, hatchColor: String? = nil, borderColor: String? = nil, borderWidth: Double? = nil, showLabels: Bool? = nil, fontSize: Double? = nil, labelColor: String? = nil, progress: Double? = nil, zoom: Double? = nil, panX: Double? = nil, panY: Double? = nil, hover: Int? = nil, selected: [Int]? = nil, emphasisColor: String? = nil, selectColor: String? = nil, inRange: Domain? = nil, outBands: [Double]? = nil, outColor: String? = nil) {
     self.projection = projection
     self.padding = padding
     self.centerLon = centerLon
@@ -2077,6 +2078,7 @@ public struct GeoOptions: Codable {
     self.stops = stops
     self.domain = domain
     self.emptyColor = emptyColor
+    self.hatchColor = hatchColor
     self.borderColor = borderColor
     self.borderWidth = borderWidth
     self.showLabels = showLabels
@@ -3128,6 +3130,10 @@ private let GRAPH_LCG_M = 2147483647.0
 private let CALENDAR_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 private let CALENDAR_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+private let GEO_RAMP_LIGHT: [String] = ["#b0d0fc", "#60a5fa", "#2563eb", "#1e3a8a"]
+
+private let GEO_RAMP_DARK: [String] = ["#3f64c8", "#5b8def", "#9ec1ff", "#d6e6ff"]
 
 private let GEO_NA: Double = 0.0 / 0.0
 
@@ -10549,9 +10555,11 @@ public func renderGeoAligned(_ layout: GeoLayout, _ aligned: [Double], _ options
       let v = i < aligned.count ? aligned[i] : GEO_NA
       let has = isFiniteNumber(v) && progress > 0.0
       let t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
+      let hatched = !has && ((options?.hatchColor ?? "")) != ""
       let fill = !has ? emptyColor : visualOutside(v, options?.inRange, options?.outBands) ? (options?.outColor ?? "#cccccc") : rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t)
+      let hatch = hatched ? PyreonChartPattern(kind: "diagonal", color: (options?.hatchColor ?? "#64748b"), spacing: 5.0, width: 1.0) : nil
       for ring in r.fills {
-        out.append(PyreonDrawCmd(kind: "polygon", fill: fill, points: ring))
+        out.append(PyreonDrawCmd(kind: "polygon", fill: fill, pattern: hatch, points: ring))
       }
     }
     for r in layout.regions {
@@ -10871,19 +10879,19 @@ public func conicInvert(_ x: Double, _ y: Double, _ phi1: Double, _ phi2: Double
   }
 
 public func usLower48(_ lon: Double, _ lat: Double) -> PyreonChartPt {
-    let p = conic((lon + 96.0) * RAD, lat * RAD, 29.5 * RAD, 45.5 * RAD)
+    let p = conic(relLon(lon, -96.0) * RAD, lat * RAD, 29.5 * RAD, 45.5 * RAD)
     let c = conic(-0.6 * RAD, 38.7 * RAD, 29.5 * RAD, 45.5 * RAD)
     return PyreonChartPt(x: (p.x - c.x) * US_K, y: (p.y - c.y) * US_K)
   }
 
 public func usAlaska(_ lon: Double, _ lat: Double) -> PyreonChartPt {
-    let p = conic((lon + 154.0) * RAD, lat * RAD, 55.0 * RAD, 65.0 * RAD)
+    let p = conic(relLon(lon, -154.0) * RAD, lat * RAD, 55.0 * RAD, 65.0 * RAD)
     let c = conic(-2.0 * RAD, 58.5 * RAD, 55.0 * RAD, 65.0 * RAD)
     return PyreonChartPt(x: (p.x - c.x) * AK_SCALE + AK_AT.x, y: (p.y - c.y) * AK_SCALE + AK_AT.y)
   }
 
 public func usHawaii(_ lon: Double, _ lat: Double) -> PyreonChartPt {
-    let p = conic((lon + 157.0) * RAD, lat * RAD, 8.0 * RAD, 18.0 * RAD)
+    let p = conic(relLon(lon, -157.0) * RAD, lat * RAD, 8.0 * RAD, 18.0 * RAD)
     let c = conic(-3.0 * RAD, 19.9 * RAD, 8.0 * RAD, 18.0 * RAD)
     return PyreonChartPt(x: p.x - c.x + HI_AT.x, y: p.y - c.y + HI_AT.y)
   }
@@ -10902,7 +10910,7 @@ public func albersUsaInvert(_ x: Double, _ y: Double) -> PyreonChartPt {
     if y >= -0.234 && y < -0.12 && x >= -0.425 && x < -0.214 {
       let c = conic(-2.0 * RAD, 58.5 * RAD, 55.0 * RAD, 65.0 * RAD)
       let p = conicInvert((x - AK_AT.x) / AK_SCALE + c.x, (y - AK_AT.y) / AK_SCALE + c.y, 55.0 * RAD, 65.0 * RAD)
-      return PyreonChartPt(x: p.x / RAD - 154.0, y: p.y / RAD)
+      return PyreonChartPt(x: relLon(p.x / RAD - 154.0, 0.0), y: p.y / RAD)
     }
     if y >= -0.234 && y < -0.166 && x >= -0.214 && x < -0.115 {
       let c = conic(-3.0 * RAD, 19.9 * RAD, 8.0 * RAD, 18.0 * RAD)

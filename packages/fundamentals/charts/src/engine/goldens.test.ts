@@ -24,7 +24,7 @@ import {
 import { boxplotToSvg } from './boxplot-svg'
 import { geoToSvg } from './geo-web'
 import { FLORIDA_LAKE, ITALY_ENCLAVES, SOUTH_AFRICA_LESOTHO } from './__fixtures__/geo-holes'
-import { gridGeo, gridValues, usGrid } from './__fixtures__/geo-grid'
+import { gridGeo, gridValues, usGrid, usGridAleutians } from './__fixtures__/geo-grid'
 import type { GeoJson } from './geo-web'
 import type { TreeNode } from './treemap'
 
@@ -91,6 +91,7 @@ const GOLDENS: Record<string, () => string> = {
   'map-proj-albers': () => geoToSvg({ geo: gridGeo(-130, -60, 20, 55, 5), values: gridValues(gridGeo(-130, -60, 20, 55, 5)), options: { projection: 'albers' }, ...SIZE }),
   'map-proj-albers-parallels': () => geoToSvg({ geo: gridGeo(-130, -60, 20, 55, 5), values: gridValues(gridGeo(-130, -60, 20, 55, 5)), options: { projection: 'albers', parallel1: 40, parallel2: 50, centerLon: -100 }, ...SIZE }),
   'map-proj-albers-usa': () => geoToSvg({ geo: usGrid(), values: gridValues(usGrid()), options: { projection: 'albersUsa' }, ...SIZE }),
+  'map-proj-albers-usa-aleutians': () => geoToSvg({ geo: usGridAleutians(), values: gridValues(usGridAleutians()), options: { projection: 'albersUsa' }, ...SIZE }),
   'map-holes-lake': () => geoToSvg({ geo: FLORIDA_LAKE, values: { Florida: 55 }, ...SIZE }),
 }
 

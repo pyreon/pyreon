@@ -19,6 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
+import { GEO_RAMP_DARK, GEO_RAMP_LIGHT } from '../engine/geo'
 import { DEFAULT_PALETTE } from '../engine/palette'
 import { palettes } from '../engine/palettes'
 import { visualMap, visualStripOf } from '../engine/visual-map'
@@ -85,11 +86,13 @@ export type ChartThemeField =
   | 'highlightColor'
   | 'emptyColor'
   | 'stops'
+  | 'mapStops'
+  | 'hatchColor'
   | 'borderColor'
 
 /** The `ChartTheme` field each option field defaults from — one place, both emitters. */
 export const CHART_THEME_SOURCE: Readonly<
-  Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis' | 'positive' | 'negative' | 'muted' | 'ramp' | 'pageGround'>
+  Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis' | 'positive' | 'negative' | 'muted' | 'ramp' | 'pageGround' | 'mapRamp'>
 > = {
   palette: 'palette',
   labelColor: 'label',
@@ -117,6 +120,10 @@ export const CHART_THEME_SOURCE: Readonly<
   // The value ramp must rise in contrast against its OWN ground, or a higher
   // value reads as quieter — the light ramp ran 16.32:1 down to 2.04:1 on dark.
   stops: 'ramp',
+  // The MAP's own ramp (a map must stay readable at both ends on either ground); it fills the `stops` option.
+  mapStops: 'mapRamp',
+  // The hatch over a region with no value reads as ink on the ground, like a label.
+  hatchColor: 'label',
   // The geo border SEPARATES two filled regions, so it reads the PAGE rather
   // than a token of its own — `pageGround`, which is `background` with its
   // "inherit the page" empty string already resolved to white.
@@ -253,6 +260,7 @@ function irToValue(e: ExprIR | undefined, resolve: (name: string) => ExprIR | un
       if (!v.ok) return v
       out.push(v.value)
     }
+
     return { ok: true, value: out }
   }
   if (lit.kind === 'object') {
@@ -263,8 +271,10 @@ function irToValue(e: ExprIR | undefined, resolve: (name: string) => ExprIR | un
       if (!v.ok) return v
       out[f.name] = v.value
     }
+
     return { ok: true, value: out }
   }
+
   return { ok: false }
 }
 
@@ -313,6 +323,7 @@ export const calendarValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve)
     }
     items.push(t.struct('CalendarValue', [['date', t.str(f.name)], ['value', chartDouble(n)]]))
   }
+
   return t.list(items)
 }
 
@@ -336,6 +347,7 @@ const singleAxisSpecAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) 
   } else fields.push(['domain', t.nil])
   const name = litString(objectField(axis, 'name'))
   fields.push(['name', name === undefined ? t.nil : t.str(name)])
+
   return t.struct('SingleAxisSpec', fields)
 }
 
@@ -366,6 +378,7 @@ const parallelAxesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) =>
     fields.push(['inverse', inverse === undefined ? t.nil : emit(inverse)])
     items.push(t.struct('ParallelAxis', fields))
   }
+
   return t.list(items)
 }
 
@@ -392,6 +405,7 @@ export const parallelRowsAdapter: ChartHostAdapter = (attrs, t, warn, resolve) =
       if (s === undefined) return undefined
       out.push(s)
     }
+
     return out
   }
   const out: string[] = []
@@ -425,6 +439,7 @@ export const parallelRowsAdapter: ChartHostAdapter = (attrs, t, warn, resolve) =
     }
     out.push(t.list(cells))
   }
+
   return t.list(out)
 }
 
@@ -438,6 +453,7 @@ function engineDoubleFields(structName: string): ReadonlySet<string> {
   const isDouble = (t: TypeShape): boolean =>
     (t.kind === 'typeRef' && t.name === 'Double') || (t.kind === 'union' && (t.branches ?? []).some(isDouble))
   const struct = CHART_ENGINE_STRUCTS.find((s) => s.name === structName)
+
   return new Set((struct?.fields ?? []).filter((f) => isDouble(f.type as never)).map((f) => f.name))
 }
 
@@ -449,6 +465,7 @@ function doubleLiteral(e: ExprIR): string | undefined {
     const m = litNumber(e.argument)
     if (m !== undefined) return chartDouble(-m)
   }
+
   return undefined
 }
 
@@ -482,6 +499,7 @@ function literalStructArrayAdapter(
       for (const name of optional) fields.push([name, objectField(row, name) === undefined ? t.nil : emitField(name, objectField(row, name)!)])
       rows.push(t.struct(structName, fields))
     }
+
     return t.list(rows)
   }
 }
@@ -517,6 +535,7 @@ export const geoShapesAdapter: ChartHostAdapter = (attrs, _t, warn, resolve, emi
       '<MapChart map="…">: the map REGISTRY is web-only — `registerMap` fills a module map that no native target has. '
         + 'Pass a `GeoShape[]` const instead (project the GeoJSON once with `geoShapes(json)` on the web or in a build step); that shape lowers. Emitting nothing.',
     )
+
     return 'unsupported'
   }
   if (lit !== undefined && lit.kind === 'object') {
@@ -524,8 +543,10 @@ export const geoShapesAdapter: ChartHostAdapter = (attrs, _t, warn, resolve, emi
       "<MapChart map={…}>: raw GeoJSON does not cross — `geometry` is a `Polygon | MultiPolygon` union whose `coordinates` are `number[][][]` and `number[][][][]`, one field at two depths. "
         + 'Normalise it first, OUTSIDE the shared source: `geoShapes(json)` (web-only itself) yields the `GeoShape[]` const that lowers. Emitting nothing.',
     )
+
     return 'unsupported'
   }
+
   return emit(raw)
 }
 
@@ -547,6 +568,7 @@ export const geoValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit
     }
     items.push(t.struct('GeoValue', [['region', t.str(f.name)], ['value', chartDouble(n)]]))
   }
+
   return t.list(items)
 }
 
@@ -582,6 +604,7 @@ export function chartRoamConfig(read: (name: string) => unknown, warn: (m: strin
   if (lim !== undefined && lim.kind !== 'object') warn(`<${tag} scaleLimit>: scaleLimit must be a literal { min, max } on native; the default 0.5 … 20 applies.`)
   const min = lim?.kind === 'object' ? litNumber(objectField(lim, 'min')) : undefined
   const max = lim?.kind === 'object' ? litNumber(objectField(lim, 'max')) : undefined
+
   return { move, scale, min: min ?? 0.5, max: max ?? 20 }
 }
 
@@ -739,7 +762,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     },
     options: 'options',
     optionsStruct: 'GeoOptions',
-    themeDefaults: ['stops', 'emptyColor', 'borderColor', 'labelColor'],
+    themeDefaults: ['mapStops', 'emptyColor', 'borderColor', 'labelColor', 'hatchColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutGeoShapes(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a, t) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoHeat(${l}, ${a.data[5]}, geoHeatStops(${a.data[8]}, ${optField(a, t, 'stops')}), ${a.data[7]}, 1.0) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoPies(${l}, ${a.data[6]}, 1.0) + renderGeoTrailsIfAny(${l}, ${a.data[2]}, ${a.data[9]}, ${a.data[10]}, "#b42318") + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
@@ -861,20 +884,24 @@ function substituteIdent(e: ExprIR, name: string, to: ExprIR): ExprIR {
   if (e.kind === 'identifier') return e.name === name ? to : e
   if (e.kind === 'member') return { ...e, object: substituteIdent(e.object, name, to) }
   if (e.kind === 'call') return { ...e, callee: substituteIdent(e.callee, name, to), args: e.args.map((a) => substituteIdent(a, name, to)) }
+
   return e
 }
 
 const lit = (value: string | number | boolean): ExprIR => ({ kind: 'literal', value })
 const ident = (name: string): ExprIR => ({ kind: 'identifier', name })
+
 /** `"field"` → `(d) => d.field`; an accessor passes through. */
 function channelArrow(v: ExprIR): ExprIR {
   if (v.kind === 'literal' && typeof v.value === 'string') return { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: v.value } }
   return v
 }
+
 const attrOf = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined => {
   const a = e.attrs.find((x) => x.kind === 'attr' && x.name === name)
   return a?.kind === 'attr' ? a.value : undefined
 }
+
 const flagOn = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): boolean => {
   const v = attrOf(e, name)
   return v !== undefined && !(v.kind === 'literal' && v.value === false)
@@ -1160,6 +1187,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   attrs.push({ kind: 'attr', name: 'marks', value: { kind: 'array', elements: marks } })
   if (annotations.length > 0) attrs.push({ kind: 'attr', name: 'annotations', value: { kind: 'array', elements: annotations } })
   if (markers.length > 0) attrs.push({ kind: 'attr', name: 'markers', value: { kind: 'array', elements: markers } })
+
   return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
 }
 
@@ -1222,6 +1250,7 @@ function desugarFamilyGrammar(
     else if (child.tag === 'Axis' && !flagOn(child, 'x') && !flagOn(child, 'y2') && attrOf(child, 'format') !== undefined) attrs.push({ kind: 'attr', name: 'format', value: attrOf(child, 'format')! })
     else warn(`<Chart>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)
   }
+
   return { kind: 'jsx-element', tag: host, attrs, children: [] }
 }
 
@@ -1474,6 +1503,9 @@ export function chartThemeFields(
       out[f.name] = runtime && dv !== d ? scheme(t.str(d as string), t.str(dv)) : t.str(d as string)
     }
   }
+  const mapLight = t.list(GEO_RAMP_LIGHT.map(t.str))
+  const mapDark = t.list(GEO_RAMP_DARK.map(t.str))
+  out.mapRamp = runtime && scheme !== undefined ? scheme(mapLight, mapDark) : base === dark ? mapDark : mapLight
   setGround()
   if (v === undefined || named !== undefined) return out
   if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
@@ -1505,6 +1537,7 @@ export function chartThemeFields(
     if (spec.name === 'background') bgLight = f.value.value as string
   }
   setGround()
+
   return out
 }
 
@@ -1516,6 +1549,7 @@ function chartStringListLiteral(v: ExprIR): readonly string[] | undefined {
     if (el.kind !== 'literal' || typeof el.value !== 'string') return undefined
     out.push(el.value)
   }
+
   return out
 }
 
@@ -1546,12 +1580,14 @@ export function chartThemePalette(v: ExprIR | undefined, tag: string, warn: (m: 
     const found = NAMED_PALETTES[pv.property]
     if (found !== undefined) return found
     warn(`<${tag} theme>: \`palettes.${pv.property}\` is not a named palette (${Object.keys(NAMED_PALETTES).join(', ')}); the default palette applies.`)
+
     return fallback
   }
   if (pv.kind !== 'array' || pv.elements.length === 0 || pv.elements.some((it) => it.kind !== 'literal' || typeof it.value !== 'string')) {
     warn(`<${tag} theme>: \`palette\` must be a non-empty array of string literals or a \`palettes.<name>\` reference on native; the default palette applies.`)
     return fallback
   }
+
   return pv.elements.map((it) => (it as { value: string }).value)
 }
 
@@ -1584,6 +1620,7 @@ interface ThemeChain {
   mode: 'light' | 'dark' | null
   providers: readonly (ExprIR & { kind: 'jsx-element' })[]
 }
+
 const SCOPE_CHAIN = new WeakMap<RawChartTheme, ThemeChain>()
 
 /** Merge one theme-object literal's fields over `raw`, warning by name on what cannot lower. */
@@ -1623,6 +1660,7 @@ function resolveThemeChain(chain: ThemeChain, warn: (m: string) => void): RawCha
   }
   const out = raw as RawChartTheme
   SCOPE_CHAIN.set(out, chain)
+
   return out
 }
 
@@ -1631,6 +1669,7 @@ export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: s
   const prev: ThemeChain = (outer === undefined ? undefined : SCOPE_CHAIN.get(outer)) ?? { mode: null, providers: [] }
   if (scopeAttr(e, 'mode') !== undefined) warn('<ChartThemeProvider mode>: the mode is not a provider prop any more — wrap it in `<ColorModeProvider mode>` (@pyreon/core) or set `<PyreonUI mode>`; it is ignored.')
   if (prev.mode === null && prev.providers.length === 0) warn('<ChartThemeProvider>: with no literal colour mode above it, the web follows the system scheme; natively the light theme applies — wrap it in `<ColorModeProvider mode="dark">` (or give each chart its own `theme`).')
+
   return resolveThemeChain({ mode: prev.mode, providers: [...prev.providers, e] }, warn)
 }
 
@@ -1656,6 +1695,7 @@ export function colorModeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: st
   if (warnReactive && !(modeV.kind === 'literal' && modeV.value === 'system')) {
     warn(`<${e.tag} mode>: only a literal "light" / "dark" / "system" lowers on native (a reactive mode cannot be read at compile time); charts below follow the platform scheme.`)
   }
+
   return outer
 }
 
@@ -1672,6 +1712,7 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
  * target does NOT draw MUST warn by name rather than drop silently.
  */
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'universalTransition', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
+
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage'],
   // Gauge / Candlestick / Heatmap build their canvas without the chrome seam,
@@ -1685,6 +1726,7 @@ const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   BoxplotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'toolbox', 'onSaveImage'],
   RadarChart: ['showLegend', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage'],
 }
+
 /**
  * Title + legend + tap tooltip — what the generic and accessor hosts draw
  * natively through the crossing chrome.
@@ -1695,6 +1737,7 @@ const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
  * exactly the mistake the `CHROME_LOWERED` comment above records.
  */
 const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage']
+
 /**
  * Whether `<tag>`'s engine takes an entrance `progress` — the same set the web
  * canvas host tweens (`animates: true`). A host outside it (Pie, Radar,
@@ -1705,8 +1748,10 @@ export function chartHostAnimates(tag: string): boolean {
   if (tag === 'PlotChart' || tag === 'HeatmapChart' || tag === 'BoxplotChart') return true
   const host = CHART_HOSTS[tag]
   if (host !== undefined) return host.optionsStruct !== undefined
+
   return ACCESSOR_CHART_HOSTS[tag]?.optionsStruct !== undefined
 }
+
 /** The chrome props `<tag>` does NOT lower — each present one warns. */
 export function chartChromeUnlowered(tag: string): readonly string[] {
   const family = Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)
@@ -1719,6 +1764,7 @@ export function chartChromeUnlowered(tag: string): readonly string[] {
     ...(family && chartHostAnimates(tag) ? ['animate'] : []),
     ...(family || tag === 'PlotChart' ? ['updateAnimation', 'updateDuration', 'universalTransition'] : []),
   ]
+
   return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
 }
 
@@ -1763,6 +1809,7 @@ export function chartAreaBrushConfig(
     if (Array.isArray(o) && o.every((x) => typeof x === 'number')) for (const x of o as number[]) only.push(x)
     else warn(`<${tag} brushSeriesIndex>: native needs a literal number array; every series is brushed.`)
   }
+
   return { on: initial !== '' || toolboxBrush.length > 0, initial, keep, opacity, only }
 }
 
@@ -1770,6 +1817,7 @@ export function chartAreaBrushConfig(
 export function chartRichSelectWarning(tag: string): string {
   return `<${tag} onSelect>: the rich-hit callback is not lowered on native — use \`onSelectIndex\` (the engine's index hit, the shape the tap reports on every target).`
 }
+
 /** The warning for a chrome prop `<tag>` carries but does not draw — `animate` on an engine with no entrance is inert everywhere, not a native gap. */
 /**
  * A chart FLAG the native emit can only honour as a literal (`dataZoom`,
@@ -1792,6 +1840,7 @@ export function chartStaticFlag(
     warn(`<${tag} ${prop}={…}>: must be a literal on native — a reactive or computed value lowers as \`false\`, so the chart renders without it. Use a literal, or branch with <Web> / <NativeIOS> / <NativeAndroid>.`)
     return false
   }
+
   return value === true
 }
 
@@ -1811,6 +1860,7 @@ export function chartOrientVertical(
     warn(`<${tag} orient={…}>: must be a literal on native — a reactive or computed value lowers as horizontal. Use a literal, or branch with <Web> / <NativeIOS> / <NativeAndroid>.`)
     return false
   }
+
   return value === 'vertical'
 }
 
@@ -1818,10 +1868,12 @@ export function chartChromeWarning(tag: string, prop: string): string {
   if (prop === 'animate' && !chartHostAnimates(tag)) return `<${tag}>: \`animate\` has no effect on any target — its engine draws fully formed; the prop is ignored.`
   return `<${tag}>: \`${prop}\` is not lowered on native yet; the chart renders without it.`
 }
+
 /** The entrance duration — the theme's `enterMs` (a literal object or a named theme), else the default; the family hosts read nothing else off `theme`, so this never warns. */
 export function chartEnterMs(theme: ExprIR | undefined, tag: string, t: ChartThemeEmit, scope?: RawChartTheme): string {
   return chartThemeFields(theme, tag, () => {}, t, scope).enterMs
 }
+
 /** The resolved theme as emitted TEXT per field — what `chartThemeFields` returns. */
 /**
  * The theme's fields as EMITTED text, plus one DERIVED entry.
@@ -1834,7 +1886,8 @@ export function chartEnterMs(theme: ExprIR | undefined, tag: string, t: ChartThe
  * keeps it on the emitted-text side, where the value may be a runtime
  * colour-scheme conditional rather than a literal.
  */
-export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT | 'pageGround', string>
+export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT | 'pageGround' | 'mapRamp', string>
+
 /** The tooltip box from the theme — the web host's `tooltipStyle` (surface / grid / text, radius at least 4). */
 /**
  * The `[optionField, themeValue]` pairs a host defaults from the theme — the
@@ -1853,7 +1906,10 @@ export function chartThemeDefaultFields(spec: ChartHostSpec, t: ChartThemeText):
     const i = decl?.fields.findIndex((d) => d.name === f) ?? -1
     return i < 0 ? Number.MAX_SAFE_INTEGER : i
   }
-  return [...fields].sort((a, b) => at(a) - at(b)).map((f) => [f, t[CHART_THEME_SOURCE[f]]] as const)
+  // `mapStops` is the map's ramp, written into the options' `stops` field.
+  const option = (f: string): string => (f === 'mapStops' ? 'stops' : f)
+
+  return [...fields].sort((a, b) => at(option(a)) - at(option(b))).map((f) => [option(f), t[CHART_THEME_SOURCE[f]]] as const)
 }
 
 export function chartTooltipFields(t: ChartThemeText): readonly (readonly [string, string])[] {
@@ -1915,6 +1971,7 @@ export function plotMarkColorSlots(marks: readonly ExprIR[]): number[] {
     }
     labels.push(label)
   }
+
   return labelSlots(labels)
 }
 
@@ -1929,6 +1986,7 @@ function labelSlots(labels: readonly string[]): number[] {
     const at = seen.indexOf(label)
     if (at >= 0) return at
     seen.push(label)
+
     return seen.length - 1
   })
 }
@@ -2055,6 +2113,7 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
     const why = PLOT_UNLOWERED_REASON[p]
     return why === undefined ? `\`${p}\`` : `\`${p}\` (${why})`
   })
+
   return `<${tag}>: ${named.join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native; the chart renders without.`
 }
 
@@ -2110,6 +2169,7 @@ export function chartVisualMap(
     ['calculable', String(s.calculable)],
     ['outColor', str(s.outColor)],
   ])
+
   return { strip, lo: chartDouble(spec.range[0]), hi: chartDouble(spec.range[1]), selected: t.list(spec.selected.map(String)) }
 }
 
@@ -2134,6 +2194,7 @@ export function chartZoomConfig(
       warn(`<${tag} ${name}>: native needs a literal object; the chart ignores it.`)
       return null
     }
+
     return v.value
   }
   const init = plainOf('initialZoom')
@@ -2141,6 +2202,7 @@ export function chartZoomConfig(
   const n = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
   const initial = init == null ? null : t.struct('ZoomWindow', [['start', chartDouble(Math.max(0, Math.min(1, n(init['start'], 0))))], ['end', chartDouble(Math.max(0, Math.min(1, n(init['end'], 1))))]])
   const limits = lim == null ? null : t.struct('ZoomLimits', [['lock', String(lim['lock'] === true)], ['minSpan', chartDouble(n(lim['minSpan'], 0))], ['maxSpan', chartDouble(n(lim['maxSpan'], 1))]])
+
   return { initial, limits }
 }
 
@@ -2189,6 +2251,7 @@ export function chartToolboxConfig(
   const save = cfg['saveAsImage'] === true || cfg['saveAsImage'] === 'png' || cfg['saveAsImage'] === 'svg'
   if (cfg['saveAsImage'] === 'svg') warn(`<${tag} toolbox.saveAsImage>: a phone saves the chart as a PNG, not an SVG.`)
   if (save) tools.push('saveAsImage')
+
   return { tools, dataZoom: cfg['dataZoom'] === true, magic: magic.length > 0, dataView: cfg['dataView'] === true, save, brush }
 }
 
@@ -2207,6 +2270,7 @@ export function chartActionFields(arg: ExprIR | undefined): Partial<Record<'type
     if (f.name === 'count') out.series = f.value
     else if (f.name === 'type' || f.name === 'index' || f.name === 'series' || f.name === 'start' || f.name === 'end' || f.name === 'brushType' || f.name === 'areas') out[f.name] = f.value
   }
+
   return out.type === undefined ? null : out
 }
 

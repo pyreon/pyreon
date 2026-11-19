@@ -6,6 +6,7 @@ import { MapChart } from './MapChart'
 import { layoutGeo } from './geo-web'
 import { geoProject } from './geo'
 import { FLORIDA_LAKE, SOUTH_AFRICA_LESOTHO } from './__fixtures__/geo-holes'
+import { gridValues, usGridAleutians } from './__fixtures__/geo-grid'
 import type { GeoJson } from './geo-web'
 
 const square = (x: number): number[][][] => [[[x, 0], [x + 10, 0], [x + 10, 10], [x, 10], [x, 0]]]
@@ -268,6 +269,35 @@ describe('MapChart states (real browser)', () => {
     const dpr = window.devicePixelRatio || 1
     const d = c.getContext('2d')!.getImageData(Math.round(at.x * dpr), Math.round(at.y * dpr), 1, 1).data
     expect(`${d[0]},${d[1]},${d[2]}`).toBe('0,255,0')
+    unmount()
+  })
+
+  it('Albers USA with the Aleutians: every region is inside the plot and has painted pixels (nothing clipped, nothing thrown across the map)', async () => {
+    const geo = usGridAleutians()
+    const { container, unmount } = mountInBrowser(() => MapChart({ animate: false, map: geo, values: gridValues(geo), width: 480, height: 300, options: { projection: 'albersUsa' } }))
+    await flush()
+    const c = container.querySelector('canvas')!
+    const ctx = c.getContext('2d')!
+    const dpr = window.devicePixelRatio || 1
+    const layout = layoutGeo(geo, { x: 0, y: 0, w: 480, h: 300 }, { projection: 'albersUsa' })
+    let painted = 0
+    for (const r of layout.regions) {
+      expect(r.bbox.x, r.label).toBeGreaterThanOrEqual(0)
+      expect(r.bbox.y, r.label).toBeGreaterThanOrEqual(0)
+      expect(r.bbox.x + r.bbox.w, r.label).toBeLessThanOrEqual(480)
+      expect(r.bbox.y + r.bbox.h, r.label).toBeLessThanOrEqual(300)
+      // painted pixels inside the region's own box: sample a grid and count opaque ones
+      let count = 0
+      for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) if (ctx.getImageData(Math.round((r.bbox.x + (r.bbox.w * i) / 4) * dpr), Math.round((r.bbox.y + (r.bbox.h * j) / 4) * dpr), 1, 1).data[3] === 255) count++
+      expect(count, `${r.label} has painted pixels`).toBeGreaterThan(0)
+      painted++
+    }
+    expect(painted).toBe(geo.features.length)
+    // the Aleutian cells sit in the Alaska inset: left of and below the lower 48's western edge, never beyond the plot
+    const ale = layout.regions.filter((r) => r.label.startsWith('ale-'))
+    expect(ale.length).toBeGreaterThan(0)
+    const widest = Math.max(...layout.regions.filter((r) => !r.label.startsWith('ale-')).map((r) => r.bbox.x + r.bbox.w))
+    for (const r of ale) expect(r.bbox.x + r.bbox.w).toBeLessThan(widest)
     unmount()
   })
 })

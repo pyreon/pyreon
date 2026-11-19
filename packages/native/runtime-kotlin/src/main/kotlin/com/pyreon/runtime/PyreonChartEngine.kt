@@ -244,7 +244,7 @@ data class GeoTransform(var minX: Double, var maxY: Double, var scale: Double, v
 
 data class GeoLayout(var regions: List<GeoRegion>, var transform: GeoTransform)
 
-data class GeoOptions(var projection: GeoProjection? = null, var padding: Double? = null, var centerLon: Double? = null, var centerLat: Double? = null, var parallel1: Double? = null, var parallel2: Double? = null, var nameProperty: String? = null, var idProperty: String? = null, var stops: List<String>? = null, var domain: Domain? = null, var emptyColor: String? = null, var borderColor: String? = null, var borderWidth: Double? = null, var showLabels: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var progress: Double? = null, var zoom: Double? = null, var panX: Double? = null, var panY: Double? = null, var hover: Long? = null, var selected: List<Long>? = null, var emphasisColor: String? = null, var selectColor: String? = null, var inRange: Domain? = null, var outBands: List<Double>? = null, var outColor: String? = null)
+data class GeoOptions(var projection: GeoProjection? = null, var padding: Double? = null, var centerLon: Double? = null, var centerLat: Double? = null, var parallel1: Double? = null, var parallel2: Double? = null, var nameProperty: String? = null, var idProperty: String? = null, var stops: List<String>? = null, var domain: Domain? = null, var emptyColor: String? = null, var hatchColor: String? = null, var borderColor: String? = null, var borderWidth: Double? = null, var showLabels: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var progress: Double? = null, var zoom: Double? = null, var panX: Double? = null, var panY: Double? = null, var hover: Long? = null, var selected: List<Long>? = null, var emphasisColor: String? = null, var selectColor: String? = null, var inRange: Domain? = null, var outBands: List<Double>? = null, var outColor: String? = null)
 
 data class GeoView(var zoom: Double, var panX: Double, var panY: Double)
 
@@ -447,6 +447,10 @@ private val GRAPH_LCG_M = 2147483647.0
 private val CALENDAR_MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 private val CALENDAR_DAYS = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+
+private val GEO_RAMP_LIGHT: List<String> = listOf("#b0d0fc", "#60a5fa", "#2563eb", "#1e3a8a")
+
+private val GEO_RAMP_DARK: List<String> = listOf("#3f64c8", "#5b8def", "#9ec1ff", "#d6e6ff")
 
 private val GEO_NA: Double = (0.0).toDouble() / (0.0).toDouble()
 
@@ -7875,9 +7879,11 @@ fun renderGeoAligned(layout: GeoLayout, aligned: List<Double>, options: GeoOptio
       val v = if (i < aligned.length) aligned[(i).toInt()] else GEO_NA
       val has = isFiniteNumber(v) && progress > 0.0
       val t = if (!has) 0.0 else if (span <= 0.0) 1.0 else (((v - lo)).toDouble() / (span).toDouble()) * progress
+      val hatched = !has && ((options?.hatchColor ?: "")) != ""
       val fill = if (!has) emptyColor else if (visualOutside(v, options?.inRange, options?.outBands)) (options?.outColor ?: "#cccccc") else rampColor(stops, if (t < 0.0) 0.0 else if (t > 1.0) 1.0 else t)
+      val hatch = if (hatched) PyreonChartPattern(kind = "diagonal", color = (options?.hatchColor ?: "#64748b"), spacing = 5.0, width = 1.0) else null
       for (ring in r.fills) {
-        out.add(PyreonDrawCmd(kind = "polygon", fill = fill, points = ring))
+        out.add(PyreonDrawCmd(kind = "polygon", fill = fill, pattern = hatch, points = ring))
       }
     }
     for (r in layout.regions) {
@@ -8197,19 +8203,19 @@ fun conicInvert(x: Double, y: Double, phi1: Double, phi2: Double): PyreonChartPt
   }
 
 fun usLower48(lon: Double, lat: Double): PyreonChartPt {
-    val p = conic((lon + 96.0) * RAD, lat * RAD, 29.5 * RAD, 45.5 * RAD)
+    val p = conic(relLon(lon, -96.0) * RAD, lat * RAD, 29.5 * RAD, 45.5 * RAD)
     val c = conic(-0.6 * RAD, 38.7 * RAD, 29.5 * RAD, 45.5 * RAD)
     return PyreonChartPt(x = (p.x - c.x) * US_K, y = (p.y - c.y) * US_K)
   }
 
 fun usAlaska(lon: Double, lat: Double): PyreonChartPt {
-    val p = conic((lon + 154.0) * RAD, lat * RAD, 55.0 * RAD, 65.0 * RAD)
+    val p = conic(relLon(lon, -154.0) * RAD, lat * RAD, 55.0 * RAD, 65.0 * RAD)
     val c = conic(-2.0 * RAD, 58.5 * RAD, 55.0 * RAD, 65.0 * RAD)
     return PyreonChartPt(x = (p.x - c.x) * AK_SCALE + AK_AT.x, y = (p.y - c.y) * AK_SCALE + AK_AT.y)
   }
 
 fun usHawaii(lon: Double, lat: Double): PyreonChartPt {
-    val p = conic((lon + 157.0) * RAD, lat * RAD, 8.0 * RAD, 18.0 * RAD)
+    val p = conic(relLon(lon, -157.0) * RAD, lat * RAD, 8.0 * RAD, 18.0 * RAD)
     val c = conic(-3.0 * RAD, 19.9 * RAD, 8.0 * RAD, 18.0 * RAD)
     return PyreonChartPt(x = p.x - c.x + HI_AT.x, y = p.y - c.y + HI_AT.y)
   }
@@ -8228,7 +8234,7 @@ fun albersUsaInvert(x: Double, y: Double): PyreonChartPt {
     if (y >= -0.234 && y < -0.12 && x >= -0.425 && x < -0.214) {
       val c = conic(-2.0 * RAD, 58.5 * RAD, 55.0 * RAD, 65.0 * RAD)
       val p = conicInvert(((x - AK_AT.x)).toDouble() / (AK_SCALE).toDouble() + c.x, ((y - AK_AT.y)).toDouble() / (AK_SCALE).toDouble() + c.y, 55.0 * RAD, 65.0 * RAD)
-      return PyreonChartPt(x = (p.x).toDouble() / (RAD).toDouble() - 154.0, y = (p.y).toDouble() / (RAD).toDouble())
+      return PyreonChartPt(x = relLon((p.x).toDouble() / (RAD).toDouble() - 154.0, 0.0), y = (p.y).toDouble() / (RAD).toDouble())
     }
     if (y >= -0.234 && y < -0.166 && x >= -0.214 && x < -0.115) {
       val c = conic(-3.0 * RAD, 19.9 * RAD, 8.0 * RAD, 18.0 * RAD)

@@ -1132,23 +1132,23 @@
       "warnings": 0
     },
     "golden-fixture:chart-map-holes.tsx|swift": {
-      "sha": "63fbdda77428ab55186b7f125b4795647c46e34774ddd272f1a0163713c74a26",
-      "bytes": 2149,
+      "sha": "d97d28c75357a8b90840808b20f1493615eaa9808027d0c17e0f21f3970e4e31",
+      "bytes": 2215,
       "warnings": 0
     },
     "golden-fixture:chart-map-holes.tsx|kotlin": {
-      "sha": "ace58331e4c06c2196a71977bdf706a13d7235c7575b2d6ecf20cfcb0b600b60",
-      "bytes": 2479,
+      "sha": "5e33bb5d1518aeb4dafd2cd3807807a2b53515ee0ab3ece42c36b47df6a1c66c",
+      "bytes": 2547,
       "warnings": 0
     },
     "golden-fixture:chart-map-projection.tsx|swift": {
-      "sha": "6e3b90a15c8fbf693216550806b8f414a03c5de724c605a51d78fd55f8d71b49",
-      "bytes": 2114,
+      "sha": "a5b0228bda6809febcfd2cfa9f71b6bf5e671604e198bd3a7e33da44c1d81d80",
+      "bytes": 2211,
       "warnings": 0
     },
     "golden-fixture:chart-map-projection.tsx|kotlin": {
-      "sha": "f56b92f790247d0badd6ff1d6a63058a755985b8131dd5d5a4e2ba2477e8dc01",
-      "bytes": 2280,
+      "sha": "7080eafd31b0166cf582b2d186d249a5ef7bebccc3ee3fb4a7671600bc1905b9",
+      "bytes": 2365,
       "warnings": 0
     },
     "golden-fixture:chart-swift-01.tsx|swift": {
@@ -1542,13 +1542,13 @@
       "warnings": 1
     },
     "golden-fixture:chart-swift-40.tsx|swift": {
-      "sha": "ee97469e5a6e6ed7500efa0d973e47f5c1e66ad8cbcb33f821deb234dda1d56d",
-      "bytes": 3488,
+      "sha": "248d1d436fffd877e16a01e8a8c48abfa01e5094d5417d1609e56dc9c2d7c240",
+      "bytes": 3585,
       "warnings": 0
     },
     "golden-fixture:chart-swift-40.tsx|kotlin": {
-      "sha": "9cdcaef562e55602898ba743c1fbfbf0dbe258b45ec9c795dc3bb3d05d820aba",
-      "bytes": 3878,
+      "sha": "197842d894de1b4b9333b1f076a4e59a9d3a963959e6f9cd5d2cc2ffde98da3c",
+      "bytes": 3963,
       "warnings": 0
     },
     "golden-fixture:chart-swift-41.tsx|swift": {
@@ -1622,13 +1622,13 @@
       "warnings": 0
     },
     "golden-fixture:chart-swift-48.tsx|swift": {
-      "sha": "75104a2aa5d316139294be9c595ebf11ee645771a1c8eb477e6c74aba595b28b",
-      "bytes": 3240,
+      "sha": "3cba7e6d273ffecfc4628204b0ff8ef398b90c5619eb3802c3680b5f8236b213",
+      "bytes": 3306,
       "warnings": 0
     },
     "golden-fixture:chart-swift-48.tsx|kotlin": {
-      "sha": "e43264876ad5c66cf896191627e3e6af97a4473d65a30f243f23e09f583d12b5",
-      "bytes": 3608,
+      "sha": "456a8864722c2b167e5b9d38c187389cb17f94c342293dd9ff3399cef67a439d",
+      "bytes": 3676,
       "warnings": 0
     },
     "golden-fixture:chart-swift-49.tsx|swift": {
@@ -2712,13 +2712,13 @@
       "warnings": 0
     },
     "golden-fixture:flow-46.tsx|swift": {
-      "sha": "0f471cd4fc1ed04889e0b6e811fc522553b22be9c26f95374cb0f3a16cc36851",
-      "bytes": 161164,
+      "sha": "656e98e3ff1c58e173c666f63f1fbd6d460337b19ae2d5c65151bbf4256f840c",
+      "bytes": 161296,
       "warnings": 3
     },
     "golden-fixture:flow-46.tsx|kotlin": {
-      "sha": "fa3f83fb738a32cfc5c32d859949160e9170710e26618d6ea7edc7a18affbd18",
-      "bytes": 162908,
+      "sha": "3eda28b9863c1dd2434e23c979a31fbf82ab8d4c770e6915b44e97b07359bbc6",
+      "bytes": 163044,
       "warnings": 2
     },
     "golden-fixture:flow-47.tsx|swift": {
@@ -7442,13 +7442,13 @@
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "417ad70f35f0fb9881a9bcf89586f25441b3038021bec7181ffbe5256993c9bc",
-      "bytes": 182140,
+      "sha": "42310876865af5318f51306bfb83606577742ad1cdde88a934852c2ff2f132e1",
+      "bytes": 182272,
       "warnings": 3
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
-      "sha": "6f334f695bdc1a6a91780923e3a0fe6699777a3544c4d9aba412ef2e7ba339b9",
-      "bytes": 184037,
+      "sha": "c6eeed38a35981ced82f5e3b24faba573c661a4c1a99af072b195649c9aecdb5",
+      "bytes": 184173,
       "warnings": 2
     },
     "example:native-todomvc/TodoApp.tsx|swift": {

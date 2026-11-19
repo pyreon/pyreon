@@ -33,3 +33,12 @@ export function usGrid(): GeoJson {
 
   return { type: 'FeatureCollection', features: [...lower.features, ...alaska.features, ...hawaii.features] }
 }
+
+/** The US composite with the Aleutian chain: cells on BOTH sides of the antimeridian (172E..180 and 180..166W), which a plain projection throws across the map. */
+export function usGridAleutians(): GeoJson {
+  const base = usGrid()
+  const east = gridGeo(172, 180, 51, 55, 4)
+  const west = gridGeo(-180, -168, 51, 55, 4)
+
+  return { type: 'FeatureCollection', features: [...base.features, ...east.features.map((f) => ({ ...f, properties: { name: `ale-e ${String(f.properties?.name)}` } })), ...west.features.map((f) => ({ ...f, properties: { name: `ale-w ${String(f.properties?.name)}` } }))] }
+}

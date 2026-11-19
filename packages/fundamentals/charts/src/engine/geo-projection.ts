@@ -163,21 +163,23 @@ const AK_AT = { x: -0.307, y: -0.201 }
 const HI_AT = { x: -0.205, y: -0.212 }
 
 function usLower48(lon: Double, lat: Double): Pt {
-  const p = conic((lon + 96.0) * RAD, lat * RAD, 29.5 * RAD, 45.5 * RAD)
+  const p = conic(relLon(lon, -96.0) * RAD, lat * RAD, 29.5 * RAD, 45.5 * RAD)
   const c = conic(-0.6 * RAD, 38.7 * RAD, 29.5 * RAD, 45.5 * RAD)
 
   return { x: (p.x - c.x) * US_K, y: (p.y - c.y) * US_K }
 }
 
 function usAlaska(lon: Double, lat: Double): Pt {
-  const p = conic((lon + 154.0) * RAD, lat * RAD, 55.0 * RAD, 65.0 * RAD)
+  // Relative to the Alaska conic's central meridian (-154), wrapped: the Aleutians west of the antimeridian (lon > 172)
+  // are 26 to 34 degrees WEST of it, not 326 degrees east.
+  const p = conic(relLon(lon, -154.0) * RAD, lat * RAD, 55.0 * RAD, 65.0 * RAD)
   const c = conic(-2.0 * RAD, 58.5 * RAD, 55.0 * RAD, 65.0 * RAD)
 
   return { x: (p.x - c.x) * AK_SCALE + AK_AT.x, y: (p.y - c.y) * AK_SCALE + AK_AT.y }
 }
 
 function usHawaii(lon: Double, lat: Double): Pt {
-  const p = conic((lon + 157.0) * RAD, lat * RAD, 8.0 * RAD, 18.0 * RAD)
+  const p = conic(relLon(lon, -157.0) * RAD, lat * RAD, 8.0 * RAD, 18.0 * RAD)
   const c = conic(-3.0 * RAD, 19.9 * RAD, 8.0 * RAD, 18.0 * RAD)
 
   return { x: p.x - c.x + HI_AT.x, y: p.y - c.y + HI_AT.y }
@@ -197,7 +199,7 @@ function albersUsaInvert(x: Double, y: Double): Pt {
     const c = conic(-2.0 * RAD, 58.5 * RAD, 55.0 * RAD, 65.0 * RAD)
     const p = conicInvert((x - AK_AT.x) / AK_SCALE + c.x, (y - AK_AT.y) / AK_SCALE + c.y, 55.0 * RAD, 65.0 * RAD)
 
-    return { x: p.x / RAD - 154.0, y: p.y / RAD }
+    return { x: relLon(p.x / RAD - 154.0, 0.0), y: p.y / RAD }
   }
   if (y >= -0.234 && y < -0.166 && x >= -0.214 && x < -0.115) {
     const c = conic(-3.0 * RAD, 19.9 * RAD, 8.0 * RAD, 18.0 * RAD)
