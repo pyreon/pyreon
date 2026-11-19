@@ -258,12 +258,13 @@ describe('MapChart states (real browser)', () => {
   }
 
   it('a map definition\'s own projection reaches the overlay: a point lands where the same map lays it out', async () => {
-    const def = { data: WORLD, projection: 'equalEarth' as const }
-    const { container, unmount } = mountInBrowser(() => MapChart({ animate: false, map: def, values: {}, width: 400, height: 300, points: [{ lon: 5, lat: 5, color: '#00ff00', name: 'P' }], overlayOptions: { radius: 6 } }))
+    const tall: GeoJson = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { name: 'T' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [20, 0], [20, 60], [0, 60], [0, 0]]] } }] }
+    const def = { data: tall, projection: 'mercator' as const }
+    const { container, unmount } = mountInBrowser(() => MapChart({ animate: false, map: def, values: {}, width: 400, height: 300, points: [{ lon: 18, lat: 55, color: '#00ff00', name: 'P' }], overlayOptions: { radius: 3 } }))
     await flush()
     const c = container.querySelector('canvas')!
     const layout = layoutGeo(def, { x: 0, y: 0, w: 400, h: 300 })
-    const at = geoProject(layout.transform, 5, 5)
+    const at = geoProject(layout.transform, 18, 55)
     const dpr = window.devicePixelRatio || 1
     const d = c.getContext('2d')!.getImageData(Math.round(at.x * dpr), Math.round(at.y * dpr), 1, 1).data
     expect(`${d[0]},${d[1]},${d[2]}`).toBe('0,255,0')
