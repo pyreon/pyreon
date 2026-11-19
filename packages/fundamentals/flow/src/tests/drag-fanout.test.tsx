@@ -189,12 +189,13 @@ describe('single-node drag fan-out (per-id computeds)', () => {
     // (`_nodeById`, and the per-id measurement gate — `measurements` itself is
     // no longer read by geometry). n1 is e-move's UNMOVED endpoint, so its
     // gate's subscriber set loses exactly the swept geometry computed.
-    const subs = () =>
-      (() => {
-        // Two-tier tracking storage — count the inline slot too.
-        const h = accessInternal<{ _s1: unknown; _s: Set<unknown> | null }>(flow._nodeById('n1'))
-        return (h._s1 != null ? 1 : 0) + (h._s?.size ?? 0)
-      })()
+    const subs = () => {
+      // Tracked subscribers are graph edges (`_subs` → `nextSub`).
+      let n = 0
+      type Edge = { nextSub: Edge | null }
+      for (let l = accessInternal<{ _subs: Edge | null }>(flow._nodeById('n1'))._subs; l !== null; l = l.nextSub) n++
+      return n
+    }
     const before = subs()
     expect(before).toBeGreaterThanOrEqual(2) // n1's own thunks + e-move's geometry
 

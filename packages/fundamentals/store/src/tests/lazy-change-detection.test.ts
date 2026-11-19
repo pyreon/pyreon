@@ -11,12 +11,16 @@ import { defineStore } from '../index'
  * delivery is unaffected — a stale/missing subscription would silently drop
  * store-level notifications.
  */
-// Reach the internal `_s` (subscriber set) to assert subscription state.
+// Reach the signal's internals to assert subscription state: the detector is
+// a `subscribe()` listener, which lives in the DIRECT tier (`_d1` inline slot,
+// `_d` Set once promoted); graph edges (`_subs`, effects and computeds) are
+// counted too so a stray tracked subscription would show.
 function subCount(sig: unknown): number {
-  const h = sig as { _s1?: unknown; _s?: Set<unknown> | null }
-  if (h._s1 != null) return 1
-  const s = h._s
-  return s ? s.size : 0
+  const h = sig as { _d1?: unknown; _d?: Set<unknown> | null; _subs?: { nextSub: unknown } | null }
+  let n = h._d1 != null ? 1 : 0
+  if (h._d) n += h._d.size
+  for (let l = h._subs ?? null; l !== null; l = (l as { nextSub: { nextSub: unknown } | null }).nextSub) n++
+  return n
 }
 
 describe('@pyreon/store — lazy change-detection subscription', () => {

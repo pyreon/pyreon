@@ -442,8 +442,11 @@ export function updateComputed(c: ComputedNode): boolean {
   _t.e = prevSub
   const f = c._f & ~F_RUNNING
   if ((f & F_DISPOSED) !== 0) {
-    // Disposed by its own evaluation: drop what the run linked.
-    c._f = f
+    // Disposed during its own evaluation (a sweep its own read triggered):
+    // this evaluation's result is still what the read returns and what the
+    // disposed node keeps; drop what the run linked, notify nobody.
+    if (!same) c._value = next
+    c._f = f | F_HAS_VALUE
     unlinkAllDeps(c)
     return false
   }
