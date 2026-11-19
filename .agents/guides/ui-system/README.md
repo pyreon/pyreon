@@ -89,7 +89,7 @@ Single provider for theme, mode and config. Props: `theme`, `mode` (`"light" | "
 
 Opt-in. With the flag off, output is identical to classic mode.
 
-- `<PyreonUI>` tokenizes the enriched theme with `themeToCssVars`, injects the `:root` block once (SSR-aware), and provides a tree of `var()` leaves.
+- `<PyreonUI>` tokenizes the enriched theme with `themeToCssVars`, writes the `:root` block into the sheet's ONE root-variables slot (`sheet.setRootVariables(css)`: replaced on every theme change, never appended; per request on the server, emitted ahead of every other rule; re-applied after `clearAll()`), and provides a tree of `var()` leaves. Variable names depend only on the theme path, so two blocks would fight; never inject a changing block with the append-only `injectRules` (`css-variables-theme-swap.browser.test.tsx`).
 - A light/dark flip is one `documentElement[data-theme]` write, with no re-resolution or class-name churn: under the flag rocketstyle's `_resolveRsEntry` does not read or key on the mode signal.
 - Component-level `mode(a, b)` becomes a hashed, deduplicated var pair (`--px-m-<fnv1a>`). Theme authoring is unchanged.
 - The root provider writes the mode attribute to `document.documentElement` and renders children unwrapped. Only nested or `inversed` providers render a `display: contents` wrapper for their override.
@@ -103,6 +103,7 @@ Opt-in. With the flag off, output is identical to classic mode.
 
 - Three bases: `el` (Element, layout), `txt` (Text, typography), `list` (List, flowing content). `factory.ts` re-exports `el` / `txt` / `list` / `rs`.
 - Text on a coloured fill reads the fill's `contrast` (`solidFill(t, tone)` in `bases/fragments.ts`: `base` / `contrast` / `hover`), never `light.base`: white on blue-500 is 3.68:1 and on the brand's ember 3.06:1. Text in a tone reads `tintText(t, m, tone)` = `m(text, textDark)`; the opacity steps (`[700]`, `[800]`) are not text colours. A hover fill is the solid `hover` key, not `[800]`, which composites lighter or darker with the page. Locked by `ui-theme`'s `tests/contrast.test.ts` (token pairs) and `text-on-fill-contrast.browser.test.tsx` (computed colours, both themes, both modes).
+- A variant never hard-codes a tone. `rs` makes `variants` a transform dimension: the base `.theme()` and every `.states()` slice spread `toneKeys(t, m, tone)` (`neutralToneKeys` for `secondary`; `fieldKeys` / `fieldStatus` for text fields), and a variant is `toneVariant((tone) => ({ borderColor: tone.toneFill, color: tone.toneText }))` (`fieldVariant` for fields), which reads them from the accumulated theme. One definition per variant, in the state's hue (#4425). A transform's output is not mode-resolved, so it never calls `m()`: mode-aware values travel through the keys. Locked by `variant-follows-state.browser.test.tsx`.
 - Layout in `.attrs()` (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block`); CSS and pseudo-states in `.theme()` (`hover` / `focus` / `active` / `disabled` → `:hover` / `:focus-visible` / `:active` / `:disabled`).
 - `:hover` styles are unconditional; only `cursor: pointer` depends on `onClick` / `href`.
 - CSS property names follow unistyle (`borderWidthTop`, not `borderTopWidth`).
