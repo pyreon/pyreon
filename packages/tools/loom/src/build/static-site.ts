@@ -25,7 +25,8 @@
  * 3. THE REPORT IS A VIRTUAL MODULE, not a loader. Every view renders from the
  *    same scan, so five per-route loaders would re-derive identical data five
  *    times — and could disagree if the workspace changed mid-build. One blob,
- *    baked in, which is also what makes the output work from `file://`.
+ *    baked in, so the site needs no backend: any static host serves it. (It
+ *    still needs HTTP: from `file://` the browser blocks module scripts.)
  */
 import { existsSync, realpathSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'

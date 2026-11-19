@@ -1,5 +1,7 @@
 # @pyreon/url-state
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Signal-backed URL search-param state — type-coerced, SSR-safe, debounce-aware.
 
 Each URL search parameter becomes a Pyreon signal that reads from `window.location.search` and writes back via `history.replaceState` (or `pushState` if you opt in). Type inferred from the default value: `useUrlState('page', 1)` is `Signal<number>`; `useUrlState('q', '')` is `Signal<string>`; `useUrlState('tags', [] as string[])` is `Signal<string[]>`. Two API shapes — single-param (`useUrlState(key, default, opts?)`) and schema (`useUrlState({ page: 1, sort: 'name' })`). Optional `@pyreon/router` integration so URL writes go through your router's `replace()` instead of raw history.
@@ -122,8 +124,9 @@ The `UrlRouter` interface is minimal:
 interface UrlRouter {
   replace(path: string): void | Promise<void>
   push?(path: string): void | Promise<void>
-  mode?: 'hash' | 'history'
+  mode?: 'hash' | 'history' | 'memory'
   _base?: string
+  _currentPath?: () => string // read in memory mode, where the page URL is not the route
   currentRoute?: () => unknown // when present, navigations update every live signal
 }
 ```
@@ -149,7 +152,10 @@ https://app.example/#/products?page=3
 So once a router is registered, `useUrlState` reads and writes the query on the
 side of the URL that router owns: inside the fragment in hash mode, in
 `location.search` in history mode (where it also preserves any `#fragment` and
-hands the router a path relative to its `base`). `useRouter()` exposes `mode`, so
+hands the router a path relative to its `base`), and inside the router itself
+in memory mode (`createRouter({ mode: 'memory' })` — url-state never touches
+`location` then, which belongs to the page the router is embedded in).
+`useRouter()` exposes `mode`, so
 `setUrlRouter(useRouter())` picks this up with no extra configuration.
 
 One consequence worth stating: in a hash-routed app, **do not read the params

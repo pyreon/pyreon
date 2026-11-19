@@ -1,5 +1,7 @@
 # @pyreon/attrs
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Chainable HOC factory for default props, base swaps, composition, and statics.
 
 `@pyreon/attrs` wraps a Pyreon component in an immutable, chainable builder that accumulates default props (`.attrs()`), reconfigures the base component (`.config()`), composes additional HOCs (`.compose()`), and attaches static metadata (`.statics()`). Every chain method returns a new component — the original is never mutated — and TypeScript generics accumulate so prop types stay correct after each `.attrs<P>({...})` call. It's the foundation `@pyreon/rocketstyle` builds on; you'll also use it directly when you want default-prop composition without the dimension-styling layer.

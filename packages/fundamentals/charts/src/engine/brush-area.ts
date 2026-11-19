@@ -160,7 +160,7 @@ export function brushSelection(spec: ChartSpec, l: PlotLayout, areas: BrushArea[
 }
 
 /** The selection with only the listed series kept (ECharts' `brush.seriesIndex`); an empty list keeps all. */
-export function brushOnlySeries(sel: BrushSeriesSelection[], only: Double[]): BrushSeriesSelection[] {
+export function brushOnlySeries(sel: BrushSeriesSelection[], only: readonly Double[]): BrushSeriesSelection[] {
   if (only.length === 0) return sel
   const out: BrushSeriesSelection[] = []
   for (const x of sel) {

@@ -23,9 +23,21 @@ function makePlugin(opts: { command: 'build' | 'serve'; isProduction: boolean })
     { root: REPO },
     { command: opts.command, mode: opts.isProduction ? 'production' : 'development' },
   )
-  ;(plugin.configResolved as unknown as (c: { command: string; isProduction: boolean }) => void)({
+  type Resolved = {
+    command: string
+    isProduction: boolean
+    root: string
+    cacheDir: string
+    publicDir: string
+    build: { outDir: string }
+  }
+  ;(plugin.configResolved as unknown as (c: Resolved) => void)({
     command: opts.command,
     isProduction: opts.isProduction,
+    root: REPO,
+    cacheDir: join(REPO, 'node_modules/.vite'),
+    publicDir: '',
+    build: { outDir: 'dist' },
   })
   return plugin
 }

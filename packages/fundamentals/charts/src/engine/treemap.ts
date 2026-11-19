@@ -17,7 +17,7 @@ export interface TreeNode {
   name: string
   /** Leaf value; a parent's value is the sum of its children when absent. */
   value?: Double | undefined
-  children?: TreeNode[] | undefined
+  children?: readonly TreeNode[] | undefined
   color?: string | undefined
 }
 
@@ -164,7 +164,7 @@ function squarify(values: Double[], rect: Rect): Rect[] {
 }
 
 /** Child indices sorted by value, descending (insertion sort — tiny n, lowers cleanly). */
-export function orderByValue(children: TreeNode[]): number[] {
+export function orderByValue(children: readonly TreeNode[]): number[] {
   const order: number[] = []
   const vals: Double[] = []
   for (let i = 0; i < children.length; i++) {
@@ -186,7 +186,7 @@ export function orderByValue(children: TreeNode[]): number[] {
 }
 
 interface TreemapFrame {
-  children: TreeNode[]
+  children: readonly TreeNode[]
   area: Rect
   depth: number
   path: number[]
@@ -195,7 +195,7 @@ interface TreemapFrame {
 }
 
 /** Lay out the whole hierarchy into flat cells (parents before children). */
-export function layoutTreemap(nodes: TreeNode[], rect: Rect, options?: TreemapOptions): TreemapCell[] {
+export function layoutTreemap(nodes: readonly TreeNode[], rect: Rect, options?: TreemapOptions): TreemapCell[] {
   const palette = options?.palette ?? DEFAULT_PALETTE
   const cells: TreemapCell[] = []
   const padding = options?.padding ?? 2.0

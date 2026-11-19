@@ -1,6 +1,8 @@
 # @pyreon/native-router-swift
 
-> **EXPERIMENTAL.** SwiftPM package implementing [`@pyreon/router`](../../core/router/)'s API surface on top of SwiftUI's `NavigationStack`. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for why a Swift package ships through npm and how a scaffolded Xcode project resolves it.
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
+SwiftPM package implementing [`@pyreon/router`](../../core/router/)'s API surface on top of SwiftUI's `NavigationStack`. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for why a Swift package ships through npm and how a scaffolded Xcode project resolves it.
 
 ## Installation
 

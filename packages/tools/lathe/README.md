@@ -1,5 +1,7 @@
 # @pyreon/lathe
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Spec-to-client code generation for the Pyreon stack. Reads an OpenAPI 3.x
 document; emits `@pyreon/validate` schemas, `@pyreon/http` endpoints,
 `@pyreon/query` hooks, mock fixtures and `@pyreon/atlas` scenarios.

@@ -11,8 +11,11 @@
 // landed in the finance app and failed only in CI. The gate turns that
 // one-site fix into policy.
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  checkIosSigningPolicy,
+  findDerivedDataGaps,
+  findDerivedDataGapsInTs,
   findEntitlementGaps,
   findSigningViolations,
 } from '../../../../../scripts/check-ios-signing-policy'
@@ -107,5 +110,56 @@ describe('findEntitlementGaps', () => {
         CODE_SIGN_ENTITLEMENTS: ios/App.entitlements
 `
     expect(findEntitlementGaps([{ path: 'p', source: yml }])).toEqual([])
+  })
+})
+
+// Without -derivedDataPath Xcode builds into ~/Library/Developer/Xcode/DerivedData,
+// outside the checkout, and the folder outlives the worktree that produced it
+// (24 folders, 3 GB on one machine, from three example scripts).
+describe('findDerivedDataGaps', () => {
+  it('flags a multi-line xcodebuild invocation without -derivedDataPath', () => {
+    const sh = `set -e\nxcodebuild build-for-testing \\\n  -project ios/X.xcodeproj -scheme X \\\n  -configuration Debug\necho done\n`
+    expect(findDerivedDataGaps(sh, 'x.sh')).toEqual([
+      { file: 'x.sh', line: 2, snippet: 'xcodebuild build-for-testing \\' },
+    ])
+  })
+
+  it('flags one behind env-var prefixes, and one handed to a wrapper after --', () => {
+    expect(findDerivedDataGaps('A=1 B=x xcodebuild test-without-building -scheme X\n')).toHaveLength(1)
+    expect(findDerivedDataGaps('bun wrap.ts --results r -- \\\n  xcodebuild test \\\n  -scheme X\n')).toHaveLength(1)
+  })
+
+  it('accepts the flag on any continuation line, and does not read past the invocation', () => {
+    const ok = `xcodebuild archive \\\n  -archivePath a \\\n  -derivedDataPath build/DerivedData \\\n  CODE_SIGNING_ALLOWED=NO \\\n  | tail -5\n`
+    expect(findDerivedDataGaps(ok)).toEqual([])
+    const later = `xcodebuild build -scheme X\nfoo -derivedDataPath x\n`
+    expect(findDerivedDataGaps(later)).toHaveLength(1)
+  })
+
+  it('ignores comments, prose, and calls that build nothing', () => {
+    expect(findDerivedDataGaps('# xcodebuild build -scheme X\n')).toEqual([])
+    expect(findDerivedDataGaps(`echo "run xcodebuild later"\n`)).toEqual([])
+    expect(findDerivedDataGaps('xcodebuild -version\nxcodebuild -showsdks\n')).toEqual([])
+  })
+})
+
+describe('findDerivedDataGapsInTs', () => {
+  it('flags a spawn whose argument array lacks -derivedDataPath', () => {
+    expect(findDerivedDataGapsInTs(`run(\n  'xcodebuild',\n  ['-project', p, 'build'],\n)`)).toHaveLength(1)
+    expect(findDerivedDataGapsInTs(`run('xcodebuild', ['-project', p, '-derivedDataPath', d, 'build'])`)).toEqual([])
+  })
+})
+
+describe('the repository', () => {
+  it('passes the whole policy (signing, entitlements, -derivedDataPath)', () => {
+    const errors: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => void errors.push(a.join(' ')))
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      expect(checkIosSigningPolicy(), errors.join('\n')).toBe(0)
+    } finally {
+      spy.mockRestore()
+      log.mockRestore()
+    }
   })
 })

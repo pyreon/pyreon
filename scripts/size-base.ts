@@ -22,12 +22,12 @@
  *   bun scripts/size-base.ts --ref=HEAD^1 --out=/tmp/size-base.json [--dir=<worktree path>]
  */
 
-import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 import { measureRouteSizes } from './check-route-budgets'
+import { removeOnExit } from './remove-on-exit'
 import { prepareBaseTree, run } from './size-base-tree'
 import { movesLibSizes, movesRouteSizes, type SizeBaseFile } from './size-budget-policy'
 import { loadCeilings, sizeBudgetsDir } from './size-budget-store'
@@ -68,7 +68,14 @@ function main(): void {
   const libMoved = changed.some(movesLibSizes)
   const routesMoved = changed.some(movesRouteSizes)
 
-  const dir = resolve(flag('dir') ?? join(mkdtempSync(join(tmpdir(), 'pyreon-size-base-')), 'tree'))
+  // The worktree is about 2 GB once its dependencies are linked. Both it and
+  // the mkdtemp parent are removed on every exit path, a kill included, and
+  // the worktree is unregistered from the repository.
+  const given = flag('dir')
+  const parent = given === undefined ? mkdtempSync(join(tmpdir(), 'pyreon-size-base-')) : undefined
+  const dir = resolve(given ?? join(parent!, 'tree'))
+  const removeTree = removeOnExit(dir, { gitWorktree: REPO_ROOT })
+  const removeParent = parent === undefined ? undefined : removeOnExit(parent)
   run('git', ['worktree', 'add', '--detach', '--force', dir, sha], REPO_ROOT)
   try {
     // An absent directory reads as no ceilings: a base from before the
@@ -97,8 +104,8 @@ function main(): void {
     console.log(`[size-base] base ${sha.slice(0, 9)}: bundles ${count(base.bundle.sizes)}; imports ${count(base.imports.sizes)}; routes ${count(base.routes.sizes)}`)
     console.log(`[size-base] wrote ${resolve(out)}`)
   } finally {
-    spawnSync('git', ['worktree', 'remove', '--force', dir], { cwd: REPO_ROOT })
-    rmSync(dir, { recursive: true, force: true })
+    removeTree()
+    removeParent?.()
   }
 }
 

@@ -12,7 +12,7 @@ import { isFiniteNumber } from './scale'
 export interface RiverSeries {
   name: string
   /** One value per category; missing / non-finite counts as 0. */
-  values: Double[]
+  values: readonly Double[]
   color?: string | undefined
 }
 
@@ -77,7 +77,7 @@ function riverValue(s: RiverSeries, i: number): Double {
 }
 
 /** Lay the layers out into `box`. */
-export function layoutRiver(series: RiverSeries[], box: Rect, options?: RiverOptions): RiverLayout {
+export function layoutRiver(series: readonly RiverSeries[], box: Rect, options?: RiverOptions): RiverLayout {
   const palette = options?.palette ?? DEFAULT_PALETTE
   const fontSize = options?.fontSize ?? 11.0
   const showAxis = options?.showAxis !== false

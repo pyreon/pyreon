@@ -47,6 +47,7 @@ const parse = (value: string): Rgba => {
   const m = /rgba?\(([^)]+)\)/.exec(value)
   if (!m) return [0, 0, 0, 0]
   const [r = 0, g = 0, b = 0, a = 1] = m[1]!.split(/[\s,/]+/).filter(Boolean).map(Number)
+
   return [r, g, b, a]
 }
 
@@ -62,6 +63,7 @@ const luminance = ([r, g, b]: Rgba) => {
     const s = v / 255
     return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
   }
+
   return 0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b)
 }
 
@@ -75,6 +77,7 @@ const backdrop = (el: Element): Rgba => {
   }
   let painted: Rgba = [255, 255, 255, 1]
   for (let i = layers.length - 1; i >= 0; i--) painted = over(layers[i]!, painted)
+
   return painted
 }
 
@@ -96,6 +99,7 @@ const ratioOf = (el: Element) => {
   const bg = mix(ownBg, below, opacity)
   const fg = mix(ownFg, below, opacity)
   const [hi, lo] = [luminance(fg), luminance(bg)].sort((a, b) => b - a) as [number, number]
+
   return (hi + 0.05) / (lo + 0.05)
 }
 
@@ -103,8 +107,6 @@ interface Case {
   name: string
   /** The vnode to mount; the measured element carries `data-measure`. */
   render: () => VNodeChild
-  /** Modes the component follows. Tree's selected row is light-only (its rule is a CSS string; #4340). */
-  modes?: ReadonlyArray<'light' | 'dark'>
 }
 
 const M = { 'data-measure': '' }
@@ -115,21 +117,26 @@ const CASES: Case[] = [
     { name: `Button state=${state}`, render: () => h(any(Button), { ...M, state }, 'Save') },
     { name: `Button state=${state} (hover)`, render: () => h(any(Button), { ...M, state, hover: true }, 'Save') },
   ]),
-  ...(['outline', 'subtle', 'ghost', 'link'] as const).flatMap((variant) => [
-    { name: `Button variant=${variant}`, render: () => h(any(Button), { ...M, state: 'primary', variant }, 'Save') },
-    {
-      name: `Button variant=${variant} (hover)`,
-      render: () => h(any(Button), { ...M, state: 'primary', variant, hover: true }, 'Save'),
-    },
-  ]),
+  // A variant draws in the state's tone (#4425), so every state x variant pair is measured.
+  ...(['primary', 'danger', 'success', 'secondary'] as const).flatMap((state) =>
+    (['outline', 'subtle', 'ghost', 'link'] as const).flatMap((variant) => [
+      { name: `Button state=${state} variant=${variant}`, render: () => h(any(Button), { ...M, state, variant }, 'Save') },
+      {
+        name: `Button state=${state} variant=${variant} (hover)`,
+        render: () => h(any(Button), { ...M, state, variant, hover: true }, 'Save'),
+      },
+    ]),
+  ),
   ...(['primary', 'danger'] as const).flatMap((state) => [
     { name: `ActionIcon state=${state}`, render: () => h(any(ActionIcon), { ...M, state }, '+') },
     { name: `ActionIcon state=${state} (hover)`, render: () => h(any(ActionIcon), { ...M, state, hover: true }, '+') },
   ]),
-  ...(['outline', 'subtle'] as const).map((variant) => ({
-    name: `ActionIcon variant=${variant}`,
-    render: () => h(any(ActionIcon), { ...M, state: 'primary', variant }, '+'),
-  })),
+  ...(['primary', 'danger', 'secondary'] as const).flatMap((state) =>
+    (['outline', 'subtle'] as const).map((variant) => ({
+      name: `ActionIcon state=${state} variant=${variant}`,
+      render: () => h(any(ActionIcon), { ...M, state, variant }, '+'),
+    })),
+  ),
   { name: 'PaginationItem state=active', render: () => h(any(PaginationItem), { ...M, state: 'active' }, '2') },
   {
     name: 'PaginationItem state=active (hover)',
@@ -153,7 +160,10 @@ const CASES: Case[] = [
     name: `Alert state=${state}`,
     render: () => h(any(Alert), { ...M, state }, 'Your changes are live.'),
   })),
-  { name: 'Alert variant=solid', render: () => h(any(Alert), { ...M, state: 'info', variant: 'solid' }, 'New version') },
+  ...(['info', 'success', 'warning', 'error'] as const).map((state) => ({
+    name: `Alert state=${state} variant=solid`,
+    render: () => h(any(Alert), { ...M, state, variant: 'solid' }, 'New version'),
+  })),
   ...(['primary', 'success', 'error', 'warning'] as const).map((state) => ({
     name: `Badge state=${state}`,
     render: () => h(any(Badge), { ...M, state }, 'New'),
@@ -167,7 +177,11 @@ const CASES: Case[] = [
   {
     name: 'TreeItem state=selected',
     render: () => h(any(TreeItem), { ...M, state: 'selected' }, 'src'),
-    modes: ['light'],
+  },
+  // The batteries-included Tree marks its selected row with the attribute.
+  {
+    name: 'TreeItem aria-selected',
+    render: () => h(any(TreeItem), { ...M, 'aria-selected': 'true' }, 'src'),
   },
 ]
 
@@ -188,7 +202,6 @@ describe.runIf(IS_BROWSER_RUNNER)('text on fills and tints reaches 4.5:1 (real C
     for (const mode of ['light', 'dark'] as const) {
       describe(`${label}, ${mode} mode`, () => {
         for (const c of CASES) {
-          if (c.modes && !c.modes.includes(mode)) continue
           it(c.name, () => {
             const { container, unmount } = mount(t, mode, c.render())
             const el = container.querySelector('[data-measure]')

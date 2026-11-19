@@ -1,6 +1,6 @@
 {
   "package": "@pyreon/styler",
-  "bundle": 8857,
+  "bundle": 9115,
   "imports": {
     "css": 1588,
     "useTheme": 1183

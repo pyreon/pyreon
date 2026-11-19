@@ -4929,9 +4929,10 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // TYPE, so the verbatim emit failed "cannot call value of non-function
       // type 'Date'" — a clean-parse silent mis-emit. Lower to the epoch-ms
       // Double (the inference types it float — see infer-type.ts: Kotlin's
-      // Int is 32-bit, ms-since-epoch needs Double). Other `Date.*` statics
-      // (`Date.parse`, …) have no faithful mapping → NAMED build-failing
-      // warning, never a silent drop.
+      // Int is 32-bit, ms-since-epoch needs Double). `Date.parse` / `Date.UTC`
+      // lower at parse time (date-lowering.ts); any other `Date.*` static that
+      // reaches here (or one of those with an unsupported arity) has no
+      // faithful mapping → NAMED build-failing warning, never a silent drop.
       if (
         e.callee.kind === 'member' &&
         e.callee.object.kind === 'identifier' &&
@@ -4941,7 +4942,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return '(Date().timeIntervalSince1970 * 1000)'
         }
         _emitWarnings.push(
-          `Date.${e.callee.property}(...) has no native lowering — only Date.now() (epoch milliseconds, a Double) is supported. Format or parse dates in display logic on the platform side.`,
+          `Date.${e.callee.property}(...) has no native lowering — the supported statics are Date.now(), Date.parse(text) and Date.UTC(year, month, …) with up to seven arguments (a date is its epoch milliseconds, a Double). Format or parse dates in display logic on the platform side.`,
         )
       }
       // `Math.X(...)` — JS has the `Math` namespace; Swift does not.
