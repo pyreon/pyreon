@@ -12,6 +12,7 @@
 interface PyreonErrorBridge {
   __pyreon_report_error__?: (err: unknown, phase: 'effect') => void
 }
+
 const _errorBridge = globalThis as PyreonErrorBridge
 
 function _defaultErrorHandler(err: unknown): void {

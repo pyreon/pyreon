@@ -18,7 +18,9 @@ interface LinkView {
   prevSub: LinkView | null
   nextSub: LinkView | null
 }
+
 const subCount = edgeCount
+
 /** Walk the list both ways and check every back-pointer and the tail. */
 const listOf = (x: unknown): unknown[] => {
   const h = x as { _subs: LinkView | null; _subsTail: LinkView | null }
@@ -30,6 +32,7 @@ const listOf = (x: unknown): unknown[] => {
     prev = l
   }
   expect(h._subsTail).toBe(prev)
+
   return fwd
 }
 

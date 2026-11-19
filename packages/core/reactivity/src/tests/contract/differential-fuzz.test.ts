@@ -60,6 +60,7 @@ function rng(seed: number): () => number {
     a = (a + 0x6d2b79f5) | 0
     let t = Math.imul(a ^ (a >>> 15), 1 | a)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
@@ -95,6 +96,7 @@ function evalFormula(f: Formula, r: (j: number) => number): number {
       const n = Math.abs(r(f.a)) % (f.list.length + 1)
       let s = 0
       for (let i = 0; i < n; i++) s += r(f.list[i]!)
+
       return s
     }
     case 'mod':
@@ -277,6 +279,7 @@ function generateCase(seed: number, steps: number): Case {
     const cleanComputeds = computeds.filter((i) => clean.includes(i))
     if (cleanComputeds.length > 0)
       return { o: 'killer', a: pickFrom(clean), target: { computed: pickFrom(cleanComputeds) } }
+
     return { o: 'directSignal', sig: 0 }
   }
   const create = () => {
@@ -310,6 +313,7 @@ function generateCase(seed: number, steps: number): Case {
     } else if (computeds.length > 0)
       ops.push({ op: 'disposeComputed', node: pickFrom(computeds), pull: rand() < 0.5 })
   }
+
   return { seed, nodes, selectors, ops }
 }
 
@@ -328,6 +332,7 @@ function keptTail(
   const read = new Set(reads.map(([j]) => j))
   const kept: Array<[number, number]> = []
   for (const r of prev) if (!read.has(r[0]) && !kept.some(([j]) => j === r[0])) kept.push(r)
+
   return kept
 }
 
@@ -446,12 +451,14 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         )
       }
     }
+
     return v
   }
   const throws = (i: number, v: number[]): boolean => {
     const n = c.nodes[i]!
     if (n.t !== 'computed' || n.throwOn === null || frozen.has(i)) return false
     const raw = evalFormula(n.f, (j) => v[j]!)
+
     return ((raw % 7) + 7) % 7 === n.throwOn
   }
   /** Record that throwers were evaluated at state `sv` (the oracle reads them). */
@@ -533,6 +540,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           const x = get(j)
           reads.push([j, x])
           seen.push(changes[j]!)
+
           return x
         })
         const prev = lastReads[i]
@@ -564,6 +572,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         }
         if (lastEval[i] !== raw) changes[i]!++
         lastEval[i] = raw
+
         return raw
       }
       const comp = n.equals ? computed(fn, { equals: (a, b) => a === b }) : computed(fn)
@@ -663,6 +672,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
     if (spec.ret) labels.push(`${run}:ret`)
     rec.pending = labels
     if (spec.ret) return () => void rec.log.push(`${run}:ret`)
+
     return undefined
   }
 
@@ -678,6 +688,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         recs.set(id, rec)
         const e = effect(effectBody(rec, spec))
         rec.dispose = () => e.dispose()
+
         return
       }
       case 'directSignal':
@@ -691,6 +702,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           rec.seen = s.peek()
         }
         rec.dispose = spec.o === 'directSignal' ? s.direct(fn) : s.subscribe(fn)
+
         return
       }
       case 'directComputed': {
@@ -704,6 +716,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         })
         // establish the edge (a direct updater alone does not evaluate)
         rec.seen = comp._v
+
         return
       }
       case 'selectorRow': {
@@ -715,6 +728,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           rec.seen = sel(spec.key)
         })
         rec.dispose = () => e.dispose()
+
         return
       }
       case 'selectorSub': {
@@ -725,6 +739,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           rec.fires!++
           rec.seen = m
         })
+
         return
       }
       case 'outer': {
@@ -773,6 +788,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           first = false
         })
         rec.dispose = () => e.dispose()
+
         return
       }
       case 'killer': {
@@ -801,6 +817,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           }
         })
         rec.dispose = () => e.dispose()
+
         return
       }
     }
@@ -913,6 +930,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         (op.spec.o === 'selectorRow' || op.spec.o === 'selectorSub')
       )
         return { sel: op.spec.sel, key: op.spec.key }
+
     return null
   }
 
@@ -1333,6 +1351,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
     fail(`seed ${c.seed} teardown threw: ${err instanceof Error ? err.message : String(err)}`)
   }
   setErrorHandler(() => {})
+
   return violations
 }
 
@@ -1348,6 +1367,7 @@ function quietRun(c: Case): string[] {
     extraEffectRuns: 0,
     leakAfterExtraRun: 0,
   }
+
   return runCase(c, s, true)
 }
 
@@ -1367,6 +1387,7 @@ function shrink(c: Case): Case {
       }
     }
   }
+
   return cur
 }
 
@@ -1383,6 +1404,7 @@ function describeCase(c: Case): string {
   if (c.selectors.length) lines.push(`selectors over nodes: ${JSON.stringify(c.selectors)}`)
   lines.push('ops:')
   c.ops.forEach((op, i) => lines.push(`  ${i}: ${JSON.stringify(op)}`))
+
   return lines.join('\n')
 }
 
@@ -1390,6 +1412,7 @@ function describeCase(c: Case): string {
 
 const env = (k: string): string | undefined =>
   (process.env as Record<string, string | undefined>)[k]
+
 const CASES = Number(env('REACTIVITY_FUZZ_CASES') ?? 1500)
 const STEPS = Number(env('REACTIVITY_FUZZ_STEPS') ?? 30)
 const ONLY = env('REACTIVITY_FUZZ_SEED')

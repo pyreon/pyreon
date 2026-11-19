@@ -85,6 +85,7 @@ interface CleanupFrame {
   /** Context snapshot hook registered by `@pyreon/core` (see `setSnapshotCapture`). */
   s: ReactiveSnapshotCapture | null
 }
+
 const _c: CleanupFrame = {
   c: null,
   o: false,
@@ -143,6 +144,7 @@ export function _enterCleanupFrame(): CleanupFrameToken {
   const token: CleanupFrameToken = _c.o ? (_c.c ?? true) : false
   _c.o = true
   _c.c = null
+
   return token
 }
 
@@ -155,6 +157,7 @@ export function _exitCleanupFrame(token: CleanupFrameToken): (() => void)[] | nu
   const collected = _c.c
   _c.o = token !== false
   _c.c = typeof token === 'boolean' ? null : token
+
   return collected
 }
 
@@ -257,20 +260,28 @@ class EffectNode implements WatcherNode, Effect {
       if ((f & F_DISPOSED) !== 0) unlinkAllDeps(this)
       else if (ok) purgeDeps(this)
       else settleUnread(unconfirmed(this))
-      // What this run registered is APPENDED, never assigned (cleanups
-      // registered before a throw are kept too).
-      const own = _c.c
-      _c.o = prevCleanupWindow
-      _c.c = prevCleanupCollector
-      if (own !== null) this._cleanups = this._cleanups === null ? own : this._cleanups.concat(own)
-      const mine = _t.n
-      if (mine !== LAZY_INNER && mine !== null)
-        this._inner = this._inner === null ? (mine as Effect[]) : this._inner.concat(mine as Effect[])
-      _t.n = outerCollector
+      this._closeWindows(prevCleanupWindow, prevCleanupCollector, outerCollector)
     }
     // Notify scope after each reactive re-run (not the initial synchronous run)
     // so onUpdate hooks fire after the DOM has settled.
     if (!first) this._scope?.notifyEffectRan()
+  }
+
+  /**
+   * Close the run's `onCleanup` and inner-effect windows and restore the
+   * caller's. What this run registered is APPENDED, never assigned (cleanups
+   * registered before a throw are kept too).
+   */
+  _closeWindows(prevOpen: boolean, prevCollector: (() => void)[] | null, outerCollector: unknown[] | null): void {
+    const own = _c.c
+    _c.o = prevOpen
+    _c.c = prevCollector
+    if (own !== null) this._cleanups = this._cleanups === null ? own : this._cleanups.concat(own)
+    const mine = _t.n
+    if (mine !== LAZY_INNER && mine !== null) {
+      this._inner = this._inner === null ? (mine as Effect[]) : this._inner.concat(mine as Effect[])
+    }
+    _t.n = outerCollector
   }
 
   _runCleanup(): void {
@@ -380,6 +391,7 @@ export function effect(
   // to scope.add — that's what keeps child component effects mounted inside
   // `mountFor`'s `runUntracked` wrap alive across the For's next re-run.
   registerEffectHere(node)
+
   return node
 }
 
@@ -499,6 +511,7 @@ class BindingNode implements WatcherNode {
           // A throw may have skipped reading some of its (static) deps.
           if (!ok) settleUnread(this._deps)
         }
+
         return
       }
       this._track(true)

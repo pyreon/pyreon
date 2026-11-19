@@ -237,6 +237,7 @@ export function _addDirect(host: DirectHost, fn: () => void): void {
     set.add(fn)
     host._d1 = null
     host._d = set
+
     return
   }
   if (d1 !== null) {
@@ -270,6 +271,7 @@ function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
   if (process.env.NODE_ENV !== 'production' && this == null) _detached('subscribe')
   _addDirect(this, listener)
   const self = this
+
   return () => _removeDirect(self, listener)
 }
 
@@ -342,6 +344,7 @@ export function _suspendSoleSubscriber<T>(sig: Signal<T>): SoleSubscriberToken |
   }
   if (d === null || d.size !== 1) return null
   s._d = null
+
   return d
 }
 
@@ -384,6 +387,7 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
   if (process.env.NODE_ENV !== 'production') updater = _rdDirect(updater)
   _addDirect(this, updater)
   const self = this
+
   return () => _removeDirect(self, updater)
 }
 
@@ -405,6 +409,7 @@ export function _subscriberCount(s: { _subs: Link | null; _d1?: (() => void) | n
   }
   if (s._d1 != null) n++
   if (s._d != null) n += s._d.size
+
   return n
 }
 

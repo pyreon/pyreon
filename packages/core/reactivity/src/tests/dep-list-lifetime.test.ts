@@ -19,6 +19,7 @@ describe('owners keep a working dep list', () => {
         a()
         if (flip()) b()
       })
+
       return () => e.dispose()
     },
     renderEffect: (a, b, flip) =>
@@ -31,6 +32,7 @@ describe('owners keep a working dep list', () => {
       const e = effect(() => {
         c()
       })
+
       return () => {
         e.dispose()
         c.dispose()

@@ -65,10 +65,11 @@ describe('effect', () => {
     const s = signal(0)
     const scope = effectScope()
     scope.runInScope(() => {
-      for (let i = 0; i < 5; i++)
+      for (let i = 0; i < 5; i++) {
         effect(() => {
           s()
         })
+      }
     })
     expect(edgeCount(s)).toBe(5)
     scope.stop()

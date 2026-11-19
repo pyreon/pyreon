@@ -100,6 +100,7 @@ export class Link {
   /** Neighbours in `dep`'s subscriber list. */
   prevSub: Link | null
   nextSub: Link | null
+
   constructor(dep: Source, sub: Subscriber, prevSub: Link | null) {
     this.dep = dep
     this.sub = sub
@@ -168,6 +169,7 @@ interface TrackingFrame {
    */
   n: unknown[] | null
 }
+
 export const _t: TrackingFrame = { e: null, n: null }
 
 /** Batch state. */
@@ -175,6 +177,7 @@ interface BatchState {
   /** Open batch windows (explicit `batch()`, inline write windows, first runs, the flush). */
   d: number
 }
+
 export const _b: BatchState = { d: 0 }
 
 /**
@@ -285,6 +288,7 @@ function isConfirmed(l: Link, sub: Subscriber): boolean {
     if (x === l) return true
     if (x === tail) return false
   }
+
   return false
 }
 
@@ -355,31 +359,31 @@ function propagateDeep(head: Link): void {
   const base = stack.length
   let l: Link | null = head
   for (;;) {
-    if (l !== null) {
-      const sub: Subscriber = l.sub
-      const next: Link | null = l.nextSub
-      const f = sub._f
-      if ((f & (F_MARKED | F_DISPOSED)) === 0 && ((f & F_RUNNING) === 0 || isConfirmed(l, sub))) {
-        if ((f & F_COMPUTED) !== 0) {
-          sub._f = f | F_PENDING
-          const c = sub as ComputedNode
-          if (c._d1 !== null || c._d !== null) enqueueNode(c)
-          const s = c._subs
-          if (s !== null) {
-            if (next !== null) stack.push(next)
-            l = s
-            continue
-          }
-        } else if ((f & F_QUEUED) === 0) {
-          sub._f = f | F_PENDING | F_QUEUED
-          _q.push(sub as QueueEntry)
-        } else sub._f = f | F_PENDING
-      }
-      l = next
+    if (l === null) {
+      if (stack.length === base) return
+      l = stack.pop() as Link
       continue
     }
-    if (stack.length === base) return
-    l = stack.pop() as Link
+    const sub: Subscriber = l.sub
+    const next: Link | null = l.nextSub
+    const f = sub._f
+    if ((f & (F_MARKED | F_DISPOSED)) === 0 && ((f & F_RUNNING) === 0 || isConfirmed(l, sub))) {
+      if ((f & F_COMPUTED) !== 0) {
+        sub._f = f | F_PENDING
+        const c = sub as ComputedNode
+        if (c._d1 !== null || c._d !== null) enqueueNode(c)
+        const s = c._subs
+        if (s !== null) {
+          if (next !== null) stack.push(next)
+          l = s
+          continue
+        }
+      } else if ((f & F_QUEUED) === 0) {
+        sub._f = f | F_PENDING | F_QUEUED
+        _q.push(sub as QueueEntry)
+      } else sub._f = f | F_PENDING
+    }
+    l = next
   }
 }
 
@@ -435,6 +439,7 @@ export function updateComputed(c: ComputedNode): boolean {
     c._f = (c._f & ~F_RUNNING) | F_HAS_VALUE
     _errorHandler(err)
     settleUnread(unconfirmed(c))
+
     return false
   }
   _t.e = prevSub
@@ -446,6 +451,7 @@ export function updateComputed(c: ComputedNode): boolean {
     if (!same) c._value = next
     c._f = f | F_HAS_VALUE
     unlinkAllDeps(c)
+
     return false
   }
   purgeDeps(c)
@@ -455,6 +461,7 @@ export function updateComputed(c: ComputedNode): boolean {
   }
   c._value = next
   c._f = f | F_HAS_VALUE
+
   return (f0 & F_HAS_VALUE) !== 0
 }
 
@@ -585,6 +592,7 @@ export function checkDirty(root: Subscriber): boolean {
         continue top
       }
     }
+
     return dirty
   }
 }

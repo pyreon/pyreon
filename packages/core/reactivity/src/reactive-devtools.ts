@@ -184,6 +184,7 @@ interface LinkLike {
   sub: object
   nextSub: LinkLike | null
 }
+
 interface SubscriberHostLike {
   _subs: LinkLike | null
   /**
@@ -314,8 +315,10 @@ export function _rdScopeNodes(scope: object): OwnedReactiveNode[] {
       out.push({ id, name: recName(rec), kind: rec.kind })
     }
     ids.length = live
+
     return out
   }
+
   return []
 }
 
@@ -333,6 +336,7 @@ export function _setCoverageRetention(on: boolean): void {
   _retain = on
   if (!on) _retained.clear()
 }
+
 // Subscriber-callback identity → node id. Lets `getReactiveGraph()`
 // resolve `_s` Set membership (anonymous `recompute`/`run` closures)
 // back to graph nodes for edge extraction. A WeakMap so a disposed
@@ -385,6 +389,7 @@ function preview(v: unknown): string {
   } catch {
     s = '[unstringifiable]'
   }
+
   return s.length > PREVIEW_MAX ? `${s.slice(0, PREVIEW_MAX)}…` : s
 }
 
@@ -477,6 +482,7 @@ export function _captureCallerLocation(skipFrames: number): DeferredLocation {
   Error.stackTraceLimit = skipFrames + 2
   const err = new Error()
   Error.stackTraceLimit = limit
+
   return { __deferred: true, err, skipFrames }
 }
 
@@ -500,6 +506,7 @@ function resolveDeferred(d: DeferredLocation): SourceLocation | undefined {
   // form's contract.
   const target = lines[startIdx + 1 + d.skipFrames]
   if (!target) return undefined
+
   return parseStackLine(target)
 }
 
@@ -525,6 +532,7 @@ function _resolveLoc(rec: NodeRec): SourceLocation | undefined {
   // "not yet resolved" undefined). Drop the Error so it's GC-eligible.
   rec.loc = parsed ?? null
   _pendingLoc.delete(node!)
+
   return parsed
 }
 
@@ -558,6 +566,7 @@ function parseStackLine(line: string): SourceLocation | undefined {
     const col = Number.parseInt(jsc[3], 10)
     if (Number.isFinite(lineN) && Number.isFinite(col)) return { file, line: lineN, col }
   }
+
   return undefined
 }
 
@@ -628,6 +637,7 @@ export function _rdRegister(
     enumerable: false,
     configurable: true,
   })
+
   return id
 }
 
@@ -733,6 +743,7 @@ const _bf: {
   target: string | undefined
   key: string | undefined
 } = { depth: 0, kind: null, target: undefined, key: undefined }
+
 const _bfSaved: (ReactiveBindingKind | string | undefined | null)[] = []
 // What the most recently CLOSED frame captured, consumed by the
 // `_rdRegisterBinding` call that immediately follows the close (the binding
@@ -753,6 +764,7 @@ function tagOf(el: { localName?: string; parentNode?: unknown } | null | undefin
   // A Text node has no `localName`; report the element that holds it.
   if (typeof el.localName === 'string') return el.localName
   const p = el.parentNode as { localName?: string } | null | undefined
+
   return typeof p?.localName === 'string' ? p.localName : undefined
 }
 
@@ -800,8 +812,10 @@ export function _rdCloseBindingFrame(): BindingTarget | null {
       // truncating anyway bounds it even if a caller ever broke the pairing.
       _bfSaved.length = 0
     }
+
     return out
   }
+
   return null
 }
 
@@ -873,6 +887,7 @@ export function _rdDirect(updater: () => void): () => void {
     w = wrapped
   }
   _lastDirect = w
+
   return w
 }
 
@@ -962,6 +977,7 @@ export function _rdSelectorUpdater(
     _selectorWrap.set(updater, wrapped)
     w = wrapped
   }
+
   return w
 }
 
@@ -1106,8 +1122,10 @@ function recName(rec: NodeRec): string {
     const what = rec.key ?? BINDING_VERB[b]
     if (rec.target === undefined) return `${what}#${rec.id}`
     const prep = b === 'text' ? 'in' : b === 'child' || b === 'list' ? 'of' : 'on'
+
     return `${what} ${prep} <${rec.target}>`
   }
+
   return `${rec.kind}#${rec.id}`
 }
 
@@ -1199,8 +1217,10 @@ export function getReactiveGraph(): ReactiveGraph {
         }
       }
     }
+
     return { nodes, edges }
   }
+
   return { nodes: [], edges: [] }
 }
 
@@ -1285,8 +1305,10 @@ export function getFireSummaries(): FireSummary[] {
         })
       }
     }
+
     return [...byKey.values()]
   }
+
   return []
 }
 
@@ -1303,6 +1325,7 @@ export function getReactiveFires(): ReactiveFire[] {
     const e = _fireBuf[(start + i) % FIRE_CAP]
     if (e) out.push(e)
   }
+
   return out
 }
 
@@ -1435,6 +1458,7 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
     currentId = causeId
   }
   chain.reverse() // root-first
+
   return { target: toLink(nodeId, targetTs), chain, rootReached }
 }
 
@@ -1455,6 +1479,7 @@ export function formatUpdateCause(cause: UpdateCause): string {
     lines.push(
       `  ${cause.target.name} was updated directly (no upstream dependency fired before it).`,
     )
+
     return lines.join('\n')
   }
   cause.chain.forEach((l, i) => {
@@ -1470,5 +1495,6 @@ export function formatUpdateCause(cause: UpdateCause): string {
   if (!cause.rootReached) {
     lines.push('  (chain truncated — earlier fires aged out of the ring buffer)')
   }
+
   return lines.join('\n')
 }

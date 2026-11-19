@@ -101,6 +101,7 @@ describe('single-node drag fan-out (per-id computeds)', () => {
       }),
     )
     cleanups.push(mounted.cleanup)
+
     return { ...mounted, nodeRuns, edgeRuns }
   }
 
@@ -194,6 +195,7 @@ describe('single-node drag fan-out (per-id computeds)', () => {
       let n = 0
       type Edge = { nextSub: Edge | null }
       for (let l = accessInternal<{ _subs: Edge | null }>(flow._nodeById('n1'))._subs; l !== null; l = l.nextSub) n++
+
       return n
     }
     const before = subs()
