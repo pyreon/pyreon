@@ -22,7 +22,10 @@ import { isUrlOpen, type LayeredRule, skipQuoted, splitAtRules } from './split-a
  * Unlayered author CSS still beats every layer.
  */
 export const LAYER_ORDER = ['elements', 'rocketstyle', 'instance'] as const
-const LAYER_ORDER_STATEMENT = `@layer ${LAYER_ORDER.join(', ')};`
+// A literal, not `LAYER_ORDER.join(...)`: a module-level call is kept by
+// bundlers in every import of this package (`useTheme` alone paid for it).
+// `layer-order.test.ts` asserts it matches `LAYER_ORDER`.
+export const LAYER_ORDER_STATEMENT = '@layer elements, rocketstyle, instance;'
 
 
 /**
