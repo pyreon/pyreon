@@ -222,6 +222,12 @@ export interface BuildSsrBundleOptions {
    * output contains no `node:*` import at all.
    */
   edge?: boolean
+  /**
+   * Extra compile-time constants for the server bundle, merged into its
+   * `define`. The SSR post-step passes `__ZERO_CLIENT_PRELOAD__` (the
+   * client-start modulepreload sets read from the client manifest, #4371).
+   */
+  define?: Record<string, string>
 }
 
 /**
@@ -487,7 +493,7 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       // the deployed server ran in development mode: dev-only diagnostics
       // on, server-action errors returning raw `err.message`. This bundle is
       // a production artifact by definition.
-      define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+      define: { 'process.env.NODE_ENV': JSON.stringify('production'), ...options.define },
       build: buildInnerBuildOptions(options),
     })
   } finally {

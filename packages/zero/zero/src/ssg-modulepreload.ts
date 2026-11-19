@@ -78,6 +78,7 @@ export function resolveManifestKey(
       best = key
     }
   }
+
   return best
 }
 
@@ -105,6 +106,7 @@ export function collectStaticChunkClosure(
       if (!visited.has(imp)) stack.push(imp)
     }
   }
+
   return files
 }
 
@@ -125,6 +127,7 @@ export function parseExistingModulePreloads(templateHtml: string): Set<string> {
     const href = tag.match(/\bhref=["']([^"']+)["']/i)
     if (href?.[1]) set.add(href[1])
   }
+
   return set
 }
 
@@ -155,6 +158,7 @@ export function computeRoutePreloadHrefs(args: {
     const href = joinBase(base, file)
     if (!alreadyPreloaded.has(href)) hrefs.push(href)
   }
+
   return hrefs.sort()
 }
 
@@ -170,7 +174,58 @@ export function computeEntryHrefs(manifest: ViteManifest, base: string): Set<str
   const entryKey = Object.keys(manifest).find((k) => manifest[k]?.isEntry)
   if (!entryKey) return new Set()
   const files = collectStaticChunkClosure(manifest, [entryKey])
+
   return new Set([...files].map((f) => joinBase(base, f)))
+}
+
+/**
+ * The chunks a page's client STARTS from that are not in the entry's static
+ * graph (#4371). Both are dynamic imports of the entry, so without a preload
+ * the browser discovers them only once the entry has run:
+ *
+ *   - `app`: with `startClientLazy` (an entry whose dynamic imports include
+ *     `virtual:zero/routes`), the routes module and zero's app client. An
+ *     app page preloads their static closure.
+ *   - `islands`: zero's islands runtime (`client-islands`). An islands-only
+ *     page with at least one island to hydrate preloads its closure.
+ *
+ * Matched by module path, as the manifest keys them (`…virtual:zero/routes`,
+ * `…/zero/src/client.ts`, `node_modules/@pyreon/zero/lib/client.js`,
+ * `…/_chunks/client-islands-<hash>.js`). A miss only loses the hint.
+ */
+export function computeClientStartKeys(manifest: ViteManifest): { app: string[]; islands: string[] } {
+  const entryKey = Object.keys(manifest).find((k) => manifest[k]?.isEntry)
+  const dynamic = (entryKey ? manifest[entryKey]?.dynamicImports : undefined) ?? []
+  // `client-islands` by its module path, or the `islands-runtime` chunk zero
+  // groups it into (client-flags-plugin.ts), which the manifest keys by file.
+  const islands = dynamic.filter((k) =>
+    /(?:^|\/)client-islands(?:-[\w-]+)?\.[cm]?[jt]s$|(?:^|\/)_islands-runtime-[\w-]+\.js$/.test(k),
+  )
+  // The virtual module's key can carry a relative prefix
+  // (`../../virtual:zero/routes`), depending on the build root.
+  const isRoutes = (k: string): boolean => /(?:^|\/)virtual:zero\/routes$/.test(k)
+  const app = dynamic.some(isRoutes)
+    ? dynamic.filter((k) => isRoutes(k) || /(?:^|\/)client\.[cm]?[jt]s$/.test(k))
+    : []
+
+  return { app, islands }
+}
+
+/** Base-prefixed hrefs of the static closure of `keys`, minus `alreadyPreloaded`. Sorted. */
+export function computeKeysPreloadHrefs(
+  manifest: ViteManifest,
+  keys: readonly string[],
+  base: string,
+  alreadyPreloaded: ReadonlySet<string>,
+): string[] {
+  if (keys.length === 0) return []
+  const hrefs: string[] = []
+  for (const file of collectStaticChunkClosure(manifest, keys)) {
+    const href = joinBase(base, file)
+    if (!alreadyPreloaded.has(href)) hrefs.push(href)
+  }
+
+  return hrefs.sort()
 }
 
 /** Render `<link rel="modulepreload" … crossorigin>` tags for the hrefs. */
@@ -178,4 +233,26 @@ export function renderModulePreloadLinks(hrefs: readonly string[]): string {
   return hrefs
     .map((href) => `<link rel="modulepreload" href="${href}" crossorigin>`)
     .join('\n')
+}
+
+/**
+ * The client-start preload sets for server-rendered pages (#4371): the hrefs
+ * an SSG page of each kind adds (see `computeClientStartKeys`), computed once
+ * per build from the client manifest and the built template, so a page the
+ * server renders per request preloads exactly what the same page prerendered
+ * would. Empty sets when the entry is not lazy (`startClient`'s app is in the
+ * entry's static graph, which the template already preloads).
+ */
+export function computeClientStartPreload(
+  manifest: ViteManifest,
+  templateHtml: string,
+  base: string,
+): { app: string[]; islands: string[] } {
+  const already = new Set([...computeEntryHrefs(manifest, base), ...parseExistingModulePreloads(templateHtml)])
+  const keys = computeClientStartKeys(manifest)
+
+  return {
+    app: computeKeysPreloadHrefs(manifest, keys.app, base, already),
+    islands: computeKeysPreloadHrefs(manifest, keys.islands, base, already),
+  }
 }

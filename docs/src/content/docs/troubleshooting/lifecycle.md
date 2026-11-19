@@ -41,6 +41,12 @@ The web `RouterView` claims its depth from `router._viewDepth`, a counter every 
 
 ---
 
+### [FIXED, 2026-11] Index-addressed passes over a raw key list that repeats a key.
+
+`<For>` promises first-wins for duplicate keys (the row appears once, at its FIRST position), but only the fresh render kept it. On an update the LIS and small-k placement walked the raw `newKeys`, so a duplicated row was moved twice and landed at its LAST position; replace-all mounted a duplicate twice, overwriting the first row's cache entry and stranding its DOM; and the contiguous-insertion fast path skipped a repeat of a suffix key that first-wins needed moved up. Fix: every update path stores a deduplicated order — the general path detects a repeat for free (`keptDistinct + added !== n`) and dedupes only then; replace-all skips cached keys; the insertion path finishes with the LIS when it skipped one. **Rule: a list that addresses rows by INDEX must see each key once; dedupe before any positional pass, not after.** Reference: `runtime-dom/src/nodes.ts:mountFor`; bisect-locked in `tests/for-duplicate-keys-fuzz.test.tsx` (each of the three paths reverted alone fails it).
+
+---
+
 ### [FIXED, 2026-10] An `effect()` / `computed()` created in a `<For>` row callback had no owner.
 
 The callback runs after the surrounding component's setup, when no scope is current, so the effect registered nowhere: a removed row kept running it, and so did every row after the list unmounted. Each row callback now runs under a pooled collector scope that the row keeps (and stops on removal) only when something registered — zero allocation otherwise, no measurable cost on the fair board. **Rule: any framework construct that runs a user callback outside component setup must give that callback an owner, or effects created in it are unowned.** Reference: `runtime-dom/src/nodes.ts:runRowCallback`; locked by `for-row-effect-scope.test.tsx` (bisect-verified).
@@ -209,6 +215,12 @@ An animation function that does not store its frame ID leaks frames when called 
 
 ---
 
+### [FIXED, 2026-11] A cancel that covers the work a frame STARTS but not the frame itself.
+
+`<Transition>` set its cancel (listeners, safety timer) inside the `requestAnimationFrame` callback, so an unmount before the frame left the frame to run on a detached element and fire `onAfterEnter`/`onAfterLeave` 5s later. **Rule: the cancel is installed when the work is scheduled (cancel the frame id), and the frame replaces it with the cancel for what it starts.** Reference: `runtime-dom/src/transition.ts`; locked by `transition-unmount-before-frame.test.ts` (bisect-verified).
+
+---
+
 ### Bare `requestAnimationFrame` in async animation paths
 
 An async path (`await computeLayout(...)`) can reach its rAF call after the test environment is torn down, throwing `ReferenceError: requestAnimationFrame is not defined` as an unhandled error that fails the run with all tests green. Wrap rAF/cAF in helpers that no-op when the global is not a function: `const _raf = (cb) => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(cb) : 0`. Applies to SSR and workers too. Reference: `flow/src/flow.ts` (`_raf`, `_caf`); `flow/src/tests/raf-teardown-safety.test.ts`.
@@ -245,7 +257,7 @@ Bypasses lifecycle cleanup, so listeners leak on unmount. Use `useEventListener`
 
 ### Closure-captured `parent` in a reactive mount loop
 
-A reactive region is often built inside a detached container (a `DocumentFragment`, or an outer element that is not yet attached) and then moved into the live parent, carrying markers along, but an inner mount's closure still holds the empty fragment as `parent`. The next re-run's `parent.insertBefore(node, marker)` throws `NotFoundError` and the subtree is lost. Any mount loop inside an effect must read `marker.parentNode` (or `tailMarker.parentNode`) on each run and thread that live parent through every helper that inserts, falling back to the captured `parent` only when the marker is detached. Fixed in `mountReactive` and `mountKeyedList` (`mountNewEntries`, `mountVNode`, `keyedListReorder` → `applyKeyedMoves` → `moveEntryBefore`); `mountFor` uses `startMarker.parentNode`, and `KeepAlive`/`TransitionGroup`/`Transition` use live element refs. Reference: `packages/core/runtime-dom/src/nodes.ts`; `tests/keyed-array-in-for-batched-toggle.browser.test.ts`, `tests/show-of-for-batched-toggle.browser.test.ts`; `bun run perf:leak-sweep --app perf-dashboard --journeys domConditionalToggle-1000`.
+A reactive region is often built inside a detached container (a `DocumentFragment`, or an outer element that is not yet attached) and then moved into the live parent, carrying markers along, but an inner mount's closure still holds the empty fragment as `parent`. The next re-run's `parent.insertBefore(node, marker)` throws `NotFoundError` and the subtree is lost. Any mount loop inside an effect must read `marker.parentNode` (or `tailMarker.parentNode`) on each run and thread that live parent through every helper that inserts, falling back to the captured `parent` only when the marker is detached. Fixed in `mountReactive`; `mountFor` (which also reconciles keyed `.map()` arrays — `mountKeyedList` is a thin wrapper over it) uses `startMarker.parentNode`, and `KeepAlive`/`TransitionGroup`/`Transition` use live element refs. Reference: `packages/core/runtime-dom/src/nodes.ts`; `tests/keyed-array-in-for-batched-toggle.browser.test.ts`, `tests/show-of-for-batched-toggle.browser.test.ts`; `bun run perf:leak-sweep --app perf-dashboard --journeys domConditionalToggle-1000`.
 
 ---
 
