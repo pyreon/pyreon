@@ -1,5 +1,7 @@
 # @pyreon/vite-plugin
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Vite plugin for Pyreon — JSX transform, signal-preserving HMR, SSR middleware, islands auto-registry, compat aliasing.
 
 `@pyreon/vite-plugin` is the single Vite integration Pyreon needs. It wires `@pyreon/compiler` into Vite's transform pipeline, sets `resolve.conditions: ["bun"]` so workspace source files resolve via the `bun` condition, configures the JSX runtime to `@pyreon/core`, and provides signal-preserving HMR (top-level `signal()` values survive hot reload). Optional features: SSR dev middleware (`ssr.entry`), an auto-discovered islands registry (`islands: true`, the `virtual:pyreon/islands-registry` module fed to `hydrateIslandsAuto()`), drop-in compat-mode aliasing (`compat: 'react' | 'preact' | 'vue' | 'solid' | 'svelte'`), and the opt-in compile-time rocketstyle wrapper collapse (`collapse: true`, build-only).

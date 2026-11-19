@@ -1,5 +1,7 @@
 # @pyreon/vue-compat
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Vue 3 Composition API shim — write Vue-style code that runs on Pyreon's reactive engine.
 
 `@pyreon/vue-compat` provides the Vue 3 Composition API surface (`ref`, `shallowRef`, `computed`, `reactive`, `shallowReactive`, `readonly`, `shallowReadonly`, `toRef`, `toRefs`, `toRaw`, `toValue`, `unref`, `isRef`, `isReactive`, `isReadonly`, `isProxy`, `markRaw`, `triggerRef`, `watch`, `watchEffect`, lifecycle hooks `onMounted` / `onUnmounted` / `onUpdated` / `onBeforeMount` / `onBeforeUnmount`, `nextTick`, `provide` / `inject`, `defineComponent`, `defineAsyncComponent`, `createApp`, `effectScope` / `getCurrentScope` / `onScopeDispose`, error/render-track hooks, `<Teleport>`, `<KeepAlive>`, `<Transition>`) all running on Pyreon's reactive engine. **This is a runtime shim, not Vue** — it covers what code imports, NOT the Single-File Component compiler. `.vue` files require a separate SFC compiler.

@@ -1,5 +1,7 @@
 # @pyreon/kinetic-presets
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 120+ animation presets, 5 configurable factories, 5 composition utilities for `@pyreon/kinetic`.
 
 `@pyreon/kinetic-presets` is the catalog of ready-to-use enter/leave animations for `@pyreon/kinetic`. Every preset is a plain object with `enterStyle` / `enterToStyle` / `enterTransition` / `leaveStyle` / `leaveToStyle` / `leaveTransition` (style form) or `enter` / `enterFrom` / `enterTo` / `leave` / `leaveFrom` / `leaveTo` (class form — Tailwind / CSS-modules friendly). Five factories generate parameterized variants (custom duration, distance, direction). Five utilities (`compose`, `withDuration`, `withEasing`, `withDelay`, `reverse`) transform presets without forking them. Framework-agnostic — no peer deps.

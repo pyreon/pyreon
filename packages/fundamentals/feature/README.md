@@ -1,5 +1,7 @@
 # @pyreon/feature
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Schema-driven CRUD primitives — define a Zod schema once, get queries / forms / tables / stores.
 
 `defineFeature({ name, schema, api })` takes a Zod schema and a REST endpoint and produces a complete set of auto-wired hooks: `useList` / `useById` / `useSearch` (queries), `useCreate` / `useUpdate` / `useDelete` (mutations with auto-invalidation + optimistic updates on update), `useForm` (with schema validation + auto-fetch in edit mode), `useTable` (with schema-inferred columns), and `useStore` (cached selection + items). Composes `@pyreon/query` + `@pyreon/form` + `@pyreon/validation` + `@pyreon/store` + `@pyreon/table` under the hood — the feature definition is the single source of truth that lets an AI agent (or a human) write 10 lines of schema instead of 200 lines of wiring.

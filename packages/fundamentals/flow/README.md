@@ -1,5 +1,7 @@
 # @pyreon/flow
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./webview`, `./native-plugin`.
+
 Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout.
 
 Build node/edge diagrams (workflow editors, mind maps, BPMN, story graphs, infra topology) with Pyreon's fine-grained reactivity. Each node and edge has its own per-property signal — a 60fps drag in a 1000-node graph is O(1) per frame, not O(N). Custom node and edge renderers receive REACTIVE ACCESSORS (`data()` / `selected()` / `dragging()` / source/target coordinates), so a custom node mounts EXACTLY ONCE across the lifetime of the graph and patches in place on every change. Pan/zoom via pointer events + CSS transforms (no D3). Auto-layout through a built-in seven-mode engine — pure geometry, zero dependencies, code-split so it loads on the first `layout()`.
