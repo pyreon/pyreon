@@ -972,9 +972,11 @@ _tpl('<div><span> </span><span> </span></div>', (__root) => {
   const __e2 = __root.firstElementChild.nextElementSibling
   const __t3 = __e2.firstChild
   const __d1 = _bindText(lastName, __t3)
-  return () => { __d0(); __d1() }
+  return _dispose2(__d0, __d1)
 })
 ```
+
+Several disposers are combined by a runtime helper (`_dispose2`, `_dispose3`, `_dispose4`, `_disposeN`) rather than an arrow written inside the bind function: an arrow created there would chain to the component function's closure context and keep the component's props and captured locals alive for as long as the template is mounted.
 
 Changing `firstName` only re-executes `__d0`, not `__d1`. This is fine-grained reactivity at the individual text node level.
 

@@ -27,6 +27,7 @@
  * compiled client emit of the SAME source, asserting DOM equality with a fresh
  * client mount AND a node count (a duplicate is the failure mode).
  */
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import { _fuse, _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, Show } from '@pyreon/core'
 import { _bind, signal, renderEffect } from '@pyreon/reactivity'
@@ -60,7 +61,7 @@ afterEach(() => {
 })
 
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   renderEffect,
   _bindText,

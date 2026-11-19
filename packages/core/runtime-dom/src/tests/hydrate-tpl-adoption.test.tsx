@@ -22,6 +22,7 @@
  * passes (swap fallback IS the old behavior + the anchor fix). Reverting the
  * anchor fix fails the bail-shape spec's post-hydration list ops.
  */
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, h } from '@pyreon/core'
@@ -63,7 +64,7 @@ const tplAdopted = () => counts['runtime.tpl.adopt'] ?? 0
 
 // ─── Real-transform harness ──────────────────────────────────────────────────
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   renderEffect,
   _bindText,

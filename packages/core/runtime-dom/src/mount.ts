@@ -34,7 +34,10 @@ import {
   effectScope,
   getContextOwner,
   getCurrentScope,
-  renderEffect,
+  _abortOwnerFrame,
+  _closeOwnerFrame,
+  _openOwnerFrame,
+  _renderBind,
   runUntracked,
   runWithContextOwner,
   setContextOwner,
@@ -62,7 +65,7 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 
 type Cleanup = () => void
 
-const noop: Cleanup = () => {
+export const noop: Cleanup = () => {
   /* noop */
 }
 
@@ -88,6 +91,19 @@ if (process.env.NODE_ENV !== 'production') _devScopeIds = new WeakMap()
  * This function is the hot path — all child types are handled inline to avoid
  * function call overhead in tight render loops (1000+ calls per list render).
  */
+/**
+ * `_setChild` / `_setChildAt` are emitted as STATEMENTS — the compiled template
+ * never receives a cleanup from them — so what they mount (an accessor's
+ * binding, a VNode's components) is owned by the ambient scope instead: the
+ * component's, or a `<For>` row's collector. Template bindings proper are
+ * owned by the template's cleanup and never register with the scope (see
+ * "Template-owned bindings" in @pyreon/reactivity), so this is the one place
+ * a mount made inside a template bind hands its cleanup to the scope.
+ */
+export function ownByScope(cleanup: () => void): void {
+  if (cleanup !== noop && cleanup !== _noopDispose) getCurrentScope()?.add(cleanup)
+}
+
 /**
  * Mount content that a REACTIVE BOUNDARY owns and removes itself — the range a
  * `mountReactive` run renders, a `TransitionGroup` item, `KeepAlive`'s
@@ -663,6 +679,11 @@ function mountComponent(
   scope._parent = prevOwner
   setCurrentScope(scope)
   setContextOwner(scope)
+  // Template bindings built by this setup and render are owned by the cleanups
+  // they are returned to, not by `scope`. The frame is their owner on the
+  // error paths below, where no cleanup is ever handed out (see
+  // "Template-owned bindings" in @pyreon/reactivity's effect.ts).
+  const ownerFrame = _openOwnerFrame()
 
   let hooks: LifecycleHooks
   let output: VNodeChild
@@ -698,6 +719,7 @@ function mountComponent(
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
     setCurrentScope(prevScope)
     setContextOwner(prevOwner)
+    _abortOwnerFrame(ownerFrame)
     scope.stop()
     reportError({
       component: componentName,
@@ -825,6 +847,7 @@ function mountComponent(
     // owner pointing here for the rest of the parent's mount, and clobbered
     // whatever owner was current when the component later unmounted.)
     setContextOwner(prevOwner)
+    _closeOwnerFrame(ownerFrame)
 
     return () => {
       if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
@@ -865,6 +888,7 @@ function mountComponent(
     }
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
+    _abortOwnerFrame(ownerFrame)
     scope.stop()
     setContextOwner(prevOwner)
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
@@ -881,6 +905,7 @@ function mountComponent(
 
     return noop
   }
+  _closeOwnerFrame(ownerFrame)
 
   if (process.env.NODE_ENV !== 'production') {
     _mountingStack!.pop()
@@ -1040,11 +1065,47 @@ export interface PolyTextCore {
   mounted: () => boolean
 }
 
+/**
+ * Whether a poly text binding renders `v` as TEXT (in place) rather than as a
+ * mounted subtree.
+ */
+export function isPolyTextish(v: unknown): boolean {
+  // The shared child-text rule: a primitive, or an object that is not
+  // structural (an array of primitives, a `Date`).
+  return (typeof v !== 'object' && typeof v !== 'function') || !_isStructuralChild(v)
+}
+
+/**
+ * The text write every poly text binding performs for a textish `v` — the ONE
+ * implementation shared by the swap core and the lazy text-only phase of
+ * `bindPolymorphicText` / `mountAccessorChild`, so the two cannot drift.
+ * `written` is the string the binding last wrote (`null` before the first
+ * write, which reads the node once so adopted SSR text that already matches
+ * is left untouched). Returns the new `written`.
+ */
+export function writePolyText(text: Text, v: VNodeChild, written: string | null): string {
+  // An array of strings writes ONE text node holding their concatenation, the
+  // characters SSR renders, so an adopted server text node is kept as-is.
+  const next = typeof v === 'string' ? v : _childText(v)
+  if (written === null) {
+    written = text.data
+    // Dev: inside a compiled template's ADOPTION bind this is server
+    // text; report the first write if it changes it (#4419). The h()
+    // walk reports before it binds and never runs inside that window.
+    if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
+      reportFirstText(text, v, next, 'reactive')
+  }
+  if (next !== written) text.data = next
+
+  return next
+}
+
 export function createPolyTextCore(
   text: Text,
   parentAtSetup: Node,
   ownerAtSetup: ReturnType<typeof getContextOwner>,
 ): PolyTextCore {
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.polyTextCore')
   let marker: Comment | null = null
   let mode: 'text' | 'sub' = 'text'
   let subCleanup: Cleanup = noop
@@ -1064,12 +1125,7 @@ export function createPolyTextCore(
   return {
     apply(v: VNodeChild): void {
       const myGen = ++applyGen
-      // Text per the shared child-text rule: a primitive, or an object that is
-      // not structural (an array of primitives, a `Date`). An array of strings
-      // writes ONE text node holding their concatenation, the characters SSR
-      // renders, so an adopted server text node is kept as-is.
-      const textish = (typeof v !== 'object' && typeof v !== 'function') || !_isStructuralChild(v)
-      if (textish) {
+      if (isPolyTextish(v)) {
         if (mode === 'sub') {
           runUntracked(subCleanup)
           subCleanup = noop
@@ -1079,19 +1135,7 @@ export function createPolyTextCore(
           marker!.parentNode?.removeChild(marker!)
           mode = 'text'
         }
-        const next = typeof v === 'string' ? v : _childText(v)
-        if (written === null) {
-          written = text.data
-          // Dev: inside a compiled template's ADOPTION bind this is server
-          // text; report the first write if it changes it (#4419). The h()
-          // walk reports before it binds and never runs inside that window.
-          if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
-            reportFirstText(text, v, next, 'reactive')
-        }
-        if (next !== written) {
-          text.data = next
-          written = next
-        }
+        written = writePolyText(text, v, written)
 
         return
       }
@@ -1158,20 +1202,37 @@ export function bindPolymorphicText(
     const adopted = _adoptParkedText(text, child)
     if (adopted !== null) return adopted
   }
-  const core = createPolyTextCore(text, parentAtSetup, getContextOwner())
-  const dispose = renderEffect(() => core.apply(child()))
+  // The swap core is built LAZILY, on the first non-text value. Almost every
+  // text binding only ever sees text, and an eager core (an object with three
+  // closures over an 8-slot context, ~150 B) was retained by every one of them
+  // for the binding's lifetime. Until then the effect writes the text itself
+  // through the same `writePolyText` the core uses.
+  const ownerAtSetup = getContextOwner()
+  let core: PolyTextCore | null = null
+  let written: string | null = null
+  const dispose = _renderBind(() => {
+    const v = child()
+    if (core === null) {
+      if (isPolyTextish(v)) {
+        written = writePolyText(text, v, written)
+        return
+      }
+      core = createPolyTextCore(text, parentAtSetup, ownerAtSetup)
+    }
+    core.apply(v)
+  })
   // Dev: a text binding at its caller (the compiled template, for the emitted
   // `bindPolymorphicText(() => expr, text, el)`).
   if (process.env.NODE_ENV !== 'production')
     _rdLabelBinding(dispose, 'text', text, undefined, 1)
-  // Dead binding whose value was text: nothing re-runs it and the core holds
-  // no subtree, so there is nothing to tear down. A first value that mounted a
-  // subtree keeps the core's disposer (it removes that subtree).
-  if (dispose === _noopDispose && !core.mounted()) return _noopDispose
+  // Dead binding whose value was text: nothing re-runs it and no core exists,
+  // so there is nothing to tear down. A first value that mounted a subtree
+  // keeps the core's disposer (it removes that subtree).
+  if (dispose === _noopDispose && (core === null || !(core as PolyTextCore).mounted())) return _noopDispose
 
   return () => {
     dispose()
-    core.dispose()
+    if (core !== null) core.dispose()
   }
 }
 
@@ -1273,8 +1334,10 @@ function mountAccessorChild(
 ): Cleanup {
   const depthAtEntry = _elementDepth
   const ownerAtSetup = getContextOwner()
+  // Built lazily, on the first non-text value (see `bindPolymorphicText`).
   let core: PolyTextCore | null = null
   let text: Text | null = null
+  let written: string | null = null
   let handoff: Cleanup | null = null
   let firstRunError: unknown = FIRST_RUN_OK
   // Holds the slot's position while the value is UNDECIDED (`isUndecidedChild`):
@@ -1291,10 +1354,21 @@ function mountAccessorChild(
   // the same reads and handles the change; a dispatcher re-run here built a
   // SECOND binding and mounted the content twice.
   let structural = false
-  const disposeEffect = renderEffect(() => {
+  const disposeEffect = _renderBind(() => {
     if (structural) return
-    if (core !== null) {
-      core.apply((child as () => VNodeChild)())
+    if (text !== null) {
+      // Classified textish on the first run: write text until a non-text value
+      // arrives, then hand every later value to the swap core.
+      const v = (child as () => VNodeChild)()
+      if (core === null) {
+        if (isPolyTextish(v)) {
+          written = writePolyText(text, v, written)
+          return
+        }
+        // The text's LIVE parent: a late-decided slot mounts where its placeholder stood (#4736).
+        core = createPolyTextCore(text, text.parentNode ?? parent, ownerAtSetup)
+      }
+      core.apply(v)
       return
     }
     // First (tracked) run — classify once. The try exists ONLY so a throwing
@@ -1323,9 +1397,9 @@ function mountAccessorChild(
       // unconditional `text.data = String(v)` rendered "[object Object]" for
       // the VNode arm.
       if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-        text = document.createTextNode(typeof v === 'boolean' ? '' : String(v))
+        written = typeof v === 'boolean' ? '' : String(v)
+        text = document.createTextNode(written)
         into.insertBefore(text, at)
-        core = createPolyTextCore(text, into, ownerAtSetup)
         _releaseRun(run)
         dropPlaceholder()
 
@@ -1333,10 +1407,7 @@ function mountAccessorChild(
       }
       if (isUndecidedChild(v)) {
         _releaseRun(run)
-        if (placeholder === null) {
-          placeholder = document.createComment('')
-          parent.insertBefore(placeholder, anchor)
-        }
+        placeholder ??= parent.insertBefore(document.createComment(''), anchor)
 
         return
       }
@@ -1390,8 +1461,8 @@ function mountAccessorChild(
   if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeEffect, 'text', text, undefined, null)
   // Textish — this dispatcher IS the binding (bindPolymorphicText's shape).
   if (depthAtEntry > 0) {
-    // Dead (tracked nothing): the core is in text mode and can never leave it,
-    // and the text node leaves with its parent element.
+    // Dead (tracked nothing): no core exists and none can be built, and the
+    // text node leaves with its parent element.
     if (disposeEffect === _noopDispose) return noop
     return () => {
       disposeEffect()

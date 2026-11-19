@@ -28,7 +28,7 @@
  * time.
  */
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { _rdLabelBinding, renderEffect } from '@pyreon/reactivity'
+import { _rdLabelBinding, _renderBind } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
 import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
@@ -365,7 +365,7 @@ function applyOpList(
       c = (op.bind as (el: Element, value: unknown) => Cleanup | null)(el, value)
     } else if (op.kind === OP_CLASS) {
       if (typeof value === 'function') {
-        c = renderEffect(() => applyClassProp(el, (value as () => unknown)()))
+        c = _renderBind(() => applyClassProp(el, (value as () => unknown)()))
         if (process.env.NODE_ENV !== 'production') _rdLabelBinding(c, null, null, undefined, null)
       } else {
         applyClassProp(el, value)
@@ -373,7 +373,7 @@ function applyOpList(
       }
     } else if (op.kind === OP_STYLE) {
       if (typeof value === 'function') {
-        c = renderEffect(() => applyStyleProp(el as HTMLElement, (value as () => unknown)()))
+        c = _renderBind(() => applyStyleProp(el as HTMLElement, (value as () => unknown)()))
         if (process.env.NODE_ENV !== 'production') _rdLabelBinding(c, null, null, undefined, null)
       } else {
         applyStyleProp(el as HTMLElement, value)

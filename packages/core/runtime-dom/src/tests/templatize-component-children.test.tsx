@@ -28,6 +28,7 @@
  *  - Neutering the PZ-08 arm in `elementHasDynamic` corrupts the two-slot
  *    sibling order.
  */
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, _fuse, _lc, createReactiveContext, h, provide, useContext } from '@pyreon/core'
@@ -52,7 +53,7 @@ import {
 import { bindPolymorphicText } from '../mount'
 
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   renderEffect,
   _bindText,

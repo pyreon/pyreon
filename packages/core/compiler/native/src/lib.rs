@@ -671,6 +671,9 @@ struct Ctx<'a> {
     needs_set_prop_static_import: bool,
     needs_set_html_import: bool,
     needs_ref_import: bool,
+    /// Template cleanup helpers used in the file: `_dispose2`, `_dispose3`,
+    /// `_dispose4`, `_disposeN` (in that index order).
+    needs_dispose_import: [bool; 4],
     needs_bind_text_import: bool,
     needs_bind_prop_import: bool,
     needs_bind_direct_import: bool,
@@ -957,6 +960,7 @@ impl<'a> Ctx<'a> {
             needs_set_prop_static_import: false,
             needs_set_html_import: false,
             needs_ref_import: false,
+            needs_dispose_import: [false; 4],
             needs_bind_text_import: false,
             needs_bind_prop_import: false,
             needs_bind_direct_import: false,
@@ -1156,6 +1160,11 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_ref_import {
                 imports.push("_ref");
+            }
+            for (i, name) in ["_dispose2", "_dispose3", "_dispose4", "_disposeN"].iter().enumerate() {
+                if self.needs_dispose_import[i] {
+                    imports.push(name);
+                }
             }
             let mut reactivity_specs: Vec<&str> = Vec::new();
             if self.needs_bind_import {
@@ -9532,13 +9541,19 @@ fn build_template_call(
         // instance (per row under `<For>` for the dominant reactive-text shape).
         body.push_str(&format!("\n  return {}", tb.disposer_names[0]));
     } else if !tb.disposer_names.is_empty() {
-        let disposers = tb
-            .disposer_names
-            .iter()
-            .map(|d| format!("{}()", d))
-            .collect::<Vec<_>>()
-            .join("; ");
-        body.push_str(&format!("\n  return () => {{ {} }}", disposers));
+        // A runtime helper builds the combined cleanup, NOT an arrow here: an
+        // arrow created inside the bind function chains its context to the
+        // component function's, so it kept the component's props and captured
+        // locals alive for the template's lifetime (runtime-dom `_dispose2`).
+        let n = tb.disposer_names.len();
+        let names = tb.disposer_names.join(", ");
+        if n <= 4 {
+            ctx.needs_dispose_import[n - 2] = true;
+            body.push_str(&format!("\n  return _dispose{}({})", n, names));
+        } else {
+            ctx.needs_dispose_import[3] = true;
+            body.push_str(&format!("\n  return _disposeN([{}])", names));
+        }
     } else {
         body.push_str("\n  return null");
     }

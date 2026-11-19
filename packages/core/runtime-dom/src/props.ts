@@ -1,7 +1,7 @@
 import type { ClassValue, Props } from '@pyreon/core'
 import { cx, isElementEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, isUrlAttr } from '@pyreon/core'
 
-import { _rdLabelBinding, _rdNoteTarget, batch, renderEffect } from '@pyreon/reactivity'
+import { _rdLabelBinding, _rdNoteTarget, _renderBind, batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
 
 type Cleanup = () => void
@@ -92,7 +92,7 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
     const descriptor = Object.getOwnPropertyDescriptor(props, key)
     let c: Cleanup | null
     if (descriptor?.get) {
-      c = renderEffect(() => {
+      c = _renderBind(() => {
         // A getter's VALUE can itself be an accessor: a primitive's helper
         // object (`getItemProps()` → `{ tabIndex: () => 0 | -1 }`) spread onto
         // a rocketstyle element reaches here with the function behind a getter
@@ -193,7 +193,7 @@ type RefObject = { current: Element | null }
  */
 export function bindSpread(el: Element, getProps: () => Props): Cleanup {
   let inner: Cleanup | null = null
-  const stop = renderEffect(() => {
+  const stop = _renderBind(() => {
     inner?.()
     inner = applyPropsWithRef(el, getProps())
   })
@@ -221,7 +221,7 @@ export function bindSpread(el: Element, getProps: () => Props): Cleanup {
 export function applySelectValueProp(el: Element, props: Props): Cleanup | null {
   const descriptor = Object.getOwnPropertyDescriptor(props, 'value')
   if (descriptor?.get) {
-    const d = renderEffect(() =>
+    const d = _renderBind(() =>
       applyStaticProp(el, 'value', (props as Record<string, unknown>).value),
     )
     // Dev: the setter names the binding; drop the creation site (this file).
@@ -477,7 +477,7 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // renderEffect rather than effect since mountElement's cleanup array owns the
   // lifecycle.
   if (typeof value === 'function') {
-    const d = renderEffect(() => {
+    const d = _renderBind(() => {
       // The accessor's RESULT can itself be an accessor. The compiler inlines a
       // prop-derived function-valued const at its use site, so
       // `const tabIndexFor = () => …` passed as `tabIndex={tabIndexFor}` on a
