@@ -65,7 +65,7 @@ export interface MapChartProps extends CanvasHostProps, ItemStateProps {
   /** A key for the bubble sizes (nested circles of nice values, bottom-left); `true` or its options. */
   sizeLegend?: boolean | GeoSizeLegendOptions
   /** Zoom to these regions (names, labels or join keys) on load, and whenever the value changes. */
-  fitTo?: string | readonly string[]
+  fitTo?: string | readonly string[] | undefined
   /** A click on a region zooms to it; a click on empty ground returns to the whole map. */
   zoomOnClick?: boolean
   /** Appearance shared by the point and path overlays. */
