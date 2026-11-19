@@ -29,6 +29,7 @@ const area = (ring: { x: number; y: number }[]): number => {
     const j = i === 0 ? ring.length - 1 : i - 1
     a += ring[j]!.x * ring[i]!.y - ring[i]!.x * ring[j]!.y
   }
+
   return a / 2
 }
 

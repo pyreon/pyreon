@@ -45,12 +45,21 @@ export interface ItemStateProps {
 export interface StatefulHostSpec<L> extends Omit<CanvasHostSpec<L>, 'props' | 'render'> {
   props: CanvasHostProps & ItemStateProps
   /** `render`, with the current item states. */
+  // oxlint-disable-next-line max-params -- the host's render signature plus the item states
   render: (layout: L, measure: MeasureText, theme: ChartTheme, progress: Double, time: Double, states: ItemStates) => DrawCmd[]
   /** Which item is under a point (the accessible table's row index, -1 for none) and what it is called. */
   states: {
     at: (layout: L, px: Double, py: Double) => number
     label: (layout: L, index: number) => string
   }
+}
+
+/** The selection after a click on item `i`: `single` replaces it (or clears it), `multiple` toggles the item. */
+function nextSelection(mode: 'single' | 'multiple', cur: readonly number[], i: number): readonly number[] {
+  const has = cur.includes(i)
+  if (mode === 'single') return has ? [] : [i]
+
+  return has ? cur.filter((k) => k !== i) : [...cur, i]
 }
 
 /** Wrap a family's spec so the host gives it hover emphasis and selection. */
@@ -73,8 +82,7 @@ export function withItemStates<L>(raw: StatefulHostSpec<L>): CanvasHostSpec<L> {
     const m = mode()
     if (m === false || i < 0 || i >= itemCount(layout)) return
     const cur = untrack(selection)
-    const has = cur.includes(i)
-    const next = m === 'single' ? (has ? [] : [i]) : has ? cur.filter((k) => k !== i) : [...cur, i]
+    const next = nextSelection(m, cur, i)
     gen += 1
     selection.set(next)
     props.onSelectionChange?.([...next])

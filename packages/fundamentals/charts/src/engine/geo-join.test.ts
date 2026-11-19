@@ -5,6 +5,7 @@ import { alignGeoValues, geoFeatures, geoShapes, geoToSvg } from './geo-web'
 import type { GeoJson } from './geo-web'
 
 const sq = (x: number): number[][][] => [[[x, 0], [x + 4, 0], [x + 4, 4], [x, 4], [x, 0]]]
+
 const GEO: GeoJson = {
   type: 'FeatureCollection',
   features: [

@@ -102,9 +102,6 @@ export interface MapRegionInfo {
 }
 
 const isShapes = (m: readonly GeoShape[] | GeoJson | string): m is readonly GeoShape[] => Array.isArray(m)
-// `Array.isArray` does not narrow a union holding a READONLY array, so the
-// values form gets its own guard.
-const isValueList = (v: MapChartValues): v is readonly GeoValue[] => Array.isArray(v)
 
 export function MapChart(props: MapChartProps): VNode {
   // The projected features of the map, memoised: a roam frame lays out again, and re-projecting every vertex of a
@@ -156,6 +153,7 @@ export function MapChart(props: MapChartProps): VNode {
     end: () => vm.end(),
   }
   const viewed = (): GeoOptions => ({ ...props.options, ...view() })
+
   return canvasHost<GeoLayout>(withItemStates<GeoLayout>({
     props,
     drag: dragSpec,
@@ -182,6 +180,7 @@ export function MapChart(props: MapChartProps): VNode {
       outer = rawBox
       const box = vm.chartBox(rawBox)
       lastBox = box
+
       return layoutGeoShapes(shapes(), box, viewed())
     },
     animates: true,
@@ -190,6 +189,7 @@ export function MapChart(props: MapChartProps): VNode {
     // reads the ground rather than a token of its own; `background: ''` means
     // "inherit the page", whose realistic value is white.
     effectClock: () => props.trail !== undefined && (props.paths ?? []).length > 0,
+    // oxlint-disable-next-line max-params -- the host's render takes the item states as its sixth argument
     render: (layout, measure, theme, progress, time, states) => [
       ...renderGeoAligned(
         layout,
@@ -253,6 +253,7 @@ export function MapChart(props: MapChartProps): VNode {
       const r = layout.regions[i]
       if (r === undefined) return null
       const v = aligned()[i] ?? Number.NaN
+
       return { seriesIndex: 0, dataIndex: i, name: r.label, value: Number.isFinite(v) ? v : Number.NaN }
     },
     a11y: (layout) => {

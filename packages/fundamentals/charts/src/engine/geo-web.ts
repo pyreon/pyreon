@@ -19,7 +19,7 @@ import { geoHeatStops, renderGeoHeat, renderGeoOverlayPaths, renderGeoOverlayPoi
 import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie } from './geo-overlay'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
-import type { Double, MeasureText, Pt, Rect } from './types'
+import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 export interface GeoFeature {
   type: 'Feature'
@@ -66,6 +66,7 @@ export function geoValues(values: Record<string, Double>): GeoValue[] {
     const v = values[name]
     if (v !== undefined) out.push({ region: name, value: v })
   }
+
   return out
 }
 
@@ -76,6 +77,7 @@ export function alignGeoValues(names: readonly string[], values: Record<string, 
     const byName = new Map<string, Double>()
     for (const v of values as readonly GeoValue[]) byName.set(v.region, v.value)
     for (const n of names) out.push(byName.get(n) ?? Number.NaN)
+
     return out
   }
   const rec = values as Record<string, Double>
@@ -106,31 +108,45 @@ export function geoFeatures(geo: GeoJson, projection: GeoProjection = 'equirecta
     const f = geo.features[fi]!
     const g = f.geometry
     if (g === null) continue
-    const polys: number[][][][] = g.type === 'Polygon' ? [g.coordinates] : g.coordinates
-    const rings: Pt[][] = []
-    const holes: Pt[][] = []
-    const holeHost: number[] = []
-    for (const poly of polys) {
-      const outer = poly[0]
-      if (outer === undefined || outer.length < 3) continue
-      rings.push(projectRing(outer, projection))
-      // Inner rings belong to THIS polygon's outer ring.
-      for (let hi = 1; hi < poly.length; hi++) {
-        const inner = poly[hi]!
-        if (inner.length < 3) continue
-        holes.push(projectRing(inner, projection))
-        holeHost.push(rings.length - 1)
-      }
-    }
+    const { rings, holes, holeHost } = featureRings(g.type === 'Polygon' ? [g.coordinates] : g.coordinates, projection)
     const propName = f.properties?.[nameProperty]
     const label = typeof propName === 'string' ? propName : 'Region ' + String(fi + 1)
-    const raw = idProperty === undefined ? undefined : idProperty === 'id' ? f.id : f.properties?.[idProperty]
-    const key = raw === undefined || raw === null ? label : String(raw)
+    const key = joinKey(f, idProperty) ?? label
     const base = key === label ? { name: key, rings } : { name: key, label, rings }
     shapes.push(holes.length > 0 ? { ...base, holes, holeHost } : base)
     properties.push(f.properties ?? null)
   }
+
   return { shapes, properties }
+}
+
+/** What a feature's values are joined on: its own id, a property, or nothing (the caller falls back to the display name). */
+function joinKey(f: GeoFeature, idProperty: string | undefined): string | undefined {
+  if (idProperty === undefined) return undefined
+  const raw = idProperty === 'id' ? f.id : f.properties?.[idProperty]
+
+  return raw === undefined || raw === null ? undefined : String(raw)
+}
+
+/** The projected outer rings of a feature's polygons, with each polygon's inner rings and the outer ring each cuts. */
+function featureRings(polys: number[][][][], projection: GeoProjection): { rings: Pt[][]; holes: Pt[][]; holeHost: number[] } {
+  const rings: Pt[][] = []
+  const holes: Pt[][] = []
+  const holeHost: number[] = []
+  for (const poly of polys) {
+    const outer = poly[0]
+    if (outer === undefined || outer.length < 3) continue
+    rings.push(projectRing(outer, projection))
+    // Inner rings belong to THIS polygon's outer ring.
+    for (let hi = 1; hi < poly.length; hi++) {
+      const inner = poly[hi]!
+      if (inner.length < 3) continue
+      holes.push(projectRing(inner, projection))
+      holeHost.push(rings.length - 1)
+    }
+  }
+
+  return { rings, holes, holeHost }
 }
 
 /** `geoFeatures(...).shapes`. */
@@ -174,6 +190,16 @@ export interface GeoToSvgOptions {
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
+/** The overlay layers of a `geoToSvg` call, in the live host's order: heat, paths, pies, points. */
+function geoOverlayCmds(layout: GeoLayout, o: GeoToSvgOptions): DrawCmd[] {
+  return [
+    ...renderGeoHeat(layout, o.heat ?? [], geoHeatStops([...(o.heatStops ?? [])], [...(o.options?.stops ?? [])]), o.heatRadius ?? 20.0, 1.0),
+    ...renderGeoOverlayPaths(layout, o.paths ?? [], o.overlayOptions),
+    ...renderGeoPies(layout, o.pies ?? [], 1.0),
+    ...renderGeoOverlayPoints(layout, o.points ?? [], o.overlayOptions),
+  ]
+}
+
 /** Map → `<svg>` string, server-safe: the same layers, in the same order, as the live `<MapChart>`. */
 export function geoToSvg(o: GeoToSvgOptions): string {
   const width = o.width ?? 640.0
@@ -181,17 +207,12 @@ export function geoToSvg(o: GeoToSvgOptions): string {
   const layout = layoutGeo(o.geo, { x: 0.0, y: 0.0, w: width, h: height }, o.options)
   const m = o.measure ?? measureApprox()
   const aligned = alignGeoValues(layout.regions.map((r) => r.name), o.values)
-  const cmds = [
-    ...renderGeoAligned(layout, aligned, o.options, m),
-    ...renderGeoHeat(layout, o.heat ?? [], geoHeatStops([...(o.heatStops ?? [])], [...(o.options?.stops ?? [])]), o.heatRadius ?? 20.0, 1.0),
-    ...renderGeoOverlayPaths(layout, o.paths ?? [], o.overlayOptions),
-    ...renderGeoPies(layout, o.pies ?? [], 1.0),
-    ...renderGeoOverlayPoints(layout, o.points ?? [], o.overlayOptions),
-  ]
+  const cmds = [...renderGeoAligned(layout, aligned, o.options, m), ...geoOverlayCmds(layout, o)]
   const dom = geoDomainAligned(aligned)
   const filled = aligned.filter((v) => Number.isFinite(v)).length
   const overlays = (o.points?.length ?? 0) + (o.paths?.length ?? 0)
   const description = o.description ?? (o.title !== undefined ? `${o.title}: ${layout.regions.length} regions, ${filled} with values from ${dom.min} to ${dom.max}${overlays > 0 ? `, ${overlays} points and paths` : ''}.` : undefined)
+
   return renderSvg(cmds, width, height, {
     ...o.svg,
     ...(o.title !== undefined ? { title: o.title } : {}),

@@ -8,6 +8,7 @@ import { FLORIDA_LAKE, SOUTH_AFRICA_LESOTHO } from './__fixtures__/geo-holes'
 import type { GeoJson } from './geo-web'
 
 const square = (x: number): number[][][] => [[[x, 0], [x + 10, 0], [x + 10, 10], [x, 10], [x, 0]]]
+
 const WORLD: GeoJson = {
   type: 'FeatureCollection',
   features: [
@@ -15,6 +16,7 @@ const WORLD: GeoJson = {
     { type: 'Feature', id: 'b-id', properties: { name: 'B', iso: 'BB', gdp: 9 }, geometry: { type: 'Polygon', coordinates: square(10) } },
   ],
 }
+
 const BOX = { x: 0, y: 0, w: 400, h: 300 }
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 80))
 const snap = (c: HTMLCanvasElement): string => Array.from(c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data).join(',')

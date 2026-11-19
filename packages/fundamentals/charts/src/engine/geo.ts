@@ -167,6 +167,7 @@ export function projectLonLat(lon: Double, lat: Double, projection: GeoProjectio
     const phi = (clamped * Math.PI) / 180.0
     return { x: lon, y: (Math.log(Math.tan(Math.PI / 4.0 + phi / 2.0)) * 180.0) / Math.PI }
   }
+
   return { x: lon, y: lat }
 }
 
@@ -176,6 +177,7 @@ function ringArea(ring: Pt[]): Double {
     const j = i === 0 ? ring.length - 1 : i - 1
     a = a + (ring[j]!.x * ring[i]!.y - ring[i]!.x * ring[j]!.y)
   }
+
   return a / 2.0
 }
 
@@ -190,6 +192,7 @@ function ringCentroid(ring: Pt[]): Pt | null {
     cx = cx + (ring[j]!.x + ring[i]!.x) * f
     cy = cy + (ring[j]!.y + ring[i]!.y) * f
   }
+
   return { x: cx / (6.0 * a), y: cy / (6.0 * a) }
 }
 
@@ -276,8 +279,10 @@ export function layoutGeoShapes(shapes: readonly GeoShape[], box: Rect, options?
     const centroid = bestAt < 0 ? fallback : ringCentroid(rings[bestAt]!) ?? fallback
     const host = [...(r.holeHost ?? [])]
     const fills = rings.map((ring, ri) => bridgeHoles(ring, holes.filter((_h, k) => k < host.length && host[k] === ri)))
+
     return { name: r.name, label: r.label ?? r.name, rings, holes, holeHost: host, fills, centroid, bbox }
   })
+
   return { regions, transform: { minX, maxY, scale, ox, oy, projection } }
 }
 
@@ -304,6 +309,7 @@ export function geoRoamZoom(view: GeoView, factor: Double, px: Double, py: Doubl
   // the zoom change solves for the new pan.
   const panX = (px - cx) - (px - cx - view.panX) * k
   const panY = (py - cy) - (py - cy - view.panY) * k
+
   return { zoom, panX, panY }
 }
 
@@ -332,6 +338,7 @@ export function geoDomainAligned(aligned: readonly Double[]): Domain {
     if (v > hi) hi = v
     seen = seen + 1
   }
+
   return seen === 0 ? { min: 0.0, max: 0.0 } : { min: lo, max: hi }
 }
 
@@ -385,6 +392,7 @@ export function renderGeoAligned(layout: GeoLayout, aligned: readonly Double[], 
       out.push({ kind: 'text', text: r.label, at: r.centroid, fill: labelColor, size: fontSize, align: 'middle', baseline: 'middle' })
     }
   }
+
   return out
 }
 
@@ -413,7 +421,7 @@ export function bridgeHoles(outer: Pt[], holes: Pt[][]): Pt[] {
     const raw = holes[hi]!
     // Wound AGAINST the outer ring.
     const hole = ringArea(raw) * sign > 0.0 ? reversedRing(raw) : raw
-    ring = bridgeOne(ring, hole, holes, hi)
+    ring = bridgeOne(ring, hole, holes)
   }
 
   return ring
@@ -428,7 +436,7 @@ function reversedRing(ring: Pt[]): Pt[] {
 }
 
 /** One hole bridged into `ring`: from its rightmost vertex to the nearest ring vertex that sees it, or `ring` unchanged. */
-function bridgeOne(ring: Pt[], hole: Pt[], all: Pt[][], self: number): Pt[] {
+function bridgeOne(ring: Pt[], hole: Pt[], all: Pt[][]): Pt[] {
   let mi = 0
   for (let k = 1; k < hole.length; k++) if (hole[k]!.x > hole[mi]!.x) mi = k
   const m = hole[mi]!
@@ -450,7 +458,7 @@ function bridgeOne(ring: Pt[], hole: Pt[], all: Pt[][], self: number): Pt[] {
     if (best < 0) break
     prevD = bestD
     prevK = best
-    if (!bridgeClear(ring, hole, all, self, m, ring[best]!)) continue
+    if (!bridgeClear([ring, ...all], m, ring[best]!)) continue
     const out: Pt[] = []
     for (let k = 0; k <= best; k++) out.push(ring[k]!)
     for (let k = 0; k < hole.length; k++) out.push(hole[(mi + k) % hole.length]!)
@@ -463,10 +471,9 @@ function bridgeOne(ring: Pt[], hole: Pt[], all: Pt[][], self: number): Pt[] {
   return ring
 }
 
-/** The bridge m -> o crosses no edge of the ring, this hole or any other hole (edges that share an endpoint with it do not count). */
-function bridgeClear(ring: Pt[], hole: Pt[], all: Pt[][], self: number, m: Pt, o: Pt): boolean {
-  if (ringHitsBridge(ring, m, o) || ringHitsBridge(hole, m, o)) return false
-  for (let k = 0; k < all.length; k++) if (k !== self && ringHitsBridge(all[k]!, m, o)) return false
+/** The bridge m -> o crosses no edge of any blocking ring (the outline and every hole; edges that share an endpoint with it do not count). */
+function bridgeClear(blockers: Pt[][], m: Pt, o: Pt): boolean {
+  for (const ring of blockers) if (ringHitsBridge(ring, m, o)) return false
 
   return true
 }
@@ -524,6 +531,7 @@ function ringBox(ring: Pt[]): Rect {
     if (p.y > y1) y1 = p.y
     seen = seen + 1
   }
+
   return seen === 0 ? { x: 0.0, y: 0.0, w: 0.0, h: 0.0 } : { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
@@ -538,6 +546,7 @@ function pointInRing(ring: Pt[], px: Double, py: Double): boolean {
     // though JS reads it fine.
     if ((a.y > py) !== (b.y > py) && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) inside = !inside
   }
+
   return inside
 }
 
@@ -562,6 +571,7 @@ export function hitGeoIndex(layout: GeoLayout, px: Double, py: Double): number {
     // each bridge twice, so it cancels.
     for (const ring of r.fills) if (pointInRing(ring, px, py)) return i
   }
+
   return -1
 }
 
