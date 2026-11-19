@@ -15,14 +15,17 @@ import type { CanvasHostProps } from './canvas-host'
 import { withItemStates } from './host-states'
 import type { ItemStateProps } from './host-states'
 import { plain } from './format'
-import { geoDomainAligned, geoOptionParams, geoRoamPan, geoRoamZoom, hitGeoIndex, layoutGeoShapes, renderGeoAligned } from './geo'
+import { GEO_RAMP_DARK, GEO_RAMP_LIGHT, geoDomainAligned, geoOptionParams, geoRoamPan, geoRoamZoom, hitGeoIndex, layoutGeoShapes, renderGeoAligned } from './geo'
 import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoTrails, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
 import { alignGeoValues, geoFeatures, getMapDefinition, resolveMapSource } from './geo-web'
 import type { GeoLayout, GeoOptions, GeoProjection, GeoRegion, GeoShape, GeoValue, GeoView } from './geo'
 import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie, GeoTrail } from './geo-overlay'
 import type { GeoJson, GeoSource, MapDefinition } from './geo-web'
 import type { Topology } from './geo-topo'
-import type { Double, Rect } from './types'
+import type { ChartTheme } from './render'
+import type { Double, DrawCmd, Pt, Rect } from './types'
+import { visualStripOf } from './visual-map'
+import { visualStripPlace, visualStripSize } from './visual-strip'
 import type { VisualMapSpec } from './visual-map'
 import { visualMapHost } from './visual-map-host'
 import type { VisualMapSelection } from './visual-map-host'
@@ -100,6 +103,33 @@ export interface MapRegionInfo {
   value: Double
   /** The feature's GeoJSON `properties`, or null (a `GeoShape[]` map has none). */
   properties: Record<string, unknown> | null
+}
+
+/** Whether a theme's page colour is dark (an empty background is the page, taken as white). */
+function darkGround(background: string): boolean {
+  const m = /^#([0-9a-f]{6})$/i.exec(background)
+  if (m === null) return false
+  const n = parseInt(m[1]!, 16)
+
+  return 0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255) < 110
+}
+
+/** The legend entry for regions without a value: a hatched swatch and "No data", beside the visualMap strip. */
+function noDataKey(spec: VisualMapSpec | undefined, box: Rect, wanted: boolean, theme: ChartTheme): DrawCmd[] {
+  if (spec === undefined || !wanted) return []
+  const strip = visualStripOf(spec)
+  const place = visualStripPlace(strip, box.w, box.h)
+  const size = visualStripSize(strip)
+  const s = 12.0
+  // Beside a horizontal strip, above a vertical one.
+  const x = box.x + (spec.orient === 'vertical' ? place.at.x : place.at.x + size.x + 16.0)
+  const y = box.y + (spec.orient === 'vertical' ? place.at.y - s - 8.0 : place.at.y + (size.y - s) / 2.0)
+  const ring: Pt[] = [{ x, y }, { x: x + s, y }, { x: x + s, y: y + s }, { x, y: y + s }]
+
+  return [
+    { kind: 'polygon', points: ring, fill: theme.muted, pattern: { kind: 'diagonal', color: theme.label, spacing: 4.0, width: 1.0 } },
+    { kind: 'text', text: 'No data', at: { x: x + s + 6.0, y: y + s / 2.0 }, fill: theme.label, size: spec.fontSize, align: 'start', baseline: 'middle' },
+  ]
 }
 
 const isShapes = (m: unknown): m is readonly GeoShape[] => Array.isArray(m)
@@ -210,7 +240,8 @@ export function MapChart(props: MapChartProps): VNode {
         {
           emptyColor: theme.muted,
           borderColor: theme.background === '' ? '#ffffff' : theme.background,
-          stops: vm.current()?.stops ?? theme.ramp,
+          stops: vm.current()?.stops ?? (darkGround(theme.background) ? GEO_RAMP_DARK : GEO_RAMP_LIGHT),
+          hatchColor: theme.label,
           labelColor: theme.label,
           ...viewed(),
           ...vm.selection(),
@@ -228,6 +259,7 @@ export function MapChart(props: MapChartProps): VNode {
       ...(props.trail === undefined ? [] : renderGeoTrails(layout, props.paths ?? [], props.trail, time, props.overlayOptions?.color ?? '#b42318')),
       ...renderGeoOverlayPoints(layout, props.points ?? [], { labelColor: theme.label, ...props.overlayOptions, progress }),
       ...vm.cmds(outer),
+      ...noDataKey(vm.current(), outer, aligned().some((v) => !Number.isFinite(v)), theme),
     ],
     select: (layout, px, py) => {
       if (vm.click(outer, px, py)) return

@@ -6,10 +6,20 @@
 
 import { HEAT_RAMP, rampColor, visualOutside } from './heat'
 import { approxTextWidth } from './treemap'
-import type { Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
+import type { ChartPattern, Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 import { isFiniteNumber } from './scale'
 import { geoProjectionParams, projectLonLatWith, unprojectLonLatWith } from './geo-projection'
 import type { GeoProjectionParams } from './geo-projection'
+
+/**
+ * The default colour ramps of a MAP, low to high, one per ground. They are the map's own, not the theme's ramp, because
+ * a map has to stay readable at BOTH ends: the theme's dark ramp starts at `#172033`, which is the page, so the lowest
+ * regions vanished. Every stop here keeps at least 3:1 against the dark page (`#141821`) and the light ramp's lightest
+ * stop 1.4:1 against white (a light map's lightest region sits beside white borders by design), and contrast rises with
+ * the value on both. A test locks the numbers.
+ */
+export const GEO_RAMP_LIGHT: readonly string[] = ['#b0d0fc', '#60a5fa', '#2563eb', '#1e3a8a']
+export const GEO_RAMP_DARK: readonly string[] = ['#3f64c8', '#5b8def', '#9ec1ff', '#d6e6ff']
 
 export type GeoProjection = 'equirectangular' | 'mercator' | 'equalEarth' | 'naturalEarth1' | 'albers' | 'albersUsa'
 
@@ -155,6 +165,8 @@ export interface GeoOptions {
   stops?: readonly string[] | undefined
   domain?: Domain | undefined
   emptyColor?: string | undefined
+  /** When set, a region with NO value is hatched in this colour over the empty fill, so it reads as "no data" and not as a low value. */
+  hatchColor?: string | undefined
   borderColor?: string | undefined
   borderWidth?: Double | undefined
   showLabels?: boolean | undefined
@@ -388,8 +400,10 @@ export function renderGeoAligned(layout: GeoLayout, aligned: readonly Double[], 
     const v = i < aligned.length ? aligned[i]! : GEO_NA
     const has = isFiniteNumber(v) && progress > 0.0
     const t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
+    const hatched = !has && (options?.hatchColor ?? '') !== ''
     const fill = !has ? emptyColor : visualOutside(v, options?.inRange, options?.outBands) ? options?.outColor ?? '#cccccc' : rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t)
-    for (const ring of r.fills) out.push({ kind: 'polygon', points: ring, fill })
+    const hatch: ChartPattern | undefined = hatched ? { kind: 'diagonal', color: options?.hatchColor ?? '#64748b', spacing: 5.0, width: 1.0 } : undefined
+    for (const ring of r.fills) out.push({ kind: 'polygon', points: ring, fill, pattern: hatch })
   }
   for (const r of layout.regions) {
     for (const ring of r.rings) out.push(closedLine(ring, border, borderWidth))

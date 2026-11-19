@@ -186,3 +186,25 @@ describe('antimeridian', () => {
     expect(b.w / b.h).toBeCloseTo(2 * 2.70663 / (2 * 1.3173627591574), 3)
   })
 })
+
+describe('Albers USA: the Aleutians', () => {
+  it('the part of the chain west of the antimeridian lands in the Alaska inset, not shot across the map', () => {
+    for (const [lon, lat] of [[172.5, 52.9], [177.5, 51.9], [-176.6, 51.8], [-166.5, 53.9]] as const) {
+      const p = fwd('albersUsa', lon, lat)
+      expect(p.x, `${lon}`).toBeGreaterThan(-0.43)
+      expect(p.x).toBeLessThan(-0.2)
+      expect(p.y).toBeLessThan(-0.12)
+      expect(p.y).toBeGreaterThan(-0.24)
+    }
+  })
+  it('the antimeridian crossing is continuous: 179.9 and -179.9 land next to each other', () => {
+    const a = fwd('albersUsa', 179.9, 52)
+    const b = fwd('albersUsa', -179.9, 52)
+    expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(0.01)
+  })
+  it('the inverse wraps back to a longitude in range', () => {
+    const p = fwd('albersUsa', 175, 52)
+    const back = inv('albersUsa', p.x, p.y)
+    expect(back.x).toBeCloseTo(175, 5)
+  })
+})
