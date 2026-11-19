@@ -395,14 +395,14 @@ get_api_client({ search: 'order' })`,
       kind: 'constant',
       signature: 'tool: get_pattern({ name?: string }) → PatternBody | string[]',
       summary:
-        'Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/` (the same files the docs site renders — one source, two surfaces). 17 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/src/content/docs/patterns/<slug>.md` file to add one — picked up on next call (no code change, no bundling step in dev; `scripts/copy-content.ts` mirrors it into this package\'s bundled `content/patterns/` for the published `bunx @pyreon/mcp` consumer case at build time).',
+        'Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/` (the same files the docs site renders — one source, two surfaces). 18 foundational patterns ship: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `offline-and-installable-apps`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Omit `name` to list available patterns. Drop a new `docs/src/content/docs/patterns/<slug>.md` file to add one — picked up on next call (no code change, no bundling step in dev; `scripts/copy-content.ts` mirrors it into this package\'s bundled `content/patterns/` for the published `bunx @pyreon/mcp` consumer case at build time).',
       example: `get_pattern({ name: 'controllable-state' })
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
       mistakes: [
         'Passing a name in CamelCase or PascalCase — pattern names are kebab-case (`controllable-state`, not `ControllableState`). A wrong-case name 404s.',
-        'Expecting the pattern list to include every Pyreon idiom — `get_pattern` covers the 17 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a `get_pattern` slug.',
+        'Expecting the pattern list to include every Pyreon idiom — `get_pattern` covers the 18 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a `get_pattern` slug.',
         'Confusing patterns with anti-patterns — `get_pattern` returns "how to do X correctly"; `get_anti_patterns` returns "what to avoid". They\'re complementary.',
       ],
       seeAlso: ['get_anti_patterns'],

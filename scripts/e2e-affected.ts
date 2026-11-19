@@ -305,6 +305,19 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // Offline + installable apps in a real browser: the generated worker, the
+    // persisted query cache and offline mutations, the update flow.
+    name: 'pwa-offline',
+    script: 'test:e2e:pwa-offline',
+    triggers: [
+      'packages/zero/zero/src/pwa',
+      'packages/fundamentals/query/src/persist',
+      'examples/fixtures/pwa-offline/',
+      'e2e/pwa-offline.spec.ts',
+      'e2e-configs/pwa-offline.config.ts',
+    ],
+  },
+  {
     // `https()` in a real browser. The node-side suites prove the certificate
     // parses and Vite applies it; only a browser can say whether the page is a
     // secure context and the gated APIs are consequently DEFINED.

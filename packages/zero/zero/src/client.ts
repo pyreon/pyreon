@@ -5,6 +5,19 @@ import { hydrateLoaderData, RouterProvider } from '@pyreon/router'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { createApp } from './app'
 
+// PWA client surface (also exported from the barrel) — client-safe, no Node imports.
+export type {
+  InstallPrompt,
+  RegisterServiceWorkerOptions,
+  ServiceWorkerUpdate,
+} from './pwa-client'
+export {
+  registerServiceWorker,
+  unregisterServiceWorkers,
+  useInstallPrompt,
+  useServiceWorkerUpdate,
+} from './pwa-client'
+
 // Vite-injected build-time constant. Defined in `vite-plugin.ts`'s
 // `config()` hook from `zero({ base })`. Falls back to `'/'` for
 // non-Vite builds (test environments, etc.) so the read is always
