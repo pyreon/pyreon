@@ -106,6 +106,7 @@ describe('SCENARIOS', () => {
     // `/echarts`, so no scenario may measure it by accident.
     expect(Object.fromEntries(charts.map((s) => [s.id, s.entry ?? 'index.js']))).toEqual({
       '@pyreon/charts::chart-line': 'index.js',
+      '@pyreon/charts::chart-map': 'index.js',
       '@pyreon/charts::chart-pie': 'index.js',
       '@pyreon/charts::plot-minimal': 'engine.js',
       '@pyreon/charts::plot-svg': 'svg.js',
