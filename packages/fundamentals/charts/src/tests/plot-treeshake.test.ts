@@ -9,7 +9,7 @@
 // Markers are STRING LITERALS from each family, never identifiers: names are
 // minified, so `bundle.includes('renderRadar')` is vacuous and passes against
 // a bundle that contains the whole radial engine.
-import { rmSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
@@ -149,6 +149,24 @@ describe.skipIf(!hasBuiltLib(MAIN, "the main entry's feature tree-shaking"))('<C
         expect(code.includes(text), `"${text}" shipped in ${names[0]!}`).toBe(false)
       }
     }
+  })
+
+  // The bundle check above can be fooled: a bundler may inline the production no-op warnOnce and drop the call and
+  // its argument, which hides an ungated call from it. This reads the sources, so an ungated warnOnce is found
+  // whichever bundler the app uses.
+  it('every warnOnce call sits behind the production gate', () => {
+    const dir = join(here, '..', 'engine')
+    const bad: string[] = []
+    for (const file of readdirSync(dir)) {
+      if (!/\.tsx?$/.test(file) || /\.test\./.test(file) || file === 'dev-warn.ts') continue
+      const lines = readFileSync(join(dir, file), 'utf8').split('\n')
+      lines.forEach((line, i) => {
+        if (!/\bwarnOnce\(/.test(line) || /^\s*(import|export)\b/.test(line)) return
+        const near = lines.slice(Math.max(0, i - 4), i + 1).join('\n')
+        if (!near.includes("process.env.NODE_ENV !== 'production'")) bad.push(`${file}:${i + 1}`)
+      })
+    }
+    expect(bad, 'warnOnce called outside the production gate: its message string ships in every bundle').toEqual([])
   })
 
   it('and the marker is real — importing sqrt, symlog or log brings the view in', async () => {
