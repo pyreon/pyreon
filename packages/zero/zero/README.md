@@ -144,7 +144,7 @@ zero({ mode: 'isr', isr: { revalidate: 60, maxEntries: 1000 } })
 
 In-memory LRU SSR cache with TTL revalidation. **Default keys cache by `url.pathname + url.search`** — cookies / auth headers are still excluded, so for auth-gated pages supply `cacheKey: (req) => …` that varies on session cookie / user-id header to avoid serving one user's HTML to another.
 
-Tag-based invalidation + persistence: `isr.tagsForRequest(req) => string[]` records tags at cache-set time and `isrHandler.revalidateTag(tag)` drops every entry carrying the tag; `createFsStore(dir)` (from `@pyreon/zero/server`) persists entries + the tag index across restarts on single-box node/bun deploys (multi-instance still wants a Redis/KV `store`).
+Tag-based invalidation + persistence: `isr.tagsForRequest(req) => string[]` records tags at cache-set time and `isrHandler.revalidateTag(tag)` drops every entry carrying the tag; `createFsStore(dir, { maxEntries })` (from `@pyreon/zero/server`) persists entries + their tags across restarts on single-box node/bun deploys (multi-instance still wants a Redis/KV `store`). Like the memory store it keeps at most `maxEntries` entries (default `1000`), evicting the least recently used first, and the cap holds across restarts. Every distinct query string is its own entry under the default key, so pages that ignore their query string should pass a `cacheKey` that keeps only the parameters they read.
 
 ## Built-in components
 
