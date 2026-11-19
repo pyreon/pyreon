@@ -8,7 +8,7 @@ import { hitTreemap, hitTreemapIndex, layoutTreemap, renderTreemap } from './tre
 import type { TreeNode, TreemapCell, TreemapOptions } from './treemap'
 
 export interface TreemapChartProps extends CanvasHostProps {
-  data: TreeNode[] | (() => TreeNode[])
+  data: readonly TreeNode[] | (() => readonly TreeNode[])
   treemap?: TreemapOptions
   /** Fired with the deepest cell under the click, or null for a miss. */
   onSelect?: (cell: TreemapCell | null) => void
@@ -17,7 +17,7 @@ export interface TreemapChartProps extends CanvasHostProps {
 }
 
 export function TreemapChart(props: TreemapChartProps): VNode {
-  const readData = (): TreeNode[] => (typeof props.data === 'function' ? (props.data as () => TreeNode[])() : props.data)
+  const readData = (): readonly TreeNode[] => (typeof props.data === 'function' ? (props.data as () => readonly TreeNode[])() : props.data)
   return canvasHost<TreemapCell[]>({
     props,
     defaultHeight: 300,

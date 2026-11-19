@@ -63,9 +63,9 @@ export interface PlotChartProps<T> {
    * `undefined` with the index. A plain `number[]` column is used as the
    * series without a copy — the fast path for large series.
    */
-  data?: T[] | (() => T[])
+  data?: readonly T[] | (() => readonly T[])
   /** The marks to draw, in paint order. */
-  marks: Mark<T>[]
+  marks: readonly Mark<T>[]
   /** Category labels for the x axis. Omit for a numeric axis. */
   x?: (d: T, index: number) => string
   width?: Double
@@ -193,7 +193,7 @@ export interface PlotChartProps<T> {
   /** ECharts' `outOfBrush.colorAlpha` (default 0.1). */
   outOfBrushOpacity?: number | undefined
   /** ECharts' `brush.seriesIndex`: the series the area brush selects; absent = all. */
-  brushSeriesIndex?: number[] | undefined
+  brushSeriesIndex?: readonly number[] | undefined
   /** The datums inside the brush, per series, in GLOBAL row indices; empty lists when cleared. */
   onBrushSelected?: (selected: { seriesIndex: number; dataIndex: number[] }[]) => void
   /**
@@ -208,7 +208,7 @@ export interface PlotChartProps<T> {
    * under the plot that set the zoom window to the LAST `count` rows;
    * `count <= 0` shows everything. Works with or without `dataZoom`.
    */
-  zoomPresets?: { label: string; count: number }[]
+  zoomPresets?: readonly { label: string; count: number }[]
   /**
    * Tween a data change of the same shape (same series count and lengths)
    * from the previous frame to the new one instead of snapping. Default on;
@@ -260,7 +260,7 @@ export interface PlotChartProps<T> {
    */
   title?: string
   /** Labels for the legend, the tooltip and the accessible table. */
-  seriesLabels?: string[]
+  seriesLabels?: readonly string[]
   /**
    * Formats the y-axis tick labels, the tooltip values and the accessible
    * description.
@@ -313,9 +313,9 @@ export interface PlotChartProps<T> {
    */
   horizontal?: boolean
   /** Reference rules and bands — the target line, the healthy range. */
-  annotations?: Annotation[]
+  annotations?: readonly Annotation[]
   /** Datum-anchored point markers (max / min / a concrete index). */
-  markers?: PointMarker[]
+  markers?: readonly PointMarker[]
   /**
    * Pin the left y domain. Derived from the data when absent — bars from
    * zero, lines from their own extent (see `resolveYDomain`).
@@ -820,10 +820,10 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // Column-only charts synthesize their rows: one `undefined` per index of
   // the longest column, cached by (marks, length) so every memo keyed on row
   // identity stays stable across reads.
-  let colRows: { marks: Mark<T>[]; n: number; rows: T[] } | null = null
-  const readData = (): T[] => {
+  let colRows: { marks: readonly Mark<T>[]; n: number; rows: T[] } | null = null
+  const readData = (): readonly T[] => {
     const d = props.data
-    if (d !== undefined) return typeof d === 'function' ? (d as () => T[])() : d
+    if (d !== undefined) return typeof d === 'function' ? (d as () => readonly T[])() : d
     const marks = props.marks
     if (colRows !== null && colRows.marks === marks) {
       const n = columnLength(marks)
@@ -855,12 +855,12 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
    * of fewer rows. `viewOffset` maps local indices back to global ones for
    * the callbacks, because the caller's world never zoomed.
    */
-  const viewRange = (rows: T[]): { from: number; to: number } => {
+  const viewRange = (rows: readonly T[]): { from: number; to: number } => {
     const win = zoomWin()
     if (win === null) return { from: 0, to: rows.length }
     return sliceRange(win, rows.length)
   }
-  const viewRows = (rows: T[]): T[] => {
+  const viewRows = (rows: readonly T[]): readonly T[] => {
     const r = viewRange(rows)
     return r.from === 0 && r.to === rows.length ? rows : rows.slice(r.from, r.to)
   }
@@ -878,7 +878,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   /** The visible (thinned) row for a slice index, or -1 when decimation dropped it. */
   const visibleIndexOf = (sliceIndex: number, keep: number[] | null): number => (keep === null ? sliceIndex : (keepPos?.get(sliceIndex) ?? -1))
   const globalOf = (visibleIndex: number, off: number): number => (lastKeep === null ? visibleIndex : (lastKeep[visibleIndex] ?? visibleIndex)) + off
-  const decimateRows = (rows: T[]): number[] | null => {
+  const decimateRows = (rows: readonly T[]): number[] | null => {
     const max = props.maxPoints
     if (max === undefined) return null
     if (max < 3) {
@@ -916,7 +916,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   const resolvedXFormat = (): Formatter | undefined =>
     props.xFormat ?? (props.locale === undefined ? undefined : props.xTime === true ? localeFmts(props.locale).date : undefined)
 
-  const buildSpec = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
+  const buildSpec = (allRows: readonly T[], w: Double, hgt: Double): ChartSpec => {
     const inner = buildSpecInner(allRows, w, hgt)
     if (props.yScale === 'log' && process.env.NODE_ENV !== 'production') {
       for (const sr of inner.series) {
@@ -932,7 +932,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (props.handle !== undefined && props.handle.seriesCount.peek() !== built.series.length) props.handle.seriesCount.set(built.series.length)
     return built
   }
-  const buildSpecInner = (allRows: T[], w: Double, hgt: Double): ChartSpec => {
+  const buildSpecInner = (allRows: readonly T[], w: Double, hgt: Double): ChartSpec => {
     const off = viewRange(allRows).from
     const visible = viewRows(allRows)
     const keep = decimateRows(visible)
@@ -1220,8 +1220,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // strip was re-resolving every row on every entrance and tween frame) and
   // thinned to the strip's width — a 36px-tall overview needs the min/max
   // envelope per pixel column, not 100k points.
-  let navCache: { rows: T[]; marks: Mark<T>[]; w: Double; values: Double[]; color: string } | null = null
-  const navigatorSeries = (allRows: T[], w: Double): { values: Double[]; color: string } => {
+  let navCache: { rows: readonly T[]; marks: readonly Mark<T>[]; w: Double; values: Double[]; color: string } | null = null
+  const navigatorSeries = (allRows: readonly T[], w: Double): { values: Double[]; color: string } => {
     const c = navCache
     if (c !== null && c.rows === allRows && c.marks === props.marks && c.w === w) return c
     const first = resolveMarks(allRows, props.marks, theme().palette).find((x) => x.values.length > 1)
@@ -1231,7 +1231,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     return next
   }
   /** The navigator strip — engine-laid-out (iOS and Android drive the same one); `navRect` is what the drag measures against. */
-  const navigatorCmds = (allRows: T[], w: Double, y0: Double, navH: Double): DrawCmd[] => {
+  const navigatorCmds = (allRows: readonly T[], w: Double, y0: Double, navH: Double): DrawCmd[] => {
     navRect = null
     const zm = features.zoom
     if (props.navigator !== true || navH <= 0.0 || zm === undefined) return []
@@ -1949,9 +1949,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // The a11y input is read by the description, the table and every keystroke;
   // resolving the marks over all rows each time was a full O(N) pass per read.
   // Memoized on the inputs' identity — a new rows array or marks array is a new pass.
-  let lastFull: { rows: T[]; marks: Mark<T>[]; x: ((d: T, i: number) => string) | undefined; palette: readonly string[]; series: Series[]; categories: string[] } | null = null
+  let lastFull: { rows: readonly T[]; marks: readonly Mark<T>[]; x: ((d: T, i: number) => string) | undefined; palette: readonly string[]; series: Series[]; categories: string[] } | null = null
   /** Every row through every mark, memoized on the inputs that decide it. */
-  const resolveFull = (rows: T[]): { series: Series[]; categories: string[] } => {
+  const resolveFull = (rows: readonly T[]): { series: Series[]; categories: string[] } => {
     const palette = theme().palette
     const m = lastFull
     if (m !== null && m.rows === rows && m.marks === props.marks && m.x === props.x && m.palette === palette) return m
@@ -1959,7 +1959,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     lastFull = next
     return next
   }
-  let a11yMemo: { rows: T[]; marks: Mark<T>[]; labels: string[] | undefined; format: Formatter | undefined; title: string | undefined; input: A11yInput } | null = null
+  let a11yMemo: { rows: readonly T[]; marks: readonly Mark<T>[]; labels: readonly string[] | undefined; format: Formatter | undefined; title: string | undefined; input: A11yInput } | null = null
   const a11yInput = (): A11yInput => {
     const rows = readData()
     const m = a11yMemo

@@ -34,6 +34,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - usePreloadFont(href) + ?font import — font preload + auto @font-face / hashed-URL FontDescriptor
 - zero(&#123; image, font, seo, favicon, og, ai &#125;) — ONE config surface auto-wires image/font (default-on, `false` opts out) + seo/favicon/og-image/ai plugins (config-present opt-in) — no manual plugin imports
 - SSG injects per-route &lt;link rel=modulepreload&gt; — islands-safe (follows static imports, never dynamicImports)
+- Islands-only pages — `export const hydrate = 'islands'` on a route or `_layout`: static HTML plus its islands, no router, no route code, no loader-data blob; `startClientLazy` keeps the app off such a page
 
 ## Complete example
 
@@ -89,6 +90,8 @@ export default function PostPage() { /* component body */ }
 | [`zero`](#zero-function) | function | Top-level Vite plugin chain for @pyreon/zero. |
 | [`I18nRoutingConfig`](#i18nroutingconfig-type) | type | Configuration shape for `zero({ i18n })`. |
 | [`expandRoutesForLocales`](#expandroutesforlocales-function) | function | Fans a flat route list into per-locale variants based on `I18nRoutingConfig`. |
+| [`hydrate`](#hydrate-constant) | constant | Per-route (cascading from `_layout`, leaf wins, like `renderMode`) choice of how the browser takes over the page. |
+| [`startClientLazy`](#startclientlazy-function) | function | The client entry for an app with islands-only routes (`export const hydrate = 'islands'`). |
 | [`GetStaticPaths`](#getstaticpaths-type) | type | Per-route export type for dynamic-route enumeration at SSG build time (PR A of the SSG roadmap). |
 | [`Adapter`](#adapter-type) | type | Deployment adapter contract. |
 | [`createISRHandler`](#createisrhandler-function) | function | Runtime ISR — on-demand SSR caching with stale-while-revalidate. |
@@ -260,6 +263,77 @@ const fileRoutes = expandRoutesForLocales(baseRoutes, {
 - Passing user-controlled strings as locales without validation — the helper validates against path-traversal (`..`, `/`, backslash, `.`, NUL) but does NOT validate BCP-47 shape; an invalid locale silently produces oddly-shaped URLs
 
 **See also:** `I18nRoutingConfig` · `zero` · `parseFileRoutes`
+
+---
+
+### `hydrate` `constant`
+
+```ts
+export const hydrate: 'islands' | 'app' // route or _layout file export
+```
+
+Per-route (cascading from `_layout`, leaf wins, like `renderMode`) choice of how the browser takes over the page. `'app'` (the default) hydrates the whole tree under the router. `'islands'` keeps the page as static HTML plus its `island()`s: the server (SSG, SSR string and streaming, ISR, dev) marks the page with `<meta name="pyreon-hydrate" content="islands">`, leaves out the loader-data script (the loader still runs, its output is in the HTML) and the route's modulepreloads; `startClient` / `startClientLazy` then hydrate the islands from the `islands` registry and start nothing else (no router, no app tree). A client-side navigation from an app page TO an islands-only route becomes a full page load; on an islands-only page every link, `<RouterLink>` included, is a plain link. `@pyreon/head` does not run in the browser there (head tags are server-rendered). Must be a string literal, and never on a page rendered `'spa'` (both are `[Pyreon]` errors at route-scan time). `zero({ routeRules: { '/docs/**': { hydrate: 'islands' } } })` declares it centrally, with the same validation and the precedence `renderMode` has (page export &gt; nearest `_layout` export &gt; the most specific rule &gt; `'app'`); the rule is applied to the route records at generation, so server, SSG, dev and the navigation guard read one value. In dev, an edit to a module the server rendered an islands-only page with reloads that page (there is no client module to hot-swap).
+
+**Example**
+
+```tsx
+// src/routes/(marketing)/_layout.tsx — every page under it is static + islands
+export const hydrate = 'islands'
+export function layout() { return <SiteShell><RouterView /></SiteShell> }
+
+// src/routes/(marketing)/pricing.tsx — the loader runs at build; its output is in the HTML
+export async function loader() { return { plans: await readPlans() } }
+const Calculator = island(() => import('../../islands/Calculator'), { name: 'Calculator', hydrate: 'visible' })
+export default function Pricing() { /* static markup + <Calculator /> */ }
+
+// src/entry-client.ts — the app is loaded only on pages that start it
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+startClientLazy({ routes: () => import('virtual:zero/routes'), islands, islandRoot: () => import('./IslandRoot') })
+```
+
+**Common mistakes**
+
+- A handler or signal OUTSIDE an island on an islands-only page — that markup never runs in the browser, so the handler silently does nothing. Anything interactive must be an `island()`
+- Keeping `startClient({ routes })` with a static `import { routes } from 'virtual:zero/routes'` — islands-only pages still work, but the entry's static graph (the routes module, the layouts, the router) downloads on them. Use `startClientLazy` for the byte win
+- Forgetting `islands` in the client entry — an islands-only page then hydrates nothing and logs a `[Pyreon]` error naming the fix
+- An island that reads context (a theme) with no provider above it — on an islands-only page the island is its own root. Pass `islandRoot` (render only the providers and the children), or wrap inside the island
+- `export const hydrate = 'islands'` on an `spa` page (route, layout, `routeRules` or app mode) — an SPA page has no server HTML to keep; route-scan error
+- Expecting `useLoaderData()` inside an island on an islands-only page — there is no loader-data blob and no router; pass what the island needs as props
+
+**See also:** `startClientLazy` · `zero`
+
+---
+
+### `startClientLazy` `function`
+
+```ts
+startClientLazy(options: { routes: () => Promise<{ routes: RouteRecord[] }>; layout?: ComponentFn; islands?: IslandsRegistry; islandRoot?: IslandRootLoader }): () => void // from @pyreon/zero/client-lazy
+```
+
+The client entry for an app with islands-only routes (`export const hydrate = 'islands'`). On a page the server marked islands-only it hydrates the islands with the `islands` registry (wrapped in `islandRoot` when given; loaded with the first island) and starts nothing else; a marked page with no islands loads nothing at all. On any other page it loads the routes and the app with dynamic imports, then hydrates or mounts exactly as `startClient` does. Its own subpath so the router never enters the entry chunk. `startClient` takes the same `islands` / `islandRoot` options and honours islands-only pages too, but its static `routes` import keeps the app in the entry. SSG, SSR (string and streaming) and ISR pages all preload the app chunks on app pages and the islands runtime on islands-only pages with an island, so neither waits for the entry to discover them (the SSR post-step reads them from the client manifest and bakes them into the server bundle as `__ZERO_CLIENT_PRELOAD__`; an ISR cache entry keeps the set its page kind was rendered with). When EVERY page is islands-only, the production client build carries no app: the client routes module is empty and the app path compiles out (`__ZERO_APP_PAGES__`). With any islands-only page, `@pyreon/server/client` and the islands runtime are grouped into one `islands-runtime` chunk (what the entry itself needs stays in the entry).
+
+**Example**
+
+```tsx
+// src/entry-client.ts
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+
+startClientLazy({
+  routes: () => import('virtual:zero/routes'),
+  islands,
+  islandRoot: () => import('./IslandRoot'), // providers for standalone islands
+})
+```
+
+**Common mistakes**
+
+- Importing it from `@pyreon/zero/client` — it is not exported there on purpose: that module's static imports (the router, the app) would join the entry chunk
+- Passing `routes` as the array instead of a loader — the point is that the routes module loads only on pages that start the app
+- An `islandRoot` that renders an element around its children — the island no longer matches its server HTML. Render only providers
+
+**See also:** `hydrate` · `zero`
 
 ---
 

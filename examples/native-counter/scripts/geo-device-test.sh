@@ -37,14 +37,20 @@ xcrun simctl bootstatus "$UDID" -b
 bash scripts/build-ios.sh
 (cd ios && xcodegen generate)
 
+# Build output stays inside the project (ios/DerivedData is gitignored). The
+# default, ~/Library/Developer/Xcode/DerivedData, outlives the checkout, and a
+# search there could install another checkout's stale PyreonCounter.app.
+DERIVED="ios/DerivedData"
+
 # Build and INSTALL first, so the privacy grant has an app to apply to.
 xcodebuild build-for-testing \
   -project ios/PyreonCounter.xcodeproj -scheme PyreonCounter \
+  -derivedDataPath "$DERIVED" \
   -destination "platform=iOS Simulator,id=$UDID" \
   -configuration Debug CODE_SIGNING_ALLOWED=NO
 
-APP=$(find ~/Library/Developer/Xcode/DerivedData -name 'PyreonCounter.app' -path '*Debug-iphonesimulator*' -print -quit 2>/dev/null || true)
-if [ -n "$APP" ]; then
+APP="$DERIVED/Build/Products/Debug-iphonesimulator/PyreonCounter.app"
+if [ -d "$APP" ]; then
   xcrun simctl install "$UDID" "$APP" || true
 fi
 
@@ -55,5 +61,6 @@ echo "injected ${LAT},${LON}"
 
 TEST_RUNNER_PYREON_GEO_FIX_INJECTED=1 xcodebuild test-without-building \
   -project ios/PyreonCounter.xcodeproj -scheme PyreonCounter \
+  -derivedDataPath "$DERIVED" \
   -destination "platform=iOS Simulator,id=$UDID" \
   -configuration Debug CODE_SIGNING_ALLOWED=NO

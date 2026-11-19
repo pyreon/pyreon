@@ -25,27 +25,27 @@ import { visualMapHost } from './visual-map-host'
 import type { VisualMapSelection } from './visual-map-host'
 
 /** Region values as a record (`{ DE: 83 }`) or as the crossing list. */
-export type MapChartValues = Record<string, Double> | GeoValue[]
+export type MapChartValues = Record<string, Double> | readonly GeoValue[]
 
 export interface MapChartProps extends CanvasHostProps {
   /**
    * Already-projected shapes (the form that lowers to native), inline GeoJSON,
    * or the name of a map registered with `registerMap`.
    */
-  map: GeoShape[] | GeoJson | string
+  map: readonly GeoShape[] | GeoJson | string
   values: MapChartValues | (() => MapChartValues)
   options?: GeoOptions
   /** Native-safe point marks drawn over the regions. */
-  points?: GeoOverlayPoint[]
+  points?: readonly GeoOverlayPoint[]
   /** Native-safe geographic paths drawn below `points`. */
-  paths?: GeoOverlayPath[]
+  paths?: readonly GeoOverlayPath[]
   /** A heat layer: weighted samples drawn as soft blobs over the regions. */
-  heat?: GeoHeatPoint[]
+  heat?: readonly GeoHeatPoint[]
   /** The heat blob radius in pixels (default 20) and its colour ramp (default the theme's). */
   heatRadius?: Double
   heatStops?: readonly string[]
   /** Pies placed at geographic points. */
-  pies?: GeoPie[]
+  pies?: readonly GeoPie[]
   /**
    * An animated trail along every path (ECharts' `effect` on geo lines). The
    * canvas runs a frame clock while it is set, held still under reduced motion.
@@ -77,19 +77,22 @@ export interface MapChartProps extends CanvasHostProps {
   onVisualMapChange?: (selection: VisualMapSelection) => void
 }
 
-const isShapes = (m: GeoShape[] | GeoJson | string): m is GeoShape[] => Array.isArray(m)
+const isShapes = (m: readonly GeoShape[] | GeoJson | string): m is readonly GeoShape[] => Array.isArray(m)
+// `Array.isArray` does not narrow a union holding a READONLY array, so the
+// values form gets its own guard.
+const isValueList = (v: MapChartValues): v is readonly GeoValue[] => Array.isArray(v)
 
 export function MapChart(props: MapChartProps): VNode {
-  const shapes = (): GeoShape[] => {
+  const shapes = (): readonly GeoShape[] => {
     const m = props.map
     if (isShapes(m)) return m
     const json = typeof m === 'string' ? getMap(m) : m
     if (json === null) return []
     return geoShapes(json, props.options?.projection ?? 'equirectangular', props.options?.nameProperty ?? 'name')
   }
-  const readValues = (): GeoValue[] => {
+  const readValues = (): readonly GeoValue[] => {
     const v = typeof props.values === 'function' ? props.values() : props.values
-    return Array.isArray(v) ? v : geoValues(v)
+    return isValueList(v) ? v : geoValues(v)
   }
   const view = signal<GeoView>({ zoom: props.options?.zoom ?? 1.0, panX: props.options?.panX ?? 0.0, panY: props.options?.panY ?? 0.0 })
   let lastBox: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }

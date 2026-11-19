@@ -3,6 +3,8 @@ title: 'Plain Mode'
 description: Write reactive Pyreon code as plain JavaScript — no call parentheses, no .set(), destructuring that stays live — compiled to fine-grained signals.
 ---
 
+> **Experimental.** `@pyreon/core/plain` is an experimental subpath of the Stable `@pyreon/core` (and `@pyreon/compiler/plain` of `@pyreon/compiler`), so Plain Mode can change in a minor release. See [Stability, Versioning & Direction](/docs/stability-and-direction).
+
 Plain Mode is a compile-time dialect. You write ordinary JavaScript — reads without `()`, writes with `=`, props destructured in the signature — and the compiler emits the exact classic-Pyreon code you would have written by hand. It is a pre-pass inside the compiler: templates, SSR, hydration and the native backend all see classic code, and the output is byte-identical across compiler backends.
 
 ```tsx

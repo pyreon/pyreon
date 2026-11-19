@@ -16,7 +16,7 @@ import type { Double } from './types'
 
 export interface A11ySeries {
   label: string
-  values: Double[]
+  values: readonly Double[]
   kind: string
   /**
    * The series' SECOND channel, where it has one — a `band`'s low edge.
@@ -49,7 +49,7 @@ export interface A11ySeries {
 
 export interface A11yInput {
   title?: string | undefined
-  categories: string[]
+  categories: readonly string[]
   series: A11ySeries[]
   format?: Formatter | undefined
 }

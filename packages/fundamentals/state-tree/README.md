@@ -1,5 +1,7 @@
 # @pyreon/state-tree
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 MobX-State-Tree-inspired structured models on signals — `model({ state }).views(…).actions(…)`.
 
 Structured reactive state trees built on `@pyreon/reactivity`: `model({ state })` declares signal-backed state, and the chained `.views((self) => …)` and `.actions((self) => …)` add computed views and the only legal mutation path (actions). Supports nested model composition, typed snapshots, JSON-patch record/replay (replace only), and action interception middleware. Fits when `@pyreon/store` is too flat — use it for tree-shaped domain models with undo/redo, time-travel, or audit-log requirements.

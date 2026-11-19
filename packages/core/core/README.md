@@ -1,5 +1,7 @@
 # @pyreon/core
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./plain`, `./native-plugin`.
+
 Component model, JSX runtime, lifecycle, context, and control-flow components for Pyreon.
 
 `@pyreon/core` provides `h()`, the JSX automatic runtime, lifecycle hooks (`onMount`/`onUnmount`/`onUpdate`/`onErrorCaptured`), a two-tier context system (static vs reactive), control-flow components (`Show`, `Switch`/`Match`, `For`, `Suspense`, `ErrorBoundary`, `Portal`, `Dynamic`), code-splitting via `lazy()`, and props utilities that preserve reactivity through HOC pipelines. **Components run ONCE** — re-rendering on signal change is not the model; reactivity is per-binding via accessors read inside JSX text thunks, effects, or computeds. Sits one layer above `@pyreon/reactivity` and is consumed by both `runtime-dom` (CSR) and `runtime-server` (SSR).

@@ -20,6 +20,7 @@ const GENERATORS = [
   'gen-examples-gallery.ts',
   'gen-lathe-config.ts',
   'gen-package-catalog.ts',
+  'gen-package-stability.ts',
 ]
 
 let failed = false

@@ -1,5 +1,7 @@
 # @pyreon/code
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./webview`, `./native-plugin`.
+
 Reactive code editor — CodeMirror 6 wrapped in Pyreon signals.
 
 A drop-in code editor for in-app editors (markdown previews, query builders, schema fields, REPLs, configuration files). Built on CodeMirror 6 — the measured core is ~138 KB gz vs ~940 KB gz for Monaco's ESM core (~7× smaller gzipped; reproduce with `bun run --filter=@pyreon/code bench`). Every editor field (`value`, `cursor`, `selection`, `lineCount`, `focused`) is a Pyreon signal so the editor composes natively with `effect` / `computed` / `<Show>` without manual change-event plumbing. Ships a single-pane editor, a side-by-side diff editor, a tabbed multi-file editor, lazy-loaded language grammars for 20 languages, a canvas-based minimap, and a two-way signal binding helper with format-on-input loop protection.

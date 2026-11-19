@@ -22,7 +22,7 @@ export interface BoxplotFrame {
  * a tap resolves against exactly the bands the canvas painted. `categories`
  * empty = a numeric x axis (the boxes are still one band each).
  */
-export function boxplotFrame(rows: FiveNumber[], width: Double, height: Double, categories: string[], fontSize: Double, measure: MeasureText, format?: Formatter): BoxplotFrame {
+export function boxplotFrame(rows: readonly FiveNumber[], width: Double, height: Double, categories: string[], fontSize: Double, measure: MeasureText, format?: Formatter): BoxplotFrame {
   const ticks = valueTickTarget(width, height, fontSize, false)
   const domain = niceDomain(boxplotExtent(rows), ticks)
   const cfg: LayoutConfig = {
@@ -47,7 +47,7 @@ export function boxplotFrame(rows: FiveNumber[], width: Double, height: Double, 
  * — an explicit parameter, as `renderHeatChart` takes it, so a native host
  * tweens one number instead of copying the options.
  */
-export function renderBoxplotChart(rows: FiveNumber[], width: Double, height: Double, categories: string[], theme: ChartTheme, options: BoxplotOptions, measure: MeasureText, format?: Formatter, progress?: Double): DrawCmd[] {
+export function renderBoxplotChart(rows: readonly FiveNumber[], width: Double, height: Double, categories: string[], theme: ChartTheme, options: BoxplotOptions, measure: MeasureText, format?: Formatter, progress?: Double): DrawCmd[] {
   const f = boxplotFrame(rows, width, height, categories, theme.fontSize, measure, format)
   const l = f.layout
   const out: DrawCmd[] = []

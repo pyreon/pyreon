@@ -10,7 +10,7 @@ import { hitGantt } from './gantt-web'
 import type { GanttLayout, GanttOptions, GanttRow, GanttTask } from './gantt'
 
 export interface GanttChartProps extends CanvasHostProps {
-  tasks: GanttTask[] | (() => GanttTask[])
+  tasks: readonly GanttTask[] | (() => readonly GanttTask[])
   gantt?: GanttOptions
   /** Fired with the row under the click, or null for a miss. */
   onSelect?: (row: GanttRow | null) => void
@@ -19,7 +19,7 @@ export interface GanttChartProps extends CanvasHostProps {
 }
 
 export function GanttChart(props: GanttChartProps): VNode {
-  const readTasks = (): GanttTask[] => (typeof props.tasks === 'function' ? props.tasks() : props.tasks)
+  const readTasks = (): readonly GanttTask[] => (typeof props.tasks === 'function' ? props.tasks() : props.tasks)
   const opts = (t: ChartTheme): GanttOptions => ({ palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, todayColor: t.negative, ...props.gantt })
   return canvasHost<GanttLayout>({
     props,
