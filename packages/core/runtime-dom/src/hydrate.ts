@@ -417,7 +417,13 @@ function hydrateSoleAccessorChild(
  */
 function mountOverEmpty(child: () => VNodeChild, parent: Node, anchor: Node | null, path: string): Cleanup {
   const before = anchor === null ? parent.lastChild : anchor.previousSibling
-  const cleanup = mountReactive(child, parent, anchor, mountChild)
+  // Nothing to adopt, so mount exactly what a cold mount builds: the accessor
+  // dispatcher (`mountChild` → `mountAccessorChild`). It chose `mountReactive`
+  // directly before, which pinned an EMPTY server list to the general path, so
+  // a keyed list whose data arrived after hydration re-created every row on
+  // every update (the dispatcher waits for a value it can classify — see
+  // `isUndecidedChild`).
+  const cleanup = mountChild(child, parent, anchor)
   for (let n = before === null ? parent.firstChild : before.nextSibling; n !== null && n !== anchor; n = n.nextSibling) {
     if (n.nodeType === Node.ELEMENT_NODE) {
       warnHydrationMismatch('tag', (n as Element).localName, '', `${path} > reactive`)

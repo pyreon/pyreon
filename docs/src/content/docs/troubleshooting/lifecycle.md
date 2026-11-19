@@ -47,6 +47,18 @@ The web `RouterView` claims its depth from `router._viewDepth`, a counter every 
 
 ---
 
+### [FIXED, 2026-11] A JSX-building expression the emit SLICES loses the JSX rules.
+
+Wherever the compiler copies source text into a generated accessor without walking it, the JSX inside never gets the rules every other JSX element gets: `{row.label()}` is not made an accessor, a component's `label={row.label()}` gets no `_rp`. In a keyed `.map()` the read then runs in the LIST's accessor, the reconciler keeps the row for the unchanged key, and the cell never updates. Three slice sites: the `_mountSlot(() => (…))` hole of a compiled template (walked by #4705), the `() => (…)` an h()-path child or DOM attribute gets (`<Comp>{rows().map(…)}</Comp>`, the inner `.map` of a keyed row), and a component prop's `_rp(() => …)`. The last two are walked in place now (`wrapWalked` / `wrap_walked`), and the walked JSX stays on the h() path. **Rule: an accessor the emit wraps around an expression that contains JSX is built from zero-width edits around a WALKED range, never from a slice.** Reference: `compiler/src/jsx.ts:wrapWalked`; locked by `compiler/src/tests/wrap-walked-jsx.test.ts` and `runtime-dom/src/tests/keyed-map-row-reactivity.test.tsx` (JS and Rust each reverted alone fail them).
+
+---
+
+### [FIXED, 2026-11] A binding that picks its machinery for life must not pick on a value that carries no evidence.
+
+The accessor dispatcher (`mountAccessorChild`) chooses keyed reconciler, general reactive mount or text once. It chose on the first value, so a keyed list whose first value was `[]` (or `undefined`, `rows()?.map(…)`) was pinned to the general path and re-created every row on every later update — focus, typed input and transitions lost — in the common data-arrives-after-mount case; hydration over an empty server list chose `mountReactive` directly. Fix: an empty array or nullish value is UNDECIDED (`isUndecidedChild`): the dispatcher mounts a placeholder and classifies again on its next run; hydration over an empty range mounts that same dispatcher (`mountOverEmpty`). The keyed reconciler also takes a non-array value (nullish → no rows, anything else → one row), which it threw on before. **Rule: defer a once-only classification until a value can decide it; keep a placeholder for the position meanwhile.** Reference: `runtime-dom/src/mount.ts:mountAccessorChild`, `hydrate.ts:mountOverEmpty`; locked by `tests/keyed-map-undecided-first.test.tsx` (+ `.browser` twin for focus and input value).
+
+---
+
 ### [FIXED, 2026-10] An `effect()` / `computed()` created in a `<For>` row callback had no owner.
 
 The callback runs after the surrounding component's setup, when no scope is current, so the effect registered nowhere: a removed row kept running it, and so did every row after the list unmounted. Each row callback now runs under a pooled collector scope that the row keeps (and stops on removal) only when something registered — zero allocation otherwise, no measurable cost on the fair board. **Rule: any framework construct that runs a user callback outside component setup must give that callback an owner, or effects created in it are unowned.** Reference: `runtime-dom/src/nodes.ts:runRowCallback`; locked by `for-row-effect-scope.test.tsx` (bisect-verified).

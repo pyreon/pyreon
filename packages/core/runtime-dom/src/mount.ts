@@ -50,6 +50,7 @@ import { _adoptParkedText, _parkedPending } from './parked-text'
 import { _adoptingCompiledBind, reportFirstText } from './hydration-debug'
 import { _devInspectable, registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
+import type { FirstRun } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 import { suspenseAttachOf } from './suspense-boundary'
 import type { RemountableNativeItem } from './template'
@@ -1187,6 +1188,55 @@ export function bindPolymorphicText(
  */
 const FIRST_RUN_OK = Symbol('pyreon.firstRunOk')
 
+/**
+ * A value that says nothing yet about what an accessor child will hold: an
+ * empty array or nullish. The dispatcher's choice of machinery (keyed
+ * reconciler, general reactive mount, text) is fixed for the binding's life, so
+ * it is not made on such a value — `{() => rows().map((r) => <li key={r.id}/>)}`
+ * whose data arrives after mount used to be pinned to the general path by its
+ * first `[]`, and every later update re-created every row. The dispatcher waits
+ * (see `mountAccessorChild`) until the accessor yields something to classify.
+ * Hydration applies the same rule (`hydrate.ts`).
+ */
+export function isUndecidedChild(value: unknown): boolean {
+  return value == null || (Array.isArray(value) && value.length === 0)
+}
+
+/**
+ * Build the effect()-grade machinery a STRUCTURAL accessor value hands off to:
+ * the keyed reconciler for a keyed array, `mountReactive` otherwise.
+ * Constructed UNTRACKED (the machinery was historically built outside any
+ * tracking frame; its own effect establishes the real subscriptions) at depth
+ * 0 (reactive-boundary child cleanups must be real removers). `first` carries
+ * the value the dispatcher already computed and the reads it made, so the
+ * machinery does not evaluate the accessor again.
+ */
+function handOffStructural(
+  child: () => VNodeChild | VNodeChild[],
+  v: unknown,
+  parent: Node,
+  anchor: Node | null,
+  first: FirstRun<VNodeChild> | undefined,
+): Cleanup {
+  const prevDepth = _elementDepth
+  _elementDepth = 0
+  try {
+    return runUntracked(() =>
+      isKeyedArray(v)
+        ? mountKeyedList(
+            child as () => VNode[],
+            parent,
+            anchor,
+            (vn, p, a) => mountChild(vn, p, a),
+            first as FirstRun<VNode[]> | undefined,
+          )
+        : mountReactive(child as () => VNodeChild, parent, anchor, mountChild, first),
+    )
+  } finally {
+    _elementDepth = prevDepth
+  }
+}
+
 function mountAccessorChild(
   child: () => VNodeChild | VNodeChild[],
   parent: Node,
@@ -1198,6 +1248,11 @@ function mountAccessorChild(
   let text: Text | null = null
   let handoff: Cleanup | null = null
   let firstRunError: unknown = FIRST_RUN_OK
+  // Holds the slot's position while the value is UNDECIDED (`isUndecidedChild`):
+  // nothing is mounted, the dispatcher stays subscribed, and each re-run
+  // classifies again until a value says what the slot holds. Removed once the
+  // binding is chosen. Null for the dominant slot, decided on its first run.
+  let placeholder: Comment | null = null
   // Set the moment the first run classifies the value as structural, BEFORE the
   // machinery below is built. Building it mounts the value, and that mount can
   // write a signal this dispatcher read on its first run (a ref recording
@@ -1225,6 +1280,11 @@ function mountAccessorChild(
     // first run otherwise — so a single call registers exactly where it did
     // when the machinery made its own call.
     const run: RunCapture = { inner: null, cleanups: null }
+    // Re-run while undecided: mount where the placeholder holds the slot, in its
+    // LIVE parent, and let errors propagate as any re-run's do.
+    const late = placeholder !== null
+    const at: Node | null = placeholder ?? anchor
+    const into: Node = placeholder?.parentNode ?? parent
     try {
       const v = _captureRun(child, run)
       // Text fast path: reactive string/number/boolean — update text.data in
@@ -1235,9 +1295,19 @@ function mountAccessorChild(
       // the VNode arm.
       if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
         text = document.createTextNode(typeof v === 'boolean' ? '' : String(v))
-        parent.insertBefore(text, anchor)
-        core = createPolyTextCore(text, parent, ownerAtSetup)
+        into.insertBefore(text, at)
+        core = createPolyTextCore(text, into, ownerAtSetup)
         _releaseRun(run)
+        dropPlaceholder()
+
+        return
+      }
+      if (isUndecidedChild(v)) {
+        _releaseRun(run)
+        if (placeholder === null) {
+          placeholder = document.createComment('')
+          parent.insertBefore(placeholder, anchor)
+        }
 
         return
       }
@@ -1249,43 +1319,35 @@ function mountAccessorChild(
       // machinery will call the accessor itself, so the work stays here.
       if (reads === null) _releaseRun(run)
       // Structural shape — hand off to the effect()-grade machinery.
-      // Constructed UNTRACKED (the machinery was historically built outside
-      // any tracking frame; its own effect establishes the real
-      // subscriptions) at depth 0 (reactive-boundary child cleanups must be
-      // real removers).
-      const prevDepth = _elementDepth
-      _elementDepth = 0
-      try {
-        runUntracked(() => {
-          handoff = isKeyedArray(v)
-            ? mountKeyedList(
-                child as () => VNode[],
-                parent,
-                anchor,
-                (vn, p, a) => mountChild(vn, p, a),
-                reads === null ? undefined : { value: v as unknown as VNode[], reads, run },
-              )
-            : mountReactive(
-                child as () => VNodeChild,
-                parent,
-                anchor,
-                mountChild,
-                reads === null ? undefined : { value: v, reads, run },
-              )
-        })
-      } finally {
-        _elementDepth = prevDepth
-      }
+      handoff = handOffStructural(child, v, into, at, reads === null ? undefined : { value: v as VNodeChild, reads, run })
+      dropPlaceholder()
     } catch (err) {
       // Whatever the throwing call registered goes where it always went.
       _releaseRun(run)
+      if (late) throw err
       firstRunError = err
     }
   })
+  function dropPlaceholder(): void {
+    placeholder?.parentNode?.removeChild(placeholder)
+    placeholder = null
+  }
   if (firstRunError !== FIRST_RUN_OK) {
     if (process.env.NODE_ENV !== 'production') _rdDropBinding(disposeEffect)
     disposeEffect()
     throw firstRunError
+  }
+  if (placeholder !== null) {
+    // Undecided at mount: the dispatcher stays live and owns whatever it hands
+    // off to later. After a late hand-off its next run reads nothing
+    // (`structural`), which drops its subscriptions.
+    return () => {
+      disposeEffect()
+      ;(handoff as Cleanup | null)?.()
+      core?.dispose()
+      if (text !== null) text.parentNode?.removeChild(text)
+      dropPlaceholder()
+    }
   }
   if (handoff !== null) {
     // Drop the dispatcher's first-run subscriptions — the machinery's own

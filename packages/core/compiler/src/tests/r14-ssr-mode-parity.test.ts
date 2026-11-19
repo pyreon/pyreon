@@ -37,7 +37,9 @@ describe('Round 14 — SSR-mode codegen parity', () => {
 
   it('prop-derived const still inlines in SSR (R2/R7 parity)', () => {
     expect(ssr(`function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i=><li class={c}>{i}</li>)}</ul> }`))
-      .toContain("class={(p.x+'-b')}")
+      // The `.map` body is walked, not sliced, so the attribute gets the same
+      // accessor a `<li class={c}>` written anywhere else gets.
+      .toContain("class={() => (p.x+'-b')}")
   })
 
   it('signal still auto-calls in SSR', () => {
