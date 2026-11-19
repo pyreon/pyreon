@@ -1,3 +1,4 @@
+import { metadataHeader } from './tus-metadata'
 import { uploadError } from './errors'
 import { sendPart, stopReason } from './xhr-part'
 import type { Transport, TransportFile } from './types'
@@ -22,15 +23,6 @@ interface State {
 }
 
 const TUS = '1.0.0'
-
-const b64 = (text: string): string => {
-  const bytes = new TextEncoder().encode(text)
-  let binary = ''
-
-  for (const b of bytes) binary += String.fromCharCode(b)
-
-  return btoa(binary)
-}
 
 const asState = (v: unknown): State | null => {
   const s = v as Partial<State> | null | undefined
@@ -64,7 +56,7 @@ async function resumeOffset(url: string, size: number, wire: Wire): Promise<numb
 /** Create an upload (the creation extension) and answer its URL. */
 async function create(endpoint: string, file: TransportFile, options: TusTransportOptions, wire: Wire): Promise<string> {
   const meta = (options.metadata ?? ((f: TransportFile) => ({ filename: f.name, filetype: f.type })))(file)
-  const metadata = Object.entries(meta).filter(([, v]) => v !== '').map(([k, v]) => `${k} ${b64(v)}`).join(',')
+  const metadata = metadataHeader(meta)
   const created = await sendPart({ url: endpoint, method: 'POST', headers: { ...wire.headers, 'upload-length': String(file.size), ...(metadata === '' ? {} : { 'upload-metadata': metadata }) }, ...wire.common }, (s) => s === 201)
   const location = created.headers.get('location')
 
