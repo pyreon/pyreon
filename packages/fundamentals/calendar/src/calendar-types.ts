@@ -2,6 +2,8 @@ import type { BusinessCalendar, WorkingHours } from '@pyreon/schedule/core'
 import type { Duration, PlainTime } from '@pyreon/time/core'
 import type { Signal } from '@pyreon/reactivity'
 import type { CalendarEvent, EventOccurrence, Interval, PlainDate, PlainDateTime, TimedBlock, TimeZone, Weekday, WeekLayout } from './types'
+import type { EditKind, Editing } from './editing'
+import type { EditScope, EventChange, Target } from './edit'
 import type { CalendarMessages } from './messages'
 import type { ViewName } from './views'
 
@@ -42,6 +44,21 @@ export interface CalendarOptions<Meta = unknown> {
   selectable?: boolean
   /** The words the calendar says: replace any of them (an object, or a function of the locale that can read your translation signals). */
   messages?: Partial<CalendarMessages> | ((locale: string) => Partial<CalendarMessages>)
+  /** Whether events can be moved and resized (default false). An event's own `editable` wins. */
+  editable?: boolean
+  /** The step of a move or a resize in minutes. Default: the slot. */
+  snap?: number
+  /** The shortest an event can be resized to, in minutes. Default: `snap`. */
+  minDuration?: number
+  /** Where a change may land: `'businessHours'` (needs `businessHours`) or a function of the range. */
+  constrainTo?: 'businessHours' | ((range: { start: PlainDate | PlainDateTime; end: PlainDate | PlainDateTime; allDay: boolean }) => boolean)
+  /**
+   * The app decides a change: return `false`, throw or reject to refuse it (the event goes back and the calendar says so). The
+   * event is shown at its new place while you decide. Update your events (`applyEventChange` makes the plain data) before you resolve.
+   */
+  onEventChange?: (change: EventChange<Meta>) => boolean | void | Promise<boolean | void>
+  /** For a recurring event: which occurrences a change is for. Return `null` to cancel. Default `'this'`. */
+  chooseScope?: (change: EventChange<Meta>) => EditScope | null | Promise<EditScope | null>
   /** The clock for the "now" line, in milliseconds. Default: `@pyreon/ambient`'s, a reactive minute tick. */
   now?: () => number
   /** Called with the range of a clicked day or slot, or of a keyboard selection that was confirmed. */
@@ -117,6 +134,28 @@ export interface Calendar<Meta = unknown> {
   cursor(): { date: PlainDate; minute: number }
   setCursor(date: PlainDate, minute?: number): void
   selection(): Selection | null
+  /** What is being edited (a drag or a grabbed event), if anything. */
+  editing(): Editing | null
+  /** Is this occurrence the one being edited? (Changes only when an edit begins or ends, not on every move.) */
+  isEditing(occurrenceKey: string): boolean
+  /** Select the cells or slots between two points, as dragging over empty space does (calls `onSelect`). */
+  select(from: { date: PlainDate; minute: number }, to: { date: PlainDate; minute: number }, grid: 'month' | 'time'): void
+  /** Is this occurrence editable (move or resize)? */
+  canEdit(occurrenceKey: string, kind: EditKind): boolean
+  /** Is this occurrence waiting for the app to answer a change? */
+  isPending(occurrenceKey: string): boolean
+  /** The edit session, for a custom pointer or keyboard layer (the components use these): begin, show where it would land, drop (asks the app) or cancel. */
+  beginEdit(occurrenceKey: string, mode: EditKind, by: 'pointer' | 'keyboard'): boolean
+  previewEdit(target: Target): void
+  dropEdit(target?: Target): Promise<boolean>
+  cancelEdit(): void
+  /** The keyboard edit of an event (Enter grabs, arrows move, Shift resizes, Enter drops, Escape cancels). Returns `true` when it handled the key. */
+  onEventKeyDown(occurrenceKey: string, event: KeyboardEvent, grid: 'month' | 'time', options?: { rtl?: boolean }): boolean
+  /** The step of a move and the shortest resize, in minutes. */
+  snap(): number
+  minDuration(): number
+  /** Ask for a change, as a drop does (optimistic; resolves to whether the app accepted it). */
+  propose(occurrenceKey: string, target: Target, kind?: EditKind): Promise<boolean>
   /** Select a day, or a slot of a day, as a click does (calls `onSelect`). */
   selectDay(date: PlainDate): void
   selectSlot(date: PlainDate, minute: number): void

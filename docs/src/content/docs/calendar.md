@@ -169,6 +169,7 @@ export const App = () => <Calendar calendar={calendar} />
 | `dayStart`, `dayEnd`, `slot`, `minBlockMinutes` | The visible hours, the row size (30 minutes) and the shortest block (15). |
 | `businessHours` | A `WorkingHours` (from `@pyreon/schedule`) or a `BusinessCalendar` (with `weekend` and `holidays`): the hours outside it are shaded (`data-business="closed"`). |
 | `messages` | Every word the calendar says (an object, or a function of the locale): see "Messages and languages". |
+| `editable`, `snap`, `minDuration`, `constrainTo`, `onEventChange`, `chooseScope` | Editing: see "Editing" below. |
 | `monthCapacity` | Segments per week row before "+N more" (3). |
 | `days` | How many days the `'days'` view shows (3). |
 | `now` | The clock for the now line. Default: the ambient clock (a minute tick; on the server, the instant the page was rendered at, which is how the HTML matches what the client hydrates). |
@@ -247,6 +248,31 @@ The stylesheet sets a system UI font stack (set `--pcal-font: inherit` to use th
 | `--pcal-lane-size`, `--pcal-day-head`, `--pcal-slot-n`, `--pcal-gutter`, `--pcal-col-min` | Month lane height and day head, the height of a time slot in pixels (a number), the time gutter and the narrowest day column of the time grid. |
 
 **Overlaps.** Events that overlap share the day column. A block narrower than 72px shows its title on one line with an ellipsis (never cut inside a glyph) and the time goes first; hovering or focusing it opens it to at least 160px over its neighbours, and its accessible name always has the full text. The calendar does not collapse four or more overlaps into a "+N" stack in this release: use `renderEvent` and a narrower `dayStart` to `dayEnd` window, or the day view, for very busy days.
+
+## Editing: move, resize, select
+
+Set `editable: true` (an event's own `editable` wins: `false`, `true`, or `{ move, resize }`) and give `onEventChange`. The calendar proposes; **the app decides**.
+
+```ts
+const calendar = createCalendar({
+  events: () => events(),
+  editable: true,
+  snap: 15, // minutes (default: the slot); minDuration defaults to snap
+  constrainTo: 'businessHours', // or (range) => boolean
+  onEventChange: async (change) => {
+    const saved = await api.save(change) // return false, throw or reject to refuse
+    if (!saved) return false
+    events.set(replaceEvent(events(), change)) // update your events before you resolve
+  },
+})
+```
+
+- **Pointer.** Drag an event to move it; drag the strip at either edge to resize it (top and bottom of a block, both ends of a bar, swapped in right-to-left text); drag over empty cells to select (`onSelect`). It is built on pointer events and pointer capture, so a drag keeps working when the pointer leaves the element or the window. A mouse drag starts after 4 px, so a click is still a click; **touch needs a long press (350 ms)**, and a finger that moves first is scrolling, not dragging. The event follows the pointer with a transform, snapped to the cell it would land in, and nothing else is laid out again; near the top or bottom of a scrolling time grid it scrolls. Escape, a cancelled pointer, a drop outside the grid or unmounting puts everything back.
+- **What lands where.** In the time grid the start snaps to `snap` and the duration is kept; over a day cell only the day changes (a timed event keeps its time); a timed event dropped on the all-day row becomes all-day, and an all-day event dropped on a slot becomes an hour long. A resize is snapped and never shorter than `minDuration` (a day for all-day events). `moveTarget`, `resizeTarget` and `nudgeTarget` are pure and exported if you write your own pointer layer; `calendar.beginEdit`, `previewEdit`, `dropEdit` and `cancelEdit` are the session it uses.
+- **Optimistic, with rollback.** The event is shown at its new place (`data-pending`) while the app answers. `false`, a throw or a rejection puts it back and announces it. An event waiting for the app cannot be edited again. An app that never answers leaves it pending: add a timeout to your own call.
+- **Recurring events.** `chooseScope(change)` (an app callback: open your dialog) returns `'this'`, `'following'`, `'all'` or `null` to cancel; the default is `'this'`. `applyEventChange(change.event, change, zone)` returns the plain data to store: an override for `this`, a shifted series (and overrides) for `all`, or the series ended the day before plus a new event with the id `<id>~<occurrence>` for `following`. Expanding the result with `expandOccurrences` shows the edit, and a fuzz test checks every scope against it.
+- **Keyboard.** On an event, Enter or Space grabs it (announced), the arrows move it by `snap` or a day (week in the month), Shift with the arrows resizes the end, Enter drops it, Escape cancels. The announcements say, for example, "Design review moved to Wednesday 18 November, 15:00 – 16:00"; they come from `messages` (`moved`, `resized`, `grabbed`, `cancelled`, `failed`), in English unless you replace them.
+- **Not in this release.** Dragging between resources (the timeline view comes later) and a "+N more" popover are not here yet. A touch drag disables page scrolling only after the long press; `touch-action` is not changed.
 
 ## Keyboard and accessibility
 

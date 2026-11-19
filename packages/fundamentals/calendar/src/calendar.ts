@@ -3,10 +3,9 @@ import { batch, computed, effect, getCurrentScope, runUntracked } from '@pyreon/
 import { toPlainDate } from '@pyreon/time/core'
 import type { Calendar, CalendarOptions } from './calendar-types'
 import { bad, isDateString } from './check'
+import { beginEdit, cancelEdit, canEdit, dropEdit, editKey, minOf, previewEdit, propose, snapOf } from './editing'
 import { handleKey, moveCursor, rangeOf, selectRange } from './interaction'
 import { createMonthModel, createTimeGridModel } from './models'
-import { defaultMessages } from './messages'
-import type { CalendarMessages } from './messages'
 import { createState } from './state'
 import type { CalState } from './state'
 import type { PlainDate } from './types'
@@ -44,13 +43,7 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
   const s = createState(options)
   const month = createMonthModel(s)
   const timeGrid = createTimeGridModel(s)
-  const messages = computed<CalendarMessages>(() => {
-    const locale = s.locale()
-    const own = typeof options.messages === 'function' ? options.messages(locale) : options.messages
-    const base = defaultMessages(locale)
-
-    return { ...base, ...own, views: { ...base.views, ...own?.views }, recurringScope: { ...base.recurringScope, ...own?.recurringScope } }
-  })
+  const messages = s.messages
   const rangeTitle = computed(() => viewTitle(s.shown(), (info) => title(s, info)))
   const stops: { dispose(): void }[] = []
   const rangeWatcher = effect(() => {
@@ -90,6 +83,28 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
     cursor: () => s.cursor(),
     setCursor: (date, minute = 0) => moveCursor(s, date, minute),
     selection: () => s.selection(),
+    editing: () => {
+      const e = s.edit.editing()
+      const target = s.edit.target()
+
+      return e === null || target === null ? null : { ...e, target }
+    },
+    isEditing: (key) => s.edit.editing()?.key === key,
+    select: (from, to, grid) => selectRange(s, rangeOf(s, grid, from, to)),
+    canEdit: (key, kind) => {
+      const o = runUntracked(() => s.occurrences()).find((x) => x.key === key)
+
+      return o !== undefined && canEdit(s, o, kind)
+    },
+    isPending: (key) => s.edit.pending().has(key),
+    propose: (key, target, kind = 'move') => propose(s, key, target, kind),
+    beginEdit: (key, mode, by) => beginEdit(s, key, mode, by),
+    previewEdit: (target) => previewEdit(s, target),
+    dropEdit: (target) => dropEdit(s, target),
+    cancelEdit: () => cancelEdit(s),
+    onEventKeyDown: (key, event, grid, o) => editKey(s, key, event, grid, o?.rtl === true),
+    snap: () => snapOf(s),
+    minDuration: () => minOf(s),
     selectDay: (date) => selectRange(s, rangeOf(s, 'month', { date, minute: 0 }, { date, minute: 0 })),
     selectSlot: (date, minute) => {
       s.cursor.set({ date, minute })
@@ -114,6 +129,7 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
       timeGrid.dispose()
       rangeTitle.dispose()
       messages.dispose()
+      s.occurrences.dispose()
     },
   }
   getCurrentScope()?.add(() => api.dispose())

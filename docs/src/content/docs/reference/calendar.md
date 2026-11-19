@@ -67,6 +67,9 @@ layoutDay('2026-11-18', occurrences, 'Europe/Prague').map((b) => [b.column, b.co
 | [`fitsWindows`](#fitswindows-function-experimental) | function | Whether a range sits inside the working windows (`{ from, to }` in minutes) of every day it touches; `windowsOf` returns… |
 | [`reposition`](#reposition-function-experimental) | function | The new start and end of an occurrence in the form its event uses (a date, a wall clock in its own zone, or an instant). |
 | [`snapTo`](#snapto-function-experimental) | function | Round to a multiple of `step`; a zero step leaves the value. |
+| [`moveTarget`](#movetarget-function-experimental) | function | Where moving an occurrence lands: the pointer now (`hit`: a day and a minute of it, or `minute: null` over a day cell or… |
+| [`resizeTarget`](#resizetarget-function-experimental) | function | Where dragging one edge lands: snapped, never shorter than `minDuration` minutes (a day for all-day events), so a resize… |
+| [`nudgeTarget`](#nudgetarget-function-experimental) | function | What an arrow key does to a grabbed occurrence: up and down by `snap` minutes in the time grid (by a week in the month),… |
 | [`eventLabel`](#eventlabel-function-experimental) | function | What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 – 15:00"; an all-day event says… |
 | [`dayLabel`](#daylabel-function-experimental) | function | A date as it is read: "Tuesday 18 November". |
 | [`defaultMessages`](#defaultmessages-function-experimental) | function | Every word the calendar says, for a locale. |
@@ -495,6 +498,57 @@ Round to a multiple of `step`; a zero step leaves the value.
 
 ```tsx
 snapTo(37, 15)   // => 30
+```
+
+---
+
+### `moveTarget` `function` — **experimental**
+
+```ts
+(occurrence, hit, grab, snap, defaultMinutes?) => Target
+```
+
+Where moving an occurrence lands: the pointer now (`hit`: a day and a minute of it, or `minute: null` over a day cell or the all-day row) against where it took hold (`grab`). Over the time grid the start snaps to `snap` minutes and the duration is kept; over a day cell only the day changes; a timed event dropped on the all-day row becomes all-day, and an all-day event dropped on a slot becomes `defaultMinutes` (60) long. Pure: a custom pointer layer can use it.
+
+**Example**
+
+```tsx
+const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+moveTarget(o, { date: '2026-11-19', minute: 16 * 60 + 5 }, { date: '2026-11-18', minute: 14 * 60 + 30 }, 30).start   // => '2026-11-19T15:30'
+```
+
+---
+
+### `resizeTarget` `function` — **experimental**
+
+```ts
+(occurrence, edge: 'start' | 'end', hit, snap, minDuration) => Target
+```
+
+Where dragging one edge lands: snapped, never shorter than `minDuration` minutes (a day for all-day events), so a resize cannot make a zero or negative event.
+
+**Example**
+
+```tsx
+const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+resizeTarget(o, 'end', { date: '2026-11-18', minute: 9 * 60 }, 30, 30).end   // => '2026-11-18T14:30'
+```
+
+---
+
+### `nudgeTarget` `function` — **experimental**
+
+```ts
+(occurrence, key, shift, grid, snap, minDuration, rtl) => Target | null
+```
+
+What an arrow key does to a grabbed occurrence: up and down by `snap` minutes in the time grid (by a week in the month), left and right by a day (swapped in right-to-left text); Shift resizes the end. `null` for any other key.
+
+**Example**
+
+```tsx
+const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+nudgeTarget(o, 'ArrowDown', false, 'time', 30, 30, false)?.start   // => '2026-11-18T14:30'
 ```
 
 ---

@@ -3,7 +3,11 @@ import { computed, signal } from '@pyreon/reactivity'
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { eachDay, toPlainDate, weekendOf, weekStartOf } from '@pyreon/time/core'
 import type { CalendarOptions, Selection } from './calendar-types'
+import { createEditState, overlaid } from './editing'
+import type { EditState } from './editing'
 import { expandOccurrences } from './expand'
+import { defaultMessages } from './messages'
+import type { CalendarMessages } from './messages'
 import { daySpan } from './lanes'
 import type { EventOccurrence, PlainDate, TimeZone, Weekday } from './types'
 import { visibleRange } from './views'
@@ -29,6 +33,8 @@ export interface CalState<Meta> {
   /** Where a keyboard selection started. */
   anchor: { date: PlainDate; minute: number } | null
   readonly announcement: Signal<string>
+  readonly messages: Computed<CalendarMessages>
+  readonly edit: EditState
 }
 
 function isSignal<T>(value: Signal<T> | T): value is Signal<T> {
@@ -70,7 +76,15 @@ export function createState<Meta>(options: CalendarOptions<Meta>): CalState<Meta
       ...(options.days === undefined ? {} : { days: options.days }),
     }),
   )
-  const occurrences = computed(() => expandOccurrences(options.events(), shown().range, zone()))
+  const edit = createEditState()
+  const occurrences = computed(() => overlaid(expandOccurrences(options.events(), shown().range, zone()), edit.overlay(), zone()))
+  const messages = computed<CalendarMessages>(() => {
+    const lang = locale()
+    const mine = typeof options.messages === 'function' ? options.messages(lang) : options.messages
+    const base = defaultMessages(lang)
+
+    return { ...base, ...mine, views: { ...base.views, ...mine?.views }, recurringScope: { ...base.recurringScope, ...mine?.recurringScope } }
+  })
   const byDay = computed(() => bucket(occurrences(), shown().dates))
 
   return {
@@ -90,5 +104,7 @@ export function createState<Meta>(options: CalendarOptions<Meta>): CalState<Meta
     selection: signal<Selection | null>(null),
     anchor: null,
     announcement: signal(''),
+    messages,
+    edit,
   }
 }

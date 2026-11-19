@@ -154,3 +154,96 @@ export function fitsWindows(start: PlainDate | PlainDateTime, end: PlainDate | P
   return true
 }
 
+
+/** Where the pointer is: a day, and a minute of it in a time grid (`null` over a day cell or the all-day row). */
+export interface Hit {
+  date: PlainDate
+  minute: number | null
+}
+
+const MINUTE = 60_000
+const DAY_MINUTES = 1440
+const minutesOf = (value: string): number => Math.floor(wallMs(value) / MINUTE)
+const fromMinutes = (minutes: number, allDay: boolean): PlainDate | PlainDateTime => fromWallMs(minutes * MINUTE, allDay)
+const dayOf = (date: string): number => Math.floor(wallMs(date.slice(0, 10)) / (DAY_MINUTES * MINUTE))
+const absolute = (hit: Hit): number => dayOf(hit.date) * DAY_MINUTES + (hit.minute ?? 0)
+const plusDays = (value: PlainDate | PlainDateTime, days: number): PlainDate | PlainDateTime => fromMinutes(minutesOf(value) + days * DAY_MINUTES, value.length === 10)
+
+function shifted(o: EventOccurrence, days: number): Target {
+  return { start: plusDays(o.start, days), end: plusDays(o.end, days), allDay: o.allDay }
+}
+
+/**
+ * The target of moving an occurrence: where the pointer is now (`hit`) against where it took hold (`grab`). Over the time grid
+ * the start snaps to `snap` minutes and the duration is kept; over a day cell or the all-day row only the day changes (a timed
+ * event keeps its time of day); dragging a timed event onto the all-day row makes it all-day, and an all-day event dropped on a
+ * slot becomes `defaultMinutes` long from there.
+ */
+export function moveTarget(o: EventOccurrence, hit: Hit, grab: Hit, snap: number, defaultMinutes = 60): Target {
+  const dayDelta = dayOf(hit.date) - dayOf(grab.date)
+  if (hit.minute === null) {
+    if (o.allDay || grab.minute === null) return shifted(o, dayDelta)
+
+    return { start: hit.date, end: add(hit.date, { days: 1 }), allDay: true }
+  }
+  if (o.allDay) {
+    const start = snapTo(hit.minute, snap)
+
+    return { start: fromMinutes(dayOf(hit.date) * DAY_MINUTES + start, false) as PlainDateTime, end: fromMinutes(dayOf(hit.date) * DAY_MINUTES + start + defaultMinutes, false) as PlainDateTime, allDay: false }
+  }
+  const startM = minutesOf(o.start)
+  const duration = minutesOf(o.end) - startM
+  const next = snapTo(startM + absolute(hit) - absolute(grab), snap)
+
+  return { start: fromMinutes(next, false), end: fromMinutes(next + duration, false), allDay: false }
+}
+
+/** The target of dragging one edge of an occurrence to the pointer: snapped, and never shorter than `minDuration` minutes (a day for dates). */
+export function resizeTarget(o: EventOccurrence, edge: 'start' | 'end', hit: Hit, snap: number, minDuration: number): Target {
+  const startM = minutesOf(o.start)
+  const endM = minutesOf(o.end)
+  if (hit.minute === null || o.allDay) {
+    const days = dayOf(hit.date)
+    if (o.allDay) {
+      const first = dayOf(o.start)
+      const last = dayOf(o.end)
+
+      return edge === 'end' ? { start: o.start, end: fromMinutes(Math.max(days + 1, first + 1) * DAY_MINUTES, true), allDay: true } : { start: fromMinutes(Math.min(days, last - 1) * DAY_MINUTES, true), end: o.end, allDay: true }
+    }
+    const timeOf = edge === 'end' ? endM % DAY_MINUTES : startM % DAY_MINUTES
+    const moved = days * DAY_MINUTES + timeOf
+
+    return edge === 'end' ? { start: o.start, end: fromMinutes(Math.max(moved, startM + minDuration), false), allDay: false } : { start: fromMinutes(Math.min(moved, endM - minDuration), false), end: o.end, allDay: false }
+  }
+  const at = snapTo(absolute(hit), snap)
+
+  return edge === 'end' ? { start: o.start, end: fromMinutes(Math.max(at, startM + minDuration), false), allDay: false } : { start: fromMinutes(Math.min(at, endM - minDuration), false), end: o.end, allDay: false }
+}
+
+/** The arrow keys as [sideways, vertical] steps. */
+const ARROWS: Record<string, readonly [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
+
+/** The key part of the keyboard: what an arrow does to a grabbed occurrence (`null` for a key that does nothing). Shift resizes the end. */
+export function nudgeTarget(o: EventOccurrence, key: string, shift: boolean, grid: 'month' | 'time', snap: number, minDuration: number, rtl: boolean): Target | null {
+  const sideways = (ARROWS[key]?.[0] ?? 0) * (rtl ? -1 : 1)
+  const vertical = ARROWS[key]?.[1] ?? 0
+  if (sideways === 0 && vertical === 0) return null
+  const timed = grid === 'time' && !o.allDay
+  const step = timed ? vertical * snap : vertical * (grid === 'month' || o.allDay ? 7 : 0) * DAY_MINUTES
+  const days = sideways
+  if (!shift) {
+    if (timed) return days !== 0 ? shifted(o, days) : { start: fromMinutes(minutesOf(o.start) + step, false), end: fromMinutes(minutesOf(o.end) + step, false), allDay: false }
+    const total = days + (step / DAY_MINUTES)
+
+    return total === 0 ? null : shifted(o, total)
+  }
+  if (o.allDay) {
+    const dayStep = days + (step / DAY_MINUTES)
+    const end = Math.max(dayOf(o.end) + dayStep, dayOf(o.start) + 1)
+
+    return dayStep === 0 ? null : { start: o.start, end: fromMinutes(end * DAY_MINUTES, true), allDay: true }
+  }
+  const delta = timed ? step : days * DAY_MINUTES
+
+  return delta === 0 ? null : { start: o.start, end: fromMinutes(Math.max(minutesOf(o.end) + delta, minutesOf(o.start) + minDuration), false), allDay: false }
+}

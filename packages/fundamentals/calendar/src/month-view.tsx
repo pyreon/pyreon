@@ -6,6 +6,7 @@ import type { Calendar, DayCell, MonthWeek } from './calendar-types'
 import { dayLabel, eventLabel } from './labels'
 import type { EventOccurrence, EventSegment, PlainDate } from './types'
 import { formatDate } from '@pyreon/format'
+import { attachPointer } from './pointer'
 
 export interface EventSlotContext<Meta = unknown> {
   occurrence: EventOccurrence<Meta>
@@ -37,6 +38,29 @@ export interface MonthViewProps<Meta = unknown> extends ViewProps<Meta> {
 
 // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- only called from keydown handlers, which exist only in a browser
 export const isRtl = (el: Element | null): boolean => el !== null && getComputedStyle(el).direction === 'rtl'
+
+/** The pointer layer of a grid, attached on mount and removed on unmount; it also keeps focus on a keyboard-grabbed event while the layout moves it. */
+export function usePointer<Meta>(root: () => HTMLElement | null, calendar: Calendar<Meta>, grid: 'month' | 'time'): void {
+  onMount(() => {
+    const el = root()
+    if (el === null) return undefined
+    const detach = attachPointer(el, calendar, grid)
+    // pyreon-lint-disable-next-line pyreon/no-effect-in-mount -- it moves DOM focus, which exists only after mount
+    const keep = effect(() => {
+      const editing = calendar.editing()
+      if (editing === null || editing.by !== 'keyboard') return
+      queueMicrotask(() => {
+        const button = el.querySelector<HTMLElement>(`.pcal-event[data-key="${CSS.escape(editing.key)}"]`)
+        if (button !== null && button !== document.activeElement) button.focus({ preventScroll: false })
+      })
+    })
+
+    return () => {
+      keep.dispose()
+      detach()
+    }
+  })
+}
 
 /** Keep focus in a grid when the focused cell moves or the view changes: refocus the cell that is the cursor, if focus was inside. */
 export function followCursor(root: () => HTMLElement | null, cellOf: () => string | null, track: () => unknown): void {
@@ -71,6 +95,28 @@ export function followCursor(root: () => HTMLElement | null, cellOf: () => strin
   })
 }
 
+/** The state of an event in the markup: editable, being dragged or grabbed, waiting for the app. Each one is its own computed, so a drag re-runs only the dragged event's bindings. */
+export function editState<Meta>(calendar: Calendar<Meta>, key: string): { editable: () => string | undefined; dragging: () => string | undefined; pending: () => string | undefined } {
+  const editing = computed(() => calendar.isEditing(key))
+
+  return {
+    editable: () => (calendar.canEdit(key, 'move') ? '' : undefined),
+    dragging: () => (editing() ? '' : undefined),
+    pending: () => (calendar.isPending(key) ? '' : undefined),
+  }
+}
+
+/** The edge handles of an event that can be resized: `start` and `end` (logical, so they swap in right-to-left text). */
+export function Handles<Meta>(props: { calendar: Calendar<Meta>; occurrenceKey: string; startEdge: boolean; endEdge: boolean }): VNodeChild {
+  return () =>
+    props.calendar.canEdit(props.occurrenceKey, 'resize') ? (
+      <>
+        {props.startEdge ? <span class="pcal-handle" data-edge="start" aria-hidden="true" /> : null}
+        {props.endEdge ? <span class="pcal-handle" data-edge="end" aria-hidden="true" /> : null}
+      </>
+    ) : null
+}
+
 const SAFE_COLOR = /^[#\w(),.%\s-]{1,64}$/
 
 /** An event's colour as a style fragment, or nothing when it is not a plain CSS colour. */
@@ -88,6 +134,7 @@ function segmentStyle(segment: EventSegment, color: string | undefined): string 
 function Segment<Meta>(props: { segment: EventSegment; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ResolvedView<Meta> }): VNodeChild {
   const o = props.occurrences().get(props.segment.occurrenceKey)
   if (o === undefined) return null
+  const state = editState(props.view.calendar, o.key)
 
   const label = (): string => eventLabel(o as EventOccurrence, props.view.calendar.locale(), props.view.calendar.messages())
   const slot = props.view.renderEvent
@@ -98,6 +145,9 @@ function Segment<Meta>(props: { segment: EventSegment; occurrences: () => Map<st
       class="pcal-event"
       style={segmentStyle(props.segment, o.event.color)}
       data-all-day={o.allDay ? '' : undefined}
+      data-editable={state.editable}
+      data-dragging={state.dragging}
+      data-pending={state.pending}
       data-recurring={o.recurring ? '' : undefined}
       data-continues-before={props.segment.continuesBefore ? '' : undefined}
       data-continues-after={props.segment.continuesAfter ? '' : undefined}
@@ -109,6 +159,7 @@ function Segment<Meta>(props: { segment: EventSegment; occurrences: () => Map<st
       }}
     >
       {slot === undefined ? <span class="pcal-event-title">{o.title}</span> : slot({ occurrence: o, label: label(), continuesBefore: props.segment.continuesBefore, continuesAfter: props.segment.continuesAfter })}
+      <Handles calendar={props.view.calendar} occurrenceKey={o.key} startEdge={!props.segment.continuesBefore} endEdge={!props.segment.continuesAfter} />
     </button>
   )
 }
@@ -192,6 +243,11 @@ export function MonthView<Meta = unknown>(props: MonthViewProps<Meta>): VNodeChi
     () => `[data-date="${calendar.cursor().date}"]`,
     () => calendar.month().key,
   )
+  usePointer(
+    () => root,
+    calendar,
+    'month',
+  )
 
   return (
     <div
@@ -205,7 +261,13 @@ export function MonthView<Meta = unknown>(props: MonthViewProps<Meta>): VNodeChi
         root = el
       }}
       onKeyDown={(e: KeyboardEvent) => {
-        if ((e.target as HTMLElement).closest('.pcal-event, .pcal-more') !== null && e.key !== 'Escape') return
+        const hit = (e.target as HTMLElement).closest<HTMLElement>('.pcal-event, .pcal-more')
+        if (hit?.dataset.key !== undefined && calendar.onEventKeyDown(hit.dataset.key, e, 'month', { rtl: isRtl(root) })) {
+          e.preventDefault()
+
+          return
+        }
+        if (hit !== null && e.key !== 'Escape') return
         if (calendar.onKeyDown(e, 'month', { rtl: isRtl(root) })) e.preventDefault()
       }}
     >

@@ -4,7 +4,7 @@ import type { VNodeChild } from '@pyreon/core'
 import { computed } from '@pyreon/reactivity'
 import type { TimeGridDay, TimeGridModel } from './calendar-types'
 import { dayLabel, eventLabel } from './labels'
-import { colorStyle, dayWeekday, followCursor, isRtl } from './month-view'
+import { Handles, colorStyle, dayWeekday, editState, followCursor, isRtl, usePointer } from './month-view'
 import type { ResolvedView, ViewProps } from './month-view'
 import type { EventOccurrence, EventSegment, TimedBlock } from './types'
 import { formatDate, formatTime } from '@pyreon/format'
@@ -28,7 +28,9 @@ function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences:
   if (o === undefined) return null
   const calendar = props.view.calendar
   const grid = calendar.timeGrid()
-
+  const state = editState(calendar, o.key)
+  // the time drawn in the block follows the drag; only the block being dragged reads the target, so the others are not re-run by a move
+  const shownStart = computed(() => (calendar.isEditing(o.key) ? (calendar.editing()?.target.start ?? o.start) : o.start))
   const label = (): string => eventLabel(o as EventOccurrence, calendar.locale(), calendar.messages())
   const slot = props.view.renderEvent
 
@@ -38,6 +40,9 @@ function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences:
       class="pcal-event pcal-block"
       style={`${blockStyle(props.block, props.slotStart, grid.slot, grid.from, grid.to)}${colorStyle(o.event.color)}`}
       data-short={props.block.endMinute - props.block.startMinute < 45 ? '' : undefined}
+      data-editable={state.editable}
+      data-dragging={state.dragging}
+      data-pending={state.pending}
       data-recurring={o.recurring ? '' : undefined}
       data-continues-before={props.block.continuesBefore ? '' : undefined}
       data-continues-after={props.block.continuesAfter ? '' : undefined}
@@ -50,8 +55,9 @@ function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences:
     >
       <span class="pcal-block-in">
         {slot === undefined ? <span class="pcal-event-title">{o.title}</span> : slot({ occurrence: o, label: label(), continuesBefore: props.block.continuesBefore, continuesAfter: props.block.continuesAfter })}
-        <span class="pcal-block-time" aria-hidden="true" data-time={() => formatTime(o.start, { locale: calendar.locale(), timeStyle: 'short' })} />
+        <span class="pcal-block-time" aria-hidden="true" data-time={() => formatTime(shownStart(), { locale: calendar.locale(), timeStyle: 'short' })} />
       </span>
+      <Handles calendar={calendar} occurrenceKey={o.key} startEdge={!props.block.continuesBefore} endEdge={!props.block.continuesAfter} />
     </button>
   )
 }
@@ -61,11 +67,15 @@ function AllDayEvent<Meta>(props: { segment: EventSegment; occurrences: () => Ma
   if (o === undefined) return null
 
   const label = (): string => eventLabel(o as EventOccurrence, props.view.calendar.locale(), props.view.calendar.messages())
+  const state = editState(props.view.calendar, o.key)
 
   return (
     <button
       type="button"
       class="pcal-event pcal-allday-event"
+      data-editable={state.editable}
+      data-dragging={state.dragging}
+      data-pending={state.pending}
       style={`--pcal-span:${props.segment.endColumn - props.segment.startColumn + 1};--pcal-lane:${props.segment.lane}${colorStyle(o.event.color)}`}
       data-continues-before={props.segment.continuesBefore ? '' : undefined}
       data-continues-after={props.segment.continuesAfter ? '' : undefined}
@@ -77,6 +87,7 @@ function AllDayEvent<Meta>(props: { segment: EventSegment; occurrences: () => Ma
       }}
     >
       {props.view.renderEvent === undefined ? <span class="pcal-event-title">{o.title}</span> : props.view.renderEvent({ occurrence: o, label: label(), continuesBefore: props.segment.continuesBefore, continuesAfter: props.segment.continuesAfter })}
+      <Handles calendar={props.view.calendar} occurrenceKey={o.key} startEdge={!props.segment.continuesBefore} endEdge={!props.segment.continuesAfter} />
     </button>
   )
 }
@@ -218,6 +229,11 @@ export function TimeGridView<Meta = unknown>(props: TimeGridViewProps<Meta>): VN
     () => `[data-date="${calendar.cursor().date}"][data-minute="${calendar.cursor().minute}"]`,
     () => grid().days.length + calendar.range().start,
   )
+  usePointer(
+    () => root,
+    calendar,
+    'time',
+  )
 
   return (
     <div
@@ -232,7 +248,13 @@ export function TimeGridView<Meta = unknown>(props: TimeGridViewProps<Meta>): VN
         root = el
       }}
       onKeyDown={(e: KeyboardEvent) => {
-        if ((e.target as HTMLElement).closest('.pcal-event') !== null && e.key !== 'Escape') return
+        const hit = (e.target as HTMLElement).closest<HTMLElement>('.pcal-event')
+        if (hit?.dataset.key !== undefined && calendar.onEventKeyDown(hit.dataset.key, e, 'time', { rtl: isRtl(root) })) {
+          e.preventDefault()
+
+          return
+        }
+        if (hit !== null && e.key !== 'Escape') return
         if (calendar.onKeyDown(e, 'time', { rtl: isRtl(root) })) e.preventDefault()
       }}
     >

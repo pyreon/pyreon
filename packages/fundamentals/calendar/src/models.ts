@@ -124,6 +124,13 @@ export function createMonthModel<Meta>(s: CalState<Meta>): Computed<{ key: strin
 
 const MIN = 60
 
+/** The opening hours of a day in minutes from midnight (whatever the visible window), or `null` when none are given. */
+export function businessMinutes<Meta>(s: CalState<Meta>, date: PlainDate): { from: number; to: number }[] | null {
+  const found = businessFor(s.options.businessHours, date, { from: 0, to: 1440 })
+
+  return found === null ? null : found.map((w) => ({ from: w.top * 1440, to: (w.top + w.height) * 1440 }))
+}
+
 /** Opening hours of a day as fractions of the visible window, or `null` when none are given. */
 function businessFor(hours: WorkingHours | BusinessCalendar | undefined, date: PlainDate, window: { from: number; to: number }): { top: number; height: number }[] | null {
   if (hours === undefined) return null

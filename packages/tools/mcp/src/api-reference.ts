@@ -2964,6 +2964,27 @@ reposition(occurrence, { start: '2026-11-19T10:00', end: '2026-11-19T11:00', all
     notes: '[EXPERIMENTAL] Round to a multiple of `step`; a zero step leaves the value. Added in v0.53.0.',
   },
 
+  'calendar/moveTarget': {
+    signature: '(occurrence, hit, grab, snap, defaultMinutes?) => Target',
+    example: `const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+moveTarget(o, { date: '2026-11-19', minute: 16 * 60 + 5 }, { date: '2026-11-18', minute: 14 * 60 + 30 }, 30).start   // => '2026-11-19T15:30'`,
+    notes: '[EXPERIMENTAL] Where moving an occurrence lands: the pointer now (`hit`: a day and a minute of it, or `minute: null` over a day cell or the all-day row) against where it took hold (`grab`). Over the time grid the start snaps to `snap` minutes and the duration is kept; over a day cell only the day changes; a timed event dropped on the all-day row becomes all-day, and an all-day event dropped on a slot becomes `defaultMinutes` (60) long. Pure: a custom pointer layer can use it. Added in v0.53.0.',
+  },
+
+  'calendar/resizeTarget': {
+    signature: `(occurrence, edge: 'start' | 'end', hit, snap, minDuration) => Target`,
+    example: `const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+resizeTarget(o, 'end', { date: '2026-11-18', minute: 9 * 60 }, 30, 30).end   // => '2026-11-18T14:30'`,
+    notes: '[EXPERIMENTAL] Where dragging one edge lands: snapped, never shorter than `minDuration` minutes (a day for all-day events), so a resize cannot make a zero or negative event. Added in v0.53.0.',
+  },
+
+  'calendar/nudgeTarget': {
+    signature: '(occurrence, key, shift, grid, snap, minDuration, rtl) => Target | null',
+    example: `const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+nudgeTarget(o, 'ArrowDown', false, 'time', 30, 30, false)?.start   // => '2026-11-18T14:30'`,
+    notes: '[EXPERIMENTAL] What an arrow key does to a grabbed occurrence: up and down by `snap` minutes in the time grid (by a week in the month), left and right by a day (swapped in right-to-left text); Shift resizes the end. `null` for any other key. Added in v0.53.0.',
+  },
+
   'calendar/eventLabel': {
     signature: '(occurrence, locale, messages) => string',
     example: `eventLabel(expandOccurrences([{ id: 'p', title: 'Public holiday', start: '2026-11-17', end: '2026-11-18' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC')[0]!, 'en-GB', defaultMessages('en-GB'))   // => 'Public holiday, Tuesday 17 November, all day'`,
