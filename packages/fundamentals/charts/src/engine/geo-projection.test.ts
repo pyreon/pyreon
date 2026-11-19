@@ -107,7 +107,7 @@ describe('properties', () => {
     const params = geoProjectionParams('equalEarth', 150)
     expect(fwd('equalEarth', 150, 20, params).x).toBeCloseTo(0, 12)
     // -170 is 40 degrees east of 150 once wrapped, not 320 degrees west
-    expect(fwd('equalEarth', -170, 20, params).x).toBeCloseTo(fwd('equalEarth', 190 - 150 - 0, 20).x * 0 + fwd('equalEarth', 40, 20).x, 9)
+    expect(fwd('equalEarth', -170, 20, params).x).toBeCloseTo(fwd('equalEarth', 40, 20).x, 9)
     const back = inv('equalEarth', fwd('equalEarth', 100, 10, params).x, fwd('equalEarth', 100, 10, params).y, params)
     expect(back.x).toBeCloseTo(100, 6)
   })
