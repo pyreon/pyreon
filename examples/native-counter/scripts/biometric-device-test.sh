@@ -65,9 +65,26 @@ trap cleanup EXIT
 
 # ── Enrol fingerprint 1 ──
 "$ADB" shell locksettings set-pin "$PIN" > /dev/null
-"$ADB" shell am start -W -a android.settings.FINGERPRINT_ENROLL > /dev/null
-wait_text 'Re-enter your PIN|Enter your device PIN.*|Confirm your PIN' 30 || {
-  echo "[biometric] FAIL: Settings never asked for the PIN"; exit 1; }
+# Settings sometimes does not come up on the first launch on a loaded CI
+# emulator (the activity start is swallowed, or an earlier Settings task is
+# still in front), and the script then waited 30 s on a screen that was never
+# going to ask. Wake the device, start from a stopped Settings, and try the
+# launch up to three times; on failure say what the screen showed instead.
+pin_prompt='Re-enter your PIN|Enter your device PIN.*|Confirm your PIN'
+asked=0
+for attempt in 1 2 3; do
+  "$ADB" shell input keyevent KEYCODE_WAKEUP > /dev/null 2>&1 || true
+  "$ADB" shell wm dismiss-keyguard > /dev/null 2>&1 || true
+  "$ADB" shell am force-stop com.android.settings > /dev/null 2>&1 || true
+  "$ADB" shell am start -W -a android.settings.FINGERPRINT_ENROLL > /dev/null
+  if wait_text "$pin_prompt" 30; then asked=1; break; fi
+  echo "[biometric] attempt ${attempt}: Settings did not ask for the PIN. Screen:"
+  screen=$(dump)
+  grep -oE 'text="[^"]+"' <<< "$screen" | head -10 || true
+done
+if [ "$asked" -ne 1 ]; then
+  echo "[biometric] FAIL: Settings never asked for the PIN (a harness failure, not an app verdict)"; exit 1
+fi
 "$ADB" shell input text "$PIN"
 "$ADB" shell input keyevent 66
 # The intro screens: tap through until the sensor screen asks for a touch.
