@@ -3397,7 +3397,8 @@ fun withYView(s: Series, yKind: String, yLo: Double, xKind: String, xs: List<Dou
     var i = 0L
     for (v in s.values) {
       val placed = xKind == "" || i >= xs.length || isFiniteNumber(viewForward(xKind, xs[(i).toInt()], xLo))
-      values.add(if (placed) (if (yKind == "") v else viewForward(yKind, v, yLo)) else (0.0).toDouble() / (0.0).toDouble())
+      val mapped = if (yKind == "") v else viewForward(yKind, v, yLo)
+      values.add(if (placed) mapped else (0.0).toDouble() / (0.0).toDouble())
       i = pyreonAdd(i, 1L)
     }
     if (yKind == "") {
@@ -9331,7 +9332,9 @@ fun plotHitIndexIn(raw: ChartSpec, l: PlotLayout, px: Double, py: Double): Long 
     if (first.kind == "bars" || first.kind == "stacked" || first.kind == "grouped" || first.kind == "waterfall") {
       return -1L
     }
-    return hitNearestX(categoryPoints(first.values, l.plot, resolveYDomain(spec)), px)
+    val xs = (spec.xValues ?: listOf())
+    val placed = if (xs.length > 0L) layoutSeriesPointsAt(first.values, xs, l.plot, resolveYDomain(spec), l.xDomainUsed) else categoryPoints(first.values, l.plot, resolveYDomain(spec))
+    return hitNearestX(placed, px)
   }
 
 fun plotHitSeriesIn(spec: ChartSpec, l: PlotLayout, px: Double, py: Double, reach: Double): Long {

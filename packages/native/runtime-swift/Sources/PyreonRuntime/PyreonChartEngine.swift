@@ -6062,7 +6062,8 @@ public func withYView(_ s: Series, _ yKind: String, _ yLo: Double, _ xKind: Stri
     var i = 0
     for v in s.values {
       let placed = xKind == "" || i >= xs.count || isFiniteNumber(viewForward(xKind, xs[i], xLo))
-      values.append(placed ? (yKind == "" ? v : viewForward(yKind, v, yLo)) : 0.0 / 0.0)
+      let mapped = yKind == "" ? v : viewForward(yKind, v, yLo)
+      values.append(placed ? mapped : 0.0 / 0.0)
       i = pyreonAdd(i, 1)
     }
     if yKind == "" {
@@ -11982,7 +11983,9 @@ public func plotHitIndexIn(_ raw: ChartSpec, _ l: PlotLayout, _ px: Double, _ py
     if first.kind == "bars" || first.kind == "stacked" || first.kind == "grouped" || first.kind == "waterfall" {
       return -1
     }
-    return hitNearestX(categoryPoints(first.values, l.plot, resolveYDomain(spec)), px)
+    let xs = (spec.xValues ?? [])
+    let placed = xs.count > 0 ? layoutSeriesPointsAt(first.values, xs, l.plot, resolveYDomain(spec), l.xDomainUsed) : categoryPoints(first.values, l.plot, resolveYDomain(spec))
+    return hitNearestX(placed, px)
   }
 
 public func plotHitSeriesIn(_ spec: ChartSpec, _ l: PlotLayout, _ px: Double, _ py: Double, _ reach: Double) -> Int {

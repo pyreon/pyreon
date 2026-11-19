@@ -65,6 +65,7 @@ function symlogTicks(real: Domain, view: Domain, r0: Double, r1: Double, fmt: Fo
  * minors when the span is short) for log, the ordinary nice values for sqrt,
  * decades either side of zero for symlog.
  */
+// oxlint-disable-next-line max-params -- positional like the sibling tick builders (`makeTicks`, `logViewTicks`)
 export function viewTicks(kind: string, real: Domain, r0: Double, r1: Double, count: Double, format?: Formatter): Tick[] {
   const view = viewDomain(kind, real)
   if (kind === 'log') return logViewTicks(real.min, real.max, r0, r1, format)

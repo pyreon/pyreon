@@ -70,10 +70,12 @@ describe('ticks are nice in REAL space and labelled with real values', () => {
 
 interface Row { x: number; v: number }
 const rowsOf = (n: number, lo: number, hi: number): Row[] => Array.from({ length: n }, () => ({ x: lo + rnd() * (hi - lo), v: lo + rnd() * (hi - lo) }))
+
 const mk = (data: Row[], marks: ReturnType<typeof line<Row>>[], extra: Partial<ChartSpec>): ChartSpec => ({
   width: 400, height: 260, series: resolveMarks(data, marks), categories: [], theme: defaultTheme,
   showXAxis: true, showYAxis: true, showGrid: true, ...extra,
 })
+
 const linePts = (cmds: DrawCmd[]): { x: number; y: number }[] => cmds.flatMap((c) => (c.kind === 'polyline' && c.width === 2 ? c.points : []))
 
 describe('sqrt and symlog on y', () => {

@@ -673,12 +673,14 @@ function xRealBounds(kind: string, xs: Double[]): Domain {
  * and a datum whose x the x view cannot place becomes a gap (so no NaN pixel is
  * ever emitted for it).
  */
+// oxlint-disable-next-line max-params -- a positional engine helper: the y view and the x view travel together
 function withYView(s: Series, yKind: string, yLo: Double, xKind: string, xs: Double[], xLo: Double): Series {
   const values: Double[] = []
   let i = 0
   for (const v of s.values) {
     const placed = xKind === '' || i >= xs.length || isFiniteNumber(viewForward(xKind, xs[i]!, xLo))
-    values.push(placed ? (yKind === '' ? v : viewForward(yKind, v, yLo)) : 0.0 / 0.0)
+    const mapped = yKind === '' ? v : viewForward(yKind, v, yLo)
+    values.push(placed ? mapped : 0.0 / 0.0)
     i = i + 1
   }
   if (yKind === '') return { ...s, values }
