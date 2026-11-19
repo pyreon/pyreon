@@ -10,7 +10,8 @@
 
 import { HEAT_RAMP, rampColor, visualOutside } from './heat'
 import { isFiniteNumber } from './scale'
-import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
+import { approxTextWidth } from './treemap'
+import type { Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 const CALENDAR_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const CALENDAR_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -158,8 +159,12 @@ export function formatIsoDays(days: Double): string {
   return `${yp}${Math.round(c.year)}-${mp}${Math.round(c.month)}-${dp}${Math.round(c.day)}`
 }
 
-/** Lay out every day from `start` to `end` (inclusive, ISO dates) into `box`. */
-export function layoutCalendar(start: string, end: string, box: Rect, options?: CalendarOptions): CalendarLayout {
+/**
+ * Lay out every day from `start` to `end` (inclusive, ISO dates) into `box`.
+ * `measure` sizes the month labels (default the engine's approximate width;
+ * native hosts pass none).
+ */
+export function layoutCalendar(start: string, end: string, box: Rect, options?: CalendarOptions, measure?: MeasureText): CalendarLayout {
   const p0 = parseIsoDays(start)
   const p1 = parseIsoDays(end)
   if (!p0.ok || !p1.ok || p1.days < p0.days) return { cells: [], monthLabels: [], dayLabels: [], cellSize: 0.0, startDay: 0.0, days: 0.0 }
@@ -189,6 +194,9 @@ export function layoutCalendar(start: string, end: string, box: Rect, options?: 
   const originY = box.y + gutterY
   const cells: CalendarCell[] = []
   const monthLabels: CalendarLabel[] = []
+  const m: MeasureText = measure ?? approxTextWidth
+  const boxRight = box.x + box.w
+  let prevLabelEnd = originX - 1.0e9
   let lastMonthKey = -1.0
   let iF = 0.0
   while (iF < days) {
@@ -208,7 +216,20 @@ export function layoutCalendar(start: string, end: string, box: Rect, options?: 
         mi = mi + 1
         miF = miF + 1.0
       }
-      monthLabels.push({ kind: 'month', text: CALENDAR_MONTHS[mi]!, at: { x: originX + week * pitch, y: originY - fontSize * 0.4 } })
+      // Start-aligned over the month's first week, but never past the box's
+      // right edge: a month that starts in the last column (Dec in a Jan–Dec
+      // range) ran off a narrow canvas. A label pulled back onto the one
+      // before it is left out, not stacked (the Gantt axis rule).
+      const text = CALENDAR_MONTHS[mi]!
+      const lw = m(text, fontSize)
+      const want = originX + week * pitch
+      const latest = boxRight - lw
+      const pulled = want > latest
+      const labelX = !pulled ? want : latest < originX ? originX : latest
+      if (!pulled || labelX >= prevLabelEnd) {
+        prevLabelEnd = labelX + lw
+        monthLabels.push({ kind: 'month', text, at: { x: labelX, y: originY - fontSize * 0.4 } })
+      }
     }
     iF = iF + 1.0
   }

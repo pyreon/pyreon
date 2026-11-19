@@ -55,6 +55,8 @@ That's the whole setup — you don't call `hydrateIslandsAuto()` or write any re
 
 The `hydrateIslandsAuto(registry)` + `virtual:pyreon/islands-registry` path shown in [Island Architecture](/docs/island-architecture) is for a **standalone `@pyreon/server` app** (no `@pyreon/zero` router) that writes its own `entry-client.ts` — see `examples/islands-showcase`. `'never'`-hydrate islands are omitted from that auto-generated registry so their components never reach the client bundle.
 
+A zero page that is nothing but static HTML and islands can declare `export const hydrate = 'islands'`: the app (router, route code, loader data) then never loads on it, and its islands hydrate from that registry. See [Zero → Islands-only pages](/docs/zero#islands-only-pages-export-const-hydrate-islands).
+
 ## Common pitfalls
 
 - **Importing `island` from `@pyreon/server`.** Use `@pyreon/server/client`; the barrel pulls in `node:fs` etc. and breaks the client build.

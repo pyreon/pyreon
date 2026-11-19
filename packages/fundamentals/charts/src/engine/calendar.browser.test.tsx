@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { CalendarChart } from './CalendarChart'
@@ -35,3 +35,45 @@ describe('CalendarChart (real browser)', () => {
     expect(container.querySelector('table')!.textContent).toContain('2024-01-04')
   })
 })
+
+describe('CalendarChart month labels stay on the canvas (real browser)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // A Jan–Dec range puts "Dec" in the last week column; start-aligned there with
+  // no clamp, it ran past the right edge of a narrow canvas and was clipped
+  // ("Dec" ended at 366.3px on a 358px canvas). Every month label actually
+  // drawn is read off the canvas's own fillText and measured in its own font.
+  for (const width of [358, 600]) {
+    it(`every drawn month label ends inside the ${String(width)}px canvas, and Dec is drawn`, async () => {
+      const drawn: { text: string; right: number; left: number }[] = []
+      const fillText = CanvasRenderingContext2D.prototype.fillText
+      vi.spyOn(CanvasRenderingContext2D.prototype, 'fillText').mockImplementation(function (this: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth?: number) {
+        if (MONTHS.has(text) && this.textAlign === 'start') {
+          const w = this.measureText(text).width
+          const origin = this.getTransform().e / (window.devicePixelRatio || 1)
+          drawn.push({ text, left: origin + x, right: origin + x + w })
+        }
+        if (maxWidth === undefined) fillText.call(this, text, x, y)
+        else fillText.call(this, text, x, y, maxWidth)
+      })
+      const { container } = mountInBrowser(() =>
+        CalendarChart({ animate: false, start: '2024-01-01', end: '2024-12-01', values: {}, width, height: 140 }),
+      )
+      await flush()
+      const canvasWidth = container.querySelector('canvas')!.getBoundingClientRect().width
+      expect(canvasWidth).toBe(width)
+      expect(drawn.map((d) => d.text)).toContain('Dec')
+      for (const d of drawn) {
+        expect(d.right, `${d.text} right edge`).toBeLessThanOrEqual(canvasWidth - 4 + 0.01)
+        expect(d.left, `${d.text} left edge`).toBeGreaterThanOrEqual(0)
+      }
+      const lefts = drawn.map((d) => d.left)
+      expect(new Set(lefts).size, 'no two labels stacked').toBe(lefts.length)
+    })
+  }
+})
+
+const MONTHS = new Set(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+

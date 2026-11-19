@@ -48,6 +48,11 @@
       "import": "./lib/client.js",
       "types": "./lib/types/client.d.ts"
     },
+    "./client-lazy": {
+      "bun": "./src/client-lazy.ts",
+      "import": "./lib/client-lazy.js",
+      "types": "./lib/types/client-lazy.d.ts"
+    },
     "./config": {
       "bun": "./src/config.ts",
       "import": "./lib/config.js",
