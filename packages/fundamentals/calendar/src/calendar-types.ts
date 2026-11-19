@@ -15,6 +15,8 @@ export interface Selection {
   start: PlainDate | PlainDateTime
   end: PlainDate | PlainDateTime
   allDay: boolean
+  /** In the timeline: the row (resource) that was selected on. */
+  resourceId?: string
 }
 
 export interface CalendarOptions<Meta = unknown> {
@@ -74,7 +76,7 @@ export interface CalendarOptions<Meta = unknown> {
   /** Called when the visible window changes (and once at the start): fetch the events for it. */
   onRangeChange?: (range: Interval<PlainDate>) => void
   /** Counters for tests and profiling: called each time a day's or a week's layout is computed. */
-  instrument?: { layoutDay?: (date: PlainDate) => void; layoutRow?: (date: PlainDate) => void }
+  instrument?: { layoutDay?: (date: PlainDate) => void; layoutRow?: (date: PlainDate) => void; layoutResource?: (id: string) => void }
 }
 
 export interface DayCell {
@@ -155,7 +157,7 @@ export interface Calendar<Meta = unknown> {
   /** Is this occurrence the one being edited? (Changes only when an edit begins or ends, not on every move.) */
   isEditing(occurrenceKey: string): boolean
   /** Select the cells or slots between two points, as dragging over empty space does (calls `onSelect`). */
-  select(from: { date: PlainDate; minute: number }, to: { date: PlainDate; minute: number }, grid: 'month' | 'time'): void
+  select(from: { date: PlainDate; minute: number }, to: { date: PlainDate; minute: number }, grid: 'month' | 'time', resourceId?: string): void
   /** Is this occurrence editable (move or resize)? */
   canEdit(occurrenceKey: string, kind: EditKind): boolean
   /** Is this occurrence waiting for the app to answer a change? */

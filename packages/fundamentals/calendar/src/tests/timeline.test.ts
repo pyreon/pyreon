@@ -114,13 +114,19 @@ describe('resources of an event', () => {
     expect(movedResource(undefined, undefined, 'x')).toBe('x')
   })
 
-  it('applyEventChange moves the resource, and refuses a one-occurrence change of it', () => {
+  it('applyEventChange moves the resource of the series, or of one occurrence (kept in its override, and expandOccurrences shows it)', () => {
     const e = ev('w', '2026-11-16T09:00', '2026-11-16T10:00', { resourceId: 'a', recurrence: { every: 'week', start: '2026-11-16T09:00', count: 3 } as never })
     const change = { event: e, occurrence: '2026-11-23T09:00', start: '2026-11-23T09:00' as never, end: '2026-11-23T10:00' as never, allDay: false, resourceId: 'b', fromResourceId: 'a' }
     expect(applyEventChange(e, { ...change, scope: 'all' }, 'UTC')[0]!.resourceId).toBe('b')
     const following = applyEventChange(e, { ...change, scope: 'following' }, 'UTC')
     expect(following.map((x) => x.resourceId)).toEqual(['a', 'b'])
-    expect(() => applyEventChange(e, { ...change, scope: 'this' }, 'UTC')).toThrow(/^\[Pyreon\] applyEventChange: change\.scope must be/)
+    const one = applyEventChange(e, { ...change, scope: 'this', start: '2026-11-24T09:00' as never, end: '2026-11-24T10:00' as never }, 'UTC')
+    expect(one).toHaveLength(1)
+    expect(one[0]!.overrides).toEqual({ '2026-11-23T09:00': { start: '2026-11-24T09:00', end: '2026-11-24T10:00', resourceId: 'b' } })
+    expect(one[0]!.resourceId).toBe('a')
+    const shown = occ(one).map((o) => [o.start, resourcesOf(o)])
+    expect(shown).toEqual([['2026-11-16T09:00', ['a']], ['2026-11-24T09:00', ['b']], ['2026-11-30T09:00', ['a']]])
+    expect(JSON.parse(JSON.stringify(one))).toEqual(one)
     const single = ev('s', '2026-11-16T09:00', '2026-11-16T10:00', { resourceId: 'a' })
     expect(applyEventChange(single, { event: single, start: single.start, end: single.end, allDay: false, resourceId: 'b', fromResourceId: 'a' }, 'UTC')[0]!.resourceId).toBe('b')
   })

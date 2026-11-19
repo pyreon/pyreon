@@ -10,7 +10,7 @@ import type { TimeGridOptions } from './timegrid'
 import type { EventOccurrence, PlainDate, TimedBlock, Weekday, WeekLayout } from './types'
 
 /** Computeds kept by key while the key is on screen: a new layout of the same day or week reuses its computed (and so its memo). */
-class Memo<V extends { dispose(): void }> {
+export class Memo<V extends { dispose(): void }> {
   private readonly map = new Map<string, V>()
 
   get(key: string, make: () => V): V {
@@ -43,7 +43,7 @@ class Memo<V extends { dispose(): void }> {
 }
 
 /** A string that changes exactly when the layout of these occurrences would (their keys, instants and shown times). */
-function signatureOf(list: readonly EventOccurrence[]): string {
+export function signatureOf(list: readonly EventOccurrence[]): string {
   return list
     .map((o) => `${o.key}|${o.startMs}|${o.endMs}|${o.start}|${o.end}`)
     .sort()
@@ -83,7 +83,7 @@ const gridKey = (g: TimeGridOptions): string => `${g.dayStart ?? ''}|${g.dayEnd 
  * One layout that is recomputed only when its signature changes. The signature and the data it describes are read in one
  * computed that is gated by the signature (an explicit `equals`), so a change elsewhere in the events leaves the layout alone.
  */
-function memoLayout<T, R>(signature: () => string, data: () => T, compute: (data: T) => R): Computed<R> {
+export function memoLayout<T, R>(signature: () => string, data: () => T, compute: (data: T) => R): Computed<R> {
   const input = computed(() => ({ sig: signature(), data: data() }), { equals: (a, b) => a.sig === b.sig })
 
   return computed(() => compute(input().data))

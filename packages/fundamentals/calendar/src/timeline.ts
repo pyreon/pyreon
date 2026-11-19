@@ -38,6 +38,7 @@ const minutesOf = (wall: string): number => Number(wall.slice(11, 13)) * 60 + Nu
 
 /** The resource ids of an event: its `resourceId` as a list. */
 export const resourcesOf = (o: EventOccurrence): readonly string[] => {
+  if (o.resourceIds !== undefined) return o.resourceIds
   const id = o.event.resourceId
   if (id === undefined) return []
 
@@ -79,45 +80,61 @@ function spanOf(o: EventOccurrence, axis: Axis): Span | null {
   return { o, start, end, before: o.start.slice(0, 10) < axis.firstDate, after: o.end.slice(0, 10) > axis.lastDate }
 }
 
+/** The axis of a timeline: the shown days side by side, each its visible minutes. */
+function axisOf(dates: readonly PlainDate[], options: { from: number; to: number }): Axis {
+  const size = options.to - options.from
+
+  return { index: new Map<PlainDate, number>(dates.map((d, i) => [d, i])), days: dates.length, from: options.from, size, firstDate: dates[0] ?? '', lastDate: dates.at(-1) ?? '' }
+}
+
+function checkTimeline(fn: string, resources: unknown, dates: unknown, options: TimelineOptions): void {
+  if (!Array.isArray(resources)) bad(fn, 'resources', 'an array of { id, title }', resources)
+  if (!Array.isArray(dates)) bad(fn, 'dates', 'an array of dates', dates)
+  if (typeof options !== 'object' || options === null || !(options.to > options.from)) bad(fn, 'options', '{ from, to } minutes with to after from', options)
+}
+
+/**
+ * The occurrences of each row: an event is in the row of each of its resources that exists; an event with none (or none that
+ * exists) is in the `unassigned` row when one is asked for, and nowhere otherwise.
+ */
+export function assignToRows(occurrences: readonly EventOccurrence[], resources: readonly Resource[], unassigned?: Resource): Map<string, EventOccurrence[]> {
+  const rows = new Map<string, EventOccurrence[]>([...resources, ...(unassigned === undefined ? [] : [unassigned])].map((r) => [r.id, []]))
+  for (const o of occurrences) {
+    const ids = resourcesOf(o).filter((id) => rows.has(id))
+    const targets = ids.length === 0 && unassigned !== undefined ? [unassigned.id] : ids
+    for (const id of targets) rows.get(id)?.push(o)
+  }
+
+  return rows
+}
+
+/** One row of the timeline: the blocks of the occurrences given (they are the row's own), overlapping ones in lanes. */
+export function layoutTimelineRow(occurrences: readonly EventOccurrence[], resource: Resource, dates: readonly PlainDate[], options: { from: number; to: number }): TimelineRow {
+  const axis = axisOf(dates, options)
+  const total = axis.days * axis.size
+  const row: TimelineRow = { resource, lanes: 1, blocks: [] }
+  const spans = occurrences.map((o) => spanOf(o, axis)).filter((x): x is Span => x !== null)
+  spans.sort((x, y) => x.start - y.start || y.end - x.end || (x.o.key < y.o.key ? -1 : Number(x.o.key > y.o.key)))
+  const ends: number[] = []
+  for (const s of spans) {
+    let lane = ends.findIndex((e) => e <= s.start)
+    if (lane === -1) lane = ends.length
+    ends[lane] = s.end
+    row.blocks.push({ key: `${s.o.key}@${resource.id}`, occurrenceKey: s.o.key, resourceId: resource.id, left: s.start / total, width: (s.end - s.start) / total, lane, continuesBefore: s.before, continuesAfter: s.after })
+  }
+  row.lanes = Math.max(1, ends.length)
+
+  return row
+}
+
 /**
  * Resources by time: one row per resource, the shown days side by side along the axis (each day is its visible hours), events
  * as blocks in the rows of their resources (an event with several resources is in each row), overlapping events in lanes. Pure,
  * and ordered totally, so the lanes do not depend on the order of the occurrences.
  */
 export function layoutTimeline(occurrences: readonly EventOccurrence[], resources: readonly Resource[], dates: readonly PlainDate[], options: TimelineOptions): TimelineRow[] {
-  if (!Array.isArray(resources)) bad('layoutTimeline', 'resources', 'an array of { id, title }', resources)
-  if (!Array.isArray(dates)) bad('layoutTimeline', 'dates', 'an array of dates', dates)
-  if (typeof options !== 'object' || options === null || !(options.to > options.from)) bad('layoutTimeline', 'options', '{ from, to } minutes with to after from', options)
-  const size = options.to - options.from
-  const axis: Axis = { index: new Map<PlainDate, number>(dates.map((d, i) => [d, i])), days: dates.length, from: options.from, size, firstDate: dates[0] ?? '', lastDate: dates.at(-1) ?? '' }
-  const total = dates.length * size
-  const rows = new Map<string, TimelineRow>()
-  const all = options.unassigned === undefined ? resources : [...resources, options.unassigned]
-  for (const r of all) rows.set(r.id, { resource: r, lanes: 1, blocks: [] })
-  const byRow = new Map<string, Span[]>()
-  for (const o of occurrences) {
-    const span = spanOf(o, axis)
-    if (span === null) continue
-    const ids = resourcesOf(o).filter((id) => rows.has(id))
-    const targets = ids.length === 0 && options.unassigned !== undefined ? [options.unassigned.id] : ids
-    for (const id of targets) {
-      const list = byRow.get(id) ?? []
-      list.push(span)
-      byRow.set(id, list)
-    }
-  }
-  for (const [id, spans] of byRow) {
-    const row = rows.get(id) as TimelineRow
-    spans.sort((x, y) => x.start - y.start || y.end - x.end || (x.o.key < y.o.key ? -1 : x.o.key > y.o.key ? 1 : 0))
-    const ends: number[] = []
-    for (const s of spans) {
-      let lane = ends.findIndex((e) => e <= s.start)
-      if (lane === -1) lane = ends.length
-      ends[lane] = s.end
-      row.blocks.push({ key: `${s.o.key}@${id}`, occurrenceKey: s.o.key, resourceId: id, left: s.start / total, width: (s.end - s.start) / total, lane, continuesBefore: s.before, continuesAfter: s.after })
-    }
-    row.lanes = Math.max(1, ends.length)
-  }
+  checkTimeline('layoutTimeline', resources, dates, options)
+  const rows = assignToRows(occurrences, resources, options.unassigned)
 
-  return [...rows.values()]
+  return [...resources, ...(options.unassigned === undefined ? [] : [options.unassigned])].map((r) => layoutTimelineRow(rows.get(r.id) ?? [], r, dates, options))
 }

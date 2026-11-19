@@ -43,7 +43,7 @@ function editMethods<Meta>(s: CalState<Meta>): Pick<Calendar<Meta>, 'editing' | 
       return e === null || target === null ? null : { ...e, target }
     },
     isEditing: (key) => s.edit.editing()?.key === key,
-    select: (from, to, grid) => selectRange(s, rangeOf(s, grid, from, to)),
+    select: (from, to, grid, resourceId) => selectRange(s, { ...rangeOf(s, grid, from, to), ...(resourceId === undefined ? {} : { resourceId }) }),
     canEdit: (key, kind) => {
       const o = runUntracked(() => s.occurrences()).find((x) => x.key === key)
 

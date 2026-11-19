@@ -7,7 +7,8 @@ import { dayLabel, eventLabel } from './labels'
 import { Handles, colorStyle, dayWeekday, editState, isRtl, usePointer } from './month-view'
 import type { ViewProps } from './month-view'
 import type { TimelineBlock, TimelineRow } from './timeline'
-import type { EventOccurrence } from './types'
+import type { TimelineModel } from './view-models'
+import type { EventOccurrence, PlainDate } from './types'
 import { windowRows } from './window'
 
 /** Pixels of one lane of events in a row, and the space around a row's lanes (the stylesheet's row is these numbers). */
@@ -16,11 +17,14 @@ const PAD = 4
 
 const rowHeight = (row: TimelineRow): number => row.lanes * LANE + PAD * 2
 
-function Block<Meta>(props: { block: TimelineBlock; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ViewProps<Meta> }): VNodeChild {
-  const o = props.occurrences().get(props.block.occurrenceKey)
+function Block<Meta>(props: { block: () => TimelineBlock; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ViewProps<Meta> }): VNodeChild {
+  const first = props.block()
+  const o = props.occurrences().get(first.occurrenceKey)
   if (o === undefined) return null
   const calendar = props.view.calendar
-  const b = props.block
+
+  // the block is read through an accessor: a keyed block is made once and its place changes under it (a new window, an edit)
+  const b = (): TimelineBlock => props.block()
   const state = editState(calendar, o.key)
 
   const label = (): string => eventLabel(o as EventOccurrence, calendar.locale(), calendar.messages())
@@ -29,35 +33,57 @@ function Block<Meta>(props: { block: TimelineBlock; occurrences: () => Map<strin
     <button
       type="button"
       class="pcal-event pcal-tl-block"
-      style={`inset-inline-start:${(b.left * 100).toFixed(4)}%;inline-size:${(b.width * 100).toFixed(4)}%;inset-block-start:${PAD + b.lane * LANE}px;block-size:${LANE - 4}px${colorStyle(o.event.color)}`}
+      style={() => `inset-inline-start:${(b().left * 100).toFixed(4)}%;inline-size:${(b().width * 100).toFixed(4)}%;inset-block-start:${PAD + b().lane * LANE}px;block-size:${LANE - 4}px${colorStyle(o.event.color)}`}
       data-key={o.key}
-      data-resource={b.resourceId}
+      data-resource={first.resourceId}
       data-all-day={o.allDay ? '' : undefined}
-      data-continues-before={b.continuesBefore ? '' : undefined}
-      data-continues-after={b.continuesAfter ? '' : undefined}
+      data-continues-before={() => (b().continuesBefore ? '' : undefined)}
+      data-continues-after={() => (b().continuesAfter ? '' : undefined)}
       data-editable={state.editable}
       data-dragging={state.dragging}
       data-pending={state.pending}
       aria-label={() => label()}
       onClick={() => calendar.eventClick(o.key)}
     >
-      {props.view.renderEvent === undefined ? <span class="pcal-event-title">{o.title}</span> : props.view.renderEvent({ occurrence: o, label: label(), continuesBefore: b.continuesBefore, continuesAfter: b.continuesAfter })}
-      <Handles calendar={calendar} occurrenceKey={o.key} startEdge={!b.continuesBefore} endEdge={!b.continuesAfter} />
+      {props.view.renderEvent === undefined ? <span class="pcal-event-title">{o.title}</span> : props.view.renderEvent({ occurrence: o, label: label(), continuesBefore: first.continuesBefore, continuesAfter: first.continuesAfter })}
+      <Handles calendar={calendar} occurrenceKey={o.key} startEdge={!first.continuesBefore} endEdge={!first.continuesAfter} />
     </button>
   )
 }
 
-function Row<Meta>(props: { row: TimelineRow; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ViewProps<Meta>; days: number }): VNodeChild {
-  const r = props.row
+/** Where a wall-clock moment is along the axis (0 to 1); outside the shown days it is the nearer edge. */
+function axisFraction(m: TimelineModel, wall: string): number {
+  const index = m.dates.indexOf(wall.slice(0, 10) as PlainDate)
+  if (index < 0) return wall.slice(0, 10) < (m.dates[0] ?? '') ? 0 : 1
+  const size = m.to - m.from
+  const minute = wall.length > 10 ? Math.min(size, Math.max(0, Number(wall.slice(11, 13)) * 60 + Number(wall.slice(14, 16)) - m.from)) : 0
+
+  return (index * size + minute) / (m.dates.length * size)
+}
+
+function Row<Meta>(props: { id: string; row: () => TimelineRow; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ViewProps<Meta>; days: number; model: () => TimelineModel }): VNodeChild {
+  // the row is read through an accessor: a keyed row component is made once, and its layout changes under it
+  const r = { resource: props.row().resource }
+  const calendar = props.view.calendar
+  // the range selected by dragging on this row
+  const selected = (): string | undefined => {
+    const x = calendar.selection()
+    if (x === null || x.allDay || x.resourceId !== r.resource.id) return undefined
+    const a = axisFraction(props.model(), x.start)
+    const b = axisFraction(props.model(), x.end)
+
+    return `inset-inline-start:${(a * 100).toFixed(3)}%;inline-size:${((b - a) * 100).toFixed(3)}%`
+  }
 
   return (
-    <div class="pcal-tl-row" role="row" data-resource={r.resource.id} style={`block-size:${rowHeight(r)}px`}>
+    <div class="pcal-tl-row" role="row" data-resource={r.resource.id} style={() => `block-size:${rowHeight(props.row())}px`}>
       <div class="pcal-tl-name" role="rowheader">
         {r.resource.title}
       </div>
       <div class="pcal-tl-lane" role="gridcell" data-resource={r.resource.id} style={`--pcal-tl-days:${props.days}`}>
-        <For each={() => r.blocks} by={(b: TimelineBlock) => b.key}>
-          {(block: TimelineBlock) => <Block block={block} occurrences={props.occurrences} view={props.view} />}
+        {() => (selected() === undefined ? null : <div class="pcal-tl-selection" aria-hidden="true" style={selected()} />)}
+        <For each={() => props.row().blocks} by={(b: TimelineBlock) => b.key}>
+          {(block: TimelineBlock) => <Block block={() => props.row().blocks.find((x) => x.key === block.key) ?? block} occurrences={props.occurrences} view={props.view} />}
         </For>
       </div>
     </div>
@@ -86,6 +112,7 @@ export function TimelineView<Meta = unknown>(props: ViewProps<Meta>): VNodeChild
   const occurrences = computed(() => new Map(calendar.occurrences().map((o) => [o.key, o as EventOccurrence<Meta>])))
   // the empty state is a value of its own, so a scroll or an edit does not rebuild the body
   const empty = computed(() => model().rows.length === 0)
+  const byId = computed(() => new Map(model().rows.map((r) => [r.resource.id, r])))
   const window = computed(() => windowRows(model().rows.map(rowHeight), scroll(), viewport(), 4))
   let root: HTMLElement | null = null
 
@@ -151,9 +178,10 @@ export function TimelineView<Meta = unknown>(props: ViewProps<Meta>): VNodeChild
           <p class="pcal-agenda-empty">{() => calendar.messages().noEvents}</p>
         ) : (
           <div class="pcal-tl-body" style={() => `block-size:${window().total}px`}>
+            {() => (model().now === null ? null : <div class="pcal-tl-nowarea" aria-hidden="true"><div class="pcal-tl-now" style={`inset-inline-start:${((model().now as number) * 100).toFixed(3)}%`} /></div>)}
             <div class="pcal-tl-window" style={() => `transform:translateY(${window().offset}px)`}>
               <For each={() => model().rows.slice(window().start, window().end)} by={(r: TimelineRow) => r.resource.id}>
-                {(row: TimelineRow) => <Row row={row} occurrences={() => occurrences()} view={props} days={model().dates.length} />}
+                {(row: TimelineRow) => <Row id={row.resource.id} row={() => byId().get(row.resource.id) ?? row} occurrences={() => occurrences()} view={props} days={model().dates.length} model={() => model()} />}
               </For>
             </div>
           </div>

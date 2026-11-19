@@ -4,6 +4,7 @@ import { toInstant } from '@pyreon/time/core'
 import { dayLabel } from './labels'
 import { formatTime } from '@pyreon/format'
 import { businessMinutes } from './models'
+import { resourcesOf } from './timeline'
 import { applyEventChange, fitsWindows, movedResource, moveTarget, nudgeTarget, reposition, resizeTarget } from './edit'
 import type { EditScope, EventChange, Hit, Target } from './edit'
 import type { CalState } from './state'
@@ -40,9 +41,10 @@ export function overlaid<Meta>(list: EventOccurrence<Meta>[], overlay: ReadonlyM
     const t = overlay.get(o.key)
     if (t === undefined) return o
 
-    const event = t.resourceId === undefined ? o.event : { ...o.event, resourceId: movedResource(o.event.resourceId, t.fromResourceId, t.resourceId) }
+    // the occurrence is shown on its new resource; the event itself is the app's and stays as it is
+    const resourceIds = t.resourceId === undefined ? o.resourceIds : [movedResource(resourcesOf(o), t.fromResourceId, t.resourceId)].flat()
 
-    return { ...o, event, start: t.start, end: t.end, allDay: t.allDay, startMs: toInstant(t.start as PlainDate | PlainDateTime, zone), endMs: toInstant(t.end as PlainDate | PlainDateTime, zone) }
+    return { ...o, ...(resourceIds === undefined ? {} : { resourceIds }), start: t.start, end: t.end, allDay: t.allDay, startMs: toInstant(t.start as PlainDate | PlainDateTime, zone), endMs: toInstant(t.end as PlainDate | PlainDateTime, zone) }
   })
 }
 
