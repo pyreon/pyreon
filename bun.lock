@@ -1552,6 +1552,26 @@
         "@pyreon/native-compiler",
       ],
     },
+    "packages/fundamentals/command": {
+      "name": "@pyreon/command",
+      "version": "0.53.0",
+      "dependencies": {
+        "@pyreon/hotkeys": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
     "packages/fundamentals/dnd": {
       "name": "@pyreon/dnd",
       "version": "0.53.0",
@@ -4085,6 +4105,8 @@
     "@pyreon/cli": ["@pyreon/cli@workspace:packages/tools/cli"],
 
     "@pyreon/code": ["@pyreon/code@workspace:packages/fundamentals/code"],
+
+    "@pyreon/command": ["@pyreon/command@workspace:packages/fundamentals/command"],
 
     "@pyreon/compiler": ["@pyreon/compiler@workspace:packages/core/compiler"],
 

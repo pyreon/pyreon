@@ -2287,6 +2287,36 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 >
 > **ruby / shell grammars**: `ruby` and `shell` highlighting come from `@codemirror/legacy-modes` (an optionalDependency). It installs by default; if your package manager skips optional deps, those two fall back to plain-text (empty extension) rather than throwing.
 
+## @pyreon/command — Command
+
+Every action of an app, found by typing and run from the keyboard. `@pyreon/command/core` is the pure matcher: `fuzzyMatch` and `rank` are case- and diacritic-insensitive (Résumé is found by "resume", Straße by "strasse", ユーザー by ゆーざー), score word starts, camelCase humps, consecutive characters and prefixes (so "np" finds New Project), match the words of a query in any order, and return ranges in UTF-16 offsets that are right for emoji and combining marks, for highlighting. `createRanker` keeps the prepared texts and narrows: a query that extends the previous one only looks at what the previous one matched. The registry (`createCommands`, `useCommands`, `useCommand`, `provideCommands`) holds the commands: `useCommand` registers one for the lifetime of a component, so the list always matches what is on screen; a title can be a function (switching the locale re-ranks); a command can have nested pages (`children`); recents are kept and can be persisted; a command with a `shortcut` is registered through `@pyreon/hotkeys` exactly once while it is registered and enabled, with a development warning that names both commands when two share a shortcut. Typo tolerance is not part of v0. On the server the registry is inert.
+
+```typescript
+import { createCommands } from '@pyreon/command'
+
+const commands = createCommands()
+commands.register([{ id: 'new-project', title: 'New Project' }, { id: 'open-panel', title: 'Open Panel' }])
+
+commands.search('np')[0]!.id   // => 'new-project'
+commands.search('np')[0]!.ranges   // => [[0, 1], [4, 5]]
+```
+
+> **No typo tolerance in v0**: The matcher finds subsequences. A letter that is missing is fine ("prjct" finds "Project"); a letter that is transposed or wrong is not corrected ("porject" does not).
+>
+> **Words match in any order, in one text**: "project new" finds "New Project". All the words must match the same text (the title, or the subtitle, or one keyword), not different ones.
+>
+> **A later registration of an id wins**: Two screens that both register "save" do not duplicate it: the later registration answers to the id and its shortcut, and the earlier one is back when the later one is removed (a screen change mounts the new page before it unmounts the old one). Development warns once.
+>
+> **Shortcuts follow hotkeys' input rule, with one difference**: A shortcut with Ctrl, Alt or Meta fires while a text field has focus; a bare key (g, /, ?) and Shift alone do not, so typing never runs a command. Hotkeys' own default suppresses every shortcut in an input; commands opt modifier shortcuts in.
+>
+> **Nested pages have no shortcuts**: A command inside `children` is reached through its page; its `shortcut` is not registered (development warns). Register a command you want a shortcut for at the top level.
+>
+> **Recents are recency only**: The storage holds a list of ids, so the boost is by how recently a command ran, bounded below one word-start bonus: it settles close calls and never overturns a clearly better match. Frequency is not tracked.
+>
+> **Narrowing needs the same list**: `createRanker` reuses candidates only for the same array and the same options; the registry resets its rankers when a function title changes. If you keep a ranker over texts that change, call `reset()`.
+>
+> **Long input is cut**: A query is cut at 128 characters and 8 words, a text is matched on its first 512 units. Both are far beyond a command title.
+
 ## @pyreon/hotkeys — Keyboard Shortcuts
 
 Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports `mod` alias (Command on Mac, Ctrl elsewhere), multi-key combos, comma-separated lists (`ctrl+s, mod+p`), sequential combos (`g t`, Gmail/vim-style), keyup bindings, `once` / `ignoreRepeat`, reference-counted scope activation, element-scoped targets, selective input filtering, shifted-symbol shortcuts (`?` fires on Shift+/), pressed-key introspection, programmatic `trigger`, and conflict detection. Dispatch is KEY-BUCKETED — a keystroke touches only the entries bound to that exact key, so the miss path (every non-shortcut keypress) is one Map lookup regardless of how many hotkeys are registered. Component-scoped hooks auto-unregister on unmount; ONE shared listener per (target, event-type) backs every shortcut. SSR-safe.

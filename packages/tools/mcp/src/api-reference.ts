@@ -7174,6 +7174,150 @@ formatCombo(combo) // → 'Ctrl+K' (or '⌘+K' on Mac)`,
   // <gen-docs:api-reference:end @pyreon/hotkeys>
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/command
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/command>
+
+  'command/fuzzyMatch': {
+    signature: '(query, text, options?: { anyOrder? }) => { score, ranges } | null',
+    example: `fuzzyMatch('np', 'New Project')?.ranges   // => [[0, 1], [4, 5]]
+fuzzyMatch('resume', 'Résumé')?.ranges   // => [[0, 6]]
+fuzzyMatch('xyz', 'New Project')   // => null`,
+    notes: '[EXPERIMENTAL] Match `query` against `text`: a subsequence of the text, case- and diacritic-insensitive, scored for word starts, humps, consecutive characters and prefixes. The words of the query match in any order. An empty query matches everything with score 0. `ranges` are sorted, merged `[start, end)` UTF-16 offsets for highlighting. Added in v0.53.0.',
+  },
+
+  'command/rank': {
+    signature: '(query, items, getText, options?) => Ranked[]',
+    example: `rank('sa', ['Save', 'Save As…', 'Disable Autosave'], (t) => t).map((r) => r.item)   // => ['Save', 'Save As…', 'Disable Autosave']
+rank('np', ['Open Panel', 'New Project'], (t) => t)[0]!.item   // => 'New Project'`,
+    notes: '[EXPERIMENTAL] Rank `items` against `query`, best first. `getText` returns one text or several (title, then keywords): the best one counts, and a text after the first is weighted down. Equal scores keep the order of `items`. `boost` adds to the score and `priority` breaks ties; `limit` keeps the best few. Added in v0.53.0.',
+  },
+
+  'command/createRanker': {
+    signature: '(getText, options?: { cacheSize? }) => { rank, reset, lastScanned }',
+    example: `const ranker = createRanker<string>((t) => t)
+const list = ['open', 'close', 'save']
+ranker.rank('o', list).length   // => 2
+(ranker.rank('o', list), ranker.rank('op', list).length)   // => 1
+(ranker.rank('o', list), ranker.rank('op', list), ranker.lastScanned)   // => 2`,
+    notes: '[EXPERIMENTAL] A ranker that remembers: the prepared (split and folded) texts, bounded by `cacheSize`, and the previous candidates, so a query that extends the previous one on the same list only looks at what matched before. The answer is exactly the one a fresh `rank` gives. Call `reset()` when the texts of the items changed. Added in v0.53.0.',
+  },
+
+  'command/MAX_QUERY_UNITS': {
+    signature: 'number',
+    example: 'MAX_QUERY_UNITS   // => 128',
+    notes: '[EXPERIMENTAL] A query is cut at this many characters (128). Added in v0.53.0.',
+  },
+
+  'command/MAX_QUERY_WORDS': {
+    signature: 'number',
+    example: 'MAX_QUERY_WORDS   // => 8',
+    notes: '[EXPERIMENTAL] Words of a query beyond this many (8) are ignored. Added in v0.53.0.',
+  },
+
+  'command/MAX_TEXT_UNITS': {
+    signature: 'number',
+    example: 'MAX_TEXT_UNITS   // => 512',
+    notes: '[EXPERIMENTAL] Only the first this many (512) units of a text are matched. Added in v0.53.0.',
+  },
+
+  'command/prepareText': {
+    signature: '(text) => PreparedText',
+    example: `prepareText('Résumé').keys   // => ['r', 'e', 's', 'u', 'm', 'e']`,
+    notes: '[EXPERIMENTAL] Split and fold a text once (units, folded keys, offsets, position bonuses). `fuzzyMatch` accepts the result in place of the string. Added in v0.53.0.',
+  },
+
+  'command/prepareQuery': {
+    signature: '(query, options?) => PreparedQuery',
+    example: `prepareQuery('  New   Project ').key   // => 'new project'`,
+    notes: '[EXPERIMENTAL] Split and fold a query into words. `key` is the folded words joined by one space: equal keys are equal queries, and a key that starts with another narrows it. Added in v0.53.0.',
+  },
+
+  'command/matchPrepared': {
+    signature: '(query: PreparedQuery, text: PreparedText) => { score, ranges } | null',
+    example: `matchPrepared(prepareQuery('rs'), prepareText('Résumé'))?.ranges   // => [[0, 1], [2, 3]]`,
+    notes: '[EXPERIMENTAL] The engine behind `fuzzyMatch`, for callers that prepared both sides. Added in v0.53.0.',
+  },
+
+  'command/createCommands': {
+    signature: '(options?: { recents?, groups?, onError? }) => Commands',
+    example: `const commands = createCommands({ recents: { max: 3 } })
+const off = commands.register({ id: 'save', title: 'Save', keywords: ['write'] })
+commands.search('write')[0]!.field   // => 'keyword'
+off()
+commands.commands().length   // => 0`,
+    notes: '[EXPERIMENTAL] A registry of commands. `register` takes a command, a list or a function that returns one, and returns the unregister (inside a component it also runs on unmount). `search` ranks the registered commands (or the `children` of `parent`), `run` runs one by id, `recents` lists the last ones run. Registering an id that is registered shadows it until the new one is removed. Inert on the server. Added in v0.53.0.',
+  },
+
+  'command/useCommands': {
+    signature: '() => Commands',
+    example: `typeof useCommands   // => 'function'`,
+    notes: '[EXPERIMENTAL] The registry provided by the nearest `provideCommands`, or the app-wide default registry. Added in v0.53.0.',
+  },
+
+  'command/useCommand': {
+    signature: '(command | () => command) => void',
+    example: `typeof useCommand   // => 'function'`,
+    notes: '[EXPERIMENTAL] Register a command for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed. Added in v0.53.0.',
+  },
+
+  'command/provideCommands': {
+    signature: '(commands: Commands) => void',
+    example: `typeof provideCommands   // => 'function'`,
+    notes: '[EXPERIMENTAL] Make a registry the one used by this component and everything below it. Added in v0.53.0.',
+  },
+
+  'command/isCommandEnabled': {
+    signature: '(command) => boolean',
+    example: `isCommandEnabled({ id: 'a', title: 'A', enabled: () => false })   // => false`,
+    notes: '[EXPERIMENTAL] Whether a command is enabled: `enabled` is a boolean or a function, and absent means enabled. Added in v0.53.0.',
+  },
+
+  'command/formatShortcut': {
+    signature: '(shortcut: string) => string',
+    example: `formatShortcut('ctrl+shift+p')   // => 'Ctrl+Shift+P'`,
+    notes: '[EXPERIMENTAL] A shortcut as the user reads it on this platform (`@pyreon/hotkeys` `formatCombo`): `mod+k` is "⌘+K" on macOS and "Ctrl+K" elsewhere; a sequence keeps its spaces. Added in v0.53.0.',
+  },
+
+  'command/shortcutKeys': {
+    signature: '(shortcut: string) => string[][]',
+    example: `shortcutKeys('ctrl+k')   // => [['Ctrl', 'K']]`,
+    notes: '[EXPERIMENTAL] The keys of each press, to render them as keycaps. Added in v0.53.0.',
+  },
+
+  'command/hasCommandModifier': {
+    signature: '(shortcut: string) => boolean',
+    example: `hasCommandModifier('ctrl+k')   // => true`,
+    notes: '[EXPERIMENTAL] Whether a shortcut has Ctrl, Alt or Meta (Shift alone does not count). Such a shortcut fires while a text field has focus; a bare key does not. This is the rule commands follow. Added in v0.53.0.',
+  },
+
+  'command/Command': {
+    signature: 'interface Command { id; title; subtitle?; keywords?; group?; icon?; shortcut?; enabled?; disabledReason?; run?(context); children?; keepOpen?; priority? }',
+    example: `const command: Command = { id: 'save', title: 'Save', shortcut: 'mod+s', run: () => {} }`,
+    notes: '[EXPERIMENTAL] One command. `title`, `subtitle` and `disabledReason` can be functions; `children` is a nested page (a list) or, for an async source, a function of the query and an AbortSignal. Added in v0.53.0.',
+  },
+
+  'command/Commands': {
+    signature: 'interface Commands { register(); registerGroup(); commands(); groups(); get(); run(); search(); recents(); clearRecents(); dispose() }',
+    example: 'const commands: Commands = createCommands()',
+    notes: '[EXPERIMENTAL] The registry returned by `createCommands`. Added in v0.53.0.',
+  },
+
+  'command/Match': {
+    signature: 'interface Match { command; id; title; score; field: "title" | "subtitle" | "keyword"; ranges; group; enabled; disabledReason; recent }',
+    example: `const none: readonly Match[] = createCommands().search('x')`,
+    notes: '[EXPERIMENTAL] One search result. `ranges` are offsets into the text named by `field`. Added in v0.53.0.',
+  },
+
+  'command/RunContext': {
+    signature: 'interface RunContext { id; source: "palette" | "shortcut" | "programmatic"; query; signal; commands }',
+    example: 'const run = (ctx: RunContext) => ctx.source',
+    notes: `[EXPERIMENTAL] What a command's \`run\` receives. Added in v0.53.0.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/command>
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/table
   // ═══════════════════════════════════════════════════════════════════════════
 
