@@ -25,6 +25,8 @@ const FAMILY_MARKERS: ReadonlyArray<readonly [string, string]> = [
   ['sankey', 'justify'],
   ['calendar (day labels)', 'Mon'],
   ['calendar (month labels)', 'Jan'],
+  // The map's hover-outline colour: a literal only the geo renderer holds.
+  ['geo (map renderer)', '#0f172a'],
 ]
 
 async function bundle(imports: readonly string[], from: string = PLOT): Promise<string> {
@@ -65,6 +67,11 @@ describe.skipIf(!hasBuiltLib(PLOT, "the plot families' tree-shaking"))('plot —
     expect(code.includes('"justify"') || code.includes("'justify'"), 'the sankey marker is not load-bearing').toBe(true)
   })
 
+  it('a map import brings the map renderer a bar chart does not', async () => {
+    const code = await bundle(['MapChart'])
+    expect(code.includes('"#0f172a"') || code.includes("'#0f172a'"), 'the geo marker is not load-bearing').toBe(true)
+  })
+
   it('a calendar import brings the day and month names a bar chart does not', async () => {
     const code = await bundle(['CalendarChart'])
     expect(code.includes('"Mon"') || code.includes("'Mon'")).toBe(true)
@@ -79,6 +86,12 @@ describe.skipIf(!hasBuiltLib(PLOT, "the plot families' tree-shaking"))('plot —
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 describe.skipIf(!hasBuiltLib(MAIN, "the main entry's feature tree-shaking"))('<Chart> — interactions and hosts come from the children', () => {
+  it('<Chart> + <Line> bundles no map renderer, and <MapChart> does', async () => {
+    const lit = (code: string): boolean => code.includes('"#0f172a"') || code.includes("'#0f172a'")
+    expect(lit(await bundle(['Chart', 'Line'], MAIN)), 'the map renderer reached a cartesian chart').toBe(false)
+    expect(lit(await bundle(['MapChart'], MAIN)), 'the map marker is not load-bearing').toBe(true)
+  })
+
   it('<Chart> + <Line> bundles no toolbox and no SVG serializer', async () => {
     const code = await bundle(['Chart', 'Line'], MAIN)
     expect(code.includes(SVG_NS), 'the SVG serializer reached a chart with no <Toolbox>').toBe(false)

@@ -22,7 +22,7 @@ export const CHARTS_ROOT_NAMES: ReadonlySet<string> = new Set(
 
 /** What `@pyreon/charts/svg` exports. */
 export const CHARTS_SVG_NAMES: ReadonlySet<string> = new Set(
-  'BoxplotToSvgOptions CalendarToSvgOptions CandlestickToSvgOptions ChartToSvgOptions ChordToSvgOptions FunnelToSvgOptions GanttToSvgOptions GaugeToSvgOptions GeoPointsToSvgOptions GeoToSvgOptions GraphToSvgOptions HeatmapToSvgOptions ParallelToSvgOptions PieToSvgOptions PolarToSvgOptions RadarToSvgOptions RiverToSvgOptions SankeyToSvgOptions SingleAxisToSvgOptions SunburstToSvgOptions TreeToSvgOptions TreemapToSvgOptions boxplotToSvg calendarToSvg candlestickToSvg chartToSvg chordToSvg funnelToSvg ganttToSvg gaugeToSvg geoPointsToSvg geoToSvg graphToSvg heatmapToSvg parallelToSvg pieToSvg polarToSvg radarToSvg riverToSvg sankeyToSvg singleAxisToSvg sunburstToSvg treeToSvg treemapToSvg'.split(' '),
+  'BoxplotToSvgOptions CalendarToSvgOptions CandlestickToSvgOptions ChartToSvgOptions ChordToSvgOptions FunnelToSvgOptions GanttToSvgOptions GaugeToSvgOptions GeoToSvgOptions GraphToSvgOptions HeatmapToSvgOptions ParallelToSvgOptions PieToSvgOptions PolarToSvgOptions RadarToSvgOptions RiverToSvgOptions SankeyToSvgOptions SingleAxisToSvgOptions SunburstToSvgOptions TreeToSvgOptions TreemapToSvgOptions boxplotToSvg calendarToSvg candlestickToSvg chartToSvg chordToSvg funnelToSvg ganttToSvg gaugeToSvg geoToSvg graphToSvg heatmapToSvg parallelToSvg pieToSvg polarToSvg radarToSvg riverToSvg sankeyToSvg singleAxisToSvg sunburstToSvg treeToSvg treemapToSvg'.split(' '),
 )
 
 /** What 0.51's `@pyreon/charts` main entry exported — the ECharts wrapper. */

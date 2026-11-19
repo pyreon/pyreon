@@ -589,6 +589,28 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "holes",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "array",
+                "element": {
+                  "kind": "typeRef",
+                  "name": "PyreonChartPt",
+                  "args": []
+                }
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "center",
         "type": {
           "kind": "union",
@@ -8488,6 +8510,12 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
         "name": "rings",
         "type": {
           "kind": "array",
@@ -8498,6 +8526,29 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "name": "PyreonChartPt",
               "args": []
             }
+          }
+        }
+      },
+      {
+        "name": "holes",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "array",
+            "element": {
+              "kind": "typeRef",
+              "name": "PyreonChartPt",
+              "args": []
+            }
+          }
+        }
+      },
+      {
+        "name": "holeHost",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
           }
         }
       },
@@ -8530,6 +8581,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "label",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "rings",
         "type": {
           "kind": "array",
@@ -8541,6 +8606,45 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "args": []
             }
           }
+        }
+      },
+      {
+        "name": "holes",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "array",
+                "element": {
+                  "kind": "typeRef",
+                  "name": "PyreonChartPt",
+                  "args": []
+                }
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "holeHost",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "number"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
         }
       }
     ],
@@ -8682,6 +8786,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "nameProperty",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "idProperty",
         "type": {
           "kind": "union",
           "branches": [
@@ -8872,6 +8990,65 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "typeRef",
               "name": "Double",
               "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "hover",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "number"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "selected",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "number"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "emphasisColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "selectColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
             },
             {
               "kind": "undefined"

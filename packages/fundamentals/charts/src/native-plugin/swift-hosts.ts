@@ -83,7 +83,9 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const tag = e.tag
   const spec = CHART_HOSTS[tag]!
   for (const p of spec.warnProps ?? []) {
-    if (chartAttrExpr(e, p) !== undefined) host.warn(`<${tag}>: \`${p}\` is not lowered on native; the chart renders without it.`)
+    // A handler prop is an EVENT attribute named in lowercase without its `on` (onSelectionChange -> selectionchange).
+    const handler = p.startsWith('on') && e.attrs.some((a) => a.kind === 'event' && a.name === p.slice(2).toLowerCase())
+    if (chartAttrExpr(e, p) !== undefined || handler) host.warn(`<${tag}>: \`${p}\` is not lowered on native; the chart renders without it.`)
   }
   const attrs: Record<string, ExprIR> = {}
   for (const name of spec.data) {

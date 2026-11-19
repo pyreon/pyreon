@@ -275,9 +275,9 @@ export function singleAxisTip(layout: SingleAxisLayout, points: readonly SingleA
 export function geoTip(layout: GeoLayout, values: readonly GeoValue[], px: Double, py: Double): string[] {
   const i = hitGeoIndex(layout, px, py)
   if (i < 0) return []
-  const name = layout.regions[i]!.name
-  const v = geoValueOf(values, name)
-  return v === v ? [name, plain(v)] : [name]
+  const region = layout.regions[i]!
+  const v = geoValueOf(values, region.name)
+  return v === v ? [region.label, plain(v)] : [region.label]
 }
 
 export function funnelTip(stages: FunnelStage[], plot: Rect, px: Double, py: Double, options?: FunnelOptions): string[] {

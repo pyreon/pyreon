@@ -733,6 +733,8 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a, t) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoHeat(${l}, ${a.data[5]}, geoHeatStops(${a.data[8]}, ${optField(a, t, 'stops')}), ${a.data[7]}, 1.0) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoPies(${l}, ${a.data[6]}, 1.0) + renderGeoTrailsIfAny(${l}, ${a.data[2]}, ${a.data[9]}, ${a.data[10]}, "#b42318") + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
     reuseLayout: true,
     hit: (l, x, y) => `hitGeoIndex(${l}, ${x}, ${y})`,
+    // Web-only state and callbacks: warned BY NAME, never silently dropped.
+    warnProps: ['selectedMode', 'emphasis', 'onSelectionChange', 'tooltipFormatter'],
     extraHits: [{ event: 'selectpointindex', hit: (l, x, y, a) => `hitGeoOverlayPoint(${l}, ${a.data[3]}, ${x}, ${y}, (${a.data[4]}).radius)` }],
     tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y})`,
     adapt: {

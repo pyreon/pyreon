@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -131,6 +132,8 @@ data class PyreonDrawCmd(
     var enter: PyreonChartRect? = null,
     /** One row key per point of a keyed line. */
     var pointKeys: List<String>? = null,
+    /** A `polygon`'s inner rings (lakes, enclaves), cut out of the fill (even-odd). */
+    var holes: List<List<PyreonChartPt>>? = null,
 )
 
 /**
@@ -210,6 +213,7 @@ fun pyreonShiftCmdsXY(cmds: List<PyreonDrawCmd>, dx: Double, dy: Double): List<P
             from = c.from?.let { PyreonChartPt(it.x + dx, it.y + dy) },
             to = c.to?.let { PyreonChartPt(it.x + dx, it.y + dy) },
             points = c.points?.map { PyreonChartPt(it.x + dx, it.y + dy) },
+            holes = c.holes?.map { ring -> ring.map { PyreonChartPt(it.x + dx, it.y + dy) } },
             center = c.center?.let { PyreonChartPt(it.x + dx, it.y + dy) },
             at = c.at?.let { PyreonChartPt(it.x + dx, it.y + dy) },
         )
@@ -285,6 +289,7 @@ fun pyreonMirrorCmds(cmds: List<PyreonDrawCmd>, width: Double): List<PyreonDrawC
             from = c.from?.let { mp(it) },
             to = c.to?.let { mp(it) },
             points = c.points?.map { mp(it) },
+            holes = c.holes?.map { ring -> ring.map { mp(it) } },
             center = c.center?.let { mp(it) },
             at = c.at?.let { mp(it) },
             corners = c.corners?.let { if (it.size == 4) listOf(it[1], it[0], it[3], it[2]) else it },
@@ -309,6 +314,7 @@ fun pyreonTransposeCmds(cmds: List<PyreonDrawCmd>): List<PyreonDrawCmd> {
             from = c.from?.let { tp(it) },
             to = c.to?.let { tp(it) },
             points = c.points?.map { tp(it) },
+            holes = c.holes?.map { ring -> ring.map { tp(it) } },
             center = c.center?.let { tp(it) },
             at = c.at?.let { tp(it) },
             // Corners run top-left, top-right, bottom-right, bottom-left; the diagonal fixes the first and third and swaps the other two.
@@ -450,6 +456,8 @@ private fun DrawScope.pyreonPaintPattern(pattern: PyreonChartPattern?, clip: Pat
                 poly.moveTo(pts[0].x.toFloat(), pts[0].y.toFloat())
                 for (q in pts.drop(1)) poly.lineTo(q.x.toFloat(), q.y.toFloat())
                 poly.close()
+                m.holes?.forEach { hole -> pyreonAddHole(poly, hole) }
+                poly.fillType = PathFillType.EvenOdd
                 drawPath(poly, pyreonChartColor(m.fill ?: pattern.color))
             }
         }
@@ -460,11 +468,29 @@ private fun pyreonChartMix(a: Double, b: Double, t: Double): Double = a + (b - a
 private fun pyreonChartMixPoint(a: PyreonChartPt, b: PyreonChartPt, t: Double) =
     PyreonChartPt(pyreonChartMix(a.x, b.x, t), pyreonChartMix(a.y, b.y, t))
 
+/** Two polygons' hole lists have the same number of rings with the same number of points each. */
+fun pyreonSameHoleShape(a: List<List<PyreonChartPt>>?, b: List<List<PyreonChartPt>>?): Boolean {
+    val x = a ?: emptyList()
+    val y = b ?: emptyList()
+    if (x.size != y.size) return false
+    for (i in x.indices) if (x[i].size != y[i].size) return false
+    return true
+}
+
+/** Append a hole ring to a polygon path (the fill is even-odd, so it cuts the hole out). */
+fun pyreonAddHole(path: Path, hole: List<PyreonChartPt>) {
+    if (hole.size < 3) return
+    path.moveTo(hole[0].x.toFloat(), hole[0].y.toFloat())
+    for (i in 1 until hole.size) path.lineTo(hole[i].x.toFloat(), hole[i].y.toFloat())
+    path.close()
+}
+
 fun pyreonSameChartCommandShape(a: List<PyreonDrawCmd>, b: List<PyreonDrawCmd>): Boolean {
     if (a.size != b.size) return false
     for (i in a.indices) {
         if (a[i].kind != b[i].kind) return false
         if ((a[i].kind == "polyline" || a[i].kind == "polygon") && a[i].points?.size != b[i].points?.size) return false
+        if (a[i].kind == "polygon" && !pyreonSameHoleShape(a[i].holes, b[i].holes)) return false
         if (a[i].kind == "text" && a[i].text != b[i].text) return false
     }
     return true
@@ -483,7 +509,9 @@ fun pyreonTweenChartCommands(from: List<PyreonDrawCmd>, to: List<PyreonDrawCmd>,
                 from = if (a.from != null && b.from != null) pyreonChartMixPoint(a.from!!, b.from!!, progress) else b.from,
                 to = if (a.to != null && b.to != null) pyreonChartMixPoint(a.to!!, b.to!!, progress) else b.to)
             "polyline", "polygon" -> b.copy(points = if (a.points != null && b.points != null && a.points!!.size == b.points!!.size)
-                b.points!!.indices.map { pyreonChartMixPoint(a.points!![it], b.points!![it], progress) } else b.points)
+                b.points!!.indices.map { pyreonChartMixPoint(a.points!![it], b.points!![it], progress) } else b.points,
+                holes = if (a.holes != null && b.holes != null && pyreonSameHoleShape(a.holes, b.holes))
+                    b.holes!!.indices.map { k -> b.holes!![k].indices.map { j -> pyreonChartMixPoint(a.holes!![k][j], b.holes!![k][j], progress) } } else b.holes)
             "circle" -> b.copy(
                 center = if (a.center != null && b.center != null) pyreonChartMixPoint(a.center!!, b.center!!, progress) else b.center,
                 radius = if (a.radius != null && b.radius != null) pyreonChartMix(a.radius!!, b.radius!!, progress) else b.radius)
@@ -519,7 +547,7 @@ private fun pyreonCollapsedChartCommand(command: PyreonDrawCmd): PyreonDrawCmd {
     return when (command.kind) {
         "rect" -> command.copy(rect = PyreonChartRect(center.x, center.y, 0.0, 0.0))
         "line" -> command.copy(from = center, to = center)
-        "polyline", "polygon" -> command.copy(points = List(command.points?.size ?: 0) { center.copy() })
+        "polyline", "polygon" -> command.copy(points = List(command.points?.size ?: 0) { center.copy() }, holes = command.holes?.map { h -> List(h.size) { center.copy() } })
         "circle" -> command.copy(center = center, radius = 0.0)
         "text" -> command.copy(at = center, size = 0.0)
         else -> command
@@ -533,7 +561,7 @@ private fun pyreonChartTarget(target: PyreonDrawCmd, source: PyreonDrawCmd?): Py
     return when (target.kind) {
         "rect" -> target.copy(rect = box)
         "line" -> target.copy(from = PyreonChartPt(box.x, box.y), to = PyreonChartPt(box.x + box.w, box.y + box.h))
-        "polyline", "polygon" -> target.copy(points = List(target.points?.size ?: 0) { center.copy() })
+        "polyline", "polygon" -> target.copy(points = List(target.points?.size ?: 0) { center.copy() }, holes = target.holes?.map { h -> List(h.size) { center.copy() } })
         "circle" -> target.copy(center = center, radius = maxOf(box.w, box.h) / 2.0)
         "text" -> target.copy(at = center, size = if (source.kind == "text") source.size else 0.0)
         else -> target
@@ -726,6 +754,8 @@ fun DrawScope.pyreonPaintChart(cmds: List<PyreonDrawCmd>, density: Float) {
                     p.moveTo(pts[0].x.toFloat(), pts[0].y.toFloat())
                     for (i in 1 until pts.size) p.lineTo(pts[i].x.toFloat(), pts[i].y.toFloat())
                     p.close()
+                    c.holes?.forEach { hole -> pyreonAddHole(p, hole) }
+                    p.fillType = PathFillType.EvenOdd
                     val pbrush = pyreonChartBrush(c.grad)
                     if (pbrush != null) drawPath(path = p, brush = pbrush, style = Fill)
                     else drawPath(path = p, color = pyreonChartColor(fill), style = Fill)

@@ -181,7 +181,7 @@ export type DrawCmd =
       width: Double
       dash?: Double[] | undefined
     }
-  | { kind: 'polygon'; points: Pt[]; fill: string; grad?: ChartGradient | undefined; pattern?: ChartPattern | undefined }
+  | { kind: 'polygon'; points: Pt[]; fill: string; grad?: ChartGradient | undefined; pattern?: ChartPattern | undefined; holes?: Pt[][] | undefined }
   | { kind: 'circle'; center: Pt; radius: Double; fill: string }
   | {
       kind: 'text'

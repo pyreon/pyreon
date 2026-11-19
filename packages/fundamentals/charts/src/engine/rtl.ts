@@ -117,7 +117,7 @@ export function mirrorCmds(cmds: DrawCmd[], width: Double): DrawCmd[] {
       case 'polyline':
         return { ...c, points: c.points.map((p) => mirrorPoint(p, width)) }
       case 'polygon':
-        return { ...c, points: c.points.map((p) => mirrorPoint(p, width)), grad: mirrorGrad(c.grad, width) }
+        return { ...c, points: c.points.map((p) => mirrorPoint(p, width)), ...(c.holes === undefined ? {} : { holes: c.holes.map((h) => h.map((p) => mirrorPoint(p, width))) }), grad: mirrorGrad(c.grad, width) }
       case 'circle':
         return { ...c, center: mirrorPoint(c.center, width) }
       case 'text':
@@ -178,7 +178,7 @@ export function transposeCmds(cmds: DrawCmd[]): DrawCmd[] {
       case 'polyline':
         return { ...c, points: c.points.map(transposePoint) }
       case 'polygon':
-        return { ...c, points: c.points.map(transposePoint), ...(c.grad === undefined ? {} : { grad: { ...c.grad, from: transposePoint(c.grad.from), to: transposePoint(c.grad.to) } }) }
+        return { ...c, points: c.points.map(transposePoint), ...(c.holes === undefined ? {} : { holes: c.holes.map((h) => h.map(transposePoint)) }), ...(c.grad === undefined ? {} : { grad: { ...c.grad, from: transposePoint(c.grad.from), to: transposePoint(c.grad.to) } }) }
       case 'circle':
         return { ...c, center: transposePoint(c.center) }
       case 'text':

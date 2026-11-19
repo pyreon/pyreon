@@ -23,6 +23,7 @@ import {
 } from './family-svg'
 import { boxplotToSvg } from './boxplot-svg'
 import { geoToSvg } from './geo-web'
+import { FLORIDA_LAKE, ITALY_ENCLAVES, SOUTH_AFRICA_LESOTHO } from './__fixtures__/geo-holes'
 import type { GeoJson } from './geo-web'
 import type { TreeNode } from './treemap'
 
@@ -78,6 +79,10 @@ const GOLDENS: Record<string, () => string> = {
   // `map` was the only family host without a golden. One region deliberately
   // has NO value, so the ramp AND the no-data fill are both in the output.
   map: () => geoToSvg({ geo: WORLD, values: { West: 10, East: 40 }, ...SIZE }),
+  // Inner rings: Lesotho cut out of South Africa (and drawn on top), the Italian enclaves, Lake Okeechobee in Florida.
+  'map-holes-south-africa': () => geoToSvg({ geo: SOUTH_AFRICA_LESOTHO, values: { 'South Africa': 30, Lesotho: 80 }, ...SIZE }),
+  'map-holes-italy': () => geoToSvg({ geo: ITALY_ENCLAVES, values: { Italy: 20, 'San Marino': 90, 'Vatican City': 60 }, ...SIZE }),
+  'map-holes-lake': () => geoToSvg({ geo: FLORIDA_LAKE, values: { Florida: 55 }, ...SIZE }),
 }
 
 describe('draw-list goldens (SVG per family)', () => {

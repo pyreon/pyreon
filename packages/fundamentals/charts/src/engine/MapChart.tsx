@@ -12,13 +12,13 @@ import type { VNode } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { canvasHost, orNull } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
-import { geoTip } from './chrome'
-import { geoDomain, geoRoamPan, geoRoamZoom, geoValueOf, hitGeoIndex, layoutGeoShapes, renderGeo } from './geo'
+import { plain } from './format'
+import { geoDomainAligned, geoRoamPan, geoRoamZoom, hitGeoIndex, layoutGeoShapes, renderGeoAligned } from './geo'
 import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoTrails, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
-import { geoShapes, geoValues, getMap } from './geo-web'
+import { alignGeoValues, geoFeatures, getMap } from './geo-web'
 import type { GeoLayout, GeoOptions, GeoRegion, GeoShape, GeoValue, GeoView } from './geo'
 import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie, GeoTrail } from './geo-overlay'
-import type { GeoJson } from './geo-web'
+import type { GeoJson, GeoSource } from './geo-web'
 import type { Double, Rect } from './types'
 import type { VisualMapSpec } from './visual-map'
 import { visualMapHost } from './visual-map-host'
@@ -53,8 +53,16 @@ export interface MapChartProps extends CanvasHostProps {
   trail?: GeoTrail
   /** Appearance shared by the point and path overlays. */
   overlayOptions?: GeoOverlayOptions
-  /** Fired with the region under the click, or null for a miss. */
-  onSelect?: (region: GeoRegion | null) => void
+  /**
+   * Fired with the region under the click (null for a miss) and its info: join key, display name, value, and the
+   * feature's own GeoJSON properties (web-only; empty for a `GeoShape[]` map).
+   */
+  onSelect?: (region: GeoRegion | null, info: MapRegionInfo | null) => void
+  /**
+   * The tooltip for a region: lines (or one string) from the region's info, including the feature's properties.
+   * Return null for none. Web-only.
+   */
+  tooltipFormatter?: (info: MapRegionInfo) => string | string[] | null
   /** The region's INDEX under the click (into the layout's regions), or -1 — the multiplatform-safe twin of `onSelect`. */
   onSelectIndex?: (index: number) => void
   /** The overlay point's index under the click, or -1 for a miss. */
@@ -77,22 +85,59 @@ export interface MapChartProps extends CanvasHostProps {
   onVisualMapChange?: (selection: VisualMapSelection) => void
 }
 
+/** A region as the host's callbacks see it. */
+export interface MapRegionInfo {
+  /** The region's index (into the layout's regions, and the accessible table's rows). */
+  index: number
+  /** The join key values are matched on. */
+  name: string
+  /** The display name. */
+  label: string
+  /** The region's value, `NaN` when it has none. */
+  value: Double
+  /** The feature's GeoJSON `properties`, or null (a `GeoShape[]` map has none). */
+  properties: Record<string, unknown> | null
+}
+
 const isShapes = (m: readonly GeoShape[] | GeoJson | string): m is readonly GeoShape[] => Array.isArray(m)
 // `Array.isArray` does not narrow a union holding a READONLY array, so the
 // values form gets its own guard.
 const isValueList = (v: MapChartValues): v is readonly GeoValue[] => Array.isArray(v)
 
 export function MapChart(props: MapChartProps): VNode {
-  const shapes = (): readonly GeoShape[] => {
+  // The projected features of the map, memoised: a roam frame lays out again, and re-projecting every vertex of a
+  // GeoJSON / registry map each time is the cost. Keyed on the map, its projection and the two properties.
+  let sourceMemo: { m: unknown; key: string; out: GeoSource } | null = null
+  const source = (): GeoSource => {
     const m = props.map
-    if (isShapes(m)) return m
+    if (isShapes(m)) return { shapes: m as GeoShape[], properties: [] }
     const json = typeof m === 'string' ? getMap(m) : m
-    if (json === null) return []
-    return geoShapes(json, props.options?.projection ?? 'equirectangular', props.options?.nameProperty ?? 'name')
+    if (json === null) return { shapes: [], properties: [] }
+    const key = `${props.options?.projection ?? 'equirectangular'}|${props.options?.nameProperty ?? 'name'}|${props.options?.idProperty ?? ''}`
+    if (sourceMemo !== null && sourceMemo.m === json && sourceMemo.key === key) return sourceMemo.out
+    const out = geoFeatures(json, props.options?.projection ?? 'equirectangular', props.options?.nameProperty ?? 'name', props.options?.idProperty)
+    sourceMemo = { m: json, key, out }
+
+    return out
   }
-  const readValues = (): readonly GeoValue[] => {
-    const v = typeof props.values === 'function' ? props.values() : props.values
-    return isValueList(v) ? v : geoValues(v)
+  const shapes = (): readonly GeoShape[] => source().shapes
+  const rawValues = (): MapChartValues => (typeof props.values === 'function' ? props.values() : props.values)
+  // The values in region order, rebuilt only when the shapes or the values change: a frame reads one array slot per region.
+  let alignedMemo: { shapes: readonly GeoShape[]; values: MapChartValues; out: Double[] } | null = null
+  const aligned = (): Double[] => {
+    const sh = shapes()
+    const v = rawValues()
+    if (alignedMemo !== null && alignedMemo.shapes === sh && alignedMemo.values === v) return alignedMemo.out
+    const out = alignGeoValues(sh.map((s) => s.name), v)
+    alignedMemo = { shapes: sh, values: v, out }
+
+    return out
+  }
+  const infoOf = (layout: GeoLayout, i: number): MapRegionInfo => {
+    const r = layout.regions[i]!
+    const v = aligned()[i]
+
+    return { index: i, name: r.name, label: r.label, value: v ?? Number.NaN, properties: source().properties[i] ?? null }
   }
   const view = signal<GeoView>({ zoom: props.options?.zoom ?? 1.0, panX: props.options?.panX ?? 0.0, panY: props.options?.panY ?? 0.0 })
   let lastBox: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }
@@ -123,7 +168,7 @@ export function MapChart(props: MapChartProps): VNode {
     defaultHeight: 300,
     caption: 'Map data',
     track: () => {
-      readValues()
+      aligned()
       void props.points
       void props.paths
       void props.heat
@@ -143,10 +188,10 @@ export function MapChart(props: MapChartProps): VNode {
     // reads the ground rather than a token of its own; `background: ''` means
     // "inherit the page", whose realistic value is white.
     effectClock: () => props.trail !== undefined && (props.paths ?? []).length > 0,
-    render: (layout, measure, theme, progress, time) => [
-      ...renderGeo(
+    render: (layout, measure, theme, progress, time, states) => [
+      ...renderGeoAligned(
         layout,
-        readValues(),
+        aligned(),
         {
           emptyColor: theme.muted,
           borderColor: theme.background === '' ? '#ffffff' : theme.background,
@@ -155,6 +200,10 @@ export function MapChart(props: MapChartProps): VNode {
           ...viewed(),
           ...vm.selection(),
           progress,
+          hover: states.hover,
+          selected: states.selected,
+          emphasisColor: theme.text,
+          selectColor: theme.palette[0] ?? '#2563eb',
         },
         measure,
       ),
@@ -169,17 +218,29 @@ export function MapChart(props: MapChartProps): VNode {
       if (vm.click(outer, px, py)) return
       const i = hitGeoIndex(layout, px, py)
       props.onSelectPointIndex?.(hitGeoOverlayPoint(layout, props.points ?? [], px, py, props.overlayOptions?.radius))
-      props.onSelect?.(i < 0 ? null : layout.regions[i]!)
+      props.onSelect?.(i < 0 ? null : layout.regions[i]!, i < 0 ? null : infoOf(layout, i))
       props.onSelectIndex?.(i)
     },
     pick: (layout, i) => {
       const r = layout.regions[i]
       if (r === undefined) return
-      props.onSelect?.(r)
+      props.onSelect?.(r, infoOf(layout, i))
       props.onSelectIndex?.(i)
     },
     focusRect: (layout, i) => layout.regions[i]?.bbox ?? null,
-    tooltip: (layout, px, py) => orNull(geoTip(layout, readValues(), px, py)),
+    states: { at: (layout, px, py) => hitGeoIndex(layout, px, py), label: (layout, i) => layout.regions[i]?.label ?? '' },
+    tooltip: (layout, px, py) => {
+      const i = hitGeoIndex(layout, px, py)
+      if (i < 0) return null
+      const info = infoOf(layout, i)
+      if (props.tooltipFormatter !== undefined) {
+        const out = props.tooltipFormatter(info)
+
+        return out === null ? null : typeof out === 'string' ? [out] : out
+      }
+
+      return orNull(Number.isNaN(info.value) ? [info.label] : [info.label, plain(info.value)])
+    },
     // A point overlay on the map wins over the region under it, as it is drawn over it.
     item: (layout, px, py) => {
       const pts = props.points ?? []
@@ -189,16 +250,16 @@ export function MapChart(props: MapChartProps): VNode {
       const i = hitGeoIndex(layout, px, py)
       const r = layout.regions[i]
       if (r === undefined) return null
-      const v = geoValueOf(readValues(), r.name)
-      return { seriesIndex: 0, dataIndex: i, name: r.name, value: Number.isFinite(v) ? v : Number.NaN }
+      const v = aligned()[i] ?? Number.NaN
+      return { seriesIndex: 0, dataIndex: i, name: r.label, value: Number.isFinite(v) ? v : Number.NaN }
     },
     a11y: (layout) => {
-      const values = readValues()
-      const dom = geoDomain(layout, values)
+      const values = aligned()
+      const dom = geoDomainAligned(values)
       return {
         title: props.title,
-        categories: layout.regions.map((r) => r.name),
-        series: [{ label: props.title ?? `Values from ${dom.min} to ${dom.max}`, values: layout.regions.map((r) => geoValueOf(values, r.name)), kind: 'bars' }],
+        categories: layout.regions.map((r) => r.label),
+        series: [{ label: props.title ?? `Values from ${dom.min} to ${dom.max}`, values: [...values], kind: 'bars' }],
       }
     },
   })

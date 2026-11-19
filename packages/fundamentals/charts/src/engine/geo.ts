@@ -12,9 +12,16 @@ import { isFiniteNumber } from './scale'
 export type GeoProjection = 'equirectangular' | 'mercator'
 
 export interface GeoRegion {
+  /** The join key values are matched against (the feature's name, or its id / chosen property). */
   name: string
-  /** Outer rings in pixel space (holes are dropped). */
+  /** What is drawn and announced: the feature's display name. Equals `name` unless a join property was chosen. */
+  label: string
+  /** Outer rings in pixel space. */
   rings: Pt[][]
+  /** Inner rings (holes: lakes, enclaves) in pixel space, filled even-odd with their host outer ring. */
+  holes: Pt[][]
+  /** For each hole, the index of the outer ring (in `rings`) it cuts out of. */
+  holeHost: number[]
   centroid: Pt
   bbox: Rect
 }
@@ -30,8 +37,15 @@ export interface GeoRegion {
  * rings up front removes the union, and `Pt[][]` compiles on both targets.
  */
 export interface GeoShape {
+  /** The join key (see `GeoRegion.name`). */
   name: string
+  /** The display name; absent means `name`. */
+  label?: string | undefined
   rings: readonly (readonly Pt[])[]
+  /** Inner rings (lakes, enclaves); absent for a shape without any. */
+  holes?: readonly (readonly Pt[])[] | undefined
+  /** For each hole, the index of the outer ring in `rings` it belongs to. */
+  holeHost?: readonly number[] | undefined
 }
 
 /**
@@ -72,6 +86,17 @@ export function geoValueOf(values: readonly GeoValue[], name: string): Double {
   return GEO_NA
 }
 
+/**
+ * The values in REGION order, one entry per region (`NaN` for none): what a frame reads, so a roam frame does one
+ * array read per region instead of scanning the value list for each. Built once per (regions, values) change.
+ */
+export function geoAlign(layout: GeoLayout, values: readonly GeoValue[]): Double[] {
+  const out: Double[] = []
+  for (const r of layout.regions) out.push(geoValueOf(values, r.name))
+
+  return out
+}
+
 export interface GeoTransform {
   minX: Double
   maxY: Double
@@ -96,8 +121,10 @@ export function geoProject(t: GeoTransform, lon: Double, lat: Double): Pt {
 export interface GeoOptions {
   projection?: GeoProjection | undefined
   padding?: Double | undefined
-  /** Property holding the region name; default `name`. */
+  /** Property holding the region's DISPLAY name; default `name`. */
   nameProperty?: string | undefined
+  /** What values are joined against: `'id'` (the feature's own `id`) or a property key; absent, the display name. Web-only: it reads GeoJSON. */
+  idProperty?: string | undefined
   stops?: readonly string[] | undefined
   domain?: Domain | undefined
   emptyColor?: string | undefined
@@ -113,6 +140,14 @@ export interface GeoOptions {
   /** Roam view: pixel offset applied after the zoom. */
   panX?: Double | undefined
   panY?: Double | undefined
+  /** The region index the pointer is over (emphasis outline); absent or -1 for none. */
+  hover?: number | undefined
+  /** The selected region indices (selection outline). */
+  selected?: readonly number[] | undefined
+  /** Outline colour of the hovered region. */
+  emphasisColor?: string | undefined
+  /** Outline colour of the selected regions. */
+  selectColor?: string | undefined
   /** visualMap selection: values outside it paint `outColor` (see `visualOutside`). */
   inRange?: Domain | undefined
   outBands?: Double[] | undefined
@@ -228,10 +263,11 @@ export function layoutGeoShapes(shapes: readonly GeoShape[], box: Rect, options?
         bestAt = ri
       }
     }
+    const holes = (r.holes ?? []).map((ring) => ring.map(toPx))
     const bbox: Rect = bseen === 0 ? { x: box.x, y: box.y, w: 0.0, h: 0.0 } : { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 }
     const fallback: Pt = { x: bbox.x + bbox.w / 2.0, y: bbox.y + bbox.h / 2.0 }
     const centroid = bestAt < 0 ? fallback : ringCentroid(rings[bestAt]!) ?? fallback
-    return { name: r.name, rings, centroid, bbox }
+    return { name: r.name, label: r.label ?? r.name, rings, holes, holeHost: [...(r.holeHost ?? [])], centroid, bbox }
   })
   return { regions, transform: { minX, maxY, scale, ox, oy, projection } }
 }
@@ -269,11 +305,15 @@ export function geoRoamPan(view: GeoView, dx: Double, dy: Double): GeoView {
 
 /** Value extent over the regions that have data. */
 export function geoDomain(layout: GeoLayout, values: readonly GeoValue[]): Domain {
+  return geoDomainAligned(geoAlign(layout, values))
+}
+
+/** `geoDomain` over region-aligned values (see `geoAlign`). */
+export function geoDomainAligned(aligned: readonly Double[]): Domain {
   let lo = 0.0
   let hi = 0.0
   let seen = 0
-  for (const r of layout.regions) {
-    const v = geoValueOf(values, r.name)
+  for (const v of aligned) {
     if (!isFiniteNumber(v)) continue
     if (seen === 0) {
       lo = v
@@ -288,12 +328,17 @@ export function geoDomain(layout: GeoLayout, values: readonly GeoValue[]): Domai
 
 /** Render fills, borders, then labels. */
 export function renderGeo(layout: GeoLayout, values: readonly GeoValue[], options?: GeoOptions, measure?: MeasureText): DrawCmd[] {
+  return renderGeoAligned(layout, geoAlign(layout, values), options, measure)
+}
+
+/** `renderGeo` over region-aligned values (see `geoAlign`): one array read per region, no lookup. */
+export function renderGeoAligned(layout: GeoLayout, aligned: readonly Double[], options?: GeoOptions, measure?: MeasureText): DrawCmd[] {
   const out: DrawCmd[] = []
   const stops = options?.stops ?? HEAT_RAMP
   const emptyColor = options?.emptyColor ?? '#e2e8f0'
   const border = options?.borderColor ?? '#ffffff'
   const borderWidth = options?.borderWidth ?? 1.0
-  const dom = options?.domain ?? geoDomain(layout, values)
+  const dom = options?.domain ?? geoDomainAligned(aligned)
   const lo = dom.min
   const hi = dom.max
   const span = hi - lo
@@ -302,21 +347,25 @@ export function renderGeo(layout: GeoLayout, values: readonly GeoValue[], option
   const fontSize = options?.fontSize ?? 10.0
   const labelColor = options?.labelColor ?? '#1e293b'
   const m: MeasureText = measure ?? approxTextWidth
-  for (const r of layout.regions) {
-    const v = geoValueOf(values, r.name)
+  for (let i = 0; i < layout.regions.length; i++) {
+    const r = layout.regions[i]!
+    const v = i < aligned.length ? aligned[i]! : GEO_NA
     const has = isFiniteNumber(v) && progress > 0.0
     const t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
     const fill = !has ? emptyColor : visualOutside(v, options?.inRange, options?.outBands) ? options?.outColor ?? '#cccccc' : rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t)
-    for (const ring of r.rings) out.push({ kind: 'polygon', points: ring, fill })
-  }
-  for (const r of layout.regions) {
-    for (const ring of r.rings) {
-      const closed: Pt[] = []
-      for (const p of ring) closed.push(p)
-      closed.push(ring[0]!)
-      out.push({ kind: 'polyline', points: closed, stroke: border, width: borderWidth })
+    for (let ri = 0; ri < r.rings.length; ri++) {
+      const holes = holesOf(r, ri)
+      out.push({ kind: 'polygon', points: r.rings[ri]!, fill, holes: holes.length > 0 ? holes : undefined })
     }
   }
+  for (const r of layout.regions) {
+    for (const ring of r.rings) out.push(closedLine(ring, border, borderWidth))
+    for (const ring of r.holes) out.push(closedLine(ring, border, borderWidth))
+  }
+  // Emphasis and selection outlines go over every border, so a neighbour's edge never hides them.
+  const hover = options?.hover ?? -1
+  for (const si of options?.selected ?? []) for (const c of outlineRegion(layout, si, options?.selectColor ?? '#2563eb', borderWidth + 2.0)) out.push(c)
+  for (const c of outlineRegion(layout, hover, options?.emphasisColor ?? '#0f172a', borderWidth + 1.5)) out.push(c)
   if (options?.showLabels === true && progress >= 1.0) {
     for (const r of layout.regions) {
       // A label goes on LAND: the centroid must sit inside one of the region's
@@ -326,11 +375,39 @@ export function renderGeo(layout: GeoLayout, values: readonly GeoValue[], option
       for (let hri = 0; hri < r.rings.length; hri++) if (pointInRing(r.rings[hri]!, r.centroid.x, r.centroid.y)) hostAt = hri
       if (hostAt < 0) continue
       const b = ringBox(r.rings[hostAt]!)
-      if (m(r.name, fontSize) > b.w || fontSize > b.h) continue
-      out.push({ kind: 'text', text: r.name, at: r.centroid, fill: labelColor, size: fontSize, align: 'middle', baseline: 'middle' })
+      if (m(r.label, fontSize) > b.w || fontSize > b.h) continue
+      out.push({ kind: 'text', text: r.label, at: r.centroid, fill: labelColor, size: fontSize, align: 'middle', baseline: 'middle' })
     }
   }
   return out
+}
+
+/** A heavier closed outline around every ring of region `ri` (nothing for an index out of range). */
+function outlineRegion(layout: GeoLayout, ri: number, stroke: string, width: Double): DrawCmd[] {
+  const out: DrawCmd[] = []
+  if (ri < 0 || ri >= layout.regions.length) return out
+  const r = layout.regions[ri]!
+  for (const ring of r.rings) out.push(closedLine(ring, stroke, width))
+  for (const ring of r.holes) out.push(closedLine(ring, stroke, width))
+
+  return out
+}
+
+/** The region's holes that cut the outer ring `ri`. */
+export function holesOf(r: GeoRegion, ri: number): Pt[][] {
+  const out: Pt[][] = []
+  for (let k = 0; k < r.holes.length; k++) if (k < r.holeHost.length && r.holeHost[k] === ri) out.push(r.holes[k]!)
+
+  return out
+}
+
+/** A ring as a closed stroked polyline. */
+function closedLine(ring: Pt[], stroke: string, width: Double): DrawCmd {
+  const closed: Pt[] = []
+  for (const p of ring) closed.push(p)
+  closed.push(ring[0]!)
+
+  return { kind: 'polyline', points: closed, stroke, width }
 }
 
 function ringBox(ring: Pt[]): Rect {
@@ -386,7 +463,13 @@ export function hitGeoIndex(layout: GeoLayout, px: Double, py: Double): number {
   for (let i = layout.regions.length - 1; i >= 0; i--) {
     const r = layout.regions[i]!
     if (px < r.bbox.x || px > r.bbox.x + r.bbox.w || py < r.bbox.y || py > r.bbox.y + r.bbox.h) continue
-    for (const ring of r.rings) if (pointInRing(ring, px, py)) return i
+    // A point in a lake is not in the country: inside an outer ring and outside every one of ITS holes.
+    for (let ri = 0; ri < r.rings.length; ri++) {
+      if (!pointInRing(r.rings[ri]!, px, py)) continue
+      let inHole = false
+      for (const hole of holesOf(r, ri)) if (pointInRing(hole, px, py)) inHole = true
+      if (!inHole) return i
+    }
   }
   return -1
 }

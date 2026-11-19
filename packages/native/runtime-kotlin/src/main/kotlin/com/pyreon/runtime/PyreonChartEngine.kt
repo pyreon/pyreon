@@ -234,9 +234,9 @@ data class CalendarParsed(var ok: Boolean, var days: Double)
 
 data class CalendarCellValues(var has: List<Boolean>, var value: List<Double>)
 
-data class GeoRegion(var name: String, var rings: List<List<PyreonChartPt>>, var centroid: PyreonChartPt, var bbox: PyreonChartRect)
+data class GeoRegion(var name: String, var label: String, var rings: List<List<PyreonChartPt>>, var holes: List<List<PyreonChartPt>>, var holeHost: List<Long>, var centroid: PyreonChartPt, var bbox: PyreonChartRect)
 
-data class GeoShape(var name: String, var rings: List<List<PyreonChartPt>>)
+data class GeoShape(var name: String, var label: String? = null, var rings: List<List<PyreonChartPt>>, var holes: List<List<PyreonChartPt>>? = null, var holeHost: List<Long>? = null)
 
 data class GeoValue(var region: String, var value: Double)
 
@@ -244,7 +244,7 @@ data class GeoTransform(var minX: Double, var maxY: Double, var scale: Double, v
 
 data class GeoLayout(var regions: List<GeoRegion>, var transform: GeoTransform)
 
-data class GeoOptions(var projection: GeoProjection? = null, var padding: Double? = null, var nameProperty: String? = null, var stops: List<String>? = null, var domain: Domain? = null, var emptyColor: String? = null, var borderColor: String? = null, var borderWidth: Double? = null, var showLabels: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var progress: Double? = null, var zoom: Double? = null, var panX: Double? = null, var panY: Double? = null, var inRange: Domain? = null, var outBands: List<Double>? = null, var outColor: String? = null)
+data class GeoOptions(var projection: GeoProjection? = null, var padding: Double? = null, var nameProperty: String? = null, var idProperty: String? = null, var stops: List<String>? = null, var domain: Domain? = null, var emptyColor: String? = null, var borderColor: String? = null, var borderWidth: Double? = null, var showLabels: Boolean? = null, var fontSize: Double? = null, var labelColor: String? = null, var progress: Double? = null, var zoom: Double? = null, var panX: Double? = null, var panY: Double? = null, var hover: Long? = null, var selected: List<Long>? = null, var emphasisColor: String? = null, var selectColor: String? = null, var inRange: Domain? = null, var outBands: List<Double>? = null, var outColor: String? = null)
 
 data class GeoView(var zoom: Double, var panX: Double, var panY: Double)
 
@@ -7650,6 +7650,14 @@ fun geoValueOf(values: List<GeoValue>, name: String): Double {
     return GEO_NA
   }
 
+fun geoAlign(layout: GeoLayout, values: List<GeoValue>): List<Double> {
+    val out: MutableList<Double> = mutableListOf()
+    for (r in layout.regions) {
+      out.add(geoValueOf(values, r.name))
+    }
+    return out
+  }
+
 fun geoProject(t: GeoTransform, lon: Double, lat: Double): PyreonChartPt {
     val p = projectLonLat(lon, lat, t.projection)
     return PyreonChartPt(x = t.ox + (p.x - t.minX) * t.scale, y = t.oy + (t.maxY - p.y) * t.scale)
@@ -7775,10 +7783,11 @@ fun layoutGeoShapes(shapes: List<GeoShape>, box: PyreonChartRect, options: GeoOp
           bestAt = ri
         }
       }
+      val holes = ((r.holes ?: listOf())).map({ ring -> ring.map(toPx) })
       val bbox = if (bseen == 0L) PyreonChartRect(x = box.x, y = box.y, w = 0.0, h = 0.0) else PyreonChartRect(x = bx0, y = by0, w = bx1 - bx0, h = by1 - by0)
       val fallback = PyreonChartPt(x = bbox.x + (bbox.w).toDouble() / (2.0).toDouble(), y = bbox.y + (bbox.h).toDouble() / (2.0).toDouble())
       val centroid = if (bestAt < 0L) fallback else (ringCentroid(rings[(bestAt).toInt()]) ?: fallback)
-      return@map GeoRegion(name = r.name, rings = rings, centroid = centroid, bbox = bbox)
+      return@map GeoRegion(name = r.name, label = (r.label ?: r.name), rings = rings, holes = holes, holeHost = ((r.holeHost ?: listOf())), centroid = centroid, bbox = bbox)
     })
     return GeoLayout(regions = regions, transform = GeoTransform(minX = minX, maxY = maxY, scale = scale, ox = ox, oy = oy, projection = projection))
   }
@@ -7798,12 +7807,13 @@ fun geoRoamZoom(view: GeoView, factor: Double, px: Double, py: Double, box: Pyre
 
 fun geoRoamPan(view: GeoView, dx: Double, dy: Double): GeoView = GeoView(zoom = view.zoom, panX = view.panX + dx, panY = view.panY + dy)
 
-fun geoDomain(layout: GeoLayout, values: List<GeoValue>): Domain {
+fun geoDomain(layout: GeoLayout, values: List<GeoValue>): Domain = geoDomainAligned(geoAlign(layout, values))
+
+fun geoDomainAligned(aligned: List<Double>): Domain {
     var lo = 0.0
     var hi = 0.0
     var seen = 0L
-    for (r in layout.regions) {
-      val v = geoValueOf(values, r.name)
+    for (v in aligned) {
       if (!isFiniteNumber(v)) {
         continue
       }
@@ -7822,13 +7832,15 @@ fun geoDomain(layout: GeoLayout, values: List<GeoValue>): Domain {
     return if (seen == 0L) Domain(min = 0.0, max = 0.0) else Domain(min = lo, max = hi)
   }
 
-fun renderGeo(layout: GeoLayout, values: List<GeoValue>, options: GeoOptions? = null, measure: ((String, Double) -> Double)? = null): List<PyreonDrawCmd> {
+fun renderGeo(layout: GeoLayout, values: List<GeoValue>, options: GeoOptions? = null, measure: ((String, Double) -> Double)? = null): List<PyreonDrawCmd> = renderGeoAligned(layout, geoAlign(layout, values), options, measure)
+
+fun renderGeoAligned(layout: GeoLayout, aligned: List<Double>, options: GeoOptions? = null, measure: ((String, Double) -> Double)? = null): List<PyreonDrawCmd> {
     val out: MutableList<PyreonDrawCmd> = mutableListOf()
     val stops = (options?.stops ?: HEAT_RAMP)
     val emptyColor = (options?.emptyColor ?: "#e2e8f0")
     val border = (options?.borderColor ?: "#ffffff")
     val borderWidth = (options?.borderWidth ?: 1.0)
-    val dom = (options?.domain ?: geoDomain(layout, values))
+    val dom = (options?.domain ?: geoDomainAligned(aligned))
     val lo = dom.min
     val hi = dom.max
     val span = hi - lo
@@ -7837,24 +7849,33 @@ fun renderGeo(layout: GeoLayout, values: List<GeoValue>, options: GeoOptions? = 
     val fontSize = (options?.fontSize ?: 10.0)
     val labelColor = (options?.labelColor ?: "#1e293b")
     val m = (measure ?: ::approxTextWidth)
-    for (r in layout.regions) {
-      val v = geoValueOf(values, r.name)
+    for (i in 0L until layout.regions.length) {
+      val r = layout.regions[(i).toInt()]
+      val v = if (i < aligned.length) aligned[(i).toInt()] else GEO_NA
       val has = isFiniteNumber(v) && progress > 0.0
       val t = if (!has) 0.0 else if (span <= 0.0) 1.0 else (((v - lo)).toDouble() / (span).toDouble()) * progress
       val fill = if (!has) emptyColor else if (visualOutside(v, options?.inRange, options?.outBands)) (options?.outColor ?: "#cccccc") else rampColor(stops, if (t < 0.0) 0.0 else if (t > 1.0) 1.0 else t)
-      for (ring in r.rings) {
-        out.add(PyreonDrawCmd(kind = "polygon", fill = fill, points = ring))
+      for (ri in 0L until r.rings.length) {
+        val holes = holesOf(r, ri)
+        out.add(PyreonDrawCmd(kind = "polygon", fill = fill, points = r.rings[(ri).toInt()], holes = if (holes.length > 0L) holes else null))
       }
     }
     for (r in layout.regions) {
       for (ring in r.rings) {
-        val closed: MutableList<PyreonChartPt> = mutableListOf()
-        for (p in ring) {
-          closed.add(p)
-        }
-        closed.add(ring[0])
-        out.add(PyreonDrawCmd(kind = "polyline", stroke = border, width = borderWidth, points = closed))
+        out.add(closedLine(ring, border, borderWidth))
       }
+      for (ring in r.holes) {
+        out.add(closedLine(ring, border, borderWidth))
+      }
+    }
+    val hover = (options?.hover ?: -1L)
+    for (si in (options?.selected ?: listOf())) {
+      for (c in outlineRegion(layout, si, (options?.selectColor ?: "#2563eb"), borderWidth + 2.0)) {
+        out.add(c)
+      }
+    }
+    for (c in outlineRegion(layout, hover, (options?.emphasisColor ?: "#0f172a"), borderWidth + 1.5)) {
+      out.add(c)
     }
     if (options?.showLabels == true && progress >= 1.0) {
       for (r in layout.regions) {
@@ -7868,13 +7889,47 @@ fun renderGeo(layout: GeoLayout, values: List<GeoValue>, options: GeoOptions? = 
           continue
         }
         val b = ringBox(r.rings[(hostAt).toInt()])
-        if (m(r.name, fontSize) > b.w || fontSize > b.h) {
+        if (m(r.label, fontSize) > b.w || fontSize > b.h) {
           continue
         }
-        out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = r.name, at = r.centroid, size = fontSize, align = "middle", baseline = "middle"))
+        out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = r.label, at = r.centroid, size = fontSize, align = "middle", baseline = "middle"))
       }
     }
     return out
+  }
+
+fun outlineRegion(layout: GeoLayout, ri: Long, stroke: String, width: Double): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    if (ri < 0L || ri >= layout.regions.length) {
+      return out
+    }
+    val r = layout.regions[(ri).toInt()]
+    for (ring in r.rings) {
+      out.add(closedLine(ring, stroke, width))
+    }
+    for (ring in r.holes) {
+      out.add(closedLine(ring, stroke, width))
+    }
+    return out
+  }
+
+fun holesOf(r: GeoRegion, ri: Long): List<List<PyreonChartPt>> {
+    val out: MutableList<List<PyreonChartPt>> = mutableListOf()
+    for (k in 0L until r.holes.length) {
+      if (k < r.holeHost.length && r.holeHost[(k).toInt()] == ri) {
+        out.add(r.holes[(k).toInt()])
+      }
+    }
+    return out
+  }
+
+fun closedLine(ring: List<PyreonChartPt>, stroke: String, width: Double): PyreonDrawCmd {
+    val closed: MutableList<PyreonChartPt> = mutableListOf()
+    for (p in ring) {
+      closed.add(p)
+    }
+    closed.add(ring[0])
+    return PyreonDrawCmd(kind = "polyline", stroke = stroke, width = width, points = closed)
   }
 
 fun ringBox(ring: List<PyreonChartPt>): PyreonChartRect {
@@ -7931,8 +7986,17 @@ fun hitGeoIndex(layout: GeoLayout, px: Double, py: Double): Long {
       if (px < r.bbox.x || px > r.bbox.x + r.bbox.w || py < r.bbox.y || py > r.bbox.y + r.bbox.h) {
         continue
       }
-      for (ring in r.rings) {
-        if (pointInRing(ring, px, py)) {
+      for (ri in 0L until r.rings.length) {
+        if (!pointInRing(r.rings[(ri).toInt()], px, py)) {
+          continue
+        }
+        var inHole = false
+        for (hole in holesOf(r, ri)) {
+          if (pointInRing(hole, px, py)) {
+            inHole = true
+          }
+        }
+        if (!inHole) {
           return i
         }
       }
@@ -9744,9 +9808,9 @@ fun geoTip(layout: GeoLayout, values: List<GeoValue>, px: Double, py: Double): L
     if (i < 0L) {
       return listOf()
     }
-    val name = layout.regions[(i).toInt()].name
-    val v = geoValueOf(values, name)
-    return if (v == v) listOf(name, plain(v)) else listOf(name)
+    val region = layout.regions[(i).toInt()]
+    val v = geoValueOf(values, region.name)
+    return if (v == v) listOf(region.label, plain(v)) else listOf(region.label)
   }
 
 fun funnelTip(stages: List<FunnelStage>, plot: PyreonChartRect, px: Double, py: Double, options: FunnelOptions? = null): List<String> {

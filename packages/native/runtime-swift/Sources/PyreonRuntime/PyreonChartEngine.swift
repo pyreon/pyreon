@@ -1966,12 +1966,18 @@ public struct CalendarCellValues: Codable {
 
 public struct GeoRegion: Codable {
   public var name: String
+  public var label: String
   public var rings: [[PyreonChartPt]]
+  public var holes: [[PyreonChartPt]]
+  public var holeHost: [Int]
   public var centroid: PyreonChartPt
   public var bbox: PyreonChartRect
-  public init(name: String, rings: [[PyreonChartPt]], centroid: PyreonChartPt, bbox: PyreonChartRect) {
+  public init(name: String, label: String, rings: [[PyreonChartPt]], holes: [[PyreonChartPt]], holeHost: [Int], centroid: PyreonChartPt, bbox: PyreonChartRect) {
     self.name = name
+    self.label = label
     self.rings = rings
+    self.holes = holes
+    self.holeHost = holeHost
     self.centroid = centroid
     self.bbox = bbox
   }
@@ -1979,10 +1985,16 @@ public struct GeoRegion: Codable {
 
 public struct GeoShape: Codable {
   public var name: String
+  public var label: String? = nil
   public var rings: [[PyreonChartPt]]
-  public init(name: String, rings: [[PyreonChartPt]]) {
+  public var holes: [[PyreonChartPt]]? = nil
+  public var holeHost: [Int]? = nil
+  public init(name: String, label: String? = nil, rings: [[PyreonChartPt]], holes: [[PyreonChartPt]]? = nil, holeHost: [Int]? = nil) {
     self.name = name
+    self.label = label
     self.rings = rings
+    self.holes = holes
+    self.holeHost = holeHost
   }
 }
 
@@ -2025,6 +2037,7 @@ public struct GeoOptions: Codable {
   public var projection: GeoProjection? = nil
   public var padding: Double? = nil
   public var nameProperty: String? = nil
+  public var idProperty: String? = nil
   public var stops: [String]? = nil
   public var domain: Domain? = nil
   public var emptyColor: String? = nil
@@ -2037,13 +2050,18 @@ public struct GeoOptions: Codable {
   public var zoom: Double? = nil
   public var panX: Double? = nil
   public var panY: Double? = nil
+  public var hover: Int? = nil
+  public var selected: [Int]? = nil
+  public var emphasisColor: String? = nil
+  public var selectColor: String? = nil
   public var inRange: Domain? = nil
   public var outBands: [Double]? = nil
   public var outColor: String? = nil
-  public init(projection: GeoProjection? = nil, padding: Double? = nil, nameProperty: String? = nil, stops: [String]? = nil, domain: Domain? = nil, emptyColor: String? = nil, borderColor: String? = nil, borderWidth: Double? = nil, showLabels: Bool? = nil, fontSize: Double? = nil, labelColor: String? = nil, progress: Double? = nil, zoom: Double? = nil, panX: Double? = nil, panY: Double? = nil, inRange: Domain? = nil, outBands: [Double]? = nil, outColor: String? = nil) {
+  public init(projection: GeoProjection? = nil, padding: Double? = nil, nameProperty: String? = nil, idProperty: String? = nil, stops: [String]? = nil, domain: Domain? = nil, emptyColor: String? = nil, borderColor: String? = nil, borderWidth: Double? = nil, showLabels: Bool? = nil, fontSize: Double? = nil, labelColor: String? = nil, progress: Double? = nil, zoom: Double? = nil, panX: Double? = nil, panY: Double? = nil, hover: Int? = nil, selected: [Int]? = nil, emphasisColor: String? = nil, selectColor: String? = nil, inRange: Domain? = nil, outBands: [Double]? = nil, outColor: String? = nil) {
     self.projection = projection
     self.padding = padding
     self.nameProperty = nameProperty
+    self.idProperty = idProperty
     self.stops = stops
     self.domain = domain
     self.emptyColor = emptyColor
@@ -2056,6 +2074,10 @@ public struct GeoOptions: Codable {
     self.zoom = zoom
     self.panX = panX
     self.panY = panY
+    self.hover = hover
+    self.selected = selected
+    self.emphasisColor = emphasisColor
+    self.selectColor = selectColor
     self.inRange = inRange
     self.outBands = outBands
     self.outColor = outColor
@@ -10279,6 +10301,14 @@ public func geoValueOf(_ values: [GeoValue], _ name: String) -> Double {
     return GEO_NA
   }
 
+public func geoAlign(_ layout: GeoLayout, _ values: [GeoValue]) -> [Double] {
+    var out: [Double] = []
+    for r in layout.regions {
+      out.append(geoValueOf(values, r.name))
+    }
+    return out
+  }
+
 public func geoProject(_ t: GeoTransform, _ lon: Double, _ lat: Double) -> PyreonChartPt {
     let p = projectLonLat(lon, lat, t.projection)
     return PyreonChartPt(x: t.ox + (p.x - t.minX) * t.scale, y: t.oy + (t.maxY - p.y) * t.scale)
@@ -10404,10 +10434,11 @@ public func layoutGeoShapes(_ shapes: [GeoShape], _ box: PyreonChartRect, _ opti
           bestAt = ri
         }
       }
+      let holes = ((r.holes ?? [])).map({ ring in ring.map(toPx) })
       let bbox = bseen == 0 ? PyreonChartRect(x: box.x, y: box.y, w: 0.0, h: 0.0) : PyreonChartRect(x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0)
       let fallback = PyreonChartPt(x: bbox.x + bbox.w / 2.0, y: bbox.y + bbox.h / 2.0)
       let centroid = bestAt < 0 ? fallback : (ringCentroid(rings[bestAt]) ?? fallback)
-      return GeoRegion(name: r.name, rings: rings, centroid: centroid, bbox: bbox)
+      return GeoRegion(name: r.name, label: (r.label ?? r.name), rings: rings, holes: holes, holeHost: ((r.holeHost ?? [])), centroid: centroid, bbox: bbox)
     })
     return GeoLayout(regions: regions, transform: GeoTransform(minX: minX, maxY: maxY, scale: scale, ox: ox, oy: oy, projection: projection))
   }
@@ -10427,12 +10458,13 @@ public func geoRoamZoom(_ view: GeoView, _ factor: Double, _ px: Double, _ py: D
 
 public func geoRoamPan(_ view: GeoView, _ dx: Double, _ dy: Double) -> GeoView { GeoView(zoom: view.zoom, panX: view.panX + dx, panY: view.panY + dy) }
 
-public func geoDomain(_ layout: GeoLayout, _ values: [GeoValue]) -> Domain {
+public func geoDomain(_ layout: GeoLayout, _ values: [GeoValue]) -> Domain { geoDomainAligned(geoAlign(layout, values)) }
+
+public func geoDomainAligned(_ aligned: [Double]) -> Domain {
     var lo = 0.0
     var hi = 0.0
     var seen = 0
-    for r in layout.regions {
-      let v = geoValueOf(values, r.name)
+    for v in aligned {
       if !isFiniteNumber(v) {
         continue
       }
@@ -10451,13 +10483,15 @@ public func geoDomain(_ layout: GeoLayout, _ values: [GeoValue]) -> Domain {
     return seen == 0 ? Domain(min: 0.0, max: 0.0) : Domain(min: lo, max: hi)
   }
 
-public func renderGeo(_ layout: GeoLayout, _ values: [GeoValue], _ options: GeoOptions? = nil, _ measure: ((String, Double) -> Double)? = nil) -> [PyreonDrawCmd] {
+public func renderGeo(_ layout: GeoLayout, _ values: [GeoValue], _ options: GeoOptions? = nil, _ measure: ((String, Double) -> Double)? = nil) -> [PyreonDrawCmd] { renderGeoAligned(layout, geoAlign(layout, values), options, measure) }
+
+public func renderGeoAligned(_ layout: GeoLayout, _ aligned: [Double], _ options: GeoOptions? = nil, _ measure: ((String, Double) -> Double)? = nil) -> [PyreonDrawCmd] {
     var out: [PyreonDrawCmd] = []
     let stops = (options?.stops ?? HEAT_RAMP)
     let emptyColor = (options?.emptyColor ?? "#e2e8f0")
     let border = (options?.borderColor ?? "#ffffff")
     let borderWidth = (options?.borderWidth ?? 1.0)
-    let dom = (options?.domain ?? geoDomain(layout, values))
+    let dom = (options?.domain ?? geoDomainAligned(aligned))
     let lo = dom.min
     let hi = dom.max
     let span = hi - lo
@@ -10466,24 +10500,33 @@ public func renderGeo(_ layout: GeoLayout, _ values: [GeoValue], _ options: GeoO
     let fontSize = (options?.fontSize ?? 10.0)
     let labelColor = (options?.labelColor ?? "#1e293b")
     let m = (measure ?? approxTextWidth)
-    for r in layout.regions {
-      let v = geoValueOf(values, r.name)
+    for i in 0..<layout.regions.count {
+      let r = layout.regions[i]
+      let v = i < aligned.count ? aligned[i] : GEO_NA
       let has = isFiniteNumber(v) && progress > 0.0
       let t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
       let fill = !has ? emptyColor : visualOutside(v, options?.inRange, options?.outBands) ? (options?.outColor ?? "#cccccc") : rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t)
-      for ring in r.rings {
-        out.append(PyreonDrawCmd(kind: "polygon", fill: fill, points: ring))
+      for ri in 0..<r.rings.count {
+        let holes = holesOf(r, ri)
+        out.append(PyreonDrawCmd(kind: "polygon", fill: fill, points: r.rings[ri], holes: holes.count > 0 ? holes : nil))
       }
     }
     for r in layout.regions {
       for ring in r.rings {
-        var closed: [PyreonChartPt] = []
-        for p in ring {
-          closed.append(p)
-        }
-        closed.append(ring[0])
-        out.append(PyreonDrawCmd(kind: "polyline", stroke: border, width: borderWidth, points: closed))
+        out.append(closedLine(ring, border, borderWidth))
       }
+      for ring in r.holes {
+        out.append(closedLine(ring, border, borderWidth))
+      }
+    }
+    let hover = (options?.hover ?? -1)
+    for si in (options?.selected ?? []) {
+      for c in outlineRegion(layout, si, (options?.selectColor ?? "#2563eb"), borderWidth + 2.0) {
+        out.append(c)
+      }
+    }
+    for c in outlineRegion(layout, hover, (options?.emphasisColor ?? "#0f172a"), borderWidth + 1.5) {
+      out.append(c)
     }
     if options?.showLabels == true && progress >= 1.0 {
       for r in layout.regions {
@@ -10497,13 +10540,47 @@ public func renderGeo(_ layout: GeoLayout, _ values: [GeoValue], _ options: GeoO
           continue
         }
         let b = ringBox(r.rings[hostAt])
-        if m(r.name, fontSize) > b.w || fontSize > b.h {
+        if m(r.label, fontSize) > b.w || fontSize > b.h {
           continue
         }
-        out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: r.name, at: r.centroid, size: fontSize, align: "middle", baseline: "middle"))
+        out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: r.label, at: r.centroid, size: fontSize, align: "middle", baseline: "middle"))
       }
     }
     return out
+  }
+
+public func outlineRegion(_ layout: GeoLayout, _ ri: Int, _ stroke: String, _ width: Double) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    if ri < 0 || ri >= layout.regions.count {
+      return out
+    }
+    let r = layout.regions[ri]
+    for ring in r.rings {
+      out.append(closedLine(ring, stroke, width))
+    }
+    for ring in r.holes {
+      out.append(closedLine(ring, stroke, width))
+    }
+    return out
+  }
+
+public func holesOf(_ r: GeoRegion, _ ri: Int) -> [[PyreonChartPt]] {
+    var out: [[PyreonChartPt]] = []
+    for k in 0..<r.holes.count {
+      if k < r.holeHost.count && r.holeHost[k] == ri {
+        out.append(r.holes[k])
+      }
+    }
+    return out
+  }
+
+public func closedLine(_ ring: [PyreonChartPt], _ stroke: String, _ width: Double) -> PyreonDrawCmd {
+    var closed: [PyreonChartPt] = []
+    for p in ring {
+      closed.append(p)
+    }
+    closed.append(ring[0])
+    return PyreonDrawCmd(kind: "polyline", stroke: stroke, width: width, points: closed)
   }
 
 public func ringBox(_ ring: [PyreonChartPt]) -> PyreonChartRect {
@@ -10560,8 +10637,17 @@ public func hitGeoIndex(_ layout: GeoLayout, _ px: Double, _ py: Double) -> Int 
       if px < r.bbox.x || px > r.bbox.x + r.bbox.w || py < r.bbox.y || py > r.bbox.y + r.bbox.h {
         continue
       }
-      for ring in r.rings {
-        if pointInRing(ring, px, py) {
+      for ri in 0..<r.rings.count {
+        if !pointInRing(r.rings[ri], px, py) {
+          continue
+        }
+        var inHole = false
+        for hole in holesOf(r, ri) {
+          if pointInRing(hole, px, py) {
+            inHole = true
+          }
+        }
+        if !inHole {
           return i
         }
       }
@@ -12367,9 +12453,9 @@ public func geoTip(_ layout: GeoLayout, _ values: [GeoValue], _ px: Double, _ py
     if i < 0 {
       return []
     }
-    let name = layout.regions[i].name
-    let v = geoValueOf(values, name)
-    return v == v ? [name, plain(v)] : [name]
+    let region = layout.regions[i]
+    let v = geoValueOf(values, region.name)
+    return v == v ? [region.label, plain(v)] : [region.label]
   }
 
 public func funnelTip(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Double, _ py: Double, _ options: FunnelOptions? = nil) -> [String] {
