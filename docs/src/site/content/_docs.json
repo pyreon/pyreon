@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 243,
+  "pageCount": 246,
   "pages": [
    {
     "path": "a11y.md",
@@ -483,6 +483,11 @@
     "href": "/docs/patterns/imperative-toasts"
    },
    {
+    "path": "patterns/upload.md",
+    "title": "Upload",
+    "href": "/docs/patterns/upload"
+   },
+   {
     "path": "patterns/islands.md",
     "title": "Island architecture",
     "href": "/docs/patterns/islands"
@@ -888,6 +893,11 @@
     "href": "/docs/reference/toast"
    },
    {
+    "path": "reference/upload.md",
+    "title": "Upload",
+    "href": "/docs/reference/upload"
+   },
+   {
     "path": "reference/ui-core.md",
     "title": "UI Provider + Config — API Reference",
     "href": "/docs/reference/ui-core"
@@ -1046,6 +1056,11 @@
     "path": "toast.md",
     "title": "Toast",
     "href": "/docs/toast"
+   },
+   {
+    "path": "upload.md",
+    "title": "Upload",
+    "href": "/docs/upload"
    },
    {
     "path": "troubleshooting.md",
@@ -1289,6 +1304,7 @@
       "patterns/imperative-toasts",
       "patterns/formatting",
       "patterns/command",
+      "patterns/upload",
       "patterns/multiplatform",
       "patterns/offline-and-installable-apps",
       "accessibility"
@@ -1412,6 +1428,7 @@
       "schedule",
       "command",
       "toast",
+      "upload",
       "rx",
       "url-state",
       "dnd"
@@ -1568,6 +1585,7 @@
       "reference/styler",
       "reference/testing",
       "reference/toast",
+      "reference/upload",
       "reference/ui-core",
       "reference/unistyle"
      ],
@@ -2116,6 +2134,10 @@
      "productId": "toast"
     },
     {
+     "title": "Upload",
+     "href": "/docs/upload"
+    },
+    {
      "title": "RX",
      "href": "/docs/rx",
      "productId": "rx"
@@ -2340,6 +2362,10 @@
     {
      "title": "Command palette",
      "href": "/docs/patterns/command"
+    },
+    {
+     "title": "File uploads",
+     "href": "/docs/patterns/upload"
     },
     {
      "title": "One source, web + iOS + Android",
@@ -2697,6 +2723,10 @@
       {
        "title": "Toast Notifications",
        "href": "/docs/reference/toast"
+      },
+      {
+       "title": "File uploads",
+       "href": "/docs/reference/upload"
       },
       {
        "title": "UI Provider + Config",

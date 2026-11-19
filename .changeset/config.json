@@ -91,6 +91,7 @@
       "@pyreon/typescript",
       "@pyreon/ui-core",
       "@pyreon/unistyle",
+      "@pyreon/upload",
       "@pyreon/url-state",
       "@pyreon/validate",
       "@pyreon/validation",

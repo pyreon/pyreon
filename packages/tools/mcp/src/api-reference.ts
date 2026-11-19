@@ -4082,6 +4082,316 @@ afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the n
   // @pyreon/validate
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/upload>
+
+  'upload/createUploader': {
+    signature: '(options: UploaderOptions) => Uploader',
+    example: `typeof createUploader({ transport: { upload: async () => 'ok' } }).add   // => 'function'
+createUploader({ transport: { upload: async () => 'ok' } }).status()   // => 'idle'`,
+    notes: '[EXPERIMENTAL] A reactive upload queue. Files are validated, then sent by the transport with `concurrency` at a time (default 3, a whole number from 1). Failures that a retry can fix are retried up to `retry.attempts` tries in total (default 3) after a delay with jitter (a `Retry-After` is honoured); 4xx answers and unknown errors are never retried. Progress is written to signals once per animation frame and never decreases. Rejected files stay in the list with their reasons unless `keepRejected: false`. Created in a component or effect scope it is disposed with it; otherwise call `dispose()`. Creating one touches no browser API. See also: xhrTransport, validateFile, useFileDrop. Added in v0.53.0.',
+    mistakes: `- Reading a whole file with \`FileReader\` to upload it: it holds the file in memory and has no upload progress. Pass the \`File\` to a transport, which slices it
+- Never revoking preview object URLs: \`preview: true\` revokes them on remove, clear and dispose
+- Trusting \`file.type\` or the extension: it is what the user's machine said. Use \`rules.sniff\` for the UI and check the content on the server
+- Using \`fetch\` for a large upload and wishing for a progress bar: \`fetch\` has no upload progress. Use \`xhrTransport\``,
+  },
+
+  'upload/useUploader': {
+    signature: '(options: UploaderOptions) => Uploader',
+    example: `typeof useUploader({ transport: { upload: async () => 'ok' } }).files   // => 'function'`,
+    notes: '[EXPERIMENTAL] The same queue, for a component: disposed when the component unmounts. Added in v0.53.0.',
+  },
+
+  'upload/xhrTransport': {
+    signature: '(options: { url, method?, field?, headers?, withCredentials?, body?, timeout?, sendMeta?, client? }) => Transport',
+    example: `typeof xhrTransport({ url: '/upload' }).upload   // => 'function'`,
+    notes: '[EXPERIMENTAL] Upload each file as one request with XMLHttpRequest and report real upload progress. The file goes in a multipart field (default `file`) with the file meta as text fields, unless you build the body. A 2xx answer resolves with the parsed body (JSON when the server says so); 408, 425, 429 and 5xx are retryable (`Retry-After` honoured), other statuses are not; network failures and timeouts are retryable. With `client`, the request goes through an `@pyreon/http` client so its base URL, headers and middleware apply. Added in v0.53.0.',
+  },
+
+  'upload/xhrHttpTransport': {
+    signature: '() => (request) => Promise<response>',
+    example: `typeof xhrHttpTransport()   // => 'function'`,
+    notes: '[EXPERIMENTAL] The XHR transport as an `@pyreon/http` transport: it reports upload progress through `request.meta.onUploadProgress`. `xhrTransport({ client })` uses it; use it directly to send your own requests with progress. Added in v0.53.0.',
+  },
+
+  'upload/useFilePicker': {
+    signature: '(options?: { multiple?, accept?, directory?, capture?, onPick?, onCancel? }) => FilePicker',
+    example: `typeof useFilePicker({ accept: ['image/*'] }).open   // => 'function'
+useFilePicker({ multiple: true }).inputProps.multiple   // => true`,
+    notes: '[EXPERIMENTAL] State for a file picker: `open()`, the picked `files()` and `inputProps` for a hidden input. The input is emptied after each pick (after the files are copied out), so choosing the same file twice works; a cancelled dialog is reported. With no input rendered, `open()` makes a detached one. Nothing touches the DOM until `open()`. Added in v0.53.0.',
+  },
+
+  'upload/useFileDrop': {
+    signature: '(options?: { accept?, multiple?, disabled?, directories?, paste?, onDrop?, onReject? }) => FileDrop',
+    example: `useFileDrop().isOver()   // => false
+useFileDrop().isValid()   // => null`,
+    notes: '[EXPERIMENTAL] State and handlers for a drop zone: `isOver()` (enter and leave are counted, so children do not make it flicker), `isValid()` (the dragged types judged against `accept` while dragging) and `dropProps` to spread. Folders are read and flattened when the browser can; `paste: true` also takes pasted files. Accepted files go to `onDrop`, the others to `onReject`. Added in v0.53.0.',
+  },
+
+  'upload/validateFile': {
+    signature: '(file: File | Blob, rules: FileRule) => FileRejection[] | Promise<FileRejection[]>',
+    example: `validateFile(new File(['x'], 'a.png', { type: 'image/png' }), { maxSize: 10 })   // => []
+validateFile(new File(['x'], 'a.png', { type: 'image/png' }), { accept: ['.pdf'] })[0].code   // => 'type'`,
+    notes: '[EXPERIMENTAL] Check one file against `maxSize`, `minSize`, `accept`, and (asynchronously) `image` dimensions, `sniff` and `custom`. An empty array means accepted. Each rejection has a `code` (`too-large`, `too-small`, `type`, `dimensions`, `custom`), a plain English `message` and `params` for translation. The answer is synchronous unless a rule has to look inside the file. Added in v0.53.0.',
+  },
+
+  'upload/validateFileAsync': {
+    signature: '(file, rules) => Promise<FileRejection[]>',
+    example: `typeof validateFileAsync   // => 'function'`,
+    notes: '[EXPERIMENTAL] `validateFile` as a Promise, whichever way it answers. Added in v0.53.0.',
+  },
+
+  'upload/validateFiles': {
+    signature: '(files, rules, existing?) => Promise<FileRejection[][]>',
+    example: `typeof validateFiles   // => 'function'`,
+    notes: '[EXPERIMENTAL] Check a batch, one array of rejections per file, with `maxFiles` counted across the batch (and the `existing` files already accepted): files past the limit are `too-many`. Added in v0.53.0.',
+  },
+
+  'upload/sniffType': {
+    signature: '(file: Blob) => Promise<string | null>',
+    example: `sniffBytes(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))   // => 'image/png'
+sniffBytes(new Uint8Array([0x4d, 0x5a, 0, 0]))   // => 'application/x-msdownload'
+sniffBytes(new TextEncoder().encode('hello'))   // => null`,
+    notes: '[EXPERIMENTAL] The real type of a file by its first bytes, so `accept: image/*` is not fooled by a renamed .exe. Reads 264 bytes with `Blob.slice`. Known: PNG, JPEG, GIF, WebP, BMP, ICO, TIFF, AVIF, HEIC, PDF, ZIP (also DOCX, XLSX), GZIP, 7z, RAR, MP4, WebM, MP3, OGG, WAV, FLAC, Windows executables, ELF and SVG. `null` means "cannot tell", not "safe". Never the only check: the server must check the content. Added in v0.53.0.',
+    mistakes: '- Treating a sniffed type as proof of safety: a polyglot file can start with a PNG header and be something else',
+  },
+
+  'upload/sniffBytes': {
+    signature: '(head: Uint8Array) => string | null',
+    example: `sniffBytes(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))   // => 'image/jpeg'`,
+    notes: '[EXPERIMENTAL] `sniffType` on bytes you already have. Added in v0.53.0.',
+  },
+
+  'upload/matchesAccept': {
+    signature: '(file: { name?, type }, accept: readonly string[]) => boolean',
+    example: `matchesAccept({ name: 'a.PNG', type: 'image/png' }, ['image/*'])   // => true
+matchesAccept({ name: 'a.exe', type: '' }, ['.png', 'image/*'])   // => false`,
+    notes: '[EXPERIMENTAL] Does a file match one of the `accept` patterns: MIME types, wildcards and extensions, ignoring case, as the `accept` attribute does. An empty list accepts everything. Added in v0.53.0.',
+  },
+
+  'upload/parseSize': {
+    signature: '(value: number | string) => number',
+    example: `parseSize('10 MB')   // => 10000000
+parseSize('1.5 MiB')   // => 1572864
+parseSize(512)   // => 512`,
+    notes: '[EXPERIMENTAL] A size in bytes from a number or text: `"10 MB"` is 10,000,000 (KB, MB, GB, TB are decimal), `"10 MiB"` is 10,485,760 (KiB, MiB, GiB, TiB are binary). Anything else throws. Added in v0.53.0.',
+  },
+
+  'upload/formatSize': {
+    signature: '(bytes: number) => string',
+    example: `formatSize(1500)   // => '1.5 KB'
+formatSize(10000000)   // => '10 MB'`,
+    notes: '[EXPERIMENTAL] A size for a message, in decimal units: `1.5 MB`. Added in v0.53.0.',
+  },
+
+  'upload/chunkCount': {
+    signature: '(size: number, chunkSize: number) => number',
+    example: `chunkCount(10, 4)   // => 3
+chunkCount(0, 4)   // => 1`,
+    notes: '[EXPERIMENTAL] How many parts a file has (an empty file has one empty part). Added in v0.53.0.',
+  },
+
+  'upload/chunkRange': {
+    signature: '(size, chunkSize, index) => { index, start, end }',
+    example: 'chunkRange(10, 4, 2)   // => { index: 2, start: 8, end: 10 }',
+    notes: '[EXPERIMENTAL] The byte range of one part; slice the file with `Blob.slice(start, end)`. Added in v0.53.0.',
+  },
+
+  'upload/planChunks': {
+    signature: '(size, chunkSize) => Generator<Chunk>',
+    example: '[...planChunks(10, 4)].map((c) => [c.start, c.end])   // => [[0, 4], [4, 8], [8, 10]]',
+    notes: '[EXPERIMENTAL] The parts of a file, lazily: a 1 TB file in 5 MB parts is 200,000 parts and is never held as an array. The file is never read. Added in v0.53.0.',
+  },
+
+  'upload/suggestChunkSize': {
+    signature: '(size, options?: { minSize?, maxParts? }) => number',
+    example: 'suggestChunkSize(10)   // => 5242880',
+    notes: `[EXPERIMENTAL] A part size that keeps a file within \`maxParts\` parts (default 10,000, S3's limit) and not below \`minSize\` (default 5 MiB). Added in v0.53.0.`,
+  },
+
+  'upload/progressOf': {
+    signature: '(loaded, total, complete?) => Progress',
+    example: 'progressOf(50, 200)   // => { loaded: 50, total: 200, ratio: 0.25 }',
+    notes: '[EXPERIMENTAL] Bytes as a `Progress`, clamped; the ratio of an empty file is 0 until `complete`. Added in v0.53.0.',
+  },
+
+  'upload/sumProgress': {
+    signature: '(list: Progress[]) => Progress',
+    example: 'sumProgress([progressOf(50, 100), progressOf(0, 100)]).ratio   // => 0.25',
+    notes: '[EXPERIMENTAL] The progress of several files, by bytes: a big file weighs more. Added in v0.53.0.',
+  },
+
+  'upload/monotonic': {
+    signature: '(shown, reported) => number',
+    example: 'monotonic(70, 30)   // => 70',
+    notes: '[EXPERIMENTAL] The larger of what was shown and what is reported: progress never goes back. Added in v0.53.0.',
+  },
+
+  'upload/remainingMs': {
+    signature: '(loaded, total, speed) => number | null',
+    example: `remainingMs(1500, 3000, 750)   // => 2000
+remainingMs(0, 10, null)   // => null`,
+    notes: '[EXPERIMENTAL] Time left in ms from a speed in bytes per second; `null` while the speed is unknown. Added in v0.53.0.',
+  },
+
+  'upload/createSpeedMeter': {
+    signature: '(alpha?) => SpeedMeter',
+    example: 'createSpeedMeter().speed()   // => null',
+    notes: '[EXPERIMENTAL] A smoothed speed (exponential moving average): `record(loaded, now)`, `speed()` (null until two samples 250 ms apart), `reset()`. Added in v0.53.0.',
+  },
+
+  'upload/uploadError': {
+    signature: '(kind, message, extra?) => UploadError',
+    example: `uploadError('network', 'down').retryable   // => true
+uploadError('server', 'bad', { status: 422 }).retryable   // => false`,
+    notes: '[EXPERIMENTAL] Build an `UploadError`. A transport rejects with these so the queue knows whether to retry: `network` and `timeout` default to retryable, the others not. Added in v0.53.0.',
+  },
+
+  'upload/isUploadError': {
+    signature: '(x: unknown) => x is UploadError',
+    example: `isUploadError(uploadError('aborted', 'x'))   // => true
+isUploadError(new Error('x'))   // => false`,
+    notes: '[EXPERIMENTAL] Whether a value has the shape of an `UploadError`. Added in v0.53.0.',
+  },
+
+  'upload/isRetryableStatus': {
+    signature: '(status: number) => boolean',
+    example: `isRetryableStatus(503)   // => true
+isRetryableStatus(422)   // => false`,
+    notes: '[EXPERIMENTAL] Is this HTTP status worth another attempt? 408, 425, 429 and 5xx are; other 4xx (validation, auth, size) never are. Added in v0.53.0.',
+  },
+
+  'upload/parseRetryAfter': {
+    signature: '(value, now?) => number | undefined',
+    example: `parseRetryAfter('120')   // => 120000
+parseRetryAfter('soon')   // => undefined`,
+    notes: '[EXPERIMENTAL] `Retry-After` as milliseconds: whole seconds or an HTTP date; a date in the past is 0; anything else is `undefined`. Added in v0.53.0.',
+  },
+
+  'upload/errorFromStatus': {
+    signature: '(status, options?: { retryAfter?, body? }) => UploadError',
+    example: `errorFromStatus(429, { retryAfter: '3' }).retryAfter   // => 3000
+errorFromStatus(422).retryable   // => false`,
+    notes: '[EXPERIMENTAL] The error for a failed HTTP response: retryable by `isRetryableStatus`, with `retryAfter` and the parsed `body`. Added in v0.53.0.',
+  },
+
+  'upload/toUploadError': {
+    signature: '(error: unknown) => UploadError',
+    example: `toUploadError(new Error('bug')).retryable   // => false`,
+    notes: '[EXPERIMENTAL] Any thrown value as an `UploadError`: an `AbortError` is `aborted`; an object with an HTTP `status` is a server error; an unknown error is not retried (a bug is not weather). Added in v0.53.0.',
+  },
+
+  'upload/defaultBackoff': {
+    signature: '(attempt, random?) => number',
+    example: 'defaultBackoff(1, () => 1)   // => 500',
+    notes: '[EXPERIMENTAL] The delay before the next try: 500 ms doubling to a minute, with jitter between half and all of it. Added in v0.53.0.',
+  },
+
+  'upload/collectDropped': {
+    signature: '(data: DataTransfer, options?) => Promise<File[]>',
+    example: `typeof collectDropped   // => 'function'`,
+    notes: '[EXPERIMENTAL] The files of a drop, with folders read and flattened when the browser supports `webkitGetAsEntry`. Call it from the drop handler: the items are only valid during the event. Added in v0.53.0.',
+  },
+
+  'upload/collectPasted': {
+    signature: '(data: DataTransfer) => File[]',
+    example: 'collectPasted(null)   // => []',
+    notes: '[EXPERIMENTAL] The files on the clipboard (a pasted image); text is not touched. Added in v0.53.0.',
+  },
+
+  'upload/chunkedTransport': {
+    signature: '(options: { url, chunkSize?, parallel?, checksum?, headers?, withCredentials?, timeout? }) => Transport',
+    example: `typeof chunkedTransport({ url: '/api/uploads' }).upload   // => 'function'`,
+    notes: '[EXPERIMENTAL] A generic resumable upload in parts with a small server contract: `POST BASE` (JSON `{ name, size, type, chunkSize, meta }`, answers `{ uploadId }`), `GET BASE/:id` (`{ received: number[] }`), `PUT BASE/:id/parts/:n` (raw bytes, optional `x-part-sha256`), `POST BASE/:id/complete` (answers the result), `DELETE BASE/:id`. The file is sliced with `Blob.slice`, `parallel` parts at a time (default 3), each with real progress; after every part the state is saved so a retry, a pause or a reload continues from the parts the server has (its list of parts wins over the saved state). A reference handler for the contract is on the docs page. See also: createResumeStore, s3Transport, tusTransport. Added in v0.53.0.',
+  },
+
+  'upload/s3Transport': {
+    signature: '(options: { presign, multipart?, partSize?, parallel?, withCredentials? }) => Transport',
+    example: `typeof s3Transport({ presign: async () => ({ url: 'https://bucket.invalid/key' }) }).upload   // => 'function'`,
+    notes: '[EXPERIMENTAL] Upload straight to S3 (or R2, MinIO, anything with presigned URLs) with no SDK. A file up to `partSize` is one presigned `PUT`; a bigger one is multipart if you give `multipart: { create, signPart, complete, abort?, list? }`: your server creates the upload and signs each part, the browser sends the parts with progress and collects the ETags, your server completes it. The part size is at least 5 MiB and never needs more than 10,000 parts. Resumable: the upload id and the parts with their ETags are saved after each part, and `list` (your `ListParts`) confirms which exist. Cancelling calls `abort`. The bucket CORS rule must expose the `ETag` header. Added in v0.53.0.',
+    mistakes: '- Presigned URLs that are not scoped: one key, one method, a short expiry, a content-length range for single uploads',
+  },
+
+  'upload/tusTransport': {
+    signature: '(options: { endpoint, chunkSize?, metadata?, headers?, withCredentials?, timeout? }) => Transport',
+    example: `typeof tusTransport({ endpoint: '/files' }).upload   // => 'function'`,
+    notes: `[EXPERIMENTAL] The tus 1.0 resumable upload protocol with the creation and termination extensions: \`POST\` to create (with \`Upload-Length\` and \`Upload-Metadata\`), \`PATCH\` at the right \`Upload-Offset\`, \`HEAD\` to ask the offset on a resume, \`DELETE\` when the file is cancelled or removed. The upload URL is saved after creation, so a retry, a pause or a reload continues where the server is; a 404 or 410 for a saved URL, or a different length, starts a new upload. Retries are the queue's, not the transport's. Added in v0.53.0.`,
+  },
+
+  'upload/createResumeStore': {
+    signature: '(storage: { getItem, setItem, removeItem }, options?: { prefix?, maxAge?, now? }) => ResumeStore',
+    example: `createResumeStore({ getItem: () => null, setItem: () => {}, removeItem: () => {} }).load({ name: 'a', size: 1, type: '', file: new Blob(['a']) })   // => undefined`,
+    notes: '[EXPERIMENTAL] Persist resume state in `localStorage` (or an `@pyreon/storage` adapter) so an upload continues after a page reload: pass the store as `createUploader({ resume })`. The state is saved by file fingerprint, loaded when a file is added, and cleared when the upload finishes, fails for good, or is cancelled or removed. Entries expire after `maxAge` (default 7 days); a corrupt entry is removed; a storage that throws makes saving a no-op. Added in v0.53.0.',
+  },
+
+  'upload/fingerprint': {
+    signature: '(file) => string',
+    example: `fingerprint({ name: 'a.mp4', size: 10, type: 'video/mp4', file: new File([], 'a.mp4', { lastModified: 5 }) })   // => 'a.mp4|10|video/mp4|5'`,
+    notes: '[EXPERIMENTAL] What identifies a file across page loads: name, size, type and last-modified time. Added in v0.53.0.',
+  },
+
+  'upload/FileDrop': {
+    signature: '(props: FileIntakeProps) => VNode',
+    example: `typeof FileDrop   // => 'function'`,
+    notes: '[EXPERIMENTAL] A headless drop zone: a `role="button"` element (focusable, `aria-label`, `aria-busy`, `aria-disabled`, out of the tab order when disabled) that opens the file dialog on click, Enter and Space, takes dropped files (and pasted ones with `paste`), judges the drag (`data-drag-over`, `data-drop-valid`), and applies the `rules` and `accept` (case-insensitive) with reasons: accepted files go to `onFiles`, refused ones to `onReject` and to the `rejected` slot, and a visually hidden `<output>` live region announces what happened. Focus returns to the zone after every drop, pick or refusal. The children can be a function of the state (`isOver`, `isValid`, `rejections`, `open`, `liveRegionProps`). Unstyled: style it with `class` and the `data-` attributes. The server renders the static markup; hydration adds the behaviour. From `@pyreon/upload/components` (needs `@pyreon/core`). See also: FilePicker, useFileDrop. Added in v0.53.0.',
+    mistakes: `- A label that differs from the visible text (WCAG 2.5.3, flagged by axe): make \`label\` contain the visible words, or name the zone with \`labelledby\`
+- Placing the live region where it is removed and re-added: it must stay in the page for announcements to be read; use \`live={false}\` and \`state.liveRegionProps\` to place it yourself`,
+  },
+
+  'upload/FilePicker': {
+    signature: '(props: FileIntakeProps) => VNode',
+    example: `typeof FilePicker   // => 'function'`,
+    notes: '[EXPERIMENTAL] A headless picker button: a native `<button type="button">` (so Enter and Space work as on any button) that opens the file dialog, with the same rules, refusal reasons, live region and focus handling as `FileDrop`. The same file can be picked twice. `children` is the label, or a function of the state. From `@pyreon/upload/components`. Added in v0.53.0.',
+  },
+
+  'upload/bindFileField': {
+    signature: '(uploader, field, options?) => () => void',
+    example: `typeof bindFileField   // => 'function'`,
+    notes: `[EXPERIMENTAL] Make an uploader's files the value of an \`@pyreon/form\` field (\`form.fields.avatar\`): the value is the list of accepted \`File\`s; adding touches the field; the reason a file was rejected is the field's error; and resetting the form (the value goes back to empty) clears the queue. Structural: neither package imports the other. From \`@pyreon/upload/form\`. See also: fileValidator. Added in v0.53.0.`,
+  },
+
+  'upload/fileValidator': {
+    signature: '(options?: { required?: boolean | string, rules?: FileRule }) => ValidateFn',
+    example: `fileValidator({ required: 'Choose a file' })([])   // => 'Choose a file'
+fileValidator({ rules: { maxFiles: 1 } })([new File([], 'a'), new File([], 'b')])   // => 'At most 1 file is allowed.'`,
+    notes: '[EXPERIMENTAL] A validator for `useForm({ validators: { avatar: fileValidator({ required: "Choose a photo", rules }) } })`: the required-file rule, `maxFiles`, then each file against the rules; the first reason is the error. It answers a Promise only when a rule has to look inside the file. From `@pyreon/upload/form`. Added in v0.53.0.',
+  },
+
+  'upload/uploadMutation': {
+    signature: '(uploader) => { mutationFn }',
+    example: `typeof uploadMutation({ add: () => [] } as never).mutationFn   // => 'function'`,
+    notes: '[EXPERIMENTAL] An upload as an `@pyreon/query` mutation: `useMutation(uploadMutation(uploader))`. `mutationFn(files)` adds the files and resolves with their `UploadFile`s when all are done, or rejects with an error that carries the typed `uploadError` and the `file` of the first that failed or was rejected. Progress is not mutation state: read `uploader.progress()`. From `@pyreon/upload/query`. Added in v0.53.0.',
+  },
+
+  'upload/UploadFile': {
+    signature: 'interface UploadFile { id; file; name; size; type; meta; status(); progress(); speed(); remaining(); error(); result(); preview(); attempt(); rejections() }',
+    example: 'const f = null as unknown as UploadFile',
+    notes: '[EXPERIMENTAL] One item of a queue: plain data and functions that read signals. Added in v0.53.0.',
+  },
+
+  'upload/Uploader': {
+    signature: 'interface Uploader { files(); add(); remove(); clear(); start(); pause(); resume(); cancel(); retry(); progress(); status(); isUploading(); dispose() }',
+    example: 'const u = null as unknown as Uploader',
+    notes: '[EXPERIMENTAL] The queue returned by `createUploader`. Added in v0.53.0.',
+  },
+
+  'upload/Transport': {
+    signature: 'interface Transport { upload(file, ctx: { signal, onProgress, resumeState?, saveResumeState }): Promise<unknown> }',
+    example: `const t: Transport = { upload: async () => 'ok' }`,
+    notes: '[EXPERIMENTAL] Sends one file. Resolve with what the server returned; reject with an `UploadError`. Added in v0.53.0.',
+  },
+
+  'upload/FileRule': {
+    signature: 'interface FileRule { maxSize?; minSize?; accept?; maxFiles?; image?; sniff?; custom? }',
+    example: `const rule: FileRule = { maxSize: '10 MB', accept: ['image/*'] }`,
+    notes: '[EXPERIMENTAL] What a file is checked against. Added in v0.53.0.',
+  },
+
+  'upload/UploadError': {
+    signature: 'interface UploadError { kind: "rejected" | "network" | "server" | "aborted" | "timeout"; message; status?; retryable; retryAfter?; body?; cause? }',
+    example: `const e: UploadError = { kind: 'network', message: 'down', retryable: true }`,
+    notes: '[EXPERIMENTAL] Why an upload did not work, and whether a retry can help. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/upload>
   // <gen-docs:api-reference:start @pyreon/validate>
 
   'validate/withField': {

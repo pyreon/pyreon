@@ -365,6 +365,86 @@ export const SCENARIOS: Scenario[] = [
     imports: ['useRelative'],
   },
   {
+    // The queue alone: validation, scheduling, retry, progress coalescing. No transport, no picker, no drop zone.
+    id: '@pyreon/upload::uploader',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'index.js',
+    imports: ['createUploader'],
+  },
+  {
+    // Validation without the queue: the `core` entry has no @pyreon dependency at all.
+    id: '@pyreon/upload::validate',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'core.js',
+    imports: ['validateFile', 'sniffType'],
+  },
+  {
+    // The XHR transport is its own entry: it must not pull the queue, the picker or the drop zone.
+    id: '@pyreon/upload::xhr-transport',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'transport-xhr.js',
+    imports: ['xhrTransport'],
+  },
+  {
+    // The picker and drop-zone state: no queue, no transport.
+    id: '@pyreon/upload::picker-drop',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'index.js',
+    imports: ['useFilePicker', 'useFileDrop'],
+  },
+  {
+    // The chunked transport is its own entry: it pulls the shared XHR part helper and chunk planning, no queue and no other transport.
+    id: '@pyreon/upload::chunked-transport',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'transport-chunked.js',
+    imports: ['chunkedTransport'],
+  },
+  {
+    // The S3 transport: presigned single and multipart, no SDK, no other transport.
+    id: '@pyreon/upload::s3-transport',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'transport-s3.js',
+    imports: ['s3Transport'],
+  },
+  {
+    // The tus transport: the tus 1.0 protocol, no other transport.
+    id: '@pyreon/upload::tus-transport',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'transport-tus.js',
+    imports: ['tusTransport'],
+  },
+  {
+    // The two headless components with their shared intake (validation, drop and picker state): no queue, no transport.
+    id: '@pyreon/upload::components',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'components.js',
+    imports: ['FileDrop', 'FilePicker'],
+  },
+  {
+    // The form adapter: reads a field's public state, needs no queue code of its own.
+    id: '@pyreon/upload::form',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'form.js',
+    imports: ['bindFileField', 'fileValidator'],
+  },
+  {
+    // The query adapter is a few lines over the uploader contract.
+    id: '@pyreon/upload::query',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'query.js',
+    imports: ['uploadMutation'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.

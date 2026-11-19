@@ -59,6 +59,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/table](/docs/table) | Pyreon adapter for TanStack Table |
 | [@pyreon/time](/docs/time) | Dates and times as plain strings and numbers for Pyreon — ISO values, DST-correct zone math, calendar grids, no classes |
 | [@pyreon/toast](/docs/toast) | Imperative toast notifications for Pyreon — no provider needed |
+| [@pyreon/upload](/docs/upload) | File selection, validation, preview and upload with progress as signals for Pyreon: a queue with retry and pause, XHR progress, drop and picker state |
 | [@pyreon/url-state](/docs/url-state) | Reactive URL search-param state for Pyreon — signal-backed, type-coerced, SSR-safe |
 | [@pyreon/validate](/docs/validate) | Pyreon's own validator (the `s` schema runtime, with mini, JIT and JSON Schema subpaths) plus a Standard Schema DX layer — withField metadata, reactive parse, i18n-aware error formatting. The DX layer also works with Zod, Valibot, ArkType, or any Standard Schema-compliant validator. |
 | [@pyreon/validation](/docs/validation) | Schema validation adapters for Pyreon forms (Zod, Valibot, ArkType) |

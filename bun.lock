@@ -2288,6 +2288,31 @@
         "@pyreon/native-compiler",
       ],
     },
+    "packages/fundamentals/upload": {
+      "name": "@pyreon/upload",
+      "version": "0.53.0",
+      "devDependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/form": "workspace:*",
+        "@pyreon/http": "workspace:*",
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/query": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/runtime-server": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+        "@vitest/browser-playwright": "^5.1.0",
+        "axe-core": "^4.14.1",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/core",
+      ],
+    },
     "packages/fundamentals/url-state": {
       "name": "@pyreon/url-state",
       "version": "0.53.0",
@@ -4499,6 +4524,8 @@
     "@pyreon/ui-theme": ["@pyreon/ui-theme@workspace:packages/ui/theme"],
 
     "@pyreon/unistyle": ["@pyreon/unistyle@workspace:packages/ui-system/unistyle"],
+
+    "@pyreon/upload": ["@pyreon/upload@workspace:packages/fundamentals/upload"],
 
     "@pyreon/url-state": ["@pyreon/url-state@workspace:packages/fundamentals/url-state"],
 

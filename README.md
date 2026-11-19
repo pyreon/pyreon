@@ -19,7 +19,7 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
 - **Fast, measured honestly — including our losses.** On a synthetic row-list benchmark against nine other implementations (Vue 3.6 Vapor RC, Octane, Vue 3, Solid, Solid 2 RC, Svelte 5, React 19, Preact, hand-written Vanilla), Pyreon wins **clear rows** outright (1.11–1.12× over Vue Vapor RC) and is **statistically tied with the fastest** on create, replace, partial update, swap and remove; it is ~2.6× faster than React and ~3.8× than Preact at 10,000 rows. It **loses** deep component-tree mount to Solid (1.15–1.18×), and its bundle for the same app (17.2 KB) is larger than Solid (7.5 KB), Preact (10.1 KB) and Svelte (16.1 KB). The benchmark record withdraws its own claims when a harness bug is found — most recently, a cluster bootstrap over page loads turned two published wins and one loss into ties. Every figure, its confidence interval and every withdrawal are in [BENCHMARKS.md](BENCHMARKS.md) (Apple M3 Max, real Chromium, author-run, synthetic; see also [benchmarks](https://pyreon.dev/docs/benchmarks)).
-- **83 packages.** Forms, routing, state management, charts, drag & drop, i18n, multiplatform (SwiftUI + Compose), and more.
+- **84 packages.** Forms, routing, state management, charts, drag & drop, i18n, multiplatform (SwiftUI + Compose), and more.
 - **Migration paths.** Compat layers for React, Preact, Vue, Solid, and Svelte, at near-full public-API parity.
 
 ## Quick Start
@@ -237,7 +237,7 @@ bun run format             # format (oxfmt)
 bun run typecheck          # typecheck all packages
 ```
 
-The monorepo uses Bun workspaces. 83 packages across 6 categories are published (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`, `packages/native/`), plus private internals. Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
+The monorepo uses Bun workspaces. 84 packages across 6 categories are published (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`, `packages/native/`), plus private internals. Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
 
 ## License
 
