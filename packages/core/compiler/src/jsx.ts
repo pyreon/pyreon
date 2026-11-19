@@ -1377,6 +1377,11 @@ export function transformJSX_JS(
   // That JSX keeps the h() path: no client template, no `_ssr` string, no
   // rocketstyle collapse — only the reactivity rules every JSX element gets.
   let wrappedJsxDepth = 0
+  // Preserved template holes in SVG/MathML content (`inForeignContent`) that
+  // build JSX. They are walked like every other hole, but under
+  // `wrappedJsxDepth`: the JSX keeps the h() path, which mounts each element
+  // in its parent's namespace (a `_tpl` root is namespaced by its own tag).
+  const hPathHoles = new Set<N>()
   // The CLIENT compile's value of the option, read by the SSR emit to work out
   // which elements the client lowers to templates (see `ssrEnterElement`).
   const clientTplComponents = options.templatizeComponentChildren === true
@@ -2078,11 +2083,18 @@ export function transformJSX_JS(
     // transformations exist and the walk never revisits the subtree.
     const parts = braced.split(HOLE_SENTINEL)
     // parts = [seg0, idx0, seg1, idx1, …, segN] — odd entries are hole indices.
+    // Holes must appear in source order, each exactly once, for the bracketing
+    // to be well-formed. Checked BEFORE any edit is pushed, so a bail leaves
+    // no half-emitted template behind.
     let cursor = start
     for (let i = 1; i < parts.length; i += 2) {
       const hole = holes[Number(parts[i])]
-      // Holes must be in source order for the bracketing to be well-formed.
       if (!hole || (hole.start as number) < cursor) return false
+      cursor = hole.end as number
+    }
+    cursor = start
+    for (let i = 1; i < parts.length; i += 2) {
+      const hole = holes[Number(parts[i])]!
       replacements.push({ start: cursor, end: hole.start as number, text: parts[i - 1] as string })
       cursor = hole.end as number
     }
@@ -2093,7 +2105,18 @@ export function transformJSX_JS(
     // rewrites one of these nodes wholesale (rocketstyle collapse) must know the
     // text is headed for an argument, not a JSX child slot.
     for (const hole of holes) argPositionNodes.add(hole)
-    for (const hole of holes) walkUnslicedExpr(hole)
+    for (const hole of holes) {
+      if (!hPathHoles.has(hole)) {
+        walkUnslicedExpr(hole)
+        continue
+      }
+      wrappedJsxDepth++
+      try {
+        walkUnslicedExpr(hole)
+      } finally {
+        wrappedJsxDepth--
+      }
+    }
 
     return true
   }
@@ -2626,7 +2649,7 @@ export function transformJSX_JS(
    * to the general wrapped-hole delegation (still byte-identical, just not
    * item-fast).
    */
-  function ssrTryMap(buf: SsrBuf, expr: N, sole: boolean): boolean {
+  function ssrTryMap(buf: SsrBuf, expr: N, sole: boolean, walked = false): boolean {
     if (expr.type !== 'CallExpression') return false
     const callee = expr.callee
     if (!callee || callee.type !== 'MemberExpression' || callee.computed) return false
@@ -2641,7 +2664,25 @@ export function transformJSX_JS(
     // A self-closing item body is eligible — `items.map(i => <img src={i.src}/>)`
     // is an image gallery, not an exotic shape, and bailing dropped the whole
     // list onto the h() path.
-    const itemBuf = buildSsrBuf(body, 'mapitem')
+    // A WALKED `.map` (`clientWalksHole`: the client compiles its callback like
+    // the h() path) builds its item with recursed child semantics and a plain
+    // string return — a `<For>` row's `foritem` mode, under the same reset of
+    // the client-template state `ssrTryForKeyed` does. An unwalked one keeps
+    // `mapitem`: its item is a slice on the client, so every child is a value.
+    const itemMode: SsrMode = walked ? 'foritem' : 'mapitem'
+    const outerClient = ssrClient
+    const outerOwner = ssrOwner
+    if (walked) {
+      ssrClient = SSR_CLIENT_NONE
+      ssrOwner = null
+    }
+    let itemBuf: SsrBuf | null
+    try {
+      itemBuf = inCallbackScope(cb, () => buildSsrBuf(body, itemMode))
+    } finally {
+      ssrClient = outerClient
+      ssrOwner = outerOwner
+    }
     if (itemBuf === null) return false
     if (itemBuf.deferJsx) buf.deferJsx = true
     const recv = sliceExpr(callee.object)
@@ -2655,7 +2696,7 @@ export function transformJSX_JS(
     // `.map` lists are the other per-item hot path (a plain `{items.map(…)}`
     // list is at least as common in SSR as `<For>`).
     const fusedItem = buildSsrForItemBody(itemBuf, paramText)
-    const itemBody = fusedItem ?? ssrCallText(itemBuf, 'mapitem')
+    const itemBody = fusedItem ?? ssrCallText(itemBuf, itemMode)
     // A SOLE `.map` child needs no markers — the element's tag boundary is the
     // extent (h() wraps the call, so `renderElement` elides it there too).
     if (!sole) ssrEmitStatic(buf, '<!--$-->')
@@ -2940,9 +2981,16 @@ export function transformJSX_JS(
     // A client `<!>` placeholder whose value is not an accessor: bracket it
     // (see `ssrEnterElement`). Byte-identical to the h() path's `_slot(x)`.
     const marks = ssrSlotNeedsMarkers(child, expr)
-    // What the client does with the JSX inside this expression: a templated
-    // element slices it into its bind and an accessor child is sliced, so
-    // neither is walked (RAW); anything else is walked like the h() path.
+    // A client-templated element PRESERVES an expression child that builds JSX
+    // and walks it (`clientWalksHole`), so its JSX compiles like the h() path's:
+    // a `.map` item takes a `<For>` row's semantics, and anything else lowers
+    // or is kept as a range and walked under no template, like a component hole.
+    if (ssrClient === SSR_CLIENT_IN && clientWalksHole(child)) {
+      return ssrSerializeWalkedHole(buf, expr, mode, sole, marks)
+    }
+    // What the client does with the JSX inside this expression: an accessor
+    // child is sliced, so it is not walked (RAW); anything else is walked
+    // like the h() path.
     const inner =
       ssrClient === SSR_CLIENT_NONE && !shouldWrap(expr) ? SSR_CLIENT_NONE : SSR_CLIENT_RAW
     // recursed mode: matches handleJsxExpression's wrap decision.
@@ -2985,6 +3033,31 @@ export function transformJSX_JS(
       buf.deferJsx = true
     }
     ssrEmitExprHole(buf, lowered ?? sliceExpr(expr), expr, sole, marks)
+
+    return true
+  }
+
+  /**
+   * An expression child the client walks (`clientWalksHole`), serialized the
+   * way the h() walk of it renders: a `.map` as a `<For>`-row item, else the
+   * conditional lowering when it leaves nothing as source, else a preserved
+   * range walked under no template. False = bail.
+   */
+  function ssrSerializeWalkedHole(buf: SsrBuf, expr: N, mode: SsrMode, sole: boolean, marks: boolean): boolean {
+    if (ssrTryMap(buf, expr, sole, true)) return true
+    const lowered = ssrLowerNestedIn(expr, SSR_CLIENT_NONE)
+    if (lowered !== null && !ssrLowerResidualJsx) {
+      ssrEmitExprHole(buf, lowered, expr, sole, marks)
+
+      return true
+    }
+    // Generated item bodies (`foritem`) have nowhere to keep a range, and a
+    // preserved hole's own templates are built when this call's arguments
+    // evaluate — BEFORE `_esc(…, ns)` enters a baked foreign namespace, so
+    // under one they would escape for HTML. Bail in both cases; the h() walk
+    // keeps the range and evaluates the hole inside the element's render.
+    if (mode !== 'recursed' || ssrNsPath !== '') return false
+    ssrEmitPreservedExprHole(buf, expr, sole, marks, SSR_CLIENT_NONE)
 
     return true
   }
@@ -3107,7 +3180,7 @@ export function transformJSX_JS(
     ssrOwner = null
     let itemBuf: SsrBuf | null
     try {
-      itemBuf = buildSsrBuf(body, 'foritem')
+      itemBuf = inCallbackScope(cb, () => buildSsrBuf(body, 'foritem'))
     } finally {
       ssrClient = outerClient
       ssrOwner = outerOwner
@@ -3735,10 +3808,13 @@ export function transformJSX_JS(
     if (ssr && ssrClient === SSR_CLIENT_IN) {
       const marks = ssrSlotNeedsMarkers(node, node.expression)
       // The client slices a template's expression children into the bind as
-      // raw source, so nothing inside one is a template.
-      ssrClient = SSR_CLIENT_RAW
+      // raw source, so nothing inside one is a template — EXCEPT a child that
+      // builds JSX, which the client preserves and walks like the h() path
+      // (`clientWalksHole`). Mirror that: walk it, under no template.
+      const walked = clientWalksHole(node)
+      ssrClient = walked ? SSR_CLIENT_NONE : SSR_CLIENT_RAW
       try {
-        handleJsxExpressionChild(node, parentJsx, marks)
+        handleJsxExpressionChild(node, parentJsx, marks, walked)
       } finally {
         ssrClient = SSR_CLIENT_IN
       }
@@ -3748,7 +3824,53 @@ export function transformJSX_JS(
     handleJsxExpressionChild(node, parentJsx, false)
   }
 
-  function handleJsxExpressionChild(node: N, parentJsx: N | undefined, marks: boolean): void {
+  /**
+   * Does the client PRESERVE this expression child of a templated element as a
+   * hole and walk it (`processOneChild`), rather than slice it into the bind?
+   * True exactly when the expression builds JSX. Caller guarantees the child's
+   * element is client-templated (`ssrClient === SSR_CLIENT_IN`). The one
+   * predicate the client emit, the SSR h()-path emit and the `_ssr` emit share,
+   * so the three cannot disagree on which JSX is compiled. Mirrored by
+   * `client_walks_hole` in the Rust backend.
+   */
+  function clientWalksHole(container: N): boolean {
+    const expr = container.expression
+    if (!expr || expr.type === 'JSXEmptyExpression') return false
+    if (!containsJSXInExpr(unwrapTypeLayers(expr))) return false
+
+    return !inForeignContent(findParent(container))
+  }
+
+  /**
+   * Is `el` (the element or fragment holding a hole) inside SVG or MathML
+   * content, as far as its JSX ancestry shows? A walked hole turns each element
+   * it builds into a template ROOT, which `_tpl` parses standalone and
+   * namespaces by its own tag alone — so `<svg>{on && <a href={u}>…</a>}</svg>`
+   * would build an HTML `<a>`, where `h()` mounts it in its parent's namespace.
+   * Such a hole is still walked (never sliced), but with its JSX kept on the
+   * h() path (`hPathHoles`), until a template can carry its namespace. The chain
+   * runs through elements (components included) and fragments up to the first
+   * non-JSX parent; `foreignObject` returns to HTML. Mirrored by
+   * `collect_foreign_holes` in the Rust backend.
+   */
+  function inForeignContent(el: N | undefined): boolean {
+    for (let n = el; n; n = findParent(n)) {
+      if (n.type === 'JSXFragment') continue
+      if (n.type !== 'JSXElement') return false
+      const tag = jsxTagName(n)
+      if (tag === 'foreignObject') return false
+      if (tag === 'svg' || tag === 'math' || SVG_ONLY_TAGS.has(tag)) return true
+    }
+
+    return false
+  }
+
+  function handleJsxExpressionChild(
+    node: N,
+    parentJsx: N | undefined,
+    marks: boolean,
+    walked = false,
+  ): void {
     const expr = node.expression
     if (!expr || expr.type === 'JSXEmptyExpression') return
     const hoistName = maybeHoist(expr)
@@ -3819,6 +3941,18 @@ export function transformJSX_JS(
         const unwrapped = unwrapTypeLayers(expr)
         const sliced = sliceExpr(unwrapped)
         replacements.push({ start, end, text: sliced })
+
+        return
+      }
+      if (walked) {
+        // `wrap` would slice the JSX away from the walk. Bracket the untouched
+        // range instead (the same `() => (…)` the client's `_mountSlot` takes),
+        // so the walk below compiles what is inside it. The closer is pushed
+        // after the walk so an edit the walk inserts at the end lands inside.
+        replacements.push({ start: expr.start as number, end: expr.start as number, text: '() => (' })
+        walkUnslicedExpr(expr)
+        replacements.push({ start: expr.end as number, end: expr.end as number, text: ')' })
+        lens(expr.start as number, expr.end as number, 'reactive', 'live — re-evaluates whenever its signals change')
 
         return
       }
@@ -5349,6 +5483,42 @@ export function transformJSX_JS(
     return true
   }
 
+  /** Undo every registry change logged since `mark` (see `propDerivedLog`). */
+  function leavePropDerivedScope(mark: number): void {
+    while (propDerivedLog.length > mark) {
+      const e = propDerivedLog.pop()!
+      if (e.set === 'props') propsNames.delete(e.name)
+      else if (e.set === 'fold') foldPropsNames.delete(e.name)
+      else if (e.set === 'signal') signalVars.delete(e.name)
+      else if (e.set === 'selector') selectorVars.delete(e.name)
+      else if (e.set === 'fn') {
+        if (e.fnPrev) propDerivedFnInits.add(e.name)
+        else propDerivedFnInits.delete(e.name)
+      } else if (e.prev) propDerivedVars.set(e.name, e.prev)
+      else propDerivedVars.delete(e.name)
+    }
+  }
+
+  /**
+   * Run `fn` with a callback's parameters in scope, as `walkNode` has them on
+   * entering the function: a parameter shadows a signal of its name (no
+   * auto-call) and hides a prop-derived alias it re-binds (no inlining). For
+   * the `_ssr` item builders, which slice the callback body's holes without
+   * walking the callback itself. Mirrored by `in_callback_scope` in Rust.
+   */
+  function inCallbackScope<T>(cb: N, fn: () => T): T {
+    const mark = propDerivedLog.length
+    const opened = enterPropDerivedScope(cb)
+    const shadows = signalVars.size > 0 ? findShadowingNames(cb) : []
+    for (const name of shadows) shadowedSignals.add(name)
+    try {
+      return fn()
+    } finally {
+      for (const name of shadows) shadowedSignals.delete(name)
+      if (opened) leavePropDerivedScope(mark)
+    }
+  }
+
   function walkNode(node: N): void {
     // ── Component function detection (was pass 1) ──
     const isFunction =
@@ -5421,20 +5591,7 @@ export function transformJSX_JS(
     forEachChildFast(node, walkNode)
 
     // Leave the block: un-register every prop-derived const it declared.
-    if (opensPropDerivedScope) {
-      while (propDerivedLog.length > propDerivedMark) {
-        const e = propDerivedLog.pop()!
-        if (e.set === 'props') propsNames.delete(e.name)
-        else if (e.set === 'fold') foldPropsNames.delete(e.name)
-        else if (e.set === 'signal') signalVars.delete(e.name)
-        else if (e.set === 'selector') selectorVars.delete(e.name)
-        else if (e.set === 'fn') {
-          if (e.fnPrev) propDerivedFnInits.add(e.name)
-          else propDerivedFnInits.delete(e.name)
-        } else if (e.prev) propDerivedVars.set(e.name, e.prev)
-        else propDerivedVars.delete(e.name)
-      }
-    }
+    if (opensPropDerivedScope) leavePropDerivedScope(propDerivedMark)
     // Restore callback depth after leaving function
     if (isFunction) {
       const parent = findParent(node)
@@ -7301,6 +7458,27 @@ export function transformJSX_JS(
       // auto-call pass uses for its "parens/TS-layer transparent" contract.
       const childExpr = unwrapTypeLayers(child.expression)
       const { expr, isReactive } = unwrapAccessor(childExpr)
+      // An expression child that BUILDS JSX (`items.map((x) => <li/>)`,
+      // `cond() ? <a/> : <b/>`, `{() => …}`) is a PRESERVED hole, walked in
+      // place by `tryTemplateEmit` exactly like an absorbed component child —
+      // never a source slice. A slice is raw text the walk never visits, so
+      // every element inside it fell to `jsx()` at runtime, and the client
+      // compiled it differently from the SSR emit, which walks the same
+      // expression (`clientWalksHole`). See "Template holes are walked" in the
+      // internals guide. A hole in SVG/MathML content (`inForeignContent`) is
+      // preserved and walked too, but its JSX keeps the h() path
+      // (`hPathHoles`), exactly as `wrapWalked` keeps an h()-path child's.
+      const tplWalk = clientWalksHole(findParent(child.expression))
+      const walk = tplWalk || containsJSXInExpr(childExpr)
+      const holeArg = (accessor: boolean): string => {
+        if (!tplWalk) hPathHoles.add(childExpr)
+        // A function child IS the slot's accessor: preserve it whole.
+        if (childExpr.type === 'ArrowFunctionExpression' || childExpr.type === 'FunctionExpression')
+          return registerHole(childExpr)
+        const h = registerHole(childExpr)
+
+        return accessor ? `() => (${h})` : h
+      }
       // Round 9 fix: a bare `{el}` where `el` is an element-valued binding
       // (`const el = <X/>`) must be MOUNTED via _mountSlot, not text-coerced
       // via createTextNode (which stringifies the NativeItem). Same emission
@@ -7308,7 +7486,7 @@ export function transformJSX_JS(
       const isElementValuedIdent =
         (childExpr.type === 'Identifier' && elementVars.has(childExpr.name)) ||
         (!isReactive && IDENT_RE.test(expr) && elementVars.has(expr))
-      if (isChildrenExpression(childExpr, expr) || isElementValuedIdent) {
+      if ((!walk && isChildrenExpression(childExpr, expr)) || isElementValuedIdent) {
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
@@ -7346,7 +7524,8 @@ export function transformJSX_JS(
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
-        bindLines.push(`const ${d} = _mountSlot(() => (${expr}), ${parentRef}, ${placeholder}${soleArg})`)
+        const slotArg = walk ? holeArg(true) : `() => (${expr})`
+        bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`)
 
         return '<!>'
       }
@@ -7368,7 +7547,7 @@ export function transformJSX_JS(
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
-        const slotArg = isReactive ? `() => (${expr})` : expr
+        const slotArg = walk ? holeArg(isReactive) : isReactive ? `() => (${expr})` : expr
         bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder}${soleArg})`)
 
         return '<!>'
@@ -8068,6 +8247,28 @@ const RAW_TEXT_ELEMENTS = new Set([
   'noframes',
   'plaintext',
   'noscript',
+])
+
+/**
+ * SVG element names that are NOT also HTML element names (`a`, `script`,
+ * `style`, `title`, `font` are left out; `svg` is checked by name). An element
+ * with one of these tags is SVG content wherever it is written, so a hole under
+ * it is foreign content (`inForeignContent`). The same list as runtime-dom's
+ * `SVG_ROOT_TAGS`. Mirrored by `is_svg_only_tag` in the Rust backend.
+ */
+const SVG_ONLY_TAGS = new Set([
+  'altGlyph', 'altGlyphDef', 'altGlyphItem', 'animate', 'animateColor', 'animateMotion',
+  'animateTransform', 'circle', 'clipPath', 'color-profile', 'cursor', 'defs', 'desc', 'discard',
+  'ellipse', 'feBlend', 'feColorMatrix', 'feComponentTransfer', 'feComposite',
+  'feConvolveMatrix', 'feDiffuseLighting', 'feDisplacementMap', 'feDistantLight',
+  'feDropShadow', 'feFlood', 'feFuncA', 'feFuncB', 'feFuncG', 'feFuncR', 'feGaussianBlur',
+  'feImage', 'feMerge', 'feMergeNode', 'feMorphology', 'feOffset', 'fePointLight',
+  'feSpecularLighting', 'feSpotLight', 'feTile', 'feTurbulence', 'filter', 'font-face',
+  'font-face-format', 'font-face-name', 'font-face-src', 'font-face-uri', 'foreignObject', 'g',
+  'glyph', 'glyphRef', 'hkern', 'image', 'line', 'linearGradient', 'marker', 'mask',
+  'metadata', 'missing-glyph', 'mpath', 'path', 'pattern', 'polygon', 'polyline',
+  'radialGradient', 'rect', 'set', 'stop', 'switch', 'symbol', 'text', 'textPath', 'tref',
+  'tspan', 'use', 'view', 'vkern',
 ])
 
 const VOID_ELEMENTS = new Set([

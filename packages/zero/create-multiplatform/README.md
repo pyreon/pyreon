@@ -1,5 +1,7 @@
 # @pyreon/create-multiplatform
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Scaffold a multiplatform Pyreon app — **one `src/App.tsx` source** that runs on
 **web**, **iOS** (SwiftUI), and **Android** (Jetpack Compose) via PMTC (the
 Pyreon Multi-Target Compiler).

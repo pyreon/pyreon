@@ -22,6 +22,9 @@ const GENERATED = [
   'docs/src/content/docs/troubleshooting.md',
   'docs/src/content/docs/examples.md',
   'docs/src/content/docs/package-catalog.md',
+  'docs/src/mdx/package-stability.generated.ts',
+  // Only the table between the gen:package-tiers markers is generated.
+  'docs/src/content/docs/stability-and-direction.md',
   // Only the table between the gen:lathe-config markers is generated; the
   // rest of the page is hand-written, so an edit there never trips this.
   'docs/src/content/docs/lathe.md',

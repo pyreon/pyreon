@@ -46,5 +46,8 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "pyreon": {
+    "stability": "stable"
   }
 }

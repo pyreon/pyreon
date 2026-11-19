@@ -89,7 +89,7 @@ Single provider for theme, mode and config. Props: `theme`, `mode` (`"light" | "
 
 Opt-in. With the flag off, output is identical to classic mode.
 
-- `<PyreonUI>` tokenizes the enriched theme with `themeToCssVars`, injects the `:root` block once (SSR-aware), and provides a tree of `var()` leaves.
+- `<PyreonUI>` tokenizes the enriched theme with `themeToCssVars`, writes the `:root` block into the sheet's ONE root-variables slot (`sheet.setRootVariables(css)`: replaced on every theme change, never appended; per request on the server, emitted ahead of every other rule; re-applied after `clearAll()`), and provides a tree of `var()` leaves. Variable names depend only on the theme path, so two blocks would fight; never inject a changing block with the append-only `injectRules` (`css-variables-theme-swap.browser.test.tsx`).
 - A light/dark flip is one `documentElement[data-theme]` write, with no re-resolution or class-name churn: under the flag rocketstyle's `_resolveRsEntry` does not read or key on the mode signal.
 - Component-level `mode(a, b)` becomes a hashed, deduplicated var pair (`--px-m-<fnv1a>`). Theme authoring is unchanged.
 - The root provider writes the mode attribute to `document.documentElement` and renders children unwrapped. Only nested or `inversed` providers render a `display: contents` wrapper for their override.

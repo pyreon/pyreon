@@ -40,6 +40,10 @@ describe('Round 14 — SSR-mode codegen parity', () => {
       // The `.map` body is walked, not sliced, so the attribute gets the same
       // accessor a `<li class={c}>` written anywhere else gets.
       .toContain("class={() => (p.x+'-b')}")
+    // The same body under a component parent (the shape #4705 moved this case
+    // to): walked too, so it gets the same accessor.
+    expect(ssr(`function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i=><li class={c}>{i}</li>)}</List> }`))
+      .toContain("class={() => (p.x+'-b')}")
   })
 
   it('signal still auto-calls in SSR', () => {

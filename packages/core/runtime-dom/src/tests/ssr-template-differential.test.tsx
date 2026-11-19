@@ -290,10 +290,12 @@ const cases: DiffCase[] = [
     name: '.map fast path — nested elements + mixed text in item',
     src: `const Node = <ul>{rows.map(r => <li><b>{r.name}</b>: {r.tag}</li>)}</ul>`,
     deps: { rows: rows() },
+    // The item is a template on the client (the hole is walked), so its fixed
+    // non-sole `{r.tag}` is a `<!>` placeholder and takes a server range.
     oracle: (d) =>
       h('ul', null, () =>
         (d.rows as { name: string; tag: string }[]).map((r) =>
-          h('li', null, h('b', null, r.name), ': ', r.tag),
+          h('li', null, h('b', null, r.name), ': ', () => r.tag),
         ),
       ),
   },

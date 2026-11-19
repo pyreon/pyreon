@@ -25,6 +25,7 @@ import {
   ForSymbol,
   Fragment,
   PortalSymbol,
+  propagateError,
   reportError,
   _runHooked,
   _takeHooks,
@@ -2159,176 +2160,200 @@ function hydrateComponent(
     for (const fn of hooks.update) scope.addUpdateHook(fn)
   }
 
-  if (output instanceof Promise) {
-    // Async component hydration. SSR wraps the awaited output in `<!--$pas-->` /
-    // `<!--$pae-->` sentinels, so we find the matching end marker (depth-tracked
-    // for nesting), snapshot the bounded DOM range, advance the parent's sibling
-    // cursor past it synchronously, then await and hydrate the resolved VNode
-    // against that range — wiring events, lifecycle and subscriptions on every
-    // node in the subtree.
-    //
-    // Without markers (older runtime-server) we leave the SSR DOM standing
-    // unhydrated, as before, and warn in dev.
-    let resolvedCleanup: Cleanup = noop
-    let cancelled = false
+  // A throw while hydrating the subtree is contained exactly as
+  // `mountComponent` contains one while mounting it: this component's scope
+  // stops, the owner is restored, the error goes to the nearest boundary (or
+  // is logged) and the walk continues. Escaping instead left the root with
+  // no cleanup to return (siblings' effects could never be disposed) and the
+  // context owner pointing at this dead component.
+  try {
+    if (output instanceof Promise) {
+      // Async component hydration. SSR wraps the awaited output in `<!--$pas-->` /
+      // `<!--$pae-->` sentinels, so we find the matching end marker (depth-tracked
+      // for nesting), snapshot the bounded DOM range, advance the parent's sibling
+      // cursor past it synchronously, then await and hydrate the resolved VNode
+      // against that range — wiring events, lifecycle and subscriptions on every
+      // node in the subtree.
+      //
+      // Without markers (older runtime-server) we leave the SSR DOM standing
+      // unhydrated, as before, and warn in dev.
+      let resolvedCleanup: Cleanup = noop
+      let cancelled = false
 
-    const startMarker = isAsyncStartMarker(domNode) ? (domNode as Comment) : null
-    const endMarker = startMarker ? findMatchingAsyncEnd(startMarker) : null
-    const rangeStart = startMarker ? startMarker.nextSibling : null
+      const startMarker = isAsyncStartMarker(domNode) ? (domNode as Comment) : null
+      const endMarker = startMarker ? findMatchingAsyncEnd(startMarker) : null
+      const rangeStart = startMarker ? startMarker.nextSibling : null
 
-    // The body's code after an `await` builds its templates once the walk
-    // has ended; keep `_tpl` deferring until the `.then` below has hydrated
-    // them against the range (#4353). Released on every settle path and on
-    // unmount.
-    let releaseDeferral: () => void = noop
-    if (startMarker && endMarker) {
-      // Advance the parent's DOM cursor PAST the end marker — synchronous,
-      // so the parent's hydration loop continues normally for siblings.
-      nextDom = endMarker.nextSibling
-      releaseDeferral = _holdTplDeferral()
-    } else {
-      // Markers missing — fall back to "do not touch SSR DOM" behaviour.
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn(
-          `[Pyreon] Hydration: async component <${componentName}> SSR markers ` +
-            'not found. Reactivity for this subtree will NOT be attached. ' +
-            'Ensure `@pyreon/runtime-server` is on the version that emits ' +
-            '<!--$pas-->/<!--$pae--> around awaited component output.',
-        )
-      }
-      nextDom = null
-    }
-
-    output
-      .then((resolved) => {
-        if (cancelled) return
-        if (resolved == null) {
-          releaseDeferral()
-          return
+      // The body's code after an `await` builds its templates once the walk
+      // has ended; keep `_tpl` deferring until the `.then` below has hydrated
+      // them against the range (#4353). Released on every settle path and on
+      // unmount.
+      let releaseDeferral: () => void = noop
+      if (startMarker && endMarker) {
+        // Advance the parent's DOM cursor PAST the end marker — synchronous,
+        // so the parent's hydration loop continues normally for siblings.
+        nextDom = endMarker.nextSibling
+        releaseDeferral = _holdTplDeferral()
+      } else {
+        // Markers missing — fall back to "do not touch SSR DOM" behaviour.
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[Pyreon] Hydration: async component <${componentName}> SSR markers ` +
+              'not found. Reactivity for this subtree will NOT be attached. ' +
+              'Ensure `@pyreon/runtime-server` is on the version that emits ' +
+              '<!--$pas-->/<!--$pae--> around awaited component output.',
+          )
         }
-        if (!startMarker || !endMarker) return
-        try {
-          // Hydrate the resolved subtree against the SSR DOM range.
-          // `anchor = endMarker` bounds the sibling walk; hydrateChild
-          // returns when it has consumed the range or hit the end marker.
-          //
-          // The microtask runs outside the synchronous walk, so re-enter the
-          // walk's ambient state exactly as `hydrateDeferredLazy` does:
-          //  - the owner: this component's scope, so the subtree's
-          //    `useContext()` sees the ancestors' providers and what this
-          //    component provided before its first await (#4377);
-          //  - the hydrating flag: without it a `<Suspense>` in the subtree
-          //    renders its fallback over the server content of a still-loading
-          //    lazy child (and later remounts it), and a compiled `_tpl` builds
-          //    eagerly instead of adopting at its cursor.
-          const prev = setHydrating(true)
-          try {
-            const [childCleanup] = runWithContextOwner(scope, () =>
-              hydrateChild(resolved as VNodeChild, rangeStart, parent, endMarker, `${path}:async`),
-            )
-            resolvedCleanup = childCleanup
-          } finally {
-            setHydrating(prev)
+        nextDom = null
+      }
+
+      output
+        .then((resolved) => {
+          if (cancelled) return
+          if (resolved == null) {
             releaseDeferral()
+            return
           }
-        } catch (err) {
+          if (!startMarker || !endMarker) return
+          try {
+            // Hydrate the resolved subtree against the SSR DOM range.
+            // `anchor = endMarker` bounds the sibling walk; hydrateChild
+            // returns when it has consumed the range or hit the end marker.
+            //
+            // The microtask runs outside the synchronous walk, so re-enter the
+            // walk's ambient state exactly as `hydrateDeferredLazy` does:
+            //  - the owner: this component's scope, so the subtree's
+            //    `useContext()` sees the ancestors' providers and what this
+            //    component provided before its first await (#4377);
+            //  - the hydrating flag: without it a `<Suspense>` in the subtree
+            //    renders its fallback over the server content of a still-loading
+            //    lazy child (and later remounts it), and a compiled `_tpl` builds
+            //    eagerly instead of adopting at its cursor.
+            const prev = setHydrating(true)
+            try {
+              const [childCleanup] = runWithContextOwner(scope, () =>
+                hydrateChild(resolved as VNodeChild, rangeStart, parent, endMarker, `${path}:async`),
+              )
+              resolvedCleanup = childCleanup
+            } finally {
+              setHydrating(prev)
+              releaseDeferral()
+            }
+          } catch (err) {
+            const handled = dispatchToErrorBoundary(err)
+            if (!handled && process.env.NODE_ENV !== 'production') {
+              console.error(
+                `[Pyreon] <${componentName}> threw during async hydration:`,
+                err,
+              )
+            }
+          }
+        })
+        .catch((err) => {
+          releaseDeferral()
+          if (cancelled) return
           const handled = dispatchToErrorBoundary(err)
           if (!handled && process.env.NODE_ENV !== 'production') {
             console.error(
-              `[Pyreon] <${componentName}> threw during async hydration:`,
+              `[Pyreon] <${componentName}> async hydration rejected:`,
               err,
             )
           }
-        }
-      })
-      .catch((err) => {
-        releaseDeferral()
-        if (cancelled) return
-        const handled = dispatchToErrorBoundary(err)
-        if (!handled && process.env.NODE_ENV !== 'production') {
-          console.error(
-            `[Pyreon] <${componentName}> async hydration rejected:`,
-            err,
-          )
-        }
-      })
+        })
 
-    if (process.env.NODE_ENV !== 'production') {
-      _devRegisterScope(scope, prevOwner, componentName, _devFirstElementIn(rangeStart, endMarker))
-    }
+      if (process.env.NODE_ENV !== 'production') {
+        _devRegisterScope(scope, prevOwner, componentName, _devFirstElementIn(rangeStart, endMarker))
+      }
 
-    subtreeCleanup = () => {
-      cancelled = true
-      releaseDeferral()
-      resolvedCleanup()
-      // Remove the SSR markers themselves on unmount so re-mount doesn't
-      // confuse the walker. The DOM range between them is owned by the
-      // resolved cleanup (subtree's mount cleanup removes its nodes).
-      if (startMarker?.parentNode) startMarker.parentNode.removeChild(startMarker)
-      if (endMarker?.parentNode) endMarker.parentNode.removeChild(endMarker)
-    }
-  } else if (isAsyncStartMarker(domNode) && findMatchingAsyncEnd(domNode as Comment) !== null) {
-    // SYNC output over an ASYNC server range. The component was async on the
-    // server (runtime-server wrapped its awaited output in `<!--$pas-->` /
-    // `<!--$pae-->`) and sync here — `island()` is the main case: its server
-    // path awaits the loader, its client path returns the bare
-    // `<pyreon-island>` marker. Hydrating against the `$pas` comment itself
-    // mismatches (`expected pyreon-island, got 8`) and mounts a fresh client
-    // node, throwing away the server-rendered subtree. The range is the
-    // component's extent, exactly as for the Promise path above: hydrate
-    // inside it, then continue the parent's walk after the end marker.
-    const range = hydrateSyncOutputInAsyncRange(output, domNode as Comment, parent, path)
-    subtreeCleanup = range[0]
-    nextDom = range[1]
-    // Registered with devtools like every other hydrated component (the markers
-    // stay in the DOM, so the range is still `[start, end)`).
-    if (process.env.NODE_ENV !== 'production') {
-      _devRegisterScope(
-        scope,
-        prevOwner,
-        componentName,
-        _devFirstElementIn((domNode as Comment).nextSibling, findMatchingAsyncEnd(domNode as Comment)),
-      )
-    }
-  } else if (output != null) {
-    // A `<Suspense>` delimits the range it hydrated so it can move it
-    // off-screen when a descendant mounted LATER suspends it (see
-    // `attachSuspenseBoundary`). The server output carries no such markers —
-    // they are inserted around what the walk claimed, so parity is untouched.
-    const suspenseAttach = suspenseAttachOf(vnode.type)
-    const boundaryStart = suspenseAttach !== undefined ? document.createComment('suspense') : null
-    if (boundaryStart !== null) parent.insertBefore(boundaryStart, domNode ?? anchor)
-    const [childCleanup, next] =
-      process.env.NODE_ENV !== 'production'
-        ? devHydrateRegistered(scope, prevOwner, componentName, output, domNode, parent, anchor, path)
-        : hydrateChild(output, domNode, parent, anchor, path)
-    subtreeCleanup = childCleanup
-    nextDom = next
-    if (boundaryStart !== null) {
-      const boundaryEnd = document.createComment('/suspense')
-      // The range ends at `next`. With no `next` the walk consumed everything
-      // to the parent's end, and `anchor` only delimits that end while it is
-      // still a LATER live sibling. `hydrateMountHole` passes the hole's cursor
-      // as both `domNode` AND `anchor` — for a trailing hole that is the node
-      // the walk just started at (and range adoption may have REMOVED it), so
-      // inserting before it either throws `NotFoundError` or lands the end
-      // marker ahead of the content. Append in that case: a hole is trailing.
-      const endRef =
-        next ?? (anchor !== null && anchor !== domNode && anchor.parentNode === parent ? anchor : null)
-      parent.insertBefore(boundaryEnd, endRef)
-      const boundary = useContext(SuspenseBoundaryContext)
-      const detach =
-        boundary !== null
-          ? suspenseAttach!(boundary, boundaryStart, boundaryEnd, mountChild)
-          : () => {
-              boundaryStart.remove()
-              boundaryEnd.remove()
-            }
       subtreeCleanup = () => {
-        childCleanup()
-        detach()
+        cancelled = true
+        releaseDeferral()
+        resolvedCleanup()
+        // Remove the SSR markers themselves on unmount so re-mount doesn't
+        // confuse the walker. The DOM range between them is owned by the
+        // resolved cleanup (subtree's mount cleanup removes its nodes).
+        if (startMarker?.parentNode) startMarker.parentNode.removeChild(startMarker)
+        if (endMarker?.parentNode) endMarker.parentNode.removeChild(endMarker)
+      }
+    } else if (isAsyncStartMarker(domNode) && findMatchingAsyncEnd(domNode as Comment) !== null) {
+      // SYNC output over an ASYNC server range. The component was async on the
+      // server (runtime-server wrapped its awaited output in `<!--$pas-->` /
+      // `<!--$pae-->`) and sync here — `island()` is the main case: its server
+      // path awaits the loader, its client path returns the bare
+      // `<pyreon-island>` marker. Hydrating against the `$pas` comment itself
+      // mismatches (`expected pyreon-island, got 8`) and mounts a fresh client
+      // node, throwing away the server-rendered subtree. The range is the
+      // component's extent, exactly as for the Promise path above: hydrate
+      // inside it, then continue the parent's walk after the end marker.
+      const range = hydrateSyncOutputInAsyncRange(output, domNode as Comment, parent, path)
+      subtreeCleanup = range[0]
+      nextDom = range[1]
+      // Registered with devtools like every other hydrated component (the markers
+      // stay in the DOM, so the range is still `[start, end)`).
+      if (process.env.NODE_ENV !== 'production') {
+        _devRegisterScope(
+          scope,
+          prevOwner,
+          componentName,
+          _devFirstElementIn((domNode as Comment).nextSibling, findMatchingAsyncEnd(domNode as Comment)),
+        )
+      }
+    } else if (output != null) {
+      // A `<Suspense>` delimits the range it hydrated so it can move it
+      // off-screen when a descendant mounted LATER suspends it (see
+      // `attachSuspenseBoundary`). The server output carries no such markers —
+      // they are inserted around what the walk claimed, so parity is untouched.
+      const suspenseAttach = suspenseAttachOf(vnode.type)
+      const boundaryStart = suspenseAttach !== undefined ? document.createComment('suspense') : null
+      if (boundaryStart !== null) parent.insertBefore(boundaryStart, domNode ?? anchor)
+      const [childCleanup, next] =
+        process.env.NODE_ENV !== 'production'
+          ? devHydrateRegistered(scope, prevOwner, componentName, output, domNode, parent, anchor, path)
+          : hydrateChild(output, domNode, parent, anchor, path)
+      subtreeCleanup = childCleanup
+      nextDom = next
+      if (boundaryStart !== null) {
+        const boundaryEnd = document.createComment('/suspense')
+        // The range ends at `next`. With no `next` the walk consumed everything
+        // to the parent's end, and `anchor` only delimits that end while it is
+        // still a LATER live sibling. `hydrateMountHole` passes the hole's cursor
+        // as both `domNode` AND `anchor` — for a trailing hole that is the node
+        // the walk just started at (and range adoption may have REMOVED it), so
+        // inserting before it either throws `NotFoundError` or lands the end
+        // marker ahead of the content. Append in that case: a hole is trailing.
+        const endRef =
+          next ?? (anchor !== null && anchor !== domNode && anchor.parentNode === parent ? anchor : null)
+        parent.insertBefore(boundaryEnd, endRef)
+        const boundary = useContext(SuspenseBoundaryContext)
+        const detach =
+          boundary !== null
+            ? suspenseAttach!(boundary, boundaryStart, boundaryEnd, mountChild)
+            : () => {
+                boundaryStart.remove()
+                boundaryEnd.remove()
+              }
+        subtreeCleanup = () => {
+          childCleanup()
+          detach()
+        }
       }
     }
+  } catch (err) {
+    scope.stop()
+    setContextOwner(prevOwner)
+    const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
+    if (!handled) {
+      reportError({
+        component: componentName,
+        phase: 'render',
+        error: err,
+        timestamp: Date.now(),
+        props: vnode.props as Record<string, unknown>,
+      })
+      console.error(`[Pyreon] <${componentName}> threw during hydration:`, err)
+    }
+
+    return [noop, domNode]
   }
 
   // A component that rendered nothing registers too, as `mountComponent` does.
@@ -2411,6 +2436,9 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // walk only: async-component continuations run after this frame and keep
   // the eager (armed-or-clone) behavior.
   const prevHydrationActive = setHydrating(true)
+  // The context owner is ambient walk state too: restored with the flags, so
+  // a throw that escapes the walk never leaves it pointing into the tree.
+  const prevOwner = getContextOwner()
   // Dev: compiled mismatch paths are DOM ancestors up to this container.
   if (process.env.NODE_ENV !== 'production') _pushPathRoot(container)
   try {
@@ -2423,6 +2451,7 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
     return cleanup
   } finally {
     setHydrating(prevHydrationActive)
+    setContextOwner(prevOwner)
     if (process.env.NODE_ENV !== 'production') _popPathRoot(container)
   }
 }

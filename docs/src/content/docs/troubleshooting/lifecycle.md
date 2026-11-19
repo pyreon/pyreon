@@ -49,7 +49,7 @@ The web `RouterView` claims its depth from `router._viewDepth`, a counter every 
 
 ### [FIXED, 2026-11] A JSX-building expression the emit SLICES loses the JSX rules.
 
-Wherever the compiler copies source text into a generated accessor without walking it, the JSX inside never gets the rules every other JSX element gets: `{row.label()}` is not made an accessor, a component's `label={row.label()}` gets no `_rp`. In a keyed `.map()` the read then runs in the LIST's accessor, the reconciler keeps the row for the unchanged key, and the cell never updates. Three slice sites: the `_mountSlot(() => (…))` hole of a compiled template (walked by #4705), the `() => (…)` an h()-path child or DOM attribute gets (`<Comp>{rows().map(…)}</Comp>`, the inner `.map` of a keyed row), and a component prop's `_rp(() => …)`. The last two are walked in place now (`wrapWalked` / `wrap_walked`), and the walked JSX stays on the h() path. **Rule: an accessor the emit wraps around an expression that contains JSX is built from zero-width edits around a WALKED range, never from a slice.** Reference: `compiler/src/jsx.ts:wrapWalked`; locked by `compiler/src/tests/wrap-walked-jsx.test.ts` and `runtime-dom/src/tests/keyed-map-row-reactivity.test.tsx` (JS and Rust each reverted alone fail them).
+Wherever the compiler copies source text into a generated accessor without walking it, the JSX inside never gets the rules every other JSX element gets: `{row.label()}` is not made an accessor, a component's `label={row.label()}` gets no `_rp`. In a keyed `.map()` the read then runs in the LIST's accessor, the reconciler keeps the row for the unchanged key, and the cell never updates. Four slice sites, all walked in place now: the `_mountSlot(() => (…))` hole of a compiled template (walked WITH templates, `clientWalksHole`); the same hole in SVG/MathML content (`<svg>{rows().map(…)}</svg>`; a `_tpl` root is namespaced by its own tag, so this hole is walked with its JSX kept on the h() path, `hPathHoles` / `h_path_holes`); the `() => (…)` an h()-path child or DOM attribute gets (`<Comp>{rows().map(…)}</Comp>`, the inner `.map` of a keyed row); and a component prop's `_rp(() => …)` (both `wrapWalked` / `wrap_walked`, JSX kept on the h() path so a component receiving it still gets vnodes). **Rule: an expression that builds JSX is never copied into an accessor as a slice. It is walked in place, with templates only where the consumer is a template hole outside foreign content; everywhere else its JSX stays on the h() path.** A slice of JSX survives only where the JSX is not rendered by the emit (an event handler's body), and there an exactly-bare signal stays bare (`isBareDomBinding`). Reference: `compiler/src/jsx.ts:wrapWalked`, `processOneChild` (`hPathHoles`); locked by `compiler/src/tests/wrap-walked-jsx.test.ts`, `template-hole-walk.test.ts` and `runtime-dom/src/tests/keyed-map-row-reactivity.test.tsx` (JS and Rust each reverted alone fail them).
 
 ---
 
@@ -68,6 +68,12 @@ The callback runs after the surrounding component's setup, when no scope is curr
 ### [FIXED, 2026-11] Resetting the current effect scope to `null` instead of restoring it.
 
 `mountComponent` and `hydrateComponent` ended setup with `setCurrentScope(null)`. A component can mount while another scope is current: inside a parent's `onMount` (`runInScope`) when a signal write flips a `<Show>`, inside a `<For>` row's collector, inside a parent's compiled template. The reset left everything that owner created afterwards with no owner, so an effect created later in the same `onMount` kept running after the parent unmounted. **Rule: code that sets the current scope saves the previous one and restores it on every exit path (`runInScope`, `runRowCallback`), never a constant.** Reference: `runtime-dom/src/mount.ts`, `hydrate.ts`; locked by `mount-restores-scope.test.ts` (h(), hydration, and both compiler backends; bisect-verified).
+
+---
+
+### [FIXED, 2026-11] A hydration walk that lets a subtree throw escape.
+
+`mountComponent` contains a throw from its subtree (stop the component's scope, restore the owner, route to the nearest error boundary or log, continue), but `hydrateComponent`'s `hydrateChild` call had no try/catch. A throw during hydration escaped `hydrateRoot`, so the caller got no cleanup and everything already hydrated (a sibling's effects) could never be disposed, and the context owner stayed pointing at the dead component, so the next mount chained to it. **Rule: the hydrate path contains a throw exactly where and how the mount path does, and every root entry restores the ambient walk state (flags AND context owner) in `finally`.** Reference: `runtime-dom/src/hydrate.ts` (`hydrateComponent`, `hydrateRoot`); locked by `hydrate-throw-disposes.test.ts` (bisect-verified).
 
 ---
 
@@ -110,6 +116,12 @@ Solid-compat's `onCleanup` always meant "component unmount", so a cleanup regist
 ### Side indexes and guards that outlive the entries they describe (Class C)
 
 The ISR memory store capped its cache at `maxEntries` but its tag index only grew (`setTags` added; `delete()` and LRU eviction never pruned), `createFsStore`'s `_tags.json` likewise, and `createISRHandler` kept one invalidation epoch per key EVER passed to `revalidateNow`, though an epoch only guards a render in flight. Rules: every index keyed by a cached entry is pruned on EVERY path that removes the entry (delete, eviction, clear), via a reverse key → index map; a guard for in-flight work lives exactly as long as that work (refcounted ticket, released in `finally`); a read-only lookup must not refresh LRU order. Reference: `packages/zero/zero/src/isr.ts` (`createMemoryStore`, `createFsStore`, `_beginRender`/`_endRender`); locked by `isr-store-bounds.test.ts`, which also caught `revalidateAll` missing a cold render in flight.
+
+---
+
+### Keeping a block whose CONTENT changes under a stable identity in an append-only, content-keyed store
+
+`<PyreonUI>` under `cssVariables` injected each theme's `:root { --px-… }` block with `sheet.injectRules([css], css)`. The variable NAMES depend only on the theme path, so every block redefined the same names and the last INSERTED one won: theme A -&gt; B -&gt; A inserted nothing the third time (A's text was already "injected") and the page kept showing B, while the sheet (and, server side, the process-lifetime rule map) grew by one block per distinct theme. After `clearCache()`, SSR also stopped emitting the block (the dedup set survived, the rules did not). Rule: a block that represents CURRENT state ("the theme now") gets one owned, replaceable slot keyed by its role, not by its content: `sheet.setRootVariables(css)`. Reference: `packages/ui-system/styler/src/sheet.ts`, `packages/ui-system/ui-core/src/PyreonUI.tsx`; locked by `rocketstyle/src/__tests__/css-variables-theme-swap.browser.test.tsx` and `styler/src/__tests__/sheet-root-variables.test.ts`.
 
 ---
 
@@ -306,6 +318,12 @@ The file pickers (`useCamera`, `useFilePicker`, `useImagePicker`) append a hidde
 ### [FIXED, 2026-11] A client convenience fallback written and read on the server.
 
 `<RouterProvider>` also stored its router in a module-level fallback (`setActiveRouter`), and every router hook read `useContext(RouterContext) ?? _activeRouter`. On a server that slot held the LAST page request's router, so a server-island fragment (rendered with no provider) resolved `useRoute()` / `useParams()` / `useSearchParams()` to another user's path and query: a cross-request data exposure. **Rule: a module-level "current X" fallback is client-only; on the server, resolve through request-scoped context or fail.** All router reads go through one resolver (`resolveRouter` in `router/src/router.ts`), which ignores the slot when `isClient` is false, and `setActiveRouter` stores nothing on a server. Locked by `server/src/tests/server-island-router-bleed.test.ts` (node environment; bisect-verified).
+
+---
+
+### [FIXED, 2026-11] A wrapper `ReadableStream` that does not forward `cancel`.
+
+The streaming handler copied the app stream into the response body from `start()` with no `cancel`, so a client disconnect never reached the render: it ran until every Suspense boundary settled or timed out (forever with `suspenseTimeoutMs: Infinity`), and its next write into the cancelled body threw and was logged and reported to `onError` as a render failure. **Rule: a stream that pumps another must implement `cancel` by cancelling its source reader, stop writing once cancelled, and never report a consumer disconnect as an error.** Reference: `server/src/handler.ts:renderStreamResponse`; locked by `handler-stream-cancel.test.ts` (bisect-verified).
 
 ---
 

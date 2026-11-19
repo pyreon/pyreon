@@ -1,5 +1,7 @@
 # @pyreon/query
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Pyreon adapter for TanStack Query — reactive queries, mutations, suspense, subscriptions, SSE.
 
 `@pyreon/query` wraps `@tanstack/query-core` with Pyreon's fine-grained signal model: every observer field (`data`, `error`, `isFetching`, …) is its own `Signal<T>`, so reading `query.data()` doesn't re-run when `isFetching` flips. Query options are passed as a **function** so reactive values (signal-driven query keys, params) trigger automatic refetches; mutation options are a plain object because mutations are imperative. Ships `useQuery` / `useMutation` / `useInfiniteQuery` / `useQueries`, Suspense variants, `useSubscription` (WebSocket) + `useSSE` (Server-Sent Events) with QueryClient cache integration, and the full `@tanstack/query-core` re-export so consumers get one import surface.

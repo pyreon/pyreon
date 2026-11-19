@@ -14,16 +14,19 @@
  * sat inside a SLICED expression — source text the emit copied into a
  * generated accessor without walking it:
  *
- *  - the `_mountSlot(() => (…))` hole of a compiled template (`<ul>{rows().map(…)}</ul>`)
- *    — walked by #4705, not here; those shapes are `it.fails` below until it lands;
+ *  - the `_mountSlot(() => (…))` hole of a compiled template (`<ul>{rows().map(…)}</ul>`),
+ *    walked with templates since #4705;
+ *  - the same hole in SVG/MathML content (`<svg>{rows().map(…)}</svg>`), which
+ *    #4705 left a slice because a `_tpl` root is namespaced by its own tag;
  *  - the `() => (…)` an h()-path child gets (`<Comp>{rows().map(…)}</Comp>`, and
  *    the inner `.map` of a keyed row, which stays on the h() path);
  *  - the `_rp(() => …)` of a component prop (`<List items={rows().map(…)} />`).
  *
  * The read then ran in the LIST's accessor: the list re-ran, the reconciler kept
- * the row for the unchanged key, and the cell stayed stale. This PR walks the
- * last two slices (`wrapWalked` / `wrap_walked`), so those rows bind their own
- * reads. Real compiler, both backends.
+ * the row for the unchanged key, and the cell stayed stale. The last three are
+ * now walked with their JSX kept on the h() path (`wrapWalked` / `wrap_walked`,
+ * and `hPathHoles` / `h_path_holes` for the foreign hole), so those rows bind
+ * their own reads. Real compiler, both backends.
  */
 import { createRequire } from 'node:module'
 import { transformJSX_JS } from '@pyreon/compiler'
@@ -109,8 +112,6 @@ interface Shape {
   src: string
   /** The text (or class) of the SECOND row, after its signals changed. */
   read: (c: HTMLElement) => string
-  /** Fixed by #4705's template-hole walk, not by this PR. */
-  hole?: true
 }
 
 const second = (sel: string) => (c: HTMLElement) => c.querySelectorAll(sel)[1]?.textContent ?? ''
@@ -150,41 +151,48 @@ const SHAPES: Shape[] = [
     name: 'template hole: text (the reported shape)',
     src: 'function App() { return <table><tbody>{rows().map((row) => <tr key={row.id}><td>{row.id}</td><td class="l">{row.label()}</td></tr>)}</tbody></table> }',
     read: (c) => c.querySelectorAll('td.l')[1]?.textContent ?? '',
-    hole: true,
+  },
+  {
+    name: 'template hole in SVG content (walked on the h() path)',
+    src: 'function App() { return <svg>{rows().map((row) => <g key={row.id}><text class="l">{row.label()}</text></g>)}</svg> }',
+    read: (c) => c.querySelectorAll('text.l')[1]?.textContent ?? '',
   },
   {
     name: 'template hole: explicit accessor',
     src: 'function App() { return <ul>{() => rows().map((row) => <li key={row.id}>{row.label()}</li>)}</ul> }',
     read: second('li'),
-    hole: true,
   },
 ]
 
 function expectRowUpdatesInPlace(compile: Backend, shape: Shape): void {
   const rows = signal([mk(1), mk(2), mk(3)])
   const c = mountApp(load(compile, shape.src, { rows, Comp, List, Row }))
-  const before = c.querySelectorAll('li, tr')[1]
+  const before = c.querySelectorAll('li, tr, g')[1]
   rows()[1]!.label.set('CHANGED')
   rows()[1]!.cls.set('CHANGED')
   expect(shape.read(c)).toBe('CHANGED')
   // The row was updated in place, not re-created.
-  expect(c.querySelectorAll('li, tr')[1]).toBe(before)
+  expect(c.querySelectorAll('li, tr, g')[1]).toBe(before)
 }
 
 describe('keyed .map() row reads its own signals (compiled)', () => {
   for (const [name, compile] of backends) {
-    for (const shape of SHAPES.filter((s) => !s.hole)) {
+    for (const shape of SHAPES) {
       it(`${name}: ${shape.name}`, () => {
         expectRowUpdatesInPlace(compile, shape)
       })
     }
-    // #4705 walks template holes; until it lands these stay stale. When it
-    // merges, these become plain `it`s (the second PR to land does it).
-    for (const shape of SHAPES.filter((s) => s.hole)) {
-      it.fails(`${name}: ${shape.name}`, () => {
-        expectRowUpdatesInPlace(compile, shape)
-      })
-    }
+
+    it(`${name}: rows walked from an SVG hole are SVG elements`, () => {
+      const rows = signal([mk(1), mk(2)])
+      const src = SHAPES.find((s) => s.src.includes('<svg>'))!.src
+      const c = mountApp(load(compile, src, { rows }))
+      const g = c.querySelectorAll('g')
+      expect(g.length).toBe(2)
+      for (const el of [...g, ...c.querySelectorAll('text')]) {
+        expect(el.namespaceURI).toBe('http://www.w3.org/2000/svg')
+      }
+    })
 
     it(`${name}: SSR → hydrate, then a row's signal updates its adopted row`, async () => {
       const src = SHAPES[0]!.src
@@ -201,6 +209,26 @@ describe('keyed .map() row reads its own signals (compiled)', () => {
       rows()[1]!.label.set('CHANGED')
       expect(host.querySelectorAll('li')[1]).toBe(li)
       expect(li!.textContent).toBe('CHANGED')
+    })
+
+    // The server range of an SVG hole carries no markers, so hydration rebuilds
+    // the rows (no warning); this locks that a hydrated row then updates in place.
+    it(`${name}: SSR → hydrate an SVG hole, then a row's signal updates that row`, async () => {
+      const src = SHAPES.find((s) => s.src.includes('<svg>'))!.src
+      const rows = signal([mk(1), mk(2)])
+      const html = await renderToString(core.h(load(compile, src, { rows }, true) as never, null))
+      const host = document.createElement('div')
+      host.innerHTML = html
+      document.body.appendChild(host)
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const dispose = dom.hydrateRoot(host, core.h(load(compile, src, { rows }) as never, null))
+      mounted.push(dispose)
+      expect(warn).not.toHaveBeenCalled()
+      expect(host.querySelectorAll('text.l')).toHaveLength(2)
+      const text = host.querySelectorAll('text.l')[1]
+      rows()[1]!.label.set('CHANGED')
+      expect(host.querySelectorAll('text.l')[1]).toBe(text)
+      expect(text!.textContent).toBe('CHANGED')
     })
   }
 })
