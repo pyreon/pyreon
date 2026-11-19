@@ -1,3 +1,4 @@
+// pyreon-lint-disable-file pyreon/no-missing-fallback -- these are route tables fed to routeCommands, not a router's own config
 import { describe, expect, it, vi } from 'vitest'
 import { createRouter } from '@pyreon/router'
 import { createCommands } from '../commands'

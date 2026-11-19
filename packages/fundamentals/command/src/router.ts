@@ -52,7 +52,7 @@ function isNavigable(path: string): boolean {
 
 function defaultTitle(route: RouteInfo): string {
   if (typeof route.meta.title === 'string' && route.meta.title !== '') return route.meta.title
-  if (route.path === '/') return 'Home'
+  if (route.path.length <= 1) return 'Home'
   const last = route.path.split('/').filter(Boolean).at(-1) ?? ''
 
   return readable(route.name ?? last)
