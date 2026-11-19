@@ -364,6 +364,25 @@ describe('the month, right to left, recurring events, touch', () => {
     expect(changes[0]).toMatchObject({ start: '2026-11-25', end: '2026-11-27', allDay: true })
   })
 
+  it('a timed event dragged in the month follows the pointer into the cell it would land in', async () => {
+    const { root } = make({ view: 'month', list: [ev('Call', '2026-11-18T09:00', '2026-11-18T10:00')] })
+    const call = monthEvent(root, 'Call')
+    const from = centre(call)
+    const to = dayCentre(root, '2026-11-25')
+    await mouse('mouseMoved', from.x, from.y)
+    await mouse('mousePressed', from.x, from.y)
+    await mouse('mouseMoved', to.x, to.y)
+    await sleep(20)
+    const moved = call.getBoundingClientRect()
+    const target = (root.querySelector('.pcal-day[data-date="2026-11-25"]') as HTMLElement).getBoundingClientRect()
+    expect(moved.top).toBeGreaterThanOrEqual(target.top - 1)
+    expect(moved.top).toBeLessThan(target.bottom)
+    expect(moved.left).toBeGreaterThanOrEqual(target.left - 1)
+    expect(moved.left).toBeLessThan(target.right)
+    await mouse('mouseReleased', to.x, to.y)
+    await sleep(40)
+  })
+
   it('resizes an all-day bar from its end and from its start', async () => {
     const { root, changes } = make({ view: 'month', list: [ev('Trip', '2026-11-17', '2026-11-19')] })
     const bar = monthEvent(root, 'Trip').getBoundingClientRect()
