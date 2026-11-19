@@ -2204,7 +2204,7 @@
      "href": "/docs/patterns/imperative-toasts"
     },
     {
-     "title": "Upload",
+     "title": "File uploads",
      "href": "/docs/patterns/upload"
     },
     {
@@ -2533,7 +2533,7 @@
        "href": "/docs/reference/toast"
       },
       {
-       "title": "Upload",
+       "title": "File uploads",
        "href": "/docs/reference/upload"
       },
       {
