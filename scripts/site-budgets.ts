@@ -25,12 +25,13 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { listDirIfExists, readTextIfExists } from './fs-read'
 import { closureGzip } from './js-closure'
+import { removeOnExit } from './remove-on-exit'
 import { prepareBaseTree, run } from './size-base-tree'
 import {
   type BaseFamily,
@@ -110,6 +111,7 @@ interface Measured {
 /** Loads every route of `routes` from the build at `dist` in Chromium and returns the bytes each requested. */
 function measureInBrowser(dist: string, routes: readonly string[], checkoutRoot: string): Measured[] {
   const out = mkdtempSync(join(tmpdir(), 'pyreon-site-sizes-'))
+  const removeOut = removeOnExit(out)
   try {
     // This checkout's measuring spec, pointed at the build to measure: the
     // base of a pull request is measured by the same code as its head.
@@ -136,7 +138,7 @@ function measureInBrowser(dist: string, routes: readonly string[], checkoutRoot:
       .filter((e) => e.name.endsWith('.json'))
       .map((e) => JSON.parse(readTextIfExists(join(out, e.name)) ?? '{}') as Measured)
   } finally {
-    rmSync(out, { recursive: true, force: true })
+    removeOut()
   }
 }
 
@@ -181,7 +183,12 @@ export function measureSite(dist: string, ids: readonly string[], checkoutRoot: 
 export function measureSiteBase(ref: string, ids: readonly string[], dir?: string): SiteBaseFile {
   const sha = run('git', ['rev-parse', '--verify', `${ref}^{commit}`], REPO_ROOT).trim()
   const changed = run('git', ['diff', '--name-only', sha, 'HEAD'], REPO_ROOT).split('\n').filter(Boolean)
-  const tree = resolve(dir ?? join(mkdtempSync(join(tmpdir(), 'pyreon-site-base-')), 'tree'))
+  // The worktree and its mkdtemp parent are removed on every exit path, a kill
+  // included, and the worktree is unregistered from the repository.
+  const parent = dir === undefined ? mkdtempSync(join(tmpdir(), 'pyreon-site-base-')) : undefined
+  const tree = resolve(dir ?? join(parent!, 'tree'))
+  const removeTree = removeOnExit(tree, { gitWorktree: REPO_ROOT })
+  const removeParent = parent === undefined ? undefined : removeOnExit(parent)
   run('git', ['worktree', 'add', '--detach', '--force', tree, sha], REPO_ROOT)
   try {
     // An absent directory reads as no ceilings: a base from before this family.
@@ -196,8 +203,8 @@ export function measureSiteBase(ref: string, ids: readonly string[], dir?: strin
 
     return base
   } finally {
-    spawnSync('git', ['worktree', 'remove', '--force', tree], { cwd: REPO_ROOT })
-    rmSync(tree, { recursive: true, force: true })
+    removeTree()
+    removeParent?.()
   }
 }
 
