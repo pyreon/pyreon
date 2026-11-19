@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
 import type { Command } from './types'
 

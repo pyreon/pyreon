@@ -3,7 +3,8 @@ import { h } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { hydrateRoot, mount, onHydrationMismatch } from '@pyreon/runtime-dom'
 import axe from 'axe-core'
-import { userEvent } from 'vitest/browser'
+import type {} from '@vitest/browser-playwright' // brings in the typing of cdp().send
+import { cdp, userEvent } from 'vitest/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import '../../style.css'
 import { createCommands } from '../commands'
@@ -434,6 +435,64 @@ describe('touch and pointer', () => {
     close.click()
     await sleep()
     expect(dialog()).toBeNull()
+  })
+})
+
+describe('touch and motion, through the browser protocol', () => {
+  /** The centre of an element in the coordinates of the top page (the test runs in a scaled iframe). */
+  function centre(el: Element): { x: number; y: number } {
+    const r = el.getBoundingClientRect()
+    const frame = window.frameElement
+    const f = frame === null ? { left: 0, top: 0, width: window.innerWidth } : frame.getBoundingClientRect()
+    const scale = frame === null ? 1 : f.width / window.innerWidth
+
+    return { x: f.left + (r.left + r.width / 2) * scale, y: f.top + (r.top + r.height / 2) * scale }
+  }
+
+  async function tap(el: Element): Promise<void> {
+    const session = cdp()
+    const { x, y } = centre(el)
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  }
+
+  it('is usable with taps alone: a tap runs a row, opens a page, goes back and closes', async () => {
+    let ran = 0
+    const commands = registry(cmd('theme', { title: 'Theme', children: [cmd('dark', { title: 'Dark', run: () => void ran++ })] }), cmd('other', { title: 'Other' }))
+    await cdp().send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 })
+    cleanups.push(() => void cdp().send('Emulation.setTouchEmulationEnabled', { enabled: false }))
+    const kinds: string[] = []
+    const seen = (event: PointerEvent): void => void kinds.push(event.pointerType)
+    document.addEventListener('pointerdown', seen, true)
+    cleanups.push(() => document.removeEventListener('pointerdown', seen, true))
+    await openWith(commands)
+    await tap(options().find((o) => o.textContent?.includes('Theme'))!)
+    await sleep(60)
+    expect(titles()).toEqual(['Dark'])
+    await tap(dialog()!.querySelector('.pcmd-back')!)
+    await sleep(60)
+    expect([...titles()].sort()).toEqual(['Other', 'Theme'])
+    await tap(options().find((o) => o.textContent?.includes('Theme'))!)
+    await sleep(60)
+    await tap(options()[0]!)
+    await sleep(60)
+    expect(ran).toBe(1)
+    expect(dialog()).toBeNull()
+    expect(kinds.length).toBeGreaterThan(0)
+    expect(kinds.every((kind) => kind === 'touch')).toBe(true)
+  })
+
+  it('animates the opening only when the user has not asked for reduced motion', async () => {
+    const session = cdp()
+    await session.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+    cleanups.push(() => void session.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] }))
+    await openWith(registry(cmd('a')))
+    expect(getComputedStyle(dialog()!).animationName).toBe('none')
+    await userEvent.keyboard('{Escape}')
+    await session.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
+    await userEvent.keyboard(KEY)
+    await sleep(20)
+    expect(getComputedStyle(dialog()!).animationName).toBe('pcmd-in')
   })
 })
 
