@@ -207,6 +207,10 @@ A WAI-ARIA **grid** of day cells. The events are buttons inside the cell they st
 
 A WAI-ARIA **grid** whose rows are the slots and whose columns are the days, with a header row, an all-day row, a time gutter, each event a button inside the slot it starts in (placed and sized by the column packing), opening hours shaded, and the now line in the slot the clock is in (also on a day with a skipped or repeated hour: see "Days that change length"). A week in `hiddenDays` has fewer columns. Slots are `slot` minutes (30 by default) from `dayStart` to `dayEnd`.
 
+### On a phone
+
+The stylesheet answers to the width of the calendar (a container query), not the screen. Below 560 px the **month** shows events as thin bars (their names stay in the markup, and a tap on a day calls `onSelect`, so open a day view or a list there); the **time grid** keeps columns at least `--pcal-col-min` wide (96 px) and **scrolls sideways** with the time gutter and the header kept in place, instead of squeezing seven columns into 40 px each. For a phone the better answer is usually fewer columns: `view: 'days'` with `days: 1` to `3` (and `views` of the toolbar to match). A group of many overlapping events is crowded in any narrow column; a one-day view gives them the whole width. Focus rings are 3 px in `--pcal-focus` (a stronger blue in light mode, a light blue in dark mode); colours follow `prefers-color-scheme` through the system colours, so dark mode needs no extra CSS.
+
 ## Keyboard and accessibility
 
 | Key | Month | Time grid |

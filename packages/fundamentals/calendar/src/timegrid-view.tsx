@@ -36,6 +36,7 @@ function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences:
       type="button"
       class="pcal-event pcal-block"
       style={`${blockStyle(props.block, props.slotStart, grid.slot, grid.from, grid.to)}${colorStyle(o.event.color)}`}
+      data-short={props.block.endMinute - props.block.startMinute < 45 ? '' : undefined}
       data-recurring={o.recurring ? '' : undefined}
       data-continues-before={props.block.continuesBefore ? '' : undefined}
       data-continues-after={props.block.continuesAfter ? '' : undefined}

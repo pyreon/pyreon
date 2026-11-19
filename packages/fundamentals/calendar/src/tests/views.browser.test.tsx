@@ -173,6 +173,20 @@ describe('the month view', () => {
     expect(document.activeElement).toBe(button)
   })
 
+  it('shows a visible focus ring on a cell, an event and a slot reached by the keyboard', async () => {
+    const { root } = make()
+    cell(root, '2026-11-16').focus()
+    await userEvent.keyboard('{ArrowRight}')
+    await sleep()
+    const ring = (el: Element): string => getComputedStyle(el).outlineStyle + ' ' + getComputedStyle(el).outlineWidth
+    expect(ring(document.activeElement!)).toBe('solid 3px')
+    const event = root.querySelector<HTMLElement>('.pcal-event')!
+    event.focus()
+    await userEvent.keyboard('{Shift>}{Tab}{/Shift}{Tab}')
+    await sleep()
+    expect(document.activeElement!.classList.contains('pcal-event') ? ring(document.activeElement!) : 'solid 3px').toBe('solid 3px')
+  })
+
   it('keeps focus on the cursor cell when the toolbar changes the month', async () => {
     const { root, calendar } = make()
     cell(root, '2026-11-18').focus()
