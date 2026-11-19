@@ -14,6 +14,7 @@ import {
   FX_LIST_VUE_TEMPLATE,
   FX_ROW_VUE_TEMPLATE,
   HYDRATION_VUE_TEMPLATE,
+  MAPLIST_VUE_TEMPLATE,
   MEMO_APP_VUE_TEMPLATE,
   MEMO_CONSUMER_VUE_TEMPLATE,
   MEMO_LIST_VUE_TEMPLATE,
@@ -35,6 +36,7 @@ import {
  *  - `virtual:tree-*-vue-render`    — the deep-tree scenario (node + root)
  *  - `virtual:fx-*-vue-render`      — the effect-heavy list (row + list)
  *  - `virtual:memo-*-vue-render`    — the memoization wall (app, list, consumer)
+ *  - `virtual:maplist-vue-render`   — the keyed `.map()` list scenario
  *  - `virtual:apppage-*-vue-render` — the app-page hydration page (client side)
  *
  * This exists because the two easier routes both measure something other than
@@ -64,6 +66,7 @@ function vueTemplatesPlugin(): Plugin {
     'virtual:memo-app-vue-render': MEMO_APP_VUE_TEMPLATE,
     'virtual:memo-list-vue-render': MEMO_LIST_VUE_TEMPLATE,
     'virtual:memo-consumer-vue-render': MEMO_CONSUMER_VUE_TEMPLATE,
+    'virtual:maplist-vue-render': MAPLIST_VUE_TEMPLATE,
     'virtual:apppage-vue-render': APPPAGE_VUE_TEMPLATE,
     'virtual:apppage-section-header-vue-render': APPPAGE_SECTION_HEADER_VUE_TEMPLATE,
     'virtual:apppage-form-row-vue-render': APPPAGE_FORM_ROW_VUE_TEMPLATE,

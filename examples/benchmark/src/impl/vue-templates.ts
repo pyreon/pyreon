@@ -54,6 +54,13 @@ export const MEMO_LIST_VUE_TEMPLATE = `<span class="memo-bucket">{{ bucket }}</s
 export const MEMO_CONSUMER_VUE_TEMPLATE = `<span class="memo-consumer">{{ bucket }}</span>`
 
 /**
+ * Keyed `.map()` list (`scenario-maplist.ts`) — Vue's idiom for that shape is a
+ * keyed `v-for`, and for conditional JSX in a slot a `v-if` / `v-else` pair.
+ * Same DOM as every other arm (`scenario-maplist-shared.ts`).
+ */
+export const MAPLIST_VUE_TEMPLATE = `<div class="ml"><table><tbody><tr v-for="row in rows" :key="row.id"><td class="id">{{ row.id }}</td><td class="label">{{ row.label }}</td><td class="status"><span v-if="row.done" class="done">done</span><em v-else class="todo">todo</em></td></tr></tbody></table><p v-if="rows.length === 0" class="empty">No rows</p></div>`
+
+/**
  * App-page hydration scenario (`apppage-shared.ts`) — the settings page as
  * three SFC-style components. Like `HYDRATION_VUE_TEMPLATE`, BOTH the fixture
  * generator (server render, compiled at runtime in bun) and the browser
