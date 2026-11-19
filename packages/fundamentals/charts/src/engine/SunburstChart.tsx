@@ -10,7 +10,7 @@ import type { TreeNode } from './treemap'
 import type { Double, Pt } from './types'
 
 export interface SunburstChartProps extends CanvasHostProps {
-  data: TreeNode[] | (() => TreeNode[])
+  data: readonly TreeNode[] | (() => readonly TreeNode[])
   /** Hole radius as a fraction of the outer radius; default 0.2. */
   innerRatio?: Double
   sunburst?: SunburstOptions
@@ -23,7 +23,7 @@ export interface SunburstChartProps extends CanvasHostProps {
 interface Geometry { arcs: SunburstArc[]; center: Pt }
 
 export function SunburstChart(props: SunburstChartProps): VNode {
-  const readData = (): TreeNode[] => (typeof props.data === 'function' ? (props.data as () => TreeNode[])() : props.data)
+  const readData = (): readonly TreeNode[] => (typeof props.data === 'function' ? (props.data as () => readonly TreeNode[])() : props.data)
   return canvasHost<Geometry>({
     props,
     defaultHeight: 300,

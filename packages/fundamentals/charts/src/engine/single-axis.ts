@@ -4,7 +4,7 @@ import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
 
 export interface SingleAxisSpec {
   type?: 'category' | 'value' | undefined
-  categories?: string[] | undefined
+  categories?: readonly string[] | undefined
   /** Fixed extent for a value axis; default the data's min/max. */
   domain?: Domain | undefined
   name?: string | undefined
@@ -55,7 +55,7 @@ function niceTicks(lo: Double, hi: Double, count: number): Double[] {
 }
 
 /** Lay the axis across `box` (vertically centred) and place the points on it. */
-export function layoutSingleAxis(axis: SingleAxisSpec, points: SingleAxisPoint[], box: Rect, options?: SingleAxisOptions): SingleAxisLayout {
+export function layoutSingleAxis(axis: SingleAxisSpec, points: readonly SingleAxisPoint[], box: Rect, options?: SingleAxisOptions): SingleAxisLayout {
   const fontSize = options?.fontSize ?? 11.0
   const base = options?.radius ?? 5.0
   const isCat = axis.type === 'category'

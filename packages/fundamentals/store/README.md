@@ -1,5 +1,7 @@
 # @pyreon/store
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Pinia-inspired composition stores backed by Pyreon signals.
 
 Global reactive state management built on `@pyreon/reactivity`. Singleton stores defined by a setup function whose signals become tracked state and whose functions become interceptable actions. Returns a structured `StoreApi<T>` with `patch()` / `subscribe()` / `onAction()` / `reset()` / `dispose()`. Fits between component-local signals and a full state-tree — use it for cross-component state, plugin-extensible app stores, and SSR-isolated request state via `setStoreRegistryProvider`.

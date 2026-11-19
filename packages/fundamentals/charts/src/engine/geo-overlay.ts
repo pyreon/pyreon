@@ -33,7 +33,7 @@ export interface GeoPie {
   lat: Double
   radius: Double
   innerRadius: Double
-  slices: Slice[]
+  slices: readonly Slice[]
 }
 
 export interface GeoCoordinate {
@@ -42,7 +42,7 @@ export interface GeoCoordinate {
 }
 
 export interface GeoOverlayPath {
-  coords: GeoCoordinate[]
+  coords: readonly GeoCoordinate[]
   color?: string | undefined
   width?: Double | undefined
 }
@@ -57,7 +57,7 @@ export interface GeoOverlayOptions {
   progress?: Double | undefined
 }
 
-export function geoOverlayPointRadii(points: GeoOverlayPoint[], base: Double): Double[] {
+export function geoOverlayPointRadii(points: readonly GeoOverlayPoint[], base: Double): Double[] {
   let hi = 0.0
   for (const p of points) {
     const value = p.value ?? 0.0
@@ -72,7 +72,7 @@ export function geoOverlayPointRadii(points: GeoOverlayPoint[], base: Double): D
   return out
 }
 
-export function renderGeoOverlayPoints(layout: GeoLayout, points: GeoOverlayPoint[], options?: GeoOverlayOptions): DrawCmd[] {
+export function renderGeoOverlayPoints(layout: GeoLayout, points: readonly GeoOverlayPoint[], options?: GeoOverlayOptions): DrawCmd[] {
   const out: DrawCmd[] = []
   const base = options?.radius ?? 5.0
   const color = options?.color ?? '#b42318'
@@ -98,7 +98,7 @@ export function renderGeoOverlayPoints(layout: GeoLayout, points: GeoOverlayPoin
   return out
 }
 
-export function renderGeoOverlayPaths(layout: GeoLayout, paths: GeoOverlayPath[], options?: GeoOverlayOptions): DrawCmd[] {
+export function renderGeoOverlayPaths(layout: GeoLayout, paths: readonly GeoOverlayPath[], options?: GeoOverlayOptions): DrawCmd[] {
   const out: DrawCmd[] = []
   const color = options?.color ?? '#b42318'
   const rawP = options?.progress ?? 1.0
@@ -120,7 +120,7 @@ export function renderGeoOverlayPaths(layout: GeoLayout, paths: GeoOverlayPath[]
   return out
 }
 
-export function hitGeoOverlayPoint(layout: GeoLayout, points: GeoOverlayPoint[], px: Double, py: Double, base?: Double): number {
+export function hitGeoOverlayPoint(layout: GeoLayout, points: readonly GeoOverlayPoint[], px: Double, py: Double, base?: Double): number {
   const radii = geoOverlayPointRadii(points, base ?? 5.0)
   let best = -1
   let bestD = 999999999999.0
@@ -142,7 +142,7 @@ export function hitGeoOverlayPoint(layout: GeoLayout, points: GeoOverlayPoint[],
  * overlap. The blob is a radial gradient over a circle polygon, which every
  * backend paints; its solid fill is the fallback.
  */
-export function renderGeoHeat(layout: GeoLayout, points: GeoHeatPoint[], stops: readonly string[], radius: Double, progress: Double): DrawCmd[] {
+export function renderGeoHeat(layout: GeoLayout, points: readonly GeoHeatPoint[], stops: readonly string[], radius: Double, progress: Double): DrawCmd[] {
   const out: DrawCmd[] = []
   let lo = 0.0
   let hi = 0.0
@@ -176,7 +176,7 @@ export function geoHeatStops(stops: string[], fallback: string[] | undefined): s
 }
 
 /** Pies centred on geographic points, each `radius` pixels, sweeping as `progress` grows. */
-export function renderGeoPies(layout: GeoLayout, pies: GeoPie[], progress: Double): DrawCmd[] {
+export function renderGeoPies(layout: GeoLayout, pies: readonly GeoPie[], progress: Double): DrawCmd[] {
   const out: DrawCmd[] = []
   const t = progress < 0.0 ? 0.0 : progress > 1.0 ? 1.0 : progress
   for (const pie of pies) {
@@ -203,7 +203,7 @@ export interface GeoTrail {
 }
 
 /** The trail and head on each projected path at `time` seconds — the cartesian lines trail, over the geo projection. */
-export function renderGeoTrails(layout: GeoLayout, paths: GeoOverlayPath[], trail: GeoTrail, time: Double, fallbackColor: string): DrawCmd[] {
+export function renderGeoTrails(layout: GeoLayout, paths: readonly GeoOverlayPath[], trail: GeoTrail, time: Double, fallbackColor: string): DrawCmd[] {
   const out: DrawCmd[] = []
   const period = trail.period > 0.0 ? trail.period : 4.0
   const cycles = time / period

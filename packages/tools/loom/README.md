@@ -1,8 +1,8 @@
 # @pyreon/loom
 
-**Monorepo dependency observatory** — reads your workspace the way an install tool does and turns its dependency fabric into data: the internal graph (depths, cycles, blast radius), the external version-usage map, and a detector-driven issue list with honest severities.
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
 
-> Status: private / pre-release. API and findings vocabulary may still move.
+**Monorepo dependency observatory** — reads your workspace the way an install tool does and turns its dependency fabric into data: the internal graph (depths, cycles, blast radius), the external version-usage map, and a detector-driven issue list with honest severities.
 
 ## Commands
 

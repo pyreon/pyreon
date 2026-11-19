@@ -36,5 +36,8 @@
   ],
   "libc": [
     "glibc"
-  ]
+  ],
+  "pyreon": {
+    "stability": "stable"
+  }
 }
