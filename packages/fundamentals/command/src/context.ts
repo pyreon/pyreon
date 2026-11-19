@@ -1,5 +1,6 @@
 import { createContext, provide, useContext } from '@pyreon/core'
-import { createCommands, detached } from './commands'
+import { createCommands } from './commands'
+import { detached } from './entry'
 import type { Command, Commands } from './types'
 
 const CommandsContext = createContext<Commands | null>(null)

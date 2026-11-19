@@ -26,11 +26,11 @@ describe('fuzzyMatch', () => {
   })
 
   it('folds a decomposed query and text (e + combining acute) to the same thing', () => {
-    const decomposed = 'Résumé'
+    const decomposed = 'Re\u0301sume\u0301'
     expect(fuzzyMatch('resume', decomposed)).not.toBeNull()
     expect(fuzzyMatch(decomposed, 'Résumé')).not.toBeNull()
     // the range covers the whole decomposed unit, mark included
-    expect(sliced(decomposed, ranges('re', decomposed))).toEqual(['Ré'])
+    expect(sliced(decomposed, ranges('re', decomposed))).toEqual(['Re\u0301'])
   })
 
   it('spells out German letters: strasse finds Straße and Größe is found by grosse', () => {
@@ -51,8 +51,8 @@ describe('fuzzyMatch', () => {
     const text = '🎨 Select Theme'
     expect(ranges('🎨', text)).toEqual([[0, 2]])
     expect(sliced(text, ranges('sel', text))).toEqual(['Sel'])
-    const family = 'Family 👨‍👩‍👧 Plan'
-    expect(sliced(family, ranges('👨‍👩‍👧', family))).toEqual(['👨‍👩‍👧'])
+    const family = 'Family 👨\u200d👩\u200d👧 Plan'
+    expect(sliced(family, ranges('👨\u200d👩\u200d👧', family))).toEqual(['👨\u200d👩\u200d👧'])
     // a skin-tone modifier is part of its emoji, so the emoji matches itself and never half of itself
     const wave = 'Say 👋🏽 hello'
     const r = ranges('👋🏽', wave)
@@ -62,8 +62,8 @@ describe('fuzzyMatch', () => {
     expect(sliced(flag, ranges('🇨🇿', flag))).toEqual(['🇨🇿'])
   })
 
-  it('treats the variation selector of an emoji as nothing: ❤ finds ❤️', () => {
-    expect(fuzzyMatch('❤', 'Love ❤️')).not.toBeNull()
+  it('treats the variation selector of an emoji as nothing: ❤ finds ❤\ufe0f', () => {
+    expect(fuzzyMatch('❤', 'Love ❤\ufe0f')).not.toBeNull()
   })
 
   it('matches the words of a query in any order', () => {
@@ -128,9 +128,11 @@ describe('fuzzyMatch', () => {
     })
 
     it('never throws for lone surrogates, lone marks, control characters and NUL', () => {
-      for (const t of ['\ud83d', '\ude00', '́', '‍', '️', 'a\u0000b', '‮abc', '\ud83d x', 'é́́'])
-        for (const q of ['a', '\ud83d', '́', 'b', '😀', ''])
+      for (const t of ['\ud83d', '\ude00', '\u0301', '\u200d', '\ufe0f', 'a\u0000b', '\u202eabc', '\ud83d x', 'e\u0301\u0301\u0301']) {
+        for (const q of ['a', '\ud83d', '\u0301', 'b', '😀', '']) {
           expect(() => fuzzyMatch(q, t)).not.toThrow()
+        }
+      }
     })
 
     it('handles right-to-left text: Hebrew and Arabic match themselves, and a Latin query does not match them', () => {
@@ -138,14 +140,14 @@ describe('fuzzyMatch', () => {
       expect(sliced('مرحبا بالعالم', ranges('مرحبا', 'مرحبا بالعالم'))).toEqual(['مرحبا'])
       expect(fuzzyMatch('abc', 'שלום')).toBeNull()
       // Arabic vowel marks (harakat) are marks of their letter, so a query without them still matches
-      expect(fuzzyMatch('مرحبا', 'مَرْحَبًا')).not.toBeNull()
+      expect(fuzzyMatch('مرحبا', 'م\u064eر\u0652ح\u064eب\u064bا')).not.toBeNull()
     })
   })
 
   describe('property tests', () => {
     const letters = [...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ   -_/0123456789éüřžŠČßøñÅ']
     const text = (r: () => number, n: number): string => Array.from({ length: n }, () => pick(r, letters)).join('')
-    const oracle = (s: string): string => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/ß/g, 'ss').replace(/ø/g, 'o')
+    const oracle = (s: string): string => s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/ß/g, 'ss').replace(/ø/g, 'o')
     const isSubsequence = (needle: string, hay: string): boolean => {
       let i = 0
       for (const ch of hay) if (ch === needle[i]) i++
@@ -165,7 +167,7 @@ describe('fuzzyMatch', () => {
 
     it('returns sorted, merged, in-bounds ranges that never split a surrogate pair (2000 random cases)', () => {
       const r = rng(2)
-      const pool = [...'abcxyz éÉ-_ 日本語ユーザー😀🎨👨‍👩‍👧🇨🇿'].concat(['é', '👋🏽'])
+      const pool = [...'abcxyz éÉ-_ 日本語ユーザー😀🎨👨\u200d👩\u200d👧🇨🇿'].concat(['e\u0301', '👋🏽'])
       for (let i = 0; i < 2000; i++) {
         const t = Array.from({ length: int(r, 0, 20) }, () => pick(r, pool)).join('')
         const q = Array.from({ length: int(r, 1, 4) }, () => pick(r, pool)).join('')
@@ -215,7 +217,7 @@ describe('fuzzyMatch', () => {
         if (q.trim() === '') continue
         const base = fuzzyMatch(q, t)
         const upper = fuzzyMatch(q.toUpperCase().replace(/SS/g, 'ss'), t)
-        const stripped = fuzzyMatch(q.normalize('NFD').replace(/[̀-ͯ]/g, ''), t)
+        const stripped = fuzzyMatch(q.normalize('NFD').replace(/[\u0300-\u036f]/g, ''), t)
         expect(upper?.ranges).toEqual(base?.ranges)
         expect(stripped).toEqual(base)
       }

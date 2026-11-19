@@ -93,7 +93,13 @@ describe('the published shape', () => {
 
   it('the matcher files import nothing from @pyreon, and no file imports node:', () => {
     const allowed: Record<string, string[]> = {
-      'commands.ts': ['@pyreon/hotkeys', '@pyreon/reactivity'],
+      'commands.ts': ['@pyreon/reactivity'],
+      'entry.ts': ['@pyreon/reactivity'],
+      'recents.ts': ['@pyreon/reactivity'],
+      'run.ts': ['@pyreon/reactivity'],
+      'search.ts': ['@pyreon/reactivity'],
+      'store.ts': ['@pyreon/reactivity'],
+      'shortcut-binding.ts': ['@pyreon/hotkeys', '@pyreon/reactivity'],
       'shortcuts.ts': ['@pyreon/hotkeys'],
       'context.ts': ['@pyreon/core'],
       'index.ts': ['@pyreon/reactivity'],

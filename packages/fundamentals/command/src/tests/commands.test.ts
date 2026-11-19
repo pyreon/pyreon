@@ -6,11 +6,13 @@ import type { Command, Commands } from '../types'
 
 const cmd = (id: string, extra?: Partial<Command>): Command => ({ id, title: id, ...extra })
 const ids = (c: Commands): string[] => c.commands().map((x) => x.id)
+
 const press = (key: string, init?: KeyboardEventInit, target: EventTarget = window): void => {
   target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }))
 }
 
 let made: Commands[]
+
 const make = (options?: Parameters<typeof createCommands>[0]): Commands => {
   const c = createCommands(options)
   made.push(c)
@@ -21,6 +23,7 @@ beforeEach(() => {
   made = []
   _resetHotkeys()
 })
+
 afterEach(() => {
   for (const c of made) c.dispose()
   _resetHotkeys()
@@ -173,6 +176,7 @@ describe('search', () => {
       cmd('about', { title: 'About' }),
       cmd('hidden', { title: 'Secret Save', enabled: false, disabledReason: 'Nope' }),
     ])
+
     return c
   }
 

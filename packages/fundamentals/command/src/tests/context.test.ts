@@ -8,6 +8,7 @@ import type { Commands } from '../index'
 
 let root: HTMLElement
 let unmounts: (() => void)[]
+
 const mountApp = (vnode: unknown): (() => void) => {
   const un = mount(vnode as never, root) as unknown as () => void
   unmounts.push(un)
@@ -20,6 +21,7 @@ beforeEach(() => {
   unmounts = []
   _resetHotkeys()
 })
+
 afterEach(() => {
   for (const u of unmounts) u()
   root.remove()

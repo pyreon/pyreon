@@ -1,4 +1,4 @@
-import type { FuzzyMatchOptions, MatchRange, PreparedQuery, PreparedText } from './match'
+import type { FuzzyMatch, FuzzyMatchOptions, MatchRange, PreparedQuery, PreparedText } from './match'
 import { matchPrepared, prepareQuery, prepareText } from './match'
 
 /** One ranked item. */
@@ -44,6 +44,35 @@ function scoreOf(score: number, field: number, weight: number): number {
   return field === 0 ? score : Math.floor(score * weight)
 }
 
+/** The best of an item's texts against the query, or `null` when none matches. */
+function bestMatch<T>(item: T, index: number, texts: readonly string[], weight: number, matchText: (text: string) => FuzzyMatch | null): Ranked<T> | null {
+  let best: Ranked<T> | null = null
+  for (let f = 0; f < texts.length; f++) {
+    const hit = matchText(texts[f] as string)
+    if (hit === null) continue
+    const weighted = scoreOf(hit.score, f, weight)
+    if (best === null || weighted > best.score) best = { item, index, score: weighted, field: f, ranges: hit.ranges }
+  }
+
+  return best
+}
+
+function limited<T>(out: Ranked<T>[], limit: number | undefined): Ranked<T>[] {
+  return limit !== undefined && limit >= 0 && out.length > limit ? out.slice(0, limit) : out
+}
+
+function order<T>(out: Ranked<T>[], priority: RankOptions<T>['priority']): void {
+  out.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    if (priority !== undefined) {
+      const d = priority(b.item, b.index) - priority(a.item, a.index)
+      if (d !== 0) return d
+    }
+
+    return a.index - b.index
+  })
+}
+
 /**
  * A ranker keeps what is worth keeping between keystrokes: the prepared (split and folded) texts, so a text is processed
  * once, and the previous candidates, so a query that extends the previous one only looks at the items that matched it.
@@ -65,6 +94,7 @@ export function createRanker<T>(getText: (item: T) => string | readonly string[]
       p = prepareText(text)
       cache.set(text, p)
     }
+
     return p
   }
 
@@ -74,13 +104,19 @@ export function createRanker<T>(getText: (item: T) => string | readonly string[]
     candidates = null
   }
 
+  /** The previous candidates when this query can only match what the previous one matched, else `null` (scan everything). */
+  function reusable(items: readonly T[], anyOrder: boolean, key: string): readonly number[] | null {
+    const same = lastItems === items && lastAnyOrder === anyOrder && lastKey !== ''
+
+    return same && key.startsWith(lastKey) ? candidates : null
+  }
+
   function search(query: string, items: readonly T[], options?: RankOptions<T>): Ranked<T>[] {
     const weight = options?.secondaryWeight ?? DEFAULT_WEIGHT
     const anyOrder = options?.anyOrder !== false
     const q: PreparedQuery = prepareQuery(query, options)
     const out: Ranked<T>[] = []
-    const reuse = candidates !== null && lastItems === items && lastAnyOrder === anyOrder && lastKey !== '' && q.key.startsWith(lastKey)
-    const pool: readonly number[] | null = reuse ? candidates : null
+    const pool = reusable(items, anyOrder, q.key)
     const next: number[] = []
     const count = pool === null ? items.length : pool.length
     scanned = count
@@ -88,18 +124,7 @@ export function createRanker<T>(getText: (item: T) => string | readonly string[]
       const index = pool === null ? k : (pool[k] as number)
       const item = items[index] as T
       const raw = getText(item)
-      const texts = typeof raw === 'string' ? [raw] : raw
-      let best: Ranked<T> | null = null
-      let bestScore = -Infinity
-      for (let f = 0; f < texts.length; f++) {
-        const hit = matchPrepared(q, prepared(texts[f] as string))
-        if (hit === null) continue
-        const weighted = scoreOf(hit.score, f, weight)
-        if (weighted > bestScore) {
-          bestScore = weighted
-          best = { item, index, score: weighted, field: f, ranges: hit.ranges }
-        }
-      }
+      const best = bestMatch(item, index, typeof raw === 'string' ? [raw] : raw, weight, (text) => matchPrepared(q, prepared(text)))
       if (best === null) continue
       next.push(index)
       if (options?.boost !== undefined) best.score += options.boost(item, index)
@@ -111,17 +136,9 @@ export function createRanker<T>(getText: (item: T) => string | readonly string[]
     lastKey = q.key
     candidates = q.key === '' ? null : next
 
-    const priority = options?.priority
-    out.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score
-      if (priority !== undefined) {
-        const d = priority(b.item, b.index) - priority(a.item, a.index)
-        if (d !== 0) return d
-      }
-      return a.index - b.index
-    })
-    const limit = options?.limit
-    return limit !== undefined && limit >= 0 && out.length > limit ? out.slice(0, limit) : out
+    order(out, options?.priority)
+
+    return limited(out, options?.limit)
   }
 
   return {

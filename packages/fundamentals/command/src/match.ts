@@ -46,7 +46,30 @@ export const MAX_QUERY_WORDS = 8
 
 // ---------------------------------------------------------------- folding
 
-const COMBINING = /[\u0300-\u036f\u0591-\u05c7\u064b-\u065f\u0670\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f\ufe0e\ufe0f]/g
+// Marks that are removed when comparing: accents, Hebrew points and Arabic vowel marks (usually left out when typing), and the
+// emoji variation selectors. Marks that change the letter (kana voicing, Indic signs) are kept.
+const STRIPPED: readonly (readonly [number, number])[] = [
+  [0x0300, 0x036f],
+  [0x0591, 0x05c7],
+  [0x064b, 0x065f],
+  [0x0670, 0x0670],
+  [0x1ab0, 0x1aff],
+  [0x1dc0, 0x1dff],
+  [0x20d0, 0x20ff],
+  [0xfe0e, 0xfe0f],
+  [0xfe20, 0xfe2f],
+]
+
+function stripMarks(text: string): string {
+  let out = ''
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) as number
+    if (cp < 0x300 || !STRIPPED.some(([lo, hi]) => cp >= lo && cp <= hi)) out += ch
+  }
+
+  return out
+}
+
 const SPECIAL: Readonly<Record<string, string>> = {
   ß: 'ss',
   æ: 'ae',
@@ -70,7 +93,7 @@ function foldUnit(unit: string): string[] {
   const lower = unit.toLowerCase()
   const spelled = SPECIAL[lower]
   if (spelled !== undefined) return [...spelled]
-  let s = unit.normalize('NFKD').replace(COMBINING, '').toLowerCase()
+  let s = stripMarks(unit.normalize('NFKD')).toLowerCase()
   if (s.length === 0) s = unit
   let out = ''
   for (const ch of s) {
@@ -78,6 +101,7 @@ function foldUnit(unit: string): string[] {
     out += cp >= 0x30a1 && cp <= 0x30f6 ? String.fromCodePoint(cp - 0x60) : ch
   }
   const spelledAfter = SPECIAL[out]
+
   return spelledAfter === undefined ? [out] : [...spelledAfter]
 }
 
@@ -110,12 +134,14 @@ function classOf(base: string): number {
     if (cp >= 97 && cp <= 122) return 1
     if (cp >= 65 && cp <= 90) return 2
     if (cp >= 48 && cp <= 57) return 3
+
     return 0
   }
   if ((cp >= 0x3040 && cp <= 0x30ff) || (cp >= 0x3400 && cp <= 0x9fff) || (cp >= 0xac00 && cp <= 0xd7af) || (cp >= 0xf900 && cp <= 0xfaff)) return 4
   if (/[\p{Lu}\p{Lt}]/u.test(base)) return 2
   if (/\p{L}|\p{Nl}|\p{Lm}/u.test(base)) return 1
   if (/\p{Nd}|\p{No}/u.test(base)) return 3
+
   return 0
 }
 
@@ -190,6 +216,7 @@ export function prepareText(text: string): PreparedText {
     units++
     prevClass = cls
   }
+
   return { text, keys, starts, ends, bonus, initial, truncated }
 }
 
@@ -217,6 +244,7 @@ export function prepareQuery(query: string, options?: FuzzyMatchOptions): Prepar
     total += kept.length
     words.push(kept)
   }
+
   return { query, words, key: words.map((w) => w.join('')).join(' ') }
 }
 
@@ -228,64 +256,51 @@ interface WordMatch {
   positions: number[]
 }
 
-function matchWord(word: readonly string[], text: PreparedText): WordMatch | null {
+/** For each query unit, the earliest and the latest text unit it can sit at; `null` when the word is not a subsequence. */
+function feasibleWindow(word: readonly string[], keys: readonly string[]): { first: number[]; last: number[] } | null {
   const m = word.length
-  const n = text.keys.length
-  if (m > n) return null
-  const keys = text.keys
-
-  // Earliest feasible position per query unit (also the quick subsequence test).
+  const n = keys.length
   const first: number[] = new Array(m)
   let from = 0
   for (let j = 0; j < m; j++) {
-    const k = word[j] as string
-    let at = -1
-    for (let i = from; i < n; i++) {
-      if (keys[i] === k) {
-        at = i
-        break
-      }
-    }
+    const at = keys.indexOf(word[j] as string, from)
     if (at < 0) return null
     first[j] = at
     from = at + 1
   }
-  // Latest feasible position per query unit.
   const last: number[] = new Array(m)
   let upto = n - 1
   for (let j = m - 1; j >= 0; j--) {
-    const k = word[j] as string
-    let at = -1
-    for (let i = upto; i >= 0; i--) {
-      if (keys[i] === k) {
-        at = i
-        break
-      }
-    }
+    const at = keys.lastIndexOf(word[j] as string, upto)
     last[j] = at
     upto = at - 1
   }
 
-  // Alignment with the best score: S[j][i] = best score with query unit j matched at text unit i.
-  const width = n
-  const S = new Int32Array(m * width).fill(NEG)
-  const P = new Int16Array(m * width).fill(-1)
+  return { first, last }
+}
+
+/** `S[j * n + i]` is the best score with query unit `j` matched at text unit `i`; `P` holds the predecessor of that match. */
+function fillScores(word: readonly string[], text: PreparedText, first: readonly number[], last: readonly number[]): { S: Int32Array; P: Int16Array } {
+  const m = word.length
+  const n = text.keys.length
+  const keys = text.keys
+  const S = new Int32Array(m * n).fill(NEG)
+  const P = new Int16Array(m * n).fill(-1)
   for (let i = first[0] as number; i <= (last[0] as number); i++) {
-    if (keys[i] !== word[0]) continue
     // No penalty for the characters before the first match: where the match starts is what the position bonuses are for.
-    S[i] = MATCH + (text.bonus[i] as number)
+    if (keys[i] === word[0]) S[i] = MATCH + (text.bonus[i] as number)
   }
   for (let j = 1; j < m; j++) {
-    const row = j * width
-    const prev = (j - 1) * width
+    const row = j * n
+    const prev = row - n
+    // `run` is the best predecessor strictly before i - 1, with the gap penalty up to i.
     let run = NEG
     let runAt = -1
     for (let i = (first[j - 1] as number) + 1; i <= (last[j] as number); i++) {
-      // Best predecessor strictly before i - 1, with the gap penalty up to i.
-      if (i - 2 >= 0) {
+      if (i >= 2) {
         const open = S[prev + i - 2] as number
-        const extended = run === NEG ? NEG : run + GAP_EXTEND
         const opened = open === NEG ? NEG : open + GAP_OPEN
+        const extended = run === NEG ? NEG : run + GAP_EXTEND
         if (opened >= extended) {
           run = opened
           runAt = i - 2
@@ -294,54 +309,52 @@ function matchWord(word: readonly string[], text: PreparedText): WordMatch | nul
         }
       }
       if (keys[i] !== word[j]) continue
-      let best = NEG
-      let at = -1
-      if (i - 1 >= 0) {
-        const adjacent = S[prev + i - 1] as number
-        if (adjacent !== NEG) {
-          best = adjacent + CONSECUTIVE
-          at = i - 1
-        }
-      }
-      if (run !== NEG && run > best) {
-        best = run
-        at = runAt
-      }
-      if (best === NEG) continue
-      S[row + i] = best + MATCH + (text.bonus[i] as number)
-      P[row + i] = at
+      const adjacent = S[prev + i - 1] as number
+      const viaRun = run !== NEG
+      const viaAdjacent = adjacent !== NEG
+      if (!viaRun && !viaAdjacent) continue
+      const takeRun = viaRun && (!viaAdjacent || run > adjacent + CONSECUTIVE)
+      S[row + i] = (takeRun ? run : adjacent + CONSECUTIVE) + MATCH + (text.bonus[i] as number)
+      P[row + i] = takeRun ? runAt : i - 1
     }
   }
+
+  return { S, P }
+}
+
+function matchWord(word: readonly string[], text: PreparedText): WordMatch | null {
+  const m = word.length
+  const n = text.keys.length
+  if (m > n) return null
+  const window = feasibleWindow(word, text.keys)
+  if (window === null) return null
+  const { S, P } = fillScores(word, text, window.first, window.last)
+
   let bestScore = NEG
   let bestEnd = -1
-  const lastRow = (m - 1) * width
   for (let i = m - 1; i < n; i++) {
-    const v = S[lastRow + i] as number
+    const v = S[(m - 1) * n + i] as number
     if (v > bestScore) {
       bestScore = v
       bestEnd = i
     }
   }
-  let aligned: WordMatch | null = null
-  if (bestEnd >= 0) {
-    const positions: number[] = new Array(m)
-    let at = bestEnd
-    for (let j = m - 1; j >= 0; j--) {
-      positions[j] = at
-      at = P[j * width + at] as number
-    }
-    let score = bestScore
-    let prefix = true
-    for (let j = 0; j < m; j++) if (positions[j] !== j) prefix = false
-    if (prefix) {
-      score += PREFIX
-      if (m === n) score += EXACT
-    }
-    // Shorter texts first among equal shapes.
-    score -= Math.min(n - m, 32) >> 2
-    aligned = { score, positions }
+  if (bestEnd < 0) return null
+  const positions: number[] = new Array(m)
+  let at = bestEnd
+  for (let j = m - 1; j >= 0; j--) {
+    positions[j] = at
+    at = P[j * n + at] as number
   }
-  return aligned
+  let score = bestScore
+  if (positions.every((p, j) => p === j)) {
+    score += PREFIX
+    if (m === n) score += EXACT
+  }
+  // Shorter texts first among equal shapes.
+  score -= Math.min(n - m, 32) >> 2
+
+  return { score, positions }
 }
 
 function toRanges(text: PreparedText, positions: readonly number[]): MatchRange[] {
@@ -354,6 +367,7 @@ function toRanges(text: PreparedText, positions: readonly number[]): MatchRange[
     if (tail !== undefined && tail[1] >= s) tail[1] = Math.max(tail[1], e)
     else out.push([s, e])
   }
+
   return out
 }
 
@@ -368,6 +382,7 @@ export function matchPrepared(query: PreparedQuery, text: PreparedText): FuzzyMa
     score += hit.score
     for (const p of hit.positions) all.push(p)
   }
+
   return { score, ranges: toRanges(text, all) }
 }
 
