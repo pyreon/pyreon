@@ -212,7 +212,7 @@ export type DeclIR =
        */
       zeroArgGuards?: string[]
       /**
-       * `createRouter({ tabs: [{ name, root }] })` — per-tab back stacks
+       * `createRouter({ tabs: routerTabs([{ name, root }]) })` — per-tab back stacks
        * (#4060). Literal names and roots only; the router runtime is
        * constructed with them (`PyreonRouter(tabs:)`), and a
        * `<Tabs router={…}>` bound to this router lowers to one native stack

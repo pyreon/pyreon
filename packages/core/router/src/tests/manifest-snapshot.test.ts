@@ -87,11 +87,12 @@ describe('gen-docs — router snapshot', () => {
 
   it('renders @pyreon/router to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(routerManifest)
-    expect(Object.keys(record).length).toBe(31)
+    expect(Object.keys(record).length).toBe(32)
     // The server-only loader passes are free functions (client bundles drop them).
     expect(Object.keys(record)).toContain('router/preloadRoute')
     expect(Object.keys(record)).toContain('router/runServerLoaders')
     expect(Object.keys(record)).toContain('router/createRouter')
+    expect(Object.keys(record)).toContain('router/routerTabs')
     // PR-B added redirect/isRedirectError/getRedirectInfo entries.
     expect(Object.keys(record)).toContain('router/redirect')
     expect(Object.keys(record)).toContain('router/isRedirectError')

@@ -98,6 +98,7 @@ const User = () => {
 | --- | --- | --- |
 | [`preloadRoute`](#preloadroute-function) | function | Resolve `path` for a server render: the initial navigation's guards, the matched lazy route components… |
 | [`runServerLoaders`](#runserverloaders-function) | function | The single-fetch data endpoint's worker (server-only — `serverLoader` functions exist only in the SSR module graph). |
+| [`routerTabs`](#routertabs-function) | function | The `tabs` option of `createRouter`: one back stack per tab for a tab-bar app… |
 | [`createRouter`](#createrouter-function) | function | Create a router instance with route records, guards, middleware, and mode configuration. |
 | [`RouterProvider`](#routerprovider-component) | component | Provide the router instance to the component tree via `RouterContext`. |
 | [`RouterView`](#routerview-component) | component | Render the matched route's component. |
@@ -177,13 +178,42 @@ return json({ data: result.data }) // keyed by matched-chain index
 
 ---
 
+### `routerTabs` `function`
+
+```ts
+routerTabs(tabs: RouterTab[]): RouterTabs
+```
+
+The `tabs` option of `createRouter`: one back stack per tab for a tab-bar app (`createRouter({ routes, tabs: routerTabs([{ name: 'feed', root: '/feed' }, …]) })`). `push` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab's exact root pops it to the root), `router.selectTab(name)` switches tabs keeping every stack, and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. A function rather than a plain array so the tab engine is in a bundle only when an app uses tabs; `createRouter` throws on a plain array. Native (PMTC) lowers the same call: iOS `NavigationStack` per tab inside the `TabView`, Android per-tab stacks.
+
+**Example**
+
+```tsx
+import { createRouter, routerTabs } from '@pyreon/router'
+
+const router = createRouter({
+  routes,
+  tabs: routerTabs([
+    { name: 'feed', root: '/feed' },
+    { name: 'me', root: '/me' },
+  ]),
+})
+```
+
+**Common mistakes**
+
+- Passing a plain array (`tabs: [{ name, root }]`, the pre-0.54 shape) — `createRouter` throws; wrap it in `routerTabs(...)` (`pyreon upgrade` rewrites it)
+- A `<Tab value>` that names no configured tab — it has no stack; `selectTab` cancels and native drops the tab with a warning
+
+---
+
 ### `createRouter` `function`
 
 ```ts
 createRouter(options: RouterOptions | RouteRecord[]): Router
 ```
 
-Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"hash"` default | `"history"` | `"memory"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: [{ name, root }]` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first. `mode: "memory"` keeps the location in an entry stack inside the router (start it with `initialEntries` / `initialIndex`; default `[url ?? "/"]`, last entry): `push` / `replace` / `back` / `forward` / `go` run the full pipeline against the stack (a cancelled traversal keeps the position; a step past either end is a no-op), nothing touches `window.history` / `location` / `document.title`, no window listener is attached, and it never takes over the page router's cancelled-traversal restores, so it embeds in a page that already has a router and runs with no `window`. `<RouterLink>` renders the plain route path as `href`. The native routers are in-memory stacks already, so `mode` needs no lowering there; `initialEntries` / `initialIndex` are ignored on iOS/Android with a named compiler warning.
+Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"hash"` default | `"history"` | `"memory"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: routerTabs([{ name, root }])` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first. `mode: "memory"` keeps the location in an entry stack inside the router (start it with `initialEntries` / `initialIndex`; default `[url ?? "/"]`, last entry): `push` / `replace` / `back` / `forward` / `go` run the full pipeline against the stack (a cancelled traversal keeps the position; a step past either end is a no-op), nothing touches `window.history` / `location` / `document.title`, no window listener is attached, and it never takes over the page router's cancelled-traversal restores, so it embeds in a page that already has a router and runs with no `window`. `<RouterLink>` renders the plain route path as `href`. The native routers are in-memory stacks already, so `mode` needs no lowering there; `initialEntries` / `initialIndex` are ignored on iOS/Android with a named compiler warning.
 
 **Example**
 

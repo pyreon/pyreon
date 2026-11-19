@@ -269,6 +269,25 @@ loader: async ({ request }) => {
 }
 ```
 
+## Tab stacks
+
+A tab-bar app gives every tab its own back stack with `routerTabs()` and binds `<Tabs router>` from `@pyreon/primitives`, with a `<RouterView />` in each `<Tab>`:
+
+```ts
+import { createRouter, routerTabs } from '@pyreon/router'
+
+const router = createRouter({
+  routes,
+  tabs: routerTabs([
+    { name: 'feed', root: '/feed' },
+    { name: 'me', root: '/me' },
+  ]),
+})
+router.selectTab('me') // keeps every stack; re-selecting the active tab pops it to its root
+```
+
+`push` acts on the active tab; a path under another tab's root selects that tab. On the web every history entry records its tab and stack, so Back/Forward restore both. `tabs` takes the `routerTabs()` value rather than a plain array so the tab engine is bundled only by apps that use tabs (a plain array throws).
+
 ## Pending components
 
 ```ts
