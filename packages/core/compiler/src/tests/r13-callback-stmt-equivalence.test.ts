@@ -22,10 +22,12 @@
  * Restore + rebuild → all pass. The 180 native-equivalence tests + full
  * suite remain green (no regression).
  *
- * The sources use a COMPONENT parent (`<List>`): its `.map` child is wrapped as
- * a SLICE, which is the path `collect_pd_in_stmt` serves. Under a DOM parent
- * the same child is a template hole, preserved and walked instead (see
- * `template-hole-walk.test.ts`).
+ * The sources use a COMPONENT parent (`<List>`): its `.map` child is walked
+ * with its JSX kept on the h() path (`wrapWalked` / `wrap_walked`), so the
+ * inlined read is the attribute's own accessor. Under a DOM parent the same
+ * child is a template hole, walked with templates (`template-hole-walk.test.ts`).
+ * An expression that builds no JSX is still sliced; the `text` cases below
+ * cover that path.
  */
 import { describe, expect, it } from 'vitest'
 import { transformJSX, transformJSX_JS } from '../jsx'
@@ -45,7 +47,15 @@ describe('Round 13 — prop-derived inlining inside callback statement shapes is
   for (const [name, src] of CASES) {
     it(`${name}: native backend matches JS (inlines the prop-derived const)`, () => {
       expect(r(src)).toBe(j(src))
-      expect(r(src)).toContain("class={(p.x+'-b')}")
+      expect(r(src)).toContain("class={() => (p.x+'-b')}")
+    })
+    // The same body returning text builds no JSX, so it stays a slice: the
+    // inliner rewrites the read inside the sliced statement.
+    const text = src.replace('<li class={c}/>', 'c')
+    it(`${name} (text, sliced): native backend matches JS (inlines the prop-derived const)`, () => {
+      expect(r(text)).toBe(j(text))
+      expect(r(text)).toContain("return (p.x+'-b')")
+      expect(r(text)).not.toMatch(/return c\b/)
     })
   }
 

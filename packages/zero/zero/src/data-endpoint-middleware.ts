@@ -21,8 +21,8 @@
  * client treats it like a failed loader (route error boundary), same as
  * the SSR render path would.
  */
-import type { RouteRecord } from '@pyreon/router'
-import { createRouter, stringifyLoaderData } from '@pyreon/router'
+import type { RouteRecord, ServerLoadersResult } from '@pyreon/router'
+import { createRouter, runServerLoaders, stringifyLoaderData } from '@pyreon/router'
 import type { Middleware } from '@pyreon/server'
 import { provideRequestLocals } from '@pyreon/server'
 import { runWithRequestContext } from '@pyreon/runtime-server'
@@ -98,13 +98,13 @@ export function createDataEndpointMiddleware(routes: RouteRecord[]): Middleware 
     const router = createRouter({ routes, mode: 'history', url: path })
     return runWithRequestContext(async () => {
       provideRequestLocals(ctx.locals)
-      let result: Awaited<ReturnType<typeof router.runServerLoaders>>
+      let result: ServerLoadersResult
       try {
         // Runs ONLY serverLoaders (not isomorphic loaders — those run
         // client-side; running them here would double-fire side effects),
         // keyed by matched-chain index (path-keying collided layout+index —
         // review findings C + F).
-        result = await router.runServerLoaders(path, ctx.req)
+        result = await runServerLoaders(router, path, ctx.req)
       } catch {
         return new Response(JSON.stringify({ error: 'loader failed' }), {
           status: 500,

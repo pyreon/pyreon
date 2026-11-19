@@ -1,11 +1,12 @@
 // @vitest-environment node
 import { isServer } from '@pyreon/reactivity'
 import { getRedirectInfo } from '../redirect'
+import { preloadRoute } from '../server-loaders'
 import { createRouter } from '../router'
 import type { RouteRecord, RouterInstance } from '../types'
 
 // Server half of the initial-navigation guard contract: an SSR host calls
-// `router.preload(url)` before rendering, so a guard decision there must reach
+// `preloadRoute(router, url)` before rendering, so a guard decision there must reach
 // the response — a redirect is thrown as the same `redirect()` a loader throws.
 const Page = () => null
 const routes = (enter?: RouteRecord['beforeEnter']): RouteRecord[] => [
@@ -21,13 +22,13 @@ describe('initial navigation guards on the server', () => {
 
   it('a guard redirect becomes a thrown redirect() from preload', async () => {
     const router = createRouter({ routes: routes(() => '/login'), url: '/admin', mode: 'history' })
-    const err = await router.preload('/admin').then(() => null, (e: unknown) => e)
+    const err = await preloadRoute(router, '/admin').then(() => null, (e: unknown) => e)
     expect(getRedirectInfo(err)?.url).toBe('/login')
   })
 
   it('a cancelling guard hides the route from the render', async () => {
     const router = createRouter({ routes: routes(), url: '/admin', beforeEach: [(to) => to.path !== '/admin'] })
-    await router.preload('/admin')
+    await preloadRoute(router, '/admin')
     expect((router as unknown as RouterInstance)._initialGate()).toBe(true)
   })
 
@@ -40,7 +41,7 @@ describe('initial navigation guards on the server', () => {
       url: '/admin',
       mode: 'history',
     })
-    await expect(router.preload('/admin')).resolves.toBeUndefined()
+    await expect(preloadRoute(router, '/admin')).resolves.toBeUndefined()
     expect((router as unknown as RouterInstance)._initialGate()).toBe(false)
   })
   it('middleware that THROWS on the server defers to the client too, and later guards still run', async () => {
@@ -65,7 +66,7 @@ describe('initial navigation guards on the server', () => {
           },
         ],
       })
-      await expect(router.preload('/admin')).resolves.toBeUndefined()
+      await expect(preloadRoute(router, '/admin')).resolves.toBeUndefined()
       expect(guardRan).toBe(true)
       expect((router as unknown as RouterInstance)._initialGate()).toBe(false)
       expect(warn.mock.calls.some((c) => String(c[0]).includes('Route middleware threw during SSR'))).toBe(true)

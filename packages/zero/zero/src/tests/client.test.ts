@@ -32,8 +32,8 @@ const routerStub = {
   _currentPath: currentPathMock,
   // The SSR path pre-resolves the matched chain before mounting. Without
   // this the stub throws and `startClient` never mounts at all — which is
-  // how the missing guard for an absent `preload` was found.
-  preload: vi.fn(() => Promise.resolve()),
+  // how the missing guard for an absent `preloadComponents` was found.
+  preloadComponents: vi.fn(() => Promise.resolve(true)),
   // The islands-only navigation guard (#4371) is registered on every start.
   beforeEach: vi.fn(() => () => {}),
 }
@@ -138,7 +138,7 @@ describe('startClient — hydration barrier', () => {
     startClient({ routes: [route] })
 
     // AWAITED, not asserted synchronously. On the SSR path the mount is gated
-    // behind route pre-resolution (`router.preload(...).then(hydrateOrMount)`),
+    // behind route pre-resolution (`router.preloadComponents(...).then(hydrateOrMount)`),
     // so the flag lands a microtask later — which is precisely the window this
     // flag exists to let callers wait out. Asserting it synchronously would be
     // asserting that hydration is synchronous, which is the opposite of the

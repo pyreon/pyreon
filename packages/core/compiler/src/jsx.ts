@@ -1373,6 +1373,15 @@ export function transformJSX_JS(
   // already, so there is nothing to absorb there (and `_ssr`'s preserved-hole
   // machinery has its own component-child bail).
   const tplComponentChildren = !ssr && options.templatizeComponentChildren === true
+  // > 0 while walking JSX inside an accessor the emit WRAPS (`wrapWalked`).
+  // That JSX keeps the h() path: no client template, no `_ssr` string, no
+  // rocketstyle collapse — only the reactivity rules every JSX element gets.
+  let wrappedJsxDepth = 0
+  // Preserved template holes in SVG/MathML content (`inForeignContent`) that
+  // build JSX. They are walked like every other hole, but under
+  // `wrappedJsxDepth`: the JSX keeps the h() path, which mounts each element
+  // in its parent's namespace (a `_tpl` root is namespaced by its own tag).
+  const hPathHoles = new Set<N>()
   // The CLIENT compile's value of the option, read by the SSR emit to work out
   // which elements the client lowers to templates (see `ssrEnterElement`).
   const clientTplComponents = options.templatizeComponentChildren === true
@@ -1574,7 +1583,7 @@ export function transformJSX_JS(
    */
   function tryRocketstyleCollapse(node: N): boolean {
     const cfg = options.collapseRocketstyle
-    if (!cfg) return false
+    if (!cfg || wrappedJsxDepth > 0) return false
     const tag = jsxTagName(node)
     if (!isComponentTag(tag)) return false
     if (!cfg.candidates.has(tag)) return false
@@ -1866,6 +1875,12 @@ export function transformJSX_JS(
   function wrap(expr: N): void {
     const start = expr.start as number
     const end = expr.end as number
+    if (containsJsx(expr)) {
+      wrapWalked(expr, '() => (', ')')
+      lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
+
+      return
+    }
     const sliced = sliceExpr(expr)
     // An expression that STARTS with `{` (a literal, or `{…}.key` / `{…}[k]`)
     // must be parenthesized: `() => { a: s() }.a` parses as a block. Keyed on
@@ -1874,6 +1889,48 @@ export function transformJSX_JS(
     const text = sliced.startsWith('{') ? `() => (${sliced})` : `() => ${sliced}`
     replacements.push({ start, end, text })
     lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
+  }
+
+  /**
+   * Wrap an accessor around an expression that BUILDS JSX, walking it in place
+   * instead of slicing it.
+   *
+   * A slice is raw source, so JSX inside it never received the rules every
+   * other JSX element gets: `{row.label()}` was not made an accessor, a
+   * component's `label={row.label()}` got no `_rp`. In a list that keeps rows by
+   * key (`{rows().map((row) => <li key={row.id}>{row.label()}</li>)}` under a
+   * component or another h()-path parent), the read ran in the LIST's accessor
+   * instead, the reconciler kept the row for the unchanged key, and the cell
+   * never updated. Walked, the row reads its own signal, exactly as a `<For>`
+   * row does. The JSX stays on the h() path (`wrappedJsxDepth`): whether a
+   * component that receives these children can take template items is a
+   * separate question, and this keeps every value it receives a vnode.
+   *
+   * Zero-width edits around the untouched range, as the `marks` placeholder
+   * does; the closer goes after the walk so an edit the walk inserts at the end
+   * offset lands inside it. Mirrored by `wrap_walked` in the Rust backend.
+   */
+  function wrapWalked(expr: N, open: string, close: string): void {
+    replacements.push({ start: expr.start as number, end: expr.start as number, text: open })
+    wrappedJsxDepth++
+    try {
+      walkUnslicedExpr(expr)
+    } finally {
+      wrappedJsxDepth--
+    }
+    replacements.push({ start: expr.end as number, end: expr.end as number, text: close })
+  }
+
+  /** A component prop value that builds JSX: walked, not sliced (see `wrapWalked`). */
+  function wrapWalkedProp(expr: N): void {
+    needsRpImport = true
+    wrapWalked(expr, '_rp(() => (', '))')
+    lens(
+      expr.start as number,
+      expr.end as number,
+      'reactive-prop',
+      'live prop — signal reads here are tracked into the component',
+    )
   }
 
   // ── Lazy component children ───────────────────────────────────────────────
@@ -1983,7 +2040,7 @@ export function transformJSX_JS(
   }
 
   function tryTemplateEmit(node: N): boolean {
-    if (ssr) return false
+    if (ssr || wrappedJsxDepth > 0) return false
     if (isSelfClosing(node)) return false
     // Ordering gate — see `templateMountIsEagerlyOrdered`. Only templates that
     // MOUNT something are ordered against a component's setup, so a purely
@@ -2048,7 +2105,18 @@ export function transformJSX_JS(
     // rewrites one of these nodes wholesale (rocketstyle collapse) must know the
     // text is headed for an argument, not a JSX child slot.
     for (const hole of holes) argPositionNodes.add(hole)
-    for (const hole of holes) walkUnslicedExpr(hole)
+    for (const hole of holes) {
+      if (!hPathHoles.has(hole)) {
+        walkUnslicedExpr(hole)
+        continue
+      }
+      wrappedJsxDepth++
+      try {
+        walkUnslicedExpr(hole)
+      } finally {
+        wrappedJsxDepth--
+      }
+    }
 
     return true
   }
@@ -3377,6 +3445,7 @@ export function transformJSX_JS(
   }
 
   function trySsrTemplateEmit(node: N): boolean {
+    if (wrappedJsxDepth > 0) return false
     // A KEYED root stays a JSX element, as the client compile keeps it on the
     // h() path (`hasBailAttr` bails on `key`). The root is the value a parent
     // component receives as a child, and `_ssr` returns raw HTML with no key:
@@ -3604,6 +3673,10 @@ export function transformJSX_JS(
       if (hoistName) {
         replacements.push({ start: expr.start as number, end: expr.end as number, text: hoistName })
       } else if (shouldWrap(expr)) {
+        if (containsJsx(expr)) {
+          wrapWalkedProp(expr)
+          return
+        }
         const start = expr.start as number
         const end = expr.end as number
         const sliced = sliceExpr(expr)
@@ -3683,7 +3756,7 @@ export function transformJSX_JS(
 
   /** Would the client's `tryTemplateEmit` lower this element to a template root? */
   function clientTemplatesRoot(el: N): boolean {
-    if (isSelfClosing(el)) return false
+    if (isSelfClosing(el) || wrappedJsxDepth > 0) return false
     if (clientTplComponents && templateAbsorbsComponent(el) && templateMountIsEagerlyOrdered(el)) {
       return false
     }
@@ -3774,7 +3847,8 @@ export function transformJSX_JS(
    * it builds into a template ROOT, which `_tpl` parses standalone and
    * namespaces by its own tag alone — so `<svg>{on && <a href={u}>…</a>}</svg>`
    * would build an HTML `<a>`, where `h()` mounts it in its parent's namespace.
-   * Such holes stay slices until a template can carry its namespace. The chain
+   * Such a hole is still walked (never sliced), but with its JSX kept on the
+   * h() path (`hPathHoles`), until a template can carry its namespace. The chain
    * runs through elements (components included) and fragments up to the first
    * non-JSX parent; `foreignObject` returns to HTML. Mirrored by
    * `collect_foreign_holes` in the Rust backend.
@@ -7391,10 +7465,13 @@ export function transformJSX_JS(
       // every element inside it fell to `jsx()` at runtime, and the client
       // compiled it differently from the SSR emit, which walks the same
       // expression (`clientWalksHole`). See "Template holes are walked" in the
-      // internals guide. Holes in SVG/MathML content stay slices (see
-      // `inForeignContent`).
-      const walk = clientWalksHole(findParent(child.expression))
+      // internals guide. A hole in SVG/MathML content (`inForeignContent`) is
+      // preserved and walked too, but its JSX keeps the h() path
+      // (`hPathHoles`), exactly as `wrapWalked` keeps an h()-path child's.
+      const tplWalk = clientWalksHole(findParent(child.expression))
+      const walk = tplWalk || containsJSXInExpr(childExpr)
       const holeArg = (accessor: boolean): string => {
+        if (!tplWalk) hPathHoles.add(childExpr)
         // A function child IS the slot's accessor: preserve it whole.
         if (childExpr.type === 'ArrowFunctionExpression' || childExpr.type === 'FunctionExpression')
           return registerHole(childExpr)

@@ -4,7 +4,6 @@ import { batch, computed, isClient, signal, untrack } from '@pyreon/reactivity'
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { buildNameIndex, buildPath, resolveLoaderNotFound, resolveRoute, stringifyQuery } from './match'
-import { markLoaderError } from './loader-error'
 import { isNotFoundError } from './not-found'
 import { classifyRedirectTarget, getRedirectInfo, redirect as throwRedirect } from './redirect'
 import { ScrollManager } from './scroll'
@@ -778,7 +777,7 @@ export function createRouter<TNames extends string = string>(
   // ("matched route, missing resource"). While it equals the current path the
   // route resolves to the not-found fallback chain, so SSR (status 404), the
   // hydrating client (seeded from the loader-data blob) and client navigation
-  // all render the SAME chain. Written only by commitNavigation, preload,
+  // all render the SAME chain. Written only by commitNavigation, preloadRoute,
   // prefetch, revalidate and hydrateLoaderData; the next commit overwrites it.
   const loaderNotFound = signal<string | null>(null)
   const currentRoute = computed<ResolvedRoute>(() => {
@@ -1892,7 +1891,7 @@ export function createRouter<TNames extends string = string>(
   //
   // Environment contract: guards run on the SERVER too, so a guard that
   // returns `false` / a path there gates the SSR output (a redirect becomes an
-  // HTTP redirect via `preload`). A guard that THROWS on the server — almost
+  // HTTP redirect via `preloadComponents`). A guard that THROWS on the server — almost
   // always one reading `window` / `localStorage` — is treated as "cannot be
   // decided here": the server renders, and the client re-runs the guard on
   // its own initial navigation and enforces it. On the client a throw cancels,
@@ -2004,7 +2003,7 @@ export function createRouter<TNames extends string = string>(
         // If it has already committed, the gate is already clear.
       }
       // 'cancel' (both envs) and a server 'redirect' keep the gate set: there
-      // is no approved route to show. `preload` turns a server redirect into
+      // is no approved route to show. `preloadComponents` turns a server redirect into
       // the HTTP redirect.
       return outcome
     })
@@ -2132,18 +2131,24 @@ export function createRouter<TNames extends string = string>(
       return router._readyPromise
     },
 
-    async preload(path: string, request?: Request, preloadOptions?: { skipLoaders?: boolean }) {
+    async preloadComponents(path: string) {
+      if (process.env.NODE_ENV !== 'production' && arguments.length > 1) {
+        // oxlint-disable-next-line no-console
+        console.warn(
+          '[Pyreon Router] router.preloadComponents(path) takes one argument and never runs loaders. To resolve a route for SSR (components AND loaders, with the request), call `preloadRoute(router, path, request)` from @pyreon/router.',
+        )
+      }
       // Preloading the INITIAL route — what every SSR/SSG host and zero's
       // hydrating client do before their first render — runs the initial
       // navigation's guards first. A guard redirect on the server becomes the
       // same thrown `redirect()` a loader produces, so every host's existing
       // redirect handling (HTTP 30x, SSG `_redirects`) applies unchanged. A
-      // route the guards did not approve is never preloaded: its loaders do
-      // not run and its chunk is not fetched.
+      // route the guards did not approve is never preloaded: its chunk is not
+      // fetched, and the result is `false` so `preloadRoute` skips its loaders.
       if (normalizeTrailingSlash(path, trailingSlash) === initialPath) {
         const outcome = await startInitialNavigation()
         if (outcome.kind === 'redirect' && !isClient) throwRedirect(outcome.target)
-        if (outcome.kind === 'cancel' || outcome.kind === 'redirect') return
+        if (outcome.kind === 'cancel' || outcome.kind === 'redirect') return false
       }
       const resolved = resolveRoute(path, routes)
       // Load lazy components in parallel and populate the component cache so
@@ -2162,117 +2167,7 @@ export function createRouter<TNames extends string = string>(
           componentCache.set(record, comp)
         }),
       )
-      // Skip the loader-running step when the caller explicitly opts out
-      // (used by the SSG plugin's 404 build path — parent-layout loaders
-      // that hit auth resources or external APIs shouldn't fire when
-      // generating a static 404 page). Lazy components above DO still
-      // resolve so the synthetic chain renders cleanly; only the
-      // `r.loader()` invocations are skipped.
-      if (preloadOptions?.skipLoaders) return
-      // Run loaders for the matched path — uses the same code path SSR
-      // already relied on, so loader data ends up in `_loaderData` under the
-      // matched route records. Uses a LOCAL AbortController: `preload` is
-      // a prefetch operation and must NOT clobber `router._abortController`,
-      // which belongs to the active navigation. Without this, calling
-      // `router.preload(...)` during a navigation destroyed the nav's
-      // abort capability.
-      const ac = new AbortController()
-      let notFoundThrown = false
-      await Promise.all(
-        resolved.matched
-          // Phase 5 — `serverLoader` runs here exactly like `loader`: this
-          // preload path only executes on the server (SSR handler, SSG
-          // build, the data endpoint), where the function import exists.
-          .filter((r) => r.loader || typeof r.serverLoader === 'function')
-          .map(async (r) => {
-            // Wrap with `Promise.resolve().then(...)` so a SYNCHRONOUS
-            // throw — `redirect('/login')` from a sync loader, `notFound()`,
-            // a plain `throw new Error(...)` — becomes a rejected promise
-            // the surrounding Promise.all surfaces. Bare `await r.loader(...)`
-            // would let synchronous throws escape past the `await` and
-            // surface as an uncaught exception in the Vite dev SSR pipeline.
-            const run = r.serverLoader ?? r.loader
-            let data: unknown
-            try {
-              data = await Promise.resolve().then(() =>
-                run!({
-                  params: resolved.params,
-                  query: resolved.query,
-                  signal: ac.signal,
-                  ...(request ? { request } : {}),
-                }),
-              )
-            } catch (err) {
-              // `notFound()` is not a render failure: the page renders the
-              // not-found chain (SSR status 404). Anything else — including
-              // `redirect()` — still rejects. In development the error is
-              // tagged with the route whose loader threw, so a dev host (zero's
-              // error overlay) can say "loader" rather than "render" and name
-              // the route. Folded out of production builds.
-              if (!isNotFoundError(err)) {
-                if (process.env.NODE_ENV !== 'production') markLoaderError(err, r.path)
-                throw err
-              }
-              notFoundThrown = true
-              return
-            }
-            router._loaderData.set(r, data)
-          }),
-      )
-      // The not-found chain needs no extra component loading: its layouts are
-      // a prefix of this chain (loaded above) and its leaf is the eager
-      // `notFoundComponent`.
-      if (notFoundThrown) {
-        loaderNotFound.set(resolved.path)
-      } else if (loaderNotFound.peek() === resolved.path) {
-        loaderNotFound.set(null)
-      }
-    },
-
-    async runServerLoaders(path: string, request?: Request) {
-      // Phase 5 — the single-fetch data endpoint's worker. Runs ONLY the
-      // matched chain's `serverLoader` records (NOT isomorphic `loader`s —
-      // those run client-side, so running them here would DOUBLE-FIRE their
-      // side effects; that was the Phase-5 review finding F). Keys the
-      // result by MATCHED-CHAIN INDEX, not `record.path`: a layout and its
-      // index page share a path, and path-keying silently overwrote the
-      // page's server-loader data with the layout's (review finding C,
-      // reproduced). Index is unique per chain position; the client resolves
-      // the same path -> same chain -> same indices, so it maps back exactly.
-      const resolved = resolveRoute(path, routes)
-      const ac = new AbortController()
-      const loaderCtx = {
-        params: resolved.params,
-        query: resolved.query,
-        signal: ac.signal,
-        ...(request ? { request } : {}),
-      }
-      const data: Record<number, unknown> = {}
-      let notFoundThrown = false
-      try {
-        await Promise.all(
-          resolved.matched.map(async (r, i) => {
-            if (typeof r.serverLoader !== 'function') return
-            // Same sync-throw-to-rejection wrap as preload so a synchronous
-            // `redirect()` / `notFound()` is caught, not leaked.
-            try {
-              data[i] = await Promise.resolve().then(() => r.serverLoader!(loaderCtx))
-            } catch (err) {
-              if (!isNotFoundError(err)) throw err
-              notFoundThrown = true
-            }
-          }),
-        )
-      } catch (err) {
-        const info = getRedirectInfo(err)
-        if (info) {
-          return { kind: 'redirect' as const, to: info.url, status: info.status }
-        }
-        throw err
-      }
-      if (notFoundThrown) return { kind: 'notFound' as const }
-
-      return { kind: 'data' as const, data }
+      return true
     },
 
     async revalidate() {

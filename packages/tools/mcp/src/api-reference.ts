@@ -1928,13 +1928,23 @@ deriveIslandName("Counter", islandRelPath(root, "/app/src/islands.ts"))
 
   // <gen-docs:api-reference:start @pyreon/router>
 
+  'router/preloadRoute': {
+    signature: 'preloadRoute(router: Router, path: string, request?: Request): Promise<void>',
+    example: `const router = createRouter({ routes, url: path })
+await preloadRoute(router, path, request)
+const html = await renderToString(h(RouterProvider, { router }, h(App, null)))`,
+    notes: `Resolve \`path\` for a server render: the initial navigation's guards, the matched lazy route components (\`router.preloadComponents\`), then the matched loaders (\`serverLoader\` when the record has one, else \`loader\`) with \`request\`. Afterwards a \`RouterView\` for \`path\` renders final HTML synchronously. A loader's \`redirect()\` rejects (hosts turn it into HTTP 30x); a loader's \`notFound()\` puts the router in the not-found state (status 404); a route the initial guards cancel runs no loaders. A free function, so client bundles that never call it do not carry it. \`@pyreon/server\`'s handler and \`renderPage\`, zero's SSG and OG images all call it.`,
+    mistakes: `- Calling \`router.preloadComponents(path)\` in an SSR host and expecting loader data — it loads code only; \`preloadRoute\` runs the loaders
+- Only running \`prefetchLoaderData\` before \`renderToString\` — that runs loaders but does not resolve \`lazy()\` components, so the page renders blank`,
+  },
+
   'router/runServerLoaders': {
-    signature: `router.runServerLoaders(path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number }>`,
+    signature: `runServerLoaders(router: Router, path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number } | { kind: 'notFound' }>`,
     example: `// zero's /_pyreon/data endpoint does exactly this:
-const result = await router.runServerLoaders('/dash', ctx.req)
+const result = await runServerLoaders(router, '/dash', ctx.req)
 if (result.kind === 'redirect') return jsonRedirect(result)
 return json({ data: result.data }) // keyed by matched-chain index`,
-    notes: `The single-fetch data endpoint's worker (server-only — \`serverLoader\` functions exist only in the SSR module graph). Runs ONLY the matched chain's \`serverLoader\` records (NOT isomorphic \`loader\`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a \`path\`, so path-keying collided). A \`redirect()\` thrown by any server loader returns the redirect descriptor instead of data.`,
+    notes: `The single-fetch data endpoint's worker (server-only — \`serverLoader\` functions exist only in the SSR module graph). Runs ONLY the matched chain's \`serverLoader\` records (NOT isomorphic \`loader\`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a \`path\`, so path-keying collided). A \`redirect()\` thrown by any server loader returns the redirect descriptor instead of data; a \`notFound()\` returns \`{ kind: 'notFound' }\`. A free function, so client bundles do not carry it.`,
     mistakes: `- Calling it client-side — \`serverLoader\` is undefined in the client graph; the client router does the single FETCH instead
 - Expecting isomorphic \`loader\`s to run here — deliberately excluded (double-fire prevention); they run on the client during navigation`,
   },
@@ -1983,7 +1993,7 @@ const Admin = () => (
   </div>
 )`,
     notes: `Render the matched route's component. For nested routes, the parent route component includes a \`<RouterView />\` that renders the matched child. Each \`<RouterView>\` renders one level of the route tree. See also: RouterProvider, createRouter.`,
-    mistakes: `- SSR renders a BLANK page for a lazy route when the handler only ran \`prefetchLoaderData\` — that runs LOADERS ONLY, it does NOT resolve \`lazy()\` route components. \`renderToString\` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must ALSO call \`router.preload(path, req)\` (resolves lazy components into \`_componentCache\`) before rendering.
+    mistakes: `- SSR renders a BLANK page for a lazy route when the handler only ran \`prefetchLoaderData\` — that runs LOADERS ONLY, it does NOT resolve \`lazy()\` route components. \`renderToString\` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must call \`preloadRoute(router, path, req)\` (resolves lazy components into \`_componentCache\` AND runs the loaders) before rendering.
 - Forgetting the inner \`<RouterView />\` inside a LAYOUT component — nested child routes render by placing a SECOND \`<RouterView />\` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).
 - Expecting a param-only navigation (\`/user/1 → /user/2\`) to re-run the layout body — it does NOT. Each depth is a single atomic \`computed\` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth's own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.
 - Passing the route component as a prop or child to \`<RouterView>\` — it takes none except \`router?\` (explicit router override; defaults to the context/active router) and \`announceRouteChanges\` (a11y live-region opt-out). It reads the matched chain from \`RouterContext\`; configure routes in \`createRouter\`, never on RouterView.
@@ -2095,7 +2105,7 @@ const User = () => {
     notes: `Access the data returned by the current route's \`loader\` function. The loader runs before the route component mounts; its return value is cached and available synchronously via this hook. Generic over the loader return type. See also: useMiddlewareData, useRoute.`,
     mistakes: `- Getting \`undefined\` when the route has NO \`loader\` — it reads \`LoaderDataContext\` (default \`undefined\`). The \`<T>\` generic is an unchecked CAST, not validation; \`data.name\` then throws on the undefined.
 - Wrapping \`useLoaderData()\` in an \`effect\` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS the route component on a real navigation, which re-runs the body and re-reads the hook; there is no signal to subscribe to.
-- SSR returning \`undefined\` at render time — loaders are async but \`renderToString\` is synchronous, so the handler must run loaders (\`prefetchLoaderData\` or \`router.preload\`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.
+- SSR returning \`undefined\` at render time — loaders are async but \`renderToString\` is synchronous, so the handler must run loaders (\`preloadRoute\` or \`prefetchLoaderData\`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.
 - Calling it in a component NOT rendered by \`<RouterView>\` (a sibling inside \`<RouterProvider>\`, a portal outside the route tree) — no \`LoaderDataProvider\` wraps it, so the context is the default \`undefined\`.
 - Expecting a nested LAYOUT's \`useLoaderData()\` to return the child PAGE's data — each depth is wrapped with its OWN \`LoaderDataProvider\`, so a layout reads its own loader's data and the page reads the page's. The hook reads the nearest provider, not the leaf.`,
   },
@@ -2270,7 +2280,7 @@ const app = (
 ]`,
     notes: `Code-split a route component. Returns a LazyComponent DESCRIPTOR (a branded object, NOT a rendered component) to assign as a route \`component\`. The loader may resolve a bare component OR an ES-module \`{ default }\` namespace (so \`() => import('./Page')\` works). \`options.loading\` / \`options.error\` supply Suspense fallbacks; \`options.hmrId\` is the dev-only module id fs-router emits for hot-swap. The ROUTER caches resolved chunks in a bounded LRU (\`maxCacheSize\`, default 100); \`lazy()\` itself does not dedupe. See also: createRouter, RouterView.`,
     mistakes: `- Calling the result like a component (\`lazy(...)()\`) — it is an inert DESCRIPTOR; assign it to a route \`component\` and the router resolves it (into \`_componentCache\`) on navigation.
-- Assuming \`lazy()\` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; \`router.preload()\` warms it before SSR renderToString, which is required so a lazy route is not blank on the server).`,
+- Assuming \`lazy()\` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; \`preloadRoute()\` / \`router.preloadComponents()\` warm it before SSR renderToString, which is required so a lazy route is not blank on the server).`,
   },
 
   'router/LoaderData': {
@@ -2490,8 +2500,8 @@ const result = await renderPage(App, router, "/posts/42", {
 })
 if (result.kind === "redirect") return Response.redirect(result.to, result.status)
 if (result.kind === "html") compose(template, result)`,
-    notes: `The ONE string-mode page-render pipeline — preload (lazy components + loaders, with \`redirect()\` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's \`notFoundComponent\` chain). Shared by \`createHandler\`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. **Islands-only pages:** when the matched chain's merged meta declares \`hydrate: 'islands'\` (zero's \`export const hydrate = 'islands'\`), the head gets \`ISLANDS_ONLY_MARKER\` (\`<meta name="pyreon-hydrate" content="islands">\`), the loader-data script is left out (the loader output is in the HTML; store state is still shipped for islands that share a store), \`routeModules\` is empty, and \`result.hydrate\` is \`'islands'\` (\`'app'\` otherwise). \`createHandler\`'s streaming path honours the same meta. Returns discriminated parts (\`kind: "html" | "redirect" | "unmatched"\`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT \`path\` — \`preload\` warms caches but does not navigate. **\`collectStyles\` is OPTIONAL and defaults to the CSS-in-JS collector registered on \`globalThis.__PYREON_STYLER_COLLECT__\`** (set by \`@pyreon/styler\`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics. See also: createHandler, useRequestLocals.`,
-    mistakes: `- Creating the router at a DIFFERENT url than \`path\` — \`preload\` does not navigate; the render shows the router's creation url, not \`path\`
+    notes: `The ONE string-mode page-render pipeline — preload (lazy components + loaders, with \`redirect()\` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's \`notFoundComponent\` chain). Shared by \`createHandler\`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. **Islands-only pages:** when the matched chain's merged meta declares \`hydrate: 'islands'\` (zero's \`export const hydrate = 'islands'\`), the head gets \`ISLANDS_ONLY_MARKER\` (\`<meta name="pyreon-hydrate" content="islands">\`), the loader-data script is left out (the loader output is in the HTML; store state is still shipped for islands that share a store), \`routeModules\` is empty, and \`result.hydrate\` is \`'islands'\` (\`'app'\` otherwise). \`createHandler\`'s streaming path honours the same meta. Returns discriminated parts (\`kind: "html" | "redirect" | "unmatched"\`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT \`path\` — \`preloadRoute\` warms caches but does not navigate. **\`collectStyles\` is OPTIONAL and defaults to the CSS-in-JS collector registered on \`globalThis.__PYREON_STYLER_COLLECT__\`** (set by \`@pyreon/styler\`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics. See also: createHandler, useRequestLocals.`,
+    mistakes: `- Creating the router at a DIFFERENT url than \`path\` — \`preloadRoute\` does not navigate; the render shows the router's creation url, not \`path\`
 - Expecting \`kind: "unmatched"\` without setting \`bailOnUnmatched: true\` — by default an empty match renders through (the notFoundComponent chain is the framework's 404 story)
 - Wrapping the call in your own \`runWithRequestContext\` AND providing locals separately — pass \`locals\` in options; renderPage opens the request context itself
 - Composing \`loaderScript\` into the template twice (it is already a complete \`<script>\` tag, not bare JSON)
@@ -9832,21 +9842,23 @@ createISRHandler(handler, { revalidate: 60, store: redisStore })`,
   'zero/createMemoryStore': {
     signature: 'function createMemoryStore<E = ISRCacheEntry>(opts?: { maxEntries?: number }): ISRStore<E>',
     example: 'createISRHandler(handler, { revalidate: 60, store: createMemoryStore({ maxEntries: 5000 }) })',
-    notes: 'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index prunes evicted keys lazily). Per-process — fine for single-instance deploys; multi-instance wants a shared external store. See also: createISRHandler, ISRStore, createFsStore.',
+    notes: 'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index drops a key the moment it is deleted, evicted or cleared). Per-process — fine for single-instance deploys; multi-instance wants a shared external store. See also: createISRHandler, ISRStore, createFsStore.',
   },
 
   'zero/createFsStore': {
-    signature: 'function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E>',
+    signature: 'function createFsStore<E = ISRCacheEntry>(dir: string, opts?: { maxEntries?: number }): ISRStore<E>',
     example: `import { createFsStore } from '@pyreon/zero/server'
 
 createISRHandler(handler, {
   revalidate: 60,
-  store: createFsStore('./.isr-cache'),
+  store: createFsStore('./.isr-cache', { maxEntries: 5000 }),
   tagsForRequest: (req) => (new URL(req.url).pathname.startsWith('/posts/') ? ['posts'] : []),
 })`,
-    notes: `Filesystem-backed ISR store for self-hosted node/bun: cache entries (and the tag index) persist as JSON files under \`dir\`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). One file per key (fs-safe encoded; over-length keys hash to a fixed name so long query strings can't silently ENAMETOOLONG-drop), \`_tags.json\` sidecar written atomically (tmp+rename). EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV. See also: createISRHandler, ISRStore, createMemoryStore.`,
+    notes: 'Filesystem-backed ISR store for self-hosted node/bun: cache entries (and their tags) persist as JSON files under `dir`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). Bounded like `createMemoryStore`: at most `maxEntries` entries (default 1000) on disk, least recently written or read evicted first (its file AND its tags); the cap holds across restarts because a new store counts what is already in `dir` and trims it. One file per entry (fs-safe encoded; a long key or one with upper-case letters gets a SHA-256 name, so a long query string cannot ENAMETOOLONG-drop and `/About` never shares a file with `/about` on a case-insensitive file system) plus a small per-entry tags sidecar, so a tagged miss writes O(1) bytes. Writes go through tmp+rename (a crash never leaves a torn entry; leftover temp files are removed at start), run in call order per key, and an older `_tags.json` index is migrated. EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV. See also: createISRHandler, ISRStore, createMemoryStore.',
     mistakes: `- Using it across multiple instances — each box has its own directory; tag invalidation on one box does not reach the others
-- Pointing \`dir\` at a tmpfs that clears on reboot — defeats the restart-survival purpose`,
+- Pointing \`dir\` at a tmpfs that clears on reboot — defeats the restart-survival purpose
+- Keeping the default \`pathname + search\` cache key on pages that ignore their query string — every distinct query string is its own entry, so random \`?x=\` requests evict real pages (the disk stays bounded by \`maxEntries\`); supply a \`cacheKey\` that keeps only the parameters the page reads
+- Sharing one \`dir\` between processes and expecting one cap — the index and \`maxEntries\` are per process (each adopts entries it reads), and a tag recorded by another process is only seen after a restart`,
   },
 
   'zero/vercelAdapter': {
@@ -12662,7 +12674,7 @@ setMode('dark') // reactive re-style — same element, new classes`,
 })
 expectRouter(router).toBeAt('/posts/:id')
 await navigate('/posts/2')`,
-    notes: `ASYNC render harness for \`@pyreon/router\`. Creates a router pinned to \`route\` (default \`'/'\`), then \`await router.preload(route)\` — the SSR-handler contract: lazy route components resolved into the cache AND the matched chain's loaders run — so the FIRST render shows final content (\`useLoaderData()\` populated, no loading fallbacks). Mounts \`ui\` inside \`<RouterProvider>\` (pass \`null\` for a bare \`<RouterView/>\`); \`unmount()\` destroys the router. \`navigate(path)\` = \`router.push\` — resolves with \`NavigationResult\` AFTER guards + loaders + DOM commit. See also: expectRouter, render.`,
+    notes: `ASYNC render harness for \`@pyreon/router\`. Creates a router pinned to \`route\` (default \`'/'\`), then \`await preloadRoute(router, route)\` — the SSR-handler contract: lazy route components resolved into the cache AND the matched chain's loaders run — so the FIRST render shows final content (\`useLoaderData()\` populated, no loading fallbacks). Mounts \`ui\` inside \`<RouterProvider>\` (pass \`null\` for a bare \`<RouterView/>\`); \`unmount()\` destroys the router. \`navigate(path)\` = \`router.push\` — resolves with \`NavigationResult\` AFTER guards + loaders + DOM commit. See also: expectRouter, render.`,
     mistakes: `- Not awaiting \`renderWithRouter\` itself — it is ASYNC (initial lazy components + loaders resolve before mount); an un-awaited call hands you a Promise, not a render result.
 - Not awaiting \`navigate()\` — assertions race the guards/loaders pipeline; the promise resolves only after the DOM committed.
 - Ignoring the \`NavigationResult\` — \`'cancelled'\` (guard/blocker refused) and \`'superseded'\` (a newer navigation won) resolve WITHOUT an error; assert the result when the test depends on the navigation landing.

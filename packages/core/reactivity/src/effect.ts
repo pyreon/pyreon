@@ -7,7 +7,7 @@ import {
   _rdRegisterBinding,
   _rdTagHandle,
 } from './reactive-devtools'
-import { getCurrentScope } from './scope'
+import { _ownerScope, getCurrentScope } from './scope'
 import {
   exactDeps,
   getInnerEffectCollector,
@@ -408,7 +408,7 @@ function registerEffectHere(e: Effect): void {
     }
   } else {
     // Otherwise auto-register with the active EffectScope (if any)
-    getCurrentScope()?.add(e)
+    _ownerScope()?.add(e)
   }
 }
 
@@ -557,7 +557,7 @@ export function _bind(fn: () => void): () => void {
   if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, run)
 
   // Auto-register with scope so template bindings are disposed during teardown
-  getCurrentScope()?.add(dispose)
+  _ownerScope()?.add(dispose)
 
   return dispose
 }
@@ -658,7 +658,7 @@ export function renderEffect(fn: () => void): () => void {
   if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, run)
 
   // Auto-register with scope so render effects are disposed during teardown
-  getCurrentScope()?.add(dispose)
+  _ownerScope()?.add(dispose)
 
   return dispose
 }

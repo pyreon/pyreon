@@ -12,10 +12,12 @@
  * (`clientWalksHole` is the one predicate both share), so the server brackets
  * the nested templates' placeholders exactly as the client expects.
  *
- * Not walked, deliberately: a hole whose element sits in SVG or MathML content
- * (`inForeignContent`). Each element a walked hole builds is a template ROOT,
- * namespaced by its own tag alone — `<svg>{on && <a/>}</svg>` would build an
- * HTML `<a>`.
+ * Walked WITHOUT templates: a hole whose element sits in SVG or MathML content
+ * (`inForeignContent`). Each element a template-walked hole builds is a
+ * template ROOT, namespaced by its own tag alone — `<svg>{on && <a/>}</svg>`
+ * would build an HTML `<a>`. Such a hole is walked with its JSX kept on the h()
+ * path (`hPathHoles`), which mounts each element in its parent's namespace and
+ * still gives it the reactivity rules (accessor attributes and children, `_rp`).
  */
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
@@ -88,8 +90,8 @@ const WALKED: Array<[name: string, src: string]> = [
   ['foreignObject returns to HTML', 'const A = (p) => <svg><foreignObject><div>{p.on && <p><b />{p.v}</p>}</div></foreignObject></svg>'],
 ]
 
-/** Hole shapes that deliberately stay slices, and why. */
-const SLICED: Array<[name: string, src: string]> = [
+/** Hole shapes walked with their JSX kept on the h() path, and why. */
+const H_PATH: Array<[name: string, src: string]> = [
   ['svg content: the arm would be an HTML <a>', 'const A = (p) => <svg>{p.on && <a href={p.u}>x</a>}</svg>'],
   ['svg-only ancestor (a component-rooted <g>)', 'const A = (p) => <g>{p.on ? <title>t</title> : null}</g>'],
   ['math content', 'const A = (p) => <math><mrow>{p.on && <mi>x</mi>}</mrow></math>'],
@@ -104,14 +106,23 @@ describe('template holes are walked', () => {
     })
   }
 
-  for (const [name, src] of SLICED) {
-    it(`${name}: the hole stays a slice on the client and the server`, () => {
+  for (const [name, src] of H_PATH) {
+    it(`${name}: the hole is walked on the h() path on the client and the server`, () => {
       const out = client(src)
+      // Nothing in the hole becomes a template root...
       expect(domJsxLeft(out).length, out).toBeGreaterThan(0)
+      // ...but it is walked, not sliced: the read is the arm's own accessor.
+      expect(out, out).toContain('_mountSlot(() => (p.on')
+      expect(out, out).not.toContain('(p.on && <a href={p.u}>')
       // The server mirrors it: nothing in the hole is entered as a template.
       expect(ssrH(src)).not.toContain('_slot(')
     })
   }
+
+  it('an SVG hole is walked: its attribute gets an accessor (not a sliced value)', () => {
+    const out = client('const A = (p) => <svg>{p.on && <a href={p.u}>x</a>}</svg>')
+    expect(out).toContain('<a href={() => p.u}>x</a>')
+  })
 
   it('a keyed item root stays on h() — its children still compile', () => {
     const out = client('const A = (p) => <ul>{p.xs.map((x) => <li key={x.id}><b>{x.n}</b></li>)}</ul>')
@@ -177,7 +188,7 @@ describe.runIf(nativeTransform !== null)('template holes: the native backend is 
     ['For row with a walked map', 'const A = (p) => <ul><For each={p.rows} by={(r) => r.id}>{(r) => <li><b>{r.name.split(" ").map((w) => <i>{w}</i>)}</b></li>}</For></ul>'],
     ['residual component arm under foreignObject', 'const A = (p) => <svg><foreignObject><div>{p.on ? <b>x</b> : <Comp />}<i /></div></foreignObject></svg>'],
   ]
-  for (const [name, src] of [...WALKED, ...SLICED, ...EXTRA]) {
+  for (const [name, src] of [...WALKED, ...H_PATH, ...EXTRA]) {
     it(name, () => {
       for (const m of MODES) {
         const js = transformJSX_JS(src, 'hole.tsx', {
