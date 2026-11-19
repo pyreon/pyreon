@@ -6904,6 +6904,36 @@ const sound = sonifyValues(closes, { duration: 3000, minHz: 220, maxHz: 880, lin
 - Closing an \`options.context\` you passed in and expecting the hook to have done it — a supplied context is the caller's to close; only the one the hook constructs is closed on settle`,
   },
   // <gen-docs:api-reference:end @pyreon/charts>
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/charts-maps
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/charts-maps>
+
+  'charts-maps/world-110m': {
+    signature: `import world from '@pyreon/charts-maps/world-110m'  // MapModule`,
+    example: `import { MapChart } from '@pyreon/charts'
+import world from '@pyreon/charts-maps/world-110m'
+
+<MapChart map={world} values={{ DEU: 83, FRA: 68 }} />`,
+    notes: 'The countries of the world as a `MapModule` for `<MapChart map>`: Natural Earth 1:110m TopoJSON (object `countries`), joined on the ISO 3166-1 alpha-3 feature id, named by `properties.name`, prepared for the Equal Earth projection. About 33 KB gzip. See also: us-states.',
+    mistakes: `- Joining values on the country NAME — the key is the ISO alpha-3 id (\`DEU\`), not \`Germany\`; the display name is only the label
+- Importing from the package root for the data — the root is types and a list; each map is its own subpath (\`@pyreon/charts-maps/world-110m\`) so it bundles only when imported
+- Expecting a disputed border to match your convention — Natural Earth draws de facto lines; this package takes no position on them`,
+  },
+
+  'charts-maps/us-states': {
+    signature: `import usStates from '@pyreon/charts-maps/us-states'  // MapModule`,
+    example: `import { MapChart } from '@pyreon/charts'
+import usStates from '@pyreon/charts-maps/us-states'
+
+<MapChart map={usStates} values={{ '06': 39, '48': 30 }} />`,
+    notes: 'The 50 US states, DC and Puerto Rico as a `MapModule`: Census cartographic boundary 1:20m TopoJSON (object `states`), joined on the two-digit state FIPS feature id (`"06"`), named by `properties.name`, prepared for Albers USA (Alaska and Hawaii in insets). About 34 KB gzip. See also: world-110m.',
+    mistakes: `- Writing FIPS codes as numbers — the id is a TWO-CHARACTER STRING (\`"06"\`, not \`6\`), so a numeric key never matches
+- Expecting counties — this is states only; the larger county file was measured (about 229 KB gzip) and left out`,
+  },
+  // <gen-docs:api-reference:end @pyreon/charts-maps>
   // ═══════════════════════════════════════════════════════════════════════════
 
   // <gen-docs:api-reference:start @pyreon/code>

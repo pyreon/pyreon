@@ -297,6 +297,21 @@ export const SCENARIOS: Scenario[] = [
     imports: ['MapChart'],
   },
   {
+    id: '@pyreon/charts-maps::world-110m',
+    pkg: '@pyreon/charts-maps',
+    dir: 'fundamentals/charts-maps',
+    entry: 'world-110m.js',
+    // One data module, one lazy file: importing it must cost about its own data and nothing else.
+    imports: ['data'],
+  },
+  {
+    id: '@pyreon/charts-maps::us-states',
+    pkg: '@pyreon/charts-maps',
+    dir: 'fundamentals/charts-maps',
+    entry: 'us-states.js',
+    imports: ['data'],
+  },
+  {
     id: '@pyreon/charts::chart-line',
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',

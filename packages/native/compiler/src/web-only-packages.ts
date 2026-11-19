@@ -35,6 +35,7 @@
 // different as a linter, a `<head>` manager and an animation engine.
 export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
+  ['@pyreon/charts-maps', "it is DATA: TopoJSON modules a web `<MapChart>` decodes at load. A native map takes a precomputed `GeoShape[]` const (a world boundary constant that compiles within the Swift and Kotlin limits is under investigation), so these modules are not lowered to iOS or Android yet."],
   ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
   ['@pyreon/config', "build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target"],
   ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],
