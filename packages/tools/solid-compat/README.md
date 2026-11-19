@@ -1,5 +1,7 @@
 # @pyreon/solid-compat
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 SolidJS-compatible API shim — write Solid-style code that runs on Pyreon's reactive engine.
 
 `@pyreon/solid-compat` provides the SolidJS surface (`createSignal`, `createEffect`, `createMemo`, `createComputed`, `createRenderEffect`, `createResource`, `createSelector`, `createRoot`, `createStore`, `createContext`/`useContext`, `mergeProps`, `splitProps`, `untrack`, `batch`, lifecycle hooks `onMount` / `onCleanup`, control-flow components `<For>` / `<Show>` / `<Switch>` / `<Match>` / `<Index>` / `<Dynamic>` / `<Portal>` / `<ErrorBoundary>` / `<Suspense>`, transitions, observables, `reconcile` / `unwrap` / `produce`) all on Pyreon's reactive engine. The signal/effect API names map closely to Solid's, but **the update model is coarser**: a Solid `createSignal` setter bumps an internal version signal that re-runs the whole component body (inside `runUntracked`), not just the exact DOM node Solid's compiler would update. Output and lifecycle stay correct (child instances are preserved, effects/cleanups fire as expected), but reactivity is per-component re-run, not Solid's fine-grained per-node. Some SolidJS APIs are not implemented — see [Not supported](#not-supported).

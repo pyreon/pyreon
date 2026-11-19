@@ -1,5 +1,7 @@
 # @pyreon/storybook
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Storybook renderer for Pyreon components — mount, render, interact via Storybook's standard tooling.
 
 `@pyreon/storybook` is the Storybook framework integration for Pyreon. Set `framework: "@pyreon/storybook"` in `.storybook/main.ts` and your Pyreon components render in Storybook with the standard `Meta` / `StoryObj` types, args, decorators, and play interactions. Ships a `renderToCanvas(context, canvasElement)` renderer, typed `Meta<TComponent>` + `StoryObj<TMeta>` helpers, and convenience re-exports of the core Pyreon primitives (`h`, `Fragment`, `signal`, `computed`, `effect`, `mount`) so stories don't need a second import.

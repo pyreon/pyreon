@@ -1,5 +1,7 @@
 # @pyreon/i18n
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Reactive internationalization — interpolation, CLDR pluralization, async namespace loading, rich JSX text.
 
 `@pyreon/i18n` ships a `createI18n({ locale, messages, loader, fallbackLocale, pluralRules, onMissingKey })` factory that returns a signal-aware `I18nInstance` — `t(key, values)` reads the `locale` signal reactively so calls inside effects / computeds re-evaluate on locale change. Namespace lazy loading with promise deduplication, `addMessages` for runtime additions, and a `<Trans>` component for JSX-aware interpolation where simple string interpolation would lose markup. Two entry points: full (`@pyreon/i18n`, includes `<Trans>` + provider + hook) and framework-agnostic (`@pyreon/i18n/core` — only `createI18n` / `interpolate` / `resolvePluralCategory`, no `@pyreon/core` dep, safe for backend / edge workers / non-JSX consumers).

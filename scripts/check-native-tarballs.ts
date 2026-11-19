@@ -31,6 +31,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { spawnSwiftToolSync } from '../packages/native/compiler/src/swift-tool'
 
 const REPO = resolve(new URL('..', import.meta.url).pathname)
 const NATIVE = join(REPO, 'packages', 'native')
@@ -116,7 +117,9 @@ export function kotlinTarballProblems(pkg: string, dir: string, sdkOnly: string[
 
 function run(cmd: string[], cwd: string): { code: number; out: string; err: string } {
   const [bin, ...args] = cmd
-  const r = spawnSync(bin as string, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  const options = { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 } as const
+  // SwiftPM's driver leaves a TemporaryDirectory.* in $TMPDIR per call; the helper gives it a private one.
+  const r = bin === 'swift' ? spawnSwiftToolSync('swift', args, options) : spawnSync(bin as string, args, options)
   return { code: r.status ?? 1, out: r.stdout ?? '', err: r.stderr ?? '' }
 }
 
