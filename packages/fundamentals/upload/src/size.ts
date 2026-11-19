@@ -16,12 +16,42 @@ export function parseSize(value: number | string, fn = 'parseSize'): number {
     if (Number.isFinite(value) && value >= 0) return value
     throw new RangeError(`[Pyreon] ${fn}: a size must be a finite number of bytes from 0, got ${String(value)}. Pass bytes or text such as "10 MB".`)
   }
-  const m = typeof value === 'string' ? /^\s*(\d+(?:\.\d+)?)\s*([a-z]*)\s*$/i.exec(value) : null
-  const unit = m === null ? undefined : UNITS[(m[2] ?? '').toLowerCase() || 'b']
+  const read = typeof value === 'string' ? readSize(value) : null
+  const unit = read === null ? undefined : UNITS[read.unit.toLowerCase() || 'b']
 
-  if (m === null || unit === undefined) throw new RangeError(`[Pyreon] ${fn}: cannot read the size ${JSON.stringify(value)}. Pass bytes or text such as "10 MB", "512 KB" or "1.5 MiB".`)
+  if (read === null || unit === undefined) throw new RangeError(`[Pyreon] ${fn}: cannot read the size ${JSON.stringify(value)}. Pass bytes or text such as "10 MB", "512 KB" or "1.5 MiB".`)
 
-  return Math.round(Number(m[1]) * unit)
+  return Math.round(Number(read.number) * unit)
+}
+
+const isDigit = (code: number): boolean => code >= 48 && code <= 57
+const isLetter = (code: number): boolean => (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
+
+/**
+ * Split `"10 MB"` into its number text and unit text with ONE left-to-right scan: digits, an optional fraction, optional
+ * whitespace, letters, end. (The equivalent regular expression, with two adjacent optional runs of whitespace, backtracks
+ * quadratically on a long run of spaces: CodeQL js/polynomial-redos.) `null` when the text is not that shape.
+ */
+function readSize(text: string): { number: string; unit: string } | null {
+  const s = text.trim()
+  let i = 0
+
+  while (i < s.length && isDigit(s.charCodeAt(i))) i++
+  if (i === 0) return null
+  if (s.charCodeAt(i) === 46) {
+    const fraction = ++i
+
+    while (i < s.length && isDigit(s.charCodeAt(i))) i++
+    if (i === fraction) return null
+  }
+  const number = s.slice(0, i)
+
+  while (i < s.length && (s[i] as string).trim() === '') i++
+  const start = i
+
+  while (i < s.length && isLetter(s.charCodeAt(i))) i++
+
+  return i === s.length ? { number, unit: s.slice(start, i) } : null
 }
 
 /** A size for a message: `1.5 MB`. Decimal units, one decimal at most. */
