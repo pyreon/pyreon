@@ -41,9 +41,21 @@ The web `RouterView` claims its depth from `router._viewDepth`, a counter every 
 
 ---
 
+### [FIXED, 2026-11] Index-addressed passes over a raw key list that repeats a key.
+
+`<For>` promises first-wins for duplicate keys (the row appears once, at its FIRST position), but only the fresh render kept it. On an update the LIS and small-k placement walked the raw `newKeys`, so a duplicated row was moved twice and landed at its LAST position; replace-all mounted a duplicate twice, overwriting the first row's cache entry and stranding its DOM; and the contiguous-insertion fast path skipped a repeat of a suffix key that first-wins needed moved up. Fix: every update path stores a deduplicated order — the general path detects a repeat for free (`keptDistinct + added !== n`) and dedupes only then; replace-all skips cached keys; the insertion path finishes with the LIS when it skipped one. **Rule: a list that addresses rows by INDEX must see each key once; dedupe before any positional pass, not after.** Reference: `runtime-dom/src/nodes.ts:mountFor`; bisect-locked in `tests/for-duplicate-keys-fuzz.test.tsx` (each of the three paths reverted alone fails it).
+
+---
+
 ### [FIXED, 2026-10] An `effect()` / `computed()` created in a `<For>` row callback had no owner.
 
 The callback runs after the surrounding component's setup, when no scope is current, so the effect registered nowhere: a removed row kept running it, and so did every row after the list unmounted. Each row callback now runs under a pooled collector scope that the row keeps (and stops on removal) only when something registered — zero allocation otherwise, no measurable cost on the fair board. **Rule: any framework construct that runs a user callback outside component setup must give that callback an owner, or effects created in it are unowned.** Reference: `runtime-dom/src/nodes.ts:runRowCallback`; locked by `for-row-effect-scope.test.tsx` (bisect-verified).
+
+---
+
+### [FIXED, 2026-11] Resetting the current effect scope to `null` instead of restoring it.
+
+`mountComponent` and `hydrateComponent` ended setup with `setCurrentScope(null)`. A component can mount while another scope is current: inside a parent's `onMount` (`runInScope`) when a signal write flips a `<Show>`, inside a `<For>` row's collector, inside a parent's compiled template. The reset left everything that owner created afterwards with no owner, so an effect created later in the same `onMount` kept running after the parent unmounted. **Rule: code that sets the current scope saves the previous one and restores it on every exit path (`runInScope`, `runRowCallback`), never a constant.** Reference: `runtime-dom/src/mount.ts`, `hydrate.ts`; locked by `mount-restores-scope.test.ts` (h(), hydration, and both compiler backends; bisect-verified).
 
 ---
 
@@ -80,6 +92,12 @@ Solid-compat's `onCleanup` always meant "component unmount", so a cleanup regist
 ### An effect wrapper storing its per-run cleanup in a closure
 
 `watch(source, cb)` used to park a returned cleanup in a local `let`, so it ran only on the next re-run or an explicit `stop()` — never when the owning scope disposed the effect, which is how components use `watch`. Kinetic's `useAnimationEnd` then left a 5s timer and `transitionend`/`animationend` listeners pinning an unmounted subtree. Any wrapper whose callback may return a cleanup must hand it to the effect: `watch` calls `onCleanup(result)` inside the effect body, so it runs before each re-run, on `dispose()`, and untracked. Reference: `packages/core/reactivity/src/watch.ts`; `tests/watch.test.ts` ("per-run cleanup runs when the OWNING scope disposes").
+
+---
+
+### Side indexes and guards that outlive the entries they describe (Class C)
+
+The ISR memory store capped its cache at `maxEntries` but its tag index only grew (`setTags` added; `delete()` and LRU eviction never pruned), `createFsStore`'s `_tags.json` likewise, and `createISRHandler` kept one invalidation epoch per key EVER passed to `revalidateNow`, though an epoch only guards a render in flight. Rules: every index keyed by a cached entry is pruned on EVERY path that removes the entry (delete, eviction, clear), via a reverse key → index map; a guard for in-flight work lives exactly as long as that work (refcounted ticket, released in `finally`); a read-only lookup must not refresh LRU order. Reference: `packages/zero/zero/src/isr.ts` (`createMemoryStore`, `createFsStore`, `_beginRender`/`_endRender`); locked by `isr-store-bounds.test.ts`, which also caught `revalidateAll` missing a cold render in flight.
 
 ---
 
@@ -197,6 +215,12 @@ An animation function that does not store its frame ID leaks frames when called 
 
 ---
 
+### [FIXED, 2026-11] A cancel that covers the work a frame STARTS but not the frame itself.
+
+`<Transition>` set its cancel (listeners, safety timer) inside the `requestAnimationFrame` callback, so an unmount before the frame left the frame to run on a detached element and fire `onAfterEnter`/`onAfterLeave` 5s later. **Rule: the cancel is installed when the work is scheduled (cancel the frame id), and the frame replaces it with the cancel for what it starts.** Reference: `runtime-dom/src/transition.ts`; locked by `transition-unmount-before-frame.test.ts` (bisect-verified).
+
+---
+
 ### Bare `requestAnimationFrame` in async animation paths
 
 An async path (`await computeLayout(...)`) can reach its rAF call after the test environment is torn down, throwing `ReferenceError: requestAnimationFrame is not defined` as an unhandled error that fails the run with all tests green. Wrap rAF/cAF in helpers that no-op when the global is not a function: `const _raf = (cb) => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(cb) : 0`. Applies to SSR and workers too. Reference: `flow/src/flow.ts` (`_raf`, `_caf`); `flow/src/tests/raf-teardown-safety.test.ts`.
@@ -233,7 +257,7 @@ Bypasses lifecycle cleanup, so listeners leak on unmount. Use `useEventListener`
 
 ### Closure-captured `parent` in a reactive mount loop
 
-A reactive region is often built inside a detached container (a `DocumentFragment`, or an outer element that is not yet attached) and then moved into the live parent, carrying markers along, but an inner mount's closure still holds the empty fragment as `parent`. The next re-run's `parent.insertBefore(node, marker)` throws `NotFoundError` and the subtree is lost. Any mount loop inside an effect must read `marker.parentNode` (or `tailMarker.parentNode`) on each run and thread that live parent through every helper that inserts, falling back to the captured `parent` only when the marker is detached. Fixed in `mountReactive` and `mountKeyedList` (`mountNewEntries`, `mountVNode`, `keyedListReorder` → `applyKeyedMoves` → `moveEntryBefore`); `mountFor` uses `startMarker.parentNode`, and `KeepAlive`/`TransitionGroup`/`Transition` use live element refs. Reference: `packages/core/runtime-dom/src/nodes.ts`; `tests/keyed-array-in-for-batched-toggle.browser.test.ts`, `tests/show-of-for-batched-toggle.browser.test.ts`; `bun run perf:leak-sweep --app perf-dashboard --journeys domConditionalToggle-1000`.
+A reactive region is often built inside a detached container (a `DocumentFragment`, or an outer element that is not yet attached) and then moved into the live parent, carrying markers along, but an inner mount's closure still holds the empty fragment as `parent`. The next re-run's `parent.insertBefore(node, marker)` throws `NotFoundError` and the subtree is lost. Any mount loop inside an effect must read `marker.parentNode` (or `tailMarker.parentNode`) on each run and thread that live parent through every helper that inserts, falling back to the captured `parent` only when the marker is detached. Fixed in `mountReactive`; `mountFor` (which also reconciles keyed `.map()` arrays — `mountKeyedList` is a thin wrapper over it) uses `startMarker.parentNode`, and `KeepAlive`/`TransitionGroup`/`Transition` use live element refs. Reference: `packages/core/runtime-dom/src/nodes.ts`; `tests/keyed-array-in-for-batched-toggle.browser.test.ts`, `tests/show-of-for-batched-toggle.browser.test.ts`; `bun run perf:leak-sweep --app perf-dashboard --journeys domConditionalToggle-1000`.
 
 ---
 
@@ -264,6 +288,12 @@ A hook that checks `if (active()) return`, awaits a permission or device, then s
 ### A settle-once flag does not cover settle-never
 
 The file pickers (`useCamera`, `useFilePicker`, `useImagePicker`) append a hidden `<input type="file">` and remove it in `settle`. If neither `change` nor `cancel` fires (older browsers, or unmount while the OS sheet is open), the node, its listeners and the `resolve` closure are retained forever and the promise never settles. A resource acquired from an event handler has no reactive scope to own it, so the hook registers `onCleanup` during setup and settles whatever is still in flight. Async iterables have the same settle-never risk: `.return()` queues behind an in-flight `.next()`, and an abort signal alone cannot settle a transport or parser that ignores it. Cancel the owned reader, abort the connection/parse wait, cancel late response bodies, detach external listeners before iteration too, and make terminal status idempotent. Check that a guard actually implements the invariant its comment claims. References: `packages/fundamentals/hooks/src/file-picker.ts`; `hooks/src/tests/file-picker-unmount.test.ts`; `packages/fundamentals/http/src/stream.ts`; `http/src/tests/stream-release-regressions.test.ts`.
+
+---
+
+### [FIXED, 2026-11] A client convenience fallback written and read on the server.
+
+`<RouterProvider>` also stored its router in a module-level fallback (`setActiveRouter`), and every router hook read `useContext(RouterContext) ?? _activeRouter`. On a server that slot held the LAST page request's router, so a server-island fragment (rendered with no provider) resolved `useRoute()` / `useParams()` / `useSearchParams()` to another user's path and query: a cross-request data exposure. **Rule: a module-level "current X" fallback is client-only; on the server, resolve through request-scoped context or fail.** All router reads go through one resolver (`resolveRouter` in `router/src/router.ts`), which ignores the slot when `isClient` is false, and `setActiveRouter` stores nothing on a server. Locked by `server/src/tests/server-island-router-bleed.test.ts` (node environment; bisect-verified).
 
 ---
 

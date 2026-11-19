@@ -16,7 +16,7 @@ import { panWindow, sliceRange, zoomWindow } from './zoom'
 import type { ZoomWindow } from './zoom'
 
 export interface CandlestickChartProps<T> extends CanvasHostProps {
-  data: T[] | (() => T[])
+  data: readonly T[] | (() => readonly T[])
   open: (d: T, index: number) => Double
   high: (d: T, index: number) => Double
   low: (d: T, index: number) => Double
@@ -95,8 +95,8 @@ const SLIDER_BAND = 52.0
 const NO_LENGTH = { mode: '', amount: 0.0 }
 
 export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
-  const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
-  const toCandles = (rows: T[]): Ohlc[] => rows.map((d, i) => ({ open: props.open(d, i), high: props.high(d, i), low: props.low(d, i), close: props.close(d, i) }))
+  const readData = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
+  const toCandles = (rows: readonly T[]): Ohlc[] => rows.map((d, i) => ({ open: props.open(d, i), high: props.high(d, i), low: props.low(d, i), close: props.close(d, i) }))
   const categoriesOf = (rows: T[]): string[] => (props.x !== undefined ? rows.map((d, i) => props.x!(d, i)) : [])
   const hitAt = (g: Geometry, px: Double, py: Double): number => hitCandle(g.candles.length, g.plot, px - g.box.x, py - g.box.y)
   const zoom = resolveZoom(props.zoom)

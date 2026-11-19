@@ -49,7 +49,7 @@ export interface SunburstOptions {
 }
 
 /** Number of levels in the hierarchy (0 for no nodes) — iterative. */
-export function treeDepth(nodes: TreeNode[]): number {
+export function treeDepth(nodes: readonly TreeNode[]): number {
   let deepest = 0
   const stack: TreeNode[] = []
   const depths: number[] = []
@@ -79,7 +79,7 @@ export function treeDepth(nodes: TreeNode[]): number {
 }
 
 interface SunburstFrame {
-  children: TreeNode[]
+  children: readonly TreeNode[]
   a0: Double
   a1: Double
   depth: number
@@ -90,7 +90,7 @@ interface SunburstFrame {
 
 /** Lay out the hierarchy into rings between `innerR` and `outerR`. */
 export function layoutSunburst(
-  nodes: TreeNode[],
+  nodes: readonly TreeNode[],
   innerR: Double,
   outerR: Double,
   options?: SunburstOptions,

@@ -35,7 +35,14 @@ import {
   serializeLoaderData,
 } from '@pyreon/router'
 import { renderToStream, runWithRequestContext } from '@pyreon/runtime-server'
-import { renderPage } from './render-page'
+import {
+  type ClientStartPreload,
+  hasIslandToHydrate,
+  ISLANDS_ONLY_MARKER,
+  isIslandsOnlyMeta,
+  renderModulePreloads,
+  renderPage,
+} from './render-page'
 import {
   buildClientEntryTag,
   buildScriptsFast,
@@ -82,20 +89,26 @@ export interface HandlerOptions {
   /**
    * Collect CSS styles after rendering. Called after renderToString/renderWithHead.
    * Return a `<style>` tag string to inject into `<head>`.
-   * Used by @pyreon/styler's sheet.getStyleTag() to prevent FOUC in SSG.
+   *
+   * Usually OMIT it: with `@pyreon/styler` loaded, the render pipeline falls
+   * back to the collector styler registers (`__PYREON_STYLER_COLLECT__`), and
+   * each request already gets its own styler scope (`runWithRequestContext`),
+   * so its `<style>` carries exactly the rules its render used plus the
+   * module-level keyframes and global styles. Pass one only to use a different
+   * CSS-in-JS engine or to post-process the tag.
    *
    * Receives the per-request CSP nonce (or `undefined` at SSG/no-CSP) — forward
    * it to `sheet.getStyleTag(nonce)` so a strict `style-src 'nonce-…'` policy
    * admits the emitted `<style>`.
    *
+   * Never call `sheet.reset()` here: it also drops the keyframes and static
+   * global styles that are inserted once at module evaluation, so every later
+   * response ships without them.
+   *
    * @example
    * import { sheet } from '@pyreon/styler'
    * createHandler({
-   *   collectStyles: (nonce) => {
-   *     const tag = sheet.getStyleTag(nonce)
-   *     sheet.reset()
-   *     return tag
-   *   },
+   *   collectStyles: (nonce) => sheet.getStyleTag(nonce),
    * })
    */
   collectStyles?: (nonce?: string) => string
@@ -141,6 +154,36 @@ export interface HandlerOptions {
    * })
    */
   onError?: ServerErrorHandler
+  /**
+   * `<link rel="modulepreload">` hrefs (base-prefixed) for what the client
+   * entry loads with a dynamic import, emitted per page kind: `app` on a page
+   * that starts the app, `islands` on an islands-only page
+   * (`meta.hydrate: 'islands'`) that has an island to hydrate. Without them
+   * the browser discovers those chunks only once the entry has run: one
+   * extra round trip. `@pyreon/zero` fills this from the client build
+   * manifest for its lazy entry (`startClientLazy`), the same set its SSG
+   * pages preload.
+   *
+   * @example
+   * createHandler({ App, routes, clientPreload: { app: ['/assets/app-x1.js'] } })
+   */
+  clientPreload?: ClientStartPreload
+}
+
+/** `HandlerOptions.clientPreload`, rendered to link tags once per handler. */
+interface PagePreloads {
+  app: string
+  islands: string
+}
+
+/**
+ * The preloads one rendered page uses: the app set on an app page; the islands
+ * set on an islands-only page that has an island to hydrate, else none.
+ */
+function pagePreloads(preload: PagePreloads, islandsOnly: boolean, appHtml: string): string {
+  if (!islandsOnly) return preload.app
+
+  return hasIslandToHydrate(appHtml) ? preload.islands : ''
 }
 
 /** `base` as `/app` (leading slash, no trailing slashes), or `''` for root. */
@@ -220,6 +263,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     collectStyles,
     suspenseTimeoutMs,
     onError,
+    clientPreload,
   } = options
   const base = normalizeHandlerBase(options.base)
 
@@ -229,6 +273,12 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
   // carries the production hashed module script). buildScriptsFast('', …)
   // then injects only the loader-data inline script.
   const clientEntryTag = clientEntry === false ? '' : buildClientEntryTag(clientEntry)
+  // `clientPreload`, rendered once: the app set, and the islands set (used
+  // only on an islands-only page that has an island to hydrate).
+  const preload: PagePreloads = {
+    app: renderModulePreloads(clientPreload?.app),
+    islands: renderModulePreloads(clientPreload?.islands),
+  }
 
   return async function handler(req: Request): Promise<Response> {
     const url = new URL(req.url)
@@ -324,7 +374,10 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           // end-to-end (renderToStream gained `{ signal }` in #745).
           // PR-S6: read `isNotFound` synchronously here (before streaming
           // starts) so the stream response carries the right HTTP status.
-          const streamResolved = router.currentRoute() as { isNotFound?: boolean }
+          const streamResolved = router.currentRoute() as {
+            isNotFound?: boolean
+            meta?: Readonly<Record<string, unknown>>
+          }
           const streamStatus = streamResolved?.isNotFound === true ? 404 : 200
           return renderStreamResponse(
             app,
@@ -338,6 +391,8 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             method === 'HEAD',
             typeof ctx.locals.cspNonce === 'string' ? ctx.locals.cspNonce : undefined,
             onError ? (err: unknown) => callOnError(onError, err, req, 'stream') : undefined,
+            isIslandsOnlyMeta(streamResolved?.meta),
+            preload,
           )
         } catch (err) {
           const info = getRedirectInfo(err)
@@ -389,8 +444,12 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       const scripts = result.loaderScript
         ? `${result.loaderScript}\n  ${clientEntryTag}`
         : clientEntryTag
+      // What this page's client loads first beyond the entry (see
+      // `clientPreload`): the app on an app page, the islands runtime on an
+      // islands-only page with an island. Ahead of the head, as SSG does.
+      const preloads = pagePreloads(preload, result.hydrate === 'islands', result.appHtml)
       const fullHtml = processCompiledTemplate(compiled, {
-        head: result.head,
+        head: preloads ? `${preloads}\n${result.head}` : result.head,
         app: result.appHtml,
         scripts,
       })
@@ -442,14 +501,30 @@ async function renderStreamResponse(
   nonce?: string,
   // The handler's `onError`, bound to this request.
   reportStreamError?: (err: unknown) => void,
+  // An islands-only page (`meta.hydrate: 'islands'`, see render-page.ts):
+  // marked, and no loader-data blob. The streaming shell has no head slot, so
+  // the marker goes with the scripts; the client reads it once the document
+  // is parsed (module scripts are deferred).
+  islandsOnly: boolean = false,
+  // `HandlerOptions.clientPreload`. An app page's set is known before the
+  // shell flushes, so it goes in the head slot. An islands-only page's set
+  // depends on whether the page has an island to hydrate, known only once
+  // the body has streamed, so it goes before the scripts in the tail: still
+  // parsed before the deferred entry runs, so the fetch starts early.
+  preload: PagePreloads = { app: '', islands: '' },
 ): Promise<Response> {
-  const loaderData = serializeLoaderData(router as never)
-  const scripts = buildScriptsFast(clientEntryTag, loaderData, nonce)
+  const loaderData = islandsOnly ? null : serializeLoaderData(router as never)
+  const scripts = islandsOnly
+    ? `${ISLANDS_ONLY_MARKER}\n  ${buildScriptsFast(clientEntryTag, null, nonce)}`
+    : buildScriptsFast(clientEntryTag, loaderData, nonce)
+  // An islands-only page uses its set only if it has an island to hydrate.
+  const islandPreloads = islandsOnly ? preload.islands : ''
+  let sawIsland = false
 
   // Use pre-split parts: [before-head, between-head-app, between-app-scripts, after-scripts]
   const [p0, p1, p2, p3] = compiled.parts
-  const shellHead = p0 + p1
-  const shellTail = p2 + scripts + p3
+  const shellHead = p0 + (islandsOnly ? '' : preload.app) + p1
+  const shellTail = (): string => p2 + (sawIsland ? `${islandPreloads}\n  ` : '') + scripts + p3
 
   // Forward the upstream request's abort signal AND the Suspense
   // timeout config so renderToStream can (a) skip post-resolve
@@ -480,10 +555,13 @@ async function renderStreamResponse(
         while (!done) {
           const result = await reader.read()
           done = result.done
-          if (result.value) push(result.value)
+          if (result.value) {
+            if (islandPreloads && !sawIsland) sawIsland = hasIslandToHydrate(result.value)
+            push(result.value)
+          }
         }
 
-        push(shellTail)
+        push(shellTail())
       } catch (err) {
         // Defensive: catastrophic stream-level failure (rare; the SSR pipeline
         // emits its own error markup for component-level errors). Status code
@@ -494,7 +572,7 @@ async function renderStreamResponse(
         logServerError('Stream render failed', '', err)
         reportStreamError?.(err)
         push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)
-        push(shellTail)
+        push(shellTail())
         /* v8 ignore stop */
       } finally {
         controller.close()

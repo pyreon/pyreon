@@ -132,21 +132,26 @@ const CASES: Case[] = [
     { name: `Button state=${state}`, render: () => h(any(Button), { ...M, state }, 'Save') },
     { name: `Button state=${state} (hover)`, render: () => h(any(Button), { ...M, state, hover: true }, 'Save') },
   ]),
-  ...(['outline', 'subtle', 'ghost', 'link'] as const).flatMap((variant) => [
-    { name: `Button variant=${variant}`, render: () => h(any(Button), { ...M, state: 'primary', variant }, 'Save') },
-    {
-      name: `Button variant=${variant} (hover)`,
-      render: () => h(any(Button), { ...M, state: 'primary', variant, hover: true }, 'Save'),
-    },
-  ]),
+  // A variant draws in the state's tone (#4425), so every state x variant pair is measured.
+  ...(['primary', 'danger', 'success', 'secondary'] as const).flatMap((state) =>
+    (['outline', 'subtle', 'ghost', 'link'] as const).flatMap((variant) => [
+      { name: `Button state=${state} variant=${variant}`, render: () => h(any(Button), { ...M, state, variant }, 'Save') },
+      {
+        name: `Button state=${state} variant=${variant} (hover)`,
+        render: () => h(any(Button), { ...M, state, variant, hover: true }, 'Save'),
+      },
+    ]),
+  ),
   ...(['primary', 'danger'] as const).flatMap((state) => [
     { name: `ActionIcon state=${state}`, render: () => h(any(ActionIcon), { ...M, state }, '+') },
     { name: `ActionIcon state=${state} (hover)`, render: () => h(any(ActionIcon), { ...M, state, hover: true }, '+') },
   ]),
-  ...(['outline', 'subtle'] as const).map((variant) => ({
-    name: `ActionIcon variant=${variant}`,
-    render: () => h(any(ActionIcon), { ...M, state: 'primary', variant }, '+'),
-  })),
+  ...(['primary', 'danger', 'secondary'] as const).flatMap((state) =>
+    (['outline', 'subtle'] as const).map((variant) => ({
+      name: `ActionIcon state=${state} variant=${variant}`,
+      render: () => h(any(ActionIcon), { ...M, state, variant }, '+'),
+    })),
+  ),
   { name: 'PaginationItem state=active', render: () => h(any(PaginationItem), { ...M, state: 'active' }, '2') },
   {
     name: 'PaginationItem state=active (hover)',
@@ -170,7 +175,10 @@ const CASES: Case[] = [
     name: `Alert state=${state}`,
     render: () => h(any(Alert), { ...M, state }, 'Your changes are live.'),
   })),
-  { name: 'Alert variant=solid', render: () => h(any(Alert), { ...M, state: 'info', variant: 'solid' }, 'New version') },
+  ...(['info', 'success', 'warning', 'error'] as const).map((state) => ({
+    name: `Alert state=${state} variant=solid`,
+    render: () => h(any(Alert), { ...M, state, variant: 'solid' }, 'New version'),
+  })),
   ...(['primary', 'success', 'error', 'warning'] as const).map((state) => ({
     name: `Badge state=${state}`,
     render: () => h(any(Badge), { ...M, state }, 'New'),
