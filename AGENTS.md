@@ -52,10 +52,10 @@ Project configs register it for the common tools: `.mcp.json` (Claude Code; appr
 
 ## Packages
 
-76 published packages across 6 categories under `packages/`, plus private support packages (and `@pyreon/auth`, which is unpublished until after 1.0):
+77 published packages across 6 categories under `packages/`, plus private support packages (and `@pyreon/auth`, which is unpublished until after 1.0):
 
 - `packages/core/` (10): reactivity, core, compiler, runtime-dom, runtime-server, router, head, server, primitives, sized-map
-- `packages/fundamentals/` (27): a11y, store, state-tree, form, validation, validate, http, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, rich-text, document, rx, toast, url-state, dnd, sync
+- `packages/fundamentals/` (28): a11y, store, state-tree, form, validation, validate, http, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, rich-text, document, rx, toast, url-state, dnd, sync, command
 - `packages/tools/` (16 published): cli, config, lint, mcp, vite-plugin, typescript, storybook, testing, atlas, loom, lathe, and the compat layers react-/preact-/vue-/solid-/svelte-compat; `devtools` is private
 - `packages/ui-system/` (11): ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
 - `packages/zero/` (6): zero, zero-cli, create-zero, create-multiplatform, meta, zero-content
@@ -63,7 +63,7 @@ Project configs register it for the common tools: `.mcp.json` (Claude Code; appr
 - `packages/internals/` (private): test-utils, manifest, perf-harness, ansi, vitest-config, playwright-config, tsconfig
 - `packages/ui/` (private): ui-theme, ui-components, ui-primitives
 
-Plus `docs/` (the docs site, built on `@pyreon/zero` — 227 doc pages covering all packages) and `examples/`.
+Plus `docs/` (the docs site, built on `@pyreon/zero` — 229 doc pages covering all packages) and `examples/`.
 
 Notable package facts:
 
@@ -77,7 +77,7 @@ Layer order: reactivity → core → {compiler, runtime-dom, runtime-server, rou
 
 Each package's `src/manifest.ts` feeds `llms.txt`, `llms-full.txt`, the MCP API reference (`packages/tools/mcp/src/api-reference.ts`) and the docs-site reference pages. Edit the manifest, never a generated file, then run both generators (`bun run gen-docs && bun docs/scripts/gen-all.ts`).
 
-- Coverage: 57 of 76 published packages have a manifest. The remaining 19 are EXPLICITLY EXEMPT build tooling or scaffolding with no consumable runtime API; the list is `NO_MANIFEST_EXEMPT` in `scripts/check-multiplatform-tier.ts`. Do not give them filler manifests.
+- Coverage: 58 of 77 published packages have a manifest. The remaining 19 are EXPLICITLY EXEMPT build tooling or scaffolding with no consumable runtime API; the list is `NO_MANIFEST_EXEMPT` in `scripts/check-multiplatform-tier.ts`. Do not give them filler manifests.
 - Every manifest declares `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }` (rationale required for `web-only`).
 - MCP `validate` runs `detectReactPatterns` plus `detectPyreonPatterns`, which catches "using Pyreon wrong" mistakes — 23 detector codes today.
 
