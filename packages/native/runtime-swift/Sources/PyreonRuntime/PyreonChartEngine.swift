@@ -10079,7 +10079,7 @@ public func formatIsoDays(_ days: Double) -> String {
     return "\(yp)\(pyreonNumberString(pyreonRound(Double(c.year))))-\(mp)\(pyreonNumberString(pyreonRound(Double(c.month))))-\(dp)\(pyreonNumberString(pyreonRound(Double(c.day))))"
   }
 
-public func layoutCalendar(_ start: String, _ end: String, _ box: PyreonChartRect, _ options: CalendarOptions? = nil) -> CalendarLayout {
+public func layoutCalendar(_ start: String, _ end: String, _ box: PyreonChartRect, _ options: CalendarOptions? = nil, _ measure: ((String, Double) -> Double)? = nil) -> CalendarLayout {
     let p0 = parseIsoDays(start)
     let p1 = parseIsoDays(end)
     if !p0.ok || !p1.ok || p1.days < p0.days {
@@ -10111,6 +10111,9 @@ public func layoutCalendar(_ start: String, _ end: String, _ box: PyreonChartRec
     let originY = box.y + gutterY
     var cells: [CalendarCell] = []
     var monthLabels: [CalendarLabel] = []
+    let m = (measure ?? approxTextWidth)
+    let boxRight = box.x + box.w
+    var prevLabelEnd = originX - 1000000000.0
     var lastMonthKey = -1.0
     var iF = 0.0
     while iF < days {
@@ -10130,7 +10133,16 @@ public func layoutCalendar(_ start: String, _ end: String, _ box: PyreonChartRec
           mi = mi + 1
           miF = miF + 1.0
         }
-        monthLabels.append(CalendarLabel(kind: "month", text: CALENDAR_MONTHS[mi], at: PyreonChartPt(x: originX + week * pitch, y: originY - fontSize * 0.4)))
+        let text = CALENDAR_MONTHS[mi]
+        let lw = m(text, fontSize)
+        let want = originX + week * pitch
+        let latest = boxRight - lw
+        let pulled = want > latest
+        let labelX = !pulled ? want : latest < originX ? originX : latest
+        if !pulled || labelX >= prevLabelEnd {
+          prevLabelEnd = labelX + lw
+          monthLabels.append(CalendarLabel(kind: "month", text: text, at: PyreonChartPt(x: labelX, y: originY - fontSize * 0.4)))
+        }
       }
       iF = iF + 1.0
     }

@@ -1353,7 +1353,15 @@ export class StyleSheet {
     return layerDecl + rules.join('')
   }
 
-  /** Reset SSR buffer and cache (call between server requests). */
+  /**
+   * Reset the SSR buffer, the caches and the registry of module-level
+   * keyframes / static global styles. For tests and teardown.
+   *
+   * NOT for server request boundaries: keyframes and static globals are
+   * inserted once, at module evaluation, so after a reset every later
+   * response ships without them. Request isolation is automatic under
+   * `runWithRequestContext` (a per-request styler scope).
+   */
   reset(): void {
     if (this.cache.size > 0) this.removals++
     this.held.clear()
