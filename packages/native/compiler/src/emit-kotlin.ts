@@ -2289,7 +2289,9 @@ function emitKotlinStmtLinesScoped(
     if (s.kind === 'let' && !_kotlinExprInferCtx.locals.has(s.name)) {
       const t = inferType(s.expr, _kotlinExprInferCtx)
       const typed = t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t
-      if (typeIsOptional(typed)) _kotlinExprInferCtx.locals.set(s.name, typed)
+      // Any known type, not only an optional one: every type-gated lowering of a nested local
+      // (`Object.keys(r)` over a `Record`, a numeric coercion) needs it (#4588).
+      if (typed.kind !== 'unknown') _kotlinExprInferCtx.locals.set(s.name, typed)
     }
   }
 
