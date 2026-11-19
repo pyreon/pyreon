@@ -79,14 +79,14 @@ export const wordsOf = (locale: string): Words => WORDS[language(locale)] ?? ENG
 /** Is the language in the built-in table? (The platform has no word for "all day" and the like; any other language needs `messages`.) */
 export const hasAllDay = (locale: string): boolean => language(locale) in WORDS
 
-const language = (locale: string): string => locale.split(/[-_]/)[0]?.toLowerCase() ?? 'en'
+/** The language of a locale tag, lower case ("pt-BR" is "pt"). */
+export const language = (locale: string): string => locale.replace(/[-_].*$/s, '').toLowerCase()
 
 /** Upper-case the first grapheme where the script has case (`toLocaleUpperCase` leaves Arabic, Japanese and the like alone). */
 export function capitalise(text: string, locale: string): string {
-  if (text === '') return text
-  const first = new Intl.Segmenter(locale, { granularity: 'grapheme' }).segment(text)[Symbol.iterator]().next().value?.segment ?? (Array.from(text)[0] as string)
+  for (const { segment } of new Intl.Segmenter(locale, { granularity: 'grapheme' }).segment(text)) return segment.toLocaleUpperCase(locale) + text.slice(segment.length)
 
-  return first.toLocaleUpperCase(locale) + text.slice(first.length)
+  return text
 }
 
 function field(locale: string, name: 'month' | 'weekOfYear' | 'day' | 'year', fallback: string): string {

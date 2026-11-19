@@ -5,6 +5,7 @@ import { formatTime } from '@pyreon/format'
 import { computed, signal } from '@pyreon/reactivity'
 import type { AgendaDay } from './agenda'
 import { dayLabel, eventLabel } from './labels'
+import { daySpan } from './lanes'
 import { colorStyle } from './month-view'
 import type { ViewProps } from './month-view'
 import type { EventOccurrence } from './types'
@@ -18,6 +19,8 @@ const GAP = 8
 function AgendaEvent<Meta>(props: { occurrence: EventOccurrence<Meta>; view: ViewProps<Meta>; date: string }): VNodeChild {
   const o = props.occurrence
   const calendar = props.view.calendar
+  // the days it is on (an all-day end and a midnight end are exclusive): it goes on before or after this day only inside them
+  const span = daySpan(o as EventOccurrence)
   const label = (): string => eventLabel(o as EventOccurrence, calendar.locale(), calendar.messages())
   const time = (): string => (o.allDay ? calendar.messages().allDay : calendar.messages().range(formatTime(o.start, { locale: calendar.locale(), timeStyle: 'short' }), formatTime(o.end, { locale: calendar.locale(), timeStyle: 'short' })))
 
@@ -32,7 +35,7 @@ function AgendaEvent<Meta>(props: { occurrence: EventOccurrence<Meta>; view: Vie
         aria-label={() => label()}
         onClick={() => calendar.eventClick(o.key)}
       >
-        {props.view.renderEvent === undefined ? <span class="pcal-event-title">{o.title}</span> : props.view.renderEvent({ occurrence: o, label: label(), continuesBefore: o.start.slice(0, 10) < props.date, continuesAfter: o.end.slice(0, 10) > props.date })}
+        {props.view.renderEvent === undefined ? <span class="pcal-event-title">{o.title}</span> : props.view.renderEvent({ occurrence: o, label: label(), continuesBefore: span.first < props.date, continuesAfter: span.last > props.date })}
       </button>
     </li>
   )
