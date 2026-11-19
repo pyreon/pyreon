@@ -77,6 +77,12 @@ The callback runs after the surrounding component's setup, when no scope is curr
 
 ---
 
+### [FIXED, 2026-11] An `effect()` / `computed()` created during server rendering had no owner.
+
+The server never mounts, so no component scope exists and nothing disposed what a component created. Each one reading a signal that outlives the request (module state, a cache, `systemColorMode()` under `<ColorModeProvider mode="system">`) kept one subscriber per request, forever, and its closure pinned props, children and request data. **Rule: on the server the REQUEST owns every node created with no current scope.** `@pyreon/runtime-server` keeps an `EffectScope` on the request's AsyncLocalStorage store; reactivity reads it (`_setRequestOwnerReader`) only where a node registers and only when no scope is current; the request's last hold (the call that opened it, plus every render or stream inside it until that ends, so a streamed body outlives the handler's `runWithRequestContext` callback) stops it. Never make a request scope current with `setCurrentScope` around a render: renders interleave across `await`s, and a slot held over one hands one request's nodes to another. A per-request registry whose entries own their own scope (a store's `effectScope` and plugin cleanups) must publish a disposer the renderer calls at request end (`__PYREON_STORE_DISPOSE_REGISTRY__`); dropping the map is not disposing it. Corollary, the same as on the client: a module-level singleton created lazily inside a render must build its nodes under its own `effectScope()`, or the first request disposes them. Reference: `runtime-server/src/index.ts` (`RequestCtx`, `releaseRequest`); locked by `ssr-reactive-ownership.test.ts` (includes two interleaved async renders) and store `ssr-request-dispose.ssr.test.ts` (bisect-verified).
+
+---
+
 ### Measuring layout in a `ref` inside `<For>`
 
 `<For>` mounts its initial rows into a fragment and moves them into the document afterwards, so a row's `ref` fires on a detached element and `getBoundingClientRect()` returns zeros. Recording that size breaks consumers (in `@pyreon/virtual`, TanStack compensated scroll for the 0 → 40px corrections and the window rendered from the wrong row). A layout read in a `ref` must check `el.isConnected` and defer (a microtask is enough for `<For>`). Reference: `packages/fundamentals/virtual/src/detached-measure.ts` + `tests/detached-measure.test.ts`.

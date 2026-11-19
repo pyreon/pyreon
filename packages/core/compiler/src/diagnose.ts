@@ -135,6 +135,38 @@ const router = createRouter({
     }),
   },
   {
+    pattern: /An effect cleanup threw while a request ended/,
+    diagnose: () => ({
+      cause:
+        "A cleanup registered during a server render threw when the request ended. The server stops every `effect()` and `computed()` a component created once the response is done, and runs their cleanups (`onCleanup`, the function an effect returns). The HTML was already produced, so the response is unaffected; the error is logged because a cleanup that throws may have left a listener, a timer or a connection behind.",
+      fix: 'Find the cleanup from the stack that follows this line and make it safe to run on the server: guard browser-only teardown (`removeEventListener`, `observer.disconnect()`), and do not assume the setup half ran. Work that only makes sense in the browser belongs in `onMount`, which never runs during a server render.',
+      fixCode: `effect(() => {
+  const id = setInterval(tick, 1000)
+  onCleanup(() => clearInterval(id)) // safe on the server and the client
+})
+
+onMount(() => {
+  window.addEventListener('resize', onResize)
+  return () => window.removeEventListener('resize', onResize) // browser only
+})`,
+    }),
+  },
+  {
+    pattern: /Disposing the request registry \([^)]*\) threw/,
+    diagnose: () => ({
+      cause:
+        "When a server render ends, each per-request registry (stores from `defineStore`, state-tree models, and other packages that keep per-request instances) is disposed so nothing created for one request outlives it. One instance's `dispose` threw. The response is unaffected, but the rest of that registry may not have been released.",
+      fix: 'Look at the store or model named in the stack that follows this line. A `dispose` (or an effect cleanup inside the store setup) must not throw and must be safe when the setup only partly ran. Wrap teardown of external resources so one failure cannot stop the others.',
+      fixCode: `defineStore('session', () => {
+  const socket = isClient ? connect() : null
+  onCleanup(() => {
+    try { socket?.close() } catch { /* already closed */ }
+  })
+  return { socket }
+})`,
+    }),
+  },
+  {
     pattern: /\b([A-Za-z_$][\w$]*)\([^)]*\)\??\.(set|update|peek|trigger) is not a function/,
     diagnose: (m) => ({
       cause: `A signal method is called on its value: \`${m[1]}().${m[2]}\`.`,

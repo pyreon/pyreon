@@ -100,6 +100,7 @@ export {
 } from './linked'
 export { createResource, type Resource } from './resource'
 export {
+  _setRequestOwnerReader,
   EffectScope,
   effectScope,
   getContextOwner,
