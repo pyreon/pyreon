@@ -133,6 +133,6 @@ describe('the published shape', () => {
 
     expect(all('core.js')).toEqual(['@pyreon/schedule/core', '@pyreon/time/core'])
     expect(all('index.js')).toEqual(['@pyreon/ambient', '@pyreon/format', '@pyreon/reactivity', '@pyreon/schedule/core', '@pyreon/time/core'])
-    expect(all('components.js')).toEqual(['@pyreon/core', '@pyreon/core/jsx-runtime', '@pyreon/format', '@pyreon/reactivity'])
+    expect(all('components.js')).toEqual(['@pyreon/core', '@pyreon/core/jsx-runtime', '@pyreon/format', '@pyreon/reactivity', '@pyreon/schedule/core', '@pyreon/time/core'])
   })
 })
