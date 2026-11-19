@@ -1,6 +1,6 @@
 # @pyreon/calendar
 
-An event calendar and scheduler for Pyreon, built in slices. Landed: the pure core (`@pyreon/calendar/core`), the reactive calendar (`createCalendar`) and the month and time-grid views. Not yet: drag to move, resize and create, the agenda, year and timeline views, resources.
+An event calendar and scheduler for Pyreon: a pure core (`@pyreon/calendar/core`), the reactive calendar (`createCalendar`), the month, week, day, agenda, year and resource timeline views, moving, resizing and selecting with the pointer and the keyboard (optimistic, with rollback), recurring-event edits as plain data, messages that follow the locale, and a default stylesheet. Experimental: tested in Chromium only and with no screen reader.
 
 > **Experimental.**
 

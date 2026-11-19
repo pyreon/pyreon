@@ -5,9 +5,9 @@ description: An event calendar and scheduler for Pyreon — event model, recurre
 
 <PackageBadge name="@pyreon/calendar" href="/docs/calendar" />
 
-`@pyreon/calendar` is an event calendar: the events of an app laid out in a month, a week or a day. It is built in slices. This page covers the pure core, `@pyreon/calendar/core` (no DOM, no `@pyreon/core`: the event model, recurrence and zones, the window of each view, the two layout algorithms), the reactive calendar (`createCalendar`) and the month and time-grid views. Drag to move, resize and create, the agenda, year and timeline views, and resources follow.
+`@pyreon/calendar` is an event calendar: the events of an app laid out in a month, a week or a day. This page covers the pure core, `@pyreon/calendar/core` (no DOM, no `@pyreon/core`: the event model, recurrence and zones, the window of each view, the layout algorithms), the reactive calendar (`createCalendar`), the month, week, day, agenda, year and resource timeline views, moving, resizing and selecting with the pointer and the keyboard, and the recipes, theming, accessibility notes and migration table at the end.
 
-> **Experimental.** No drag or resize yet: you can read the calendar, move around it, select a day or a slot and click an event.
+> **Experimental.** Tested in Chromium only, and with no screen reader (see "Accessibility: what was tested"); the API may still change before 1.0.
 
 ## Installation
 
@@ -20,8 +20,8 @@ It depends on `@pyreon/time` (values, grids, zones), `@pyreon/schedule` (recurre
 | Entry | What |
 | --- | --- |
 | `@pyreon/calendar/core` | the pure core. Only `@pyreon/time/core` and `@pyreon/schedule/core`. |
-| `@pyreon/calendar` | the core plus `createCalendar`, the labels and the keyboard helpers. |
-| `@pyreon/calendar/components` | `<Calendar>`, `<MonthView>`, `<WeekView>`, `<DayView>`, `<CalendarToolbar>`. |
+| `@pyreon/calendar` | the core plus `createCalendar`, the messages and the keyboard helpers. |
+| `@pyreon/calendar/components` | `<Calendar>`, `<MonthView>`, `<WeekView>`, `<DayView>`, `<AgendaView>`, `<YearView>`, `<TimelineView>`, `<CalendarToolbar>`, `<DayPopover>`. |
 | `@pyreon/calendar/styles.css` | an optional default look. |
 
 ## Events
@@ -370,6 +370,148 @@ const standup = {
 ```
 
 Every occurrence has its own key (`standup:2026-11-18T09:00`), the same in every window, and `onEventClick(event, occurrence)` is told which one was clicked (`occurrence.occurrence` is the key of an override).
+
+### Drag to reschedule, with the server's say
+
+```tsx
+import { createCalendar } from '@pyreon/calendar'
+import type { CalendarEvent } from '@pyreon/calendar'
+import { Calendar } from '@pyreon/calendar/components'
+import { signal } from '@pyreon/reactivity'
+
+export function TeamCalendar() {
+  const events = signal<CalendarEvent[]>([])
+  const calendar = createCalendar({
+    events: () => events(),
+    editable: true,
+    snap: 15,
+    onEventChange: async (change) => {
+      const response = await fetch(`/api/events/${change.event.id}`, { method: 'PATCH', body: JSON.stringify({ start: change.start, end: change.end }) })
+      if (!response.ok) return false // the event goes back and the calendar says "the change was not saved"
+      events.set(events().map((e) => (e.id === change.event.id ? { ...e, start: change.start, end: change.end } : e)))
+    },
+  })
+
+  return <Calendar calendar={calendar} />
+}
+```
+
+The event is shown at its new place (`data-pending`) while the request is out; a refusal, a thrown error or a rejected promise puts it back. Update your events before you resolve, or the event snaps back for a frame. Add your own timeout if the server may never answer: an event waiting for an answer cannot be edited again.
+
+### A booking view: business hours and free slots
+
+```tsx
+import { createCalendar } from '@pyreon/calendar'
+import { freeSlots } from '@pyreon/schedule/core'
+
+const hours = { 1: [{ from: '09:00', to: '17:00' }], 2: [{ from: '09:00', to: '17:00' }], 3: [{ from: '09:00', to: '17:00' }], 4: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '16:00' }] }
+
+const free = () => freeSlots({ within: weekWindow(), busy: bookings().map((b) => ({ start: b.start, end: b.end })), duration: { minutes: 30 } })
+
+const calendar = createCalendar({
+  events: () => [...bookings(), ...free().map((s, i) => ({ id: `free-${i}`, title: 'Free', start: s.start, end: s.end, color: '#15803d' }))],
+  businessHours: hours, // shades what is closed
+  constrainTo: 'businessHours', // and refuses a drop outside it
+  view: 'week',
+  onEventClick: (event) => event.id.startsWith('free-') && book(event),
+})
+```
+
+`freeSlots` answers "when can a 30-minute slot start" from the opening windows and what is taken; the calendar draws the answer as ordinary events.
+
+### Editing a recurring event: this, following, all
+
+```ts
+import { applyEventChange } from '@pyreon/calendar/core'
+
+const calendar = createCalendar({
+  events: () => events(),
+  editable: true,
+  chooseScope: (change) => askUser(change.event.title), // 'this' | 'following' | 'all', or null to cancel
+  onEventChange: (change) => {
+    events.set(events().flatMap((e) => (e.id === change.event.id ? applyEventChange(e, change, zone) : [e])))
+  },
+})
+```
+
+`'this'` adds an override (`overrides['2026-11-23T09:00'] = { start, end }`), `'all'` shifts the series and the keys of its overrides, `'following'` ends the series the day before (`recurrence.until`) and adds a second event (`<id>~<occurrence>`) that carries on from the new start with the remaining `count`. The result is plain data: store it as it is, and `expandOccurrences` shows the edit.
+
+### Rooms: a resource timeline
+
+```tsx
+const calendar = createCalendar({
+  view: 'timeline',
+  resources: () => rooms(), // [{ id: 'a', title: 'Room A' }, ...]
+  events: () => bookings(), // each with resourceId: 'a' (or a list)
+  editable: true,
+  dayStart: '08:00',
+  dayEnd: '18:00',
+  onEventChange: (change) => move(change.event.id, { room: change.resourceId, start: change.start, end: change.end }),
+})
+```
+
+Dragging a bar to another row sends `resourceId` and `fromResourceId`; the optimistic display, the rollback and the keyboard work as in the other views. 200 resources cost the rows on screen.
+
+### Printing a week
+
+```tsx
+<Calendar calendar={calendar} toolbar={false} />
+// with view 'week' and dayStart and dayEnd set to the hours you want on paper, then window.print()
+```
+
+The stylesheet has an `@media print` section: light colours, no scrolling or sticky parts, no buttons, no now line, rows kept whole across a page break. Checked here by emulating print media in Chromium and looking at the result; not on a real printer or PDF driver.
+
+## Theming
+
+Everything the default stylesheet draws is a custom property on `.pcal` (the table is under "The default look and its variables"). Three common cases:
+
+```css
+/* brand colour: today, the pressed button and the selection follow it */
+.pcal { --pcal-accent: #7c3aed; --pcal-accent-fg: #fff; }
+
+/* denser: smaller slots and lanes, a smaller font */
+.pcal { --pcal-font-size: 13px; --pcal-slot-n: 22; --pcal-lane-size: 18px; --pcal-day-head: 24px; }
+
+/* a dark theme you control (a class on the page) instead of the system setting */
+.dark .pcal { color-scheme: dark; --pcal-bg: #0f172a; --pcal-fg: #e2e8f0; --pcal-accent: #60a5fa; --pcal-event-tint: 26%; }
+```
+
+An event's own colour is its `color` field (a plain CSS colour); the chip tint, its text and its edge derive from it, and in the tests a teal and an amber event pass `axe-core` contrast in both schemes. To replace the look entirely, do not import the stylesheet: every part has a `pcal-*` class and state is on data attributes (`data-today`, `data-selected`, `data-outside`, `data-weekend`, `data-business`, `data-recurring`, `data-short`, `data-editable`, `data-dragging`, `data-pending`). Custom content goes through `renderEvent`, `renderDay` and `renderMore`; keep the accessible name (`label`).
+
+## Accessibility: what was tested, and with what
+
+- **Tested:** `axe-core` 4.14.1 in real Chromium finds no violation, colour contrast included, in the month, the week, the day, the agenda, the year, the timeline and the open popover in the light scheme, and in the dark scheme for the month, week, agenda, year and timeline with two custom event colours. Every keyboard path (grid arrows, Home, End, PageUp, PageDown, ranges with Shift, Enter, Escape, the grab-move-drop-cancel of an event, the popover's Tab trap and Escape) is driven with real key events and asserted. Right to left and a 375 px width were looked at in screenshots.
+- **Semantics:** the month and the time grid are WAI-ARIA grids with one tab stop and a roving focus; cells are named by their content (the full date, "today", the events that start in it); events are buttons named "Design review, Wednesday 18 November, 14:00 – 15:00"; the agenda is a list of headings and buttons; the timeline is a grid of resource rows; the popover is a non-modal dialog; a polite live region announces navigation, grabs, moves, resizes, cancellations and refusals.
+- **Not tested:** no screen reader (VoiceOver, NVDA, JAWS, TalkBack) was used by anyone; no switch or voice-control software; no Firefox or Safari; no real touch device (touch is emulated); forced-colors only through Chromium's emulation (closed business hours are not drawn there). The reading experience of the grids in a screen reader, the time grid's tab order (by start time across the days, not day by day) and the announcement texts (English placeholders unless you set `messages`) are the parts most worth a real listen.
+- **Motion and colour:** nothing animates when the user asks for reduced motion; state is never colour alone (today is a filled number, a continuation is a flat edge, the selection is a tint and an `aria-selected`).
+
+## Coming from another calendar
+
+Checked on 2026-11-19 against each project's own page (a fetch of the pricing page, the docs page or the README). A row says only what the source said; "does not state" means the page fetched did not say, not that the feature is absent. This is a map of names, not a feature comparison.
+
+| | What its page says | In `@pyreon/calendar` |
+| --- | --- | --- |
+| **FullCalendar** (fullcalendar.io/pricing) | The Standard tier is MIT with "every standard view and feature"; Timeline and resource views, the vertical resource view and printer-friendly rendering are listed as Premium (paid, from $480 per the page). | Month, week, day, agenda, year and the resource timeline are in one MIT package; print styles are in the stylesheet. Events are plain `{ start, end }` data; resources are the `resources` option and an event's `resourceId`. |
+| **react-big-calendar** (github.com/jquense/react-big-calendar) | MIT; you must choose a localizer (Moment.js, Globalize.js, date-fns or Day.js). The README does not state its views, drag and drop, resources or accessibility. | No localizer: words and dates come from `@pyreon/ambient`, `@pyreon/format` and the platform's `Intl`; `locale`, `timeZone` and `weekStart` are options. |
+| **Schedule-X** (schedule-x.dev/docs/calendar) | The views listed are month grid, week, day and month agenda; the plugins listed include drag and drop, resize, event recurrence, a resource scheduler and a current time indicator (some marked with a star the page does not explain). The page states no licence. | Move, resize, recurrence, resources and a now line (week and day) are built in; the timeline has no now line yet. Check licences and the starred plugins on their site before choosing. |
+| **Toast UI Calendar** (github.com/nhn/tui.calendar) | MIT; daily, weekly and monthly views; schedules can be adjusted by mouse dragging; plain JS, React and Vue wrappers. The repository header says it was archived by its owner on 2 September 2026 and is read-only. | The same three views and more, maintained here; there is no per-framework wrapper, it is Pyreon components. |
+
+Left out because the pages above did not confirm them: timezone and recurrence support of react-big-calendar and Toast UI Calendar, bundle sizes, and the accessibility claims of every library.
+
+| If you wrote | Write |
+| --- | --- |
+| `events={[{ title, start: Date, end: Date }]}` | `events: () => [{ id, title, start: '2026-11-18T09:00', end: '2026-11-18T10:00' }]`; add `timeZone: 'Europe/Prague'` for a wall clock in a zone; an all-day event is dates with an exclusive end (`allDay(date)`) |
+| `onEventDrop` and `onEventResize` | `onEventChange(change)` (one callback; return `false` to refuse) with `editable: true` |
+| `resources` and `resourceId` | `resources: () => [{ id, title }]` and an event's `resourceId` (a string or a list), view `'timeline'` |
+| `datesSet` | `onRangeChange(range)`, a half-open window of dates |
+| `eventContent` or a custom event component | `renderEvent({ occurrence, label })` |
+
+## Follow-ups (not part of this release)
+
+- **`gridMove` and `slotMove` belong in `@pyreon/time`** next to `monthGrid`, after #4686 merges; then adopt them in the private `CalendarBase` picker (`packages/ui/primitives/src/CalendarBase.tsx`) and in the site's `DemoTime`, which keeps its own copy of the arrow, Home, End and PageUp and PageDown logic.
+- **A website product page with a live demo** (month, week, timeline, drag with rollback) on the docs site.
+- **Native status: web-only.** The calendar is DOM and pointer events (grid roles, `elementsFromPoint`, CSS container queries) and has no SwiftUI or Compose lowering; its manifest declares `web-only` with that reason. A native calendar would be its own design on the platform's controls, sharing `@pyreon/calendar/core` (the layouts and `applyEventChange` are DOM-free).
+- **Timeline:** a now line, row groups, per-row memoisation and selecting by dragging; a ghost of the original place while dragging; real-device touch checks; the screen-reader listening above.
 
 ## Notes
 

@@ -544,7 +544,7 @@ describe('edges and leaks', () => {
   it('editable events have no axe violations', async () => {
     const { default: axe } = await import('axe-core')
     const { root } = make()
-    const result = await axe.run(root, { rules: { 'color-contrast': { enabled: false } } })
+    const result = await axe.run(root)
     expect(result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html.slice(0, 80)).join(' | ')}`)).toEqual([])
   })
 })

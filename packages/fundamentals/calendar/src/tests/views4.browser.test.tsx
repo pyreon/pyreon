@@ -70,7 +70,7 @@ afterEach(() => {
 })
 
 const noAxe = async (root: HTMLElement): Promise<string[]> => {
-  const result = await axe.run(root, { rules: { 'color-contrast': { enabled: false } } })
+  const result = await axe.run(root)
 
   return result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html.slice(0, 90)).join(' | ')}`)
 }
@@ -398,5 +398,21 @@ describe('what it costs, on this machine (bounds, not claims)', () => {
     expect(root.querySelectorAll('.pcal-tl-row').length).toBeLessThan(30)
     expect(root.querySelector('.pcal-tl-row[data-resource="r0"]')).toBeNull()
     expect(first).toBeLessThan(2000)
+  })
+})
+
+describe('contrast in the dark scheme', () => {
+  it('axe finds no violation, contrast included, in any view with the dark scheme on', async () => {
+    await cdp().send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] })
+    document.body.style.background = '#111'
+    try {
+      for (const view of ['month', 'week', 'agenda', 'year', 'timeline'] as const) {
+        const { root } = make({ view, resources: () => rooms, events: () => [ev('Design review', '2026-11-18T14:00', '2026-11-18T15:00', { resourceId: 'a' }), ev('Trip', '2026-11-17', '2026-11-19', { color: '#0f766e' }), ev('Call', '2026-11-19T10:00', '2026-11-19T11:00', { color: '#b45309' })] })
+        expect(await noAxe(root), view).toEqual([])
+      }
+    } finally {
+      document.body.style.background = ''
+      await cdp().send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] })
+    }
   })
 })

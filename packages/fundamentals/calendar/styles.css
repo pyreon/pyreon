@@ -1067,3 +1067,65 @@
     border: 2px solid CanvasText;
   }
 }
+
+/* ---- printing: a week or a month on paper ---- */
+@media print {
+  .pcal {
+    --pcal-bg: #fff;
+    --pcal-fg: #000;
+    --pcal-border: #999;
+    --pcal-border-soft: #ccc;
+    --pcal-muted: #444;
+    --pcal-today: transparent;
+    --pcal-selected: transparent;
+    --pcal-outside: transparent;
+    --pcal-weekend: #f2f2f2;
+    --pcal-closed: #f2f2f2;
+    --pcal-event-tint: 22%;
+
+    color-scheme: light;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* everything shows, nothing scrolls, nothing is a control */
+  .pcal-timegrid,
+  .pcal-agenda,
+  .pcal-timeline {
+    max-block-size: none;
+    overflow: visible;
+  }
+
+  .pcal-head,
+  .pcal-tl-head {
+    position: static;
+  }
+
+  .pcal-nav,
+  .pcal-views,
+  .pcal-handle,
+  .pcal-popover,
+  .pcal-now,
+  .pcal-live {
+    display: none;
+  }
+
+  .pcal-row,
+  .pcal-week,
+  .pcal-agenda-day,
+  .pcal-tl-row,
+  .pcal-event {
+    break-inside: avoid;
+  }
+
+  .pcal-gutter-cell,
+  .pcal-corner,
+  .pcal-tl-corner,
+  .pcal-tl-name {
+    position: static;
+  }
+
+  .pcal-event {
+    box-shadow: none;
+  }
+}
