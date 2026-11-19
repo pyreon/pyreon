@@ -72,3 +72,55 @@ describe('us-states', () => {
     expect(geoToSvg({ geo: us, values: { '06': 39, '48': 30 }, width: 640, height: 400 }).length).toBeGreaterThan(5_000)
   })
 })
+
+/** Pixels a region covers on a w x h grid (even-odd over its fill rings, sampled at pixel centres). */
+function paintedPixels(rings: { x: number; y: number }[][], w: number, h: number): number {
+  let count = 0
+  for (let py = 0; py < h; py++) {
+    const y = py + 0.5
+    const xs: number[] = []
+    for (const ring of rings) {
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i]!
+        const b = ring[(i + 1) % ring.length]!
+        if (a.y > y !== b.y > y) xs.push(a.x + ((y - a.y) * (b.x - a.x)) / (b.y - a.y))
+      }
+    }
+    xs.sort((p, q) => p - q)
+    for (let k = 0; k + 1 < xs.length; k += 2) count += Math.max(0, Math.floor(xs[k + 1]! - 0.5) - Math.ceil(xs[k]! - 0.5) + 1)
+  }
+
+  return count
+}
+
+describe('every region is visible in its default projection and box (nothing clipped, nothing thrown across the map)', () => {
+  const cases = [
+    ['us-states', us, 960, 600],
+    ['world-110m', world, 800, 420],
+  ] as const
+  for (const [name, map, w, h] of cases) {
+    it(`${name}: each region has painted pixels and its bounding box inside the plot`, () => {
+      const layout = layoutGeo(map, { x: 0, y: 0, w, h })
+      const missing: string[] = []
+      const outside: string[] = []
+      for (const r of layout.regions) {
+        if (r.bbox.x < 0 || r.bbox.y < 0 || r.bbox.x + r.bbox.w > w + 1e-6 || r.bbox.y + r.bbox.h > h + 1e-6) outside.push(r.label)
+        if (paintedPixels(r.fills, w, h) === 0) missing.push(r.label)
+      }
+      expect(outside, 'regions outside the plot').toEqual([])
+      // At 110m a handful of micro-states are under a pixel in the world view; every US state, Alaska's Aleutians and Hawaii included, must show.
+      if (name === 'us-states') expect(missing).toEqual([])
+      else expect(missing.length).toBeLessThan(12)
+    })
+  }
+  it('Alaska keeps its whole chain: the Aleutians reach the inset\'s left edge and nothing runs past the lower 48', () => {
+    const layout = layoutGeo(us, { x: 0, y: 0, w: 960, h: 600 })
+    const ak = layout.regions.find((r) => r.label === 'Alaska')!
+    const wa = layout.regions.find((r) => r.label === 'Washington')!
+    const ca = layout.regions.find((r) => r.label === 'California')!
+    expect(ak.bbox.x).toBeGreaterThanOrEqual(0)
+    expect(ak.bbox.x).toBeLessThan(ca.bbox.x + 80)
+    expect(ak.bbox.y).toBeGreaterThan(wa.bbox.y)
+    expect(ak.bbox.w).toBeLessThan(960 * 0.3)
+  })
+})
