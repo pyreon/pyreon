@@ -6989,7 +6989,7 @@ public func minorLines(_ ticks: [Tick], _ n: Double, _ vertical: Bool, _ plot: P
       let b = ticks[i]
       var k = 1.0
       while k < parts {
-        mid.append(Tick(value: 0.0, pos: a.pos + Double(((b.pos - a.pos) * k)) / parts, label: ""))
+        mid.append(Tick(value: 0.0, pos: a.pos + ((b.pos - a.pos) * k) / parts, label: ""))
         k = k + 1.0
       }
     }
