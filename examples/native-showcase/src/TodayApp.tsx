@@ -140,13 +140,10 @@ export function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () 
         {props.todo.text}
       </Text>
       <Spacer />
-      {/* maxWidth keeps the switch at its own size: a SwiftUI Toggle with no
-          label still fills the row, the web and Compose ones do not (#4344). */}
       <Toggle
         value={props.todo.done}
         onChange={props.onToggle}
         accessibilityLabel={props.todo.text}
-        style={{ maxWidth: '64px' }}
         data-testid={`todo-${props.todo.id}-done`}
       />
       <Press

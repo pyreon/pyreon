@@ -18,6 +18,8 @@
 
 import type { ComponentFn, LazyComponent, LifecycleHooks, RefProp, VNode, VNodeChild } from '@pyreon/core'
 import {
+  _childText,
+  _isVNodeLike,
   _setSuspenseHydrating,
   dispatchToErrorBoundary,
   ForSymbol,
@@ -37,6 +39,7 @@ import {
   type EffectScope,
   effectScope,
   getContextOwner,
+  getCurrentScope,
   type RunCapture,
   type SubscriberHost,
   runWithContextOwner,
@@ -67,6 +70,7 @@ import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
+  _holdTplDeferral,
   _setHydrationActive,
   _setSlotHydrator,
   _takeParkedRange,
@@ -79,6 +83,7 @@ import type { DeferredNativeItem } from './template'
 import { _markAdoptedHtmlEl, applyProps, applySelectValueProp } from './props'
 
 type Cleanup = () => void
+
 const noop: Cleanup = () => {
   /* noop */
 }
@@ -126,6 +131,7 @@ function findMatchingAsyncEnd(start: Comment): Comment | null {
     }
     node = node.nextSibling
   }
+
   return null
 }
 
@@ -152,8 +158,10 @@ function firstReal(initialNode: ChildNode | null): ChildNode | null {
       node = node.nextSibling
       continue
     }
+
     return node
   }
+
   return null
 }
 
@@ -164,6 +172,7 @@ function isWhitespaceOnly(s: string): boolean {
     // space, tab, newline, carriage return, form feed
     if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) return false
   }
+
   return true
 }
 
@@ -237,6 +246,7 @@ function skippedWhitespaceBefore(
   ) {
     return p as Text
   }
+
   return null
 }
 
@@ -259,6 +269,7 @@ function insertMarker(parent: Node, domNode: ChildNode | null, text: string): Co
   } else {
     parent.appendChild(marker)
   }
+
   return marker
 }
 
@@ -308,10 +319,13 @@ function primeAccessor<T>(child: () => T): { initial: T; acc: () => T } {
       fresh = false
       _replayReads(reads)
       _releaseRun(run)
+
       return initial
     }
+
     return child()
   }
+
   return { initial, acc }
 }
 
@@ -347,8 +361,8 @@ function hydrateSoleAccessorChild(
     first.nextSibling === null
   ) {
     const bound = first as Text
-    if (bound.data !== String(initial)) {
-      warnHydrationMismatch('text', String(initial), bound.data, `${path} > reactive`)
+    if (bound.data !== _childText(initial)) {
+      warnHydrationMismatch('text', _childText(initial), bound.data, `${path} > reactive`)
     }
     // The BARE binder is correct here, and this is the one hydrate site where
     // it is. `bindOwnedText` exists because a node adopted into a live parent
@@ -381,15 +395,41 @@ function hydrateSoleAccessorChild(
     el.appendChild(end)
     const cleanup = adoptReactiveRange(child, initial, el, first, end, path)
     end.remove()
+
     return cleanup
   }
-  // SSR rendered nothing into the element — no region to adopt. A client value
-  // that renders text is a divergence the mount below corrects: report it, as
-  // the adopting branch above does (#4419).
-  if ((typeof initial === 'string' && initial !== '') || typeof initial === 'number') {
-    warnHydrationMismatch('text', String(initial), '', `${path} > reactive`)
+  // SSR rendered nothing into the element — no region to adopt.
+  return mountOverEmpty(child, el, null, path)
+}
+
+/**
+ * Mount an accessor where the server rendered NOTHING (an empty `<!--$-->`
+ * range, or an empty element whose sole child it is) and report what the
+ * client rendered there instead. Any content is a divergence: text (#4419) and
+ * structural values alike (#4582: `{() => open() && <Panel/>}` with `open` false
+ * on the server and true on the client).
+ *
+ * The rule reads the DOM the mount produced, not the value, so it needs no
+ * per-shape knowledge: a component that renders `null`, an empty array, `''`,
+ * a portal (which leaves only a comment here) or an async component (which
+ * renders later) inserted no content and is not reported. The first element or
+ * non-empty text node is reported, once per range.
+ */
+function mountOverEmpty(child: () => VNodeChild, parent: Node, anchor: Node | null, path: string): Cleanup {
+  const before = anchor === null ? parent.lastChild : anchor.previousSibling
+  const cleanup = mountReactive(child, parent, anchor, mountChild)
+  for (let n = before === null ? parent.firstChild : before.nextSibling; n !== null && n !== anchor; n = n.nextSibling) {
+    if (n.nodeType === Node.ELEMENT_NODE) {
+      warnHydrationMismatch('tag', (n as Element).localName, '', `${path} > reactive`)
+      break
+    }
+    if (n.nodeType === Node.TEXT_NODE && (n as Text).data !== '') {
+      warnHydrationMismatch('text', (n as Text).data, '', `${path} > reactive`)
+      break
+    }
   }
-  return mountReactive(child, el, null, mountChild)
+
+  return cleanup
 }
 
 /**
@@ -431,6 +471,7 @@ function needsKeyedReconcile(value: unknown): boolean {
   for (const v of value) {
     if (v !== null && typeof v === 'object' && (v as { key?: unknown }).key != null) return true
   }
+
   return false
 }
 
@@ -527,6 +568,7 @@ function adoptReactiveRange(
       mountChild(vn, p, a),
     )
     for (const n of stale) n.remove()
+
     return keyed
   }
 
@@ -701,7 +743,7 @@ function hydrateReactiveChild(
       const after = end.nextSibling
       // Single-text-node range + text-ish initial → ADOPT the node and bind
       // directly (the dominant reactive-text case, no remount). Deliberately NOT
-      // gated on `data === String(initial)`: a genuine server/client divergence
+      // gated on `data === _childText(initial)`: a genuine server/client divergence
       // still adopts the SAME text node and the renderEffect writes the client
       // value on its first run, so recovery is in-place rather than a
       // double-mount. Only the value is corrected; the mismatch is reported.
@@ -713,8 +755,8 @@ function hydrateReactiveChild(
         only.nextSibling === end
       ) {
         const bound = only as Text
-        if (bound.data !== String(initial)) {
-          warnHydrationMismatch('text', String(initial), bound.data, `${path} > reactive`)
+        if (bound.data !== _childText(initial)) {
+          warnHydrationMismatch('text', _childText(initial), bound.data, `${path} > reactive`)
         }
         // Polymorphic binding: the accessor may later yield a VNode
         // (`() => loading() ? 'Loading…' : <Table/>`) — the shared helper
@@ -722,6 +764,7 @@ function hydrateReactiveChild(
         const dispose = bindOwnedText(child, bound, parent)
         domNode.remove()
         end.remove()
+
         return [dispose, after ? firstReal(after) : null]
       }
       // An EMPTY range (initial rendered nothing) or a multi-node range falls
@@ -752,17 +795,15 @@ function hydrateReactiveChild(
         const cleanup = adoptReactiveRange(child, initial, parent, rangeFirst, end, path)
         domNode.remove()
         end.remove()
+
         return [cleanup, after ? firstReal(after) : null]
       }
 
       // General case — mount the live binding at the range position, then remove
-      // the SSR range, markers included. Reached with an EMPTY range: a client
-      // value that renders text is then a divergence (#4419).
-      if ((typeof initial === 'string' && initial !== '') || typeof initial === 'number') {
-        warnHydrationMismatch('text', String(initial), '', `${path} > reactive`)
-      }
+      // the SSR range, markers included. Reached with an EMPTY range, so any
+      // content the client renders is a divergence (`mountOverEmpty`).
       const marker = insertMarker(parent, domNode, 'pyreon')
-      const cleanup = mountReactive(child, parent, marker, mountChild)
+      const cleanup = mountOverEmpty(child, parent, marker, path)
       let cur: ChildNode | null = domNode
       while (cur) {
         const nx: ChildNode | null = cur === end ? null : cur.nextSibling
@@ -771,12 +812,13 @@ function hydrateReactiveChild(
       }
       domNode.remove()
       end.remove()
+
       return [cleanup, after ? firstReal(after) : null]
     }
   }
 
   // Legacy SSR output (no range markers — older @pyreon/runtime-server).
-  if (initial == null || initial === false) {
+  if (initial == null || typeof initial === 'boolean') {
     const marker = insertMarker(parent, domNode, 'pyreon')
     const cleanup = mountReactive(child, parent, marker, mountChild)
     return [cleanup, domNode]
@@ -793,14 +835,107 @@ function hydrateReactiveChild(
     )
   }
 
-  // Reactive accessor that produces a VNode/NativeItem subtree.
-  const next = domNode ? nextReal(domNode) : null
-  if (domNode && domNode.parentNode) {
-    domNode.parentNode.removeChild(domNode)
+  // Reactive accessor that produces a VNode/NativeItem subtree over server
+  // content that carries NO range markers: the server rendered the same
+  // content without an accessor here (#4448 — `props.children` on one side,
+  // `<Provider>{props.children}</Provider>` on the other). See
+  // `adoptUnmarkedRange`.
+  return adoptUnmarkedRange(child, domNode, parent, anchor, path)
+}
+
+/**
+ * Hydrate a structural accessor whose server content is NOT range-marked.
+ *
+ * The markers only tell hydration where an accessor's output ENDS; its first
+ * value says the same thing, the way a static child's vnode does. So the
+ * initial value is walked against the server nodes exactly as a static child
+ * would be (`hydrateChild`: nodes adopted, any real divergence reported and
+ * repaired by the walk), inside `mountReactive`'s first run so the binding
+ * stays live. The boundary marker is then moved to the end of what the walk
+ * claimed, which makes the result the same as the marked path's
+ * (`adoptReactiveRange`): a start marker, the adopted content, the boundary.
+ *
+ * This replaced "remove one server node and mount fresh" (#4448): silent in dev
+ * and production, it rebuilt every subtree under such an accessor (every island
+ * under a client-only provider on pyreon.dev) and, for a multi-node value, left
+ * the rest of the server nodes to the boundary sweep.
+ *
+ * A KEYED array still mounts fresh, as on the marked path (`needsKeyedReconcile`):
+ * adoption builds no per-key cache. With no markers its server extent is the
+ * walk's to find, so the walk runs first and its nodes are what the fresh
+ * mount replaces.
+ */
+function adoptUnmarkedRange(
+  child: () => VNodeChild,
+  domNode: ChildNode | null,
+  parent: Node,
+  anchor: Node | null,
+  path: string,
+): [Cleanup, ChildNode | null] {
+  const start = document.createComment('pyreon')
+  parent.insertBefore(start, domNode ?? anchor)
+  let after: ChildNode | null = domNode
+  let hydrated = false
+  let keyedFirst = false
+  const cleanup = mountReactive(child, parent, domNode ?? anchor, (value, p, a) => {
+    if (hydrated) return mountChild(value, p, a)
+    hydrated = true
+    // The first run's value IS the accessor's initial value (primed).
+    keyedFirst = needsKeyedReconcile(value)
+    const [dispose, next] = hydrateChild(value, domNode, p, anchor, `${path} > reactive`)
+    after = next
+    // The boundary goes after everything the walk claimed (or recovered), and
+    // never past the PARENT's own boundary (`anchor`): the returned cursor may
+    // have skipped comments, the enclosing range's markers among them, and a
+    // boundary placed beyond the parent's would make this range's cleanup
+    // delete the parent's marker and every sibling after it.
+    let end: Node | null = next ?? anchor
+    if (anchor !== null) {
+      for (let c = start.nextSibling; c !== null && c !== next; c = c.nextSibling) {
+        if (c === anchor) {
+          end = anchor
+          break
+        }
+      }
+    }
+    p.insertBefore(a as ChildNode, end)
+    // Same contract bridge as `adoptReactiveRange`: a later run must clear the
+    // LIVE range, so the per-run cleanup removes start → boundary.
+    return () => {
+      dispose()
+      let c = start.nextSibling
+      while (c && c !== a) {
+        const nx: ChildNode | null = c.nextSibling
+        c.remove()
+        c = nx
+      }
+    }
+  })
+  if (keyedFirst) {
+    // Extent found by the walk above; hand the region to the keyed reconciler.
+    // `cleanup` clears start → boundary and disposes the walk's bindings.
+    const end = document.createComment('pyreon')
+    parent.insertBefore(end, after ?? anchor)
+    cleanup()
+    const keyed = mountKeyedList(child as () => VNode[], parent, end, (vn, p, a) => mountChild(vn, p, a))
+    start.remove()
+
+    return [
+      () => {
+        keyed()
+        end.parentNode?.removeChild(end)
+      },
+      after,
+    ]
   }
-  const marker = insertMarker(parent, next, 'pyreon')
-  const cleanup = mountReactive(child, parent, marker, mountChild)
-  return [cleanup, next]
+
+  return [
+    () => {
+      cleanup()
+      start.parentNode?.removeChild(start)
+    },
+    after,
+  ]
 }
 
 /** Hydrate a reactive text binding against an existing text node. */
@@ -813,7 +948,7 @@ function hydrateReactiveText(
   // The caller's sampled value; `child` is its primed accessor (`primeAccessor`).
   initial: string | number | boolean | null | undefined,
 ): [Cleanup, ChildNode | null] {
-  const expected = initial == null ? '' : String(initial)
+  const expected = _childText(initial)
 
   // Empty initial value: SSR emitted NOTHING, so there is no text node to adopt.
   // Bind a fresh text node inserted at the CURSOR (client parity), consuming
@@ -823,6 +958,7 @@ function hydrateReactiveText(
     const tn = document.createTextNode('')
     parent.insertBefore(tn, domNode ?? anchor)
     const dispose = bindOwnedText(child as () => VNodeChild, tn, parent)
+
     return [dispose, domNode]
   }
 
@@ -854,6 +990,7 @@ function hydrateReactiveText(
     }
     const bound = textNode
     const dispose = bindOwnedText(child as () => VNodeChild, bound, parent)
+
     return [dispose, next]
   }
   warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > reactive`)
@@ -861,6 +998,7 @@ function hydrateReactiveText(
   const tn = document.createTextNode(expected)
   parent.insertBefore(tn, domNode ?? anchor)
   const dispose = bindOwnedText(child as () => VNodeChild, tn, parent)
+
   return [dispose, domNode]
 }
 
@@ -1138,10 +1276,12 @@ function hydrateVNode(
               }
               setEntry(keys[i] as string | number, rowAnchor, cleanup, i, endNode)
             }
+
             return keys
           },
         })
         const cleanup = mountChild(vnode, parent, end)
+
         return [cleanup, after ? firstReal(after) : null]
       }
     }
@@ -1163,6 +1303,7 @@ function hydrateVNode(
     for (const n of stale) {
       if (n.parentNode === parent) n.remove()
     }
+
     return [cleanup, null]
   }
 
@@ -1239,13 +1380,16 @@ function hydrateMountSlot(
   // runtime-server elided the `<!--$-->` pair and the extent is the parent's
   // entire child list. See `_mountSlot` for why a `null` open provably means
   // SOLE rather than merely last.
+  const slotPath = process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot'
   if (open === null) {
     const first = parent.firstChild
     if (typeof children === 'function') {
       // SSR rendered nothing into the slot, so there is no region to adopt —
       // install the boundary a cold mount would have built, at the end of the
       // (empty) child list.
-      if (first === null) return mountReactive(children as () => VNodeChild, parent, null, mountChild)
+      if (first === null) {
+        return mountOverEmpty(children as () => VNodeChild, parent, null, slotPath)
+      }
       // Synthesize the close SSR elided so the shared adoption core runs on
       // exactly the shape it gets for a marked range — including the removal
       // contract, which a direct `hydrateChild` call does NOT carry: its
@@ -1254,28 +1398,17 @@ function hydrateMountSlot(
       const end = document.createComment('pyreon')
       parent.appendChild(end)
       const primed = primeAccessor(children as () => VNodeChild)
-      const cleanup = adoptReactiveRange(
-        primed.acc,
-        primed.initial,
-        parent,
-        first,
-        end,
-        process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
-      )
+      const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, end, slotPath)
       end.remove()
+
       return cleanup
     }
     // A literal (non-accessor) value installs no reactive boundary, so it is
     // walked against the region directly — there is no later render whose
     // cleanup would have to remove these nodes.
     const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
-    return hydrateChild(
-      children,
-      cursor,
-      parent,
-      null,
-      process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
-    )[0]
+
+    return hydrateChild(children, cursor, parent, null, slotPath)[0]
   }
   // A PARKED mid range (see `PARKED_RANGE` in template.ts): the verifier moved
   // this slot's server content out so the compiled refs after it resolved
@@ -1284,13 +1417,7 @@ function hydrateMountSlot(
   const parked = _takeParkedRange(open)
   if (parked !== null) parent.insertBefore(parked, open.nextSibling)
   if (typeof children === 'function') {
-    return hydrateChild(
-      children,
-      open,
-      parent,
-      null,
-      process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
-    )[0]
+    return hydrateChild(children, open, parent, null, slotPath)[0]
   }
   // Locate the range end (depth-aware — accessor ranges nest).
   let close: ChildNode | null = null
@@ -1316,15 +1443,10 @@ function hydrateMountSlot(
   }
   const first = open.nextSibling
   const cursor = first === close ? null : first!.nodeType === 1 ? first : firstReal(first)
-  const [cleanup] = hydrateChild(
-    children,
-    cursor,
-    parent,
-    close,
-    process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
-  )
+  const [cleanup] = hydrateChild(children, cursor, parent, close, slotPath)
   open.remove()
   close.remove()
+
   return cleanup
 }
 
@@ -1343,6 +1465,7 @@ function hydrateChild(
       cleanups.push(cleanup)
       cursor = next
     }
+
     return [
       () => {
         for (const c of cleanups) c()
@@ -1351,14 +1474,18 @@ function hydrateChild(
     ]
   }
 
-  if (child == null || child === false) return [noop, domNode]
+  if (child == null || typeof child === 'boolean') return [noop, domNode]
 
   if (typeof child === 'function') {
     return hydrateReactiveChild(child as () => VNodeChild, domNode, parent, anchor, path)
   }
 
-  if (typeof child === 'string' || typeof child === 'number') {
-    const expected = String(child)
+  // TEXT by the shared child-text rule: any primitive (`true` and a bigint
+  // included; this branch used to admit only strings and numbers, so a `true`
+  // fell through to the VNode walk, claimed nothing, and its server text was
+  // swept) and any object that is not a VNode/NativeItem (a `Date`).
+  if (typeof child !== 'object' || !_isVNodeLike(child)) {
+    const expected = typeof child === 'string' ? child : _childText(child)
     // Empty static text: SSR emitted NOTHING for it, so there is no node to
     // adopt. Insert the empty text node the client renderer would have
     // created (DOM parity) at the CURSOR — consuming nothing keeps every
@@ -1422,6 +1549,7 @@ function hydrateChild(
       const tn = document.createTextNode(expected)
       parent.insertBefore(tn, domNode)
       domNode.remove()
+
       return [() => tn.remove(), after]
     }
     warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > text`)
@@ -1429,6 +1557,7 @@ function hydrateChild(
     // order survives the mismatch.
     const tn = document.createTextNode(expected)
     parent.insertBefore(tn, domNode ?? anchor)
+
     return [() => tn.remove(), domNode]
   }
 
@@ -1465,6 +1594,7 @@ function hydrateChild(
         const p = native.el.parentNode
         if (p && p.nodeType !== 11) p.removeChild(native.el)
       }
+
       return [adoptedCleanup, next]
     }
     // Swap fallback. For a deferred item whose cursor was not an element (or
@@ -1482,6 +1612,7 @@ function hydrateChild(
       const p = native.el.parentNode
       if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
     }
+
     return [cleanup, next]
   }
 
@@ -1655,6 +1786,7 @@ function hydrateElement(
 
     // Fast path: an ELEMENT next-sibling is always "real" — skip the scan.
     const ns = domNode.nextSibling
+
     return [cleanup, ns !== null && ns.nodeType === 1 ? ns : firstReal(ns)]
   }
 
@@ -1705,6 +1837,7 @@ function hydrateChildren(
     cleanups.push(cleanup)
     cursor = next
   }
+
   return [
     () => {
       for (const c of cleanups) c()
@@ -1739,6 +1872,7 @@ function pendingLazyContent(type: unknown): Promise<void> | null {
   const lazy = type as Partial<LazyComponent>
   if (typeof lazy.__load !== 'function') return null
   const pending = lazy.__pending ?? lazy.__loading
+
   return typeof pending === 'function' && pending() ? lazy.__load() : null
 }
 
@@ -1754,6 +1888,7 @@ function findRangeClose(open: Comment): Comment | null {
       depth--
     }
   }
+
   return null
 }
 
@@ -1816,6 +1951,7 @@ function hydrateDeferredLazy(
     }
   })
   const after = close.nextSibling
+
   return [
     () => {
       cancelled = true
@@ -1863,6 +1999,7 @@ function devHydrateRegistered(
     el = last !== null && last.nodeType === 1 ? (last as Element) : null
   }
   _devRegisterScope(scope, owner, name, el)
+
   return result
 }
 
@@ -1914,6 +2051,7 @@ function hydrateSyncOutputInAsyncRange(
     }
   }
   const after = end.nextSibling
+
   return [
     () => {
       childCleanup()
@@ -1943,6 +2081,12 @@ function hydrateComponent(
   // during hydration too. Owner stays `scope` through `runWithHooks` +
   // `hydrateChild` + onMount, restored to `prevOwner` on every exit.
   const prevOwner = getContextOwner()
+  // RESTORED on every exit, never reset to null: a component can mount while
+  // another scope is current (inside a parent's onMount via a signal write
+  // that flips a <Show>, inside a <For> row's collector, inside a parent's
+  // compiled template), and nulling it there left everything that scope's
+  // owner created afterwards with no owner — never disposed.
+  const prevScope = getCurrentScope()
   const scope = effectScope()
   scope._parent = prevOwner
   setCurrentScope(scope)
@@ -1982,7 +2126,7 @@ function hydrateComponent(
     hooks = _takeHooks()
   } catch (err) {
     if (adoptTarget !== null) _setTplAdoptTarget(null)
-    setCurrentScope(null)
+    setCurrentScope(prevScope)
     setContextOwner(prevOwner)
     scope.stop()
 
@@ -1995,12 +2139,13 @@ function hydrateComponent(
       props: vnode.props as Record<string, unknown>,
     })
     dispatchToErrorBoundary(err)
+
     return [noop, domNode]
   }
   // Disarm unconditionally: a component that produced no root `_tpl` must not
   // leave a live target for an unrelated later call.
   if (adoptTarget !== null) _setTplAdoptTarget(null)
-  setCurrentScope(null)
+  setCurrentScope(prevScope)
 
 
   // Register onUpdate hooks with the scope
@@ -2025,10 +2170,16 @@ function hydrateComponent(
     const endMarker = startMarker ? findMatchingAsyncEnd(startMarker) : null
     const rangeStart = startMarker ? startMarker.nextSibling : null
 
+    // The body's code after an `await` builds its templates once the walk
+    // has ended; keep `_tpl` deferring until the `.then` below has hydrated
+    // them against the range (#4353). Released on every settle path and on
+    // unmount.
+    let releaseDeferral: () => void = noop
     if (startMarker && endMarker) {
       // Advance the parent's DOM cursor PAST the end marker — synchronous,
       // so the parent's hydration loop continues normally for siblings.
       nextDom = endMarker.nextSibling
+      releaseDeferral = _holdTplDeferral()
     } else {
       // Markers missing — fall back to "do not touch SSR DOM" behaviour.
       if (process.env.NODE_ENV !== 'production') {
@@ -2045,7 +2196,10 @@ function hydrateComponent(
     output
       .then((resolved) => {
         if (cancelled) return
-        if (resolved == null) return
+        if (resolved == null) {
+          releaseDeferral()
+          return
+        }
         if (!startMarker || !endMarker) return
         try {
           // Hydrate the resolved subtree against the SSR DOM range.
@@ -2069,6 +2223,7 @@ function hydrateComponent(
             resolvedCleanup = childCleanup
           } finally {
             setHydrating(prev)
+            releaseDeferral()
           }
         } catch (err) {
           const handled = dispatchToErrorBoundary(err)
@@ -2081,6 +2236,7 @@ function hydrateComponent(
         }
       })
       .catch((err) => {
+        releaseDeferral()
         if (cancelled) return
         const handled = dispatchToErrorBoundary(err)
         if (!handled && process.env.NODE_ENV !== 'production') {
@@ -2097,6 +2253,7 @@ function hydrateComponent(
 
     subtreeCleanup = () => {
       cancelled = true
+      releaseDeferral()
       resolvedCleanup()
       // Remove the SSR markers themselves on unmount so re-mount doesn't
       // confuse the walker. The DOM range between them is owned by the
@@ -2232,6 +2389,8 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   _setSlotHydrator(
     process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountSlot) : hydrateMountSlot,
   )
+  // (A compiled text slot whose server content is elements adopts it through
+  // this same hydrator: #4385, `parked-text.ts`.)
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
   // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
   // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent
@@ -2287,6 +2446,7 @@ function reportSwappedTemplate(server: ChildNode | null, client: Node, parent: N
       actual,
       compiledMismatchPath(parent, (client as Element).tagName?.toLowerCase() ?? 'node'),
     )
+
     return
   }
   const diff = firstDomDifference(server as Element, client as Element)
@@ -2294,6 +2454,7 @@ function reportSwappedTemplate(server: ChildNode | null, client: Node, parent: N
 }
 
 type DomItem = string | Element
+
 /** An element's children as text runs (comments dropped, adjacent text
  *  joined, empty runs dropped) and elements. */
 function domItems(el: Element): DomItem[] {
@@ -2308,6 +2469,7 @@ function domItems(el: Element): DomItem[] {
     }
   }
   if (text !== '') out.push(text)
+
   return out
 }
 
@@ -2360,5 +2522,6 @@ function firstDomDifference(
     const inner = firstDomDifference(a, b)
     if (inner !== null) return inner
   }
+
   return null
 }

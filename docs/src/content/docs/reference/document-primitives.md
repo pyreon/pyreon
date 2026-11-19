@@ -5,7 +5,7 @@ description: "18 rocketstyle document components — render in browser AND expor
 
 > **Generated** from `document-primitives`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [document-primitives](/docs/document-primitives).
 
-18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 14+ output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.
+18 rocketstyle-based document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`. The same JSX tree renders in the browser AND exports to 20 output formats (PDF, DOCX, XLSX, PPTX, HTML, Markdown, email, Slack, Teams, etc.). Primitives carry `_documentType` static markers; `extractDocumentTree` (from `@pyreon/connector-document`) walks the tree to produce a `DocNode` for `@pyreon/document`\'s `render()` to consume. `DocDocument` accepts reactive accessors for `title` / `author` / `subject` — function values are stored in `_documentProps` and resolved at extraction time so each export click reads the LIVE value from the underlying signal.
 
 ## Multiplatform
 
@@ -20,7 +20,6 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - 18 primitives covering structure, text, lists, tables, code, layout
 - Same component tree renders in browser AND exports to 20 formats
 - extractDocNode(templateFn) — one-step extraction (recommended)
-- createDocumentExport(templateFn) — two-step form (backward compat)
 - DocDocument accepts reactive accessors for title / author / subject
 - PR #197 fix: extractDocumentTree now calls rocketstyle components to read post-attrs metadata
 - Layout props in .attrs() (direction / gap), CSS in .theme()
@@ -73,7 +72,6 @@ await download(tree, 'resume.md')
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`extractDocNode`](#extractdocnode-function) | function | 18 primitives: `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`,… |
-| [`createDocumentExport`](#createdocumentexport-function) | function | Wrapper around `extractDocNode`. |
 | [`DocDocument`](#docdocument-component) | component | Root container for a document tree — produces a `_documentType: "document"` node. |
 | [`DocPage`](#docpage-component) | component | A page boundary inside a `DocDocument`. |
 | [`DocSection`](#docsection-component) | component | Semantic grouping inside a page. |
@@ -132,32 +130,8 @@ await download(tree, 'report.docx')
 - DocRow direction: layout props (direction, gap) go in `.attrs()` not `.theme()`. Element accepts `'inline'` | `'rows'` | `'reverseInline'` | `'reverseRows'` — `'row'` is NOT valid
 - For text children reactivity, pass a signal accessor and read inside body: `<DocText>{store.field()}</DocText>`
 - Don't declare runtime-filled fields (`tag`, `_documentProps`) in the rocketstyle `.attrs<P>()` generic — they leak as required JSX props
-- Using `createDocumentExport(...).getDocNode()` in new code — prefer `extractDocNode(fn)` which is one call instead of two. `createDocumentExport` is kept for backward compat
 
-**See also:** `createDocumentExport`
-
----
-
-### `createDocumentExport` `function`
-
-```ts
-createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }
-```
-
-Wrapper around `extractDocNode`. The wrapper-object form is kept for callers that want to pass the helper around (e.g. to wrapper components that take a `DocumentExport` instance). New code should use `extractDocNode(templateFn)` which is one call instead of two.
-
-**Example**
-
-```tsx
-// Two-step form (kept for backward compat). New code should
-// prefer the one-step extractDocNode helper.
-import { createDocumentExport } from '@pyreon/document-primitives'
-
-const helper = createDocumentExport(() => <Resume name="Aisha" />)
-const tree = helper.getDocNode()
-```
-
-**See also:** `extractDocNode`
+**See also:** `DocumentPreview`
 
 ---
 
@@ -620,11 +594,11 @@ A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the D
 
 **Common mistakes**
 
-- Treating it as export-only chrome — it is a BROWSER preview wrapper (paper backdrop + page sizing); the actual export runs through `createDocumentExport` / `extractDocumentTree`.
+- Treating it as export-only chrome — it is a BROWSER preview wrapper (paper backdrop + page sizing); the actual export runs through `extractDocNode` / `extractDocumentTree`.
 - Nesting a `<DocDocument>` inside it — `DocumentPreview` already carries `_documentType: 'document'` and is the extraction root, so wrapping it in another document root double-nests the document node.
 - Passing a size it does not define — only 'A4' / 'A3' / 'A5' / 'letter' / 'legal' map to paper dimensions; an unknown size falls back to the base with no page sizing.
 
-**See also:** `DocDocument` · `createDocumentExport`
+**See also:** `DocDocument` · `extractDocNode`
 
 ---
 

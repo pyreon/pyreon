@@ -16,12 +16,12 @@ import { visualMapHost } from './visual-map-host'
 import type { VisualMapSelection } from './visual-map-host'
 
 export interface HeatmapChartProps<T> extends CanvasHostProps {
-  data: T[] | (() => T[])
+  data: readonly T[] | (() => readonly T[])
   x: (d: T, index: number) => string
   y: (d: T, index: number) => string
   value: (d: T, index: number) => Double
   /** Colour ramp stops from the minimum to the maximum value. */
-  colors?: string[]
+  colors?: readonly string[]
   /** Gap between cells, px; default 1. */
   gap?: Double
   /** Formats values in the tooltip. */
@@ -45,8 +45,8 @@ export interface HeatmapChartProps<T> extends CanvasHostProps {
 interface Geometry { grid: HeatGrid; box: Rect; outer: Rect; theme: ChartTheme; measure: MeasureText }
 
 export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
-  const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
-  const resolve = (rows: T[]): HeatGrid =>
+  const readData = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
+  const resolve = (rows: readonly T[]): HeatGrid =>
     heatGridFrom(
       rows.map((d, i) => props.x(d, i)),
       rows.map((d, i) => props.y(d, i)),

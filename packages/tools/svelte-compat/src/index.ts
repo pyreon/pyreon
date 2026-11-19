@@ -284,7 +284,27 @@ type StoresValues<T> = T extends Readable<infer U>
  * Svelte-compatible `derived`. Supports both the sync form
  * `(values) => result` and the async/cleanup form
  * `(values, set, update?) => stop`.
+ *
+ * Overloads, in `svelte/store`'s order, rather than one parameter typed as a
+ * union of the two callback shapes: a union gives TypeScript no single
+ * contextual signature, so the callback's `values` parameter was implicitly
+ * `any` under `strict` (#4306). A sync callback returns a value, which is not
+ * an `Unsubscriber | void`, so it falls through to the second overload.
  */
+export function derived<S extends Stores, T>(
+  stores: S,
+  fn: (
+    values: StoresValues<S>,
+    set: (value: T) => void,
+    update: (fn: Updater<T>) => void,
+  ) => Unsubscriber | void,
+  initialValue?: T,
+): Readable<T>
+export function derived<S extends Stores, T>(
+  stores: S,
+  fn: (values: StoresValues<S>) => T,
+  initialValue?: T,
+): Readable<T>
 export function derived<S extends Stores, T>(
   stores: S,
   fn:

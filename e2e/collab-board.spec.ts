@@ -240,4 +240,34 @@ test.describe('collab-board — relay sync', () => {
     expect(errors, errors.join('\n')).toEqual([])
     await a.context().close()
   })
+
+  // #4268: "Demo board" opened titled "Untitled board" — the synced title was
+  // seeded with '' instead of the board's name from the list.
+  test('a listed board opens with its list name as the title', async ({ browser }) => {
+    const errors: string[] = []
+    const a = await openClient(browser, '#/board/roadmap', errors)
+    await expect(a.getByTestId('board-title')).toHaveValue('Roadmap')
+    // An ad-hoc room the list does not know keeps an empty title (placeholder).
+    const b = await openClient(browser, `#/board/adhoc-${crypto.randomUUID()}`, errors)
+    await expect(b.getByTestId('board-title')).toHaveValue('')
+
+    expect(errors, errors.join('\n')).toEqual([])
+    await a.context().close()
+    await b.context().close()
+  })
+
+  test('no horizontal page overflow at phone width (390px)', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    const page = await ctx.newPage()
+    for (const url of ['/', '#/board/demo']) {
+      await page.goto(url)
+      await page.waitForLoadState('networkidle')
+      const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        innerWidth: window.innerWidth,
+      }))
+      expect(scrollWidth, url).toBeLessThanOrEqual(innerWidth)
+    }
+    await ctx.close()
+  })
 })

@@ -1,10 +1,16 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 // The examples use `@pyreon/charts` hosts, whose emit and type-gate stubs live in that package's
 // plugin — so compile and validate through the plugin-loaded helpers, not the bare compiler.
-import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
+import {
+  transform,
+  validateKotlin,
+  validateKotlinFiles,
+  validateSwiftFilesWithStubs,
+  validateSwiftWithStubs,
+} from './charts-plugin'
 
 /**
  * Every shipped `examples/native-*` app must COMPILE on both targets.
@@ -60,6 +66,7 @@ function nativeExampleApps(): Array<[string, string]> {
       }
     }
   }
+
   return [...byPath].map(([path, label]) => [label, path])
 }
 
@@ -75,6 +82,28 @@ const ALL = nativeExampleApps()
  */
 const usesNativeModule = (path: string): boolean =>
   readFileSync(path, 'utf8').includes('useNativeModule')
+
+/**
+ * The app and every sibling `.tsx` module it imports, transitively. The real build compiles `src/*.tsx` as ONE
+ * target, so a component imported from a sibling file (`import { ReorderPage } from './ReorderPage'`) resolves
+ * there; compiling the app file alone reported it as missing. A sibling `.ts` (hooks, types) is read by the
+ * compiler from disk and needs nothing here.
+ */
+function moduleClosure(path: string): string[] {
+  const seen = new Set<string>()
+  const stack = [path]
+  while (stack.length > 0) {
+    const p = stack.pop()!
+    if (seen.has(p)) continue
+    seen.add(p)
+    for (const m of readFileSync(p, 'utf8').matchAll(/from '(\.\/[A-Za-z0-9_-]+)'/g)) {
+      const sibling = join(dirname(p), `${m[1]!}.tsx`)
+      if (existsSync(sibling)) stack.push(sibling)
+    }
+  }
+
+  return [...seen]
+}
 
 const APPS = ALL.filter(([, p]) => !usesNativeModule(p))
 const ESCAPE_HATCH = ALL.filter(([, p]) => usesNativeModule(p))
@@ -108,14 +137,18 @@ describe('every native example compiles on both targets', () => {
     it.each(APPS)('%s', (_name, path) => {
       // The real path, as `pyreon-native build` passes it: a hook or a type imported from a sibling module only
       // resolves from a file that exists on disk.
-      const r = validateSwiftWithStubs(transform(readFileSync(path, 'utf8'), { target: 'swift', filename: path }).code)
+      const files = moduleClosure(path)
+      const codes = files.map((f) => transform(readFileSync(f, 'utf8'), { target: 'swift', filename: f }).code)
+      const r = codes.length === 1 ? validateSwiftWithStubs(codes[0]!) : validateSwiftFilesWithStubs(codes)
       expect(r.ok, r.ok ? '' : String(r.error).split('\n').slice(0, 6).join('\n')).toBe(true)
     })
   })
 
   describe.runIf(isKotlincAvailable())('kotlinc against stubs', () => {
     it.each(APPS)('%s', (_name, path) => {
-      const r = validateKotlin(transform(readFileSync(path, 'utf8'), { target: 'kotlin', filename: path }).code)
+      const files = moduleClosure(path)
+      const codes = files.map((f) => transform(readFileSync(f, 'utf8'), { target: 'kotlin', filename: f }).code)
+      const r = codes.length === 1 ? validateKotlin(codes[0]!) : validateKotlinFiles(codes)
       expect(r.ok, r.ok ? '' : String(r.error).split('\n').slice(0, 6).join('\n')).toBe(true)
     })
   })

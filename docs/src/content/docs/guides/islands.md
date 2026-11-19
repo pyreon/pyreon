@@ -55,11 +55,13 @@ That's the whole setup — you don't call `hydrateIslandsAuto()` or write any re
 
 The `hydrateIslandsAuto(registry)` + `virtual:pyreon/islands-registry` path shown in [Island Architecture](/docs/island-architecture) is for a **standalone `@pyreon/server` app** (no `@pyreon/zero` router) that writes its own `entry-client.ts` — see `examples/islands-showcase`. `'never'`-hydrate islands are omitted from that auto-generated registry so their components never reach the client bundle.
 
+A zero page that is nothing but static HTML and islands can declare `export const hydrate = 'islands'`: the app (router, route code, loader data) then never loads on it, and its islands hydrate from that registry. See [Zero → Islands-only pages](/docs/zero#islands-only-pages-export-const-hydrate-islands).
+
 ## Common pitfalls
 
 - **Importing `island` from `@pyreon/server`.** Use `@pyreon/server/client`; the barrel pulls in `node:fs` etc. and breaks the client build.
 - **Passing children to an island.** Island props are JSON-serialized for the SSR→client transit — children, functions, and symbols are stripped. Have the island render its own content from string props.
-- **Duplicate `name`.** The registry keys by `name`; only the first loader fires. Use distinct names. (`pyreon doctor --check-islands` catches this.)
+- **Duplicate `name`.** The registry keys by `name`; only the first loader fires. Use distinct names. (`pyreon doctor --only islands-audit` catches this.)
 - **`'interaction'` for above-the-fold content.** It only hydrates on first interaction — use `'load'` for content the user interacts with immediately.
 
 ## Related

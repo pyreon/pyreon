@@ -55,6 +55,7 @@ function evalSsr(src: string, deps: Record<string, unknown> = {}): unknown {
   const depValues = [_ssr, _ssrChildren, _ssrItem, _ssrForKeyed, _esc, _escSole, _lc, _fuse, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrNode, _ssrDeferred, signal, For, h, Fragment, ...Object.values(deps)]
   // eslint-disable-next-line no-new-func
   const fn = new Function(...depNames, `${lowered}\nreturn Node`)
+
   return fn(...depValues)
 }
 
@@ -594,19 +595,21 @@ const cases: DiffCase[] = [
     oracle: (d) => h('div', null, (d.on as boolean) ? h('b', null, d.x as number) : h('i', null, d.y as number)),
   },
   {
-    // NON-sole but PLAIN vars: `shouldWrap` is false (no signal read), so the h()
-    // path emits an EAGER value child — no `<!--$-->` markers. The fast path
-    // matches (`_esc(on && _ssr(...))`, markers NOT baked). Oracle is eager.
-    name: 'cond && <el> non-sole, plain vars (no markers) — taken',
+    // NON-sole but PLAIN vars: `shouldWrap` is false (no signal read), but the
+    // client templates `<div>` and lowers the child to a `<!>` placeholder, so
+    // the server brackets it in ONE range (#4385 D): the h() path emits
+    // `_slot(on && <span/>)`, the fast path bakes `<!--$-->` around
+    // `_escSole(on && _ssr(...))`. Oracle: the accessor `_slot` returns.
+    name: 'cond && <el> non-sole, plain vars (one range for the placeholder) — taken',
     src: `const Node = <div><h1>t</h1>{on && <span>{x}</span>}</div>`,
     deps: { on: true, x: 'z' },
-    oracle: (d) => h('div', null, h('h1', null, 't'), (d.on as boolean) && h('span', null, d.x as string)),
+    oracle: (d) => h('div', null, h('h1', null, 't'), () => (d.on as boolean) && h('span', null, d.x as string)),
   },
   {
-    name: 'cond && <el> non-sole, plain vars (no markers) — not taken',
+    name: 'cond && <el> non-sole, plain vars (one range for the placeholder) — not taken',
     src: `const Node = <div><h1>t</h1>{on && <span>{x}</span>}</div>`,
     deps: { on: false, x: 'z' },
-    oracle: (d) => h('div', null, h('h1', null, 't'), (d.on as boolean) && h('span', null, d.x as string)),
+    oracle: (d) => h('div', null, h('h1', null, 't'), () => (d.on as boolean) && h('span', null, d.x as string)),
   },
   {
     // NON-sole with a SIGNAL read: `shouldWrap` is true, so the h() path wraps

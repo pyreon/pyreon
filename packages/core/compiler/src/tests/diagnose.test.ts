@@ -7,6 +7,28 @@ import { diagnoseError } from '../diagnose'
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('diagnoseError (browser-safe error catalog)', () => {
+  it('explains a memory router initialIndex outside its entries', () => {
+    const result = diagnoseError(
+      '[Pyreon Router] initialIndex 5 is outside initialEntries (0–2) — starting at entry 2. Pass an index into the initialEntries array.',
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('initialIndex')
+    expect(result!.fix).toContain('initialEntries.length - 1')
+    // The option name alone is not this entry.
+    expect(diagnoseError('what does initialIndex do?')?.cause ?? '').not.toContain('clamps')
+  })
+
+  it('explains a memory router that cancelled an external redirect', () => {
+    const result = diagnoseError(
+      `[Pyreon Router] mode: 'memory' does not follow the external redirect to "https://example.com/pay" — it would navigate the whole page. Navigation cancelled; call window.location.assign() yourself if leaving the page is intended.`,
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('memory')
+    expect(result!.fix).toContain('window.location.assign')
+    // An ordinary redirect message is not this entry.
+    expect(diagnoseError('redirect loop detected')?.fix ?? '').not.toContain('window.location.assign')
+  })
+
   it('explains a loader notFound() that answered 500 (SSR and the data endpoint)', () => {
     for (const message of [
       '[Pyreon] SSR render failed for /items/9999: Error: Not Found',
@@ -572,6 +594,36 @@ describe('diagnoseError — keyed <For> row keeps the first value of a replaced 
   })
 })
 
+describe('diagnoseError — run-once early return and props copies (#4254)', () => {
+  it.each([
+    'props-early-return-conditional',
+    'static-early-return-conditional',
+    'my component is stuck on the skeleton after loading finishes',
+    'early return on props.loading never updates',
+  ])('explains the pinned early return for %s', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('run ONCE')
+    expect(result?.fix).toContain('props-early-return-conditional')
+    expect(result?.fixCode).toContain('return () =>')
+  })
+
+  it.each([
+    'props-object-copy',
+    'const merged = Object.assign({}, props, { extra: 1 }) — title never updates',
+    'spreading props into an object lost reactivity',
+  ])('explains the props copy for %s', (message) => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('copied into a plain object')
+    expect(result?.fix).toContain('mergeProps(props')
+  })
+
+  it('leaves the body destructure to its own entry', () => {
+    expect(diagnoseError('props destructured in the body, value frozen')?.cause).toContain(
+      'destructured `props`',
+    )
+  })
+})
+
 describe('diagnoseError — <For> without by', () => {
   it.each([
     '[Pyreon] <For> requires a `by` prop: a function returning a stable, unique key for each item (got no `by`).',
@@ -593,5 +645,21 @@ describe('diagnoseError — signal method called without its signal', () => {
     expect(result?.cause).toContain('`update` ran detached from its signal')
     expect(result?.fix).toContain('(v) => sig.update(v)')
     expect(result?.fixCode).toBe('(v) => sig.update(v)')
+  })
+})
+
+describe('diagnoseError — visible island with nothing to observe (#4435)', () => {
+  const message =
+    "[Pyreon] island \"Tagline\" uses hydrate: 'visible' but nothing in it can be observed: the island is `display: contents` and holds no element (only text, or nothing). It will hydrate when its nearest boxed ancestor scrolls into view. Wrap the content in an element, or use hydrate: 'idle' or 'load'. (Reported once per page.)"
+
+  it('names the island, the fallback and the fix', () => {
+    const result = diagnoseError(message)
+    expect(result?.cause).toContain('island "Tagline"')
+    expect(result?.cause).toContain('nearest ancestor that has a box')
+    expect(result?.fix).toContain('real element root')
+  })
+
+  it('does not fire on unrelated visible-strategy text', () => {
+    expect(diagnoseError("island uses hydrate: 'visible' and loads late")?.cause ?? '').not.toContain('box-less')
   })
 })

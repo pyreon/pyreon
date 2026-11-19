@@ -1,6 +1,6 @@
 # @pyreon/document-primitives
 
-18 rocketstyle document components that render in the browser AND export to 14+ formats.
+18 rocketstyle document components that render in the browser AND export to 20 formats.
 
 `@pyreon/document-primitives` ships a complete set of styled, themeable document primitives — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak` — built on `@pyreon/rocketstyle` + `@pyreon/elements`. Each primitive carries a `_documentType` marker via `.statics()` so `@pyreon/connector-document` can walk the same JSX tree and produce a serializable `DocNode` for `@pyreon/document`'s renderers (PDF, DOCX, XLSX, PPTX, HTML email, Markdown, plain text, …). **Write one template, render it in the browser AS PREVIEW, then export the same tree to any format.**
 
@@ -93,20 +93,11 @@ The same accessor pattern works for reactive children — pass a thunk inside th
 
 ### `extractDocNode(templateFn, options?)`
 
-One-step helper — wrap your template render in a thunk and get a serializable `DocNode`.
+Wrap your template render in a thunk and get a serializable `DocNode`.
 
 ```ts
 const tree = extractDocNode(() => <ReportTemplate data={store.report} />)
 await render(tree, 'pdf')
-```
-
-### `createDocumentExport(templateFn, options?)`
-
-Two-step form — returns `{ getDocNode(): DocNode }`. Kept for callers that need to pass the helper object around (e.g. an "Export" component that takes a `DocumentExport` prop). New code should prefer `extractDocNode`.
-
-```ts
-const doc = createDocumentExport(() => <ReportTemplate data={store.report} />)
-const tree = doc.getDocNode()
 ```
 
 `DocumentExportOptions` extends `ExtractOptions` from `@pyreon/connector-document` (`rootSize`, `includeStyles`) plus `theme` and `mode: 'light' | 'dark'` for export-time theming.

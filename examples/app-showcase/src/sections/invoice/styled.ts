@@ -1,6 +1,6 @@
 import { styled } from '@pyreon/styler'
 import { Card, Paragraph, Title } from '@pyreon/ui-components'
-import { t } from '../../styles'
+import { PHONE_MAX, t } from '../../styles'
 
 /**
  * Styled components for the Invoice Builder section.
@@ -16,6 +16,10 @@ import { t } from '../../styles'
 export const InvoicePage = styled('div')`
   padding: 24px 32px 48px;
   max-width: 1280px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    padding: 24px 16px 48px;
+  }
 `
 
 export const Header = styled('header')`
@@ -24,6 +28,10 @@ export const Header = styled('header')`
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 24px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    flex-wrap: wrap;
+  }
 `
 
 export const HeaderText = styled('div')`
@@ -93,6 +101,10 @@ export const Workspace = styled('div')`
   grid-template-columns: 380px 1fr;
   gap: 24px;
   align-items: start;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 `
 
 // ─── Form column ─────────────────────────────────────────────────────

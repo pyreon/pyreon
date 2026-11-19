@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { el, tones } from '../../factory'
 
 /**
  * Ambient notification card. A11y: a POLITE live region
@@ -29,13 +29,14 @@ const Notification = el
     alignY: 'top',
     block: true,
   })
-  .theme((t) => ({
+  .theme((t, m) => ({
     padding: t.spacing.small,
     borderRadius: t.borderRadius.base,
     boxShadow: t.shadows.base,
     fontSize: t.fontSize.small,
     lineHeight: t.lineHeight.base,
-    backgroundColor: t.color.system.light.base,
+    backgroundColor: tones(t, m).surface,
+    color: tones(t, m).text,
     borderWidthLeft: '0',
     borderStyleLeft: 'solid',
     borderColorLeft: 'transparent',

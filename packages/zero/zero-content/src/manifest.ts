@@ -126,7 +126,7 @@ export default defineConfig({
         'Setting `type: "pages"` for a collection that should not be routed (e.g. blog posts queried via `getCollection` for an index page). Use `type: "data"`.',
         "Expecting a scheduled (`publishDate` in the future) entry on a static site to appear AT its date — it appears with the first build on or after that date; schedule or trigger a deploy",
         "Leaving `unpublished` at the default `'runtime'` on an SSG site — the draft/scheduled entry is still bundled (its text ships in a public JS chunk) and `getEntry` resolves it; use `'omit'`",
-        'Schema mismatches that surface only at build time. Use `pyreon doctor --check-content` (PR 9) at edit time, or watch the dev server output during `bun run dev`.',
+        'Schema mismatches that surface only at build time. Use `pyreon doctor --only content-audit` (PR 9) at edit time, or watch the dev server output during `bun run dev`.',
       ],
     },
     {

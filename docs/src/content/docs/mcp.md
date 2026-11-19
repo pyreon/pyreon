@@ -323,13 +323,13 @@ Found 2 issues:
 
 The compiler's **per-expression reactivity verdict** for a snippet. The Pyreon compiler already decides, while emitting codegen, whether each JSX expression is reactive or baked static — `explain_reactivity` surfaces that ground truth (via `analyzeReactivity`) instead of discarding it. Where [`validate`](#validate) reports *bugs*, this reports the whole *map*: every expression classified, so an agent sees a binding that silently won't update **before** it ships the stale-closure / destructured-props / static-when-meant-reactive bug.
 
-Each JSX expression is tagged:
+Each JSX expression is tagged with `◆` (live) or `○` (static), followed by the compiler's verdict:
 
-- **`◆ live`** — re-renders when its signals change (reactive text).
-- **`◆ live prop` / `◆ live attr`** — a reactive component prop / DOM attribute.
-- **`○ baked once`** — rendered once, never updates (no signal read). Often correct (literal text), a bug only when it was *meant* to update.
-- **`○ hoisted static`** — hoisted to module scope as a constant.
-- **`⚠ footgun`** — a detected anti-pattern (carries the `detectPyreonPatterns` code + fix).
+- **`◆ live — …`** — re-renders when its signals change (reactive text or child).
+- **`◆ live prop — …` / `◆ live attribute — …`** — a reactive component prop / DOM attribute.
+- **`○ baked once into the DOM — …`** — rendered once, never updates (no signal read). Often correct (literal text), a bug only when it was *meant* to update.
+- **`○ static — hoisted once to module scope …`** — hoisted to module scope as a constant.
+- **`⚠ footgun [code] — …`** — a detected anti-pattern (carries the `detectPyreonPatterns` code + fix).
 
 **Parameters:**
 
@@ -352,8 +352,8 @@ Reactivity map for snippet.tsx — 1 live · 1 baked-static · 1 footgun
    2 |   const { qty } = props
              ^ ⚠ footgun [props-destructured-body] — Destructuring `props` … dead snapshots …
    4 |   return <div>{qty} × {price()}</div>
-                     ^ ○ baked once — never re-renders (no signal read here)
-                             ^ ◆ live — re-renders whenever its signals change
+                     ^ ○ baked once into the DOM — never re-renders (no signal read here)
+                             ^ ◆ live — this text re-renders whenever its signals change
 
 ⚠ 1 footgun:
   • props-destructured-body (line 2): …
@@ -949,7 +949,7 @@ Project-wide cross-file islands audit. It walks `packages/` + `examples/` and ru
 - **`nested-island`** — an `island()` whose loader-target file also contains an `island()` call; the outer's `hydrateRoot` replaces the inner before its loader runs.
 - **`dead-island`** — an `island()` whose file is never imported statically or dynamically (unreachable code).
 
-Each finding ships with file path + line/column + an actionable fix suggestion. This is the same scanner as the `pyreon doctor --check-islands` CLI flag — two surfaces, one detector set.
+Each finding ships with file path + line/column + an actionable fix suggestion. This is the same scanner as the `pyreon doctor --only islands-audit` CLI flag — two surfaces, one detector set.
 
 **Parameters:**
 

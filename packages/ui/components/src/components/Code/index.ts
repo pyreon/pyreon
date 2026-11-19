@@ -1,13 +1,13 @@
-import { txt } from '../../factory'
+import { tones, txt } from '../../factory'
 
 const Code = txt
   .config({ name: 'Code' })
   .attrs({ tag: 'code' })
-  .theme((t) => ({
+  .theme((t, m) => ({
     fontFamily: 'monospace',
     fontSize: t.fontSize.small,
     backgroundColor: t.color.system.base[100],
-    color: t.color.system.base[800],
+    color: tones(t, m).text,
   }))
   .variants((t) => ({
     inline: {

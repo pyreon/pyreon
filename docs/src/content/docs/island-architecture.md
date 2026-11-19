@@ -92,7 +92,7 @@ The `loader` is a dynamic `import()`. It may resolve to a module with a `default
 
 | Option     | Type                 | Default    | Description                                                                                          |
 | ---------- | -------------------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| `name`     | `string`             | *auto-derived* | Unique island name. Must match the key in the client-side registry (manual `hydrateIslands` form). Two islands sharing a name is a foot-gun — see the [audit](#pyreon-doctor-check-islands). |
+| `name`     | `string`             | *auto-derived* | Unique island name. Must match the key in the client-side registry (manual `hydrateIslands` form). Two islands sharing a name is a foot-gun — see the [audit](#pyreon-doctor-only-islands-audit). |
 | `hydrate`  | `HydrationStrategy`  | `'load'`   | When to hydrate on the client. See [the six strategies](#the-six-strategies).                        |
 | `prefetch` | `PrefetchStrategy`   | `'none'`   | Pre-warm the chunk before the hydration trigger fires. See [Prefetch hint](#prefetch-hint).          |
 
@@ -170,6 +170,16 @@ export const Comments = island(() => import('./components/Comments'), {
 })
 ```
 
+**What is observed.** The framework gives `<pyreon-island>` no styling of its own, so it is an inline element by default. Sites often set `pyreon-island { display: contents }` so the wrapper adds nothing to flex and grid layouts, and an island's content often starts under more box-less wrappers (a nested `<PyreonUI mode>` scope renders a `display: contents` element). An element with no box never reports as visible, so the trigger observes the first elements under the island that are **not** `display: contents`, at any depth; whichever of them enters the viewport first hydrates the island. `prefetch: 'visible'` uses the same targets.
+
+| Island shape | Hydrates when |
+| --- | --- |
+| A boxed island (the default), including an empty one, `height: 0`, absolutely positioned content, `visibility: hidden`, `content-visibility: auto` | its position scrolls into view (visibility is geometric: a `visibility: hidden` island still hydrates when scrolled to) |
+| `display: contents`, with content under any number of further `contents` wrappers | its first boxed content scrolls into view |
+| Inside a scroll container | it scrolls into the container's visible area (the `200px` margin applies to the viewport only) |
+| Hidden right now: inside a closed `<details>`, under `display: none`, or with content that is `display: none` at this width | it is shown and in view; until then it stays pending, by design |
+| `display: contents` holding **no element** (only text, or nothing) | its nearest boxed ancestor scrolls into view. Dev warns once per page: `[Pyreon] island "X" uses hydrate: 'visible' but nothing in it can be observed`. Wrap the text in an element, or use `idle` / `load` |
+
 ### `'interaction'` — hydrate on first user interaction
 
 Best for components that are interactive **but not visible on initial paint** — modals, dropdowns, command palettes. The runtime registers one-shot capture-phase listeners on the `<pyreon-island>` element for the default event set:
@@ -198,6 +208,8 @@ export const Tooltip = island(() => import('./components/Tooltip'), {
 3. After hydration completes, re-dispatches the equivalent event on the live element: a synthetic `MouseEvent('click')` for clicks, a synthetic `SubmitEvent('submit')` (re-dispatched on the live `<form>`, so the handler reads the user's current `FormData`) for submits.
 
 This closes both the "user clicks but nothing happens until they retry" trap and the more severe "form silently navigates away before the island wakes up" data-loss trap. Other trigger events (`focus`, `pointerenter`, `touchstart`) start hydration but are not replayed — `focus` can't be reliably re-dispatched once the user has tabbed past, and `pointerenter` is passive.
+
+The listeners follow the DOM, not the layout: events reach the `<pyreon-island>` element in the capture phase whether or not it has a box, so `interaction` works the same on a `display: contents` island. `media(...)` and `idle` do not depend on layout at all.
 
 :::warning{title="'interaction' is not for above-the-fold content"}
 `'interaction'` is for components that are interactive **but not visible** on first paint. For a button the user sees and is meant to click on load, use `'load'` — `'interaction'` shows the button but doesn't respond until the first click is replayed through a hydration round-trip, which the user perceives as lag.
@@ -231,7 +243,7 @@ export const StaticBadge = island(() => import('./components/StaticBadge'), {
 ```
 
 :::warning{title="Never register a 'never' island in the client registry"}
-A `hydrate: 'never'` island MUST NOT appear in the manual `hydrateIslands({ ... })` registry. Registering it pulls the component module into the client bundle graph — defeating the zero-JS goal — even though the runtime short-circuits before invoking the loader. The auto-registry omits `'never'` islands automatically; the manual form is your responsibility. The `pyreon doctor --check-islands` audit catches the mistake (finding code: `never-with-registry-entry`).
+A `hydrate: 'never'` island MUST NOT appear in the manual `hydrateIslands({ ... })` registry. Registering it pulls the component module into the client bundle graph — defeating the zero-JS goal — even though the runtime short-circuits before invoking the loader. The auto-registry omits `'never'` islands automatically; the manual form is your responsibility. The `pyreon doctor --only islands-audit` audit catches the mistake (finding code: `never-with-registry-entry`).
 :::
 
 ## Prefetch hint
@@ -311,6 +323,12 @@ That's the entire island client entry. No manual map to keep in sync with your `
 
 `'never'`-strategy islands are deliberately omitted from the auto-registry, so their components stay out of the client bundle entirely.
 
+An island hydrated this way is its own root: nothing above it provides context. When islands read context (a theme, a UI system's root scope), pass a root that provides it; it loads once, with the first island that hydrates, and must render only its children so each island still adopts its server HTML:
+
+```ts title="src/entry-client.ts"
+hydrateIslandsAuto(registry, { root: () => import('./IslandRoot') })
+```
+
 `hydrateIslandsAuto()` throws a descriptive error if it's handed the stub registry the plugin emits when `pyreon({ islands: false })` is set — pointing you to either re-enable islands or switch to the manual form.
 
 ### Manual registry
@@ -336,7 +354,7 @@ if (import.meta.hot) import.meta.hot.dispose(cleanup) // HMR
 ```
 
 :::warning{title="Registry keys must match the island name exactly"}
-A `hydrateIslands({ X })` entry whose key doesn't exactly match an `island()` declaration's `name` (case-sensitive) is a no-op — the island logs `No loader registered for island "…"`, stamps `data-island-error="no-loader"`, and stays un-hydrated. The auto-registry eliminates this class of bug entirely; the `pyreon doctor --check-islands` audit catches it for the manual form (finding code: `registry-mismatch`).
+A `hydrateIslands({ X })` entry whose key doesn't exactly match an `island()` declaration's `name` (case-sensitive) is a no-op — the island logs `No loader registered for island "…"`, stamps `data-island-error="no-loader"`, and stays un-hydrated. The auto-registry eliminates this class of bug entirely; the `pyreon doctor --only islands-audit` audit catches it for the manual form (finding code: `registry-mismatch`).
 :::
 
 ## Using islands with `@pyreon/zero`
@@ -365,6 +383,21 @@ export default function Post() {
   )
 }
 ```
+
+### Pages that are only islands
+
+A zero page whose only interactive parts are islands can skip the app entirely: `export const hydrate = 'islands'` on the route (or its `_layout`) makes it static HTML plus its islands, with no router, no route code and no loader-data blob in the browser. The islands then hydrate from the auto-registry, which the client entry passes in (`startClientLazy({ routes: () => import('virtual:zero/routes'), islands })`). An island there is its own root, so one that reads context (a theme) gets its providers from `islandRoot`. See [Zero → Islands-only pages](/docs/zero#islands-only-pages-export-const-hydrate-islands).
+
+Without zero, a route declares `meta: { hydrate: 'islands' }` and `createHandler` renders it the same way. Tell `@pyreon/server`'s `startClient` what to run on such a page instead of the app:
+
+```ts
+import { hydrateIslandsAuto, islandsOnlyPages, startClient } from '@pyreon/server/client'
+import * as registry from 'virtual:pyreon/islands-registry'
+
+startClient({ App, routes, islandsOnly: islandsOnlyPages(() => hydrateIslandsAuto(registry)) })
+```
+
+On a marked page only the islands hydrate (no router, no tree hydration), and on an app page a client-side navigation to an islands-only route becomes a full page load. It is a separate import so an app that never uses islands-only pages ships none of it.
 
 The inverse pattern — a cacheable page with per-request **server**-rendered holes — is **server islands** (`serverIsland()`). That's a different feature; see [Zero → Server Islands](/docs/zero#server-islands).
 
@@ -401,15 +434,15 @@ Pyreon ships static + runtime gates that catch the recurring island foot-guns at
 
 ### Dev-server doctor-lite (automatic)
 
-Under `@pyreon/vite-plugin` with `islands: true` (the default), `vite dev` runs the same five-detector audit **once on server boot** — deferred 1 second off the startup path so it never delays first paint — and prints any findings as plain `console.warn` output naming `pyreon doctor --check-islands` for the full report. It's purely advisory: a failure inside the audit itself is swallowed, so a broken audit can never break `vite dev`. This closes the gap where a duplicate island name or a registry typo shipped an entire dev session unnoticed until someone ran `pyreon doctor` manually or hit CI.
+Under `@pyreon/vite-plugin` with `islands: true` (the default), `vite dev` runs the same five-detector audit **once on server boot** — deferred 1 second off the startup path so it never delays first paint — and prints any findings as plain `console.warn` output naming `pyreon doctor --only islands-audit` for the full report. It's purely advisory: a failure inside the audit itself is swallowed, so a broken audit can never break `vite dev`. This closes the gap where a duplicate island name or a registry typo shipped an entire dev session unnoticed until someone ran `pyreon doctor` manually or hit CI.
 
-### `pyreon doctor --check-islands`
+### `pyreon doctor --only islands-audit`
 
 Walks your project's source roots and runs five cross-file detectors. Each finding includes a file path, line/column, and an actionable fix.
 
 ```bash
-pyreon doctor --check-islands         # human-readable
-pyreon doctor --check-islands --json  # CI-pipeable JSON
+pyreon doctor --only islands-audit         # human-readable
+pyreon doctor --only islands-audit --json  # CI-pipeable JSON
 ```
 
 | Finding code                | Catches                                                                                                                                       |
@@ -423,7 +456,7 @@ pyreon doctor --check-islands --json  # CI-pipeable JSON
 Wire it into CI by piping `--json` and gating the merge on a non-empty findings array.
 
 :::warning{title="Don't nest islands"}
-An `island()` whose loader target also contains an `island()` is unsupported — when the outer island hydrates, its `hydrateRoot` replaces the inner subtree before the inner loader runs, so the inner island never hydrates. The runtime detects this at hydration time (logs an error, stamps `data-island-error="nested"`, and skips), and `--check-islands` catches it statically. Flatten the two components, or move the inner island out of the outer's tree.
+An `island()` whose loader target also contains an `island()` is unsupported — when the outer island hydrates, its `hydrateRoot` replaces the inner subtree before the inner loader runs, so the inner island never hydrates. The runtime detects this at hydration time (logs an error, stamps `data-island-error="nested"`, and skips), and `--only islands-audit` catches it statically. Flatten the two components, or move the inner island out of the outer's tree.
 :::
 
 ### MCP `audit_islands` tool
@@ -464,5 +497,5 @@ A successfully hydrated island clears its `data-island-state` and carries no `da
 - [`@pyreon/zero`](/docs/zero) — file-system routing, the self-hydrating zero integration, and server islands
 - [`@pyreon/runtime-server`](/docs/runtime-server) — the lower-level `renderToString` / `renderToStream` primitives
 - [`@pyreon/vite-plugin`](/docs/vite-plugin) — the build-time integration that powers the auto-registry
-- [`@pyreon/cli`](/docs/cli) — `pyreon doctor --check-islands`
+- [`@pyreon/cli`](/docs/cli) — `pyreon doctor --only islands-audit`
 - [`@pyreon/mcp`](/docs/mcp) — the `audit_islands` + `validate` tools for AI agents

@@ -79,8 +79,8 @@ export const COMPILED_MISMATCH_CASES: CompiledMismatchCase[] = [
     name: "mid static text (`_setChildAt`)",
     source: "export const App = () => <p><b>a</b>{typeof window === 'undefined' ? 'server' : 'browser'}<i>b</i></p>",
     compiled: "const App = () => _tpl(\"<p><b>a</b><!><i>b</i></p>\", (__root) => {\n  const __p0 = __root.firstChild.nextSibling;\n  _setChildAt(__root, __p0, typeof window === \"undefined\" ? \"server\" : \"browser\");\n  return null;\n});\n",
-    match: "<p><b>a</b>browser<i>b</i></p>",
-    server: "<p><b>a</b>server<i>b</i></p>",
+    match: "<p><b>a</b><!--$-->browser<!--/$--><i>b</i></p>",
+    server: "<p><b>a</b><!--$-->server<!--/$--><i>b</i></p>",
     reports: [{ type: "text", expected: "browser", actual: "server", path: "root > p > text" }],
   },
   {
@@ -130,6 +130,30 @@ export const COMPILED_MISMATCH_CASES: CompiledMismatchCase[] = [
     match: "<div><b>x</b></div>",
     server: "<div><i>x</i></div>",
     reports: [{ type: "tag", expected: "b", actual: "i", path: "root > div > reactive > b" }],
+  },
+  {
+    name: "server rendered nothing, client renders an element (empty sole slot, #4582)",
+    source: "const on = signal(true)\nexport const App = () => <div id=\"w\">{on() ? <b>x</b> : null}</div>",
+    compiled: "const on = signal(true);\nconst App = () => _tpl('<div id=\"w\"><!></div>', (__root) => {\n  const __p0 = __root.firstChild;\n  const __d0 = _mountSlot(() => on() ? /* @__PURE__ */ h(\"b\", null, \"x\") : null, __root, __p0, true);\n  return __d0;\n});\n",
+    match: "<div id=\"w\"><b>x</b></div>",
+    server: "<div id=\"w\"></div>",
+    reports: [{ type: "tag", expected: "b", actual: "", path: "root > div > reactive" }],
+  },
+  {
+    name: "server rendered nothing, client renders an element (empty range, #4582)",
+    source: "const on = signal(true)\nexport const App = () => <div><i>a</i>{on() ? <b>x</b> : null}</div>",
+    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><i>a</i><!></div>\", (__root) => {\n  const __p0 = __root.firstChild.nextSibling;\n  const __d0 = _mountSlot(() => on() ? /* @__PURE__ */ h(\"b\", null, \"x\") : null, __root, __p0);\n  return __d0;\n});\n",
+    match: "<div><i>a</i><!--$--><b>x</b><!--/$--></div>",
+    server: "<div><i>a</i><!--$--><!--/$--></div>",
+    reports: [{ type: "tag", expected: "b", actual: "", path: "root > div > reactive" }],
+  },
+  {
+    name: "server rendered nothing, client renders an array (empty range, #4582)",
+    source: "const on = signal(true)\nexport const App = () => <div><i>a</i>{on() ? [<b>x</b>, 'y'] : null}</div>",
+    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><i>a</i><!></div>\", (__root) => {\n  const __p0 = __root.firstChild.nextSibling;\n  const __d0 = _mountSlot(() => on() ? [/* @__PURE__ */ h(\"b\", null, \"x\"), \"y\"] : null, __root, __p0);\n  return __d0;\n});\n",
+    match: "<div><i>a</i><!--$--><b>x</b>y<!--/$--></div>",
+    server: "<div><i>a</i><!--$--><!--/$--></div>",
+    reports: [{ type: "tag", expected: "b", actual: "", path: "root > div > reactive" }],
   },
 ]
 

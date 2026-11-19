@@ -32,14 +32,14 @@ const unmount = mount(<App />, document.getElementById('app')!)
 hydrateRoot(<App />, document.getElementById('app')!)
 ```
 
-## mount / render / unmount
+## mount / unmount
 
 ```ts
 const unmount = mount(<App />, container)
 unmount()                                // teardown effects, unmount subtree
 ```
 
-`render` is an alias for `mount` (Solid-parity). `mountChild(child, parent, anchor)` is the low-level form for advanced integrations.
+`mountChild(child, parent, anchor)` is the low-level form for advanced integrations.
 
 ## Hydration
 

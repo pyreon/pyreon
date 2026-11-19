@@ -21,17 +21,19 @@ Or with zero setup: `pyreon loom <cmd>` delegates to the project-local install.
 
 ## `loom scan` — the fabric as findings
 
+This is the scan of the Pyreon repository itself, as of November 2026 (the counts move as the workspace grows):
+
 ```text
 $ pyreon loom scan . --no-write
-loom scan · . · 148 packages
+loom scan · . · 129 packages
 
-  workspace packages  148
-  external deps       227
-  internal edges      858
+  workspace packages  129
+  external deps       229
+  internal edges      751
   depth                11
   runtime cycles        0
 
-  ℹ 305 info
+  ℹ 183 info
   ℹ phantom-dep · `@pyreon/example-react-compat` imports `react-dom` in shipping source but never
      declares it — resolvable only through hoisting luck (ignored: `@pyreon/vite-plugin` with
      compat:'react' ALIASES react-dom (and react-dom/client) to @pyreon/react-compat/dom. Installing
@@ -44,7 +46,7 @@ loom scan · . · 148 packages
      ↳ packages/zero/create-zero/templates/app/src/routes/(admin)/dashboard.tsx
   …
 
-✓ no errors or warnings · 305 info · 148 packages · 392 ms
+✓ no errors or warnings · 183 info · 129 packages · 531 ms
 ```
 
 It reads the same declarations an install tool reads — root `workspaces` globs (npm/bun/yarn array + object forms, `packages/*/*`-style nesting, negations) plus `pnpm-workspace.yaml` — and analyzes:
@@ -88,10 +90,11 @@ Vite + `@pyreon/vite-plugin` are **optional peers**: `loom scan` runs without th
 
 ```bash
 pyreon loom build . --out=loom-dist --base=/deps/
-# loom: 148 package(s) → loom-dist
+# ✓ built the observatory → /path/to/repo/loom-dist
+#   129 packages
 ```
 
-Prerenders the same five views to plain files — one page per view at its own URL (`/`, `/matrix`, `/cycles`, `/impact`, `/manifests`), so you can link someone straight to the cycles view. The scan is baked in once, so the output works from any static host or opened straight from `file://`. `--out` defaults to `loom-dist`; `--base` sets the public path for a subdirectory deploy; `--no-imports` behaves as it does for `scan`. The build is a snapshot — re-run it after dependency changes to refresh.
+Prerenders the same five views to plain files — one page per view at its own URL (`/`, `/matrix`, `/cycles`, `/impact`, `/manifests`), so you can link someone straight to the cycles view. The scan is baked in once, so any static host serves it with no backend. Serve it over HTTP (a static host, or locally any static file server): opened straight from `file://`, the browser blocks its module scripts and the view links point at the filesystem root, so you get one view as inert HTML. `--out` defaults to `loom-dist`; `--base` sets the public path for a subdirectory deploy, as an absolute path such as `/deps/` (a relative `./` base does not make `file://` work); `--no-imports` behaves as it does for `scan`. The build is a snapshot — re-run it after dependency changes to refresh.
 
 `loom build` needs `vite`, `@pyreon/vite-plugin` **and** `@pyreon/zero` as dev dependencies (the site is a zero SSG app); when they are missing it names the exact install command. `loom scan` needs none of them.
 
@@ -139,7 +142,7 @@ A `pyreon.config.*` that exists but fails to load is a **named error**, never a 
 
 - The import scan is **lexical** — comments and template-literal contents are stripped and specifier grammar is validated (an import line inside a recipe string doesn't count), but an import mentioned in an ordinary-quoted string can still false-positive. That's why `unused-dep` stays `info` and every finding carries its file evidence.
 - Loom reads **declared** truth: no lockfile parsing, no registry calls. Outdated-vs-latest, duplicate-install analysis, and advisory feeds are explicitly future layers, not quietly half-done.
-- Depth is longest-path from the entry points, hard-bounded at V−1 — packages inside a cycle keep the depth their first visit found.
+- Depth is the longest path from the entry points, computed with each cycle collapsed to one node: every package in a cycle shares one depth, and a cycle never makes the packages below it deeper.
 
 ## CI wiring
 

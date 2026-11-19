@@ -11,8 +11,8 @@ import type { ParallelRow } from './parallel-web'
 import type { Double } from './types'
 
 export interface ParallelChartProps extends CanvasHostProps {
-  axes: ParallelAxis[]
-  rows: ParallelRow[] | (() => ParallelRow[])
+  axes: readonly ParallelAxis[]
+  rows: readonly ParallelRow[] | (() => readonly ParallelRow[])
   /** Space kept beyond the outer axes; default 40. */
   gutter?: Double
   parallel?: ParallelOptions
@@ -27,7 +27,7 @@ export interface ParallelChartProps extends CanvasHostProps {
 }
 
 export function ParallelChart(props: ParallelChartProps): VNode {
-  const readRows = (): ParallelRow[] => (typeof props.rows === 'function' ? props.rows() : props.rows)
+  const readRows = (): readonly ParallelRow[] => (typeof props.rows === 'function' ? props.rows() : props.rows)
   const opts = (t: ChartTheme): ParallelOptions => {
     const base: ParallelOptions = { palette: t.palette, labelColor: t.label, axisColor: t.axis, highlightColor: t.negative, ...props.parallel }
     const colorOf = props.rowColor

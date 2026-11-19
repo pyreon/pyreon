@@ -67,9 +67,9 @@ export function App() {
   return <Press onPress={() => n.set(n() + 1)} onLongPress={() => n.set(0)}><Text>x</Text></Press>
 }`
     const sw = transform(both, { target: 'swift' })
-    expect(sw.code).toContain('Button(action: { n = n + 1 })')
+    expect(sw.code).toContain('Button(action: { n = pyreonAdd(n, 1) })')
     expect(sw.code).toContain('.simultaneousGesture(LongPressGesture')
     const kt = transform(both, { target: 'kotlin' })
-    expect(kt.code).toContain('.combinedClickable(onClick = { n = n + 1L }, onLongClick = { n = 0L })')
+    expect(kt.code).toContain('.combinedClickable(onClick = { n = pyreonAdd(n, 1L) }, onLongClick = { n = 0L })')
   })
 })

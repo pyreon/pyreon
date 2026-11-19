@@ -30,18 +30,18 @@ describe('JS `/` → float division on native (matches `7 / 2 === 3.5`)', () => 
     const out = transform(SRC, { target: 'swift' }).code
     expect(out).toContain('private var avg: Double { Double(a) / Double(b) }')
     // other ops are NOT coerced — they match JS for integers
-    expect(out).toContain('var sum: Int { a + b }')
-    expect(out).toContain('var prod: Int { a * b }')
-    expect(out).toContain('var rem: Int { a % b }')
+    expect(out).toContain('var sum: Int { pyreonAdd(a, b) }')
+    expect(out).toContain('var prod: Int { pyreonMul(a, b) }')
+    expect(out).toContain('var rem: Int { pyreonRem(a, b) }')
   })
 
   it('Kotlin: division coerces operands with .toDouble()', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
     expect(out).toContain('(a).toDouble() / (b).toDouble()')
     // other ops stay verbatim
-    expect(out).toContain('a + b')
-    expect(out).toContain('a * b')
-    expect(out).toContain('a % b')
+    expect(out).toContain('pyreonAdd(a, b)')
+    expect(out).toContain('pyreonMul(a, b)')
+    expect(out).toContain('pyreonRem(a, b)')
     expect(out).not.toContain('(a).toDouble() + (b)')
   })
 

@@ -73,7 +73,7 @@ export function presetIsActive(preset: ZoomPreset, total: number, win: ZoomWindo
  * legend's is.
  */
 export function renderPresets(
-  items: ZoomPreset[],
+  items: readonly ZoomPreset[],
   total: number,
   win: ZoomWindow,
   canvas: Rect,

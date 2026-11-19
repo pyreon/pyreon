@@ -262,7 +262,7 @@ if (d) console.log(d.cause, d.fix)`,
       signature:
         "detectPyreonPatterns(code: string, filename?: string): PyreonDiagnostic[]",
       summary:
-        'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 21 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`.',
+        'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 23 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `props-early-return-conditional`, `props-object-copy`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`). The detector arm behind the MCP `validate` tool and `pyreon doctor` `pyreon-patterns` gate. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`.',
       example: `import { detectPyreonPatterns } from "@pyreon/compiler/analyze"
 
 const diags = detectPyreonPatterns(
@@ -292,7 +292,7 @@ if (hasPyreonPatterns(src)) report(detectPyreonPatterns(src, file))`,
       kind: 'function',
       signature: 'auditTestEnvironment(startDir: string): TestAuditResult',
       summary:
-        'Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` literals or a `vnode()` helper instead of going through real `h()`), the bug class behind PR #197’s silent metadata drop. Classifies each file HIGH / MEDIUM / LOW. Powers the MCP `audit_test_environment` tool and `pyreon doctor --audit-tests`.',
+        'Scans every `*.test.ts(x)` under `startDir` for the mock-vnode anti-pattern (constructing `{ type, props, children }` literals or a `vnode()` helper instead of going through real `h()`), the bug class behind PR #197’s silent metadata drop. Classifies each file HIGH / MEDIUM / LOW. Powers the MCP `audit_test_environment` tool and `pyreon doctor --only audit-tests`.',
       example: `import { auditTestEnvironment, formatTestAudit } from "@pyreon/compiler/audits"
 
 const r = auditTestEnvironment(process.cwd())
@@ -316,7 +316,7 @@ console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))`,
       kind: 'function',
       signature: 'auditIslands(rootDir: string): IslandAuditResult',
       summary:
-        'Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`). Uses the nearest package.json or packages/ workspace marker, so a consumer app inside a monorepo stays isolated; an explicit workspace audit retains packages/ + examples/ coverage. Includes author src/lib modules and omits package build output. No type-check pass / module resolution. Powers `pyreon doctor --check-islands` + MCP `audit_islands`.',
+        'Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`). Uses the nearest package.json or packages/ workspace marker, so a consumer app inside a monorepo stays isolated; an explicit workspace audit retains packages/ + examples/ coverage. Includes author src/lib modules and omits package build output. No type-check pass / module resolution. Powers `pyreon doctor --only islands-audit` + MCP `audit_islands`.',
       example: `import { auditIslands, formatIslandAudit } from "@pyreon/compiler/audits"
 
 const r = auditIslands(process.cwd())
@@ -340,7 +340,7 @@ console.log(formatIslandAudit(auditIslands(".")))`,
       kind: 'function',
       signature: 'auditSsg(rootDir: string): SsgAuditResult',
       summary:
-        'Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.tsx` → no layout chrome), `dynamic-route-missing-get-static-paths` (`[id].tsx` without `getStaticPaths` → silently skipped by SSG auto-detect), `non-literal-revalidate-export` (`export const revalidate = TTL` → dropped from the build-time ISR manifest). API routes (`src/routes/api/` or no `export default`) are skipped. Powers `pyreon doctor --check-ssg`.',
+        'Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.tsx` → no layout chrome), `dynamic-route-missing-get-static-paths` (`[id].tsx` without `getStaticPaths` → silently skipped by SSG auto-detect), `non-literal-revalidate-export` (`export const revalidate = TTL` → dropped from the build-time ISR manifest). API routes (`src/routes/api/` or no `export default`) are skipped. Powers `pyreon doctor --only ssg-audit`.',
       example: `import { auditSsg, formatSsgAudit } from "@pyreon/compiler/audits"
 
 const r = auditSsg(process.cwd())

@@ -28,7 +28,7 @@ filters.q.set('hello') // ?page=1&sort=name&q=hello
 filters.sort() // 'name'
 
 // Search-as-you-type with debounce
-const query = useUrlState('q', '', { debounce: 300 })
+const query = useUrlState('q', '', { debounceMs: 300 })
 ```
 
 ## `UrlStateSignal<T>`
@@ -61,7 +61,7 @@ interface UrlStateOptions<T> {
   serialize?: (value: T) => string
   deserialize?: (raw: string) => T
   replace?: boolean // default true — replaceState; false for pushState
-  debounce?: number // default 0; coalesce rapid set() calls
+  debounceMs?: number // default 0; coalesce rapid set() calls
   arrayFormat?: 'comma' | 'repeat' // default 'comma'
   clearOnDefault?: boolean // default true — drop the param when it equals the default
   onChange?: (value: T) => void // external changes that actually CHANGED the value (popstate / router navigation / cross-hook)
@@ -94,7 +94,7 @@ Use `'repeat'` when your backend reads search params with `URLSearchParams.getAl
 ## Debounce — search inputs
 
 ```ts
-const q = useUrlState('q', '', { debounce: 300 })
+const q = useUrlState('q', '', { debounceMs: 300 })
 
 const Input = () => (
   <input
@@ -122,8 +122,9 @@ The `UrlRouter` interface is minimal:
 interface UrlRouter {
   replace(path: string): void | Promise<void>
   push?(path: string): void | Promise<void>
-  mode?: 'hash' | 'history'
+  mode?: 'hash' | 'history' | 'memory'
   _base?: string
+  _currentPath?: () => string // read in memory mode, where the page URL is not the route
   currentRoute?: () => unknown // when present, navigations update every live signal
 }
 ```
@@ -149,7 +150,10 @@ https://app.example/#/products?page=3
 So once a router is registered, `useUrlState` reads and writes the query on the
 side of the URL that router owns: inside the fragment in hash mode, in
 `location.search` in history mode (where it also preserves any `#fragment` and
-hands the router a path relative to its `base`). `useRouter()` exposes `mode`, so
+hands the router a path relative to its `base`), and inside the router itself
+in memory mode (`createRouter({ mode: 'memory' })` — url-state never touches
+`location` then, which belongs to the page the router is embedded in).
+`useRouter()` exposes `mode`, so
 `setUrlRouter(useRouter())` picks this up with no extra configuration.
 
 One consequence worth stating: in a hash-routed app, **do not read the params
@@ -213,7 +217,7 @@ sort.set('name') // URL keeps ?sort=name instead of dropping it
 - **`reset()` removes the param** when the value equals the default (keeps the URL clean). `remove()` removes it unconditionally.
 - **NaN guard**: non-numeric AND empty strings fall back to the **default value**, not `NaN` / `0` — typed-number params can't end up with an unusable or accidental value.
 - **Object values are JSON-encoded** — pass `serialize` / `deserialize` for short-form encodings if URL length matters.
-- **`debounce: 300` debounces the URL write, not the signal** — `state()` reflects the latest `set()` immediately, only the URL lags.
+- **`debounceMs: 300` debounces the URL write, not the signal** — `state()` reflects the latest `set()` immediately, only the URL lags.
 - **Schema mode returns an object** — destructuring captures the signal references, not values. `const { page } = useUrlState({ page: 1 })` then `page()` to read.
 - **`'+' → space` in `application/x-www-form-urlencoded`**: querystrings with literal `+` use `%2B` when round-tripping through `useUrlState`.
 

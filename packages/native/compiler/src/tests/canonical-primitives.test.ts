@@ -32,6 +32,7 @@ function tx(jsxBody: string, target: 'swift' | 'kotlin'): string {
       return ${jsxBody}
     }
   `
+
   return transform(source, { target }).code
 }
 
@@ -47,6 +48,7 @@ function txWithTodoProps(jsxBody: string, target: 'swift' | 'kotlin'): string {
       return ${jsxBody}
     }
   `
+
   return transform(source, { target }).code
 }
 
@@ -295,12 +297,23 @@ describe('Phase P2.1 — <Heading> emit (semantic heading)', () => {
     expect(out).toMatch(/\.foregroundColor\(Color\(red: [\d.]+, green: [\d.]+, blue: [\d.]+\)\)/)
   })
 
-  it('Kotlin: <Heading>Title</Heading> → Text(style = MaterialTheme.typography.h4) (default level 1)', () => {
+  it('Kotlin: <Heading>Title</Heading> → Text(style = MaterialTheme.typography.h4, fontWeight = FontWeight.Bold) (default level 1)', () => {
     const out = tx(`<Heading>Title</Heading>`, 'kotlin')
     // Material 2 typography role (the emit base is androidx.compose.material.*,
     // NOT material3 — Material 3's `headlineLarge` is not a member of M2's
     // Typography and fails a real `gradle assembleDebug`).
-    expect(out).toContain('Text(text = "Title", style = MaterialTheme.typography.h4)')
+    expect(out).toContain('Text(text = "Title", style = MaterialTheme.typography.h4, fontWeight = FontWeight.Bold)')
+  })
+
+  it('Kotlin: every level is bold, as on web (weight 700) and iOS (.bold())', () => {
+    // Material 2's h4/h5/subtitle1/body1/body2 are FontWeight.Normal (h6 is
+    // Medium), so the typography role alone rendered a regular-weight heading.
+    for (const level of [1, 2, 3, 4, 5, 6]) {
+      const out = tx(`<Heading level={${level}}>x</Heading>`, 'kotlin')
+      expect(out, `level ${level}`).toMatch(/style = MaterialTheme\.typography\.\w+, fontWeight = FontWeight\.Bold\)/)
+    }
+    const withColor = tx(`<Heading level={2} color="primary">x</Heading>`, 'kotlin')
+    expect(withColor).toMatch(/style = MaterialTheme\.typography\.h5, fontWeight = FontWeight\.Bold, color = Color\(/)
   })
 
   it('Kotlin: level maps to the Material 2 typography role', () => {
@@ -611,6 +624,20 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
     expect(out).toContain('Toggle("", isOn: $done)')
   })
 
+  // #4344 — `<Toggle>` has no label, and a SwiftUI `Toggle("")` still lays out
+  // label + spacer + switch, so it filled its HStack on iOS while the web
+  // checkbox and the Compose Switch hug the control. Both Swift shapes (the
+  // `$signal` projection and the custom Binding) must hide the empty label.
+  it('Swift: a label-less <Toggle> hides its empty label in both binding shapes (#4344)', () => {
+    const projected = tx(`<Toggle value={done} onChange={(b) => done.set(b)} />`, 'swift')
+    expect(projected).toMatch(/Toggle\("", isOn: \$done\)\n\s*\.labelsHidden\(\)/)
+    const custom = txWithTodoProps(
+      `<Toggle value={props.todo.done} onChange={props.onToggle} />`,
+      'swift',
+    )
+    expect(custom).toMatch(/Toggle\("", isOn: Binding\([\s\S]*?\n\s*\)\)\n\s*\.labelsHidden\(\)/)
+  })
+
   it('Swift: <Toggle disabled> → .disabled(true) modifier', () => {
     const out = tx(`<Toggle value={done} onChange={(b) => done.set(b)} disabled />`, 'swift')
     expect(out).toContain('Toggle("", isOn: $done)')
@@ -811,6 +838,7 @@ function txRouter(componentBody: string, target: 'swift' | 'kotlin'): string {
       ${componentBody}
     }
   `
+
   return transform(source, { target }).code
 }
 
@@ -1709,14 +1737,14 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
     }
   `
 
-  it('Swift: emits @State PyreonFetch<T> + a .task harness via begin/resolve/reject', () => {
+  it('Swift: emits @State PyreonFetch<T> + a .task harness that REGISTERS the request (run), so refetch() re-runs it', () => {
     const out = transform(FETCH_SRC, { target: 'swift' }).code
     expect(out).toContain('@State private var user = PyreonFetch<User>()')
     expect(out).toContain('.task {')
-    expect(out).toContain('user.begin()')
+    expect(out).toContain('await user.run {')
+    expect(out).not.toContain('user.begin()')
     expect(out).toContain('URLSession.shared.data(from: URL(string: "/api/user")!)')
-    expect(out).toContain('user.resolve(try PyreonJSON.decode(User.self, from: bytes))')
-    expect(out).toContain('catch { user.reject(error) }')
+    expect(out).toContain('return try PyreonJSON.decode(User.self, from: bytes)')
     // Swift field access is a plain @Observable property read.
     expect(out).toContain('user.data')
     expect(out).not.toContain('user.data.value')
@@ -1726,16 +1754,16 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
     const out = transform(FETCH_SRC, { target: 'kotlin' }).code
     expect(out).toContain('val user = remember { PyreonFetch<User>() }')
     expect(out).toContain('LaunchedEffect(Unit) {')
-    expect(out).toContain('user.begin()')
+    expect(out).toMatch(/user\.run\(launch = \{ __refetch -> \w+\.launch \{ __refetch\(\) \} \}\) \{/)
+    expect(out).not.toContain('user.begin()')
     expect(out).toContain('java.net.URL("/api/user").readText()')
     // `PyreonFetchJson`, not the bare `Json`: kotlinx's default THROWS on a
     // key the target type does not declare, where Swift's JSONDecoder ignores
     // it — so the same shared source decoded on iOS and threw on Android
     // against any real API. The invariant this line guards is unchanged (the
-    // harness resolves the container by decoding the response); only the
-    // reader it decodes with is now the parity-configured one.
-    expect(out).toContain('user.resolve(PyreonFetchJson.decodeFromString<User>(body))')
-    expect(out).toContain('user.reject(e)')
+    // harness's request decodes the response); only the reader it decodes
+    // with is now the parity-configured one.
+    expect(out).toContain('PyreonJson.decode<User>(body)')
     // Kotlin field access reads through Compose MutableState `.value`.
     expect(out).toContain('user.data.value')
   })
@@ -2097,6 +2125,7 @@ describe('Cross-platform a11y vocabulary → SwiftUI a11y modifiers (P5 native, 
     expect(out).toContain('.accessibilityAddTraits(.isHeader)')
   })
 })
+
 describe('Cross-platform a11y vocabulary → Compose semantics (P5 native, Android)', () => {
   it('Kotlin: accessibilityLabel → .semantics { contentDescription = "..." }', () => {
     const out = tx(`<Stack accessibilityLabel="Close menu"><Text>x</Text></Stack>`, 'kotlin')

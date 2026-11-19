@@ -263,7 +263,7 @@ export const userSchema = zodSchema(z.object({
     expect(swift.code).toContain('nameVal.utf16.count < 2')
     expect(swift.code).toContain('nameVal.utf16.count > 50')
     // Optional scalar with constraint inside present-check
-    expect(swift.code).toContain('var age: Int? = nil')
+    expect(swift.code).toContain('var age: Double? = nil')
     expect(swift.code).toContain('ageVal < 0')
     expect(swift.code).toContain('ageVal > 120')
     // Required array with per-element constraint
@@ -280,7 +280,7 @@ export const userSchema = zodSchema(z.object({
     expect(kotlin.code).toContain('java.util.UUID.fromString(idVal)')
     expect(kotlin.code).toContain('nameVal.length < 2')
     expect(kotlin.code).toContain('nameVal.length > 50')
-    expect(kotlin.code).toContain('var age: Long? = null')
+    expect(kotlin.code).toContain('var age: Double? = null')
     expect(kotlin.code).toContain('ageVal != null')
     expect(kotlin.code).toContain('var emails: List<String>')
     expect(kotlin.code).toContain('for (emailsElement in emailsVal)')

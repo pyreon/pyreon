@@ -9472,6 +9472,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         "type": {
           "kind": "string"
         }
+      },
+      {
+        "name": "labelX",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "labelShown",
+        "type": {
+          "kind": "boolean"
+        }
       }
     ],
     "external": true

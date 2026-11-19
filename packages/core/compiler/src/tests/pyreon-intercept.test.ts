@@ -986,6 +986,162 @@ describe('detectPyreonPatterns', () => {
     })
   })
 
+  // #4254: the props spelling of the run-once early return, and copying props
+  // into a plain object, both reported "No issues found".
+  describe('props-early-return-conditional', () => {
+    const hits = (code: string) =>
+      detectPyreonPatterns(code).filter((d) => d.code === 'props-early-return-conditional')
+
+    it('flags `if (props.x) return <JSX/>` at the top of a component body', () => {
+      const found = hits(`
+        export function Card(props: { loading: boolean }) {
+          if (props.loading) return <p>Loading</p>
+          return <div>content</div>
+        }
+      `)
+      expect(found).toHaveLength(1)
+      expect(found[0]!.line).toBe(3)
+      expect(found[0]!.message).toContain('`props.loading`')
+      expect(found[0]!.message).toContain('<Show when={() => props.loading}')
+      expect(found[0]!.message).toContain('pyreon-lint-ignore props-early-return-conditional')
+      expect(found[0]!.fixable).toBe(false)
+    })
+
+    it('flags `return null`, block, negated, optional and element-access forms', () => {
+      for (const cond of ['!props.items', 'props?.hidden', "props['loading']", 'props.count > 3']) {
+        expect(
+          hits(`const List = (props) => {\n  if (${cond}) { return null }\n  return <ul />\n}`),
+          cond,
+        ).toHaveLength(1)
+      }
+    })
+
+    it('uses the parameter name the component chose, and the HOC-returned shape', () => {
+      expect(hits(`function Card(p) { if (p.loading) return <Spinner />\n return <div /> }`)).toHaveLength(1)
+      expect(
+        hits(`const withX = (W) => (props) => { if (props.off) return <W />\n return <div /> }`),
+      ).toHaveLength(1)
+    })
+
+    it('flags only the first early return per component', () => {
+      expect(
+        hits(`function Card(props) {
+          if (props.loading) return <Spinner />
+          if (props.error) return <Error />
+          return <div />
+        }`),
+      ).toHaveLength(1)
+    })
+
+    it('does NOT fire when the read is inside a handler, an effect or a returned accessor', () => {
+      expect(
+        hits(`function Card(props) {
+          const onClick = () => { if (props.disabled) return; props.onPick() }
+          effect(() => { if (props.open) return; close() })
+          return () => { if (props.loading) return <Spinner />; return <div onClick={onClick} /> }
+        }`),
+      ).toEqual([])
+    })
+
+    it('does NOT fire on a condition that does not read props, or outside a component', () => {
+      expect(hits(`function Card(props) { if (ready) return <Spinner />\n return <div /> }`)).toEqual([])
+      expect(hits(`function helper(props) { if (props.x) return 1\n return <div /> }`)).toEqual([])
+      expect(hits(`const Card = (props) => { if (props.x) return 1\n return 2 }`)).toEqual([])
+    })
+
+    it('leaves a condition that calls a tracked signal to the signal code (no double fire)', () => {
+      const diags = detectPyreonPatterns(`const loading = signal(true)
+        function Card(props) {
+          if (loading() && props.showFallback) return <Spinner />
+          return <Content />
+        }`)
+      expect(diags.map((d) => d.code)).toEqual(['static-early-return-conditional'])
+    })
+
+    it('does NOT fire for a destructured parameter (props-destructured owns it) or in Plain Mode', () => {
+      expect(hits(`function Card({ loading }) { if (loading) return <Spinner />\n return <div /> }`)).toEqual([])
+      expect(
+        hits(`'use plain'\nfunction Card(props) { if (props.loading) return <Spinner />\n return <div /> }`),
+      ).toEqual([])
+    })
+
+    it('is silenced by the shared suppression comment', () => {
+      expect(
+        hits(`function Leaf(props) {
+          // pyreon-lint-ignore props-early-return-conditional
+          if (props.depth <= 1) return <span />
+          return <div />
+        }`),
+      ).toEqual([])
+    })
+  })
+
+  describe('props-object-copy', () => {
+    const hits = (code: string) =>
+      detectPyreonPatterns(code).filter((d) => d.code === 'props-object-copy')
+
+    it('flags `Object.assign({}, props, …)` in the component body', () => {
+      const found = hits(`
+        export function Card(props) {
+          const merged = Object.assign({}, props, { extra: 1 })
+          return <div title={merged.title} />
+        }
+      `)
+      expect(found).toHaveLength(1)
+      expect(found[0]!.line).toBe(3)
+      expect(found[0]!.current).toBe('Object.assign({}, props, { extra: 1 })')
+      expect(found[0]!.message).toContain('mergeProps(props')
+      expect(found[0]!.fixable).toBe(false)
+    })
+
+    it('flags an object spread of props, first or later, through `as` casts', () => {
+      expect(hits(`function Card(props) { const a = { ...props }\n return <div {...a} /> }`)).toHaveLength(1)
+      expect(
+        hits(`function Card(props) { const a = { size: 'md', ...(props as Props) }\n return <div {...a} /> }`),
+      ).toHaveLength(1)
+      expect(hits(`function Card(p) { const a = Object.assign({}, defaults, p)\n return <div {...a} /> }`)).toHaveLength(1)
+    })
+
+    it('does NOT fire on JSX spreads — onto an element or a component', () => {
+      expect(
+        hits(`function Card(props) { return <div {...props}><Child {...props} /></div> }`),
+      ).toEqual([])
+    })
+
+    it('does NOT fire inside JSX, a handler or an effect', () => {
+      expect(
+        hits(`function Card(props) {
+          const onClick = () => send({ ...props })
+          effect(() => log(Object.assign({}, props)))
+          return <Child data={{ ...props }} onClick={onClick} />
+        }`),
+      ).toEqual([])
+    })
+
+    it('does NOT fire on mergeProps / splitProps, on spreading something else, or with props as the target', () => {
+      expect(
+        hits(`function Card(props) {
+          const merged = mergeProps({ size: 'md' }, props)
+          const [local, rest] = splitProps(props, ['size'])
+          const style = { ...base, ...props.style }
+          Object.assign(props, { x: 1 })
+          return <div {...rest} />
+        }`),
+      ).toEqual([])
+    })
+
+    it('does NOT fire outside a component', () => {
+      expect(hits(`function build(props) { return { ...props, x: 1 } }`)).toEqual([])
+    })
+  })
+
+  it('pre-filter admits both props shapes (#4254)', () => {
+    expect(hasPyreonPatterns(`function C(props) { if (props.loading) return <p /> }`)).toBe(true)
+    expect(hasPyreonPatterns(`const m = Object.assign({}, props)`)).toBe(true)
+    expect(hasPyreonPatterns(`const m = { ...props }`)).toBe(true)
+    expect(hasPyreonPatterns(`const m = { a: 1, ...props }`)).toBe(true)
+  })
+
   describe('accessor-uncalled-in-template', () => {
     it('flags a computed binding interpolated UNCALLED into a template literal', () => {
       const code = `
@@ -1436,7 +1592,7 @@ describe('detectPyreonPatterns', () => {
       `
       // The detector intentionally only recognizes string-literal hydrate
       // values — variable indirection takes us past the static-detection
-      // surface into pyreon doctor --check-islands territory.
+      // surface into pyreon doctor --only islands-audit territory.
       const diags = detectPyreonPatterns(code)
       expect(diags.filter((d) => d.code === 'island-never-with-registry-entry')).toEqual([])
     })

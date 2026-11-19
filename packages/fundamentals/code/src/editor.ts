@@ -29,7 +29,7 @@ import {
   highlightSelectionMatches,
   searchKeymap,
 } from '@codemirror/search'
-import { Compartment, EditorState, type Extension, Prec, StateEffect } from '@codemirror/state'
+import { Compartment, countColumn, EditorState, type Extension, Prec, StateEffect } from '@codemirror/state'
 import {
   GutterMarker as CMGutterMarker,
   crosshairCursor,
@@ -71,6 +71,76 @@ const refreshDecorations = StateEffect.define<null>()
 
 const hasRefresh = (upd: ViewUpdate): boolean =>
   upd.transactions.some((tr) => tr.effects.some((e) => e.is(refreshDecorations)))
+
+/**
+ * Indent guides (CM6 has no built-in extension for them): a vertical line every
+ * `step` columns, inside a line's LEADING WHITESPACE only.
+ *
+ * Each indented visible line gets a line decoration carrying its indent width
+ * as `--pyreon-indent`; the theme sizes a non-repeating background to that
+ * width, from the content edge. A repeating background on every `.cm-line`
+ * striped the full width of every line, past the indent and the text.
+ * Tabs are counted at the width they render at (`state.tabSize`).
+ *
+ * `&light` / `&dark` follow the active theme's dark flag, so the guides stay
+ * visible (and not glaring) under a dark or custom dark theme. `baseTheme`
+ * (not `theme`): only base themes understand `&light`/`&dark`.
+ */
+function indentGuides(step: number): Extension {
+  const plugin = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet
+      // One decoration per indent width, owned by this view (freed with it).
+      private readonly byWidth = new Map<number, Decoration>()
+
+      constructor(editorView: EditorView) {
+        this.decorations = this.build(editorView)
+      }
+
+      build(editorView: EditorView): DecorationSet {
+        const { state } = editorView
+        const ranges = []
+        for (const { from, to } of editorView.visibleRanges) {
+          for (let pos = from; pos <= to; ) {
+            const line = state.doc.lineAt(pos)
+            const lead = /^[ \t]*/.exec(line.text)![0]
+            const width = countColumn(lead, state.tabSize)
+            if (width > 0) {
+              let deco = this.byWidth.get(width)
+              if (deco === undefined) {
+                deco = Decoration.line({ class: 'cm-pyreon-indent', attributes: { style: `--pyreon-indent: ${width}ch` } })
+                this.byWidth.set(width, deco)
+              }
+              ranges.push(deco.range(line.from))
+            }
+            pos = line.to + 1
+          }
+        }
+
+        return Decoration.set(ranges)
+      }
+
+      update(upd: ViewUpdate) {
+        if (upd.docChanged || upd.viewportChanged) this.decorations = this.build(upd.view)
+      }
+    },
+    { decorations: (p) => p.decorations },
+  )
+  const guide = (color: string) => ({
+    backgroundImage: `repeating-linear-gradient(to right, ${color} 0 1px, transparent 1px ${step}ch)`,
+    backgroundSize: 'var(--pyreon-indent) 100%',
+    backgroundRepeat: 'no-repeat',
+    backgroundOrigin: 'content-box',
+  })
+
+  return [
+    plugin,
+    EditorView.baseTheme({
+      '&light .cm-pyreon-indent': guide('#e5e7eb'),
+      '&dark .cm-pyreon-indent': guide('#313244'),
+    }),
+  ]
+}
 
 /**
  * Create a reactive code editor instance.
@@ -153,6 +223,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     if (!v) return { line: 1, col: 1 }
     const pos = v.state.selection.main.head
     const line = v.state.doc.lineAt(pos)
+
     return { line: line.number, col: pos - line.from + 1 }
   })
 
@@ -162,6 +233,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     const v = view.peek()
     if (!v) return { from: 0, to: 0, text: '' }
     const sel = v.state.selection.main
+
     return {
       from: sel.from,
       to: sel.to,
@@ -199,6 +271,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
             })
           }
         }
+
         return Decoration.set(
           ranges.sort((a, b) => a.from - b.from).map((d) => d.deco.range(d.from)),
         )
@@ -239,6 +312,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       el.title = this.markerTitle
       if (this.markerClass) el.className = this.markerClass
       el.style.cssText = 'cursor: pointer; display: inline-block; width: 100%; text-align: center;'
+
       return el
     }
   }
@@ -249,6 +323,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       const lineNo = gutterView.state.doc.lineAt(line.from).number
       const marker = gutterMarkers.get(lineNo)
       if (!marker) return null
+
       return new CustomGutterMarker(marker)
     },
     initialSpacer: () => new CustomGutterMarker({ text: ' ' }),
@@ -270,6 +345,9 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       indentOnInput(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       indentUnit.of(' '.repeat(configTabSize)),
+      // The indent unit alone leaves a TAB character at CodeMirror's default
+      // width of 4 columns; `tabSize` has to set both.
+      EditorState.tabSize.of(configTabSize),
 
       // Accessible name for the content textbox — CM sets role="textbox" +
       // aria-multiline but no name, so a screen reader announces just
@@ -341,23 +419,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // cmSetDiagnostics regardless; this flag (default off) adds the gutter
     // affordance + the lint navigation keymap (gated above).
     if (enableLint) exts.push(lintGutter())
-    // Indent guides via theme (CM6 doesn't have a built-in extension for this)
-    // `&light` / `&dark` follow the active theme's dark flag, so the guides
-    // stay visible (and not glaring) under a dark or custom dark theme.
-    // `baseTheme` (not `theme`): only base themes understand `&light`/`&dark`.
-    if (enableIndentGuides) {
-      const guide = (color: string) => ({
-        backgroundImage: `linear-gradient(to right, ${color} 1px, transparent 1px)`,
-        backgroundSize: `${configTabSize}ch 100%`,
-        backgroundPosition: '0 0',
-      })
-      exts.push(
-        EditorView.baseTheme({
-          '&light .cm-line': guide('#e5e7eb'),
-          '&dark .cm-line': guide('#313244'),
-        }),
-      )
-    }
+    if (enableIndentGuides) exts.push(indentGuides(configTabSize))
     if (placeholderText) exts.push(placeholderExt(placeholderText))
     if (enableMinimap) exts.push(minimapExtension())
 
@@ -408,6 +470,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
         parent.appendChild(v.dom)
         v.requestMeasure()
       }
+
       return
     }
 
@@ -454,6 +517,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
         // oxlint-disable-next-line no-console
         console.error('[Pyreon] @pyreon/code failed to mount the editor:', error)
       }
+
       return
     }
 
@@ -568,6 +632,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     }
     docText = target.doc.toString()
     docVersion.update((n) => n + 1)
+
     return prev
   }
 
@@ -769,6 +834,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     const v = view.peek()
     if (!v) return ''
     const clamped = Math.min(Math.max(1, line), v.state.doc.lines)
+
     return v.state.doc.line(clamped).text
   }
 
@@ -933,7 +999,9 @@ export function openSearchPanel(instance: EditorInstance): boolean {
           '<CodeEditor> has mounted (e.g. from a click handler, or effect(() => { if (editor.view()) … })).',
       )
     }
+
     return false
   }
+
   return cmOpenSearchPanel(v)
 }

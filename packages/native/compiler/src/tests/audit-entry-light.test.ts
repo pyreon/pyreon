@@ -1,7 +1,7 @@
 /**
  * `@pyreon/native-compiler/audit` must stay LIGHT.
  *
- * `pyreon doctor --check-native` and the MCP `validate` tool load it lazily on
+ * The `pyreon doctor` native-audit gate and the MCP `validate` tool load it lazily on
  * the strength of one promise: it needs only `oxc-parser` and the web-only
  * package map, not the Swift/Kotlin emitters (hundreds of KB, and the reason a
  * separate entry exists at all). That promise is a property of the entry's

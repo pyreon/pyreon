@@ -13,7 +13,7 @@ export default defineManifest({
     rationale:
       "the address bar is the web's own surface — history entries, `popstate`, `batchUrlUpdates` and the pluggable serializers stay web; on native the equivalent is the router's search parameters",
     nativeFrontend:
-      "`useUrlState(key, default)` with a STRING, NUMBER or BOOLEAN default, bound to the native router's query (PyreonRouter.query / setQueryParam); the codec mirrors the web's `inferSerializer` (JS `ToNumber` for numbers, exact `'true'` match for booleans), and an integer default lowers to Int while a fractional one lowers to Double. An ARRAY default of string, number or boolean literals of ONE type lowers to a list binding over the web's comma format (escaping of `,` and `%` included, one bad element resets the whole list to the default; an Int list holds whole numbers only; an empty array stays strings, as on the web). Object defaults, a mixed or non-literal array, a non-literal default or key, and the `clearOnDefault` / `debounce` / custom-serializer options stay web",
+      "`useUrlState(key, default)` with a STRING, NUMBER or BOOLEAN default, bound to the native router's query (PyreonRouter.query / setQueryParam); the codec mirrors the web's `inferSerializer` (JS `ToNumber` for numbers, exact `'true'` match for booleans), and an integer default lowers to Int while a fractional one lowers to Double. An ARRAY default of string, number or boolean literals of ONE type lowers to a list binding over the web's comma format (escaping of `,` and `%` included, one bad element resets the whole list to the default; an Int list holds whole numbers only; an empty array stays strings, as on the web). Object defaults, a mixed or non-literal array, a non-literal default or key, and the `clearOnDefault` / `debounceMs` / custom-serializer options stay web",
   },
   longExample: `import { useUrlState, setUrlRouter } from '@pyreon/url-state'
 import { signal } from '@pyreon/reactivity'
@@ -36,7 +36,7 @@ const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
 tags.set(['typescript', 'pyreon'])  // ?tags=typescript&tags=pyreon
 
 // Debounce for high-frequency updates (e.g. search input)
-const search = useUrlState('q', '', { debounce: 300 })
+const search = useUrlState('q', '', { debounceMs: 300 })
 // typing "hello" fires one URL update after 300ms pause, not 5
 
 // Batch — collapse a multi-param update into ONE history entry
@@ -108,7 +108,7 @@ tags.set(['a', 'b'])  // ?tags=a&tags=b`,
       kind: 'function',
       signature: '(router: UrlRouter) => void',
       summary:
-        'Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router\'s navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs `replace(path)`; `push(path)` is optional but is what makes `{ replace: false }` mean anything — without it a push-intent update falls back to `replace` and dev-warns once, so Back will not undo it. `@pyreon/router` has both. The registered router also decides WHERE the params live: its `mode` (`@pyreon/router` defaults to `hash`) puts the query inside the fragment beside the route (`#/products?page=3`) rather than in `location.search`, and its `base` is re-applied by the router itself, so url-state hands it a base-relative path. Without a registered router, url-state owns `location.search` and preserves whatever fragment is there.',
+        'Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router\'s navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs `replace(path)`; `push(path)` is optional but is what makes `{ replace: false }` mean anything — without it a push-intent update falls back to `replace` and dev-warns once, so Back will not undo it. `@pyreon/router` has both. The registered router also decides WHERE the params live: its `mode` (`@pyreon/router` defaults to `hash`) puts the query inside the fragment beside the route (`#/products?page=3`) rather than in `location.search`, a memory-mode router (`mode: "memory"`) keeps it inside the router (url-state reads and writes the router\'s own location and never touches `location`), and its `base` is re-applied by the router itself, so url-state hands it a base-relative path. Without a registered router, url-state owns `location.search` and preserves whatever fragment is there.',
       example: `import { useRouter } from '@pyreon/router'
 import { setUrlRouter } from '@pyreon/url-state'
 
@@ -155,7 +155,7 @@ batchUrlUpdates(() => {
     },
     {
       label: 'Debounce',
-      note: 'For high-frequency updates (search inputs, sliders), pass `{ debounce: 300 }` to coalesce URL writes. Without debounce, every keystroke triggers a replaceState call. The signal itself updates synchronously — only the URL write is delayed.',
+      note: 'For high-frequency updates (search inputs, sliders), pass `{ debounceMs: 300 }` to coalesce URL writes. Without debounce, every keystroke triggers a replaceState call. The signal itself updates synchronously — only the URL write is delayed.',
     },
     {
       label: 'Cross-hook sync',

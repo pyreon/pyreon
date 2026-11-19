@@ -142,11 +142,60 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] Treating a missing range marker as "unknown extent, rebuild"
+
+(#4448): an accessor whose server content carries no `<!--$-->` markers (the server rendered the same content without an accessor: `props.children` on one side, `<Provider>{props.children}</Provider>` on the other) removed ONE server node and mounted fresh, silently, in dev and production. A multi-node value also re-created the following sibling. The markers only say where output ENDS; the first value says the same, as a static child's vnode does. Walk the first value against the server nodes inside `mountReactive`'s first run (`adoptUnmarkedRange` in `hydrate.ts`), then place the boundary after what the walk claimed, never past the parent's own boundary (the walk's cursor skips comments, including the enclosing range's markers; a boundary placed beyond it made the range's cleanup delete the parent's marker, caught by the compiled parity fuzz, seed 297). Test: `runtime-dom/src/tests/hydrate-adopt-not-remount.test.tsx`.
+
+---
+
+### [FIXED, 2026-11] A polymorphic text slot whose server content is elements was rebuilt, not adopted
+
+(#4385): `{parts(row)}` lowers to a text binding over one `' '` placeholder, but renders `['a ', <Code/>, ' b']` as elements. The verifier refused the element (sole slot) and `_textSlot` cleared the range (trailing/mid), so every such cell was re-created at hydration, identical and unreported (pyreon.dev's comparison table, every row). Park a placeholder where the content is and let the binding adopt it through the slot hydrator; sweep placeholders a raw `.data` binding cannot adopt, or the server's nodes stay beside the written text. Code: `runtime-dom/src/parked-text.ts`, `hydration-plan.ts` (`soleTexts`), `template.ts` (`_textSlot`, `buildTpl`). Tests: `compiled-text-slot-adopts-elements.test.tsx` + `.browser`.
+
+---
+
+### [FIXED, 2026-11] Cloning a `<template>`'s content and handing the clone to user code before insertion
+
+(#4390): a clone of `template.content` belongs to the template's INERT document (`ownerDocument.defaultView === null`) until it is inserted, and compiled refs run on the clone. `@pyreon/virtual`'s TanStack core read the window from the scroll element's document at ref time, found `null` and never observed scroll. happy-dom gives template content the page document, so only a browser shows it. Import the clone SOURCE into the page document once at parse (`document.importNode`), never per clone. Same PR: a compiled ref never received `null` on unmount (the bind returned no disposer for it); refs now lower to `_ref`, which returns one.
+
+---
+
+### [FIXED, 2026-11] Treating a missing range marker as "unknown extent, rebuild"
+
+(#4448): an accessor whose server content carries no `<!--$-->` markers (the server rendered the same content without an accessor: `props.children` on one side, `<Provider>{props.children}</Provider>` on the other) removed ONE server node and mounted fresh, silently, in dev and production. A multi-node value also re-created the following sibling. The markers only say where output ENDS; the first value says the same, as a static child's vnode does. Walk the first value against the server nodes inside `mountReactive`'s first run (`adoptUnmarkedRange` in `hydrate.ts`), then place the boundary after what the walk claimed, never past the parent's own boundary (the walk's cursor skips comments, including the enclosing range's markers; a boundary placed beyond it made the range's cleanup delete the parent's marker, caught by the compiled parity fuzz, seed 297). Test: `runtime-dom/src/tests/hydrate-adopt-not-remount.test.tsx`.
+
+---
+
+### [FIXED, 2026-11] A polymorphic text slot whose server content is elements was rebuilt, not adopted
+
+(#4385): `{parts(row)}` lowers to a text binding over one `' '` placeholder, but renders `['a ', <Code/>, ' b']` as elements. The verifier refused the element (sole slot) and `_textSlot` cleared the range (trailing/mid), so every such cell was re-created at hydration, identical and unreported (pyreon.dev's comparison table, every row). Park a placeholder where the content is and let the binding adopt it through the slot hydrator; sweep placeholders a raw `.data` binding cannot adopt, or the server's nodes stay beside the written text. Code: `runtime-dom/src/parked-text.ts`, `hydration-plan.ts` (`soleTexts`), `template.ts` (`_textSlot`, `buildTpl`). Tests: `compiled-text-slot-adopts-elements.test.tsx` + `.browser`.
+
+---
+
+### [FIXED, 2026-11] A component that decorates its child assumed the child is a VNode
+
+(#4382): a literal element child compiles to a `_tpl` item on the client and to raw HTML (`_ssr`) on the server, neither of which has props to merge. Kinetic's per-item hidden class/style was dropped on the server (initially-hidden items prerendered VISIBLE, a flash before hydration); runtime-dom's `<Transition><div/></Transition>` treated the `_tpl` item as a component, warned, and never animated; `_ssr` dropped `key` while the client kept the keyed element on `h()`, so a group saw different keys on each side.
+  - Decorate every child shape: VNode (merge props), `_tpl` item (apply at mount; `wrapNativeItem` in kinetic, `NativeTransitionChild` in runtime-dom), server raw HTML (`withRootAttrs`). Declare the client decoration with `_declareRootDecoration` so hydration adopts the decorated server root instead of re-creating it.
+  - A keyed root is never templated on either side. A child's own `style` may be a STRING: merge it as text (kinetic `mergeStyles`), never by object spread. A numeric custom property (`--i: 2`) takes no unit (`normalizeStyleValue`).
+  - Tests: kinetic `ssr-compiled-children.test.tsx` (h()-path oracle, both renderers, hydration adopts), runtime-dom `transition-compiled-child.test.tsx`, compiler `native-equivalence` (keyed-root cases).
+
+---
+
+### [FIXED, 2026-11] A renderer coercing a child value on its own
+
+(#4386): ten pieces of code turn a child value into text (`mountChild`, `_setChild`, `_setChildAt`, both `_bindText` tiers, the poly text core, `_fuse`, `renderNode`, `streamNode`, `_esc`, hydration), and each had its own rule. `['a', 'b']` rendered `a,b` through the compiled text sinks (`String(array)`, or the DOM's `textContent =` coercion) and `ab` through SSR and `h()`. `true` rendered "true" on the server and nothing in a compiled template, which bakes a literal `{true}` away. `false` at a `_setChildAt` slot rendered "false". A bigint or a `Date` threw a `TypeError` inside `renderElement`. A component's server HTML and client DOM differed in characters, and hydration rewrote the adopted text silently.
+  - One rule in `@pyreon/core` (`child-text.ts`): `_isStructuralChild` (a VNode/NativeItem, a function, or an array holding one at any depth mounts) and `_childText` (everything else is text: booleans and nullish render nothing, arrays concatenate, other objects render `String()`). Every sink calls them; hot paths keep the primitive branch inline and call `_childText` only for an object.
+  - Never hand a non-string to `textContent`/`createTextNode`/`.data` and let the DOM coerce it: happy-dom writes `''` for `textContent = 0`, Chromium writes `"0"`.
+  - Tests: `runtime-dom/src/tests/child-text-parity.test.tsx` (every value kind x every sink, real compiler, fresh mount = `renderToString` = `renderToStream` = hydrated, nothing reported) and its `.browser` twin.
+
+---
+
 ### SSR↔hydration parity bugs are cursor/extent errors; fuzz them
 
 `packages/core/runtime-dom/src/tests/hydration-parity-fuzz.test.tsx` (and `hydration-parity-fuzz-compiled.test.tsx`) hydrate each seeded tree and compare against a fresh client mount: zero mismatches, identical normalized DOM, identical DOM after identical flips, root identity reused, plus a ground-truth fresh mount with flipped values. `PYREON_FUZZ_SEEDS` raises the seed count; CI's count is not a proof.
   - Any SSR construct whose client extent is ambiguous (0, 1 or many nodes) needs a range marker (`<!--$-->…<!--/$-->`, `<!--k:-->`, `<!--pyreon-for-->`).
   - Markers must be uniform per construct; a value-conditional scheme reopens cursor gaps.
+  - **A client `<!>` placeholder pairs with a server range, by construction** (#4385 D). Every non-sole, non-literal expression child of an element the client lowers to `_tpl` is a placeholder, whatever its value; the server brackets it in exactly one `<!--$-->…<!--/$-->` (a sole child is elided on both sides). An accessor gets its range from `renderNode`; a FIXED child (`{flag ? <b/> : null}`, `{row.name}`, `{children}`) used to get none, so the verifier swapped in a clone (identical, unreported, the whole element re-created). The SSR compile now tracks which elements the client templates (`ssrEnterElement` / `ssr_enter_element`: the client's own `tryTemplateEmit` gate, its `templatizeComponentChildren`, text fusion, and RAW inside anything the client slices into a bind) and emits `_slot(x)` (h() path) or `<!--$-->` + `_escSole(x)` + `<!--/$-->` (`_ssr` path). The state only ever errs toward "not templated", which keeps the old bytes: a range where the client walks an h() child would break that walk. Never make the verifier guess an unmarked extent instead. Tests: `runtime-dom/src/tests/ssr-placeholder-markers.test.tsx` (matrix + a pairing oracle that reads only client templates and server HTML) + `.browser`.
   - The HTML parser merges adjacent text children; hydration must `splitText` each child's prefix.
   - A text node mounted into a live parent through a reactive boundary must return a real remover; `noop` is valid only under `_elementDepth > 0`.
   - A reactive text binding is polymorphic (`bindPolymorphicText`); it may later yield a VNode.
@@ -244,6 +293,12 @@ The initially-hidden render bakes the hidden state (class/style) onto the elemen
 
 ---
 
+### Resetting a process-wide CSS-in-JS sheet at a request boundary
+
+`@pyreon/server`'s `collectStyles` example, the styler README/docs and `reset()`'s own JSDoc all recommended `sheet.getStyleTag(); sheet.reset()` per request. `reset()` also drops the definition-owned rules nothing re-inserts (module-level `keyframes`, static `createGlobalStyle`), so every response after the first shipped without them. Request isolation is already automatic: `runWithRequestContext` opens a per-request styler scope. Rule: at a request boundary, read (`getStyleTag(nonce)`, or omit `collectStyles` for the default collector); `reset()` is for tests and teardown. Reference: `packages/core/server/src/handler.ts` (`collectStyles` docs), `packages/ui-system/styler/src/sheet.ts:reset`; demonstrated by `styler/src/__tests__/ssr-reset-at-request-boundary.test.ts`.
+
+---
+
 ### Non-reflecting property on the client vs attribute on the server (reset default)
 
 Setting `input.value`/`textarea.value` as a property never creates the content attribute that `form.reset()` restores, so reset cleared a client-mounted field and restored a hydrated one. `applyValueProp` (compiler: `_setValue`) sets the property and establishes `defaultValue` on the first application only — re-establishing it on every keystroke of a controlled input turns reset into a no-op. The first-write marker is a `Symbol`-keyed own property, not a module-level Map. `select` and media `muted` are deliberately left diverging (React, Preact and Solid do the same). Code: `packages/core/runtime-dom/src/props.ts:applyValueProp`, both compiler backends' `attrSetter`/`attr_setter`. Tests: `input-default-value.browser.test.tsx`, `compiler-integration.test.tsx`, the parity fuzz's `input.value`/`textarea.value` entries.
@@ -302,6 +357,6 @@ WebSockets are not subject to CORS, and the browser attaches the endpoint's cook
 
 ### A compiled binder that corrects adopted server DOM without reporting it
 
-(#4419): `_tpl` adoption hands the server's nodes to the compiled bind, and `_setChild`, `_setChildAt`, `_bindText`, `_bindProp`, `bindPolymorphicText` and `_textSlot` all overwrote divergent server text silently. A verifier bail swapped the server element for a clone, also silently. The h() walk reports both, so a JSX app (where nearly everything compiles to `_tpl`) heard about none of its SSR/client divergences. **Rule: every compiled write into adopted server DOM goes through the dev-only report in `hydration-debug.ts`.** Binders call `reportFirstText` inside their existing first-run (`written === null`) branch, and static writes call `reportTextWrite` in a separate `process.env.NODE_ENV !== 'production'` block that repeats the write. The adoption window is `_bindWithAdoption(true, …)` in `buildTpl`, closed for clone binds and for slot/hole hydration (the h() walk reports those itself). Swaps report the first real DOM difference (`reportSwappedTemplate`), never the bail itself. A mismatch is reported exactly when hydration changes server text, so production keeps byte-identical binders. The h() walk had the same gap for an accessor that renders text over an EMPTY server element or range; it now reports that too (in production as well, like every h()-path report). Locks: `runtime-dom/src/tests/hydrate-compiled-mismatch-report.browser.test.tsx` (real Chromium, recorded real compiler output) and its happy-dom twin, which regenerates that record; the compiled parity fuzz's O1 oracle (no report on agreement).
+(#4419): `_tpl` adoption hands the server's nodes to the compiled bind, and `_setChild`, `_setChildAt`, `_bindText`, `_bindProp`, `bindPolymorphicText` and `_textSlot` all overwrote divergent server text silently. A verifier bail swapped the server element for a clone, also silently. The h() walk reports both, so a JSX app (where nearly everything compiles to `_tpl`) heard about none of its SSR/client divergences. **Rule: every compiled write into adopted server DOM goes through the dev-only report in `hydration-debug.ts`.** Binders call `reportFirstText` inside their existing first-run (`written === null`) branch, and static writes call `reportTextWrite` in a separate `process.env.NODE_ENV !== 'production'` block that repeats the write. The adoption window is `_bindWithAdoption(true, …)` in `buildTpl`, closed for clone binds and for slot/hole hydration (the h() walk reports those itself). Swaps report the first real DOM difference (`reportSwappedTemplate`), never the bail itself. A mismatch is reported exactly when hydration changes server text, so production keeps byte-identical binders. The h() walk had the same gap for an accessor that renders text over an EMPTY server element or range; it now reports that too (in production as well, like every h()-path report), and so does the compiled sole `_mountSlot` over an empty element. A STRUCTURAL value there (an element, an array, a component's output) stayed silent until #4582: the check looked at the value's type, so every non-text shape fell through. `mountOverEmpty` (`hydrate.ts`) now reads the DOM the mount inserted and reports its first element or non-empty text, so a value that renders nothing is never reported and no shape needs its own arm. Locks: `runtime-dom/src/tests/hydrate-compiled-mismatch-report.browser.test.tsx` (real Chromium, recorded real compiler output) and its happy-dom twin, which regenerates that record; the compiled parity fuzz's O1 oracle (no report on agreement).
 
 ---

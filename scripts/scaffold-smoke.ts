@@ -32,6 +32,7 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { removeOnExit } from './remove-on-exit'
 import { compareSemver, distTagFor, readPreState, type PreState } from './release-channel'
 
 interface Cell {
@@ -538,6 +539,7 @@ function runCompatRuntimeE2e(cell: Cell): void {
 async function runDoctorCiIsolated(projectDir: string): Promise<void> {
   const { cpSync, symlinkSync } = await import('node:fs')
   const iso = mkdtempSync(join(tmpdir(), 'cpa-doctor-'))
+  const removeIso = removeOnExit(iso)
   try {
     const app = join(iso, 'app')
     cpSync(projectDir, app, {
@@ -547,7 +549,7 @@ async function runDoctorCiIsolated(projectDir: string): Promise<void> {
     symlinkSync(join(projectDir, 'node_modules'), join(app, 'node_modules'), 'dir')
     runProjectScript(app, 'doctor:ci')
   } finally {
-    await rm(iso, { recursive: true, force: true })
+    removeIso()
   }
 }
 
@@ -1070,6 +1072,10 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
   if (!isolated && existsSync(projectDir)) {
     await rm(projectDir, { recursive: true, force: true })
   }
+  // For isolated cells, the entire tmpdir; for examples cells, just the
+  // project dir (inside the source tree). Removed in `finally`, and also when
+  // the run is interrupted (SIGINT / SIGTERM / SIGHUP), unless `--keep`.
+  const removeCell = opts.keep ? undefined : removeOnExit(isolated ? parentDir : projectDir)
 
   try {
     console.log(`\n──── ${cell.name} ─────────────────────────────────────────`)
@@ -1113,13 +1119,7 @@ async function runCell(cell: Cell, opts: { keep: boolean }): Promise<CellResult>
     console.log(`✗ ${cell.name} (${(durationMs / 1000).toFixed(1)}s): ${msg}`)
     return { name: cell.name, ok: false, error: msg, durationMs }
   } finally {
-    if (!opts.keep) {
-      // For isolated cells, blow the entire tmpdir; for examples cells, just the project dir.
-      const cleanupTarget = isolated ? parentDir : projectDir
-      if (existsSync(cleanupTarget)) {
-        await rm(cleanupTarget, { recursive: true, force: true })
-      }
-    }
+    removeCell?.()
   }
 }
 

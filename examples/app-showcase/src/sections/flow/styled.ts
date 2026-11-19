@@ -1,6 +1,6 @@
 import { styled } from '@pyreon/styler'
 import { Card, Paragraph, Title } from '@pyreon/ui-components'
-import { t } from '../../styles'
+import { PHONE_MAX, t } from '../../styles'
 import type { WorkflowNodeKind } from './data/types'
 
 /**
@@ -20,6 +20,10 @@ import type { WorkflowNodeKind } from './data/types'
 export const FlowPage = styled('div')`
   padding: 24px 32px 48px;
   max-width: 1440px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    padding: 24px 16px 48px;
+  }
 `
 
 export const Header = styled('header')`
@@ -28,6 +32,10 @@ export const Header = styled('header')`
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    flex-wrap: wrap;
+  }
 `
 
 export const HeaderText = styled('div')`
@@ -115,6 +123,12 @@ export const Workspace = styled('div')`
   gap: 16px;
   align-items: stretch;
   height: 640px;
+
+  @media (max-width: ${PHONE_MAX}px) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 480px auto;
+    height: auto;
+  }
 `
 
 export const CanvasFrame = styled('div')`

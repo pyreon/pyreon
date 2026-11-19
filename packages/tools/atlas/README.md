@@ -441,8 +441,13 @@ numbers improve, catalog looks fixed. That is the one way to "fix" a red catalog
 must never read as green.
 
 `--check` never writes the catalog (a ratchet that overwrites its own baseline compares
-a run to itself), a missing baseline is exit 0 with a note rather than a failure, and a
-new or removed scenario is not a regression.
+a run to itself), and a missing baseline is exit 0 with a note rather than a failure.
+
+It exits non-zero on a regression (a check that started failing or stopped running, or
+a scenario that disappeared) and on a new failure (a check failing now that did not fail
+in the committed catalog, including a failing new scenario). Failures the committed
+catalog already has do not fail it: the run names how many it carried over, so `--check`
+can be adopted on a catalog that is not green yet.
 
 ### Verifying at runtime
 

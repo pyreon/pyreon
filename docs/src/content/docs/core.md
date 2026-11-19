@@ -362,11 +362,14 @@ interface VNode {
 
 Children can be:
 
-- **Strings and numbers** -- rendered as text nodes
+- **Strings, numbers and bigints** -- rendered as text nodes
 - **Booleans, null, undefined** -- rendered as nothing (useful for conditional `&#123;flag && <Element />&#125;`)
 - **VNodes** -- nested elements or components
-- **Arrays** -- automatically flattened
+- **Arrays** -- automatically flattened; an array of text renders its items concatenated (`['a', 'b']` → `ab`)
 - **Accessor functions** `() => VNodeChild` -- evaluated reactively by the renderer
+- **Any other object** (a `Date`, an object with `toString`) -- rendered as its `String()` text
+
+The same rule applies on every path -- `h()`, compiled JSX, server rendering and hydration -- so a value renders the same characters on the server and in the browser.
 
 ### EMPTY_PROPS Sentinel
 
@@ -934,7 +937,9 @@ scheme applies.
 
 ## Refs
 
-Refs provide mutable containers for DOM element references. The runtime sets `ref.current` after the element is inserted into the DOM and clears it to `null` when the element is removed.
+Refs provide mutable containers for DOM element references. The runtime sets `ref.current` (or calls a callback ref) once, while the component mounts, and sets it to `null` (or calls the callback with `null`) when the element is removed. This holds for every ref form and for both compiled JSX and `h()`.
+
+When a ref fires, the element belongs to the page's `document`, so `el.ownerDocument.defaultView` is the window. It may **not yet be in the live document**, though: a subtree is built and then inserted as a whole. Read layout (`getBoundingClientRect`, `getComputedStyle`), focus, or attach observers that need a connected element in `onMount`, as below.
 
 ### createRef
 

@@ -282,6 +282,7 @@ function parseWithInlinedHooks(source: string, filename: string): ParseResult {
   const result = parsePyreonClassic(inlined?.code ?? code, filename)
   const prepended = [...(forms?.warnings ?? []), ...(destructured?.warnings ?? []), ...(inlined?.warnings ?? [])]
   if (prepended.length > 0) result.warnings.unshift(...prepended)
+
   return result
 }
 
@@ -300,9 +301,11 @@ function parsePyreonPlainStage(source: string, filename: string): ParseResult {
       )
       const result = parseWithInlinedHooks(plained.code, filename)
       if (plainWarnings.length > 0) result.warnings.unshift(...plainWarnings)
+
       return result
     }
   }
+
   return parseWithInlinedHooks(source, filename)
 }
 
@@ -324,6 +327,7 @@ function formatParseError(
   const upTo = source.slice(0, offset)
   const line = upTo.split('\n').length
   const column = offset - (upTo.lastIndexOf('\n') + 1) + 1
+
   return `${filename}:${line}:${column}: ${err.message}`
 }
 
@@ -548,6 +552,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
     // at file scope on the target.
     const mds = tryModuleDeclsFromTopLevel(node, ctx)
     if (mds) moduleDecls.push(...mds)
+    warnDroppedTopLevelStatement(node, ctx)
   }
 
   // Every inline object type OUTSIDE every component (a module binding's annotation, a module signal's type
@@ -743,6 +748,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   // alias, a schema binding and a plain const alike). See
   // value-type-namespaces.ts.
   disambiguateValueTypeNames(result)
+
   return result
 }
 
@@ -816,6 +822,37 @@ function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
       `Top-level \`class ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). PMTC compiles components, signals, and the canonical primitives — move the logic into functions + signals (or a \`defineStore\` / \`model()\` for stateful logic).`,
     )
   }
+}
+
+/** Top-level STATEMENTS (not declarations) — no extractor consumes them, and no plugin claimed this one. */
+const DROPPED_TOP_LEVEL_STATEMENTS = new Set([
+  'ExpressionStatement',
+  'IfStatement',
+  'ForStatement',
+  'ForInStatement',
+  'ForOfStatement',
+  'WhileStatement',
+  'DoWhileStatement',
+  'BlockStatement',
+  'TryStatement',
+  'SwitchStatement',
+  'LabeledStatement',
+  'ThrowStatement',
+])
+
+/**
+ * A module-scope statement that runs on the web at import and emits NOTHING natively: `count.set(5)` after
+ * `const count = signal(0)` (the web renders 5, native 0), `if (dev) theme.set('dark')`, `router.beforeEach(guard)`.
+ * It used to vanish with no word; the component-body twin has always warned. Reached only after every plugin claim
+ * and skip, so a statement a plugin lowers is never named. A directive (`'use client'`) is not a statement here.
+ */
+function warnDroppedTopLevelStatement(node: AnyNode, ctx: ParseCtx): void {
+  if (!DROPPED_TOP_LEVEL_STATEMENTS.has(node.type as string)) return
+  // A directive, or any bare string literal (`'use client'` below the imports): no effect to lose.
+  if (node.type === 'ExpressionStatement' && (typeof node.directive === 'string' || (node.expression?.type === 'Literal' && typeof node.expression.value === 'string'))) return
+  ctx.warnings.push(
+    `[${locOf(node, ctx)}] A module-scope ${node.type === 'ExpressionStatement' ? 'statement' : `\`${String(node.type).replace(/Statement$/, '').toLowerCase()}\` statement`} is NOT compiled to native — it runs once at import on the web and is DROPPED on iOS and Android (a \`count.set(5)\` here leaves native at the seed, a registration call never happens). Move it into a component (\`onMount\`) or fold it into the declaration's initial value.`,
+  )
 }
 
 /**
@@ -909,6 +946,7 @@ function tryModuleDeclsFromTopLevel(node: AnyNode, ctx: ParseCtx): ModuleDeclIR[
     const initialExpr = parseExpr(init, ctx)
     out.push({ name, mutable: !isConst, type, initial: initialExpr })
   }
+
   return out.length > 0 ? out : null
 }
 
@@ -1007,6 +1045,7 @@ function instantiatedComponent(init: AnyNode | undefined, ctx: ParseCtx): string
   if (init?.type !== 'TSInstantiationExpression') return undefined
   const base = init.expression as AnyNode | undefined
   if (base?.type !== 'Identifier' || typeof base.name !== 'string') return undefined
+
   return ctx.typedComponentAliases.get(base.name) ?? base.name
 }
 
@@ -1058,6 +1097,7 @@ export function nativeLoweredHooks(
     ])
     LOWERED_HOOKS.set(key, set)
   }
+
   return set
 }
 
@@ -1246,6 +1286,7 @@ function unloadedPluginModule(src: string): string | undefined {
   }
   if (match === undefined) return undefined
   const loaded = activeRegistries().loadedModules
+
   return loaded.has(match) || loaded.has(src) ? undefined : match
 }
 
@@ -1358,6 +1399,7 @@ function collectPyreonTypeImports(body: AnyNode[]): Map<string, { source: string
       if (whole || (spec as { importKind?: string }).importKind === 'type') map.set(local, { source: pkg, imported })
     }
   }
+
   return map
 }
 
@@ -1394,6 +1436,7 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
       if (unloweredEntry.supported?.has(imported)) return true
       if (unloweredEntry.dropped?.has(imported) === true) return true
       if (unloweredEntry.unsupported !== undefined) return unloweredEntry.unsupported.has(imported)
+
       return true
     }
     const typeOnlyImport = (node as { importKind?: string }).importKind === 'type'
@@ -1428,6 +1471,7 @@ function collectAliasImports(body: AnyNode[]): Map<string, { source: string; imp
       }
     }
   }
+
   return map
 }
 
@@ -1480,6 +1524,7 @@ function staticStringArg(node: AnyNode | null | undefined, ctx: ParseCtx): strin
   if (node.type === 'Identifier' && typeof node.name === 'string') {
     return ctx.stringConsts.get(node.name) ?? null
   }
+
   return null
 }
 
@@ -1543,8 +1588,10 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
             e.float = true
           }
         }
+
         return { kind: 'array', element: { kind: 'number', float: true } }
       }
+
       return { kind: 'array', element: { kind: 'number' } }
     }
     // Array of FLAT object literals → array of the (homogeneous) inferred
@@ -1586,6 +1633,7 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
           }
           for (const inner of els) flagInts(inner)
         }
+
         return { kind: 'array', element: elemType }
       }
     }
@@ -1614,6 +1662,7 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     const seedT =
       initial.seed !== undefined ? inferTypeFromInitial(initial.seed) : { kind: 'unknown' as const }
     if (seedT.kind === 'array') return { kind: 'set', element: seedT.element }
+
     return { kind: 'unknown' }
   }
   // Object literal → an object TypeIR. The emit synthesizes a struct from
@@ -1628,6 +1677,7 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
     const flat = inferFlatObjectType(initial)
     if (flat !== null) return flat
   }
+
   return { kind: 'unknown' }
 }
 
@@ -1653,6 +1703,7 @@ function inferFlatObjectType(obj: Extract<ExprIR, { kind: 'object' }>): TypeIR |
     if (!isSynthesizableFieldType(ft)) return null
     fields.push({ name: f.name, type: ft })
   }
+
   return { kind: 'object', fields }
 }
 
@@ -1666,6 +1717,7 @@ function isSynthesizableFieldType(t: TypeIR): boolean {
   if (t.kind === 'number' || t.kind === 'string' || t.kind === 'boolean') return true
   if (t.kind === 'object') return true
   if (t.kind === 'array') return isSynthesizableFieldType(t.element)
+
   return false
 }
 
@@ -1756,6 +1808,7 @@ function warnIntegerDecodeFields(
         visited.add(s.name)
         ordered.push(s)
         for (const f of s.fields) visit(f.type)
+
         return
       }
       default:
@@ -2052,6 +2105,7 @@ function isFractionalEvidence(e: ExprIR, ctx: InferenceCtx): boolean {
   // boundary (double-numeric-type.test.ts). Only a computed expression is typed.
   if (e.kind === 'literal') return false
   const t = inferType(e, ctx)
+
   return t.kind === 'number' && t.float === true
 }
 
@@ -2264,6 +2318,7 @@ function tryEnumFromTypeAlias(node: AnyNode, ctx: ParseCtx): EnumIR | null {
     }
     cases.push(v)
   }
+
   return { name, cases }
 }
 
@@ -2339,6 +2394,7 @@ function reportDroppedMethodMembers(
       `Struct ${name}: ${methods} method member(s) dropped — a native struct / data class holds DATA only. Methods on a type that crosses into native must live on the platform class (see \`useNativeModule\`), or be plain function-typed properties (\`go: () => boolean\`), which do lower.`,
     )
   }
+
   return false
 }
 
@@ -2373,6 +2429,7 @@ function tryStructFromTypeAlias(node: AnyNode, ctx: ParseCtx): StructIR | null {
     ctx,
   )
   if (bail) return null
+
   return { name, fields: parsed.fields }
 }
 
@@ -2467,6 +2524,7 @@ function tryStructFromObjectUnion(node: AnyNode, ctx: ParseCtx): StructIR | null
           ctx.warnings.push(
             `Union type ${name}: field "${f.name}" has DIFFERENT types across branches — a merged struct field would have to be Any, which poisons every consumer. Rename one side, or align the types.`,
           )
+
           return null
         }
         prior.count += 1
@@ -2487,8 +2545,10 @@ function tryStructFromObjectUnion(node: AnyNode, ctx: ParseCtx): StructIR | null
     const type: TypeIR = required
       ? info.core
       : ({ kind: 'union', branches: [info.core, { kind: 'undefined' }] } as TypeIR)
+
     return { name: fname, type }
   })
+
   return { name, fields }
 }
 
@@ -2525,6 +2585,7 @@ function tryStructFromInterface(node: AnyNode, ctx: ParseCtx): StructIR | null {
     ctx.warnings.push(
       `Top-level \`interface ${name}\` with generics or \`extends\` is NOT compiled to native — use a non-generic object-shape \`interface ${name} { … }\` / \`type ${name} = { … }\`.`,
     )
+
     return null
   }
   const members = iface.body?.body as AnyNode[] | undefined
@@ -2539,6 +2600,7 @@ function tryStructFromInterface(node: AnyNode, ctx: ParseCtx): StructIR | null {
     ctx,
   )
   if (bail) return null
+
   return { name, fields: parsed.fields }
 }
 
@@ -2718,6 +2780,7 @@ function collectLiftedPropsStructs(
       out.push(...liftInlineObjects({ name: structName, fields: t.args[0].fields }, declared, ctx))
     }
   }
+
   return out
 }
 
@@ -2762,10 +2825,12 @@ function unwrapAccessorReturn(e: ExprIR, component: string, ctx: ParseCtx): Expr
     ctx.warnings.push(
       `Component ${component}: it returns a reactive accessor whose BLOCK body (\`return () => { …; return <…/> }\`) has no native lowering — native views re-render on state change without an accessor, and a view builder takes \`const\` declarations, early \`if (…) return …\` branches and a final \`return\`, but this body has something else (an assignment, a loop, a mutable local or an expression statement). Move that work into a \`computed\`.`,
     )
+
     return { kind: 'literal', value: null }
   }
   let body = x.body
   while (body.kind === 'paren') body = body.inner
+
   return body
 }
 
@@ -2803,6 +2868,7 @@ function unsupportedHelperParams(fn: AnyNode, name: string, ctx: ParseCtx): bool
   ctx.warnings.push(
     `${name} is a top-level helper function with unsupported value parameters — array/rest parameters and defaulted destructures do not lower. Use plain typed value parameters or inline the logic. Skipped rather than mis-emitted.`,
   )
+
   return true
 }
 
@@ -2839,6 +2905,7 @@ function tryHelperFnFromArrowConst(node: AnyNode, ctx: ParseCtx): boolean {
     return false
   }
   if (!unsupportedHelperParams(arrow, d.id.name as string, ctx)) ctx.helperFns.push(decl)
+
   return true
 }
 
@@ -2935,6 +3002,7 @@ function tryEarlyReturnConditional(
     if (!elseExpr) return null
     return { cond, thenExpr, elseExpr }
   }
+
   return { cond, thenExpr }
 }
 
@@ -3005,6 +3073,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
       re = { kind: 'ternary', cond: pc.cond, then: pc.thenExpr, otherwise: re }
     }
     pendingConditionals.length = 0
+
     return re
   }
 
@@ -3256,6 +3325,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
       ctx.warnings.push(
         `${name} looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`${name}\` was skipped rather than mis-emitted with unresolved \`${'<T>'}\` types. Drop the generic, or inline the logic into the component that uses it.`,
       )
+
       return null
     }
     // A non-generic pure-logic helper: parse it into the same
@@ -3289,6 +3359,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         )
       }
     }
+
     return null
   }
 
@@ -3305,6 +3376,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     if (isVoidHelper(fn, name)) return collectHelper()
     for (const w of deferredPropsWarnings) ctx.warnings.push(w)
     ctx.warnings.push(`Component ${name}: no return statement found; skipping.`)
+
     return null
   }
 
@@ -3411,6 +3483,7 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   }
   ctx.componentDeclRequests.clear()
   warnLocalShadowsProp(name, props, decls, ctx)
+
   return { name, props, propsParamName, decls, returnExpr }
 }
 
@@ -3492,6 +3565,7 @@ function hasNestedValueReturns(fn: AnyNode, name: string, ctx: ParseCtx): boolea
     if (n.type === 'ReturnStatement') {
       if (n.argument) args.push(n.argument as AnyNode)
       else bare = true
+
       return
     }
     for (const key of Object.keys(n)) {
@@ -3506,6 +3580,7 @@ function hasNestedValueReturns(fn: AnyNode, name: string, ctx: ParseCtx): boolea
   const isNullish = (a: AnyNode): boolean =>
     (a.type === 'Literal' && a.value === null) || (a.type === 'Identifier' && a.name === 'undefined')
   if (!nonViewAnno && args.every(isNullish)) return false
+
   return !args.some(astContainsJsx)
 }
 
@@ -3537,6 +3612,7 @@ function effectDecls(cb: AnyNode, decls: readonly DeclIR[], ctx: ParseCtx, track
     : { kind: 'unknown' }
   // With a cleanup, every exit returns one: a bare `return` returns none, and so does falling off the end.
   const finalBody = cleanup ? withExplicitUndefinedReturns(body) : body
+
   return [
     { kind: 'function', name: fn, params: [], returnType, body: finalBody },
     { kind: 'effect', fn, cleanup, tracked },
@@ -3549,6 +3625,7 @@ function statementsReturnValue(body: readonly StatementIR[]): boolean {
   forEachNestedStatement(body, (st) => {
     if (st.kind === 'return' && st.expr !== undefined) found = true
   })
+
   return found
 }
 
@@ -3563,6 +3640,7 @@ function withExplicitUndefinedReturns(body: StatementIR[]): StatementIR[] {
   const out = rewrite(body)
   const last = out[out.length - 1]
   if (last === undefined || last.kind !== 'return') out.push({ kind: 'return', expr: undef })
+
   return out
 }
 
@@ -3617,6 +3695,7 @@ function containsRenderTimeTimer(n: unknown): boolean {
   const node = n as { kind?: unknown }
   if (node.kind === 'arrow') return false
   if (typeof node.kind === 'string' && isTimerStart(n as ExprIR)) return true
+
   return Object.values(n).some(containsRenderTimeTimer)
 }
 
@@ -3663,6 +3742,7 @@ function onMountCleanup(cb: AnyNode, ctx: ParseCtx): StatementIR[] | 'captures-m
   visit(fn.body)
   const captured = [...mountLocals].filter((n) => read.has(n))
   if (captured.length > 0) return 'captures-mount-locals'
+
   return fn.body?.type === 'BlockStatement'
     ? parseStatementBlock(fn.body, ctx)
     : [{ kind: 'expr', expr: parseExpr(fn.body, ctx) }]
@@ -3679,6 +3759,7 @@ function collectPatternNames(pattern: AnyNode | undefined, out: Set<string>): vo
       for (const p of (pattern.properties as AnyNode[] | undefined) ?? []) {
         collectPatternNames(p.type === 'RestElement' ? p.argument : p.value, out)
       }
+
       return
     case 'ArrayPattern':
       for (const e of (pattern.elements as AnyNode[] | undefined) ?? []) collectPatternNames(e, out)
@@ -3730,6 +3811,7 @@ function isVoidHelper(fn: AnyNode, name: string): boolean {
     }
   }
   visit(fn.body?.body)
+
   return !valueReturn
 }
 
@@ -3745,6 +3827,7 @@ function astContainsJsx(node: unknown): boolean {
     }
     if (astContainsJsx(n[key])) return true
   }
+
   return false
 }
 
@@ -3853,6 +3936,7 @@ function parseProps(
           staticPropKey(p) === (p.value.name as string),
       )
     if (!allSimpleNoRename) return { props: [], propsParamName: undefined }
+
     return {
       props: t.fields.map((f) => ({ name: f.name, type: f.type })),
       propsParamName: undefined,
@@ -3873,6 +3957,7 @@ function parseProps(
     // list stays empty.
     return { props: [], propsParamName: paramName }
   }
+
   return {
     props: objType.fields.map((f) => ({ name: f.name, type: f.type })),
     propsParamName: paramName,
@@ -3929,6 +4014,7 @@ function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
       `Component props type \`${t.name}\` can't be resolved — PMTC only resolves an object-shape \`type ${t.name} = { … }\` or \`interface ${t.name} { … }\` declared in the SAME file (imports aren't followed, and neither are generic / \`extends\` interfaces). The emitted component would reference undeclared properties and fail the native build. Declare it locally or inline the annotation (\`props: { … }\`).`,
     )
   }
+
   return t
 }
 
@@ -4032,6 +4118,7 @@ function bodyReferencesPropsParam(body: AnyNode[], paramName: string): boolean {
       }
     }
   }
+
   return false
 }
 
@@ -4067,6 +4154,7 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
         if (!resolved) break
         expr = resolved
       }
+
       return expr as AstNode | undefined
     },
     unwrap: (node) => unwrapTypeLayers(node as AnyNode | undefined) as AstNode | undefined,
@@ -4093,6 +4181,7 @@ function parseContextFor(declName: string, call: AnyNode, ctx: ParseCtx): ParseC
       ctx.responseDecodes.push({ type, response })
     },
   }
+
   return facade
 }
 
@@ -4121,6 +4210,7 @@ function moduleParseContextFor(ctx: ParseCtx, owner: string): ModuleParseContext
           `[Pyreon] functionDeclaration requires a function node; received ${node.type}.`,
         )
       }
+
       return tryFunctionDecl(name, node as AnyNode, ctx)
     },
     initialType: (initial) => inferTypeFromInitial(initial),
@@ -4173,6 +4263,7 @@ function tryPluginTopLevel(node: AnyNode, ctx: ParseCtx): ExtModuleItem | undefi
     )
     if (spec !== undefined) return stampModuleItem(registry, owner, spec)
   }
+
   return undefined
 }
 
@@ -4206,6 +4297,7 @@ function tryPluginMethodCall(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
       ? { kind: 'literal', value: '' }
       : stampExtExpr(registry, owner, verdict)
   }
+
   return undefined
 }
 
@@ -4231,6 +4323,7 @@ function tryPluginCallExpr(node: AnyNode, ctx: ParseCtx): ExprIR | undefined {
       ? { kind: 'literal', value: '' }
       : stampExtExpr(registry, owner, verdict)
   }
+
   return undefined
 }
 
@@ -4257,6 +4350,7 @@ function requestSourceFor(name: string, facade: ParseContext) {
   for (const { source } of activeRegistries().scan.sources) {
     if (source.has(name, facade)) return source
   }
+
   return undefined
 }
 
@@ -4353,8 +4447,10 @@ function reassignedInClosure(name: string, body: readonly AnyNode[]): boolean {
       if (k === 'loc' || k === 'range' || k === 'start' || k === 'end') continue
       if (walk(node[k], fn)) return true
     }
+
     return false
   }
+
   return walk(body, false)
 }
 
@@ -4456,6 +4552,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ctx.warnings.push(
       `${hook}() destructure form (\`const { … } = ${hook}(...)\`) was not lowered on native — either the hook has no single-binding container, or the pattern is not flat (a rest element, a nested pattern or a default — a hook's fields are mostly signal accessors, which do not destructure). Use the single-binding shape \`const x = ${hook}(...); x.field\` (e.g. \`const q = useFetch(url); q.data()\` / \`q.isPending\`) instead. Tracked as a follow-up.`,
     )
+
     return null
   }
   // A constructor a plugin claims (`new QueryClient()` from `@pyreon/query`): `CompilerPlugin.calls`
@@ -4478,6 +4575,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
           `or keep this code in a \`<Web>\`-only branch. Tracked in audit Gap 4; see ` +
           `docs/src/content/docs/multiplatform-libraries.md → "Tier 2 — pure-logic packages."`,
       )
+
       return null
     }
   }
@@ -4528,6 +4626,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     ctx.warnings.push(
       'Component-body destructuring in this shape is not lowered to native — plain names, nested patterns, holes and a trailing array rest lower (`const { a: { b }, c } = …`, `const [x, , z, ...rest] = …`), but not a default value (`= 7`), an object rest (`...others`) or a computed key. Bind explicitly instead (`const a = o().a` / `const first = xs()[0]`); the declaration was skipped and its names would otherwise emit unbound.',
     )
+
     return null
   }
   const name = node.id?.name as string | undefined
@@ -4584,6 +4683,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     // typing; the type-mapper contract for TSAnyKeyword stays intact).
     const hasGeneric = ((init.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
     const type = hasGeneric ? generic : inferTypeFromInitial(initial)
+
     return { kind: 'signal', name, type, initial }
   }
   if (calleeName === 'computed') {
@@ -4592,6 +4692,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       ctx.warnings.push(
         `Declaration ${name}: computed expected an arrow function argument; got ${arg?.type ?? 'nothing'}.`,
       )
+
       return null
     }
     const body = arg.body
@@ -4620,6 +4721,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
       return { kind: 'computed', name, body: stmts }
     }
     const expr: ExprIR = parseExpr(body, ctx)
+
     return { kind: 'computed', name, expr }
   }
   // C4 — `@pyreon/router` hook recognition. Three shapes:
@@ -4648,6 +4750,8 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (afterEach.length > 0) decl.afterEach = afterEach
     const tabs = tryExtractRouterTabs(init.arguments?.[0], ctx.warnings)
     if (tabs !== undefined) decl.tabs = tabs
+    warnRouterStartPosition(init.arguments?.[0], ctx.warnings)
+
     return decl
   }
   // `useToggle(initial)` / `useCounter(initial, { min, max })` — pure state
@@ -4739,6 +4843,7 @@ function withValueDeclType(
   const ann = (node.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
     | AnyNode
     | undefined
+
   return ann ? { ...d, type: parseTypeAnnotation(ann, ctx) } : d
 }
 
@@ -4828,6 +4933,7 @@ function declFromSpec(
     : { kind: 'literal', value: 0 }
   const hasGeneric = ((call.typeArguments?.params as AnyNode[] | undefined)?.length ?? 0) > 0
   const type = hasGeneric ? parseGenericTypeArg(call, ctx) : inferTypeFromInitial(initial)
+
   return persistKey === undefined
     ? { kind: 'signal', name, type, initial }
     : { kind: 'signal', name, type, initial, storageKey: persistKey }
@@ -4853,6 +4959,7 @@ function tryPluginDeclCall(name: string, init: AnyNode, ctx: ParseCtx): DeclIR |
     if (verdict === undefined) continue
     return verdict === null ? null : declFromSpec(owner, name, verdict, init, ctx)
   }
+
   return undefined
 }
 
@@ -4877,6 +4984,7 @@ function tryPluginConstruct(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     { callee: calleeName, argCount: init.arguments?.length ?? 0, construct: true },
     parseContextFor(name, init, ctx),
   )
+
   return spec === undefined || spec === null
     ? null
     : declFromSpec(recognized.owner, name, spec, init, ctx)
@@ -4911,6 +5019,7 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
   if (!props) return null
   const routesProp = props.find((p) => p?.type === 'Property' && staticPropKey(p) === 'routes')
   if (!routesProp) return null
+
   return parseRouteArray(routesProp.value, ctx)
 }
 
@@ -4941,6 +5050,7 @@ function inlineGuardHelper(fn: AnyNode, key: string, ctx: ParseCtx): string | un
       `[pyreon-native] router \`${key}\`: an inline guard is not lowered to native — ${why} ` +
         `It is dropped, so the navigation is NOT gated on iOS/Android.`,
     )
+
     return undefined
   }
   if (fn.async === true) return warn('an async guard has no native lowering (native guards answer synchronously).')
@@ -4960,6 +5070,7 @@ function inlineGuardHelper(fn: AnyNode, key: string, ctx: ParseCtx): string | un
   // process compiled before, and the same source would emit differently run to run).
   const name = `__pyreonGuard${ctx.helperFns.filter((h) => h.name.startsWith('__pyreonGuard')).length}`
   ctx.helperFns.push(tryFunctionDecl(name, fn, ctx))
+
   return name
 }
 
@@ -4992,6 +5103,7 @@ function freeIdentifiers(body: AnyNode): Set<string> {
   }
   visit(body)
   for (const d of declared) read.delete(d)
+
   return read
 }
 
@@ -5015,7 +5127,7 @@ function bindingNames(pattern: AnyNode | undefined, out: Set<string>): void {
  * never kept half-lowered. Named and inline guards go through the same pass, because they are the same thing.
  */
 function lowerRouterGuards(
-  components: readonly { decls: DeclIR[] }[],
+  components: readonly { name: string; decls: DeclIR[] }[],
   helperFns: Extract<DeclIR, { kind: 'function' }>[],
   warnings: string[],
   inferCtx: ReturnType<typeof buildInferenceCtx>,
@@ -5028,14 +5140,30 @@ function lowerRouterGuards(
         if (names === undefined) continue
         const kept = names.filter((name) => {
           const fn = helperFns.find((h) => h.name === name)
+          // A parameterless function that RETURNS a value (`function allowAll() { return true }`) is indistinguishable
+          // from a component here, so it was emitted as a View and handed to the router, which did not compile. Name it.
+          if (fn === undefined && components.some((c) => c.name === name)) {
+            warnings.push(
+              `[pyreon-native] router \`${key}\`: guard \`${name}\` takes no parameter and returns a value, so PMTC reads it as a component. Give it the target parameter (\`function ${name}(to) { … }\`). It is dropped, so the navigation is NOT gated on iOS/Android.`,
+            )
+
+            return false
+          }
           if (fn === undefined || lowerGuardFn(fn, key, warnings, inferCtx)) return true
           // A dropped INLINE guard leaves nothing behind: its synthesized helper existed only to be this guard, and
           // emitted half-lowered it would not compile. A named function is the author's own and stays.
           if (name.startsWith('__pyreonGuard')) helperFns.splice(helperFns.indexOf(fn), 1)
+
           return false
         })
         if (kept.length > 0) decl[key] = kept
         else delete decl[key]
+        for (const name of kept) {
+          const fn = helperFns.find((h) => h.name === name)
+          if (fn !== undefined && fn.params.length === 0 && !(decl.zeroArgGuards ?? []).includes(name)) {
+            decl.zeroArgGuards = [...(decl.zeroArgGuards ?? []), name]
+          }
+        }
       }
     }
   }
@@ -5047,6 +5175,7 @@ function returnsString(e: unknown): boolean {
   if (x?.kind === 'literal') return typeof x.value === 'string'
   if (x?.kind === 'ternary') return returnsString(x.then) || returnsString(x.otherwise)
   if (x?.kind === 'logical') return returnsString(x.left) || returnsString(x.right)
+
   return false
 }
 
@@ -5061,6 +5190,7 @@ function lowerGuardFn(
     warnings.push(
       `[pyreon-native] router \`${key}\`: ${label} ${why} It is dropped, so the navigation is NOT gated on iOS/Android.`,
     )
+
     return false
   }
   const to = fn.params[0]?.name
@@ -5085,6 +5215,7 @@ function lowerGuardFn(
         delete n.optional
         n.kind = 'identifier'
         n.name = to
+
         return
       }
       if (obj === to) otherMembers.add(String(n.property))
@@ -5111,6 +5242,7 @@ function lowerGuardFn(
     }
     fn.returnType = { kind: 'boolean' }
   }
+
   return true
 }
 
@@ -5136,6 +5268,7 @@ function tryExtractRouterTabs(arg: AnyNode | undefined, warnings: string[]): { n
     warnings.push(
       '[pyreon-native] createRouter `tabs` must be an array LITERAL of `{ name, root }` objects on iOS/Android — the router is built with them at compile time. Per-tab stacks are DROPPED here, so every route pushes onto one stack.',
     )
+
     return undefined
   }
   const out: { name: string; root: string }[] = []
@@ -5146,6 +5279,7 @@ function tryExtractRouterTabs(arg: AnyNode | undefined, warnings: string[]): { n
     if (v?.type === 'TemplateLiteral' && (v.expressions as unknown[]).length === 0) {
       return ((v.quasis as AnyNode[])[0]?.value as { cooked?: string } | undefined)?.cooked
     }
+
     return undefined
   }
   for (const el of (value.elements as AnyNode[] | undefined) ?? []) {
@@ -5163,7 +5297,25 @@ function tryExtractRouterTabs(arg: AnyNode | undefined, warnings: string[]): { n
     }
     out.push({ name, root })
   }
+
   return out.length > 0 ? out : undefined
+}
+
+/**
+ * `createRouter({ mode: 'memory', initialEntries, initialIndex })`. `mode` needs nothing: the native routers are
+ * in-memory stacks already, whatever the web mode. The start position has no native counterpart (the router opens on
+ * its root route), so it is NAMED here rather than dropped silently.
+ */
+function warnRouterStartPosition(arg: AnyNode | undefined, warnings: string[]): void {
+  if (!arg || arg.type !== 'ObjectExpression') return
+  const keys = ((arg.properties as AnyNode[] | undefined) ?? [])
+    .filter((p) => p?.type === 'Property')
+    .map((p) => staticPropKey(p))
+    .filter((k) => k === 'initialEntries' || k === 'initialIndex')
+  if (keys.length === 0) return
+  warnings.push(
+    `[pyreon-native] createRouter ${keys.map((k) => `\`${k}\``).join(' / ')} (the web memory router's start position) is IGNORED on iOS/Android — the native router always opens on its root route with an empty stack. Navigate from the root page (\`useNavigate()\`) if it must start deeper.`,
+  )
 }
 
 function tryExtractGuardRefArray(
@@ -5214,6 +5366,7 @@ function tryExtractGuardRefArray(
       )
     }
   }
+
   return out
 }
 
@@ -5232,6 +5385,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
       ctx.warnings.push(
         `A \`createRouter\` route is not an object literal (${el ? el.type : 'a hole'}) — the native router table is built at compile time, and the compiler never emits a partial one, so this router has NO routes on iOS/Android. Write each route as an inline \`{ path, component }\` object.`,
       )
+
       return null
     }
     const elProps = el.properties as AnyNode[] | undefined
@@ -5349,12 +5503,14 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
           ? `A \`createRouter\` route's \`path\` (\`${unresolvedPath}\`) is not a string known at compile time — the native router table is built statically, so this router has NO routes on iOS/Android. Use a string literal or a module-level \`const X = '/path'\`.`
           : 'A `createRouter` route has no `path` — the native router table needs one per route, so this router has NO routes on iOS/Android.',
       )
+
       return null
     }
     if (component === undefined && redirect === undefined && children === undefined) {
       ctx.warnings.push(
         `\`createRouter\` route "${path}" has no \`component\`, literal \`redirect\` or \`children\` the native router can render, so this router has NO routes on iOS/Android.`,
       )
+
       return null
     }
     const route: RouteIR = { path }
@@ -5366,6 +5522,7 @@ function parseRouteArray(arr: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | n
     if (loaderUsesParams) route.loaderUsesParams = true
     out.push(route)
   }
+
   return out
 }
 
@@ -5541,6 +5698,7 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         ? [stmt.id as AnyNode]
         : [],
   )
+
   return withoutPluginAliases(bindings, ctx, () => parseStatementBlockBody(block, ctx))
 }
 
@@ -5771,11 +5929,23 @@ function markMethodMutatedLocals(stmts: StatementIR[]): void {
   }
 }
 
+/** The local an index write `x[k]…[j] = v` is rooted at, through any further index or member steps. */
+function indexRoot(target: ExprIR): string | undefined {
+  let t = target
+  while (t.kind === 'index' || t.kind === 'member') t = t.object
+  return t.kind === 'identifier' ? t.name : undefined
+}
+
 function markReassignedLocalsMutable(stmts: StatementIR[]): void {
   const reassigned = new Set<string>()
   const collect = (list: StatementIR[]): void => {
     for (const s of list) {
       if (s.kind === 'assign' && s.target.kind === 'identifier') reassigned.add(s.target.name)
+      // `r[k] = v` / `r[k].x = v` writes INTO the local: a Swift `PyreonMap` / Array is a value type, so a `let`
+      // binding rejects the subscript set ("cannot assign through subscript: 'r' is a 'let' constant").
+      else if (s.kind === 'assign' && s.target.kind === 'index' && indexRoot(s.target) !== undefined) {
+        reassigned.add(indexRoot(s.target)!)
+      }
       // A bare `i++` / `i--` STATEMENT mutates `i` — it must promote the
       // local to `var`, exactly like an `assign`. Without this the loop
       // counter stayed `let` and Swift/Kotlin rejected the in-loop mutation.
@@ -5875,6 +6045,7 @@ function withCachedBoundsInlined(node: AnyNode): AnyNode {
   // side effect of its initialiser (`for (let i = 0, j = tick(); …)`).
   const readByTest = new Set(identifiersRead(node.test))
   if ([...names].some((n) => !readByTest.has(n))) return node
+
   return {
     ...node,
     init: { ...init, declarations: [counter] },
@@ -5907,6 +6078,7 @@ function identifiersRead(node: unknown): string[] {
     }
   }
   visit(node)
+
   return out
 }
 
@@ -5925,8 +6097,10 @@ function substituteIdentifiers(node: AnyNode, replacements: ReadonlyMap<string, 
     }
     const copy: Record<string, unknown> = {}
     for (const key of Object.keys(a)) copy[key] = visit(a[key], key, a)
+
     return copy
   }
+
   return visit(node) as AnyNode
 }
 
@@ -5982,6 +6156,7 @@ function classifyForRange(
   // to accept the conservative bail).
   if (astReassignsIdent(node.body as AnyNode, item)) return null
   const body = parseLoopBody(node.body as AnyNode, ctx)
+
   return {
     kind: 'for-range',
     item,
@@ -6021,6 +6196,7 @@ function astReassignsIdent(root: AnyNode, name: string): boolean {
     }
   }
   walk(root)
+
   return found
 }
 
@@ -6035,6 +6211,7 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
     head?.type === 'VariableDeclaration'
       ? ((head.declarations as AnyNode[] | undefined) ?? []).map((decl) => decl.id as AnyNode)
       : []
+
   return withoutPluginAliases(bindings, ctx, () => parseStatementBody(node, ctx))
 }
 
@@ -6048,6 +6225,7 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         ctx.warnings.push(
           `Unsupported statement: multi-declarator VariableDeclaration (${declarators.length} decls).`,
         )
+
         return null
       }
       const d = declarators[0]!
@@ -6059,6 +6237,7 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         ctx.warnings.push(
           `A destructuring declaration outside a braced block (e.g. an un-braced \`if\` body or a \`switch\` case) is not lowered to native and was dropped — wrap the body in \`{ … }\` so it can be expanded, or bind the fields explicitly.`,
         )
+
         return null
       }
       const ann = (d.id as AnyNode | undefined)?.typeAnnotation?.typeAnnotation as
@@ -6075,11 +6254,14 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
           ctx.warnings.push(
             `\`let ${declName}\` has no initializer and no type annotation, so there is nothing to declare natively — it was dropped, and any later assignment to it will not compile. Annotate it (\`let ${declName}: string\`) or give it an initial value.`,
           )
+
           return null
         }
+
         return { kind: 'declare', name: declName, declaredType }
       }
       if (declaredType === undefined) return { kind: 'let', name: declName, expr: parseExpr(d.init, ctx) }
+
       return { kind: 'let', name: declName, expr: typeJsonParse(parseExpr(d.init, ctx), declaredType), declaredType }
     }
     case 'IfStatement': {
@@ -6103,6 +6285,7 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
                 return s ? [s] : []
               })()
       }
+
       return elseBody ? { kind: 'if', cond, then, elseBody } : { kind: 'if', cond, then }
     }
     case 'ReturnStatement': {
@@ -6129,6 +6312,7 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
           }
         }
       }
+
       return { kind: 'expr', expr: parseExpr(node.expression, ctx) }
     }
     case 'WhileStatement': {
@@ -6164,11 +6348,13 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
           loop.label = labelName
           return loop
         }
+
         return loop
       }
       ctx.warnings.push(
         `A labeled statement is only supported on a LOOP (\`outer: for (…)\` / \`outer: while (…)\`) — other labeled statements have no native lowering.`,
       )
+
       return null
     }
     case 'DoWhileStatement': {
@@ -6196,11 +6382,13 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         ctx.warnings.push(
           `A \`for\` loop with more than one declarator lowers only in the "cached bound" shape — \`for (let i = 0, n = xs.length; i < n; i++)\`, where every extra name is read in the test and nowhere else, and its initialiser does not read the counter. Here an extra name is unused, used in the body or update, or reads the counter — declare it before the loop instead.`,
         )
+
         return null
       }
       ctx.warnings.push(
         `Only the canonical count-loop lowers to native (\`for (let i = 0; i < n; i++)\` or the descending \`for (let i = n; i >= 0; i--)\`; \`<=\`/\`>=\`, or \`i += k\`/\`i -= k\` with a positive literal step; the test and update must agree in direction and the counter must not be reassigned in the body) — rewrite this \`for\` as a \`while\` (or \`for…of\`).`,
       )
+
       return null
     }
     case 'ForOfStatement': {
@@ -6221,8 +6409,10 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         ctx.warnings.push(
           'Unsupported for-of binding — only `for (const x of …)` (single identifier) lowers on native.',
         )
+
         return null
       }
+
       return {
         kind: 'for-of',
         item,
@@ -6266,6 +6456,7 @@ function parseStatementBody(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         pendingTests = []
         pendingDefault = false
       }
+
       return { kind: 'switch', discriminant, cases }
     }
     case 'ThrowStatement':
@@ -6283,6 +6474,7 @@ function parseLoopBody(node: AnyNode | undefined, ctx: ParseCtx): StatementIR[] 
   if (!node) return []
   if (node.type === 'BlockStatement') return parseStatementBlock(node, ctx)
   const s = parseStatement(node, ctx)
+
   return s ? [s] : []
 }
 
@@ -6300,6 +6492,7 @@ function errorConstructionMessage(arg: AnyNode): AnyNode | null | undefined {
   if (name === undefined || !name.endsWith('Error')) return undefined
   const args = (arg.arguments as AnyNode[] | undefined) ?? []
   if (args.length > 1) return undefined
+
   return args[0] ?? null
 }
 
@@ -6324,11 +6517,13 @@ function parseThrow(arg: AnyNode | undefined, ctx: ParseCtx): StatementIR | null
     ctx.warnings.push(
       `\`throw\` lowers to native for \`throw new Error(message)\` (any \`…Error\` constructor), a string, or rethrowing the enclosing \`catch\` binding — this one throws some other value, so it was dropped and the code after it would keep running. Throw an \`Error\` with a message instead.`,
     )
+
     return null
   }
   if (msgNode === null) return { kind: 'throw', message: { kind: 'literal', value: '' } }
   const parsed = parseExpr(msgNode, ctx)
   const isText = parsed.kind === 'template' || (parsed.kind === 'literal' && typeof parsed.value === 'string')
+
   return {
     kind: 'throw',
     // A non-string message is stringified, as `new Error(x)` does.
@@ -6372,6 +6567,7 @@ function parseTry(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       out.finallyBody = finallyBody
     }
   }
+
   return out
 }
 
@@ -6382,6 +6578,7 @@ function leavesScope(s: StatementIR, inLoop = false): boolean {
   // may name a loop outside.
   if (s.kind === 'break' || s.kind === 'continue') return !inLoop || s.label !== undefined
   const loop = s.kind === 'while' || s.kind === 'do-while' || s.kind === 'for-of' || s.kind === 'for-range'
+
   return childStatementLists(s).some((l) => l.some((c) => leavesScope(c, inLoop || loop)))
 }
 
@@ -6455,6 +6652,7 @@ function stripNullish(t: TypeIR): TypeIR {
   const kept = t.branches.filter((b) => b.kind !== 'null' && b.kind !== 'undefined')
   if (kept.length === 0) return { kind: 'unknown' }
   if (kept.length === 1) return kept[0]!
+
   return { kind: 'union', branches: kept }
 }
 
@@ -6499,6 +6697,7 @@ function lowerUtilityType(
       `\`${spelled}\` has no native form in PMTC — ${why} The annotation is dropped, ` +
         `so a \`const\` keeps its initializer's own type; a parameter or field degrades to \`Any\`.`,
     )
+
     return { kind: 'unknown' }
   }
 
@@ -6522,6 +6721,7 @@ function lowerUtilityType(
       if (args.length !== 1) return decline('it takes exactly one type argument.')
       const shape = resolveObjectShape(args[0]!, ctx)
       if (shape === undefined) return args[0]!
+
       return {
         kind: 'object',
         fields: shape.fields.map((f) => ({ name: f.name, type: stripNullish(f.type) })),
@@ -6537,6 +6737,7 @@ function lowerUtilityType(
       if (inner.kind === 'typeRef' && inner.name === 'Promise' && inner.args.length === 1) {
         return inner.args[0]!
       }
+
       return inner
     }
     case 'Uppercase':
@@ -6631,6 +6832,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       ctx.warnings.push(
         `\`${node.operator}\` types have no native form in PMTC — spell the concrete type (a string-literal union for \`keyof\`).`,
       )
+
       return { kind: 'unknown' }
     }
     case 'TSTupleType':
@@ -6641,6 +6843,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       ctx.warnings.push(
         `Tuple types (\`[string, number]\`) are not supported in native (PMTC) — use an object type (\`{ k: string; v: number }\`), which lowers to a struct / data class.`,
       )
+
       return { kind: 'unknown' }
     case 'TSTypeLiteral': {
       const members = node.members as AnyNode[]
@@ -6658,14 +6861,20 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
           )
         }
       }
+      // A member's NAME: an identifier, or a quoted key (`'content-type': string`) — the JSON spelling of an HTTP
+      // header or a kebab-case field. The quoted form was dropped from the struct with no warning, so a decoded
+      // response simply lost the field; the emitters already map a non-identifier name (Swift CodingKeys, Kotlin
+      // backticks), as they do for an object literal's quoted key.
+      const memberName = (m: AnyNode): string | undefined => {
+        if (m.key?.type === 'Identifier' && m.computed !== true) return m.key.name as string
+        if ((m.key?.type === 'Literal' || m.key?.type === 'StringLiteral') && typeof m.key.value === 'string') {
+          return m.key.value as string
+        }
+
+        return undefined
+      }
       const fields = members
-        .filter(
-          (m) =>
-            m.type === 'TSPropertySignature' &&
-            m.key?.name &&
-            !(m.computed === true && m.key?.type === 'Identifier') &&
-            m.typeAnnotation,
-        )
+        .filter((m) => m.type === 'TSPropertySignature' && memberName(m) !== undefined && m.typeAnnotation)
         .map((m) => {
           const fieldType = parseTypeAnnotation(m.typeAnnotation.typeAnnotation, ctx)
           // `label?: string` — TS marks the member `optional`. Represent it
@@ -6684,8 +6893,10 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
             m.optional === true && !isAlreadyOptional
               ? ({ kind: 'union', branches: [fieldType, { kind: 'undefined' }] } as TypeIR)
               : fieldType
-          return { name: m.key.name as string, type }
+
+          return { name: memberName(m)!, type }
         })
+
       return { kind: 'object', fields }
     }
     case 'TSUnionType': {
@@ -6712,6 +6923,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
         unique.push(b)
       }
       if (unique.length === 1) return unique[0]!
+
       return { kind: 'union', branches: unique }
     }
     case 'TSTypeReference': {
@@ -6738,8 +6950,9 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // `ReadonlyArray<T>` is the long spelling of `readonly T[]` — the same
       // runtime array, lowered as one (see the TSTypeOperator case).
       if (name === 'ReadonlyArray' && args.length === 1) return { kind: 'array', element: args[0]! }
-      // A `Date` is its epoch milliseconds natively (date-lowering.ts).
-      if (name === 'Date' && args.length === 0) return { kind: 'number', float: true }
+      // A `Date` is its epoch milliseconds natively (date-lowering.ts); the mark keeps a `Date` FIELD crossing JSON as
+      // its ISO string (date-json.ts).
+      if (name === 'Date' && args.length === 0) return { kind: 'number', float: true, date: true }
       // TypeScript's BUILT-IN utility types. Neither Swift nor Kotlin has any
       // of these names, so the pass-through arm below emitted the TS spelling
       // verbatim — `Partial<ChartTheme>` became `private let T:
@@ -6762,6 +6975,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
         const fn = ctx.fnTypeAliases.get(name)
         if (fn !== undefined) return fn
       }
+
       return { kind: 'typeRef', name, args }
     }
     case 'TSFunctionType': {
@@ -6776,12 +6990,14 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
         // `name: undefined` for an optional property.
         const paramName: string | undefined =
           p.type === 'Identifier' ? (p.name as string | undefined) : undefined
+
         return paramName !== undefined ? { name: paramName, type } : { type }
       })
       const returnAnnotation = node.returnType?.typeAnnotation as AnyNode | undefined
       const returnType: TypeIR = returnAnnotation
         ? parseTypeAnnotation(returnAnnotation, ctx)
         : { kind: 'unknown' }
+
       return { kind: 'function', params, returnType }
     }
     case 'TSLiteralType': {
@@ -6796,6 +7012,7 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       if (typeof lit.value === 'string') return { kind: 'string' }
       if (typeof lit.value === 'number') return { kind: 'number' }
       if (typeof lit.value === 'boolean') return { kind: 'boolean' }
+
       return { kind: 'unknown' }
     }
     default:
@@ -6823,6 +7040,7 @@ function locOf(node: AnyNode, ctx: ParseCtx): string {
       lastNl = i
     }
   }
+
   return `${line}:${off - lastNl}`
 }
 
@@ -6889,6 +7107,7 @@ function tryParseMapFromPairs(
       ? (fn.stmts[0] as Extract<StatementIR, { kind: 'return' }>).expr
       : fn.body
   if (body === undefined || body.kind !== 'array' || body.elements.length !== 2) return null
+
   return {
     source: parseExpr(callee.object as AnyNode, ctx),
     param: fn.params[0]!,
@@ -6903,6 +7122,7 @@ function isNativeMapValueType(t: TypeIR, ctx: ParseCtx): boolean {
   if (t.kind === 'typeRef' && t.args.length === 0) {
     return ctx.objectTypeAliases.has(t.name) || ctx.enumTypeNames.has(t.name)
   }
+
   return false
 }
 
@@ -6951,6 +7171,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         ctx.warnings.push(
           `[${locOf(node, ctx)}] Regex literals aren't supported in native (PMTC) — \`${regexNode.raw ?? '/…/'}\` has no Swift/Kotlin equivalent (it was emitted verbatim and uncompilable before). Rewrite string work without a RegExp, or keep regex logic in a web-only helper.`,
         )
+
         return { kind: 'literal', value: '' }
       }
       // A numeric literal WRITTEN with a decimal point is a Double even when
@@ -6965,6 +7186,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           return { kind: 'literal', value: node.value, float: true }
         }
       }
+
       return { kind: 'literal', value: node.value }
     }
     case 'Identifier':
@@ -6987,6 +7209,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         const fieldAlias = ctx.hookFieldAliases.get(node.name as string)
         if (fieldAlias !== undefined) return destructureAccess(fieldAlias.object, fieldAlias.path)
       }
+
       return { kind: 'identifier', name: node.name as string }
     case 'CallExpression': {
       // `Date.parse` / `Date.UTC` and the Date methods (`d.getFullYear()`, `d.toISOString()`, …) — see date-lowering.ts.
@@ -7089,13 +7312,10 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // (Parser-A slice). Pyreon source uses `===` / `!==` which evaluate
       // the same as `==` / `!=` for the value types signals carry; the
       // emitter coalesces to the native target's `==` / `!=`.
-      // Arithmetic + bitwise — both lower to a `binary` IR node. Bitwise
-      // ops are well-defined on both targets (Swift: same symbols; Kotlin:
-      // `and`/`or`/`xor`/`shl`/`shr` infix functions, mapped at emit). NOTE
-      // `>>>` (JS unsigned-right-shift, uint32 semantics) is deliberately
-      // NOT included — it has no faithful signed-Int lowering and keeps the
-      // warn-fallback below.
-      const arith = ['+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>', '**'] as const
+      // Arithmetic + bitwise — both lower to a `binary` IR node. The bitwise
+      // operators (`>>>` included) lower to the runtimes' 32-bit helpers
+      // (`integer-arithmetic.ts`), which give the web's ToInt32 results.
+      const arith = ['+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>', '>>>', '**'] as const
       const compMap: Record<string, '==' | '!=' | '<' | '>' | '<=' | '>='> = {
         '===': '==',
         '!==': '!=',
@@ -7138,11 +7358,13 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         ctx.warnings.push(
           `[${locOf(node, ctx)}] \`${node.left.name as string} instanceof ${node.right.name as string}\` is not lowered to native: the native error keeps the message, not the JavaScript error class. Test \`instanceof Error\`, or carry the distinction in the message.`,
         )
+
         return { kind: 'literal', value: false }
       }
       ctx.warnings.push(
         `[${locOf(node, ctx)}] Binary operator \`${op}\` is not supported in native (PMTC) — emitting \`+\` as a fallback (likely wrong); rewrite using a supported operator.`,
       )
+
       return {
         kind: 'binary',
         op: '+',
@@ -7166,6 +7388,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         exprs.length >= 2 &&
         exprs.slice(0, -1).every((e) => e.type === 'UnaryExpression' && e.operator === 'void')
       if (prologueOnly && last) return parseExpr(last, ctx)
+
       return unsupportedExpr(
         ctx,
         node,
@@ -7178,19 +7401,20 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // these as prefix unary verbatim. Other unary operators (`typeof`,
       // `void`, `delete`) don't have idiomatic native equivalents —
       // warn + degrade. `++` / `--` are UpdateExpression, not Unary.
-      const known: ('!' | '-' | '+')[] = ['!', '-', '+']
+      const known: ('!' | '-' | '+' | '~')[] = ['!', '-', '+', '~']
       const op = node.operator as string
       if (!(known as readonly string[]).includes(op)) {
         return unsupportedExpr(
           ctx,
           node,
           `Unary operator \`${op}\``,
-          'only `!`, `-`, `+` are supported on native.',
+          'only `!`, `-`, `+` and `~` are supported on native.',
         )
       }
+
       return {
         kind: 'unary',
-        op: op as '!' | '-' | '+',
+        op: op as '!' | '-' | '+' | '~',
         argument: parseExpr(node.argument, ctx),
       }
     }
@@ -7209,6 +7433,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           'only `&&`, `||`, `??` are supported on native.',
         )
       }
+
       return {
         kind: 'logical',
         op: op as '&&' | '||' | '??',
@@ -7251,6 +7476,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           { kind: 'literal', value: 0 },
         )
       }
+
       return { kind: 'update', op, argument: parseExpr(node.argument, ctx) }
     }
     case 'ArrowFunctionExpression': {
@@ -7278,6 +7504,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
             if (key?.type !== 'Identifier' || value?.type !== 'Identifier') return null
             out.push({ local: value.name as string, field: key.name as string })
           }
+
           return out
         }
         const paramNodes = node.params as AnyNode[]
@@ -7334,6 +7561,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
               kind: 'expr',
               expr: parseExpr(x, ctx),
             }))
+
             return {
               kind: 'arrow',
               async: node.async === true,
@@ -7344,6 +7572,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
               stmts,
             }
           }
+
           return {
             kind: 'arrow',
             async: node.async === true,
@@ -7394,6 +7623,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
               returnAnnot,
               body: { kind: 'literal', value: '' },
             }
+
           return {
             kind: 'arrow',
             async: node.async === true,
@@ -7410,6 +7640,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         // b.set(2) }}` lost the `b` update on both targets. `body` is a
         // sentinel; `emitSwiftAction` / `emitKotlinAction` read `stmts`.
         const blockStmts = parseStatementBlock(body, ctx)
+
         return {
           kind: 'arrow',
           async: node.async === true,
@@ -7439,6 +7670,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const elements = (node.elements as (AnyNode | null)[]).map((e) =>
         e === null ? ({ kind: 'identifier', name: 'undefined' } as ExprIR) : parseExpr(e, ctx),
       )
+
       return { kind: 'array', elements }
     }
     case 'ObjectExpression': {
@@ -7532,6 +7764,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           'An EMPTY object literal `{}` has no native lowering — it emits `()` (Void on Swift), so the value is not an object on either target. Give the literal its fields (`{ name: "" }`), or model the state as separate signals.',
         )
       }
+
       return spreads.length > 0 ? { kind: 'object', fields, spreads } : { kind: 'object', fields }
     }
     case 'ParenthesizedExpression': {
@@ -7549,6 +7782,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const children = (node.children as AnyNode[])
         .map((c) => parseJsxChild(c, ctx))
         .filter((c): c is ChildIR => c !== null)
+
       return { kind: 'jsx-fragment', children }
     }
     case 'TemplateLiteral': {
@@ -7564,6 +7798,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const exprs = ((node.expressions as AnyNode[] | undefined) ?? []).map((ex) =>
         parseExpr(ex, ctx),
       )
+
       return { kind: 'template', quasis, exprs }
     }
     case 'TaggedTemplateExpression':
@@ -7608,6 +7843,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           return { kind: 'array', elements: [], elementType: castType.element }
         }
       }
+
       return inner
     }
     case 'TSSatisfiesExpression':
@@ -7665,6 +7901,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
             'a native dictionary value must name a concrete native type — declare the value shape as a top-level `type X = { … }` / `interface X { … }` in this file and use `new Map<K, X>()`, or keep the map behind a `<Web>` escape hatch.',
           )
         }
+
         return { kind: 'new-collection', collection: 'map', keyType, valueType }
       }
       if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 1) {
@@ -7681,6 +7918,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
                 'a native dictionary needs a scalar (Hashable) key and a value of a concrete native type — declare the value shape as a top-level `type X = { … }` in this file.',
               )
             }
+
             return {
               kind: 'new-collection',
               collection: 'map',
@@ -7731,6 +7969,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
             return { kind: 'new-collection', collection: 'map', keyType, valueType, entries }
           }
         }
+
         return unsupportedExpr(
           ctx,
           node,
@@ -7749,6 +7988,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
               'only scalar (number/string/boolean) elements lower to a native set in v1 — a non-scalar element has no Hashable guarantee. Model it behind a `<Web>` escape hatch, or key a struct array by a scalar id.',
             )
           }
+
           return { kind: 'new-collection', collection: 'set', elementType }
         }
         if ((node.arguments?.length ?? 0) === 1) {
@@ -7764,6 +8004,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
               'only scalar (number/string/boolean) elements lower to a native set in v1. Model it behind a `<Web>` escape hatch, or key a struct array by a scalar id.',
             )
           }
+
           return { kind: 'new-collection', collection: 'set', seed }
         }
       }
@@ -7775,6 +8016,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           `annotate the element types — \`new ${calleeName}<...>()\` — so the native collection can be typed.`,
         )
       }
+
       return unsupportedExpr(
         ctx,
         node,
@@ -7877,6 +8119,7 @@ function parseJsxElement(node: AnyNode, ctx: ParseCtx): ExprIR {
       if (replaced !== undefined) return replaced
     }
   }
+
   return { kind: 'jsx-element', tag, attrs, children }
 }
 
@@ -8077,6 +8320,7 @@ function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
     ctx.warnings.push(
       `[${locOf(node, ctx)}] Namespaced JSX attribute \`${node.name.namespace?.name ?? '?'}:${node.name.name?.name ?? '?'}\` is not supported in native (PMTC) — it has no native equivalent and was dropped.`,
     )
+
     return null
   }
   const rawName = node.name.name as string
@@ -8092,6 +8336,7 @@ function parseJsxAttr(node: AnyNode, ctx: ParseCtx): AttrIR | null {
   if (rawName.startsWith('on') && rawName.length > 2 && rawName[2]! >= 'A' && rawName[2]! <= 'Z') {
     return { kind: 'event', name: rawName.slice(2).toLowerCase(), handler: exprValue }
   }
+
   return { kind: 'attr', name: rawName, value: exprValue }
 }
 
@@ -8117,6 +8362,7 @@ export function cleanJsxText(raw: string): string {
       out += line
     }
   }
+
   return out
 }
 
@@ -8138,6 +8384,7 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
     const raw = node.value as string
     const v = cleanJsxText(raw)
     if (v === '') return null
+
     return { kind: 'text', value: v }
   }
   if (node.type === 'JSXExpressionContainer') {
@@ -8159,6 +8406,7 @@ function parseJsxChild(node: AnyNode, ctx: ParseCtx): ChildIR | null {
       `[${locOf(node, ctx)}] A spread JSX child (\`{...items}\`) is not supported in native (PMTC) — it was dropped. Render the list with <For each={items}>.`,
     )
   }
+
   return null
 }
 
@@ -8200,8 +8448,10 @@ export function destructureBindings(pattern: AnyNode): Map<string, DestructureSt
         return walk(el, [...path, { index: i }])
       })
     }
+
     return false
   }
+
   return walk(pattern, []) && out.size > 0 ? out : undefined
 }
 
@@ -8214,5 +8464,6 @@ function destructureAccess(container: string, path: readonly DestructureStep[]):
       e = { kind: 'index', object: e, index: { kind: 'literal', value: step.index }, destructured: true }
     else e = { kind: 'call', callee: { kind: 'member', object: e, property: 'slice' }, args: [{ kind: 'literal', value: step.sliceFrom }] }
   }
+
   return e
 }

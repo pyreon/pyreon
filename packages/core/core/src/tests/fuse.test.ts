@@ -13,10 +13,10 @@ describe('_fuse', () => {
   it('joins text-ish parts into one string', () => {
     expect(_fuse('Hello ', 'Ada', '!')).toBe('Hello Ada!')
     expect(_fuse(3, ' items')).toBe('3 items')
-    expect(_fuse(1.5, true, 'x')).toBe('1.5truex')
+    expect(_fuse(1.5, true, 'x')).toBe('1.5x')
   })
 
-  it('null, undefined and false contribute nothing — exactly a lone {x}', () => {
+  it('null, undefined and booleans contribute nothing — exactly a lone {x}', () => {
     expect(_fuse(null, 'a', undefined, 'b', false)).toBe('ab')
     expect(_fuse(null, undefined, false)).toBe('')
     expect(_fuse()).toBe('')

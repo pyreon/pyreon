@@ -237,6 +237,8 @@ export function findOwningPackage(
  * - File must NOT be a vitest test-runner config (`vitest*.config.ts`) —
  *   dev tooling, never in a package's published `files`. A flaky-test or
  *   parallelism fix in a vitest config has zero consumer impact.
+ * - File must NOT be test-runner output (`.vitest/**`) — gitignored and
+ *   never published.
  */
 export function isConsumerAffectingFile(
   file: string,
@@ -252,8 +254,21 @@ export function isConsumerAffectingFile(
   if (isManifestPath(file)) return false
   if (isBenchPath(file)) return false
   if (isTestRunnerConfigPath(file)) return false
+  if (isTestRunnerOutputPath(file)) return false
   if (isRepoTsconfigPath(file)) return false
   return true
+}
+
+/**
+ * Output a test runner writes into a package: vitest's `.vitest/` directory
+ * (failure screenshots, attachments). It is gitignored and never in a
+ * published `files` array, so deleting a copy that was committed by mistake
+ * ships nothing (#4571).
+ *
+ * @internal exported for unit testing
+ */
+export function isTestRunnerOutputPath(file: string): boolean {
+  return /(^|\/)\.vitest\//.test(file.split('\\').join('/'))
 }
 
 /**

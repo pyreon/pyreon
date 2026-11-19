@@ -17,6 +17,7 @@ export function queryDeclKotlin(d: ExtDecl, ctx: EmitContext): string {
     p.queryKeyExpr !== undefined || p.urlExpr !== undefined || p.valueExpr !== undefined
       ? '""'
       : ctx.stringLiteral(p.queryKey)
+
   return `val ${ctx.ident(d.name)} = remember { PyreonQuery<${ctx.typeText(p.type)}>(queryKey = ${key}, staleMillis = ${p.staleMillis}L) }`
 }
 
@@ -46,13 +47,11 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: KotlinEmitContext): rea
   // prop/signal) re-keys the cache (`setKey`) + re-runs the fetch — matching the web's reactive
   // queryKey. Static queries use `Unit`.
   const runtimeQuery = d.queryKeyExpr !== undefined || d.urlExpr !== undefined || d.valueExpr !== undefined
-  if (runtimeQuery) {
-    const keyExpr = d.queryKeyExpr !== undefined ? ctx.expr(d.queryKeyExpr, 0) : ctx.stringLiteral(d.queryKey)
-    lines.push(`LaunchedEffect(${keyExpr}) {`)
-    lines.push(`  ${name}.setKey(${keyExpr})`)
-  } else {
-    lines.push(`LaunchedEffect(Unit) {`)
-  }
+  // `enabled` is a second effect key (the harness re-runs when it flips) and gates the request.
+  const enabled = d.enabled !== undefined ? ctx.expr(d.enabled, 0) : undefined
+  const keyExpr = d.queryKeyExpr !== undefined ? ctx.expr(d.queryKeyExpr, 0) : ctx.stringLiteral(d.queryKey)
+  lines.push(...kotlinEffectHeader(name, keyExpr, runtimeQuery, enabled))
+  const runStart = lines.length
   // The request lambda: everything it reads (a URL param, a header token, a body) is read each time it RUNS, so a
   // refetch sends current values. A failure is the runtime's to record (`error`), so the lambda just throws.
   lines.push(`  ${name}.run(launch = { __refetch -> ${ctx.coroutineScope()}.launch { __refetch() } }) {`)
@@ -71,15 +70,24 @@ export function queryLifecycleKotlin(decl: ExtDecl, ctx: KotlinEmitContext): rea
       )
       // The client's `use: [...]`, when present, is applied around the request with the web's onion semantics.
       for (const line of kotlinSendLines(args, d.middleware !== undefined ? ctx.expr(d.middleware, 0) : undefined)) lines.push(`    ${line}`)
-      lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(__response.body)`)
+      lines.push(`    PyreonJson.decode<${ctx.typeText(d.type)}>(__response.body)`)
     } else {
       lines.push(`    val body = withContext(Dispatchers.IO) { java.net.URL(${kotlinUrl}).readText() }`)
-      lines.push(`    PyreonFetchJson.decodeFromString<${ctx.typeText(d.type)}>(body)`)
+      lines.push(`    PyreonJson.decode<${ctx.typeText(d.type)}>(body)`)
     }
   }
   lines.push(`  }`)
+  if (enabled !== undefined) gateOnEnabled(lines, runStart, `  if (${enabled}) {`)
   lines.push(`}`)
+
   return lines
+}
+
+/** Wrap the request block (from `start` on) in the `enabled` guard, re-indented one level. */
+function gateOnEnabled(lines: string[], start: number, open: string): void {
+  for (let j = start; j < lines.length; j++) lines[j] = `  ${lines[j]}`
+  lines.splice(start, 0, open)
+  lines.push(`  }`)
 }
 
 /** The `DisposableEffect` that runs one `useStream` decl, KEYED on the request URL plus the restart tick; `onDispose` closes the connection. */
@@ -123,13 +131,13 @@ export function streamLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly
         ? 'reconnect = null'
         : `reconnect = PyreonStreamReconnect(attempts = ${d.reconnect.attempts}L, delay = ${d.reconnect.delay}L, maxDelay = ${d.reconnect.maxDelay}L, onEnd = ${d.reconnect.onEnd})`,
     )
-    const payload = d.sseText ? 'm.data' : `PyreonFetchJson.decodeFromString<${data}>(m.data)`
+    const payload = d.sseText ? 'm.data' : `PyreonJson.decode<${data}>(m.data)`
     out.push(
       `${pad}${name}.startSse(${request}, PyreonSseOptions(${opts.join(', ')})${d.accept !== undefined ? `, accept = ${ctx.stringLiteral(d.accept)}` : ''}${onEvent}) { m -> PyreonSseEvent(m.type, ${payload}, m.id) }`,
     )
   } else {
     const accept = d.accept !== undefined ? `, accept = ${ctx.stringLiteral(d.accept)}` : ''
-    out.push(`${pad}${name}.startNdjson(${request}${accept}${onEvent}) { line -> PyreonFetchJson.decodeFromString<${data}>(line) }`)
+    out.push(`${pad}${name}.startNdjson(${request}${accept}${onEvent}) { line -> PyreonJson.decode<${data}>(line) }`)
   }
   if (enabled !== undefined) {
     // The web's disabled branch: stop, read `idle`, keep what was received.
@@ -139,5 +147,14 @@ export function streamLifecycleKotlin(decl: ExtDecl, ctx: EmitContext): readonly
   }
   out.push(`  onDispose { ${name}.stop() }`)
   out.push(`}`)
+
   return out
+}
+
+/** The harness's opening: `LaunchedEffect` keyed on the runtime key (else `Unit`) plus `enabled` when present. */
+function kotlinEffectHeader(name: string, keyExpr: string, runtimeQuery: boolean, enabled: string | undefined): string[] {
+  const keys = [runtimeQuery ? keyExpr : 'Unit', ...(enabled !== undefined ? [enabled] : [])]
+  const open = `LaunchedEffect(${keys.join(', ')}) {`
+
+  return runtimeQuery ? [open, `  ${name}.setKey(${keyExpr})`] : [open]
 }

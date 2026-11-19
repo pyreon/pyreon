@@ -25,7 +25,8 @@
  * 3. THE REPORT IS A VIRTUAL MODULE, not a loader. Every view renders from the
  *    same scan, so five per-route loaders would re-derive identical data five
  *    times — and could disagree if the workspace changed mid-build. One blob,
- *    baked in, which is also what makes the output work from `file://`.
+ *    baked in, so the site needs no backend: any static host serves it. (It
+ *    still needs HTTP: from `file://` the browser blocks module scripts.)
  */
 import { existsSync, realpathSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -123,7 +124,13 @@ export async function buildStaticSite(options: BuildOptions): Promise<string> {
         // mis-steer a nested build (`ssr.entry` would replace the synthetic
         // entry). See `@pyreon/zero`'s `inner-pyreon-options.ts` for the split.
         pyreon({ devErrorPrinter: false }),
-        zero({ mode: 'ssg' }),
+        // The base goes to zero too, not only to Vite: zero's own `config`
+        // hook returns `base: config.base` (default `/`), which won over the
+        // inline `base` above, and its router reads the same value for links.
+        // Without it the module script carried the base but the prerendered
+        // modulepreloads and nav links did not, so a site built with
+        // `--base /demos/loom/` 404'd its chunks and rendered blank (#4391).
+        zero({ mode: 'ssg', ...(options.base ? { base: options.base } : {}) }),
         {
           name: 'loom:report',
           resolveId(id: string) {

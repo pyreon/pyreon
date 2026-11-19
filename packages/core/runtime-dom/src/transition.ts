@@ -1,5 +1,5 @@
-import type { Props, VNode, VNodeChild } from '@pyreon/core'
-import { createRef, Fragment, h, nativeCompat, onUnmount } from '@pyreon/core'
+import type { NativeItem, Props, VNode, VNodeChild } from '@pyreon/core'
+import { createRef, Fragment, h, nativeCompat, onMount, onUnmount } from '@pyreon/core'
 import { effect, runUntracked, signal } from '@pyreon/reactivity'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -85,6 +85,8 @@ function Transition(props: TransitionProps): VNodeChild {
   let pendingEnterCancel: (() => void) | null = null
   let pendingLeaveCancel: (() => void) | null = null
   let initialized = false
+  // Set on unmount: an enter queued in a microtask must not start afterwards.
+  let unmounted = false
 
   const applyEnter = (el: HTMLElement) => {
     pendingLeaveCancel?.()
@@ -94,7 +96,16 @@ function Transition(props: TransitionProps): VNodeChild {
     props.onBeforeEnter?.(el)
     el.classList.remove(cls.lf, cls.la, cls.lt)
     el.classList.add(cls.ef, cls.ea)
-    requestAnimationFrame(() => {
+    // The pending FRAME is cancellable too: an unmount (or a superseding
+    // transition) before it runs must not let it attach listeners and arm the
+    // safety timer on a detached element, which fired onAfterEnter after unmount.
+    // Installed BEFORE the request, so the frame's own cancel replaces it.
+    let frame = 0
+    pendingEnterCancel = () => {
+      cancelAnimationFrame(frame)
+      el.classList.remove(cls.ef, cls.ea)
+    }
+    frame = requestAnimationFrame(() => {
       el.classList.remove(cls.ef)
       el.classList.add(cls.et)
       let safetyTimer: ReturnType<typeof setTimeout> | null = null
@@ -137,7 +148,13 @@ function Transition(props: TransitionProps): VNodeChild {
     props.onBeforeLeave?.(el)
     el.classList.remove(cls.ef, cls.ea, cls.et)
     el.classList.add(cls.lf, cls.la)
-    requestAnimationFrame(() => {
+    // Cancellable before it runs — see applyEnter.
+    let frame = 0
+    pendingLeaveCancel = () => {
+      cancelAnimationFrame(frame)
+      el.classList.remove(cls.lf, cls.la)
+    }
+    frame = requestAnimationFrame(() => {
       el.classList.remove(cls.lf)
       el.classList.add(cls.lt)
       let safetyTimer: ReturnType<typeof setTimeout> | null = null
@@ -178,6 +195,7 @@ function Transition(props: TransitionProps): VNodeChild {
   // assumptions — passing null to applyEnter would crash on `.classList`.
   const MAX_REF_RETRIES = 16
   const safeApplyEnter = (retries = MAX_REF_RETRIES) => {
+    if (unmounted) return
     const el = ref.current
     if (el) {
       applyEnter(el)
@@ -212,14 +230,16 @@ function Transition(props: TransitionProps): VNodeChild {
       if (visible && props.appear) {
         queueMicrotask(() => safeApplyEnter())
       }
+
       return
     }
     handleVisibilityChange(visible)
   })
 
   onUnmount(() => {
-    // Cancel both pending transitions so neither fires its onAfterX
-    // callback on a now-detached element after the 5s safety window.
+    unmounted = true
+    // Cancel both pending transitions (a frame not yet run, or listeners and
+    // the safety timer) so neither fires its onAfterX on a detached element.
     pendingEnterCancel?.()
     pendingEnterCancel = null
     pendingLeaveCancel?.()
@@ -233,10 +253,18 @@ function Transition(props: TransitionProps): VNodeChild {
   // mountReactive instead of the null/primitive text-node fast-path, which
   // cannot later be swapped for a VNode when the element enters.
   const emptyFragment = h(Fragment, null)
+
   return (() => {
     if (!isMounted()) return emptyFragment
     if (!rawChild || typeof rawChild !== 'object' || Array.isArray(rawChild)) {
       return rawChild ?? null
+    }
+    // A COMPILED element child (`<Transition><div>…</div></Transition>` lowers
+    // the div to a `_tpl` item): it has an element, not props, so the ref is
+    // set from that element when it mounts (#4382). It used to fall into the
+    // component branch below, warn "child is a component" and never animate.
+    if ((rawChild as { __isNative?: boolean }).__isNative === true) {
+      return h(NativeTransitionChild, { item: rawChild as unknown as NativeItem, target: ref })
     }
     const vnode = rawChild as VNode
     // Only inject ref into DOM element children — component children need ref forwarding
@@ -246,10 +274,29 @@ function Transition(props: TransitionProps): VNodeChild {
           '[Pyreon] Transition child is a component. Wrap it in a DOM element for enter/leave animations to work.',
         )
       }
+
       return vnode
     }
+
     return { ...vnode, props: { ...vnode.props, ref } as Props }
   }) as unknown as VNode
+}
+
+/**
+ * Hands a compiled child's element to the transition's ref. Read at MOUNT, not
+ * captured: a re-shown `_tpl` item that was unmounted is rebuilt with a fresh
+ * element, so each mount reports the element it actually inserted.
+ */
+function NativeTransitionChild(props: { item: NativeItem; target: { current: HTMLElement | null } }): VNodeChild {
+  onMount(() => {
+    const el = props.item.el as HTMLElement
+    props.target.current = el
+    return () => {
+      if (props.target.current === el) props.target.current = null
+    }
+  })
+
+  return props.item as unknown as VNodeChild
 }
 
 // Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this

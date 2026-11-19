@@ -28,7 +28,7 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
     expect(out.warnings).toEqual([])
     expect(out.code).toContain('private func addOne()')
     expect(out.code).toContain('let x = 1')
-    expect(out.code).toContain('return x + 1')
+    expect(out.code).toContain('return pyreonAdd(x, 1)')
   })
 
   it('parses a single-expression concise arrow body as inline return', () => {
@@ -46,7 +46,7 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
     // params so call sites match JS-style unnamed-arg shape.
     // Return-inference PR: an unannotated value-returning fn now gets its
     // inferred `-> Int` (was a Void func that dropped the result).
-    expect(out.code).toContain('private func double(_ n: Int) -> Int { n * 2 }')
+    expect(out.code).toContain('private func double(_ n: Int) -> Int { pyreonMul(n, 2) }')
   })
 
   it('parses if-with-early-return in multi-statement body', () => {
@@ -100,7 +100,7 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
     // Phase 2.5: nextId++ emits an IIFE that preserves post-increment
     // semantics (old value AND side-effect). Pre-fix shape was
     // `nextId + 1` — wrong VALUE + dropped side-effect.
-    expect(out.code).toContain('todos = (todos + [{ let __v = nextId; nextId += 1; return __v }()])')
+    expect(out.code).toContain('todos = (todos + [{ let __v = nextId; nextId = pyreonAdd(nextId, 1); return __v }()])')
     expect(out.code).toContain('draft = ""')
   })
 
@@ -115,7 +115,7 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
       { target: 'kotlin' },
     )
     expect(out.warnings).toEqual([])
-    expect(out.code).toContain('fun addOne(n: Long): Long = n + 1L')
+    expect(out.code).toContain('fun addOne(n: Long): Long = pyreonAdd(n, 1L)')
   })
 })
 
@@ -145,7 +145,7 @@ describe('Parser-B — UnaryExpression (`!t.done`)', () => {
       { target: 'swift' },
     )
     expect(out.warnings).toEqual([])
-    expect(out.code).toContain('-n')
+    expect(out.code).toContain('pyreonNeg(n)')
   })
 })
 
@@ -263,7 +263,7 @@ describe('Bonus — UpdateExpression (`x++` post-increment)', () => {
     expect(out.warnings).toEqual([])
     // The IIFE captures the old value, mutates, returns. Order
     // matters: `__v` must be read BEFORE `n += 1`.
-    expect(out.code).toContain('{ let __v = n; n += 1; return __v }()')
+    expect(out.code).toContain('{ let __v = n; n = pyreonAdd(n, 1); return __v }()')
     expect(out.code).not.toContain('n + 1')
   })
 
@@ -284,7 +284,7 @@ describe('Bonus — UpdateExpression (`x++` post-increment)', () => {
       { target: 'kotlin' },
     )
     expect(out.warnings).toEqual([])
-    expect(out.code).toContain('n++')
+    expect(out.code).toContain('n = pyreonAdd(n, 1L)')
     expect(out.code).not.toMatch(/\bn \+ 1\b/)
   })
 })

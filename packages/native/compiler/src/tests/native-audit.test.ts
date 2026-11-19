@@ -1,6 +1,6 @@
 // auditNative — project scan for multiplatform (PMTC) build hazards in
-// `.tsx` files that import `@pyreon/primitives`. Powers `pyreon doctor
-// --check-native`.
+// `.tsx` files that import `@pyreon/primitives`. Powers the `pyreon doctor`
+// native-audit gate (`--only native-audit`).
 
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'

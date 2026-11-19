@@ -275,10 +275,9 @@ export {
 
 // ─── Document Primitives ─────────────────────────────────────────────────────
 // The `Doc*`-prefixed JSX primitives (the rocketstyle-based components that
-// render in the browser AND export to 14+ formats via `extractDocNode`).
+// render in the browser AND export to 20 formats via `extractDocNode`).
 
 export type {
-  DocumentExport,
   DocumentExportOptions,
   DocumentTheme,
 } from '@pyreon/document-primitives'
@@ -302,7 +301,6 @@ export {
   DocTable,
   DocText,
   DocumentPreview,
-  createDocumentExport,
   documentTheme,
   extractDocNode,
 } from '@pyreon/document-primitives'
