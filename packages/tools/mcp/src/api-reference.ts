@@ -4408,7 +4408,9 @@ const persister = createSyncStoragePersister({ storage: localStorage })
     notes: `Drop-in replacement for \`<QueryClientProvider>\` that ALSO restores the query cache from a persister on mount and keeps it persisted on every change — the offline / reload-survival story. Provides both the \`QueryClient\` AND the reactive \`isRestoring\` flag, so descendant \`useQuery\` calls DEFER their first fetch until restoration completes (no redundant network request for data the cache is about to restore). Import from \`@pyreon/query/persist\`. Built on TanStack's framework-agnostic \`persistQueryClient\` engine; pair with \`createSyncStoragePersister({ storage: localStorage })\`. See also: useIsRestoring, QueryClientProvider, HydrationBoundary.`,
     mistakes: `- Using BOTH \`<QueryClientProvider>\` and \`<PersistQueryClientProvider>\` — the persist provider already provides the client; nest only one
 - Expecting synchronous restore — restoration is async (even sync localStorage resolves on a microtask). Gate UI on \`useIsRestoring()\` during the window
-- A heavy \`staleTime: 0\` default — restored queries immediately refetch on subscribe; set a \`staleTime\` so the restored cache is treated as fresh`,
+- A heavy \`staleTime: 0\` default — restored queries immediately refetch on subscribe; set a \`staleTime\` so the restored cache is treated as fresh
+- Expecting an offline mutation to be sent after a reload without registering its function — a PAUSED mutation is persisted (variables + \`mutationKey\`) but a function cannot be serialised: give it a \`mutationKey\` and register \`client.setMutationDefaults(key, { mutationFn })\` at module load. The provider then resumes persisted paused mutations once restoration settles. A mutation that was never paused (made online) is not persisted, and one that already resumed is gone if the page dies mid-request (at-most-once, no retry queue, no ordering guarantee beyond TanStack's creation order)
+- Treating \`navigator.onLine\` as proof of reachability — \`onlineManager\` follows the browser online/offline events, which only report "a network interface is up"; a captive portal or a dead backend still looks online, so the mutation is sent and fails normally (default \`retry: 0\` for mutations)`,
   },
 
   'query/useIsRestoring': {
@@ -8009,9 +8011,9 @@ get_api_client({ search: 'order' })`,
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
-    notes: `Fetch a canonical "how do I do X" pattern body from \`docs/src/content/docs/patterns/\` (the same files the docs site renders — one source, two surfaces). 17 foundational patterns ship: \`controllable-state\`, \`data-fetching\`, \`dev-warnings\`, \`dynamic-fields\`, \`event-listeners\`, \`form-fields\`, \`imperative-toasts\`, \`islands\`, \`keyed-lists\`, \`multiplatform\`, \`reactive-context\`, \`reactive-spread\`, \`routing-setup\`, \`signal-writes\`, \`ssr-safe-hooks\`, \`state-management\`, \`styler-theming\`. Omit \`name\` to list available patterns. Drop a new \`docs/src/content/docs/patterns/<slug>.md\` file to add one — picked up on next call (no code change, no bundling step in dev; \`scripts/copy-content.ts\` mirrors it into this package's bundled \`content/patterns/\` for the published \`bunx @pyreon/mcp\` consumer case at build time). See also: get_anti_patterns.`,
+    notes: `Fetch a canonical "how do I do X" pattern body from \`docs/src/content/docs/patterns/\` (the same files the docs site renders — one source, two surfaces). 18 foundational patterns ship: \`controllable-state\`, \`data-fetching\`, \`dev-warnings\`, \`dynamic-fields\`, \`event-listeners\`, \`form-fields\`, \`imperative-toasts\`, \`islands\`, \`keyed-lists\`, \`multiplatform\`, \`offline-and-installable-apps\`, \`reactive-context\`, \`reactive-spread\`, \`routing-setup\`, \`signal-writes\`, \`ssr-safe-hooks\`, \`state-management\`, \`styler-theming\`. Omit \`name\` to list available patterns. Drop a new \`docs/src/content/docs/patterns/<slug>.md\` file to add one — picked up on next call (no code change, no bundling step in dev; \`scripts/copy-content.ts\` mirrors it into this package's bundled \`content/patterns/\` for the published \`bunx @pyreon/mcp\` consumer case at build time). See also: get_anti_patterns.`,
     mistakes: `- Passing a name in CamelCase or PascalCase — pattern names are kebab-case (\`controllable-state\`, not \`ControllableState\`). A wrong-case name 404s.
-- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 17 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a \`get_pattern\` slug.
+- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 18 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a \`get_pattern\` slug.
 - Confusing patterns with anti-patterns — \`get_pattern\` returns "how to do X correctly"; \`get_anti_patterns\` returns "what to avoid". They're complementary.`,
   },
 
@@ -9899,10 +9901,47 @@ registerServiceWorker({
     if (confirm('A new version is available. Reload?')) activate()
   },
 })`,
-    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit \`Cache-Control: public\` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
+    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit \`Cache-Control: public\` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. SPA output also precaches the app shell and answers every failed navigation with it; \`pwa.offlineFallback\` (SSG) names a prerendered page used as the shell for routes never prerendered or visited. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
     mistakes: `- Expecting it to register in \`vite dev\` — it no-ops outside production builds on purpose (a caching worker fights HMR)
 - Setting \`pwa.skipWaiting: true\` without understanding it swaps the asset cache under running tabs — prefer \`onUpdate\` + \`activate()\`
 - Serving \`sw.js\` with a long or immutable Cache-Control from a custom host — the worker script is the update channel; zero's adapters serve it must-revalidate`,
+  },
+
+  'zero/useServiceWorkerUpdate': {
+    signature: 'function useServiceWorkerUpdate(): { updateReady: () => boolean; apply: () => void }',
+    example: `import { useServiceWorkerUpdate } from '@pyreon/zero/client'
+
+const update = useServiceWorkerUpdate()
+<Show when={() => update.updateReady()}>
+  <button onClick={() => update.apply()}>New version available. Reload</button>
+</Show>`,
+    notes: 'Reactive "a new version is waiting" state over `registerServiceWorker()`: `updateReady()` flips once a new worker finished installing (only when `pwa.skipWaiting` is off); `apply()` activates it and reloads into the new version. Always `false` on the server and in development. Needs `registerServiceWorker()` called once in the client entry; works with or without its `onUpdate` option. Exported from `@pyreon/zero` and `@pyreon/zero/client`. See also: registerServiceWorker, useInstallPrompt.',
+    mistakes: `- Using it without calling \`registerServiceWorker()\` — nothing ever sets \`updateReady\`
+- Reading \`update.updateReady\` without calling it in JSX — it is an accessor; use \`() => update.updateReady()\`
+- Expecting other open tabs to reload on \`apply()\` — only the calling tab reloads; the others keep running the old page until closed or reloaded`,
+  },
+
+  'zero/useInstallPrompt': {
+    signature: `function useInstallPrompt(): { canInstall: () => boolean; prompt: () => Promise<'accepted' | 'dismissed' | 'unavailable'>; isInstalled: () => boolean }`,
+    example: `import { useInstallPrompt } from '@pyreon/zero/client'
+
+const install = useInstallPrompt()
+<Show when={() => install.canInstall() && !install.isInstalled()}>
+  <button onClick={() => install.prompt()}>Install app</button>
+</Show>`,
+    notes: `Install-prompt state for an installable PWA (Chromium: Chrome, Edge, Samsung Internet). ONE shared, refcounted set of \`beforeinstallprompt\` / \`appinstalled\` / \`display-mode: standalone\` listeners regardless of how many callers; the event is held (and the browser's own infobar suppressed) until the app calls \`prompt()\` from its own button. \`prompt()\` resolves \`'unavailable'\` when the browser offered nothing (iOS Safari and Firefox never do), and the event is single-use. \`isInstalled()\` is true in standalone display mode, iOS \`navigator.standalone\`, or after \`appinstalled\`. Inert on the server. Call it early (root layout): the browser fires \`beforeinstallprompt\` once per page load and an event fired while no caller is mounted is missed. Lives in \`@pyreon/zero\` (not \`@pyreon/hooks\`) because it is the install half of the same PWA client surface as \`registerServiceWorker\`. See also: registerServiceWorker, useServiceWorkerUpdate.`,
+    mistakes: `- Mounting it only on a settings page — \`beforeinstallprompt\` fires early, once per page load; call it in the root layout
+- Expecting \`canInstall()\` on iOS Safari — it never fires there; document "Share, Add to Home Screen" instead
+- Calling \`prompt()\` outside a user gesture — the browser rejects it; call it from a click handler`,
+  },
+
+  'zero/unregisterServiceWorkers': {
+    signature: 'function unregisterServiceWorkers(cacheName?: string): Promise<number>',
+    example: `import { unregisterServiceWorkers } from '@pyreon/zero/client'
+
+if (import.meta.env.DEV) void unregisterServiceWorkers()`,
+    notes: `Unregisters every service worker of the origin and deletes this app's caches (names starting with \`cacheName\`, default \`'pyreon'\`); resolves the number of workers removed. The escape hatch for the stale-worker trap: a production build previewed on the same origin (\`localhost:PORT\`) as a later dev server leaves the old worker serving cached modules over HMR. Dev never registers a worker but cannot remove one it did not install. See also: registerServiceWorker.`,
+    mistakes: '- Calling it in production code paths — it removes the offline cache; use it from a dev entry or a "reset app" action',
   },
 
   'zero/i18nRouting': {

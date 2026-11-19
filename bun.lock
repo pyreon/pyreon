@@ -648,6 +648,27 @@
         "vite": "^8.3.8",
       },
     },
+    "examples/fixtures/pwa-offline": {
+      "name": "@pyreon/example-pwa-offline",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/head": "workspace:*",
+        "@pyreon/hooks": "workspace:*",
+        "@pyreon/query": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.4.4",
+        "typescript": "^6.0.3",
+        "vite": "^8.3.8",
+      },
+    },
     "examples/fixtures/ssr-showcase": {
       "name": "@pyreon/example-ssr-showcase",
       "version": "0.50.0",
@@ -4193,6 +4214,8 @@
     "@pyreon/example-playground": ["@pyreon/example-playground@workspace:examples/fixtures/playground"],
 
     "@pyreon/example-preact-compat": ["@pyreon/example-preact-compat@workspace:examples/compat/preact"],
+
+    "@pyreon/example-pwa-offline": ["@pyreon/example-pwa-offline@workspace:examples/fixtures/pwa-offline"],
 
     "@pyreon/example-react-compat": ["@pyreon/example-react-compat@workspace:examples/compat/react"],
 

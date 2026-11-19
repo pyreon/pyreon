@@ -135,7 +135,7 @@ A `token-budget.test.ts` regression gate keeps `tools/list` and the index DENSIT
 get_pattern({ name: 'reactive-spread' })
 ```
 
-Serves `docs/src/content/docs/patterns/<name>.md` from the monorepo, or the package's **bundled snapshot** when run in a consumer (see "Consumer usage" below). Foundational patterns today: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Add a new pattern by dropping a new `docs/src/content/docs/patterns/<slug>.md` file.
+Serves `docs/src/content/docs/patterns/<name>.md` from the monorepo, or the package's **bundled snapshot** when run in a consumer (see "Consumer usage" below). Foundational patterns today: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `offline-and-installable-apps`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Add a new pattern by dropping a new `docs/src/content/docs/patterns/<slug>.md` file.
 
 ### `migrate_react`
 

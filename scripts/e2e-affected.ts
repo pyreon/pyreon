@@ -305,6 +305,19 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // Offline + installable apps in a real browser: the generated worker, the
+    // persisted query cache and offline mutations, the update flow.
+    name: 'pwa-offline',
+    script: 'test:e2e:pwa-offline',
+    triggers: [
+      'packages/zero/zero/src/pwa',
+      'packages/fundamentals/query/src/persist',
+      'examples/fixtures/pwa-offline/',
+      'e2e/pwa-offline.spec.ts',
+      'e2e-configs/pwa-offline.config.ts',
+    ],
+  },
+  {
     // Islands-only pages (#4371): zero's own fixture as a real SSG build
     // served per route, a real SSR build run by `node`, and the dev server
     // (HMR). Built from zero's SOURCE by the fixture's build.ts / dev.ts.

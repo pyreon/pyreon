@@ -83,7 +83,7 @@ describe('gen-docs — zero snapshot', () => {
     // up as a snapshot failure. Bump intentionally when adding a new
     // API entry. The `gen-docs --check` CI gate catches the same drift
     // from the OTHER direction (rendered file out of sync with source).
-    expect(keys.length).toBe(65)
+    expect(keys.length).toBe(68)
     expect(keys).toContain('zero/https')
     expect(keys).toContain('zero/hydrate')
     expect(keys).toContain('zero/startClientLazy')
