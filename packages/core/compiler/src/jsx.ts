@@ -7491,8 +7491,11 @@ export function transformJSX_JS(
 
     if (holesOut) holesOut.push(...holeNodes)
 
-    // Third `_tpl` argument: this template is a component child that may be re-mounted.
-    const remountArg = remountable ? ', 1' : ''
+    // Third `_tpl` argument, a bit set: 1 = a component child that may be
+    // re-mounted, 2 = rooted at a bare SVG element (parsed inside an `<svg>`
+    // wrapper by the runtime — see `SVG_ROOT_TAGS`).
+    const tplFlags = (remountable ? 1 : 0) | (SVG_ROOT_TAGS.has(jsxTagName(node)) ? 2 : 0)
+    const remountArg = tplFlags !== 0 ? `, ${tplFlags}` : ''
     if (refLines.length === 0 && bindLines.length === 0 && disposerNames.length === 0) {
       return `_tpl("${escaped}", () => null${remountArg})`
     }
@@ -8040,6 +8043,34 @@ const VOID_ELEMENTS = new Set([
  * element's children, so the template has nothing to bake. Mirrored by
  * `is_tpl_property_only_attr` in the Rust backend.
  */
+/**
+ * Every SVG element name (SVG 1.1 and SVG 2, case-sensitive) that is NOT also an
+ * HTML element name. A template ROOTED at one of these is SVG content, and its
+ * `_tpl` call carries flag 2 so the runtime parses it inside an `<svg>` wrapper:
+ * `innerHTML` runs the HTML parser, which enters SVG foreign content only at a
+ * literal `<svg>`, so a string rooted at `<g>` would otherwise parse as inert
+ * HTML elements (the `@pyreon/flow` edge bug). The names HTML shares (`a`,
+ * `script`, `style`, `title`, `font`) are left out — a template rooted at one is
+ * almost always the HTML element — and `svg` opens SVG content by itself. The
+ * list has to be complete: a missing name (`feDropShadow` was one) parses as an
+ * inert HTML element. Deciding this here keeps the table out of every client
+ * bundle. The Rust backend carries the same list (`SVG_ROOT_TAGS` in lib.rs).
+ */
+const SVG_ROOT_TAGS = new Set([
+  'altGlyph', 'altGlyphDef', 'altGlyphItem', 'animate', 'animateColor', 'animateMotion',
+  'animateTransform', 'circle', 'clipPath', 'color-profile', 'cursor', 'defs', 'desc', 'discard',
+  'ellipse', 'feBlend', 'feColorMatrix', 'feComponentTransfer', 'feComposite',
+  'feConvolveMatrix', 'feDiffuseLighting', 'feDisplacementMap', 'feDistantLight',
+  'feDropShadow', 'feFlood', 'feFuncA', 'feFuncB', 'feFuncG', 'feFuncR', 'feGaussianBlur',
+  'feImage', 'feMerge', 'feMergeNode', 'feMorphology', 'feOffset', 'fePointLight',
+  'feSpecularLighting', 'feSpotLight', 'feTile', 'feTurbulence', 'filter', 'font-face',
+  'font-face-format', 'font-face-name', 'font-face-src', 'font-face-uri', 'foreignObject', 'g',
+  'glyph', 'glyphRef', 'hkern', 'image', 'line', 'linearGradient', 'marker', 'mask',
+  'metadata', 'missing-glyph', 'mpath', 'path', 'pattern', 'polygon', 'polyline',
+  'radialGradient', 'rect', 'set', 'stop', 'switch', 'symbol', 'text', 'textPath', 'tref',
+  'tspan', 'use', 'view', 'vkern',
+])
+
 const TPL_PROPERTY_ONLY_ATTRS = new Set([
   'innerHTML',
   'textContent',

@@ -37,7 +37,9 @@ export default defineNodeConfig({
   // that dies mid-request — reachable only by breaking the toolchain, and
   // never on the runner that gates this. Same class as the browser-only
   // exclusions elsewhere: covered where it can be, not faked where it cannot.
-  coverageExclude: ['src/kotlin-daemon.ts'],
+  // `exit-cleanup.ts` acts only when a process ends; `exit-cleanup.test.ts`
+  // drives it in child processes, which this process's coverage cannot see.
+  coverageExclude: ['src/kotlin-daemon.ts', 'src/exit-cleanup.ts'],
   overrides: {
     test: {
       // Warm Kotlin compiler JVMs for the whole run, one per worker (see
