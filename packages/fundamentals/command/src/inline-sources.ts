@@ -12,8 +12,6 @@ export interface Inline {
   results(id: string): readonly Command[]
   loading(): boolean
   error(): unknown
-  /** Abort what is pending, keep the rows. */
-  stop(): void
   /** Abort and forget everything. */
   reset(): void
 }
@@ -67,9 +65,6 @@ export function createInline(debounceMs: number): Inline {
       }
 
       return undefined
-    },
-    stop() {
-      for (const source of sources.values()) source.cancel()
     },
     reset() {
       for (const [id, source] of sources) drop(id, source)
