@@ -32,14 +32,6 @@ class Memo<V extends { dispose(): void }> {
       }
     }
   }
-
-  clear(): void {
-    this.sweep(new Set())
-  }
-
-  get size(): number {
-    return this.map.size
-  }
 }
 
 /** A string that changes exactly when the layout of these occurrences would (their keys, instants and shown times). */
