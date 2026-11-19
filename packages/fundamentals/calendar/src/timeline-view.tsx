@@ -17,11 +17,14 @@ const PAD = 4
 
 const rowHeight = (row: TimelineRow): number => row.lanes * LANE + PAD * 2
 
-function Block<Meta>(props: { block: TimelineBlock; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ViewProps<Meta> }): VNodeChild {
-  const o = props.occurrences().get(props.block.occurrenceKey)
+function Block<Meta>(props: { block: () => TimelineBlock; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ViewProps<Meta> }): VNodeChild {
+  const first = props.block()
+  const o = props.occurrences().get(first.occurrenceKey)
   if (o === undefined) return null
   const calendar = props.view.calendar
-  const b = props.block
+
+  // the block is read through an accessor: a keyed block is made once and its place changes under it (a new window, an edit)
+  const b = (): TimelineBlock => props.block()
   const state = editState(calendar, o.key)
 
   const label = (): string => eventLabel(o as EventOccurrence, calendar.locale(), calendar.messages())
@@ -30,20 +33,20 @@ function Block<Meta>(props: { block: TimelineBlock; occurrences: () => Map<strin
     <button
       type="button"
       class="pcal-event pcal-tl-block"
-      style={`inset-inline-start:${(b.left * 100).toFixed(4)}%;inline-size:${(b.width * 100).toFixed(4)}%;inset-block-start:${PAD + b.lane * LANE}px;block-size:${LANE - 4}px${colorStyle(o.event.color)}`}
+      style={() => `inset-inline-start:${(b().left * 100).toFixed(4)}%;inline-size:${(b().width * 100).toFixed(4)}%;inset-block-start:${PAD + b().lane * LANE}px;block-size:${LANE - 4}px${colorStyle(o.event.color)}`}
       data-key={o.key}
-      data-resource={b.resourceId}
+      data-resource={first.resourceId}
       data-all-day={o.allDay ? '' : undefined}
-      data-continues-before={b.continuesBefore ? '' : undefined}
-      data-continues-after={b.continuesAfter ? '' : undefined}
+      data-continues-before={() => (b().continuesBefore ? '' : undefined)}
+      data-continues-after={() => (b().continuesAfter ? '' : undefined)}
       data-editable={state.editable}
       data-dragging={state.dragging}
       data-pending={state.pending}
       aria-label={() => label()}
       onClick={() => calendar.eventClick(o.key)}
     >
-      {props.view.renderEvent === undefined ? <span class="pcal-event-title">{o.title}</span> : props.view.renderEvent({ occurrence: o, label: label(), continuesBefore: b.continuesBefore, continuesAfter: b.continuesAfter })}
-      <Handles calendar={calendar} occurrenceKey={o.key} startEdge={!b.continuesBefore} endEdge={!b.continuesAfter} />
+      {props.view.renderEvent === undefined ? <span class="pcal-event-title">{o.title}</span> : props.view.renderEvent({ occurrence: o, label: label(), continuesBefore: first.continuesBefore, continuesAfter: first.continuesAfter })}
+      <Handles calendar={calendar} occurrenceKey={o.key} startEdge={!first.continuesBefore} endEdge={!first.continuesAfter} />
     </button>
   )
 }
@@ -80,7 +83,7 @@ function Row<Meta>(props: { id: string; row: () => TimelineRow; occurrences: () 
       <div class="pcal-tl-lane" role="gridcell" data-resource={r.resource.id} style={`--pcal-tl-days:${props.days}`}>
         {() => (selected() === undefined ? null : <div class="pcal-tl-selection" aria-hidden="true" style={selected()} />)}
         <For each={() => props.row().blocks} by={(b: TimelineBlock) => b.key}>
-          {(block: TimelineBlock) => <Block block={block} occurrences={props.occurrences} view={props.view} />}
+          {(block: TimelineBlock) => <Block block={() => props.row().blocks.find((x) => x.key === block.key) ?? block} occurrences={props.occurrences} view={props.view} />}
         </For>
       </div>
     </div>
