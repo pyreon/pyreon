@@ -95,6 +95,9 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     'edge-runtimes': 150,
     'zero-hmr': 10,
     'zero-islands': 7,
+    // Not yet measured in CI: an SSG and an SSR build of a five-route fixture
+    // (~2s each), a dev server, 11 specs; ~9s locally.
+    'zero-islands-only': 12,
     'app-showcase': 38,
     compat: 24,
     'sync-yjs-demo': 10,

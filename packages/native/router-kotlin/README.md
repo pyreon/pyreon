@@ -1,6 +1,8 @@
 # @pyreon/native-router-kotlin
 
-> **EXPERIMENTAL.** Kotlin runtime implementing [`@pyreon/router`](../../core/router/)'s API surface on top of Compose state primitives. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for why Kotlin source ships through npm and how a Gradle build resolves it. The Android twin of [`@pyreon/native-router-swift`](../router-swift/).
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
+Kotlin runtime implementing [`@pyreon/router`](../../core/router/)'s API surface on top of Compose state primitives. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for why Kotlin source ships through npm and how a Gradle build resolves it. The Android twin of [`@pyreon/native-router-swift`](../router-swift/).
 
 ## Installation
 

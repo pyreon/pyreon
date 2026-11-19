@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type ViteManifest,
   collectStaticChunkClosure,
+  computeClientStartPreload,
   computeEntryHrefs,
   computeRoutePreloadHrefs,
   joinBase,
@@ -285,5 +286,49 @@ describe('joinBase / renderModulePreloadLinks', () => {
 
   it('renders nothing for an empty list', () => {
     expect(renderModulePreloadLinks([])).toBe('')
+  })
+})
+
+describe('computeClientStartPreload — the sets a server-rendered page preloads (#4371)', () => {
+  const lazyEntryManifest: ViteManifest = {
+    'index.html': {
+      file: 'assets/index-E.js',
+      isEntry: true,
+      imports: ['_shared-S.js'],
+      dynamicImports: ['../../virtual:zero/routes', 'node_modules/@pyreon/zero/lib/client.js', 'node_modules/@pyreon/zero/lib/_chunks/client-islands-I.js'],
+    },
+    '_shared-S.js': { file: 'assets/shared-S.js' },
+    '../../virtual:zero/routes': { file: 'assets/routes-R.js', isDynamicEntry: true, imports: ['_shared-S.js', '_router-X.js'] },
+    'node_modules/@pyreon/zero/lib/client.js': { file: 'assets/client-C.js', isDynamicEntry: true, imports: ['_router-X.js'] },
+    '_router-X.js': { file: 'assets/router-X.js' },
+    'node_modules/@pyreon/zero/lib/_chunks/client-islands-I.js': { file: 'assets/client-islands-I.js', isDynamicEntry: true, imports: ['_shared-S.js'] },
+  }
+
+  it('app: the lazy entry app chunks; islands: the islands runtime; minus the entry graph and the template preloads', () => {
+    const template = '<link rel="modulepreload" crossorigin href="/assets/router-X.js">'
+    expect(computeClientStartPreload(lazyEntryManifest, template, '/')).toEqual({
+      app: ['/assets/client-C.js', '/assets/routes-R.js'],
+      islands: ['/assets/client-islands-I.js'],
+    })
+  })
+
+  it('the islands runtime is found as the islands-runtime group chunk too', () => {
+    const grouped: ViteManifest = {
+      'index.html': { file: 'assets/index-E.js', isEntry: true, dynamicImports: ['_islands-runtime-G1.js'] },
+      '_islands-runtime-G1.js': { file: 'assets/islands-runtime-G1.js' },
+    }
+    expect(computeClientStartPreload(grouped, '', '/').islands).toEqual(['/assets/islands-runtime-G1.js'])
+  })
+
+  it('base-prefixed', () => {
+    expect(computeClientStartPreload(lazyEntryManifest, '', '/docs/').app).toContain('/docs/assets/routes-R.js')
+  })
+
+  it('a non-lazy entry (startClient) has no app set: its app is in the entry graph already', () => {
+    const eager: ViteManifest = {
+      'index.html': { file: 'assets/index-E.js', isEntry: true, imports: ['_router-X.js'] },
+      '_router-X.js': { file: 'assets/router-X.js' },
+    }
+    expect(computeClientStartPreload(eager, '', '/')).toEqual({ app: [], islands: [] })
   })
 })

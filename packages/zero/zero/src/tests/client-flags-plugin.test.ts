@@ -8,7 +8,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { clientFlagsPlugin, isSpaEverywhere } from '../client-flags-plugin'
+import { allPagesIslandsOnly, clientFlagsPlugin, isSpaEverywhere, mayDeclareIslandsOnly } from '../client-flags-plugin'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -98,31 +98,130 @@ describe('isSpaEverywhere — edge inputs', () => {
 })
 
 describe('clientFlagsPlugin', () => {
-  type ConfigHook = (c: object, e: { command: string; mode: string }) => { define?: Record<string, string> } | undefined
+  type ConfigHook = (c: object, e: { command: string; mode: string; isSsrBuild?: boolean }) => Promise<{ define?: Record<string, string>; build?: unknown } | undefined>
 
-  it('defines __ZERO_HYDRATE__ false for an spa-everywhere build, true otherwise', () => {
+  it('defines __ZERO_HYDRATE__ false for an spa-everywhere build, true otherwise', async () => {
     const root = project({ 'index.tsx': PAGE })
     const spa = clientFlagsPlugin({}, 'spa').config as unknown as ConfigHook
-    expect(spa({ root }, { command: 'build', mode: 'production' })?.define?.__ZERO_HYDRATE__).toBe('false')
+    expect((await spa({ root }, { command: 'build', mode: 'production' }))?.define?.__ZERO_HYDRATE__).toBe('false')
     const ssr = clientFlagsPlugin({}, 'ssr').config as unknown as ConfigHook
-    expect(ssr({ root }, { command: 'build', mode: 'production' })?.define?.__ZERO_HYDRATE__).toBe('true')
+    expect((await ssr({ root }, { command: 'build', mode: 'production' }))?.define?.__ZERO_HYDRATE__).toBe('true')
   })
 
-  it('never defines it in dev', () => {
+  it('never defines it in dev', async () => {
     const root = project({ 'index.tsx': PAGE })
     const spa = clientFlagsPlugin({}, 'spa').config as unknown as ConfigHook
-    expect(spa({ root }, { command: 'serve', mode: 'development' })).toBeUndefined()
+    expect(await spa({ root }, { command: 'serve', mode: 'development' })).toBeUndefined()
   })
 
-  it('falls back to process.cwd() when the vite config has no root', () => {
+  it('falls back to process.cwd() when the vite config has no root', async () => {
     const root = project({ 'index.tsx': PAGE })
     const cwd = vi.spyOn(process, 'cwd').mockReturnValue(root)
     try {
       const spa = clientFlagsPlugin({}, 'spa').config as unknown as ConfigHook
-      expect(spa({}, { command: 'build', mode: 'production' })?.define?.__ZERO_HYDRATE__).toBe('false')
+      expect((await spa({}, { command: 'build', mode: 'production' }))?.define?.__ZERO_HYDRATE__).toBe('false')
       expect(cwd).toHaveBeenCalled()
     } finally {
       cwd.mockRestore()
     }
+  })
+})
+
+/**
+ * `__ZERO_ISLANDS_ONLY__` (#4371) — `false` compiles the islands-only page
+ * support out of `startClient`. A wrong `false` would leave a marked page
+ * hydrated as an app with no loader data, so every doubt answers `true`.
+ */
+describe('mayDeclareIslandsOnly', () => {
+  it('is false when no route exports hydrate, even when islands mention it', () => {
+    const root = project({
+      'index.tsx': PAGE,
+      'demo.tsx': `${PAGE}const C = island(() => import('./C'), { name: 'C', hydrate: 'load' })\n`,
+    })
+    expect(mayDeclareIslandsOnly(join(root, 'src/routes'))).toBe(false)
+  })
+
+  it('is true for a page or a layout that exports hydrate, at any depth', () => {
+    expect(mayDeclareIslandsOnly(join(project({ 'a/b/page.tsx': `${PAGE}export const hydrate = 'islands'\n` }), 'src/routes'))).toBe(true)
+    expect(
+      mayDeclareIslandsOnly(join(project({ '_layout.tsx': `export function layout() { return null }\nexport const hydrate = 'app'\n` }), 'src/routes')),
+    ).toBe(true)
+  })
+
+  it('is false with no routes directory, true when the tree cannot be read', () => {
+    const root = project({})
+    expect(mayDeclareIslandsOnly(join(root, 'src/routes-missing'))).toBe(false)
+    const file = join(root, 'not-a-dir')
+    writeFileSync(file, '')
+    expect(mayDeclareIslandsOnly(file)).toBe(true)
+  })
+
+  it('a symlink answers true (its target is not read)', () => {
+    const root = project({ 'index.tsx': PAGE })
+    symlinkSync(join(root, 'src/routes/index.tsx'), join(root, 'src/routes/link.tsx'))
+    expect(mayDeclareIslandsOnly(join(root, 'src/routes'))).toBe(true)
+  })
+
+  it('the plugin defines it per build, never in dev', async () => {
+    type ConfigHook = (c: object, e: { command: string; mode: string; isSsrBuild?: boolean }) => Promise<{ define?: Record<string, string>; build?: unknown } | undefined>
+    const none = project({ 'index.tsx': PAGE })
+    const some = project({ 'index.tsx': `${PAGE}export const hydrate = 'islands'\n` })
+    const hook = clientFlagsPlugin({}, 'ssg').config as unknown as ConfigHook
+    expect((await hook({ root: none }, { command: 'build', mode: 'production' }))?.define?.__ZERO_ISLANDS_ONLY__).toBe('false')
+    expect((await hook({ root: some }, { command: 'build', mode: 'production' }))?.define?.__ZERO_ISLANDS_ONLY__).toBe('true')
+    expect(await hook({ root: some }, { command: 'serve', mode: 'development' })).toBeUndefined()
+  })
+})
+
+/**
+ * `__ZERO_APP_PAGES__` (#4371) — `false` when EVERY page is islands-only:
+ * `startClientLazy`'s app path (and the router) compiles out of the client
+ * build, and the client routes module is empty. A wrong `false` would leave
+ * an app page with no app, so every doubt answers `true`. With any
+ * islands-only page, the client build groups the islands runtime into one
+ * chunk.
+ */
+describe('every page islands-only', () => {
+  type Hook = (c: object, e: { command: string; mode: string; isSsrBuild?: boolean }) => Promise<
+    { define?: Record<string, string>; build?: { rolldownOptions?: { output?: { codeSplitting?: { groups?: { name: string; test: RegExp }[] } } } } } | undefined
+  >
+  const build = { command: 'build', mode: 'production' }
+  const LAYOUT = 'export function layout() { return null }\n'
+
+  it('true when a root layout declares islands, or a rule covers every page', async () => {
+    const byLayout = project({ '_layout.tsx': `${LAYOUT}export const hydrate = 'islands'\n`, 'index.tsx': PAGE, 'a/b.tsx': PAGE, '_404.tsx': PAGE })
+    expect(await allPagesIslandsOnly({}, 'ssg', join(byLayout, 'src/routes'))).toBe(true)
+    const byRule = project({ 'index.tsx': PAGE, 'a/b.tsx': PAGE })
+    expect(await allPagesIslandsOnly({ routeRules: { '/**': { hydrate: 'islands' } } }, 'ssg', join(byRule, 'src/routes'))).toBe(true)
+  })
+
+  it('false when one page opts back to app, when a 404 is only covered by a rule, or with no pages', async () => {
+    const optOut = project({ '_layout.tsx': `${LAYOUT}export const hydrate = 'islands'\n`, 'index.tsx': PAGE, 'live.tsx': `${PAGE}export const hydrate = 'app'\n` })
+    expect(await allPagesIslandsOnly({}, 'ssg', join(optOut, 'src/routes'))).toBe(false)
+    const notFound = project({ 'index.tsx': PAGE, '_404.tsx': PAGE })
+    expect(await allPagesIslandsOnly({ routeRules: { '/**': { hydrate: 'islands' } } }, 'ssg', join(notFound, 'src/routes'))).toBe(false)
+    expect(await allPagesIslandsOnly({}, 'ssg', join(project({}), 'src/routes'))).toBe(false)
+  })
+
+  it('the plugin defines __ZERO_APP_PAGES__ and groups the islands runtime in the client build only', async () => {
+    const all = project({ '_layout.tsx': `${LAYOUT}export const hydrate = 'islands'\n`, 'index.tsx': PAGE })
+    const some = project({ 'index.tsx': PAGE, 'docs.tsx': `${PAGE}export const hydrate = 'islands'\n` })
+    const none = project({ 'index.tsx': PAGE })
+    const hook = clientFlagsPlugin({}, 'ssg').config as unknown as Hook
+    expect((await hook({ root: all }, build))?.define?.__ZERO_APP_PAGES__).toBe('false')
+    expect((await hook({ root: some }, build))?.define?.__ZERO_APP_PAGES__).toBe('true')
+    expect((await hook({ root: none }, build))?.define?.__ZERO_APP_PAGES__).toBe('true')
+    const groups = (await hook({ root: some }, build))?.build?.rolldownOptions?.output?.codeSplitting?.groups ?? []
+    const group = groups.find((g) => g.name === 'islands-runtime')
+    expect(group?.test).toBeInstanceOf(RegExp)
+    for (const id of [
+      '/repo/packages/core/server/src/client.ts',
+      '/app/node_modules/@pyreon/server/lib/client.js',
+      '/repo/packages/zero/zero/src/client-islands.ts',
+      '/app/node_modules/@pyreon/zero/lib/_chunks/client-islands-Ab1_c.js',
+    ]) expect(group?.test.test(id), id).toBe(true)
+    expect(group?.test.test('/repo/packages/zero/zero/src/client.ts')).toBe(false)
+    expect((await hook({ root: none }, build))?.build).toBeUndefined()
+    expect((await hook({ root: some }, { ...build, isSsrBuild: true }))?.build).toBeUndefined()
   })
 })

@@ -566,7 +566,7 @@ fun patternMarks(p: PyreonChartPattern, bounds: PyreonChartRect): List<PyreonDra
                   while (k < count && at < shape.length) {
                     val q = shape[(at).toInt()]
                     pts.add(rotated(center, gx + q.x * width, gy + q.y * width, cosA, sinA))
-                    at = at + 1L
+                    at = pyreonAdd(at, 1L)
                     k = k + 1.0
                   }
                   if (pts.length >= 3L) {
@@ -933,11 +933,11 @@ fun formatDate(ms: Double, pattern: String): String {
       val c = pyreonSubstring(pattern, (i).toLong(), (pyreonAdd(i, 1L)).toLong())
       if (c == "[") {
         var end = pyreonAdd(i, 1L)
-        while (end < pattern.length.toLong() && pyreonSubstring(pattern, (end).toLong(), (end + 1L).toLong()) != "]") {
-          end = end + 1L
+        while (end < pattern.length.toLong() && pyreonSubstring(pattern, (end).toLong(), (pyreonAdd(end, 1L)).toLong()) != "]") {
+          end = pyreonAdd(end, 1L)
         }
         out = out + pyreonSubstring(pattern, (pyreonAdd(i, 1L)).toLong(), (end).toLong())
-        i = end + 1L
+        i = pyreonAdd(end, 1L)
       } else {
         if (pyreonSubstring(pattern, (i).toLong(), (pyreonAdd(i, 4L)).toLong()) == "YYYY") {
           out = out + padded(year, 4L)
@@ -1233,7 +1233,7 @@ fun timeTicks(d: Domain, r0: Double, r1: Double, target: Double, format: ((Doubl
       if (monthStartMs(mi) < d.min) {
         mi = mi + 1.0
       }
-      mi = Math.ceil(((mi).toDouble() / (months).toDouble()).toDouble()) * months
+      mi = Math.ceil((mi).toDouble() / (months).toDouble()) * months
       var k = 0.0
       while (k < 200.0) {
         val v = monthStartMs(mi + months * k)
@@ -1831,8 +1831,8 @@ fun truncateLabel(text: String, width: Double, size: Double, measure: (String, D
       if (j == 0L) {
         var w = 0.0
         while (sub < line.length.toLong() && w < content) {
-          w = w + measure(pyreonSlice(line, (sub).toLong(), (sub + 1L).toLong()), size)
-          sub = sub + 1L
+          w = w + measure(pyreonSlice(line, (sub).toLong(), (pyreonAdd(sub, 1L)).toLong()), size)
+          sub = pyreonAdd(sub, 1L)
         }
       } else {
         if (lineW > 0.0) {
@@ -1842,7 +1842,7 @@ fun truncateLabel(text: String, width: Double, size: Double, measure: (String, D
           while (more && sub < line.length.toLong()) {
             val need = lineW * (count + 1.0)
             if (need <= limit) {
-              sub = sub + 1L
+              sub = pyreonAdd(sub, 1L)
               count = count + 1.0
             } else {
               more = false
@@ -2617,7 +2617,7 @@ fun layoutStackLevels(levels: StackLevels, values: List<List<Double>>, plot: Pyr
         val yTop = yPx(yDomain, plot, top)
         val yBot = yPx(yDomain, plot, base)
         val own = values[(s).toInt()]
-        out.add(StackSegment(rect = PyreonChartRect(x = plot.x + band * fi + ((band - bw)).toDouble() / (2.0).toDouble(), y = if (yTop < yBot) yTop else yBot, w = bw, h = (Math.abs(yBot - yTop)).toDouble()), seriesIndex = s, datumIndex = i, value = if (i < own.length) own[(i).toInt()] else 0.0))
+        out.add(StackSegment(rect = PyreonChartRect(x = plot.x + band * fi + ((band - bw)).toDouble() / (2.0).toDouble(), y = if (yTop < yBot) yTop else yBot, w = bw, h = Math.abs(yBot - yTop)), seriesIndex = s, datumIndex = i, value = if (i < own.length) own[(i).toInt()] else 0.0))
       }
       fi = fi + 1.0
     }
@@ -2650,7 +2650,7 @@ fun layoutStackLevelsH(levels: StackLevels, values: List<List<Double>>, plot: Py
         val xEnd = xPx(vDomain, plot, top)
         val xStart = xPx(vDomain, plot, base)
         val own = values[(s).toInt()]
-        out.add(StackSegment(rect = PyreonChartRect(x = if (xStart < xEnd) xStart else xEnd, y = plot.y + band * fi + ((band - bh)).toDouble() / (2.0).toDouble(), w = (Math.abs(xEnd - xStart)).toDouble(), h = bh), seriesIndex = s, datumIndex = i, value = if (i < own.length) own[(i).toInt()] else 0.0))
+        out.add(StackSegment(rect = PyreonChartRect(x = if (xStart < xEnd) xStart else xEnd, y = plot.y + band * fi + ((band - bh)).toDouble() / (2.0).toDouble(), w = Math.abs(xEnd - xStart), h = bh), seriesIndex = s, datumIndex = i, value = if (i < own.length) own[(i).toInt()] else 0.0))
       }
       fi = fi + 1.0
     }
@@ -2809,7 +2809,7 @@ fun layoutWaterfall(values: List<Double>, plot: PyreonChartRect, yDomain: Domain
       val end = acc + v
       val y0 = yPx(yDomain, plot, start)
       val y1 = yPx(yDomain, plot, end)
-      out.add(WaterfallStep(rect = PyreonChartRect(x = plot.x + band * i + ((band - bw)).toDouble() / (2.0).toDouble(), y = if (y0 < y1) y0 else y1, w = bw, h = (Math.abs(y1 - y0)).toDouble()), datumIndex = i, value = v, start = start, end = end))
+      out.add(WaterfallStep(rect = PyreonChartRect(x = plot.x + band * i + ((band - bw)).toDouble() / (2.0).toDouble(), y = if (y0 < y1) y0 else y1, w = bw, h = Math.abs(y1 - y0)), datumIndex = i, value = v, start = start, end = end))
       acc = end
     }
     return out
@@ -2970,7 +2970,7 @@ fun renderDial(spec: DialSpec, center: PyreonChartPt, r: Double, palette: List<S
         bands.add(band(center, r, r - spec.lineWidth, prev, at, s.color, spec.lineRound))
         prev = at
       }
-      for (i in bands.length - 1L downTo 0L) {
+      for (i in pyreonSub(bands.length, 1L) downTo 0L) {
         layers.add(Layered(z = 0.0, seq = seq, cmd = bands[(i).toInt()]))
         seq = seq + 1.0
       }
@@ -3733,7 +3733,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         val y1 = yPx(yDomain, plot, yFrom)
         val y2 = yPx(yDomain, plot, yTo)
         val top = if (y1 < y2) y1 else y2
-        out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = plot.x, y = top, w = plot.w, h = (Math.abs(y2 - y1)).toDouble()), fill = withAlpha((a.color ?: t.axis), 0.12)))
+        out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = plot.x, y = top, w = plot.w, h = Math.abs(y2 - y1)), fill = withAlpha((a.color ?: t.axis), 0.12)))
         when (val label = a.label) {
           null -> {}
           else -> {
@@ -3748,7 +3748,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         val x1 = span.x
         val x2 = span.y
         val left = if (x1 < x2) x1 else x2
-        out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = left, y = plot.y, w = (Math.abs(x2 - x1)).toDouble(), h = plot.h), fill = withAlpha((a.color ?: t.axis), 0.12)))
+        out.add(PyreonDrawCmd(kind = "rect", rect = PyreonChartRect(x = left, y = plot.y, w = Math.abs(x2 - x1), h = plot.h), fill = withAlpha((a.color ?: t.axis), 0.12)))
         when (val label = a.label) {
           null -> {}
           else -> {
@@ -3865,7 +3865,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
           for (p in upper) {
             poly.add(p)
           }
-          for (i in lower.length - 1L downTo 0L) {
+          for (i in pyreonSub(lower.length, 1L) downTo 0L) {
             poly.add(lower[(i).toInt()])
           }
           val gA = seriesGradient(sA.gradient, plot)
@@ -4004,17 +4004,17 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
             var runFrom = 0L
             for (run in runs) {
               while (runFrom < s.values.length && !isFiniteValue(s.values[(runFrom).toInt()])) {
-                runFrom = runFrom + 1L
+                runFrom = pyreonAdd(runFrom, 1L)
               }
               val runKeys: MutableList<String> = mutableListOf()
               if (keyedLine) {
                 for (k in 0L until run.length) {
-                  if (runFrom + k < rowKeys.length) {
-                    runKeys.add(rowKeys[(runFrom + k).toInt()])
+                  if (pyreonAdd(runFrom, k) < rowKeys.length) {
+                    runKeys.add(rowKeys[(pyreonAdd(runFrom, k)).toInt()])
                   }
                 }
               }
-              runFrom = runFrom + run.length
+              runFrom = pyreonAdd(runFrom, run.length)
               val pts = if (useDirect) reveal(run) else m4Pixels(reveal(curveFn(run)), m4Density(spec))
               if (pts.length > 1L) {
                 val oneToOne = keyedLine && runKeys.length == pts.length
@@ -4172,7 +4172,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
     val markers = (spec.markers ?: listOf())
     for (m in markers) {
       val rawSeriesIndex = (m.seriesIndex ?: 0.0)
-      val s = spec.series[(Math.floor((rawSeriesIndex).toDouble())).toInt()]
+      val s = spec.series[(Math.floor(rawSeriesIndex)).toInt()]
       if (s == null) {
         continue
       }
@@ -4684,7 +4684,7 @@ fun rampColor(stops: List<String>, t: Double): String {
     if (n == 1L || t <= 0.0) {
       val s0 = stops[0]
       val o0 = heatHashOffset(s0)
-      return "rgb(${pyreonNumberString(pyreonRound(heatChannel(s0, o0)))}, ${pyreonNumberString(pyreonRound(heatChannel(s0, o0 + 2L)))}, ${pyreonNumberString(pyreonRound(heatChannel(s0, o0 + 4L)))})"
+      return "rgb(${pyreonNumberString(pyreonRound(heatChannel(s0, o0)))}, ${pyreonNumberString(pyreonRound(heatChannel(s0, pyreonAdd(o0, 2L))))}, ${pyreonNumberString(pyreonRound(heatChannel(s0, pyreonAdd(o0, 4L))))})"
     }
     val clamped = if (t >= 1.0) 1.0 else t
     var spanF = 0.0
@@ -4970,7 +4970,7 @@ fun applyX(spec: ChartSpec, kind: String, param: Double): ChartSpec {
       var i = 0L
       for (v in s.values) {
         values.add(if (i < xView.length && !isFiniteNumber(xView[(i).toInt()])) (0.0).toDouble() / (0.0).toDouble() else v)
-        i = i + 1L
+        i = pyreonAdd(i, 1L)
       }
       series.add(s.copy(values = values))
     }
@@ -5009,7 +5009,7 @@ fun visualStripSize(s: VisualStrip): PyreonChartPt {
         for (_p in s.pieces) {
           n = n + 1.0
         }
-        return PyreonChartPt(x = s.itemSize + STRIP_GAP + widest, y = if (n <= 0L) 0.0 else n * (s.itemSize + STRIP_GAP) - STRIP_GAP)
+        return PyreonChartPt(x = s.itemSize + STRIP_GAP + widest, y = if (n <= 0.0) 0.0 else n * (s.itemSize + STRIP_GAP) - STRIP_GAP)
       }
       var w = 0.0
       for (p in s.pieces) {
@@ -5270,10 +5270,10 @@ fun layoutFunnel(stages: List<FunnelStage>, plot: PyreonChartRect, options: Funn
           if (!swap) {
             break
           }
-          order[(j + 1L).toInt()] = order[(j).toInt()]
-          j = j - 1L
+          order[(pyreonAdd(j, 1L)).toInt()] = order[(j).toInt()]
+          j = pyreonSub(j, 1L)
         }
-        order[(j + 1L).toInt()] = cur
+        order[(pyreonAdd(j, 1L)).toInt()] = cur
       }
     }
     var maxV = 0.0
@@ -5488,10 +5488,10 @@ fun orderByValue(children: List<TreeNode>): List<Long> {
         if (vals[(order[(j).toInt()]).toInt()] >= cv) {
           break
         }
-        order[(j + 1L).toInt()] = order[(j).toInt()]
-        j = j - 1L
+        order[(pyreonAdd(j, 1L)).toInt()] = order[(j).toInt()]
+        j = pyreonSub(j, 1L)
       }
-      order[(j + 1L).toInt()] = cur
+      order[(pyreonAdd(j, 1L)).toInt()] = cur
     }
     return order
   }
@@ -5537,10 +5537,10 @@ fun layoutTreemap(nodes: List<TreeNode>, rect: PyreonChartRect, options: Treemap
         if (kids.length > 0L) {
           val innerW = r.w - padding * 2.0
           val innerH = r.h - padding * 2.0
-          pushed.add(TreemapFrame(children = kids, area = PyreonChartRect(x = r.x + padding, y = r.y + padding, w = if (innerW < 0.0) 0.0 else innerW, h = if (innerH < 0.0) 0.0 else innerH), depth = frame.depth + 1L, path = cellPath, inherited = color, hasInherited = true))
+          pushed.add(TreemapFrame(children = kids, area = PyreonChartRect(x = r.x + padding, y = r.y + padding, w = if (innerW < 0.0) 0.0 else innerW, h = if (innerH < 0.0) 0.0 else innerH), depth = pyreonAdd(frame.depth, 1L), path = cellPath, inherited = color, hasInherited = true))
         }
       }
-      var pk = pushed.length - 1L
+      var pk = pyreonSub(pushed.length, 1L)
       while (pk >= 0L) {
         if (sp < stack.length) {
           stack[(sp).toInt()] = pushed[(pk).toInt()]
@@ -5548,7 +5548,7 @@ fun layoutTreemap(nodes: List<TreeNode>, rect: PyreonChartRect, options: Treemap
           stack.add(pushed[(pk).toInt()])
         }
         sp = pyreonAdd(sp, 1L)
-        pk = pk - 1L
+        pk = pyreonSub(pk, 1L)
       }
     }
     return cells
@@ -5659,10 +5659,10 @@ fun treeDepth(nodes: List<TreeNode>): Long {
       for (c in (cur.children ?: listOf())) {
         if (sp < stack.length) {
           stack[(sp).toInt()] = c
-          depths[(sp).toInt()] = d + 1L
+          depths[(sp).toInt()] = pyreonAdd(d, 1L)
         } else {
           stack.add(c)
-          depths.add(d + 1L)
+          depths.add(pyreonAdd(d, 1L))
         }
         sp = pyreonAdd(sp, 1L)
       }
@@ -5737,11 +5737,11 @@ fun layoutSunburst(nodes: List<TreeNode>, innerR: Double, outerR: Double, option
         val r0 = innerR + ringW * depthF
         arcs.add(SunburstArc(name = node.name, value = v, depth = frame.depth, path = cellPath, start = cursor, end = cursor + span, innerR = r0, outerR = r0 + ringW, color = color, leaf = kids.length == 0L))
         if (kids.length > 0L) {
-          pushed.add(SunburstFrame(children = kids, a0 = cursor, a1 = cursor + span, depth = frame.depth + 1L, path = cellPath, inherited = color, hasInherited = true))
+          pushed.add(SunburstFrame(children = kids, a0 = cursor, a1 = cursor + span, depth = pyreonAdd(frame.depth, 1L), path = cellPath, inherited = color, hasInherited = true))
         }
         cursor = cursor + span + pad
       }
-      var pk = pushed.length - 1L
+      var pk = pyreonSub(pushed.length, 1L)
       while (pk >= 0L) {
         if (sp < stack.length) {
           stack[(sp).toInt()] = pushed[(pk).toInt()]
@@ -5749,7 +5749,7 @@ fun layoutSunburst(nodes: List<TreeNode>, innerR: Double, outerR: Double, option
           stack.add(pushed[(pk).toInt()])
         }
         sp = pyreonAdd(sp, 1L)
-        pk = pk - 1L
+        pk = pyreonSub(pk, 1L)
       }
     }
     return arcs
@@ -5893,7 +5893,7 @@ fun layoutTree(roots: List<TreeNode>, box: PyreonChartRect, options: TreeOptions
       val index = frames.length
       frames.add(frame)
       leafFlags.add(kids.length == 0L)
-      var ki = kids.length - 1L
+      var ki = pyreonSub(kids.length, 1L)
       while (ki >= 0L) {
         val kid = kids[(ki).toInt()]
         val childPath: MutableList<Long> = mutableListOf()
@@ -5901,14 +5901,14 @@ fun layoutTree(roots: List<TreeNode>, box: PyreonChartRect, options: TreeOptions
           childPath.add(p)
         }
         childPath.add(ki)
-        val next = TreeFrame(node = kid, depth = frame.depth + 1L, path = childPath, color = (kid.color ?: frame.color), parent = index)
+        val next = TreeFrame(node = kid, depth = pyreonAdd(frame.depth, 1L), path = childPath, color = (kid.color ?: frame.color), parent = index)
         if (sp < stack.length) {
           stack[(sp).toInt()] = next
         } else {
           stack.add(next)
         }
         sp = pyreonAdd(sp, 1L)
-        ki = ki - 1L
+        ki = pyreonSub(ki, 1L)
       }
     }
     val lo: MutableList<Double> = mutableListOf()
@@ -6167,13 +6167,13 @@ fun layoutRiver(series: List<RiverSeries>, box: PyreonChartRect, options: RiverO
     val ticks: MutableList<RiverTick> = mutableListOf()
     if (showAxis && n > 0L) {
       var every = 1L
-      while (every * 8L < n) {
-        every = every + 1L
+      while (pyreonMul(every, 8L) < n) {
+        every = pyreonAdd(every, 1L)
       }
       var ti = 0L
       while (ti < n) {
-        ticks.add(RiverTick(x = xs[(ti).toInt()], label = if (ti < cats.length) cats[(ti).toInt()] else "${ti + 1L}"))
-        ti = ti + every
+        ticks.add(RiverTick(x = xs[(ti).toInt()], label = if (ti < cats.length) cats[(ti).toInt()] else "${pyreonAdd(ti, 1L)}"))
+        ti = pyreonAdd(ti, every)
       }
     }
     return RiverLayout(layers = layers, xs = xs, ticks = ticks, plot = plot)
@@ -6627,7 +6627,7 @@ fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect
           continue
         }
         if (col >= 0L) {
-          val at = pyreonAdd(col * n, i)
+          val at = pyreonAdd(pyreonMul(col, n), i)
           val top = stackTop[(at).toInt()] + v
           stackTop[(at).toInt()] = top
           if (top > hi) {
@@ -6686,7 +6686,7 @@ fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect
               val width = ((slot - slot * barGap)).toDouble() / (columnsF).toDouble()
               val a0 = start + dir * slot * iF + dir * (inner + width * colF)
               val a1 = a0 + dir * width
-              val at = pyreonAdd(col * n, i)
+              val at = pyreonAdd(pyreonMul(col, n), i)
               val base = running[(at).toInt()]
               running[(at).toInt()] = base + v
               sectors.add(PolarSector(series = si, index = i, start = if (a0 < a1) a0 else a1, end = if (a0 < a1) a1 else a0, innerR = innerR + (outerR - innerR) * polarFrac(base, domainLo, domainHi), outerR = innerR + (outerR - innerR) * polarFrac(base + v, domainLo, domainHi), color = color, value = v))
@@ -7126,10 +7126,10 @@ fun layoutSankey(nodes: List<SankeyNode>, links: List<SankeyLink>, box: PyreonCh
               if (y0[(prev).toInt()] + (hgt[(prev).toInt()]).toDouble() / (2.0).toDouble() <= cc) {
                 break
               }
-              col[(b + 1L).toInt()] = prev
-              b = b - 1L
+              col[(pyreonAdd(b, 1L)).toInt()] = prev
+              b = pyreonSub(b, 1L)
             }
-            col[(b + 1L).toInt()] = cur
+            col[(pyreonAdd(b, 1L)).toInt()] = cur
           }
           var y = box.y
           for (i in col) {
@@ -7139,14 +7139,14 @@ fun layoutSankey(nodes: List<SankeyNode>, links: List<SankeyLink>, box: PyreonCh
             y = y0[(i).toInt()] + hgt[(i).toInt()] + padding
           }
           var bottom = box.y + box.h
-          for (k in col.length - 1L downTo 0L) {
+          for (k in pyreonSub(col.length, 1L) downTo 0L) {
             val i = col[(k).toInt()]
             if (y0[(i).toInt()] + hgt[(i).toInt()] > bottom) {
               y0[(i).toInt()] = bottom - hgt[(i).toInt()]
             }
             bottom = y0[(i).toInt()] - padding
           }
-          d = d + dStep
+          d = pyreonAdd(d, dStep)
           more = if (forward) d <= dEnd else d >= dEnd
         }
       }
@@ -7187,10 +7187,10 @@ fun layoutSankey(nodes: List<SankeyNode>, links: List<SankeyLink>, box: PyreonCh
         if (pt < ct || (pt == ct && flowS[(prev).toInt()] <= flowS[(cur).toInt()])) {
           break
         }
-        orderOut[(b + 1L).toInt()] = prev
-        b = b - 1L
+        orderOut[(pyreonAdd(b, 1L)).toInt()] = prev
+        b = pyreonSub(b, 1L)
       }
-      orderOut[(b + 1L).toInt()] = cur
+      orderOut[(pyreonAdd(b, 1L)).toInt()] = cur
     }
     for (k in orderOut) {
       linkY0[(k).toInt()] = outCursor[(flowS[(k).toInt()]).toInt()]
@@ -7210,10 +7210,10 @@ fun layoutSankey(nodes: List<SankeyNode>, links: List<SankeyLink>, box: PyreonCh
         if (ps < cs || (ps == cs && flowT[(prev).toInt()] <= flowT[(cur).toInt()])) {
           break
         }
-        orderIn[(b + 1L).toInt()] = prev
-        b = b - 1L
+        orderIn[(pyreonAdd(b, 1L)).toInt()] = prev
+        b = pyreonSub(b, 1L)
       }
-      orderIn[(b + 1L).toInt()] = cur
+      orderIn[(pyreonAdd(b, 1L)).toInt()] = cur
     }
     for (k in orderIn) {
       linkY1[(k).toInt()] = inCursor[(flowT[(k).toInt()]).toInt()]
@@ -7674,7 +7674,7 @@ fun formatIsoDays(days: Double): String {
     return "${yp}${pyreonNumberString(pyreonRound(c.year))}-${mp}${pyreonNumberString(pyreonRound(c.month))}-${dp}${pyreonNumberString(pyreonRound(c.day))}"
   }
 
-fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: CalendarOptions? = null): CalendarLayout {
+fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: CalendarOptions? = null, measure: ((String, Double) -> Double)? = null): CalendarLayout {
     val p0 = parseIsoDays(start)
     val p1 = parseIsoDays(end)
     if (!p0.ok || !p1.ok || p1.days < p0.days) {
@@ -7706,6 +7706,9 @@ fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: Ca
     val originY = box.y + gutterY
     val cells: MutableList<CalendarCell> = mutableListOf()
     val monthLabels: MutableList<CalendarLabel> = mutableListOf()
+    val m = (measure ?: ::approxTextWidth)
+    val boxRight = box.x + box.w
+    var prevLabelEnd = originX - 1000000000.0
     var lastMonthKey = -1.0
     var iF = 0.0
     while (iF < days) {
@@ -7722,10 +7725,19 @@ fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: Ca
         var mi = 0L
         var miF = 1.0
         while (miF < c.month) {
-          mi = mi + 1L
+          mi = pyreonAdd(mi, 1L)
           miF = miF + 1.0
         }
-        monthLabels.add(CalendarLabel(kind = "month", text = CALENDAR_MONTHS[(mi).toInt()], at = PyreonChartPt(x = originX + week * pitch, y = originY - fontSize * 0.4)))
+        val text = CALENDAR_MONTHS[(mi).toInt()]
+        val lw = m(text, fontSize)
+        val want = originX + week * pitch
+        val latest = boxRight - lw
+        val pulled = want > latest
+        val labelX = if (!pulled) want else if (latest < originX) originX else latest
+        if (!pulled || labelX >= prevLabelEnd) {
+          prevLabelEnd = labelX + lw
+          monthLabels.add(CalendarLabel(kind = "month", text = text, at = PyreonChartPt(x = labelX, y = originY - fontSize * 0.4)))
+        }
       }
       iF = iF + 1.0
     }
@@ -7738,7 +7750,7 @@ fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: Ca
         var di = 0L
         var diF = 0.0
         while (diF < dIdx) {
-          di = di + 1L
+          di = pyreonAdd(di, 1L)
           diF = diF + 1.0
         }
         dayLabels.add(CalendarLabel(kind = "day", text = CALENDAR_DAYS[(di).toInt()], at = PyreonChartPt(x = originX - fontSize * 0.4, y = originY + rF * pitch + (cellSize).toDouble() / (2.0).toDouble())))
@@ -8411,8 +8423,8 @@ fun ganttTicks(lo: Double, hi: Double, unit: String): List<GanttTick> {
       if (t >= lo) {
         val c = civilFromDays(t)
         val q = Math.floor(((c.month - 1.0)).toDouble() / (3.0).toDouble()) + 1.0
-        val year = "${pyreonNumberString(pyreonRound((c.year).toDouble()))}"
-        val label = if (unit == "day" || unit == "week") "${pyreonNumberString(pyreonRound((c.day).toDouble()))} ${ganttMonthName(c.month)}" else if (unit == "month") (if (sameYear) ganttMonthName(c.month) else "${ganttMonthName(c.month)} ${year}") else if (unit == "quarter") "Q${pyreonNumberString(pyreonRound((q).toDouble()))} ${year}" else year
+        val year = "${pyreonNumberString(pyreonRound(c.year))}"
+        val label = if (unit == "day" || unit == "week") "${pyreonNumberString(pyreonRound(c.day))} ${ganttMonthName(c.month)}" else if (unit == "month") (if (sameYear) ganttMonthName(c.month) else "${ganttMonthName(c.month)} ${year}") else if (unit == "quarter") "Q${pyreonNumberString(pyreonRound(q))} ${year}" else year
         out.add(GanttTick(at = t, x = 0.0, label = label, labelX = 0.0, labelShown = true))
       }
       t = ganttNextTick(t, unit)
@@ -8845,7 +8857,7 @@ fun renderParallel(layout: ParallelLayout, options: ParallelOptions? = null): Li
             runStart = i
           }
           if (!visible && runStart >= 0L) {
-            if (i - runStart >= 2L) {
+            if (pyreonSub(i, runStart) >= 2L) {
               val run: MutableList<PyreonChartPt> = mutableListOf()
               for (k in runStart until i) {
                 run.add(line.points[(k).toInt()])
@@ -8856,7 +8868,7 @@ fun renderParallel(layout: ParallelLayout, options: ParallelOptions? = null): Li
           }
           iF = iF + 1.0
         }
-        if (runStart >= 0L && line.points.length - runStart >= 2L) {
+        if (runStart >= 0L && pyreonSub(line.points.length, runStart) >= 2L) {
           val run: MutableList<PyreonChartPt> = mutableListOf()
           for (k in runStart until line.points.length) {
             run.add(line.points[(k).toInt()])
@@ -8977,7 +8989,7 @@ fun layoutSingleAxis(axis: SingleAxisSpec, points: List<SingleAxisPoint>, box: P
       var index = 0L
       for (v in niceTicks(lo, hi, 6L)) {
         ticks.add(SingleAxisTick(x = px(v), label = pyreonNumberString(v), index = index))
-        index += 1
+        index = pyreonAdd(index, 1L)
       }
     }
     var maxSize = 0.0
@@ -9917,7 +9929,7 @@ fun polarTip(layout: PolarLayout, series: List<PolarSeries>, px: Double, py: Dou
     if (hit.sector >= 0L) {
       val sec = layout.sectors[(hit.sector).toInt()]
       val s = series[(sec.series).toInt()]
-      val name = if (s == null) "Series ${sec.series + 1L}" else s.name
+      val name = if (s == null) "Series ${pyreonAdd(sec.series, 1L)}" else s.name
       return listOf(name, plain(sec.value))
     }
     if (hit.line < 0L) {
@@ -10417,7 +10429,7 @@ fun renderNavigator(values: List<Double>, color: String, win: ZoomWindow, canvas
           safe.add(if (!isFiniteNumber(v)) lo else v)
         }
         val pts = layoutSeriesPointsEdge(safe, strip, Domain(min = if (lo < 0.0) lo else 0.0, max = if (hi <= lo) lo + 1.0 else hi))
-        val last = pts[(pts.length - 1L).toInt()]
+        val last = pts[(pyreonSub(pts.length, 1L)).toInt()]
         val first = pts[0]
         val poly: MutableList<PyreonChartPt> = mutableListOf()
         for (i in 0L until pts.length) {
@@ -10717,9 +10729,9 @@ fun pointInBrushArea(area: BrushArea, x: Double, y: Double): Boolean {
       var inside = false
       var n = 0L
       for (_p in area.points) {
-        n = n + 1L
+        n = pyreonAdd(n, 1L)
       }
-      var j = n - 1L
+      var j = pyreonSub(n, 1L)
       for (i in 0L until n) {
         val a = area.points[(i).toInt()]
         val b = area.points[(j).toInt()]
@@ -11028,7 +11040,7 @@ fun describeChart(input: A11yInput): String {
           hiAt = i
         }
         last = v
-        seen = seen + 1L
+        seen = pyreonAdd(seen, 1L)
       }
       if (seen == 0L) {
         parts.add("${s.label}: empty.")
@@ -11057,7 +11069,7 @@ fun describeChart(input: A11yInput): String {
           if (v > ohi) {
             ohi = v
           }
-          oseen = oseen + 1L
+          oseen = pyreonAdd(oseen, 1L)
         }
         if (oseen > 0L) {
           parts.add("${s.label}, ${s.kind}: upper bound ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; " + "lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.")
@@ -11336,11 +11348,11 @@ fun lttbIndices(xs: List<Double>, ys: List<Double>, threshold: Long): List<Long>
       if (avgHi > n) {
         avgHi = n
       }
-      var avgCount = avgHi - avgLo
+      var avgCount = pyreonSub(avgHi, avgLo)
       if (avgCount < 1L) {
         avgLo = lo
         avgHi = hi
-        avgCount = hi - lo
+        avgCount = pyreonSub(hi, lo)
         if (avgCount < 1L) {
           avgCount = 1L
         }
@@ -11435,9 +11447,9 @@ fun m4Pixels(pts: List<PyreonChartPt>, perPx: Double = 2.0): List<PyreonChartPt>
         if (pts[(j).toInt()].y > pts[(hi).toInt()].y) {
           hi = j
         }
-        j = j + 1L
+        j = pyreonAdd(j, 1L)
       }
-      val last = j - 1L
+      val last = pyreonSub(j, 1L)
       out.add(pts[(first).toInt()])
       val a = if (lo < hi) lo else hi
       val b = if (lo < hi) hi else lo
@@ -11486,13 +11498,13 @@ fun m4CategoryPoints(values: List<Double>, plot: PyreonChartRect, dom: Domain, p
       if (end > n) {
         end = n
       }
-      while (end > pyreonAdd(i, 1L) && Math.floor((bandCenter(px, band, end - 1L)) * perPx) != col) {
-        end = end - 1L
+      while (end > pyreonAdd(i, 1L) && Math.floor((bandCenter(px, band, pyreonSub(end, 1L))) * perPx) != col) {
+        end = pyreonSub(end, 1L)
       }
       while (end < n && Math.floor((bandCenter(px, band, end)) * perPx) == col) {
-        end = end + 1L
+        end = pyreonAdd(end, 1L)
       }
-      prevLen = end - i
+      prevLen = pyreonSub(end, i)
       val first = i
       val v0 = values[(i).toInt()]
       if (!isFiniteChartNumber(v0)) {
@@ -11524,9 +11536,9 @@ fun m4CategoryPoints(values: List<Double>, plot: PyreonChartRect, dom: Domain, p
             hiV = v
           }
         }
-        j = j + 1L
+        j = pyreonAdd(j, 1L)
       }
-      val last = j - 1L
+      val last = pyreonSub(j, 1L)
       val a = if (lo < hi) lo else hi
       val b = if (lo < hi) hi else lo
       out.add(PyreonChartPt(x = bandCenter(plot.x, band, first), y = scaleLinear(dom, top, plot.y, values[(first).toInt()])))
@@ -11588,7 +11600,7 @@ fun binValues(values: List<Double>, count: Double): List<Bin> {
       var idx = 0L
       var edge = dom.min + step
       while (edge <= v && idx < last) {
-        idx = idx + 1L
+        idx = pyreonAdd(idx, 1L)
         edge = edge + step
       }
       out[(idx).toInt()].count = out[(idx).toInt()].count + 1.0
