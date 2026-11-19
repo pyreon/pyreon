@@ -106,7 +106,7 @@ export function defaultMessages(locale: string): CalendarMessages {
     monthGrid: grid,
     timeGrid: english ? 'Calendar, time grid' : `${week}, ${day}`,
     more: (n) => (english ? `${count.format(n)} more` : `\u200E+${count.format(n)}`),
-    events: (n) => (english ? (n === 0 ? 'no events' : `${count.format(n)} ${plural.select(n) === 'one' ? 'event' : 'events'}`) : count.format(n)),
+    events: (n) => (english ? `${n === 0 ? 'no' : count.format(n)} ${plural.select(n) === 'one' ? 'event' : 'events'}` : count.format(n)),
     noEvents: english ? 'No events' : '–',
     range: (from, to) => `${from} – ${to}`,
     navigated: (title, view) => `${title}, ${viewName(view)}`,
