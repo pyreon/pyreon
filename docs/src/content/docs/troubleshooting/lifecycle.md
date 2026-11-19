@@ -125,6 +125,12 @@ The ISR memory store capped its cache at `maxEntries` but its tag index only gre
 
 ---
 
+### A refcounted module cache whose async load writes back unconditionally (Class F)
+
+`@pyreon/zero-content` search released its MiniSearch when the last `<Search>` unmounted, but a load still in flight then assigned `_instance = ms`, re-pinning the whole index with zero subscribers; a rejected load stayed cached as `_loading`, so every later load of that URL failed until the last subscriber left; and a slow load for an older catalog URL overwrote the current one. Rule: a load writes into a shared cache only if the generation it started under is still current (bump on release-to-zero, reset and every new load), and both settle paths clear the promise cache. Reference: `packages/zero/zero-content/src/search/search-runtime.tsx` (`_generation`); locked by `src/tests/search-load-race.test.ts`.
+
+---
+
 ### Two sources suspending one timer through one shared flag
 
 `<Toaster>` paused auto-dismiss on hover and focus through a single `_paused` boolean, so `mouseleave` cleared a keyboard user's focus hold and the toast dismissed under them. Key holds by source identity (`'hover' | 'focus' | 'hidden'`), release individually, restart the clock only when the set is empty. Do not use a depth counter: removing a focused element need not fire `focusout`, so a count can stick above zero and freeze every later toast, while a stranded `'focus'` hold is cleared by the next `focusout`. Pause while the tab is hidden (`visibilitychange`), make the handler idempotent against its own last-known state, read `document.visibilityState` at setup, and release a held hold in `onCleanup`. `document.visibilityState` is read-only in a real browser, so the spec redefines it — read it back before asserting. Reference: `packages/fundamentals/toast/src/toast.ts` (`PauseSource`, `_pauseHolds`) + `toaster.tsx` (`syncVisibility`); `tests/pause-sources.test.ts` + `tests/toaster.browser.test.tsx`.
@@ -325,6 +331,12 @@ The file pickers (`useCamera`, `useFilePicker`, `useImagePicker`) append a hidde
 ### [FIXED, 2026-11] A wrapper `ReadableStream` that does not forward `cancel`.
 
 The streaming handler copied the app stream into the response body from `start()` with no `cancel`, so a client disconnect never reached the render: it ran until every Suspense boundary settled or timed out (forever with `suspenseTimeoutMs: Infinity`), and its next write into the cancelled body threw and was logged and reported to `onError` as a render failure. **Rule: a stream that pumps another must implement `cancel` by cancelling its source reader, stop writing once cancelled, and never report a consumer disconnect as an error.** Reference: `server/src/handler.ts:renderStreamResponse`; locked by `handler-stream-cancel.test.ts` (bisect-verified).
+
+---
+
+### [FIXED, 2026-11] `{ once: true }` on a CALLER's signal is not a cleanup (Class D).
+
+`renderToStream({ signal })` chained the caller's signal with `addEventListener('abort', …, { once: true })`, which removes the listener only if that signal fires. A caller sharing one long-lived signal across operations (a shutdown signal, a reused connection signal) gained one listener, and the stream it closed over, per render. **Rule: a listener on a signal or target you do not own comes off on every end of your operation (success, error, cancel), through an idempotent detach.** Reference: `runtime-server/src/index.ts:chainCallerSignal`; locked by `stream-abort-listener.test.ts` (bisect-verified).
 
 ---
 

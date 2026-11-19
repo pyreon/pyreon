@@ -262,7 +262,7 @@ Templates with no function interpolations resolve **once at module evaluation**.
 
 ### Dynamic path
 
-Templates with function interpolations resolve on every render. A class-cache keyed by `($rocketstyle, $rocketstate)` (rocketstyle path) or by `$element` bundle identity (Element path) skips the resolver pipeline entirely on cache hits. Companion `injectRules(rules, key)` is the idempotent entry point the compile-time-collapse path uses to ship pre-resolved CSS without re-hashing.
+Templates with function interpolations resolve on every render. A class cache keyed by `($rocketstyle, $rocketstate)` (rocketstyle path) or by the theme and the `$element` / `$text` bundle (Element path) skips the resolver pipeline entirely on cache hits. Each key holds up to 16 variants, one per set of values of the OTHER props the styles read on the miss that filled it (recorded through a Proxy: primitives by value, objects by identity, functions by presence, an absent prop as absent), so a template that reads `onClick`, `href` or a custom prop gets its own class per value. Styles that enumerate the props (a rest spread, `Object.keys`) are never cached, so read props by name. A prop the styles read is not reactive after mount: a signal-driven value needs a rocketstyle `.multiple()` modifier or the reactive `css` prop instead. Companion `injectRules(rules, key)` is the idempotent entry point the compile-time-collapse path uses to ship pre-resolved CSS without re-hashing.
 
 ### Reactive theme swaps
 
