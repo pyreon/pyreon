@@ -172,24 +172,34 @@ export const LPIH_RATE_TAU_MS = 1000
 // ── Internal node record ─────────────────────────────────────────────────
 
 /**
- * Structural shape of a tracking-subscriber host (signal read fn / computed).
- * Declared locally rather than imported from `./tracking` on purpose: this
- * module is deliberately import-free so the prod dev-block guard can be dropped
- * at PARSE time without pinning any other module's symbols.
+ * Structural shape of a graph source (signal read fn / computed / selector
+ * bucket). Declared locally rather than imported from `./graph` on purpose:
+ * this module is deliberately import-free so the prod dev-block guard can be
+ * dropped at PARSE time without pinning any other module's symbols.
  *
- * Two tiers — see `SubscriberHost` in `./tracking`. `_s1` holds the SOLE
- * subscriber (the common case) and `_s` only exists after promotion to >=2.
+ * Tracked subscribers hang off `_subs` as a linked list of edges
+ * (`link.sub` is the subscriber node, `link.nextSub` the next edge).
  */
+interface LinkLike {
+  sub: object
+  nextSub: LinkLike | null
+}
 interface SubscriberHostLike {
-  _s1: (() => void) | null
-  _s: Set<() => void> | (() => void) | null
+  _subs: LinkLike | null
   /**
-   * Direct-updater tiers (`signal.direct()` / `computed.direct()`), present on
-   * signals and computeds. Compiled `_bindText` / `_bindDirect` subscribe here,
-   * never in `_s1`/`_s`, so the graph walks both pairs.
+   * The direct tier (`signal.direct()` / `computed.direct()` / `subscribe()`),
+   * present on signals and computeds. Compiled `_bindText` / `_bindDirect`
+   * subscribe here, never as graph edges, so the graph walks both.
    */
   _d1?: (() => void) | null
   _d?: Set<() => void> | null
+}
+
+/** The tracked subscribers of a source (graph edges), in subscription order. */
+function trackedSubs(host: Partial<SubscriberHostLike> | null): object[] {
+  const out: object[] = []
+  for (let l = host?._subs ?? null; l !== null; l = l.nextSub) out.push(l.sub)
+  return out
 }
 
 interface NodeRec {
@@ -1057,14 +1067,7 @@ export function _rdDropBinding(handle: object): void {
  */
 export function _rdLabelSubscribers(source: object, kind: ReactiveBindingKind, el: object | null): void {
   if (process.env.NODE_ENV !== 'production') {
-    const host = source as Partial<SubscriberHostLike>
-    const tier2 = host._s ?? null
-    const subs: (() => void)[] = []
-    if (host._s1) subs.push(host._s1)
-    if (tier2 !== null) {
-      if (typeof tier2 === 'function') subs.push(tier2)
-      else for (const f of tier2) subs.push(f)
-    }
+    const subs = trackedSubs(source as Partial<SubscriberHostLike>)
     const tag = tagOf(el as { localName?: string } | null)
     for (const sub of subs) {
       const id = resolveSubId(sub)
@@ -1110,7 +1113,7 @@ function recName(rec: NodeRec): string {
 
 // ── Snapshot API (consumed by the devtools hook) ─────────────────────────
 
-function resolveSubId(sub: () => void): number | undefined {
+function resolveSubId(sub: object): number | undefined {
   const direct = (sub as { __pxRdId?: number }).__pxRdId
   if (direct !== undefined) return direct
   return _subId.get(sub)
@@ -1141,25 +1144,14 @@ export function getReactiveGraph(): ReactiveGraph {
       const node = rec.ref.deref()
       if (!node) continue
       const host = rec.hostRef?.deref() ?? null
-      // Two-tier tracking storage: the sole subscriber lives in the `_s1`
-      // inline slot and never reaches `_s`, so BOTH tiers must be walked or a
-      // single-subscriber source (the overwhelmingly common shape) would report
-      // zero subscribers and contribute no edges.
-      const s1 = host?._s1 ?? null
-      const tier2 = host?._s ?? null
-      // Second tier: a function is the second inline subscriber, a Set the promoted store.
-      const subs: Iterable<() => void> | null =
-        tier2 === null ? null : typeof tier2 === 'function' ? [tier2] : tier2
-      // Direct updaters (`_bindText` / `_bindDirect`) live in their own pair of
-      // slots. Skipping them reported a signal shown only through compiled text
-      // as having no subscribers at all (an `orphan-signal` false positive).
+      // Tracked subscribers are graph edges; direct updaters and `subscribe()`
+      // listeners live in the direct tier. Skipping the direct tier reported a
+      // signal shown only through compiled text as having no subscribers at
+      // all (an `orphan-signal` false positive).
+      const subs = trackedSubs(host)
       const d1 = host?._d1 ?? null
       const d = host?._d ?? null
-      const subCount =
-        (s1 !== null ? 1 : 0) +
-        (tier2 === null ? 0 : typeof tier2 === 'function' ? 1 : tier2.size) +
-        (d1 !== null ? 1 : 0) +
-        (d === null ? 0 : d.size)
+      const subCount = subs.length + (d1 !== null ? 1 : 0) + (d === null ? 0 : d.size)
       // `preview()` is total (its own try/catch returns '[unstringifiable]'),
       // and `_v` on our registered nodes is a plain property (signal) or a
       // getter that never throws (computed's getter routes errors through
@@ -1187,15 +1179,9 @@ export function getReactiveGraph(): ReactiveGraph {
         if (rec.key !== undefined) out.key = rec.key
       }
       nodes.push(out)
-      if (s1 !== null) {
-        const to = resolveSubId(s1)
+      for (const cb of subs) {
+        const to = resolveSubId(cb)
         if (to !== undefined) edges.push({ from: rec.id, to })
-      }
-      if (subs) {
-        for (const cb of subs) {
-          const to = resolveSubId(cb)
-          if (to !== undefined) edges.push({ from: rec.id, to })
-        }
       }
       // An explicitly recorded upstream (a selector `.subscribe()` updater).
       if (rec.upstream !== undefined) {

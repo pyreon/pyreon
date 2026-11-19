@@ -1,8 +1,7 @@
-import { closeInlineBatch, enqueuePendingNotification, isBatching, openInlineBatch } from './batch'
 import { _notifyTraceListeners, isTracing } from './debug'
+import { type Link, _b, endBatch, enqueueFn, propagate, trackSubscriber } from './graph'
 import { _captureCallerLocation, _rdDirect, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { _recordSignalWrite } from './reactive-trace'
-import { addSubscriber, notifySubscribers, removeSubscriber, trackSubscriber } from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -91,13 +90,17 @@ interface SignalFn<T> {
   (): T
   /** @internal current value */
   _v: T
-  /** @internal sole tracking subscriber — inline slot (see `SubscriberHost`) */
-  _s1: (() => void) | null
-  /** @internal second inline subscriber (a function) OR the promoted Set — see `SubscriberHost` */
-  _s: Set<() => void> | (() => void) | null
-  /** @internal direct updater single-subscriber fast slot — first subscriber lives here */
+  /** @internal first subscriber edge (see `Source` in graph.ts) */
+  _subs: Link | null
+  /** @internal last subscriber edge */
+  _subsTail: Link | null
+  /**
+   * @internal The DIRECT tier, first entry: a direct updater (`.direct()`, the
+   * compiled `_bindText` / `_bindDirect`) or a `subscribe()` listener. Fires
+   * before the tracked subscribers of the same write.
+   */
   _d1: (() => void) | null
-  /** @internal direct updater Set — allocated on PROMOTION from `_d1` (≥2 subscribers) */
+  /** @internal direct tier Set — allocated on PROMOTION from `_d1` (≥2 entries) */
   _d: Set<() => void> | null
   peek(): T
   set(value: T): void
@@ -127,6 +130,40 @@ function _detached(method: string): never {
 function _peek(this: SignalFn<unknown>) {
   if (process.env.NODE_ENV !== 'production' && this == null) _detached('peek')
   return this._v
+}
+
+/**
+ * Deliver a change of `src` (a signal write or `trigger()`): the direct tier
+ * first, then mark the tracked subscribers (`propagate`). Outside any batch
+ * window this opens one, fires a SOLE direct entry synchronously (the
+ * historical fast path — no queue round-trip) and flushes the queue when the
+ * window closes; inside one everything is queued for the outermost close.
+ *
+ * Shared by `_set` and `_trigger` deliberately: the window, the direct tier
+ * and the marking are one sequence, and a copy per caller drifted before.
+ */
+function notifySignal(d1: (() => void) | null, d: Set<() => void> | null, subs: Link | null): void {
+  if (_b.d > 0) {
+    if (d1 !== null) enqueueFn(d1)
+    else if (d !== null) for (const fn of d) enqueueFn(fn)
+    if (subs !== null) propagate(subs)
+    return
+  }
+  _b.d = 1
+  try {
+    if (d1 !== null) {
+      // Mark BEFORE the sole direct entry runs: it may read a computed below
+      // this signal (which must resolve fresh), and if it throws, the window's
+      // close still flushes the effects this write reached.
+      if (subs !== null) propagate(subs)
+      d1()
+    } else {
+      if (d !== null) for (const fn of d) enqueueFn(fn)
+      if (subs !== null) propagate(subs)
+    }
+  } finally {
+    endBatch()
+  }
 }
 
 function _set(this: SignalFn<unknown>, newValue: unknown) {
@@ -160,66 +197,13 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
       }
     }
   }
-  // Auto-batch the notification chain: without it a diamond (a -> b,c -> d ->
-  // effect) fires the apex effect TWICE per write, because the first path
-  // clears `d`'s dirty flag and the second re-dirties + re-notifies it.
-  // The batch is synchronous — only the dedup semantics change.
-  //
-  // No-subscriber fast path: with nothing to notify there is no cascade to
-  // drain, and while the batch depth is 0 the pending queues are provably empty, so
-  // the whole batch window is skipped. Dominant shape for write-only signals.
-  const _d1 = this._d1
-  const _d = this._d
-  const _s1 = this._s1
-  const _s = this._s
-  if (_d1 === null && _d === null && _s1 === null && _s === null) return
-  // Short-circuit when already inside a batch so we don't wrap redundantly.
-  if (isBatching()) {
-    if (_d1) enqueuePendingNotification(_d1)
-    else if (_d) notifyDirect(_d)
-    if (_s1) {
-      enqueuePendingNotification(_s1)
-      if (_s) enqueuePendingNotification(_s as () => void)
-    } else if (_s) notifySubscribers(_s as Set<() => void>)
-  } else {
-    // INLINE batch window — no `batch(closure)` allocation, and the
-    // notifications THIS write owns dispatch DIRECTLY instead of round-tripping
-    // the pending queues. Measured: that round-trip dominated the unbatched
-    // write path at ~119ns per single-subscriber notify vs ~12ns for the write.
-    //
-    // Correctness holds BY CONSTRUCTION: dedup only matters for diamonds, which
-    // need >=2 subscribers at the fan-out point, and the direct dispatches below
-    // each deliver a SINGLE callback once. Multi-subscriber channels still route
-    // through notifySubscribers/notifyDirect and enqueue under the open window.
-    // Cascade writes from a dispatched callback see `isBatching() === true` and
-    // are drained by `closeInlineBatch` with the same two-tier flush.
-    openInlineBatch()
-    try {
-      if (_d1) {
-        _d1()
-      } else if (_d) notifyDirect(_d)
-      // `_s1` replaces the former `_s.size === 1` special case, which had to
-      // materialise a Set iterator (`_s.values().next().value`) on every write
-      // to reach the sole subscriber — two throwaway objects on the hottest
-      // path. The inline slot is a plain field read.
-      if (_s1) {
-        // ONE inline subscriber dispatches directly (the historical fast path).
-        // TWO route through the pending queues exactly as a promoted Set does:
-        // the two-tier drain orders a `{ equals }` computed's refresh BEFORE an
-        // effect that reads it, which a direct pair of calls cannot promise,
-        // and it applies the Set path's cap-iteration rule (a listener added
-        // or removed by the first callback is not fired or is skipped now).
-        if (_s === null) {
-          _s1()
-        } else {
-          enqueuePendingNotification(_s1)
-          enqueuePendingNotification(_s as () => void)
-        }
-      } else if (_s) notifySubscribers(_s as Set<() => void>)
-    } finally {
-      closeInlineBatch()
-    }
-  }
+  // No-subscriber fast path: nothing to deliver, no batch window. The
+  // dominant shape for write-only signals.
+  const d1 = this._d1
+  const d = this._d
+  const subs = this._subs
+  if (d1 === null && d === null && subs === null) return
+  notifySignal(d1, d, subs)
 }
 
 function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
@@ -230,84 +214,82 @@ function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
 function _trigger(this: SignalFn<unknown>) {
   if (process.env.NODE_ENV !== 'production' && this == null) _detached('trigger')
   if (process.env.NODE_ENV !== 'production') _rdRecordFire(this)
-  // The SAME batch-aware notify as `_set`, minus the value write and the
-  // `Object.is` gate. Deliberately DUPLICATED rather than extracted: `_set`'s
-  // inline dispatch is perf-tuned and must stay byte-identical — wrapping it in
-  // a call would tax the hottest write path for a rare escape hatch's benefit.
-  const _d1 = this._d1
-  const _d = this._d
-  const _s1 = this._s1
-  const _s = this._s
-  if (_d1 === null && _d === null && _s1 === null && _s === null) return
-  if (isBatching()) {
-    if (_d1) enqueuePendingNotification(_d1)
-    else if (_d) notifyDirect(_d)
-    if (_s1) {
-      enqueuePendingNotification(_s1)
-      if (_s) enqueuePendingNotification(_s as () => void)
-    } else if (_s) notifySubscribers(_s as Set<() => void>)
-  } else {
-    openInlineBatch()
-    try {
-      if (_d1) {
-        _d1()
-      } else if (_d) notifyDirect(_d)
-      if (_s1) {
-        // ONE inline subscriber dispatches directly (the historical fast path).
-        // TWO route through the pending queues exactly as a promoted Set does:
-        // the two-tier drain orders a `{ equals }` computed's refresh BEFORE an
-        // effect that reads it, which a direct pair of calls cannot promise,
-        // and it applies the Set path's cap-iteration rule (a listener added
-        // or removed by the first callback is not fired or is skipped now).
-        if (_s === null) {
-          _s1()
-        } else {
-          enqueuePendingNotification(_s1)
-          enqueuePendingNotification(_s as () => void)
-        }
-      } else if (_s) notifySubscribers(_s as Set<() => void>)
-    } finally {
-      closeInlineBatch()
-    }
-  }
+  const d1 = this._d1
+  const d = this._d
+  const subs = this._subs
+  if (d1 === null && d === null && subs === null) return
+  notifySignal(d1, d, subs)
 }
 
-function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
-  if (process.env.NODE_ENV !== 'production' && this == null) _detached('subscribe')
-  addSubscriber(this, listener)
-  const self = this
-  // Promotion-aware disposer (mirrors `_directFn`): a 2nd subscriber may have
-  // migrated `listener` out of the inline slot into `_s` before this runs.
-  return () => removeSubscriber(self, listener)
+/** Add `fn` to a source's direct tier (idempotent). */
+export function _addDirect(host: DirectHost, fn: () => void): void {
+  const d1 = host._d1
+  const d = host._d
+  if (d === null) {
+    if (d1 === null) {
+      host._d1 = fn
+      return
+    }
+    if (d1 === fn) return
+    // Promote: the second entry moves both into a Set (subscription order kept).
+    const set = new Set<() => void>()
+    set.add(d1)
+    set.add(fn)
+    host._d1 = null
+    host._d = set
+    return
+  }
+  if (d1 !== null) {
+    // A Set exists AND the inline slot is occupied (a sole-suspension resumed
+    // around a newcomer): fold the slot in.
+    host._d1 = null
+    d.add(d1)
+  }
+  d.add(fn)
+}
+
+/** Remove `fn` from a source's direct tier. No-op when absent. */
+export function _removeDirect(host: DirectHost, fn: () => void): void {
+  if (host._d1 === fn) host._d1 = null
+  else if (host._d !== null) host._d.delete(fn)
+}
+
+/** The direct tier of a signal or computed. */
+export interface DirectHost {
+  _d1: (() => void) | null
+  _d: Set<() => void> | null
 }
 
 /**
- * @internal Does `sig` still have ANY live subscriber — tracking (`_s1`/`_s`)
- * or direct (`_d1`/`_d`)?
+ * Subscribe a listener. It joins the DIRECT tier (with compiled `.direct()`
+ * bindings): no tracking frame, no graph edge, and it fires before the effects
+ * of the same write. Promotion-aware disposer: a second entry may have moved
+ * `listener` from the inline slot into the Set before it runs.
+ */
+function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
+  if (process.env.NODE_ENV !== 'production' && this == null) _detached('subscribe')
+  _addDirect(this, listener)
+  const self = this
+  return () => _removeDirect(self, listener)
+}
+
+/**
+ * @internal Does `sig` still have ANY live subscriber — a graph edge, or an
+ * entry in the direct tier (`_d1` / `_d`)?
  *
- * Both channels are TWO-TIER: the first subscriber lives in an inline slot
- * (`_s1` / `_d1`) and only a second one promotes to a Set. A presence check
- * that reads the Set alone therefore reports "unused" for the overwhelmingly
- * common single-subscriber shape — the exact false-negative that would make a
- * reclamation sweep evict LIVE signals.
+ * The direct tier is TWO-TIER: the first entry lives in an inline slot and
+ * only a second one promotes to a Set. A presence check that reads the Set
+ * alone would report "unused" for the overwhelmingly common single-entry
+ * shape — the false negative that would make a reclamation sweep evict LIVE
+ * signals.
  *
  * Exported so consumers doing liveness sweeps (`@pyreon/solid-compat`'s
  * `createStore`) cannot re-derive the check and miss a tier as the storage
  * evolves.
  */
-/** @internal Count the second tracking tier: a function is one subscriber, a Set its size. */
-export function _tierCount(s: Set<() => void> | (() => void) | null): number {
-  return s === null ? 0 : typeof s === 'function' ? 1 : s.size
-}
-
 export function _hasSubscribers<T>(sig: Signal<T> | (() => T)): boolean {
   const s = sig as unknown as SignalFn<T>
-  return (
-    s._s1 != null ||
-    (s._s != null && (typeof s._s === 'function' || s._s.size > 0)) ||
-    s._d1 != null ||
-    (s._d != null && s._d.size > 0)
-  )
+  return s._subs != null || s._d1 != null || (s._d != null && s._d.size > 0)
 }
 
 /**
@@ -324,67 +306,50 @@ export type SoleSubscriberToken = (() => void) | Set<() => void>
  * across them — its notifications would otherwise round-trip the batch queue
  * purely to rebuild change information the caller already has.
  *
- * Encapsulates the `_s` Set inside its owner package and adds ZERO cost to the
- * hot write path. Consumer: `@pyreon/store`'s `patch()`. Suspend is a no-op if
- * `listener` isn't subscribed; resume is idempotent.
+ * Adds ZERO cost to the hot write path. Consumer: `@pyreon/store`'s `patch()`.
+ * Suspend is a no-op if `listener` isn't subscribed; resume is idempotent.
  */
 export function _suspendSubscriber<T>(sig: Signal<T>, listener: () => void): void {
-  removeSubscriber(sig as unknown as SignalFn<T>, listener)
+  _removeDirect(sig as unknown as SignalFn<T>, listener)
 }
 
 /** @internal Restore a listener removed by {@link _suspendSubscriber}. */
 export function _resumeSubscriber<T>(sig: Signal<T>, listener: () => void): void {
-  addSubscriber(sig as unknown as SignalFn<T>, listener)
+  _addDirect(sig as unknown as SignalFn<T>, listener)
 }
 
 /**
  * @internal O(1) variant of {@link _suspendSubscriber} for when the caller's
- * listener is the SOLE `subscribe()` subscriber on `sig` — the dominant shape
- * for `@pyreon/store`'s per-field change detectors. Detaches the WHOLE `_s` Set
- * by a field swap rather than paying a `Set.delete` function-key hash op
- * (measured the single largest component of the store's with-subscriber
- * `patch()`), returning it as a token for {@link _resumeSoleSubscriber}.
- * Returns `null` when `_s` is absent or holds >1 subscriber — the caller MUST
- * then fall back to `_suspendSubscriber`.
+ * listener is the SOLE entry of `sig`'s direct tier — the dominant shape for
+ * `@pyreon/store`'s per-field change detectors. Detaches the inline slot, or a
+ * promoted Set of exactly one, by a field swap rather than paying a
+ * `Set.delete` hash op, returning it as a token for {@link _resumeSoleSubscriber}.
+ * Returns `null` when the tier is empty or holds more than one entry — the
+ * caller MUST then fall back to `_suspendSubscriber`.
  *
- * **PRECONDITION (caller-guaranteed, not verified):** the sole subscriber must
- * BE the caller's listener. Verifying identity in the Set shape would need the
- * exact `Set.has` hash op this path exists to avoid. The store's invariant
- * provides it; callers without such an invariant must use `_suspendSubscriber`.
- *
- * Two shapes, because tracking storage is two-tier:
- *  - `_s1` occupied (the dominant shape) — the token IS the detached listener.
- *  - `_s` Set of exactly 1 (a promoted Set that later shrank; there is no
- *    demotion) — the token is the detached Set, as before.
- *
- * The former "same Set object restored" identity contract is no longer
- * load-bearing: `deps` records HOSTS rather than Sets, so verify-mode dep reuse
- * cannot observe a container swap, and `subscribe()` disposers now remove via
- * the host instead of capturing a Set.
+ * **PRECONDITION (caller-guaranteed, not verified):** the sole entry must BE
+ * the caller's listener. The store's invariant provides it; callers without
+ * such an invariant must use `_suspendSubscriber`.
  */
 export function _suspendSoleSubscriber<T>(sig: Signal<T>): SoleSubscriberToken | null {
   const s = sig as unknown as SignalFn<T>
-  const s1 = s._s1
-  if (s1 !== null) {
-    // Two inline subscribers is not "sole" — the caller takes its
-    // per-listener path (`_suspendSubscriber`).
-    if (s._s !== null) return null
-    s._s1 = null
-    return s1
+  const d = s._d
+  const d1 = s._d1
+  if (d1 !== null) {
+    if (d !== null && d.size > 0) return null
+    s._d1 = null
+    return d1
   }
-  const set = s._s
-  if (set === null || typeof set === 'function' || set.size !== 1) return null
-  s._s = null
-
-  return set
+  if (d === null || d.size !== 1) return null
+  s._d = null
+  return d
 }
 
 /**
  * @internal Pair of {@link _suspendSoleSubscriber}. Restores the detached
- * subscriber. If a NEW subscriber arrived during the suspension window, the
- * caller's `listener` is folded in alongside it rather than clobbering it —
- * same end state (and same insertion order: listener re-added after the
- * newcomer) as `_resumeSubscriber` would produce.
+ * entry. If a NEW entry arrived during the suspension window, the caller's
+ * `listener` is folded in alongside it rather than clobbering it (listener
+ * re-added after the newcomer).
  */
 export function _resumeSoleSubscriber<T>(
   sig: Signal<T>,
@@ -393,26 +358,20 @@ export function _resumeSoleSubscriber<T>(
 ): void {
   const s = sig as unknown as SignalFn<T>
   if (typeof saved === 'function') {
-    // Inline-slot shape — `addSubscriber` restores it to the free slot, or
-    // promotes if a newcomer took it during the window.
-    addSubscriber(s, saved)
+    _addDirect(s, saved)
     return
   }
-  if (s._s1 === null && s._s === null) {
-    s._s = saved
-  } else {
-    addSubscriber(s, listener)
-  }
+  if (s._d1 === null && (s._d === null || s._d.size === 0)) s._d = saved
+  else _addDirect(s, listener)
 }
 
 /**
- * Register a direct updater — lighter than subscribe(). Used by compiler-emitted
+ * Register a direct updater — lighter than an effect. Used by compiler-emitted
  * `_bindText`/`_bindDirect` for zero-overhead DOM bindings.
  *
- * Two-tier storage: the FIRST subscriber lives in the inline slot `_d1` (no Set
+ * Two-tier storage: the FIRST entry lives in the inline slot `_d1` (no Set
  * allocation, no iteration) — the steady-state shape for ~all per-row bindings
- * inside `<For>` rows, where 10k rows means 10k signals with exactly one
- * subscriber each. A SECOND subscriber promotes `_d1` into a `_d: Set`.
+ * inside `<For>` rows. A SECOND entry promotes `_d1` into a `_d: Set`.
  *
  * Disposal is O(1) in both shapes. A flat array was rejected: it disposed by
  * nulling the slot and never compacted, so a long-lived signal (theme/locale/
@@ -423,58 +382,25 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
   // Dev: store an instrumented wrapper so the updater is a reactive-graph node
   // whose notifications count as fires (see `_rdDirect`). Folds away in prod.
   if (process.env.NODE_ENV !== 'production') updater = _rdDirect(updater)
-  // Tier 1: empty signal → inline-slot the single subscriber.
-  if (this._d1 === null && this._d === null) {
-    this._d1 = updater
-    const self = this
-    return () => {
-      // Disposer must defend against PROMOTION: if a 2nd subscriber
-      // arrived BEFORE this dispose runs, `_d1` was migrated into
-      // `_d` Set and `_d1` is null. Check both tiers so the original
-      // first-subscriber is removed regardless of which tier it now
-      // lives in.
-      if (self._d1 === updater) self._d1 = null
-      else if (self._d) self._d.delete(updater)
-    }
-  }
-  // Tier 2: ≥1 subscriber already present. If only `_d1` is set,
-  // promote it into a fresh Set before adding the new entry.
-  if (this._d === null) {
-    const first = this._d1!
-    this._d = new Set()
-    this._d.add(first)
-    this._d1 = null
-  }
-  const set = this._d
-  set.add(updater)
-
-  return () => {
-    set.delete(updater)
-  }
+  _addDirect(this, updater)
+  const self = this
+  return () => _removeDirect(self, updater)
 }
 
-/**
- * Notify direct updaters — set iteration, batch-aware. Disposed updaters
- * are already absent from the set (O(1) delete on disposal).
- */
-function notifyDirect(updaters: Set<() => void>): void {
-  // The `else` (non-batch) arm is structurally unreachable: every write opens
-  // an inline batch window before dispatch (see `openInlineBatch`), so by the
-  // time a multi-subscriber `_d` Set is notified, `isBatching()` is always
-  // true. Kept as a correctness guard for any future direct caller.
-  /* v8 ignore next 3 */
-  if (isBatching()) {
-    for (const fn of updaters) enqueuePendingNotification(fn)
-  } else {
-    for (const fn of updaters) fn()
-  }
+/** Number of subscriber edges of a source plus its direct-tier entries. */
+export function _subscriberCount(s: { _subs: Link | null; _d1?: (() => void) | null; _d?: Set<() => void> | null }): number {
+  let n = 0
+  for (let l = s._subs; l !== null; l = l.nextSub) n++
+  if (s._d1 != null) n++
+  if (s._d != null) n += s._d.size
+  return n
 }
 
 function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
   return {
     name: this.label,
     value: this._v,
-    subscriberCount: (this._s1 !== null ? 1 : 0) + _tierCount(this._s),
+    subscriberCount: _subscriberCount(this),
   }
 }
 
@@ -518,7 +444,7 @@ Object.setPrototypeOf(SignalProto, Function.prototype)
  * Create a reactive signal.
  *
  * Only 1 closure is allocated (the read function). State is stored as
- * properties on the function object (_v, _s, _d) and methods are shared
+ * properties on the function object (_v, _subs, _d1, _d) and methods are shared
  * via the SignalProto prototype — not per-signal closures or per-instance
  * property assignments.
  */
@@ -526,7 +452,7 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   if (process.env.NODE_ENV !== 'production')
     _countSink.__pyreon_count__?.('reactivity.signalCreate')
   // The read function is the only per-signal closure.
-  // It doubles as the SubscriberHost (_s property) for trackSubscriber.
+  // It doubles as the graph source (`_subs`) for trackSubscriber.
   //
   // Two declarations, chosen by the dev gate, rather than one `(...args)`
   // closure with a dev-only warning inside: a bundler folds the warning branch
@@ -557,8 +483,8 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   // All signals share SignalProto → monomorphic call sites for method dispatch.
   Object.setPrototypeOf(read, SignalProto)
   read._v = initialValue
-  read._s1 = null
-  read._s = null
+  read._subs = null
+  read._subsTail = null
   read._d1 = null
   read._d = null
   read.label = options?.name

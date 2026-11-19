@@ -1,9 +1,10 @@
 import { _enterCleanupFrame, _exitCleanupFrame } from './effect'
 import { _rdSetOwnerReader } from './reactive-devtools'
 export class EffectScope {
-  // A registered effect, or a BARE disposer function: render bindings register
-  // their dispose function directly instead of wrapping it in `{ dispose }`
-  // (one 16 B object per binding, kept for the binding's lifetime).
+  // A registered node (an effect handle, a computed) or a BARE disposer
+  // function: render bindings register their dispose function directly
+  // instead of wrapping it in `{ dispose }` (one 16 B object per binding, kept
+  // for the binding's lifetime), and a computed registers ITSELF.
   private _effects: ({ dispose(): void } | (() => void))[] | null = null
   private _active = true
   private _updateHooks: (() => void)[] | null = null
@@ -118,7 +119,10 @@ export class EffectScope {
     if (!this._active) return
     if (this._effects) {
       for (const e of this._effects) {
-        if (typeof e === 'function') e()
+        // A bare disposer is called; a node (effect handle, or a computed —
+        // itself callable, so told apart by its `_f` flags) is disposed.
+        if ((e as { _f?: number })._f !== undefined) (e as unknown as { _dispose(): void })._dispose()
+        else if (typeof e === 'function') e()
         else e.dispose()
       }
     }

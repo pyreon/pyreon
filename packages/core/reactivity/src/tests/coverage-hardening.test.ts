@@ -33,27 +33,40 @@ describe('effect — inner-effect disposal error handling', () => {
     setErrorHandler((err) => caught.push(err))
 
     const trigger = signal(0)
-    let inner: ReturnType<typeof effect> | undefined
 
     const outer = effect(() => {
-      trigger() // re-runs outer → runCleanup disposes the inner effect
-      inner = effect(() => {})
-      // Make the inner effect's dispose throw so the catch + _errorHandler
-      // branch in runCleanup (effect.ts:183-190) is exercised.
-      const orig = inner.dispose
-      inner.dispose = () => {
-        orig()
-        throw new Error('inner-dispose-boom')
-      }
+      trigger() // re-runs outer → its cleanup disposes the inner effect
+      effect(() => {
+        // The inner effect's cleanup throws while the OUTER re-run disposes it.
+        return () => {
+          throw new Error('inner-dispose-boom')
+        }
+      })
     })
 
-    trigger.set(1) // outer re-runs → runCleanup → inner.dispose() throws
+    trigger.set(1) // outer re-runs → inner disposed → its cleanup throws
 
     expect(caught).toHaveLength(1)
     expect((caught[0] as Error).message).toBe('inner-dispose-boom')
 
     outer.dispose()
     setErrorHandler((_err) => {})
+  })
+
+  test('assigning over an effect handle\'s dispose shadows it (plain-object handle compat)', () => {
+    const s = signal(0)
+    const e = effect(() => {
+      s()
+    })
+    const original = e.dispose
+    let called = 0
+    e.dispose = () => {
+      called++
+      original()
+    }
+    e.dispose()
+    expect(called).toBe(1)
+    s.set(1)
   })
 })
 

@@ -1,30 +1,18 @@
 /**
- * Exact-size dependency lists (`exactDeps` in tracking.ts).
+ * Owners keep a working dependency list across their lifetime.
  *
- * Every effect, computed, `_bind` and renderEffect now collects its first-run
- * deps into a fresh array and then KEEPS an exact-size copy of it. The owner's
- * `deps` binding is re-pointed after the collect, so these tests lock that the
- * array that later runs verify against and that `dispose()` walks is the copy
- * holding every dep — including when the collect throws, when a re-run
- * diverges and grows the copy, and when the first run re-enters itself.
+ * Every effect, computed, `_bind` and renderEffect records its dependencies
+ * as graph edges on the first run and re-uses them on later runs. These tests
+ * lock that the edges later runs re-use and that `dispose()` walks hold every
+ * dependency — including when the first run throws, when a re-run diverges
+ * and grows the list, and when the first run writes a signal it read.
+ * (Edge counts per node kind after teardown: `link-teardown.test.ts`.)
  */
 import { _bind, computed, effect, effectScope, onCleanup, renderEffect, signal } from '../index'
-import { exactDeps } from '../tracking'
 
 const subs = (s: { debug(): { subscriberCount: number } }) => s.debug().subscriberCount
 
-describe('exactDeps', () => {
-  test('returns an empty list as-is and copies a non-empty one', () => {
-    const empty: never[] = []
-    expect(exactDeps(empty)).toBe(empty)
-    const one = [signal(0) as never]
-    const copy = exactDeps(one)
-    expect(copy).not.toBe(one)
-    expect(copy).toEqual(one)
-  })
-})
-
-describe('owners keep a working dep list after the exact-size copy', () => {
+describe('owners keep a working dep list', () => {
   const makers: Record<string, (a: () => number, b: () => number, flip: () => boolean) => () => void> = {
     effect: (a, b, flip) => {
       const e = effect(() => {
@@ -59,10 +47,10 @@ describe('owners keep a working dep list after the exact-size copy', () => {
       expect(subs(a)).toBe(1)
       expect(subs(b)).toBe(0)
 
-      a.set(1) // steady-state verify against the copy
+      a.set(1) // steady state re-uses the edges
       expect(subs(a)).toBe(1)
 
-      flip.set(true) // divergence pushes onto the copy
+      flip.set(true) // divergence appends an edge
       expect(subs(b)).toBe(1)
 
       dispose()

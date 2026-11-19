@@ -7,16 +7,25 @@ import {
   _rdRegisterBinding,
   _rdTagHandle,
 } from './reactive-devtools'
-import { getCurrentScope } from './scope'
+import { _errorHandler, setErrorHandler } from './errors'
 import {
-  exactDeps,
-  getInnerEffectCollector,
-  removeSubscriber,
-  runCollect,
-  runVerify,
-  setInnerEffectCollector,
-  type SubscriberHost,
-} from './tracking'
+  F_DIRTY,
+  F_DISPOSED,
+  F_PENDING,
+  F_RUNNING,
+  F_STATIC,
+  type Link,
+  type WatcherNode,
+  _b,
+  _t,
+  checkDirty,
+  endBatch,
+  purgeDeps,
+  unlinkAllDeps,
+} from './graph'
+import { type EffectScope, getCurrentScope } from './scope'
+
+export { _errorHandler, setErrorHandler }
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -155,41 +164,7 @@ const LAZY_INNER: unknown[] = []
 // Inner-effect collector state lives in tracking.ts so `runUntracked` can
 // suspend it in lock-step with `_t.e`.
 
-// Global handler for unhandled errors thrown inside effects; defaults to
-// console.error so failures are never silently swallowed. Two surfaces fire on
-// every error: the legacy `setErrorHandler` handler, and a globalThis bridge
-// `__pyreon_report_error__` that `@pyreon/core` installs so effect errors reach
-// the same telemetry pipeline as component errors. globalThis-based to avoid an
-// upward import. New consumers should prefer core's `registerErrorHandler`.
-
-interface PyreonErrorBridge {
-  __pyreon_report_error__?: (err: unknown, phase: 'effect') => void
-}
-const _errorBridge = globalThis as PyreonErrorBridge
-
-function _defaultErrorHandler(err: unknown): void {
-  // Last-resort reporter — MUST fire in production too. Silently swallowing an
-  // uncaught effect error is a serious bug; React/Vue/Solid all log in prod.
-  // pyreon-lint-disable-next-line pyreon/dev-guard-warnings
-  console.error('[pyreon] Unhandled effect error:', err)
-}
-
-let _userErrorHandler: ((err: unknown) => void) | undefined
-
-export const _errorHandler: (err: unknown) => void = (err) => {
-  // 1. User-set or default direct handler.
-  ;(_userErrorHandler ?? _defaultErrorHandler)(err)
-  // 2. Global telemetry bridge (installed by @pyreon/core's
-  //    registerErrorHandler). Forwards effect errors into reportError so
-  //    Sentry/Datadog wiring captures them alongside component errors.
-  _errorBridge.__pyreon_report_error__?.(err, 'effect')
-}
-
-export function setErrorHandler(fn: (err: unknown) => void): void {
-  _userErrorHandler = fn
-}
-
-/** Two returned cleanups of one effect (a run re-entered by its own write): run both. */
+/** Two returned cleanups of one effect: run both. */
 function chainCleanup(first: () => void, second: () => void): () => void {
   return () => {
     try {
@@ -201,14 +176,153 @@ function chainCleanup(first: () => void, second: () => void): () => void {
   }
 }
 
-/** Remove an effect from all dependency subscriber sets (local deps array). */
-function cleanupLocalDeps(deps: SubscriberHost[], fn: () => void): void {
-  if (deps.length === 1) {
-    removeSubscriber(deps[0] as SubscriberHost, fn)
-    deps.pop()
-  } else if (deps.length > 1) {
-    for (let i = 0; i < deps.length; i++) removeSubscriber(deps[i] as SubscriberHost, fn)
-    deps.length = 0
+/**
+ * An `effect()`: the node in the graph, the handle `effect()` returns, and
+ * what the scope (or the enclosing effect) stores to dispose it. Methods live
+ * on the prototype; per effect there is this one object plus one `Link` per
+ * dependency.
+ */
+class EffectNode implements WatcherNode, Effect {
+  _f = 0
+  _deps: Link | null = null
+  _depsTail: Link | null = null
+  _fn: () => (() => void) | void
+  /** The cleanup the last run returned. */
+  _cleanup: (() => void) | undefined = undefined
+  /** `onCleanup` callbacks registered by the last run. */
+  _cleanups: (() => void)[] | null = null
+  /** Effects created by the last run (disposed before the next one). */
+  _inner: Effect[] | null = null
+  /** The scope current at creation: `onUpdate` hooks after each re-run. */
+  _scope: EffectScope | null
+  /** Context snapshot captured at creation, restored around re-runs. */
+  _snap: unknown
+
+  constructor(fn: () => (() => void) | void, scope: EffectScope | null, snap: unknown) {
+    this._fn = fn
+    this._scope = scope
+    this._snap = snap
+  }
+
+  /** At its queue turn: run if a source it read changed. */
+  run(): void {
+    const f = this._f
+    if ((f & F_DISPOSED) !== 0) return
+    if ((f & F_DIRTY) !== 0 || ((f & F_PENDING) !== 0 && checkDirty(this))) this._exec(false)
+    else this._f &= ~F_PENDING
+  }
+
+  _exec(first: boolean): void {
+    if (process.env.NODE_ENV !== 'production') {
+      _countSink.__pyreon_count__?.('reactivity.effectRun')
+      _rdRecordFire(this)
+    }
+    // Most effects hold nothing to tear down between runs; skip the call.
+    if (this._inner !== null || this._cleanups !== null || this._cleanup !== undefined) this._runCleanup()
+    // Open LAZY inner-effect + onCleanup windows (nothing allocated until
+    // actually used), saved/restored so nested runs can't clobber this one.
+    const outerCollector = _t.n
+    _t.n = LAZY_INNER
+    const prevCleanupWindow = _c.o
+    const prevCleanupCollector = _c.c
+    _c.o = true
+    _c.c = null
+    const prevSub = _t.e
+    _t.e = this
+    this._depsTail = null
+    this._f = (this._f & ~(F_DIRTY | F_PENDING)) | F_RUNNING
+    let ok = false
+    try {
+      // The first run is inside the synchronous mount where the context stack
+      // is still intact, so it calls fn directly; re-runs happen after
+      // mountReactive truncated the stack and need it restored.
+      const snap = this._snap
+      const cap = _c.s
+      const fn = this._fn
+      const ret = !first && snap !== null && cap !== null ? cap.restore(snap, fn) : fn()
+      ok = true
+      if (typeof ret === 'function') this._cleanup = this._cleanup === undefined ? ret : chainCleanup(this._cleanup, ret)
+    } catch (err) {
+      _errorHandler(err)
+    } finally {
+      _t.e = prevSub
+      const f = this._f & ~F_RUNNING
+      this._f = f
+      // Disposed by its own run: drop what the run linked. A run that THREW
+      // keeps its unconfirmed dependency tail (a later change to it re-runs).
+      if ((f & F_DISPOSED) !== 0) unlinkAllDeps(this)
+      else if (ok) purgeDeps(this)
+      // What this run registered is APPENDED, never assigned (cleanups
+      // registered before a throw are kept too).
+      const own = _c.c
+      _c.o = prevCleanupWindow
+      _c.c = prevCleanupCollector
+      if (own !== null) this._cleanups = this._cleanups === null ? own : this._cleanups.concat(own)
+      const mine = _t.n
+      if (mine !== LAZY_INNER && mine !== null)
+        this._inner = this._inner === null ? (mine as Effect[]) : this._inner.concat(mine as Effect[])
+      _t.n = outerCollector
+    }
+    // Notify scope after each reactive re-run (not the initial synchronous run)
+    // so onUpdate hooks fire after the DOM has settled.
+    if (!first) this._scope?.notifyEffectRan()
+  }
+
+  _runCleanup(): void {
+    const inner = this._inner
+    if (inner !== null) {
+      this._inner = null
+      for (const ie of inner) {
+        try {
+          ;(ie as EffectNode)._dispose()
+        } catch (err) {
+          _errorHandler(err)
+        }
+      }
+    }
+    const cleanups = this._cleanups
+    if (cleanups !== null) {
+      this._cleanups = null
+      for (const c of cleanups) {
+        try {
+          c()
+        } catch (err) {
+          _errorHandler(err)
+        }
+      }
+    }
+    const cleanup = this._cleanup
+    if (cleanup !== undefined) {
+      this._cleanup = undefined
+      try {
+        cleanup()
+      } catch (err) {
+        _errorHandler(err)
+      }
+    }
+  }
+
+  _dispose(): void {
+    if ((this._f & F_DISPOSED) !== 0) return
+    this._runCleanup()
+    this._f |= F_DISPOSED
+    // Running right now (it disposed itself): the run's `finally` unlinks
+    // whatever it linked after this point.
+    unlinkAllDeps(this)
+  }
+
+  /**
+   * The public disposer. A getter returning a bound function, because the
+   * handle's `dispose` has always worked DETACHED (`onUnmount(e.dispose)`,
+   * `const stop = effect(…).dispose`). Framework code calls `_dispose()`.
+   */
+  get dispose(): () => void {
+    return () => this._dispose()
+  }
+
+  /** Assigning `handle.dispose` (as on the old plain-object handle) shadows it. */
+  set dispose(fn: () => void) {
+    Object.defineProperty(this, 'dispose', { value: fn, writable: true, configurable: true, enumerable: true })
   }
 }
 
@@ -229,160 +343,27 @@ export function effect(
     }
   }
 
-  // Capture the scope at creation time — remains correct during future re-runs
-  // even after setCurrentScope(null) has been called post-setup.
-  const scope = getCurrentScope()
-  // Capture the context owner + hook at SETUP; re-runs restore it before
-  // invoking fn (see the module header).
+  // Capture the scope and the context owner at creation — both stay correct
+  // during future re-runs (see the module header).
   const cap = _c.s
-  const snapshot = cap ? cap.capture() : null
-  // Pre-build the restore wrapper ONCE at setup instead of allocating a
-  // `() => restore(...)` closure on every non-first run.
-  const fnToRunReplay: () => (() => void) | void =
-    snapshot !== null && cap ? () => cap.restore(snapshot, fn) : fn
-  let disposed = false
-  let isFirstRun = true
-  let cleanup: (() => void) | undefined
-  // Local deps array — avoids WeakMap overhead (like renderEffect). `let`: the
-  // first run re-points it at an exact-size copy (`exactDeps`).
-  let deps: SubscriberHost[] = []
+  const node = new EffectNode(fn, getCurrentScope(), cap ? cap.capture() : null)
 
-  let cleanups: (() => void)[] | undefined
-  // Inner effects created during this effect's body — disposed on outer re-run
-  // and on outer dispose, else they leak across outer lifecycle boundaries.
-  let innerEffects: Effect[] | null = null
-
-  const runCleanup = () => {
-    if (innerEffects) {
-      for (const ie of innerEffects) {
-        try {
-          ie.dispose()
-        } catch (err) {
-          _errorHandler(err)
-        }
-      }
-      innerEffects = null
-    }
-    if (cleanups) {
-      for (const c of cleanups) {
-        try {
-          c()
-        } catch (err) {
-          _errorHandler(err)
-        }
-      }
-      cleanups = undefined
-    }
-    if (typeof cleanup === 'function') {
-      try {
-        cleanup()
-      } catch (err) {
-        _errorHandler(err)
-      }
-      cleanup = undefined
-    }
-  }
-
-  const run = () => {
-    if (disposed) return
-    if (process.env.NODE_ENV !== 'production') {
-      _countSink.__pyreon_count__?.('reactivity.effectRun')
-      _rdRecordFire(run)
-    }
-    // Most effects hold nothing to tear down between runs; skip the call.
-    if (innerEffects !== null || cleanups !== undefined || cleanup !== undefined) runCleanup()
-    // Open LAZY inner-effect + onCleanup windows (nothing allocated until
-    // actually used), saved/restored so nested runs can't clobber this one.
-    const outerCollector = getInnerEffectCollector()
-    setInnerEffectCollector(LAZY_INNER)
-    const prevCleanupWindow = _c.o
-    const prevCleanupCollector = _c.c
-    _c.o = true
-    _c.c = null
-    try {
-      // First run COLLECTS deps; re-runs VERIFY them positionally (zero Set ops
-      // in the steady state). The first run is inside the synchronous mount where
-      // the context stack is still intact, so it calls fn directly; re-runs happen
-      // after mountReactive truncated the stack and need it restored.
-      let ret: (() => void) | void
-      if (isFirstRun) {
-        const collected = deps
-        try {
-          ret = runCollect(run, collected, fn)
-        } finally {
-          deps = exactDeps(collected)
-        }
-      } else {
-        ret = runVerify(run, deps, fnToRunReplay)
-      }
-      if (typeof ret === 'function') cleanup = cleanup === undefined ? ret : chainCleanup(cleanup, ret)
-    } catch (err) {
-      _errorHandler(err)
-    } finally {
-      // What this run registered is APPENDED, never assigned: a run can be
-      // re-entered (an effect that writes a signal it read during its first
-      // run re-runs nested inside it), and the nested run has already stored
-      // its own inner effects and cleanups here. Assigning dropped them — an
-      // inner effect nobody could dispose, not even `scope.stop()`. Cleanups
-      // registered before a throw are kept too (they used to be dropped).
-      const own = _c.c
-      _c.o = prevCleanupWindow
-      _c.c = prevCleanupCollector
-      if (own !== null) cleanups = cleanups === undefined ? own : cleanups.concat(own)
-      const mine = getInnerEffectCollector()
-      if (mine !== LAZY_INNER && mine !== null)
-        innerEffects = innerEffects === null ? (mine as Effect[]) : innerEffects.concat(mine as Effect[])
-      setInnerEffectCollector(outerCollector)
-    }
-    // Notify scope after each reactive re-run (not the initial synchronous run)
-    // so onUpdate hooks fire after the DOM has settled.
-    if (!isFirstRun) scope?.notifyEffectRan()
-    isFirstRun = false
-  }
-
-  let _effectId: number | undefined
   if (process.env.NODE_ENV !== 'production')
-    // skipFrames=1: skip the `effect()` / `renderEffect()` frame, capture the user's call site.
+    // skipFrames=1: skip the `effect()` frame, capture the user's call site.
     // Prefer build-time-injected location over the ~2.2µs stack-capture
     // fallback. @pyreon/vite-plugin's `injectSignalNames` rewrites
     // `effect(() => …)` to `effect(() => …, { __sourceLocation: {…} })`.
-    _effectId = _rdRegister(
-      run,
-      'effect',
-      null,
-      run,
-      undefined,
-      options?.__sourceLocation ?? _captureCallerLocation(1),
-    )
+    _rdRegister(node, 'effect', null, node, undefined, options?.__sourceLocation ?? _captureCallerLocation(1))
 
-  // Create the batch queue's intrusive flags (`_eq`, `_vg` — see batch.ts) up
-  // front. Created lazily on first enqueue they cost the same bytes once an
-  // effect has been queued, but V8 dispatched the queued runs measurably slower
-  // (wide fan-out, 1 signal → 100 effects: ~2,090 → ~1,790 ns per write; either
-  // flag alone recovers only half). The price is ~40 B on an effect that is
-  // never queued — one whose signal writes all run it directly, outside a batch.
-  ;(run as { _eq?: number; _vg?: number })._eq = 0
-  ;(run as { _eq?: number; _vg?: number })._vg = 0
-
-  run()
-
-  const e: Effect = {
-    dispose() {
-      runCleanup()
-      disposed = true
-      cleanupLocalDeps(deps, run)
-    },
-  }
-
-  // Dev-only: mirror the reactive-graph node id onto the returned Effect handle
-  // so `@pyreon/testing`'s `expectEffect(e)` can target this effect's fire count
-  // (the internal `run` closure carries `__pxRdId` but isn't returned).
-  if (process.env.NODE_ENV !== 'production') {
-    Object.defineProperty(e, '__pxRdId', {
-      value: _effectId,
-      enumerable: false,
-      configurable: true,
-    })
+  // The first run happens inside a batch window, so a write it makes to a
+  // signal it already read RE-QUEUES this effect instead of re-running it
+  // nested inside itself. The re-run happens when the window closes — still
+  // synchronously, before `effect()` returns, and counted by MAX_PASSES.
+  _b.d++
+  try {
+    node._exec(true)
+  } finally {
+    endBatch()
   }
 
   // If we're inside another effect's run, register with it so the outer disposes
@@ -390,19 +371,19 @@ export function effect(
   // work that explicitly opted out of the outer reactive context falls through
   // to scope.add — that's what keeps child component effects mounted inside
   // `mountFor`'s `runUntracked` wrap alive across the For's next re-run.
-  registerEffectHere(e)
-  return e
+  registerEffectHere(node)
+  return node
 }
 
 /** Register a new effect with the CURRENT frame: the enclosing run's inner window, else the scope. */
 function registerEffectHere(e: Effect): void {
-  const collector = getInnerEffectCollector()
+  const collector = _t.n
   if (collector !== null) {
     if (collector === LAZY_INNER) {
       // First nested effect of the enclosing run — materialize the real
       // array now (the lazy-window swap; the sentinel itself is never
       // mutated).
-      setInnerEffectCollector([e])
+      _t.n = [e]
     } else {
       ;(collector as Effect[]).push(e)
     }
@@ -432,16 +413,16 @@ export interface RunCapture {
  * @internal
  */
 export function _captureRun<T>(fn: () => T, out: RunCapture): T {
-  const outerCollector = getInnerEffectCollector()
-  setInnerEffectCollector(LAZY_INNER)
+  const outerCollector = _t.n
+  _t.n = LAZY_INNER
   const token = _enterCleanupFrame()
   try {
     return fn()
   } finally {
     out.cleanups = _exitCleanupFrame(token)
-    const mine = getInnerEffectCollector()
+    const mine = _t.n
     out.inner = mine !== LAZY_INNER && mine !== null ? (mine as Effect[]) : null
-    setInnerEffectCollector(outerCollector)
+    _t.n = outerCollector
   }
 }
 
@@ -473,88 +454,128 @@ export function _releaseRun(cap: RunCapture): void {
 export const _noopDispose = (): void => {}
 
 /**
+ * A render binding (`renderEffect` / `_bind`): a graph subscriber with the
+ * smallest possible run — no error handler (errors propagate), no `onUpdate`
+ * notification, no `onCleanup` / inner-effect windows. `_bind` bindings carry
+ * `F_STATIC`: re-runs skip tracking entirely (the compiler guarantees their
+ * dependencies never change).
+ */
+class BindingNode implements WatcherNode {
+  _f: number
+  _deps: Link | null = null
+  _depsTail: Link | null = null
+  _fn: () => void
+  /** Context snapshot captured at creation, restored around re-runs. */
+  _snap: unknown
+
+  constructor(fn: () => void, snap: unknown, flags: number) {
+    this._fn = fn
+    this._snap = snap
+    this._f = flags
+  }
+
+  run(): void {
+    const f = this._f
+    if ((f & F_DISPOSED) !== 0) return
+    if ((f & F_DIRTY) !== 0 || ((f & F_PENDING) !== 0 && checkDirty(this))) {
+      if (process.env.NODE_ENV !== 'production') _rdRecordFire(this)
+      if ((f & F_STATIC) !== 0) {
+        // Static deps: no tracking frame (reads see `_t.e === null` in the flush).
+        this._f = (this._f & ~(F_DIRTY | F_PENDING)) | F_RUNNING
+        try {
+          this._call(true)
+        } finally {
+          this._f &= ~F_RUNNING
+        }
+        return
+      }
+      this._track(true)
+    } else this._f &= ~F_PENDING
+  }
+
+  /** Call the body; `restore` re-enters the setup-time context snapshot. */
+  _call(restore: boolean): void {
+    const fn = this._fn
+    const snap = this._snap
+    const cap = _c.s
+    if (restore && snap !== null && cap !== null) cap.restore(snap, fn)
+    else fn()
+  }
+
+  /** A tracked run: reset the cursor, run, drop what this run did not read. */
+  _track(restore: boolean): void {
+    const prevSub = _t.e
+    _t.e = this
+    this._depsTail = null
+    this._f = (this._f & ~(F_DIRTY | F_PENDING)) | F_RUNNING
+    let ok = false
+    try {
+      this._call(restore)
+      ok = true
+    } finally {
+      _t.e = prevSub
+      const f = this._f & ~F_RUNNING
+      this._f = f
+      if ((f & F_DISPOSED) !== 0) unlinkAllDeps(this)
+      else if (ok) purgeDeps(this)
+    }
+  }
+
+  dispose(): void {
+    if ((this._f & F_DISPOSED) !== 0) return
+    this._f |= F_DISPOSED
+    unlinkAllDeps(this)
+  }
+}
+
+/** First run of a binding: tracked, inside a batch window (see `effect()`). */
+function firstRun(node: BindingNode): void {
+  _b.d++
+  try {
+    node._track(false)
+  } finally {
+    endBatch()
+  }
+}
+
+/**
  * Static-dep binding — compiler helper for template expressions.
  *
  * Like renderEffect but assumes dependencies never change (true for all
  * compiler-emitted template bindings like `_tpl()` text/attribute updates).
  *
- * Tracks dependencies only on the first run. Re-runs skip cleanup, re-tracking,
- * and tracking context save/restore entirely — just calls `fn()` directly.
- *
- * Per re-run savings vs renderEffect:
- * - No tracking frame at all (renderEffect re-runs enter a `runVerify`
- *   frame — cheap, but still a save/restore + one compare per read)
- * - Signal reads hit `if (_t.e)` null check → instant return
+ * Tracks dependencies only on the first run. Re-runs skip tracking and the
+ * tracking-frame save/restore entirely — just call `fn()` directly.
  */
 export function _bind(fn: () => void): () => void {
-  let deps: SubscriberHost[] = []
-  let disposed = false
-
-  // Capture the snapshot AND the hook reference at SETUP, so re-runs dispatch
-  // directly instead of re-checking the module-level hook. `cap` is a stable
-  // closure capture for this binding's lifetime — a later
-  // `setSnapshotCapture(null)` doesn't disturb it, matching setup-time
-  // semantics (the provider chain is fixed at setup).
+  // Capture the snapshot at SETUP; re-runs restore it.
   const cap = _c.s
-  const snapshot = cap ? cap.capture() : null
+  const node = new BindingNode(fn, cap ? cap.capture() : null, F_STATIC)
 
-  // Pre-pick the run body at setup so re-runs do a disposed-check + direct
-  // dispatch only, with no per-fire branch. The `if (disposed) return` guard
-  // covers the narrow window where a sibling disposes this effect during the
-  // same flush (dispose normally removes the notify before its run).
-  const run: () => void =
-    snapshot !== null && cap
-      ? () => {
-          /* v8 ignore next */
-          if (disposed) return
-          if (process.env.NODE_ENV !== 'production') _rdRecordFire(run)
-          cap.restore(snapshot, fn)
-        }
-      : () => {
-          /* v8 ignore next */
-          if (disposed) return
-          if (process.env.NODE_ENV !== 'production') _rdRecordFire(run)
-          fn()
-        }
-
-  // First run: track deps so we know what to unsubscribe on dispose. We
-  // intentionally call `fn` directly (not `run`) here — the synchronous
-  // mount stack is already intact at this point, so restoring the captured
-  // snapshot would just push the same frames again redundantly.
+  // First run: track deps so we know what to unsubscribe on dispose. The
+  // synchronous mount stack is intact here, so `fn` runs without the snapshot.
   // Dev: the first run is bracketed by the binding-label frame, so the DOM
   // setter it calls (`_setAttr(el, 'aria-busy', …)`) names the binding.
   if (process.env.NODE_ENV !== 'production') _rdOpenBindingFrame()
-  const collected = deps
   try {
-    runCollect(run, collected, fn)
+    firstRun(node)
   } finally {
-    deps = exactDeps(collected)
     if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
   }
 
   // Dead binding: the first run subscribed to nothing, so nothing can ever
   // re-run it. Drop the disposer and the scope entry (see `_noopDispose`).
-  if (deps.length === 0) return _noopDispose
+  if (node._deps === null) return _noopDispose
 
   // Dev: a LIVE binding is a reactive-graph node. skipFrames=1 skips `_bind`,
   // so the location is the compiled template that emitted the call. `_bind` is
   // only ever compiler-emitted for a DOM write, so it is a binding even when
   // its updater assigns the DOM without a setter (`dom`).
   if (process.env.NODE_ENV !== 'production')
-    _rdRegisterBinding(run, _captureCallerLocation(1), 'dom')
+    _rdRegisterBinding(node, _captureCallerLocation(1), 'dom')
 
-  const dispose = () => {
-    if (disposed) return
-    disposed = true
-    if (deps.length === 1) {
-      removeSubscriber(deps[0] as SubscriberHost, run)
-      deps.pop()
-    } else {
-      for (const h of deps) removeSubscriber(h, run)
-      deps.length = 0
-    }
-  }
-  if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, run)
+  const dispose = (): void => node.dispose()
+  if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, node)
 
   // Auto-register with scope so template bindings are disposed during teardown
   getCurrentScope()?.add(dispose)
@@ -567,11 +588,11 @@ export function _bind(fn: () => void): () => void {
  *
  * Differences from `effect()`: no error handler (errors propagate naturally),
  * no onUpdate notification, no onCleanup collection, no inner-effect window.
- * Re-runs use the same verify-mode dep reuse but skip that ceremony entirely.
+ * Re-runs re-track (dynamic dependencies) but skip that ceremony entirely.
  *
  * It DOES auto-register its disposer with the current `EffectScope`, so
  * template bindings tear down with the owning component. Returns a dispose
- * function rather than an Effect object — saves one allocation.
+ * function rather than an Effect object.
  */
 export function renderEffect(fn: () => void): () => void {
   // Same dev warning as `effect()` — signal reads after the first
@@ -586,76 +607,33 @@ export function renderEffect(fn: () => void): () => void {
     }
   }
 
-  let deps: SubscriberHost[] = []
-  let disposed = false
-  let isFirstRun = true
-
   // Same rationale as `_bind`: capture the external context snapshot at
   // SETUP and restore it on signal-driven re-runs so provider lookups stay
   // correct even after `mountReactive`'s cleanup truncates the global stack.
-  const snapshot = _c.s ? _c.s.capture() : null
-
-  const trackedFn =
-    snapshot !== null && _c.s
-      ? () => (_c.s as ReactiveSnapshotCapture).restore(snapshot, fn)
-      : fn
-
-  const run = () => {
-    if (disposed) return
-    if (isFirstRun) {
-      isFirstRun = false
-      // First run: stack is still intact (we're inside the synchronous
-      // mount), so call fn directly to avoid pushing the snapshot frames
-      // a second time.
-      const collected = deps
-      try {
-        runCollect(run, collected, fn)
-      } finally {
-        deps = exactDeps(collected)
-      }
-    } else {
-      if (process.env.NODE_ENV !== 'production') _rdRecordFire(run)
-      // Re-run: VERIFY the previous dep list positionally (zero Set ops in
-      // the steady state) instead of the old cleanup-all + re-track pair.
-      runVerify(run, deps, trackedFn)
-    }
-  }
+  const cap = _c.s
+  const node = new BindingNode(fn, cap ? cap.capture() : null, 0)
 
   // Dev: bracket the first run with the binding-label frame (the DOM setter it
   // calls names the binding), and register only a LIVE binding — after the
-  // run, once its deps are known. Registering before the run (as this did)
-  // left every dead binding in the graph as a never-fired node, and coverage
-  // reported each as "created but never executed".
-  // One body for both builds: the dev calls fold away, leaving the bare
-  // `run()`. No try/finally: Bun's minifier keeps an emptied `finally {}`, so
-  // the production output would change. If the first run throws (the error
-  // propagates out of the mount anyway) the dev frame stays open; that is
-  // harmless — every later frame saves and restores around it, and only setter
-  // writes made outside any binding could land in it, which nothing reads.
+  // run, once its deps are known. No try/finally: Bun's minifier keeps an
+  // emptied `finally {}`, so the production output would change. If the first
+  // run throws (the error propagates out of the mount anyway) the dev frame
+  // stays open; that is harmless — every later frame saves and restores
+  // around it.
   if (process.env.NODE_ENV !== 'production') _rdOpenBindingFrame()
-  run()
+  firstRun(node)
   if (process.env.NODE_ENV !== 'production') _rdCloseBindingFrame()
 
-  // Dead binding (see `_noopDispose`): no dependency was
-  // tracked on the first run, so no signal can ever schedule `run` again.
-  if (deps.length === 0) return _noopDispose
+  // Dead binding (see `_noopDispose`): no dependency was tracked on the first
+  // run, so no signal can ever schedule a re-run.
+  if (node._deps === null) return _noopDispose
 
   // skipFrames=1: skip the `renderEffect()` frame, capture the caller's site.
   if (process.env.NODE_ENV !== 'production')
-    _rdRegisterBinding(run, _captureCallerLocation(1))
+    _rdRegisterBinding(node, _captureCallerLocation(1))
 
-  const dispose = () => {
-    if (disposed) return
-    disposed = true
-    if (deps.length === 1) {
-      removeSubscriber(deps[0] as SubscriberHost, run)
-      deps.pop()
-    } else {
-      for (const h of deps) removeSubscriber(h, run)
-      deps.length = 0
-    }
-  }
-  if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, run)
+  const dispose = (): void => node.dispose()
+  if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, node)
 
   // Auto-register with scope so render effects are disposed during teardown
   getCurrentScope()?.add(dispose)

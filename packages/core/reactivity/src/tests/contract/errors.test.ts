@@ -175,4 +175,56 @@ describe('C10 — error isolation', () => {
     t.set(2)
     expect(tRuns).toBe(tAfterThrow + 1)
   })
+
+  test('C10: work dropped by a throw leaves no mark behind — a later write still reaches an effect behind a computed', () => {
+    // Two listeners put the direct tier in its Set shape, so they are queued
+    // ahead of the effect; the first throws, and the rest of the flush (the
+    // effect) is dropped. The computed between the signal and the effect was
+    // marked by the write: left marked, it would stop every later write's
+    // marking at itself and the effect would never run again.
+    const s = signal(0)
+    const c = computed(() => s() * 2)
+    let armed = true
+    s.subscribe(() => {
+      if (armed) throw new ContractError('listener')
+    })
+    s.subscribe(() => {})
+    const seen: number[] = []
+    effect(() => {
+      seen.push(c())
+    })
+    expect(() => s.set(1)).toThrow('contract:listener')
+    armed = false
+    s.set(2)
+    expect(seen.at(-1)).toBe(4)
+    s.set(3)
+    expect(seen.at(-1)).toBe(6)
+  })
+})
+
+describe('C9/C10 — a flush cut off by MAX_PASSES leaves no mark behind', () => {
+  test('C9: after the cut-off, the next write still reaches a looping effect that reads through a computed', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const s = signal(0)
+      const c = computed(() => s())
+      let armed = false
+      const seen: number[] = []
+      effect(() => {
+        const v = c()
+        seen.push(v)
+        if (armed) s.set(v + 1)
+      })
+      armed = true
+      s.set(1) // loops until MAX_PASSES drops it, with the effect queued behind a marked `c`
+      armed = false
+      seen.length = 0
+      s.set(1000)
+      expect(seen).toEqual([1000])
+    } finally {
+      warn.mockRestore()
+      error.mockRestore()
+    }
+  })
 })

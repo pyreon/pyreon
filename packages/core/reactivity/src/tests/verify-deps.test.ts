@@ -1,10 +1,10 @@
 /**
- * Verify-mode dep reuse (versioned dep tracking adapted to Pyreon's
- * array/Set architecture — see tracking.ts `runVerify` docs).
+ * Dep-list reuse across runs (the cursor over a node's dependency edges — see
+ * `link` in graph.ts).
  *
- * Steady-state re-runs of effects/computeds no longer tear down + rebuild
- * their dep subscriptions; they VERIFY the previous run's dep list
- * positionally. These tests lock:
+ * Steady-state re-runs of effects/computeds do not tear down + rebuild their
+ * dep subscriptions; each read advances a cursor over the previous run's
+ * edges. These tests lock:
  *
  *  1. Steady-state correctness — same deps re-fire across many runs.
  *  2. Divergence — a branch flip unsubscribes the stale dep + subscribes
@@ -30,18 +30,10 @@ import { describe, expect, it } from 'vitest'
 import { computed } from '../computed'
 import { effect, onCleanup, setErrorHandler } from '../effect'
 import { signal } from '../signal'
+import { edgeCount } from './graph-internals'
 
-// Internal shape for white-box subscriber assertions.
-interface HostInternals {
-  _s1: (() => void) | null
-  _s: Set<() => void> | null
-}
-// Tracking storage is TWO-TIER: the sole subscriber lives in the `_s1` inline
-// slot and only a second one promotes to the `_s` Set. Count both.
-const subCount = (s: unknown): number => {
-  const h = s as HostInternals
-  return (h._s1 != null ? 1 : 0) + (h._s?.size ?? 0)
-}
+// White-box subscriber counts: graph edges on the source.
+const subCount = edgeCount
 
 describe('verify-mode dep reuse — effects', () => {
   it('steady state: same deps re-fire across many re-runs', () => {

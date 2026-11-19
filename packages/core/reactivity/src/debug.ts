@@ -93,10 +93,8 @@ export function why(): void {
   _whyLog = []
 
   const dispose = onSignalUpdate((e) => {
-    // Both tracking tiers — see `SubscriberHost`; the sole subscriber lives in
-    // `_s1` and never reaches `_s`.
-    const _h = e.signal as unknown as { _s1: unknown | null; _s: Set<unknown> | (() => void) | null }
-    const _subCount = (_h._s1 !== null ? 1 : 0) + (_h._s === null ? 0 : typeof _h._s === 'function' ? 1 : _h._s.size)
+    // Graph edges plus the direct tier (listeners, compiled bindings).
+    const _subCount = e.signal.debug().subscriberCount
     const _name = e.name ? `"${e.name}"` : '(anonymous signal)'
 
     console.log(

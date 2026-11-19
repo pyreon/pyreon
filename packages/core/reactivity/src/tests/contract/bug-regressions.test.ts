@@ -101,7 +101,11 @@ describe('B3 — the nested duplicate first run (B2) leaks an inner effect', () 
 
 describe("B3 — a run re-entered by its own write keeps the nested run's inner effects and cleanups", () => {
   // Independent of B2: the first run writes a signal it read, so the effect
-  // re-runs NESTED inside its first run (today's order; design D9 changes it).
+  // re-runs. Before stage (ii) that re-run was NESTED inside the first run and
+  // both runs' inner effects were alive at once; since design D9 the re-run is
+  // serialised after the first run returns (still inside `effect()`), so the
+  // re-run disposes the first run's inner effect like any other re-run and one
+  // inner effect is alive. Either way, nothing may survive `scope.stop()`.
   test('B3: every inner effect and cleanup of both runs is disposed by scope.stop()', () => {
     const s = signal(0)
     const t = signal(0)
@@ -118,7 +122,8 @@ describe("B3 — a run re-entered by its own write keeps the nested run's inner 
         return () => log.push(`ret${v}`)
       }),
     )
-    expect(t.debug().subscriberCount).toBe(2)
+    // D9: the first run's inner effect was disposed by the serialised re-run.
+    expect(t.debug().subscriberCount).toBe(1)
     scope.stop()
     expect(t.debug().subscriberCount).toBe(0)
     expect(log.sort()).toEqual(['cleanup0', 'cleanup1', 'ret0', 'ret1'])

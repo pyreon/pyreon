@@ -24,14 +24,16 @@
  *   REACTIVITY_FUZZ_CASES=<n>   cases to run (default 1500)
  *   REACTIVITY_FUZZ_STEPS=<n>   ops per case (default 30)
  *   REACTIVITY_FUZZ_SEED=<n>    run only this seed (replay a failure)
- *   REACTIVITY_FUZZ_ASSERT_WASTED=1  also assert zero wasted evaluations
+ *   REACTIVITY_FUZZ_ASSERT_WASTED=0  only report wasted evaluations (asserted by default)
  *   REACTIVITY_FUZZ_STRICT=0    count the B1–B3 metrics instead of asserting them
  *
- * WASTED EVALUATIONS are counted, not asserted (stage i): a computed evaluated
- * although it read exactly the same values as its previous evaluation. The
- * design (§2, §4.2) expects today's core to waste evaluations below an
- * unchanged node and the new core to waste none; stage (ii) turns the knob on
- * by default.
+ * WASTED EVALUATIONS: a computed evaluated although it read exactly the same
+ * values as its previous evaluation. Since stage (ii) every such evaluation
+ * must be TRANSIENT — a node it read changed and changed back in between (a
+ * batch that writes 1 → 2 → 1, a value that moves across effect passes and
+ * returns) — and the rest ("unexplained": evaluations below an unchanged node,
+ * design §2) are asserted zero. Transient re-evaluation is inherent to a core
+ * that records "a source changed" instead of every value each edge saw.
  *
  * BUGS this fuzz found on the core are tracked as metrics
  * (`staleAfterEffectWrite`, `extraEffectRuns`, `leakAfterExtraRun`; each is
@@ -318,6 +320,8 @@ class FuzzError extends Error {}
 interface Stats {
   evaluations: number
   wasted: number
+  /** Wasted evaluations where a node it read changed and changed back in between. */
+  wastedTransient: number
   checks: number
   /**
    * Effects left on a stale value after an effect wrote a signal in the same
@@ -383,6 +387,10 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
   const frozen = new Map<number, number>()
   const lastReads: Array<Array<[number, number]> | null> = Array.from({ length: N }, () => null)
   const evals: number[] = Array.from({ length: N }, () => 0)
+  /** Per node: how many times its value changed (signals on a changing write, computeds on a new value). */
+  const changes: number[] = Array.from({ length: N }, () => 0)
+  /** Per computed: `changes` of each node its last evaluation read, at read time. */
+  const lastSeen: Array<number[] | null> = Array.from({ length: N }, () => null)
   /** The value of each computed's last SUCCESSFUL evaluation (what it keeps). */
   const lastEval: Array<number | undefined> = Array.from({ length: N }, () => undefined)
   /** Every node each computed read during the current op (incl. mid-batch states). */
@@ -451,7 +459,10 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         const s = signal(n.init)
         sigVals.push(n.init)
         getters.push(s)
-        setters.push((v) => s.set(v))
+        setters.push((v) => {
+          if (v !== s.peek()) changes[i]!++
+          s.set(v)
+        })
         disposers.push(null)
         continue
       }
@@ -473,6 +484,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
               return x
             })
             rec.reads = reads
+            if (v !== s.peek()) changes[i]!++
             s.set(v)
           })
         } else {
@@ -487,6 +499,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
             rec.reads = reads
             const target = ((raw % 6) + 6) % 6
             const y = s()
+            if (y !== target) changes[i]!++
             if (y < target) s.set(y + 1)
             else if (y > target) s.set(y - 1)
           })
@@ -499,9 +512,11 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         evals[i]!++
         stats.evaluations++
         const reads: Array<[number, number]> = []
+        const seen: number[] = []
         const raw = evalFormula(f, (j) => {
           const x = get(j)
           reads.push([j, x])
+          seen.push(changes[j]!)
           return x
         })
         const prev = lastReads[i]
@@ -509,9 +524,18 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           prev &&
           prev.length === reads.length &&
           prev.every(([j, x], k) => reads[k]![0] === j && reads[k]![1] === x)
-        )
+        ) {
           stats.wasted++
+          // Something it read changed and changed BACK since the previous
+          // evaluation (a write reverted within a batch, a value that moved
+          // across effect passes and returned): a core that records "a source
+          // changed" rather than every value it saw must re-evaluate here.
+          const before = lastSeen[i]
+          if (before && before.length === seen.length && seen.some((n, k) => n !== before[k]))
+            stats.wastedTransient++
+        }
         lastReads[i] = reads
+        lastSeen[i] = seen
         for (const [j] of reads) opDeps[i]!.add(j)
         if (throwOn !== null && ((raw % 7) + 7) % 7 === throwOn) {
           // A throwing evaluation keeps the unconfirmed tail of its previous
@@ -522,6 +546,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           thrown.push(e)
           throw e
         }
+        if (lastEval[i] !== raw) changes[i]!++
         lastEval[i] = raw
         return raw
       }
@@ -1304,6 +1329,7 @@ function quietRun(c: Case): string[] {
   const s: Stats = {
     evaluations: 0,
     wasted: 0,
+    wastedTransient: 0,
     checks: 0,
     staleAfterEffectWrite: 0,
     extraEffectRuns: 0,
@@ -1354,13 +1380,14 @@ const env = (k: string): string | undefined =>
 const CASES = Number(env('REACTIVITY_FUZZ_CASES') ?? 1500)
 const STEPS = Number(env('REACTIVITY_FUZZ_STEPS') ?? 30)
 const ONLY = env('REACTIVITY_FUZZ_SEED')
-const ASSERT_WASTED = env('REACTIVITY_FUZZ_ASSERT_WASTED') === '1'
+const ASSERT_WASTED = env('REACTIVITY_FUZZ_ASSERT_WASTED') !== '0'
 const STRICT = env('REACTIVITY_FUZZ_STRICT') !== '0'
 
 describe('differential fuzz against a from-scratch reference', () => {
   const stats: Stats = {
     evaluations: 0,
     wasted: 0,
+    wastedTransient: 0,
     checks: 0,
     staleAfterEffectWrite: 0,
     extraEffectRuns: 0,
@@ -1401,6 +1428,7 @@ describe('differential fuzz against a from-scratch reference', () => {
       const s: Stats = {
         evaluations: 0,
         wasted: 0,
+    wastedTransient: 0,
         checks: 0,
         staleAfterEffectWrite: 0,
         extraEffectRuns: 0,
@@ -1414,15 +1442,18 @@ describe('differential fuzz against a from-scratch reference', () => {
     }
   })
 
-  // Stage (i): reported, not asserted. Stage (ii) asserts zero (design §2:
-  // "wasted evaluations below an unchanged node" close by construction).
-  test('metric: wasted evaluations (asserted from stage ii, REACTIVITY_FUZZ_ASSERT_WASTED=1)', () => {
-    const line = `[reactivity fuzz] evaluations=${stats.evaluations} wasted=${stats.wasted} (${((100 * stats.wasted) / Math.max(1, stats.evaluations)).toFixed(1)}%) staleAfterEffectWrite=${stats.staleAfterEffectWrite} extraEffectRuns=${stats.extraEffectRuns} leakAfterExtraRun=${stats.leakAfterExtraRun} checks=${stats.checks}`
+  // Asserted since stage (ii) (design §2: "wasted evaluations below an
+  // unchanged node" close by construction): every wasted evaluation must be
+  // TRANSIENT — something it read changed and changed back since its previous
+  // evaluation, which marking cannot tell from a real change without keeping
+  // every value each edge saw. REACTIVITY_FUZZ_ASSERT_WASTED=0 only reports.
+  test('metric: wasted evaluations (unexplained ones asserted zero)', () => {
+    const line = `[reactivity fuzz] evaluations=${stats.evaluations} wasted=${stats.wasted} (${((100 * stats.wasted) / Math.max(1, stats.evaluations)).toFixed(1)}%) transient=${stats.wastedTransient} unexplained=${stats.wasted - stats.wastedTransient} staleAfterEffectWrite=${stats.staleAfterEffectWrite} extraEffectRuns=${stats.extraEffectRuns} leakAfterExtraRun=${stats.leakAfterExtraRun} checks=${stats.checks}`
     // Printed so a local run shows the number the next stage must drive to 0.
     // oxlint-disable-next-line no-console
     console.info(line)
     expect(stats.evaluations).toBeGreaterThan(0)
-    if (ASSERT_WASTED) expect(stats.wasted, line).toBe(0)
+    if (ASSERT_WASTED) expect(stats.wasted - stats.wastedTransient, line).toBe(0)
     if (STRICT) {
       expect(stats.staleAfterEffectWrite, line).toBe(0)
       expect(stats.extraEffectRuns, line).toBe(0)

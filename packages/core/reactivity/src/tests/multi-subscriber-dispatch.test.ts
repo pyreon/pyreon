@@ -1,15 +1,13 @@
 /**
- * Branch coverage for the SECOND inline tracking subscriber — the shapes the
- * storage-invariant suites (`inline-tracking-slot`, `sole-subscriber-suspend-
- * set-shape`) do not reach because they assert STORAGE, not dispatch:
+ * Dispatch with two and three subscribers — the shapes the storage suites
+ * (`subscriber-storage`, `sole-subscriber-suspend-set-shape`) do not reach
+ * because they assert STORAGE, not dispatch:
  *
- *   - a write under an OUTER `batch()` with two inline subscribers, and with a
- *     promoted Set (signal.ts batching branch);
- *   - `.trigger()` with two inline subscribers, batched and unbatched;
- *   - the lazy chain hop reading a computed that carries two inline
- *     subscribers, and a Set that shrank back to ONE entry (no demotion);
- *   - `why()` counting a function-shaped `_s`;
- *   - `_hasSubscribers` / `_tierCount` on the function form;
+ *   - a write under an OUTER `batch()` with two and three subscribers;
+ *   - `.trigger()` with two subscribers, batched and unbatched;
+ *   - a computed with two subscribers, and one whose subscribers shrank to one;
+ *   - `why()` counting subscribers;
+ *   - `_hasSubscribers` as subscribers come and go;
  *   - `createSelector.subscribe` reviving a holder an earlier unsubscribe
  *     left dead.
  *
@@ -21,13 +19,11 @@ import { computed } from '../computed'
 import { createSelector } from '../createSelector'
 import { why } from '../debug'
 import { effect } from '../effect'
-import { _hasSubscribers, _tierCount, signal } from '../signal'
+import { _hasSubscribers, signal } from '../signal'
+import { edgeCount } from './graph-internals'
 
-type Host = { _s1: unknown; _s: unknown }
-const host = (x: unknown) => x as unknown as Host
-
-describe('two inline tracking subscribers — dispatch branches', () => {
-  it('a write under an outer batch() fires both inline subscribers once, in order', () => {
+describe('two and three subscribers — dispatch', () => {
+  it('a write under an outer batch() fires both subscribers once, in order', () => {
     const s = signal(0)
     const log: string[] = []
     const d1 = effect(() => {
@@ -38,7 +34,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
       s()
       log.push('b')
     })
-    expect(typeof host(s)._s).toBe('function')
+    expect(edgeCount(s)).toBe(2)
     log.length = 0
     batch(() => {
       s.set(1)
@@ -49,7 +45,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     d2.dispose()
   })
 
-  it('a write under an outer batch() with a promoted Set fires all three once', () => {
+  it('a write under an outer batch() with three subscribers fires all three once', () => {
     const s = signal(0)
     let n = 0
     const ds = [1, 2, 3].map(() =>
@@ -58,7 +54,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
         n++
       }),
     )
-    expect(host(s)._s instanceof Set).toBe(true)
+    expect(edgeCount(s)).toBe(3)
     n = 0
     batch(() => {
       s.set(1)
@@ -68,7 +64,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     for (const d of ds) d.dispose()
   })
 
-  it('trigger() re-runs two inline subscribers, unbatched and under batch()', () => {
+  it('trigger() re-runs two subscribers, unbatched and under batch()', () => {
     const items = signal<number[]>([])
     const log: string[] = []
     const d1 = effect(() => {
@@ -93,7 +89,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     d2.dispose()
   })
 
-  it('trigger() with a promoted Set fires every subscriber', () => {
+  it('trigger() with three subscribers fires every subscriber', () => {
     const s = signal({ n: 0 })
     let n = 0
     const ds = [1, 2, 3].map(() =>
@@ -108,7 +104,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     for (const d of ds) d.dispose()
   })
 
-  it('lazy chain hop: a computed carrying two inline subscribers fans out to both', () => {
+  it('a computed with two subscribers reaches both', () => {
     const s = signal(1)
     const c = computed(() => s() * 2)
     const seen: number[] = []
@@ -118,7 +114,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     const d2 = effect(() => {
       seen.push(c() + 100)
     })
-    expect(typeof host(c)._s).toBe('function')
+    expect(edgeCount(c)).toBe(2)
     seen.length = 0
     s.set(2)
     expect(seen).toEqual([4, 104])
@@ -126,7 +122,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     d2.dispose()
   })
 
-  it('lazy chain hop: a Set that shrank back to ONE entry still hops (no demotion)', () => {
+  it('a computed whose subscribers shrank back to one still reaches it', () => {
     const s = signal(1)
     const c = computed(() => s() * 2)
     const seen: number[] = []
@@ -139,17 +135,17 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     const d3 = effect(() => {
       seen.push(c() + 200)
     })
-    expect(host(c)._s instanceof Set).toBe(true)
+    expect(edgeCount(c)).toBe(3)
     d1.dispose()
     d2.dispose()
-    expect((host(c)._s as Set<unknown>).size).toBe(1)
+    expect(edgeCount(c)).toBe(1)
     seen.length = 0
     s.set(3)
     expect(seen).toEqual([206])
     d3.dispose()
   })
 
-  it('_hasSubscribers / _tierCount see the function-shaped second tier', () => {
+  it('_hasSubscribers stays true until the last subscriber leaves', () => {
     const s = signal(0)
     const d1 = effect(() => {
       s()
@@ -157,18 +153,14 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     const d2 = effect(() => {
       s()
     })
-    expect(_tierCount(host(s)._s as never)).toBe(1)
     expect(_hasSubscribers(s)).toBe(true)
     d1.dispose()
-    // the second packs down into the inline slot; still subscribed
     expect(_hasSubscribers(s)).toBe(true)
     d2.dispose()
     expect(_hasSubscribers(s)).toBe(false)
-    expect(_tierCount(null)).toBe(0)
-    expect(_tierCount(new Set([() => {}, () => {}]) as never)).toBe(2)
   })
 
-  it('why() counts a function-shaped second tier as one subscriber', async () => {
+  it('why() counts two subscribers', async () => {
     const logs: string[] = []
     const origLog = console.log
     console.log = (...args: unknown[]) => logs.push(args.map(String).join(' '))
@@ -191,7 +183,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     }
   })
 
-  it('trigger() under batch() with a promoted DIRECT Set and a promoted tracking Set', () => {
+  it('trigger() under batch() with several direct entries and several tracked subscribers', () => {
     const s = signal({ n: 0 })
     let direct = 0
     const offA = s.direct(() => direct++)
@@ -222,7 +214,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     expect(_hasSubscribers(s)).toBe(false)
   })
 
-  it('why() counts a promoted Set by its size', async () => {
+  it('why() counts three or more subscribers', async () => {
     const logs: string[] = []
     const origLog = console.log
     console.log = (...args: unknown[]) => logs.push(args.map(String).join(' '))
@@ -243,7 +235,7 @@ describe('two inline tracking subscribers — dispatch branches', () => {
     }
   })
 
-  it('a lazy cascade past the recursion window fans out to two effects at the tail', () => {
+  it('a deep chain fans out to two effects at the tail', () => {
     const s = signal(0)
     let tail = computed(() => s())
     for (let i = 0; i < 520; i++) {
