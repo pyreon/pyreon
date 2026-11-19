@@ -1,5 +1,5 @@
 import { _resetHotkeys, getRegisteredHotkeys } from '@pyreon/hotkeys'
-import { batch, computed, effect, effectScope, signal } from '@pyreon/reactivity'
+import { _hasSubscribers, batch, computed, effect, effectScope, signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCommands } from '../commands'
 import type { Command, Commands } from '../types'
@@ -49,6 +49,18 @@ describe('registration', () => {
     off()
     off()
     expect(ids(c)).toEqual([])
+  })
+
+  it('calling an unregister twice does not unbalance the count of dynamic titles (the narrowing watcher still starts)', () => {
+    const c = make()
+    const locale = signal<'a' | 'b'>('a')
+    const first = c.register(cmd('first', { title: () => `first ${locale()}` }))
+    first()
+    first()
+    c.register([cmd('x', { title: () => (locale() === 'a' ? 'zzz' : 'alpha') }), cmd('y', { title: 'gamma' })])
+    expect(c.search('a').map((m) => m.id)).toEqual(['y'])
+    locale.set('b')
+    expect(c.search('al').map((m) => m.id)).toEqual(['x'])
   })
 
   it('removes the commands of a component when its scope ends, and not before', () => {
@@ -245,6 +257,19 @@ describe('search', () => {
     expect(c.search('be').map((m) => m.id)).toEqual(['x'])
   })
 
+  it('keeps resetting the narrowing after the component that registered first has gone', () => {
+    const c = make()
+    const locale = signal<'a' | 'b'>('a')
+    const page = effectScope()
+    // the first dynamic registration starts the watcher: it must not belong to this component
+    page.runInScope(() => c.register(cmd('first', { title: () => 'first' })))
+    c.register([cmd('x', { title: () => (locale() === 'a' ? 'zzz' : 'alpha') }), cmd('y', { title: 'gamma' })])
+    page.stop()
+    expect(c.search('a').map((m) => m.id)).toEqual(['y'])
+    locale.set('b')
+    expect(c.search('al').map((m) => m.id)).toEqual(['x'])
+  })
+
   it('is reactive: a computed over search updates when a command is added, enabled or renamed', () => {
     const c = make()
     const on = signal(false)
@@ -272,6 +297,12 @@ describe('recents', () => {
     await c.run('a')
     await c.run('c')
     expect(c.recents()).toEqual(['c', 'a'])
+    const wide = make({ recents: { max: 5 } })
+    wide.register(['a', 'b'].map((id) => cmd(id, { run: () => {} })))
+    await wide.run('a')
+    await wide.run('b')
+    await wide.run('a')
+    expect(wide.recents()).toEqual(['a', 'b'])
     c.clearRecents()
     expect(c.recents()).toEqual([])
   })
@@ -400,6 +431,19 @@ describe('shortcuts', () => {
     expect(messages[0]).toContain('[Pyreon]')
   })
 
+  it('does not warn again when the same two commands collide again (a disable and enable re-registers)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const c = make()
+    const on = signal(true)
+    c.register(cmd('save', { shortcut: 'ctrl+s' }))
+    c.register(cmd('export', { shortcut: 'ctrl+s', enabled: () => on() }))
+    on.set(false)
+    on.set(true)
+    on.set(false)
+    on.set(true)
+    expect(warn.mock.calls.filter((x) => String(x[0]).includes('share the shortcut'))).toHaveLength(1)
+  })
+
   it('names a plain hotkey it collides with', async () => {
     const { registerHotkey } = await import('@pyreon/hotkeys')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -452,6 +496,22 @@ describe('dispose and cleanup', () => {
     batch(() => tick.set(1))
     batch(() => tick.set(2))
     expect(reads).toEqual(after)
+  })
+
+  it('an unregistered command leaves no subscription on the signals its title and registration read', () => {
+    const c = make()
+    const tick = signal(0)
+    const title = signal('t')
+    const offA = c.register(cmd('a', { title: () => `a${tick()}` }))
+    const offB = c.register(() => ({ id: 'b', title: title() }))
+    c.search('a')
+    c.search('b')
+    expect(_hasSubscribers(tick)).toBe(true)
+    expect(_hasSubscribers(title)).toBe(true)
+    offA()
+    offB()
+    expect(_hasSubscribers(tick)).toBe(false)
+    expect(_hasSubscribers(title)).toBe(false)
   })
 
   it('a thousand register and unregister cycles leave the hotkey registry, the listeners and the recents list as they were', () => {

@@ -36,6 +36,7 @@ fuzzyMatch('xyz', 'New Project') // null
 
 - **Case and diacritics do not matter.** "resume" finds "Résumé", "prehled" finds "Přehled", "strasse" finds "Straße" and "grosse" finds "Größe". A decomposed text (an `e` followed by a combining accent) is the same as the precomposed one.
 - **Japanese kana are folded**: katakana and hiragana are the same (`ゆーざー` finds `ユーザー`), half-width katakana too. A voiced kana is a different letter from its unvoiced one: `か` does not find `ガ`.
+- **Compatibility forms are matched by their parts.** "fi" finds the ligature in "oﬁce", "iv" finds the roman numeral Ⅳ, and a Korean query that is still being composed keeps matching: "하" finds "한국어" (한 is its 한 jamo), so results do not vanish in the middle of typing a syllable.
 - **Words match in any order.** `project new` finds "New Project". All the words must match the same text.
 - **Ranges are UTF-16 offsets** into the text, sorted and merged, so `text.slice(start, end)` highlights correctly. An emoji, a flag, a skin-toned emoji and a letter with its combining marks are one unit: a range never ends in the middle of one.
 - **An empty query matches everything** with score 0 and no ranges.
@@ -282,5 +283,5 @@ Unregistering, `dispose()` and unmounting a component remove the command's hotke
 
 ## Notes
 
-- **Performance.** 5,000 commands are matched in about a frame on a CI machine: the test records the time of one cold query and bounds it generously (250 ms) so it fails only on a real regression; it is not a speed claim.
+- **Performance.** One cold query over 5,000 commands took about 7 ms on a development machine under load (the test prints it). The test bounds it at 250 ms so it fails only on a real regression; it is a guard, not a speed claim.
 - **No typo tolerance.** "prjct" finds "Project" (a letter missing is fine); "porject" (transposed) does not.

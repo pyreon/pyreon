@@ -47,6 +47,16 @@ describe('fuzzyMatch', () => {
     expect(fuzzyMatch('ガ', 'ガイド')).not.toBeNull()
   })
 
+  it('expands what decomposes into several letters: a ligature, a roman numeral, and a Hangul syllable are found by their parts', () => {
+    expect(fuzzyMatch('file', 'o\ufb01ce')).toBeNull()
+    expect(fuzzyMatch('fi', 'o\ufb01ce')?.ranges).toEqual([[1, 2]])
+    expect(fuzzyMatch('iv', '\u2163 chapter')).not.toBeNull()
+    // a Korean query being composed ("ha", then "han") keeps matching "han"
+    expect(fuzzyMatch('\ud558', '\ud55c\uad6d\uc5b4')?.ranges).toEqual([[0, 1]])
+    expect(fuzzyMatch('\u314e', '\ud55c\uad6d\uc5b4')?.ranges).toEqual([[0, 1]])
+    expect(fuzzyMatch('\ud55c\uad6d', '\ud55c\uad6d\uc5b4')?.ranges).toEqual([[0, 2]])
+  })
+
   it('returns ranges in UTF-16 offsets that are right for surrogate pairs and emoji sequences', () => {
     const text = '🎨 Select Theme'
     expect(ranges('🎨', text)).toEqual([[0, 2]])
@@ -60,6 +70,13 @@ describe('fuzzyMatch', () => {
     // a flag is one unit
     const flag = 'Region 🇨🇿 Czechia'
     expect(sliced(flag, ranges('🇨🇿', flag))).toEqual(['🇨🇿'])
+  })
+
+  it('never matches half of an emoji sequence: a man alone is not found inside a family', () => {
+    const family = 'a\u{1F468}\u200d\u{1F469}\u200d\u{1F467}b'
+    expect(fuzzyMatch('\u{1F468}\u200d', family)).toBeNull()
+    expect(fuzzyMatch('\u{1F468}', family)).toBeNull()
+    expect(fuzzyMatch('a', family)?.ranges).toEqual([[0, 1]])
   })
 
   it('treats the variation selector of an emoji as nothing: ❤ finds ❤\ufe0f', () => {
@@ -347,7 +364,9 @@ describe('createRanker', () => {
     }, { cacheSize: 50 })
     ranker.rank('o', items)
     expect(reads).toBe(items.length)
-    // a cache of 50 entries over 800 distinct texts still answers correctly
+    // a cache of 50 entries over 800 distinct texts still answers correctly, and never holds more than 50
+    expect(ranker.cached).toBeLessThanOrEqual(50)
     expect(ranker.rank('open', items)).toEqual(rank('open', items, (t) => t))
+    expect(ranker.cached).toBeLessThanOrEqual(50)
   })
 })

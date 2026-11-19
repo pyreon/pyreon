@@ -36,6 +36,8 @@ export interface Ranker<T> {
   reset(): void
   /** How many items the last call looked at (an observable of narrowing). */
   readonly lastScanned: number
+  /** How many prepared texts are cached (never more than `cacheSize`). */
+  readonly cached: number
 }
 
 const DEFAULT_WEIGHT = 0.6
@@ -146,6 +148,9 @@ export function createRanker<T>(getText: (item: T) => string | readonly string[]
     reset,
     get lastScanned() {
       return scanned
+    },
+    get cached() {
+      return cache.size
     },
   }
 }

@@ -90,9 +90,6 @@ function foldUnit(unit: string): string[] {
     // ASCII fast path: lower-case letters only.
     return [code >= 65 && code <= 90 ? String.fromCharCode(code + 32) : unit]
   }
-  const lower = unit.toLowerCase()
-  const spelled = SPECIAL[lower]
-  if (spelled !== undefined) return [...spelled]
   let s = stripMarks(unit.normalize('NFKD')).toLowerCase()
   if (s.length === 0) s = unit
   let out = ''
@@ -100,14 +97,18 @@ function foldUnit(unit: string): string[] {
     const cp = ch.codePointAt(0) as number
     out += cp >= 0x30a1 && cp <= 0x30f6 ? String.fromCodePoint(cp - 0x60) : ch
   }
-  const spelledAfter = SPECIAL[out]
+  // A unit that decomposes into several letters (a ligature, a roman numeral, a Hangul syllable, ß) is several keys, so the
+  // query can match part of it ("ha" is the start of 한). One that keeps a mark (kana voicing) stays one key: が is not か,
+  // and so does anything that is not made of letters and digits (an emoji sequence, "…").
+  if (MARK.test(out) || !LETTERS.test(out)) return [out]
 
-  return spelledAfter === undefined ? [out] : [...spelledAfter]
+  return [...out].flatMap((ch) => [...(SPECIAL[ch] ?? ch)])
 }
 
 // ---------------------------------------------------------------- segmentation
 
 const MARK = /\p{M}/u
+const LETTERS = /^[\p{L}\p{N}]+$/u
 const ZWJ = 0x200d
 
 function isAttaching(cp: number, ch: string): boolean {
