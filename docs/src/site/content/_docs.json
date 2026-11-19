@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 238,
+  "pageCount": 240,
   "pages": [
    {
     "path": "a11y.md",
@@ -61,6 +61,11 @@
     "path": "build-an-app.md",
     "title": "Build a Real App in 30 Minutes",
     "href": "/docs/build-an-app"
+   },
+   {
+    "path": "calendar.md",
+    "title": "Calendar",
+    "href": "/docs/calendar"
    },
    {
     "path": "charts-gallery.md",
@@ -611,6 +616,11 @@
     "path": "reference/auth.md",
     "title": "Authentication — API Reference",
     "href": "/docs/reference/auth"
+   },
+   {
+    "path": "reference/calendar.md",
+    "title": "@pyreon/calendar — API Reference",
+    "href": "/docs/reference/calendar"
    },
    {
     "path": "reference/charts.md",
@@ -1383,6 +1393,7 @@
       "time",
       "money",
       "schedule",
+      "calendar",
       "toast",
       "rx",
       "url-state",
@@ -1490,6 +1501,7 @@
       "reference/time",
       "reference/money",
       "reference/schedule",
+      "reference/calendar",
       "reference/http",
       "reference/i18n",
       "reference/kinetic-presets",
@@ -2070,6 +2082,10 @@
      "href": "/docs/schedule"
     },
     {
+     "title": "Calendar",
+     "href": "/docs/calendar"
+    },
+    {
      "title": "Drag and Drop",
      "href": "/docs/dnd",
      "productId": "dnd"
@@ -2529,6 +2545,10 @@
       {
        "title": "Schedule",
        "href": "/docs/reference/schedule"
+      },
+      {
+       "title": "Calendar",
+       "href": "/docs/reference/calendar"
       },
       {
        "title": "HTTP Client",

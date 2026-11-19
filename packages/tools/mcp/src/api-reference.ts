@@ -2791,6 +2791,147 @@ expandEvents({ start: '2026-11-18T00:00', end: '2026-11-19T00:00' })([{ id: 'a',
     notes: '[EXPERIMENTAL] Value-last `expandEvents`. Added in v0.53.0.',
   },
   // <gen-docs:api-reference:end @pyreon/schedule>
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/calendar
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/calendar>
+
+  'calendar/allDay': {
+    signature: '(date: PlainDate, days?: number) => { start, end, allDay: true }',
+    example: `allDay('2026-11-18')   // => { start: '2026-11-18', end: '2026-11-19', allDay: true }
+allDay('2026-11-30', 3).end   // => '2026-12-03'`,
+    notes: '[EXPERIMENTAL] The start and exclusive end of an all-day event: one day by default, or `days` days. Events end exclusively, so a one-day event on the 18th ends on the 19th. Added in v0.53.0.',
+  },
+
+  'calendar/expandOccurrences': {
+    signature: '(events, range: Interval<PlainDate>, zone: TimeZone) => EventOccurrence[]',
+    example: `const [o] = expandOccurrences([{ id: 'p', title: 'P', start: '2026-11-18T09:00', end: '2026-11-18T10:00', timeZone: 'Europe/Prague' }], { start: '2026-11-16', end: '2026-11-23' }, 'America/New_York')
+o!.start   // => '2026-11-18T03:00'`,
+    notes: '[EXPERIMENTAL] The occurrences of the events that fall in a half-open window of dates in the display zone, placed in that zone and sorted by start. Single and recurring events (with overrides and cancellations through `@pyreon/schedule`), events in their own zone, floating wall clocks and instants. An all-day event never moves with the zone. A malformed event throws a `[Pyreon] calendar:` error that names it; two events with one id are both listed, the second with a numbered key. Added in v0.53.0.',
+  },
+
+  'calendar/visibleRange': {
+    signature: '(view, date, options?) => { range, dates, rows }',
+    example: `visibleRange('week', '2026-11-18').range   // => { start: '2026-11-16', end: '2026-11-23' }
+visibleRange('workWeek', '2026-11-18').dates.length   // => 5`,
+    notes: '[EXPERIMENTAL] The window of a view around a date: the grid of a month (with its leading and trailing days), a week from `weekStart`, a work week, a day, `days` days, an agenda, or a year. `range.end` is exclusive; hidden weekdays are left out of `dates` and `rows`. Added in v0.53.0.',
+  },
+
+  'calendar/navigate': {
+    signature: '(view, date, steps, options?) => PlainDate',
+    example: `navigate('month', '2026-01-31', 1)   // => '2026-02-28'
+navigate('week', '2026-11-18', -1)   // => '2026-11-11'`,
+    notes: '[EXPERIMENTAL] The anchor date after moving `steps` views forward (negative: back): a month, a week, a day, `days` days, an agenda, a year. Added in v0.53.0.',
+  },
+
+  'calendar/viewTitle': {
+    signature: '(shown: VisibleRange, format?: TitleFormatter) => string',
+    example: `viewTitle(visibleRange('month', '2026-11-18'))   // => '2026-11'
+viewTitle(visibleRange('week', '2026-11-18'), (i) => i.first + ' / ' + i.last)   // => '2026-11-16 / 2026-11-22'`,
+    notes: '[EXPERIMENTAL] The title of a view through a formatter callback (the reactive entry passes `@pyreon/format`), so the core needs no locale. Without one it is a plain ISO form. Added in v0.53.0.',
+  },
+
+  'calendar/plainTitle': {
+    signature: '(info: TitleInfo) => string',
+    example: `plainTitle({ view: 'year', date: '2026-11-18', first: '2026-01-01', last: '2026-12-31' })   // => '2026'`,
+    notes: '[EXPERIMENTAL] The default title formatter: `2026-11`, `2026-11-16 to 2026-11-22`, `2026`. Added in v0.53.0.',
+  },
+
+  'calendar/layoutRow': {
+    signature: '(occurrences, dates, capacity?) => WeekLayout',
+    example: `const row = layoutRow(expandOccurrences([{ id: 'c', title: 'C', start: '2026-11-14', end: '2026-11-18' }], { start: '2026-11-09', end: '2026-11-30' }, 'UTC'), ['2026-11-16', '2026-11-17', '2026-11-18'])
+row.lanes[0]![0]!.continuesBefore   // => true`,
+    notes: `[EXPERIMENTAL] Events as segments in lanes across one row of days (a week of a month, or the all-day row of a time grid), cut at the row's edges with continuation flags. Longer events first, then all-day before timed, then earlier, then by key: a total order, so the lanes do not depend on the order of the input. With a \`capacity\`, lanes beyond it are dropped and counted per day in \`more\`. Added in v0.53.0.`,
+  },
+
+  'calendar/layoutMonth': {
+    signature: '(occurrences, rows, capacity?) => WeekLayout[]',
+    example: `layoutMonth([], visibleRange('month', '2026-11-18').rows).length   // => 6`,
+    notes: '[EXPERIMENTAL] The rows of a month grid laid out; each occurrence is in every row it touches. Added in v0.53.0.',
+  },
+
+  'calendar/daySpan': {
+    signature: '(occurrence) => { first, last }',
+    example: `daySpan(expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-16T22:00', end: '2026-11-17T00:00' }], { start: '2026-11-16', end: '2026-11-18' }, 'UTC')[0]!)   // => { first: '2026-11-16', last: '2026-11-16' }`,
+    notes: '[EXPERIMENTAL] The first and last date (inclusive) an occurrence touches. An end exactly at midnight does not touch that day. Added in v0.53.0.',
+  },
+
+  'calendar/packColumns': {
+    signature: '(blocks: { key, start, end }[], options?: { minMinutes?, pinned? }) => { key, column, columns, span }[]',
+    example: `packColumns([{ key: 'a', start: 540, end: 600 }, { key: 'b', start: 570, end: 630 }]).map((p) => [p.key, p.column, p.columns])   // => [['a', 0, 2], ['b', 1, 2]]`,
+    notes: '[EXPERIMENTAL] Overlapping blocks share the width of a day column: groups of overlapping blocks get columns by interval colouring, and each block grows to the right through the columns that are free for its whole length. The result depends only on the blocks, not on their order; `pinned` keeps chosen blocks in their column; each placement is a binary search. Added in v0.53.0.',
+  },
+
+  'calendar/layoutDay': {
+    signature: '(date, occurrences, zone, options?) => TimedBlock[]',
+    example: `const list = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T09:00', end: '2026-11-18T10:30' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+layoutDay('2026-11-18', list, 'UTC')[0]!.height   // => 0.0625`,
+    notes: '[EXPERIMENTAL] The blocks of one day of a time grid: timed occurrences that touch the day, cut at its edges (an event across midnight is a block on each day), clipped to `dayStart` and `dayEnd`, packed into columns. Positions are fractions of the visible day. A wall-clock grid: on the day a zone skips an hour that row is empty and an event across it is taller than it lasts; on the day a zone repeats an hour the second pass is drawn over the first. Added in v0.53.0.',
+  },
+
+  'calendar/layoutTimeGrid': {
+    signature: '(occurrences, dates, zone, options?) => { allDay, days, slots }',
+    example: `layoutTimeGrid([], ['2026-11-18'], 'UTC').slots.length   // => 48`,
+    notes: '[EXPERIMENTAL] A whole time grid: the all-day row (lanes across the days), a column of blocks per day with a signature, and the slot times. Added in v0.53.0.',
+  },
+
+  'calendar/daySignature': {
+    signature: '(date, occurrences, zone) => string',
+    example: `daySignature('2026-11-18', [], 'UTC')   // => ''`,
+    notes: '[EXPERIMENTAL] A string that changes exactly when the blocks of a day would: use it to skip recomputing a day whose occurrences did not change. Added in v0.53.0.',
+  },
+
+  'calendar/nowOffset': {
+    signature: '(date, now, zone, options?) => number | null',
+    example: `nowOffset('2026-11-18', Date.UTC(2026, 10, 18, 12), 'UTC')   // => 0.5
+nowOffset('2026-11-19', Date.UTC(2026, 10, 18, 12), 'UTC')   // => null`,
+    notes: '[EXPERIMENTAL] Where the "now" line is on a day, as a fraction of the visible day; `null` when `now` is not on that day or is outside the visible hours. It follows the wall clock, also on a day with a skipped or repeated hour. Added in v0.53.0.',
+  },
+
+  'calendar/dayBounds': {
+    signature: '(date, zone) => { startMs, endMs, elapsedMinutes }',
+    example: `dayBounds('2026-03-29', 'Europe/Prague').elapsedMinutes   // => 1380`,
+    notes: '[EXPERIMENTAL] The instants a calendar day starts and ends at in a zone. On the day a zone moves its clock it is 23 or 25 hours. Added in v0.53.0.',
+  },
+
+  'calendar/wallMinute': {
+    signature: '(ms, zone) => number',
+    example: `wallMinute(Date.UTC(2026, 10, 18, 15, 30), 'UTC')   // => 930`,
+    notes: '[EXPERIMENTAL] The wall-clock minute from midnight an instant shows at in a zone. Added in v0.53.0.',
+  },
+
+  'calendar/slotTimes': {
+    signature: '(options?) => PlainTime[]',
+    example: `slotTimes({ dayStart: '08:00', dayEnd: '10:00', slot: { minutes: 45 } })   // => ['08:00', '08:45', '09:30']`,
+    notes: '[EXPERIMENTAL] The start times of the rows of the grid between `dayStart` and `dayEnd`, every `slot` (30 minutes by default). Added in v0.53.0.',
+  },
+
+  'calendar/visibleMinutes': {
+    signature: '(options?) => { from, to }',
+    example: `visibleMinutes({ dayStart: '08:00', dayEnd: '18:00' })   // => { from: 480, to: 1080 }`,
+    notes: '[EXPERIMENTAL] The visible window of a day in wall-clock minutes; throws when `dayEnd` is not after `dayStart`. Added in v0.53.0.',
+  },
+
+  'calendar/CalendarEvent': {
+    signature: 'interface CalendarEvent<Meta> { id; title; start; end; allDay?; timeZone?; recurrence?; overrides?; resourceId?; editable?; color?; meta? }',
+    example: `const event: CalendarEvent = { id: 'a', title: 'A', start: '2026-11-18', end: '2026-11-19' }`,
+    notes: '[EXPERIMENTAL] An event as plain JSON-safe data. A date start and end make it all-day; a date-time is a wall clock (in `timeZone`, or floating in the display zone); a number is an instant. The end is exclusive. Added in v0.53.0.',
+  },
+
+  'calendar/EventOccurrence': {
+    signature: 'interface EventOccurrence<Meta> { key; event; occurrence; title; allDay; start; end; startMs; endMs; recurring }',
+    example: 'const none: EventOccurrence[] = []',
+    notes: '[EXPERIMENTAL] One occurrence of an event placed in the display zone; the key (`"<id>:<occurrence>"`) is the same in every window. Added in v0.53.0.',
+  },
+
+  'calendar/TimedBlock': {
+    signature: 'interface TimedBlock { key; occurrenceKey; top; height; column; columns; span; left; width; startMinute; endMinute; continuesBefore; continuesAfter }',
+    example: 'const blocks: TimedBlock[] = []',
+    notes: '[EXPERIMENTAL] A block of a time-grid column; `top`, `height`, `left` and `width` are fractions. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/calendar>
   // <gen-docs:api-reference:start @pyreon/server>
 
   'server/createHandler': {

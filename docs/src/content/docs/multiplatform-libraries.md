@@ -145,13 +145,14 @@ The table below comes from each package manifest. `shared` describes an authorin
 | `@pyreon/storage` | useStorage family over @PyreonAppStorage (Swift) / rememberPyreonStorage (Kotlin); persistence device-proven |
 | `@pyreon/store` | defineStore lowers to @Observable singleton (Swift) / mutableStateOf object (Kotlin); cross-screen state device-proven |
 
-### `web-only` — architecturally coupled to the web platform (40)
+### `web-only` — architecturally coupled to the web platform (41)
 
 | Package | Why |
 | --- | --- |
 | `@pyreon/a11y` | mostly DOM/ARIA utilities (the native element a11y story is the AccessibilityProps vocabulary on @pyreon/primitives); `announce(...)` now lowers to the native PyreonA11y runtime |
 | `@pyreon/ambient` | not lowered by PMTC: the package is context plus timers on the web runtime (`document.hidden`, `setTimeout`, the owner-based context); native apps carry their own locale, zone and clock through the host runtime |
 | `@pyreon/atlas` | the component workbench — dev tooling that runs in a browser, not app runtime |
+| `@pyreon/calendar` | an event calendar is a DOM view (pointer, keyboard and layout); the pure core is plain TypeScript a native app can call itself |
 | `@pyreon/code` | wraps CodeMirror 6 (DOM editor engine, so the editor itself stays web); the `@pyreon/code/webview` bridge crosses — see nativeFrontend |
 | `@pyreon/compiler` | the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime |
 | `@pyreon/config` | build-time config shape read by the tooling that assembles an app — never part of a rendered app on any target |

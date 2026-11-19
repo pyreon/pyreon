@@ -195,6 +195,14 @@ export const SCENARIOS: Scenario[] = [
     imports: ['defineStore'],
   },
   {
+    // The pure core of the calendar: event expansion, the month lanes and the time-grid packing. No DOM, no @pyreon/core.
+    id: '@pyreon/calendar::core',
+    pkg: '@pyreon/calendar',
+    dir: 'fundamentals/calendar',
+    entry: 'core.js',
+    imports: ['expandOccurrences', 'layoutMonth', 'layoutDay'],
+  },
+  {
     // Date arithmetic on plain strings: parsing, the padded writer and the duration loader, and nothing of the zone code.
     // `add` must not drag `Intl.DateTimeFormat` handling in; zone conversion is a separate import.
     id: '@pyreon/time::add',

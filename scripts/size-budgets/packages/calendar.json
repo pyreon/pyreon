@@ -1,0 +1,7 @@
+{
+  "package": "@pyreon/calendar",
+  "bundle": 4913,
+  "imports": {
+    "core": 3728
+  }
+}

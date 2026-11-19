@@ -573,6 +573,31 @@ const page = `<!doctype html><html${attrs(htmlAttrs)}><head>${head}</head><body$
 >
 > **Inline script escaping**: Script / style / noscript bodies are not HTML-escaped, but the SSR serializer neutralises them so they cannot break out of the wrapping tag: a JSON data block (`application/ld+json`, `speculationrules`, `importmap`, any `+json` / `/json` type) has every `<` written as `\u003C`, which still `JSON.parse`s; script code, CSS and noscript get `</script>` / `</style>` / `</noscript>` and `<!--` rewritten. Inline JSON-LD via `jsonLd: {...}` auto-wraps in `<script type="application/ld+json">` and stringifies the value.
 
+## @pyreon/calendar — Calendar
+
+The pure core of an event calendar (`@pyreon/calendar/core`, no DOM): a plain event model (a date is an all-day event, a date-time is a wall clock, floating or in the event's own zone, an instant is shown in the display zone; the end is exclusive), validation with `[Pyreon] calendar:` errors that name the event, recurrence and overrides through `@pyreon/schedule`, the window of each view with navigation and titles, and the two layout algorithms as pure functions with stable keys: month lanes (multi-day and all-day events in lanes per week row, cut at the week edges with continuation flags, "+N more" per day given a capacity) and time-grid column packing (overlapping events share the width, a block grows into the free columns to its right, pinned columns keep blocks still while another is dragged, a short event keeps a minimum height, an event across midnight is a block on each day). The time grid is a wall-clock grid: on the day a zone moves its clock the skipped hour is an empty row and the repeated hour is drawn over itself, and the now line follows the clock. Per-day signatures let a reactive layer skip recomputing a day that did not change.
+
+```typescript
+import { expandOccurrences, layoutDay } from '@pyreon/calendar/core'
+
+const events = [{ id: 'design', title: 'Design review', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }, { id: 'sync', title: 'Sync', start: '2026-11-18T14:30', end: '2026-11-18T15:30' }]
+const occurrences = expandOccurrences(events, { start: '2026-11-16', end: '2026-11-23' }, 'Europe/Prague')
+
+layoutDay('2026-11-18', occurrences, 'Europe/Prague').map((b) => [b.column, b.columns])   // => [[0, 2], [1, 2]]
+```
+
+> **The end is exclusive**: A one-day all-day event on the 18th ends on the 19th (`allDay("2026-11-18")` makes the pair). A timed event that ends exactly at midnight does not appear on the next day. An all-day event whose end equals its start is treated as one day; a timed one is a moment.
+>
+> **Which clock a date-time is on**: A date-time with the event's `timeZone` is that zone's wall clock ("9:00 in Prague", a New York viewer sees 3:00). Without one it is floating: the same wall clock in whatever zone is displayed. An instant is shown in the display zone. A date (all-day) never moves.
+>
+> **The time grid is a wall-clock grid**: A row is the hour the clock shows. On the day a zone skips an hour the skipped row is empty and an event across it is taller than it lasts; on the day a zone repeats an hour the second pass is drawn over the same rows as the first and the two share columns when they overlap on screen. Block positions and the now line follow the clock.
+>
+> **Override keys**: An override is keyed by the original start of the occurrence: `"2026-11-18T09:00"` (in the event's wall clock), or `"2026-11-18"` for an all-day event. Moving an occurrence does not change its key.
+>
+> **Keys**: An occurrence key is `"<id>:<original start>"`, the same in every window and, for an instant event, in every zone (it uses the number). Two events with the same id are both listed and the second gets a `~2` suffix; give events unique ids.
+>
+> **Hidden days**: A day view on a hidden weekday has no dates; a month with hidden weekdays has fewer columns and keeps the leading and trailing days of the visible weeks.
+
 ## @pyreon/schedule — Schedule
 
 A layer above `@pyreon/time`. A `Recurrence` is a plain object that follows RFC 5545 (iCalendar RRULE) with `@pyreon/time` values: `{ every: "week", interval: 2, on: { weekdays: [2] }, start: "2026-11-17" }`. `occurrences` is a lazy generator that jumps by period instead of stepping, so `nextOccurrence` on a ten-year-old rule costs the same as on a new one. Occurrences are wall-clock times: a daily 09:00 stays 09:00 across a clock change and only its instant moves (`toInstants`). The 31st skips months that lack one (RFC 5545), unlike `add`, which clamps. `parseRRule` / `toRRule` read and write RFC text, `describeRule` turns a rule into words. Business time: `isBusinessDay`, `addBusinessDays`, `addBusinessTime("8 working hours from Friday 15:00")`, holidays as a list or a predicate (no holiday data is shipped), split and overnight shifts. Availability: `overlaps`, `mergeIntervals`, `subtractIntervals`, `freeSlots` for booking pages, and `expandEvents` for calendar views. Verified against RFC 5545 section 3.8.5.3, the `rrule` library and a brute-force oracle. `@pyreon/schedule/core` needs only `@pyreon/time`; `@pyreon/schedule/fp` is the value-last form.

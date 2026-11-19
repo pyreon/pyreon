@@ -1,0 +1,58 @@
+{
+  "name": "@pyreon/calendar",
+  "version": "0.53.0",
+  "description": "An event calendar and scheduler for Pyreon: event model, recurrence and zones, month and time-grid layout, headless state and views",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/calendar#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/calendar"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./core": {
+      "bun": "./src/core.ts",
+      "import": "./lib/core.js",
+      "types": "./lib/types/core.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run --maxWorkers=2",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "dependencies": {
+    "@pyreon/schedule": "workspace:^",
+    "@pyreon/time": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

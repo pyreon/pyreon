@@ -1458,6 +1458,19 @@
         "@pyreon/native-compiler",
       ],
     },
+    "packages/fundamentals/calendar": {
+      "name": "@pyreon/calendar",
+      "version": "0.53.0",
+      "dependencies": {
+        "@pyreon/schedule": "workspace:^",
+        "@pyreon/time": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+      },
+    },
     "packages/fundamentals/charts": {
       "name": "@pyreon/charts",
       "version": "0.53.0",
@@ -4197,6 +4210,8 @@
     "@pyreon/attrs": ["@pyreon/attrs@workspace:packages/ui-system/attrs"],
 
     "@pyreon/auth": ["@pyreon/auth@workspace:packages/fundamentals/auth"],
+
+    "@pyreon/calendar": ["@pyreon/calendar@workspace:packages/fundamentals/calendar"],
 
     "@pyreon/charts": ["@pyreon/charts@workspace:packages/fundamentals/charts"],
 
