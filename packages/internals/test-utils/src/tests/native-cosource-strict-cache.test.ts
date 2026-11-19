@@ -38,6 +38,8 @@ function fixture(grouped: boolean, hasTest = true) {
   copy('scripts/check-native-cosource.ts')
   copy('scripts/swift-cosource-smoke.ts')
   copy('scripts/native-companions.ts')
+  // The checker spawns swiftc through the compiler's helper (one temp dir per call).
+  copy('packages/native/compiler/src/swift-tool.ts')
   const harness = 'packages/native/runtime-kotlin/scripts'
   copy(`${harness}/verdict-cache.ts`)
   copy(`${harness}/smoke-marker.ts`)

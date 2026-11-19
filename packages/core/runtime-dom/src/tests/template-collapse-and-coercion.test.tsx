@@ -202,7 +202,7 @@ describe('the template cache builds one template per html string', () => {
     // answers `querySelector`, reports the right `localName`, and draws
     // nothing. The template path parses inside an `<svg>` wrapper precisely
     // so a bare `<g>`/`<path>` root lands in the right namespace.
-    const item = _tpl('<g><path d="M0 0"/></g>', () => null) as { el: Element }
+    const item = _tpl('<g><path d="M0 0"/></g>', () => null, 2) as { el: Element }
     expect(item.el.namespaceURI).toBe('http://www.w3.org/2000/svg')
     expect(item.el.firstElementChild?.namespaceURI).toBe('http://www.w3.org/2000/svg')
   })

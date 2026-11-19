@@ -101,10 +101,8 @@ export function C() {
 }`
     const out = transform(MIXED, { target: 'kotlin' }).code
     expect(out).toContain('color = if (on)')
-    // The dynamic-style path emits a CONDITIONAL padding even when both
-    // branches agree (it does not fold equal branches) — assert the property
-    // survived, not a folded form it never produces.
-    expect(out).toMatch(/padding\(\(if \(on\) 8 else 8\)\.dp\)/)
+    // A padding equal in both branches folds to the plain value (#4346).
+    expect(out).toContain('.padding(8.dp)')
   })
 
   it('a NON-colour container style still warns as before (the warning was not blanket-removed)', () => {

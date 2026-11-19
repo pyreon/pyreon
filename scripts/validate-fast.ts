@@ -36,6 +36,7 @@
  *   - check-breaking-changeset-codemod (a zero minor changeset lacks an `Upgrade:` line)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - check-multiplatform-tier (published pkg without a declared multiplatform story)
+ *   - check-stability-tier  (published pkg tier, README status, stable→experimental deps, meta, @deprecated)
  *   - check-native-coverage (an app-runtime pkg that should cross to native regressed)
  *   - check-native-golden   (the native compiler's emitted Swift/Kotlin changed for the golden corpus)
  *   - check-compiler-boundary (library knowledge inside a compiler grew above its committed baseline)
@@ -104,6 +105,9 @@ const GATES: Gate[] = [
   // users upgrade: `Upgrade: none | codemod <id> | manual — <reason>`.
   { name: 'check-breaking-changeset-codemod', cmd: 'bun scripts/check-breaking-changeset-codemod.ts' },
   { name: 'check-multiplatform-tier', cmd: 'bun scripts/check-multiplatform-tier.ts' },
+  // Published package tiers (Stable / Experimental): field, README status line,
+  // dependency direction, @pyreon/meta, @deprecated → manifest removeIn.
+  { name: 'check-stability-tier', cmd: 'bun scripts/check-stability-tier.ts' },
   // The finish-line ratchet: every app-runtime/feature-building package that
   // SHOULD cross to native either lowers clean through PMTC or ships a native
   // runtime — regressions (a snippet that starts warning, a co-source that
