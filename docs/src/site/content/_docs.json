@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 224,
+  "pageCount": 225,
   "pages": [
    {
     "path": "a11y.md",
@@ -456,6 +456,11 @@
     "path": "patterns/multiplatform.md",
     "title": "Multiplatform app (one source → web + iOS + Android)",
     "href": "/docs/patterns/multiplatform"
+   },
+   {
+    "path": "patterns/offline-and-installable-apps.md",
+    "title": "Offline and installable apps",
+    "href": "/docs/patterns/offline-and-installable-apps"
    },
    {
     "path": "patterns/reactive-context.md",
@@ -1190,6 +1195,7 @@
       "patterns/event-listeners",
       "patterns/imperative-toasts",
       "patterns/multiplatform",
+      "patterns/offline-and-installable-apps",
       "accessibility"
      ],
      "source": "docs/src/sidebar-config.ts"
@@ -2184,6 +2190,10 @@
     {
      "title": "One source, web + iOS + Android",
      "href": "/docs/patterns/multiplatform"
+    },
+    {
+     "title": "Offline and installable apps",
+     "href": "/docs/patterns/offline-and-installable-apps"
     },
     {
      "title": "Performance",
