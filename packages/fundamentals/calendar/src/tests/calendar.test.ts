@@ -180,8 +180,12 @@ describe('createCalendar', () => {
   it('a language without a built-in "all day" says so once in development, and never when the app set it or in production', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const read = (locale: string, messages?: { allDay: string }): string => createCalendar({ events: () => [], date: '2026-11-18', locale: () => locale, ...(messages === undefined ? {} : { messages }) }).messages().allDay
-    expect(read('sw')).toBe('all day')
-    read('sw')
+    const locale = signal('sw')
+    const one = createCalendar({ events: () => [], date: '2026-11-18', locale: () => locale() })
+    expect(one.messages().allDay).toBe('all day')
+    locale.set('sw-KE')
+    locale.set('sw')
+    one.messages()
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn.mock.calls[0]![0]).toMatch(/^\[Pyreon\] @pyreon\/calendar: there is no built-in "all day" text for "sw"/)
     expect(read('fi', { allDay: 'koko päivä' })).toBe('koko päivä')

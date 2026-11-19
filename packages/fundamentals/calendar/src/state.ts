@@ -58,15 +58,14 @@ function bucket<Meta>(list: readonly EventOccurrence<Meta>[], dates: readonly Pl
   return map
 }
 
-const warned = new Set<string>()
-
-/** Say once per language, in development only, that "all day" has no built-in text and `messages.allDay` should be set. */
-function warnAllDay(locale: string): void {
-  if (process.env.NODE_ENV === 'production' || hasAllDay(locale) || warned.size >= 32) return
-  const lang = locale.split(/[-_]/)[0] ?? locale
-  if (warned.has(lang)) return
-  warned.add(lang)
-  console.warn(`[Pyreon] @pyreon/calendar: there is no built-in "all day" text for "${lang}", so the English one is used. Pass messages: { allDay: '...' } (and allDayRow) to createCalendar.`)
+/** Say once, in development only, that "all day" has no built-in text for a language and `messages.allDay` should be set. */
+function warnAllDay(locale: string, warned: Set<string>): void {
+  if (process.env.NODE_ENV !== 'production') {
+    const lang = locale.split(/[-_]/)[0] ?? locale
+    if (hasAllDay(locale) || warned.has(lang)) return
+    warned.add(lang)
+    console.warn(`[Pyreon] @pyreon/calendar: there is no built-in "all day" text for "${lang}", so the English one is used. Pass messages: { allDay: '...' } (and allDayRow) to createCalendar.`)
+  }
 }
 
 export function createState<Meta>(options: CalendarOptions<Meta>): CalState<Meta> {
@@ -88,12 +87,14 @@ export function createState<Meta>(options: CalendarOptions<Meta>): CalState<Meta
     }),
   )
   const edit = createEditState()
+  // the languages already warned about, for this calendar only (at most one entry per language it has been shown in)
+  const warned = new Set<string>()
   const occurrences = computed(() => overlaid(expandOccurrences(options.events(), shown().range, zone()), edit.overlay(), zone()))
   const messages = computed<CalendarMessages>(() => {
     const lang = locale()
     const mine = typeof options.messages === 'function' ? options.messages(lang) : options.messages
     const base = defaultMessages(lang)
-    if (mine?.allDay === undefined) warnAllDay(lang)
+    if (mine?.allDay === undefined) warnAllDay(lang, warned)
 
     return { ...base, ...mine, views: { ...base.views, ...mine?.views }, recurringScope: { ...base.recurringScope, ...mine?.recurringScope } }
   })
