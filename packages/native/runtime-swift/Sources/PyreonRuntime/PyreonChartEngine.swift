@@ -10343,6 +10343,8 @@ public func hitCalendarIndex(_ layout: CalendarLayout, _ px: Double, _ py: Doubl
     return hit
   }
 
+public func mapRamp(_ mode: String) -> [String] { mode == "dark" ? GEO_RAMP_DARK : GEO_RAMP_LIGHT }
+
 public func geoValueOf(_ values: [GeoValue], _ name: String) -> Double {
     for v in values {
       if v.region == name {
