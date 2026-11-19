@@ -1365,8 +1365,7 @@ function mountAccessorChild(
           written = writePolyText(text, v, written)
           return
         }
-        // The text's LIVE parent: a slot decided late was mounted where its
-        // placeholder stood, which need not be `parent` any more (#4736).
+        // The text's LIVE parent: a late-decided slot mounts where its placeholder stood (#4736).
         core = createPolyTextCore(text, text.parentNode ?? parent, ownerAtSetup)
       }
       core.apply(v)
