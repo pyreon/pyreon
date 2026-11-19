@@ -1,11 +1,11 @@
 {
   "package": "@pyreon/calendar",
-  "bundle": 8814,
+  "bundle": 11624,
   "imports": {
-    "calendar-state": 7955,
-    "core": 3728,
-    "full": 4389,
-    "month-view": 2390,
-    "week-view": 3130
+    "calendar-state": 10794,
+    "core": 4926,
+    "full": 4209,
+    "month-view": 2199,
+    "week-view": 3004
   }
 }
