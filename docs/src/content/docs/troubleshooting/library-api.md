@@ -216,6 +216,12 @@ Whatever a template ships is what a deployed app runs until someone replaces it,
 
 ---
 
+### Reading a whole file to upload it, trusting `file.type`, never revoking an object URL, using `fetch` for a large upload (`@pyreon/upload`).
+
+`FileReader` / `arrayBuffer()` holds the whole file in memory; `file.type` and the extension are what the sender's machine claims (use `rules.sniff` for the interface and check content on the server); `URL.createObjectURL` leaks until `revokeObjectURL` (`preview: true` revokes on remove, clear and dispose); `fetch` has no upload progress (`xhrTransport` reports bytes). Also: hand-counting `dragenter` / `dragleave` (they fire on every child: `useFileDrop` counts them), and showing a file name with `innerHTML`. Reference: `packages/fundamentals/upload`, pattern `patterns/upload`.
+
+---
+
 ### Date math with `setDate` or `+ 86_400_000` across a DST change
 
 A day is 23 or 25 hours twice a year, so `new Date(t + 24 * 3_600_000)` is not "tomorrow" and `d.setDate(d.getDate() + 1)` depends on the machine's zone. Use `add(date, { days: 1 })` on a PlainDate, or `addInstant(instant, { days: 1 }, zone)`, which keeps the time of day. `@pyreon/time` tests the 23- and 25-hour days against `Temporal`.

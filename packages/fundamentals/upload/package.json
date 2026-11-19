@@ -104,5 +104,8 @@
     "@pyreon/core": {
       "optional": true
     }
+  },
+  "pyreon": {
+    "stability": "experimental"
   }
 }

@@ -1,8 +1,8 @@
 # @pyreon/calendar
 
-An event calendar and scheduler for Pyreon: a pure core (`@pyreon/calendar/core`), the reactive calendar (`createCalendar`), the month, week, day, agenda, year and resource timeline views, moving, resizing and selecting with the pointer and the keyboard (optimistic, with rollback), recurring-event edits as plain data, messages that follow the locale, and a default stylesheet. Experimental: tested in Chromium only and with no screen reader.
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
 
-> **Experimental.**
+An event calendar and scheduler for Pyreon: a pure core (`@pyreon/calendar/core`), the reactive calendar (`createCalendar`), the month, week, day, agenda, year and resource timeline views, moving, resizing and selecting with the pointer and the keyboard (optimistic, with rollback), recurring-event edits as plain data, messages that follow the locale, and a default stylesheet. Experimental: tested in Chromium only and with no screen reader.
 
 ```bash
 bun add @pyreon/calendar

@@ -1,8 +1,10 @@
 # @pyreon/upload
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 File selection, validation, preview and upload with progress as signals. A reactive queue with concurrency, retry for the failures a retry can fix, pause, resume and cancel; transports for XHR (real upload progress), chunked parts, S3 presigned multipart and tus; resume state that survives a page reload; headless drop zone and picker components; form and query adapters.
 
-> **Experimental.** Client-side validation is user experience: the server must check type, size and content itself.
+> Client-side validation is user experience: the server must check type, size and content itself.
 
 ## Install
 
