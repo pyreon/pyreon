@@ -16,10 +16,12 @@ const square = (lon: number, lat: number, size: number): number[][] => [
   [lon, lat + size],
   [lon, lat],
 ]
+
 const country = (outer: number[][], hole: number[][]): GeoJson => ({
   type: 'FeatureCollection',
   features: [{ type: 'Feature', properties: { name: 'A' }, geometry: { type: 'Polygon', coordinates: [outer, hole] } }],
 })
+
 const close = (a: readonly Pt[], b: readonly Pt[]) => {
   expect(a).toHaveLength(b.length)
   a.forEach((p, i) => {

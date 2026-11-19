@@ -14,6 +14,7 @@ import type { DrawCmd, Rect } from './types'
 interface Strip {
   names: string[]
 }
+
 const LAYOUT: Strip = { names: ['North', 'South', 'East'] }
 const measure = (text: string, fontSize: number): number => text.length * fontSize * 0.5
 const box: Rect = { x: 0, y: 0, w: 30, h: 10 }
@@ -25,8 +26,8 @@ function makeSpec(props: StatefulHostSpec<Strip>['props'], over: Partial<Statefu
     defaultHeight: 10,
     track: vi.fn(),
     layout: () => LAYOUT,
-    render: (_layout, _measure, _theme, _progress, _time, states) => {
-      seen.push(states)
+    render: (...args: Parameters<StatefulHostSpec<Strip>['render']>) => {
+      seen.push(args[5])
       return [] as DrawCmd[]
     },
     states: {
@@ -42,6 +43,7 @@ function makeSpec(props: StatefulHostSpec<Strip>['props'], over: Partial<Statefu
     host.render(LAYOUT, measure, defaultTheme, 1, 0)
     return seen[seen.length - 1]!
   }
+
   return { raw, host, paint }
 }
 
