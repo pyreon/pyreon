@@ -668,49 +668,6 @@ let _freshBind = false
  *   return () => { __d0() };
  * })
  */
-// Every SVG element name (SVG 1.1 and SVG 2, case-sensitive) that is NOT also an
-// HTML element name. A template rooted at one of these is SVG content; the
-// names HTML shares (`a`, `script`, `style`, `title`, `font`) are left out, since
-// a template rooted at one is almost always the HTML element, and `svg` opens
-// SVG content by itself. The list has to be complete: a missing name
-// (`feDropShadow` was one) parses as an inert HTML element. MathML is the same
-// shape of bug but has no real template-rooted instances, and happy-dom cannot
-// parse MathML foreign content to verify a fix, so it is out of scope.
-const SVG_ROOT_TAGS = new Set([
-  'altGlyph', 'altGlyphDef', 'altGlyphItem', 'animate', 'animateColor', 'animateMotion',
-  'animateTransform', 'circle', 'clipPath', 'color-profile', 'cursor', 'defs', 'desc', 'discard',
-  'ellipse', 'feBlend', 'feColorMatrix', 'feComponentTransfer', 'feComposite',
-  'feConvolveMatrix', 'feDiffuseLighting', 'feDisplacementMap', 'feDistantLight',
-  'feDropShadow', 'feFlood', 'feFuncA', 'feFuncB', 'feFuncG', 'feFuncR', 'feGaussianBlur',
-  'feImage', 'feMerge', 'feMergeNode', 'feMorphology', 'feOffset', 'fePointLight',
-  'feSpecularLighting', 'feSpotLight', 'feTile', 'feTurbulence', 'filter', 'font-face',
-  'font-face-format', 'font-face-name', 'font-face-src', 'font-face-uri', 'foreignObject', 'g',
-  'glyph', 'glyphRef', 'hkern', 'image', 'line', 'linearGradient', 'marker', 'mask',
-  'metadata', 'missing-glyph', 'mpath', 'path', 'pattern', 'polygon', 'polyline',
-  'radialGradient', 'rect', 'set', 'stop', 'switch', 'symbol', 'text', 'textPath', 'tref',
-  'tspan', 'use', 'view', 'vkern',
-])
-
-/**
- * Whether a template STRING is rooted at a bare SVG element — `<g>`, `<path>`,
- * `<rect>`, `<linearGradient>`, … NOT enclosed in an `<svg>`.
- *
- * `document.createElement('template').innerHTML = html` runs the HTML parser,
- * which only enters SVG foreign-content mode when it hits a literal `<svg>`. A
- * string rooted at `<g>` is parsed in the HTML namespace, so the cloned nodes
- * are inert `HTMLUnknownElement`s that render nothing — the `@pyreon/flow`
- * edge / minimap-dot bug (edges lower to `_tpl("<g><path…")`). Wrapping in
- * `<svg>` for parsing (then lifting the children back out) gives correctly
- * namespaced `SVGElement`s.
- */
-function isSvgRooted(html: string): boolean {
-  const m = /^\s*<([a-zA-Z][a-zA-Z0-9-]*)/.exec(html)
-  if (m === null) return false
-  const tag = m[1] as string
-
-  return SVG_ROOT_TAGS.has(tag)
-}
-
 // ─── Compiled-template hydration adoption (SEAM) ────────────────────────────
 // One-shot handoff: the <For> hydration-adoption path sets the SSR row root
 // before invoking renderItem; the _tpl call inside consumes it and — when the
@@ -720,6 +677,11 @@ function isSvgRooted(html: string): boolean {
 // effect pinning it into CSR bundles), so compiled CSR apps tree-shake ALL of
 // it — _tpl carries only this slot and a nullable hook check.
 let _tplAdoptTarget: Element | null = null
+
+/** `_tpl` flag: the item may be torn down and mounted again (a component child). */
+const TPL_REMOUNTABLE = 1
+/** `_tpl` flag: the template is rooted at a bare SVG element — parse it as SVG. */
+const TPL_SVG_ROOT = 2
 let _tplAdoptConsumed = false
 let _tplAdoptAllowPlan = false
 
@@ -1005,21 +967,34 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
 }
 
 /**
- * `remountable` (the compiler passes `1` for a template emitted as a
- * component's child) makes the returned item SURVIVE being torn down and
- * mounted again — see {@link remountableTpl}.
+ * `flags` is a bit set the compiler computes from the JSX:
+ *
+ * - `TPL_REMOUNTABLE` (1): a template emitted as a component's child. The
+ *   returned item SURVIVES being torn down and mounted again — see
+ *   {@link remountableTpl}.
+ * - `TPL_SVG_ROOT` (2): the template is rooted at a bare SVG element (`<g>`,
+ *   `<path>`, `<linearGradient>`, … not enclosed in an `<svg>`). Setting
+ *   `innerHTML` runs the HTML parser, which enters SVG foreign content only at a
+ *   literal `<svg>`, so such a string would parse as inert HTML elements that
+ *   render nothing (the `@pyreon/flow` edge bug: edges lower to
+ *   `_tpl("<g><path…")`). With the flag the string is parsed inside an `<svg>`
+ *   wrapper and the children are lifted back out, correctly namespaced.
+ *
+ * The compiler decides the SVG root at build time from the tag (its table is
+ * every SVG element name that is not also an HTML one), so the runtime carries
+ * no tag list.
  */
 export function _tpl(
   html: string,
   bind: (el: HTMLElement) => (() => void) | null,
-  remountable?: 1,
+  flags = 0,
 ): NativeItem {
-  if (remountable === 1) return remountableTpl(html, bind)
+  if ((flags & TPL_REMOUNTABLE) !== 0) return remountableTpl(html, bind, flags & TPL_SVG_ROOT)
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
     tpl = document.createElement('template')
-    if (isSvgRooted(html)) {
+    if ((flags & TPL_SVG_ROOT) !== 0) {
       // Parse inside an `<svg>` wrapper so root + descendants land in the SVG
       // namespace, then MOVE the parsed children into the cache template's
       // content — moving preserves `namespaceURI`, and the cloned root inherits it.
@@ -1133,6 +1108,7 @@ export interface RemountableNativeItem extends NativeItem {
 function remountableTpl(
   html: string,
   bind: (el: HTMLElement) => (() => void) | null,
+  flags: number,
 ): RemountableNativeItem {
   // Built on FIRST USE, not at creation. A compiled component child is created while its parent's JSX arguments are
   // being evaluated — before the enclosing component (a context provider, say) has run its setup — so building here
@@ -1140,7 +1116,7 @@ function remountableTpl(
   // the provider's context does not reach. The first use is the mount, which runs inside the right owner.
   let current: NativeItem | null = null
   let dead = false
-  const built = (): NativeItem => (current ??= _tpl(html, bind))
+  const built = (): NativeItem => (current ??= _tpl(html, bind, flags))
   const dispose = (): void => {
     dead = true
     current?.cleanup?.()
