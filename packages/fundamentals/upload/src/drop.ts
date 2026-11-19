@@ -11,6 +11,8 @@ export interface FileDropOptions {
   /** Allow several files in one drop. Default true; with `false` only the first is kept. */
   multiple?: boolean
   disabled?: boolean
+  /** Deliver every dropped file to `onDrop` and use `accept` and `multiple` only to judge the drag (`isValid`), so the caller can validate with reasons. Default true: refuse here. */
+  filter?: boolean
   /** Read dropped folders and flatten them (when the browser can). Default true. */
   directories?: boolean
   /** Also take files pasted onto the element (it must be focusable to receive paste). Default false. */
@@ -77,6 +79,11 @@ export function useFileDrop(options: FileDropOptions = {}): FileDrop {
   }
 
   function take(files: File[]): void {
+    if (options.filter === false) {
+      if (files.length > 0) options.onDrop?.(files)
+
+      return
+    }
     const rejected: { file: File; rejection: FileRejection }[] = []
     const accepted: File[] = []
 

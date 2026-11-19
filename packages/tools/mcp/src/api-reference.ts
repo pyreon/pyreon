@@ -3613,6 +3613,39 @@ errorFromStatus(422).retryable   // => false`,
     notes: '[EXPERIMENTAL] What identifies a file across page loads: name, size, type and last-modified time. Added in v0.53.0.',
   },
 
+  'upload/FileDrop': {
+    signature: '(props: FileIntakeProps) => VNode',
+    example: `typeof FileDrop   // => 'function'`,
+    notes: '[EXPERIMENTAL] A headless drop zone: a `role="button"` element (focusable, `aria-label`, `aria-busy`, `aria-disabled`, out of the tab order when disabled) that opens the file dialog on click, Enter and Space, takes dropped files (and pasted ones with `paste`), judges the drag (`data-drag-over`, `data-drop-valid`), and applies the `rules` and `accept` (case-insensitive) with reasons: accepted files go to `onFiles`, refused ones to `onReject` and to the `rejected` slot, and a visually hidden `<output>` live region announces what happened. Focus returns to the zone after every drop, pick or refusal. The children can be a function of the state (`isOver`, `isValid`, `rejections`, `open`, `liveRegionProps`). Unstyled: style it with `class` and the `data-` attributes. The server renders the static markup; hydration adds the behaviour. From `@pyreon/upload/components` (needs `@pyreon/core`). See also: FilePicker, useFileDrop. Added in v0.53.0.',
+    mistakes: `- A label that differs from the visible text (WCAG 2.5.3, flagged by axe): make \`label\` contain the visible words, or name the zone with \`labelledby\`
+- Placing the live region where it is removed and re-added: it must stay in the page for announcements to be read; use \`live={false}\` and \`state.liveRegionProps\` to place it yourself`,
+  },
+
+  'upload/FilePicker': {
+    signature: '(props: FileIntakeProps) => VNode',
+    example: `typeof FilePicker   // => 'function'`,
+    notes: '[EXPERIMENTAL] A headless picker button: a native `<button type="button">` (so Enter and Space work as on any button) that opens the file dialog, with the same rules, refusal reasons, live region and focus handling as `FileDrop`. The same file can be picked twice. `children` is the label, or a function of the state. From `@pyreon/upload/components`. Added in v0.53.0.',
+  },
+
+  'upload/bindFileField': {
+    signature: '(uploader, field, options?) => () => void',
+    example: `typeof bindFileField   // => 'function'`,
+    notes: `[EXPERIMENTAL] Make an uploader's files the value of an \`@pyreon/form\` field (\`form.fields.avatar\`): the value is the list of accepted \`File\`s; adding touches the field; the reason a file was rejected is the field's error; and resetting the form (the value goes back to empty) clears the queue. Structural: neither package imports the other. From \`@pyreon/upload/form\`. See also: fileValidator. Added in v0.53.0.`,
+  },
+
+  'upload/fileValidator': {
+    signature: '(options?: { required?: boolean | string, rules?: FileRule }) => ValidateFn',
+    example: `fileValidator({ required: 'Choose a file' })([])   // => 'Choose a file'
+fileValidator({ rules: { maxFiles: 1 } })([new File([], 'a'), new File([], 'b')])   // => 'At most 1 file is allowed.'`,
+    notes: '[EXPERIMENTAL] A validator for `useForm({ validators: { avatar: fileValidator({ required: "Choose a photo", rules }) } })`: the required-file rule, `maxFiles`, then each file against the rules; the first reason is the error. It answers a Promise only when a rule has to look inside the file. From `@pyreon/upload/form`. Added in v0.53.0.',
+  },
+
+  'upload/uploadMutation': {
+    signature: '(uploader) => { mutationFn }',
+    example: `typeof uploadMutation({ add: () => [] } as never).mutationFn   // => 'function'`,
+    notes: '[EXPERIMENTAL] An upload as an `@pyreon/query` mutation: `useMutation(uploadMutation(uploader))`. `mutationFn(files)` adds the files and resolves with their `UploadFile`s when all are done, or rejects with an error that carries the typed `uploadError` and the `file` of the first that failed or was rejected. Progress is not mutation state: read `uploader.progress()`. From `@pyreon/upload/query`. Added in v0.53.0.',
+  },
+
   'upload/UploadFile': {
     signature: 'interface UploadFile { id; file; name; size; type; meta; status(); progress(); speed(); remaining(); error(); result(); preview(); attempt(); rejections() }',
     example: 'const f = null as unknown as UploadFile',

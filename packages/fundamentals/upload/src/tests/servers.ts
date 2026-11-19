@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ViteDevServer } from 'vite'
-import { chunkedHandler, openUploads } from './reference-chunked'
+import { openUploads } from './reference-chunked'
+import * as zeroRoute from './reference-zero-routes'
 
 /** In-test servers for the resumable transports, mounted on the runner's dev server under `/__u/`. */
 const read = (req: IncomingMessage): Promise<Buffer> =>
@@ -152,6 +153,13 @@ async function tusRoute(path: string, req: IncomingMessage, res: ServerResponse)
 /** Add the resumable routes to a dev server. */
 let chunkPuts = 0
 
+/** Call the Zero route module the way Zero does: the method name picks the export, the context carries the request. */
+function routeFor(method: string, request: Request): Promise<Response> {
+  const handler = (zeroRoute as Record<string, (ctx: { request: Request }) => Promise<Response>>)[method]
+
+  return handler === undefined ? Promise.resolve(new Response(null, { status: 405 })) : handler({ request })
+}
+
 export function mountResumableServers(server: ViteDevServer): void {
   server.middlewares.use('/__u/chunked', (req, res) => {
     void (async () => {
@@ -162,7 +170,7 @@ export function mountResumableServers(server: ViteDevServer): void {
       const response =
         path === '/state'
           ? new Response(JSON.stringify({ open: openUploads(), puts: chunkPuts }), { headers: { 'content-type': 'application/json' } })
-          : await chunkedHandler(new Request(`http://x/api/uploads${path}`, { method: req.method ?? 'GET', headers: req.headers as Record<string, string>, ...(hasBody ? { body: new Uint8Array(body) } : {}) }))
+          : await routeFor(req.method ?? 'GET', new Request(`http://x/api/uploads${path}`, { method: req.method ?? 'GET', headers: req.headers as Record<string, string>, ...(hasBody ? { body: new Uint8Array(body) } : {}) }))
 
       res.writeHead(response.status, Object.fromEntries(response.headers))
       res.end(Buffer.from(await response.arrayBuffer()))

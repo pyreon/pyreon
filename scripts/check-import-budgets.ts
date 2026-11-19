@@ -251,6 +251,30 @@ export const SCENARIOS: Scenario[] = [
     imports: ['tusTransport'],
   },
   {
+    // The two headless components with their shared intake (validation, drop and picker state): no queue, no transport.
+    id: '@pyreon/upload::components',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'components.js',
+    imports: ['FileDrop', 'FilePicker'],
+  },
+  {
+    // The form adapter: reads a field's public state, needs no queue code of its own.
+    id: '@pyreon/upload::form',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'form.js',
+    imports: ['bindFileField', 'fileValidator'],
+  },
+  {
+    // The query adapter is a few lines over the uploader contract.
+    id: '@pyreon/upload::query',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'query.js',
+    imports: ['uploadMutation'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.

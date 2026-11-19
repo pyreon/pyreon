@@ -1,4 +1,4 @@
 {
-  "extends": "@pyreon/tsconfig/lib.json",
+  "extends": "@pyreon/tsconfig/lib-jsx.json",
   "compilerOptions": { "lib": ["ES2023", "DOM", "DOM.Iterable"] }
 }

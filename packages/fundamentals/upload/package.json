@@ -47,6 +47,21 @@
       "bun": "./src/transport-tus.ts",
       "import": "./lib/transport-tus.js",
       "types": "./lib/types/transport-tus.d.ts"
+    },
+    "./components": {
+      "bun": "./src/components.tsx",
+      "import": "./lib/components.js",
+      "types": "./lib/types/components.d.ts"
+    },
+    "./form": {
+      "bun": "./src/form.ts",
+      "import": "./lib/form.js",
+      "types": "./lib/types/form.d.ts"
+    },
+    "./query": {
+      "bun": "./src/query.ts",
+      "import": "./lib/query.js",
+      "types": "./lib/types/query.d.ts"
     }
   },
   "files": [
@@ -65,17 +80,29 @@
     "lint": "oxlint ."
   },
   "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/core": "workspace:^"
   },
   "devDependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/form": "workspace:*",
     "@pyreon/http": "workspace:*",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/query": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^5.1.0"
+    "@vitest/browser-playwright": "^5.1.0",
+    "axe-core": "4.14.1"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/core": {
+      "optional": true
+    }
   }
 }

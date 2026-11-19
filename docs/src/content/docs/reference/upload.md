@@ -5,7 +5,7 @@ description: "File selection, validation, preview and upload with progress as si
 
 > **Generated** from `upload`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [upload](/docs/upload).
 
-A reactive upload queue. `createUploader({ transport })` validates files (size, type, image dimensions, magic-number sniffing, your own rule), uploads them with a concurrency limit, retries only failures a retry can fix (network, 408, 429 with Retry-After honoured, 5xx; never a 4xx), pauses, resumes, cancels and reports progress, speed and time left as signals that never go backwards and are written once per animation frame. `xhrTransport` sends with XMLHttpRequest because fetch has no upload progress; pass an `@pyreon/http` client and its base URL, headers and middleware apply. `chunkedTransport`, `s3Transport` (presigned single and multipart, no SDK) and `tusTransport` (tus 1.0) resume after a failure, a pause or a page reload (`createResumeStore` persists the state). `useFilePicker` and `useFileDrop` are the state of a picker and a drop zone: enter and leave are counted across children, files are judged while dragging, folders are read, paste is an option, and picking the same file twice works. `@pyreon/upload/core` has the pure parts (validation, `sniffType`, chunk planning, progress math, the error taxonomy) with no dependencies. Dispose aborts in-flight requests and removes timers, listeners and object URLs; creating anything on the server is inert. Client validation is UX: the server must check type, size and content.
+A reactive upload queue. `createUploader({ transport })` validates files (size, type, image dimensions, magic-number sniffing, your own rule), uploads them with a concurrency limit, retries only failures a retry can fix (network, 408, 429 with Retry-After honoured, 5xx; never a 4xx), pauses, resumes, cancels and reports progress, speed and time left as signals that never go backwards and are written once per animation frame. `xhrTransport` sends with XMLHttpRequest because fetch has no upload progress; pass an `@pyreon/http` client and its base URL, headers and middleware apply. Headless `<FileDrop>` and `<FilePicker>` (keyboard operable, labelled, with a live region for refusals; SSR-safe), a form adapter and a query mutation adapter are separate entries. `chunkedTransport`, `s3Transport` (presigned single and multipart, no SDK) and `tusTransport` (tus 1.0) resume after a failure, a pause or a page reload (`createResumeStore` persists the state). `useFilePicker` and `useFileDrop` are the state of a picker and a drop zone: enter and leave are counted across children, files are judged while dragging, folders are read, paste is an option, and picking the same file twice works. `@pyreon/upload/core` has the pure parts (validation, `sniffType`, chunk planning, progress math, the error taxonomy) with no dependencies. Dispose aborts in-flight requests and removes timers, listeners and object URLs; creating anything on the server is inert. Client validation is UX: the server must check type, size and content.
 
 ## Multiplatform
 
@@ -80,6 +80,11 @@ uploader.status()   // => 'idle'
 | [`tusTransport`](#tustransport-function-experimental) | function | The tus 1.0 resumable upload protocol with the creation and termination extensions: `POST` to create (with… |
 | [`createResumeStore`](#createresumestore-function-experimental) | function | Persist resume state in `localStorage` (or an `@pyreon/storage` adapter) so an upload continues after a page reload:… |
 | [`fingerprint`](#fingerprint-function-experimental) | function | What identifies a file across page loads: name, size, type and last-modified time. |
+| [`FileDrop`](#filedrop-function-experimental) | function | A headless drop zone: a `role="button"` element (focusable, `aria-label`, `aria-busy`, `aria-disabled`, out of the tab… |
+| [`FilePicker`](#filepicker-function-experimental) | function | A headless picker button: a native `<button type="button">` (so Enter and Space work as on any button) that opens the… |
+| [`bindFileField`](#bindfilefield-function-experimental) | function | Make an uploader's files the value of an `@pyreon/form` field (`form.fields.avatar`): the value is the list of accepted… |
+| [`fileValidator`](#filevalidator-function-experimental) | function | A validator for `useForm({ validators: { avatar: fileValidator({ required: "Choose a photo", rules }) } })`: the… |
+| [`uploadMutation`](#uploadmutation-function-experimental) | function | An upload as an `@pyreon/query` mutation: `useMutation(uploadMutation(uploader))`. |
 | [`UploadFile`](#uploadfile-type-experimental) | type | One item of a queue: plain data and functions that read signals. |
 | [`Uploader`](#uploader-type-experimental) | type | The queue returned by `createUploader`. |
 | [`Transport`](#transport-type-experimental) | type | Sends one file. |
@@ -712,6 +717,96 @@ What identifies a file across page loads: name, size, type and last-modified tim
 
 ```tsx
 fingerprint({ name: 'a.mp4', size: 10, type: 'video/mp4', file: new File([], 'a.mp4', { lastModified: 5 }) })   // => 'a.mp4|10|video/mp4|5'
+```
+
+---
+
+### `FileDrop` `function` — **experimental**
+
+```ts
+(props: FileIntakeProps) => VNode
+```
+
+A headless drop zone: a `role="button"` element (focusable, `aria-label`, `aria-busy`, `aria-disabled`, out of the tab order when disabled) that opens the file dialog on click, Enter and Space, takes dropped files (and pasted ones with `paste`), judges the drag (`data-drag-over`, `data-drop-valid`), and applies the `rules` and `accept` (case-insensitive) with reasons: accepted files go to `onFiles`, refused ones to `onReject` and to the `rejected` slot, and a visually hidden `<output>` live region announces what happened. Focus returns to the zone after every drop, pick or refusal. The children can be a function of the state (`isOver`, `isValid`, `rejections`, `open`, `liveRegionProps`). Unstyled: style it with `class` and the `data-` attributes. The server renders the static markup; hydration adds the behaviour. From `@pyreon/upload/components` (needs `@pyreon/core`).
+
+**Example**
+
+```tsx
+typeof FileDrop   // => 'function'
+```
+
+**Common mistakes**
+
+- A label that differs from the visible text (WCAG 2.5.3, flagged by axe): make `label` contain the visible words, or name the zone with `labelledby`
+- Placing the live region where it is removed and re-added: it must stay in the page for announcements to be read; use `live={false}` and `state.liveRegionProps` to place it yourself
+
+**See also:** `FilePicker` · `useFileDrop`
+
+---
+
+### `FilePicker` `function` — **experimental**
+
+```ts
+(props: FileIntakeProps) => VNode
+```
+
+A headless picker button: a native `<button type="button">` (so Enter and Space work as on any button) that opens the file dialog, with the same rules, refusal reasons, live region and focus handling as `FileDrop`. The same file can be picked twice. `children` is the label, or a function of the state. From `@pyreon/upload/components`.
+
+**Example**
+
+```tsx
+typeof FilePicker   // => 'function'
+```
+
+---
+
+### `bindFileField` `function` — **experimental**
+
+```ts
+(uploader, field, options?) => () => void
+```
+
+Make an uploader's files the value of an `@pyreon/form` field (`form.fields.avatar`): the value is the list of accepted `File`s; adding touches the field; the reason a file was rejected is the field's error; and resetting the form (the value goes back to empty) clears the queue. Structural: neither package imports the other. From `@pyreon/upload/form`.
+
+**Example**
+
+```tsx
+typeof bindFileField   // => 'function'
+```
+
+**See also:** `fileValidator`
+
+---
+
+### `fileValidator` `function` — **experimental**
+
+```ts
+(options?: { required?: boolean | string, rules?: FileRule }) => ValidateFn
+```
+
+A validator for `useForm({ validators: { avatar: fileValidator({ required: "Choose a photo", rules }) } })`: the required-file rule, `maxFiles`, then each file against the rules; the first reason is the error. It answers a Promise only when a rule has to look inside the file. From `@pyreon/upload/form`.
+
+**Example**
+
+```tsx
+fileValidator({ required: 'Choose a file' })([])   // => 'Choose a file'
+fileValidator({ rules: { maxFiles: 1 } })([new File([], 'a'), new File([], 'b')])   // => 'At most 1 file is allowed.'
+```
+
+---
+
+### `uploadMutation` `function` — **experimental**
+
+```ts
+(uploader) => { mutationFn }
+```
+
+An upload as an `@pyreon/query` mutation: `useMutation(uploadMutation(uploader))`. `mutationFn(files)` adds the files and resolves with their `UploadFile`s when all are done, or rejects with an error that carries the typed `uploadError` and the `file` of the first that failed or was rejected. Progress is not mutation state: read `uploader.progress()`. From `@pyreon/upload/query`.
+
+**Example**
+
+```tsx
+typeof uploadMutation({ add: () => [] } as never).mutationFn   // => 'function'
 ```
 
 ---

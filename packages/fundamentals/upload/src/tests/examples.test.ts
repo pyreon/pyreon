@@ -1,6 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
+import * as components from '../components'
+import * as form from '../form'
+import * as query from '../query'
 import * as chunked from '../transport-chunked'
 import * as s3 from '../transport-s3'
 import * as tus from '../transport-tus'
@@ -42,7 +45,7 @@ function lines(example: string): { code: string; expected: string }[] {
   return out
 }
 
-const scope: Record<string, unknown> = { ...upload, ...xhr, ...chunked, ...s3, ...tus }
+const scope: Record<string, unknown> = { ...upload, ...xhr, ...chunked, ...s3, ...tus, ...components, ...form, ...query }
 const scopeOf = (_name: string): Record<string, unknown> => scope
 
 describe('examples run and print what they claim', () => {
@@ -63,7 +66,7 @@ describe('examples run and print what they claim', () => {
     for (const l of long) run(scope, l.code, l.expected)
   })
 
-  const files = ['uploader.ts', 'picker.ts', 'drop.ts', 'transport-xhr.ts', 'validate.ts', 'sniff.ts', 'accept.ts', 'size.ts', 'chunks.ts', 'progress.ts', 'errors.ts', 'collect.ts', 'resume.ts', 'transport-chunked.ts', 'transport-s3.ts', 'transport-tus.ts']
+  const files = ['uploader.ts', 'picker.ts', 'drop.ts', 'transport-xhr.ts', 'validate.ts', 'sniff.ts', 'accept.ts', 'size.ts', 'chunks.ts', 'progress.ts', 'errors.ts', 'collect.ts', 'resume.ts', 'transport-chunked.ts', 'transport-s3.ts', 'transport-tus.ts', 'components.tsx', 'form.ts', 'query.ts']
   const fromSource = files.flatMap((file) =>
     readFileSync(join(SRC, file), 'utf8')
       .split('\n')
@@ -103,11 +106,12 @@ const imports = (text: string): string[] => [...text.matchAll(/(?:^|\n)\s*(?:imp
 
 describe('the published shape', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as Pkg
-  const sources = readdirSync(SRC).filter((f) => f.endsWith('.ts'))
+  const sources = readdirSync(SRC).filter((f) => f.endsWith('.ts') || f.endsWith('.tsx'))
 
-  it('has no dependencies, one peer (@pyreon/reactivity), is ESM only and side-effect free', () => {
+  it('has no dependencies, the peers @pyreon/reactivity and (optional, for the components) @pyreon/core, is ESM only and side-effect free', () => {
     expect(pkg.dependencies).toBeUndefined()
-    expect(Object.keys(pkg.peerDependencies ?? {})).toEqual(['@pyreon/reactivity'])
+    expect(Object.keys(pkg.peerDependencies ?? {})).toEqual(['@pyreon/reactivity', '@pyreon/core'])
+    expect((pkg as unknown as { peerDependenciesMeta: Record<string, { optional: boolean }> }).peerDependenciesMeta['@pyreon/core']!.optional).toBe(true)
     expect(pkg.type).toBe('module')
     expect(pkg.sideEffects).toBe(false)
     expect(JSON.stringify(pkg.exports)).not.toMatch(/"require"|"default"/)
@@ -118,13 +122,13 @@ describe('the published shape', () => {
   })
 
   it('the core files import nothing from @pyreon; only the queue, picker and drop import @pyreon/reactivity; no node: import', () => {
-    const reactive = new Set(['uploader.ts', 'queue.ts', 'picker.ts', 'drop.ts'])
+    const reactive = new Set(['uploader.ts', 'queue.ts', 'picker.ts', 'drop.ts', 'intake.ts', 'form.ts'])
 
     for (const f of sources.filter((n) => n !== 'manifest.ts' && n !== 'manifest-parts.ts')) {
       const found = imports(readFileSync(join(SRC, f), 'utf8'))
 
       expect(found.filter((s) => s.startsWith('node:')), f).toEqual([])
-      expect(found, f).toEqual(reactive.has(f) ? ['@pyreon/reactivity'] : [])
+      expect(found, f).toEqual(f === 'components.tsx' ? ['@pyreon/core'] : reactive.has(f) ? ['@pyreon/reactivity'] : [])
     }
   })
 
@@ -144,7 +148,7 @@ describe('the published shape', () => {
       return [...seen]
     }
 
-    for (const e of ['core', 'transport-xhr', 'transport-chunked', 'transport-s3', 'transport-tus']) for (const bad of ['uploader', 'queue', 'picker', 'drop', 'index']) expect(reach(e), e).not.toContain(bad)
+    for (const e of ['core', 'transport-xhr', 'transport-chunked', 'transport-s3', 'transport-tus']) for (const bad of ['uploader', 'queue', 'picker', 'drop', 'index', 'intake', 'components', 'form']) expect(reach(e), e).not.toContain(bad)
     // A transport never pulls another transport.
     const transports = ['transport-xhr', 'transport-chunked', 'transport-s3', 'transport-tus']
 
@@ -189,5 +193,8 @@ describe('the published shape', () => {
     expect(all('transport-xhr.js')).toEqual([])
     for (const t of ['transport-chunked.js', 'transport-s3.js', 'transport-tus.js']) expect(all(t), t).toEqual([])
     expect(all('index.js')).toEqual(['@pyreon/reactivity'])
+    expect(all('form.js')).toEqual(['@pyreon/reactivity'])
+    expect(all('query.js')).toEqual([])
+    expect(all('components.js')).toEqual(['@pyreon/core/jsx-runtime', '@pyreon/reactivity'])
   })
 })

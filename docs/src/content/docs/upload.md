@@ -7,7 +7,7 @@ description: File selection, validation, preview and upload with progress as sig
 
 `@pyreon/upload` is the part of a file upload that is the same in every app: choosing files, checking them, uploading them with real progress, retrying what a retry can fix, and cleaning up after itself. The state is signals (status, progress, speed, time left, error, preview) so a progress bar or a file list is a few lines of JSX. It has no UI: you bring the markup.
 
-> **Experimental.** This page covers the core, the queue, the transports (XHR, chunked, S3, tus), resume state, the picker and the drop zone. Headless components come in a follow-up release.
+> **Experimental.** This page covers the core, the queue, the transports (XHR, chunked, S3, tus), resume state, the picker and the drop zone. Headless components, the form and query adapters and the recipes are below.
 
 ## Installation
 
@@ -424,6 +424,369 @@ A drag that ends outside the zone resets it. `dropProps` carries `data-drag-over
 
 Why not `@pyreon/dnd`: a file dragged in from the desktop is a native drag event carrying a `DataTransfer`, not an item of your page, so the native events are the right tool.
 
+## Headless components
+
+`@pyreon/upload/components` has two unstyled components over the same intake: `<FileDrop>` (a drop zone that is also a button) and `<FilePicker>` (a native button). They need `@pyreon/core`. They own no look: style them with `class` and the `data-` attributes, and put your own content inside.
+
+```tsx
+// @check
+import { FileDrop } from '@pyreon/upload/components'
+
+export function Zone(props: { onFiles: (files: File[]) => void }) {
+  return (
+    <FileDrop
+      label="Drop photos here or press Enter to choose"
+      class="zone"
+      accept={['image/*']}
+      rules={{ maxSize: '5 MB' }}
+      onFiles={props.onFiles}
+      rejected={(list) => (
+        <ul class="problems">
+          {list.map((r) => (
+            <li>
+              {r.file.name}: {r.rejections.map((x) => x.message).join(' ')}
+            </li>
+          ))}
+        </ul>
+      )}
+    >
+      {(state) => <p>{() => (state.isOver() ? 'Release to add' : 'Drop photos here or press Enter to choose')}</p>}
+    </FileDrop>
+  )
+}
+```
+
+| Prop | What |
+| --- | --- |
+| `onFiles(files)` | the accepted files |
+| `onReject(rejected)`, `rejected(list)` | the refused files with every reason (`code`, `message`, `params`): a callback, and a render slot for a list under the zone |
+| `accept`, `multiple`, `rules` | `accept` ignores case; `rules` are the `validateFile` rules (`maxSize`, `minSize`, `maxFiles`, `image`, `sniff`, `custom`); `multiple={false}` keeps one file |
+| `label`, `labelledby` | the accessible name (`aria-label`, or `aria-labelledby`) |
+| `disabled`, `busy` | `aria-disabled` and the tab order, `aria-busy` |
+| `paste`, `directories` | also take pasted files; read dropped folders |
+| `class`, `liveClass`, `live` | styling hooks; restyle or drop the default live region |
+
+State for the render function and the data attributes: `isOver()` / `data-drag-over`, `isValid()` / `data-drop-valid`, `data-disabled`, `data-has-rejections`, `rejections()`, `open()`, `announcement()` and `liveRegionProps`.
+
+### The accessibility contract
+
+- The zone is a `role="button"` element in the tab order (`tabindex="-1"` and `aria-disabled` when disabled). **Enter and Space open the file dialog** (Space does not scroll the page; a held key opens it once). Click opens it too.
+- The name is `aria-label` (default "Upload files"). When the zone shows text, **make the label contain it** (WCAG 2.5.3 "label in name"; the automated check flags a mismatch), or name the zone by another element with `labelledby`.
+- A visually hidden `role="status"` region announces the outcome after every drop, pick or paste: "1 file added. 2 files were not accepted. doc.pdf: Files of this type are not accepted (allowed: image/*). ..." Place it yourself with `live={false}` and `{...state.liveRegionProps}` on an element of your own.
+- After a drop, a pick or a refusal **focus returns to the zone** (or the button), so a keyboard user stays where they were.
+- The drag state counts enter and leave, so it does not flicker while the pointer crosses children, and `data-drop-valid` says whether the dragged types fit before the drop.
+- Server rendering gives the static markup: the labelled button, the hidden input and an empty live region. Hydration adopts it without a mismatch and adds the behaviour. The Chromium tests of the package check all of the above in a real browser, including right-to-left pages, hydration and an automated axe-core run.
+
+`<FilePicker>` is the same intake on a native `<button>`:
+
+```tsx
+// @check
+import { FilePicker } from '@pyreon/upload/components'
+
+export const Choose = (props: { onFiles: (files: File[]) => void }) => (
+  <FilePicker accept={['.csv']} multiple={false} onFiles={props.onFiles}>
+    Choose a CSV file
+  </FilePicker>
+)
+```
+
+## Forms
+
+`@pyreon/upload/form` makes files a normal `@pyreon/form` field without either package importing the other: the adapter reads the field's public state (`value`, `setValue`, `setTouched`, `error`). `fileValidator` is the form's validator for the required-file rule and the file rules; `bindFileField` keeps the field value and the queue in step, and resetting the form clears the queue.
+
+```tsx
+// @check
+import { useForm } from '@pyreon/form'
+import { createUploader } from '@pyreon/upload'
+import { bindFileField, fileValidator } from '@pyreon/upload/form'
+import { FileDrop } from '@pyreon/upload/components'
+import { xhrTransport } from '@pyreon/upload/transport-xhr'
+
+export function AvatarForm() {
+  const rules = { maxSize: '2 MB', accept: ['image/*'], maxFiles: 1 }
+  const uploader = createUploader({ transport: xhrTransport({ url: '/api/avatar' }), rules, autoStart: false })
+  const form = useForm<{ avatar: File[]; name: string }>({
+    initialValues: { avatar: [], name: '' },
+    validators: { avatar: fileValidator({ required: 'Choose a photo', rules }) },
+    onSubmit: () => uploader.start(),
+  })
+
+  bindFileField(uploader, form.fields.avatar as never)
+
+  return (
+    <form onSubmit={form.handleSubmit}>
+      <FileDrop label="Choose a photo" accept={rules.accept} rules={rules} multiple={false} onFiles={(files) => uploader.add(files)}>
+        Choose a photo
+      </FileDrop>
+      <p role="alert">{() => form.fields.avatar.error()}</p>
+      <button type="submit">Save</button>
+      <button type="reset" onClick={() => form.reset()}>Reset</button>
+    </form>
+  )
+}
+```
+
+## As a query mutation
+
+`@pyreon/upload/query` is a thin wrapper: `useMutation(uploadMutation(uploader))`. The mutation's `mutationFn` adds the files and resolves with their `UploadFile`s when all are done, or rejects with an error that carries the typed `uploadError` and the `file`. A mutation has no progress, so read it from the uploader, which is a signal.
+
+```tsx
+// @check
+import { useMutation } from '@pyreon/query'
+import { createUploader } from '@pyreon/upload'
+import { uploadMutation } from '@pyreon/upload/query'
+import { xhrTransport } from '@pyreon/upload/transport-xhr'
+
+export function Importer() {
+  const uploader = createUploader({ transport: xhrTransport({ url: '/api/import' }) })
+  const save = useMutation(uploadMutation(uploader))
+
+  return (
+    <div>
+      <input type="file" onChange={(e) => save.mutate(Array.from((e.target as HTMLInputElement).files ?? []))} />
+      <progress max={1} value={() => uploader.progress().ratio} />
+      <p>{() => (save.isPending() ? 'Uploading' : save.isSuccess() ? 'Imported' : '')}</p>
+    </div>
+  )
+}
+```
+
+## Recipes
+
+Every block below is type-checked by the docs gate and imports what it uses.
+
+**Avatar upload with a preview and a size limit.** `preview: true` makes an object URL that the queue revokes; the rules refuse a big or non-image file with a reason:
+
+```tsx
+// @check
+import { createUploader } from '@pyreon/upload'
+import { FilePicker } from '@pyreon/upload/components'
+import { xhrTransport } from '@pyreon/upload/transport-xhr'
+
+export function AvatarUpload() {
+  const uploader = createUploader({ transport: xhrTransport({ url: '/api/avatar' }), rules: { maxSize: '2 MB', accept: ['image/*'], maxFiles: 1 }, preview: true })
+
+  return (
+    <div>
+      <FilePicker accept={['image/*']} multiple={false} rules={{ maxSize: '2 MB' }} onFiles={(files) => {
+        uploader.clear()
+        uploader.add(files)
+      }}>
+        Choose a photo
+      </FilePicker>
+      {() => uploader.files().map((f) => <img alt={f.name} src={() => f.preview() ?? ''} width={96} height={96} />)}
+      <p>{() => uploader.files().map((f) => f.status()).join(', ')}</p>
+    </div>
+  )
+}
+```
+
+**Paste an image into a comment box.** `paste` takes files from the clipboard and leaves pasted text alone; the element must be focusable to receive paste events:
+
+```tsx
+// @check
+import { useFileDrop } from '@pyreon/upload'
+
+export function CommentBox(props: { onImage: (file: File) => void }) {
+  const zone = useFileDrop({ paste: true, accept: ['image/*'], onDrop: (files) => files.forEach(props.onImage) })
+
+  return <textarea placeholder="Write a comment, paste an image" {...(zone.dropProps as Record<string, unknown>)} />
+}
+```
+
+**A form with a required file field**: see [Forms](#forms).
+
+**A multi-file drop zone with per-file progress and retry:**
+
+```tsx
+// @check
+import { createUploader } from '@pyreon/upload'
+import { FileDrop } from '@pyreon/upload/components'
+import { xhrTransport } from '@pyreon/upload/transport-xhr'
+
+export function Files() {
+  const uploader = createUploader({ transport: xhrTransport({ url: '/api/upload' }), rules: { maxSize: '20 MB' }, concurrency: 2 })
+
+  return (
+    <FileDrop label="Drop files here or press Enter to choose" onFiles={(files) => uploader.add(files)} busy={uploader.isUploading()}>
+      Drop files here or press Enter to choose
+      {() => (
+        <ul>
+          {uploader.files().map((f) => (
+            <li>
+              {f.name} <progress max={1} value={() => f.progress().ratio} /> {() => f.status()}
+              {() => (f.status() === 'failed' ? <button type="button" onClick={() => uploader.retry(f.id)}>Retry</button> : null)}
+              <button type="button" onClick={() => uploader.cancel(f.id)}>Cancel</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </FileDrop>
+  )
+}
+```
+
+**A resumable large video upload that survives a reload.** The resume store saves the transport's state; after a reload the user chooses the same file again and the upload continues:
+
+```tsx
+// @check
+import { createResumeStore, createUploader } from '@pyreon/upload'
+import { FilePicker } from '@pyreon/upload/components'
+import { tusTransport } from '@pyreon/upload/transport-tus'
+
+export function VideoUpload() {
+  const uploader = createUploader({ transport: tusTransport({ endpoint: 'https://tus.example.com/files' }), resume: createResumeStore(localStorage), concurrency: 1 })
+
+  return (
+    <div>
+      <FilePicker accept={['video/*']} onFiles={(files) => uploader.add(files)}>Choose a video</FilePicker>
+      <p>{() => `${Math.round(uploader.progress().ratio * 100)}%`}</p>
+      <button type="button" onClick={() => uploader.pause()}>Pause</button>
+      <button type="button" onClick={() => uploader.resume()}>Resume</button>
+    </div>
+  )
+}
+```
+
+**Direct to S3 with presigned multipart**: the browser side is the `s3Transport` block above; the server side is the presign routes below.
+
+```tsx
+// @check
+import { createUploader } from '@pyreon/upload'
+import { FileDrop } from '@pyreon/upload/components'
+import { s3Transport } from '@pyreon/upload/transport-s3'
+
+const api = async (path: string, init?: RequestInit): Promise<any> => (await fetch(`/api/s3/${path}`, init)).json()
+
+export function BucketUpload() {
+  const uploader = createUploader({
+    transport: s3Transport({
+      presign: (file) => api(`sign?name=${encodeURIComponent(file.name)}`),
+      multipart: {
+        create: (file) => api(`create?name=${encodeURIComponent(file.name)}`),
+        signPart: (_file, p) => api(`sign-part?uploadId=${p.uploadId}&partNumber=${p.partNumber}`),
+        complete: (_file, u) => api(`complete?uploadId=${u.uploadId}`, { method: 'POST', body: JSON.stringify({ parts: u.parts }) }),
+        abort: async (_file, u) => void (await fetch(`/api/s3/abort?uploadId=${u.uploadId}`, { method: 'DELETE' })),
+        list: (_file, u) => api(`list?uploadId=${u.uploadId}`),
+      },
+    }),
+  })
+
+  return <FileDrop label="Drop large files here" onFiles={(files) => uploader.add(files)}>Drop large files here</FileDrop>
+}
+```
+
+## Reference server routes for Zero
+
+Reference code, not a product: starting points for your own server. In a `@pyreon/zero` app, API routes are `.ts` files in `src/routes/api/` that export `GET`, `POST`, `PUT` and `DELETE` handlers of `({ request }) => Response`, and `[...path]` is a catch-all. The chunked handler above becomes one route file (the package's Chromium tests call exactly this module the way Zero does, and the page is checked to show it):
+
+```ts
+// The Zero route for the chunked contract, as shown in the docs (the docs test checks the page shows this code).
+// In an app this file is `src/routes/api/uploads/[...path].ts` and imports the handler from your own server code.
+import { chunkedHandler } from '~/server/chunked-handler'
+
+interface ApiContext {
+  request: Request
+}
+
+const handle = ({ request }: ApiContext): Promise<Response> => chunkedHandler(request, '/api/uploads')
+
+export const GET = handle
+export const POST = handle
+export const PUT = handle
+export const DELETE = handle
+```
+
+The presign routes decide the object key, validate the input and shape the answers; the AWS SDK sits behind `ops`. They are tested with a fake `ops` (key safety, answer shapes, bad input); the real calls are the commands shown earlier.
+
+```ts
+// The presign routes for `s3Transport`, as shown in the docs (the docs test checks the page shows this code).
+// `ops` is where the AWS SDK goes (see the docs); the routes only decide the object key, validate the input and shape the answers.
+
+export interface S3Ops {
+  createMultipartUpload(key: string): Promise<string>
+  signPutObject(key: string): Promise<string>
+  signUploadPart(key: string, uploadId: string, partNumber: number): Promise<string>
+  completeMultipartUpload(key: string, uploadId: string, parts: { partNumber: number; etag: string }[]): Promise<{ size: number }>
+  abortMultipartUpload(key: string, uploadId: string): Promise<void>
+  listParts(key: string, uploadId: string): Promise<{ partNumber: number; etag: string }[]>
+}
+
+interface ApiContext {
+  request: Request
+  url: URL
+}
+
+const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+/**
+ * The server chooses the key: never the file name from the client (it may hold `../`, control characters or a name that
+ * overwrites another user's file). Keep the extension only when it is plain.
+ */
+export function objectKey(userId: string, fileName: string): string {
+  const ext = /\.[a-z0-9]{1,8}$/i.exec(fileName)?.[0]?.toLowerCase() ?? ''
+
+  return `uploads/${userId}/${crypto.randomUUID()}${ext}`
+}
+
+/** `POST /api/s3/create?name=` and the routes that follow it. `keyOf` maps an upload id back to the key it was created with. */
+export function createPresignRoutes(ops: S3Ops, userId: () => string): Record<string, (ctx: ApiContext) => Promise<Response>> {
+  const keys = new Map<string, string>()
+  const keyFor = (uploadId: string | null): string | undefined => (uploadId === null ? undefined : keys.get(uploadId))
+
+  return {
+    async sign({ url }) {
+      const key = objectKey(userId(), url.searchParams.get('name') ?? '')
+
+      return json({ url: await ops.signPutObject(key), method: 'PUT' })
+    },
+    async create({ url }) {
+      const key = objectKey(userId(), url.searchParams.get('name') ?? '')
+      const uploadId = await ops.createMultipartUpload(key)
+
+      keys.set(uploadId, key)
+
+      return json({ uploadId })
+    },
+    async signPart({ url }) {
+      const key = keyFor(url.searchParams.get('uploadId'))
+      const partNumber = Number(url.searchParams.get('partNumber'))
+
+      if (key === undefined || !Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10_000) return json({ error: 'bad request' }, 400)
+
+      return json({ url: await ops.signUploadPart(key, url.searchParams.get('uploadId')!, partNumber) })
+    },
+    async complete({ request, url }) {
+      const key = keyFor(url.searchParams.get('uploadId'))
+      const body = (await request.json()) as { parts?: { partNumber: number; etag: string }[] }
+
+      if (key === undefined || !Array.isArray(body.parts) || body.parts.length === 0) return json({ error: 'bad request' }, 400)
+      const result = await ops.completeMultipartUpload(key, url.searchParams.get('uploadId')!, body.parts)
+
+      keys.delete(url.searchParams.get('uploadId')!)
+
+      return json({ key, ...result })
+    },
+    async abort({ url }) {
+      const key = keyFor(url.searchParams.get('uploadId'))
+
+      if (key === undefined) return json({ error: 'unknown upload' }, 404)
+      await ops.abortMultipartUpload(key, url.searchParams.get('uploadId')!)
+      keys.delete(url.searchParams.get('uploadId')!)
+
+      return new Response(null, { status: 204 })
+    },
+    async list({ url }) {
+      const key = keyFor(url.searchParams.get('uploadId'))
+
+      return key === undefined ? json({ error: 'unknown upload' }, 404) : json(await ops.listParts(key, url.searchParams.get('uploadId')!))
+    },
+  }
+}
+```
+
+Wire it in `src/routes/api/s3/[action].ts`: `const routes = createPresignRoutes(awsOps, () => currentUserId())`, then `export const POST = (ctx) => routes[ctx.params.action!]!(ctx)` and the same for `GET` and `DELETE`, with `awsOps` built from `CreateMultipartUploadCommand`, `UploadPartCommand` and the other commands through `getSignedUrl`. Check the user and the file's size and type before you sign, and add `Content-Length` limits and a short expiry to the signed command.
+
 ## Security notes
 
 - **Client validation is user experience, not security.** A client can send anything. The server must check the type, the size and the content of every upload, and enforce its own limits.
@@ -451,9 +814,16 @@ new Intl.NumberFormat('en', { style: 'percent' }).format(0.42) // => '42%'
 | --- | --- |
 | Uppy `new Uppy({ restrictions: { maxFileSize, allowedFileTypes, maxNumberOfFiles } })` | `rules: { maxSize, accept, maxFiles }` on `createUploader` |
 | Uppy XHRUpload plugin | `xhrTransport({ url })` |
-| Uppy `uppy.on('upload-progress')` | `file.progress()` in an effect or JSX; no event to subscribe to or unsubscribe from |
-| FilePond `FilePond.create()` | `createUploader()` plus your own markup; the state is signals |
-| react-dropzone `useDropzone({ accept, maxFiles, onDrop })` | `useFileDrop({ accept, multiple, onDrop })`; `isDragActive` is `isOver()`, `isDragReject` is `isValid() === false` |
+| Uppy AwsS3 plugin (`getUploadParameters`, `createMultipartUpload`, `signPart`, `completeMultipartUpload`) | `s3Transport({ presign, multipart: { create, signPart, complete, abort, list } })`: the same questions, as plain functions |
+| Uppy Tus plugin | `tusTransport({ endpoint, chunkSize, metadata })` |
+| Uppy `uppy.on('upload-progress')`, `uppy.on('upload-error')` | `file.progress()` and `file.error()` in an effect or JSX; no event to subscribe to or unsubscribe from |
+| Uppy Dashboard or DragDrop | `<FileDrop>` and your markup |
+| Uppy `uppy.pauseResume`, `retryUpload`, `cancelAll` | `uploader.pause()` / `resume()`, `retry(id)`, `cancel()` |
+| FilePond `FilePond.create()` and its plugins | `createUploader()` plus your own markup; image checks are `rules.image`, type checks `rules.accept` and `rules.sniff` |
+| FilePond `server.process` with `onprogress` | the transport reports bytes; progress is a signal |
+| react-dropzone `useDropzone({ accept, maxFiles, onDrop })` | `useFileDrop({ accept, multiple, onDrop })`, or `<FileDrop>`; `isDragActive` is `isOver()`, `isDragReject` is `isValid() === false` |
 | react-dropzone `fileRejections` | `onReject` and `file.rejections()` with `code`, `message` and `params` |
+| react-dropzone `getRootProps()` and `getInputProps()` | `dropProps` and `inputProps` |
 | tus-js-client `new tus.Upload(file, { endpoint, chunkSize, metadata, retryDelays })` | `tusTransport({ endpoint, chunkSize, metadata })`; retries are the queue's `retry` option; `upload.start()` is `uploader.add`, `abort` is `pause`, `terminate` is `cancel` |
-| Uppy AwsS3 plugin (`getUploadParameters`, `createMultipartUpload`, `signPart`, `completeMultipartUpload`) | `s3Transport({ presign, multipart: { create, signPart, complete, abort, list } })`: the same five questions, as plain functions |
+| tus-js-client `findPreviousUploads()` and `resumeFromPreviousUpload()` | `createResumeStore(localStorage)` passed as `resume`: the previous state is found when the same file is added |
+| `fetch` with a `FormData` body | `xhrTransport` when you need progress, retries and cancel |

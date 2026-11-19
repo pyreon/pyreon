@@ -3,6 +3,9 @@ import { join } from 'node:path'
 import ts from 'typescript'
 import * as http from '@pyreon/http'
 import * as core from '../core'
+import * as components from '../components'
+import * as form from '../form'
+import * as query from '../query'
 import * as chunked from '../transport-chunked'
 import * as s3 from '../transport-s3'
 import * as tus from '../transport-tus'
@@ -20,6 +23,9 @@ const MODULES: Record<string, unknown> = {
   '@pyreon/upload': upload,
   '@pyreon/upload/core': core,
   '@pyreon/upload/transport-xhr': xhr,
+  '@pyreon/upload/components': components,
+  '@pyreon/upload/form': form,
+  '@pyreon/upload/query': query,
   '@pyreon/upload/transport-chunked': chunked,
   '@pyreon/upload/transport-s3': s3,
   '@pyreon/upload/transport-tus': tus,
@@ -87,6 +93,27 @@ describe('the docs page runs', () => {
 
     new Function('__mods', '__check', js)(MODULES, check)
     if (/ \/\/ => /.test(b.code)) expect(checked).toBeGreaterThan(0)
+  })
+
+  it('the reference Zero routes and presign routes on the page are the files the tests run', () => {
+    const route = readFileSync(join(import.meta.dirname, 'reference-zero-routes.ts'), 'utf8').trimEnd().replace("'./reference-chunked'", "'~/server/chunked-handler'")
+    const presign = readFileSync(join(import.meta.dirname, 'reference-presign.ts'), 'utf8').trimEnd()
+    const blocks = [...readFileSync(PAGE, 'utf8').matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!.trimEnd())
+
+    expect(blocks).toContain(route)
+    expect(blocks).toContain(presign)
+  })
+
+  it('every checked block imports every upload name it uses', () => {
+    const names = new Set([...Object.keys(upload), ...Object.keys(core), ...Object.keys(xhr), ...Object.keys(chunked), ...Object.keys(s3), ...Object.keys(tus), ...Object.keys(components), ...Object.keys(form), ...Object.keys(query)])
+    const missing: string[] = []
+
+    for (const b of blocks().filter((x) => /@pyreon\/upload/.test(x.code))) {
+      const imported = new Set([...b.code.matchAll(/import (?:type )?\{([^}]*)\}/g)].flatMap((m) => m[1]!.split(',').map((x) => x.trim().split(' as ').pop()!)))
+
+      for (const n of names) if (new RegExp(`(?<![\\w.])${n}\\(|<${n}[ >/]`).test(b.code) && !imported.has(n)) missing.push(`block ${b.index}: ${n}`)
+    }
+    expect(missing).toEqual([])
   })
 
   it('the reference handler on the page is the file the Chromium tests run as their server', () => {

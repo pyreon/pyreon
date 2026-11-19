@@ -1,9 +1,12 @@
 {
   "package": "@pyreon/upload",
-  "bundle": 9032,
+  "bundle": 9608,
   "imports": {
     "chunked-transport": 2722,
+    "components": 5778,
+    "form": 3162,
     "picker-drop": 2453,
+    "query": 364,
     "s3-transport": 2555,
     "tus-transport": 2303,
     "uploader": 6982,
