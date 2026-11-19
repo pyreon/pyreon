@@ -2979,9 +2979,9 @@ resizeTarget(o, 'end', { date: '2026-11-18', minute: 9 * 60 }, 30, 30).end   // 
   },
 
   'calendar/nudgeTarget': {
-    signature: '(occurrence, key, shift, grid, snap, minDuration, rtl) => Target | null',
+    signature: '(occurrence, key, options: { shift?, grid, snap, minDuration, rtl? }) => Target | null',
     example: `const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
-nudgeTarget(o, 'ArrowDown', false, 'time', 30, 30, false)?.start   // => '2026-11-18T14:30'`,
+nudgeTarget(o, 'ArrowDown', { grid: 'time', snap: 30, minDuration: 30 })?.start   // => '2026-11-18T14:30'`,
     notes: '[EXPERIMENTAL] What an arrow key does to a grabbed occurrence: up and down by `snap` minutes in the time grid (by a week in the month), left and right by a day (swapped in right-to-left text); Shift resizes the end. `null` for any other key. Added in v0.53.0.',
   },
 

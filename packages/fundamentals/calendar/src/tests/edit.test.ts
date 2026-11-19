@@ -109,14 +109,14 @@ describe('moveTarget, resizeTarget and nudgeTarget', () => {
   })
 
   it('the keyboard: arrows by the step and the day (swapped in right-to-left), Shift resizes the end, other keys do nothing', () => {
-    expect(nudgeTarget(o, 'ArrowDown', false, 'time', 30, 30, false)).toMatchObject({ start: '2026-11-18T14:30' })
-    expect(nudgeTarget(o, 'ArrowRight', false, 'time', 30, 30, false)).toMatchObject({ start: '2026-11-19T14:00' })
-    expect(nudgeTarget(o, 'ArrowRight', false, 'time', 30, 30, true)).toMatchObject({ start: '2026-11-17T14:00' })
-    expect(nudgeTarget(o, 'ArrowUp', true, 'time', 30, 30, false)).toMatchObject({ start: '2026-11-18T14:00', end: '2026-11-18T14:30' })
-    expect(nudgeTarget(o, 'ArrowUp', true, 'time', 30, 60, false)).toMatchObject({ end: '2026-11-18T15:00' })
-    expect(nudgeTarget(day, 'ArrowDown', false, 'month', 30, 30, false)).toMatchObject({ start: '2026-11-25', end: '2026-11-27' })
-    expect(nudgeTarget(day, 'ArrowLeft', true, 'month', 30, 30, false)).toMatchObject({ start: '2026-11-18', end: '2026-11-19' })
-    expect(nudgeTarget(o, 'a', false, 'time', 30, 30, false)).toBeNull()
+    expect(nudgeTarget(o, 'ArrowDown', { shift: false, grid: 'time', snap: 30, minDuration: 30, rtl: false })).toMatchObject({ start: '2026-11-18T14:30' })
+    expect(nudgeTarget(o, 'ArrowRight', { shift: false, grid: 'time', snap: 30, minDuration: 30, rtl: false })).toMatchObject({ start: '2026-11-19T14:00' })
+    expect(nudgeTarget(o, 'ArrowRight', { shift: false, grid: 'time', snap: 30, minDuration: 30, rtl: true })).toMatchObject({ start: '2026-11-17T14:00' })
+    expect(nudgeTarget(o, 'ArrowUp', { shift: true, grid: 'time', snap: 30, minDuration: 30, rtl: false })).toMatchObject({ start: '2026-11-18T14:00', end: '2026-11-18T14:30' })
+    expect(nudgeTarget(o, 'ArrowUp', { shift: true, grid: 'time', snap: 30, minDuration: 60, rtl: false })).toMatchObject({ end: '2026-11-18T15:00' })
+    expect(nudgeTarget(day, 'ArrowDown', { shift: false, grid: 'month', snap: 30, minDuration: 30, rtl: false })).toMatchObject({ start: '2026-11-25', end: '2026-11-27' })
+    expect(nudgeTarget(day, 'ArrowLeft', { shift: true, grid: 'month', snap: 30, minDuration: 30, rtl: false })).toMatchObject({ start: '2026-11-18', end: '2026-11-19' })
+    expect(nudgeTarget(o, 'a', { shift: false, grid: 'time', snap: 30, minDuration: 30, rtl: false })).toBeNull()
   })
 })
 

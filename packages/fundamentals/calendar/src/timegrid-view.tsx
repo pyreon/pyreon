@@ -29,8 +29,10 @@ function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences:
   const calendar = props.view.calendar
   const grid = calendar.timeGrid()
   const state = editState(calendar, o.key)
+
   // the time drawn in the block follows the drag; only the block being dragged reads the target, so the others are not re-run by a move
   const shownStart = computed(() => (calendar.isEditing(o.key) ? (calendar.editing()?.target.start ?? o.start) : o.start))
+
   const label = (): string => eventLabel(o as EventOccurrence, calendar.locale(), calendar.messages())
   const slot = props.view.renderEvent
 

@@ -224,7 +224,16 @@ export function resizeTarget(o: EventOccurrence, edge: 'start' | 'end', hit: Hit
 const ARROWS: Record<string, readonly [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
 
 /** The key part of the keyboard: what an arrow does to a grabbed occurrence (`null` for a key that does nothing). Shift resizes the end. */
-export function nudgeTarget(o: EventOccurrence, key: string, shift: boolean, grid: 'month' | 'time', snap: number, minDuration: number, rtl: boolean): Target | null {
+export interface NudgeOptions {
+  shift?: boolean
+  grid: 'month' | 'time'
+  snap: number
+  minDuration: number
+  rtl?: boolean
+}
+
+export function nudgeTarget(o: EventOccurrence, key: string, options: NudgeOptions): Target | null {
+  const { shift = false, grid, snap, minDuration, rtl = false } = options
   const sideways = (ARROWS[key]?.[0] ?? 0) * (rtl ? -1 : 1)
   const vertical = ARROWS[key]?.[1] ?? 0
   if (sideways === 0 && vertical === 0) return null

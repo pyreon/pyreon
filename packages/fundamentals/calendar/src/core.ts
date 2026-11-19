@@ -1,7 +1,7 @@
 export { packColumns } from './columns'
 export type { PackInput, Packed, PackOptions } from './columns'
 export { applyEventChange, fitsWindows, moveTarget, nudgeTarget, reposition, resizeTarget, snapTo } from './edit'
-export type { EditScope, EventChange, Hit, Target } from './edit'
+export type { EditScope, EventChange, Hit, NudgeOptions, Target } from './edit'
 export { expandOccurrences } from './expand'
 export { daySpan, layoutMonth, layoutRow } from './lanes'
 export { allDay } from './model'

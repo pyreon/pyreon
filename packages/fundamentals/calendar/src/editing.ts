@@ -222,7 +222,7 @@ export function editKey<Meta>(s: CalState<Meta>, key: string, event: KeyboardEve
   const current = { ...o, ...s.edit.target.peek() } as EventOccurrence<Meta>
   const shift = event.shiftKey
   if (shift && !canEdit(s, o, 'resize')) return false
-  const next = nudgeTarget(current, event.key, shift, grid, snapOf(s), minOf(s), rtl)
+  const next = nudgeTarget(current, event.key, { shift, grid, snap: snapOf(s), minDuration: minOf(s), rtl })
   if (next === null) return false
   s.edit.editing.set({ ...editing, mode: shift ? 'resize' : editing.mode })
   previewEdit(s, next)
