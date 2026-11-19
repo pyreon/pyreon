@@ -33,6 +33,47 @@ function shift<Meta>(s: CalState<Meta>, steps: number): void {
   s.date.set(navigate(s.view.peek(), s.date.peek(), steps, { ...(s.options.days === undefined ? {} : { days: s.options.days }) }))
 }
 
+/** The editing part of the calendar: the session, the permissions, the change request and the keyboard of an event. */
+function editMethods<Meta>(s: CalState<Meta>): Pick<Calendar<Meta>, 'editing' | 'isEditing' | 'select' | 'canEdit' | 'isPending' | 'propose' | 'beginEdit' | 'previewEdit' | 'dropEdit' | 'cancelEdit' | 'onEventKeyDown' | 'snap' | 'minDuration' | 'selectDay' | 'selectSlot' | 'clearSelection' | 'eventClick'> {
+  return {
+    editing: () => {
+      const e = s.edit.editing()
+      const target = s.edit.target()
+
+      return e === null || target === null ? null : { ...e, target }
+    },
+    isEditing: (key) => s.edit.editing()?.key === key,
+    select: (from, to, grid) => selectRange(s, rangeOf(s, grid, from, to)),
+    canEdit: (key, kind) => {
+      const o = runUntracked(() => s.occurrences()).find((x) => x.key === key)
+
+      return o !== undefined && canEdit(s, o, kind)
+    },
+    isPending: (key) => s.edit.pending().has(key),
+    propose: (key, target, kind = 'move') => propose(s, key, target, kind),
+    beginEdit: (key, mode, by) => beginEdit(s, key, mode, by),
+    previewEdit: (target) => previewEdit(s, target),
+    dropEdit: (target) => dropEdit(s, target),
+    cancelEdit: () => cancelEdit(s),
+    onEventKeyDown: (key, event, grid, o) => editKey(s, key, event, grid, o?.rtl === true),
+    snap: () => snapOf(s),
+    minDuration: () => minOf(s),
+    selectDay: (date) => selectRange(s, rangeOf(s, 'month', { date, minute: 0 }, { date, minute: 0 })),
+    selectSlot: (date, minute) => {
+      s.cursor.set({ date, minute })
+      selectRange(s, rangeOf(s, 'time', { date, minute }, { date, minute }))
+    },
+    clearSelection: () => {
+      s.anchor = null
+      s.selection.set(null)
+    },
+    eventClick: (key) => {
+      const occurrence = runUntracked(() => s.occurrences()).find((o) => o.key === key)
+      if (occurrence !== undefined) s.options.onEventClick?.(occurrence.event, occurrence)
+    },
+  }
+}
+
 /**
  * The reactive calendar: the view and the anchor date (yours, as signals, or its own), the window and the title in the
  * active locale and zone, the month and the time grid as view models whose layouts are memoised per week and per day (changing
@@ -94,41 +135,7 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
     cursor: () => s.cursor(),
     setCursor: (date, minute = 0) => moveCursor(s, date, minute),
     selection: () => s.selection(),
-    editing: () => {
-      const e = s.edit.editing()
-      const target = s.edit.target()
-
-      return e === null || target === null ? null : { ...e, target }
-    },
-    isEditing: (key) => s.edit.editing()?.key === key,
-    select: (from, to, grid) => selectRange(s, rangeOf(s, grid, from, to)),
-    canEdit: (key, kind) => {
-      const o = runUntracked(() => s.occurrences()).find((x) => x.key === key)
-
-      return o !== undefined && canEdit(s, o, kind)
-    },
-    isPending: (key) => s.edit.pending().has(key),
-    propose: (key, target, kind = 'move') => propose(s, key, target, kind),
-    beginEdit: (key, mode, by) => beginEdit(s, key, mode, by),
-    previewEdit: (target) => previewEdit(s, target),
-    dropEdit: (target) => dropEdit(s, target),
-    cancelEdit: () => cancelEdit(s),
-    onEventKeyDown: (key, event, grid, o) => editKey(s, key, event, grid, o?.rtl === true),
-    snap: () => snapOf(s),
-    minDuration: () => minOf(s),
-    selectDay: (date) => selectRange(s, rangeOf(s, 'month', { date, minute: 0 }, { date, minute: 0 })),
-    selectSlot: (date, minute) => {
-      s.cursor.set({ date, minute })
-      selectRange(s, rangeOf(s, 'time', { date, minute }, { date, minute }))
-    },
-    clearSelection: () => {
-      s.anchor = null
-      s.selection.set(null)
-    },
-    eventClick: (key) => {
-      const occurrence = runUntracked(() => s.occurrences()).find((o) => o.key === key)
-      if (occurrence !== undefined) options.onEventClick?.(occurrence.event, occurrence)
-    },
+    ...editMethods(s),
     announcement: () => s.announcement(),
     timeZone: () => s.zone(),
     locale: () => s.locale(),
