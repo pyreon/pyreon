@@ -3,6 +3,7 @@
  * Client-safe: no Node imports, no-op on the server and in development.
  */
 
+import type { Signal } from '@pyreon/reactivity'
 import { getCurrentScope, isServer, onCleanup, signal } from '@pyreon/reactivity'
 
 declare const __ZERO_BASE__: string
@@ -54,7 +55,12 @@ function appBase(): string {
 let registered: Promise<ServiceWorkerRegistration | null> | null = null
 // The activator of the newest waiting worker, or null. One slot, overwritten by
 // a newer update and never grown — nothing to evict.
-const pendingActivate = signal<(() => void) | null>(null)
+// Created on first browser use (never on the server: no module state to race).
+let pendingSignal: Signal<(() => void) | null> | null = null
+function pendingActivate(): Signal<(() => void) | null> {
+  pendingSignal ??= signal<(() => void) | null>(null)
+  return pendingSignal
+}
 
 export function registerServiceWorker(
   options: RegisterServiceWorkerOptions = {},
@@ -84,7 +90,7 @@ async function doRegister(options: RegisterServiceWorkerOptions): Promise<Servic
       container.addEventListener('controllerchange', () => location.reload(), { once: true })
       worker.postMessage({ type: 'SKIP_WAITING' })
     }
-    pendingActivate.set(activate)
+    pendingActivate().set(activate)
     options.onUpdate?.(activate)
   }
   // Only an UPDATE (an existing controller) is offered — a first install
@@ -123,9 +129,11 @@ export interface ServiceWorkerUpdate {
  * ```
  */
 export function useServiceWorkerUpdate(): ServiceWorkerUpdate {
+  if (isServer) return { updateReady: () => false, apply: () => undefined }
+  const pending = pendingActivate()
   return {
-    updateReady: () => pendingActivate() !== null,
-    apply: () => pendingActivate.peek()?.(),
+    updateReady: () => pending() !== null,
+    apply: () => pending.peek()?.(),
   }
 }
 
@@ -147,7 +155,7 @@ export function useServiceWorkerUpdate(): ServiceWorkerUpdate {
  * ```
  */
 export async function unregisterServiceWorkers(cacheName = 'pyreon'): Promise<number> {
-  if (isServer || !('serviceWorker' in navigator)) return 0
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return 0
   const registrations = await navigator.serviceWorker.getRegistrations()
   await Promise.all(registrations.map((r) => r.unregister()))
   if (typeof caches !== 'undefined') {
@@ -155,7 +163,7 @@ export async function unregisterServiceWorkers(cacheName = 'pyreon'): Promise<nu
     await Promise.all(keys.filter((k) => k.startsWith(`${cacheName}-`)).map((k) => caches.delete(k)))
   }
   registered = null
-  pendingActivate.set(null)
+  pendingSignal?.set(null)
   return registrations.length
 }
 
@@ -181,8 +189,16 @@ export interface InstallPrompt {
   isInstalled: () => boolean
 }
 
-const installable = signal(false)
-const installed = signal(false)
+interface InstallState {
+  installable: Signal<boolean>
+  installed: Signal<boolean>
+}
+// Created on first browser use (never on the server: no module state to race).
+let installState: InstallState | null = null
+function install(): InstallState {
+  installState ??= { installable: signal(false), installed: signal(false) }
+  return installState
+}
 let deferredPrompt: BeforeInstallPromptEvent | null = null
 // Refcount of mounted `useInstallPrompt()` owners: ONE set of window listeners
 // regardless of how many components call the hook (leak class D).
@@ -190,6 +206,7 @@ let installOwners = 0
 let removeInstallListeners: (() => void) | null = null
 
 function readStandalone(): boolean {
+  if (typeof navigator === 'undefined') return false
   const nav = navigator as Navigator & { standalone?: boolean }
   return (
     (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches) ||
@@ -198,7 +215,9 @@ function readStandalone(): boolean {
 }
 
 function acquireInstallListeners(): void {
+  if (isServer) return
   if (installOwners++ > 0) return
+  const { installable, installed } = install()
   installed.set(readStandalone())
   const onBefore = (e: Event): void => {
     // Keep the event for a later, user-initiated prompt() and suppress the
@@ -253,13 +272,15 @@ function releaseInstallListeners(): void {
  * ```
  */
 export function useInstallPrompt(): InstallPrompt {
-  if (!isServer) {
-    acquireInstallListeners()
-    const owner = { dispose: releaseInstallListeners }
-    const scope = getCurrentScope()
-    if (scope) scope.add(owner)
-    else onCleanup(owner.dispose)
+  if (isServer) {
+    return { canInstall: () => false, isInstalled: () => false, prompt: async () => 'unavailable' }
   }
+  acquireInstallListeners()
+  const owner = { dispose: releaseInstallListeners }
+  const scope = getCurrentScope()
+  if (scope) scope.add(owner)
+  else onCleanup(owner.dispose)
+  const { installable, installed } = install()
   return {
     canInstall: () => installable(),
     isInstalled: () => installed(),
