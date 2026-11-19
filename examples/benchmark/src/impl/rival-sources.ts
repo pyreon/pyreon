@@ -1,6 +1,6 @@
 /**
  * Source of the Vue and Solid rival arms in the `virtual`, `table` and `flow`
- * scenarios, compiled at BUILD time by `vite-rivals.ts` (Vue: the SFC compile
+ * scenarios (and the Solid arm of `maplist`), compiled at BUILD time by `vite-rivals.ts` (Vue: the SFC compile
  * options every Vue arm uses; Solid: the real `babel-preset-solid@1.9`).
  *
  * Each entry follows the adapter's own documented example; the URL is above it.
@@ -132,6 +132,49 @@ export function mountTable(host, initial, features, columns, onReady) {
     host,
   )
   return { dispose, setData }
+}
+`,
+
+  // `maplist` scenario (scenario-maplist.ts). Solid's idiom for a keyed list is
+  // `<For>` (a `.map()` in Solid JSX re-creates every row on each change), so
+  // this is the shape a Solid app writes, not a keyed `.map()`. Conditional
+  // JSX in a slot is a plain ternary, as in the other JSX arms. Rows carry a
+  // signal per mutable field, the same model as the Pyreon arms.
+  maplist: `
+import { For, createSignal } from 'solid-js'
+import { render } from 'solid-js/web'
+
+function MapList(props) {
+  return (
+    <div class="ml">
+      <table>
+        <tbody>
+          <For each={props.rows()}>
+            {(row) => (
+              <tr>
+                <td class="id">{row.id}</td>
+                <td class="label">{row.label()}</td>
+                <td class="status">{row.done() ? <span class="done">done</span> : <em class="todo">todo</em>}</td>
+              </tr>
+            )}
+          </For>
+        </tbody>
+      </table>
+      {props.rows().length === 0 ? <p class="empty">No rows</p> : null}
+    </div>
+  )
+}
+
+export function makeRow(plain) {
+  const [label, setLabel] = createSignal(plain.label)
+  const [done, setDone] = createSignal(plain.done)
+  return { id: plain.id, label, setLabel, done, setDone }
+}
+
+export function mountMapList(host) {
+  const [rows, setRows] = createSignal([])
+  const dispose = render(() => <MapList rows={rows} />, host)
+  return { rows, setRows, dispose }
 }
 `,
 }

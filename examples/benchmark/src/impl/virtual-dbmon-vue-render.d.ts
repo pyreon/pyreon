@@ -45,6 +45,9 @@ declare module 'virtual:memo-list-vue-render' {
 declare module 'virtual:memo-consumer-vue-render' {
   export const render: () => unknown
 }
+declare module 'virtual:maplist-vue-render' {
+  export const render: () => unknown
+}
 declare module 'virtual:apppage-vue-render' {
   export const render: () => unknown
 }

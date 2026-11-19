@@ -43,8 +43,8 @@ const parses = (s: string): boolean => {
   }
 }
 
-const R7_CALLBACK = `function C(props){ const cls = props.theme + '-btn'; return <ul>{props.items.map(i => <li class={cls}>{i}</li>)}</ul> }`
-const R7_TRANSITIVE = `function C(props){ const a = props.x; const b = a + 1; return <ul>{props.items.map(i => <li>{b}</li>)}</ul> }`
+const R7_CALLBACK = `function C(props){ const cls = props.theme + '-btn'; return <List>{props.items.map(i => <li class={cls}>{i}</li>)}</List> }`
+const R7_TRANSITIVE = `function C(props){ const a = props.x; const b = a + 1; return <List>{props.items.map(i => <li>{b}</li>)}</List> }`
 const R7_SHADOW = `function C(props){ const a = props.x; return <ul>{props.items.map(a => <li>{a}</li>)}</ul> }`
 const R7_DIRECT = `function C(props){ const a = props.x; return <div>{a}</div> }`
 const R9_CONST = `function C(){ const header = <h1>T</h1>; return <div>{header}<p>x</p></div> }`

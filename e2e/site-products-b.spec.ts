@@ -1,7 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { hydrateIsland, replacedIslandRoots, trackIslandRoots, waitForIslands, waitForNav } from './site-islands'
+import { changedIslandClasses, hydrateIsland, replacedIslandRoots, trackIslandClasses, trackIslandRoots, waitForIslands, waitForNav } from './site-islands'
 import { SITE_WIDTHS } from './site-audit'
 
 /**
@@ -80,6 +80,7 @@ test.describe('hydration and the demo island', () => {
     test(`/products/${id}: adopts the server DOM, hydrates its demo on scroll, no errors`, async ({ page }) => {
       await trackRemovals(page)
       await trackIslandRoots(page)
+      await trackIslandClasses(page)
       const errors = collectErrors(page)
       const scripts: string[] = []
       page.on('request', (r) => {
@@ -96,6 +97,8 @@ test.describe('hydration and the demo island', () => {
       await hydrateIsland(page, '#demo pyreon-island')
       // The demo adopted its server HTML: its root elements are the ones the server sent.
       expect(await replacedIslandRoots(page)).toEqual([])
+      // ...and kept the classes the server sent: the server and the browser resolved the same styles.
+      expect(await changedIslandClasses(page)).toEqual([])
       await expect(island.locator('button, input, [tabindex="0"], select, iframe, canvas').first()).toBeVisible()
       await page.waitForLoadState('networkidle')
       if (heavy) expect(scripts.some((u) => heavy.test(u)), 'heavy package loads with its demo').toBe(true)

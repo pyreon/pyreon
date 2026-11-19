@@ -6,6 +6,7 @@ export {
   focusRingTone,
   type FocusTone,
   solidFill,
+  themeColor,
   tintText,
   type Tone,
   toneKeys,
@@ -25,7 +26,5 @@ export {
   fieldVariant,
   type ModeFn,
   neutralToneKeys,
-  type StatusTone,
   tones,
-  toneText,
 } from './bases/tones'

@@ -2652,6 +2652,16 @@ export const collections = {
       fixCode: `(v) => sig.${m[1]}(v)`,
     }),
   },
+  {
+    // @pyreon/runtime-dom `hydrateComponent`: a throw while hydrating a
+    // component's subtree, contained exactly like a mount-time render throw.
+    pattern: /<([\w$.]+)> threw during hydration/,
+    diagnose: (m) => ({
+      cause: `\`<${m[1]}>\` threw while its server-rendered subtree was being hydrated: in a reactive accessor, a child component or a compiled template binding. Hydration contained it like a mount-time throw: the component's effects were disposed, the error went to the nearest <ErrorBoundary> (or this log), and the rest of the page hydrated. The component's server HTML stays in place but is not interactive.`,
+      fix: 'Read the logged error and its stack: it names the accessor or child that threw. A value that exists on the server but not yet on the client (a browser-only API, data loaded after hydration) is the usual cause; guard it, or wrap the subtree in <ErrorBoundary> to show a fallback.',
+      fixCode: '<ErrorBoundary fallback={(err) => <p>Could not load: {String(err)}</p>}>\n  <Widget />\n</ErrorBoundary>',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

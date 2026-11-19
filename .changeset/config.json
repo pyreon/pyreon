@@ -15,6 +15,7 @@
       "@pyreon/charts",
       "@pyreon/cli",
       "@pyreon/code",
+      "@pyreon/command",
       "@pyreon/compiler",
       "@pyreon/compiler-darwin-arm64",
       "@pyreon/compiler-darwin-x64",
