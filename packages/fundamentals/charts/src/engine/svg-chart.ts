@@ -85,6 +85,16 @@ export interface ChartToSvgOptions<T> {
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
+/** The rows the engine lays out: in reverse when the x axis is reversed (the host does the same), categories following. */
+function viewRowsOf<T>(options: ChartToSvgOptions<T>): readonly T[] {
+  return options.xInverse === true ? [...options.data].reverse() : options.data
+}
+
+/** The per-datum colour descriptor a mark carries, if any (it adds its ramp legend; see `item-colors.ts`). */
+function paintOf<T>(marks: readonly Mark<T>[]): ItemFill<T> | undefined {
+  return marks.find((m) => m.options.fill !== undefined)?.options.fill as ItemFill<T> | undefined
+}
+
 /**
  * Render a chart to a standalone `<svg>` string.
  *
@@ -97,10 +107,10 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
   const height = options.height ?? 320
   const theme = options.theme ?? defaultTheme
   // A reversed x axis hands the engine its rows in reverse (the host does the same); categories follow.
-  const rows = options.xInverse === true ? [...options.data].reverse() : options.data
+  const rows = viewRowsOf(options)
   const series = resolveMarks(rows, options.marks, undefined, theme.ramp)
   // A per-datum colour descriptor adds its ramp legend above the plot (see `item-colors.ts`).
-  const legend = (options.marks.find((m) => m.options.fill !== undefined)?.options.fill as ItemFill<T> | undefined)?.legend?.(series, { x: 0, y: 0, w: width }, theme)
+  const legend = paintOf(options.marks)?.legend?.(series, { x: 0, y: 0, w: width }, theme)
   const spec = {
     width,
     height: height - (legend?.height ?? 0),

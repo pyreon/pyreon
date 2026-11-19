@@ -8,10 +8,12 @@ import type { DrawCmd } from './types'
 const measure = (t: string, s: number): number => t.length * s * 0.6
 interface Row { x: number; v: number }
 const ROWS: Row[] = [{ x: 1, v: 5 }, { x: 4, v: 9 }, { x: 10, v: 2 }, { x: 11, v: 7 }]
+
 const numeric = (extra: Partial<ChartSpec> = {}): ChartSpec => ({
   width: 360, height: 220, series: resolveMarks(ROWS, [line<Row>((d) => d.v)]), categories: [], theme: defaultTheme,
   showXAxis: true, showYAxis: true, showGrid: true, xValues: ROWS.map((r) => r.x), ...extra,
 })
+
 const pts = (cmds: DrawCmd[]): { x: number; y: number }[] => cmds.flatMap((c) => (c.kind === 'polyline' && c.width === 2 ? c.points : []))
 
 describe('xInverse on a numeric x axis', () => {

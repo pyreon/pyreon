@@ -561,6 +561,16 @@
       "bytes": 3455,
       "warnings": 0
     },
+    "golden-fixture:chart-axis-x-inverse.tsx|swift": {
+      "sha": "f6b2ff0b8a56a59bf201c3ffcd1e7409e7d22a48648bcc4ad85c0492ac6900e6",
+      "bytes": 3390,
+      "warnings": 0
+    },
+    "golden-fixture:chart-axis-x-inverse.tsx|kotlin": {
+      "sha": "03de2c681da08686ac3fe41a183311c8340b730a2cea1dfc9773e08be1cdbf34",
+      "bytes": 3285,
+      "warnings": 0
+    },
     "golden-fixture:chart-bar-geometry.tsx|swift": {
       "sha": "f746cf69630e43b481a8f0c014302be9c8ed25ae130563bd8c4aafebaf7dd1df",
       "bytes": 5764,

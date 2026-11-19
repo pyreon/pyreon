@@ -348,9 +348,19 @@ iOS and Android as a literal.
   crosshair, the tooltip and the hit targets. Only the mapping from a value to a
   pixel flips: **the data, the tooltip rows and the accessible table keep their
   order**. Under `rtl` the two commute: RTL mirrors x, a reversed axis flips y.
-  Reversing the x (category) axis is not supported yet on any target; `<Axis x
-  inverse>` warns and the axis keeps its order. On iOS and Android `yInverse` and
-  `y2Inverse` lower as literals (a computed value warns by name).
+  On iOS and Android `yInverse` and `y2Inverse` lower as literals (a computed value
+  warns by name).
+- **Reversed x axis** — `<Axis x inverse>` reverses the DIRECTION of the x axis: the
+  first category (or the smallest x) at the right. It does not move the y axis; where
+  an axis sits is a separate concern. Only the picture reverses: clicks, the tooltip,
+  brush ranges and `onSelect` report DATA indices, the keyboard walk stays in data
+  order (the right arrow steps to the next datum, which now sits to the left), the
+  accessible table keeps its order, a zoom window stays in data fractions, and the
+  navigator strip keeps showing the data in data order. Under `rtl` the two cancel:
+  RTL mirrors the whole plot and `inverse` reverses the direction within it, so
+  RTL plus an x-inverse reads left to right again. Works on category axes, numeric and
+  time (`xValue`) axes, horizontal charts (the category rows run bottom to top), and
+  lowers to iOS and Android as a literal.
 - **Time y axis** — `yTime` (or `<Scale y="time">`), the twin of `xTime`.
 - **Axis titles** — `xTitle` / `yTitle` / `y2Title` (or `<Axis x title>`), each
   in a line of its own outside the tick labels, the y titles running along

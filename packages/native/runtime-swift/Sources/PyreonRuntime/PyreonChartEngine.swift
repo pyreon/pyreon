@@ -853,8 +853,9 @@ public struct ChartSpec {
   public var barCategoryGap: Double? = nil
   public var yInverse: Bool? = nil
   public var y2Inverse: Bool? = nil
+  public var xInverse: Bool? = nil
   public var rowKeys: [String]? = nil
-  public init(width: Double, height: Double, m4Density: Double? = nil, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, barWidth: Double? = nil, barGap: Double? = nil, barCategoryGap: Double? = nil, yInverse: Bool? = nil, y2Inverse: Bool? = nil, rowKeys: [String]? = nil) {
+  public init(width: Double, height: Double, m4Density: Double? = nil, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, barWidth: Double? = nil, barGap: Double? = nil, barCategoryGap: Double? = nil, yInverse: Bool? = nil, y2Inverse: Bool? = nil, xInverse: Bool? = nil, rowKeys: [String]? = nil) {
     self.width = width
     self.height = height
     self.m4Density = m4Density
@@ -891,6 +892,7 @@ public struct ChartSpec {
     self.barCategoryGap = barCategoryGap
     self.yInverse = yInverse
     self.y2Inverse = y2Inverse
+    self.xInverse = xInverse
     self.rowKeys = rowKeys
   }
 }
@@ -6154,7 +6156,7 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? extent((spec.xValues ?? [])) : Domain(min: 0.0, max: n > 1 ? Double(pyreonSub(n, 1)) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: (spec.xTicks ?? 0.0), yTickCount: valueTicks(spec), showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, rightReserve: endLabelReserve(spec, measure), yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertIf(extent((spec.xValues ?? [])), spec.xInverse == true) : Domain(min: 0.0, max: n > 1 ? Double(pyreonSub(n, 1)) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: (spec.xTicks ?? 0.0), yTickCount: valueTicks(spec), showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, rightReserve: endLabelReserve(spec, measure), yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yTime: spec.yTime == true, xLabels: spec.xLabels)
     return computeLayout(cfg, measure)
   }
 

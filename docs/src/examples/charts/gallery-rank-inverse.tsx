@@ -5,7 +5,9 @@ import { signal } from '@pyreon/reactivity'
  * Gallery — a reversed value axis. `<Axis y inverse>` puts the high end at the
  * bottom (the left, on a horizontal chart), so a RANK chart reads 1 at the top
  * and a DEPTH profile reads depth going down. Bars and areas hang from the top;
- * the data, the tooltip and the accessible table keep their order.
+ * the data, the tooltip and the accessible table keep their order. The same
+ * switch on the x axis (`<Axis x inverse>`) reverses the DIRECTION of x (a
+ * right-to-left timeline) without moving the y axis.
  */
 interface Team {
   name: string
@@ -49,6 +51,7 @@ export default function GalleryRankInverse() {
       <Chart<Sample> data={SAMPLES} x="hour" height={200} title="Depth over the day (m)">
         <Line<Sample> y="depth" label="Depth" />
         <Axis y inverse={inverted()} />
+        <Axis x inverse={inverted()} />
         <Tooltip />
       </Chart>
     </div>

@@ -18,6 +18,7 @@ async function mountX(inverse: boolean, extra: Record<string, unknown> = {}) {
   const picked: number[] = []
   const m = mountInBrowser(h(Chart<Row>, { data: DATA, x: 'm', width: W, height: H, animate: false, showGrid: false, onSelect: (i: number) => picked.push(i), ...extra }, h(Bar<Row>, { y: 'v', label: 'V' }), h(Axis, { x: true, inverse }), h(Tooltip, {})))
   await flush()
+
   return { ...m, picked, canvas: query<HTMLCanvasElement>(m.container, 'canvas') }
 }
 

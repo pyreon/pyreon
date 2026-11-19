@@ -44,9 +44,15 @@ describe.each(['swift', 'kotlin'] as const)('axis inverse on %s', (target) => {
     const none = transform(SRC.replace('<Axis y inverse />', '').replace('<Axis y2 inverse />', ''), { target })
     expect(none.code).not.toContain('Inverse')
   })
-  it('a reversed x axis is named as unsupported on every target', () => {
+  it('a reversed x axis lowers as xInverse and hands the engine its rows reversed through the keep map', () => {
     const r = transform(SRC.replace('<Axis y inverse />', '<Axis x inverse />'), { target })
-    expect(r.warnings.some((w) => w.includes('<Axis x inverse>'))).toBe(true)
+    expect(r.warnings).toEqual([])
+    expect(r.code).toContain(`xInverse${eq}true`)
+    expect(r.code).toContain('pyreonKeep')
+    expect(r.code).toMatch(/reversed\(\)/)
+  })
+  it('without xInverse there is no keep map (byte-stable)', () => {
+    expect(transform(SRC, { target }).code).not.toContain('pyreonKeep')
   })
 })
 
@@ -57,6 +63,19 @@ describe('the emit compiles', () => {
   })
   it.skipIf(!isKotlincAvailable())('kotlinc accepts it', () => {
     const r = validateKotlin(transform(SRC, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
+
+const XSRC = SRC.replace('<Axis y inverse />', '<Axis x inverse />')
+
+describe('the x-inverse emit compiles', () => {
+  it.skipIf(!isSwiftUIAvailable())('swiftc accepts it', () => {
+    const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(XSRC, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('kotlinc accepts it', () => {
+    const r = validateKotlin(transform(XSRC, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })

@@ -10,8 +10,10 @@ import '../svg'
 
 interface Row { m: string; v: number }
 const DATA: Row[] = [{ m: 'Jan', v: 1200 }, { m: 'Feb', v: 3400 }, { m: 'Mar', v: 2100 }]
+
 const html = (inverse: boolean): Promise<string> =>
   renderToString(h(Chart<Row>, { data: DATA, x: 'm', width: 300, height: 200, title: 'Sales', animate: false }, h(Bar<Row>, { y: 'v', label: 'Sales' }), h(Axis, { x: true, inverse })))
+
 const frame = (s: string): string => /<div data-pyreon-chart-frame=""[^>]*>(<svg[\s\S]*?<\/svg>)<\/div>/.exec(s)![1]!
 const order = (svg: string): string[] => [...svg.matchAll(/<text x="([\d.]+)"[^>]*text-anchor="middle"[^>]*>(Jan|Feb|Mar)</g)].sort((p, q) => Number(p[1]) - Number(q[1])).map((m) => m[2]!)
 
