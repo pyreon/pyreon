@@ -44,6 +44,7 @@ function decodeArcs(topo: Topology): number[][][] {
       if (t === undefined) return [p[0] ?? 0, p[1] ?? 0]
       x += p[0] ?? 0
       y += p[1] ?? 0
+
       return [x * t.scale[0] + t.translate[0], y * t.scale[1] + t.translate[1]]
     })
   })

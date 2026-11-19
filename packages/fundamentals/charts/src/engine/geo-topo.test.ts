@@ -60,9 +60,11 @@ function encode(cells: Cell[], quantise: boolean): { geo: GeoJson; topo: Topolog
       const d = [x - px, y - py]
       px = x
       py = y
+
       return d
     })
   })
+
   return { geo, topo: { type: 'Topology', transform: { scale, translate }, arcs: quantised, objects: { cells: { type: 'GeometryCollection', geometries } } } }
 }
 
