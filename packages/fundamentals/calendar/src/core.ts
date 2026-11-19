@@ -1,5 +1,7 @@
 export { packColumns } from './columns'
 export type { PackInput, Packed, PackOptions } from './columns'
+export { applyEventChange, fitsWindows, reposition, snapTo } from './edit'
+export type { EditScope, EventChange, Target } from './edit'
 export { expandOccurrences } from './expand'
 export { daySpan, layoutMonth, layoutRow } from './lanes'
 export { allDay } from './model'
