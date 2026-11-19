@@ -546,7 +546,7 @@ A raw inline style — `<Stack style={{ padding: 16, backgroundColor: '#2563eb',
 | `aspectRatio` (number or `'16 / 9'`) | `.aspectRatio(r, contentMode: .fit)` | `.aspectRatio(rf)` |
 | `color` | `.foregroundColor(Color(…))` | *warns* — set on `<Text>` / `LocalContentColor`, not a Modifier |
 
-Colors accept `#hex` / `#rgb` / `#rrggbbaa` / `rgb()` / `rgba()` (alpha carried through); dimensions accept a unitless number or `"Npx"`. The chain order is idiomatic per target (SwiftUI `.padding().background().cornerRadius()`; Compose `.clip().background().padding()` — clip-first so the fill is rounded).
+Colors accept `#hex` / `#rgb` / `#rrggbbaa` / `rgb()` / `rgba()` (alpha carried through); dimensions accept a unitless number or `"Npx"`. The chain order is idiomatic per target (SwiftUI `.padding().background().cornerRadius()`; Compose `.clip().background().padding()` — clip-first so the fill is rounded). The token props (`padding`/`paddingX`/`paddingY`, `background`, `radius`) are the innermost layer on both targets, inside the `style` modifiers, so a token padding sits inside a `style` background on iOS, Android and the web alike.
 
 **Web-only declarations are stripped with no warning** — `cursor`, `userSelect`, `pointerEvents`, `transition`, `outline`, `appearance`, … are a correct no-op on a touch target. **Any other property is dropped with a NAMED warning** (`margin`, `boxShadow`, `border`, `flex`, `transform`, positioning, `font*`, … — nothing vanishes silently), pointing at the canonical prop or a Layer-4 adapter.
 

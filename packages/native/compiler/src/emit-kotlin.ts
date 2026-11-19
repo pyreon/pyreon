@@ -7700,29 +7700,6 @@ function emitKotlinLayoutModifier(
   if (marginY !== undefined) {
     parts.push(`.padding(vertical = ${marginY}.dp)`)
   }
-  const padding = stylingValue('padding', resolveSpace)
-  if (padding !== undefined) {
-    parts.push(`.padding(${padding}.dp)`)
-  }
-  const paddingX = stylingValue('paddingX', resolveSpace)
-  if (paddingX !== undefined) {
-    parts.push(`.padding(horizontal = ${paddingX}.dp)`)
-  }
-  const paddingY = stylingValue('paddingY', resolveSpace)
-  if (paddingY !== undefined) {
-    parts.push(`.padding(vertical = ${paddingY}.dp)`)
-  }
-  const background = stylingValue('background', (v) => resolveColor(String(v), 'kotlin'))
-  if (background !== undefined) {
-    parts.push(`.background(${background})`)
-  }
-  const radius = stylingValue('radius', (v) => resolveRadius(String(v)))
-  if (radius !== undefined) {
-    // Bare `RoundedCornerShape` — consumer imports from
-    // androidx.compose.foundation.shape. Same convention as Color +
-    // @Serializable.
-    parts.push(`.clip(RoundedCornerShape(${radius}.dp))`)
-  }
   // Inline `style={{ … }}` → Compose Modifier calls (the CSS-in-JS connector).
   // Read the raw object literal off the attr (an object value isn't reachable
   // via `readStaticAttrKotlin`, which returns only string/number/boolean).
@@ -7744,6 +7721,35 @@ function emitKotlinLayoutModifier(
     )
     parts.push(...modifiers)
     for (const w of warnings) _emitWarnings.push(w)
+  }
+  // The token surface (`radius`, `background`, `padding` / `paddingX` / `paddingY`) is the INNERMOST layer, in
+  // Compose's canonical order `.clip().background().padding()`: clip first so the fill is rounded, padding last so it
+  // insets the content INSIDE the fill. This is the exact reverse of the Swift chain, which applies the same tokens
+  // first (`.padding().background().cornerRadius()`, SwiftUI wraps outward) and the `style={{…}}` modifiers around
+  // them. The tokens used to lead the chain here, so the padding sat OUTSIDE a style background on Android only, a
+  // token background was not rounded by a token radius, and a style `width` excluded the token padding (#4345).
+  const radius = stylingValue('radius', (v) => resolveRadius(String(v)))
+  if (radius !== undefined) {
+    // Bare `RoundedCornerShape` — consumer imports from
+    // androidx.compose.foundation.shape. Same convention as Color +
+    // @Serializable.
+    parts.push(`.clip(RoundedCornerShape(${radius}.dp))`)
+  }
+  const background = stylingValue('background', (v) => resolveColor(String(v), 'kotlin'))
+  if (background !== undefined) {
+    parts.push(`.background(${background})`)
+  }
+  const padding = stylingValue('padding', resolveSpace)
+  if (padding !== undefined) {
+    parts.push(`.padding(${padding}.dp)`)
+  }
+  const paddingX = stylingValue('paddingX', resolveSpace)
+  if (paddingX !== undefined) {
+    parts.push(`.padding(horizontal = ${paddingX}.dp)`)
+  }
+  const paddingY = stylingValue('paddingY', resolveSpace)
+  if (paddingY !== undefined) {
+    parts.push(`.padding(vertical = ${paddingY}.dp)`)
   }
   // E3.1 — `data-testid` becomes Compose's `Modifier.testTag()` (from
   // androidx.compose.ui.platform). Same string the web e2e selects
