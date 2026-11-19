@@ -97,9 +97,9 @@ export interface CalendarProps<Meta = unknown> extends CalendarViewProps<Meta> {
 }
 
 /**
- * The calendar: an optional toolbar, the view the calendar is on (the month grid, or the time grid of a week, work week, day
- * or days), and a polite live region that says where navigation went ("December 2026, month"). The agenda, year and timeline
- * views are not part of this release: `
+ * The calendar: an optional toolbar, the view the calendar is on (the month grid; the time grid of a week, work week, day or
+ * days; the agenda; the year; the resource timeline), the "+N more" popover of the month, and a polite live region that says
+ * where navigation went ("December 2026, month").
  */
 export function Calendar<Meta = unknown>(props: CalendarProps<Meta>): VNodeChild {
   const calendar = props.calendar

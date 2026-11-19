@@ -284,7 +284,7 @@ describe('the month view', () => {
     expect(css(more.closest('.pcal-week')!, '--pcal-lanes')).toBe('3')
     expect(css(cell(root, '2026-11-02').closest('.pcal-week')!, '--pcal-lanes')).toBe('0')
     more.click()
-    expect(onMore).toHaveBeenCalledWith('2026-11-18')
+    expect(onMore).toHaveBeenCalledWith('2026-11-18', more)
     expect(onSelect).not.toHaveBeenCalled()
     const bare = make({ events: () => many, monthCapacity: 2 })
     expect(() => bare.root.querySelector<HTMLElement>('.pcal-more')!.click()).not.toThrow()
