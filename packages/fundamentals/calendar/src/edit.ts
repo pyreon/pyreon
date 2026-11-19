@@ -146,7 +146,8 @@ export function fitsWindows(start: PlainDate | PlainDateTime, end: PlainDate | P
     const windows = windowsOf(d)
     if (windows === null) return true
     const from = d === first ? Number(start.slice(11, 13)) * 60 + Number(start.slice(14, 16)) : 0
-    const to = d === last ? (end.slice(11) === '00:00' ? 1440 : Number(end.slice(11, 13)) * 60 + Number(end.slice(14, 16))) : 1440
+    const endMinute = end.slice(11) === '00:00' ? 1440 : Number(end.slice(11, 13)) * 60 + Number(end.slice(14, 16))
+    const to = d === last ? endMinute : 1440
     if (!windows.some((w) => w.from <= from && w.to >= to)) return false
   }
 

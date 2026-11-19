@@ -2937,6 +2937,33 @@ gridMove('2026-11-18', { key: 'ArrowRight' }, { rtl: true })   // => '2026-11-17
     notes: '[EXPERIMENTAL] Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in right-to-left), Home and End to the first and last slot, PageUp and PageDown by a week of columns. It stays inside the grid. Added in v0.53.0.',
   },
 
+  'calendar/applyEventChange': {
+    signature: '(event, change: EventChange, zone?) => CalendarEvent[]',
+    example: `const weekly: CalendarEvent = { id: 's', title: 'Standup', start: '2026-11-02T09:00', end: '2026-11-02T09:30', recurrence: { every: 'week', start: '2026-11-02T09:00' } }
+applyEventChange(weekly, { event: weekly, occurrence: '2026-11-09T09:00', start: '2026-11-10T10:00', end: '2026-11-10T10:30', allDay: false, scope: 'this' })[0].overrides
+// => { '2026-11-09T09:00': { start: '2026-11-10T10:00', end: '2026-11-10T10:30' } }`,
+    notes: '[EXPERIMENTAL] The events to store after a move or resize, as plain data. A single event is moved. For a recurring event `change.scope` decides: `this` adds an override for the occurrence, `all` shifts the whole series and its overrides, `following` ends the series the day before and returns a second event (id `<id>~<occurrence>`) that carries on from the new start. Replace the original with the returned list; `expandOccurrences` shows the edit. Added in v0.53.0.',
+  },
+
+  'calendar/fitsWindows': {
+    signature: '(start, end, windowsOf) => boolean',
+    example: `fitsWindows('2026-11-18T09:00', '2026-11-18T17:00', () => [{ from: 540, to: 1020 }])   // => true`,
+    notes: '[EXPERIMENTAL] Whether a range sits inside the working windows (`{ from, to }` in minutes) of every day it touches; `windowsOf` returns `null` for a day with no restriction. All-day ranges always fit. Added in v0.53.0.',
+  },
+
+  'calendar/reposition': {
+    signature: '(occurrence, target, zone) => { start, end, allDay }',
+    example: `const [occurrence] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T10:00', end: '2026-11-18T11:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+reposition(occurrence, { start: '2026-11-19T10:00', end: '2026-11-19T11:00', allDay: false }, 'UTC').allDay   // => false`,
+    notes: '[EXPERIMENTAL] The new start and end of an occurrence in the form its event uses (a date, a wall clock in its own zone, or an instant). Moving between all-day and timed changes the shape. Added in v0.53.0.',
+  },
+
+  'calendar/snapTo': {
+    signature: '(value, step) => number',
+    example: 'snapTo(37, 15)   // => 30',
+    notes: '[EXPERIMENTAL] Round to a multiple of `step`; a zero step leaves the value. Added in v0.53.0.',
+  },
+
   'calendar/eventLabel': {
     signature: '(occurrence, locale, labels) => string',
     example: `eventLabel(expandOccurrences([{ id: 'p', title: 'Public holiday', start: '2026-11-17', end: '2026-11-18' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC')[0]!, 'en-GB', DEFAULT_LABELS)   // => 'Public holiday, Tuesday 17 November, all day'`,

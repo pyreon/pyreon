@@ -4,6 +4,7 @@ import { expandOccurrences } from '../expand'
 import type { CalendarEvent, PlainDate } from '../types'
 
 const range = { start: '2026-11-01' as PlainDate, end: '2026-12-31' as PlainDate }
+
 const weekly: CalendarEvent = {
   id: 'standup',
   title: 'Standup',
@@ -11,6 +12,7 @@ const weekly: CalendarEvent = {
   end: '2026-11-02T09:30' as never,
   recurrence: { start: '2026-11-02T09:00' as never, every: 'week', count: 6 } as never,
 }
+
 const starts = (events: CalendarEvent[]) => expandOccurrences(events, range, 'UTC').map((o) => o.start).sort()
 
 describe('snapTo', () => {

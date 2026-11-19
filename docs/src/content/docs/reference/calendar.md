@@ -63,6 +63,10 @@ layoutDay('2026-11-18', occurrences, 'Europe/Prague').map((b) => [b.column, b.co
 | [`createCalendar`](#createcalendar-function-experimental) | function | The reactive calendar (it returns a `Calendar`: `view`, `setView`, `date`, `goTo`, `next`, `previous`, `today`, `range`,… |
 | [`gridMove`](#gridmove-function-experimental) | function | Where a key moves the focused date of a month grid (the WAI-ARIA grid pattern): arrows by a day or a week (Left and… |
 | [`slotMove`](#slotmove-function-experimental) | function | Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in… |
+| [`applyEventChange`](#applyeventchange-function-experimental) | function | The events to store after a move or resize, as plain data. |
+| [`fitsWindows`](#fitswindows-function-experimental) | function | Whether a range sits inside the working windows (`{ from, to }` in minutes) of every day it touches; `windowsOf` returns… |
+| [`reposition`](#reposition-function-experimental) | function | The new start and end of an occurrence in the form its event uses (a date, a wall clock in its own zone, or an instant). |
+| [`snapTo`](#snapto-function-experimental) | function | Round to a multiple of `step`; a zero step leaves the value. |
 | [`eventLabel`](#eventlabel-function-experimental) | function | What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 to 15:00"; an all-day event says… |
 | [`dayLabel`](#daylabel-function-experimental) | function | A date as it is read: "Tuesday 18 November". |
 | [`DEFAULT_LABELS`](#default_labels-constant-experimental) | constant | The words the calendar says (labels, "all day", "N more", the names of the views). |
@@ -423,6 +427,73 @@ Where a key moves the focused slot of a time grid: Up and Down by a slot, Left a
 
 ```tsx
 slotMove({ date: '2026-11-18', minute: 540 }, { key: 'ArrowDown' }, { from: 0, to: 1440, slot: 30, dates: ['2026-11-18'] })   // => { date: '2026-11-18', minute: 570 }
+```
+
+---
+
+### `applyEventChange` `function` — **experimental**
+
+```ts
+(event, change: EventChange, zone?) => CalendarEvent[]
+```
+
+The events to store after a move or resize, as plain data. A single event is moved. For a recurring event `change.scope` decides: `this` adds an override for the occurrence, `all` shifts the whole series and its overrides, `following` ends the series the day before and returns a second event (id `<id>~<occurrence>`) that carries on from the new start. Replace the original with the returned list; `expandOccurrences` shows the edit.
+
+**Example**
+
+```tsx
+const weekly: CalendarEvent = { id: 's', title: 'Standup', start: '2026-11-02T09:00', end: '2026-11-02T09:30', recurrence: { every: 'week', start: '2026-11-02T09:00' } }
+applyEventChange(weekly, { event: weekly, occurrence: '2026-11-09T09:00', start: '2026-11-10T10:00', end: '2026-11-10T10:30', allDay: false, scope: 'this' })[0].overrides
+// => { '2026-11-09T09:00': { start: '2026-11-10T10:00', end: '2026-11-10T10:30' } }
+```
+
+---
+
+### `fitsWindows` `function` — **experimental**
+
+```ts
+(start, end, windowsOf) => boolean
+```
+
+Whether a range sits inside the working windows (`{ from, to }` in minutes) of every day it touches; `windowsOf` returns `null` for a day with no restriction. All-day ranges always fit.
+
+**Example**
+
+```tsx
+fitsWindows('2026-11-18T09:00', '2026-11-18T17:00', () => [{ from: 540, to: 1020 }])   // => true
+```
+
+---
+
+### `reposition` `function` — **experimental**
+
+```ts
+(occurrence, target, zone) => { start, end, allDay }
+```
+
+The new start and end of an occurrence in the form its event uses (a date, a wall clock in its own zone, or an instant). Moving between all-day and timed changes the shape.
+
+**Example**
+
+```tsx
+const [occurrence] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T10:00', end: '2026-11-18T11:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+reposition(occurrence, { start: '2026-11-19T10:00', end: '2026-11-19T11:00', allDay: false }, 'UTC').allDay   // => false
+```
+
+---
+
+### `snapTo` `function` — **experimental**
+
+```ts
+(value, step) => number
+```
+
+Round to a multiple of `step`; a zero step leaves the value.
+
+**Example**
+
+```tsx
+snapTo(37, 15)   // => 30
 ```
 
 ---
