@@ -1,0 +1,8 @@
+{
+  "package": "@pyreon/charts-maps",
+  "bundle": 294,
+  "imports": {
+    "us-states": 30210,
+    "world-110m": 29900
+  }
+}

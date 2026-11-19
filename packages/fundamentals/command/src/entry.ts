@@ -23,7 +23,8 @@ export interface Registry {
   topList(): Entry[]
   find(id: string): Command | undefined
   groups(): readonly CommandGroup[]
-  ensureWatcher(): void
+  /** Changes when a matched text changed; a ranker must forget its candidates then. */
+  epoch(): number
 }
 
 export function warn(message: string): void {
@@ -59,4 +60,9 @@ export function detached<T>(fn: () => T): T {
 /** The texts of a command in the order they are matched. */
 export function textsOf(command: Command): string[] {
   return [resolveText(command.title) ?? '', resolveText(command.subtitle) ?? '', ...(command.keywords ?? [])]
+}
+
+/** Read a reactive value without subscribing to it. */
+export function untracked<T>(read: () => T): T {
+  return runUntracked(read)
 }

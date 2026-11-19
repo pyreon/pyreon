@@ -61,7 +61,7 @@ describe('keyed geometry morph', () => {
     expect(interrupted[0]!.rects.get('b')).toEqual(exiting)
   })
 
-  it('bars, lines, stacks and groups morph in any frame; areas, bands, symbols and numeric x do not', () => {
+  it('bars, lines, stacks and groups morph in any frame; areas, bands, symbols and numeric-x lines do not; bars on a numeric x do', () => {
     expect(canKeyMorph(newSpec)).toBe(true)
     expect(canKeyMorph({ ...newSpec, horizontal: true })).toBe(true)
     expect(canKeyMorph({ ...newSpec, yScale: 'log' })).toBe(true)
@@ -69,7 +69,9 @@ describe('keyed geometry morph', () => {
     expect(canKeyMorph({ ...newSpec, series: [{ ...bars([1]), kind: 'area' }] })).toBe(false)
     expect(canKeyMorph({ ...newSpec, series: [{ ...bars([1]), kind: 'waterfall' }] })).toBe(false)
     expect(canKeyMorph({ ...newSpec, series: [{ ...bars([1]), symbol: 'circle' }] })).toBe(false)
-    expect(canKeyMorph({ ...newSpec, xValues: [1, 2, 3] })).toBe(false)
+    // Bars are placed by `bar-band.ts` on a numeric axis, so they morph; a line there places points by index, so it opts out.
+    expect(canKeyMorph({ ...newSpec, xValues: [1, 2, 3] })).toBe(true)
+    expect(canKeyMorph({ ...newSpec, xValues: [1, 2, 3], series: [{ ...bars([1]), kind: 'line' }] })).toBe(false)
     const masked = maskForMorph(specOf([2, 3, 10], ['b', 'c', 'd'], { yDomain: undefined }))
     expect(masked.yDomain).toBeDefined()
     expect(masked.series[0]!.values.every((v) => Number.isNaN(v))).toBe(true)

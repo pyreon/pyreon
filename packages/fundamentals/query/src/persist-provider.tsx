@@ -30,6 +30,11 @@ export interface PersistQueryClientProviderProps {
  * completes (no redundant network request for data the cache is about to
  * restore). Gate UI on `useIsRestoring()` during the async restore window.
  *
+ * Persisted PAUSED mutations (made offline) are resumed once restoration
+ * settles, provided their `mutationFn` is registered with
+ * `client.setMutationDefaults(mutationKey, { mutationFn })` — a function cannot
+ * be serialised, so a restored mutation finds its function by `mutationKey`.
+ *
  * Import from `@pyreon/query/persist`.
  *
  * @example
@@ -56,13 +61,24 @@ function PersistQueryClientProvider(props: PersistQueryClientProviderProps): VNo
       queryClient: props.client,
     })
 
+    // A mutation made offline is persisted while PAUSED and hydrated back as
+    // paused after a reload. Nothing resumes it by itself: query-core only
+    // resumes on an offline -> online transition, and a page that loads while
+    // already online never sees one. So resume once restoration settles (the
+    // same step TanStack's own persist providers take). A no-op when nothing is
+    // paused, and a still-offline client simply keeps them paused.
+    const settle = (): void => {
+      isRestoring.set(false)
+      void props.client.resumePausedMutations()
+    }
+
     restorePromise
       .then(async () => {
         if (cancelled) return
         try {
           await props.onSuccess?.()
         } finally {
-          isRestoring.set(false)
+          settle()
         }
       })
       .catch(async () => {
@@ -70,7 +86,7 @@ function PersistQueryClientProvider(props: PersistQueryClientProviderProps): VNo
         try {
           await props.onError?.()
         } finally {
-          isRestoring.set(false)
+          settle()
         }
       })
 

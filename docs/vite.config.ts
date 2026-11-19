@@ -18,6 +18,7 @@ import publishLlmsTxt from './vite-plugins/publish-llms-txt'
 import staticPages from './vite-plugins/static-pages'
 import { blogBench, blogPlanned } from './vite-plugins/blog'
 import channelGate from './vite-plugins/channel-gate'
+import derivedCounts from './vite-plugins/derived-counts'
 
 // Pyreon-native docs site, powered by @pyreon/zero + @pyreon/zero-content.
 //
@@ -45,6 +46,8 @@ export default defineConfig({
   plugins: [
     // tokens.css → `@layer docs`, below the UI system's layers (see the plugin).
     legacyCssLayer(),
+    // `{{@key}}` placeholders in the content JSON → counts computed from this checkout (src/site/derived.ts).
+    derivedCounts(),
     // Content JSON → without links to a channel that is not open (Discord,
     // newsletter: src/site-links.ts), before the plugins below read the same
     // files; /discord and /newsletter as static redirects once they are open.
@@ -68,6 +71,11 @@ export default defineConfig({
       highlighter: {
         themes: { light: pyreonSyntaxLight, dark: pyreonSyntaxDark },
       },
+      // Characters of body text indexed per page for search (default 1500).
+      // With 250+ doc pages the docs index reached zero-content's 1 MB hard
+      // limit and the build failed; the first 1000 characters keep the index
+      // well under it. Headings and titles are indexed in full either way.
+      searchBodyMax: 1000,
       // /blog/rss.xml — published posts only (drafts and posts dated after
       // this build are left out; see content.config.ts), newest first, full
       // HTML bodies with absolute URLs so dev.to "Publishing from RSS" and

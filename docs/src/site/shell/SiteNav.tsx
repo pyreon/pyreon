@@ -56,7 +56,7 @@ const DiscordIcon = () => (
   </svg>
 )
 
-/** The Products panel: the four `_nav.json` columns (all 40 products) and the footer row. */
+/** The Products panel: the four `_nav.json` columns (all 42 products) and the footer row. */
 function ProductsPanel(props: { onNavigate: () => void }) {
   return (
     <div id={PRODUCTS_ID} class={`${C.panel} ${C.panelWide}`} data-testid="mega-menu">

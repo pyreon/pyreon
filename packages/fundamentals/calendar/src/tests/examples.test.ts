@@ -1,0 +1,138 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import ts from 'typescript'
+import * as components from '../components'
+import * as command from '../index'
+import manifest from '../manifest'
+
+/**
+ * Executes every `// =>` line of the manifest examples, so the output the docs and the editor show is the output the package
+ * produces. Also checks the package's shape and that the built files import exactly what the package declares.
+ */
+const SRC = join(import.meta.dirname, '..')
+const ROOT = join(SRC, '..')
+
+function run(scope: Record<string, unknown>, code: string, expected: string): void {
+  const names = Object.keys(scope)
+  const parts = code.split('; ')
+  const last = parts.pop()!
+  const body = `${parts.join(';\n')}${parts.length > 0 ? ';\n' : ''}return [${last}, ${expected}]`
+  const js = ts.transpileModule(body, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replace(/^"use strict";\n?/, '')
+  const [actual, want] = new Function(...names, js)(...names.map((n) => scope[n])) as [unknown, unknown]
+
+  expect(actual).toEqual(want)
+}
+
+function lines(example: string): { code: string; expected: string }[] {
+  const out: { code: string; expected: string }[] = []
+  const setup: string[] = []
+
+  for (const line of example.split('\n')) {
+    const m = /^(.*?)\s+\/\/ => (.*)$/.exec(line)
+
+    if (line.startsWith('import ') || line.trim() === '') continue
+    if (m === null) setup.push(line)
+    else out.push({ code: [...setup, m[1]!].join('; '), expected: m[2]! })
+  }
+
+  return out
+}
+
+const scope: Record<string, unknown> = { ...command, ...components }
+
+describe('examples run and print what they claim', () => {
+  const fromManifest = manifest.api.filter((a) => a.kind !== 'type' && a.example !== undefined).flatMap((a) => lines(a.example!).map((l) => [`${a.name}: ${l.code}`, a.name, l] as const))
+
+  it('finds a worthwhile number of manifest examples', () => {
+    expect(fromManifest.length).toBeGreaterThan(15)
+  })
+
+  it.each(fromManifest)('manifest %s', (_label, _name, l) => {
+    run(scope, l.code, l.expected)
+  })
+
+  it('the long example runs', () => {
+    const long = lines(manifest.longExample!)
+
+    expect(long.length).toBeGreaterThanOrEqual(1)
+    for (const l of long) run(scope, l.code, l.expected)
+  })
+
+  it('every runtime export is in the manifest', () => {
+    const documented = new Set<string>(manifest.api.map((a) => a.name))
+    const undocumented = Object.keys(scope).filter((n) => !documented.has(n) && !n.startsWith('_'))
+
+    expect(undocumented).toEqual([])
+  })
+})
+
+interface Pkg {
+  dependencies?: Record<string, string>
+  sideEffects: boolean | string[]
+  type: string
+  exports: Record<string, Record<string, string> | string>
+}
+
+const imports = (text: string): string[] => [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^'"\n]*?from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]!).filter((s) => !s.startsWith('.'))
+
+describe('the published shape', () => {
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as Pkg
+  const sources = readdirSync(SRC).filter((f) => f.endsWith('.ts') || f.endsWith('.tsx'))
+
+  it('depends on the date stack, is ESM only and has no side effect but its stylesheet', () => {
+    expect(Object.keys(pkg.dependencies ?? {})).toEqual(['@pyreon/ambient', '@pyreon/format', '@pyreon/schedule', '@pyreon/time'])
+    expect(pkg.type).toBe('module')
+    expect(pkg.sideEffects).toEqual(['**/*.css'])
+    expect(JSON.stringify(pkg.exports)).not.toMatch(/"require"|"default"/)
+  })
+
+  it('every exports target that points at source exists', () => {
+    for (const target of Object.values(pkg.exports)) {
+      const file = typeof target === 'string' ? target : target.bun!
+
+      expect(existsSync(join(ROOT, file)), file).toBe(true)
+    }
+  })
+
+  const CORE_FILES = ['columns.ts', 'core.ts', 'expand.ts', 'lanes.ts', 'model.ts', 'navigation.ts', 'timegrid.ts', 'types.ts', 'views.ts']
+
+  it('the core files import only the core entries of the date packages: no DOM, no @pyreon/core, no reactivity', () => {
+    for (const f of CORE_FILES) {
+      const found = [...new Set(imports(readFileSync(join(SRC, f), 'utf8')))]
+
+      expect(found.every((s) => s === '@pyreon/time/core' || s === '@pyreon/schedule/core'), `${f}: ${found.join()}`).toBe(true)
+    }
+  })
+
+  it('no file imports a node: module', () => {
+    for (const f of sources.filter((n) => n !== 'manifest.ts' && n !== 'manifest-parts.ts')) expect(imports(readFileSync(join(SRC, f), 'utf8')).filter((s) => s.startsWith('node:')), f).toEqual([])
+  })
+
+  const lib = join(ROOT, 'lib')
+
+  it('the built core imports exactly what the package declares (outside-in)', () => {
+    expect(existsSync(lib), 'lib/ is missing: run `bun run build` in the package').toBe(true)
+    const all = (entry: string): string[] => {
+      const seen = new Set<string>()
+      const out = new Set<string>()
+      const todo = [entry]
+
+      while (todo.length > 0) {
+        const f = todo.pop()!
+
+        if (seen.has(f)) continue
+        seen.add(f)
+        for (const m of readFileSync(join(lib, f), 'utf8').matchAll(/^(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']/gm)) {
+          if (m[1]!.startsWith('.')) todo.push(join(f, '..', m[1]!))
+          else out.add(m[1]!)
+        }
+      }
+
+      return [...out].sort()
+    }
+
+    expect(all('core.js')).toEqual(['@pyreon/schedule/core', '@pyreon/time/core'])
+    expect(all('index.js')).toEqual(['@pyreon/ambient', '@pyreon/format', '@pyreon/reactivity', '@pyreon/schedule/core', '@pyreon/time/core'])
+    expect(all('components.js')).toEqual(['@pyreon/core', '@pyreon/core/jsx-runtime', '@pyreon/format', '@pyreon/reactivity', '@pyreon/schedule/core', '@pyreon/time/core'])
+  })
+})

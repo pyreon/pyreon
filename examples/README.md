@@ -61,6 +61,7 @@ Apps in `examples/fixtures/` exist for a test suite. They are not written to be 
 | [fixtures/playground](./fixtures/playground/) | The root `bun run test:e2e` core-runtime suites and `verify-modes` |
 | [fixtures/ssr-showcase](./fixtures/ssr-showcase/) | The Zero render-mode matrix: `verify-modes`, SSR/ISR/SSG/HMR/islands e2e suites, `zero-app-budgets.json` |
 | [fixtures/edge-runtimes](./fixtures/edge-runtimes/) | `bun run test:e2e:edge-runtimes`, one build per edge adapter |
+| [fixtures/pwa-offline](./fixtures/pwa-offline/) | `bun run test:e2e:pwa-offline`: an SSG build with `zero({ pwa })`, a persisted query cache and an offline mutation, driven through offline reloads and a simulated deploy |
 | [fixtures/cssvars](./fixtures/cssvars/) | The CSS-variables theming e2e suite and `scripts/bench-cssvars.ts` |
 | [fixtures/perf-dashboard](./fixtures/perf-dashboard/) | `@pyreon/perf-harness` journeys (`perf.yml`) and the leak sweep (`leak-sweep.yml`) |
 | [fixtures/sync-yjs](./fixtures/sync-yjs/) | The `@pyreon/sync` CRDT e2e suites (surgical update, merge, state-vector catch-up) |

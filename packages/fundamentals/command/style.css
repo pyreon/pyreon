@@ -1,0 +1,237 @@
+/*
+ * @pyreon/command: the default look of <CommandPalette>. Import it once (`import '@pyreon/command/style.css'`) or write your
+ * own: every part has a `pcmd-*` class, and state is on data attributes (`data-active`, `data-disabled`, `data-recent`,
+ * `data-page`, `data-running`). Colours and sizes are custom properties on `.pcmd`; it uses logical properties, so it
+ * mirrors in right-to-left text, and it animates only when the user has not asked for reduced motion.
+ */
+.pcmd {
+  --pcmd-bg: Canvas;
+  --pcmd-fg: CanvasText;
+  --pcmd-muted: color-mix(in srgb, CanvasText 62%, Canvas);
+  --pcmd-border: color-mix(in srgb, CanvasText 18%, Canvas);
+  --pcmd-active-bg: color-mix(in srgb, Highlight 16%, Canvas);
+  --pcmd-mark: color-mix(in srgb, Highlight 30%, Canvas);
+  --pcmd-radius: 12px;
+  --pcmd-width: min(640px, calc(100vw - 32px));
+  --pcmd-list-height: min(420px, 60vh);
+
+  box-sizing: border-box;
+  inline-size: var(--pcmd-width);
+  max-inline-size: 100%;
+  margin: 12vh auto auto;
+  padding: 0;
+  border: 1px solid var(--pcmd-border);
+  border-radius: var(--pcmd-radius);
+  background: var(--pcmd-bg);
+  color: var(--pcmd-fg);
+  color-scheme: light dark;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.28);
+  font: inherit;
+  overflow: hidden;
+}
+
+.pcmd::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+.pcmd-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.pcmd-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border-block-end: 1px solid var(--pcmd-border);
+}
+
+.pcmd-input {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 10px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1.05em;
+  outline: none;
+}
+
+.pcmd-input::placeholder {
+  color: var(--pcmd-muted);
+}
+
+.pcmd-header:focus-within {
+  outline: 2px solid Highlight;
+  outline-offset: -2px;
+}
+
+.pcmd-btn {
+  flex: none;
+  inline-size: 36px;
+  block-size: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pcmd-muted);
+  font: inherit;
+  font-size: 1.4em;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pcmd-btn:hover {
+  background: var(--pcmd-active-bg);
+  color: var(--pcmd-fg);
+}
+
+.pcmd-btn:focus-visible {
+  outline: 2px solid Highlight;
+}
+
+/* the back arrow points the other way in right-to-left text */
+.pcmd-back span {
+  display: inline-block;
+}
+
+.pcmd:dir(rtl) .pcmd-back span,
+.pcmd:dir(rtl) .pcmd-chevron {
+  transform: scaleX(-1);
+}
+
+.pcmd-list {
+  max-block-size: var(--pcmd-list-height);
+  overflow: auto;
+  padding: 6px;
+  overscroll-behavior: contain;
+}
+
+.pcmd-heading {
+  padding: 8px 10px 4px;
+  color: var(--pcmd-muted);
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.pcmd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-block-size: 40px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.pcmd-item[data-active] {
+  background: var(--pcmd-active-bg);
+}
+
+.pcmd-item[data-disabled] {
+  color: var(--pcmd-muted);
+  cursor: default;
+}
+
+.pcmd-item[data-running] {
+  opacity: 0.7;
+}
+
+.pcmd-icon {
+  flex: none;
+  display: inline-flex;
+  inline-size: 20px;
+  justify-content: center;
+}
+
+.pcmd-text {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pcmd-title,
+.pcmd-subtitle,
+.pcmd-reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcmd-subtitle,
+.pcmd-reason {
+  color: var(--pcmd-muted);
+  font-size: 0.85em;
+}
+
+.pcmd-mark {
+  background: var(--pcmd-mark);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.pcmd-kbd {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--pcmd-border);
+  border-radius: 5px;
+  color: var(--pcmd-muted);
+  font: inherit;
+  font-size: 0.8em;
+}
+
+.pcmd-chevron {
+  flex: none;
+  color: var(--pcmd-muted);
+}
+
+.pcmd-empty,
+.pcmd-loading {
+  padding: 16px;
+  color: var(--pcmd-muted);
+  text-align: center;
+}
+
+.pcmd-window {
+  position: relative;
+}
+
+/* a larger target for a finger */
+@media (pointer: coarse) {
+  .pcmd-btn {
+    inline-size: 44px;
+    block-size: 44px;
+  }
+
+  .pcmd-item {
+    min-block-size: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pcmd[open] {
+    animation: pcmd-in 120ms ease-out;
+  }
+
+  .pcmd[open]::backdrop {
+    animation: pcmd-fade 120ms ease-out;
+  }
+}
+
+@keyframes pcmd-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+
+@keyframes pcmd-fade {
+  from {
+    opacity: 0;
+  }
+}

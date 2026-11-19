@@ -646,7 +646,7 @@ export const checked = {
       "hook": {
         "eyebrow": "Built for AI assistants",
         "title": "Your AI writes a bug. The framework catches it.",
-        "lede": "Your assistant has read more React than anything else, so its first Pyreon draft comes back React-shaped and compiles fine. Pyreon ships the tools it checks its work against: an MCP server with 24 tools, the compiler's live/static verdict in your editor, `pyreon check` and generated `llms.txt`.",
+        "lede": "Your assistant has read more React than anything else, so its first Pyreon draft comes back React-shaped and compiles fine. Pyreon ships the tools it checks its work against: an MCP server with {{@mcpToolCount}} tools, the compiler's live/static verdict in your editor, `pyreon check` and generated `llms.txt`.",
         "cta": {
           "label": "Start building",
           "command": "npm create @pyreon/zero@latest"
@@ -664,8 +664,8 @@ export const checked = {
               "source": "docs/src/content/docs/mcp.md"
             },
             {
-              "stat": "144",
-              "label": "lint rules in 26 categories in `@pyreon/lint`",
+              "stat": "{{@lintRuleCount}}",
+              "label": "lint rules in {{@lintCategoryCount}} categories in `@pyreon/lint`",
               "condition": "count from AGENTS.md on main",
               "source": "AGENTS.md"
             },
@@ -714,7 +714,7 @@ export const checked = {
             },
             {
               "title": "`@pyreon/lint`",
-              "text": "144 rules in 26 categories, with an LSP server, watch mode and an AST cache. Silence one line with `// pyreon-lint-ignore <rule>`."
+              "text": "{{@lintRuleCount}} rules in {{@lintCategoryCount}} categories, with an LSP server, watch mode and an AST cache. Silence one line with `// pyreon-lint-ignore <rule>`."
             },
             {
               "title": "`llms.txt`",
@@ -813,11 +813,11 @@ export const checked = {
       },
       "share": {
         "ogTitle": "Your AI writes a bug. Pyreon catches it.",
-        "ogSub": "An MCP server with 24 tools, live/static hints in your editor, pyreon check and llms.txt. No network calls."
+        "ogSub": "An MCP server with {{@mcpToolCount}} tools, live/static hints in your editor, pyreon check and llms.txt. No network calls."
       },
       "sources": [
         {
-          "claim": "24 MCP tools; check-mcp-docs keeps server, manifest and docs in sync",
+          "claim": "{{@mcpToolCount}} MCP tools; check-mcp-docs keeps server, manifest and docs in sync",
           "path": "AGENTS.md \"The Pyreon MCP server\"; docs/src/content/docs/mcp.md; post B13"
         },
         {
@@ -833,7 +833,7 @@ export const checked = {
           "path": "packages/core/compiler/src/{pyreon-intercept,react-intercept}.ts; docs/src/content/docs/mcp.md"
         },
         {
-          "claim": "144 lint rules, 26 categories; LSP, watch mode, AST cache",
+          "claim": "{{@lintRuleCount}} lint rules, {{@lintCategoryCount}} categories; LSP, watch mode, AST cache",
           "path": "AGENTS.md \"Notable package facts\""
         },
         {

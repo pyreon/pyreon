@@ -118,7 +118,9 @@ test.describe('homepage', () => {
   test('every section of _home.json renders, in order', async ({ page }) => {
     await page.goto('/')
     const content = JSON.parse(readFileSync(resolve(__dirname, '../docs/src/site/content/_home.json'), 'utf8')) as { sections: { id: string; title: string }[] }
-    for (const s of content.sections) await expect(page.locator(`h1, h2`).filter({ hasText: s.title.split('.')[0]! }).first()).toBeAttached()
+    // A title may carry a `{{@key}}` placeholder for a derived count (docs/src/site/derived.ts): any number matches it here.
+    const heading = (title: string) => new RegExp(title.split('.')[0]!.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\{\\\{@\w+\\\}\\\}/g, '\\d+'))
+    for (const s of content.sections) await expect(page.locator(`h1, h2`).filter({ hasText: heading(s.title) }).first()).toBeAttached()
   })
 
   test('the counter is real: the component runs once, every click is one text node write', async ({ page }) => {

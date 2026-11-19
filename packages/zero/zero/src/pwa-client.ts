@@ -3,7 +3,8 @@
  * Client-safe: no Node imports, no-op on the server and in development.
  */
 
-import { isServer } from '@pyreon/reactivity'
+import type { Signal } from '@pyreon/reactivity'
+import { getCurrentScope, isServer, onCleanup, signal } from '@pyreon/reactivity'
 
 declare const __ZERO_BASE__: string
 
@@ -52,6 +53,15 @@ function appBase(): string {
 // page, so a second call must NOT attach a second set — it returns the first
 // call's registration. One registration per page is the whole contract.
 let registered: Promise<ServiceWorkerRegistration | null> | null = null
+// The activator of the newest waiting worker, or null. One slot, overwritten by
+// a newer update and never grown — nothing to evict.
+// Created on first browser use (never on the server: no module state to race).
+let pendingSignal: Signal<(() => void) | null> | null = null
+
+function pendingActivate(): Signal<(() => void) | null> {
+  pendingSignal ??= signal<(() => void) | null>(null)
+  return pendingSignal
+}
 
 export function registerServiceWorker(
   options: RegisterServiceWorkerOptions = {},
@@ -59,6 +69,7 @@ export function registerServiceWorker(
   if (process.env.NODE_ENV !== 'production') return Promise.resolve(null)
   if (isServer || !('serviceWorker' in navigator)) return Promise.resolve(null)
   registered ??= doRegister(options)
+
   return registered
 }
 
@@ -74,24 +85,223 @@ async function doRegister(options: RegisterServiceWorkerOptions): Promise<Servic
     updateViaCache: 'none',
   })
 
-  const onUpdate = options.onUpdate
-  if (onUpdate) {
-    const offer = (worker: ServiceWorker): void => {
-      onUpdate(() => {
-        container.addEventListener('controllerchange', () => location.reload(), { once: true })
-        worker.postMessage({ type: 'SKIP_WAITING' })
-      })
+  // Always track a waiting update (not only when `onUpdate` is passed) so
+  // `useServiceWorkerUpdate()` works however the worker was registered.
+  const offer = (worker: ServiceWorker): void => {
+    const activate = (): void => {
+      container.addEventListener('controllerchange', () => location.reload(), { once: true })
+      worker.postMessage({ type: 'SKIP_WAITING' })
     }
-    // Only an UPDATE (an existing controller) is offered — a first install
-    // has nothing to replace.
-    if (registration.waiting && container.controller) offer(registration.waiting)
-    registration.addEventListener('updatefound', () => {
-      const installing = registration.installing
-      if (!installing) return
-      installing.addEventListener('statechange', () => {
-        if (installing.state === 'installed' && container.controller) offer(installing)
-      })
-    })
+    pendingActivate().set(activate)
+    options.onUpdate?.(activate)
   }
+  // Only an UPDATE (an existing controller) is offered — a first install
+  // has nothing to replace.
+  if (registration.waiting && container.controller) offer(registration.waiting)
+  registration.addEventListener('updatefound', () => {
+    const installing = registration.installing
+    if (!installing) return
+    installing.addEventListener('statechange', () => {
+      if (installing.state === 'installed' && container.controller) offer(installing)
+    })
+  })
+
   return registration
+}
+
+/** Return value of {@link useServiceWorkerUpdate}. */
+export interface ServiceWorkerUpdate {
+  /** `true` once a new version finished installing and is waiting. */
+  updateReady: () => boolean
+  /** Activate the waiting version and reload into it. No-op when none is waiting. */
+  apply: () => void
+}
+
+/**
+ * Reactive "a new version is available" state over
+ * {@link registerServiceWorker} — the whole update banner in a few lines.
+ * Needs `registerServiceWorker()` to have been called (once, in the client
+ * entry). Always `updateReady() === false` on the server and in development.
+ *
+ * @example
+ * ```tsx
+ * const update = useServiceWorkerUpdate()
+ * <Show when={() => update.updateReady()}>
+ *   <button onClick={() => update.apply()}>New version available — Reload</button>
+ * </Show>
+ * ```
+ */
+export function useServiceWorkerUpdate(): ServiceWorkerUpdate {
+  if (isServer) return { updateReady: () => false, apply: () => undefined }
+  const pending = pendingActivate()
+  return {
+    updateReady: () => pending() !== null,
+    apply: () => pending.peek()?.(),
+  }
+}
+
+/**
+ * Unregister every service worker of this origin and delete this app's caches
+ * (those whose name starts with `cacheName`, default `'pyreon'`). Resolves the
+ * number of workers removed (`0` on the server / without support).
+ *
+ * The stale-worker trap: a production build previewed on the same origin
+ * (`localhost:PORT`) as a later dev server leaves the old worker controlling
+ * the page, serving cached modules over HMR. Dev never registers a worker
+ * (see {@link registerServiceWorker}) but cannot remove one it did not
+ * install — call this once from the dev entry, or use DevTools > Application >
+ * Service Workers > Unregister.
+ *
+ * @example
+ * ```ts
+ * if (import.meta.env.DEV) void unregisterServiceWorkers()
+ * ```
+ */
+export async function unregisterServiceWorkers(cacheName = 'pyreon'): Promise<number> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return 0
+  const registrations = await navigator.serviceWorker.getRegistrations()
+  await Promise.all(registrations.map((r) => r.unregister()))
+  if (typeof caches !== 'undefined') {
+    const keys = await caches.keys()
+    await Promise.all(keys.filter((k) => k.startsWith(`${cacheName}-`)).map((k) => caches.delete(k)))
+  }
+  registered = null
+  pendingSignal?.set(null)
+
+  return registrations.length
+}
+
+// ─── Install prompt ──────────────────────────────────────────────────────────
+
+/** The non-standard Chromium `beforeinstallprompt` event. */
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+
+/** Return value of {@link useInstallPrompt}. */
+export interface InstallPrompt {
+  /** `true` while the browser has offered an install prompt that was not used yet. */
+  canInstall: () => boolean
+  /**
+   * Show the browser's install dialog. `'unavailable'` when the browser has not
+   * offered one (iOS Safari and Firefox never do; Chromium only once the
+   * installability criteria are met and the app is not installed).
+   */
+  prompt: () => Promise<'accepted' | 'dismissed' | 'unavailable'>
+  /** `true` when running as an installed app (standalone display mode, or iOS `navigator.standalone`) or after `appinstalled`. */
+  isInstalled: () => boolean
+}
+
+interface InstallState {
+  installable: Signal<boolean>
+  installed: Signal<boolean>
+}
+
+// Created on first browser use (never on the server: no module state to race).
+let installState: InstallState | null = null
+
+function install(): InstallState {
+  installState ??= { installable: signal(false), installed: signal(false) }
+  return installState
+}
+
+let deferredPrompt: BeforeInstallPromptEvent | null = null
+// Refcount of mounted `useInstallPrompt()` owners: ONE set of window listeners
+// regardless of how many components call the hook (leak class D).
+let installOwners = 0
+let removeInstallListeners: (() => void) | null = null
+
+function readStandalone(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const nav = navigator as Navigator & { standalone?: boolean }
+  return (
+    (typeof matchMedia === 'function' && matchMedia('(display-mode: standalone)').matches) ||
+    nav.standalone === true
+  )
+}
+
+function acquireInstallListeners(): void {
+  if (isServer) return
+  if (installOwners++ > 0) return
+  const { installable, installed } = install()
+  installed.set(readStandalone())
+  const onBefore = (e: Event): void => {
+    // Keep the event for a later, user-initiated prompt() and suppress the
+    // browser's own mini-infobar so the app controls when to ask.
+    e.preventDefault()
+    deferredPrompt = e as BeforeInstallPromptEvent
+    installable.set(true)
+  }
+  const onInstalled = (): void => {
+    deferredPrompt = null
+    installable.set(false)
+    installed.set(true)
+  }
+  const mq = typeof matchMedia === 'function' ? matchMedia('(display-mode: standalone)') : null
+  const onMode = (): void => installed.set(readStandalone())
+  window.addEventListener('beforeinstallprompt', onBefore)
+  window.addEventListener('appinstalled', onInstalled)
+  mq?.addEventListener?.('change', onMode)
+  removeInstallListeners = () => {
+    window.removeEventListener('beforeinstallprompt', onBefore)
+    window.removeEventListener('appinstalled', onInstalled)
+    mq?.removeEventListener?.('change', onMode)
+  }
+}
+
+function releaseInstallListeners(): void {
+  if (--installOwners > 0) return
+  installOwners = 0
+  removeInstallListeners?.()
+  removeInstallListeners = null
+  // `deferredPrompt` is kept: the browser fires `beforeinstallprompt` once per
+  // page, and a still-valid event can be prompted after the owner is gone.
+}
+
+/**
+ * Install-prompt state for an installable PWA (Chromium: Chrome, Edge,
+ * Samsung Internet). Listens for `beforeinstallprompt` ONCE for all callers,
+ * holds the event until the user clicks your own "Install" button, and tracks
+ * installed state. Inert on the server.
+ *
+ * Call it early (root layout): the browser fires `beforeinstallprompt` once per
+ * page load, and an event fired while no caller is mounted is missed. iOS Safari
+ * has no install event — show "Share > Add to Home Screen" instructions there
+ * (`canInstall()` stays `false`).
+ *
+ * @example
+ * ```tsx
+ * const install = useInstallPrompt()
+ * <Show when={() => install.canInstall() && !install.isInstalled()}>
+ *   <button onClick={() => install.prompt()}>Install app</button>
+ * </Show>
+ * ```
+ */
+export function useInstallPrompt(): InstallPrompt {
+  if (isServer) {
+    return { canInstall: () => false, isInstalled: () => false, prompt: async () => 'unavailable' }
+  }
+  acquireInstallListeners()
+  const owner = { dispose: releaseInstallListeners }
+  const scope = getCurrentScope()
+  if (scope) scope.add(owner)
+  else onCleanup(owner.dispose)
+  const { installable, installed } = install()
+
+  return {
+    canInstall: () => installable(),
+    isInstalled: () => installed(),
+    prompt: async () => {
+      const event = deferredPrompt
+      if (!event) return 'unavailable'
+      // A prompt event is single-use.
+      deferredPrompt = null
+      installable.set(false)
+      await event.prompt()
+      const { outcome } = await event.userChoice
+
+      return outcome
+    },
+  }
 }

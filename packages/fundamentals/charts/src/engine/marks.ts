@@ -11,6 +11,7 @@
 // Recharts all converge on marks-over-data rather than one nested config object.
 
 import type { Series } from './render'
+import type { ItemFill } from './item-colors'
 import { DEFAULT_PALETTE, labelSlots, paletteAt } from './palette'
 import { bubbleRadii } from './bubble'
 import type { SeriesGradient } from './gradient'
@@ -134,6 +135,22 @@ export interface MarkOptions {
   areaOpacity?: Double
   /** The fill a `waterfall` step takes when its value is negative; a translucent `color` otherwise. */
   negativeColor?: string
+  /**
+   * Colour each datum on its own: `fill={fillBy('tone')}` reads a colour off the
+   * row, `fill={shadeBy('margin')}` maps a value through a ramp. Both are
+   * imported bindings (from `./item-colors`), so a chart that never colours a
+   * datum does not bundle them. Not `color` — that is the series colour, and
+   * `<Chart color="field">` is the long-format split. Web only; native draws the
+   * series colour and the compiler names the prop.
+   */
+  fill?: ItemFill<never>
+  /**
+   * `line` and `area`: draw ONE stroke or fill through the finite points,
+   * bridging each gap, instead of breaking there (the default). The bridge is
+   * straight between the neighbours; the missing datum still has no tooltip row
+   * and no table value.
+   */
+  connectNulls?: boolean
 }
 
 /**
@@ -363,10 +380,12 @@ function toNumber(v: unknown, label: string): Double {
   if (typeof v === 'string' && v.trim() !== '') {
     const n = Number(v)
     if (Number.isFinite(n)) {
-      warnOnce(
-        `string:${label}`,
-        `mark "${label}" returned the string "${v}" — coerced to a number. Convert your data to numbers (Number(row.value)) so the accessor returns one.`,
-      )
+      if (process.env.NODE_ENV !== 'production') {
+        warnOnce(
+          `string:${label}`,
+          `mark "${label}" returned the string "${v}" — coerced to a number. Convert your data to numbers (Number(row.value)) so the accessor returns one.`,
+        )
+      }
       return n
     }
   }
@@ -444,12 +463,12 @@ function fillAccessor<T>(data: readonly T[], acc: (d: T, index: number) => unkno
   }
 }
 
-export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE): Series[] {
+export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], palette: readonly string[] = DEFAULT_PALETTE, ramp?: readonly string[]): Series[] {
   // Colour follows the LABEL (`labelSlots`): marks sharing a label share a colour.
   const slots = labelSlots(marks.map((m, k) => markLabel(m, k)))
   return marks.map((m, seriesIndex) => {
     const name = markLabel(m, seriesIndex)
-    if (!KNOWN_KINDS.has(m.kind)) {
+    if (!KNOWN_KINDS.has(m.kind) && process.env.NODE_ENV !== 'production') {
       warnOnce(`kind:${String(m.kind)}`, `unknown mark kind "${String(m.kind)}" — expected one of ${[...KNOWN_KINDS].join(', ')}. It will not be drawn.`)
     }
     let raw: Double[] = []
@@ -545,6 +564,8 @@ export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], p
       dash: m.options.dash,
       areaOpacity: m.options.areaOpacity,
       negativeColor: m.options.negativeColor,
+      connectNulls: m.options.connectNulls,
+      ...(m.options.fill as ItemFill<T> | undefined)?.resolve(data, ramp),
       errLow,
       errHigh,
     }

@@ -73,9 +73,10 @@ function emptyQueryOrder(pool: readonly Entry[], recents: readonly string[], gro
 }
 
 /** The search of a registry: ranks the top-level commands, or the commands of a nested page. */
-export function createSearch(registry: Registry, recents: Recents): { search(query: string, options?: SearchOptions): readonly Match[]; resetRankers(): void; clear(): void } {
+export function createSearch(registry: Registry, recents: Recents): { search(query: string, options?: SearchOptions): readonly Match[]; clear(): void } {
   const rankers = new Map<string, EntryRanker>()
   const pages = new WeakMap<Command, Entry[]>()
+  let lastEpoch = 0
 
   function rankerFor(key: string): EntryRanker {
     let ranker = rankers.get(key)
@@ -117,7 +118,10 @@ export function createSearch(registry: Registry, recents: Recents): { search(que
       return out
     }
 
-    registry.ensureWatcher()
+    if (registry.epoch() !== lastEpoch) {
+      lastEpoch = registry.epoch()
+      for (const ranker of rankers.values()) ranker.reset()
+    }
     const max = Math.max(1, recents.max)
     const ranked = rankerFor(parentId ?? '').rank(query, entries, {
       boost: (entry) => {
@@ -134,9 +138,6 @@ export function createSearch(registry: Registry, recents: Recents): { search(que
 
   return {
     search,
-    resetRankers() {
-      for (const ranker of rankers.values()) ranker.reset()
-    },
     clear() {
       rankers.clear()
     },

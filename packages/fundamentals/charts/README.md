@@ -72,7 +72,7 @@ separate modules, so a bar chart never pulls the radial trigonometry or the
 finance and matrix families (locked by the repo's import budgets). WITHIN
 `PlotChart` the cartesian marks share one renderer and one interaction surface
 (tooltip, legend, zoom, brush, `maxPoints` decimation): a one-line chart
-measures the same 38.0 KB gz as a bar + line + tooltip + legend chart — see
+measures about the same 40.3 KB gz as a bar + line + tooltip + legend chart — see
 "Bundle size" below.
 
 Marks: `bars`, `line`, `area`, `points`, `stackedBars`, `groupedBars`.
@@ -115,6 +115,58 @@ the plot (`shape: 'radial'` ramps out from its centre). **Symbols**: `points(y, 
 shape (rect, circle, diamond, triangle; the pictorialBar vocabulary), and
 `line(y, { symbol })` draws a symbol at every datum over the line, on web,
 iOS and Android.
+
+### Bar thickness, per-datum colour, gaps
+
+```tsx
+import { Bar, Chart, Line, fillBy, shadeBy } from '@pyreon/charts'
+
+<Chart data={rows} x="region" barWidth={28} barGap={0.2} barCategoryGap={0.4}>
+  <Bar y="revenue" group />
+  <Bar y="target" group fill={shadeBy('margin')} />   {/* each bar shaded by its margin */}
+  <Line y="trend" connectNulls />                      {/* one stroke across the gaps */}
+</Chart>
+```
+
+Bars on a time or numeric axis: `<Chart data={days} xValue="at" barSpan={86_400_000}>` with `<Axis x time />`
+puts each bar at its own x (centred, the axis padded by half a slot, `barSpan` optional: unset, the slot is the
+smallest gap between two x values), so a day with no row is an empty stretch.
+
+`barWidth` is a px **ceiling** on one bar (never wider than its band's slot),
+`barGap` the space between the bars of a group (a fraction of a bar),
+`barCategoryGap` the space between categories (a fraction of the band, 0.25 by
+default). `fill` colours each datum on its own and is deliberately not `color`
+(the series colour) or `<Chart color="field">` (the long-format split): it takes
+the descriptor `fillBy(field)` (a colour on the row) or `shadeBy(field, { ramp })`
+(a value through a ramp) returns, both imported bindings that tree-shake away
+when unused. A ramp legend sits above a shaded plot, and the value behind each colour is a
+`(shade)` row in the tooltip and a column in the accessible table. `connectNulls` draws one stroke through the finite points of a line or area
+instead of breaking at each gap. The bar props and `connectNulls` lower to iOS and
+Android, as does `fill` with a literal field name (`fillBy('tone')`,
+`shadeBy('margin', { ramp })`); an accessor function stays web-only and is named
+by a compile-time warning.
+
+### Reversed value axis
+
+`<Axis y inverse>` (or `y2`, independently) puts the axis's high end at the
+bottom: a rank chart with 1 at the top, a depth profile reading downward. Bars
+and areas hang from the top, the rounded ends and the ticks follow, and it
+composes with log and time axes, dual axes, zoom, the crosshair and the tooltip.
+Only the value-to-pixel mapping flips (`Domain.inverse` through `yPx` / `xPx`, the
+single seam every y position goes through): the data and the accessible table keep
+their order. Reversing the category axis is not supported yet. Lowers to iOS and
+Android as `yInverse` / `y2Inverse` literals.
+
+### Non-linear axes
+
+Import a scale descriptor, `sqrt()`, `symlog({ constant })` or `log()`, for either axis:
+`<Scale y={sqrt()} />`, `<Scale x={log()} />` (`yScale="log"` stays a string for the value
+axis). They are imported bindings, so a chart that never imports one bundles none of the
+code. Each is a view of the data (the geometry stays linear over transformed values), ticks
+are nice in the real values and labelled with them, and a value a scale cannot place (log:
+not above zero, sqrt: below zero) is a gap rather than a moved or NaN pixel; symlog places
+everything. The tooltip, the table and the labels keep the real values, the spoken
+description names the scale, and time axes stay linear. Lowers to iOS and Android.
 
 ### Entrance animation
 
@@ -305,6 +357,12 @@ const sound = sonifyValues(price.map((d) => d.close), { duration: 3000, link }) 
 
 `navigator` is the slider dataZoom, `zoomPresets` the range selector, `keyboard` walks the data with a focus ring and a live-region announcement (Up/Down pick one series to follow), and a data change of the same shape tweens instead of snapping (`updateAnimation`). A web plot receiving another update mid-animation starts from the displayed values or keyed geometry, keeps visible entering/exiting bars, and settles once at the newest target. Shape morphs under `universalTransition` retarget the displayed draw list; disabling updates cancels the active animation. Every handler is a pointer handler — a finger drags, pans, brushes and pinch-zooms, a tap shows the tooltip. The family hosts (pie, treemap, sankey, …) carry the same stack: `keyboard` (on by default), `updateAnimation` (a draw-list tween), `legendPosition`, `toolbox={{ saveAsImage: true }}` (a PNG), and the canvas is `aria-describedby` its hidden table.
 
+### Maps
+
+`<MapChart map values>` fills GeoJSON regions by value (`registerMap(name, geojson)`, inline GeoJSON, or a precomputed `GeoShape[]`, the form that lowers to iOS and Android). Inner rings (lakes, enclaves) are cut out of the fill and the hit test. Hovering outlines the region under the pointer, `selectedMode="single" | "multiple"` keeps a selection from a click or Enter / Space (`onSelectionChange`; the canvas description and the accessible table name the selected regions), `options.idProperty` joins `values` on the feature id or any property, and `tooltipFormatter` / `onSelect` receive the feature's own properties. Layers: `options.sphere` and `options.graticule`, `flows` (great-circle arcs revealed by arc length), `sizeLegend` for sized points, Point and LineString features, `fitTo` and `zoomOnClick`; rings that cross the seam are cut at it. Boundary data lives in `@pyreon/charts-maps`. A map's default colour ramp keeps its contrast against the page on both themes, regions without a value are hatched, and a `visualMap` strip gets a "No data" swatch. Projections: `options.projection` is `equirectangular`, `mercator`, `equalEarth`, `naturalEarth1`, `albers` or `albersUsa`, with `centerLon`, `parallel1`, `parallel2`; `geoUnproject` maps a pixel back to lon/lat. `map` also takes TopoJSON and a `MapDefinition` (the data plus the projection and join keys it was prepared for; `registerMap(name, source, { projection, ... })` registers one). `geoToSvg` draws the same layers (points, paths, heat, pies) on the server. Hover emphasis, selection and `tooltipFormatter` are web-only for now: on iOS and Android the compiler warns about each by name (a native map selects through `onSelectIndex`).
+
+The interaction is `withItemStates` (`engine/host-states.ts`), a wrapper over the shared canvas host rather than code inside it, so a chart that is not a map bundles none of it. Pie, treemap and sankey can adopt it by reporting `states.at` (the item index under a point, in the accessible table's row space) and `states.label`, and painting the `states` argument of their `render`; none does yet.
+
 ## Install
 
 ```bash
@@ -320,9 +378,9 @@ tree-shaken way).
 
 | Chart                          | `@pyreon/charts` | ECharts 6, tree-shaken | ECharts 6, whole package |
 | ------------------------------ | --------------------- | ---------------------- | ------------------------ |
-| Line                           | 38.0 KB (`PlotChart`) | 155.9 KB               | 361.0 KB                 |
-| Bar + line, tooltip, legend    | 38.0 KB (`PlotChart`) | 176.7 KB               | —                        |
-| Pie                            | 19.1 KB (`PieChart`)  | 117.2 KB               | —                        |
+| Line                           | 40.3 KB (`PlotChart`) | 155.9 KB               | 361.0 KB                 |
+| Bar + line, tooltip, legend    | 40.4 KB (`PlotChart`) | 176.8 KB               | —                        |
+| Pie                            | 19.8 KB (`PieChart`)  | 117.2 KB               | —                        |
 
 Figures from the latest benchmark record (`BENCHMARKS.md`, `bench:charts-bundle`); that file is authoritative when they differ.
 

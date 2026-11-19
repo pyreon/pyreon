@@ -1,9 +1,9 @@
 ---
 title: "Examples"
-description: "A gallery of 116 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 126 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 116 examples across 44 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 126 examples across 44 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Shared state and effects
 
@@ -63,9 +63,21 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/charts/gallery-100k" />
 
+### Gallery Bar Colors
+
+<Example file="./examples/charts/gallery-bar-colors" />
+
+### Gallery Bar Geometry
+
+<Example file="./examples/charts/gallery-bar-geometry" />
+
 ### Gallery Bars
 
 <Example file="./examples/charts/gallery-bars" />
+
+### Gallery Bars Time
+
+<Example file="./examples/charts/gallery-bars-time" />
 
 ### Gallery Boxplot
 
@@ -115,6 +127,26 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/charts/gallery-horizontal" />
 
+### Gallery Map
+
+<Example file="./examples/charts/gallery-map" />
+
+### Gallery Map Bubbles
+
+<Example file="./examples/charts/gallery-map-bubbles" />
+
+### Gallery Map Flows
+
+<Example file="./examples/charts/gallery-map-flows" />
+
+### Gallery Map Us
+
+<Example file="./examples/charts/gallery-map-us" />
+
+### Gallery Map World
+
+<Example file="./examples/charts/gallery-map-world" />
+
 ### Gallery Parallel
 
 <Example file="./examples/charts/gallery-parallel" />
@@ -127,6 +159,10 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/charts/gallery-radar" />
 
+### Gallery Rank Inverse
+
+<Example file="./examples/charts/gallery-rank-inverse" />
+
 ### Gallery River
 
 <Example file="./examples/charts/gallery-river" />
@@ -134,6 +170,10 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Gallery Sankey
 
 <Example file="./examples/charts/gallery-sankey" />
+
+### Gallery Scales
+
+<Example file="./examples/charts/gallery-scales" />
 
 ### Gallery Single Axis
 

@@ -85,7 +85,7 @@ The scaffolder sets your assistant up on day one: `.mcp.json` and `CLAUDE.md` by
 
 ## What is in the box
 
-77 published packages, all versioned together:
+86 published packages, all versioned together:
 
 - **Core:** `@pyreon/reactivity`, `@pyreon/core`, `@pyreon/runtime-dom`, `@pyreon/runtime-server`, router, head, server, and the compiler. The compiler has a Rust backend (napi-rs) that runs 3.7–8.9× faster than its JavaScript fallback, and both must emit byte-identical output.
 - **`@pyreon/zero`**, the meta-framework: file-based routing, SSG, SSR (string or streaming), ISR, SPA and islands, per-route render modes, an experimental `mode: 'auto'` that infers the mode per route, and deploy adapters for Node, Bun, Deno, Vercel, Netlify, Cloudflare and static hosting.

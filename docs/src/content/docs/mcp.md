@@ -776,7 +776,7 @@ This tool only checks **file existence**, not the self-expiring-exemption logic 
 
 Fetch a canonical "how do I do X" pattern body from `docs/src/content/docs/patterns/` — the exact same markdown files the docs website renders, so the assistant and the human read identical text. The patterns are markdown files keyed by slug — **17 ship today**:
 
-`controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`.
+`controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `offline-and-installable-apps`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`.
 
 Drop a new `docs/src/content/docs/patterns/<slug>.md` file to add one — it's discovered at runtime on the next call in a monorepo checkout, no code change needed. (The published `bunx @pyreon/mcp` case reads a bundled snapshot instead — see [Troubleshooting](#troubleshooting) below.) Omit `name` to receive the catalog of available slugs.
 
@@ -796,7 +796,7 @@ When a pattern isn't found, the tool returns up to 5 fuzzy-matched suggestions p
 
 :::warning{title="Common mistakes"}
 - **Pattern slugs are kebab-case** — `controllable-state`, not `ControllableState`. A wrong-case name 404s.
-- **It covers the 17 foundational shapes.** Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a `get_pattern` slug.
+- **It covers the 18 foundational shapes.** Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a `get_pattern` slug.
 - **Patterns ≠ anti-patterns.** `get_pattern` returns "how to do X correctly"; `get_anti_patterns` returns "what to avoid". They're complementary.
 :::
 

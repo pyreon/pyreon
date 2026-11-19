@@ -20,9 +20,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import type { Finding, GateResult } from '../types'
-import { type ClaimSpec, SITE_LINT_CATEGORY_CLAIMS, SITE_LINT_RULE_CLAIMS } from './doc-claims-site'
+import { type ClaimSpec, SITE_LINT_CATEGORY_CLAIMS, SITE_HOOK_CLAIMS, SITE_LINT_RULE_CLAIMS, SITE_MCP_TOOL_CLAIMS } from './doc-claims-site'
+import { derivedClaimFindings, findUnknownPlaceholders, SITE_COUNT_CHECKS } from './doc-claims-site-counts'
 
-interface ClaimCheck {
+export interface ClaimCheck {
   /** Human-readable name shown in findings */
   name: string
   /** Stable code suffix used in `Finding.code` */
@@ -342,6 +343,7 @@ const checks: ClaimCheck[] = [
         pattern: /\| (\d+) hooks — useHover/,
         rejectHedged: /\| (\d+)\+ hooks — useHover/,
       },
+      ...SITE_HOOK_CLAIMS,
     ],
   },
   {
@@ -667,6 +669,7 @@ const checks: ClaimCheck[] = [
         file: 'AGENTS.md',
         pattern: /MCP server \(`@pyreon\/mcp`\), which exposes (\d+) tools/,
       },
+      ...SITE_MCP_TOOL_CLAIMS,
     ],
   },
   {
@@ -936,12 +939,13 @@ export const runDocClaimsGate = async (
     }
   }
 
-  for (const check of checks) {
+  findings.push(...findUnknownPlaceholders(opts.cwd))
+  for (const check of [...checks, ...SITE_COUNT_CHECKS]) {
     const actual = check.actual(opts.cwd)
     for (const claim of check.claims) {
       const filePath = join(opts.cwd, claim.file)
       const relPath = claim.file
-
+      if (claim.derived) { findings.push(...derivedClaimFindings(filePath, claim, check, actual)); continue }
       if (!existsSync(filePath)) {
         findings.push({
           category: 'documentation',

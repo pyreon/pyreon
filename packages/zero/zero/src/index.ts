@@ -35,8 +35,17 @@ export type {
 } from "./image";
 export { createImage, Image, OptimizedImage, useImage } from "./image";
 // PWA service-worker registration (`zero({ pwa })`) — no-op in dev/SSR.
-export type { RegisterServiceWorkerOptions } from "./pwa-client";
-export { registerServiceWorker } from "./pwa-client";
+export type {
+  InstallPrompt,
+  RegisterServiceWorkerOptions,
+  ServiceWorkerUpdate,
+} from "./pwa-client";
+export {
+  registerServiceWorker,
+  unregisterServiceWorkers,
+  useInstallPrompt,
+  useServiceWorkerUpdate,
+} from "./pwa-client";
 export type {
 	ImageRegistry,
 	ImageRegistryKeyStrategy,

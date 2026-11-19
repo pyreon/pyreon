@@ -5,7 +5,7 @@ description: "A command palette for Pyreon: a fuzzy matcher, a registry of comma
 
 > **Generated** from `command`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [command](/docs/command).
 
-Every action of an app, found by typing and run from the keyboard. `@pyreon/command/core` is the pure matcher: `fuzzyMatch` and `rank` are case- and diacritic-insensitive (Résumé is found by "resume", Straße by "strasse", ユーザー by ゆーざー), score word starts, camelCase humps, consecutive characters and prefixes (so "np" finds New Project), match the words of a query in any order, and return ranges in UTF-16 offsets that are right for emoji and combining marks, for highlighting. `createRanker` keeps the prepared texts and narrows: a query that extends the previous one only looks at what the previous one matched. The registry (`createCommands`, `useCommands`, `useCommand`, `provideCommands`) holds the commands: `useCommand` registers one for the lifetime of a component, so the list always matches what is on screen; a title can be a function (switching the locale re-ranks); a command can have nested pages (`children`); recents are kept and can be persisted; a command with a `shortcut` is registered through `@pyreon/hotkeys` exactly once while it is registered and enabled, with a development warning that names both commands when two share a shortcut. Typo tolerance is not part of v0. On the server the registry is inert.
+Every action of an app, found by typing and run from the keyboard. `@pyreon/command/core` is the pure matcher: `fuzzyMatch` and `rank` are case- and diacritic-insensitive (Résumé is found by "resume", Straße by "strasse", ユーザー by ゆーざー), score word starts, camelCase humps, consecutive characters and prefixes (so "np" finds New Project), match the words of a query in any order, and return ranges in UTF-16 offsets that are right for emoji and combining marks, for highlighting. `createRanker` keeps the prepared texts and narrows: a query that extends the previous one only looks at what the previous one matched. The registry (`createCommands`, `useCommands`, `useCommand`, `provideCommands`) holds the commands: `useCommand` registers one for the lifetime of a component, so the list always matches what is on screen; a title can be a function (switching the locale re-ranks); a command can have nested pages (`children`); recents are kept and can be persisted; a command with a `shortcut` is registered through `@pyreon/hotkeys` exactly once while it is registered and enabled, with a development warning that names both commands when two share a shortcut. Typo tolerance is not part of v0. `createPalette` is the state of the palette with no markup: open and close, the query, nested pages three deep, the rows grouped and ranked, async sources (debounced, cancellable, latest answer wins, the previous rows kept while the next load; inside a page, or from the root with `inline: true`), the active row and the whole ARIA combobox wiring. `<CommandPalette>` (`@pyreon/command/components`) is a complete renderer in a native modal `<dialog>`: the page behind is inert, focus is kept inside and comes back, scroll is locked without a shift, a polite live region announces counts and reasons, and long lists are windowed. On the server the registry and the palette are inert.
 
 ## Multiplatform
 
@@ -23,6 +23,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - A registry: useCommand registers for the life of a component; the latest registration of an id wins and gives it back when removed; titles as functions follow the locale
 - Shortcuts through @pyreon/hotkeys: one registration per enabled command, moved only when the shortcut changed, modifier shortcuts fire in text fields and bare keys do not, a dev warning for two commands on one shortcut
 - Recents with a bounded recency boost, persisted through any &#123; get, set &#125; storage
+- createPalette: the state of a palette (pages, grouped ranked rows, async sources with latest-wins, the ARIA wiring) with no markup; &lt;CommandPalette&gt; renders it as a modal dialog with focus trap and return, inert background, announcements and windowed long lists
 - Inert on the server; unregister, dispose and unmount leave no hotkey, listener, computed or effect behind
 
 ## Complete example
@@ -53,8 +54,20 @@ commands.search('np')[0]!.ranges   // => [[0, 1], [4, 5]]
 | [`prepareQuery`](#preparequery-function-experimental) | function | Split and fold a query into words. |
 | [`matchPrepared`](#matchprepared-function-experimental) | function | The engine behind `fuzzyMatch`, for callers that prepared both sides. |
 | [`createCommands`](#createcommands-function-experimental) | function | A registry of commands. |
+| [`createPalette`](#createpalette-function-experimental) | function | The state of a command palette with no markup. |
+| [`CommandPalette`](#commandpalette-component-experimental) | component | A complete palette in a native modal `<dialog>` (import `@pyreon/command/components`): opens on `mod+k`, focus moves to… |
+| [`CommandInput`](#commandinput-component-experimental) | component | The `<input role="combobox">` of the nearest palette: `aria-expanded`, `aria-controls`, `aria-activedescendant` and the… |
+| [`CommandList`](#commandlist-component-experimental) | component | The `role="listbox"` element with the groups and rows of the nearest palette. |
+| [`CommandGroup`](#commandgroup-component-experimental) | component | A `role="group"` with its heading (named by `aria-labelledby`) and its rows. |
+| [`CommandItem`](#commanditem-component-experimental) | component | A `role="option"` row: the pointer moves the active row, a click runs it, pressing it keeps focus in the input. |
+| [`Highlight`](#highlight-component-experimental) | component | A text with the runs of `ranges` in `<mark>`. |
+| [`CommandShortcut`](#commandshortcut-component-experimental) | component | A `<kbd>` for a shortcut. |
+| [`CommandEmpty`](#commandempty-component-experimental) | component | Shown when a query or a page has no rows (and nothing is loading). |
+| [`CommandLoading`](#commandloading-component-experimental) | component | Shown while an async source or a run is pending (hidden from assistive technology: the live region says it). |
+| [`usePalette`](#usepalette-function-experimental) | function | The palette of the nearest `<CommandPalette>`, for parts of your own. |
+| [`routeCommands`](#routecommands-function-experimental) | function | Navigation commands from the routes you gave `createRouter` (import `@pyreon/command/router`): one per route you can go… |
 | [`useCommands`](#usecommands-function-experimental) | function | The registry provided by the nearest `provideCommands`, or the app-wide default registry. |
-| [`useCommand`](#usecommand-function-experimental) | function | Register a command for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the… |
+| [`useCommand`](#usecommand-function-experimental) | function | Register a command, a list, or a function that returns a command, for the lifetime of the component: it and its shortcut… |
 | [`provideCommands`](#providecommands-function-experimental) | function | Make a registry the one used by this component and everything below it. |
 | [`isCommandEnabled`](#iscommandenabled-function-experimental) | function | Whether a command is enabled: `enabled` is a boolean or a function, and absent means enabled. |
 | [`formatShortcut`](#formatshortcut-function-experimental) | function | A shortcut as the user reads it on this platform (`@pyreon/hotkeys` `formatCombo`): `mod+k` is "⌘+K" on macOS and… |
@@ -63,6 +76,9 @@ commands.search('np')[0]!.ranges   // => [[0, 1], [4, 5]]
 | [`Command`](#command-type-experimental) | type | One command. |
 | [`Commands`](#commands-type-experimental) | type | The registry returned by `createCommands`. |
 | [`Match`](#match-type-experimental) | type | One search result. |
+| [`Palette`](#palette-type-experimental) | type | What `createPalette` returns. |
+| [`ResultItem`](#resultitem-type-experimental) | type | One row of the list, with the ranges to highlight and the shortcuts as the user reads them. |
+| [`RouteLike`](#routelike-type-experimental) | type | The part of a `@pyreon/router` route record that `routeCommands` reads. |
 | [`RunContext`](#runcontext-type-experimental) | type | What a command's `run` receives. |
 
 ## API
@@ -238,6 +254,227 @@ commands.commands().length   // => 0
 
 ---
 
+### `createPalette` `function` — **experimental**
+
+```ts
+(options?: PaletteOptions) => Palette
+```
+
+The state of a command palette with no markup. `open(page?)`, `close()`, `toggle()`, a query, a stack of nested pages (`back()`), `results()` (rows grouped and ranked, async rows as they arrive) and `groups()`, the active row and `move(...)`, `runActive()` (opens a page, or runs and closes unless `keepOpen`; an error stays on the palette), a polite `announcement()`, and `inputProps`, `listProps`, `itemProps(item)` and `groupProps(group)` for a renderer of your own. Registers `mod+k` through `@pyreon/hotkeys` (`hotkey: false` for none). One palette is open at a time. Inert on the server.
+
+**Example**
+
+```tsx
+const commands = createCommands()
+commands.register([{ id: 'save', title: 'Save' }, { id: 'open', title: 'Open File' }])
+const palette = createPalette({ commands, hotkey: false })
+palette.open()
+palette.setQuery('sav')
+palette.results().map((r) => r.id)   // => ['save']
+(palette.open(), palette.setQuery('xyz'), palette.announcement())   // => 'No results'
+```
+
+---
+
+### `CommandPalette` `component` — **experimental**
+
+```ts
+(props: CommandPaletteProps) => VNode
+```
+
+A complete palette in a native modal `<dialog>` (import `@pyreon/command/components`): opens on `mod+k`, focus moves to the input, Tab stays inside, the page behind is inert, scroll is locked without a layout shift, Escape goes back a page and then closes, focus returns to what had it, and the close and back buttons work on touch. Pass `palette` (from `createPalette`) or the palette options (`commands`, `hotkey`, `placeholder`, `messages`, `emptyQuery`, `showDisabled`, `filter`, `debounce`). Closed, it renders nothing, so the server and the first client render agree. Give it children to lay it out yourself with the parts.
+
+**Example**
+
+```tsx
+import { CommandPalette } from '@pyreon/command/components'
+import { createCommands } from '@pyreon/command'
+import '@pyreon/command/style.css'
+
+const commands = createCommands()
+export const App = () => <CommandPalette commands={commands} hotkey="mod+k" />
+```
+
+---
+
+### `CommandInput` `component` — **experimental**
+
+```ts
+(props: { class? }) => VNode
+```
+
+The `<input role="combobox">` of the nearest palette: `aria-expanded`, `aria-controls`, `aria-activedescendant` and the keyboard are wired.
+
+**Example**
+
+```tsx
+import { CommandInput } from '@pyreon/command/components'
+
+export const Field = () => <CommandInput class="my-input" />
+```
+
+---
+
+### `CommandList` `component` — **experimental**
+
+```ts
+(props: { class?, virtualizeAfter?, rowHeight?, children? }) => VNode
+```
+
+The `role="listbox"` element with the groups and rows of the nearest palette. Beyond `virtualizeAfter` rows (300) only the rows in view are in the DOM; they keep `aria-setsize` and `aria-posinset`, and every row has one height (`rowHeight`).
+
+**Example**
+
+```tsx
+import { CommandList } from '@pyreon/command/components'
+
+export const Results = () => <CommandList virtualizeAfter={500} rowHeight={44} />
+```
+
+---
+
+### `CommandGroup` `component` — **experimental**
+
+```ts
+(props: { group, class?, headingClass?, children? }) => VNode
+```
+
+A `role="group"` with its heading (named by `aria-labelledby`) and its rows.
+
+**Example**
+
+```tsx
+import { CommandGroup, usePalette } from '@pyreon/command/components'
+
+export const Groups = () => <>{usePalette().groups().map((group) => <CommandGroup group={group} />)}</>
+```
+
+---
+
+### `CommandItem` `component` — **experimental**
+
+```ts
+(props: { item, class?, style?, children? }) => VNode
+```
+
+A `role="option"` row: the pointer moves the active row, a click runs it, pressing it keeps focus in the input. The default content is the icon, the highlighted title and subtitle, the reason a disabled command cannot run, the shortcuts and a chevron for a page; pass children to replace it.
+
+**Example**
+
+```tsx
+import { CommandItem, Highlight, usePalette } from '@pyreon/command/components'
+
+export const Rows = () => <>{usePalette().results().map((item) => <CommandItem item={item}><Highlight text={item.title} ranges={item.ranges} /></CommandItem>)}</>
+```
+
+---
+
+### `Highlight` `component` — **experimental**
+
+```ts
+(props: { text, ranges, markClass? }) => VNode
+```
+
+A text with the runs of `ranges` in `<mark>`.
+
+**Example**
+
+```tsx
+import { Highlight } from '@pyreon/command/components'
+
+export const Title = () => <Highlight text="New Project" ranges={[[0, 1], [4, 5]]} />
+```
+
+---
+
+### `CommandShortcut` `component` — **experimental**
+
+```ts
+(props: { shortcut?, class?, children? }) => VNode
+```
+
+A `<kbd>` for a shortcut.
+
+**Example**
+
+```tsx
+import { CommandShortcut } from '@pyreon/command/components'
+
+export const Keys = () => <CommandShortcut shortcut="Ctrl+K" />
+```
+
+---
+
+### `CommandEmpty` `component` — **experimental**
+
+```ts
+(props: { class?, children? }) => VNode
+```
+
+Shown when a query or a page has no rows (and nothing is loading).
+
+**Example**
+
+```tsx
+import { CommandEmpty } from '@pyreon/command/components'
+
+export const None = () => <CommandEmpty>Nothing matches.</CommandEmpty>
+```
+
+---
+
+### `CommandLoading` `component` — **experimental**
+
+```ts
+(props: { class?, children? }) => VNode
+```
+
+Shown while an async source or a run is pending (hidden from assistive technology: the live region says it).
+
+**Example**
+
+```tsx
+import { CommandLoading } from '@pyreon/command/components'
+
+export const Busy = () => <CommandLoading />
+```
+
+---
+
+### `usePalette` `function` — **experimental**
+
+```ts
+() => Palette
+```
+
+The palette of the nearest `<CommandPalette>`, for parts of your own.
+
+**Example**
+
+```tsx
+typeof usePalette
+```
+
+---
+
+### `routeCommands` `function` — **experimental**
+
+```ts
+(routes: RouteLike[], options: { navigate, filter?, title?, group?, keywords?, id? }) => Command[]
+```
+
+Navigation commands from the routes you gave `createRouter` (import `@pyreon/command/router`): one per route you can go to without more information; a path with a parameter or a wildcard, and a redirect, are left out, and a child path is joined to its parent. The router does not expose its route table, so this takes the same array; `navigate` is `router.push`. The title is `meta.title`, else the name or the last segment made readable, "Home" for the root; the path is always a keyword.
+
+**Example**
+
+```tsx
+const routes = [{ path: '/', name: 'home' }, { path: '/settings', meta: { title: 'Settings' }, children: [{ path: 'profile' }, { path: ':section' }] }, { path: '/users/:id' }]
+routeCommands(routes, { navigate: () => {} }).map((c) => c.id)   // => ['route:/', 'route:/settings', 'route:/settings/profile']
+routeCommands(routes, { navigate: () => {}, filter: (r) => r.path !== '/' }).map((c) => c.title)   // => ['Settings', 'Profile']
+```
+
+---
+
 ### `useCommands` `function` — **experimental**
 
 ```ts
@@ -257,10 +494,10 @@ typeof useCommands   // => 'function'
 ### `useCommand` `function` — **experimental**
 
 ```ts
-(command | () => command) => void
+(command | command[] | () => command) => void
 ```
 
-Register a command for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed.
+Register a command, a list, or a function that returns a command, for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed.
 
 **Example**
 
@@ -394,6 +631,54 @@ One search result. `ranges` are offsets into the text named by `field`.
 
 ```tsx
 const none: readonly Match[] = createCommands().search('x')
+```
+
+---
+
+### `Palette` `type` — **experimental**
+
+```ts
+interface Palette { isOpen(); open(page?); close(); toggle(); query(); setQuery(); page(); pageTitle(); back(); results(); groups(); status(); error(); running(); activeId(); setActive(); move(); runActive(); runItem(); announcement(); inputProps; listProps; itemProps(); groupProps(); ids; dispose() }
+```
+
+What `createPalette` returns.
+
+**Example**
+
+```tsx
+const palette: Palette = createPalette({ hotkey: false })
+```
+
+---
+
+### `ResultItem` `type` — **experimental**
+
+```ts
+interface ResultItem { id; command; title; subtitle; ranges; subtitleRanges; group; enabled; disabledReason; recent; hasPage; shortcuts; index }
+```
+
+One row of the list, with the ranges to highlight and the shortcuts as the user reads them.
+
+**Example**
+
+```tsx
+const rows: readonly ResultItem[] = createPalette({ hotkey: false }).results()
+```
+
+---
+
+### `RouteLike` `type` — **experimental**
+
+```ts
+interface RouteLike { path: string; name?: string; meta?: { title? }; redirect?: unknown; children?: RouteLike[] }
+```
+
+The part of a `@pyreon/router` route record that `routeCommands` reads. A `RouteRecord` fits.
+
+**Example**
+
+```tsx
+const route: RouteLike = { path: '/', meta: { title: 'Home' } }
 ```
 
 ---

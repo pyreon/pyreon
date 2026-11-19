@@ -52,8 +52,10 @@ import type { Formatter } from './format'
 import { area, band, bars, bubble, groupedBars, histogram, line, points, resolveMarks, stackedArea, stackedBars, waterfall } from './marks'
 import type { Accessor, ErrorOptions, Mark, MarkOptions } from './marks'
 import { bollinger, ema, sma, trend } from './indicators'
+import type { ItemFill } from './item-colors'
 import { defaultTheme, logBounds, resolveYDomain } from './render'
-import type { Annotation, ChartSpec, ChartTheme, PointMarker } from './render'
+import { warnOnce } from './dev-warn'
+import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView } from './render'
 import type { LegendPosition } from './canvas-host'
 import type { Domain, Double } from './types'
 import type { ChartHandle, ChartLink } from './link'
@@ -72,7 +74,7 @@ export function channel<T, V>(c: Channel<T, V>): (d: T, index: number) => V {
 // Marks — branded components. Never mounted: `<Chart>` reads their vnode props.
 // ---------------------------------------------------------------------------
 
-export interface MarkProps<T> extends Omit<MarkOptions, 'color'> {
+export interface MarkProps<T> extends Omit<MarkOptions, 'color' | 'fill'> {
   /** The value channel. */
   y: Channel<T>
   /** Fixed colour; the theme palette otherwise. */
@@ -80,6 +82,14 @@ export interface MarkProps<T> extends Omit<MarkOptions, 'color'> {
   /** Error-bar bounds — both needed; a whisker from low to high through each datum. */
   errorLow?: Channel<T>
   errorHigh?: Channel<T>
+  /**
+   * Colour each datum on its own — `fill={fillBy('tone')}` (a colour on the row)
+   * or `fill={shadeBy('margin')}` (a value through a ramp). Not `color`: that
+   * stays the series colour, and `<Chart color="field">` the long-format split.
+   * Bars and dots; web only (a device draws the series colour, and the compiler
+   * says so).
+   */
+  fill?: ItemFill<T>
 }
 export interface BarProps<T> extends MarkProps<T> {
   /** Stack this bar on the other stacked bars (one segment per mark, or per `color` value in long form). */
@@ -145,8 +155,14 @@ export interface AxisProps {
   title?: string
   /** x only: what the labels do when they run out of room (`auto` rotates categories, thins numbers). */
   labels?: AxisLabelMode
-  /** y only: the scale type; `<Scale y="log">` is the same switch. */
-  scale?: 'linear' | 'log'
+  /** The scale type of a y axis, or of a NUMERIC x axis (`xValue`): `linear`, `log`, `sqrt`, `symlog`. `<Scale y="log">` is the same switch. */
+  scale?: 'linear' | 'log' | ScaleView
+  /** Reverse the axis. y / y2: the high end at the bottom (the left, on a horizontal chart), bars hanging from the top. x: the DIRECTION of the x axis (first category at the right) — the y axis does not move. The data, callbacks and the accessible table keep their order. */
+  inverse?: boolean
+  /** x or y: draw grid lines for this axis. The value axis (`y`) has them on by default (`grid={false}` hides them); the x axis has them off (`grid` adds vertical lines at its ticks). */
+  grid?: boolean
+  /** x or y: minor grid lines — this many equal subdivisions between major ticks (2 or more; linear value axes and numeric x axes). */
+  minor?: number
 }
 /**
  * The scales, as one element: `<Scale y="log" />`, `<Scale x="time" />`,
@@ -154,8 +170,8 @@ export interface AxisProps {
  * per axis; this is the place to state them together.
  */
 export interface ScaleProps {
-  y?: 'linear' | 'log' | 'time'
-  x?: 'linear' | 'time'
+  y?: 'linear' | 'log' | 'time' | ScaleView
+  x?: 'linear' | 'time' | ScaleView
   /** Draw the stacked bars as shares of each column. */
   normalize?: boolean
 }
@@ -500,6 +516,14 @@ export interface ChartProps<T> {
   /** One formatter for the y axis, tooltip and description (an `<Axis y format>` overrides it). */
   format?: Formatter
   horizontal?: boolean
+  /** Bar thickness in px across the band — a ceiling, never wider than the band's slot. See `PlotChartProps.barWidth`. */
+  barWidth?: number
+  /** The space between the bars of a group, as a fraction of a bar's thickness (0 default). Grouped bars. */
+  barGap?: number
+  /** The space between categories, as a fraction of the band (default 0.25). */
+  barCategoryGap?: number
+  /** Bars on a numeric or time x axis: the width of one bar's slot, in x-domain units — see `PlotChartProps.barSpan`. */
+  barSpan?: number
   animate?: boolean
   /** Tween data changes (default on); `updateDuration` in ms. */
   updateAnimation?: boolean
@@ -662,12 +686,18 @@ export function resolveGrammar<T>(rows: readonly T[], chart: ChartProps<T>, chil
           if (a.time === true) props.xTime = true
           if (a.ticks !== undefined) props.xTicks = a.ticks
           if (a.hidden === true) props.showXAxis = false
+          if (a.scale === 'log' && process.env.NODE_ENV !== 'production') warnOnce('axis:x-log', "<Axis x scale=\"log\">: a numeric x axis takes a scale DESCRIPTOR, `scale={log()}` (import { log } from '@pyreon/charts'); the string form is for the value axis.")
+          if (a.scale !== undefined && a.scale !== 'log') props.xScale = a.scale
           if (a.title !== undefined) props.xTitle = a.title
           if (a.labels !== undefined) props.xLabels = a.labels
+          if (a.inverse === true) props.xInverse = true
+          if (a.grid === true) props.xGrid = true
+          if (a.minor !== undefined) props.xMinor = a.minor
         } else if (a.y2 === true) {
           if (a.format !== undefined) props.y2Format = a.format
           if (a.domain !== undefined) props.y2Domain = a.domain
           if (a.title !== undefined) props.y2Title = a.title
+          if (a.inverse === true) props.y2Inverse = true
         } else {
           if (a.format !== undefined) props.format = a.format
           if (a.domain !== undefined) props.yDomain = a.domain
@@ -676,12 +706,16 @@ export function resolveGrammar<T>(rows: readonly T[], chart: ChartProps<T>, chil
           if (a.title !== undefined) props.yTitle = a.title
           if (a.time === true) props.yTime = true
           if (a.scale !== undefined) props.yScale = a.scale
+          if (a.inverse === true) props.yInverse = true
+          if (a.grid === false) props.yGrid = false
+          if (a.minor !== undefined) props.yMinor = a.minor
         }
         break
       }
       case 'Scale': {
         const sc = p as ScaleProps
-        if (sc.y === 'log' || sc.y === 'linear') props.yScale = sc.y
+        if (sc.y === 'log' || sc.y === 'linear' || (typeof sc.y === 'object' && sc.y !== null)) props.yScale = sc.y
+        if (typeof sc.x === 'object' && sc.x !== null) props.xScale = sc.x
         if (sc.y === 'time') props.yTime = true
         if (sc.x === 'time') props.xTime = true
         if (sc.normalize === true) props.stackNormalize = true
@@ -930,14 +964,14 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given,
   // except `format`: an `<Axis y format>` is the more specific of the two and overrides the chart's (as `ChartProps.format` says).
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize', 'yInverse', 'y2Inverse', 'xInverse', 'xScale', 'yGrid', 'xGrid', 'yMinor', 'xMinor'] as const
   for (const key of forwarded) {
     plotProps[key] = key === 'format'
       ? reactiveProp(() => (resolved().props as Record<string, unknown>).format ?? props.format)
       : reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   }
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale'] as const) {
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale', 'barWidth', 'barGap', 'barCategoryGap', 'barSpan'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
   plotProps.onSelect = reactiveProp(() => props.onSelect)
@@ -1002,9 +1036,13 @@ function facetGrid<T>(props: ChartProps<T>, readRows: () => readonly T[], base: 
     const spec: ChartSpec = {
       width: 1.0, height: 1.0, series: resolveMarks(rows, r.marks), categories: [], theme: defaultTheme,
       showXAxis: true, showYAxis: true, showGrid: false,
-      yScale: r.props.yScale,
+      yScale: typeof r.props.yScale === 'string' ? r.props.yScale : undefined,
+      yView: typeof r.props.yScale === 'object' ? r.props.yScale : undefined,
       stackNormalize: r.props.stackNormalize,
     }
+    // A scale descriptor derives its own domain per panel; there is no shared real domain to hand them.
+    if (spec.yView !== undefined) return undefined
+
     return spec.yScale === 'log' ? logBounds(spec) : resolveYDomain(spec)
   })
   const cols = props.facetColumns ?? 2

@@ -5,7 +5,7 @@ import { changedIslandClasses, hydrateIsland, replacedIslandRoots, trackIslandCl
 import { SITE_WIDTHS } from './site-audit'
 
 /**
- * The app-building-blocks and visual-and-tools product pages (twenty), against
+ * The app-building-blocks and visual-and-tools product pages (twenty-two), against
  * the production SSG build: prerendered with their share tags and hero visual,
  * hydration adopts the server DOM with no console errors, no horizontal page
  * scroll at the seven site widths, the demo island hydrates when scrolled to
@@ -13,7 +13,7 @@ import { SITE_WIDTHS } from './site-audit'
  * demo passes WCAG AA in both themes. Per-demo interaction (keyboard and
  * pointer) lives in site-products-b-*.spec.ts.
  */
-const APP = ['feature', 'i18n', 'permissions', 'urlstate', 'hotkeys', 'rx', 'dnd', 'toast', 'table', 'virtual']
+const APP = ['feature', 'i18n', 'format', 'time', 'permissions', 'urlstate', 'hotkeys', 'rx', 'dnd', 'toast', 'table', 'virtual']
 const TOOLS = ['charts', 'editor', 'flow', 'document', 'atlas', 'lathe', 'loom', 'tooling', 'ai', 'migrate']
 const IDS = [...APP, ...TOOLS]
 const WIDTHS = SITE_WIDTHS
@@ -140,6 +140,32 @@ test.describe('no horizontal page scroll', () => {
         const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
         expect(over, `/products/${id} at ${width}px`).toBeLessThanOrEqual(0)
       }
+    })
+  }
+})
+
+test.describe('the hero drawing on a phone', () => {
+  for (const id of ['format', 'time', 'urlstate', 'i18n']) {
+    test(`/products/${id}: keeps its size, scrolls in a labelled box, shows an edge fade, never scrolls the page`, async ({ page }) => {
+      await page.setViewportSize({ width: 320, height: 800 })
+      await page.goto(`/products/${id}`)
+      await waitForIslands(page)
+      const art = page.locator('main figure [data-art-fade]')
+      await expect(art).toHaveAttribute('tabindex', '0')
+      await expect(art).toHaveAttribute('role', 'region')
+      expect(((await art.getAttribute('aria-label')) ?? '').length).toBeGreaterThan(5)
+      const m = await art.evaluate((e) => ({ over: e.scrollWidth - e.clientWidth, svg: e.querySelector('svg')!.getBoundingClientRect().width, mask: getComputedStyle(e).maskImage }))
+      expect(m.svg, 'the drawing keeps a readable size').toBeGreaterThanOrEqual(500)
+      expect(m.over, 'it overflows its box, so the box scrolls').toBeGreaterThan(0)
+      expect(m.mask, 'the edge fade').not.toBe('none')
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await art.focus()
+      await page.keyboard.press('ArrowRight')
+      await page.keyboard.press('ArrowRight')
+      await expect.poll(() => art.evaluate((e) => e.scrollLeft)).toBeGreaterThan(0)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await page.setViewportSize({ width: 1280, height: 800 })
+      expect(await art.evaluate((e) => getComputedStyle(e).maskImage), 'no fade where the drawing fits').toBe('none')
     })
   }
 })

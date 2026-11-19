@@ -2485,6 +2485,717 @@ useHead({
   // @pyreon/server
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/schedule>
+
+  'schedule/occurrences': {
+    signature: '(rule: Recurrence, range?: { from?, to?, limit? }) => Generator<PlainDate | PlainDateTime>',
+    example: `[...occurrences({ every: 'week', start: '2026-11-17' }, { limit: 3 })]   // => ['2026-11-17', '2026-11-24', '2026-12-01']
+[...occurrences({ every: 'month', start: '2026-01-31' }, { limit: 3 })]   // => ['2026-01-31', '2026-03-31', '2026-05-31']`,
+    notes: `[EXPERIMENTAL] The occurrences of a rule, lazily and in order. A rule with neither \`until\` nor \`count\` is endless: bound it with \`to\` or \`limit\` (a date bound means the whole day). The rule is checked when you call it. \`start\` is not an occurrence unless the rule produces it; \`count\` counts the rule's own occurrences (an \`except\` date still uses one up); a month day a month lacks is skipped, never clamped. See also: occurrencesBetween, nextOccurrence, toInstants. Added in v0.53.0.`,
+    mistakes: `- Stepping day by day with \`add\` to find occurrences: it is slow, clamps the 31st, and misses RFC rules. Use \`occurrencesBetween\` or \`nextOccurrence\`
+- Storing every occurrence of a recurring event as a row: store the rule and expand a window with \`expandEvents\`
+- Anchoring a recurring local time in UTC: it drifts by an hour twice a year. Keep the wall time and the \`timeZone\`, convert with \`toInstants\``,
+  },
+
+  'schedule/occurrencesBetween': {
+    signature: '(rule: Recurrence, from, to) => (PlainDate | PlainDateTime)[]',
+    example: `occurrencesBetween({ every: 'day', start: '2026-11-01' }, '2026-11-03', '2026-11-05')   // => ['2026-11-03', '2026-11-04', '2026-11-05']`,
+    notes: '[EXPERIMENTAL] Every occurrence from `from` to `to`, both included; a date bound means the whole day. Added in v0.53.0.',
+  },
+
+  'schedule/nextOccurrence': {
+    signature: '(rule: Recurrence, after) => PlainDate | PlainDateTime | null',
+    example: `nextOccurrence({ every: 'month', start: '2026-01-31' }, '2026-02-01')   // => '2026-03-31'
+nextOccurrence({ every: 'day', start: '2026-01-01', count: 3 }, '2026-01-03')   // => null`,
+    notes: '[EXPERIMENTAL] The first occurrence strictly after `after`, or `null`. Jumps to the period of `after`; only a rule with `count` is counted from its start. Added in v0.53.0.',
+  },
+
+  'schedule/previousOccurrence': {
+    signature: '(rule: Recurrence, before) => PlainDate | PlainDateTime | null',
+    example: `previousOccurrence({ every: 'week', start: '2026-11-02' }, '2026-11-18')   // => '2026-11-16'`,
+    notes: '[EXPERIMENTAL] The last occurrence strictly before `before`, or `null`. Added in v0.53.0.',
+  },
+
+  'schedule/occursOn': {
+    signature: '(rule: Recurrence, date: PlainDate) => boolean',
+    example: `occursOn({ every: 'week', start: '2026-11-17' }, '2026-11-24')   // => true
+occursOn({ every: 'week', start: '2026-11-17' }, '2026-11-25')   // => false`,
+    notes: '[EXPERIMENTAL] Whether the rule has an occurrence on a date. Added in v0.53.0.',
+  },
+
+  'schedule/toInstants': {
+    signature: '(rule: Recurrence, range?, options?: { disambiguation? }) => Generator<Instant>',
+    example: `[...toInstants({ every: 'day', start: '2026-03-28T02:30', timeZone: 'Europe/Prague' }, { limit: 3 })].map((t) => new Date(t).toISOString())   // => ['2026-03-28T01:30:00.000Z', '2026-03-29T01:30:00.000Z', '2026-03-30T00:30:00.000Z']`,
+    notes: `[EXPERIMENTAL] The occurrences as instants through the rule's \`timeZone\` (required). A wall time that does not exist on a spring-forward day follows \`disambiguation\` (default \`compatible\`: moved forward, so 02:30 becomes 03:30); one that occurs twice on a fall-back day takes the first. Hourly and minutely rules run on the wall clock; a repeated instant is emitted once. Range bounds are wall values or instants. Added in v0.53.0.`,
+  },
+
+  'schedule/parseRRule': {
+    signature: '(text: string, options?: { start?, timeZone? }) => Recurrence',
+    example: `parseRRule('FREQ=WEEKLY;INTERVAL=2;BYDAY=TU', { start: '2026-11-17' })   // => { every: 'week', start: '2026-11-17', interval: 2, on: { weekdays: [2] } }
+parseRRule('DTSTART:20261118T090000\\nRRULE:FREQ=DAILY;COUNT=3').start   // => '2026-11-18T09:00'`,
+    notes: `[EXPERIMENTAL] Read RFC 5545 text: a bare rule, \`RRULE:...\`, or a block with \`DTSTART\` (with \`TZID\` or \`VALUE=DATE\`), \`RRULE\`, \`EXDATE\` and \`RDATE\`. \`options\` fill in what the text leaves out. A UTC \`UNTIL\` or \`EXDATE\` is read in the rule's zone. Not supported: SECONDLY, BYSECOND, BYEASTER, several RRULEs. Malformed text throws a \`[Pyreon]\` RangeError with the position. See also: tryParseRRule, toRRule. Added in v0.53.0.`,
+  },
+
+  'schedule/tryParseRRule': {
+    signature: '(text: string, options?) => Recurrence | null',
+    example: `tryParseRRule('FREQ=SOMETIMES', { start: '2026-11-18' })   // => null`,
+    notes: '[EXPERIMENTAL] `parseRRule` that returns `null` instead of throwing: for user input and imports. Added in v0.53.0.',
+  },
+
+  'schedule/toRRule': {
+    signature: '(rule: Recurrence) => string',
+    example: `toRRule({ every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-11-17' })   // => 'DTSTART;VALUE=DATE:20261117\\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU'`,
+    notes: '[EXPERIMENTAL] Write a rule as RFC 5545 text: a `DTSTART` line, an `RRULE` line, and `EXDATE` / `RDATE` lines when needed. `parseRRule(toRRule(rule))` is the same rule. An `until` in a zone is written in UTC. Added in v0.53.0.',
+  },
+
+  'schedule/describeRule': {
+    signature: '(rule: Recurrence, options?: { locale?, messages? }) => string',
+    example: `describeRule({ every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-11-17' })   // => 'Every 2 weeks on Tuesday'
+describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, start: '2026-11-27T09:00' })   // => 'Every month on the last Friday at 09:00'`,
+    notes: '[EXPERIMENTAL] A rule in words, in English by default; weekday and month names follow `locale` through `Intl`, and `messages` replaces any of about 30 phrases so an app can translate through its own i18n. Rules with no natural sentence (week numbers, year days, set positions) return the `custom` phrase, "Custom schedule". `except` and `also` are not described. Added in v0.53.0.',
+  },
+
+  'schedule/isBusinessDay': {
+    signature: '(date, calendar: BusinessCalendar) => boolean',
+    example: `isBusinessDay('2026-11-18', {})   // => true
+isBusinessDay('2026-12-25', { holidays: ['2026-12-25'] })   // => false`,
+    notes: `[EXPERIMENTAL] Not on the calendar's \`weekend\` (default Saturday and Sunday) and not a holiday. Added in v0.53.0.`,
+  },
+
+  'schedule/addBusinessDays': {
+    signature: '(date: PlainDate, n: number, calendar) => PlainDate',
+    example: `addBusinessDays('2026-11-20', 1, {})   // => '2026-11-23'
+addBusinessDays('2026-12-24', 2, { holidays: ['2026-12-25'] })   // => '2026-12-29'`,
+    notes: '[EXPERIMENTAL] Move by `n` business days (negative goes back). `n` of 0 returns the date unchanged. Added in v0.53.0.',
+  },
+
+  'schedule/businessDaysBetween': {
+    signature: '(a: PlainDate, b: PlainDate, calendar) => number',
+    example: `businessDaysBetween('2026-11-16', '2026-11-23', {})   // => 5`,
+    notes: '[EXPERIMENTAL] The business days from `a` (included) to `b` (excluded); negative when `b` is earlier. Added in v0.53.0.',
+  },
+
+  'schedule/nextBusinessDay': {
+    signature: '(date: PlainDate, calendar) => PlainDate',
+    example: `nextBusinessDay('2026-11-20', {})   // => '2026-11-23'`,
+    notes: '[EXPERIMENTAL] The first business day after a date. Added in v0.53.0.',
+  },
+
+  'schedule/previousBusinessDay': {
+    signature: '(date: PlainDate, calendar) => PlainDate',
+    example: `previousBusinessDay('2026-11-23', {})   // => '2026-11-20'`,
+    notes: '[EXPERIMENTAL] The last business day before a date. Added in v0.53.0.',
+  },
+
+  'schedule/addBusinessTime': {
+    signature: '(start: PlainDateTime, duration: Duration, calendar) => PlainDateTime',
+    example: `addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T15:00'`,
+    notes: '[EXPERIMENTAL] Add working time: "8 working hours from Friday 15:00" is Monday 15:00. Time outside opening hours does not count; a result that fills a window stays at its closing time. Negative durations go back. Needs `hours`; an overnight window (`22:00` to `06:00`) belongs to the day it starts on. Only hours, minutes and seconds: use `addBusinessDays` for days. Added in v0.53.0.',
+    mistakes: '- Adding `{ hours: 8 }` with `add` for an SLA: it counts nights and weekends. Use `addBusinessTime`',
+  },
+
+  'schedule/businessTimeBetween': {
+    signature: '(a, b, calendar) => Duration',
+    example: `businessTimeBetween('2026-11-20T15:00', '2026-11-23T11:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => { hours: 4, minutes: 0 }`,
+    notes: '[EXPERIMENTAL] The working time between two moments as `{ hours, minutes }` (plus seconds when needed); negative when `b` is earlier. Added in v0.53.0.',
+  },
+
+  'schedule/isOpen': {
+    signature: '(at: PlainDateTime, calendar) => boolean',
+    example: `isOpen('2026-11-20T10:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => true
+isOpen('2026-11-20T17:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => false`,
+    notes: '[EXPERIMENTAL] Is the calendar open at a moment? A window is half-open: open at its `from`, closed at its `to`. Added in v0.53.0.',
+  },
+
+  'schedule/nextOpening': {
+    signature: '(at: PlainDateTime, calendar) => PlainDateTime | null',
+    example: `nextOpening('2026-11-20T18:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T09:00'`,
+    notes: '[EXPERIMENTAL] The next time the calendar opens, strictly after `at`; `null` when it never opens within ten years. Added in v0.53.0.',
+  },
+
+  'schedule/nextClosing': {
+    signature: '(at: PlainDateTime, calendar) => PlainDateTime | null',
+    example: `nextClosing('2026-11-20T10:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-20T17:00'`,
+    notes: '[EXPERIMENTAL] The next time the calendar closes, strictly after `at`. Added in v0.53.0.',
+  },
+
+  'schedule/overlaps': {
+    signature: '(a: Interval, b: Interval) => boolean',
+    example: `overlaps({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-11-18T09:30', end: '2026-11-18T11:00' })   // => true
+overlaps({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-11-18T10:00', end: '2026-11-18T11:00' })   // => false`,
+    notes: '[EXPERIMENTAL] Whether two half-open intervals share time: `[9:00, 10:00)` and `[10:00, 11:00)` do not. Added in v0.53.0.',
+  },
+
+  'schedule/intersection': {
+    signature: '(a: Interval, b: Interval) => Interval | null',
+    example: `intersection({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-11-18T09:30', end: '2026-11-18T11:00' })   // => { start: '2026-11-18T09:30', end: '2026-11-18T10:00' }`,
+    notes: '[EXPERIMENTAL] The shared part of two intervals, or `null`. Added in v0.53.0.',
+  },
+
+  'schedule/mergeIntervals': {
+    signature: '(list: Interval[]) => Interval[]',
+    example: `mergeIntervals([{ start: '2026-11-18T10:00', end: '2026-11-18T11:00' }, { start: '2026-11-18T09:00', end: '2026-11-18T10:00' }])   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T11:00' }]`,
+    notes: '[EXPERIMENTAL] Sort and merge: overlapping and touching intervals become one, empty ones are dropped, the input is not changed. Added in v0.53.0.',
+  },
+
+  'schedule/subtractIntervals': {
+    signature: '(from: Interval[], busy: Interval[]) => Interval[]',
+    example: `subtractIntervals([{ start: '2026-11-18T09:00', end: '2026-11-18T17:00' }], [{ start: '2026-11-18T12:00', end: '2026-11-18T13:00' }])   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T12:00' }, { start: '2026-11-18T13:00', end: '2026-11-18T17:00' }]`,
+    notes: '[EXPERIMENTAL] What is left of `from` once `busy` is taken out: sorted, not overlapping, no empty pieces. `busy` may be unsorted and overlapping. Added in v0.53.0.',
+  },
+
+  'schedule/freeSlots': {
+    signature: '(options: { within, busy, duration, step?, calendar?, buffer?, limit? }) => Interval[]',
+    example: `freeSlots({ within: { start: '2026-11-18T09:00', end: '2026-11-18T12:00' }, busy: [{ start: '2026-11-18T10:00', end: '2026-11-18T10:30' }], duration: { minutes: 60 } }).map((s) => s.start)   // => ['2026-11-18T09:00', '2026-11-18T11:00']`,
+    notes: `[EXPERIMENTAL] Slots of \`duration\` that fit inside \`within\` (and the calendar's opening hours), not touching \`busy\`, with \`buffer.before\` / \`buffer.after\` of free time around them. Starts sit on a grid of \`step\` (default \`duration\`) from the start of each stretch of working time, so slots stay at :00 and :30 whatever the meetings do. Zero or negative durations throw; more than \`limit\` (default 100000) slots throws. Works on date-times or instants. Added in v0.53.0.`,
+  },
+
+  'schedule/expandEvents': {
+    signature: '(events: CalendarEvent[], range: Interval) => EventInstance[]',
+    example: `expandEvents([{ id: 'standup', start: '2026-11-16T09:00', end: '2026-11-16T09:15', rule: { every: 'day', start: '2026-11-16T09:00' } }], { start: '2026-11-18T00:00', end: '2026-11-20T00:00' }).map((i) => i.start)   // => ['2026-11-18T09:00', '2026-11-19T09:00']`,
+    notes: '[EXPERIMENTAL] What a calendar view needs: the instances of single and recurring events that overlap `range`, sorted, each with a stable `key` (`"<id>:<occurrence>"`) and `occurrence` (the original start as a number; it does not depend on the window or on moves). `overrides` cancel or move single instances. The cost depends on the window, not on how long ago an event started. Added in v0.53.0.',
+  },
+
+  'schedule/useOccursToday': {
+    signature: '(rule: Recurrence) => () => boolean',
+    example: `typeof useOccursToday   // => 'function'`,
+    notes: `[EXPERIMENTAL] Reactive: does the rule occur today, in the rule's \`timeZone\` or the active zone? Flips at local midnight. Call it in a component's setup. From the root entry only. Added in v0.53.0.`,
+  },
+
+  'schedule/useNextOccurrence': {
+    signature: '(rule: Recurrence) => () => PlainDate | PlainDateTime | null',
+    example: `typeof useNextOccurrence   // => 'function'`,
+    notes: `[EXPERIMENTAL] Reactive: the next occurrence from today on (today included), moving on at local midnight in the rule's zone or the active zone. Day-accurate. From the root entry only. Added in v0.53.0.`,
+  },
+
+  'schedule/Recurrence': {
+    signature: 'interface Recurrence { every: "day" | "week" | "month" | "year" | "hour" | "minute"; interval?; on?: { weekdays?, monthDays?, months?, yearDays?, weeks?, hours?, minutes?, position? }; start; until?; count?; weekStart?; except?; also?; timeZone? }',
+    example: `const rule: Recurrence = { every: 'week', on: { weekdays: [1, 3] }, start: '2026-11-16' }`,
+    notes: '[EXPERIMENTAL] A repeating rule as plain data. Field names follow RFC 5545 (FREQ, INTERVAL, BYDAY, BYMONTHDAY, BYMONTH, BYYEARDAY, BYWEEKNO, BYHOUR, BYMINUTE, BYSETPOS, DTSTART, UNTIL, COUNT, WKST, EXDATE, RDATE); values follow @pyreon/time. Added in v0.53.0.',
+  },
+
+  'schedule/Interval': {
+    signature: 'interface Interval<T = PlainDateTime> { start: T; end: T }',
+    example: `const slot: Interval = { start: '2026-11-18T09:00', end: '2026-11-18T09:30' }`,
+    notes: '[EXPERIMENTAL] A half-open interval `[start, end)` of date-times, dates or instants. Added in v0.53.0.',
+  },
+
+  'schedule/BusinessCalendar': {
+    signature: 'interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); timeZone? }',
+    example: `const cal: BusinessCalendar = { holidays: ['2026-12-25'] }`,
+    notes: '[EXPERIMENTAL] Business days and opening hours. No holiday data is shipped: pass a list or a predicate. Added in v0.53.0.',
+  },
+
+  'schedule/WorkingHours': {
+    signature: 'type WorkingHours = { [weekday in 1..7]?: { from: PlainTime; to: PlainTime }[] }',
+    example: `const hours: WorkingHours = { 1: [{ from: '09:00', to: '17:00' }] }`,
+    notes: '[EXPERIMENTAL] Opening windows by ISO weekday; absent or empty is closed. A window whose `to` is not after its `from` runs overnight. Added in v0.53.0.',
+  },
+
+  'schedule/CalendarEvent': {
+    signature: 'interface CalendarEvent { id?; start; end; rule?: Recurrence; overrides? }',
+    example: `const e: CalendarEvent = { id: 'a', start: '2026-11-18T09:00', end: '2026-11-18T10:00' }`,
+    notes: `[EXPERIMENTAL] An event for \`expandEvents\`: one-off, or repeating when it has a \`rule\` that starts at the event's start. Added in v0.53.0.`,
+  },
+
+  'schedule/EventInstance': {
+    signature: 'interface EventInstance { id?; key: string; occurrence: number; start; end }',
+    example: `const key: EventInstance['key'] = 'a:1'`,
+    notes: '[EXPERIMENTAL] One instance of an event inside the window. Added in v0.53.0.',
+  },
+
+  'schedule/fp.occurrencesBetween': {
+    signature: '(from, to) => (rule: Recurrence) => PlainValue[]',
+    example: `import { occurrencesBetween } from '@pyreon/schedule/fp'
+occurrencesBetween('2026-11-02', '2026-11-16')({ every: 'week', start: '2026-11-02' })   // => ['2026-11-02', '2026-11-09', '2026-11-16']`,
+    notes: '[EXPERIMENTAL] Value-last `occurrencesBetween`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.nextOccurrence': {
+    signature: '(after) => (rule: Recurrence) => PlainValue | null',
+    example: `import { nextOccurrence } from '@pyreon/schedule/fp'
+nextOccurrence('2026-11-18')({ every: 'week', start: '2026-11-02' })   // => '2026-11-23'`,
+    notes: '[EXPERIMENTAL] Value-last `nextOccurrence`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.previousOccurrence': {
+    signature: '(before) => (rule: Recurrence) => PlainValue | null',
+    example: `import { previousOccurrence } from '@pyreon/schedule/fp'
+previousOccurrence('2026-11-18')({ every: 'week', start: '2026-11-02' })   // => '2026-11-16'`,
+    notes: '[EXPERIMENTAL] Value-last `previousOccurrence`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.occursOn': {
+    signature: '(date) => (rule: Recurrence) => boolean',
+    example: `import { occursOn } from '@pyreon/schedule/fp'
+occursOn('2026-11-09')({ every: 'week', start: '2026-11-02' })   // => true`,
+    notes: '[EXPERIMENTAL] Value-last `occursOn`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.describeRule': {
+    signature: '(options?) => (rule: Recurrence) => string',
+    example: `import { describeRule } from '@pyreon/schedule/fp'
+describeRule()({ every: 'day', start: '2026-11-18' })   // => 'Every day'`,
+    notes: '[EXPERIMENTAL] Value-last `describeRule`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.isBusinessDay': {
+    signature: '(calendar) => (date) => boolean',
+    example: `import { isBusinessDay } from '@pyreon/schedule/fp'
+isBusinessDay({})('2026-11-21')   // => false`,
+    notes: '[EXPERIMENTAL] Value-last `isBusinessDay`: `isBusinessDay(cal)` is a predicate for `filter`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.addBusinessDays': {
+    signature: '(n, calendar) => (date: PlainDate) => PlainDate',
+    example: `import { addBusinessDays } from '@pyreon/schedule/fp'
+addBusinessDays(2, {})('2026-11-20')   // => '2026-11-24'`,
+    notes: '[EXPERIMENTAL] Value-last `addBusinessDays`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.businessDaysBetween': {
+    signature: '(b, calendar) => (a: PlainDate) => number',
+    example: `import { businessDaysBetween } from '@pyreon/schedule/fp'
+businessDaysBetween('2026-11-23', {})('2026-11-16')   // => 5`,
+    notes: '[EXPERIMENTAL] Value-last `businessDaysBetween` (the first date goes last). Added in v0.53.0.',
+  },
+
+  'schedule/fp.nextBusinessDay': {
+    signature: '(calendar) => (date: PlainDate) => PlainDate',
+    example: `import { nextBusinessDay } from '@pyreon/schedule/fp'
+nextBusinessDay({})('2026-11-20')   // => '2026-11-23'`,
+    notes: '[EXPERIMENTAL] Value-last `nextBusinessDay`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.previousBusinessDay': {
+    signature: '(calendar) => (date: PlainDate) => PlainDate',
+    example: `import { previousBusinessDay } from '@pyreon/schedule/fp'
+previousBusinessDay({})('2026-11-23')   // => '2026-11-20'`,
+    notes: '[EXPERIMENTAL] Value-last `previousBusinessDay`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.addBusinessTime': {
+    signature: '(duration, calendar) => (start: PlainDateTime) => PlainDateTime',
+    example: `import { addBusinessTime } from '@pyreon/schedule/fp'
+addBusinessTime({ hours: 1 }, { hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T09:00')   // => '2026-11-18T10:00'`,
+    notes: '[EXPERIMENTAL] Value-last `addBusinessTime`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.isOpen': {
+    signature: '(calendar) => (at: PlainDateTime) => boolean',
+    example: `import { isOpen } from '@pyreon/schedule/fp'
+isOpen({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => true`,
+    notes: '[EXPERIMENTAL] Value-last `isOpen`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.nextOpening': {
+    signature: '(calendar) => (at: PlainDateTime) => PlainDateTime | null',
+    example: `import { nextOpening } from '@pyreon/schedule/fp'
+nextOpening({ hours: { 4: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => '2026-11-19T09:00'`,
+    notes: '[EXPERIMENTAL] Value-last `nextOpening`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.nextClosing': {
+    signature: '(calendar) => (at: PlainDateTime) => PlainDateTime | null',
+    example: `import { nextClosing } from '@pyreon/schedule/fp'
+nextClosing({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => '2026-11-18T17:00'`,
+    notes: '[EXPERIMENTAL] Value-last `nextClosing`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.overlaps': {
+    signature: '(b: Interval) => (a: Interval) => boolean',
+    example: `import { overlaps } from '@pyreon/schedule/fp'
+overlaps({ start: '2026-11-18T09:30', end: '2026-11-18T11:00' })({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' })   // => true`,
+    notes: '[EXPERIMENTAL] Value-last `overlaps`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.intersection': {
+    signature: '(b: Interval) => (a: Interval) => Interval | null',
+    example: `import { intersection } from '@pyreon/schedule/fp'
+intersection({ start: '2026-11-18T09:30', end: '2026-11-18T11:00' })({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' })   // => { start: '2026-11-18T09:30', end: '2026-11-18T10:00' }`,
+    notes: '[EXPERIMENTAL] Value-last `intersection`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.subtractIntervals': {
+    signature: '(busy: Interval[]) => (from: Interval[]) => Interval[]',
+    example: `import { subtractIntervals } from '@pyreon/schedule/fp'
+subtractIntervals([{ start: '2026-11-18T12:00', end: '2026-11-18T13:00' }])([{ start: '2026-11-18T09:00', end: '2026-11-18T14:00' }])   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T12:00' }, { start: '2026-11-18T13:00', end: '2026-11-18T14:00' }]`,
+    notes: '[EXPERIMENTAL] Value-last `subtractIntervals`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.expandEvents': {
+    signature: '(range: Interval) => (events) => EventInstance[]',
+    example: `import { expandEvents } from '@pyreon/schedule/fp'
+expandEvents({ start: '2026-11-18T00:00', end: '2026-11-19T00:00' })([{ id: 'a', start: '2026-11-18T09:00', end: '2026-11-18T10:00' }]).map((i) => i.start)   // => ['2026-11-18T09:00']`,
+    notes: '[EXPERIMENTAL] Value-last `expandEvents`. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/schedule>
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/calendar
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/calendar>
+
+  'calendar/allDay': {
+    signature: '(date: PlainDate, days?: number) => { start, end, allDay: true }',
+    example: `allDay('2026-11-18')   // => { start: '2026-11-18', end: '2026-11-19', allDay: true }
+allDay('2026-11-30', 3).end   // => '2026-12-03'`,
+    notes: '[EXPERIMENTAL] The start and exclusive end of an all-day event: one day by default, or `days` days. Events end exclusively, so a one-day event on the 18th ends on the 19th. Added in v0.53.0.',
+  },
+
+  'calendar/expandOccurrences': {
+    signature: '(events, range: Interval<PlainDate>, zone: TimeZone) => EventOccurrence[]',
+    example: `const [o] = expandOccurrences([{ id: 'p', title: 'P', start: '2026-11-18T09:00', end: '2026-11-18T10:00', timeZone: 'Europe/Prague' }], { start: '2026-11-16', end: '2026-11-23' }, 'America/New_York')
+o!.start   // => '2026-11-18T03:00'`,
+    notes: '[EXPERIMENTAL] The occurrences of the events that fall in a half-open window of dates in the display zone, placed in that zone and sorted by start. Single and recurring events (with overrides and cancellations through `@pyreon/schedule`), events in their own zone, floating wall clocks and instants. An all-day event never moves with the zone. A malformed event throws a `[Pyreon] expandOccurrences:` error that names it; `range` may be the whole result of `visibleRange()`; two events with one id are both listed, the second with a numbered key. Added in v0.53.0.',
+  },
+
+  'calendar/visibleRange': {
+    signature: '(view, date, options?) => { range, dates, rows }',
+    example: `visibleRange('week', '2026-11-18').range   // => { start: '2026-11-16', end: '2026-11-23' }
+visibleRange('workWeek', '2026-11-18').dates.length   // => 5`,
+    notes: '[EXPERIMENTAL] The window of a view around a date: the grid of a month (with its leading and trailing days), a week from `weekStart`, a work week, a day, `days` days, an agenda, or a year. `range.end` is exclusive; hidden weekdays are left out of `dates` and `rows`. Added in v0.53.0.',
+  },
+
+  'calendar/navigate': {
+    signature: '(view, date, steps, options?) => PlainDate',
+    example: `navigate('month', '2026-01-31', 1)   // => '2026-02-28'
+navigate('week', '2026-11-18', -1)   // => '2026-11-11'`,
+    notes: '[EXPERIMENTAL] The anchor date after moving `steps` views forward (negative: back): a month, a week, a day, `days` days, an agenda, a year. Added in v0.53.0.',
+  },
+
+  'calendar/viewTitle': {
+    signature: '(shown: VisibleRange, format?: TitleFormatter) => string',
+    example: `viewTitle(visibleRange('month', '2026-11-18'))   // => '2026-11'
+viewTitle(visibleRange('week', '2026-11-18'), (i) => i.first + ' / ' + i.last)   // => '2026-11-16 / 2026-11-22'`,
+    notes: '[EXPERIMENTAL] The title of a view through a formatter callback (the reactive entry passes `@pyreon/format`), so the core needs no locale. Without one it is a plain ISO form. Added in v0.53.0.',
+  },
+
+  'calendar/plainTitle': {
+    signature: '(info: TitleInfo) => string',
+    example: `plainTitle({ view: 'year', date: '2026-11-18', first: '2026-01-01', last: '2026-12-31' })   // => '2026'`,
+    notes: '[EXPERIMENTAL] The default title formatter: `2026-11`, `2026-11-16 to 2026-11-22`, `2026`. Added in v0.53.0.',
+  },
+
+  'calendar/layoutRow': {
+    signature: '(occurrences, dates, capacity?) => WeekLayout',
+    example: `const row = layoutRow(expandOccurrences([{ id: 'c', title: 'C', start: '2026-11-14', end: '2026-11-18' }], { start: '2026-11-09', end: '2026-11-30' }, 'UTC'), ['2026-11-16', '2026-11-17', '2026-11-18'])
+row.lanes[0]![0]!.continuesBefore   // => true`,
+    notes: `[EXPERIMENTAL] Events as segments in lanes across one row of days (a week of a month, or the all-day row of a time grid), cut at the row's edges with continuation flags. Longer events first, then all-day before timed, then earlier, then by key: a total order, so the lanes do not depend on the order of the input. With a \`capacity\`, lanes beyond it are dropped and counted per day in \`more\`. Added in v0.53.0.`,
+  },
+
+  'calendar/layoutMonth': {
+    signature: '(occurrences, rows, capacity?) => WeekLayout[]',
+    example: `layoutMonth([], visibleRange('month', '2026-11-18').rows).length   // => 6`,
+    notes: '[EXPERIMENTAL] The rows of a month grid laid out; each occurrence is in every row it touches. Added in v0.53.0.',
+  },
+
+  'calendar/daySpan': {
+    signature: '(occurrence) => { first, last }',
+    example: `daySpan(expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-16T22:00', end: '2026-11-17T00:00' }], { start: '2026-11-16', end: '2026-11-18' }, 'UTC')[0]!)   // => { first: '2026-11-16', last: '2026-11-16' }`,
+    notes: '[EXPERIMENTAL] The first and last date (inclusive) an occurrence touches. An end exactly at midnight does not touch that day. Added in v0.53.0.',
+  },
+
+  'calendar/packColumns': {
+    signature: '(blocks: { key, start, end }[], options?: { minMinutes?, pinned? }) => { key, column, columns, span }[]',
+    example: `packColumns([{ key: 'a', start: 540, end: 600 }, { key: 'b', start: 570, end: 630 }]).map((p) => [p.key, p.column, p.columns])   // => [['a', 0, 2], ['b', 1, 2]]`,
+    notes: '[EXPERIMENTAL] Overlapping blocks share the width of a day column: groups of overlapping blocks get columns by interval colouring, and each block grows to the right through the columns that are free for its whole length. The result depends only on the blocks, not on their order; `pinned` keeps chosen blocks in their column; each placement is a binary search. Added in v0.53.0.',
+  },
+
+  'calendar/layoutDay': {
+    signature: '(date, occurrences, zone, options?) => TimedBlock[]',
+    example: `const list = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T09:00', end: '2026-11-18T10:30' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+layoutDay('2026-11-18', list, 'UTC')[0]!.height   // => 0.0625`,
+    notes: '[EXPERIMENTAL] The blocks of one day of a time grid: timed occurrences that touch the day, cut at its edges (an event across midnight is a block on each day), clipped to `dayStart` and `dayEnd`, packed into columns. Positions are fractions of the visible day. A wall-clock grid: on the day a zone skips an hour that row is empty and an event across it is taller than it lasts; on the day a zone repeats an hour the second pass is drawn over the first. Added in v0.53.0.',
+  },
+
+  'calendar/layoutTimeGrid': {
+    signature: '(occurrences, dates, zone, options?) => { allDay, days, slots }',
+    example: `layoutTimeGrid([], ['2026-11-18'], 'UTC').slots.length   // => 48`,
+    notes: '[EXPERIMENTAL] A whole time grid: the all-day row (lanes across the days), a column of blocks per day with a signature, and the slot times. Added in v0.53.0.',
+  },
+
+  'calendar/daySignature': {
+    signature: '(date, occurrences, zone) => string',
+    example: `daySignature('2026-11-18', [], 'UTC')   // => ''`,
+    notes: '[EXPERIMENTAL] A string that changes exactly when the blocks of a day would: use it to skip recomputing a day whose occurrences did not change. Added in v0.53.0.',
+  },
+
+  'calendar/nowOffset': {
+    signature: '(date, now, zone, options?) => number | null',
+    example: `nowOffset('2026-11-18', Date.UTC(2026, 10, 18, 12), 'UTC')   // => 0.5
+nowOffset('2026-11-19', Date.UTC(2026, 10, 18, 12), 'UTC')   // => null`,
+    notes: '[EXPERIMENTAL] Where the "now" line is on a day, as a fraction of the visible day; `null` when `now` is not on that day or is outside the visible hours. It follows the wall clock, also on a day with a skipped or repeated hour. Added in v0.53.0.',
+  },
+
+  'calendar/dayBounds': {
+    signature: '(date, zone) => { startMs, endMs, elapsedMinutes }',
+    example: `dayBounds('2026-03-29', 'Europe/Prague').elapsedMinutes   // => 1380`,
+    notes: '[EXPERIMENTAL] The instants a calendar day starts and ends at in a zone. On the day a zone moves its clock it is 23 or 25 hours. Added in v0.53.0.',
+  },
+
+  'calendar/wallMinute': {
+    signature: '(ms, zone) => number',
+    example: `wallMinute(Date.UTC(2026, 10, 18, 15, 30), 'UTC')   // => 930`,
+    notes: '[EXPERIMENTAL] The wall-clock minute from midnight an instant shows at in a zone. Added in v0.53.0.',
+  },
+
+  'calendar/slotTimes': {
+    signature: '(options?) => PlainTime[]',
+    example: `slotTimes({ dayStart: '08:00', dayEnd: '10:00', slot: { minutes: 45 } })   // => ['08:00', '08:45', '09:30']`,
+    notes: '[EXPERIMENTAL] The start times of the rows of the grid between `dayStart` and `dayEnd`, every `slot` (30 minutes by default). Added in v0.53.0.',
+  },
+
+  'calendar/visibleMinutes': {
+    signature: '(options?) => { from, to }',
+    example: `visibleMinutes({ dayStart: '08:00', dayEnd: '18:00' })   // => { from: 480, to: 1080 }`,
+    notes: '[EXPERIMENTAL] The visible window of a day in wall-clock minutes; throws when `dayEnd` is not after `dayStart`. Added in v0.53.0.',
+  },
+
+  'calendar/createCalendar': {
+    signature: '(options: CalendarOptions) => Calendar',
+    example: `const calendar = createCalendar({ events: () => [{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], date: '2026-11-18', view: 'week', now: () => Date.UTC(2026, 10, 18, 12), timeZone: () => 'UTC', locale: () => 'en-GB' })
+calendar.range()   // => { start: '2026-11-16', end: '2026-11-23' }
+calendar.timeGrid().days[2]!.blocks()[0]!.top   // => 0.5833333333333334
+calendar.timeGrid().days[2]!.nowOffset()   // => 0.5`,
+    notes: `[EXPERIMENTAL] The reactive calendar (it returns a \`Calendar\`: \`view\`, \`setView\`, \`date\`, \`goTo\`, \`next\`, \`previous\`, \`today\`, \`range\`, \`dates\`, \`title\`, \`month\`, \`timeGrid\`, \`occurrences\`, \`cursor\`, \`selection\`, \`selectDay\`, \`selectSlot\`, \`onKeyDown\`, \`dispose\`). \`events\` is a reactive source the calendar never changes; \`view\` and \`date\` are values (uncontrolled) or signals you own (controlled); the zone and the locale default to the ambient ones; \`weekStart\` and the weekend default to the locale's. It gives the \`range()\` and \`title()\` (through \`@pyreon/format\`, in the active locale), the \`month()\` and \`timeGrid()\` view models whose layouts are memoised per week and per day (changing one event recomputes only the days it touches), the focused \`cursor()\`, a \`selection()\` and the grid keyboard. \`onRangeChange\` is the place to fetch events for the visible window. Added in v0.53.0.`,
+  },
+
+  'calendar/gridMove': {
+    signature: '(date, key, options?: { weekStart?, hiddenDays?, rtl? }) => PlainDate | null',
+    example: `gridMove('2026-11-18', { key: 'ArrowDown' })   // => '2026-11-25'
+gridMove('2026-11-18', { key: 'PageDown', shiftKey: true })   // => '2027-11-18'
+gridMove('2026-11-18', { key: 'ArrowRight' }, { rtl: true })   // => '2026-11-17'`,
+    notes: `[EXPERIMENTAL] Where a key moves the focused date of a month grid (the WAI-ARIA grid pattern): arrows by a day or a week (Left and Right swap in right-to-left text and skip hidden weekdays), Home and End to the week's first and last shown day, PageUp and PageDown by a month, with Shift by a year. It is pure, so a date picker's grid can share it. Added in v0.53.0.`,
+  },
+
+  'calendar/slotMove': {
+    signature: '(cursor, key, options) => SlotCursor | null',
+    example: `slotMove({ date: '2026-11-18', minute: 540 }, { key: 'ArrowDown' }, { from: 0, to: 1440, slot: 30, dates: ['2026-11-18'] })   // => { date: '2026-11-18', minute: 570 }`,
+    notes: '[EXPERIMENTAL] Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in right-to-left), Home and End to the first and last slot, PageUp and PageDown by a week of columns. It stays inside the grid. Added in v0.53.0.',
+  },
+
+  'calendar/applyEventChange': {
+    signature: '(event, change: EventChange, zone?) => CalendarEvent[]',
+    example: `const weekly: CalendarEvent = { id: 's', title: 'Standup', start: '2026-11-02T09:00', end: '2026-11-02T09:30', recurrence: { every: 'week', start: '2026-11-02T09:00' } }
+applyEventChange(weekly, { event: weekly, occurrence: '2026-11-09T09:00', start: '2026-11-10T10:00', end: '2026-11-10T10:30', allDay: false, scope: 'this' })[0].overrides
+// => { '2026-11-09T09:00': { start: '2026-11-10T10:00', end: '2026-11-10T10:30' } }`,
+    notes: '[EXPERIMENTAL] The events to store after a move or resize, as plain data. A single event is moved. For a recurring event `change.scope` decides: `this` adds an override for the occurrence, `all` shifts the whole series and its overrides, `following` ends the series the day before and returns a second event (id `<id>~<occurrence>`) that carries on from the new start. Replace the original with the returned list; `expandOccurrences` shows the edit. Added in v0.53.0.',
+  },
+
+  'calendar/fitsWindows': {
+    signature: '(start, end, windowsOf) => boolean',
+    example: `fitsWindows('2026-11-18T09:00', '2026-11-18T17:00', () => [{ from: 540, to: 1020 }])   // => true`,
+    notes: '[EXPERIMENTAL] Whether a range sits inside the working windows (`{ from, to }` in minutes) of every day it touches; `windowsOf` returns `null` for a day with no restriction. All-day ranges always fit. Added in v0.53.0.',
+  },
+
+  'calendar/reposition': {
+    signature: '(occurrence, target, zone) => { start, end, allDay }',
+    example: `const [occurrence] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T10:00', end: '2026-11-18T11:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+reposition(occurrence, { start: '2026-11-19T10:00', end: '2026-11-19T11:00', allDay: false }, 'UTC').allDay   // => false`,
+    notes: '[EXPERIMENTAL] The new start and end of an occurrence in the form its event uses (a date, a wall clock in its own zone, or an instant). Moving between all-day and timed changes the shape. Added in v0.53.0.',
+  },
+
+  'calendar/snapTo': {
+    signature: '(value, step) => number',
+    example: 'snapTo(37, 15)   // => 30',
+    notes: '[EXPERIMENTAL] Round to a multiple of `step`; a zero step leaves the value. Added in v0.53.0.',
+  },
+
+  'calendar/moveTarget': {
+    signature: '(occurrence, hit, grab, snap, defaultMinutes?) => Target',
+    example: `const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+moveTarget(o, { date: '2026-11-19', minute: 16 * 60 + 5 }, { date: '2026-11-18', minute: 14 * 60 + 30 }, 30).start   // => '2026-11-19T15:30'`,
+    notes: '[EXPERIMENTAL] Where moving an occurrence lands: the pointer now (`hit`: a day and a minute of it, or `minute: null` over a day cell or the all-day row) against where it took hold (`grab`). Over the time grid the start snaps to `snap` minutes and the duration is kept; over a day cell only the day changes; a timed event dropped on the all-day row becomes all-day, and an all-day event dropped on a slot becomes `defaultMinutes` (60) long. Pure: a custom pointer layer can use it. Added in v0.53.0.',
+  },
+
+  'calendar/resizeTarget': {
+    signature: `(occurrence, edge: 'start' | 'end', hit, snap, minDuration) => Target`,
+    example: `const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+resizeTarget(o, 'end', { date: '2026-11-18', minute: 9 * 60 }, 30, 30).end   // => '2026-11-18T14:30'`,
+    notes: '[EXPERIMENTAL] Where dragging one edge lands: snapped, never shorter than `minDuration` minutes (a day for all-day events), so a resize cannot make a zero or negative event. Added in v0.53.0.',
+  },
+
+  'calendar/nudgeTarget': {
+    signature: '(occurrence, key, options: { shift?, grid, snap, minDuration, rtl? }) => Target | null',
+    example: `const [o] = expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')
+nudgeTarget(o, 'ArrowDown', { grid: 'time', snap: 30, minDuration: 30 })?.start   // => '2026-11-18T14:30'`,
+    notes: '[EXPERIMENTAL] What an arrow key does to a grabbed occurrence: up and down by `snap` minutes in the time grid (by a week in the month), left and right by a day (swapped in right-to-left text); Shift resizes the end. `null` for any other key. Added in v0.53.0.',
+  },
+
+  'calendar/eventLabel': {
+    signature: '(occurrence, locale, messages) => string',
+    example: `eventLabel(expandOccurrences([{ id: 'p', title: 'Public holiday', start: '2026-11-17', end: '2026-11-18' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC')[0]!, 'en-GB', defaultMessages('en-GB'))   // => 'Public holiday, Tuesday 17 November, all day'`,
+    notes: '[EXPERIMENTAL] What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 – 15:00"; an all-day event says so; one over several days says where it starts and ends. Added in v0.53.0.',
+  },
+
+  'calendar/dayLabel': {
+    signature: '(date, locale) => string',
+    example: `dayLabel('2026-11-18', 'en-GB')   // => 'Wednesday 18 November'`,
+    notes: '[EXPERIMENTAL] A date as it is read: "Tuesday 18 November". Added in v0.53.0.',
+  },
+
+  'calendar/defaultMessages': {
+    signature: '(locale) => CalendarMessages',
+    example: `defaultMessages('cs').today   // => 'Dnes'`,
+    notes: '[EXPERIMENTAL] Every word the calendar says, for a locale. "Month", "week", "day" and "year" come from `Intl.DisplayNames`, "today" and the previous/next button names from `Intl.RelativeTimeFormat`, numbers from `Intl.NumberFormat`; "all day" from a small table (en, cs, ar, ja, de, fr, es); the rest are English placeholders (symbols such as "+3" outside English) that the `messages` option replaces. Use it to see what you would override. Added in v0.53.0.',
+  },
+
+  'calendar/capitalise': {
+    signature: '(text, locale) => string',
+    example: `capitalise('dnes', 'cs')   // => 'Dnes'`,
+    notes: '[EXPERIMENTAL] Upper-case the first grapheme where the script has case (Arabic and Japanese are left alone). Added in v0.53.0.',
+  },
+
+  'calendar/Calendar': {
+    signature: '(props: CalendarProps) => VNode',
+    example: `import { Calendar } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+import '@pyreon/calendar/styles.css'
+
+const calendar = createCalendar({ events: () => [] })
+export const App = () => <Calendar calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] The calendar component (import `@pyreon/calendar/components`): an optional toolbar, the view the calendar is on (the month grid, or the time grid of a week, work week, day or days) and a polite live region that says where navigation went. Render slots: `renderEvent`, `renderDay`, `renderMore`; words through `labels`. Added in v0.53.0.',
+  },
+
+  'calendar/MonthView': {
+    signature: '(props: MonthViewProps) => VNode',
+    example: `import { MonthView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [] })
+export const Month = () => <MonthView calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] The month: a WAI-ARIA grid of day cells with roving focus, the events as labelled buttons inside the cell they start in (spanning the days they last, in lanes, "+N more"), today and the selection marked. Added in v0.53.0.',
+  },
+
+  'calendar/TimeGridView': {
+    signature: '(props: ViewProps) => VNode',
+    example: `import { TimeGridView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'week' })
+export const Week = () => <TimeGridView calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] The time grid of a week, work week, day or days: a WAI-ARIA grid whose rows are slots and columns are days, with the all-day row, a time gutter, events placed by the column packing, opening hours shaded and the now line. Added in v0.53.0.',
+  },
+
+  'calendar/AgendaView': {
+    signature: '(props: ViewProps) => VNode',
+    example: `import { AgendaView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'agenda' })
+export const Agenda = () => <AgendaView calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] The agenda: the days that have events (`agendaDays`, 30 by default), each with its events in order (all-day first). A list of headings and buttons, not a grid; only the days near the viewport are in the page (windowed over known heights). Added in v0.53.0.',
+  },
+
+  'calendar/YearView': {
+    signature: '(props: YearViewProps) => VNode',
+    example: `import { YearView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'year' })
+export const Year = () => <YearView calendar={calendar} onDayClick={(date) => calendar.goTo(date)} />`,
+    notes: '[EXPERIMENTAL] The year: twelve small months; a day with events is shaded by how many and its spoken name has the count; `onDayClick` gets the day chosen. One tab stop, arrows across months. Added in v0.53.0.',
+  },
+
+  'calendar/TimelineView': {
+    signature: '(props: ViewProps) => VNode',
+    example: `import { TimelineView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'timeline', resources: () => [{ id: 'a', title: 'Room A' }] })
+export const Rooms = () => <TimelineView calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] Resources by time: a row per resource (`resources` option), the shown days side by side, each event a bar in the row of its `resourceId` (an event with several resources is in each row; overlaps stack in lanes). Rows are windowed, so 200 resources cost the rows on screen; the resource column and header stay in place. Drag a bar to another row to change its resource. Added in v0.53.0.',
+  },
+
+  'calendar/DayPopover': {
+    signature: '(props: { calendar, state, view, onClose }) => VNode',
+    example: `import { DayPopover } from '@pyreon/calendar/components'
+
+export const Popover = DayPopover`,
+    notes: `[EXPERIMENTAL] The "+N more" popover \`<Calendar>\` shows: a non-modal dialog listing a day's events. Focus moves in, Tab stays inside, Escape closes and returns focus to the button, a press outside closes it. Added in v0.53.0.`,
+  },
+
+  'calendar/layoutAgenda': {
+    signature: '(occurrences, dates) => AgendaDay[]',
+    example: `layoutAgenda(expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T09:00', end: '2026-11-18T10:00' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC'), ['2026-11-17', '2026-11-18'])[0]!.date   // => '2026-11-18'`,
+    notes: '[EXPERIMENTAL] The days of a list that have events, each with its occurrences (all-day first, then by start); a multi-day event is on every day it touches; days without events are left out. Added in v0.53.0.',
+  },
+
+  'calendar/layoutTimeline': {
+    signature: '(occurrences, resources, dates, { from, to, unassigned? }) => TimelineRow[]',
+    example: `const rows = layoutTimeline(expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T09:00', end: '2026-11-18T11:00', resourceId: 'r1' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC'), [{ id: 'r1', title: 'Room' }], ['2026-11-18'], { from: 0, to: 1440 })
+rows[0]!.blocks[0]!.left   // => 0.375`,
+    notes: '[EXPERIMENTAL] Resources by time: a row per resource with its events as blocks (fractions of the axis, the shown days side by side; overlaps in lanes). An event with several resources is in each row. Added in v0.53.0.',
+  },
+
+  'calendar/resourcesOf': {
+    signature: '(occurrence) => string[]',
+    example: `resourcesOf(expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18', end: '2026-11-19', resourceId: ['x', 'y'] }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')[0]!)   // => ['x', 'y']`,
+    notes: '[EXPERIMENTAL] The resource ids of an occurrence (its `resourceId` as a list). Added in v0.53.0.',
+  },
+
+  'calendar/windowRows': {
+    signature: '(heights, scrollTop, viewport, overscan?) => { start, end, offset, total }',
+    example: 'windowRows([40, 40, 40, 40], 70, 40, 0).start   // => 1',
+    notes: '[EXPERIMENTAL] Which rows to draw when their heights are known: a binary search over the running total, so 10,000 rows cost what 10 do. Added in v0.53.0.',
+  },
+
+  'calendar/movedResource': {
+    signature: '(current, from, to) => string | string[]',
+    example: `movedResource(['a', 'b'], 'a', 'c')   // => ['c', 'b']`,
+    notes: '[EXPERIMENTAL] The `resourceId` of an event after it is moved from one resource to another (an event on several keeps the others). Added in v0.53.0.',
+  },
+
+  'calendar/WeekView': {
+    signature: '(props: CalendarViewProps) => VNode',
+    example: `import { WeekView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'week' })
+export const Week = () => <WeekView calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] The time grid for a calendar on the `week` or `workWeek` view. Added in v0.53.0.',
+  },
+
+  'calendar/DayView': {
+    signature: '(props: CalendarViewProps) => VNode',
+    example: `import { DayView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'day' })
+export const Day = () => <DayView calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] The time grid for a calendar on the `day` view. Added in v0.53.0.',
+  },
+
+  'calendar/CalendarToolbar': {
+    signature: '(props: CalendarToolbarProps) => VNode',
+    example: `import { CalendarToolbar } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [] })
+export const Bar = () => <CalendarToolbar calendar={calendar} views={['month', 'week']} />`,
+    notes: '[EXPERIMENTAL] The title with Today, Previous and Next buttons and a switch of the view (buttons with `aria-pressed`). Added in v0.53.0.',
+  },
+
+  'calendar/CalendarEvent': {
+    signature: 'interface CalendarEvent<Meta> { id; title; start; end; allDay?; timeZone?; recurrence?; overrides?; resourceId?; editable?; color?; meta? }',
+    example: `const event: CalendarEvent = { id: 'a', title: 'A', start: '2026-11-18', end: '2026-11-19' }`,
+    notes: '[EXPERIMENTAL] An event as plain JSON-safe data. A date start and end make it all-day; a date-time is a wall clock (in `timeZone`, or floating in the display zone); a number is an instant. The end is exclusive. Added in v0.53.0.',
+  },
+
+  'calendar/EventOccurrence': {
+    signature: 'interface EventOccurrence<Meta> { key; event; occurrence; title; allDay; start; end; startMs; endMs; recurring }',
+    example: 'const none: EventOccurrence[] = []',
+    notes: '[EXPERIMENTAL] One occurrence of an event placed in the display zone; the key (`"<id>:<occurrence>"`) is the same in every window. Added in v0.53.0.',
+  },
+
+  'calendar/TimedBlock': {
+    signature: 'interface TimedBlock { key; occurrenceKey; top; height; column; columns; span; left; width; startMinute; endMinute; continuesBefore; continuesAfter }',
+    example: 'const blocks: TimedBlock[] = []',
+    notes: '[EXPERIMENTAL] A block of a time-grid column; `top`, `height`, `left` and `width` are fractions. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/calendar>
   // <gen-docs:api-reference:start @pyreon/server>
 
   'server/createHandler': {
@@ -3146,6 +3857,363 @@ export const useCounter = defineStore('counter', () => {
   // @pyreon/state-tree
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/money>
+
+  'money/money': {
+    signature: '(amount: number | string | bigint, currency: CurrencyCode, options?: { rounding?: RoundingMode }) => Money',
+    example: `money(9.99, 'EUR')                        // => { amount: '9.99', currency: 'EUR' }
+money('10', 'EUR')                        // => { amount: '10.00', currency: 'EUR' }
+money(100, 'JPY')                         // => { amount: '100', currency: 'JPY' }
+money('9.995', 'EUR', { rounding: 'halfExpand' })   // => { amount: '10.00', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] Build a Money. A string is exact; a number is read by its shortest round-trip text (\`9.99\` is exactly 9.99); a bigint is whole units. A number or string with more decimals than the currency has throws (floating-point noise such as \`0.1 + 0.2\` is explained) unless \`rounding\` is given; trailing zeros that lose nothing are fine. The result has exactly the currency's digits. Input is at most 4096 digits. See also: fromMinor, add. Added in v0.53.0.`,
+    mistakes: `- Doing arithmetic on \`number\` prices and wrapping the result: \`money(price * qty, "EUR")\` is float arithmetic first. Keep amounts as Money and use \`multiply\`
+- Passing \`0.1 + 0.2\`: it throws on purpose. Round deliberately with \`{ rounding }\`, or better, never compute in floats`,
+  },
+
+  'money/fromMinor': {
+    signature: '(units: number | bigint | string, currency: CurrencyCode) => Money',
+    example: `fromMinor(999, 'EUR')                     // => { amount: '9.99', currency: 'EUR' }
+fromMinor('123456789012345678901', 'EUR') // => { amount: '1234567890123456789.01', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] A Money from minor units (cents), the Stripe style. A number must be a safe integer; use a bigint or a digit string above 2^53. See also: toMinor. Added in v0.53.0.',
+  },
+
+  'money/toMinor': {
+    signature: '(m: Money) => bigint',
+    example: `toMinor(money('9.99', 'EUR'))             // => 999n`,
+    notes: '[EXPERIMENTAL] The amount in minor units as a bigint. See also: toMinorNumber, fromMinor. Added in v0.53.0.',
+  },
+
+  'money/toMinorNumber': {
+    signature: '(m: Money) => number',
+    example: `toMinorNumber(money('9.99', 'EUR'))       // => 999`,
+    notes: '[EXPERIMENTAL] The amount in minor units as a number; throws beyond the safe integer range and says to use `toMinor`. Added in v0.53.0.',
+  },
+
+  'money/isMoney': {
+    signature: '(x: unknown) => x is Money',
+    example: `isMoney({ amount: '9.99', currency: 'EUR' })   // => true
+isMoney({ amount: '9.9', currency: 'EUR' })    // => false
+isMoney({ amount: 9.99, currency: 'EUR' })     // => false`,
+    notes: `[EXPERIMENTAL] Strict guard: exactly the fields \`amount\` and \`currency\`, a known currency, a canonical amount with exactly that currency's digits. Never throws. Use it at every boundary where data comes in. Added in v0.53.0.`,
+  },
+
+  'money/zero': {
+    signature: '(currency: CurrencyCode) => Money',
+    example: `zero('EUR')                               // => { amount: '0.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Zero in a currency. Added in v0.53.0.',
+  },
+
+  'money/add': {
+    signature: '(a: Money, b: Money) => Money',
+    example: `add(money('0.10', 'EUR'), money('0.20', 'EUR'))   // => { amount: '0.30', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Exact sum of two amounts of one currency. Mixing currencies throws and names both. See also: sum, subtract. Added in v0.53.0.',
+    mistakes: '- Adding amounts of different currencies: it throws. Convert one side first with `convert`',
+  },
+
+  'money/subtract': {
+    signature: '(a: Money, b: Money) => Money',
+    example: `subtract(money('1.00', 'EUR'), money('0.01', 'EUR'))   // => { amount: '0.99', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Exact difference `a - b`. Added in v0.53.0.',
+  },
+
+  'money/negate': {
+    signature: '(m: Money) => Money',
+    example: `negate(money('5', 'EUR'))                 // => { amount: '-5.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The amount with the opposite sign; never produces a negative zero. Added in v0.53.0.',
+  },
+
+  'money/abs': {
+    signature: '(m: Money) => Money',
+    example: `abs(money('-5', 'EUR'))                  // => { amount: '5.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The amount without its sign. Added in v0.53.0.',
+  },
+
+  'money/sum': {
+    signature: '(list: Iterable<Money>, currency?: CurrencyCode) => Money',
+    example: `sum([money('1.10', 'EUR'), money('2.20', 'EUR')])   // => { amount: '3.30', currency: 'EUR' }
+sum([], 'EUR')                            // => { amount: '0.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The sum of a list of one currency. An empty list needs `currency`. Added in v0.53.0.',
+    mistakes: '- Summing rounded parts and expecting the rounded total: round once at the end, or allocate',
+  },
+
+  'money/multiply': {
+    signature: '(m: Money, factor: number | string | bigint, options?: { rounding?: RoundingMode }) => Money',
+    example: `multiply(money('19.99', 'EUR'), 3)        // => { amount: '59.97', currency: 'EUR' }
+multiply(money('10.00', 'EUR'), '1.21')   // => { amount: '12.10', currency: 'EUR' }
+multiply(money('0.05', 'EUR'), '0.5', { rounding: 'halfEven' })   // => { amount: '0.02', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] The amount times a plain number, rounded to the currency's digits (default \`halfExpand\`: round half away from zero). Prefer a string factor; a number is read by its shortest text. See also: percentage, allocate. Added in v0.53.0.`,
+  },
+
+  'money/divide': {
+    signature: '(m: Money, divisor: number | string | bigint, options?: { rounding?: RoundingMode }) => Money',
+    example: `divide(money('10.00', 'EUR'), 3)          // => { amount: '3.33', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] The amount divided by a plain number, rounded to the currency's digits. A zero divisor throws. To split without losing a cent use \`allocate\`: dividing three ways and multiplying back does not give the amount. See also: allocate, split. Added in v0.53.0.`,
+  },
+
+  'money/allocate': {
+    signature: '(m: Money, ratios: readonly (number | string)[]) => Money[]',
+    example: `allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount)   // => ['33.34', '33.33', '33.33']
+allocate(money('0.05', 'EUR'), [3, 7]).map((p) => p.amount)         // => ['0.02', '0.03']`,
+    notes: '[EXPERIMENTAL] Share an amount by ratios so the parts sum EXACTLY to it. Each part is its floor share in minor units; the minor units left over go one each to the parts with the largest fractional remainders, ties to the first. A negative amount is shared by its absolute value and the parts take its sign. A ratio of zero gets zero; negative or all-zero ratios throw. Each part is within one minor unit of its exact share. See also: split. Added in v0.53.0.',
+  },
+
+  'money/split': {
+    signature: '(m: Money, parts: number) => Money[]',
+    example: `split(money('100.00', 'EUR'), 3).map((p) => p.amount)   // => ['33.34', '33.33', '33.33']`,
+    notes: '[EXPERIMENTAL] Split into equal parts that sum exactly to the amount; the first parts get the extra cent. Added in v0.53.0.',
+  },
+
+  'money/percentage': {
+    signature: '(m: Money, percent: number | string | bigint, options?: { rounding?: RoundingMode }) => Money',
+    example: `percentage(money('200.00', 'EUR'), 21)    // => { amount: '42.00', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] \`percent\` percent of an amount, rounded to the currency's digits. Over 100 and negative percentages work. Added in v0.53.0.`,
+  },
+
+  'money/ratio': {
+    signature: '(a: Money, b: Money, options?: { scale?: number; rounding?: RoundingMode }) => Decimal',
+    example: `ratio(money('1.00', 'EUR'), money('4.00', 'EUR'))   // => '0.25'
+ratio(money('1.00', 'EUR'), money('3.00', 'EUR'), { scale: 4 })   // => '0.3333'`,
+    notes: '[EXPERIMENTAL] `a / b` as a decimal string with trailing zeros removed, rounded to `scale` digits (default 10). Both amounts must be one currency; a zero `b` throws. Added in v0.53.0.',
+  },
+
+  'money/compare': {
+    signature: '(a: Money, b: Money) => -1 | 0 | 1',
+    example: `compare(money('1.00', 'EUR'), money('2.00', 'EUR'))   // => -1`,
+    notes: '[EXPERIMENTAL] Order two amounts of one currency (usable as an `Array#sort` comparator). Different currencies throw. Added in v0.53.0.',
+  },
+
+  'money/equals': {
+    signature: '(a: Money, b: Money) => boolean',
+    example: `equals(money('1.5', 'EUR'), money('1.50', 'EUR'))   // => true
+equals(money('1', 'EUR'), money('1', 'USD'))        // => false`,
+    notes: '[EXPERIMENTAL] Whether two amounts are equal; different currencies are not equal (this does not throw). Added in v0.53.0.',
+  },
+
+  'money/min': {
+    signature: '(...amounts: [Money, ...Money[]]) => Money',
+    example: `min(money('3', 'EUR'), money('2', 'EUR'))   // => { amount: '2.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The smallest amount. Added in v0.53.0.',
+  },
+
+  'money/max': {
+    signature: '(...amounts: [Money, ...Money[]]) => Money',
+    example: `max(money('3', 'EUR'), money('2', 'EUR'))   // => { amount: '3.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] The largest amount. Added in v0.53.0.',
+  },
+
+  'money/isZero': {
+    signature: '(m: Money) => boolean',
+    example: `isZero(zero('EUR'))                       // => true`,
+    notes: '[EXPERIMENTAL] Whether the amount is zero. Added in v0.53.0.',
+  },
+
+  'money/isPositive': {
+    signature: '(m: Money) => boolean',
+    example: `isPositive(money('0.01', 'EUR'))          // => true`,
+    notes: '[EXPERIMENTAL] Whether the amount is above zero. Added in v0.53.0.',
+  },
+
+  'money/isNegative': {
+    signature: '(m: Money) => boolean',
+    example: `isNegative(money('-0.01', 'EUR'))         // => true`,
+    notes: '[EXPERIMENTAL] Whether the amount is below zero. Added in v0.53.0.',
+  },
+
+  'money/round': {
+    signature: '(m: Money, options?: { digits?: number; increment?: string | number; mode?: RoundingMode }) => Money',
+    example: `round(money('12.34', 'EUR'), { digits: 0 })                  // => { amount: '12.00', currency: 'EUR' }
+round(money('1.23', 'CHF'), { increment: '0.05' })           // => { amount: '1.25', currency: 'CHF' }
+round(money('2.50', 'EUR'), { digits: 0, mode: 'halfEven' }) // => { amount: '2.00', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] Round to fewer digits or to a multiple of an increment (cash rounding), by one of the nine modes named as \`Intl.NumberFormat\` names them: \`ceil\`, \`floor\`, \`expand\`, \`trunc\`, \`halfCeil\`, \`halfFloor\`, \`halfExpand\` (default, "round half up"), \`halfTrunc\`, \`halfEven\` (banker's rounding). \`digits\` and \`increment\` do not combine; an increment finer than the currency's minor unit throws. With no options it is the amount itself. Added in v0.53.0.`,
+    mistakes: '- `toFixed(2)` as rounding: it works on the binary float, so `(1.005).toFixed(2)` is "1.00". Use `money("1.005", "EUR", { rounding: "halfExpand" })`',
+  },
+
+  'money/convert': {
+    signature: '(m: Money, to: CurrencyCode, rate: number | string | bigint, options?: { rounding?: RoundingMode }) => Money',
+    example: `convert(money('100.00', 'EUR'), 'USD', '1.0842')   // => { amount: '108.42', currency: 'USD' }
+convert(money('100.00', 'EUR'), 'JPY', '162.5')     // => { amount: '16250', currency: 'JPY' }`,
+    notes: `[EXPERIMENTAL] Convert with a rate (\`1 unit of m.currency = rate units of to\`), rounded to the target's digits. Give the rate as a decimal string. Keep \`{ from, to, rate }\` next to the result: it is the audit trail. Added in v0.53.0.`,
+  },
+
+  'money/currencyDigits': {
+    signature: '(code: CurrencyCode) => number',
+    example: `currencyDigits('EUR')                     // => 2
+currencyDigits('JPY')                     // => 0
+currencyDigits('KWD')                     // => 3`,
+    notes: '[EXPERIMENTAL] The minor-unit digits of a currency from the platform (`Intl`; no table is shipped) or `defineCurrency`. Added in v0.53.0.',
+  },
+
+  'money/isCurrency': {
+    signature: '(code: string) => boolean',
+    example: `isCurrency('EUR')                         // => true
+isCurrency('eur')                         // => false`,
+    notes: '[EXPERIMENTAL] Whether `code` is an upper-case ISO 4217 code the platform knows, or a registered one. Never throws. Added in v0.53.0.',
+  },
+
+  'money/defineCurrency': {
+    signature: '(code: string, spec: { digits: number }) => void',
+    example: `defineCurrency('PTS', { digits: 0 })
+currencyDigits('PTS')                     // => 0`,
+    notes: '[EXPERIMENTAL] Register a currency the platform does not know (crypto, points, a test currency). The code is 2 to 12 upper-case letters or digits starting with a letter. Re-registering with the same digits is fine; different digits throw, as does changing an ISO currency. At most 64 are registered. Added in v0.53.0.',
+  },
+
+  'money/Money': {
+    signature: 'interface Money { readonly amount: string; readonly currency: CurrencyCode }',
+    example: `const price: Money = { amount: '9.99', currency: 'EUR' }`,
+    notes: `[EXPERIMENTAL] Exact money as plain data. The amount is canonical decimal text with exactly the currency's digits. A Money is structurally the \`{ amount, currency }\` shape payment APIs and \`@pyreon/format\` use. Added in v0.53.0.`,
+  },
+
+  'money/Decimal': {
+    signature: 'type Decimal = string',
+    example: `const d: Decimal = '9.90'`,
+    notes: '[EXPERIMENTAL] Canonical decimal text: optional `-`, digits, optional `.` and digits; no exponent, no `+`, no leading zeros, never `-0`. Added in v0.53.0.',
+  },
+
+  'money/CurrencyCode': {
+    signature: 'type CurrencyCode = string',
+    example: `const c: CurrencyCode = 'EUR'`,
+    notes: '[EXPERIMENTAL] An ISO 4217 code (`"EUR"`) or a code registered with `defineCurrency`. Added in v0.53.0.',
+  },
+
+  'money/RoundingMode': {
+    signature: `type RoundingMode = 'ceil' | 'floor' | 'expand' | 'trunc' | 'halfCeil' | 'halfFloor' | 'halfExpand' | 'halfTrunc' | 'halfEven'`,
+    example: `const mode: RoundingMode = 'halfEven'`,
+    notes: `[EXPERIMENTAL] The nine rounding modes, named as \`Intl.NumberFormat\`'s \`roundingMode\` names them. The default is \`halfExpand\`. Added in v0.53.0.`,
+  },
+
+  'money/decimal.isDecimal': {
+    signature: '(x: unknown) => x is Decimal',
+    example: `import { isDecimal } from '@pyreon/money/decimal'
+isDecimal('9.90')   // => true
+isDecimal('.5')     // => false
+isDecimal('1e3')    // => false`,
+    notes: '[EXPERIMENTAL] Whether `x` is a canonical decimal string: an optional `-`, digits with no leading zero, an optional `.` and digits; no `+`, no exponent, never `-0`. Never throws. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.normalize': {
+    signature: '(value: number | string | bigint) => Decimal',
+    example: `import { normalize } from '@pyreon/money/decimal'
+normalize('+.5')      // => '0.5'
+normalize('1.5e2')    // => '150'
+normalize('-0.00')    // => '0.00'`,
+    notes: '[EXPERIMENTAL] The canonical form of a decimal given as text (a leading `+`, `.5`, an exponent are accepted), a number (by its shortest text) or a bigint. The scale is kept: `"1.50"` stays `"1.50"`. At most 4096 digits. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.add': {
+    signature: '(a, b) => Decimal',
+    example: `import { add } from '@pyreon/money/decimal'
+add('0.1', '0.2')      // => '0.3'`,
+    notes: '[EXPERIMENTAL] Exact sum of two decimals of any size. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.subtract': {
+    signature: '(a, b) => Decimal',
+    example: `import { subtract } from '@pyreon/money/decimal'
+subtract('0.3', '0.1') // => '0.2'`,
+    notes: '[EXPERIMENTAL] Exact difference. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.multiply': {
+    signature: '(a, b) => Decimal',
+    example: `import { multiply } from '@pyreon/money/decimal'
+multiply('19.99', '3') // => '59.97'`,
+    notes: '[EXPERIMENTAL] Exact product; the scale is the sum of the scales. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.divide': {
+    signature: '(a, b, options?: { scale?: number; rounding?: RoundingMode }) => Decimal',
+    example: `import { divide } from '@pyreon/money/decimal'
+divide('1', '3', { scale: 4 })  // => '0.3333'`,
+    notes: '[EXPERIMENTAL] The quotient rounded to `scale` digits (default 20) by `rounding` (default `halfExpand`). A zero divisor throws. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.compare': {
+    signature: '(a, b) => -1 | 0 | 1',
+    example: `import { compare } from '@pyreon/money/decimal'
+compare('9.90', '9.9')   // => 0`,
+    notes: '[EXPERIMENTAL] Compare two decimals by value (`"9.90"` equals `"9.9"`). See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/decimal.round': {
+    signature: '(value, options?: { digits?: number; increment?: number | string; mode?: RoundingMode }) => Decimal',
+    example: `import { round } from '@pyreon/money/decimal'
+round('2.5')                          // => '3'
+round('2.5', { mode: 'halfEven' })     // => '2'
+round('1.23', { increment: '0.05' })   // => '1.25'`,
+    notes: '[EXPERIMENTAL] Round to `digits` fraction digits (default 0) or to a multiple of `increment`, by one of the nine `Intl` rounding modes (default `halfExpand`). The result has the target scale. See also: normalize. Added in v0.53.0.',
+  },
+
+  'money/fp.add': {
+    signature: '(b: Money) => (m: Money) => Money',
+    example: `import { add } from '@pyreon/money/fp'
+add({ amount: '1.00', currency: 'EUR' })({ amount: '2.50', currency: 'EUR' })   // => { amount: '3.50', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `add`. Added in v0.53.0.',
+  },
+
+  'money/fp.subtract': {
+    signature: '(b: Money) => (m: Money) => Money',
+    example: `import { subtract } from '@pyreon/money/fp'
+subtract({ amount: '1.00', currency: 'EUR' })({ amount: '2.50', currency: 'EUR' })   // => { amount: '1.50', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `subtract`. Added in v0.53.0.',
+  },
+
+  'money/fp.multiply': {
+    signature: '(factor, options?) => (m: Money) => Money',
+    example: `import { multiply } from '@pyreon/money/fp'
+multiply('1.21')({ amount: '10.00', currency: 'EUR' })   // => { amount: '12.10', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `multiply`: `multiply("1.21")` is a function you can name, map and compose. Added in v0.53.0.',
+  },
+
+  'money/fp.divide': {
+    signature: '(divisor, options?) => (m: Money) => Money',
+    example: `import { divide } from '@pyreon/money/fp'
+divide(3)({ amount: '10.00', currency: 'EUR' })   // => { amount: '3.33', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `divide`. Added in v0.53.0.',
+  },
+
+  'money/fp.percentage': {
+    signature: '(percent, options?) => (m: Money) => Money',
+    example: `import { percentage } from '@pyreon/money/fp'
+percentage(21)({ amount: '200.00', currency: 'EUR' })   // => { amount: '42.00', currency: 'EUR' }`,
+    notes: '[EXPERIMENTAL] Value-last `percentage`. Added in v0.53.0.',
+  },
+
+  'money/fp.round': {
+    signature: '(options?) => (m: Money) => Money',
+    example: `import { round } from '@pyreon/money/fp'
+round({ increment: '0.05' })({ amount: '1.23', currency: 'CHF' })   // => { amount: '1.25', currency: 'CHF' }`,
+    notes: '[EXPERIMENTAL] Value-last `round`, including cash rounding. Added in v0.53.0.',
+  },
+
+  'money/fp.convert': {
+    signature: '(to, rate, options?) => (m: Money) => Money',
+    example: `import { convert } from '@pyreon/money/fp'
+convert('USD', '1.0842')({ amount: '100.00', currency: 'EUR' })   // => { amount: '108.42', currency: 'USD' }`,
+    notes: '[EXPERIMENTAL] Value-last `convert`. Added in v0.53.0.',
+  },
+
+  'money/fp.allocate': {
+    signature: '(ratios) => (m: Money) => Money[]',
+    example: `import { allocate } from '@pyreon/money/fp'
+allocate([1, 1, 1])({ amount: '100.00', currency: 'EUR' }).map((p) => p.amount)   // => ['33.34', '33.33', '33.33']`,
+    notes: '[EXPERIMENTAL] Value-last `allocate`. Added in v0.53.0.',
+  },
+
+  'money/fp.split': {
+    signature: '(parts) => (m: Money) => Money[]',
+    example: `import { split } from '@pyreon/money/fp'
+split(2)({ amount: '0.01', currency: 'EUR' }).map((p) => p.amount)   // => ['0.01', '0.00']`,
+    notes: '[EXPERIMENTAL] Value-last `split`. Added in v0.53.0.',
+  },
+
+  'money/fp.equals': {
+    signature: '(other: Money) => (m: Money) => boolean',
+    example: `import { equals } from '@pyreon/money/fp'
+equals({ amount: '1.00', currency: 'EUR' })({ amount: '1.00', currency: 'EUR' })   // => true`,
+    notes: '[EXPERIMENTAL] A predicate: true for an amount equal to `other`. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/money>
+
   // <gen-docs:api-reference:start @pyreon/state-tree>
 
   'state-tree/model': {
@@ -3419,6 +4487,316 @@ afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the n
   // @pyreon/validate
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/upload>
+
+  'upload/createUploader': {
+    signature: '(options: UploaderOptions) => Uploader',
+    example: `typeof createUploader({ transport: { upload: async () => 'ok' } }).add   // => 'function'
+createUploader({ transport: { upload: async () => 'ok' } }).status()   // => 'idle'`,
+    notes: '[EXPERIMENTAL] A reactive upload queue. Files are validated, then sent by the transport with `concurrency` at a time (default 3, a whole number from 1). Failures that a retry can fix are retried up to `retry.attempts` tries in total (default 3) after a delay with jitter (a `Retry-After` is honoured); 4xx answers and unknown errors are never retried. Progress is written to signals once per animation frame and never decreases. Rejected files stay in the list with their reasons unless `keepRejected: false`. Created in a component or effect scope it is disposed with it; otherwise call `dispose()`. Creating one touches no browser API. See also: xhrTransport, validateFile, useFileDrop. Added in v0.53.0.',
+    mistakes: `- Reading a whole file with \`FileReader\` to upload it: it holds the file in memory and has no upload progress. Pass the \`File\` to a transport, which slices it
+- Never revoking preview object URLs: \`preview: true\` revokes them on remove, clear and dispose
+- Trusting \`file.type\` or the extension: it is what the user's machine said. Use \`rules.sniff\` for the UI and check the content on the server
+- Using \`fetch\` for a large upload and wishing for a progress bar: \`fetch\` has no upload progress. Use \`xhrTransport\``,
+  },
+
+  'upload/useUploader': {
+    signature: '(options: UploaderOptions) => Uploader',
+    example: `typeof useUploader({ transport: { upload: async () => 'ok' } }).files   // => 'function'`,
+    notes: '[EXPERIMENTAL] The same queue, for a component: disposed when the component unmounts. Added in v0.53.0.',
+  },
+
+  'upload/xhrTransport': {
+    signature: '(options: { url, method?, field?, headers?, withCredentials?, body?, timeout?, sendMeta?, client? }) => Transport',
+    example: `typeof xhrTransport({ url: '/upload' }).upload   // => 'function'`,
+    notes: '[EXPERIMENTAL] Upload each file as one request with XMLHttpRequest and report real upload progress. The file goes in a multipart field (default `file`) with the file meta as text fields, unless you build the body. A 2xx answer resolves with the parsed body (JSON when the server says so); 408, 425, 429 and 5xx are retryable (`Retry-After` honoured), other statuses are not; network failures and timeouts are retryable. With `client`, the request goes through an `@pyreon/http` client so its base URL, headers and middleware apply. Added in v0.53.0.',
+  },
+
+  'upload/xhrHttpTransport': {
+    signature: '() => (request) => Promise<response>',
+    example: `typeof xhrHttpTransport()   // => 'function'`,
+    notes: '[EXPERIMENTAL] The XHR transport as an `@pyreon/http` transport: it reports upload progress through `request.meta.onUploadProgress`. `xhrTransport({ client })` uses it; use it directly to send your own requests with progress. Added in v0.53.0.',
+  },
+
+  'upload/useFilePicker': {
+    signature: '(options?: { multiple?, accept?, directory?, capture?, onPick?, onCancel? }) => FilePicker',
+    example: `typeof useFilePicker({ accept: ['image/*'] }).open   // => 'function'
+useFilePicker({ multiple: true }).inputProps.multiple   // => true`,
+    notes: '[EXPERIMENTAL] State for a file picker: `open()`, the picked `files()` and `inputProps` for a hidden input. The input is emptied after each pick (after the files are copied out), so choosing the same file twice works; a cancelled dialog is reported. With no input rendered, `open()` makes a detached one. Nothing touches the DOM until `open()`. Added in v0.53.0.',
+  },
+
+  'upload/useFileDrop': {
+    signature: '(options?: { accept?, multiple?, disabled?, directories?, paste?, onDrop?, onReject? }) => FileDrop',
+    example: `useFileDrop().isOver()   // => false
+useFileDrop().isValid()   // => null`,
+    notes: '[EXPERIMENTAL] State and handlers for a drop zone: `isOver()` (enter and leave are counted, so children do not make it flicker), `isValid()` (the dragged types judged against `accept` while dragging) and `dropProps` to spread. Folders are read and flattened when the browser can; `paste: true` also takes pasted files. Accepted files go to `onDrop`, the others to `onReject`. Added in v0.53.0.',
+  },
+
+  'upload/validateFile': {
+    signature: '(file: File | Blob, rules: FileRule) => FileRejection[] | Promise<FileRejection[]>',
+    example: `validateFile(new File(['x'], 'a.png', { type: 'image/png' }), { maxSize: 10 })   // => []
+validateFile(new File(['x'], 'a.png', { type: 'image/png' }), { accept: ['.pdf'] })[0].code   // => 'type'`,
+    notes: '[EXPERIMENTAL] Check one file against `maxSize`, `minSize`, `accept`, and (asynchronously) `image` dimensions, `sniff` and `custom`. An empty array means accepted. Each rejection has a `code` (`too-large`, `too-small`, `type`, `dimensions`, `custom`), a plain English `message` and `params` for translation. The answer is synchronous unless a rule has to look inside the file. Added in v0.53.0.',
+  },
+
+  'upload/validateFileAsync': {
+    signature: '(file, rules) => Promise<FileRejection[]>',
+    example: `typeof validateFileAsync   // => 'function'`,
+    notes: '[EXPERIMENTAL] `validateFile` as a Promise, whichever way it answers. Added in v0.53.0.',
+  },
+
+  'upload/validateFiles': {
+    signature: '(files, rules, existing?) => Promise<FileRejection[][]>',
+    example: `typeof validateFiles   // => 'function'`,
+    notes: '[EXPERIMENTAL] Check a batch, one array of rejections per file, with `maxFiles` counted across the batch (and the `existing` files already accepted): files past the limit are `too-many`. Added in v0.53.0.',
+  },
+
+  'upload/sniffType': {
+    signature: '(file: Blob) => Promise<string | null>',
+    example: `sniffBytes(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))   // => 'image/png'
+sniffBytes(new Uint8Array([0x4d, 0x5a, 0, 0]))   // => 'application/x-msdownload'
+sniffBytes(new TextEncoder().encode('hello'))   // => null`,
+    notes: '[EXPERIMENTAL] The real type of a file by its first bytes, so `accept: image/*` is not fooled by a renamed .exe. Reads 264 bytes with `Blob.slice`. Known: PNG, JPEG, GIF, WebP, BMP, ICO, TIFF, AVIF, HEIC, PDF, ZIP (also DOCX, XLSX), GZIP, 7z, RAR, MP4, WebM, MP3, OGG, WAV, FLAC, Windows executables, ELF and SVG. `null` means "cannot tell", not "safe". Never the only check: the server must check the content. Added in v0.53.0.',
+    mistakes: '- Treating a sniffed type as proof of safety: a polyglot file can start with a PNG header and be something else',
+  },
+
+  'upload/sniffBytes': {
+    signature: '(head: Uint8Array) => string | null',
+    example: `sniffBytes(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))   // => 'image/jpeg'`,
+    notes: '[EXPERIMENTAL] `sniffType` on bytes you already have. Added in v0.53.0.',
+  },
+
+  'upload/matchesAccept': {
+    signature: '(file: { name?, type }, accept: readonly string[]) => boolean',
+    example: `matchesAccept({ name: 'a.PNG', type: 'image/png' }, ['image/*'])   // => true
+matchesAccept({ name: 'a.exe', type: '' }, ['.png', 'image/*'])   // => false`,
+    notes: '[EXPERIMENTAL] Does a file match one of the `accept` patterns: MIME types, wildcards and extensions, ignoring case, as the `accept` attribute does. An empty list accepts everything. Added in v0.53.0.',
+  },
+
+  'upload/parseSize': {
+    signature: '(value: number | string) => number',
+    example: `parseSize('10 MB')   // => 10000000
+parseSize('1.5 MiB')   // => 1572864
+parseSize(512)   // => 512`,
+    notes: '[EXPERIMENTAL] A size in bytes from a number or text: `"10 MB"` is 10,000,000 (KB, MB, GB, TB are decimal), `"10 MiB"` is 10,485,760 (KiB, MiB, GiB, TiB are binary). Anything else throws. Added in v0.53.0.',
+  },
+
+  'upload/formatSize': {
+    signature: '(bytes: number) => string',
+    example: `formatSize(1500)   // => '1.5 KB'
+formatSize(10000000)   // => '10 MB'`,
+    notes: '[EXPERIMENTAL] A size for a message, in decimal units: `1.5 MB`. Added in v0.53.0.',
+  },
+
+  'upload/chunkCount': {
+    signature: '(size: number, chunkSize: number) => number',
+    example: `chunkCount(10, 4)   // => 3
+chunkCount(0, 4)   // => 1`,
+    notes: '[EXPERIMENTAL] How many parts a file has (an empty file has one empty part). Added in v0.53.0.',
+  },
+
+  'upload/chunkRange': {
+    signature: '(size, chunkSize, index) => { index, start, end }',
+    example: 'chunkRange(10, 4, 2)   // => { index: 2, start: 8, end: 10 }',
+    notes: '[EXPERIMENTAL] The byte range of one part; slice the file with `Blob.slice(start, end)`. Added in v0.53.0.',
+  },
+
+  'upload/planChunks': {
+    signature: '(size, chunkSize) => Generator<Chunk>',
+    example: '[...planChunks(10, 4)].map((c) => [c.start, c.end])   // => [[0, 4], [4, 8], [8, 10]]',
+    notes: '[EXPERIMENTAL] The parts of a file, lazily: a 1 TB file in 5 MB parts is 200,000 parts and is never held as an array. The file is never read. Added in v0.53.0.',
+  },
+
+  'upload/suggestChunkSize': {
+    signature: '(size, options?: { minSize?, maxParts? }) => number',
+    example: 'suggestChunkSize(10)   // => 5242880',
+    notes: `[EXPERIMENTAL] A part size that keeps a file within \`maxParts\` parts (default 10,000, S3's limit) and not below \`minSize\` (default 5 MiB). Added in v0.53.0.`,
+  },
+
+  'upload/progressOf': {
+    signature: '(loaded, total, complete?) => Progress',
+    example: 'progressOf(50, 200)   // => { loaded: 50, total: 200, ratio: 0.25 }',
+    notes: '[EXPERIMENTAL] Bytes as a `Progress`, clamped; the ratio of an empty file is 0 until `complete`. Added in v0.53.0.',
+  },
+
+  'upload/sumProgress': {
+    signature: '(list: Progress[]) => Progress',
+    example: 'sumProgress([progressOf(50, 100), progressOf(0, 100)]).ratio   // => 0.25',
+    notes: '[EXPERIMENTAL] The progress of several files, by bytes: a big file weighs more. Added in v0.53.0.',
+  },
+
+  'upload/monotonic': {
+    signature: '(shown, reported) => number',
+    example: 'monotonic(70, 30)   // => 70',
+    notes: '[EXPERIMENTAL] The larger of what was shown and what is reported: progress never goes back. Added in v0.53.0.',
+  },
+
+  'upload/remainingMs': {
+    signature: '(loaded, total, speed) => number | null',
+    example: `remainingMs(1500, 3000, 750)   // => 2000
+remainingMs(0, 10, null)   // => null`,
+    notes: '[EXPERIMENTAL] Time left in ms from a speed in bytes per second; `null` while the speed is unknown. Added in v0.53.0.',
+  },
+
+  'upload/createSpeedMeter': {
+    signature: '(alpha?) => SpeedMeter',
+    example: 'createSpeedMeter().speed()   // => null',
+    notes: '[EXPERIMENTAL] A smoothed speed (exponential moving average): `record(loaded, now)`, `speed()` (null until two samples 250 ms apart), `reset()`. Added in v0.53.0.',
+  },
+
+  'upload/uploadError': {
+    signature: '(kind, message, extra?) => UploadError',
+    example: `uploadError('network', 'down').retryable   // => true
+uploadError('server', 'bad', { status: 422 }).retryable   // => false`,
+    notes: '[EXPERIMENTAL] Build an `UploadError`. A transport rejects with these so the queue knows whether to retry: `network` and `timeout` default to retryable, the others not. Added in v0.53.0.',
+  },
+
+  'upload/isUploadError': {
+    signature: '(x: unknown) => x is UploadError',
+    example: `isUploadError(uploadError('aborted', 'x'))   // => true
+isUploadError(new Error('x'))   // => false`,
+    notes: '[EXPERIMENTAL] Whether a value has the shape of an `UploadError`. Added in v0.53.0.',
+  },
+
+  'upload/isRetryableStatus': {
+    signature: '(status: number) => boolean',
+    example: `isRetryableStatus(503)   // => true
+isRetryableStatus(422)   // => false`,
+    notes: '[EXPERIMENTAL] Is this HTTP status worth another attempt? 408, 425, 429 and 5xx are; other 4xx (validation, auth, size) never are. Added in v0.53.0.',
+  },
+
+  'upload/parseRetryAfter': {
+    signature: '(value, now?) => number | undefined',
+    example: `parseRetryAfter('120')   // => 120000
+parseRetryAfter('soon')   // => undefined`,
+    notes: '[EXPERIMENTAL] `Retry-After` as milliseconds: whole seconds or an HTTP date; a date in the past is 0; anything else is `undefined`. Added in v0.53.0.',
+  },
+
+  'upload/errorFromStatus': {
+    signature: '(status, options?: { retryAfter?, body? }) => UploadError',
+    example: `errorFromStatus(429, { retryAfter: '3' }).retryAfter   // => 3000
+errorFromStatus(422).retryable   // => false`,
+    notes: '[EXPERIMENTAL] The error for a failed HTTP response: retryable by `isRetryableStatus`, with `retryAfter` and the parsed `body`. Added in v0.53.0.',
+  },
+
+  'upload/toUploadError': {
+    signature: '(error: unknown) => UploadError',
+    example: `toUploadError(new Error('bug')).retryable   // => false`,
+    notes: '[EXPERIMENTAL] Any thrown value as an `UploadError`: an `AbortError` is `aborted`; an object with an HTTP `status` is a server error; an unknown error is not retried (a bug is not weather). Added in v0.53.0.',
+  },
+
+  'upload/defaultBackoff': {
+    signature: '(attempt, random?) => number',
+    example: 'defaultBackoff(1, () => 1)   // => 500',
+    notes: '[EXPERIMENTAL] The delay before the next try: 500 ms doubling to a minute, with jitter between half and all of it. Added in v0.53.0.',
+  },
+
+  'upload/collectDropped': {
+    signature: '(data: DataTransfer, options?) => Promise<File[]>',
+    example: `typeof collectDropped   // => 'function'`,
+    notes: '[EXPERIMENTAL] The files of a drop, with folders read and flattened when the browser supports `webkitGetAsEntry`. Call it from the drop handler: the items are only valid during the event. Added in v0.53.0.',
+  },
+
+  'upload/collectPasted': {
+    signature: '(data: DataTransfer) => File[]',
+    example: 'collectPasted(null)   // => []',
+    notes: '[EXPERIMENTAL] The files on the clipboard (a pasted image); text is not touched. Added in v0.53.0.',
+  },
+
+  'upload/chunkedTransport': {
+    signature: '(options: { url, chunkSize?, parallel?, checksum?, headers?, withCredentials?, timeout? }) => Transport',
+    example: `typeof chunkedTransport({ url: '/api/uploads' }).upload   // => 'function'`,
+    notes: '[EXPERIMENTAL] A generic resumable upload in parts with a small server contract: `POST BASE` (JSON `{ name, size, type, chunkSize, meta }`, answers `{ uploadId }`), `GET BASE/:id` (`{ received: number[] }`), `PUT BASE/:id/parts/:n` (raw bytes, optional `x-part-sha256`), `POST BASE/:id/complete` (answers the result), `DELETE BASE/:id`. The file is sliced with `Blob.slice`, `parallel` parts at a time (default 3), each with real progress; after every part the state is saved so a retry, a pause or a reload continues from the parts the server has (its list of parts wins over the saved state). A reference handler for the contract is on the docs page. See also: createResumeStore, s3Transport, tusTransport. Added in v0.53.0.',
+  },
+
+  'upload/s3Transport': {
+    signature: '(options: { presign, multipart?, partSize?, parallel?, withCredentials? }) => Transport',
+    example: `typeof s3Transport({ presign: async () => ({ url: 'https://bucket.invalid/key' }) }).upload   // => 'function'`,
+    notes: '[EXPERIMENTAL] Upload straight to S3 (or R2, MinIO, anything with presigned URLs) with no SDK. A file up to `partSize` is one presigned `PUT`; a bigger one is multipart if you give `multipart: { create, signPart, complete, abort?, list? }`: your server creates the upload and signs each part, the browser sends the parts with progress and collects the ETags, your server completes it. The part size is at least 5 MiB and never needs more than 10,000 parts. Resumable: the upload id and the parts with their ETags are saved after each part, and `list` (your `ListParts`) confirms which exist. Cancelling calls `abort`. The bucket CORS rule must expose the `ETag` header. Added in v0.53.0.',
+    mistakes: '- Presigned URLs that are not scoped: one key, one method, a short expiry, a content-length range for single uploads',
+  },
+
+  'upload/tusTransport': {
+    signature: '(options: { endpoint, chunkSize?, metadata?, headers?, withCredentials?, timeout? }) => Transport',
+    example: `typeof tusTransport({ endpoint: '/files' }).upload   // => 'function'`,
+    notes: `[EXPERIMENTAL] The tus 1.0 resumable upload protocol with the creation and termination extensions: \`POST\` to create (with \`Upload-Length\` and \`Upload-Metadata\`), \`PATCH\` at the right \`Upload-Offset\`, \`HEAD\` to ask the offset on a resume, \`DELETE\` when the file is cancelled or removed. The upload URL is saved after creation, so a retry, a pause or a reload continues where the server is; a 404 or 410 for a saved URL, or a different length, starts a new upload. Retries are the queue's, not the transport's. Added in v0.53.0.`,
+  },
+
+  'upload/createResumeStore': {
+    signature: '(storage: { getItem, setItem, removeItem }, options?: { prefix?, maxAge?, now? }) => ResumeStore',
+    example: `createResumeStore({ getItem: () => null, setItem: () => {}, removeItem: () => {} }).load({ name: 'a', size: 1, type: '', file: new Blob(['a']) })   // => undefined`,
+    notes: '[EXPERIMENTAL] Persist resume state in `localStorage` (or an `@pyreon/storage` adapter) so an upload continues after a page reload: pass the store as `createUploader({ resume })`. The state is saved by file fingerprint, loaded when a file is added, and cleared when the upload finishes, fails for good, or is cancelled or removed. Entries expire after `maxAge` (default 7 days); a corrupt entry is removed; a storage that throws makes saving a no-op. Added in v0.53.0.',
+  },
+
+  'upload/fingerprint': {
+    signature: '(file) => string',
+    example: `fingerprint({ name: 'a.mp4', size: 10, type: 'video/mp4', file: new File([], 'a.mp4', { lastModified: 5 }) })   // => 'a.mp4|10|video/mp4|5'`,
+    notes: '[EXPERIMENTAL] What identifies a file across page loads: name, size, type and last-modified time. Added in v0.53.0.',
+  },
+
+  'upload/FileDrop': {
+    signature: '(props: FileIntakeProps) => VNode',
+    example: `typeof FileDrop   // => 'function'`,
+    notes: '[EXPERIMENTAL] A headless drop zone: a `role="button"` element (focusable, `aria-label`, `aria-busy`, `aria-disabled`, out of the tab order when disabled) that opens the file dialog on click, Enter and Space, takes dropped files (and pasted ones with `paste`), judges the drag (`data-drag-over`, `data-drop-valid`), and applies the `rules` and `accept` (case-insensitive) with reasons: accepted files go to `onFiles`, refused ones to `onReject` and to the `rejected` slot, and a visually hidden `<output>` live region announces what happened. Focus returns to the zone after every drop, pick or refusal. The children can be a function of the state (`isOver`, `isValid`, `rejections`, `open`, `liveRegionProps`). Unstyled: style it with `class` and the `data-` attributes. The server renders the static markup; hydration adds the behaviour. From `@pyreon/upload/components` (needs `@pyreon/core`). See also: FilePicker, useFileDrop. Added in v0.53.0.',
+    mistakes: `- A label that differs from the visible text (WCAG 2.5.3, flagged by axe): make \`label\` contain the visible words, or name the zone with \`labelledby\`
+- Placing the live region where it is removed and re-added: it must stay in the page for announcements to be read; use \`live={false}\` and \`state.liveRegionProps\` to place it yourself`,
+  },
+
+  'upload/FilePicker': {
+    signature: '(props: FileIntakeProps) => VNode',
+    example: `typeof FilePicker   // => 'function'`,
+    notes: '[EXPERIMENTAL] A headless picker button: a native `<button type="button">` (so Enter and Space work as on any button) that opens the file dialog, with the same rules, refusal reasons, live region and focus handling as `FileDrop`. The same file can be picked twice. `children` is the label, or a function of the state. From `@pyreon/upload/components`. Added in v0.53.0.',
+  },
+
+  'upload/bindFileField': {
+    signature: '(uploader, field, options?) => () => void',
+    example: `typeof bindFileField   // => 'function'`,
+    notes: `[EXPERIMENTAL] Make an uploader's files the value of an \`@pyreon/form\` field (\`form.fields.avatar\`): the value is the list of accepted \`File\`s; adding touches the field; the reason a file was rejected is the field's error; and resetting the form (the value goes back to empty) clears the queue. Structural: neither package imports the other. From \`@pyreon/upload/form\`. See also: fileValidator. Added in v0.53.0.`,
+  },
+
+  'upload/fileValidator': {
+    signature: '(options?: { required?: boolean | string, rules?: FileRule }) => ValidateFn',
+    example: `fileValidator({ required: 'Choose a file' })([])   // => 'Choose a file'
+fileValidator({ rules: { maxFiles: 1 } })([new File([], 'a'), new File([], 'b')])   // => 'At most 1 file is allowed.'`,
+    notes: '[EXPERIMENTAL] A validator for `useForm({ validators: { avatar: fileValidator({ required: "Choose a photo", rules }) } })`: the required-file rule, `maxFiles`, then each file against the rules; the first reason is the error. It answers a Promise only when a rule has to look inside the file. From `@pyreon/upload/form`. Added in v0.53.0.',
+  },
+
+  'upload/uploadMutation': {
+    signature: '(uploader) => { mutationFn }',
+    example: `typeof uploadMutation({ add: () => [] } as never).mutationFn   // => 'function'`,
+    notes: '[EXPERIMENTAL] An upload as an `@pyreon/query` mutation: `useMutation(uploadMutation(uploader))`. `mutationFn(files)` adds the files and resolves with their `UploadFile`s when all are done, or rejects with an error that carries the typed `uploadError` and the `file` of the first that failed or was rejected. Progress is not mutation state: read `uploader.progress()`. From `@pyreon/upload/query`. Added in v0.53.0.',
+  },
+
+  'upload/UploadFile': {
+    signature: 'interface UploadFile { id; file; name; size; type; meta; status(); progress(); speed(); remaining(); error(); result(); preview(); attempt(); rejections() }',
+    example: 'const f = null as unknown as UploadFile',
+    notes: '[EXPERIMENTAL] One item of a queue: plain data and functions that read signals. Added in v0.53.0.',
+  },
+
+  'upload/Uploader': {
+    signature: 'interface Uploader { files(); add(); remove(); clear(); start(); pause(); resume(); cancel(); retry(); progress(); status(); isUploading(); dispose() }',
+    example: 'const u = null as unknown as Uploader',
+    notes: '[EXPERIMENTAL] The queue returned by `createUploader`. Added in v0.53.0.',
+  },
+
+  'upload/Transport': {
+    signature: 'interface Transport { upload(file, ctx: { signal, onProgress, resumeState?, saveResumeState }): Promise<unknown> }',
+    example: `const t: Transport = { upload: async () => 'ok' }`,
+    notes: '[EXPERIMENTAL] Sends one file. Resolve with what the server returned; reject with an `UploadError`. Added in v0.53.0.',
+  },
+
+  'upload/FileRule': {
+    signature: 'interface FileRule { maxSize?; minSize?; accept?; maxFiles?; image?; sniff?; custom? }',
+    example: `const rule: FileRule = { maxSize: '10 MB', accept: ['image/*'] }`,
+    notes: '[EXPERIMENTAL] What a file is checked against. Added in v0.53.0.',
+  },
+
+  'upload/UploadError': {
+    signature: 'interface UploadError { kind: "rejected" | "network" | "server" | "aborted" | "timeout"; message; status?; retryable; retryAfter?; body?; cause? }',
+    example: `const e: UploadError = { kind: 'network', message: 'down', retryable: true }`,
+    notes: '[EXPERIMENTAL] Why an upload did not work, and whether a retry can help. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/upload>
   // <gen-docs:api-reference:start @pyreon/validate>
 
   'validate/withField': {
@@ -4447,7 +5825,9 @@ const persister = createSyncStoragePersister({ storage: localStorage })
     notes: `Drop-in replacement for \`<QueryClientProvider>\` that ALSO restores the query cache from a persister on mount and keeps it persisted on every change — the offline / reload-survival story. Provides both the \`QueryClient\` AND the reactive \`isRestoring\` flag, so descendant \`useQuery\` calls DEFER their first fetch until restoration completes (no redundant network request for data the cache is about to restore). Import from \`@pyreon/query/persist\`. Built on TanStack's framework-agnostic \`persistQueryClient\` engine; pair with \`createSyncStoragePersister({ storage: localStorage })\`. See also: useIsRestoring, QueryClientProvider, HydrationBoundary.`,
     mistakes: `- Using BOTH \`<QueryClientProvider>\` and \`<PersistQueryClientProvider>\` — the persist provider already provides the client; nest only one
 - Expecting synchronous restore — restoration is async (even sync localStorage resolves on a microtask). Gate UI on \`useIsRestoring()\` during the window
-- A heavy \`staleTime: 0\` default — restored queries immediately refetch on subscribe; set a \`staleTime\` so the restored cache is treated as fresh`,
+- A heavy \`staleTime: 0\` default — restored queries immediately refetch on subscribe; set a \`staleTime\` so the restored cache is treated as fresh
+- Expecting an offline mutation to be sent after a reload without registering its function — a PAUSED mutation is persisted (variables + \`mutationKey\`) but a function cannot be serialised: give it a \`mutationKey\` and register \`client.setMutationDefaults(key, { mutationFn })\` at module load. The provider then resumes persisted paused mutations once restoration settles. A mutation that was never paused (made online) is not persisted, and one that already resumed is gone if the page dies mid-request (at-most-once, no retry queue, no ordering guarantee beyond TanStack's creation order)
+- Treating \`navigator.onLine\` as proof of reachability — \`onlineManager\` follows the browser online/offline events, which only report "a network interface is up"; a captive portal or a dead backend still looks online, so the mutation is sent and fails normally (default \`retry: 0\` for mutations)`,
   },
 
   'query/useIsRestoring': {
@@ -6620,6 +8000,85 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
 - Looking for a \`series\` array — layering IS the children; a combo chart is a \`<Bar>\` beside a \`<Line>\`, a second axis is \`<Line axis="right">\` + \`<Axis y2>\``,
   },
 
+  'charts/Axis': {
+    signature: '(props: AxisProps) => VNode | null',
+    example: `import { Axis, Bar, Chart } from '@pyreon/charts'
+
+interface Team { name: string; rank: number }
+const teams: Team[] = [{ name: 'Ada', rank: 3 }, { name: 'Bao', rank: 1 }]
+
+// Rank 1 at the top: the value axis runs downward.
+<Chart<Team> data={teams} x="name">
+  <Bar<Team> y="rank" />
+  <Axis y inverse />
+</Chart>`,
+    notes: `Configures one axis of a \`<Chart>\`: \`<Axis y format={currency('$')} domain title ticks hidden scale time inverse />\`, \`<Axis y2 …>\` for the right axis, \`<Axis x time format title labels ticks hidden />\`. One \`format\` feeds the axis, the tooltip and the accessible description. \`inverse\` (y and y2, independently) REVERSES the value axis: the high end at the bottom (the left, on a horizontal chart), bars and areas hanging from the top with their rounded ends and the ticks following, composing with log and time axes, dual axes, zoom, the crosshair and the tooltip. Only the value-to-pixel mapping flips: the data, the tooltip rows and the accessible table keep their order, and under \`rtl\` the two commute (RTL mirrors x, \`inverse\` flips y). \`<Axis x inverse>\` reverses the DIRECTION of the x axis (first category at the right) without moving the y axis; hits, brush ranges, callbacks and the keyboard walk stay in DATA order, and under \`rtl\` the two cancel (the plot reads left to right again). \`scale\` picks the axis scale: \`'log'\` (a string, value axis) or an imported DESCRIPTOR — \`sqrt()\`, \`symlog({ constant })\`, \`log()\` — on either axis (a numeric \`xValue\` x axis takes a descriptor); descriptors are imported bindings, so a chart without one bundles none of the scale code. A value the scale cannot place (log: <= 0, sqrt: < 0) is a gap, and ticks are nice in the real values. \`grid\` / \`minor\` set the grid per axis: \`<Axis y grid={false}>\` hides the value-axis lines, \`<Axis x grid>\` adds vertical lines at the x ticks, \`<Axis y minor={4}>\` draws three thin lines between each pair of major ticks (linear axes). \`yInverse\` / \`y2Inverse\` / \`xInverse\`, the grid fields and the scale descriptors (recognised at compile time with their literal options) lower to iOS and Android. See also: Chart, Bar.`,
+    mistakes: `- Reversing the data to get a top-down ranking — that changes the table and the tooltip order too; \`<Axis y inverse>\` flips only where a value is drawn, so the table keeps reading in data order
+- Expecting bars on a reversed axis to rise from the bottom — their baseline is the axis floor, which is now the TOP, so they hang down from it (the rank-chart look); a value below zero hangs the other way
+- Expecting \`<Axis x inverse>\` to also move the y axis to the other side (ECharts does) — it reverses the direction only; the y axis stays where it is
+- Reversing the rows to get a right-to-left x — that changes the table, the tooltip order, callbacks and the keyboard walk; \`<Axis x inverse>\` reverses only the picture, every index stays in data order
+- Passing a computed \`inverse\` in a native app — only a literal \`inverse\` lowers (\`yInverse\` / \`y2Inverse\` are compile-time spec fields); a computed one warns and the axis stays as it was
+- Expecting a log or sqrt axis to plot zero or negative values — log places only values above zero and sqrt only values from zero up; the rest are gaps (use \`symlog()\` to keep every value, with a linear region around zero), and a time axis ignores the scale
+- Writing \`<Scale x="log">\` for a numeric x axis — the x axis takes a descriptor (\`<Scale x={log()} />\`, \`import { log } from '@pyreon/charts'\`); the string form \`yScale="log"\` is for the value axis only
+- Expecting \`showGrid={false}\` to hide only one axis's lines, or \`<Axis x grid>\` to draw them under a log or time x axis — \`showGrid\` is the master switch; per-axis control is \`<Axis y grid={false}>\` and \`<Axis x grid>\`, and \`minor\` only subdivides linear axes (a log or time axis ticks its own way)
+- Reversing y on a dual-axis chart and expecting both to flip — each axis reverses on its own: \`<Axis y inverse>\` the left, \`<Axis y2 inverse>\` the right`,
+  },
+
+  'charts/Bar': {
+    signature: '<T>(props: BarProps<T>) => VNode | null',
+    example: `import { Bar, Chart, Tooltip, shadeBy } from '@pyreon/charts'
+
+interface Region { name: string; revenue: number; margin: number }
+const regions: Region[] = [{ name: 'North', revenue: 420, margin: 12 }, { name: 'South', revenue: 310, margin: 4 }]
+
+<Chart<Region> data={regions} x="name" barWidth={28}>
+  <Bar<Region> y="revenue" label="Revenue" fill={shadeBy<Region>('margin')} />
+  <Tooltip />
+</Chart>`,
+    notes: `The bar mark: \`<Bar y>\` draws vertical bars from the zero line (\`horizontal\` on the chart turns them on their side), \`stack\` stacks, \`group\` places side by side, \`waterfall\` floats steps from running total to running total. With \`xValue\` (a numeric or time x axis) bars sit at their own x: the slot is the smallest gap between two x values or \`barSpan\` (x units), bars are centred and the axis padded by half a slot, so a missing day is an empty stretch. Bar THICKNESS is set on the chart, not the mark: \`<Chart barWidth barGap barCategoryGap>\` (\`barWidth\` a px ceiling, \`barGap\` the space between a group's bars as a fraction of one bar, \`barCategoryGap\` the space between categories as a fraction of the band, 0.25 by default). \`fill={fillBy(…)}\` / \`fill={shadeBy(…)}\` colour each datum on its own; \`color\` stays the series colour and \`<Chart color="field">\` the long-format split. \`errorLow\` / \`errorHigh\` draw whiskers, \`showValues\` labels each bar, \`borderRadius\`, \`gradient\` and \`pattern\` style it. See also: Chart, Line.`,
+    mistakes: `- Setting \`barWidth\` on the \`<Bar>\` mark — thickness is a property of the CATEGORY BAND the chart lays out, so it is a \`<Chart>\` prop (and a \`<PlotChart>\` prop) and applies to every bar mark in the chart
+- Expecting \`barWidth\` to stretch bars — it is a ceiling in px: a bar is never wider than the slot its band leaves, so a width larger than the slot changes nothing; use \`barCategoryGap\` to give bars more of the band
+- Using \`barGap\` on plain or stacked bars — it spaces the bars WITHIN a group, so it only has an effect on \`<Bar group>\`; the space between categories is \`barCategoryGap\`
+- Writing \`color="region"\` to colour each bar by a field — that is the long-format SPLIT (one series per distinct value); per-datum colour is \`fill={fillBy("colour")}\` (a colour on the row) or \`fill={shadeBy("margin")}\` (a value through a ramp)
+- Setting \`barSpan\` on a category axis — it is the slot width in X-DOMAIN units for a numeric or time axis (\`xValue\`; a day is \`86_400_000\`), and is ignored when x is a category; the slot also never needs to be wider than the smallest gap, or neighbouring bars overlap by your own choice
+- Expecting a missing day to be filled on a time axis — the bar sits at its own x, so a day with no row is an empty stretch; zoom and brush windows are fractions of the DATA INDEX, not of the x range, so on an irregular series the window edge is not where the pointer is
+- Passing a colour string to \`fill\` — it takes the descriptor \`fillBy\` / \`shadeBy\` returns, not a colour; one colour for the whole series is \`color="#hex"\`
+- Passing an accessor function to \`fillBy\` / \`shadeBy\` in a native app — only a LITERAL field name and literal options lower to iOS and Android (the engine colours from data); a function is a closure over a row, so the compiler warns by name and the bars draw in the series colour
+- Treating a \`shadeBy\` colour as the only carrier of the value — a ramp legend sits above the plot, the number behind each colour is a \`Revenue (shade)\` row in the tooltip and a column in the accessible table (web; natively the colours lower and the legend and those rows are named as web-only)`,
+  },
+
+  'charts/shadeBy': {
+    signature: '<T>(channel: ItemChannel<T, number | undefined>, options?: { ramp?: readonly string[]; domain?: Domain }) => ItemFill<T>  // also fillBy(channel)',
+    example: `import { Bar, Chart, fillBy, shadeBy } from '@pyreon/charts'
+
+interface Region { name: string; revenue: number; margin: number; status: string }
+const regions: Region[] = [{ name: 'North', revenue: 420, margin: 12, status: '#16a34a' }]
+
+<Chart<Region> data={regions} x="name">
+  <Bar<Region> y="revenue" fill={shadeBy<Region>('margin', { ramp: ['#fde68a', '#b45309'] })} />
+  <Bar<Region> y="revenue" fill={fillBy<Region>('status')} />
+</Chart>`,
+    notes: `Per-datum colour for \`<Bar>\` and \`<Dot>\`, as an imported binding for the \`fill\` prop. \`shadeBy(channel, { ramp, domain })\` maps each datum's VALUE through a colour ramp (\`#rrggbb\` stops, low to high; default the heatmap's cool-to-warm; domain defaults to the finite extent of the values, pin it to compare charts). \`fillBy(channel)\` instead reads a CSS colour off the row (a field holding \`'#16a34a'\`, or an accessor). A datum with no colour or no finite value keeps the series colour. The values behind a shade are data: a ramp legend sits above the plot (also in server SVG, mirrored under \`rtl\`), and a \`<label> (shade)\` row reaches the tooltip and the accessible table. The default ramp follows the theme (light and dark). Both bindings are imported, so a chart that never colours a datum does not bundle them. A literal field name and literal options lower to iOS and Android; an accessor function stays web-only and the compiler names it. See also: Bar, Cell.`,
+    mistakes: `- Passing the result as \`color\` — \`color\` is the series colour (a string); the per-datum descriptor goes on \`fill\`
+- Giving \`shadeBy\` a ramp of named colours or \`rgb()\` strings — the ramp is \`#rrggbb\` stops, the hex restriction being what lets the ramp math be the engine's own
+- Expecting a native shade with no \`ramp\` to follow the dark theme — the web default is the theme ramp, but natively it resolves at compile time to the light ramp (and says so); pass a \`ramp\``,
+  },
+
+  'charts/Line': {
+    signature: '<T>(props: MarkProps<T>) => VNode | null',
+    example: `import { Chart, Line } from '@pyreon/charts'
+
+interface Reading { day: string; temp: number }
+const readings: Reading[] = [{ day: 'Mon', temp: 18 }, { day: 'Tue', temp: Number.NaN }, { day: 'Wed', temp: 21 }]
+
+<Chart<Reading> data={readings} x="day">
+  <Line<Reading> y="temp" connectNulls />
+</Chart>`,
+    notes: 'The line mark: `<Line y>` draws a polyline through the values; `curve={smooth|step}` shapes it (an imported binding), `dash={[4, 2]}` dashes it, `symbol` draws a mark at every datum. A missing value (NaN, null, an infinity) BREAKS the line into runs, because an absent measurement is not a zero; `connectNulls` draws one continuous stroke through the finite points instead, straight across each gap. The gap stays missing data either way: no tooltip row, an empty cell in the accessible table. `<Area connectNulls>` does the same for the fill. `connectNulls` lowers to iOS and Android as a literal. See also: Chart, Bar.',
+    mistakes: `- Turning on \`connectNulls\` to hide missing data — the line then claims a trend across the gap that no measurement supports; leave it off unless the gap is a sampling artefact, and the tooltip and table still show the datum as missing
+- Expecting a single isolated point to draw a stroke — a run of one point has no length, so it draws nothing by default; \`connectNulls\` joins it to its neighbours, or add \`symbol\` to see every datum`,
+  },
+
   'charts/Sma': {
     signature: '<T>(props: AverageProps<T>) => VNode | null  // also Ema; Trend (no window); Bollinger (window, k?)',
     example: `import { Bollinger, Chart, Line, Sma } from '@pyreon/charts'
@@ -6861,9 +8320,10 @@ registerMap('eu', euGeoJson)
 // geoShapes() reads GeoJSON, so project on the web or in a build step, not here.
 const euShapes: GeoShape[] = geoShapes(euGeoJson)
 <MapChart map={euShapes} values={{ DE: 83, FR: 68, PL: 38 }} height={360} onSelectIndex={(i) => console.log(i)} />`,
-    notes: `GeoJSON regions filled by value. \`map\` takes three shapes: a name registered once with \`registerMap(name, geojson)\` (ECharts' shape), a FeatureCollection directly, or already-projected \`GeoShape[]\` (what \`geoShapes(json)\` returns) — the third is the one that LOWERS TO NATIVE (a \`Polygon | MultiPolygon\` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and \`geoShapes\` itself reads GeoJSON so shared source passes a PRECOMPUTED const). \`layoutGeoShapes\` fits the rings into the box with aspect preserved and north up; \`renderGeo\` colours through the SAME ramp the heatmap uses so a \`visualMap\` strip cannot disagree with the map; \`hitGeoIndex\` is ring-accurate. \`renderGeoPoints\` / \`renderGeoPaths\` draw scatter, effectScatter halos and flight paths on top through \`layout.project\`. The other coordinate families follow the same pattern: \`<CalendarChart>\` (contribution grid, strict ISO dates), \`<ParallelChart>\`, \`<PolarChart>\` (radial or concentric bars, polar lines), \`<RiverChart>\` (silhouette streamgraph) and \`layoutSingleAxis\`. See also: TreemapChart, Cell.`,
+    notes: `GeoJSON regions filled by value, with the inner rings (lakes, enclaves) cut out of the fill and out of the hit test. \`map\` takes three shapes: a name registered once with \`registerMap(name, geojson)\` (ECharts' shape), a FeatureCollection directly, or already-projected \`GeoShape[]\` (what \`geoShapes(json)\` returns) — the third is the one that LOWERS TO NATIVE (a \`Polygon | MultiPolygon\` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and \`geoShapes\` itself reads GeoJSON so shared source passes a PRECOMPUTED const). \`layoutGeoShapes\` fits the rings into the box with aspect preserved and north up; \`renderGeo\` colours through the SAME ramp the heatmap uses so a \`visualMap\` strip cannot disagree with the map; \`hitGeoIndex\` is ring-accurate. \`points\`, \`paths\`, \`heat\` and \`pies\` draw scatter, effectScatter halos, flight paths, heat blobs and pies on top, and \`geoToSvg\` (from \`@pyreon/charts/svg\`) draws the same layers server-side. The other coordinate families follow the same pattern: \`<CalendarChart>\` (contribution grid, strict ISO dates), \`<ParallelChart>\`, \`<PolarChart>\` (radial or concentric bars, polar lines), \`<RiverChart>\` (silhouette streamgraph) and \`layoutSingleAxis\`. \`map\` also takes TopoJSON (decoded with no dependency by \`topoToGeo\`) and a \`MapDefinition\` \`{ data, object, projection, nameProperty, idProperty }\`, which \`registerMap(name, source, { projection, nameProperty, idProperty, object })\` registers with its defaults; an explicit \`options\` value still wins over the map's own default. \`options.projection\` is \`equirectangular\`, \`mercator\`, \`equalEarth\`, \`naturalEarth1\`, \`albers\` or \`albersUsa\` (the lower 48 with Alaska and Hawaii in insets), with \`centerLon\`, \`centerLat\`, \`parallel1\` and \`parallel2\` for the central meridian and the Albers parallels; \`geoProject\` / \`geoUnproject\` map lon/lat to pixels and back (a pointer to lon/lat), all of it lowering to iOS and Android. \`options.sphere\` and \`options.graticule\` draw the whole-sphere outline and a graticule behind the land (and lower to native); \`flows\` draw great-circle arcs (\`flowOptions.progress\` is arc length on the sphere, a seam crossing is two runs), \`sizeLegend\` a key for sized \`points\`, \`fitTo\` / \`zoomOnClick\` zoom to regions, Point / MultiPoint / LineString features in the GeoJSON or TopoJSON become marks and paths, and rings that cross the seam half a turn from the central meridian are cut there. Boundary data is the separate \`@pyreon/charts-maps\` package. Interaction: hover outlines the region under the pointer (\`emphasis\`, default on), \`selectedMode\` \`'single'\` or \`'multiple'\` keeps a selection (click, or Enter / Space on the keyboard-focused region; \`onSelectionChange\` reports the table row indices), and the canvas description and the accessible table name the selected regions. \`options.idProperty\` (\`'id'\` or any feature property) joins \`values\` to something other than the display name, and \`tooltipFormatter\` / \`onSelect\` receive the region's join key, label, value and the feature's own GeoJSON properties. \`selectedMode\`, \`emphasis\`, \`onSelectionChange\` and \`tooltipFormatter\` are web-only: iOS and Android warn by name. See also: TreemapChart, Cell.`,
     mistakes: `- Keying \`values\` by a property the features do not carry — the region name comes from \`properties.name\` by default; pass \`options.nameProperty\` for ISO codes or ids
-- Expecting hole rings (lakes) to be cut out — only outer rings are drawn; a hole renders as part of its region
+- Expecting \`values\` keyed by an id to match — values match the region's JOIN key, which is its display name unless \`options.idProperty\` names another (\`'id'\` for the feature id, or any property); a \`FeatureCollection\` whose ids are numbers joins on their string form
+- Passing \`selectedMode\` or \`tooltipFormatter\` in a native app — they are web-only (the compiler warns by name); a native map selects through \`onSelectIndex\`
 - Passing coordinates in Mercator metres — \`projectLonLat\` takes DEGREES (lon, lat) and projects itself; pre-projected data double-projects
 - Using a hand-picked colour per region instead of \`values\` — the fill is a value → colour mapping through the ramp so the accessible table and any visualMap strip stay truthful
 - Reaching for \`registerMap\` in SHARED multiplatform source — the registry is a module map no native target has, and neither raw GeoJSON nor \`geoShapes()\` crosses; pass a PRECOMPUTED \`GeoShape[]\` const (projected on the web or in a build step) and the warnings go away`,
@@ -6942,6 +8402,36 @@ const sound = sonifyValues(closes, { duration: 3000, minHz: 220, maxHz: 880, lin
 - Closing an \`options.context\` you passed in and expecting the hook to have done it — a supplied context is the caller's to close; only the one the hook constructs is closed on settle`,
   },
   // <gen-docs:api-reference:end @pyreon/charts>
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/charts-maps
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/charts-maps>
+
+  'charts-maps/world-110m': {
+    signature: `import world from '@pyreon/charts-maps/world-110m'  // MapModule`,
+    example: `import { MapChart } from '@pyreon/charts'
+import world from '@pyreon/charts-maps/world-110m'
+
+<MapChart map={world} values={{ DEU: 83, FRA: 68 }} />`,
+    notes: 'The countries of the world as a `MapModule` for `<MapChart map>`: Natural Earth 1:110m TopoJSON (object `countries`), joined on the ISO 3166-1 alpha-3 feature id, named by `properties.name`, prepared for the Equal Earth projection. About 33 KB gzip. See also: us-states.',
+    mistakes: `- Joining values on the country NAME — the key is the ISO alpha-3 id (\`DEU\`), not \`Germany\`; the display name is only the label
+- Importing from the package root for the data — the root is types and a list; each map is its own subpath (\`@pyreon/charts-maps/world-110m\`) so it bundles only when imported
+- Expecting a disputed border to match your convention — Natural Earth draws de facto lines; this package takes no position on them`,
+  },
+
+  'charts-maps/us-states': {
+    signature: `import usStates from '@pyreon/charts-maps/us-states'  // MapModule`,
+    example: `import { MapChart } from '@pyreon/charts'
+import usStates from '@pyreon/charts-maps/us-states'
+
+<MapChart map={usStates} values={{ '06': 39, '48': 30 }} />`,
+    notes: 'The 50 US states and DC as a `MapModule`: Census cartographic boundary 1:20m TopoJSON (object `states`), joined on the two-digit state FIPS feature id (`"06"`), named by `properties.name`, prepared for Albers USA (Alaska and Hawaii in insets). About 34 KB gzip. See also: world-110m.',
+    mistakes: `- Writing FIPS codes as numbers — the id is a TWO-CHARACTER STRING (\`"06"\`, not \`6\`), so a numeric key never matches
+- Expecting counties — this is states only; the larger county file was measured (about 229 KB gzip) and left out`,
+  },
+  // <gen-docs:api-reference:end @pyreon/charts-maps>
   // ═══════════════════════════════════════════════════════════════════════════
 
   // <gen-docs:api-reference:start @pyreon/code>
@@ -7105,6 +8595,581 @@ const extensions = [darkTheme /* , ...other CM extensions */]`,
 - Passing a theme NAME other than 'light'/'dark' to \`resolveTheme\` — only those two strings map to a preset; any other value must be a real CodeMirror \`Extension\` (it is returned as-is).`,
   },
   // <gen-docs:api-reference:end @pyreon/code>
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/format
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/format>
+
+  'format/formatNumber': {
+    signature: '(value: NumberInput, options?: NumberOptions | NumberPreset) => string',
+    example: `formatNumber(1234567.891, { locale: 'en-US' }) // → "1,234,567.891"
+formatNumber(1234567.891, { locale: 'de' }) // → "1.234.567,891"
+formatNumber(0.5, { locale: 'en-US', style: 'percent' }) // → "50%"
+formatNumber(1234.5678, { locale: 'en-US', maximumFractionDigits: 1 }) // → "1,234.6"
+formatNumber(-0, { locale: 'en-US' }) // → "0"
+formatNumber(-0.001, { locale: 'en-US', maximumFractionDigits: 2, signDisplay: 'auto' }) // → "-0"
+formatNumber(null, { fallback: '-' }) // → "-"`,
+    notes: `Format a number with \`Intl.NumberFormat\`. Options are the platform's \`Intl.NumberFormat\` options plus \`locale\` and \`fallback\`; a string is a preset (\`integer\`, \`plain\`, \`compact\`, \`percent\`). Nullish or \`NaN\` input returns the \`fallback\` (default \`''\`). The formatter is cached per (locale, options), so calling it in a list or a binding costs one \`format()\`. Differs from raw \`Intl\` in one default: \`signDisplay\` is \`'negative'\`, so \`-0\` and values that round to zero print \`0\`, never \`-0\` (every number-style formatter does this; pass \`signDisplay: 'auto'\` for the platform default). See also: formatCurrency, formatPercent, formatCompact, defineFormats.`,
+    mistakes: `- Building the formatter yourself per call (\`new Intl.NumberFormat(...)\` in a render function, or \`value.toLocaleString(...)\` in a component): that is the cost this package caches, and \`toLocaleString\` captures the locale once instead of following the active one
+- Mutating an options object after passing it: option objects are cached by identity, so treat a hoisted options object as immutable
+- Expecting a preset string to carry a locale: a string has no \`locale\`; use the active locale or \`createFormatter\``,
+  },
+
+  'format/formatCurrency': {
+    signature: '(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string',
+    example: `formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // → "€9.99"
+formatCurrency(1234.5, 'EUR', { locale: 'de' }) // → "1.234,50 €"
+formatCurrency(1234.5, 'CZK', { locale: 'cs' }) // → "1 234,50 Kč"
+formatCurrency(-5, 'USD', { locale: 'en-US', currencySign: 'accounting' }) // → "($5.00)"
+formatCurrency(5, 'USD', { locale: 'en-US', currencyDisplay: 'name' }) // → "5.00 US dollars"`,
+    notes: 'Format money. `currency` is an ISO 4217 code; a malformed code returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`. See also: formatNumber, defineFormats.',
+    mistakes: `- Formatting an amount in minor units (cents) without dividing: \`formatCurrency(999, 'EUR')\` is 999 euros
+- Passing the symbol (\`'€'\`) instead of the code (\`'EUR'\`)`,
+  },
+
+  'format/formatPercent': {
+    signature: '(value: NumberInput, options?: PercentOptions) => string',
+    example: `formatPercent(0.42, { locale: 'en-US' }) // → "42%"
+formatPercent(0.4234, { locale: 'en-US', maximumFractionDigits: 1 }) // → "42.3%"
+formatPercent(0.42, { locale: 'de' }) // → "42 %"`,
+    notes: 'Format a ratio as a percentage: `0.42` is `42%`. Multiply nothing yourself. See also: formatNumber.',
+    mistakes: '- Passing 42 for 42%: the value is a ratio (0.42)',
+  },
+
+  'format/formatCompact': {
+    signature: '(value: NumberInput, options?: CompactOptions | CompactPreset) => string',
+    example: `formatCompact(1240000, { locale: 'en-US' }) // → "1.2M"
+formatCompact(1240000, { locale: 'en-US', compactDisplay: 'long' }) // → "1.2 million"
+formatCompact(999, { locale: 'en-US' }) // → "999"
+formatCompact(1240000, { locale: 'de' }) // → "1,2 Mio."`,
+    notes: 'Compact notation: `1_240_000` is `1.2M`. Presets `short` (default) and `long`. See also: formatNumber.',
+  },
+
+  'format/formatUnit': {
+    signature: '(value: NumberInput, unit: Unit, options?: UnitOptions | UnitPreset) => string',
+    example: `formatUnit(72, 'kilometer-per-hour', { locale: 'en-US' }) // → "72 km/h"
+formatUnit(1.5, 'liter', { locale: 'en-US', unitDisplay: 'long' }) // → "1.5 liters"
+formatUnit(21, 'celsius', { locale: 'de' }) // → "21 °C"`,
+    notes: `Format a measurement with a sanctioned \`Intl\` unit (\`Unit\` is a union of them, plus \`<unit>-per-<unit>\` compounds). \`unitDisplay\` is \`short\` by default. An unknown unit is a programmer error and throws a \`[Pyreon]\` error. \`@pyreon/format/units\` (and \`/units/core\`) export a \`formatUnit\` with a conversion in front: \`{ convertTo: 'kilometer' }\` converts, \`{ system: 'auto' | 'metric' | 'us' | 'uk' }\` shows the unit of the locale's system (\`'auto'\` follows the active locale), \`convertTo\` wins; the main entries never include the conversion table. See also: formatBytes, Unit, convert.`,
+    mistakes: `- A unit that is not in \`Intl.supportedValuesOf('unit')\` (\`kilometre\`, \`km\`): it is a type error and throws at runtime`,
+  },
+
+  'format/formatBytes': {
+    signature: '(bytes: NumberInput, options?: BytesOptions) => string',
+    example: `formatBytes(1536, { locale: 'en-US' }) // → "1.5 kB"
+formatBytes(0, { locale: 'en-US' }) // → "0 B"
+formatBytes(999, { locale: 'en-US' }) // → "999 B"
+formatBytes(1536, { locale: 'en-US', binary: true }) // → "1.5 KiB"
+formatBytes(1023, { locale: 'en-US', binary: true }) // → "1,023 B"
+formatBytes(999, { locale: 'en-US', unitDisplay: 'long' }) // → "999 bytes"
+formatBytes(999999, { locale: 'en-US' }) // → "1 MB"
+formatBytes(5_000_000_000, { locale: 'de' }) // → "5 GB"
+formatBytes(1e21, { locale: 'en-US' }) // → "1 ZB"`,
+    notes: `Format a byte count, choosing the unit. Decimal by default (1000 steps, SI units: \`1536\` is \`1.5 kB\`); \`binary: true\` uses 1024 steps and IEC symbols (\`1.5 KiB\`). Below a kilobyte the byte count is written with the symbol in the locale's own kilobyte pattern (\`0 B\`, \`999 B\`, \`1,023 B\`; number order, spacing and bidi marks come from Intl; locales that write short units as words, such as Arabic, keep Intl's word). \`unitDisplay: 'long'\` gives the plural-correct word (\`999 bytes\`). Rounding never produces \`1000 kB\` or \`1024 KiB\`: the value carries into the next unit. Above petabytes Intl has no unit: short and narrow display continue with EB, ZB, YB (derived from the locale's petabyte text by swapping its leading "P", so French reads \`Eo\`; a locale whose petabyte text does not start with "P", such as Russian, stops at petabytes) and binary continues with EiB, ZiB, YiB; \`long\` display stops at petabytes with grouping. One fraction digit by default (\`maximumFractionDigits\`). See also: formatUnit.`,
+    mistakes: `- Expecting \`KB\`: the SI symbol is \`kB\`; use \`binary: true\` for \`KiB\`
+- Passing kilobytes: the input is bytes`,
+  },
+
+  'format/formatDuration': {
+    signature: '(value: Duration | number | null | undefined, options?: DurationOptions | DurationStyle) => string',
+    example: `formatDuration({ hours: 2, minutes: 5 }, { locale: 'en-US' }) // → "2 hr, 5 min"
+formatDuration(3_905_000, { locale: 'en-US', style: 'digital' }) // → "1:05:05"
+formatDuration(65_432, { locale: 'en-US', style: 'digital' }) // → "1:05"
+formatDuration(59_999, { locale: 'en-US' }) // → "1 min"
+formatDuration(1_500, { locale: 'en-US', smallest: 'millisecond' }) // → "1 sec, 500 ms"
+formatDuration({ hours: 1.5 }, { locale: 'en-US' }) // → "1 hr, 30 min"
+formatDuration(90_061_000, { locale: 'en-US', style: 'long' }) // → "1 day, 1 hour, 1 minute, 1 second"
+formatDuration(90_061_000, { locale: 'en-US', largest: 2 }) // → "1 day, 1 hr"
+formatDuration(0, { locale: 'en-US' }) // → "0 sec"`,
+    notes: `Format a duration given as \`{ hours, minutes, ... }\` or as milliseconds. Styles \`long\`, \`short\` (default), \`narrow\` and \`digital\`. Human defaults: from one second on the smallest unit shown is seconds (rounded, with carry: 59,999 ms is \`1 min\`), milliseconds only below one second; \`smallest\` sets the finest unit (\`'minute'\` rounds 59 min 59.6 s to \`1 hr\`) and \`largest: n\` shows only the \`n\` most significant non-zero units (truncated). Fractional fields balance down (\`{ hours: 1.5 }\` is \`1 hr, 30 min\`). \`digital\` is \`h:mm:ss\`, minutes unpadded below an hour (\`1:05\`), with a fraction only when \`smallest: 'millisecond'\` or \`fractionalDigits\` ask for it. Uses \`Intl.DurationFormat\` for the word styles when the runtime has it and an equivalent fallback built from \`Intl.NumberFormat\` and \`Intl.ListFormat\` otherwise; the digital style is written here, so it is the same in every runtime. See also: formatRelativeTo.`,
+    mistakes: `- Expecting carries for a whole Duration field: \`{ minutes: 90 }\` prints \`90 min\`; only a millisecond number is broken down, and a round-up carries
+- Passing seconds: a number is milliseconds`,
+  },
+
+  'format/formatList': {
+    signature: '(items: Iterable<string> | null | undefined, options?: ListOptions | ListPreset) => string',
+    example: `formatList(['red', 'green', 'blue'], { locale: 'en-US' }) // → "red, green, and blue"
+formatList(['red', 'green', 'blue'], { locale: 'en-US', type: 'disjunction' }) // → "red, green, or blue"
+formatList(['red', 'green', 'blue'], { locale: 'de' }) // → "red, green und blue"
+formatList([], { fallback: 'none' }) // → "none"`,
+    notes: 'Join items the way the locale does: `and` (default), `or`, `unit`. Any iterable; non-strings go through `String`, nullish entries are skipped, an empty list returns the `fallback`. See also: formatNumber.',
+  },
+
+  'format/formatDate': {
+    signature: '(value: DateInput, options?: DateTimeOptions | DateStylePreset) => string',
+    example: `formatDate('2026-11-18', { locale: 'en-US' }) // → "Nov 18, 2026"
+formatDate('2026-11-18', { locale: 'en-US', timeZone: 'Pacific/Kiritimati' }) // → "Nov 18, 2026"
+formatDate('2026-11-18', { locale: 'cs', dateStyle: 'full' }) // → "středa 18. listopadu 2026"
+formatDate('2026-11-18T23:30:00Z', { locale: 'en-US', timeZone: 'Asia/Tokyo' }) // → "Nov 19, 2026"
+formatDate('2026-11-18', { locale: 'en-US', month: 'long', year: 'numeric' }) // → "November 2026"
+formatDate(null, { fallback: 'unknown' }) // → "unknown"`,
+    notes: `Format the date part. Default \`dateStyle: 'medium'\`; presets \`short\`, \`medium\`, \`long\`, \`full\`; or any \`Intl.DateTimeFormat\` options. A date-only string (\`2026-11-18\`) is a calendar date and shows that day in EVERY time zone; a \`Z\`/offset string, a number and a \`Date\` are instants shown in the active \`timeZone\`. An invalid \`timeZone\` (it often comes from profile data) warns once in dev and falls back to the active zone instead of throwing. See also: formatTime, formatDateTime, DateInput.`,
+    mistakes: `- Passing \`new Date('2026-11-18')\` for a calendar date: that is midnight UTC, an instant, and shows the 17th west of UTC. Pass the string
+- Passing an unparseable string: it returns the fallback (with a dev warning), it never throws`,
+  },
+
+  'format/formatTime': {
+    signature: '(value: DateInput | PlainTimeString, options?: DateTimeOptions | DateStylePreset) => string',
+    example: `formatTime('2026-11-18T14:30', { locale: 'de' }) // → "14:30"
+formatTime('14:30', { locale: 'en-US' }) // → "2:30 PM"
+formatTime('14:30:05', { locale: 'en-US', timeStyle: 'medium' }) // → "2:30:05 PM"
+formatTime('2026-11-18T14:30:00Z', { locale: 'en-GB', timeZone: 'Asia/Tokyo' }) // → "23:30"`,
+    notes: `Format the time part. Default \`timeStyle: 'short'\`. A date-time without an offset (\`2026-11-18T14:30\`) and a time of day (\`14:30\`, \`14:30:05\`, \`14:30:05.250\`) are wall-clock values and never shift. \`formatTime\` is the only date formatter that accepts a time of day; the others reject it with a message that says to use \`formatTime\`. See also: formatDate, formatDateTime.`,
+    mistakes: '- Passing a time of day to `formatDate` or `formatDateTime`: there is no date to show, they return the fallback with a warning',
+  },
+
+  'format/formatDateTime': {
+    signature: '(value: DateInput, options?: DateTimeOptions | DateStylePreset) => string',
+    example: `formatDateTime('2026-11-18T14:30', { locale: 'de' }) // → "18.11.2026, 14:30"
+formatDateTime('2026-11-18T14:30:00Z', { locale: 'ja', timeZone: 'Asia/Tokyo' }) // → "2026/11/18 23:30"
+formatDateTime(Date.UTC(2026, 10, 18, 14, 30), { locale: 'de', timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' }) // → "18.11.26, 14:30"`,
+    notes: `Format date and time together. Default \`dateStyle: 'medium'\` with \`timeStyle: 'short'\`. See also: formatDate, formatTime.`,
+  },
+
+  'format/formatRelative': {
+    signature: '(value: number, unit: RelativeUnit, options?: RelativeOptions | RelativePreset) => string',
+    example: `formatRelative(-3, 'day', { locale: 'en-US' }) // → "3 days ago"
+formatRelative(-1, 'day', { locale: 'en-US', numeric: 'auto' }) // → "yesterday"
+formatRelative(2, 'hour', { locale: 'de' }) // → "in 2 Stunden"
+formatRelative(5, 'minute', { locale: 'en-US', style: 'narrow' }) // → "in 5m"`,
+    notes: `Format a relative amount in a given unit: \`(-3, 'day')\` is \`3 days ago\`. \`numeric: 'auto'\` gives words (\`yesterday\`). See also: formatRelativeTo.`,
+    mistakes: '- An unknown unit (`fortnight`) is a programmer error and throws',
+  },
+
+  'format/formatRelativeTo': {
+    signature: '(target: DateInput, base: DateInput, options?: RelativeOptions | RelativePreset) => string',
+    example: `formatRelativeTo(Date.UTC(2026, 10, 18, 12, 5), Date.UTC(2026, 10, 18, 12, 0), { locale: 'en-US' }) // → "in 5 minutes"
+formatRelativeTo('2026-11-17', '2026-11-18', { locale: 'en-US' }) // → "yesterday"
+formatRelativeTo('2026-11-16T13:00:00Z', '2026-11-18T01:00:00Z', { locale: 'en-US', timeZone: 'UTC' }) // → "2 days ago"
+formatRelativeTo('2026-10-05', '2026-11-18', { locale: 'en-US' }) // → "last month"
+formatRelativeTo('2025-12-15', '2026-12-20', { locale: 'en-US' }) // → "last year"
+formatRelativeTo('2026-12-25', '2026-11-18', { locale: 'en-US' }) // → "next month"
+formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "heute"`,
+    notes: `Describe \`target\` relative to an explicit \`base\`. Under a minute it is seconds, under an hour minutes, under 24 hours hours (elapsed time, truncated toward zero, so 59 minutes 40 seconds is \`59 minutes\`). From 24 hours on the distance is counted by the CALENDAR in the zone (\`timeZone\`, else the active zone; calendar strings in UTC), so "yesterday", "tomorrow" and "last month" are literally true: under 7 calendar days it is days; then weeks (7-day blocks) while the distance is under 30 days or the calendar month is the same; then calendar months up to 11, then calendar years (\`last year\` is the previous calendar year). \`numeric: 'auto'\` by default. The base is explicit so the function stays pure; pass the current time yourself. See also: formatRelative, relativeFormatter.`,
+    mistakes: `- Expecting it to read the clock: it does not. Pass \`Date.now()\` (or a clock signal) as \`base\`
+- Expecting 36 hours to be "yesterday": from 24 hours on the calendar decides, so it depends on the time of day of the base`,
+  },
+
+  'format/formatDateRange': {
+    signature: '(start: DateInput, end: DateInput, options?: DateRangeOptions | DateStylePreset) => string',
+    example: `formatDateRange('2026-11-12', '2026-11-15', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
+formatDateRange('2026-11-15', '2026-11-12', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
+formatDateRange('2026-11-28', '2026-12-02', { locale: 'en-US' }) // → "Nov 28 – Dec 2, 2026"
+formatDateRange('2026-11-12', '2026-11-15', { locale: 'de' }) // → "12.–15.11.2026"`,
+    notes: 'Format a range with the shared parts collapsed. Two calendar strings are a range of calendar days in every zone. A reversed pair (a range picker mid-selection) is ordered first, so the earlier date always comes first; equal ends give the single value where Intl does. See also: formatDate.',
+  },
+
+  'format/formatNumberRange': {
+    signature: '(start: NumberInput, end: NumberInput, options?: NumberRangeOptions | NumberPreset) => string',
+    example: `formatNumberRange(3, 5, { locale: 'en-US' }) // → "3–5"
+formatNumberRange(5, 3, { locale: 'en-US' }) // → "3–5"
+formatNumberRange(1000, 25000, { locale: 'en-US', style: 'currency', currency: 'EUR' }) // → "€1,000.00 – €25,000.00"`,
+    notes: 'Format a numeric range with the shared parts collapsed. A reversed pair is ordered first (`5, 3` reads `3–5`). See also: formatNumber.',
+  },
+
+  'format/formatNumberToParts': {
+    signature: '(value: NumberInput, options?: NumberOptions | NumberPreset) => Intl.NumberFormatPart[]',
+    example: `formatNumberToParts(1234.5, { locale: 'en-US' }).map((p) => p.type) // → ["integer","group","integer","decimal","fraction"]`,
+    notes: 'The parts of a formatted number (for custom markup). Nullish or invalid input returns `[]`. See also: formatNumber.',
+  },
+
+  'format/formatDateToParts': {
+    signature: '(value: DateInput, options?: DateTimeOptions | DateStylePreset) => Intl.DateTimeFormatPart[]',
+    example: `formatDateToParts('2026-11-18', { locale: 'en-US', year: 'numeric', month: 'long', day: 'numeric' }).map((p) => p.value).join('|') // → "November| |18|, |2026"`,
+    notes: 'The parts of a formatted date and time (default: date and time, medium and short). Nullish or invalid input returns `[]`. See also: formatDate.',
+  },
+
+  'format/parseNumber': {
+    signature: '(text: string, options?: { locale?: string }) => number | null',
+    example: `parseNumber('1 234,5', { locale: 'cs' }) // → 1234.5
+parseNumber('1234.5', { locale: 'cs' }) // → 1234.5
+parseNumber('1.234', { locale: 'de' }) // → 1234
+parseNumber('1.234,5', { locale: 'de' }) // → 1234.5
+parseNumber('12,34,567.5', { locale: 'hi' }) // → 1234567.5
+parseNumber('42 %', { locale: 'de' }) // → 0.42
+parseNumber('twelve', { locale: 'en-US' }) // → null
+parseNumber(formatNumber(-9876.54, { locale: 'fr' }), { locale: 'fr' }) // → -9876.54`,
+    notes: `Parse what a user typed or a formatter printed. Accepts the locale's digits, decimal, group, minus and percent signs, plain / no-break / narrow no-break / thin spaces for space-grouped locales, and \`'\` for apostrophe-grouped ones. In a locale whose decimal separator is a comma and whose group separator is not a dot (Czech, French, Russian, Polish), a lone \`.\` is also accepted as the decimal separator (what a numpad types); the rule comes from \`Intl\` parts, and where the dot groups (German, Spanish, Italian, Dutch, Brazilian Portuguese) \`1.234\` stays 1234 and \`1.5\` is \`null\`. Returns \`null\` for anything else. Not parsed: scientific notation (\`1e3\`), compact notation (\`1.2M\`), currency symbols (use \`parseCurrency\`) and words. See also: formatNumber, parseCurrency, parseDate.`,
+    mistakes: '- Guessing the locale: parse with the locale the user typed in, `1.234` is 1234 in German and 1.234 in English',
+  },
+
+  'format/parseCurrency': {
+    signature: '(text: string, currency: string, options?: { locale?: string }) => number | null',
+    example: `parseCurrency('€9.99', 'EUR', { locale: 'en-US' }) // → 9.99
+parseCurrency('9,99 €', 'EUR', { locale: 'de' }) // → 9.99
+parseCurrency('1 234,50 Kč', 'CZK', { locale: 'cs' }) // → 1234.5
+parseCurrency('($5.00)', 'USD', { locale: 'en-US' }) // → -5
+parseCurrency('9.99 euros', 'EUR', { locale: 'en-US' }) // → 9.99
+parseCurrency('€9.99', 'USD', { locale: 'en-US' }) // → null`,
+    notes: `Parse a money amount: the currency's symbol, narrow symbol, code or name as the locale writes it (read from \`Intl\` parts), before or after the number, and accounting parentheses are removed, then the number is read as \`parseNumber\` does. A bare number is accepted. Another currency's symbol, extra text and anything else return \`null\`. See also: parseNumber, formatCurrency.`,
+    mistakes: '- Passing the amount in minor units: the result is the amount as written (`9.99`), not cents',
+  },
+
+  'format/parseDate': {
+    signature: '(text: string, options?: { locale?: string }) => PlainDateString | null',
+    example: `parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
+parseDate('11/18/26', { locale: 'en-US' }) // → "2026-11-18"
+parseDate('Nov 18, 2026', { locale: 'en-US' }) // → "2026-11-18"
+parseDate('18. listopadu 2026', { locale: 'cs' }) // → "2026-11-18"
+parseDate('18 nov. 2026', { locale: 'fr' }) // → "2026-11-18"
+parseDate('31. 2. 2026', { locale: 'cs' }) // → null
+parseDate('1/2/69', { locale: 'en-US' }) // → "1969-01-02"
+parseDate('2026-11-18', { locale: 'de' }) // → "2026-11-18"`,
+    notes: `Parse a date to \`YYYY-MM-DD\`. Reads NUMERIC dates in the locale's day / month / year order (any separators the locale uses, plus \`. / - space\`), ISO \`YYYY-MM-DD\` in any locale, and the locale's own medium and long forms with month names (\`Nov 18, 2026\`, \`18. listopadu 2026\`, \`18 nov. 2026\`, \`2026年11月18日\`): long and short names, with or without the trailing dot, case-insensitive, genitive forms included, from a per-locale table built from Intl on first use. Impossible dates return \`null\`. A two-digit year follows the POSIX rule: 00-68 is 2000-2068, 69-99 is 1969-1999. Buddhist and Minguo years are converted. Not parsed: weekday names, times, natural language ("next Friday"), and other non-Gregorian calendars. See also: formatDate, parseNumber.`,
+    mistakes: `- Expecting weekday names or times to parse: only the date is read
+- Relying on a two-digit year outside 1969-2068`,
+  },
+
+  'format/createFormatter': {
+    signature: '(base?: { locale?: string; timeZone?: string }) => BoundFormatters',
+    example: `const f = createFormatter({ locale: 'cs', timeZone: 'Europe/Prague' })
+f.number(1234567.5) // → "1 234 567,5"
+f.currency(99, 'CZK') // → "99,00 Kč"
+f.date('2026-11-18', 'long') // → "18. listopadu 2026"
+f.parseNumber('1 234,5') // → 1234.5`,
+    notes: 'A bound, NON-reactive set of one-off functions (`number`, `currency`, `percent`, `compact`, `unit`, `bytes`, `duration`, `list`, `date`, `time`, `dateTime`, `relative`, `relativeTo`, `dateRange`, `numberRange`, `numberToParts`, `dateToParts`, `parseNumber`, `parseDate`) for servers, scripts and tests. It never reads the active locale or zone. Per-call options still override the base. For reusable single-purpose formatters use the `*Formatter` factories. See also: defineFormats, numberFormatter.',
+    mistakes: '- Using it in a component and expecting the app locale to apply: it is fixed on purpose; use the top-level functions',
+  },
+
+  'format/numberFormatter': {
+    signature: `(options?: NumberOptions | NumberPreset) => Formatter<NumberInput, 'number'>`,
+    example: `const n = numberFormatter({ locale: 'en-US', maximumFractionDigits: 1 })
+n(1234.5678) // → "1,234.6"
+;[1000, 2500.55].map(n) // → ["1,000","2,500.6"]
+n.with({ maximumFractionDigits: 0 })(1234.5678) // → "1,235"
+n.range(3, 5) // → "3–5"
+n.parts(1.5).map((p) => p.type) // → ["integer","decimal","fraction"]`,
+    notes: 'A reusable number formatter: a plain `(value) => string` that follows the active locale like `formatNumber`, with `.with(overrides)`, `.from(map)`, `.fallback(text)`, `.parts(value)`, `.range(a, b)` and `.options`. Because it is just a function it drops into `Array#map`, a chart axis or a table column. The `Intl` formatter is looked up once per locale; a call is a string compare and one `format()`. Every `*Formatter` factory has this shape. See also: formatNumber, currencyFormatter, defineFormats.',
+    mistakes: `- Creating a formatter per render to "configure" it: create it once at module level, then call it (creation is cheap and shares the cache, but a hoisted formatter is clearer)
+- Mutating the options object you passed: a formatter freezes its own copy, so later mutation changes nothing; derive with \`.with()\``,
+  },
+
+  'format/currencyFormatter': {
+    signature: `(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<NumberInput, 'currency'>`,
+    example: `const price = currencyFormatter('EUR', { locale: 'en-US' })
+price(9.99) // → "€9.99"
+price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
+price.from((cents) => cents / 100)(999) // → "€9.99"
+;[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
+price.range(10, 20) // → "€10.00 – €20.00"
+price.parts(9.99).map((p) => p.type) // → ["currency","integer","decimal","fraction"]`,
+    notes: 'A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. A malformed code returns the fallback with a dev warning. See also: formatCurrency, numberFormatter.',
+    mistakes: `- Building "€9.99 per month" by concatenation: the platform has no locale data for a currency "per" pattern; format the value and put it in a translated message
+- Passing cents without \`.from\`: \`price(999)\` is nine hundred ninety-nine euros`,
+  },
+
+  'format/percentFormatter': {
+    signature: `(options?: PercentOptions) => Formatter<NumberInput, 'percent'>`,
+    example: `const pct = percentFormatter({ locale: 'en-US', maximumFractionDigits: 1 })
+pct(0.4234) // → "42.3%"`,
+    notes: 'A reusable percent formatter: `percentFormatter()(0.42)` is `42%`. See also: formatPercent.',
+  },
+
+  'format/compactFormatter': {
+    signature: `(options?: CompactOptions | CompactPreset) => Formatter<NumberInput, 'compact'>`,
+    example: `const short = compactFormatter({ locale: 'en-US' })
+short(1240000) // → "1.2M"
+short.with({ compactDisplay: 'long' })(1240000) // → "1.2 million"`,
+    notes: 'A reusable compact-notation formatter: `1_240_000` is `1.2M`. See also: formatCompact.',
+  },
+
+  'format/unitFormatter': {
+    signature: `(unit: Unit, options?: UnitOptions | UnitPreset) => Formatter<NumberInput, 'unit'>`,
+    example: `const speed = unitFormatter('kilometer-per-hour', { locale: 'en-US' })
+speed(72) // → "72 km/h"
+speed.with({ unitDisplay: 'long' })(72) // → "72 kilometers per hour"`,
+    notes: `A reusable unit formatter. An unknown unit is a type error and throws a \`[Pyreon]\` error. \`@pyreon/format/units\` exports one that takes \`{ convertTo, system }\` as well (the converted value is formatted in the target unit, \`system: 'auto'\` follows the active locale, and \`parts\`, \`range\`, \`with\` and \`from\` work). See also: formatUnit.`,
+  },
+
+  'format/convert': {
+    signature: '(value: number, from: Unit, to: Unit) => number',
+    example: `// import { convert } from '@pyreon/format/units'
+convert(5, 'mile', 'kilometer') // → 8.04672
+convert(100, 'celsius', 'fahrenheit') // → 212
+convert(1, 'gallon', 'liter') // → 3.785411784
+convert(36, 'kilometer-per-hour', 'meter-per-second') // → 10
+convert(35, 'mile-per-gallon', 'liter-per-kilometer') * 100 // → 6.720416666666666`,
+    notes: `Convert a number between two units \`Intl\` can format, from \`@pyreon/format/units\` (or \`/units/core\`: pure, no \`@pyreon/*\` import). Every factor is an EXACT definition (inch = 25.4 mm, pound = 0.45359237 kg, US gallon = 231 cubic inches, international acre = 4046.8564224 m2, kilobyte = 1000 bytes as in CLDR; sources cited in \`convert.ts\`) held as a rational and applied ONCE (one combined factor, never chained through an intermediate unit), so the result is as accurate as a multiply and a divide allow: \`convert(5, 'mile', 'kilometer')\` is exactly the double nearest 8.04672. Compound units (\`-per-\`) convert when their parts do. A compound and its inverse (\`liter-per-kilometer\` and \`mile-per-gallon\`, a pace and a speed) are reciprocals, not ratios, so the value is inverted (a zero is \`Infinity\`). Temperature is affine (celsius and fahrenheit only; kelvin is not an Intl unit). \`gallon\` and \`fluid-ounce\` are the US units (the imperial ones are not sanctioned by ECMA-402). \`month\` and \`year\` have no fixed length and throw. A dimension mismatch throws a \`[Pyreon]\` error naming both dimensions. See also: canConvert, unitDimension, formatUnit.`,
+    mistakes: `- Treating \`gallon\` or \`fluid-ounce\` as imperial for \`uk\`: they are the US units (CLDR and ECMA-402); the imperial units are not convertible here
+- Chaining conversions through an intermediate unit: \`convert\` applies one exact factor, so convert directly
+- Converting \`month\` or \`year\`: they have no fixed length; use \`@pyreon/time\` for calendar arithmetic`,
+  },
+
+  'format/canConvert': {
+    signature: '(from: Unit, to: Unit) => boolean',
+    example: `// import { canConvert } from '@pyreon/format/units'
+canConvert('mile', 'kilometer') // → true
+canConvert('mile', 'kilogram') // → false
+canConvert('month', 'day') // → false`,
+    notes: 'Whether `convert(x, from, to)` is defined: both are convertible units of the same (or the inverse) dimension. Never throws; an unknown unit, `month` and `year` are `false`. See also: convert, unitDimension.',
+  },
+
+  'format/unitDimension': {
+    signature: '(unit: Unit) => UnitDimension',
+    example: `// import { unitDimension } from '@pyreon/format/units'
+unitDimension('mile') // → "length"
+unitDimension('kilometer-per-hour') // → "speed"
+unitDimension('mile-per-gallon') // → "fuel-economy"`,
+    notes: 'What a unit measures: `length`, `mass`, `volume`, `temperature`, `area`, `duration`, `digital`, `angle`, `proportion`, or for a compound `speed`, `pace`, `fuel-economy`, `fuel-consumption`, `density`, `flow-rate`, `mass-flow`, `data-rate`, else `<a>-per-<b>`. An unknown unit throws. See also: convert, canConvert.',
+  },
+
+  'format/measurementSystem': {
+    signature: `(locale?: string) => 'metric' | 'us' | 'uk'`,
+    example: `// import { measurementSystem } from '@pyreon/format/units'
+measurementSystem('en-US') // → "us"
+measurementSystem('en-GB') // → "uk"
+measurementSystem('cs') // → "metric"`,
+    notes: `The measurement system of a locale's region, from CLDR's supplemental \`measurementData\`: \`us\` for US, Liberia and Myanmar, \`uk\` for Great Britain (metric, with miles and miles per hour on the road), \`metric\` everywhere else. A locale with no region is resolved by its likely region (\`en\` is \`en-US\`). An invalid tag is \`metric\`. In \`@pyreon/format/units\` the locale defaults to the ACTIVE locale (a reactive read); in \`/units/core\` to the runtime's. See also: preferredUnit.`,
+  },
+
+  'format/preferredUnit': {
+    signature: '(unit: Unit, locale?: string) => Unit',
+    example: `// import { preferredUnit } from '@pyreon/format/units'
+preferredUnit('kilometer', 'en-US') // → "mile"
+preferredUnit('celsius', 'en-US') // → "fahrenheit"
+preferredUnit('mile', 'cs') // → "kilometer"`,
+    notes: `The unit a person in the locale's region reads for \`unit\`: \`kilometer\` is \`mile\` and \`celsius\` is \`fahrenheit\` in \`en-US\`; \`mile\` is \`kilometer\` and \`fahrenheit\` is \`celsius\` in \`cs\`; in \`en-GB\` distances and speeds stay miles and the rest is metric. A unit with no counterpart (\`second\`, \`byte\`) comes back unchanged. The table is deliberately small and simplified from CLDR's unit preferences: it maps a unit to the same scale in the other system, not to a use case (a height in feet and inches, a road in miles). See also: measurementSystem, formatUnit.`,
+  },
+
+  'format/bytesFormatter': {
+    signature: `(options?: BytesOptions) => Formatter<NumberInput, 'bytes'>`,
+    example: `const size = bytesFormatter({ locale: 'en-US' })
+size(1536) // → "1.5 kB"
+size.with({ binary: true })(1536) // → "1.5 KiB"
+;[1536, 5000000].map(size) // → ["1.5 kB","5 MB"]`,
+    notes: 'A reusable byte-size formatter (decimal, or `binary: true`). `parts` carries the IEC symbol for binary. See also: formatBytes.',
+  },
+
+  'format/durationFormatter': {
+    signature: `(options?: DurationOptions | DurationStyle) => Formatter<DurationInput, 'duration'>`,
+    example: `const took = durationFormatter({ locale: 'en-US', style: 'narrow' })
+took(3905000) // → "1h 5m 5s"
+took.from((seconds) => seconds * 1000)(3905) // → "1h 5m 5s"`,
+    notes: 'A reusable duration formatter. It has no `parts` or `range`: `Intl.DurationFormat` is not available everywhere and has no range. See also: formatDuration.',
+  },
+
+  'format/listFormatter': {
+    signature: `(options?: ListOptions | ListPreset) => Formatter<ListInput, 'list'>`,
+    example: `const or = listFormatter({ locale: 'en-US', type: 'disjunction' })
+or(['red', 'green', 'blue']) // → "red, green, or blue"
+or.parts(['a', 'b']).map((p) => p.type) // → ["element","literal","element"]`,
+    notes: 'A reusable list formatter. Formatters compose through plain values: `listFormatter()(items.map(price))`. See also: formatList.',
+  },
+
+  'format/dateFormatter': {
+    signature: `(options?: DateTimeOptions | DateStylePreset) => Formatter<DateInput, 'date'>`,
+    example: `const day = dateFormatter({ locale: 'en-US', dateStyle: 'long' })
+day('2026-11-18') // → "November 18, 2026"
+day.range('2026-11-12', '2026-11-15') // → "November 12 – 15, 2026"
+day.with({ dateStyle: 'short' })('2026-11-18') // → "11/18/26"
+day.parts('2026-11-18').map((p) => p.type) // → ["month","literal","day","literal","year"]`,
+    notes: 'A reusable date formatter (the date part). Calendar strings never shift with the zone; `range` collapses shared parts. See also: formatDate, timeFormatter, dateTimeFormatter.',
+  },
+
+  'format/timeFormatter': {
+    signature: `(options?: DateTimeOptions | DateStylePreset) => Formatter<DateInput, 'time'>`,
+    example: `const clock = timeFormatter({ locale: 'de', timeZone: 'UTC' })
+clock('2026-11-18T14:30:00Z') // → "14:30"`,
+    notes: 'A reusable time formatter (the time part). See also: formatTime.',
+  },
+
+  'format/dateTimeFormatter': {
+    signature: `(options?: DateTimeOptions | DateStylePreset) => Formatter<DateInput, 'dateTime'>`,
+    example: `const stamp = dateTimeFormatter({ locale: 'de' })
+stamp('2026-11-18T14:30') // → "18.11.2026, 14:30"`,
+    notes: 'A reusable date-and-time formatter. See also: formatDateTime.',
+  },
+
+  'format/relativeFormatter': {
+    signature: `(options: RelativeFormatterOptions) => Formatter<DateInput, 'relative'>`,
+    example: `const since = relativeFormatter({ locale: 'en-US', base: '2026-11-18' })
+since('2026-11-17') // → "yesterday"
+since('2026-11-25') // → "next week"`,
+    notes: 'A reusable relative-time formatter: the target is measured against `options.base`, a date-like value or an accessor (`base: () => now()` is tracked, so a clock signal keeps it current). In the reactive entry `base` may be omitted: it is then the ambient clock (`now()` of `@pyreon/ambient`, read on every call; it does not tick, so a label that updates itself is `useRelativeTime` or `<RelativeTime>`). `@pyreon/format/core` requires `base`. `numeric` defaults to `auto`. It has no `parts` or `range`. See also: formatRelativeTo, useRelativeTime.',
+    mistakes: `- Omitting \`base\` in \`@pyreon/format/core\`: every call returns the fallback (dev warning). The reactive entry defaults it to the ambient clock
+- Expecting a formatter call to update the text by itself: it reads the clock once per call; use \`useRelativeTime\` or \`<RelativeTime>\` for a label that keeps current`,
+  },
+
+  'format/defineFormats': {
+    signature: '<const T extends Record<string, FormatSpec | ExtendedSpec<keyof T>>>(specs: T) => DefinedFormats<T>',
+    example: `const f = defineFormats({ price: { kind: 'currency', currency: 'EUR', locale: 'en-US' }, priceShort: { extends: 'price', notation: 'compact' }, size: { kind: 'bytes', locale: 'en-US' }, day: { kind: 'date', dateStyle: 'long', locale: 'en-US' } })
+f.price(9.99) // → "€9.99"
+f.priceShort(1234567) // → "€1.2M"
+f.price.with({ currency: 'USD' })(9.99) // → "$9.99"
+f.size(1536) // → "1.5 kB"
+f.day('2026-11-18') // → "November 18, 2026"`,
+    notes: `Name a set of formats once: each key is a real \`Formatter\` (\`f.price(9.99)\`, \`f.price.with(...)\`, \`f.price.from(...)\`). \`kind\` selects the factory (\`number\`, \`currency\`, \`percent\`, \`compact\`, \`unit\`, \`bytes\`, \`duration\`, \`list\`, \`date\`, \`time\`, \`dateTime\`, \`relative\`); the rest are that formatter's options. A spec may extend another by name: \`{ extends: 'price', notation: 'compact' }\` inherits the kind and merges options. An unknown name or a cycle throws a \`[Pyreon]\` error at definition time, and the type rejects an unknown name. Entries take ONE argument (they are callbacks-safe); per-call overrides are \`.with()\`, hoisted. See also: createFormatter, numberFormatter.`,
+    mistakes: `- Passing overrides as a second argument (\`f.price(9.99, { currency: 'USD' })\`): entries take one argument so \`Array#map\` cannot pass an index as options; derive with \`.with()\` and hoist it
+- Defining the specs inside a component: define them once at module level`,
+  },
+
+  'format/useRelativeTime': {
+    signature: '(target: DateInput | (() => DateInput), options?: RelativeTimeOptions | (() => RelativeTimeOptions | undefined)) => () => string',
+    example: `const ago = useRelativeTime(Date.now() - 180_000, { locale: 'en-US' })
+ago() // → "3 minutes ago"
+const old = useRelativeTime('2020-01-05', { locale: 'en-US', timeZone: 'UTC', threshold: { after: { days: 7 }, as: 'medium' } })
+old() // → "Jan 5, 2020"`,
+    notes: `A relative label that keeps itself current: an accessor returning \`"3 minutes ago"\`, updated by the shared clock of \`@pyreon/ambient\`. The text is \`formatRelativeTo\` against the clock, so it is calendar-true ("yesterday" in the time zone). It updates at the moment the text changes: each second under a minute, at the TARGET'S OWN minute and hour marks ("1 minute ago" appears when the target is one minute old, not at the next wall-clock minute), at local midnight once it counts days, when a future target comes within a day, and at the \`threshold\`. Every label shares one timer for those marks and one for seconds, so 200 labels cost two timers. \`target\` and \`options\` may be accessors (tracked). Options are \`numeric\` (\`'auto'\` by default), \`style\`, \`locale\`, \`timeZone\`, \`fallback\` and \`threshold: { after, as? }\`: once the target is \`after\` away (milliseconds or \`{ seconds, minutes, hours, days, weeks }\`, in either direction) the label is the date, formatted \`as\` (a date style or \`Intl.DateTimeFormat\` options, default \`'medium'\`). Call it in a component's setup and read the accessor in JSX. On a server it prints the request's clock (\`provideClock\`) and starts no timer; outside a component it is a plain reading. See also: RelativeTime, formatRelativeTo, relativeFormatter.`,
+    mistakes: `- Calling it in an event handler or a timer: it needs the component's scope to release its timer; call it in setup
+- Using \`formatRelativeTo(value, Date.now())\` in JSX and expecting it to tick: that is one reading; the label only changes when something else re-renders it
+- A date-only target such as \`'2026-11-18'\` is a DAY: it reads as today, tomorrow, yesterday or in 3 days in the display zone at any hour, never as hours (\`2026-11-18\` at 10:00 on the 18th is "today")`,
+  },
+
+  'format/locale': {
+    signature: '() => string',
+    example: `setLocale('cs')
+locale() // → "cs"
+formatNumber(1234.5) // → "1 234,5"`,
+    notes: 'Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. The active locale (a reactive read). Resolution order: an explicit `options.locale`, the nearest `provideLocale`, the app default set by `setLocale`, then `navigator.language` on the client or the runtime default on the server. See also: setLocale, provideLocale.',
+    mistakes: `- Reading it in an event handler and expecting a \`provideLocale\` from the component tree: context is only visible inside the component's setup and its effects`,
+  },
+
+  'format/setLocale': {
+    signature: '(tag: string) => void',
+    example: `setLocale('de')
+formatNumber(1234.5) // → "1.234,5"
+setLocale('en-US')
+formatNumber(1234.5) // → "1,234.5"`,
+    notes: 'Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. Set the app-level default locale (client). Every formatter read in an effect, computed or JSX accessor updates. The tag is validated (a malformed tag throws a `[Pyreon]` error) and canonicalized (`EN-us` becomes `en-US`). On the server it does nothing and warns in dev: one process serves many requests, use `provideLocale`. See also: locale, provideLocale.',
+    mistakes: '- Calling it on the server to set a per-request locale: it is a no-op there; use `provideLocale` in the root component',
+  },
+
+  'format/provideLocale': {
+    signature: '(tag: string | (() => string)) => void',
+    example: `// in a component's setup:
+// provideLocale('de')
+// provideLocale(() => userSettings.locale())`,
+    notes: `Re-exported from \`@pyreon/ambient\`, which owns it, so \`@pyreon/format\`, \`@pyreon/time\` and every component share one value. Scope a subtree to a locale. Call it in a component's setup with a tag or an accessor (\`() => i18n.locale()\`), which is tracked. On the client it is owner-based context; on the server it is request-scoped, so concurrent requests never see each other's locale. This is the seam \`@pyreon/i18n\` will call. See also: setLocale, locale.`,
+    mistakes: `- Calling it outside a component: it applies to the whole page for good (dev warning); use \`setLocale\`
+- Passing an unvalidated tag from request data: a malformed static tag throws; an accessor value that is malformed degrades to the runtime default with a dev warning`,
+  },
+
+  'format/timeZone': {
+    signature: '() => string',
+    example: `setTimeZone('Asia/Tokyo')
+timeZone() // → "Asia/Tokyo"
+setTimeZone('UTC')
+timeZone() // → "UTC"`,
+    notes: `Re-exported from \`@pyreon/ambient\`, which owns it, so \`@pyreon/format\`, \`@pyreon/time\` and every component share one value. The active IANA time zone (a reactive read): the provided zone, else the app default, else the runtime's zone. See also: setTimeZone, provideTimeZone.`,
+  },
+
+  'format/setTimeZone': {
+    signature: '(zone: string) => void',
+    example: `setTimeZone('Asia/Tokyo')
+formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'short', timeStyle: 'short' }) // → "11/19/26, 8:30 AM"
+setTimeZone('UTC')
+formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'short', timeStyle: 'short' }) // → "11/18/26, 11:30 PM"`,
+    notes: 'Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. Set the app-level default time zone (client). Date formatters of instants update; calendar strings never depend on the zone. A name that is not an IANA zone throws a `[Pyreon]` error. A no-op with a dev warning on the server: use `provideTimeZone`. See also: timeZone, provideTimeZone.',
+  },
+
+  'format/provideTimeZone': {
+    signature: '(zone: string | (() => string)) => void',
+    example: `// in a component's setup:
+// provideTimeZone('Europe/Prague')`,
+    notes: 'Re-exported from `@pyreon/ambient`, which owns it, so `@pyreon/format`, `@pyreon/time` and every component share one value. Scope a subtree to a time zone, like `provideLocale`: a name or a tracked accessor; request-scoped on the server. See also: setTimeZone, provideLocale.',
+  },
+
+  'format/Num': {
+    signature: '(props: NumProps) => VNodeChild',
+    example: `// <Num value={total()} kind="currency" currency="EUR" />
+// <Num value={total()} format={price} />
+// <Num value={9.99} format={price} parts={{ currency: (text) => <sup>{text}</sup> }} />
+// <Num value={size()} kind="bytes" tabular class="size" />`,
+    notes: 'A formatted number as reactive text. With no extra props it renders no wrapper element. `kind` is `number` (default), `currency`, `percent`, `compact`, `unit` or `bytes`; `currency` / `unit` are the extra props those need; `options` are the Intl options; `locale` and `fallback` as everywhere. Pass a built formatter as `format` (it then replaces `kind`/`options`/`locale`/`fallback`), and `parts` to wrap a part of the output without string surgery (`parts={{ currency: (text) => <sup>{text}</sup> }}`; unwrapped parts are joined into one text node so server and client markup agree). `tabular` renders a `<span>` with `font-variant-numeric: tabular-nums` set once, so numbers in columns and live values do not jitter; `isolate` adds `unicode-bidi: isolate` for a number inside text of another direction; `class`, `id`, `style` and any other prop are forwarded to the `<span>`. Import from `@pyreon/format/components`. See also: DateTime, formatNumber.',
+    mistakes: '- Passing the signal itself (`value={n}`): pass the read, `value={n()}`',
+  },
+
+  'format/DateTime': {
+    signature: '(props: DateTimeProps) => VNode',
+    example: `// <DateTime value="2026-11-18" kind="date" format="long" />
+// <DateTime value={post.publishedAt} class="meta" />
+// <DateTime value={post.updatedAt} format={relative} />  // hover shows the exact date and time`,
+    notes: `A \`<time datetime="…">\` element with the formatted value as text. \`datetime\` is machine-readable whatever the display locale: the calendar string as given, or the UTC ISO instant. \`title\` is the exact reading (the full date, and for an instant the time with its zone name; a calendar value has no zone), so hovering a short or relative date reveals it; a \`title\` you pass wins. \`kind\` is \`date\`, \`time\` or \`dateTime\` (default); \`format\` is a \`dateStyle\`/\`timeStyle\` shorthand or a built formatter (\`dateFormatter('long')\`) with \`parts={{ month: (t) => <b>{t}</b> }}\` to wrap parts; \`options\`, \`locale\`, \`timeZone\`, \`fallback\`; \`isolate\` (default true) sets \`unicode-bidi: isolate\`; other props (\`class\`, \`id\`, ...) go to the \`<time>\` element. Invalid values render the fallback and no \`datetime\` or \`title\`. See also: Num, formatDate.`,
+    mistakes: '- Expecting the server and the browser to agree without a locale: they agree when the same locale and zone are provided on both sides (and ICU versions match)',
+  },
+
+  'format/RelativeTime': {
+    signature: '(props: RelativeTimeProps) => VNode',
+    example: `// <RelativeTime value={comment.createdAt} />
+// <RelativeTime value={post.updatedAt} threshold={{ after: { days: 7 } }} />  // "3 hours ago" ... "Nov 12, 2026"
+// <RelativeTime value={issue.dueDate} />  // a date-only value is a day: "today", "tomorrow", "in 3 days"`,
+    notes: `A \`<time>\` that says how long ago (or how far ahead) a value is and keeps itself current. It is \`useRelativeTime\` in an element: \`datetime\` is the machine value, \`title\` the exact date and time (the full date, and for an instant the time with its zone name; a \`title\` you pass wins), the text updates by itself on the shared timers (two for the whole page), and \`unicode-bidi: isolate\` is on by default. Props: \`value\`, \`numeric\`, \`locale\`, \`timeZone\`, \`threshold\` (\`{ after: { days: 7 }, as: 'medium' }\`), \`fallback\`, \`options\` (\`style\` and the rest) and \`isolate\`; other props go to the element. A server render prints the request's clock and starts no timer; with \`clockScript()\` or \`clockAttributes()\` from \`@pyreon/ambient\` the page hydrates to the same text and then updates once to real time. See also: useRelativeTime, DateTime.`,
+    mistakes: `- Passing \`style\` for the Intl style: \`style\` is the element's style; use \`options={{ style: 'short' }}\`
+- Server-rendering without handing the instant over: the client's first render reads its own clock and can differ from the server text; emit \`clockScript()\` (or spread \`clockAttributes()\`) from \`@pyreon/ambient\``,
+  },
+
+  'format/ConvertedUnitOptions': {
+    signature: `interface ConvertedUnitOptions extends UnitOptions { convertTo?: Unit; system?: 'auto' | 'metric' | 'us' | 'uk' }`,
+    example: `// formatUnit(100, 'kilometer', { system: 'auto', locale: 'en-US' })`,
+    notes: `Options of \`formatUnit\` and \`unitFormatter\` from \`@pyreon/format/units\`: everything in \`UnitOptions\`, plus a conversion before formatting. \`convertTo\` names the unit; \`system\` picks the locale's own (\`'auto'\`, which follows the active locale in the reactive entry) or a fixed system. \`convertTo\` wins when both are given. See also: formatUnit, convert.`,
+  },
+
+  'format/MeasurementSystem': {
+    signature: `type MeasurementSystem = 'metric' | 'us' | 'uk'`,
+    example: `// const s: MeasurementSystem = measurementSystem('en-US')`,
+    notes: 'A system of measurement: `us` (US customary), `uk` (metric with road miles) or `metric`. See also: measurementSystem.',
+  },
+
+  'format/UnitDimension': {
+    signature: `type UnitDimension = 'length' | 'mass' | 'volume' | 'area' | 'duration' | 'digital' | 'temperature' | 'angle' | 'proportion' | 'speed' | ... | \`\${string}-per-\${string}\``,
+    example: `// const d: UnitDimension = unitDimension('mile')`,
+    notes: 'What `unitDimension` returns: a simple dimension, a named compound (`speed`, `pace`, `fuel-economy`, ...) or `<a>-per-<b>`. See also: unitDimension.',
+  },
+
+  'format/NumberInput': {
+    signature: 'type NumberInput = number | bigint | null | undefined',
+    example: '// formatNumber(null) // → ""',
+    notes: 'A number-like input. Nullish formats as the `fallback`. See also: DateInput.',
+  },
+
+  'format/DateInput': {
+    signature: 'type DateInput = Date | number | string | null | undefined',
+    example: `// formatDate('2026-11-18')           // the 18th everywhere
+// formatDate('2026-11-18T14:30')     // 14:30 everywhere
+// formatDate('2026-11-18T14:30Z')    // an instant, shown in the active zone`,
+    notes: 'A date-like input. `Date` and `number` (epoch milliseconds) are instants. An ISO string with `Z` or an offset is an instant. An ISO date (`2026-11-18`) or date-time without offset (`2026-11-18T14:30`) is a calendar value and never shifts with the time zone. See also: formatDate.',
+  },
+
+  'format/PlainDateString': {
+    signature: 'type PlainDateString = `${number}-${number}-${number}`',
+    example: `// const d: PlainDateString = '2026-11-18'`,
+    notes: 'The `YYYY-MM-DD` string `parseDate` returns. Structurally the `PlainDate` of `@pyreon/time`, so a literal compiles without a cast. See also: parseDate.',
+  },
+
+  'format/PlainTimeString': {
+    signature: 'type PlainTimeString = `${number}:${number}` | `${number}:${number}:${number}` | `${number}:${number}:${number}.${number}`',
+    example: `// formatTime('14:30')`,
+    notes: 'A time of day (`14:30`, `14:30:05`, `14:30:05.250`): a wall-clock value that never shifts with the zone. Accepted by the time formatters only. Structurally the `PlainTime` of `@pyreon/time`. See also: formatTime, DateInput.',
+  },
+
+  'format/Unit': {
+    signature: 'type Unit = SimpleUnit | `${SimpleUnit}-per-${SimpleUnit}`',
+    example: `// formatUnit(5, 'kilometer')
+// formatUnit(5, 'kilometer-per-hour')`,
+    notes: `\`SimpleUnit\` is the union of the units ECMA-262 sanctions (\`Intl.supportedValuesOf('unit')\`; a test keeps it equal to the runtime list). Compound units use \`-per-\`. See also: formatUnit.`,
+  },
+
+  'format/Duration': {
+    signature: 'interface Duration { years?; months?; weeks?; days?; hours?; minutes?; seconds?; milliseconds? }',
+    example: '// formatDuration({ hours: 2, minutes: 5 })',
+    notes: 'A duration as plain data. Fields share one sign. See also: formatDuration.',
+  },
+
+  'format/Formatter': {
+    signature: 'type Formatter<In, K extends FormatterKind> = ((value: In) => string) & { with, from, fallback, options, parts?, range? }',
+    example: `// const price: Formatter<NumberInput, 'currency'> = currencyFormatter('EUR')`,
+    notes: 'A reusable formatter: a plain function plus `with(overrides)`, `from(map)`, `fallback(text)` and `options`. `parts(value)` exists on number-style, date-style and list kinds, `range(a, b)` on number-style and date-style kinds, and is absent from the type elsewhere. See also: numberFormatter.',
+  },
+
+  'format/FormatSpec': {
+    signature: `type FormatSpec = { kind: 'number' | 'currency' | … } & that formatter's options`,
+    example: `// { kind: 'currency', currency: 'EUR' }
+// { kind: 'date', dateStyle: 'long' }`,
+    notes: 'The shape `defineFormats` takes: a `kind` and the options of that formatter (`currency` is required for `currency`, `unit` for `unit`, `base` for `relative`), or `{ extends: name, ...options }`. See also: defineFormats.',
+  },
+  // <gen-docs:api-reference:end @pyreon/format>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/hotkeys
@@ -7303,6 +9368,107 @@ commands.commands().length   // => 0`,
     notes: '[EXPERIMENTAL] A registry of commands. `register` takes a command, a list or a function that returns one, and returns the unregister (inside a component it also runs on unmount). `search` ranks the registered commands (or the `children` of `parent`), `run` runs one by id, `recents` lists the last ones run. Registering an id that is registered shadows it until the new one is removed. Inert on the server. Added in v0.53.0.',
   },
 
+  'command/createPalette': {
+    signature: '(options?: PaletteOptions) => Palette',
+    example: `const commands = createCommands()
+commands.register([{ id: 'save', title: 'Save' }, { id: 'open', title: 'Open File' }])
+const palette = createPalette({ commands, hotkey: false })
+palette.open()
+palette.setQuery('sav')
+palette.results().map((r) => r.id)   // => ['save']
+(palette.open(), palette.setQuery('xyz'), palette.announcement())   // => 'No results'`,
+    notes: '[EXPERIMENTAL] The state of a command palette with no markup. `open(page?)`, `close()`, `toggle()`, a query, a stack of nested pages (`back()`), `results()` (rows grouped and ranked, async rows as they arrive) and `groups()`, the active row and `move(...)`, `runActive()` (opens a page, or runs and closes unless `keepOpen`; an error stays on the palette), a polite `announcement()`, and `inputProps`, `listProps`, `itemProps(item)` and `groupProps(group)` for a renderer of your own. Registers `mod+k` through `@pyreon/hotkeys` (`hotkey: false` for none). One palette is open at a time. Inert on the server. Added in v0.53.0.',
+  },
+
+  'command/CommandPalette': {
+    signature: '(props: CommandPaletteProps) => VNode',
+    example: `import { CommandPalette } from '@pyreon/command/components'
+import { createCommands } from '@pyreon/command'
+import '@pyreon/command/style.css'
+
+const commands = createCommands()
+export const App = () => <CommandPalette commands={commands} hotkey="mod+k" />`,
+    notes: '[EXPERIMENTAL] A complete palette in a native modal `<dialog>` (import `@pyreon/command/components`): opens on `mod+k`, focus moves to the input, Tab stays inside, the page behind is inert, scroll is locked without a layout shift, Escape goes back a page and then closes, focus returns to what had it, and the close and back buttons work on touch. Pass `palette` (from `createPalette`) or the palette options (`commands`, `hotkey`, `placeholder`, `messages`, `emptyQuery`, `showDisabled`, `filter`, `debounce`). Closed, it renders nothing, so the server and the first client render agree. Give it children to lay it out yourself with the parts. Added in v0.53.0.',
+  },
+
+  'command/CommandInput': {
+    signature: '(props: { class? }) => VNode',
+    example: `import { CommandInput } from '@pyreon/command/components'
+
+export const Field = () => <CommandInput class="my-input" />`,
+    notes: '[EXPERIMENTAL] The `<input role="combobox">` of the nearest palette: `aria-expanded`, `aria-controls`, `aria-activedescendant` and the keyboard are wired. Added in v0.53.0.',
+  },
+
+  'command/CommandList': {
+    signature: '(props: { class?, virtualizeAfter?, rowHeight?, children? }) => VNode',
+    example: `import { CommandList } from '@pyreon/command/components'
+
+export const Results = () => <CommandList virtualizeAfter={500} rowHeight={44} />`,
+    notes: '[EXPERIMENTAL] The `role="listbox"` element with the groups and rows of the nearest palette. Beyond `virtualizeAfter` rows (300) only the rows in view are in the DOM; they keep `aria-setsize` and `aria-posinset`, and every row has one height (`rowHeight`). Added in v0.53.0.',
+  },
+
+  'command/CommandGroup': {
+    signature: '(props: { group, class?, headingClass?, children? }) => VNode',
+    example: `import { CommandGroup, usePalette } from '@pyreon/command/components'
+
+export const Groups = () => <>{usePalette().groups().map((group) => <CommandGroup group={group} />)}</>`,
+    notes: '[EXPERIMENTAL] A `role="group"` with its heading (named by `aria-labelledby`) and its rows. Added in v0.53.0.',
+  },
+
+  'command/CommandItem': {
+    signature: '(props: { item, class?, style?, children? }) => VNode',
+    example: `import { CommandItem, Highlight, usePalette } from '@pyreon/command/components'
+
+export const Rows = () => <>{usePalette().results().map((item) => <CommandItem item={item}><Highlight text={item.title} ranges={item.ranges} /></CommandItem>)}</>`,
+    notes: '[EXPERIMENTAL] A `role="option"` row: the pointer moves the active row, a click runs it, pressing it keeps focus in the input. The default content is the icon, the highlighted title and subtitle, the reason a disabled command cannot run, the shortcuts and a chevron for a page; pass children to replace it. Added in v0.53.0.',
+  },
+
+  'command/Highlight': {
+    signature: '(props: { text, ranges, markClass? }) => VNode',
+    example: `import { Highlight } from '@pyreon/command/components'
+
+export const Title = () => <Highlight text="New Project" ranges={[[0, 1], [4, 5]]} />`,
+    notes: '[EXPERIMENTAL] A text with the runs of `ranges` in `<mark>`. Added in v0.53.0.',
+  },
+
+  'command/CommandShortcut': {
+    signature: '(props: { shortcut?, class?, children? }) => VNode',
+    example: `import { CommandShortcut } from '@pyreon/command/components'
+
+export const Keys = () => <CommandShortcut shortcut="Ctrl+K" />`,
+    notes: '[EXPERIMENTAL] A `<kbd>` for a shortcut. Added in v0.53.0.',
+  },
+
+  'command/CommandEmpty': {
+    signature: '(props: { class?, children? }) => VNode',
+    example: `import { CommandEmpty } from '@pyreon/command/components'
+
+export const None = () => <CommandEmpty>Nothing matches.</CommandEmpty>`,
+    notes: '[EXPERIMENTAL] Shown when a query or a page has no rows (and nothing is loading). Added in v0.53.0.',
+  },
+
+  'command/CommandLoading': {
+    signature: '(props: { class?, children? }) => VNode',
+    example: `import { CommandLoading } from '@pyreon/command/components'
+
+export const Busy = () => <CommandLoading />`,
+    notes: '[EXPERIMENTAL] Shown while an async source or a run is pending (hidden from assistive technology: the live region says it). Added in v0.53.0.',
+  },
+
+  'command/usePalette': {
+    signature: '() => Palette',
+    example: 'typeof usePalette',
+    notes: '[EXPERIMENTAL] The palette of the nearest `<CommandPalette>`, for parts of your own. Added in v0.53.0.',
+  },
+
+  'command/routeCommands': {
+    signature: '(routes: RouteLike[], options: { navigate, filter?, title?, group?, keywords?, id? }) => Command[]',
+    example: `const routes = [{ path: '/', name: 'home' }, { path: '/settings', meta: { title: 'Settings' }, children: [{ path: 'profile' }, { path: ':section' }] }, { path: '/users/:id' }]
+routeCommands(routes, { navigate: () => {} }).map((c) => c.id)   // => ['route:/', 'route:/settings', 'route:/settings/profile']
+routeCommands(routes, { navigate: () => {}, filter: (r) => r.path !== '/' }).map((c) => c.title)   // => ['Settings', 'Profile']`,
+    notes: '[EXPERIMENTAL] Navigation commands from the routes you gave `createRouter` (import `@pyreon/command/router`): one per route you can go to without more information; a path with a parameter or a wildcard, and a redirect, are left out, and a child path is joined to its parent. The router does not expose its route table, so this takes the same array; `navigate` is `router.push`. The title is `meta.title`, else the name or the last segment made readable, "Home" for the root; the path is always a keyword. Added in v0.53.0.',
+  },
+
   'command/useCommands': {
     signature: '() => Commands',
     example: `typeof useCommands   // => 'function'`,
@@ -7310,9 +9476,9 @@ commands.commands().length   // => 0`,
   },
 
   'command/useCommand': {
-    signature: '(command | () => command) => void',
+    signature: '(command | command[] | () => command) => void',
     example: `typeof useCommand   // => 'function'`,
-    notes: '[EXPERIMENTAL] Register a command for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed. Added in v0.53.0.',
+    notes: '[EXPERIMENTAL] Register a command, a list, or a function that returns a command, for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed. Added in v0.53.0.',
   },
 
   'command/provideCommands': {
@@ -7361,6 +9527,24 @@ commands.commands().length   // => 0`,
     signature: 'interface Match { command; id; title; score; field: "title" | "subtitle" | "keyword"; ranges; group; enabled; disabledReason; recent }',
     example: `const none: readonly Match[] = createCommands().search('x')`,
     notes: '[EXPERIMENTAL] One search result. `ranges` are offsets into the text named by `field`. Added in v0.53.0.',
+  },
+
+  'command/Palette': {
+    signature: 'interface Palette { isOpen(); open(page?); close(); toggle(); query(); setQuery(); page(); pageTitle(); back(); results(); groups(); status(); error(); running(); activeId(); setActive(); move(); runActive(); runItem(); announcement(); inputProps; listProps; itemProps(); groupProps(); ids; dispose() }',
+    example: 'const palette: Palette = createPalette({ hotkey: false })',
+    notes: '[EXPERIMENTAL] What `createPalette` returns. Added in v0.53.0.',
+  },
+
+  'command/ResultItem': {
+    signature: 'interface ResultItem { id; command; title; subtitle; ranges; subtitleRanges; group; enabled; disabledReason; recent; hasPage; shortcuts; index }',
+    example: 'const rows: readonly ResultItem[] = createPalette({ hotkey: false }).results()',
+    notes: '[EXPERIMENTAL] One row of the list, with the ranges to highlight and the shortcuts as the user reads them. Added in v0.53.0.',
+  },
+
+  'command/RouteLike': {
+    signature: 'interface RouteLike { path: string; name?: string; meta?: { title? }; redirect?: unknown; children?: RouteLike[] }',
+    example: `const route: RouteLike = { path: '/', meta: { title: 'Home' } }`,
+    notes: '[EXPERIMENTAL] The part of a `@pyreon/router` route record that `routeCommands` reads. A `RouteRecord` fits. Added in v0.53.0.',
   },
 
   'command/RunContext': {
@@ -8048,9 +10232,9 @@ get_api_client({ search: 'order' })`,
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
-    notes: `Fetch a canonical "how do I do X" pattern body from \`docs/src/content/docs/patterns/\` (the same files the docs site renders — one source, two surfaces). 17 foundational patterns ship: \`controllable-state\`, \`data-fetching\`, \`dev-warnings\`, \`dynamic-fields\`, \`event-listeners\`, \`form-fields\`, \`imperative-toasts\`, \`islands\`, \`keyed-lists\`, \`multiplatform\`, \`reactive-context\`, \`reactive-spread\`, \`routing-setup\`, \`signal-writes\`, \`ssr-safe-hooks\`, \`state-management\`, \`styler-theming\`. Omit \`name\` to list available patterns. Drop a new \`docs/src/content/docs/patterns/<slug>.md\` file to add one — picked up on next call (no code change, no bundling step in dev; \`scripts/copy-content.ts\` mirrors it into this package's bundled \`content/patterns/\` for the published \`bunx @pyreon/mcp\` consumer case at build time). See also: get_anti_patterns.`,
+    notes: `Fetch a canonical "how do I do X" pattern body from \`docs/src/content/docs/patterns/\` (the same files the docs site renders — one source, two surfaces). 18 foundational patterns ship: \`controllable-state\`, \`data-fetching\`, \`dev-warnings\`, \`dynamic-fields\`, \`event-listeners\`, \`form-fields\`, \`imperative-toasts\`, \`islands\`, \`keyed-lists\`, \`multiplatform\`, \`offline-and-installable-apps\`, \`reactive-context\`, \`reactive-spread\`, \`routing-setup\`, \`signal-writes\`, \`ssr-safe-hooks\`, \`state-management\`, \`styler-theming\`. Omit \`name\` to list available patterns. Drop a new \`docs/src/content/docs/patterns/<slug>.md\` file to add one — picked up on next call (no code change, no bundling step in dev; \`scripts/copy-content.ts\` mirrors it into this package's bundled \`content/patterns/\` for the published \`bunx @pyreon/mcp\` consumer case at build time). See also: get_anti_patterns.`,
     mistakes: `- Passing a name in CamelCase or PascalCase — pattern names are kebab-case (\`controllable-state\`, not \`ControllableState\`). A wrong-case name 404s.
-- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 17 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a \`get_pattern\` slug.
+- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 18 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a \`get_pattern\` slug.
 - Confusing patterns with anti-patterns — \`get_pattern\` returns "how to do X correctly"; \`get_anti_patterns\` returns "what to avoid". They're complementary.`,
   },
 
@@ -9087,6 +11271,130 @@ effect(() => { void throttled() })
   // @pyreon/toast
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/ambient>
+
+  'ambient/locale': {
+    signature: '() => string',
+    example: `setLocale('cs-cz')
+locale()                                      // => 'cs-CZ'`,
+    notes: '[EXPERIMENTAL] The active locale as a reactive read: the nearest `provideLocale`, then the app default from `setLocale`, then `navigator.language` on the client or the runtime default on the server. Read it inside an effect, a computed or a JSX accessor and it re-runs when the locale changes. See also: setLocale, provideLocale. Added in v0.53.0.',
+  },
+
+  'ambient/setLocale': {
+    signature: '(tag: string) => void',
+    example: `setLocale('de')
+locale()                                      // => 'de'`,
+    notes: '[EXPERIMENTAL] Set the app-level default locale (client). A malformed tag throws a `[Pyreon]` error. On a server it is a no-op with a development warning, because one process serves many requests: use `provideLocale` there. Added in v0.53.0.',
+  },
+
+  'ambient/provideLocale': {
+    signature: '(tag: string | (() => string)) => void',
+    example: `// in a root component
+provideLocale(() => 'cs')`,
+    notes: `[EXPERIMENTAL] Scope a subtree to a locale: a tag, or an accessor (\`() => i18n.locale()\`) that is tracked. Call it in a component's setup. Owner-based on the client and request-scoped on a server, so two requests never see each other's locale. Added in v0.53.0.`,
+    mistakes: '- Calling it outside a component: it then applies to the whole page for good (a development warning says so). Use `setLocale` for the app default',
+  },
+
+  'ambient/timeZone': {
+    signature: '() => string',
+    example: `setTimeZone('Asia/Tokyo')
+timeZone()                                    // => 'Asia/Tokyo'`,
+    notes: `[EXPERIMENTAL] The active IANA time zone as a reactive read: the nearest \`provideTimeZone\`, then the app default from \`setTimeZone\`, then the runtime's zone. See also: setTimeZone, provideTimeZone. Added in v0.53.0.`,
+  },
+
+  'ambient/setTimeZone': {
+    signature: '(zone: string) => void',
+    example: `setTimeZone('Europe/Prague')
+timeZone()                                    // => 'Europe/Prague'`,
+    notes: '[EXPERIMENTAL] Set the app-level default time zone (client). An unknown zone throws a `[Pyreon]` error; on a server it is a no-op with a development warning. Added in v0.53.0.',
+  },
+
+  'ambient/provideTimeZone': {
+    signature: '(zone: string | (() => string)) => void',
+    example: `// in a root component
+provideTimeZone('America/New_York')`,
+    notes: '[EXPERIMENTAL] Scope a subtree to a time zone: a name, or a tracked accessor. Request-scoped on a server. Added in v0.53.0.',
+  },
+
+  'ambient/activeZone': {
+    signature: '() => string',
+    example: `setTimeZone('UTC')
+activeZone()                                  // => 'UTC'`,
+    notes: `[EXPERIMENTAL] The active zone as a formatter argument: \`''\` means "the runtime zone", so a hot path never builds a name. Used by \`@pyreon/format\`; apps want \`timeZone()\`. Added in v0.53.0.`,
+  },
+
+  'ambient/now': {
+    signature: '() => number',
+    example: `typeof now()                                  // => 'number'`,
+    notes: `[EXPERIMENTAL] The current instant in epoch milliseconds: a plain read, not reactive, starting no timer. Resolution: the nearest \`provideClock\`, then the pin from \`setClock\`, then the server's instant on a page that received one (until it is released), then \`Date.now()\`. See also: setClock, useNow. Added in v0.53.0.`,
+  },
+
+  'ambient/setClock': {
+    signature: '(source: (() => number) | null) => void',
+    example: `setClock(() => 1_000_000)
+now()                                         // => 1000000
+setClock(null)`,
+    notes: '[EXPERIMENTAL] Pin the clock `now()` and every ticker read, for tests; `null` restores `Date.now()`. Process-wide: on a server it would pin every request, so use `provideClock` there (a development warning says so). Added in v0.53.0.',
+  },
+
+  'ambient/provideClock': {
+    signature: '(instant: number | (() => number)) => void',
+    example: `// in a root component, on the server
+provideClock(Date.now())`,
+    notes: `[EXPERIMENTAL] Scope a subtree (and, on a server, one request) to a start instant. On a server this is the instant the page was rendered at; emit it with \`clockScript()\` or \`clockAttributes()\` so the client's first render reads the same instant. Call it in a root component's setup. See also: clockScript, releaseClock. Added in v0.53.0.`,
+  },
+
+  'ambient/useNow': {
+    signature: '(options?: { every?: Every | (() => EveryOrAt); zone?: string | (() => string) }) => () => number',
+    example: `typeof useNow({ every: 'second' })()          // => 'number'`,
+    notes: `[EXPERIMENTAL] A reactive reading of the clock: an accessor that updates on a shared ticker. \`every\` is \`"second"\`, \`"minute"\` (default), \`"hour"\`, \`"day"\` or a number of milliseconds; \`"hour"\` and \`"day"\` align to the local hour and midnight of \`zone\` (default: the active zone, tracked), and a function \`every\` is read reactively (and again after every update of the ticker the reader holds) so a reader can move to a slower ticker as it ages. It may also return \`{ at: instant }\`: one update at that exact instant, then the function is read again. Readers that each want their own instant (a relative label that must flip when its target turns a minute old) are kept in a sorted list served by ONE timer, so 200 of them cost one timer; \`{ at: Infinity }\` never updates and a past instant is clamped to the next millisecond. One timer serves every reader of the same granularity; each tick is scheduled from the clock to the next boundary, so a late timer does not drift; the ticker stops when its last reader goes; no timer runs while the page is hidden, and on becoming visible every reader is updated once. Call it in a component's setup: the ticker is released with the scope. Outside a scope, and on a server, it returns the plain \`now\` read: no subscription, no timer. See also: now, provideClock. Added in v0.53.0.`,
+    mistakes: `- Calling it inside an effect that re-runs: each run takes a new reference. Call it once in setup
+- Expecting it to tick on a server: nothing runs there; the HTML carries the instant of \`provideClock\``,
+  },
+
+  'ambient/clockScript': {
+    signature: '(options?: { instant?: number; nonce?: string }) => string',
+    example: `clockScript({ instant: 1000 })                // => '<script>window.__PYREON_CLOCK__=1000</script>'`,
+    notes: `[EXPERIMENTAL] The inline script that hands the server's instant to the client: \`window.__PYREON_CLOCK__ = <epoch ms>\`. Put it in the page head, before the app script. The client reads it on its first \`now()\` or \`useNow()\`, before hydration, and releases it one macrotask later so real time takes over with one update. See also: clockAttributes, provideClock. Added in v0.53.0.`,
+  },
+
+  'ambient/clockAttributes': {
+    signature: '(instant?: number) => { "data-pyreon-clock": string }',
+    example: `clockAttributes(1000)                         // => { 'data-pyreon-clock': '1000' }`,
+    notes: '[EXPERIMENTAL] The same hand-over as an attribute, for a page that cannot emit a script (strict CSP): spread it on the `<html>` or `<body>` element. Added in v0.53.0.',
+  },
+
+  'ambient/releaseClock': {
+    signature: '() => void',
+    example: 'releaseClock()                                // after a custom async hydration step',
+    notes: `[EXPERIMENTAL] Hand real time back to the page after hydration: \`now()\` stops returning the server's instant and every ticker is updated once. It runs by itself one macrotask after the first read of a hand-over; call it yourself if your hydration is not synchronous. Added in v0.53.0.`,
+  },
+
+  'ambient/Every': {
+    signature: `type Every = 'second' | 'minute' | 'hour' | 'day' | number`,
+    example: `const e: Every = 'minute'`,
+    notes: '[EXPERIMENTAL] How often `useNow` updates. Added in v0.53.0.',
+  },
+
+  'ambient/EveryOrAt': {
+    signature: 'type EveryOrAt = Every | { at: number }',
+    example: 'const e: EveryOrAt = { at: Date.now() + 60_000 }',
+    notes: '[EXPERIMENTAL] What a function-valued `every` may return: a granularity, or `{ at }` for one update at an exact instant (epoch ms), after which the function is read again. Added in v0.53.0.',
+  },
+
+  'ambient/NowOptions': {
+    signature: 'interface NowOptions { every?: Every | (() => EveryOrAt); zone?: string | (() => string) }',
+    example: `const o: NowOptions = { every: 'second' }`,
+    notes: '[EXPERIMENTAL] Options of `useNow`. Added in v0.53.0.',
+  },
+
+  'ambient/ClockScriptOptions': {
+    signature: 'interface ClockScriptOptions { instant?: number; nonce?: string }',
+    example: `const o: ClockScriptOptions = { nonce: 'abc' }`,
+    notes: '[EXPERIMENTAL] Options of `clockScript`. Added in v0.53.0.',
+  },
+  // <gen-docs:api-reference:end @pyreon/ambient>
+
   // <gen-docs:api-reference:start @pyreon/a11y>
 
   'a11y/announce': {
@@ -9213,6 +11521,742 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 - Using bindRichTextToSignal AND a manual editor.json.set() loop — defeats loop prevention`,
   },
   // <gen-docs:api-reference:end @pyreon/rich-text>
+
+  // <gen-docs:api-reference:start @pyreon/time>
+
+  'time/add': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T, duration: Duration) => same shape as T',
+    example: `add('2026-01-31', { months: 1 })              // => '2026-02-28'
+add('2024-02-29', { years: 1 })               // => '2025-02-28'
+add('2026-12-31', { days: 1 })                // => '2027-01-01'
+add('2026-11-18T23:30', { minutes: 45 })      // => '2026-11-19T00:15'
+add('2026-11', { months: 3 })                 // => '2027-02'`,
+    notes: `[EXPERIMENTAL] Add a duration to a PlainDate, PlainDateTime or PlainYearMonth; the result has the same shape. Years and months are applied first and clamp the day to the target month (Temporal's \`constrain\`), then weeks, days and the time fields. Every field is an integer and all non-zero fields share one sign. Throws a \`[Pyreon]\` error for an invalid value, a mixed-sign or fractional duration, time fields on a PlainDate, days on a PlainYearMonth, and a result outside years 0001-9999. See also: subtract, addInstant, diff. Added in v0.53.0.`,
+    mistakes: `- Passing a plain \`string\` from user input: the type rejects it. Narrow it with \`isPlainDate(x)\` first; at runtime an invalid string throws
+- Mixing signs (\`{ months: 1, days: -1 }\`): it has no single meaning and throws. Call \`add\` and \`subtract\` separately
+- Adding hours to a PlainDate: a date has no time of day. Use a PlainDateTime`,
+  },
+
+  'time/subtract': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T, duration: Duration) => same shape as T',
+    example: `subtract('2000-03-01', { days: 1 })           // => '2000-02-29'
+subtract('2026-03-31', { months: 1 })         // => '2026-02-28'`,
+    notes: '[EXPERIMENTAL] `add` with every field negated: `subtract(date, { days: 1 })` is yesterday. See also: add. Added in v0.53.0.',
+  },
+
+  'time/diff': {
+    signature: '(a: T, b: T, unit: Unit, options?: { zone?: TimeZone }) => number',
+    example: `diff('2026-11-18', '2026-12-24', 'day')       // => 36
+diff('2026-12-24', '2026-11-18', 'day')       // => -36
+diff('2026-01-31', '2026-02-28', 'month')     // => 1
+diff('2026-11-18T10:00', '2026-11-18T12:59', 'hour')  // => 2
+diff('10:00', '12:30', 'minute')              // => 150
+diff(Date.UTC(2026, 2, 28, 11), Date.UTC(2026, 2, 29, 10), 'day', { zone: 'Europe/Prague' })  // => 1`,
+    notes: `[EXPERIMENTAL] Whole \`unit\`s from \`a\` to \`b\`, truncated toward zero; the sign is the direction. Works on PlainDate, PlainDateTime, PlainYearMonth, PlainTime and Instant (an Instant needs \`options.zone\` for year, month, week and day, because a calendar day is not always 24 hours). A month or year counts as complete when \`add(a, { months: n })\` (day clamped) does not pass \`b\`, which is what Temporal's \`until\` with \`smallestUnit\` and truncation returns, so it is not antisymmetric at month ends: January 31 to February 28 is 1 month, February 28 back to January 31 is 0. See also: between, add. Added in v0.53.0.`,
+    mistakes: '- Diffing two Instants in days without a zone throws: pass `{ zone }`, or use `{ hours }` for an exact 24-hour count',
+  },
+
+  'time/between': {
+    signature: '(a: PlainDate | PlainDateTime, b: same shape) => Duration',
+    example: `between('2026-01-31', '2026-03-01')           // => { years: 0, months: 1, days: 1 }
+between('2020-01-01', '2026-11-18')           // => { years: 6, months: 10, days: 17 }
+between('2026-01-01T10:00', '2026-01-02T09:30')  // => { years: 0, months: 0, days: 0, hours: 23, minutes: 30, seconds: 0, milliseconds: 0 }`,
+    notes: `[EXPERIMENTAL] The span from \`a\` to \`b\` broken down from years to days (and hours to milliseconds for a PlainDateTime), matching Temporal's \`until\` with \`largestUnit: "year"\`. All fields share the sign of the direction; every field is present. See also: diff. Added in v0.53.0.`,
+  },
+
+  'time/startOf': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T, unit: Unit, options?: { weekStart?: Weekday }) => same shape as T',
+    example: `startOf('2026-11-18', 'week')                 // => '2026-11-16'
+startOf('2026-11-18', 'week', { weekStart: 7 })  // => '2026-11-15'
+startOf('2026-11-18', 'month')                // => '2026-11-01'
+startOf('2026-11-18T14:30:05', 'hour')        // => '2026-11-18T14:00'`,
+    notes: '[EXPERIMENTAL] The first moment of the `unit` containing `value`. Weeks start on `options.weekStart` (1 Monday ... 7 Sunday, default Monday). A PlainDateTime keeps the precision it came in with. A PlainDate has no time units; a PlainYearMonth has only year and month. See also: endOf, weekStartOf. Added in v0.53.0.',
+  },
+
+  'time/endOf': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T, unit: Unit, options?: { weekStart?: Weekday }) => same shape as T',
+    example: `endOf('2026-11-18', 'month')                  // => '2026-11-30'
+endOf('2024-02-10', 'month')                  // => '2024-02-29'
+endOf('2026-11-18T14:30', 'day')              // => '2026-11-18T23:59:59.999'`,
+    notes: '[EXPERIMENTAL] The last moment of the `unit` containing `value`. For a PlainDateTime that is the last millisecond (`.999`). See also: startOf. Added in v0.53.0.',
+  },
+
+  'time/compare': {
+    signature: '<T extends PlainDate | PlainDateTime | PlainYearMonth | PlainTime | Instant>(a: T, b: T) => -1 | 0 | 1',
+    example: `compare('2026-11-18', '2026-11-19')           // => -1
+compare('14:30', '14:30')                  // => 0
+compare('2026-11-18T14:30', '2026-11-18T14:30:00.001')  // => -1
+['2026-03-01', '2026-01-01'].sort(compare)    // => ['2026-01-01', '2026-03-01']`,
+    notes: '[EXPERIMENTAL] Order two values of the same shape. Same-length strings compare as plain strings (every field is fixed-width and zero-padded), so the common case is one string comparison; that fast path does not validate. Values written at different precision (`14:30` and `14:30:00`, which compare equal) are parsed. Usable as an `Array#sort` comparator. See also: isBefore, isAfter, isSame, min, max, clamp. Added in v0.53.0.',
+  },
+
+  'time/isBefore': {
+    signature: '<T extends Comparable>(a: T, b: T) => boolean',
+    example: `isBefore('2026-01-01', '2026-01-02')          // => true`,
+    notes: '[EXPERIMENTAL] Whether `a` is strictly before `b`. Added in v0.53.0.',
+  },
+
+  'time/isAfter': {
+    signature: '<T extends Comparable>(a: T, b: T) => boolean',
+    example: `isAfter('2026-01-01', '2026-01-02')           // => false`,
+    notes: '[EXPERIMENTAL] Whether `a` is strictly after `b`. Added in v0.53.0.',
+  },
+
+  'time/isSame': {
+    signature: '<T extends Comparable>(a: T, b: T, unit?: Unit, options?: { weekStart?: Weekday; zone?: TimeZone }) => boolean',
+    example: `isSame('2026-11-18', '2026-11-30', 'month')   // => true
+isSame('2026-11-15', '2026-11-16', 'week')    // => false
+isSame('2026-11-15', '2026-11-16', 'week', { weekStart: 7 })  // => true
+isSame(Date.UTC(2026, 10, 18, 22, 30), Date.UTC(2026, 10, 18, 23, 30), 'day', { zone: 'Europe/Prague' })  // => false`,
+    notes: '[EXPERIMENTAL] Whether `a` and `b` are the same moment, or, with a `unit`, fall in the same year, month, week, day (or hour, minute, second, millisecond for a PlainDateTime). Two Instants compared by year, month, week, day or hour need `options.zone`, because the calendar day depends on where you are; without it the call throws and says so. Added in v0.53.0.',
+  },
+
+  'time/min': {
+    signature: '<T extends Comparable>(...values: [T, ...T[]]) => T',
+    example: `min('2026-03-01', '2026-01-01', '2026-02-01') // => '2026-01-01'`,
+    notes: '[EXPERIMENTAL] The earliest value; at least one is required. Added in v0.53.0.',
+  },
+
+  'time/max': {
+    signature: '<T extends Comparable>(...values: [T, ...T[]]) => T',
+    example: `max('2026-03-01', '2026-01-01', '2026-02-01') // => '2026-03-01'`,
+    notes: '[EXPERIMENTAL] The latest value; at least one is required. Added in v0.53.0.',
+  },
+
+  'time/clamp': {
+    signature: '<T extends Comparable>(value: T, lo: T, hi: T) => T',
+    example: `clamp('2026-05-01', '2026-01-01', '2026-03-01') // => '2026-03-01'`,
+    notes: '[EXPERIMENTAL] `value` limited to `lo` ... `hi` inclusive. Throws when `lo` is after `hi`. Added in v0.53.0.',
+  },
+
+  'time/eachDay': {
+    signature: '(start: PlainDate, end: PlainDate, step?: number) => PlainDate[]',
+    example: `eachDay('2026-02-27', '2026-03-02')           // => ['2026-02-27', '2026-02-28', '2026-03-01', '2026-03-02']
+eachDay('2026-11-03', '2026-11-01', -1)       // => ['2026-11-03', '2026-11-02', '2026-11-01']`,
+    notes: '[EXPERIMENTAL] Every date from `start` to `end`, both included, as an array. `step` (default 1) moves by that many days; a negative step counts down. A range that runs the other way than `step` is empty, which is a normal answer and never guessed into a direction. Nothing is capped: the whole range is built, so use `iterateDays` for long ranges. See also: iterateDays. Added in v0.53.0.',
+  },
+
+  'time/iterateDays': {
+    signature: '(start: PlainDate, end: PlainDate, step?: number) => Generator<PlainDate>',
+    example: `[...iterateDays('2026-11-01', '2026-11-03')]  // => ['2026-11-01', '2026-11-02', '2026-11-03']`,
+    notes: '[EXPERIMENTAL] The dates from `start` to `end`, both included, one at a time, so a long range is never materialised. `step` is as in `eachDay`; a zero or fractional step throws when called. See also: eachDay. Added in v0.53.0.',
+  },
+
+  'time/monthGrid': {
+    signature: '(month: PlainYearMonth | PlainDate, options?: { weekStart?: Weekday; weeks?: 6 | "auto" }) => PlainDate[][]',
+    example: `const grid = monthGrid('2026-11')
+grid.length                                   // => 6
+grid[0]                                       // => ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01']
+monthGrid('2026-11', { weekStart: 7 }).length // => 5
+monthGrid('2026-02', { weekStart: 7 })[3]![6] // => '2026-02-28'`,
+    notes: '[EXPERIMENTAL] The weeks of a month as rows of seven dates, including the days of the neighbouring months that fill the first and last row. `weeks: "auto"` (default) returns only the weeks the month occupies (4 to 6 rows); `weeks: 6` always returns six rows so a date picker keeps its height. Throws for the first and last months of the supported range when the grid would leave it. See also: weekStartOf, eachDay. Added in v0.53.0.',
+  },
+
+  'time/weekStartOf': {
+    signature: '(locale: string) => Weekday',
+    example: `weekStartOf('en-US')                          // => 7
+weekStartOf('cs')                             // => 1`,
+    notes: '[EXPERIMENTAL] First day of the week for a locale as an ISO weekday (`en-US` is 7, `cs` is 1). Reads `Intl.Locale` week data and falls back to a built-in region table when the platform has none; a malformed tag gives Monday. Cached in a bounded table. See also: weekendOf, monthGrid. Added in v0.53.0.',
+  },
+
+  'time/weekendOf': {
+    signature: '(locale: string) => readonly Weekday[]',
+    example: `weekendOf('en-US')                            // => [6, 7]
+weekendOf('he-IL')                            // => [5, 6]`,
+    notes: '[EXPERIMENTAL] The weekend days of a locale as ISO weekdays (`en-US` is `[6, 7]`, `ar-EG` is `[5, 6]`). The array is shared and frozen. Added in v0.53.0.',
+  },
+
+  'time/dayOfWeek': {
+    signature: '(value: PlainDate | PlainDateTime) => Weekday',
+    example: `dayOfWeek('2026-11-18')                       // => 3
+dayOfWeek('2026-11-22')                       // => 7`,
+    notes: '[EXPERIMENTAL] ISO weekday: 1 is Monday, 7 is Sunday (unlike `Date#getDay`). Added in v0.53.0.',
+  },
+
+  'time/quarterOf': {
+    signature: '(value: PlainDate | PlainDateTime | PlainYearMonth) => 1 | 2 | 3 | 4',
+    example: `quarterOf('2026-11-18')                       // => 4
+startOf('2026-11-18', 'quarter')              // => '2026-10-01'
+endOf('2026-11-18', 'quarter')                // => '2026-12-31'
+diff('2026-01-01', '2026-12-31', 'quarter')   // => 3`,
+    notes: '[EXPERIMENTAL] The calendar quarter (January-March is 1). `startOf`, `endOf`, `diff` and `isSame` also take the unit `quarter`. There is no `quarters` duration field (a quarter is a calendar unit, not a length, and Temporal has none): add three months with `{ months: 3 }`. See also: startOf, endOf. Added in v0.53.0.',
+  },
+
+  'time/dayOfYear': {
+    signature: '(value: PlainDate | PlainDateTime) => number',
+    example: `dayOfYear('2024-12-31')                       // => 366`,
+    notes: '[EXPERIMENTAL] 1 for January 1st through 365 or 366. Added in v0.53.0.',
+  },
+
+  'time/weekOfYear': {
+    signature: '(value: PlainDate | PlainDateTime) => number',
+    example: `weekOfYear('2026-11-18')                      // => 47
+weekOfYear('2027-01-01')                      // => 53
+weekOfYear('2024-12-30')                      // => 1`,
+    notes: `[EXPERIMENTAL] ISO 8601 week number, 1-53: week 1 contains the year's first Thursday and weeks start on Monday. Days at the turn of the year can belong to a week of the neighbouring year: see \`yearOfWeek\`. See also: yearOfWeek. Added in v0.53.0.`,
+  },
+
+  'time/yearOfWeek': {
+    signature: '(value: PlainDate | PlainDateTime) => number',
+    example: `yearOfWeek('2027-01-01')                      // => 2026
+yearOfWeek('2024-12-30')                      // => 2025`,
+    notes: '[EXPERIMENTAL] The ISO week-based year: 2027-01-01 belongs to week 53 of 2026, and 2024-12-30 to week 1 of 2025. Use it with `weekOfYear` to label a week. See also: weekOfYear. Added in v0.53.0.',
+  },
+
+  'time/daysInMonth': {
+    signature: '(value: PlainDate | PlainDateTime | PlainYearMonth) => number',
+    example: `daysInMonth('2024-02')                        // => 29
+daysInMonth('2100-02')                        // => 28`,
+    notes: '[EXPERIMENTAL] Number of days in the month of the value. Added in v0.53.0.',
+  },
+
+  'time/isLeapYear': {
+    signature: '(value: number | PlainDate | PlainDateTime | PlainYearMonth) => boolean',
+    example: `isLeapYear(2000)                              // => true
+isLeapYear(1900)                              // => false`,
+    notes: '[EXPERIMENTAL] Whether a year, or the year of a value, is a Gregorian leap year (1900 and 2100 are not, 2000 is). Added in v0.53.0.',
+  },
+
+  'time/plainDate': {
+    signature: '(year: number, month: number, day: number) => PlainDate',
+    example: `plainDate(2026, 11, 18)                       // => '2026-11-18'`,
+    notes: '[EXPERIMENTAL] Build a PlainDate from numbers (month 1-12). Throws on an impossible date. Added in v0.53.0.',
+    mistakes: '- Passing a 0-based month as `Date` does: `plainDate(2026, 0, 1)` throws, months are 1-12',
+  },
+
+  'time/plainYearMonth': {
+    signature: '(year: number, month: number) => PlainYearMonth',
+    example: `plainYearMonth(2026, 11)                      // => '2026-11'`,
+    notes: '[EXPERIMENTAL] Build a PlainYearMonth from numbers. Added in v0.53.0.',
+  },
+
+  'time/plainTime': {
+    signature: '(hour: number, minute?: number, second?: number, millisecond?: number) => PlainTime',
+    example: `plainTime(14, 30)                             // => '14:30'
+plainTime(14, 30, 5)                          // => '14:30:05'
+plainTime(14, 30, 0, 250)                     // => '14:30:00.250'`,
+    notes: '[EXPERIMENTAL] Build a PlainTime, written at the least precision that holds the value: `14:30`, `14:30:05` or `14:30:05.250`. Added in v0.53.0.',
+  },
+
+  'time/dateParts': {
+    signature: '(value: PlainDate | PlainDateTime) => { year: number; month: number; day: number }',
+    example: `dateParts('2026-11-18')                       // => { year: 2026, month: 11, day: 18 }`,
+    notes: '[EXPERIMENTAL] The numeric fields of a date. Months are 1-12. Added in v0.53.0.',
+  },
+
+  'time/timeParts': {
+    signature: '(value: PlainTime | PlainDateTime) => { hour: number; minute: number; second: number; millisecond: number }',
+    example: `timeParts('14:30:05.250')                     // => { hour: 14, minute: 30, second: 5, millisecond: 250 }`,
+    notes: '[EXPERIMENTAL] The numeric fields of a time of day. Added in v0.53.0.',
+  },
+
+  'time/isPlainDate': {
+    signature: '(x: unknown) => x is PlainDate',
+    example: `isPlainDate('2026-11-18')                     // => true
+isPlainDate('2026-02-30')                     // => false
+isPlainDate('2026-2-3')                       // => false`,
+    notes: '[EXPERIMENTAL] Strict guard: exactly `YYYY-MM-DD`, zero-padded, a real calendar day, years 0001-9999. Never throws. The other guards (`isPlainTime`, `isPlainDateTime`, `isPlainYearMonth`) follow the grammar in the gotchas. Added in v0.53.0.',
+  },
+
+  'time/isPlainTime': {
+    signature: '(x: unknown) => x is PlainTime',
+    example: `isPlainTime('14:30:05.250')                   // => true
+isPlainTime('24:00')                          // => false`,
+    notes: '[EXPERIMENTAL] Guard for `HH:MM`, `HH:MM:SS` or `HH:MM:SS.f` to `.fff`. Added in v0.53.0.',
+  },
+
+  'time/isPlainDateTime': {
+    signature: '(x: unknown) => x is PlainDateTime',
+    example: `isPlainDateTime('2026-11-18T14:30')           // => true
+isPlainDateTime('2026-11-18T14:30Z')          // => false`,
+    notes: '[EXPERIMENTAL] Guard for a PlainDate, an upper-case `T`, a PlainTime. Offsets and zone names are not part of a PlainDateTime. Added in v0.53.0.',
+  },
+
+  'time/isPlainYearMonth': {
+    signature: '(x: unknown) => x is PlainYearMonth',
+    example: `isPlainYearMonth('2026-11')                   // => true
+isPlainYearMonth('2026-13')                   // => false`,
+    notes: '[EXPERIMENTAL] Guard for `YYYY-MM`. Added in v0.53.0.',
+  },
+
+  'time/parseInstant': {
+    signature: '(text: string, options?: { lenient?: boolean }) => Instant | null',
+    example: `parseInstant('2026-11-18T14:30:05Z')          // => Date.UTC(2026, 10, 18, 14, 30, 5)
+parseInstant('2026-11-18T14:30:05.250+01:00') // => Date.UTC(2026, 10, 18, 13, 30, 5, 250)
+parseInstant('2026-11-18T14:30:05')           // => null
+parseInstant('2026-11-18 14:30:05+0100', { lenient: true })  // => Date.UTC(2026, 10, 18, 13, 30, 5)`,
+    notes: '[EXPERIMENTAL] Parse an ISO 8601 timestamp that names its offset into an Instant, or `null`. Strict: upper-case `T` and `Z`, a `+hh:mm` offset with a colon, seconds required, an optional fraction of 1-9 digits truncated to milliseconds. A string without an offset is a wall-clock value, not a moment, so it is `null`: use `toInstant(value, zone)`. With `{ lenient: true }` it also accepts a space or lower-case `t` and `z`, `+0100` and `+01` offsets, missing seconds and unpadded fields. Never throws. See also: toInstant. Added in v0.53.0.',
+  },
+
+  'time/normalize': {
+    signature: '<T extends PlainDate | PlainYearMonth | PlainTime | PlainDateTime>(value: T) => same shape as T',
+    example: `normalize('2026-11-18T14:30:00.000')          // => '2026-11-18T14:30'
+normalize('14:30:05.5')                       // => '14:30:05.500'
+normalize('2026-11-18')                       // => '2026-11-18'`,
+    notes: '[EXPERIMENTAL] The canonical form of a value that came from elsewhere. Every PlainTime and PlainDateTime this package returns is the shortest exact form: `HH:MM` when seconds and milliseconds are zero, `HH:MM:SS` when only milliseconds are zero, otherwise `HH:MM:SS.mmm` (always three digits), which is what `<input type="time">` and `<input type="datetime-local">` produce. So equal values are equal strings, and `===`, `Object.is`, a Map key and plain string sorting are correct on them. A value typed by hand or read from an API may carry extra zeros (`14:30:00`, `14:30:00.000`): normalise it once at the boundary. Dates and year-months are returned as they are; other input throws. See also: parseISO, compare. Added in v0.53.0.',
+  },
+
+  'time/parseISO': {
+    signature: '(text: string) => PlainDate | PlainDateTime | PlainYearMonth | PlainTime | null',
+    example: `parseISO('2026-11-18 14:30')                  // => '2026-11-18T14:30'
+parseISO(' 2026-2-3 ')                        // => '2026-02-03'
+parseISO('2026-11-18T14:30Z')                 // => null
+toPlainDateTime(parseInstant('2026-11-18T14:30:00+01:00')!, 'Asia/Tokyo')  // => '2026-11-18T22:30'`,
+    notes: '[EXPERIMENTAL] The lenient door: read an ISO-like string people and other systems produce and return the strict value it denotes, or `null`. Accepts a space or lower-case `t` between date and time, unpadded months, days and hours, a comma as the decimal mark, up to nine fraction digits (cut to milliseconds) and surrounding spaces. It never guesses: a string with an offset or `Z` is a moment, not a wall-clock value, so it is `null` (use `parseInstant(text, { lenient: true })`, then `toPlainDateTime(instant, zone)` for the wall-clock time in a zone), and an impossible date is `null`. The result is always canonical. The strict guards stay strict. Never throws. See also: parseInstant, isPlainDate. Added in v0.53.0.',
+  },
+
+  'time/daysFromToday': {
+    signature: '(value: PlainDate | PlainDateTime | Instant, zone: TimeZone, now?: Instant) => number',
+    example: `daysFromToday('2026-11-17', 'Europe/Prague', Date.UTC(2026, 10, 18, 12))   // => -1
+daysFromToday(Date.UTC(2026, 10, 18, 23, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => 1`,
+    notes: '[EXPERIMENTAL] Calendar days from today to the day `value` falls on, in `zone`: 0 today, -1 yesterday, 1 tomorrow. It counts calendar days, not 24-hour spans, so it is right on the 23- and 25-hour days of a DST change and around local midnight. An Instant is read in `zone`; a plain value is taken as the local date already. `now` is for tests; in `@pyreon/time` it defaults to the pinned clock. See also: isToday, isSame. Added in v0.53.0.',
+  },
+
+  'time/isToday': {
+    signature: '(value: PlainDate | PlainDateTime | Instant, zone: TimeZone, now?: Instant) => boolean',
+    example: `isToday(Date.UTC(2026, 10, 18, 22, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => true
+isToday(Date.UTC(2026, 10, 18, 23, 30), 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => false`,
+    notes: `[EXPERIMENTAL] Whether \`value\` falls on today's date in \`zone\`. 23:30 UTC is already tomorrow in Prague; this knows. Added in v0.53.0.`,
+  },
+
+  'time/isYesterday': {
+    signature: '(value: PlainDate | PlainDateTime | Instant, zone: TimeZone, now?: Instant) => boolean',
+    example: `isYesterday('2026-11-17', 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => true`,
+    notes: `[EXPERIMENTAL] Whether \`value\` falls on yesterday's date in \`zone\`. Added in v0.53.0.`,
+  },
+
+  'time/isTomorrow': {
+    signature: '(value: PlainDate | PlainDateTime | Instant, zone: TimeZone, now?: Instant) => boolean',
+    example: `isTomorrow('2026-11-19', 'Europe/Prague', Date.UTC(2026, 10, 18, 12))  // => true`,
+    notes: `[EXPERIMENTAL] Whether \`value\` falls on tomorrow's date in \`zone\`. Added in v0.53.0.`,
+  },
+
+  'time/relativeDistance': {
+    signature: '(target: Instant | PlainDate | PlainDateTime, base: Instant, zone: TimeZone) => { value: number; unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year" }',
+    example: `relativeDistance(Date.UTC(2026, 10, 18, 11, 58), Date.UTC(2026, 10, 18, 12), 'UTC')  // => { value: -2, unit: 'minute' }
+relativeDistance('2026-11-17', Date.UTC(2026, 10, 18, 23, 59), 'UTC')   // => { value: -1, unit: 'day' }
+relativeDistance('2026-12-20', Date.UTC(2026, 10, 18, 12), 'UTC')       // => { value: 1, unit: 'month' }`,
+    notes: '[EXPERIMENTAL] How far `target` is from `base`, counted the way a person says it. Under a minute is seconds, under an hour minutes, under 24 hours hours (truncated toward zero). From 24 hours on it is counted by the calendar in `zone`, so yesterday is literally yesterday: under 7 calendar days it is days; then weeks while the calendar month differs by less than one or the distance is under 30 days; then calendar months (up to 11), then calendar years. A PlainDateTime target is a wall-clock value in `zone`; a PlainDate target is a DAY, compared as a calendar day in `zone` and never as hours (today, tomorrow, in 3 days). These are the thresholds of `formatRelativeTo` in `@pyreon/format`, ported with its tests, so the same two moments give the same words. See also: useRelative, daysFromToday. Added in v0.53.0.',
+  },
+
+  'time/useToday': {
+    signature: '(zone?: TimeZone) => () => PlainDate',
+    example: `typeof useToday('Europe/Prague')              // => 'function'`,
+    notes: `[EXPERIMENTAL] Today's date as an accessor that flips at the local midnight of the zone (default: the active time zone of \`@pyreon/ambient\`), on one shared ticker; correct on 23- and 25-hour days. Reactive entry (\`@pyreon/time\`) only. Call it in a component's setup: the ticker is released when the component goes away. Outside a component, or on a server, it returns a plain accessor and starts nothing. See also: today, useRelative. Added in v0.53.0.`,
+    mistakes: '- Reading `today()` once in a component body for a "today" badge: the component runs once, so the badge never flips. Use `useToday()` and read it inside JSX or an effect',
+  },
+
+  'time/useCountdown': {
+    signature: '(target: When | (() => When), options?: { zone?: TimeZone; every?: Every }) => { remaining: () => Duration; totalMs: () => number; done: () => boolean }',
+    example: `typeof useCountdown(Date.UTC(2031, 0, 1)).done   // => 'function'`,
+    notes: `[EXPERIMENTAL] A countdown to \`target\` (an Instant, a Date, or a wall-clock PlainDate or PlainDateTime read in the zone): the time left in days, hours, minutes, seconds and milliseconds, all zero once it has passed. Updates every second by default on a shared ticker, so a thousand countdowns are one timer. Reactive entry only; call it in a component's setup. Invalid targets throw a \`[Pyreon]\` error when read. See also: useElapsed. Added in v0.53.0.`,
+  },
+
+  'time/useElapsed': {
+    signature: '(since: When | (() => When), options?: { zone?: TimeZone; every?: Every }) => () => Duration',
+    example: `typeof useElapsed(Date.UTC(2020, 0, 1))      // => 'function'`,
+    notes: '[EXPERIMENTAL] The stopwatch counterpart of `useCountdown`: the time since `since` in days to milliseconds (zero before it), updating every second by default. See also: useCountdown. Added in v0.53.0.',
+  },
+
+  'time/useRelative': {
+    signature: '(target: When | (() => When), options?: { zone?: TimeZone }) => () => { value: number; unit: RelativeUnit }',
+    example: `typeof useRelative(Date.now() - 60_000)       // => 'function'`,
+    notes: `[EXPERIMENTAL] The structured relative distance to \`target\`, self-updating: \`{ value: -2, unit: "minute" }\` (negative is the past). Calendar-true from a day on. The cadence adapts to the distance on shared tickers: every second under a minute, every minute under an hour, every hour under a day, then at local midnight; as the distance grows the reader moves to the slower ticker, so an old timestamp never holds a per-second timer and 200 labels share a handful of timers. A displayed value can lag the true boundary by up to one tick of its ticker. It produces no text: \`@pyreon/format\` turns \`{ value, unit }\` into words. Reactive entry only; call it in a component's setup. See also: relativeDistance, useNow. Added in v0.53.0.`,
+  },
+
+  'time/RelativeDistance': {
+    signature: 'interface RelativeDistance { value: number; unit: RelativeUnit }',
+    example: `const d: RelativeDistance = { value: -2, unit: 'minute' }`,
+    notes: '[EXPERIMENTAL] A signed whole number of one unit; negative is the past. Added in v0.53.0.',
+  },
+
+  'time/RelativeUnit': {
+    signature: `type RelativeUnit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'`,
+    example: `const unit: RelativeUnit = 'week'`,
+    notes: '[EXPERIMENTAL] The units of a relative distance. Added in v0.53.0.',
+  },
+
+  'time/When': {
+    signature: 'type When = Instant | Date | PlainDate | PlainDateTime',
+    example: `const at: When = '2026-12-24T18:00'`,
+    notes: '[EXPERIMENTAL] A moment a clock hook can aim at. A PlainDate or PlainDateTime is a wall-clock value read in the zone. Added in v0.53.0.',
+  },
+
+  'time/ClockOptions': {
+    signature: 'interface ClockOptions { zone?: TimeZone }',
+    example: `const o: ClockOptions = { zone: 'Europe/Prague' }`,
+    notes: '[EXPERIMENTAL] Options shared by the clock hooks. Added in v0.53.0.',
+  },
+
+  'time/TickOptions': {
+    signature: 'interface TickOptions extends ClockOptions { every?: Every }',
+    example: `const o: TickOptions = { every: 'minute' }`,
+    notes: '[EXPERIMENTAL] Options of `useCountdown` and `useElapsed`. Added in v0.53.0.',
+  },
+
+  'time/Countdown': {
+    signature: 'interface Countdown { remaining: () => Duration; totalMs: () => number; done: () => boolean }',
+    example: 'const c: Countdown = useCountdown(Date.UTC(2031, 0, 1))',
+    notes: '[EXPERIMENTAL] What `useCountdown` returns. Added in v0.53.0.',
+  },
+
+  'time/toInstant': {
+    signature: '(value: PlainDate | PlainDateTime, zone: TimeZone, options?: { disambiguation?: "compatible" | "earlier" | "later" | "reject" }) => Instant',
+    example: `const gap = toInstant('2026-03-29T02:30', 'Europe/Prague')           // 02:30 does not exist
+new Date(gap).toISOString()                   // => '2026-03-29T01:30:00.000Z'
+new Date(toInstant('2026-03-29T02:30', 'Europe/Prague', { disambiguation: 'earlier' })).toISOString()  // => '2026-03-29T00:30:00.000Z'
+new Date(toInstant('2026-10-25T02:30', 'Europe/Prague', { disambiguation: 'later' })).toISOString()    // => '2026-10-25T01:30:00.000Z'`,
+    notes: '[EXPERIMENTAL] The instant at which a wall-clock time happens in a zone. A PlainDate means its midnight (its start of day). When the clocks go forward a time can not exist, and when they go back it happens twice; `disambiguation` follows Temporal exactly: `compatible` (default) takes the first of two and shifts a missing time forward by the length of the gap, `earlier` and `later` pick a side, `reject` throws. See also: toPlainDateTime, addInstant. Added in v0.53.0.',
+    mistakes: `- Using \`new Date("2026-03-29T02:30")\`: it reads the machine's zone, not the zone you name, and silently shifts in a gap`,
+  },
+
+  'time/toPlainDateTime': {
+    signature: '(instant: Instant, zone: TimeZone) => PlainDateTime',
+    example: `toPlainDateTime(0, 'Europe/Prague')           // => '1970-01-01T01:00'
+toPlainDateTime(0, 'America/St_Johns')        // => '1969-12-31T20:30'`,
+    notes: '[EXPERIMENTAL] The wall-clock date and time of an instant in a zone. Seconds are always written, milliseconds only when non-zero. See also: toPlainDate, toPlainTime, offsetAt. Added in v0.53.0.',
+  },
+
+  'time/toPlainDate': {
+    signature: '(instant: Instant, zone: TimeZone) => PlainDate',
+    example: `toPlainDate(Date.UTC(2026, 10, 18, 23, 30), 'Asia/Tokyo') // => '2026-11-19'`,
+    notes: '[EXPERIMENTAL] The calendar date of an instant in a zone. Added in v0.53.0.',
+  },
+
+  'time/toPlainTime': {
+    signature: '(instant: Instant, zone: TimeZone) => PlainTime',
+    example: `toPlainTime(Date.UTC(2026, 10, 18, 13, 30), 'Europe/Prague') // => '14:30'`,
+    notes: '[EXPERIMENTAL] The time of day of an instant in a zone. Added in v0.53.0.',
+  },
+
+  'time/offsetAt': {
+    signature: '(instant: Instant, zone: TimeZone) => number',
+    example: `offsetAt(Date.UTC(2026, 6, 1), 'Europe/Prague')  // => 120
+offsetAt(Date.UTC(2026, 0, 1), 'Asia/Kathmandu') // => 345`,
+    notes: '[EXPERIMENTAL] Minutes east of UTC at an instant: 120 for Europe/Prague in summer, 345 for Asia/Kathmandu. Fractional only in the pre-1900 local-mean-time eras of some zones. Added in v0.53.0.',
+  },
+
+  'time/addInstant': {
+    signature: '(instant: Instant, duration: Duration, zone?: TimeZone) => Instant',
+    example: `const noon = Date.UTC(2026, 2, 28, 11, 0)    // 12:00 in Prague, the day before the clocks change
+new Date(addInstant(noon, { days: 1 }, 'Europe/Prague')).toISOString()  // => '2026-03-29T10:00:00.000Z'
+new Date(addInstant(noon, { hours: 24 })).toISOString()                 // => '2026-03-29T11:00:00.000Z'`,
+    notes: `[EXPERIMENTAL] Move an instant by a duration. Years, months, weeks and days move the zone's wall clock (so "one day later" keeps the time of day across a DST change, and the 23- or 25-hour day is handled) and need \`zone\`; hours, minutes, seconds and milliseconds move the instant itself. The resulting wall time is resolved with the \`compatible\` rule. See also: add, toInstant. Added in v0.53.0.`,
+    mistakes: '- Expecting `{ days: 1 }` to be 24 hours: it is one calendar day. Use `{ hours: 24 }` for an exact span',
+  },
+
+  'time/isTimeZone': {
+    signature: '(x: unknown) => x is TimeZone',
+    example: `isTimeZone('Europe/Prague')                   // => true
+isTimeZone('Mars/Olympus')                    // => false`,
+    notes: '[EXPERIMENTAL] Whether the platform knows this time zone name. Never throws; use it to validate user input before calling the zone functions, which throw on an unknown zone. Added in v0.53.0.',
+  },
+
+  'time/fromDate': {
+    signature: '(date: Date, zone?: TimeZone) => PlainDateTime',
+    example: `fromDate(new Date(Date.UTC(2026, 10, 18, 13, 30)), 'Europe/Prague') // => '2026-11-18T14:30'`,
+    notes: `[EXPERIMENTAL] The wall-clock date and time of a \`Date\` in \`zone\` (default: the runtime's local zone). Added in v0.53.0.`,
+  },
+
+  'time/toDate': {
+    signature: '(value: PlainDate | PlainDateTime | Instant, zone?: TimeZone) => Date',
+    example: `toDate('2026-11-18T14:30', 'Europe/Prague').toISOString() // => '2026-11-18T13:30:00.000Z'`,
+    notes: `[EXPERIMENTAL] A \`Date\` for an Instant, or for a wall-clock value in \`zone\` (default: the runtime's local zone, like \`new Date(y, m, d)\`). Added in v0.53.0.`,
+  },
+
+  'time/localZone': {
+    signature: '() => TimeZone',
+    example: `typeof localZone()                            // => 'string'`,
+    notes: `[EXPERIMENTAL] The runtime's own time zone name (\`"UTC"\` when the platform cannot say). Core functions never read it implicitly except \`fromDate\`, \`toDate\` and \`today\` when you omit the zone. Added in v0.53.0.`,
+  },
+
+  'time/toMilliseconds': {
+    signature: '(duration: Duration) => number',
+    example: `toMilliseconds({ hours: 1, minutes: 30 })     // => 5400000
+toMilliseconds({ weeks: 1 })                  // => 604800000`,
+    notes: '[EXPERIMENTAL] The length of a duration in milliseconds. Only fixed-length fields count (a week is seven 24-hour days, a day is 24 hours); years and months throw because they have no fixed length: use `diff` or `addInstant`. Added in v0.53.0.',
+  },
+
+  'time/now': {
+    signature: '() => Instant',
+    example: `typeof now()                                  // => 'number'`,
+    notes: `[EXPERIMENTAL] The current instant. \`@pyreon/time/core\` returns \`Date.now()\`; \`@pyreon/time\` reads the ambient clock of \`@pyreon/ambient\`: the pin from \`setClock\`, the request's \`provideClock\` instant, or the server's hand-over on a hydrating page. See also: setClock, today. Added in v0.53.0.`,
+  },
+
+  'time/today': {
+    signature: '(zone?: TimeZone) => PlainDate',
+    example: `isPlainDate(today('Europe/Prague'))           // => true`,
+    notes: `[EXPERIMENTAL] Today's date in \`zone\` (default: the runtime's local zone). In \`@pyreon/time\` it reads the pinned clock. See also: now, setClock. Added in v0.53.0.`,
+  },
+
+  'time/setClock': {
+    signature: '(clock: (() => Instant) | null) => void',
+    example: `setClock(() => Date.UTC(2031, 5, 18, 16, 0))
+today('Asia/Tokyo')                           // => '2031-06-19'
+setClock(null)`,
+    notes: `[EXPERIMENTAL] Pin the clock of the whole app, for tests and previews; \`null\` restores the system clock. It is \`@pyreon/ambient\`'s \`setClock\`, re-exported, so \`@pyreon/format\`, \`@pyreon/i18n\` and every hook read the same pin. Process-wide state: on a server use \`provideClock\` from \`@pyreon/ambient\` per request. Added in v0.53.0.`,
+    mistakes: '- Calling it per request on a server: the pin is shared by every request in the process',
+  },
+
+  'time/Instant': {
+    signature: 'type Instant = number',
+    example: 'const t: Instant = Date.now()',
+    notes: '[EXPERIMENTAL] Epoch milliseconds, the same number as `Date.now()`. Added in v0.53.0.',
+  },
+
+  'time/PlainDate': {
+    signature: 'type PlainDate = `${number}-${number}-${number}`',
+    example: `const d: PlainDate = '2026-11-18'`,
+    notes: '[EXPERIMENTAL] `2026-11-18`. The type is looser than the runtime check (`"2026-1-3"` type-checks and fails `isPlainDate`), because template literal types cannot count digits. Added in v0.53.0.',
+  },
+
+  'time/PlainTime': {
+    signature: 'type PlainTime = `${number}:${number}` | `${number}:${number}:${number}` | `${number}:${number}:${number}.${number}`',
+    example: `const t: PlainTime = '14:30'`,
+    notes: '[EXPERIMENTAL] `14:30`, `14:30:05` or `14:30:05.250`. Added in v0.53.0.',
+  },
+
+  'time/PlainDateTime': {
+    signature: 'type PlainDateTime = `${PlainDate}T${PlainTime}`',
+    example: `const dt: PlainDateTime = '2026-11-18T14:30'`,
+    notes: '[EXPERIMENTAL] `2026-11-18T14:30`: no offset, no zone name. Added in v0.53.0.',
+  },
+
+  'time/PlainYearMonth': {
+    signature: 'type PlainYearMonth = `${number}-${number}`',
+    example: `const ym: PlainYearMonth = '2026-11'`,
+    notes: '[EXPERIMENTAL] `2026-11`. Added in v0.53.0.',
+  },
+
+  'time/TimeZone': {
+    signature: 'type TimeZone = string',
+    example: `const z: TimeZone = 'Europe/Prague'`,
+    notes: '[EXPERIMENTAL] An IANA zone name such as `Europe/Prague`, or `UTC`. Added in v0.53.0.',
+  },
+
+  'time/Duration': {
+    signature: 'interface Duration { years?: number; months?: number; weeks?: number; days?: number; hours?: number; minutes?: number; seconds?: number; milliseconds?: number }',
+    example: 'const d: Duration = { months: 1, days: 2 }',
+    notes: '[EXPERIMENTAL] A span of time. Every field is an integer and every non-zero field shares one sign. Added in v0.53.0.',
+  },
+
+  'time/Unit': {
+    signature: `type Unit = 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second' | 'millisecond'`,
+    example: `const u: Unit = 'day'`,
+    notes: '[EXPERIMENTAL] Singular unit names (`DateUnit` and `TimeUnit` are the two halves). A plural such as `"days"` is a programmer error and throws. Added in v0.53.0.',
+  },
+
+  'time/Weekday': {
+    signature: 'type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7',
+    example: 'const w: Weekday = 7',
+    notes: '[EXPERIMENTAL] ISO weekday: 1 Monday ... 7 Sunday. Added in v0.53.0.',
+  },
+
+  'time/Disambiguation': {
+    signature: `type Disambiguation = 'compatible' | 'earlier' | 'later' | 'reject'`,
+    example: `const m: Disambiguation = 'reject'`,
+    notes: `[EXPERIMENTAL] How a wall-clock time in a DST gap or overlap picks an instant (Temporal's modes). Added in v0.53.0.`,
+  },
+
+  'time/inZone': {
+    signature: '(zone: TimeZone) => { zone, today, toInstant, toPlainDate, toPlainTime, toPlainDateTime, addInstant, offsetAt, startOfDay, endOfDay }',
+    example: `const prague = inZone('Europe/Prague')
+const t = prague.toInstant('2026-03-29T02:30')  // 02:30 does not exist: 03:30 CEST
+new Date(t).toISOString()                      // => '2026-03-29T01:30:00.000Z'
+prague.toPlainDate(t)                          // => '2026-03-29'
+prague.offsetAt(t)                             // => 120
+new Date(prague.startOfDay(t)).toISOString()   // => '2026-03-28T23:00:00.000Z'`,
+    notes: '[EXPERIMENTAL] The zone-taking functions with one zone applied, for code that works in one zone. Create it once (module scope or a setup function): the members are plain functions created by the `inZone` call, so a conversion does no more work than the unbound function. The zone is validated at `inZone`, so a typo fails there. It is not reactive; it pulls every zone function into the bundle, so import the individual functions when you need one or two. See also: toInstant, toPlainDateTime. Added in v0.53.0.',
+  },
+
+  'time/Adjuster': {
+    signature: 'type Adjuster<T> = (value: T) => T',
+    example: `import { startOf } from '@pyreon/time/fp'
+const month: Adjuster<PlainDate> = startOf('month')`,
+    notes: '[EXPERIMENTAL] A value-to-same-value function, what `add({ months: 1 })` from `@pyreon/time/fp` returns. Added in v0.53.0.',
+  },
+
+  'time/Mapper': {
+    signature: 'type Mapper<A, B> = (value: A) => B',
+    example: `import { toPlainDate } from '@pyreon/time/fp'
+const day: Mapper<number, PlainDate> = toPlainDate('Europe/Prague')`,
+    notes: '[EXPERIMENTAL] A value-to-other-value function, such as `toPlainDate(zone)` or `diffFrom(base, "day")` from `@pyreon/time/fp`. Added in v0.53.0.',
+  },
+
+  'time/ZonedToolkit': {
+    signature: 'interface ZonedToolkit { readonly zone: TimeZone; today(): PlainDate; toInstant(...); toPlainDate(instant); ... }',
+    example: `const z: ZonedToolkit = inZone('UTC')`,
+    notes: '[EXPERIMENTAL] The object `inZone` returns. Added in v0.53.0.',
+  },
+
+  'time/fp.add': {
+    signature: '(duration: Duration) => <T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T',
+    example: `import { add } from '@pyreon/time/fp'
+const nextMonth = add({ months: 1 })
+nextMonth('2026-01-31')                       // => '2026-02-28'
+['2026-01-31', '2026-03-01'].map(nextMonth)   // => ['2026-02-28', '2026-04-01']`,
+    notes: '[EXPERIMENTAL] Value-last `add`: `add({ months: 1 })` is a function you can name, pass to `map` and chain with `pipe`. The result keeps the input shape. See also: add. Added in v0.53.0.',
+  },
+
+  'time/fp.subtract': {
+    signature: '(duration: Duration) => <T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T',
+    example: `import { subtract } from '@pyreon/time/fp'
+subtract({ days: 1 })('2026-03-01')      // => '2026-02-28'`,
+    notes: '[EXPERIMENTAL] Value-last `subtract`. Added in v0.53.0.',
+  },
+
+  'time/fp.startOf': {
+    signature: '(unit: Unit, options?: { weekStart?: Weekday }) => <T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T',
+    example: `import { startOf } from '@pyreon/time/fp'
+startOf('week')('2026-11-18')              // => '2026-11-16'
+startOf('week', { weekStart: 7 })('2026-11-18')  // => '2026-11-15'`,
+    notes: '[EXPERIMENTAL] Value-last `startOf`. Added in v0.53.0.',
+  },
+
+  'time/fp.endOf': {
+    signature: '(unit: Unit, options?: { weekStart?: Weekday }) => <T extends PlainDate | PlainDateTime | PlainYearMonth>(value: T) => same shape as T',
+    example: `import { endOf } from '@pyreon/time/fp'
+endOf('month')('2026-11-18')               // => '2026-11-30'`,
+    notes: '[EXPERIMENTAL] Value-last `endOf`. Added in v0.53.0.',
+  },
+
+  'time/fp.isBefore': {
+    signature: '(limit: T) => (value: shape of T) => boolean',
+    example: `import { isBefore } from '@pyreon/time/fp'
+['2026-01-01', '2026-06-01'].filter(isBefore('2026-03-01'))  // => ['2026-01-01']`,
+    notes: '[EXPERIMENTAL] A predicate: `isBefore(limit)(value)` is true for values before `limit`, so it reads correctly in `filter`. Added in v0.53.0.',
+  },
+
+  'time/fp.isAfter': {
+    signature: '(limit: T) => (value: shape of T) => boolean',
+    example: `import { isAfter } from '@pyreon/time/fp'
+['2026-01-01', '2026-06-01'].filter(isAfter('2026-03-01'))   // => ['2026-06-01']`,
+    notes: '[EXPERIMENTAL] A predicate: true for values after `limit`. Added in v0.53.0.',
+  },
+
+  'time/fp.isSame': {
+    signature: '(other: T, unit?: Unit, options?: { weekStart?: Weekday }) => (value: shape of T) => boolean',
+    example: `import { isSame } from '@pyreon/time/fp'
+['2026-11-02', '2026-12-01'].filter(isSame('2026-11-18', 'month'))  // => ['2026-11-02']`,
+    notes: '[EXPERIMENTAL] A predicate: true for values in the same unit as `other`. Added in v0.53.0.',
+  },
+
+  'time/isBetween': {
+    signature: '(start: T, end: T) => (value: shape of T) => boolean',
+    example: `import { isBetween } from '@pyreon/time/fp'
+['2026-01-05', '2026-02-10', '2026-03-20'].filter(isBetween('2026-02-01', '2026-03-01'))  // => ['2026-02-10']`,
+    notes: '[EXPERIMENTAL] A predicate: true for values from `start` to `end`, both included. Added in v0.53.0.',
+  },
+
+  'time/fp.clamp': {
+    signature: '(lo: T, hi: T) => (value: shape of T) => shape of T',
+    example: `import { clamp } from '@pyreon/time/fp'
+['2025-05-01', '2026-02-01', '2027-01-01'].map(clamp('2026-01-01', '2026-03-01'))  // => ['2026-01-01', '2026-02-01', '2026-03-01']`,
+    notes: '[EXPERIMENTAL] Limit values to a range. Throws when `lo` is after `hi`. Added in v0.53.0.',
+  },
+
+  'time/diffFrom': {
+    signature: '(base: T, unit: Unit, options?: { zone?: TimeZone }) => (value: shape of T) => number',
+    example: `import { diffFrom } from '@pyreon/time/fp'
+['2026-01-10', '2026-01-03'].map(diffFrom('2026-01-01', 'day'))  // => [9, 2]`,
+    notes: '[EXPERIMENTAL] Whole units from `base` to each value: `dates.map(diffFrom(today, "day"))` reads left to right. Added in v0.53.0.',
+  },
+
+  'time/betweenFrom': {
+    signature: '(base: PlainDate | PlainDateTime) => (value: same shape) => Duration',
+    example: `import { betweenFrom } from '@pyreon/time/fp'
+betweenFrom('2026-01-31')('2026-03-01')      // => { years: 0, months: 1, days: 1 }`,
+    notes: '[EXPERIMENTAL] The Duration from `base` to each value. Added in v0.53.0.',
+  },
+
+  'time/by': {
+    signature: '(mapper: (item: A) => K) => (a: A, b: A) => -1 | 0 | 1',
+    example: `import { by } from '@pyreon/time/fp'
+const events: { d: PlainDate }[] = [{ d: '2026-03-01' }, { d: '2026-01-01' }]
+events.sort(by((x) => x.d)).map((x) => x.d)  // => ['2026-01-01', '2026-03-01']`,
+    notes: '[EXPERIMENTAL] A comparator that orders items by a mapped value: `items.sort(by(toDay))`. Added in v0.53.0.',
+  },
+
+  'time/fp.compare': {
+    signature: '(a: T, b: T) => -1 | 0 | 1',
+    example: `import {  } from '@pyreon/time/fp'
+const days: PlainDate[] = ['2026-03-01', '2026-01-01']
+days.sort(compare)                            // => ['2026-01-01', '2026-03-01']`,
+    notes: '[EXPERIMENTAL] The same function as the value-first `compare`: it is already a comparator for `Array#sort`. Added in v0.53.0.',
+  },
+
+  'time/fp.toInstant': {
+    signature: '(zone: TimeZone, options?: { disambiguation? }) => (value: PlainDate | PlainDateTime) => Instant',
+    example: `import { toInstant } from '@pyreon/time/fp'
+new Date(toInstant('UTC')('2026-11-18T14:30')).toISOString()  // => '2026-11-18T14:30:00.000Z'`,
+    notes: '[EXPERIMENTAL] Value-last `toInstant`. Added in v0.53.0.',
+  },
+
+  'time/fp.toPlainDate': {
+    signature: '(zone: TimeZone) => (instant: Instant) => PlainDate',
+    example: `import { toPlainDate } from '@pyreon/time/fp'
+toPlainDate('Asia/Tokyo')(Date.UTC(2026, 10, 18, 23, 30))  // => '2026-11-19'`,
+    notes: '[EXPERIMENTAL] Value-last `toPlainDate`: a groupBy key for bucketing instants by local day. Added in v0.53.0.',
+  },
+
+  'time/fp.toPlainTime': {
+    signature: '(zone: TimeZone) => (instant: Instant) => PlainTime',
+    example: `import { toPlainTime } from '@pyreon/time/fp'
+toPlainTime('Europe/Prague')(Date.UTC(2026, 10, 18, 13, 30))  // => '14:30'`,
+    notes: '[EXPERIMENTAL] Value-last `toPlainTime`. Added in v0.53.0.',
+  },
+
+  'time/fp.toPlainDateTime': {
+    signature: '(zone: TimeZone) => (instant: Instant) => PlainDateTime',
+    example: `import { toPlainDateTime } from '@pyreon/time/fp'
+toPlainDateTime('Europe/Prague')(0)           // => '1970-01-01T01:00'`,
+    notes: '[EXPERIMENTAL] Value-last `toPlainDateTime`. Added in v0.53.0.',
+  },
+
+  'time/fp.offsetAt': {
+    signature: '(zone: TimeZone) => (instant: Instant) => number',
+    example: `import { offsetAt } from '@pyreon/time/fp'
+offsetAt('Asia/Kathmandu')(Date.UTC(2026, 0, 1))  // => 345`,
+    notes: '[EXPERIMENTAL] Value-last `offsetAt`. Added in v0.53.0.',
+  },
+
+  'time/fp.addInstant': {
+    signature: '(duration: Duration, zone?: TimeZone) => (instant: Instant) => Instant',
+    example: `import { addInstant } from '@pyreon/time/fp'
+new Date(addInstant({ days: 1 }, 'UTC')(Date.UTC(2026, 0, 31))).toISOString()  // => '2026-02-01T00:00:00.000Z'`,
+    notes: '[EXPERIMENTAL] Value-last `addInstant`. Added in v0.53.0.',
+  },
+
+  'time/fp.monthGrid': {
+    signature: '(options?: MonthGridOptions) => (month: PlainYearMonth | PlainDate) => PlainDate[][]',
+    example: `import { monthGrid } from '@pyreon/time/fp'
+monthGrid({ weekStart: 7 })('2026-11').length  // => 5`,
+    notes: '[EXPERIMENTAL] Value-last `monthGrid`. Added in v0.53.0.',
+  },
+
+  'time/fp.fromDate': {
+    signature: '(zone?: TimeZone) => (date: Date) => PlainDateTime',
+    example: `import { fromDate } from '@pyreon/time/fp'
+fromDate('UTC')(new Date(0))                  // => '1970-01-01T00:00'`,
+    notes: '[EXPERIMENTAL] Value-last `fromDate`. Added in v0.53.0.',
+  },
+
+  'time/fp.toDate': {
+    signature: '(zone?: TimeZone) => (value: PlainDate | PlainDateTime | Instant) => Date',
+    example: `import { toDate } from '@pyreon/time/fp'
+toDate('UTC')('1970-01-01').getTime()         // => 0`,
+    notes: '[EXPERIMENTAL] Value-last `toDate`. Added in v0.53.0.',
+  },
+
+  'time/pipe': {
+    signature: '(f1: (a: A) => B, f2: (b: B) => C, ...up to eight steps) => (value: A) => result',
+    example: `import { add, startOf, pipe } from '@pyreon/time/fp'
+const nextMonthStart = pipe(add({ months: 1 }), startOf('month'))
+nextMonthStart('2026-01-31')                  // => '2026-02-01'
+['2026-01-31', '2026-11-18'].map(nextMonthStart)  // => ['2026-02-01', '2026-12-01']`,
+    notes: `[EXPERIMENTAL] Left-to-right composition of unary functions, typed for up to eight steps, so pipelines need no other package: \`pipe(add({ months: 1 }), startOf("month"))\` goes to the first of next month. The result is a plain function. One to three steps are direct closures. Not the same as \`@pyreon/rx\`'s \`pipe\`, which takes a source value (or signal) first and runs the steps over it; adjusters work as the steps and as the callbacks of rx's \`map\`, \`groupBy\` and \`sortBy\`. Added in v0.53.0.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/time>
 
   // <gen-docs:api-reference:start @pyreon/toast>
 
@@ -9944,10 +12988,47 @@ registerServiceWorker({
     if (confirm('A new version is available. Reload?')) activate()
   },
 })`,
-    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit \`Cache-Control: public\` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
+    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit \`Cache-Control: public\` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. SPA output also precaches the app shell and answers every failed navigation with it; \`pwa.offlineFallback\` (SSG) names a prerendered page used as the shell for routes never prerendered or visited. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
     mistakes: `- Expecting it to register in \`vite dev\` — it no-ops outside production builds on purpose (a caching worker fights HMR)
 - Setting \`pwa.skipWaiting: true\` without understanding it swaps the asset cache under running tabs — prefer \`onUpdate\` + \`activate()\`
 - Serving \`sw.js\` with a long or immutable Cache-Control from a custom host — the worker script is the update channel; zero's adapters serve it must-revalidate`,
+  },
+
+  'zero/useServiceWorkerUpdate': {
+    signature: 'function useServiceWorkerUpdate(): { updateReady: () => boolean; apply: () => void }',
+    example: `import { useServiceWorkerUpdate } from '@pyreon/zero/client'
+
+const update = useServiceWorkerUpdate()
+<Show when={() => update.updateReady()}>
+  <button onClick={() => update.apply()}>New version available. Reload</button>
+</Show>`,
+    notes: 'Reactive "a new version is waiting" state over `registerServiceWorker()`: `updateReady()` flips once a new worker finished installing (only when `pwa.skipWaiting` is off); `apply()` activates it and reloads into the new version. Always `false` on the server and in development. Needs `registerServiceWorker()` called once in the client entry; works with or without its `onUpdate` option. Exported from `@pyreon/zero` and `@pyreon/zero/client`. See also: registerServiceWorker, useInstallPrompt.',
+    mistakes: `- Using it without calling \`registerServiceWorker()\` — nothing ever sets \`updateReady\`
+- Reading \`update.updateReady\` without calling it in JSX — it is an accessor; use \`() => update.updateReady()\`
+- Expecting other open tabs to reload on \`apply()\` — only the calling tab reloads; the others keep running the old page until closed or reloaded`,
+  },
+
+  'zero/useInstallPrompt': {
+    signature: `function useInstallPrompt(): { canInstall: () => boolean; prompt: () => Promise<'accepted' | 'dismissed' | 'unavailable'>; isInstalled: () => boolean }`,
+    example: `import { useInstallPrompt } from '@pyreon/zero/client'
+
+const install = useInstallPrompt()
+<Show when={() => install.canInstall() && !install.isInstalled()}>
+  <button onClick={() => install.prompt()}>Install app</button>
+</Show>`,
+    notes: `Install-prompt state for an installable PWA (Chromium: Chrome, Edge, Samsung Internet). ONE shared, refcounted set of \`beforeinstallprompt\` / \`appinstalled\` / \`display-mode: standalone\` listeners regardless of how many callers; the event is held (and the browser's own infobar suppressed) until the app calls \`prompt()\` from its own button. \`prompt()\` resolves \`'unavailable'\` when the browser offered nothing (iOS Safari and Firefox never do), and the event is single-use. \`isInstalled()\` is true in standalone display mode, iOS \`navigator.standalone\`, or after \`appinstalled\`. Inert on the server. Call it early (root layout): the browser fires \`beforeinstallprompt\` once per page load and an event fired while no caller is mounted is missed. Lives in \`@pyreon/zero\` (not \`@pyreon/hooks\`) because it is the install half of the same PWA client surface as \`registerServiceWorker\`. See also: registerServiceWorker, useServiceWorkerUpdate.`,
+    mistakes: `- Mounting it only on a settings page — \`beforeinstallprompt\` fires early, once per page load; call it in the root layout
+- Expecting \`canInstall()\` on iOS Safari — it never fires there; document "Share, Add to Home Screen" instead
+- Calling \`prompt()\` outside a user gesture — the browser rejects it; call it from a click handler`,
+  },
+
+  'zero/unregisterServiceWorkers': {
+    signature: 'function unregisterServiceWorkers(cacheName?: string): Promise<number>',
+    example: `import { unregisterServiceWorkers } from '@pyreon/zero/client'
+
+if (import.meta.env.DEV) void unregisterServiceWorkers()`,
+    notes: `Unregisters every service worker of the origin and deletes this app's caches (names starting with \`cacheName\`, default \`'pyreon'\`); resolves the number of workers removed. The escape hatch for the stale-worker trap: a production build previewed on the same origin (\`localhost:PORT\`) as a later dev server leaves the old worker serving cached modules over HMR. Dev never registers a worker but cannot remove one it did not install. See also: registerServiceWorker.`,
+    mistakes: '- Calling it in production code paths — it removes the offline cache; use it from a dev entry or a "reset app" action',
   },
 
   'zero/i18nRouting': {

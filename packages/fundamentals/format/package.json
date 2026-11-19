@@ -1,0 +1,95 @@
+{
+  "name": "@pyreon/format",
+  "version": "0.53.0",
+  "description": "Locale-aware formatting and parsing for Pyreon: numbers, currency, bytes, durations, lists, dates, relative time. Plain functions over Intl, reactive to the active locale and time zone, SSR-safe, bounded caches",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/format#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/format"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./core": {
+      "bun": "./src/core.ts",
+      "import": "./lib/core.js",
+      "types": "./lib/types/core.d.ts"
+    },
+    "./components": {
+      "bun": "./src/components.ts",
+      "import": "./lib/components.js",
+      "types": "./lib/types/components.d.ts"
+    },
+    "./units": {
+      "bun": "./src/units.ts",
+      "import": "./lib/units.js",
+      "types": "./lib/types/units.d.ts"
+    },
+    "./units/core": {
+      "bun": "./src/units/core.ts",
+      "import": "./lib/units/core.js",
+      "types": "./lib/types/units/core.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "bench": "bun run build && NODE_ENV=production bun build bench/format-rivals.ts --target=node --outfile=node_modules/.bench/format-rivals.mjs && NODE_ENV=production node node_modules/.bench/format-rivals.mjs",
+    "bench:reactive": "bun run build && NODE_ENV=production bun build bench/format-reactive.ts --target=node --outfile=node_modules/.bench/format-reactive.mjs && NODE_ENV=production node node_modules/.bench/format-reactive.mjs"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@formatjs/intl": "6.1.5",
+    "@pyreon/core": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/time": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "@types/humanize-duration": "3.27.4",
+    "@vitest/browser-playwright": "^5.1.0",
+    "happy-dom": "^21.0.4",
+    "humanize-duration": "3.35.1",
+    "pretty-bytes": "7.2.0",
+    "pretty-ms": "10.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "pyreon": {
+    "stability": "experimental"
+  },
+  "dependencies": {
+    "@pyreon/ambient": "workspace:^"
+  }
+}

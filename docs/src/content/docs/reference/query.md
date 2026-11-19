@@ -797,6 +797,8 @@ const persister = createSyncStoragePersister({ storage: localStorage })
 - Using BOTH `<QueryClientProvider>` and `<PersistQueryClientProvider>` — the persist provider already provides the client; nest only one
 - Expecting synchronous restore — restoration is async (even sync localStorage resolves on a microtask). Gate UI on `useIsRestoring()` during the window
 - A heavy `staleTime: 0` default — restored queries immediately refetch on subscribe; set a `staleTime` so the restored cache is treated as fresh
+- Expecting an offline mutation to be sent after a reload without registering its function — a PAUSED mutation is persisted (variables + `mutationKey`) but a function cannot be serialised: give it a `mutationKey` and register `client.setMutationDefaults(key, { mutationFn })` at module load. The provider then resumes persisted paused mutations once restoration settles. A mutation that was never paused (made online) is not persisted, and one that already resumed is gone if the page dies mid-request (at-most-once, no retry queue, no ordering guarantee beyond TanStack's creation order)
+- Treating `navigator.onLine` as proof of reachability — `onlineManager` follows the browser online/offline events, which only report "a network interface is up"; a captive portal or a dead backend still looks online, so the mutation is sent and fails normally (default `retry: 0` for mutations)
 
 **See also:** `useIsRestoring` · `QueryClientProvider` · `HydrationBoundary`
 

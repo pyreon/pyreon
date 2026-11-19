@@ -1,4 +1,4 @@
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartThemeFields, desugarChartGrammar, UNLOWERED_CHART_HOSTS, chartDouble, chartRichSelectWarning, chartOrientVertical, chartRoamConfig, chartVisualMap } from './hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartThemeFields, desugarChartGrammar, UNLOWERED_CHART_HOSTS, chartDouble, chartRichSelectWarning, chartOrientVertical, chartRoamConfig, chartVisualMap, geoProjectionEnum } from './hosts'
 import type { ChartHostArgs } from './hosts'
 import { kotlinStr, substituteIdentifier, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './kotlin-facade'
@@ -57,7 +57,9 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const tag = e.tag
   const spec = CHART_HOSTS[tag]!
   for (const p of spec.warnProps ?? []) {
-    if (chartAttrExprKotlin(e, p) !== undefined) host.warn(`<${tag}>: \`${p}\` is not lowered on native; the chart renders without it.`)
+    // A handler prop is an EVENT attribute named in lowercase without its `on` (onSelectionChange -> selectionchange).
+    const handler = p.startsWith('on') && e.attrs.some((a) => a.kind === 'event' && a.name === p.slice(2).toLowerCase())
+    if (chartAttrExprKotlin(e, p) !== undefined || handler) host.warn(`<${tag}>: \`${p}\` is not lowered on native; the chart renders without it.`)
   }
   const attrs: Record<string, ExprIR> = {}
   for (const name of spec.data) {
@@ -90,7 +92,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     }
   }
   const optV = chartAttrExprKotlin(e, spec.options)
-  const userOptions = optV === undefined ? 'null' : host.exprAs(chartStructRefKotlin(spec.optionsStruct), optV, indent)
+  const userOptions = optV === undefined ? 'null' : geoProjectionEnum(host.exprAs(chartStructRefKotlin(spec.optionsStruct), optV, indent), 'kotlin')
   const tf = kotlinChartThemeFields(e, tag)
   const themed = kotlinChartThemed(e)
   const themeLets: string[] = []

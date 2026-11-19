@@ -19,6 +19,7 @@
 // BY NAME (`UNLOWERED_CHART_HOSTS`) rather than falling through to the generic
 // component emit, which would name a SwiftUI/Compose view that does not exist.
 
+import { GEO_RAMP_DARK, GEO_RAMP_LIGHT } from '../engine/geo'
 import { DEFAULT_PALETTE } from '../engine/palette'
 import { palettes } from '../engine/palettes'
 import { visualMap, visualStripOf } from '../engine/visual-map'
@@ -85,11 +86,13 @@ export type ChartThemeField =
   | 'highlightColor'
   | 'emptyColor'
   | 'stops'
+  | 'mapStops'
+  | 'hatchColor'
   | 'borderColor'
 
 /** The `ChartTheme` field each option field defaults from — one place, both emitters. */
 export const CHART_THEME_SOURCE: Readonly<
-  Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis' | 'positive' | 'negative' | 'muted' | 'ramp' | 'pageGround'>
+  Record<ChartThemeField, 'palette' | 'label' | 'grid' | 'axis' | 'positive' | 'negative' | 'muted' | 'ramp' | 'pageGround' | 'mapRamp'>
 > = {
   palette: 'palette',
   labelColor: 'label',
@@ -117,6 +120,10 @@ export const CHART_THEME_SOURCE: Readonly<
   // The value ramp must rise in contrast against its OWN ground, or a higher
   // value reads as quieter — the light ramp ran 16.32:1 down to 2.04:1 on dark.
   stops: 'ramp',
+  // The MAP's own ramp (a map must stay readable at both ends on either ground); it fills the `stops` option.
+  mapStops: 'mapRamp',
+  // The hatch over a region with no value reads as ink on the ground, like a label.
+  hatchColor: 'label',
   // The geo border SEPARATES two filled regions, so it reads the PAGE rather
   // than a token of its own — `pageGround`, which is `background` with its
   // "inherit the page" empty string already resolved to white.
@@ -253,6 +260,7 @@ function irToValue(e: ExprIR | undefined, resolve: (name: string) => ExprIR | un
       if (!v.ok) return v
       out.push(v.value)
     }
+
     return { ok: true, value: out }
   }
   if (lit.kind === 'object') {
@@ -263,8 +271,10 @@ function irToValue(e: ExprIR | undefined, resolve: (name: string) => ExprIR | un
       if (!v.ok) return v
       out[f.name] = v.value
     }
+
     return { ok: true, value: out }
   }
+
   return { ok: false }
 }
 
@@ -313,6 +323,7 @@ export const calendarValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve)
     }
     items.push(t.struct('CalendarValue', [['date', t.str(f.name)], ['value', chartDouble(n)]]))
   }
+
   return t.list(items)
 }
 
@@ -336,6 +347,7 @@ const singleAxisSpecAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) 
   } else fields.push(['domain', t.nil])
   const name = litString(objectField(axis, 'name'))
   fields.push(['name', name === undefined ? t.nil : t.str(name)])
+
   return t.struct('SingleAxisSpec', fields)
 }
 
@@ -366,6 +378,7 @@ const parallelAxesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit) =>
     fields.push(['inverse', inverse === undefined ? t.nil : emit(inverse)])
     items.push(t.struct('ParallelAxis', fields))
   }
+
   return t.list(items)
 }
 
@@ -392,6 +405,7 @@ export const parallelRowsAdapter: ChartHostAdapter = (attrs, t, warn, resolve) =
       if (s === undefined) return undefined
       out.push(s)
     }
+
     return out
   }
   const out: string[] = []
@@ -425,6 +439,7 @@ export const parallelRowsAdapter: ChartHostAdapter = (attrs, t, warn, resolve) =
     }
     out.push(t.list(cells))
   }
+
   return t.list(out)
 }
 
@@ -438,6 +453,7 @@ function engineDoubleFields(structName: string): ReadonlySet<string> {
   const isDouble = (t: TypeShape): boolean =>
     (t.kind === 'typeRef' && t.name === 'Double') || (t.kind === 'union' && (t.branches ?? []).some(isDouble))
   const struct = CHART_ENGINE_STRUCTS.find((s) => s.name === structName)
+
   return new Set((struct?.fields ?? []).filter((f) => isDouble(f.type as never)).map((f) => f.name))
 }
 
@@ -449,6 +465,7 @@ function doubleLiteral(e: ExprIR): string | undefined {
     const m = litNumber(e.argument)
     if (m !== undefined) return chartDouble(-m)
   }
+
   return undefined
 }
 
@@ -482,6 +499,7 @@ function literalStructArrayAdapter(
       for (const name of optional) fields.push([name, objectField(row, name) === undefined ? t.nil : emitField(name, objectField(row, name)!)])
       rows.push(t.struct(structName, fields))
     }
+
     return t.list(rows)
   }
 }
@@ -517,6 +535,7 @@ export const geoShapesAdapter: ChartHostAdapter = (attrs, _t, warn, resolve, emi
       '<MapChart map="…">: the map REGISTRY is web-only — `registerMap` fills a module map that no native target has. '
         + 'Pass a `GeoShape[]` const instead (project the GeoJSON once with `geoShapes(json)` on the web or in a build step); that shape lowers. Emitting nothing.',
     )
+
     return 'unsupported'
   }
   if (lit !== undefined && lit.kind === 'object') {
@@ -524,8 +543,10 @@ export const geoShapesAdapter: ChartHostAdapter = (attrs, _t, warn, resolve, emi
       "<MapChart map={…}>: raw GeoJSON does not cross — `geometry` is a `Polygon | MultiPolygon` union whose `coordinates` are `number[][][]` and `number[][][][]`, one field at two depths. "
         + 'Normalise it first, OUTSIDE the shared source: `geoShapes(json)` (web-only itself) yields the `GeoShape[]` const that lowers. Emitting nothing.',
     )
+
     return 'unsupported'
   }
+
   return emit(raw)
 }
 
@@ -547,7 +568,20 @@ export const geoValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit
     }
     items.push(t.struct('GeoValue', [['region', t.str(f.name)], ['value', chartDouble(n)]]))
   }
+
   return t.list(items)
+}
+
+/**
+ * `projection: "equalEarth"` inside a `GeoOptions(...)` literal, as the enum case the engine's `GeoProjection` is: the
+ * struct-literal lowering writes a string literal for a union-typed field, and an enum needs its case. Only the
+ * map's options carry this field, so the rewrite is keyed on the field name and the six known cases.
+ */
+export function geoProjectionEnum(text: string, target: 'swift' | 'kotlin'): string {
+  const cases = 'equirectangular|mercator|equalEarth|naturalEarth1|albers|albersUsa'
+  return target === 'swift'
+    ? text.replace(new RegExp(`projection: "(${cases})"`, 'g'), 'projection: .$1')
+    : text.replace(new RegExp(`projection = "(${cases})"`, 'g'), 'projection = GeoProjection.$1')
 }
 
 const box00 = (a: ChartHostArgs, t: ChartHostTarget): string => t.rect('0.0', '0.0', a.W, a.H)
@@ -570,6 +604,7 @@ export function chartRoamConfig(read: (name: string) => unknown, warn: (m: strin
   if (lim !== undefined && lim.kind !== 'object') warn(`<${tag} scaleLimit>: scaleLimit must be a literal { min, max } on native; the default 0.5 … 20 applies.`)
   const min = lim?.kind === 'object' ? litNumber(objectField(lim, 'min')) : undefined
   const max = lim?.kind === 'object' ? litNumber(objectField(lim, 'max')) : undefined
+
   return { move, scale, min: min ?? 0.5, max: max ?? 20 }
 }
 
@@ -727,12 +762,14 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     },
     options: 'options',
     optionsStruct: 'GeoOptions',
-    themeDefaults: ['stops', 'emptyColor', 'borderColor', 'labelColor'],
+    themeDefaults: ['mapStops', 'emptyColor', 'borderColor', 'labelColor', 'hatchColor'],
     defaultHeight: 300,
     layout: (a, t) => `layoutGeoShapes(${a.data[0]}, ${box00(a, t)}, ${a.options})`,
-    render: (l, a, t) => `renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoHeat(${l}, ${a.data[5]}, geoHeatStops(${a.data[8]}, ${optField(a, t, 'stops')}), ${a.data[7]}, 1.0) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoPies(${l}, ${a.data[6]}, 1.0) + renderGeoTrailsIfAny(${l}, ${a.data[2]}, ${a.data[9]}, ${a.data[10]}, "#b42318") + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
+    render: (l, a, t) => `renderGeoBelow(${l}, ${a.options}) + renderGeo(${l}, ${a.data[1]}, ${a.options}) + renderGeoHeat(${l}, ${a.data[5]}, geoHeatStops(${a.data[8]}, ${optField(a, t, 'stops')}), ${a.data[7]}, 1.0) + renderGeoOverlayPaths(${l}, ${a.data[2]}, ${a.data[4]}) + renderGeoPies(${l}, ${a.data[6]}, 1.0) + renderGeoTrailsIfAny(${l}, ${a.data[2]}, ${a.data[9]}, ${a.data[10]}, "#b42318") + renderGeoOverlayPoints(${l}, ${a.data[3]}, ${a.data[4]})`,
     reuseLayout: true,
     hit: (l, x, y) => `hitGeoIndex(${l}, ${x}, ${y})`,
+    // Web-only state and callbacks: warned BY NAME, never silently dropped.
+    warnProps: ['selectedMode', 'emphasis', 'onSelectionChange', 'tooltipFormatter', 'flows', 'flowOptions', 'sizeLegend', 'fitTo', 'zoomOnClick'],
     extraHits: [{ event: 'selectpointindex', hit: (l, x, y, a) => `hitGeoOverlayPoint(${l}, ${a.data[3]}, ${x}, ${y}, (${a.data[4]}).radius)` }],
     tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y})`,
     adapt: {
@@ -847,20 +884,104 @@ function substituteIdent(e: ExprIR, name: string, to: ExprIR): ExprIR {
   if (e.kind === 'identifier') return e.name === name ? to : e
   if (e.kind === 'member') return { ...e, object: substituteIdent(e.object, name, to) }
   if (e.kind === 'call') return { ...e, callee: substituteIdent(e.callee, name, to), args: e.args.map((a) => substituteIdent(a, name, to)) }
+
   return e
 }
 
 const lit = (value: string | number | boolean): ExprIR => ({ kind: 'literal', value })
+
+/**
+ * A `scale` value as a plot attr: a plain string (`'log'`, `'linear'`) stays
+ * `yScale`; a scale DESCRIPTOR call (`sqrt()`, `symlog({ constant })`, `log()`)
+ * becomes `yView` / `xView`, an object literal `{ kind, param }` the emitters
+ * turn into the engine's `ScaleView`. A non-literal `constant` (or any other
+ * shape) is named and the axis stays linear.
+ */
+/** The `input` of a `describeChart(input)` expression, with any ` + "note"` suffix (`scaleNote`) left off. */
+export function describeInput(describe: string): string {
+  const end = describe.indexOf(' + /*scale-note*/')
+
+  return describe.slice('describeChart('.length, (end < 0 ? describe.length : end) - 1)
+}
+
+/**
+ * The spoken description's note on a non-linear axis, as ` + "…"` (empty for a
+ * linear chart): the web's `scaleNote` — the picture's spacing is not the data's,
+ * and a listener should know. Read from the compile-time literals.
+ */
+export function scaleNote(yScale: unknown, yView: { kind: string } | undefined, xView: { kind: string } | undefined): string {
+  const y = yView !== undefined ? yView.kind : typeof yScale === 'string' && yScale !== 'linear' ? yScale : ''
+  const text = (y === '' ? '' : ` The value axis is on a ${y} scale.`) + (xView === undefined ? '' : ` The x axis is on a ${xView.kind} scale.`)
+
+  return text === '' ? '' : ` + /*scale-note*/"${text}"`
+}
+
+/** The `{ kind, param }` literal `scaleAttr` made, or undefined. */
+export function scaleViewOf(v: ExprIR | undefined): { kind: string; param: number } | undefined {
+  if (v === undefined || v.kind !== 'object') return undefined
+  const kind = v.fields.find((f) => f.name === 'kind')?.value
+  const param = v.fields.find((f) => f.name === 'param')?.value
+  if (kind?.kind !== 'literal' || typeof kind.value !== 'string' || param?.kind !== 'literal' || typeof param.value !== 'number') return undefined
+
+  return { kind: kind.value, param: param.value }
+}
+
+/** The engine's `ScaleView` for a scale descriptor, as the `ChartSpec` argument: the closures call the generated engine's own `applyScaleView` / `viewTicks`, which is what keeps native and web on the same axis. */
+export function scaleViewArg(target: 'swift' | 'kotlin', axis: 'x' | 'y', v: { kind: string; param: number }): string {
+  const p = chartDouble(v.param)
+  if (target === 'swift') {
+    return `${axis}View: ScaleView(kind: "${v.kind}", param: ${p}, apply: { s, a in applyScaleView(s, a, "${v.kind}", ${p}) }, ticks: { real, r0, r1, count, fmt in viewTicks("${v.kind}", real, r0, r1, count, fmt, ${p}) })`
+  }
+
+  return `${axis}View = ScaleView(kind = "${v.kind}", param = ${p}, apply = { s, a -> applyScaleView(s, a, "${v.kind}", ${p}) }, ticks = { real, r0, r1, count, fmt -> viewTicks("${v.kind}", real, r0, r1, count, fmt, ${p}) })`
+}
+
+function pushAttr(into: AttrIR[], a: AttrIR | undefined): void {
+  if (a !== undefined) into.push(a)
+}
+
+/** A descriptor call's constant: 1 when absent, the number when literal, null when it is neither (`symlog({ constant: n })`). */
+function descriptorParam(v: Extract<ExprIR, { kind: 'call' }>): number | null {
+  const opts = v.args[0]
+  if (opts === undefined) return 1
+  if (opts.kind !== 'object') return null
+  const constant = opts.fields.find((f) => f.name === 'constant')?.value
+  if (constant === undefined) return 1
+
+  return constant.kind === 'literal' && typeof constant.value === 'number' ? constant.value : null
+}
+
+function scaleAttr(axis: 'x' | 'y', v: ExprIR, warn: (m: string) => void): AttrIR | undefined {
+  const name = v.kind === 'call' && v.callee.kind === 'identifier' ? v.callee.name : ''
+  if (v.kind === 'call' && (name === 'sqrt' || name === 'symlog' || name === 'log')) {
+    const param = descriptorParam(v)
+    if (param === null) {
+      warn(`<Axis ${axis} scale>: \`${name}(...)\` needs a literal \`{ constant: number }\` on native; the axis stays linear.`)
+
+      return undefined
+    }
+
+    return { kind: 'attr', name: `${axis}View`, value: { kind: 'object', fields: [{ name: 'kind', value: lit(name) }, { name: 'param', value: lit(param) }] } }
+  }
+  if (axis === 'x' && v.kind === 'literal' && v.value !== 'linear') warn('<Axis x scale>: a numeric x axis takes a scale descriptor (`scale={log()}`); the string form is for the value axis. The axis stays linear.')
+
+  // The value axis keeps its plain strings ('linear' | 'log'); a numeric x axis has no string form.
+  return axis === 'y' ? { kind: 'attr', name: 'yScale', value: v } : undefined
+}
+
 const ident = (name: string): ExprIR => ({ kind: 'identifier', name })
+
 /** `"field"` → `(d) => d.field`; an accessor passes through. */
 function channelArrow(v: ExprIR): ExprIR {
   if (v.kind === 'literal' && typeof v.value === 'string') return { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: v.value } }
   return v
 }
+
 const attrOf = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): ExprIR | undefined => {
   const a = e.attrs.find((x) => x.kind === 'attr' && x.name === name)
   return a?.kind === 'attr' ? a.value : undefined
 }
+
 const flagOn = (e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string): boolean => {
   const v = attrOf(e, name)
   return v !== undefined && !(v.kind === 'literal' && v.value === false)
@@ -1001,10 +1122,17 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'xTitle', value: title })
           const labels = attrOf(child, 'labels')
           if (labels !== undefined) attrs.push({ kind: 'attr', name: 'xLabels', value: labels })
+          if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'xInverse', value: lit(true) })
+          const xScaleAttr = attrOf(child, 'scale')
+          if (xScaleAttr !== undefined) pushAttr(attrs, scaleAttr('x', xScaleAttr, warn))
+          if (flagOn(child, 'grid')) attrs.push({ kind: 'attr', name: 'xGrid', value: lit(true) })
+          const xMinor = attrOf(child, 'minor')
+          if (xMinor !== undefined) attrs.push({ kind: 'attr', name: 'xMinor', value: xMinor })
         } else if (flagOn(child, 'y2')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
           if (domain !== undefined) attrs.push({ kind: 'attr', name: 'y2Domain', value: domain })
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'y2Title', value: title })
+          if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'y2Inverse', value: lit(true) })
         } else {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'format', value: format })
           const yTicks = attrOf(child, 'ticks')
@@ -1013,7 +1141,12 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'yTitle', value: title })
           if (flagOn(child, 'time')) attrs.push({ kind: 'attr', name: 'yTime', value: lit(true) })
           const scale = attrOf(child, 'scale')
-          if (scale !== undefined) attrs.push({ kind: 'attr', name: 'yScale', value: scale })
+          if (scale !== undefined) pushAttr(attrs, scaleAttr('y', scale, warn))
+          if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'yInverse', value: lit(true) })
+          const gridAttr = attrOf(child, 'grid')
+          if (gridAttr !== undefined && gridAttr.kind === 'literal' && gridAttr.value === false) attrs.push({ kind: 'attr', name: 'yGrid', value: lit(false) })
+          const yMinor = attrOf(child, 'minor')
+          if (yMinor !== undefined) attrs.push({ kind: 'attr', name: 'yMinor', value: yMinor })
         }
         break
       }
@@ -1021,9 +1154,10 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         // `<Scale y="log" | "time" x="time" normalize>` — the same switches `<Axis>` carries, stated together.
         const y = attrOf(child, 'y')
         if (y !== undefined && y.kind === 'literal' && y.value === 'time') attrs.push({ kind: 'attr', name: 'yTime', value: lit(true) })
-        else if (y !== undefined) attrs.push({ kind: 'attr', name: 'yScale', value: y })
+        else if (y !== undefined) pushAttr(attrs, scaleAttr('y', y, warn))
         const x = attrOf(child, 'x')
         if (x !== undefined && x.kind === 'literal' && x.value === 'time') attrs.push({ kind: 'attr', name: 'xTime', value: lit(true) })
+        else if (x !== undefined && !(x.kind === 'literal' && x.value === 'linear')) pushAttr(attrs, scaleAttr('x', x, warn))
         if (flagOn(child, 'normalize')) attrs.push({ kind: 'attr', name: 'stackNormalize', value: lit(true) })
         break
       }
@@ -1146,6 +1280,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   attrs.push({ kind: 'attr', name: 'marks', value: { kind: 'array', elements: marks } })
   if (annotations.length > 0) attrs.push({ kind: 'attr', name: 'annotations', value: { kind: 'array', elements: annotations } })
   if (markers.length > 0) attrs.push({ kind: 'attr', name: 'markers', value: { kind: 'array', elements: markers } })
+
   return { kind: 'jsx-element', tag: 'PlotChart', attrs, children: [] }
 }
 
@@ -1208,6 +1343,7 @@ function desugarFamilyGrammar(
     else if (child.tag === 'Axis' && !flagOn(child, 'x') && !flagOn(child, 'y2') && attrOf(child, 'format') !== undefined) attrs.push({ kind: 'attr', name: 'format', value: attrOf(child, 'format')! })
     else warn(`<Chart>: <${child.tag}> does not apply to a ${host.replace('Chart', '').toLowerCase()}; it is ignored.`)
   }
+
   return { kind: 'jsx-element', tag: host, attrs, children: [] }
 }
 
@@ -1460,6 +1596,9 @@ export function chartThemeFields(
       out[f.name] = runtime && dv !== d ? scheme(t.str(d as string), t.str(dv)) : t.str(d as string)
     }
   }
+  const mapLight = t.list(GEO_RAMP_LIGHT.map(t.str))
+  const mapDark = t.list(GEO_RAMP_DARK.map(t.str))
+  out.mapRamp = runtime && scheme !== undefined ? scheme(mapLight, mapDark) : base === dark ? mapDark : mapLight
   setGround()
   if (v === undefined || named !== undefined) return out
   if (v.kind !== 'object' || (v.spreads !== undefined && v.spreads.length > 0)) {
@@ -1491,6 +1630,7 @@ export function chartThemeFields(
     if (spec.name === 'background') bgLight = f.value.value as string
   }
   setGround()
+
   return out
 }
 
@@ -1502,6 +1642,7 @@ function chartStringListLiteral(v: ExprIR): readonly string[] | undefined {
     if (el.kind !== 'literal' || typeof el.value !== 'string') return undefined
     out.push(el.value)
   }
+
   return out
 }
 
@@ -1532,12 +1673,14 @@ export function chartThemePalette(v: ExprIR | undefined, tag: string, warn: (m: 
     const found = NAMED_PALETTES[pv.property]
     if (found !== undefined) return found
     warn(`<${tag} theme>: \`palettes.${pv.property}\` is not a named palette (${Object.keys(NAMED_PALETTES).join(', ')}); the default palette applies.`)
+
     return fallback
   }
   if (pv.kind !== 'array' || pv.elements.length === 0 || pv.elements.some((it) => it.kind !== 'literal' || typeof it.value !== 'string')) {
     warn(`<${tag} theme>: \`palette\` must be a non-empty array of string literals or a \`palettes.<name>\` reference on native; the default palette applies.`)
     return fallback
   }
+
   return pv.elements.map((it) => (it as { value: string }).value)
 }
 
@@ -1570,6 +1713,7 @@ interface ThemeChain {
   mode: 'light' | 'dark' | null
   providers: readonly (ExprIR & { kind: 'jsx-element' })[]
 }
+
 const SCOPE_CHAIN = new WeakMap<RawChartTheme, ThemeChain>()
 
 /** Merge one theme-object literal's fields over `raw`, warning by name on what cannot lower. */
@@ -1609,6 +1753,7 @@ function resolveThemeChain(chain: ThemeChain, warn: (m: string) => void): RawCha
   }
   const out = raw as RawChartTheme
   SCOPE_CHAIN.set(out, chain)
+
   return out
 }
 
@@ -1617,6 +1762,7 @@ export function chartThemeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: s
   const prev: ThemeChain = (outer === undefined ? undefined : SCOPE_CHAIN.get(outer)) ?? { mode: null, providers: [] }
   if (scopeAttr(e, 'mode') !== undefined) warn('<ChartThemeProvider mode>: the mode is not a provider prop any more — wrap it in `<ColorModeProvider mode>` (@pyreon/core) or set `<PyreonUI mode>`; it is ignored.')
   if (prev.mode === null && prev.providers.length === 0) warn('<ChartThemeProvider>: with no literal colour mode above it, the web follows the system scheme; natively the light theme applies — wrap it in `<ColorModeProvider mode="dark">` (or give each chart its own `theme`).')
+
   return resolveThemeChain({ mode: prev.mode, providers: [...prev.providers, e] }, warn)
 }
 
@@ -1642,6 +1788,7 @@ export function colorModeScope(e: ExprIR & { kind: 'jsx-element' }, warn: (m: st
   if (warnReactive && !(modeV.kind === 'literal' && modeV.value === 'system')) {
     warn(`<${e.tag} mode>: only a literal "light" / "dark" / "system" lowers on native (a reactive mode cannot be read at compile time); charts below follow the platform scheme.`)
   }
+
   return outer
 }
 
@@ -1658,6 +1805,7 @@ export const CHART_HOST_PALETTE: readonly string[] = CHART_THEME_DEFAULT.palette
  * target does NOT draw MUST warn by name rather than drop silently.
  */
 export const CHART_CHROME_PROPS: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'legendPosition', 'keyboard', 'updateAnimation', 'updateDuration', 'universalTransition', 'toolbox', 'onSaveImage', 'accessibleTable', 'rtl']
+
 const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   PlotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage'],
   // Gauge / Candlestick / Heatmap build their canvas without the chrome seam,
@@ -1671,6 +1819,7 @@ const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
   BoxplotChart: ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'animate', 'rtl', 'toolbox', 'onSaveImage'],
   RadarChart: ['showLegend', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage'],
 }
+
 /**
  * Title + legend + tap tooltip — what the generic and accessor hosts draw
  * natively through the crossing chrome.
@@ -1681,6 +1830,7 @@ const CHROME_LOWERED: Readonly<Record<string, readonly string[]>> = {
  * exactly the mistake the `CHROME_LOWERED` comment above records.
  */
 const FAMILY_CHROME: readonly string[] = ['showTitle', 'subtitle', 'showLegend', 'tooltip', 'rtl', 'legendPosition', 'toolbox', 'onSaveImage']
+
 /**
  * Whether `<tag>`'s engine takes an entrance `progress` — the same set the web
  * canvas host tweens (`animates: true`). A host outside it (Pie, Radar,
@@ -1691,8 +1841,10 @@ export function chartHostAnimates(tag: string): boolean {
   if (tag === 'PlotChart' || tag === 'HeatmapChart' || tag === 'BoxplotChart') return true
   const host = CHART_HOSTS[tag]
   if (host !== undefined) return host.optionsStruct !== undefined
+
   return ACCESSOR_CHART_HOSTS[tag]?.optionsStruct !== undefined
 }
+
 /** The chrome props `<tag>` does NOT lower — each present one warns. */
 export function chartChromeUnlowered(tag: string): readonly string[] {
   const family = Object.hasOwn(CHART_HOSTS, tag) || Object.hasOwn(ACCESSOR_CHART_HOSTS, tag)
@@ -1705,6 +1857,7 @@ export function chartChromeUnlowered(tag: string): readonly string[] {
     ...(family && chartHostAnimates(tag) ? ['animate'] : []),
     ...(family || tag === 'PlotChart' ? ['updateAnimation', 'updateDuration', 'universalTransition'] : []),
   ]
+
   return CHART_CHROME_PROPS.filter((p) => !lowered.includes(p))
 }
 
@@ -1749,6 +1902,7 @@ export function chartAreaBrushConfig(
     if (Array.isArray(o) && o.every((x) => typeof x === 'number')) for (const x of o as number[]) only.push(x)
     else warn(`<${tag} brushSeriesIndex>: native needs a literal number array; every series is brushed.`)
   }
+
   return { on: initial !== '' || toolboxBrush.length > 0, initial, keep, opacity, only }
 }
 
@@ -1756,6 +1910,7 @@ export function chartAreaBrushConfig(
 export function chartRichSelectWarning(tag: string): string {
   return `<${tag} onSelect>: the rich-hit callback is not lowered on native — use \`onSelectIndex\` (the engine's index hit, the shape the tap reports on every target).`
 }
+
 /** The warning for a chrome prop `<tag>` carries but does not draw — `animate` on an engine with no entrance is inert everywhere, not a native gap. */
 /**
  * A chart FLAG the native emit can only honour as a literal (`dataZoom`,
@@ -1778,6 +1933,7 @@ export function chartStaticFlag(
     warn(`<${tag} ${prop}={…}>: must be a literal on native — a reactive or computed value lowers as \`false\`, so the chart renders without it. Use a literal, or branch with <Web> / <NativeIOS> / <NativeAndroid>.`)
     return false
   }
+
   return value === true
 }
 
@@ -1797,6 +1953,7 @@ export function chartOrientVertical(
     warn(`<${tag} orient={…}>: must be a literal on native — a reactive or computed value lowers as horizontal. Use a literal, or branch with <Web> / <NativeIOS> / <NativeAndroid>.`)
     return false
   }
+
   return value === 'vertical'
 }
 
@@ -1804,10 +1961,12 @@ export function chartChromeWarning(tag: string, prop: string): string {
   if (prop === 'animate' && !chartHostAnimates(tag)) return `<${tag}>: \`animate\` has no effect on any target — its engine draws fully formed; the prop is ignored.`
   return `<${tag}>: \`${prop}\` is not lowered on native yet; the chart renders without it.`
 }
+
 /** The entrance duration — the theme's `enterMs` (a literal object or a named theme), else the default; the family hosts read nothing else off `theme`, so this never warns. */
 export function chartEnterMs(theme: ExprIR | undefined, tag: string, t: ChartThemeEmit, scope?: RawChartTheme): string {
   return chartThemeFields(theme, tag, () => {}, t, scope).enterMs
 }
+
 /** The resolved theme as emitted TEXT per field — what `chartThemeFields` returns. */
 /**
  * The theme's fields as EMITTED text, plus one DERIVED entry.
@@ -1820,7 +1979,8 @@ export function chartEnterMs(theme: ExprIR | undefined, tag: string, t: ChartThe
  * keeps it on the emitted-text side, where the value may be a runtime
  * colour-scheme conditional rather than a literal.
  */
-export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT | 'pageGround', string>
+export type ChartThemeText = Record<keyof typeof CHART_THEME_DEFAULT | 'pageGround' | 'mapRamp', string>
+
 /** The tooltip box from the theme — the web host's `tooltipStyle` (surface / grid / text, radius at least 4). */
 /**
  * The `[optionField, themeValue]` pairs a host defaults from the theme — the
@@ -1839,7 +1999,10 @@ export function chartThemeDefaultFields(spec: ChartHostSpec, t: ChartThemeText):
     const i = decl?.fields.findIndex((d) => d.name === f) ?? -1
     return i < 0 ? Number.MAX_SAFE_INTEGER : i
   }
-  return [...fields].sort((a, b) => at(a) - at(b)).map((f) => [f, t[CHART_THEME_SOURCE[f]]] as const)
+  // `mapStops` is the map's ramp, written into the options' `stops` field.
+  const option = (f: string): string => (f === 'mapStops' ? 'stops' : f)
+
+  return [...fields].sort((a, b) => at(option(a)) - at(option(b))).map((f) => [option(f), t[CHART_THEME_SOURCE[f]]] as const)
 }
 
 export function chartTooltipFields(t: ChartThemeText): readonly (readonly [string, string])[] {
@@ -1901,6 +2064,7 @@ export function plotMarkColorSlots(marks: readonly ExprIR[]): number[] {
     }
     labels.push(label)
   }
+
   return labelSlots(labels)
 }
 
@@ -1915,6 +2079,7 @@ function labelSlots(labels: readonly string[]): number[] {
     const at = seen.indexOf(label)
     if (at >= 0) return at
     seen.push(label)
+
     return seen.length - 1
   })
 }
@@ -1959,7 +2124,71 @@ export const PLOT_MARK_OPTION_FIELDS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'symbol', kind: 'string' },
   { name: 'symbolRepeat', kind: 'boolean' },
   { name: 'negativeColor', kind: 'string' },
+  { name: 'connectNulls', kind: 'boolean' },
 ]
+
+/**
+ * A mark's per-datum `fill` as data: `fillBy('field')` (a colour on the row) or
+ * `shadeBy('field', { ramp: ['#…', …], domain: { min, max } })` (a value mapped
+ * through a ramp). The field name and the options are literals, so the whole
+ * thing is data the engine's `shadeColors` can colour from; an accessor
+ * function is a closure over a row and has no native form, so it is declined by
+ * name (the bars draw in the series colour). A shade also names what stays
+ * web-only: its ramp legend and its `(shade)` table and tooltip rows.
+ */
+export interface PlotFillSpec {
+  shade: boolean
+  field: string
+  ramp: readonly string[]
+  domain: { min: number; max: number } | undefined
+}
+
+export function plotFillSpec(opts: ExprIR | undefined, tag: string, k: number, warn: (m: string) => void): PlotFillSpec | undefined {
+  if (opts === undefined || opts.kind !== 'object') return undefined
+  const v = opts.fields.find((f) => f.name === 'fill')?.value
+  if (v === undefined) return undefined
+  const at = `<${tag}> mark ${k + 1}`
+  const name = v.kind === 'call' && v.callee.kind === 'identifier' ? v.callee.name : ''
+  const field = v.kind === 'call' ? v.args[0] : undefined
+  if ((name !== 'fillBy' && name !== 'shadeBy') || field === undefined || field.kind !== 'literal' || typeof field.value !== 'string') {
+    warn(`${at}: \`fill\` needs \`fillBy('field')\` or \`shadeBy('field', { ramp, domain })\` with a literal field name on native; an accessor function is a closure over a row and is not lowered, so every bar and dot draws in the series colour.`)
+
+    return undefined
+  }
+  if (name === 'fillBy') return { shade: false, field: field.value, ramp: [], domain: undefined }
+  const o = v.kind === 'call' ? v.args[1] : undefined
+  const opts2 = o !== undefined && o.kind === 'object' ? o : undefined
+  const parsed = plotShadeOptions(opts2, at, warn)
+  if (opts2 === undefined || !opts2.fields.some((f) => f.name === 'ramp')) warn(`${at}: \`shadeBy\` with no \`ramp\` uses the LIGHT theme ramp on native (the web follows the colour mode); pass a ramp to match.`)
+  warn(`${at}: \`shadeBy\` colours the bars on native; its ramp legend and its (shade) table and tooltip rows are web-only.`)
+
+  return { shade: true, field: field.value, ramp: parsed.ramp, domain: parsed.domain }
+}
+
+/** The literal `ramp` and `domain` of a `shadeBy` options object; anything else is named and left at its default. */
+function plotShadeOptions(o: Extract<ExprIR, { kind: 'object' }> | undefined, at: string, warn: (m: string) => void): { ramp: readonly string[]; domain: PlotFillSpec['domain'] } {
+  let ramp: readonly string[] = CHART_THEME_DEFAULT.ramp
+  let domain: PlotFillSpec['domain']
+  const r = o?.fields.find((f) => f.name === 'ramp')?.value
+  if (r !== undefined) {
+    if (r.kind === 'array' && r.elements.length > 0 && r.elements.every((e) => e.kind === 'literal' && typeof e.value === 'string')) ramp = r.elements.map((e) => (e as { value: string }).value)
+    else warn(`${at}: \`shadeBy\` ramp must be an array of string literals on native; the light theme ramp applies.`)
+  }
+  const d = o?.fields.find((f) => f.name === 'domain')?.value
+  if (d !== undefined) {
+    const lo = d.kind === 'object' ? d.fields.find((f) => f.name === 'min')?.value : undefined
+    const hi = d.kind === 'object' ? d.fields.find((f) => f.name === 'max')?.value : undefined
+    if (lo?.kind === 'literal' && typeof lo.value === 'number' && hi?.kind === 'literal' && typeof hi.value === 'number') domain = { min: lo.value, max: hi.value }
+    else warn(`${at}: \`shadeBy\` domain must be a literal { min, max } on native; the extent of the values applies.`)
+  }
+
+  return { ramp, domain }
+}
+
+/** The arrow `(d) => d.<field>` as IR, for the emitters' accessor lowering. */
+export function plotFillAccessor(field: string): ExprIR {
+  return { kind: 'arrow', params: ['d'], body: { kind: 'member', object: ident('d'), property: field } }
+}
 
 /**
  * Mark options that are ACCESSORS rather than literals: `errorLow` /
@@ -1987,6 +2216,17 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'yTitle', kind: 'string' },
   { name: 'y2Title', kind: 'string' },
   { name: 'xLabels', kind: 'string' },
+  { name: 'barWidth', kind: 'number' },
+  { name: 'barGap', kind: 'number' },
+  { name: 'barCategoryGap', kind: 'number' },
+  { name: 'barSpan', kind: 'number' },
+  { name: 'yInverse', kind: 'boolean' },
+  { name: 'y2Inverse', kind: 'boolean' },
+  { name: 'xInverse', kind: 'boolean' },
+  { name: 'yGrid', kind: 'boolean' },
+  { name: 'xGrid', kind: 'boolean' },
+  { name: 'yMinor', kind: 'number' },
+  { name: 'xMinor', kind: 'number' },
 ]
 
 /**
@@ -2041,6 +2281,7 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
     const why = PLOT_UNLOWERED_REASON[p]
     return why === undefined ? `\`${p}\`` : `\`${p}\` (${why})`
   })
+
   return `<${tag}>: ${named.join(', ')} ${present.length === 1 ? 'is' : 'are'} not lowered on native; the chart renders without.`
 }
 
@@ -2096,6 +2337,7 @@ export function chartVisualMap(
     ['calculable', String(s.calculable)],
     ['outColor', str(s.outColor)],
   ])
+
   return { strip, lo: chartDouble(spec.range[0]), hi: chartDouble(spec.range[1]), selected: t.list(spec.selected.map(String)) }
 }
 
@@ -2120,6 +2362,7 @@ export function chartZoomConfig(
       warn(`<${tag} ${name}>: native needs a literal object; the chart ignores it.`)
       return null
     }
+
     return v.value
   }
   const init = plainOf('initialZoom')
@@ -2127,6 +2370,7 @@ export function chartZoomConfig(
   const n = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d)
   const initial = init == null ? null : t.struct('ZoomWindow', [['start', chartDouble(Math.max(0, Math.min(1, n(init['start'], 0))))], ['end', chartDouble(Math.max(0, Math.min(1, n(init['end'], 1))))]])
   const limits = lim == null ? null : t.struct('ZoomLimits', [['lock', String(lim['lock'] === true)], ['minSpan', chartDouble(n(lim['minSpan'], 0))], ['maxSpan', chartDouble(n(lim['maxSpan'], 1))]])
+
   return { initial, limits }
 }
 
@@ -2175,6 +2419,7 @@ export function chartToolboxConfig(
   const save = cfg['saveAsImage'] === true || cfg['saveAsImage'] === 'png' || cfg['saveAsImage'] === 'svg'
   if (cfg['saveAsImage'] === 'svg') warn(`<${tag} toolbox.saveAsImage>: a phone saves the chart as a PNG, not an SVG.`)
   if (save) tools.push('saveAsImage')
+
   return { tools, dataZoom: cfg['dataZoom'] === true, magic: magic.length > 0, dataView: cfg['dataView'] === true, save, brush }
 }
 
@@ -2193,6 +2438,7 @@ export function chartActionFields(arg: ExprIR | undefined): Partial<Record<'type
     if (f.name === 'count') out.series = f.value
     else if (f.name === 'type' || f.name === 'index' || f.name === 'series' || f.name === 'start' || f.name === 'end' || f.name === 'brushType' || f.name === 'areas') out[f.name] = f.value
   }
+
   return out.type === undefined ? null : out
 }
 

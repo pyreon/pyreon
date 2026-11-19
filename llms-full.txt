@@ -573,6 +573,64 @@ const page = `<!doctype html><html${attrs(htmlAttrs)}><head>${head}</head><body$
 >
 > **Inline script escaping**: Script / style / noscript bodies are not HTML-escaped, but the SSR serializer neutralises them so they cannot break out of the wrapping tag: a JSON data block (`application/ld+json`, `speculationrules`, `importmap`, any `+json` / `/json` type) has every `<` written as `\u003C`, which still `JSON.parse`s; script code, CSS and noscript get `</script>` / `</style>` / `</noscript>` and `<!--` rewritten. Inline JSON-LD via `jsonLd: {...}` auto-wraps in `<script type="application/ld+json">` and stringifies the value.
 
+## @pyreon/calendar — Calendar
+
+The pure core of an event calendar (`@pyreon/calendar/core`, no DOM): a plain event model (a date is an all-day event, a date-time is a wall clock, floating or in the event's own zone, an instant is shown in the display zone; the end is exclusive), validation with `[Pyreon] calendar:` errors that name the event, recurrence and overrides through `@pyreon/schedule`, the window of each view with navigation and titles, and the two layout algorithms as pure functions with stable keys: month lanes (multi-day and all-day events in lanes per week row, cut at the week edges with continuation flags, "+N more" per day given a capacity) and time-grid column packing (overlapping events share the width, a block grows into the free columns to its right, pinned columns keep blocks still while another is dragged, a short event keeps a minimum height, an event across midnight is a block on each day). The time grid is a wall-clock grid: on the day a zone moves its clock the skipped hour is an empty row and the repeated hour is drawn over itself, and the now line follows the clock. Per-day signatures let a reactive layer skip recomputing a day that did not change.
+
+```typescript
+import { expandOccurrences, layoutDay } from '@pyreon/calendar/core'
+import type { CalendarEvent } from '@pyreon/calendar/core'
+
+const events: CalendarEvent[] = [{ id: 'design', title: 'Design review', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }, { id: 'sync', title: 'Sync', start: '2026-11-18T14:30', end: '2026-11-18T15:30' }]
+const occurrences = expandOccurrences(events, { start: '2026-11-16', end: '2026-11-23' }, 'Europe/Prague')
+
+layoutDay('2026-11-18', occurrences, 'Europe/Prague').map((b) => [b.column, b.columns])   // => [[0, 2], [1, 2]]
+```
+
+> **The end is exclusive**: A one-day all-day event on the 18th ends on the 19th (`allDay("2026-11-18")` makes the pair). A timed event that ends exactly at midnight does not appear on the next day. An all-day event whose end equals its start is treated as one day; a timed one is a moment.
+>
+> **Which clock a date-time is on**: A date-time with the event's `timeZone` is that zone's wall clock ("9:00 in Prague", a New York viewer sees 3:00). Without one it is floating: the same wall clock in whatever zone is displayed. An instant is shown in the display zone. A date (all-day) never moves.
+>
+> **The time grid is a wall-clock grid**: A row is the hour the clock shows. On the day a zone skips an hour the skipped row is empty and an event across it is taller than it lasts; on the day a zone repeats an hour the second pass is drawn over the same rows as the first and the two share columns when they overlap on screen. Block positions and the now line follow the clock.
+>
+> **Override keys**: An override is keyed by the original start of the occurrence: `"2026-11-18T09:00"` (in the event's wall clock), or `"2026-11-18"` for an all-day event. Moving an occurrence does not change its key.
+>
+> **Keys**: An occurrence key is `"<id>:<original start>"`, the same in every window and, for an instant event, in every zone (it uses the number). Two events with the same id are both listed and the second gets a `~2` suffix; give events unique ids.
+>
+> **Hidden days**: A day view on a hidden weekday has no dates; a month with hidden weekdays has fewer columns and keeps the leading and trailing days of the visible weeks.
+
+## @pyreon/schedule — Schedule
+
+A layer above `@pyreon/time`. A `Recurrence` is a plain object that follows RFC 5545 (iCalendar RRULE) with `@pyreon/time` values: `{ every: "week", interval: 2, on: { weekdays: [2] }, start: "2026-11-17" }`. `occurrences` is a lazy generator that jumps by period instead of stepping, so `nextOccurrence` on a ten-year-old rule costs the same as on a new one. Occurrences are wall-clock times: a daily 09:00 stays 09:00 across a clock change and only its instant moves (`toInstants`). The 31st skips months that lack one (RFC 5545), unlike `add`, which clamps. `parseRRule` / `toRRule` read and write RFC text, `describeRule` turns a rule into words. Business time: `isBusinessDay`, `addBusinessDays`, `addBusinessTime("8 working hours from Friday 15:00")`, holidays as a list or a predicate (no holiday data is shipped), split and overnight shifts. Availability: `overlaps`, `mergeIntervals`, `subtractIntervals`, `freeSlots` for booking pages, and `expandEvents` for calendar views. Verified against RFC 5545 section 3.8.5.3, the `rrule` library and a brute-force oracle. `@pyreon/schedule/core` needs only `@pyreon/time`; `@pyreon/schedule/fp` is the value-last form.
+
+```typescript
+import { occurrencesBetween, nextOccurrence, addBusinessTime } from '@pyreon/schedule'
+
+const standup = { every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-11-17T09:30' } as const
+
+occurrencesBetween(standup, '2026-11-17', '2026-12-31')   // => ['2026-11-17T09:30', '2026-12-01T09:30', '2026-12-15T09:30', '2026-12-29T09:30']
+nextOccurrence(standup, '2026-11-18')                    // => '2026-12-01T09:30'
+addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T15:00'
+```
+
+> **The 31st is skipped, not clamped**: A monthly rule on the 31st has no occurrence in April, June, September and November (RFC 5545 section 3.3.10). `add("2026-01-31", { months: 1 })` clamps to the 28th. They differ on purpose: a calendar rule says "the 31st", an add says "about a month later". For "the last day of every month" use `monthDays: [-1]`.
+>
+> **Wall-clock occurrences**: A rule's occurrences are wall-clock times. A daily 09:00 in Europe/Prague is 09:00 in summer and winter; its instant moves by an hour at the clock change. Anchoring a recurring local time in UTC drifts by an hour twice a year. `toInstants` resolves a wall time that does not exist (02:30 on a spring-forward day) by `disambiguation`, default `compatible`: moved forward to 03:30.
+>
+> **count, except and start**: `count` counts the rule's own occurrences, so an `except` date still uses one up (RFC 5545: EXDATE removes from the generated set). `start` is an occurrence only if the rule produces it: a weekly Tuesday rule that starts on a Monday begins on the next Tuesday.
+>
+> **Bounds and endless rules**: A rule with neither `until` nor `count` is endless; `occurrences` is lazy. Collecting without `to` or `limit` stops after one million occurrences with an error. A date bound means the whole day: `from` is its start, `to` its end, `after` skips it, `before` stops short of it.
+>
+> **Rules that never occur**: Rules that cannot occur (a 30th of February) throw when built. A rule that finds nothing for about five thousand periods in a row ends, so `nextOccurrence` returns `null` instead of looping.
+>
+> **Holidays**: No holiday data is shipped. Pass `holidays` as a list of dates or a predicate (a static list per country and year, a public-holiday API result). A predicate must return a boolean for every date; one that throws raises a `[Pyreon]` error naming the date.
+>
+> **Business time is counted on the wall clock**: Opening hours are wall-clock windows; a day with a clock change is not special-cased. A window ending at or before its start runs overnight into the next day and belongs to the day it starts on, whatever the next day is.
+>
+> **Free slot grid**: `freeSlots` starts slots on a grid of `step` from the start of each stretch of working time, not from the end of each meeting, so a booking page keeps offering :00 and :30. A zero-length busy interval is ignored.
+>
+> **Differences from rrule**: Verified against the `rrule` library; where they differ ours follows the RFC: chronological order for unsorted BYHOUR, union of plain and n-th BYDAY, whole-week BYSETPOS, week-year BYWEEKNO, an interval grid that never drifts, a date UNTIL meaning the whole day.
+
 ## @pyreon/server — SSR / SSG / Islands
 
 `@pyreon/server` is the production HTTP entry point and SSG generator. `createHandler()` produces a `(req: Request) => Promise<Response>` that handles SSR for every request, with a precompiled template (one parse at handler-creation, not per request) and middleware-chain support that short-circuits on the first `Response`. `prerender()` turns the same handler into a static-site generator. `island()` wraps a lazy-loaded component in a `<pyreon-island>` boundary with a hydration strategy (`load` / `idle` / `visible` / `interaction` / `media` / `never`) — the rest of the page stays HTML-only. `serverIsland()` is the INVERSE: a cacheable page with per-request SERVER-rendered holes — the marker self-activates on the client and fetches its fragment from the auto-mounted name-allowlisted endpoint.
@@ -837,6 +895,36 @@ const table = useTable(() => ({
 > **Fine-grained cells**: For live/editable tables, render cells with `flexRenderCell(table, row.id, cell.column.id)` inside an accessor, and drive the inner cells loop with `visibleCells(table, row.id)` — NOT the captured `row.getVisibleCells()`, whose tracked memo-dep reads subscribe every row to the options atom (a data edit then re-runs ALL N cells-list accessors; measured ~3× a memoized react-table update at N=1000). With both, an in-place data edit re-runs ONLY the changed rows' bindings and patches ONE cell — no memo boilerplate, matching (and on wall-clock beating) a hand-optimized react-table. A SORT re-runs no cells: the same rows move, and only rows whose data or row object changed are refreshed. Other table-STATE changes (filter/selection/column visibility) re-run all cells (coarse, correct-by-default for state-reading cells).
 >
 > **reorder-on-data-edit limitation**: A DATA edit that changes the SORT ORDER (editing the column you are sorted BY) updates every cell to the correct value but does NOT re-position the keyed rows until the next structure/state change — a pre-existing base-adapter limitation of the sorted-row-model + <For> interaction (it affects plain `flexRender` cells too, not just `flexRenderCell`). Re-ordering via the sort controls (`toggleSorting`/`setSorting`) works normally. Workaround: re-apply sorting after such an edit, or sort by a column you do not edit in place.
+
+## @pyreon/upload — Upload
+
+A reactive upload queue. `createUploader({ transport })` validates files (size, type, image dimensions, magic-number sniffing, your own rule), uploads them with a concurrency limit, retries only failures a retry can fix (network, 408, 429 with Retry-After honoured, 5xx; never a 4xx), pauses, resumes, cancels and reports progress, speed and time left as signals that never go backwards and are written once per animation frame. `xhrTransport` sends with XMLHttpRequest because fetch has no upload progress; pass an `@pyreon/http` client and its base URL, headers and middleware apply. Headless `<FileDrop>` and `<FilePicker>` (keyboard operable, labelled, with a live region for refusals; SSR-safe), a form adapter and a query mutation adapter are separate entries. `chunkedTransport`, `s3Transport` (presigned single and multipart, no SDK) and `tusTransport` (tus 1.0) resume after a failure, a pause or a page reload (`createResumeStore` persists the state). `useFilePicker` and `useFileDrop` are the state of a picker and a drop zone: enter and leave are counted across children, files are judged while dragging, folders are read, paste is an option, and picking the same file twice works. `@pyreon/upload/core` has the pure parts (validation, `sniffType`, chunk planning, progress math, the error taxonomy) with no dependencies. Dispose aborts in-flight requests and removes timers, listeners and object URLs; creating anything on the server is inert. Client validation is UX: the server must check type, size and content.
+
+```typescript
+import { createUploader } from '@pyreon/upload'
+import { xhrTransport } from '@pyreon/upload/transport-xhr'
+
+const uploader = createUploader({ transport: xhrTransport({ url: '/api/upload' }), rules: { maxSize: '10 MB', accept: ['image/*'], maxFiles: 5 } })
+
+typeof uploader.add   // => 'function'
+uploader.status()   // => 'idle'
+```
+
+> **Client validation is UX**: Size, type and sniffing checks make the interface friendly; they do not protect the server, because a client can send anything. The server must check type, size and content itself, and must never trust the file name or the declared type.
+>
+> **Progress is monotonic**: Progress never decreases. After a retry the transport restarts from zero on the wire, but the number you see holds at its high-water mark until the new attempt passes it. A `cancel` followed by `retry` is a new upload and starts at zero.
+>
+> **Why XHR**: XMLHttpRequest reports upload progress in every browser. `fetch` has no upload progress event, and streaming request bodies need HTTP/2 and are not available everywhere, so `xhrTransport` is the reliable baseline.
+>
+> **Retry rules**: Retried: network errors, timeouts, 408, 425, 429 and 5xx, after a backoff with jitter (a `Retry-After` header, in seconds or as a date, is honoured when longer). Never retried: other 4xx, errors a transport marks non-retryable, unknown thrown errors and aborts. `attempts` counts tries in total, the first included.
+>
+> **Previews and object URLs**: `preview: true` creates an object URL for images and videos; it is revoked when the file is removed, on `clear()` and on `dispose()`. Creating your own with `URL.createObjectURL` is yours to revoke.
+>
+> **Offline**: While `navigator.onLine` is false the queue pauses uploads and resumes them when it is back (`pauseWhenOffline: false` turns this off). It listens to `online` and `offline` on `window` from the first `add()` and removes the listeners on `dispose()`.
+>
+> **Server and SSR**: Creating an uploader, a picker or a drop zone on the server touches no browser API and starts no timer. Files only exist in the browser; `xhrTransport` fails with a clear error if it is ever called where there is no XMLHttpRequest.
+>
+> **Folders and DataTransfer**: `uploader.add(dataTransfer)` takes the top-level files. To read dropped folders use `collectDropped` (what `useFileDrop` does) from the drop handler: the items are only valid while the event runs.
 
 ## @pyreon/virtual — TanStack Virtual Adapter
 
@@ -1202,6 +1290,30 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 > **Persistence**: No persist middleware — return `useStorage()` (from `@pyreon/storage`) signals from setup. A StorageSignal IS a signal, so classification/patch/reset/subscribe/dehydrate all flow through it, with cross-tab sync free. You persist exactly the fields you wrap.
 >
 > **HMR / same-id redefinition**: Redefining a store id from a DIFFERENT setup function dev-warns once per id: the registered instance keeps the OLD setup (state preserved, edited actions/computeds silently inert) until `resetStore(id)` or a full reload.
+
+## @pyreon/money — Money
+
+A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits come from `Intl` (no table is shipped); `defineCurrency` adds custom ones. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `@pyreon/format` displays a Money.
+
+```typescript
+import { money, add, multiply, allocate, round } from '@pyreon/money'
+
+add(money('0.10', 'EUR'), money('0.20', 'EUR'))      // => { amount: '0.30', currency: 'EUR' }
+multiply(money('19.99', 'EUR'), 3)                  // => { amount: '59.97', currency: 'EUR' }
+allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount)   // => ['33.34', '33.33', '33.33']
+```
+
+> **The float-input rule**: A `number` is read by its shortest round-trip text, so `money(9.99, "EUR")` is exactly 9.99. A number (or string) with more decimals than the currency has throws unless `rounding` is given: `money(0.1 + 0.2, "EUR")` is `0.30000000000000004`, which is floating-point noise, not an amount. Trailing zeros that lose nothing (`"9.990"`) are accepted.
+>
+> **Rounding**: The default mode is `halfExpand` (round half away from zero: 2.5 to 3, -2.5 to -3), what people call "round half up" and what `Intl` does by default. `halfEven` is banker's rounding. Rounding is implemented once on integers and verified against `Intl.NumberFormat` for all nine modes.
+>
+> **Order of rounding**: Rounding each line and then summing is not the same as summing and then rounding. Decide which one the invoice means, state it, and use `allocate` when parts must add up to a total.
+>
+> **Limits**: Inputs may have at most 4096 digits (a bigger one, or an exponent that would build one, throws a RangeError that says so). Amounts are bigint internally, so size is otherwise unbounded. The currency registry holds at most 64 custom currencies.
+>
+> **Defaults**: `divide` of decimals and `ratio` need a scale: 20 digits for `decimal.divide`, 10 for `ratio`, both overridable. `divide(Money, n)` rounds to the currency's digits.
+>
+> **Formatting**: This package formats nothing. `@pyreon/format` will take a `{ amount, currency }` directly; until then use `Intl.NumberFormat` with the amount STRING (`new Intl.NumberFormat("en", { style: "currency", currency: "EUR" }).format("9.99")`), which formats decimal strings exactly. `formatCurrency(Number(m.amount), ...)` loses precision for large amounts.
 
 ## @pyreon/state-tree — State Tree
 
@@ -2137,6 +2249,35 @@ interpolate('Hello, {{name}}!', { name: 'Server' })  // 'Hello, Server!'
 >
 > **Devtools**: Import `@pyreon/i18n/devtools` for a WeakRef-based registry of live i18n instances. Tree-shakeable — zero cost unless imported.
 
+## @pyreon/ambient — Ambient values
+
+The values that formatting, dates and translations all read but none of them owns: the active locale, the active time zone and the clock. Each has an app default (`setLocale`, `setTimeZone`, `setClock`), a subtree scope that is request-scoped on a server (`provideLocale`, `provideTimeZone`, `provideClock`), and a reactive read. `useNow` is the reactive clock: one shared ticker per granularity, aligned to the wall-clock boundary (local hour and midnight in the active zone, exact on 23- and 25-hour days), refcounted, paused while the page is hidden, and never created on a server or at import. A server-to-client hand-over (`clockScript`) makes the first client render read the instant the server rendered at, so relative times hydrate without a mismatch. Most apps reach it through `@pyreon/format`, `@pyreon/time`, `@pyreon/i18n` or `@pyreon/zero`; the non-reactive story is to pass options explicitly to those packages' core entries.
+
+```typescript
+import { provideLocale, provideTimeZone, setClock, useNow, now } from '@pyreon/ambient'
+
+// App root: one place says which locale and zone everything below formats in.
+provideLocale(() => 'cs')
+provideTimeZone('Europe/Prague')
+
+// A live clock: one shared ticker serves every reader of the same granularity.
+const seconds = useNow({ every: 'second' })
+
+// Tests: pin the clock for the whole app.
+setClock(() => Date.UTC(2026, 10, 18, 12))
+now()                                         // => 1795003200000
+```
+
+> **Peer deps**: @pyreon/core, @pyreon/reactivity
+>
+> **Server and client**: On a server nothing ticks: `useNow()` returns the plain read, which is the `provideClock` instant when one is provided and `Date.now()` otherwise. Provide the render instant per request and emit it with `clockScript()` or `clockAttributes()`; otherwise a relative time such as "2 sec ago" can differ between the server HTML and the first client render. Capturing the instant automatically at the first read of a request needs a request-scoped store in `@pyreon/runtime-server`, which does not exist yet.
+>
+> **Hydration**: The hand-over is read on the first client `now()` and released one macrotask later. Components that first read the clock later than that (lazy islands) see real time and may mismatch against server HTML rendered at the older instant; call `releaseClock()` yourself after your own async hydration if needed.
+>
+> **Tickers are bounded**: `second` and `minute` tickers are always shared. Up to 16 other tickers (custom intervals and per-zone `hour`/`day` tickers) are shared; a reader beyond that gets a private ticker that is stopped with it.
+>
+> **Peer dependencies**: `@pyreon/core` and `@pyreon/reactivity` are both required peers: the entry imports them when it loads, and every Pyreon app has them. The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
+
 ## @pyreon/a11y — Accessibility Primitives
 
 Zero-setup accessibility building blocks for Pyreon. `announce(message)` speaks status updates and errors to screen readers via an `aria-live` region that is created lazily on first call — no provider, no component to mount, SSR-safe (no-op on the server). `<VisuallyHidden>` renders content that is invisible on screen but kept in the accessibility tree (unlike `display:none`). `<LiveRegion>` is the declarative complement to `announce()` — a persistent `aria-live` region you place in your tree and drive with a signal, so screen readers announce every content change with zero wiring. `createA11yId(prefix?)` produces stable, SSR-safe ids for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `for`). The shared foundation other Pyreon packages build on for out-of-the-box accessibility.
@@ -2210,6 +2351,87 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 > **Live updates retarget the displayed frame**: Web plot updates arriving during an animation start from the displayed values or keyed positions, including visible entering and exiting bars. The latest target is recorded immediately, so settling never replays a superseded update. A running universal shape transition retargets its displayed draw list; disabling update animation cancels the active frame.
 >
 > **A non-finite value is a GAP, everywhere**: In `@pyreon/charts`, NaN AND Infinity are gaps: they are dropped from every domain (`extent`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in `sonifyValues`. Bands share a gap mask across both bounds and close each finite region against its own lower edge. Keyed updates apply the same finite predicate to transformed values. `makeTicks` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. `isFiniteNumber` is the engine's predicate and is exported — it is written in the native subset (`v === v && v - v === 0`) because `Number.isFinite` has no lowering inside the crossing engine, and it is what a custom mark or family should use so its gaps match the built-ins'.
+
+## @pyreon/charts-maps — Chart Maps (boundary data)
+
+Boundary data for `<MapChart>`: `@pyreon/charts-maps/world-110m` (the countries of the world, Natural Earth 1:110m, joined on ISO alpha-3) and `@pyreon/charts-maps/us-states` (the 50 states and DC, Census 1:20m, joined on FIPS). Each subpath default-exports a `MapModule` — the topology plus the projection it was prepared for (Equal Earth for the world, Albers USA for the US), the name property and the join key — so `<MapChart map={world} values={...}>` just works and an app bundles only the maps it imports. Public-domain sources, pinned and checksummed; the data is committed and nothing is fetched at install or run time.
+
+```typescript
+import { MapChart } from '@pyreon/charts'
+import world from '@pyreon/charts-maps/world-110m'
+import usStates from '@pyreon/charts-maps/us-states'
+
+// Values join on the feature id: ISO 3166-1 alpha-3 for the world, the two-digit state FIPS code for the US.
+<MapChart map={world} values={{ DEU: 83, FRA: 68, BRA: 215 }} height={360} />
+<MapChart map={usStates} values={{ '06': 39, '48': 30 }} height={400} />
+
+// An explicit option still wins over the map's own default projection:
+<MapChart map={world} options={{ projection: 'naturalEarth1' }} values={{ DEU: 83 }} />
+
+// Lazy: the map is fetched when it is first needed.
+const { default: lazyWorld } = await import('@pyreon/charts-maps/world-110m')
+```
+
+> **Per-map defaults, explicit options win**: A `MapModule` carries `projection`, `nameProperty` and `idProperty`; `<MapChart map={module}>` uses them, and any value you pass in `options` overrides the matching default.
+
+## @pyreon/format — Formatting and Parsing
+
+Experimental. Plain functions over `Intl` for the things every app formats: numbers, currency, percent, compact numbers, units, bytes, durations, lists, dates, times, relative time and ranges, plus `parseNumber` / `parseDate` for user input. One function per operation, plain-data in and strings out, no classes. The same function works in effects and JSX (it reads the active locale and time zone, so the binding updates), in plain code, and on the server (request-scoped locale). Nullish input returns a `fallback`; invalid input returns it with a dev warning; a bad option throws a `[Pyreon]` error that says how to fix it. A date-only string is a calendar date and never shifts with the time zone. Every `Intl.*Format` is cached per (locale, options) in three bounded tiers (no options, preset string, options object by identity then by structural key), so formatting in a list or a binding costs one `format()`. Three entries: `@pyreon/format/core` (pure, no `@pyreon/*` import), `@pyreon/format` (reactive locale and zone, `defineFormats`) and `@pyreon/format/components` (`<Num>`, `<DateTime>`).
+
+```typescript
+// Plain functions: no setup, no instances. Output below is for the en-US locale.
+formatNumber(1234567.891, { locale: 'en-US', maximumFractionDigits: 1 }) // → "1,234,567.9"
+formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // → "€9.99"
+formatCompact(1_240_000, { locale: 'en-US' }) // → "1.2M"
+formatBytes(1536, { locale: 'en-US' }) // → "1.5 kB"
+formatDuration(3_905_000, { locale: 'en-US', style: 'digital' }) // → "1:05:05"
+formatDate('2026-11-18', { locale: 'en-US' }) // → "Nov 18, 2026"
+formatRelativeTo('2026-11-17', '2026-11-18', { locale: 'en-US' }) // → "yesterday"
+formatList(['a', 'b', 'c'], { locale: 'en-US' }) // → "a, b, and c"
+// The active locale is reactive: change it and every binding updates.
+setLocale('de')
+formatNumber(1234567.891) // → "1.234.567,891"
+formatDate('2026-11-18', 'long') // → "18. November 2026"
+setLocale('en-US')
+// A formatter is a value: a plain (value) => string you can pass anywhere.
+const price = currencyFormatter('EUR')
+price(1234.5) // → "€1,234.50"
+;[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
+price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
+// A named format set (each key is a formatter):
+const f = defineFormats({ price: { kind: 'currency', currency: 'EUR' }, priceShort: { extends: 'price', notation: 'compact' } })
+f.price(1234.5) // → "€1,234.50"
+f.priceShort(1234567) // → "€1.2M"
+// Parsing is the inverse:
+parseNumber('1 234,5', { locale: 'cs' }) // → 1234.5
+parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
+```
+
+> **Peer deps**: @pyreon/core, @pyreon/reactivity
+>
+> **Experimental**: This package is Experimental: the API may change in a minor release before it is promoted to Stable.
+>
+> **Calendar values versus instants**: A date-only string (`2026-11-18`) and a date-time without an offset (`2026-11-18T14:30`) are CALENDAR values: they format as that day / clock time in every zone and ignore the `timeZone` option (a `timeZoneName` option is dropped and the long/full time styles become medium, because a calendar value has no zone to show). A string with `Z` or an offset, a number and a `Date` are instants shown in the active zone. Do not build `new Date('2026-11-18')` for a calendar date: it is an instant at midnight UTC.
+>
+> **Context is only visible in setup and effects**: `provideLocale` is owner-based context. A formatter called in a component body, an effect, a computed or a JSX accessor sees it; one called from an event handler or a timer outside any scope sees the app default. Capture the formatted value (or the formatter result) in setup if a handler needs the provided locale.
+>
+> **Options objects are cached by identity**: A hoisted options object is looked up by identity, so do not mutate it after the first call. A fresh inline literal of the same shape is served by a structural key (no JSON.stringify), at a small extra cost per call.
+>
+> **Locale tags from data**: A tag you hand to setLocale / provideLocale (static) / setTimeZone is validated and throws a [Pyreon] error if malformed. A tag that arrives at format time (an accessor value, an options.locale) may be request data, so a malformed one degrades to the runtime default with a dev warning instead of throwing.
+>
+> **Relative time that updates itself**: `useRelativeTime` and `<RelativeTime>` are built on the shared clock of `@pyreon/ambient`: every label shares one timer for the target-relative minute and hour marks and one for seconds; the timers are created by the first reader, stop with the last, and never run on a server. A formatter call (`formatRelativeTo`, `relativeFormatter`) is ONE reading and does not tick. For a server-rendered page emit `clockScript()` (or spread `clockAttributes()`) from `@pyreon/ambient` so the first client render prints what the server printed; the page then updates once to real time.
+>
+> **A date-only target is that day in the display zone**: In relative time a date-only value (`2026-11-18`) is a DAY, not a moment: it is compared as a calendar day in the display zone and never as hours, so "yesterday", "today", "tomorrow" and "in 3 days" are literally true for a person in that zone at any hour (`2026-11-18` at 10:00 on the 18th is "today", not "10 hours ago"). `@pyreon/time`'s `relativeDistance` gives the same words (a shared table of cases is tested in both packages). A date-time without a zone is a moment: under 24 hours it is elapsed time. Two date-only values compare as calendar days.
+>
+> **Spaces in output are non-breaking and thin spaces**: Intl writes U+00A0, U+2009 and U+202F where a plain space would sit: `formatDateRange` puts U+2009 around the en dash, `formatTime` writes U+202F before PM, Czech and French group digits with U+00A0 and U+202F. The examples in this documentation show them as plain spaces so they stay readable. Compare with `===` only against the platform's own output from the same process (`new Intl.DateTimeFormat(locale, options).formatRange(a, b)`), never against a typed literal; to see them in a failing test message, `text.replace(/[\u00a0\u2009\u202f]/g, '·')`.
+>
+> **Converting units: US versus imperial, and what is not a ratio**: `gallon` and `fluid-ounce` are the US liquid units (ECMA-402 and CLDR), also for `system: "uk"`: the imperial ones are not sanctioned by ECMA-402, so they are not convertible here. `kilobyte` is 1000 bytes (CLDR); the 1024 story is `formatBytes({ binary: true })`. Temperature is affine (celsius and fahrenheit; kelvin is not an Intl unit), a fuel economy and its inverse (`mile-per-gallon`, `liter-per-kilometer`) are reciprocals, and `month` and `year` have no fixed length and are not convertible. `uk` is metric except that distances and speeds are miles; `preferredUnit` is a small table, not CLDR use-case preferences.
+>
+> **Engines differ in CLDR data**: Intl output is CLDR data and V8, JavaScriptCore and ICU versions differ (for example a narrow no-break space before PM). For SSR, pass the same locale and time zone on both sides; the hydration test in this package runs real Chromium against Node-rendered markup shape, not byte equality across ICU versions.
+>
+> **Composing formatters**: A formatter is a plain function, so compose with plain values: `listFormatter()(items.map(price))`, `bytesFormatter()(used)` inside a template string, `price.from(row => row.total)` as a table column. There is deliberately NO per-unit currency helper ("€9.99/month"): the platform has no locale data for the "per" pattern outside unit formatting, and a hand-made pattern is wrong in many languages. Format the value and embed it in a translated message ("{price} per month").
+>
+> **Native**: Not lowered by PMTC yet (tier web-only). A core set of Intl calls already lowers natively without this package; mapping these functions onto that set is the planned native work.
 
 ## @pyreon/code — Code Editor
 
@@ -2289,7 +2511,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 
 ## @pyreon/command — Command
 
-Every action of an app, found by typing and run from the keyboard. `@pyreon/command/core` is the pure matcher: `fuzzyMatch` and `rank` are case- and diacritic-insensitive (Résumé is found by "resume", Straße by "strasse", ユーザー by ゆーざー), score word starts, camelCase humps, consecutive characters and prefixes (so "np" finds New Project), match the words of a query in any order, and return ranges in UTF-16 offsets that are right for emoji and combining marks, for highlighting. `createRanker` keeps the prepared texts and narrows: a query that extends the previous one only looks at what the previous one matched. The registry (`createCommands`, `useCommands`, `useCommand`, `provideCommands`) holds the commands: `useCommand` registers one for the lifetime of a component, so the list always matches what is on screen; a title can be a function (switching the locale re-ranks); a command can have nested pages (`children`); recents are kept and can be persisted; a command with a `shortcut` is registered through `@pyreon/hotkeys` exactly once while it is registered and enabled, with a development warning that names both commands when two share a shortcut. Typo tolerance is not part of v0. On the server the registry is inert.
+Every action of an app, found by typing and run from the keyboard. `@pyreon/command/core` is the pure matcher: `fuzzyMatch` and `rank` are case- and diacritic-insensitive (Résumé is found by "resume", Straße by "strasse", ユーザー by ゆーざー), score word starts, camelCase humps, consecutive characters and prefixes (so "np" finds New Project), match the words of a query in any order, and return ranges in UTF-16 offsets that are right for emoji and combining marks, for highlighting. `createRanker` keeps the prepared texts and narrows: a query that extends the previous one only looks at what the previous one matched. The registry (`createCommands`, `useCommands`, `useCommand`, `provideCommands`) holds the commands: `useCommand` registers one for the lifetime of a component, so the list always matches what is on screen; a title can be a function (switching the locale re-ranks); a command can have nested pages (`children`); recents are kept and can be persisted; a command with a `shortcut` is registered through `@pyreon/hotkeys` exactly once while it is registered and enabled, with a development warning that names both commands when two share a shortcut. Typo tolerance is not part of v0. `createPalette` is the state of the palette with no markup: open and close, the query, nested pages three deep, the rows grouped and ranked, async sources (debounced, cancellable, latest answer wins, the previous rows kept while the next load; inside a page, or from the root with `inline: true`), the active row and the whole ARIA combobox wiring. `<CommandPalette>` (`@pyreon/command/components`) is a complete renderer in a native modal `<dialog>`: the page behind is inert, focus is kept inside and comes back, scroll is locked without a shift, a polite live region announces counts and reasons, and long lists are windowed. On the server the registry and the palette are inert.
 
 ```typescript
 import { createCommands } from '@pyreon/command'
@@ -2668,6 +2890,42 @@ authorize: ({ room, token, req }) => verify(room, token)
 > **Authorization is table-stakes**: The relay's `authorize` default ALLOWS everything (dev only). Production MUST gate reads + writes per room/doc. Whole-doc CRDTs make partial (per-field) access genuinely hard — use per-doc rooms or permission-scoped sub-docs.
 >
 > **Native / PMTC sync is out of near-term scope**: The `CrdtAdapter` seam keeps a future Loro-via-FFI native engine door open, but compiler WS-emit + a native WS runtime + a CRDT-via-FFI engine are not in scope yet.
+
+## @pyreon/time — Dates and Times
+
+Plain-data date and time values for Pyreon: a date is the string `"2026-11-18"`, an instant is epoch milliseconds, and every operation is one tree-shakeable function (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`). Calendar math is proleptic Gregorian integer arithmetic with no `Date` object on the path; time zones come from `Intl` with one cached formatter per zone, and `toInstant` implements Temporal's four disambiguation modes for DST gaps and overlaps. Checked against `Temporal` with seeded differential tests. `@pyreon/time/core` and `/fp` have no dependencies; `@pyreon/time` reads the ambient clock and time zone of `@pyreon/ambient` and adds the clock hooks `useToday`, `useCountdown`, `useElapsed` and `useRelative`, which update on shared, aligned tickers. Experimental.
+
+```typescript
+import { add, diff, startOf, monthGrid, toInstant, toPlainDateTime, offsetAt } from '@pyreon/time/core'
+
+add('2026-01-31', { months: 1 })                    // => '2026-02-28'
+diff('2026-11-18', '2026-12-24', 'day')             // => 36
+startOf('2026-11-18', 'week')                       // => '2026-11-16'
+monthGrid('2026-11')[0]![0]                         // => '2026-10-26'
+
+// Zones: wall-clock time in, instant out; DST gaps and overlaps follow Temporal's rules.
+const t = toInstant('2026-03-29T02:30', 'Europe/Prague')   // 02:30 does not exist: shifts forward to 03:30
+toPlainDateTime(t, 'Europe/Prague')                 // => '2026-03-29T03:30'
+offsetAt(t, 'Europe/Prague')                        // => 120
+```
+
+> **Peer deps**: @pyreon/core, @pyreon/reactivity
+>
+> **Accepted ISO forms**: PlainDate `YYYY-MM-DD` (year 0001-9999, a real day); PlainYearMonth `YYYY-MM`; PlainTime `HH:MM`, `HH:MM:SS` or `HH:MM:SS.f` to `.fff` (hour 00-23, second 00-59, no `24:00`, no leap second); PlainDateTime a PlainDate, an upper-case `T`, a PlainTime. No offsets or zone names, no lower-case `t`, no space separator, no unpadded fields: `isPlainDate("2026-2-3")` is false. Temporal accepts more; this package is strict so a value is always canonical and `compare` can be a string comparison. `parseInstant` is the one parser for timestamps with an offset.
+>
+> **Throws versus returns**: The `isPlain*` guards, `isTimeZone`, `parseInstant` and `parseISO` never throw. Every other function throws a `[Pyreon]` error on a value of the wrong shape (validate user input with a guard first), an unknown unit or zone, a mixed-sign duration, or a result outside years 0001-9999. Rendering code that must not throw belongs behind a guard or in `@pyreon/format`.
+>
+> **Time zones**: Offsets come from `Intl.DateTimeFormat`, so results follow the engine's tz data (Node, Chromium and Bun can differ for recent rule changes). One formatter per zone is cached; the table holds 64 zones (oldest dropped first, rebuilt on next use) and each zone keeps a fixed 127-slot offset table. Core functions require an explicit `zone`; the reactive entry (`@pyreon/time`) defaults it to the active time zone of `@pyreon/ambient`.
+>
+> **Month arithmetic**: `add` clamps the day (Jan 31 + 1 month = Feb 28). `diff` counts a month as complete when that clamped addition does not pass the end, which is Temporal's truncated `until`; `between` returns Temporal's unrounded breakdown, where a month ends only when the day number is reached (2012-08-31 to 2051-02-28 is 38 years, 5 months, 28 days). The two can differ by one month at month ends, exactly as in Temporal.
+>
+> **Durations**: Years and months must be whole numbers (a fractional month has no fixed length: use days or weeks). Weeks, days, hours, minutes and seconds may be fractional and balance down: `{ days: 1.5 }` is one day and twelve hours, rounded to the nearest millisecond. `{ milliseconds: 0.5 }`, NaN, Infinity and non-numbers throw. `-0` is `0`. A fraction that leaves a time of day cannot be added to a PlainDate, which throws and says to use a PlainDateTime.
+>
+> **Canonical output**: Every PlainTime and PlainDateTime the package returns is the shortest exact form (`HH:MM`, `HH:MM:SS` only when seconds are non-zero, `.mmm` only when milliseconds are non-zero), so equal values are equal strings: `===`, `Object.is`, Map keys, `groupBy` keys and plain string sorting are all correct on them. Inputs of any accepted precision stay accepted. Normalise external input once at the boundary with `normalize`. Fractions are at most three digits: finer values are rejected, not rounded.
+>
+> **Operations as values**: `@pyreon/time/fp` has the value-last form of every operation (`add({ months: 1 })` returns a function), `pipe` and `by`; they are thin wrappers over core, each tree-shakes alone, and a built adjuster costs one extra call per use, so build it once. `inZone(zone)` binds the zone-taking functions and pulls all of them. Because values are plain strings and numbers, `between(a, b)` is already the Duration `@pyreon/format` takes, and PlainDate, PlainDateTime and Instant are already its date inputs: neither package depends on the other.
+>
+> **Not included yet**: `fromTemporal` / `toTemporal` are left out: typing them without depending on Temporal typings is not clean, and a Plain value maps to Temporal with one `Temporal.PlainDate.from(value)`. Text for relative times (`useRelativeTime`, `<RelativeTime>`) belongs to `@pyreon/format`, built on `@pyreon/ambient`'s clock.
 
 ## @pyreon/toast — Toast Notifications
 

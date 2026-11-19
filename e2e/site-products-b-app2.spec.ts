@@ -110,6 +110,153 @@ test.describe('i18n demo', () => {
   })
 })
 
+test.describe('format demo', () => {
+  test('one language switch rewrites every value, the zone moves the instant but not the calendar date, typed numbers parse', async ({ page }) => {
+    const errors = collectErrors(page)
+    const demo = await openDemo(page, 'format', (d) => d.getByRole('button', { name: 'Deutsch' }))
+    const value = (label: string) => demo.getByRole('list', { name: 'Formatted values' }).locator('li', { hasText: label }).locator('bdi')
+    const ran = demo.locator('li', { hasText: 'row components that ran' })
+    const parsed = demo.locator('#format-parsed')
+
+    // The server's first render: en-US in UTC.
+    await expect(value('Price')).toHaveText('€1,234.50')
+    await expect(value('File size')).toHaveText('7.3 MB')
+    await expect(value('Calendar date')).toHaveText('November 18, 2026')
+    await expect(value('Relative time')).toHaveText('in 5 minutes')
+    await expect(parsed).toHaveText('parseNumber → 1234.5, printed back as 1,234.5')
+    await expect(ran).toContainText('14')
+    // A formatter built with .from(): the price stays in cents.
+    await expect(value('Stored in cents')).toHaveText('€1,234.56')
+    // <RelativeTime> starts after mount, posted 57 seconds ago, and flips to "1 minute ago" by itself.
+    await expect(value('Posted')).toHaveText('1 minute ago', { timeout: 15_000 })
+
+    // Keyboard: one switch, and every value follows in place.
+    await demo.getByRole('button', { name: 'Deutsch' }).focus()
+    await page.keyboard.press('Enter')
+    await expect(demo.getByRole('button', { name: 'Deutsch' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(value('Price')).toHaveText('1.234,50\u00a0€')
+    await expect(value('Stored in cents')).toHaveText('1.234,56\u00a0€')
+    await expect(value('Posted')).toHaveText('vor 1 Minute')
+    await expect(value('File size')).toHaveText('7,3 MB')
+    await expect(value('Calendar date')).toHaveText('18. November 2026')
+    await expect(value('Relative time')).toHaveText('in 5 Minuten')
+    // "1,234.5" is not a number in German: the locale is part of the question.
+    await expect(parsed).toHaveText('parseNumber → null: not a number in this language.')
+    await demo.getByLabel('Type a number').fill('1.234,5')
+    await expect(parsed).toHaveText('parseNumber → 1234.5, printed back as 1.234,5')
+    // No row component ran again.
+    await expect(ran).toContainText('14')
+
+    // Pointer: Czech and Japanese.
+    await demo.getByRole('button', { name: 'Čeština' }).click()
+    await expect(value('Calendar date')).toHaveText('18. listopadu 2026')
+    await demo.getByRole('button', { name: '日本語' }).click()
+    await expect(value('Calendar date')).toHaveText('2026年11月18日')
+
+    // The zone moves the instant, never the calendar date or the wall-clock time.
+    await demo.getByRole('button', { name: 'English' }).click()
+    const instant = await value('Instant').textContent()
+    await demo.getByRole('button', { name: 'Tokyo' }).click()
+    await expect(value('Instant')).toContainText('Nov 19, 2026')
+    await expect(value('Instant')).not.toHaveText(instant ?? '')
+    await expect(value('Calendar date')).toHaveText('November 18, 2026')
+    await expect(value('Wall-clock')).toContainText('Nov 18, 2026')
+    await expect(value('Wall-clock')).toContainText('2:30')
+    await demo.getByRole('button', { name: 'Los Angeles' }).click()
+    await expect(value('Instant')).toContainText('Nov 18, 2026')
+    await expect(value('Instant')).toContainText('3:30')
+    await expect(value('Calendar date')).toHaveText('November 18, 2026')
+
+    // Arabic is written right to left.
+    await demo.getByRole('button', { name: 'العربية' }).click()
+    await expect(value('Price')).toHaveAttribute('dir', 'rtl')
+    await expect(value('Price')).toHaveAttribute('lang', 'ar')
+    await expect(ran).toContainText('14')
+    expect(errors).toEqual([])
+  })
+})
+
+test.describe('time demo', () => {
+  test('a date grid with keyboard navigation, month math that clamps, a planner with a skipped hour, and ticking clocks', async ({ page }) => {
+    const errors = collectErrors(page)
+    const demo = await openDemo(page, 'time', (d) => d.getByRole('grid'))
+    const grid = demo.getByRole('grid')
+    const row = (label: string) => demo.locator('li', { hasText: label }).locator('span').last()
+    const day = (iso: string) => demo.locator(`[data-day="${iso}"]`)
+    const plan = (zone: string) => demo.getByRole('list', { name: 'The same moment in three time zones' }).locator('li', { hasText: zone }).locator('span').last()
+
+    // The server's first render: January 2026 with the 31st selected, weeks starting on Sunday.
+    await expect(demo.getByText('January 2026')).toBeVisible()
+    await expect(day('2026-01-31')).toHaveAttribute('aria-pressed', 'true')
+    await expect(grid.getByRole('columnheader').first()).toHaveText('Sun')
+    await expect(row('Add 1 month')).toHaveText('2026-02-28')
+    await expect(demo.getByText('does not exist next month')).toBeVisible()
+
+    // Keyboard: arrows move across the month edge, Home and End jump, Page keys change month.
+    await day('2026-01-31').focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.locator(':focus')).toHaveAttribute('data-day', '2026-02-01')
+    await expect(demo.getByText('February 2026')).toBeVisible()
+    await page.keyboard.press('ArrowDown')
+    await expect(page.locator(':focus')).toHaveAttribute('data-day', '2026-02-08')
+    await page.keyboard.press('Home')
+    await expect(page.locator(':focus')).toHaveAttribute('data-day', '2026-02-08')
+    await page.keyboard.press('End')
+    await expect(page.locator(':focus')).toHaveAttribute('data-day', '2026-02-14')
+    await page.keyboard.press('PageDown')
+    await expect(page.locator(':focus')).toHaveAttribute('data-day', '2026-03-14')
+    await page.keyboard.press('PageUp')
+    await page.keyboard.press('PageUp')
+    await expect(page.locator(':focus')).toHaveAttribute('data-day', '2026-01-14')
+    // Enter selects.
+    await page.keyboard.press('Enter')
+    await expect(day('2026-01-14')).toHaveAttribute('aria-pressed', 'true')
+    await expect(row('Add 1 month')).toHaveText('2026-02-14')
+
+    // Pointer: the 31st again, then next month, where the end of the month shows month math.
+    await day('2026-01-31').click()
+    await expect(row('Add 1 month')).toHaveText('2026-02-28')
+    await expect(row('Start of quarter')).toContainText('2026-01-01 (Q1)')
+    await demo.getByRole('button', { name: 'Next month' }).click()
+    await demo.getByRole('button', { name: 'Saturday, February 28, 2026' }).click()
+    await expect(row('Add 1 month')).toHaveText('2026-03-28')
+
+    // The week starts where the language says: Monday in Czech, Saturday in Arabic (a right-to-left grid).
+    await demo.getByRole('button', { name: 'Čeština' }).click()
+    await expect(grid.getByRole('columnheader').first()).toHaveText('po')
+    await demo.getByRole('button', { name: 'العربية' }).click()
+    await expect(grid.locator('xpath=..')).toHaveAttribute('dir', 'rtl')
+    await demo.getByRole('button', { name: 'English' }).click()
+    await expect(grid.getByRole('columnheader').first()).toHaveText('Sun')
+
+    // The planner: 02:30 does not exist in Prague on March 29.
+    await expect(demo.getByText('02:30 does not exist on 2026-03-29 in Prague')).toBeVisible()
+    await expect(plan('Prague')).toContainText('2026-03-29T03:30 · UTC+2')
+    await expect(plan('Tokyo')).toContainText('2026-03-29T10:30 · UTC+9')
+    await demo.getByRole('button', { name: 'Nov 18' }).click()
+    await demo.getByRole('button', { name: '09:00' }).click()
+    await demo.getByRole('button', { name: 'New York', exact: true }).click()
+    await expect(plan('Prague')).toContainText('2026-11-18T15:00 · UTC+1')
+    await expect(plan('Tokyo')).toContainText('2026-11-18T23:00 · UTC+9')
+    await expect(demo.getByText('no hour is skipped')).toBeVisible()
+    await demo.getByRole('button', { name: 'Mar 8 (US clocks)' }).click()
+    await demo.getByRole('button', { name: '02:30' }).click()
+    await expect(demo.getByText('02:30 does not exist on 2026-03-08 in New York')).toBeVisible()
+
+    // The clocks start after mount and tick on shared timers.
+    const now = demo.locator('li', { hasText: 'Now in Prague' }).locator('span').last()
+    await expect(now).toHaveText(/^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d)?$/)
+    const first = await now.textContent()
+    await expect(now).not.toHaveText(first ?? '', { timeout: 5000 })
+    await expect(demo.locator('li', { hasText: 'Today in Tokyo' }).locator('span').last()).toHaveText(/^\d{4}-\d\d-\d\d$/)
+    const left = demo.locator('li', { hasText: 'New Year in Prague' }).locator('span').last()
+    await expect(left).toHaveText(/^\d+d \d+h \d+m \d+s$/)
+    const before = await left.textContent()
+    await expect(left).not.toHaveText(before ?? '', { timeout: 5000 })
+    expect(errors).toEqual([])
+  })
+})
+
 test.describe('permissions demo', () => {
   test('a role switch enables and disables the right actions', async ({ page }) => {
     const errors = collectErrors(page)

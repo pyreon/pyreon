@@ -1,0 +1,9 @@
+---
+"@pyreon/calendar": minor
+---
+
+New package `@pyreon/calendar` (Experimental): an event calendar. No drag, resize, agenda, year or timeline yet.
+
+- **Core (`@pyreon/calendar/core`, no DOM):** the event model (a date is an all-day event, a date-time is a wall clock in the event's own `timeZone` or floating, a number is an instant; the end is exclusive; `allDay(date, days?)`), `expandOccurrences` (recurrence and overrides through `@pyreon/schedule`), view windows with navigation and titles, month lanes (`layoutRow`, `layoutMonth`) and time-grid column packing (`packColumns`, `layoutDay`, `layoutTimeGrid`, pinned columns, per-day signatures) as pure functions with stable keys, a wall-clock time grid with defined behaviour on the 23 and 25 hour days, and the now line (`nowOffset`).
+- **`createCalendar`:** the view and the anchor date (values, or signals you own), the window and the title in the active locale and zone (`@pyreon/ambient`, `@pyreon/format`), the `month()` and `timeGrid()` view models with layouts memoised per week and per day (changing one event recomputes only the days it touches), the focused cell, a selection, `onRangeChange`, `onSelect`, `onEventClick`, and the grid keyboard (`gridMove` and `slotMove` are pure and exported for a date picker to share).
+- **Components (`@pyreon/calendar/components`, `@pyreon/calendar/styles.css`):** `<Calendar>`, `<MonthView>`, `<WeekView>`, `<DayView>`, `<CalendarToolbar>`: WAI-ARIA grids with one tab stop, events as labelled buttons ("Design review, Wednesday 18 November, 14:00 to 15:00"), today and selection marked, "+N more", an all-day row, opening-hours shading, a now line from the ambient clock, a live region for navigation, right to left, render slots and CSS hooks. Renders on the server and hydrates without a mismatch.

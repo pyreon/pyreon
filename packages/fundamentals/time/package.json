@@ -1,0 +1,88 @@
+{
+  "name": "@pyreon/time",
+  "version": "0.53.0",
+  "description": "Dates and times as plain strings and numbers for Pyreon — ISO values, DST-correct zone math, calendar grids, no classes",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/time#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/time"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./core": {
+      "bun": "./src/core.ts",
+      "import": "./lib/core.js",
+      "types": "./lib/types/core.d.ts"
+    },
+    "./fp": {
+      "bun": "./src/fp.ts",
+      "import": "./lib/fp.js",
+      "types": "./lib/types/fp.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run && bun run test:oracle",
+    "test:oracle": "PYREON_REQUIRE_TEMPORAL=1 bun --bun x vitest run src/tests/oracle",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "bench:rivals": "NODE_ENV=production bun bench/time-rivals.ts",
+    "bench:bundle": "bun bench/time-bundle.ts",
+    "bench:fp": "NODE_ENV=production bun bench/time-fp.ts",
+    "bench:clocks": "NODE_ENV=production bun bench/clocks-bench.ts"
+  },
+  "devDependencies": {
+    "@date-fns/tz": "1.5.0",
+    "@happy-dom/global-registrator": "21.0.4",
+    "@pyreon/core": "workspace:*",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/rx": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "@types/luxon": "3.7.6",
+    "@vitest/browser-playwright": "^5.1.0",
+    "date-fns": "4.4.0",
+    "dayjs": "1.11.23",
+    "happy-dom": "^21.0.4",
+    "luxon": "3.7.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@pyreon/ambient": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "pyreon": {
+    "stability": "experimental"
+  }
+}
