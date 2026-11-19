@@ -422,6 +422,8 @@ export interface PlotChartProps<T> {
   yInverse?: boolean
   /** `yInverse` for the right axis of a dual-axis chart. */
   y2Inverse?: boolean
+  /** Reverse the direction of the x axis: first category (or smallest x) at the right. The y axis does not move; data order, callbacks, brush ranges and the keyboard walk stay in DATA order. Under `rtl` the two cancel (the plot reads left to right again). */
+  xInverse?: boolean
   /**
    * A BCP 47 tag that formats the numbers (axis, tooltip, table, value
    * labels) and, with `xTime` / `yTime`, the dates through `Intl` — `de-DE`
@@ -895,7 +897,21 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   /** The visible (thinned) row for a slice index, or -1 when decimation dropped it. */
   const visibleIndexOf = (sliceIndex: number, keep: number[] | null): number => (keep === null ? sliceIndex : (keepPos?.get(sliceIndex) ?? -1))
   const globalOf = (visibleIndex: number, off: number): number => (lastKeep === null ? visibleIndex : (lastKeep[visibleIndex] ?? visibleIndex)) + off
+  /**
+   * `xInverse` on a CATEGORY axis: the visible rows in REVERSE, as a `keep` map
+   * (visible index -> slice index). The thinning machinery already maps a hit, a
+   * pin, a keyboard step and a brush back to the global row through it, so a
+   * reversed view is the same kind of thing as a decimated one. A numeric x axis
+   * flips its domain instead (`Domain.inverse`), so it never takes this path.
+   */
   const decimateRows = (rows: readonly T[]): number[] | null => {
+    const kept = thinRows(rows)
+    if (props.xInverse !== true || props.xValue !== undefined) return kept
+    const out = kept === null ? rows.map((_d, i) => i) : kept.slice()
+
+    return out.reverse()
+  }
+  const thinRows = (rows: readonly T[]): number[] | null => {
     const max = props.maxPoints
     if (max === undefined) return null
     if (max < 3) {
@@ -1010,6 +1026,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     barCategoryGap: props.barCategoryGap,
     yInverse: props.yInverse,
     y2Inverse: props.y2Inverse,
+    xInverse: props.xInverse,
     ...(props.xValue !== undefined
       ? { xValues: rows.map((d, i) => props.xValue!(d, gi(i))) }
       : {}),
@@ -1299,13 +1316,20 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }]
   }
 
+  /** An x pixel mirrored about the plot's centre when the x axis is reversed — the pointer's place on the plot as it reads in DATA order. */
+  const xFlip = (plot: Rect, x: Double): Double => (props.xInverse === true ? 2.0 * plot.x + plot.w - x : x)
+
   /** Move the keyboard focus datum and announce it. */
   const moveFocus = (delta: number, absolute?: number): void => {
     const all = readData()
     const n = viewRows(all).length
     if (n === 0) return
     const cur = focusIdx()
-    let next = absolute !== undefined ? absolute : cur < 0 ? (delta > 0 ? 0 : n - 1) : cur + delta
+    // The walk is in DATA order: on a reversed category axis the view runs the other way, so the step and the ends flip.
+    const flipped = props.xInverse === true && props.xValue === undefined
+    const step = flipped ? -delta : delta
+    const goTo = absolute !== undefined && flipped ? n - 1 - absolute : absolute
+    let next = goTo !== undefined ? goTo : cur < 0 ? (step > 0 ? 0 : n - 1) : cur + step
     if (next < 0) next = 0
     if (next > n - 1) next = n - 1
     const off = viewRange(all).from
@@ -1388,7 +1412,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }
     else if (key === 'Enter' || key === ' ') {
       const idx = focusIdx()
-      if (idx >= 0) pickDatum(idx + viewRange(readData()).from)
+      if (idx >= 0) pickDatum(globalOf(idx, viewRange(readData()).from))
     } else if (key === 'Escape') {
       batch(() => {
         focusIdx.set(-1)
@@ -1466,7 +1490,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const committed = brushSel()
     if (committed === null) return []
     const vis = bf.brushBand(plot, committed, zoomWin() ?? { start: 0.0, end: 1.0 }, readData().length)
-    return vis.visible ? bf.renderBrushBand(plot, vis.lo, vis.hi, spec.theme.axis) : []
+    return vis.visible ? bf.renderBrushBand(plot, props.xInverse === true ? xFlip(plot, vis.hi) : vis.lo, props.xInverse === true ? xFlip(plot, vis.lo) : vis.hi, spec.theme.axis) : []
   }
 
   /**
@@ -1560,7 +1584,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     ev.preventDefault()
     const rect = el.getBoundingClientRect()
     const px = localX(ev.clientX, rect) - leftOffset
-    const frac = plot.w <= 0.0 ? 0.5 : (px - plot.x) / plot.w
+    const frac = plot.w <= 0.0 ? 0.5 : (xFlip(plot, px) - plot.x) / plot.w
     const win = zoomWin() ?? { start: 0.0, end: 1.0 }
     const next = zoomWindow(win, ev.deltaY > 0 ? 1.25 : 0.8, frac)
     setZoom(next)
@@ -1582,7 +1606,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const pts = [...pointers.values()]
     if (pts.length < 2 || plot.w <= 0.0) return 0.5
     const mid = (pts[0]!.x + pts[1]!.x) / 2.0 - leftOffset
-    return (mid - plot.x) / plot.w
+    return (xFlip(plot, mid) - plot.x) / plot.w
   }
 
   const handleDown = (ev: PointerEvent): void => {
@@ -1652,7 +1676,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const rows = readData()
       const bf = band()
       if (bf !== undefined && plot !== null && rows.length > 0) {
-        const range = bf.brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, zoomWin() ?? { start: 0.0, end: 1.0 }, rows.length)
+        const range = bf.brushRange(plot.x, plot.w, xFlip(plot, dragStartX - leftOffset), xFlip(plot, dragLastX - leftOffset), zoomWin() ?? { start: 0.0, end: 1.0 }, rows.length)
         zoomHistory = [...zoomHistory, zoomWin()]
         setZoom(windowOfRows(range.start, range.end, rows.length))
       }
@@ -1673,7 +1697,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const bf = band()
       if (bf !== undefined && plot !== null && rows.length > 0) {
         const win = zoomWin() ?? { start: 0.0, end: 1.0 }
-        const range = bf.brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, win, rows.length)
+        const range = bf.brushRange(plot.x, plot.w, xFlip(plot, dragStartX - leftOffset), xFlip(plot, dragLastX - leftOffset), win, rows.length)
         brushSel.set(range)
         if (props.onBrush !== undefined) props.onBrush(range)
       }
@@ -1737,7 +1761,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         if (plot !== null && plot.w > 0.0) {
           const win = zoomWin() ?? { start: 0.0, end: 1.0 }
           // Dragging right moves the window LEFT — the data follows the hand.
-          const next = panWindow(win, (dragLastX - x) / plot.w)
+          const next = panWindow(win, ((dragLastX - x) / plot.w) * (props.xInverse === true ? -1.0 : 1.0))
           setZoom(next)
         }
       } else {

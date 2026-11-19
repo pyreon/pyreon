@@ -62,6 +62,8 @@ export interface ChartToSvgOptions<T> {
   yInverse?: boolean
   /** Reverse the right axis — see `PlotChartProps.y2Inverse`. */
   y2Inverse?: boolean
+  /** Reverse the x axis direction — see `PlotChartProps.xInverse`. Accessors then see the REVERSED index. */
+  xInverse?: boolean
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -94,14 +96,16 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
   const width = options.width ?? 640
   const height = options.height ?? 320
   const theme = options.theme ?? defaultTheme
-  const series = resolveMarks(options.data, options.marks, undefined, theme.ramp)
+  // A reversed x axis hands the engine its rows in reverse (the host does the same); categories follow.
+  const rows = options.xInverse === true ? [...options.data].reverse() : options.data
+  const series = resolveMarks(rows, options.marks, undefined, theme.ramp)
   // A per-datum colour descriptor adds its ramp legend above the plot (see `item-colors.ts`).
   const legend = (options.marks.find((m) => m.options.fill !== undefined)?.options.fill as ItemFill<T> | undefined)?.legend?.(series, { x: 0, y: 0, w: width }, theme)
   const spec = {
     width,
     height: height - (legend?.height ?? 0),
     series,
-    categories: resolveCategories(options.data, options.x),
+    categories: resolveCategories(rows, options.x),
     theme,
     showXAxis: options.showXAxis ?? true,
     showYAxis: options.showYAxis ?? true,
@@ -121,6 +125,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     barCategoryGap: options.barCategoryGap,
     yInverse: options.yInverse,
     y2Inverse: options.y2Inverse,
+    xInverse: options.xInverse,
   }
   const measure = options.measure ?? measureApprox()
   // Same seam as the canvas host's `present`: RTL is the mirror of the

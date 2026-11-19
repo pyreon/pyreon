@@ -1001,7 +1001,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'xTitle', value: title })
           const labels = attrOf(child, 'labels')
           if (labels !== undefined) attrs.push({ kind: 'attr', name: 'xLabels', value: labels })
-          if (flagOn(child, 'inverse')) warn('<Axis x inverse>: reversing the x (category) axis is not supported yet, on any target; the axis keeps its order. `<Axis y inverse>` and `<Axis y2 inverse>` reverse the value axes.')
+          if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'xInverse', value: lit(true) })
         } else if (flagOn(child, 'y2')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
           if (domain !== undefined) attrs.push({ kind: 'attr', name: 'y2Domain', value: domain })
@@ -2059,6 +2059,7 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'barCategoryGap', kind: 'number' },
   { name: 'yInverse', kind: 'boolean' },
   { name: 'y2Inverse', kind: 'boolean' },
+  { name: 'xInverse', kind: 'boolean' },
 ]
 
 /**

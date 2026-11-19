@@ -51,7 +51,6 @@ import type { FunnelOptions } from './funnel'
 import type { Formatter } from './format'
 import { area, band, bars, bubble, groupedBars, histogram, line, points, resolveMarks, stackedArea, stackedBars, waterfall } from './marks'
 import type { Accessor, ErrorOptions, Mark, MarkOptions } from './marks'
-import { warnOnce } from './dev-warn'
 import { bollinger, ema, sma, trend } from './indicators'
 import type { ItemFill } from './item-colors'
 import { defaultTheme, logBounds, resolveYDomain } from './render'
@@ -157,7 +156,7 @@ export interface AxisProps {
   labels?: AxisLabelMode
   /** y only: the scale type; `<Scale y="log">` is the same switch. */
   scale?: 'linear' | 'log'
-  /** y or y2: reverse the axis — the high end at the bottom (the left, on a horizontal chart), bars hanging from the top. The data and the accessible table keep their order. */
+  /** Reverse the axis. y / y2: the high end at the bottom (the left, on a horizontal chart), bars hanging from the top. x: the DIRECTION of the x axis (first category at the right) — the y axis does not move. The data, callbacks and the accessible table keep their order. */
   inverse?: boolean
 }
 /**
@@ -682,7 +681,7 @@ export function resolveGrammar<T>(rows: readonly T[], chart: ChartProps<T>, chil
           if (a.hidden === true) props.showXAxis = false
           if (a.title !== undefined) props.xTitle = a.title
           if (a.labels !== undefined) props.xLabels = a.labels
-          if (a.inverse === true && process.env.NODE_ENV !== 'production') warnOnce('axis:x-inverse', '<Axis x inverse>: reversing the x (category) axis is not supported yet; the axis keeps its order. <Axis y inverse> and <Axis y2 inverse> reverse the value axes.')
+          if (a.inverse === true) props.xInverse = true
         } else if (a.y2 === true) {
           if (a.format !== undefined) props.y2Format = a.format
           if (a.domain !== undefined) props.y2Domain = a.domain
@@ -951,7 +950,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given,
   // except `format`: an `<Axis y format>` is the more specific of the two and overrides the chart's (as `ChartProps.format` says).
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize', 'yInverse', 'y2Inverse'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize', 'yInverse', 'y2Inverse', 'xInverse'] as const
   for (const key of forwarded) {
     plotProps[key] = key === 'format'
       ? reactiveProp(() => (resolved().props as Record<string, unknown>).format ?? props.format)

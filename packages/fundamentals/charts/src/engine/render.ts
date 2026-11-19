@@ -379,6 +379,15 @@ export interface ChartSpec {
   /** `yInverse` for the right axis of a dual-axis chart; each axis flips on its own. */
   y2Inverse?: boolean | undefined
   /**
+   * Reverse the DIRECTION of the x axis (first category at the right). Only the
+   * direction: the y axis stays where it is. A NUMERIC x axis (`xValues`) flips
+   * through `Domain.inverse`, here; a category axis is reversed by the host
+   * handing the engine its rows in reverse (a "view": hits, brush ranges and
+   * callbacks map back to data order), so for a category axis this field is
+   * advisory and the engine lays out whatever order it is given.
+   */
+  xInverse?: boolean | undefined
+  /**
    * One key per row (`<Chart by>`), aligned with the series values. When set,
    * every plain / stacked / grouped bar command carries its row's `key` and
    * `enter` rect, and a line whose points are its rows one-to-one carries
@@ -795,7 +804,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
       (spec.xValues ?? []).length > 0
         /* v8 ignore next — the inner `?? []` is unreachable: the test above already
            established a non-empty list. Native needs the unwrap; the web cannot reach it. */
-        ? extent(spec.xValues ?? [])
+        ? invertIf(extent(spec.xValues ?? []), spec.xInverse === true)
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
     categories: spec.categories,

@@ -200,7 +200,9 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   if (pinning || handle !== undefined) lets.push('var pyreonSelected by remember { mutableStateOf(listOf<Long>()) }')
   if (legend.paging) lets.push('var pyreonLegendPage by remember { mutableStateOf(0.0) }')
   const maxPoints = chartAttrExprKotlin(e, 'maxPoints')
-  const fullA11y = windowed || maxPoints !== undefined
+  // A reversed category axis hands the engine its rows in reverse through the same keep map decimation uses (mirror of the Swift emitter).
+  const reversed = host.staticAttr(e, 'xInverse') === true && chartAttrExprKotlin(e, 'xValue') === undefined
+  const fullA11y = windowed || maxPoints !== undefined || reversed
   let decimated = false
   let rows = windowed ? 'pyreonSourceRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
@@ -252,11 +254,16 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     }
     const body = kotlinAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'Box {}'
-    if (k === 0 && maxPoints !== undefined) {
-      const max = `(${host.expr(maxPoints, indent)}).toLong()`
-      lets.push(`val pyreonMaxPoints: Long = ${max}`)
-      lets.push(`val pyreonDecimateValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
-      lets.push(`val pyreonKeep: List<Long> = if (pyreonMaxPoints >= 3 && ${rows}.size > pyreonMaxPoints) lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints) else ${rows}.indices.map { it.toLong() }`)
+    if (k === 0 && (maxPoints !== undefined || reversed)) {
+      const kept = maxPoints === undefined
+        ? `${rows}.indices.map { it.toLong() }`
+        : (() => {
+            lets.push(`val pyreonMaxPoints: Long = (${host.expr(maxPoints, indent)}).toLong()`)
+            lets.push(`val pyreonDecimateValues: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed)}`)
+
+            return `if (pyreonMaxPoints >= 3 && ${rows}.size > pyreonMaxPoints) lttbIndices(listOf(), pyreonDecimateValues, pyreonMaxPoints) else ${rows}.indices.map { it.toLong() }`
+          })()
+      lets.push(`val pyreonKeep: List<Long> = ${reversed ? `(${kept}).reversed()` : kept}`)
       lets.push(`val pyreonRows = pyreonKeep.map { ${rows}[it.toInt()] }`)
       rows = 'pyreonRows'
       decimated = true

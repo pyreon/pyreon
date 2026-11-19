@@ -202,7 +202,9 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   if (legend.hiding) host.hostState.declare('@State private var pyreonHidden: [Int] = []')
   if (legend.paging) host.hostState.declare('@State private var pyreonLegendPage: Double = 0.0')
   const maxPoints = chartAttrExpr(e, 'maxPoints')
-  const fullA11y = windowed || maxPoints !== undefined
+  // A reversed category axis hands the engine its rows in reverse through the same keep map decimation uses: taps, pins and the a11y rows map back to data order for free.
+  const reversed = host.staticAttr(e, 'xInverse') === true && chartAttrExpr(e, 'xValue') === undefined
+  const fullA11y = windowed || maxPoints !== undefined || reversed
   let decimated = false
   let rows = windowed ? 'pyreonSourceRows' : data
   // The theme's palette colours marks with no `color` (the theme builder already warned about a bad literal, so this parse stays silent).
@@ -259,11 +261,16 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     }
     const body = swiftAccessorExpr(y, tag, `mark ${k + 1}`, indent)
     if (body === 'unsupported') return 'EmptyView()'
-    if (k === 0 && maxPoints !== undefined) {
-      const max = `Int(${host.expr(maxPoints, indent)})`
-      lets.push(`let pyreonMaxPoints: Int = ${max}`)
-      lets.push(`let pyreonDecimateValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
-      lets.push(`let pyreonKeep: [Int] = pyreonMaxPoints >= 3 && ${rows}.count > pyreonMaxPoints ? lttbIndices([], pyreonDecimateValues, pyreonMaxPoints) : Array(${rows}.indices)`)
+    if (k === 0 && (maxPoints !== undefined || reversed)) {
+      const kept = maxPoints === undefined
+        ? `Array(${rows}.indices)`
+        : (() => {
+            lets.push(`let pyreonMaxPoints: Int = Int(${host.expr(maxPoints, indent)})`)
+            lets.push(`let pyreonDecimateValues: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed)}`)
+
+            return `pyreonMaxPoints >= 3 && ${rows}.count > pyreonMaxPoints ? lttbIndices([], pyreonDecimateValues, pyreonMaxPoints) : Array(${rows}.indices)`
+          })()
+      lets.push(`let pyreonKeep: [Int] = ${reversed ? `Array((${kept}).reversed())` : kept}`)
       lets.push(`let pyreonRows = pyreonKeep.map { ${rows}[$0] }`)
       rows = 'pyreonRows'
       decimated = true
