@@ -158,6 +158,22 @@ A choropleth over GeoJSON: hover outlines a region, a click keeps it selected (`
 
 <Example file="./examples/charts/gallery-map" title="Map with holes, selection and feature properties" />
 
+## Maps from the data package
+
+`@pyreon/charts-maps` ships the countries of the world (Natural Earth 1:110m) and the US states (Census 1:20m) as one lazy module per map, each with the projection it was prepared for. The data is public-domain, generalised for overview maps: country borders are 1:110m (a few small states and islands are missing or merged) and the states are 1:20m. The larger scales (`world-50m` and `us-counties`, about 230 KB gzip each) are not shipped yet; the build script can produce them.
+
+<Example file="./examples/charts/gallery-map-world" title="World choropleth: Equal Earth, sphere, graticule, no-data hatch, fit to a country" />
+
+<Example file="./examples/charts/gallery-map-us" title="US states in Albers USA" />
+
+### Bubbles and flows
+
+Point marks sized by value get a size key (`sizeLegend`); `flows` draw great-circle arcs whose `progress` is arc length on the sphere, and an arc across the seam is two runs, never a chord.
+
+<Example file="./examples/charts/gallery-map-bubbles" title="Bubble map with a size key" />
+
+<Example file="./examples/charts/gallery-map-flows" title="Flows along great circles" />
+
 ## A treemap
 
 Each leaf a rectangle with area proportional to its value, nested inside its

@@ -252,3 +252,40 @@ export function unprojectLonLatWith(x: Double, y: Double, projection: GeoProject
 
   return { x, y }
 }
+
+// --- the sphere outline ---------------------------------------------------------------
+
+/**
+ * The outline of the whole sphere in the projection's plane: the meridian half a turn west of the central meridian from
+ * the south pole to the north pole, then the one half a turn east back down. For Equal Earth and Natural Earth that is the
+ * rounded world shape, for an equirectangular map a rectangle, for an Albers conic a fan. Empty for Albers USA (a
+ * composite of three conics has no single sphere).
+ */
+export function geoSphereRing(projection: GeoProjection, params: GeoProjectionParams): Pt[] {
+  const out: Pt[] = []
+  if (projection === 'albersUsa') return out
+  const south = projection === 'mercator' ? -85.0 : -90.0
+  const north = projection === 'mercator' ? 85.0 : 90.0
+  let i = 0.0
+  while (i <= 36.0) {
+    out.push(projectLonLatWith(params.lon0 - 180.0, south + ((north - south) * i) / 36.0, projection, params))
+    i = i + 1.0
+  }
+  let j = 0.0
+  while (j <= 36.0) {
+    out.push(projectLonLatWith(params.lon0 + 180.0, north - ((north - south) * j) / 36.0, projection, params))
+    j = j + 1.0
+  }
+
+  return out
+}
+
+/** Whether `projection` measures longitude from the central meridian and wraps at the seam half a turn from it. */
+export function geoWrapsLongitude(projection: GeoProjection): boolean {
+  return projection === 'equalEarth' || projection === 'naturalEarth1' || projection === 'albers'
+}
+
+/** Longitude relative to the central meridian, wrapped into [-180, 180], for the projections that wrap; the raw longitude for the others. */
+export function geoSeamLon(projection: GeoProjection, params: GeoProjectionParams, lon: Double): Double {
+  return geoWrapsLongitude(projection) ? relLon(lon, params.lon0) : lon
+}

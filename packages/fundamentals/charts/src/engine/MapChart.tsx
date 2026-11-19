@@ -19,6 +19,8 @@ import { GEO_RAMP_DARK, GEO_RAMP_LIGHT, geoDomainAligned, geoOptionParams, geoRo
 import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoTrails, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
 import { alignGeoValues, geoFeatures, getMapDefinition, resolveMapSource } from './geo-web'
 import type { GeoLayout, GeoOptions, GeoProjection, GeoRegion, GeoShape, GeoValue, GeoView } from './geo'
+import { geoFitView, renderGeoBelow, renderGeoFlows, renderGeoSizeLegend } from './geo-layers'
+import type { GeoFlow, GeoFlowOptions, GeoSizeLegendOptions } from './geo-layers'
 import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie, GeoTrail } from './geo-overlay'
 import type { GeoJson, GeoSource, MapDefinition } from './geo-web'
 import type { Topology } from './geo-topo'
@@ -57,6 +59,15 @@ export interface MapChartProps extends CanvasHostProps, ItemStateProps {
    * canvas runs a frame clock while it is set, held still under reduced motion.
    */
   trail?: GeoTrail
+  /** Flows between places, drawn along great circles (arc length is what `progress` reveals; a seam crossing draws as two runs). */
+  flows?: readonly GeoFlow[]
+  flowOptions?: GeoFlowOptions
+  /** A key for the bubble sizes (nested circles of nice values, bottom-left); `true` or its options. */
+  sizeLegend?: boolean | GeoSizeLegendOptions
+  /** Zoom to these regions (names, labels or join keys) on load, and whenever the value changes. */
+  fitTo?: string | readonly string[]
+  /** A click on a region zooms to it; a click on empty ground returns to the whole map. */
+  zoomOnClick?: boolean
   /** Appearance shared by the point and path overlays. */
   overlayOptions?: GeoOverlayOptions
   /**
@@ -142,11 +153,11 @@ export function MapChart(props: MapChartProps): VNode {
   let projectionNow: GeoProjection = 'equirectangular'
   const source = (): GeoSource => {
     const m = props.map
-    if (isShapes(m)) return { shapes: m as GeoShape[], properties: [] }
+    if (isShapes(m)) return { shapes: m as GeoShape[], properties: [], points: [], lines: [] }
     // A registered name, TopoJSON, a definition or GeoJSON: decode to GeoJSON and pick up the map's own defaults,
     // which an explicit `options` value overrides.
     const registered = typeof m === 'string' ? getMapDefinition(m) : null
-    if (typeof m === 'string' && registered === null) return { shapes: [], properties: [] }
+    if (typeof m === 'string' && registered === null) return { shapes: [], properties: [], points: [], lines: [] }
     const base = registered ?? resolveMapSource(m as GeoJson | Topology | MapDefinition)
     const projection = props.options?.projection ?? base.projection ?? 'equirectangular'
     const nameProperty = props.options?.nameProperty ?? base.nameProperty ?? 'name'
@@ -179,8 +190,26 @@ export function MapChart(props: MapChartProps): VNode {
 
     return { index: i, name: r.name, label: r.label, value: v ?? Number.NaN, properties: source().properties[i] ?? null }
   }
+  /** The point marks of the call and of the map's own Point / MultiPoint features. */
+  const allPoints = (): readonly GeoOverlayPoint[] => [...(props.points ?? []), ...source().points]
+  const allPaths = (): readonly GeoOverlayPath[] => [...(props.paths ?? []), ...source().lines]
   const view = signal<GeoView>({ zoom: props.options?.zoom ?? 1.0, panX: props.options?.panX ?? 0.0, panY: props.options?.panY ?? 0.0 })
   let lastBox: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }
+  /** The view that brings regions `indices` to fill the box, from the fitted (zoom 1, no pan) layout. */
+  const fitIndices = (laid: readonly GeoShape[], box: Rect, indices: readonly number[]): GeoView =>
+    geoFitView(layoutGeoShapes(laid, box, { ...props.options, projection: projectionNow, zoom: 1.0, panX: 0.0, panY: 0.0 }), box, indices, 12.0)
+  const zoomTo = (indices: readonly number[]): void => view.set(indices.length === 0 ? { zoom: 1.0, panX: 0.0, panY: 0.0 } : fitIndices(shapes(), lastBox, indices))
+  // `fitTo` is applied once per value, after the first layout knows the box (a write inside the draw is deferred a microtask).
+  let fitApplied = ''
+  const applyFitTo = (_layout: GeoLayout, laid: readonly GeoShape[], box: Rect): void => {
+    const want = props.fitTo === undefined ? [] : typeof props.fitTo === 'string' ? [props.fitTo] : [...props.fitTo]
+    const key = want.join('\u0000')
+    if (key === fitApplied) return
+    fitApplied = key
+    if (want.length === 0) return
+    const indices = laid.flatMap((s, i) => (want.includes(s.name) || want.includes(s.label ?? s.name) ? [i] : []))
+    queueMicrotask(() => view.set(fitIndices(laid, box, indices)))
+  }
   const roamMove = (): boolean => props.roam === true || props.roam === 'move' || props.roam === 'pan'
   const roamScale = (): boolean => props.roam === true || props.roam === 'scale'
   const vm = visualMapHost(
@@ -212,6 +241,8 @@ export function MapChart(props: MapChartProps): VNode {
       aligned()
       void props.points
       void props.paths
+      void props.flows
+      void props.fitTo
       void props.heat
       void props.pies
       view()
@@ -224,16 +255,20 @@ export function MapChart(props: MapChartProps): VNode {
 
       const laid = shapes()
 
-      return layoutGeoShapes(laid, box, { ...viewed(), projection: projectionNow })
+      const laidOut = layoutGeoShapes(laid, box, { ...viewed(), projection: projectionNow })
+      applyFitTo(laidOut, laid, box)
+
+      return laidOut
     },
     animates: true,
     // Took `_theme` and threw it away, so a geo chart was the one host that
     // followed no theme at all. The border SEPARATES filled regions, so it
     // reads the ground rather than a token of its own; `background: ''` means
     // "inherit the page", whose realistic value is white.
-    effectClock: () => props.trail !== undefined && (props.paths ?? []).length > 0,
+    effectClock: () => props.trail !== undefined && allPaths().length > 0,
     // oxlint-disable-next-line max-params -- the host's render takes the item states as its sixth argument
     render: (layout, measure, theme, progress, time, states) => [
+      ...renderGeoBelow(layout, viewed()),
       ...renderGeoAligned(
         layout,
         aligned(),
@@ -254,17 +289,20 @@ export function MapChart(props: MapChartProps): VNode {
         measure,
       ),
       ...renderGeoHeat(layout, props.heat ?? [], geoHeatStops([...(props.heatStops ?? [])], [...(props.options?.stops ?? theme.ramp)]), props.heatRadius ?? 20.0, progress),
-      ...renderGeoOverlayPaths(layout, props.paths ?? [], { ...props.overlayOptions, progress }),
+      ...renderGeoOverlayPaths(layout, allPaths(), { ...props.overlayOptions, progress }),
+      ...renderGeoFlows(layout, props.flows ?? [], { ...props.flowOptions, progress }),
       ...renderGeoPies(layout, props.pies ?? [], progress),
-      ...(props.trail === undefined ? [] : renderGeoTrails(layout, props.paths ?? [], props.trail, time, props.overlayOptions?.color ?? '#b42318')),
-      ...renderGeoOverlayPoints(layout, props.points ?? [], { labelColor: theme.label, ...props.overlayOptions, progress }),
+      ...(props.trail === undefined ? [] : renderGeoTrails(layout, allPaths(), props.trail, time, props.overlayOptions?.color ?? '#b42318')),
+      ...renderGeoOverlayPoints(layout, allPoints(), { labelColor: theme.label, ...props.overlayOptions, progress }),
+      ...(props.sizeLegend === undefined || props.sizeLegend === false ? [] : renderGeoSizeLegend(allPoints(), lastBox, { radius: props.overlayOptions?.radius, color: props.overlayOptions?.color, labelColor: theme.label, ...(props.sizeLegend === true ? {} : props.sizeLegend) })),
       ...vm.cmds(outer),
       ...noDataKey(vm.current(), outer, aligned().some((v) => !Number.isFinite(v)), theme),
     ],
     select: (layout, px, py) => {
       if (vm.click(outer, px, py)) return
       const i = hitGeoIndex(layout, px, py)
-      props.onSelectPointIndex?.(hitGeoOverlayPoint(layout, props.points ?? [], px, py, props.overlayOptions?.radius))
+      props.onSelectPointIndex?.(hitGeoOverlayPoint(layout, allPoints(), px, py, props.overlayOptions?.radius))
+      if (props.zoomOnClick === true) zoomTo(i < 0 ? [] : [i])
       props.onSelect?.(i < 0 ? null : layout.regions[i]!, i < 0 ? null : infoOf(layout, i))
       props.onSelectIndex?.(i)
     },
@@ -290,7 +328,7 @@ export function MapChart(props: MapChartProps): VNode {
     },
     // A point overlay on the map wins over the region under it, as it is drawn over it.
     item: (layout, px, py) => {
-      const pts = props.points ?? []
+      const pts = allPoints()
       const pi = hitGeoOverlayPoint(layout, pts, px, py, props.overlayOptions?.radius)
       const pt = pts[pi]
       if (pt !== undefined) return { seriesIndex: 0, dataIndex: pi, name: pt.name ?? '', value: pt.value === undefined ? [pt.lon, pt.lat] : [pt.lon, pt.lat, pt.value], color: pt.color }

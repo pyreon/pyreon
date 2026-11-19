@@ -20,6 +20,7 @@
     "@pyreon/attrs": "workspace:*",
     "@pyreon/auth": "workspace:*",
     "@pyreon/charts": "workspace:*",
+    "@pyreon/charts-maps": "workspace:*",
     "@pyreon/code": "workspace:*",
     "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",

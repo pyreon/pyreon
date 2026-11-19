@@ -21,7 +21,10 @@ const WORLD: GeoJson = {
 
 const BOX = { x: 0, y: 0, w: 400, h: 300 }
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 80))
+const slow = (): Promise<void> => new Promise((r) => setTimeout(r, 300))
 const snap = (c: HTMLCanvasElement): string => Array.from(c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data).join(',')
+
+const r1Centre = (l: ReturnType<typeof layoutGeo>): { x: number; y: number } => l.regions[1]!.centroid
 
 const at = (c: HTMLCanvasElement, p: { x: number; y: number }, type: string, extra: Record<string, unknown> = {}): void => {
   const r = c.getBoundingClientRect()
@@ -299,5 +302,53 @@ describe('MapChart states (real browser)', () => {
     const widest = Math.max(...layout.regions.filter((r) => !r.label.startsWith('ale-')).map((r) => r.bbox.x + r.bbox.w))
     for (const r of ale) expect(r.bbox.x + r.bbox.w).toBeLessThan(widest)
     unmount()
+  })
+
+  it('fitTo zooms to the named regions on load; zoomOnClick zooms to a clicked region and back out on empty ground', async () => {
+    const geo = { type: 'FeatureCollection', features: [0, 1, 2, 3].map((i) => ({ type: 'Feature', properties: { name: `r${i}` }, geometry: { type: 'Polygon', coordinates: [[[i * 10, 0], [i * 10 + 8, 0], [i * 10 + 8, 8], [i * 10, 8], [i * 10, 0]]] } })) } as GeoJson
+    const box = { x: 0, y: 0, w: 400, h: 300 }
+    const fitted = layoutGeo(geo, box)
+    const m = mountInBrowser(() => MapChart({ animate: false, map: geo, values: {}, width: 400, height: 300, fitTo: 'r3', zoomOnClick: true }))
+    await flush()
+    await slow()
+    const c = m.container.querySelector('canvas')!
+    const dpr = window.devicePixelRatio || 1
+    const alpha = (x: number, y: number): number => c.getContext('2d')!.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data[3]!
+    // r3 now fills the box: its old (small) place and the centre both differ
+    const r3 = fitted.regions[3]!.bbox
+    expect(alpha(box.w / 2, box.h / 2), 'the zoomed region covers the centre').toBe(255)
+    // click empty ground (the corner): back to the whole map, so r0 (left end) is visible at its fitted place
+    const r0 = fitted.regions[0]!.bbox
+    expect(alpha(r0.x + r0.w / 2, r0.y + r0.h / 2), 'r0 is off-screen while r3 fills the box').toBe(0)
+    at(c, { x: 2, y: 2 }, 'click')
+    await slow()
+    expect(alpha(r0.x + r0.w / 2, r0.y + r0.h / 2), 'r0 is back after a click on empty ground').toBe(255)
+    // click r1: zoom to it
+    at(c, { x: r1Centre(fitted).x, y: r1Centre(fitted).y }, 'click')
+    await slow()
+    expect(alpha(box.w / 2, box.h / 2)).toBe(255)
+    m.unmount()
+  })
+
+  it('labels follow the zoom: a region too small to carry its name at zoom 1 shows it when zoomed in', async () => {
+    const geo = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { name: 'Wideland' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [100, 0], [100, 60], [0, 60], [0, 0]]] } }, { type: 'Feature', properties: { name: 'Teeny' }, geometry: { type: 'Polygon', coordinates: [[[100, 0], [103, 0], [103, 3], [100, 3], [100, 0]]] } }] } as GeoJson
+    const count = async (zoom: number): Promise<number> => {
+      const m = mountInBrowser(() => MapChart({ animate: false, map: geo, values: {}, width: 600, height: 300, options: { showLabels: true, zoom, fontSize: 11 } }))
+      await flush()
+      const c = m.container.querySelector('canvas')!
+      const n = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data.filter((_v, i) => i % 4 === 3 && _v > 0).length
+      m.unmount()
+
+      return n
+    }
+    // rendered through the engine: labels are drawn only where the text fits the ring
+    const { renderGeo } = await import('./geo')
+    const small = layoutGeo(geo, { x: 0, y: 0, w: 600, h: 300 }, { zoom: 1 })
+    const big = layoutGeo(geo, { x: 0, y: 0, w: 600, h: 300 }, { zoom: 8 })
+    const names = (l: typeof small, z: number) => renderGeo(l, [], { showLabels: true, fontSize: 11 }).filter((cmd) => cmd.kind === 'text').map((cmd) => (cmd as { text: string }).text)
+    expect(names(small, 1)).toEqual(['Wideland'])
+    expect(names(big, 8).sort()).toEqual(['Teeny', 'Wideland'])
+    expect(await count(1)).toBeGreaterThan(0)
+    expect(await count(8)).toBeGreaterThan(0)
   })
 })

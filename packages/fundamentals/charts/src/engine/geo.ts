@@ -8,7 +8,7 @@ import { HEAT_RAMP, rampColor, visualOutside } from './heat'
 import { approxTextWidth } from './treemap'
 import type { ChartPattern, Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 import { isFiniteNumber } from './scale'
-import { geoProjectionParams, projectLonLatWith, unprojectLonLatWith } from './geo-projection'
+import { geoProjectionParams, geoSphereRing, projectLonLatWith, unprojectLonLatWith } from './geo-projection'
 import type { GeoProjectionParams } from './geo-projection'
 
 /**
@@ -139,6 +139,11 @@ export interface GeoLayout {
 }
 
 /** The `layout.project(lon, lat)` closure, as a free function over the data. */
+/** A point of the projection's plane (as `geoSphereRing` yields) in pixels. */
+export function geoPlaneToPx(t: GeoTransform, p: Pt): Pt {
+  return { x: t.ox + (p.x - t.minX) * t.scale, y: t.oy + (t.maxY - p.y) * t.scale }
+}
+
 export function geoProject(t: GeoTransform, lon: Double, lat: Double): Pt {
   const p = projectLonLatWith(lon, lat, t.projection, t.params)
   return { x: t.ox + (p.x - t.minX) * t.scale, y: t.oy + (t.maxY - p.y) * t.scale }
@@ -163,6 +168,12 @@ export interface GeoOptions {
   parallel1?: Double | undefined
   /** The second Albers standard parallel, degrees (default 45.5). */
   parallel2?: Double | undefined
+  /** Draw the outline of the whole sphere behind the regions (and fit the box to it), filled in `sphereColor`. */
+  sphere?: boolean | undefined
+  sphereColor?: string | undefined
+  /** Graticule: a line every this many degrees of longitude and latitude (0 or absent for none), in `graticuleColor`. */
+  graticule?: Double | undefined
+  graticuleColor?: string | undefined
   /** Property holding the region's DISPLAY name; default `name`. */
   nameProperty?: string | undefined
   /** What values are joined against: `'id'` (the feature's own `id`) or a property key; absent, the display name. Web-only: it reads GeoJSON. */
@@ -260,6 +271,21 @@ export function layoutGeoShapes(shapes: readonly GeoShape[], box: Rect, options?
         seen = seen + 1
       }
     }
+  }
+  // The whole-sphere outline takes part in the fit, so a world map's rounded edge is inside the box.
+  const sphereRing: Pt[] = options?.sphere === true ? geoSphereRing(projection, geoOptionParams(projection, options)) : []
+  for (const p of sphereRing) {
+    if (seen === 0) {
+      minX = p.x
+      maxX = p.x
+      minY = p.y
+      maxY = p.y
+    }
+    if (p.x < minX) minX = p.x
+    if (p.x > maxX) maxX = p.x
+    if (p.y < minY) minY = p.y
+    if (p.y > maxY) maxY = p.y
+    seen = seen + 1
   }
   const innerW = Math.max(0.0, box.w - pad * 2.0)
   const innerH = Math.max(0.0, box.h - pad * 2.0)
@@ -400,12 +426,15 @@ export function renderGeoAligned(layout: GeoLayout, aligned: readonly Double[], 
   const fontSize = options?.fontSize ?? 10.0
   const labelColor = options?.labelColor ?? '#1e293b'
   const m: MeasureText = measure ?? approxTextWidth
+  let anyValue = false
+  for (const v of aligned) if (isFiniteNumber(v)) anyValue = true
   for (let i = 0; i < layout.regions.length; i++) {
     const r = layout.regions[i]!
     const v = i < aligned.length ? aligned[i]! : GEO_NA
     const has = isFiniteNumber(v) && progress > 0.0
     const t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
-    const hatched = !has && (options?.hatchColor ?? '') !== ''
+    // Hatched only when SOME region has a value: a map with no data at all is not a map of missing data.
+    const hatched = !has && anyValue && (options?.hatchColor ?? '') !== ''
     const fill = !has ? emptyColor : visualOutside(v, options?.inRange, options?.outBands) ? options?.outColor ?? '#cccccc' : rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t)
     const hatch: ChartPattern | undefined = hatched ? { kind: 'diagonal', color: options?.hatchColor ?? '#64748b', spacing: 5.0, width: 1.0 } : undefined
     for (const ring of r.fills) out.push({ kind: 'polygon', points: ring, fill, pattern: hatch })

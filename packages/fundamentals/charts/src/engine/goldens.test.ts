@@ -92,6 +92,10 @@ const GOLDENS: Record<string, () => string> = {
   'map-proj-albers-parallels': () => geoToSvg({ geo: gridGeo(-130, -60, 20, 55, 5), values: gridValues(gridGeo(-130, -60, 20, 55, 5)), options: { projection: 'albers', parallel1: 40, parallel2: 50, centerLon: -100 }, ...SIZE }),
   'map-proj-albers-usa': () => geoToSvg({ geo: usGrid(), values: gridValues(usGrid()), options: { projection: 'albersUsa' }, ...SIZE }),
   'map-proj-albers-usa-aleutians': () => geoToSvg({ geo: usGridAleutians(), values: gridValues(usGridAleutians()), options: { projection: 'albersUsa' }, ...SIZE }),
+  // Layers: sphere + graticule behind a world, great-circle flows (one crossing the seam), a bubble map with its size key.
+  'map-layers-sphere-graticule': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'equalEarth', sphere: true, graticule: 30 }, ...SIZE }),
+  'map-layers-flows': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 40), values: {}, options: { projection: 'equalEarth', sphere: true, graticule: 30 }, flows: [{ from: { lon: -74, lat: 40.7 }, to: { lon: 2.3, lat: 48.9 }, value: 8 }, { from: { lon: 139.7, lat: 35.7 }, to: { lon: -122.4, lat: 37.8 }, value: 4 }, { from: { lon: 151.2, lat: -33.9 }, to: { lon: 18.4, lat: -33.9 }, value: 2 }], flowOptions: { color: '#b42318' }, ...SIZE }),
+  'map-layers-bubbles': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 40), values: {}, options: { projection: 'equalEarth', sphere: true }, points: [{ lon: -74, lat: 40.7, value: 18_800_000 }, { lon: 139.7, lat: 35.7, value: 37_000_000 }, { lon: 2.3, lat: 48.9, value: 11_000_000 }, { lon: 28.9, lat: 41, value: 15_000_000 }], overlayOptions: { radius: 9, color: '#2563eb' }, sizeLegend: true, ...SIZE }),
   'map-holes-lake': () => geoToSvg({ geo: FLORIDA_LAKE, values: { Florida: 55 }, ...SIZE }),
 }
 

@@ -22,6 +22,8 @@ world, `albersUsa` for the US), the property that names a region and the key val
 | `world-110m` | 177 countries, Natural Earth 1:110m | ISO alpha-3 (`id`) | about 161 KB / 33 KB |
 | `us-states` | 50 states and DC, Census 1:20m | state FIPS (`id`) | about 150 KB / 34 KB |
 
+Puerto Rico is not in `us-states`: the Albers USA composite has no inset for it, so it would be projected far off the map and shrink the rest (it is filtered out in `scripts/build-data.ts`).
+
 The root entry has the shared types and the list of what is available, and no boundary data.
 
 Sources, licences (both public domain) and the exact conversion steps are in [SOURCES.md](./SOURCES.md);
