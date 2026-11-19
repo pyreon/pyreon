@@ -35,6 +35,10 @@ function skipReason(c: ReturnType<typeof makeCase>, found: number): string | und
   return undefined
 }
 
+// Thousands of seeded cases in one test. It runs in a few seconds, but under the
+// coverage run on a loaded CI runner it passed the 20 s default (#4738's first run).
+const DIFFERENTIAL_TIMEOUT_MS = 120_000
+
 describe('differential: ours against rrule', () => {
   it('agrees on thousands of seeded random rules and windows, except the documented divergences', () => {
     const skipped: Record<string, number> = {}
@@ -59,7 +63,7 @@ describe('differential: ours against rrule', () => {
     expect(compared).toBeGreaterThan(2000)
     expect(nonEmpty).toBe(compared)
     expect(Object.values(skipped).reduce((a, b) => a + b, 0)).toBeLessThan(700)
-  })
+  }, DIFFERENTIAL_TIMEOUT_MS)
 })
 
 describe('differential: ours against the brute-force oracle (every part, every position, mixed BYDAY, weeks, count, until, except, also)', () => {
@@ -74,7 +78,7 @@ describe('differential: ours against the brute-force oracle (every part, every p
       if (ours.length > 0) nonEmpty++
     }
     expect(nonEmpty).toBeGreaterThan(1800)
-  })
+  }, DIFFERENTIAL_TIMEOUT_MS)
 })
 
 describe('intended divergences from rrule 2.8.1, each justified against the RFC text', () => {
