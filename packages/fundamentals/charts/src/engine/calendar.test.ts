@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { calendarDomain, civilFromDays, daysFromCivil, layoutCalendar, renderCalendar, weekdayOfDays } from './calendar'
 import { calendarValues, formatIsoDate, hitCalendar, parseIsoDate } from './calendar-web'
 import { calendarToSvg } from './family-svg'
+import { approxTextWidth } from './treemap'
 
 const box = { x: 0, y: 0, w: 720, h: 120 }
 
@@ -101,6 +102,49 @@ describe('calendar render', () => {
     expect(svg).toContain('<rect')
     expect(svg).toContain('14 days from 2024-01-01 to 2024-01-14, 3 with values from 1 to 10')
     expect(svg).not.toContain('NaN')
+  })
+})
+
+describe('calendar month labels stay inside the box', () => {
+  const narrow = { x: 4, y: 4, w: 350, h: 132 }
+  const right = narrow.x + narrow.w
+  const end = (l: { text: string; at: { x: number } }, size = 10) => l.at.x + approxTextWidth(l.text, size)
+
+  it('pulls the last label back so it ends at the box edge, and leaves the others over their first week', () => {
+    const l = layoutCalendar('2024-01-01', '2024-12-01', narrow)
+    const dec = l.monthLabels.at(-1)!
+    expect(dec.text).toBe('Dec')
+    const decWeek = l.cells.find((c) => c.date === '2024-12-01')!
+    // Unclamped, it would start over its first week and run past the edge.
+    expect(decWeek.rect.x + approxTextWidth('Dec', 10)).toBeGreaterThan(right)
+    expect(end(dec)).toBeCloseTo(right, 6)
+    for (const label of l.monthLabels.slice(0, -1)) {
+      const first = l.cells.find((c) => c.month === l.monthLabels.indexOf(label) && c.day === 1)!
+      expect(label.at.x).toBe(first.rect.x)
+    }
+    expect(l.monthLabels).toHaveLength(12)
+    const text = renderCalendar(l, []).find((c) => c.kind === 'text' && c.text === 'Dec')
+    expect(text?.kind === 'text' ? text.at.x : Number.NaN).toBe(dec.at.x)
+  })
+
+  it('a pulled-back label that would land on the one before it is left out, never stacked', () => {
+    // Two week columns in a 50px box: "Feb" pulls back onto "Jan".
+    const l = layoutCalendar('2024-01-25', '2024-02-01', { x: 0, y: 0, w: 50, h: 120 })
+    expect(l.cells.at(-1)!.week).toBe(1)
+    expect(l.monthLabels.map((m) => m.text)).toEqual(['Jan'])
+    for (const label of l.monthLabels) expect(end(label)).toBeLessThanOrEqual(50 + 1e-9)
+  })
+
+  it('a label wider than the whole grid starts at the grid edge rather than left of it', () => {
+    const l = layoutCalendar('2024-01-01', '2024-02-10', { x: 0, y: 0, w: 120, h: 400 }, { fontSize: 40 })
+    const originX = 40 * 2.6
+    for (const label of l.monthLabels) expect(label.at.x).toBeGreaterThanOrEqual(originX)
+  })
+
+  it('uses the measure it is given', () => {
+    const wide = layoutCalendar('2024-01-01', '2024-12-01', narrow, undefined, () => 16)
+    expect(wide.monthLabels.at(-1)!.text).toBe('Dec')
+    expect(wide.monthLabels.at(-1)!.at.x).toBeCloseTo(right - 16, 6)
   })
 })
 
