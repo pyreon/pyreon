@@ -3,7 +3,7 @@ import { h } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
 import { Calendar } from '../components'
-import { createCalendar } from '../index'
+import { createCalendar, defaultMessages } from '../index'
 
 const events = [
   { id: 'Design review', title: 'Design review', start: '2026-11-18T14:00', end: '2026-11-18T15:00' },
@@ -56,5 +56,21 @@ describe('the views render on the server', () => {
     const arabic = createCalendar({ events: () => [], date: '2026-11-18', locale: () => 'ar-EG' })
     expect(arabic.messages().more(3)).toBe('\u200E+٣')
     expect(createCalendar({ events: () => [], date: '2026-11-18', locale: () => 'en-GB' }).messages().more(3)).toBe('3 more')
+  })
+
+  it('the built-in table covers the seven languages: no English word of the agenda, the timeline or the empty state is left', () => {
+    const english = defaultMessages('en')
+    // a word that is the same in a language is not English left behind (the Czech, German and Spanish "Agenda"); the Japanese work week is left in English on purpose
+    const same: Record<string, string[]> = { cs: ['agenda'], de: ['agenda'], es: ['agenda'], ja: ['workWeek'] }
+    for (const lang of ['cs', 'ar', 'ja', 'de', 'fr', 'es']) {
+      const m = defaultMessages(lang)
+      for (const key of ['agenda', 'timeline', 'workWeek'] as const) {
+        if (same[lang]?.includes(key)) continue
+        expect(m.views[key], `${lang} ${key}`).not.toBe(english.views[key])
+      }
+      expect(m.noEvents, `${lang} noEvents`).not.toBe(english.noEvents)
+      expect(m.allDay, `${lang} allDay`).not.toBe(english.allDay)
+    }
+    expect(defaultMessages('sw').views.agenda).toBe('Agenda')
   })
 })

@@ -40,17 +40,36 @@ export interface CalendarMessages {
   recurringScope: Readonly<{ this: string; following: string; all: string }>
 }
 
-const ALL_DAY: Record<string, string> = {
-  en: 'all day',
-  cs: 'celý den',
-  ar: 'طوال اليوم',
-  ja: '終日',
-  de: 'ganztägig',
-  fr: 'toute la journée',
-  es: 'todo el día',
+/** The words the platform has no source for, in the languages the package carries. A language not listed here uses English (and a development warning); `messages` replaces any of them. */
+interface Words {
+  allDay: string
+  agenda: string
+  timeline: string
+  workWeek: string
+  noEvents: string
 }
 
-const FALLBACK_VIEWS: Record<string, string> = { workWeek: 'Work week', days: 'Days', agenda: 'Agenda', timeline: 'Timeline' }
+const ENGLISH: Words = { allDay: 'all day', agenda: 'Agenda', timeline: 'Timeline', workWeek: 'Work week', noEvents: 'No events' }
+
+/**
+ * Plain, standard interface wording. The ones I am least sure of are the Czech "Agenda", the French "Planning" and the Japanese
+ * work week (left in English): a native speaker should check them.
+ */
+const WORDS: Record<string, Words> = {
+  en: ENGLISH,
+  cs: { allDay: 'celý den', agenda: 'Agenda', timeline: 'Časová osa', workWeek: 'Pracovní týden', noEvents: 'Žádné události' },
+  ar: { allDay: 'طوال اليوم', agenda: 'جدول الأعمال', timeline: 'الجدول الزمني', workWeek: 'أسبوع العمل', noEvents: 'لا توجد أحداث' },
+  ja: { allDay: '終日', agenda: '予定リスト', timeline: 'タイムライン', workWeek: ENGLISH.workWeek, noEvents: '予定なし' },
+  de: { allDay: 'ganztägig', agenda: 'Agenda', timeline: 'Zeitleiste', workWeek: 'Arbeitswoche', noEvents: 'Keine Termine' },
+  fr: { allDay: 'toute la journée', agenda: 'Planning', timeline: 'Chronologie', workWeek: 'Semaine de travail', noEvents: 'Aucun événement' },
+  es: { allDay: 'todo el día', agenda: 'Agenda', timeline: 'Cronología', workWeek: 'Semana laboral', noEvents: 'Sin eventos' },
+}
+
+/** The built-in words of a language, English when it is not in the table. */
+export const wordsOf = (locale: string): Words => WORDS[language(locale)] ?? ENGLISH
+
+/** Is the language in the built-in table? (The platform has no word for "all day" and the like; any other language needs `messages`.) */
+export const hasAllDay = (locale: string): boolean => language(locale) in WORDS
 
 const language = (locale: string): string => locale.split(/[-_]/)[0]?.toLowerCase() ?? 'en'
 
@@ -86,12 +105,13 @@ export function defaultMessages(locale: string): CalendarMessages {
   const english = lang === 'en'
   const count = new Intl.NumberFormat(locale)
   const plural = new Intl.PluralRules(locale)
-  const allDay = (ALL_DAY[lang] ?? ALL_DAY.en) as string
+  const words = wordsOf(locale)
+  const allDay = words.allDay
   const month = capitalise(field(locale, 'month', 'month'), locale)
   const week = capitalise(field(locale, 'weekOfYear', 'week'), locale)
   const day = capitalise(field(locale, 'day', 'day'), locale)
   const year = capitalise(field(locale, 'year', 'year'), locale)
-  const views = { month, week, day, year, ...FALLBACK_VIEWS, workWeek: FALLBACK_VIEWS.workWeek as string }
+  const views = { month, week, day, year, workWeek: words.workWeek, days: 'Days', agenda: words.agenda, timeline: words.timeline }
   const viewName = (view: string): string => (views as Record<string, string>)[view] ?? view
   const when = (view: ViewName, step: number): string => capitalise(relative(locale, step, UNIT[view]), locale)
   const grid = english ? 'Calendar' : capitalise(field(locale, 'month', 'month'), locale)
@@ -107,7 +127,7 @@ export function defaultMessages(locale: string): CalendarMessages {
     timeGrid: english ? 'Calendar, time grid' : `${week}, ${day}`,
     more: (n) => (english ? `${count.format(n)} more` : `\u200E+${count.format(n)}`),
     events: (n) => (english ? `${n === 0 ? 'no' : count.format(n)} ${plural.select(n) === 'one' ? 'event' : 'events'}` : count.format(n)),
-    noEvents: english ? 'No events' : '–',
+    noEvents: words.noEvents,
     range: (from, to) => `${from} – ${to}`,
     navigated: (title, view) => `${title}, ${viewName(view)}`,
     selected: (text) => (english ? `Selected ${text}` : text),
