@@ -303,6 +303,12 @@ The file pickers (`useCamera`, `useFilePicker`, `useImagePicker`) append a hidde
 
 ---
 
+### [FIXED, 2026-11] A wrapper `ReadableStream` that does not forward `cancel`.
+
+The streaming handler copied the app stream into the response body from `start()` with no `cancel`, so a client disconnect never reached the render: it ran until every Suspense boundary settled or timed out (forever with `suspenseTimeoutMs: Infinity`), and its next write into the cancelled body threw and was logged and reported to `onError` as a render failure. **Rule: a stream that pumps another must implement `cancel` by cancelling its source reader, stop writing once cancelled, and never report a consumer disconnect as an error.** Reference: `server/src/handler.ts:renderStreamResponse`; locked by `handler-stream-cancel.test.ts` (bisect-verified).
+
+---
+
 ### A module-scoped store reached on the server
 
 A module-level `Map` is correctly app-wide in a browser, where one process serves one user, but on a server it is shared by every request. `useDatabase` and `useSecureStorage` returned one request's records and secrets to another under SSR. Their server arms are now inert (consistent within a render, nothing carried across requests). Before reusing a module-scoped cache on the server, ask what one process means there. A `/* v8 ignore */` claiming a branch is untestable, while sibling files test the same shape, signals an unexamined branch. Reference: `packages/fundamentals/hooks/src/{useDatabase,useSecureStorage}.ts`; `hooks/src/tests/server-store-isolation.ssr.test.ts`.
