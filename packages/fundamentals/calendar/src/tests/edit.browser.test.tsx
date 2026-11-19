@@ -548,3 +548,53 @@ describe('edges and leaks', () => {
     expect(result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html.slice(0, 80)).join(' | ')}`)).toEqual([])
   })
 })
+
+describe('auto-scroll, the month and the overflow label', () => {
+  it('holding a drag near the bottom edge scrolls the grid, and the drop lands on the slot that is under the pointer then', async () => {
+    const { root, changes } = make({ dayStart: '00:00', dayEnd: '24:00', list: [ev('Review', '2026-11-18T14:00', '2026-11-18T15:00')] })
+    const grid = root.querySelector('.pcal-timegrid') as HTMLElement
+    grid.scrollTop = 350
+    await sleep(40)
+    const before = grid.scrollTop
+    const from = centre(block(root, 'Review'))
+    const box = grid.getBoundingClientRect()
+    const edge = { x: from.x, y: box.bottom - 10 }
+    await mouse('mouseMoved', from.x, from.y)
+    await mouse('mousePressed', from.x, from.y)
+    await mouse('mouseMoved', from.x, from.y + 20)
+    await mouse('mouseMoved', edge.x, edge.y)
+    await sleep(600)
+    expect(grid.scrollTop).toBeGreaterThan(before + 100)
+    const under = [...root.querySelectorAll<HTMLElement>('.pcal-slot[data-date="2026-11-18"]')].find((c) => {
+      const r = c.getBoundingClientRect()
+
+      return edge.y >= r.top && edge.y < r.bottom
+    }) as HTMLElement
+    const r = under.getBoundingClientRect()
+    const hit = Number(under.dataset.minute) + ((edge.y - r.top) / r.height) * 30
+    const expected = Math.round((14 * 60 + (hit - (14 * 60 + 30))) / 30) * 30
+    await mouse('mouseReleased', edge.x, edge.y)
+    await sleep(60)
+    expect(changes).toHaveLength(1)
+    const [h, m] = (changes[0]!.start as string).slice(11).split(':').map(Number)
+    // the scroll may have moved one more row between the check and the release: the drop is on the slot under the pointer then
+    expect(Math.abs(h! * 60 + m! - expected)).toBeLessThanOrEqual(60)
+    expect(h! * 60 + m!).toBeGreaterThan(14 * 60 + 120)
+  })
+
+  it('a timed event inside one day has no resize handles in the month; an all-day one has', () => {
+    const { root } = make({ view: 'month', list: [ev('Call', '2026-11-18T09:00', '2026-11-18T10:00'), ev('Trip', '2026-11-17', '2026-11-19')] })
+    expect(root.querySelectorAll('.pcal-event[data-key^="Call:"] .pcal-handle')).toHaveLength(0)
+    expect(root.querySelectorAll('.pcal-event[data-key^="Trip:"] .pcal-handle')).toHaveLength(2)
+  })
+
+  it('the "+N more" count is produced by the platform and sits in its own direction', () => {
+    setLocale('ar')
+    const list = Array.from({ length: 6 }, (_, i) => ev(`E${i}`, '2026-11-18', '2026-11-19'))
+    const { root } = make({ view: 'month', dir: 'rtl', list, locale: () => 'ar' })
+    const more = root.querySelector('.pcal-more') as HTMLElement
+    expect(more.getAttribute('dir')).toBe('auto')
+    expect(more.textContent).toMatch(/^[‎؜]?\+\d+$/)
+    expect(getComputedStyle(more).unicodeBidi).toBe('isolate')
+  })
+})

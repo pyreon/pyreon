@@ -307,7 +307,9 @@
 }
 
 .pcal-month .pcal-event,
-.pcal-month .pcal-more {
+.pcal-month /* the "+8" count is its own piece of text: its sign and digits keep their order inside right-to-left lines */
+.pcal-more {
+  unicode-bidi: isolate;
   position: absolute;
   z-index: 1;
   inset-inline-start: 2px;

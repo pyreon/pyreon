@@ -52,9 +52,9 @@ describe('the views render on the server', () => {
   it('the messages option replaces any word, as an object or a function of the locale, and numbers use the locale', () => {
     const calendar = createCalendar({ events: () => [], date: '2026-11-18', locale: () => 'cs', messages: (locale) => ({ today: `dnes-${locale}` }) })
     expect(calendar.messages().today).toBe('dnes-cs')
-    expect(calendar.messages().more(3)).toBe('\u200E+3')
+    expect(calendar.messages().more(3)).toBe('+3')
     const arabic = createCalendar({ events: () => [], date: '2026-11-18', locale: () => 'ar-EG' })
-    expect(arabic.messages().more(3)).toBe('\u200E+٣')
+    expect(arabic.messages().more(3)).toBe('\u061C+٣')
     expect(createCalendar({ events: () => [], date: '2026-11-18', locale: () => 'en-GB' }).messages().more(3)).toBe('3 more')
   })
 })

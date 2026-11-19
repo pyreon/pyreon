@@ -50,6 +50,9 @@ const ALL_DAY: Record<string, string> = {
   es: 'todo el día',
 }
 
+/** Is there a built-in "all day" for this language? (The platform has no word for it; any other language needs `messages.allDay`.) */
+export const hasAllDay = (locale: string): boolean => language(locale) in ALL_DAY
+
 const FALLBACK_VIEWS: Record<string, string> = { workWeek: 'Work week', days: 'Days', agenda: 'Agenda', timeline: 'Timeline' }
 
 const language = (locale: string): string => locale.split(/[-_]/)[0]?.toLowerCase() ?? 'en'
@@ -85,6 +88,8 @@ export function defaultMessages(locale: string): CalendarMessages {
   const lang = language(locale)
   const english = lang === 'en'
   const count = new Intl.NumberFormat(locale)
+  // the sign comes from the platform, so its position and the digits are right in the language's own script and direction
+  const signed = new Intl.NumberFormat(locale, { signDisplay: 'always' })
   const plural = new Intl.PluralRules(locale)
   const allDay = (ALL_DAY[lang] ?? ALL_DAY.en) as string
   const month = capitalise(field(locale, 'month', 'month'), locale)
@@ -105,7 +110,7 @@ export function defaultMessages(locale: string): CalendarMessages {
     allDayRow: capitalise(allDay, locale),
     monthGrid: grid,
     timeGrid: english ? 'Calendar, time grid' : `${week}, ${day}`,
-    more: (n) => (english ? `${count.format(n)} more` : `\u200E+${count.format(n)}`),
+    more: (n) => (english ? `${count.format(n)} more` : signed.format(n)),
     events: (n) => (english ? `${n === 0 ? 'no' : count.format(n)} ${plural.select(n) === 'one' ? 'event' : 'events'}` : count.format(n)),
     noEvents: english ? 'No events' : '–',
     range: (from, to) => `${from} – ${to}`,

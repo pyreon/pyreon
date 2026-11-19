@@ -6,7 +6,7 @@ import type { CalendarOptions, Selection } from './calendar-types'
 import { createEditState, overlaid } from './editing'
 import type { EditState } from './editing'
 import { expandOccurrences } from './expand'
-import { defaultMessages } from './messages'
+import { defaultMessages, hasAllDay } from './messages'
 import type { CalendarMessages } from './messages'
 import { daySpan } from './lanes'
 import type { EventOccurrence, PlainDate, TimeZone, Weekday } from './types'
@@ -58,6 +58,17 @@ function bucket<Meta>(list: readonly EventOccurrence<Meta>[], dates: readonly Pl
   return map
 }
 
+const warned = new Set<string>()
+
+/** Say once per language, in development only, that "all day" has no built-in text and `messages.allDay` should be set. */
+function warnAllDay(locale: string): void {
+  if (process.env.NODE_ENV === 'production' || hasAllDay(locale) || warned.size >= 32) return
+  const lang = locale.split(/[-_]/)[0] ?? locale
+  if (warned.has(lang)) return
+  warned.add(lang)
+  console.warn(`[Pyreon] @pyreon/calendar: there is no built-in "all day" text for "${lang}", so the English one is used. Pass messages: { allDay: '...' } (and allDayRow) to createCalendar.`)
+}
+
 export function createState<Meta>(options: CalendarOptions<Meta>): CalState<Meta> {
   const zone = options.timeZone ?? ambientZone
   const locale = options.locale ?? ambientLocale
@@ -82,6 +93,7 @@ export function createState<Meta>(options: CalendarOptions<Meta>): CalState<Meta
     const lang = locale()
     const mine = typeof options.messages === 'function' ? options.messages(lang) : options.messages
     const base = defaultMessages(lang)
+    if (mine?.allDay === undefined) warnAllDay(lang)
 
     return { ...base, ...mine, views: { ...base.views, ...mine?.views }, recurringScope: { ...base.recurringScope, ...mine?.recurringScope } }
   })

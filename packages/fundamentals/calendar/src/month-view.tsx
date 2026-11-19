@@ -135,6 +135,8 @@ function Segment<Meta>(props: { segment: EventSegment; occurrences: () => Map<st
   const o = props.occurrences().get(props.segment.occurrenceKey)
   if (o === undefined) return null
   const state = editState(props.view.calendar, o.key)
+  // a timed event inside one day is moved in the month, not resized (a day is too coarse for it)
+  const resizable = o.allDay || o.start.slice(0, 10) !== o.end.slice(0, 10)
 
   const label = (): string => eventLabel(o as EventOccurrence, props.view.calendar.locale(), props.view.calendar.messages())
   const slot = props.view.renderEvent
@@ -159,7 +161,7 @@ function Segment<Meta>(props: { segment: EventSegment; occurrences: () => Map<st
       }}
     >
       {slot === undefined ? <span class="pcal-event-title">{o.title}</span> : slot({ occurrence: o, label: label(), continuesBefore: props.segment.continuesBefore, continuesAfter: props.segment.continuesAfter })}
-      <Handles calendar={props.view.calendar} occurrenceKey={o.key} startEdge={!props.segment.continuesBefore} endEdge={!props.segment.continuesAfter} />
+      <Handles calendar={props.view.calendar} occurrenceKey={o.key} startEdge={resizable && !props.segment.continuesBefore} endEdge={resizable && !props.segment.continuesAfter} />
     </button>
   )
 }
@@ -211,6 +213,7 @@ function WeekRow<Meta>(props: { week: MonthWeek; view: ResolvedView<Meta>; occur
               <button
                 type="button"
                 class="pcal-more"
+                dir="auto"
                 style={`--pcal-lane:${capacity()}`}
                 onClick={(e: MouseEvent) => {
                   e.stopPropagation()
