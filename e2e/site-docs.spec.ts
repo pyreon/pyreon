@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { waitForDocs } from './docs-islands'
+import { changedIslandClasses, trackIslandClasses, waitForIslands } from './site-islands'
 import { SITE_WIDTHS } from './site-audit'
 
 /**
@@ -67,6 +68,7 @@ test.describe('docs page types', () => {
       test(`${kind} (${path}) in ${theme}: renders, adopts the server DOM, no overflow at seven widths`, async ({ page }) => {
         const errors = collectErrors(page)
         await trackRemovals(page)
+        await trackIslandClasses(page)
         await page.emulateMedia({ colorScheme: theme })
         await page.setViewportSize({ width: 1440, height: 900 })
         await page.goto(path)
@@ -77,8 +79,12 @@ test.describe('docs page types', () => {
         expect(await page.locator('h1').evaluateAll((hs) => hs.filter((h) => (h as HTMLElement).offsetParent !== null).length)).toBe(1)
         await expect(page.locator('.dx-aside .dx-side__link[aria-current="page"]')).toHaveCount(1)
         await expect(page.locator('.dx-rail')).toBeVisible()
+        // Wake every `visible` island (the page's demo is below the fold) before the adoption checks.
+        await waitForIslands(page)
         // Islands adopt the server DOM: nothing the server rendered is removed.
         expect(await page.evaluate(() => (window as unknown as { __removed: string[] }).__removed)).toEqual([])
+        // ...and every element they adopted keeps the class the server sent (#4434).
+        expect(await changedIslandClasses(page)).toEqual([])
         for (const width of WIDTHS) {
           await page.setViewportSize({ width, height: 900 })
           await page.waitForTimeout(100)

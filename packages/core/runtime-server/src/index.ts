@@ -847,6 +847,33 @@ export function _setStreamFlushBytes(n: number): number {
   return prev
 }
 
+/**
+ * Chain the caller's `signal` to a stream's own controller, returning the
+ * detach. Every end of the stream (close, error, cancel) calls it: the listener
+ * used to come off only when the caller's signal aborted, so a caller sharing
+ * one long-lived signal across renders (a shutdown signal, a reused connection
+ * signal) kept one listener, and the stream it closes over, per render.
+ */
+function chainCallerSignal(caller: AbortSignal | undefined, ac: AbortController): () => void {
+  if (caller === undefined) return _noop
+  if (caller.aborted) {
+    ac.abort(caller.reason)
+    return _noop
+  }
+  const onAbort = (): void => ac.abort(caller.reason)
+  caller.addEventListener('abort', onAbort, { once: true })
+  let attached = true
+
+  return () => {
+    // Once: cancel and the body's own end both reach here.
+    if (!attached) return
+    attached = false
+    caller.removeEventListener('abort', onAbort)
+  }
+}
+
+const _noop = (): void => {}
+
 export function renderToStream(
   root: VNode | null,
   options: RenderToStreamOptions = {},
@@ -857,13 +884,7 @@ export function renderToStream(
   // of the stream calls `.cancel()` (client closed the fetch reader).
   const ac = new AbortController()
   const signal = ac.signal
-  if (options.signal) {
-    if (options.signal.aborted) ac.abort(options.signal.reason)
-    else
-      options.signal.addEventListener('abort', () => ac.abort(options.signal!.reason), {
-        once: true,
-      })
-  }
+  const detachCaller = chainCallerSignal(options.signal, ac)
   // Resolve the Suspense timeout. Invalid input (≤0, NaN) falls back to
   // 30_000 — same as pre-config behavior. `Infinity` is preserved so the
   // boundary code can detect it and skip the race entirely.
@@ -950,6 +971,7 @@ export function renderToStream(
             // hanging the reader.) Wrapped because `cancel()` may have closed it.
             // The request ends BEFORE the reader can observe the end.
             flush()
+            detachCaller()
             hold.release()
             try {
               controller.close()
@@ -958,6 +980,7 @@ export function renderToStream(
             }
           })
           .catch((err) => {
+            detachCaller()
             // Aborts are expected, not errors — close silently to mirror
             // a normal end-of-stream when the consumer hung up.
             hold.release()
@@ -981,6 +1004,7 @@ export function renderToStream(
       // Consumer (browser fetch reader) closed the stream — propagate to
       // the internal controller so in-flight Suspense work stops being
       // awaited.
+      detachCaller()
       ac.abort(reason)
       hold.release()
     },

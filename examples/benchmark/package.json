@@ -24,7 +24,9 @@
     "bench:charts-bundle": "bun bench-charts-bundle.ts",
     "bench:lib-bundle": "bun bench-lib-bundle.ts",
     "bench:charts-libs": "bun bench-scenarios.ts --scenario charts-libs",
-    "bench:charts-libs-bundle": "bun bench-charts-libs-bundle.ts"
+    "bench:charts-libs-bundle": "bun bench-charts-libs-bundle.ts",
+    "bench:maplist": "bun bench-scenarios.ts --scenario maplist",
+    "bench:router": "bun bench-scenarios.ts --scenario router"
   },
   "dependencies": {
     "@pyreon/charts": "workspace:*",

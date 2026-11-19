@@ -6,7 +6,7 @@ import {
   type ComboboxBaseProps,
   type ComboboxState,
 } from '@pyreon/ui-primitives'
-import { disabledState, el, focusRingTone, type ModeFn, tones } from '../../factory'
+import { disabledState, el, focusRingTone, type ModeFn, themeColor, tintText, tones } from '../../factory'
 import type { Theme } from '@pyreon/ui-theme'
 
 /**
@@ -170,13 +170,25 @@ const ComboboxOption = el
     },
     extendCss: `
       &[data-highlighted='true'] { background-color: ${t.color.system.base[100]}; }
-      &[aria-selected='true'] {
-        background-color: ${t.color.system.primary[50]};
-        color: ${t.color.system.primary[700]};
-      }
       &[aria-disabled='true'] { opacity: 0.5; cursor: default; }
     `,
+    // The selected look, drawn by the `.styles()` below. Keys rather than the
+    // `extendCss` string, because a `mode(light, dark)` value cannot be
+    // interpolated into a string (the selected text was `primary[700]`, an
+    // opacity step: 2.2–2.9:1 on its tint in either mode).
+    selectedBackground: t.color.system.primary[50],
+    selectedColor: tintText(t, m, 'primary'),
   }))
+  .styles(
+    (css) => css`
+      ${({ $rocketstyle: s }: { $rocketstyle: Record<string, unknown> }) => css`
+        &[aria-selected='true'] {
+          background-color: ${themeColor(s, 'selectedBackground')};
+          color: ${themeColor(s, 'selectedColor')};
+        }
+      `}
+    `,
+  )
 
 export interface ComboboxProps extends ComboboxBaseProps {
   /** Consumer render-prop ESCAPE HATCH — overrides the built-in markup. */

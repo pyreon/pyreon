@@ -124,9 +124,21 @@ export const COMPILED_MISMATCH_CASES: CompiledMismatchCase[] = [
     reports: [{ type: "tag", expected: "b", actual: "span", path: "root > div > b" }],
   },
   {
-    name: "slot content (`_mountSlot`, reported by the h() walk)",
+    // The conditional is a walked hole, so its `<b>` is a template of its own:
+    // the swap of THAT template reports, at its root.
+    name: "slot content (`_mountSlot` over a template, reported by its swap)",
     source: "const on = signal(true)\nexport const App = () => <div>{on() ? <b>x</b> : 'text'}</div>",
-    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><!></div>\", (__root) => {\n  const __p0 = __root.firstChild;\n  const __d0 = _mountSlot(() => on() ? /* @__PURE__ */ h(\"b\", null, \"x\") : \"text\", __root, __p0, true);\n  return __d0;\n});\n",
+    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><!></div>\", (__root) => {\n  const __p0 = __root.firstChild;\n  const __d0 = _mountSlot(() => on() ? _tpl(\"<b>x</b>\", () => null) : \"text\", __root, __p0, true);\n  return __d0;\n});\n",
+    match: "<div><b>x</b></div>",
+    server: "<div><i>x</i></div>",
+    reports: [{ type: "tag", expected: "b", actual: "i", path: "root > div > b" }],
+  },
+  {
+    // A keyed root is never templated, so this slot's content stays `h()` and
+    // the h() walk reports it.
+    name: "slot content (`_mountSlot` over h(), reported by the h() walk)",
+    source: "const on = signal(true)\nexport const App = () => <div>{on() ? <b key=\"k\">x</b> : 'text'}</div>",
+    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><!></div>\", (__root) => {\n  const __p0 = __root.firstChild;\n  const __d0 = _mountSlot(() => on() ? /* @__PURE__ */ h(\"b\", { key: \"k\" }, \"x\") : \"text\", __root, __p0, true);\n  return __d0;\n});\n",
     match: "<div><b>x</b></div>",
     server: "<div><i>x</i></div>",
     reports: [{ type: "tag", expected: "b", actual: "i", path: "root > div > reactive > b" }],
@@ -134,7 +146,7 @@ export const COMPILED_MISMATCH_CASES: CompiledMismatchCase[] = [
   {
     name: "server rendered nothing, client renders an element (empty sole slot, #4582)",
     source: "const on = signal(true)\nexport const App = () => <div id=\"w\">{on() ? <b>x</b> : null}</div>",
-    compiled: "const on = signal(true);\nconst App = () => _tpl('<div id=\"w\"><!></div>', (__root) => {\n  const __p0 = __root.firstChild;\n  const __d0 = _mountSlot(() => on() ? /* @__PURE__ */ h(\"b\", null, \"x\") : null, __root, __p0, true);\n  return __d0;\n});\n",
+    compiled: "const on = signal(true);\nconst App = () => _tpl('<div id=\"w\"><!></div>', (__root) => {\n  const __p0 = __root.firstChild;\n  const __d0 = _mountSlot(() => on() ? _tpl(\"<b>x</b>\", () => null) : null, __root, __p0, true);\n  return __d0;\n});\n",
     match: "<div id=\"w\"><b>x</b></div>",
     server: "<div id=\"w\"></div>",
     reports: [{ type: "tag", expected: "b", actual: "", path: "root > div > reactive" }],
@@ -142,7 +154,7 @@ export const COMPILED_MISMATCH_CASES: CompiledMismatchCase[] = [
   {
     name: "server rendered nothing, client renders an element (empty range, #4582)",
     source: "const on = signal(true)\nexport const App = () => <div><i>a</i>{on() ? <b>x</b> : null}</div>",
-    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><i>a</i><!></div>\", (__root) => {\n  const __p0 = __root.firstChild.nextSibling;\n  const __d0 = _mountSlot(() => on() ? /* @__PURE__ */ h(\"b\", null, \"x\") : null, __root, __p0);\n  return __d0;\n});\n",
+    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><i>a</i><!></div>\", (__root) => {\n  const __p0 = __root.firstChild.nextSibling;\n  const __d0 = _mountSlot(() => on() ? _tpl(\"<b>x</b>\", () => null) : null, __root, __p0);\n  return __d0;\n});\n",
     match: "<div><i>a</i><!--$--><b>x</b><!--/$--></div>",
     server: "<div><i>a</i><!--$--><!--/$--></div>",
     reports: [{ type: "tag", expected: "b", actual: "", path: "root > div > reactive" }],
@@ -150,7 +162,7 @@ export const COMPILED_MISMATCH_CASES: CompiledMismatchCase[] = [
   {
     name: "server rendered nothing, client renders an array (empty range, #4582)",
     source: "const on = signal(true)\nexport const App = () => <div><i>a</i>{on() ? [<b>x</b>, 'y'] : null}</div>",
-    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><i>a</i><!></div>\", (__root) => {\n  const __p0 = __root.firstChild.nextSibling;\n  const __d0 = _mountSlot(() => on() ? [/* @__PURE__ */ h(\"b\", null, \"x\"), \"y\"] : null, __root, __p0);\n  return __d0;\n});\n",
+    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><i>a</i><!></div>\", (__root) => {\n  const __p0 = __root.firstChild.nextSibling;\n  const __d0 = _mountSlot(() => on() ? [_tpl(\"<b>x</b>\", () => null), \"y\"] : null, __root, __p0);\n  return __d0;\n});\n",
     match: "<div><i>a</i><!--$--><b>x</b>y<!--/$--></div>",
     server: "<div><i>a</i><!--$--><!--/$--></div>",
     reports: [{ type: "tag", expected: "b", actual: "", path: "root > div > reactive" }],

@@ -37,7 +37,7 @@ const parses = (out: string): boolean => {
 
 describe('prop-derived inlining — lexical shadowing is respected', () => {
   it('arrow-function parameter shadowing a prop-derived const is NOT rewritten (was un-parseable)', () => {
-    const out = emit(`function C(props){ const a = props.x; return <ul>{props.items.map(a => <li>{a}</li>)}</ul> }`)
+    const out = emit(`function C(props){ const a = props.x; return <List>{props.items.map(a => <li>{a}</li>)}</List> }`)
     expect(parses(out)).toBe(true)
     expect(out).not.toContain('(props.x) =>')
     expect(out).toContain('.map(a => <li>{a}</li>)')
