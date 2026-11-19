@@ -450,9 +450,9 @@ private val CALENDAR_DAYS = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sa
 
 private val GEO_NA: Double = (0.0).toDouble() / (0.0).toDouble()
 
-private val RAD = (kotlin.math.PI).toDouble() / (180.0).toDouble()
+private val RAD = 0.017453292519943295
 
-private val SQRT3_2 = (Math.sqrt((3.0).toDouble())).toDouble() / (2.0).toDouble()
+private val SQRT3_2 = 0.8660254037844386
 
 private val EA1 = 1.340264
 

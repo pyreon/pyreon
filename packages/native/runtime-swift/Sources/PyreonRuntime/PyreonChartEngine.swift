@@ -3131,9 +3131,9 @@ private let CALENDAR_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 private let GEO_NA: Double = 0.0 / 0.0
 
-private let RAD = Double.pi / 180.0
+private let RAD = 0.017453292519943295
 
-private let SQRT3_2 = sqrt(Double(3.0)) / 2.0
+private let SQRT3_2 = 0.8660254037844386
 
 private let EA1 = 1.340264
 

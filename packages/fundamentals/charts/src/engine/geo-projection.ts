@@ -35,8 +35,10 @@ export interface GeoProjectionParams {
   p2: Double
 }
 
-const RAD = Math.PI / 180.0
-const SQRT3_2 = Math.sqrt(3.0) / 2.0
+// Literals, not `Math.PI / 180` and `Math.sqrt(3) / 2`: a top-level call is a side effect a bundler must keep, which put
+// these two constants into every chart's bundle, map or not.
+const RAD = 0.017453292519943295
+const SQRT3_2 = 0.8660254037844386
 
 // Equal Earth coefficients (Šavrič et al. 2018).
 const EA1 = 1.340264
