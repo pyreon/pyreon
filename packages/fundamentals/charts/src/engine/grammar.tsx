@@ -227,7 +227,7 @@ export interface CellProps<T> {
   y: Channel<T, string>
   value: Channel<T>
   /** The colour ramp, low to high. */
-  colors?: string[]
+  colors?: readonly string[]
   gap?: Double
   /**
    * A value → colour legend beside the grid. `visualMap` alone derives it
@@ -251,7 +251,7 @@ export interface ZoomProps {
   /** The slider strip under the plot. */
   navigator?: boolean
   /** Preset buttons: `[{ label: '1M', count: 30 }]`. */
-  presets?: { label: string; count: number }[]
+  presets?: readonly { label: string; count: number }[]
   /** Share the window and hover across charts. */
   link?: ChartLink
   /** Range brush; reports a global inclusive index range. */
@@ -477,7 +477,7 @@ function flatChildren(children: VNodeChild): VNode[] {
 }
 
 export interface ChartProps<T> {
-  data: T[] | (() => T[])
+  data: readonly T[] | (() => readonly T[])
   /** The category channel (evenly spaced). */
   x?: Channel<T, string>
   /** The continuous x channel (spacing follows the values). */
@@ -529,7 +529,7 @@ export interface ChartProps<T> {
   onZoom?: (window: { start: number; end: number } | null) => void
   emphasis?: boolean
   /** Names for the tooltip, the legend and the accessible table when a mark sets no `label`. */
-  seriesLabels?: string[]
+  seriesLabels?: readonly string[]
   onSaveImage?: PlotChartProps<T>['onSaveImage']
   /** A BCP 47 tag formatting numbers and dates through Intl — see `<PlotChart locale>`. */
   locale?: string
@@ -598,7 +598,7 @@ function familyProps<T>(name: string, p: Record<string, unknown>): Record<string
 }
 
 /** Resolve mark children + chart channels into `<PlotChart>` props. Pure; called inside the host's effects so channel reads track. */
-export function resolveGrammar<T>(rows: T[], chart: ChartProps<T>, children: VNodeChild): ResolvedGrammar<T> {
+export function resolveGrammar<T>(rows: readonly T[], chart: ChartProps<T>, children: VNodeChild): ResolvedGrammar<T> {
   const nodes = flatChildren(children)
   const props: Partial<PlotChartProps<T>> = {}
   const annotations: Annotation[] = []
@@ -849,7 +849,7 @@ function toMark<T>(name: string, p: Record<string, unknown>, yOverride: ((d: T, 
  * reactive input; the children are scanned again each time.
  */
 export function Chart<T>(props: ChartProps<T>): VNodeChild {
-  const readRows = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
+  const readRows = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
   // One scan per change, not one per prop read: every forwarded prop below
   // reads through this computed, which re-resolves when the data, a channel or
   // a child's props change and is otherwise cached.
@@ -959,7 +959,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
  * compared. A new value adds a panel; panels whose value persists keep
  * their identity across data changes (each reads its rows through a signal).
  */
-function facetGrid<T>(props: ChartProps<T>, readRows: () => T[], base: Record<string, unknown>, host: (p: PlotChartProps<T>) => VNodeChild): VNodeChild {
+function facetGrid<T>(props: ChartProps<T>, readRows: () => readonly T[], base: Record<string, unknown>, host: (p: PlotChartProps<T>) => VNodeChild): VNodeChild {
   const facetOf = channel<T, string>(props.facet!)
   const panelRows = new Map<string, Signal<T[]>>()
   /**

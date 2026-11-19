@@ -43,7 +43,7 @@
  *   bun run check-bundle-budgets --update              # seed new packages, raise the ones over
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -53,6 +53,7 @@ import { parseSync, Visitor } from 'oxc-parser'
 
 import { isUpdateMode } from './bundle-budget-policy'
 import { isModuleEntry } from './is-entry'
+import { removeOnExit } from './remove-on-exit'
 import {
   formatVerdicts,
   judgeFamily,
@@ -106,9 +107,10 @@ const REPO_ROOT = resolve(import.meta.dirname, '..')
  * 0700, so neither can be pre-empted. (CodeQL `js/insecure-temporary-file`.)
  */
 const SCRATCH_ROOT = mkdtempSync(join(tmpdir(), 'pyreon-bundle-budgets-'))
-// Removed on exit, including the `process.exit(1)` failure paths. Without this
-// every run left its measured bundles behind in the OS temp dir.
-process.on('exit', () => rmSync(SCRATCH_ROOT, { recursive: true, force: true }))
+// Removed on exit (including the `process.exit(1)` failure paths) and on
+// SIGINT / SIGTERM / SIGHUP. Without this every run, and every interrupted
+// run, left its measured bundles behind in the OS temp dir.
+removeOnExit(SCRATCH_ROOT)
 
 /**
  * Override `<REPO_ROOT>/packages` discovery with a custom directory.

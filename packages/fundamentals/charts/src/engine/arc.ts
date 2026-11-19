@@ -64,7 +64,7 @@ export const DEFAULT_ARCS: ArcConfig = { start: START, sweep: TAU, clockwise: tr
  * meaningful angular width, and silently taking its absolute value would show a
  * loss as though it were a gain. A caller wanting that can map the data first.
  */
-export function layoutArcs(slices: Slice[]): ArcGeometry[] {
+export function layoutArcs(slices: readonly Slice[]): ArcGeometry[] {
   return layoutArcsWith(slices, DEFAULT_ARCS)
 }
 
@@ -75,7 +75,7 @@ export function layoutArcs(slices: Slice[]): ArcGeometry[] {
  * the angle AND the reach by value; 'area' gives every slice the same angle).
  * The returned arcs always run start < end, whichever way they were laid.
  */
-export function layoutArcsWith(slices: Slice[], cfg: ArcConfig): ArcGeometry[] {
+export function layoutArcsWith(slices: readonly Slice[], cfg: ArcConfig): ArcGeometry[] {
   const out: ArcGeometry[] = []
   const kept: number[] = []
   let total = 0.0
