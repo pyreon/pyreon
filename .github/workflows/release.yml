@@ -202,16 +202,20 @@ jobs:
       - name: Disable local git hooks for the publish flow
         run: git config core.hooksPath /dev/null
 
-      # 0.x cap: rewrite any `: major` → `: minor` in `.changeset/*.md`
-      # BEFORE `changesets/action` runs `version-packages`. Pyreon is 0.x;
-      # a stray major changeset would otherwise produce a 1.0.0 cascade
-      # across the `fixed` group of 60+ packages. CI's `check-no-major`
-      # job catches `: major` at PR time so this is belt + suspenders —
-      # but the safety net belongs at release time too, in case `: major`
-      # ever lands on main via a workflow path that bypasses the PR check.
-      # When Pyreon goes 1.0 someday, remove this step AND the CI guard
-      # as a deliberate gate (the removal is the explicit signal).
-      - name: Cap changeset bumps at minor (0.x policy)
+      # Major cap: rewrite any `: major` → `: minor` in `.changeset/*.md`
+      # BEFORE `changesets/action` runs `version-packages`, unless the
+      # maintainer approved that major in `scripts/major-release.ts`
+      # (`APPROVED_MAJOR`, the 1.0 cut). A stray major changeset would
+      # otherwise move the whole `fixed` group to the next major. CI's
+      # `check-no-major` job catches it at PR time, so this is belt +
+      # suspenders for a `: major` that reaches main by another path.
+      #
+      # Changesets pre mode (`.changeset/pre.json`, the 1.0.0-rc series)
+      # needs nothing here: changesets/action versions to `X-rc.N`, titles
+      # the Version PR "chore: version packages (rc)", and publish.ts derives
+      # the `rc` dist-tag from pre.json. Runbook: .agents/guides/ci/README.md
+      # "Release candidates and the 1.0 cut".
+      - name: Cap unapproved major changeset bumps at minor
         run: bun scripts/cap-changeset-bumps.ts
 
       - name: Reject high-severity dependency advisories before publishing
@@ -289,7 +293,8 @@ jobs:
       # alarm — users missing HIGH-severity fixes for a week). Runs on the
       # PUBLISH path regardless of step outcomes (`always()` + published
       # check happens inside via registry comparison): compares sentinel
-      # packages' repo version vs npm dist-tags.latest and FAILS the
+      # packages' repo version vs the npm dist-tag that version ships on
+      # (`latest`, or the pre-mode tag for a release candidate) and FAILS the
       # workflow loudly if a versioned release never reached npm. The
       # scheduled companion (`published-state.yml`) catches the class where
       # this whole workflow crashed before reaching this step.
@@ -447,6 +452,9 @@ jobs:
         timeout-minutes: 10
         run: bun scripts/check-published-state.ts --wait-for-publish
 
+  # Not usable while `.changeset/pre.json` exists: `changeset version
+  # --snapshot` refuses to run in pre mode, so the job fails before building.
+  # During a release-candidate series the rc itself is the canary channel.
   prerelease:
     if: startsWith(github.ref, 'refs/heads/release/')
     name: Publish Prerelease

@@ -311,14 +311,50 @@ First-run checklist, on the first PR after the variable is set:
 - **check-manifest-depth**: ratchet on MCP `get_api` density for locked packages.
 - **Diagnose Catalog**: a new or edited user-visible error or warning message in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/` must be matched by an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts` (an existing one, or one the PR adds), or the PR carries the `skip-diagnose-catalog` label. The gate reads the messages out of the base and HEAD content of each changed file, so a perf-only change or a moved/reformatted message demands nothing. `diagnoseError` + `ERROR_PATTERNS` live in the browser-safe `@pyreon/compiler/diagnose` subpath with no `typescript` import, so the dev error printer can load them client-side. `compiler/src/tests/diagnose.test.ts` bundles the subpath and asserts no TS-API markers.
 - **Release**:
-  - Changesets fixed group (all packages share one version).
+  - Changesets fixed group (all packages share one version). An internal edge between two members (`dependencies`, `peerDependencies`, `optionalDependencies`) is published EXACT (`"@pyreon/core": "1.0.0"`), not `^`: the group releases in lockstep and its `lib/` output shares compiler helpers (`_rp`, `_tpl`) that are only guaranteed within one version (`scripts/publish-ranges.ts`). `devDependencies` keep their range.
+  - Dist-tags (`scripts/release-channel.ts`): a stable version publishes to `latest`; a changesets pre-mode version (`1.0.0-rc.2`) to the tag in `.changeset/pre.json` (`rc`); any other prerelease is refused before anything publishes. `publish.ts`, `check-published-state`, `heal-release-chain`, `scaffold-smoke` and `release-native.yml` all use this one rule. npm 11 itself rejects a prerelease published without `--tag`.
+  - Major releases: `check-no-major-changesets` (PR), `cap-changeset-bumps` (release.yml) and `cap-version-bumps` (`version-packages`) reject or cap every `major` unless `APPROVED_MAJOR` in `scripts/major-release.ts` names the next major. An unapproved `0.x → 1.0.0-<pre>` fails the version step. `check-breaking-changeset-codemod` treats `minor` as breaking in 0.x and `major` from 1.0 on.
   - `check-release-readiness`: `publishConfig.access`, exact provenance repository identity and fixed-group coverage. The publisher shares the repository check and rejects the whole selected plan before any manifest rewrite or publish if its metadata is missing or mismatched.
   - Native coverage allows a cold verdict cache: a 60-minute measurement ceiling inside a 75-minute job, with per-compile and per-test deadlines still enforced. Stub/compiler changes invalidate cached verdicts.
   - `Release Build` and the publishing workflow reject high-severity locked dependency advisories through `scripts/audit-new-advisories.ts --level high`. On a pull request it also audits the base lockfile (`git show HEAD^1:bun.lock` into a temp dir with a stub `package.json` — `bun audit` reads only the lockfile) and FAILS only on advisories the PR introduces; advisories already on the base become `::warning::` lines, so one new upstream advisory can no longer red every open PR (that froze merges 2026-10-29 → 11-02). On `main` and in the release workflow it stays strict, and both steps of `release.yml` call the script (a bare `bun audit` there ignored the acceptance list). An advisory whose vulnerable range covers every published version cannot be cleared by a bump, so `scripts/advisory-acceptances.json` may record it with a reason: an entry holds only while the advisory's vulnerable range is unchanged (a fixed release changes it, and the gate fails again) and for at most 30 days, and an accepted advisory is still printed as a warning. Non-JSON audit output throws, so the gate fails closed. The wrangler `npm audit` in `Build` follows the same rule: it fails only when the PR changed `scripts/verify-modes-tools/package-lock.json`. The isolated Verify Modes workerd tool installs with `npm ci` from `scripts/verify-modes-tools/package-lock.json` and audits that tree too; update the lock together with its manifest. Its Sharp override pins the patched 0.35.5 transitive dependency while retaining the existing Wrangler runtime version and the high-severity audit.
-  - `check-published-state`: every publishable package, not sentinels. A partial release where some packages lag the cut version is red and names each lagging package. Post-publish steps pass `--wait-for-publish`: only successfully submitted packages in the current `publish-result.json` receive a 5m visibility window before full verification; each lookup has a 10s bound and the step has 10m. Daily checks and resume detection stay immediate. This avoids treating npm processing delay as a failed publication.
+  - `check-published-state`: every publishable package, not sentinels, compared with the dist-tag its repo version ships on (`rc` during a release-candidate series, falling back to `latest` until the first rc exists) under full semver precedence. A partial release where some packages lag the cut version is red and names each lagging package. Post-publish steps pass `--wait-for-publish`: only successfully submitted packages in the current `publish-result.json` receive a 5m visibility window before full verification; each lookup has a 10s bound and the step has 10m. Daily checks and resume detection stay immediate. This avoids treating npm processing delay as a failed publication.
   - `scripts/publish.ts` retries only npm errors with evidence of being transient (5xx, dropped sockets). Never 404/403/conflict, and never `E422 Error verifying sigstore provenance bundle`, which reproduces on every attempt (a manifest missing `repository` causes it).
   - `release.yml`'s `resume-detect` / `resume-publish` republish lagging packages from the release tag (never main), once per version.
   - A new package's first publish needs a one-time manual OIDC trusted-publisher bootstrap.
+
+### Release candidates and the 1.0 cut
+
+The maintainer runs this. Agents prepare the PRs, never merge them, and never publish by hand. Each numbered step is one PR off `origin/main`.
+
+Before starting, decide three things:
+
+- **Publish the pending Version PR first.** Let it publish, so the series starts from a stable `latest`. Entering pre mode with hundreds of pending changesets puts all of them into `1.0.0-rc.0`.
+- **Never-published packages.** Bootstrap or mark `private` any package that has never been published (`@pyreon/auth` today). OIDC cannot create a package, so it would be missing from every rc.
+- **Patching 0.x during the series.** While `main` is in pre mode, the `stable` job versions only release candidates, so there is no path for a 0.x patch release. Either accept that for the length of the series, or add a maintenance-branch release job before entering. Do not name a freeze or maintenance branch `release/…`, because every push to `release/**` publishes a snapshot under `next`.
+
+1. **Enter.** In one PR:
+   - set `APPROVED_MAJOR` in `scripts/major-release.ts` to `'1.0.0'`;
+   - run `bun changeset pre enter rc` and commit `.changeset/pre.json` (changesets 3 writes only `{ "mode": "pre", "tag": "rc" }`);
+   - add one changeset `.changeset/pyreon-1-0.md` with `'@pyreon/core': major` (the fixed group moves every package) and the 1.0 release notes.
+
+   CI's `Check No Major Changesets` passes and names the approved target. On merge, release.yml opens `chore: version packages (rc)` with every package at `1.0.0-rc.0`.
+2. **Publish rc.0.** Merge that Version PR. `publish.ts` publishes to the `rc` dist-tag. `heal-release-chain` pushes `v1.0.0-rc.0`, creates a GitHub Release marked prerelease, and starts `release-native.yml`, which publishes the binaries on `rc` too. Check:
+   - `npm view @pyreon/core dist-tags` shows `latest` still on 0.x and `rc: 1.0.0-rc.0`;
+   - `bun scripts/check-published-state.ts --native` passes.
+
+   Testers install with `@rc`, for example `npm create @pyreon/zero@rc` or `bun add @pyreon/core@rc`.
+3. **Iterate.** Merge fixes with ordinary changesets. Each Version PR consumes them, as outside pre mode, and cuts the next candidate (`1.0.0-rc.1`, …) on `rc`. A `release/**` snapshot is not available in pre mode (`changeset version --snapshot` refuses), so the rc is the canary.
+4. **Exit.** In one PR, run `bun changeset pre exit` (it sets `"mode": "exit"` in `.changeset/pre.json`), commit it, and set `APPROVED_MAJOR` back to `null`. The switch was needed only until the rc.0 Version PR merged. `changeset version` accepts exit mode with no pending changeset. On merge, the Version PR shows `1.0.0` and deletes `pre.json`.
+5. **Publish 1.0.0.** Merge that Version PR. Everything publishes to `latest`, and `v1.0.0` gets a normal GitHub Release. The `rc` dist-tag keeps pointing at the last candidate, which is harmless.
+
+**A bad candidate.** Users on `latest` are untouched. Fix forward with the next rc. To take the bad one out of reach, the maintainer runs these with their own npm login:
+
+- `npm deprecate @pyreon/<pkg>@<bad> "<reason>"`
+- `npm dist-tag add @pyreon/<pkg>@<previous rc> rc` for each package
+
+Never unpublish.
+
+What the rehearsal does not prove: OIDC publishing under `--tag rc`, the native workflow on a `v*-rc.N` tag, and `gh release create --prerelease` all run only in a real release. Watch the first rc run.
 
 ## E2E suites
 

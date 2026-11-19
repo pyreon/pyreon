@@ -133,16 +133,15 @@ Pyreon ships via [changesets](https://github.com/changesets/changesets). Every P
 
 ### 0.x version policy — no `major` changesets
 
-Pyreon is currently 0.x. **All changesets must be `minor` or `patch`** — never `major`. A `major` changeset on a 0.x package produces a 1.0.0 cascade across the `fixed` group of 60+ packages, which is not appropriate for the current pre-1.0 stability commitment.
+While Pyreon is 0.x, **changesets are `minor` or `patch`, never `major`**. A breaking change is `minor`, and the prose must say clearly what breaks. From 1.0.0 on, a breaking change is `major`.
 
-Two layers enforce this:
+A `major` changeset moves every package in the `fixed` group to the next major. It is accepted only when the maintainer has approved that exact version in `scripts/major-release.ts` (`APPROVED_MAJOR`). Three layers read that switch:
 
-1. **CI guard (`Check No Major Changesets`)** — runs on every PR via `scripts/check-no-major-changesets.ts`. Fails with a clear error if any `.changeset/*.md` contains `: major`. Caught at PR time so contributors fix it before merging.
-2. **Release-time cap (`scripts/cap-changeset-bumps.ts`)** — defense-in-depth. If a `: major` ever lands on `main` (e.g. via a workflow path that bypasses the PR check), the release workflow rewrites it to `: minor` BEFORE `changesets/action` runs `version-packages`. Logs the downgrade so it's visible in the release run.
+1. **CI guard (`Check No Major Changesets`)**: `scripts/check-no-major-changesets.ts` runs on every PR and in `validate-fast`. It fails on an unapproved `major` in a changeset's frontmatter.
+2. **Release-time cap (`scripts/cap-changeset-bumps.ts`)**: if an unapproved `: major` reaches `main` anyway, the release workflow rewrites it to `: minor` before versioning.
+3. **Post-version cap (`scripts/cap-version-bumps.ts`)**: it caps a peer-dependency cascade to 1.0.0 back to the next 0.x minor. An unapproved cascade into a 1.0.0 prerelease fails the version step.
 
-**Breaking changes are still allowed** in 0.x — write the changeset as `minor` and call out the breaking change explicitly in the prose. Consumers who track minor bumps get the right signal from the changelog.
-
-When Pyreon goes 1.0, **remove BOTH the CI guard and the release-time cap in a single deliberate PR**. That removal IS the explicit signal "we're going 1.0 now" — it's intentionally a manual step so it can't happen by accident.
+The 1.0 cut sets the switch to `'1.0.0'` in one deliberate PR, together with `bun changeset pre enter rc` and the one `major` changeset. The exact steps (enter, release candidates, exit) are in `.agents/guides/ci/README.md`, "Release candidates and the 1.0 cut".
 
 ### From 1.0: Stable and Experimental tiers
 
@@ -153,9 +152,9 @@ The semver promise after 1.0 covers **Stable** packages only. Every published pa
 `.github/workflows/release.yml` runs on every push to `main`:
 
 1. (No pre-validation — CI on the merge commit gates this; the release job is lean.)
-2. **Cap any `: major` → `: minor`** in changesets via `scripts/cap-changeset-bumps.ts` (see 0.x policy above).
+2. **Cap any unapproved `: major` → `: minor`** in changesets via `scripts/cap-changeset-bumps.ts` (see the version policy above).
 3. If unreleased changesets exist → opens / updates a "Version Packages" PR collecting them.
-4. When that PR is merged → `scripts/publish.ts` publishes each package to npm with provenance, emits `New tag: <name>@<version>` lines per success so `changesets/action` populates `outputs.published='true'`.
+4. When that PR is merged → `scripts/publish.ts` publishes each package to npm with provenance, on `latest` (or on the pre-mode dist-tag, such as `rc`, for a release candidate), emits `New tag: <name>@<version>` lines per success so `changesets/action` populates `outputs.published='true'`.
 5. The umbrella GitHub Release step (gated on `outputs.published`) creates the `v<version>` git tag + GitHub Release, which triggers `release-native.yml` to cross-compile + publish the Rust compiler binaries for all 7 platform triples.
 
 ### Native binary publishing (OIDC trusted publishing)

@@ -189,10 +189,16 @@ export function changelogVersions(changelog: string): string[] {
  * it. The lockfile can only name a published version, and the release PR
  * bumps the workspace before anything is published, so "current" alone would
  * turn every release PR red.
+ *
+ * Stable releases only: during a release-candidate series (`1.0.0-rc.N`) the
+ * independent benchmark keeps naming the last stable release, which is what
+ * `npm i` serves, rather than walking the rc chain.
  */
 export function acceptablePins(workspaceVersion: string, changelog: string): string[] {
-  const previous = changelogVersions(changelog).find((v) => v !== workspaceVersion)
-  return previous === undefined ? [workspaceVersion] : [workspaceVersion, previous]
+  const stable = (v: string): boolean => !v.includes('-')
+  const current = stable(workspaceVersion) ? [workspaceVersion] : []
+  const previous = changelogVersions(changelog).find((v) => v !== workspaceVersion && stable(v))
+  return previous === undefined ? current : [...current, previous]
 }
 
 export function checkPinFreshness(pkg: EntryPackageJson, workspaceVersion: string, changelog: string): string[] {

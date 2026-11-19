@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Gate: a `@pyreon/zero` changeset that bumps `minor` — which is how Pyreon
- * spells a BREAKING change while it is 0.x — must say how users get across
- * it. One line in the changeset body:
+ * Gate: a `@pyreon/zero` changeset at the BREAKING level — `minor` while the
+ * fixed group is 0.x, `major` from 1.0.0 on (`breakingBump`) — must say how
+ * users get across it. One line in the changeset body:
  *
  *   Upgrade: none                          — not breaking (a feature or fix)
  *   Upgrade: codemod <id>                  — `pyreon upgrade` migrates it;
@@ -26,6 +26,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { CODEMODS } from '../packages/tools/cli/src/codemods'
+import { readFixedGroupVersion } from './major-release'
 
 /** Packages whose `minor` bumps need an `Upgrade:` declaration. */
 export const GATED_PACKAGES = new Set(['@pyreon/zero'])
@@ -44,13 +45,23 @@ export function changesetBumps(text: string): Record<string, string> {
   return out
 }
 
+/** The bump that spells a breaking change at `version`: `minor` in 0.x, `major` from 1.0.0 (and its release candidates) on. */
+export function breakingBump(version: string): 'minor' | 'major' {
+  return version.startsWith('0.') ? 'minor' : 'major'
+}
+
 /**
  * Problems with one changeset. `codemods` maps a registry id to the package
- * it migrates.
+ * it migrates; `breaking` is the bump level that means "breaking" now.
  */
-export function changesetProblems(file: string, text: string, codemods: Map<string, string>): string[] {
+export function changesetProblems(
+  file: string,
+  text: string,
+  codemods: Map<string, string>,
+  breaking: 'minor' | 'major' = 'minor',
+): string[] {
   const bumps = changesetBumps(text)
-  const gated = Object.entries(bumps).filter(([pkg, bump]) => GATED_PACKAGES.has(pkg) && bump === 'minor')
+  const gated = Object.entries(bumps).filter(([pkg, bump]) => GATED_PACKAGES.has(pkg) && bump === breaking)
   if (gated.length === 0) return []
   const body = text.replace(/^---[\s\S]*?\n---/, '')
   const lines = body.split(/\r?\n/).filter((l) => /^\s*Upgrade\s*:/i.test(l))
@@ -58,7 +69,7 @@ export function changesetProblems(file: string, text: string, codemods: Map<stri
   const how =
     'Add one line: `Upgrade: none` (not breaking), `Upgrade: codemod <id>` (a codemod in ' +
     'packages/tools/cli/src/codemods), or `Upgrade: manual — <what users must change>`.'
-  if (lines.length === 0) return [`${file}: minor bump of ${pkgs} has no "Upgrade:" line. ${how}`]
+  if (lines.length === 0) return [`${file}: ${breaking} bump of ${pkgs} has no "Upgrade:" line. ${how}`]
   if (lines.length > 1) return [`${file}: more than one "Upgrade:" line — keep exactly one.`]
   const value = (lines[0] as string).replace(/^\s*Upgrade\s*:\s*/i, '').trim()
   if (/^none$/i.test(value)) return []
@@ -110,7 +121,8 @@ function main(): void {
     return
   }
   const codemods = new Map(CODEMODS.map((c) => [c.id, c.package as string]))
-  const problems = files.flatMap((f) => changesetProblems(f, readFileSync(join(root(), f), 'utf-8'), codemods))
+  const breaking = breakingBump(readFixedGroupVersion(root()))
+  const problems = files.flatMap((f) => changesetProblems(f, readFileSync(join(root(), f), 'utf-8'), codemods, breaking))
   if (problems.length > 0) {
     console.error('[check-breaking-changeset-codemod] a breaking zero changeset must say how users upgrade:')
     for (const p of problems) console.error(`  ✗ ${p}`)

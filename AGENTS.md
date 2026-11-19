@@ -143,7 +143,7 @@ Before adding any module-level cache, stack or registry, answer: what evicts ent
 - **Fix the class, not the instance.** Before fixing, reproduce. Ask whether the shape you reproduced is the whole class of failing inputs; fix at the layer where the class collapses to one rule. Fix bugs you find along the way, or open the follow-up PR immediately.
 - **Report honestly.** Lead a summary with what is not done and what was not verified. A measured tie or loss is reported as a tie or loss.
 - **Keep knowledge current in the same PR.** A new anti-pattern goes into `.agents/rules/anti-patterns.md`; a new convention into the matching rule file; an API change into the manifest, README and docs. Put durable contracts in these files, not per-PR narrative — history belongs in git and changelogs.
-- **Changesets**: any source change in a published package needs `bun changeset`. Pyreon is 0.x, so a breaking change is `minor`, never `major`.
+- **Changesets**: any source change in a published package needs `bun changeset`. While the fixed group is on 0.x, a breaking change is `minor`. From 1.0.0 on, it is `major`. Either way, a `major` changeset is rejected unless the maintainer has approved that exact major in `scripts/major-release.ts` (`APPROVED_MAJOR`). Never set the switch yourself. The 1.0 cut and release candidates follow the runbook in `.agents/guides/ci/README.md` ("Release candidates and the 1.0 cut").
 - **Local pushes are capped; CI is the full gate.** Do not widen the pre-push hook back to the reverse-dependency closure or the workspace, and do not remove its time cap. If the hook stops running something, a required CI job must run it; never keep a check local because CI lacks it (details: `.agents/rules/workflow.md`, "Pre-push hook").
 
 ### Git

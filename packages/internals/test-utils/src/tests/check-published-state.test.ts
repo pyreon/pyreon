@@ -58,9 +58,11 @@ describe('check-published-state — cmpSemver (dead-release direction)', () => {
     expect(cmpSemver('0.38.1', '0.38.0')).toBeGreaterThan(0)
     expect(cmpSemver('1.0.0', '0.38.0')).toBeGreaterThan(0)
   })
-  it('repo == npm → 0 (healthy); prerelease suffix ignored', () => {
+  it('repo == npm → 0 (healthy); a prerelease sorts BEFORE its release', () => {
     expect(cmpSemver('0.38.0', '0.38.0')).toBe(0)
-    expect(cmpSemver('0.38.0-alpha-20260101', '0.38.0')).toBe(0)
+    // Ignoring the suffix made `1.0.0-rc.1` equal `1.0.0-rc.0`: an rc that never
+    // reached npm passed the gate. Full precedence: see release-candidate-mode.test.ts.
+    expect(cmpSemver('0.38.0-alpha-20260101', '0.38.0')).toBeLessThan(0)
   })
   it('repo behind npm → negative (never flagged as dead)', () => {
     expect(cmpSemver('0.37.1', '0.38.0')).toBeLessThan(0)
@@ -75,7 +77,8 @@ describe('check-published-state — repoVersion resolves the native binary path'
     // path-resolution regressed, this throws "cannot locate … in the workspace".
     const core = repoVersion('@pyreon/core', REPO_ROOT)
     const nativeBin = repoVersion('@pyreon/compiler-darwin-arm64', REPO_ROOT)
-    expect(nativeBin).toMatch(/^\d+\.\d+\.\d+$/)
+    // Also a pre-mode version (`1.0.0-rc.0`) during a release-candidate series.
+    expect(nativeBin).toMatch(/^\d+\.\d+\.\d+(-rc\.\d+)?$/)
     expect(nativeBin).toBe(core)
   })
 })
