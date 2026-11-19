@@ -57,6 +57,7 @@ let registered: Promise<ServiceWorkerRegistration | null> | null = null
 // a newer update and never grown — nothing to evict.
 // Created on first browser use (never on the server: no module state to race).
 let pendingSignal: Signal<(() => void) | null> | null = null
+
 function pendingActivate(): Signal<(() => void) | null> {
   pendingSignal ??= signal<(() => void) | null>(null)
   return pendingSignal
@@ -68,6 +69,7 @@ export function registerServiceWorker(
   if (process.env.NODE_ENV !== 'production') return Promise.resolve(null)
   if (isServer || !('serviceWorker' in navigator)) return Promise.resolve(null)
   registered ??= doRegister(options)
+
   return registered
 }
 
@@ -103,6 +105,7 @@ async function doRegister(options: RegisterServiceWorkerOptions): Promise<Servic
       if (installing.state === 'installed' && container.controller) offer(installing)
     })
   })
+
   return registration
 }
 
@@ -164,6 +167,7 @@ export async function unregisterServiceWorkers(cacheName = 'pyreon'): Promise<nu
   }
   registered = null
   pendingSignal?.set(null)
+
   return registrations.length
 }
 
@@ -193,12 +197,15 @@ interface InstallState {
   installable: Signal<boolean>
   installed: Signal<boolean>
 }
+
 // Created on first browser use (never on the server: no module state to race).
 let installState: InstallState | null = null
+
 function install(): InstallState {
   installState ??= { installable: signal(false), installed: signal(false) }
   return installState
 }
+
 let deferredPrompt: BeforeInstallPromptEvent | null = null
 // Refcount of mounted `useInstallPrompt()` owners: ONE set of window listeners
 // regardless of how many components call the hook (leak class D).
@@ -281,6 +288,7 @@ export function useInstallPrompt(): InstallPrompt {
   if (scope) scope.add(owner)
   else onCleanup(owner.dispose)
   const { installable, installed } = install()
+
   return {
     canInstall: () => installable(),
     isInstalled: () => installed(),
@@ -292,6 +300,7 @@ export function useInstallPrompt(): InstallPrompt {
       installable.set(false)
       await event.prompt()
       const { outcome } = await event.userChoice
+
       return outcome
     },
   }

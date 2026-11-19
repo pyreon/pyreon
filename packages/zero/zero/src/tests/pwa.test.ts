@@ -20,6 +20,7 @@ function bootWorker(opts: {
     const key = (r: string | { url: string }) =>
       new URL(typeof r === 'string' ? r : r.url, 'https://a.test').pathname +
       new URL(typeof r === 'string' ? r : r.url, 'https://a.test').search
+
     return {
       // Models the real Cache API: a stored response with `Vary: Origin` does
       // not match a request carrying an `Origin` header unless ignoreVary is set.
@@ -27,6 +28,7 @@ function bootWorker(opts: {
         if (!m.has(key(r))) return undefined
         const hasOrigin = typeof r !== 'string' && r.headers?.has('origin')
         if (hasOrigin && varyOrigin && !o?.ignoreVary) return undefined
+
         return { body: m.get(key(r))!, ok: true }
       },
       addAll: async (urls: string[]) => urls.forEach((u) => m.set(u, `pre:${u}`)),
@@ -95,8 +97,10 @@ function bootWorker(opts: {
     listeners.get(type)!(ev)
     const response = await pending
     await Promise.all(lifetime)
+
     return response
   }
+
   return { dispatch, calls, stores }
 }
 
@@ -421,6 +425,7 @@ describe('useInstallPrompt', () => {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     }))
+
     return win
   }
   function offer(win: EventTarget, outcome: 'accepted' | 'dismissed') {
