@@ -7564,21 +7564,22 @@ public func symlogTicks(_ real: Domain, _ view: Domain, _ r0: Double, _ r1: Doub
     var out: [Tick] = []
     let reach = max(abs(real.min), abs(real.max))
     let decades = Double(reach) >= 1.0 ? floor(Double(log10(Double(reach)))) : 0.0
-    let push = { (v: Double) in
+    var cands: [Double] = []
+    var down = decades
+    while down >= 0.0 {
+      cands.append(-pow(Double(10.0), Double(down)))
+      down = down - 1.0
+    }
+    cands.append(0.0)
+    var up = 0.0
+    while up <= decades {
+      cands.append(pow(Double(10.0), Double(up)))
+      up = up + 1.0
+    }
+    for v in cands {
       if v >= real.min - 1e-9 * Double(reach) && v <= real.max + 1e-9 * Double(reach) {
         out.append(Tick(value: v, pos: scaleLinear(view, r0, r1, viewForward("symlog", v, 1.0)), label: fmt(v)))
       }
-    }
-    var down = decades
-    while down >= 0.0 {
-      push(-pow(Double(10.0), Double(down)))
-      down = down - 1.0
-    }
-    push(0.0)
-    var up = 0.0
-    while up <= decades {
-      push(pow(Double(10.0), Double(up)))
-      up = up + 1.0
     }
     return out
   }

@@ -4904,21 +4904,22 @@ fun symlogTicks(real: Domain, view: Domain, r0: Double, r1: Double, fmt: (Double
     val out: MutableList<Tick> = mutableListOf()
     val reach = Math.max(Math.abs(real.min), Math.abs(real.max))
     val decades = if (reach >= 1.0) Math.floor(Math.log10((reach).toDouble())) else 0.0
-    val push = { v: Double ->
+    val cands: MutableList<Double> = mutableListOf()
+    var down = decades
+    while (down >= 0.0) {
+      cands.add(-Math.pow((10.0).toDouble(), (down).toDouble()))
+      down = down - 1.0
+    }
+    cands.add(0.0)
+    var up = 0.0
+    while (up <= decades) {
+      cands.add(Math.pow((10.0).toDouble(), (up).toDouble()))
+      up = up + 1.0
+    }
+    for (v in cands) {
       if (v >= real.min - 1e-9 * reach && v <= real.max + 1e-9 * reach) {
         out.add(Tick(value = v, pos = scaleLinear(view, r0, r1, viewForward("symlog", v, 1.0)), label = fmt(v)))
       }
-    }
-    var down = decades
-    while (down >= 0.0) {
-      push(-Math.pow((10.0).toDouble(), (down).toDouble()))
-      down = down - 1.0
-    }
-    push(0.0)
-    var up = 0.0
-    while (up <= decades) {
-      push(Math.pow((10.0).toDouble(), (up).toDouble()))
-      up = up + 1.0
     }
     return out
   }

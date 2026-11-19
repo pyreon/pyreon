@@ -42,19 +42,21 @@ function symlogTicks(real: Domain, view: Domain, r0: Double, r1: Double, fmt: Fo
   const out: Tick[] = []
   const reach = Math.max(Math.abs(real.min), Math.abs(real.max))
   const decades = reach >= 1.0 ? Math.floor(Math.log10(reach)) : 0.0
-  const push = (v: Double): void => {
-    if (v >= real.min - 1e-9 * reach && v <= real.max + 1e-9 * reach) out.push({ value: v, pos: scaleLinear(view, r0, r1, viewForward('symlog', v, 1.0)), label: fmt(v) })
-  }
+  // Candidates in ascending order; no closure over `out` or `fmt` (an escaping closure may not capture a non-escaping parameter on Swift).
+  const cands: Double[] = []
   let down = decades
   while (down >= 0.0) {
-    push(-Math.pow(10.0, down))
+    cands.push(-Math.pow(10.0, down))
     down = down - 1.0
   }
-  push(0.0)
+  cands.push(0.0)
   let up = 0.0
   while (up <= decades) {
-    push(Math.pow(10.0, up))
+    cands.push(Math.pow(10.0, up))
     up = up + 1.0
+  }
+  for (const v of cands) {
+    if (v >= real.min - 1e-9 * reach && v <= real.max + 1e-9 * reach) out.push({ value: v, pos: scaleLinear(view, r0, r1, viewForward('symlog', v, 1.0)), label: fmt(v) })
   }
 
   return out
