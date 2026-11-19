@@ -180,8 +180,10 @@ function childSrc(n: Node): string {
 // reached from the root through element children: every generated element
 // qualifies). Inside one, every non-sole, non-literal child is a `<!>`
 // placeholder, and a FIXED one is bracketed in one range on the server
-// (#4385 D). A conditional's branch elements and `.map` items are sliced into
-// the client bind as raw source, so they never are.
+// (#4385 D). A conditional's branch elements and `.map` items under such an
+// element are template holes the client PRESERVES and walks, so each is a
+// template root of its own (`clientWalksHole`); under an h() element they are
+// sliced as raw source and never are.
 function elOracle(
   el: ElNode,
   ctx: FuzzCtx,
@@ -308,7 +310,10 @@ function childOracle(
     }
     case 'map': {
       const arr = ctx.arrs[n.ref]!
-      // recursed .map is wrapped (markers); items are plain value children.
+      // recursed .map is wrapped (markers). Under a templated element the
+      // callback is walked, so each item is a template root with recursed
+      // children; under an h() element it is a slice whose children are values.
+      if (inTpl) return () => arr.map((item) => elOracle(n.item, ctx, 'recursed', item, true))
       return () => arr.map((item) => elOracle(n.item, ctx, 'mapitem', item))
     }
     case 'cond': {
@@ -327,10 +332,11 @@ function childOracle(
       // (markers baked on the `should_wrap` branch, `_escSole` on the sole
       // one). So wrap unconditionally; `sigCond` only chose the src condition.
       const cval: string = n.sigCond ? ctx.sigs[n.cref]!() : ctx.data[n.cref]!
+      // A branch under a templated element is walked: a template root itself.
       const branch = (): VNode | string | null => {
-        const a = elOracle(n.a, ctx, 'recursed', it)
+        const a = elOracle(n.a, ctx, 'recursed', it, inTpl)
         if (n.shape === 'and') return cval && a
-        const b = n.shape === 'ternNull' ? null : elOracle(n.b!, ctx, 'recursed', it)
+        const b = n.shape === 'ternNull' ? null : elOracle(n.b!, ctx, 'recursed', it, inTpl)
 
         return cval ? a : b
       }

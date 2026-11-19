@@ -46,6 +46,8 @@ export const CheckboxIndicator = el
     checked: {
       backgroundColor: t.color.system.primary.base,
       borderColor: t.color.system.primary.base,
+      // A glyph the consumer puts in the box sits on the fill.
+      color: t.color.system.primary.contrast,
     },
   }))
   .sizes(() => ({

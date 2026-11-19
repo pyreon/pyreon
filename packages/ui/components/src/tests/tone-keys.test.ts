@@ -2,7 +2,7 @@ import type { ThemeModeCallback } from '@pyreon/rocketstyle'
 import { theme } from '@pyreon/ui-theme'
 import { describe, expect, it } from 'vitest'
 import { toneKeys, toneVariant } from '../bases/fragments'
-import { fieldKeys, fieldStatus, fieldSurface, fieldVariant, neutralToneKeys, tones, toneText } from '../bases/tones'
+import { fieldKeys, fieldStatus, fieldSurface, fieldVariant, neutralToneKeys, tones } from '../bases/tones'
 
 /**
  * The tone keys a state sets and the variants that read them back (#4425).
@@ -68,13 +68,6 @@ describe('neutralToneKeys', () => {
   it('the outline is the mode-aware border, not a fixed light-mode token', () => {
     expect(neutralToneKeys(theme, modeFor('light')).toneFill).toBe(sys.dark[500])
     expect(neutralToneKeys(theme, modeFor('dark')).toneFill).toBe(sys.light[400])
-  })
-})
-
-describe('toneText', () => {
-  it("is the tone's text shade in light mode and the matching light shade in dark mode", () => {
-    expect(toneText(theme, modeFor('light'), 'error')).toBe(sys.error.text)
-    expect(toneText(theme, modeFor('dark'), 'error')).toBe('#fca5a5')
   })
 })
 

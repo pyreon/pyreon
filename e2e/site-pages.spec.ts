@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { waitForNav } from './site-islands'
+import { changedIslandClasses, trackIslandClasses, waitForNav } from './site-islands'
 import { SITE_WIDTHS } from './site-audit'
 
 /**
@@ -116,6 +116,7 @@ test.describe('hydration', () => {
   for (const route of PAGE_TYPES) {
     test(`${route}: every island adopts its server HTML, with no errors`, async ({ page }) => {
       await trackRemovals(page)
+      await trackIslandClasses(page)
       const errors = collectErrors(page)
       await page.goto(route)
       await waitForNav(page)
@@ -123,6 +124,8 @@ test.describe('hydration', () => {
       await page.waitForTimeout(600)
       expect(errors).toEqual([])
       expect(await page.evaluate(() => (window as unknown as { __removedWhat: string[] }).__removedWhat)).toEqual([])
+      // Adopted elements keep the classes the server sent (#4434).
+      expect(await changedIslandClasses(page)).toEqual([])
     })
   }
 })
