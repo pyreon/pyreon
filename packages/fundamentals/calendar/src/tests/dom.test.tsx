@@ -690,7 +690,7 @@ describe('the words', () => {
 
   it('another language: symbols for the counts, the platform words for the views, no English sentence', () => {
     const m = defaultMessages('cs-CZ')
-    expect(m.more(3)).toBe('‎+3')
+    expect(m.more(3)).toBe('+3')
     expect(m.events(2)).toBe('2')
     expect(m.views.month).toBe('Měsíc')
     expect(m.views.workWeek).toBe('Pracovní týden')

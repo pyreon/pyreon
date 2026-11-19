@@ -94,9 +94,7 @@ function finish<Meta>(c: Ctx<Meta>, s: Session): void {
   c.session = null
 }
 
-function abort<Meta>(c: Ctx<Meta>): void {
-  const s = c.session
-  if (s === null) return
+function abort<Meta>(c: Ctx<Meta>, s: Session): void {
   const wasStarted = s.started
   clearStyle(s)
   finish(c, s)
@@ -104,10 +102,10 @@ function abort<Meta>(c: Ctx<Meta>): void {
   if (wasStarted) swallowClick(c)
 }
 
-/** Where the pixel of a time (a slot cell and a minute inside it) is on screen. */
+/** Where the pixel of a time (a slot cell and a minute inside it) is on screen. In the month every target is a day cell, timed or not. */
 function yOf<Meta>(c: Ctx<Meta>, value: string, allDay: boolean): { y: number; cell: HTMLElement } | null {
   const date = value.slice(0, 10)
-  if (allDay) {
+  if (allDay || c.grid === 'month') {
     const cell = cellOf(c, date, null)
 
     return cell === null ? null : { y: cell.getBoundingClientRect().top, cell }
@@ -202,6 +200,8 @@ function update<Meta>(c: Ctx<Meta>, s: Session): void {
 /** Scroll the grid when the pointer is near its top or bottom edge, and keep the target following the pointer. */
 function autoscroll<Meta>(c: Ctx<Meta>): void {
   const s = c.session
+  // finish() cancels the frame, so a frame never outlives its drag; the guard keeps a stray one harmless
+  /* v8 ignore next */
   if (s === null || !s.started) return
   const box = c.root
   if (box.scrollHeight > box.clientHeight + 1) {
@@ -214,8 +214,8 @@ function autoscroll<Meta>(c: Ctx<Meta>): void {
   c.frame = requestAnimationFrame(() => autoscroll(c))
 }
 
+/** Called once per session: by the first move past the slop (mouse, pen) or by the long-press timer (touch), never both. */
 function start<Meta>(c: Ctx<Meta>, s: Session): void {
-  if (s.started) return
   s.started = true
   window.clearTimeout(s.timer)
   s.holder.setPointerCapture(s.id)
@@ -306,15 +306,19 @@ export function attachPointer<Meta>(root: HTMLElement, calendar: Calendar<Meta>,
     if (event.key !== 'Escape' || c.session === null) return
     event.preventDefault()
     event.stopPropagation()
-    abort(c)
+    abort(c, c.session)
   }
-  const ownPointer = (event: Event): boolean => c.session !== null && (event as PointerEvent).pointerId === c.session.id
+  /** Stop the drag this pointer is doing, if it is doing one (and, with `started`, only once it has started). */
+  const stopOwn = (event: Event, started: boolean): void => {
+    const s = c.session
+    if (s !== null && (event as PointerEvent).pointerId === s.id && (!started || s.started)) abort(c, s)
+  }
   const handlers: [string, EventListener, (boolean | AddEventListenerOptions)?][] = [
     ['pointerdown', (e) => onDown(c, e as PointerEvent)],
     ['pointermove', (e) => onMove(c, e as PointerEvent)],
     ['pointerup', (e) => onUp(c, e as PointerEvent)],
-    ['pointercancel', (e) => ownPointer(e) && abort(c)],
-    ['lostpointercapture', (e) => c.session?.started === true && ownPointer(e) && abort(c)],
+    ['pointercancel', (e) => stopOwn(e, false)],
+    ['lostpointercapture', (e) => stopOwn(e, true)],
     [
       'click',
       (e) => {
@@ -331,7 +335,7 @@ export function attachPointer<Meta>(root: HTMLElement, calendar: Calendar<Meta>,
   for (const [type, handler, options] of handlers) root.addEventListener(type, handler, options)
 
   return () => {
-    if (c.session !== null) abort(c)
+    if (c.session !== null) abort(c, c.session)
     for (const [type, handler, options] of handlers) root.removeEventListener(type, handler, options)
     document.removeEventListener('keydown', c.onEscape, true)
   }

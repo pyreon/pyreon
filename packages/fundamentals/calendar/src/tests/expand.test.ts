@@ -112,3 +112,19 @@ describe('colliding ids', () => {
     expect(expandOccurrences([a, b], week, 'UTC').map((o) => o.key)).toEqual(['same:2026-11-18T09:00', 'same:2026-11-18T09:00~2'])
   })
 })
+
+describe('an override that only renames an occurrence', () => {
+  it('keeps the occurrence at its time with the new title, timed and all-day', () => {
+    const daily: CalendarEvent = { id: 'd', title: 'D', start: '2026-11-16T09:00', end: '2026-11-16T10:00', recurrence: { every: 'day', start: '2026-11-16T09:00', count: 3 }, overrides: { '2026-11-17T09:00': { title: 'Renamed' } } }
+    expect(expandOccurrences([daily], week, 'UTC').map((o) => [o.key, o.title, o.start, o.end])).toEqual([
+      ['d:2026-11-16T09:00', 'D', '2026-11-16T09:00', '2026-11-16T10:00'],
+      ['d:2026-11-17T09:00', 'Renamed', '2026-11-17T09:00', '2026-11-17T10:00'],
+      ['d:2026-11-18T09:00', 'D', '2026-11-18T09:00', '2026-11-18T10:00'],
+    ])
+    const days: CalendarEvent = { id: 'w', title: 'W', start: '2026-11-16', end: '2026-11-17', recurrence: { every: 'day', start: '2026-11-16', count: 2 }, overrides: { '2026-11-17': { title: 'Second' } } }
+    expect(expandOccurrences([days], week, 'UTC').map((o) => [o.title, o.start])).toEqual([
+      ['W', '2026-11-16'],
+      ['Second', '2026-11-17'],
+    ])
+  })
+})

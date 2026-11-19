@@ -6,7 +6,7 @@ import type { CalendarOptions, Selection } from './calendar-types'
 import { createEditState, overlaid } from './editing'
 import type { EditState } from './editing'
 import { expandOccurrences } from './expand'
-import { defaultMessages, hasAllDay } from './messages'
+import { defaultMessages, hasAllDay, language } from './messages'
 import type { CalendarMessages } from './messages'
 import { daySpan } from './lanes'
 import type { EventOccurrence, PlainDate, TimeZone, Weekday } from './types'
@@ -61,7 +61,7 @@ function bucket<Meta>(list: readonly EventOccurrence<Meta>[], dates: readonly Pl
 /** Say once, in development only, that "all day" has no built-in text for a language and `messages.allDay` should be set. */
 function warnAllDay(locale: string, warned: Set<string>): void {
   if (process.env.NODE_ENV !== 'production') {
-    const lang = locale.split(/[-_]/)[0] ?? locale
+    const lang = language(locale)
     if (hasAllDay(locale) || warned.has(lang)) return
     warned.add(lang)
     console.warn(`[Pyreon] @pyreon/calendar: there is no built-in "all day" text for "${lang}", so the English one is used. Pass messages: { allDay: '...' } (and allDayRow) to createCalendar.`)

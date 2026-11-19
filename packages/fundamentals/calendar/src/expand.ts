@@ -31,8 +31,14 @@ function overrideFor(key: string, value: EventOverrideValue, allDayEvent: boolea
   return out
 }
 
+/**
+ * The overrides `expandEvents` has to know about: cancellations and moves. An override that only renames an occurrence is left
+ * out, because `expandEvents` drops an instance whose override has neither a start nor an end; `place` reads its title.
+ */
 function overridesOf(event: CalendarEvent, allDayEvent: boolean, wallZone: TimeZone): EventOverride<Wall>[] {
-  return Object.entries(event.overrides ?? {}).map(([key, value]) => overrideFor(key, value, allDayEvent, wallZone))
+  return Object.entries(event.overrides ?? {})
+    .filter(([, value]) => 'cancelled' in value || value.start !== undefined || value.end !== undefined)
+    .map(([key, value]) => overrideFor(key, value, allDayEvent, wallZone))
 }
 
 interface Placed {

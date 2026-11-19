@@ -71,7 +71,8 @@ export const wordsOf = (locale: string): Words => WORDS[language(locale)] ?? ENG
 /** Is the language in the built-in table? (The platform has no word for "all day" and the like; any other language needs `messages`.) */
 export const hasAllDay = (locale: string): boolean => language(locale) in WORDS
 
-const language = (locale: string): string => locale.replace(/[-_].*$/s, '').toLowerCase()
+/** The language of a locale tag, lower case ("pt-BR" is "pt"). */
+export const language = (locale: string): string => locale.replace(/[-_].*$/s, '').toLowerCase()
 
 /** Upper-case the first grapheme where the script has case (`toLocaleUpperCase` leaves Arabic, Japanese and the like alone). */
 export function capitalise(text: string, locale: string): string {
