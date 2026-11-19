@@ -2,8 +2,12 @@
 /**
  * Regenerates `src/world-110m.ts` and `src/us-states.ts` from their sources (see SOURCES.md).
  *
- *   bun scripts/build-data.ts            # download (cached in a temp dir), verify checksums, convert, write
+ *   bun scripts/build-data.ts            # download (into memory), verify checksums, convert, write
  *   bun scripts/build-data.ts --offline <dir>   # read the already-downloaded source files from <dir>
+ *
+ * A source is checked against its recorded SHA-256 before anything reads it, and a download is never written to disk:
+ * the Census zip is unpacked in memory (`unzip` below), so no unverified byte is cached and no file is checked and then
+ * written.
  *
  * Nothing here runs at install or build time of a consumer; the generated files are committed. The conversion is
  * deterministic: the same source bytes give the same output bytes.
@@ -18,11 +22,10 @@
  *   6. write a TypeScript module that default-exports a `MapModule`.
  */
 import { createHash } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { inflateRawSync } from 'node:zlib'
 // @ts-expect-error no types shipped
 import { read as readShapefile } from 'shapefile'
 // @ts-expect-error no types shipped
@@ -58,15 +61,14 @@ const QUANTISE = { world: 1e4, us: 1e5 } as const
 
 const sha256 = (buf: Buffer): string => createHash('sha256').update(buf).digest('hex')
 
-async function fetchSource(s: Source, dir: string): Promise<Buffer> {
-  const path = join(dir, s.file)
+/** The source's bytes, from `offlineDir` when given, else downloaded into memory; refused unless the checksum matches. */
+async function loadSource(s: Source, offlineDir: string | undefined): Promise<Buffer> {
   let buf: Buffer
-  if (existsSync(path)) buf = readFileSync(path)
+  if (offlineDir !== undefined) buf = readFileSync(join(offlineDir, s.file))
   else {
     const res = await fetch(s.url)
     if (!res.ok) throw new Error(`[Pyreon] fetch ${s.url}: ${res.status}`)
     buf = Buffer.from(await res.arrayBuffer())
-    writeFileSync(path, buf)
   }
   const got = sha256(buf)
   if (got !== s.sha256) throw new Error(`[Pyreon] ${s.file}: sha256 ${got} is not the recorded ${s.sha256}. The upstream file changed: review it, then update SOURCES.md and this script.`)
@@ -86,25 +88,52 @@ function worldFeatures(buf: Buffer): Feature[] {
   })
 }
 
+/**
+ * The files of a zip archive, in memory: the end-of-central-directory record, then each central-directory entry and its
+ * local header. Stored (0) and deflated (8) entries only, no zip64: enough for the Census cartographic-boundary zip,
+ * and anything else throws rather than guessing.
+ */
+function unzip(zip: Buffer): Map<string, Buffer> {
+  let eocd = zip.length - 22
+  while (eocd >= 0 && zip.readUInt32LE(eocd) !== 0x06054b50) eocd--
+  if (eocd < 0) throw new Error('[Pyreon] not a zip archive: no end-of-central-directory record')
+  const count = zip.readUInt16LE(eocd + 10)
+  let at = zip.readUInt32LE(eocd + 16)
+  const files = new Map<string, Buffer>()
+  for (let i = 0; i < count; i++) {
+    if (zip.readUInt32LE(at) !== 0x02014b50) throw new Error(`[Pyreon] zip: bad central-directory entry at ${at}`)
+    const method = zip.readUInt16LE(at + 10)
+    const size = zip.readUInt32LE(at + 20)
+    const nameLen = zip.readUInt16LE(at + 28)
+    const local = zip.readUInt32LE(at + 42)
+    const name = zip.toString('utf8', at + 46, at + 46 + nameLen)
+    at += 46 + nameLen + zip.readUInt16LE(at + 30) + zip.readUInt16LE(at + 32)
+    if (zip.readUInt32LE(local) !== 0x04034b50) throw new Error(`[Pyreon] zip: bad local header for ${name}`)
+    const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28)
+    const raw = zip.subarray(start, start + size)
+    if (method === 0) files.set(name, raw)
+    else if (method === 8) files.set(name, inflateRawSync(raw))
+    else throw new Error(`[Pyreon] zip: ${name} uses compression method ${method}; only stored and deflate are read`)
+  }
+  return files
+}
+
+/** An exact-size ArrayBuffer copy (a Node Buffer may be a view into a larger pool). */
+const arrayBuffer = (b: Buffer): ArrayBuffer => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+
 async function usFeatures(buf: Buffer): Promise<Feature[]> {
-  const dir = mkdtempSync(join(tmpdir(), 'charts-maps-us-'))
-  const zip = join(dir, 'in.zip')
-  writeFileSync(zip, buf)
-  execFileSync('unzip', ['-o', '-q', zip, '-d', dir])
-  const shp = readdirShp(dir)
-  const fc = (await readShapefile(shp, shp.replace(/\.shp$/, '.dbf'))) as { features: { properties: Record<string, unknown>; geometry: unknown }[] }
+  const files = unzip(buf)
+  const shpName = [...files.keys()].find((n) => n.endsWith('.shp'))
+  if (shpName === undefined) throw new Error(`[Pyreon] no .shp in the zip (${[...files.keys()].join(', ')})`)
+  const dbf = files.get(shpName.replace(/\.shp$/, '.dbf'))
+  if (dbf === undefined) throw new Error(`[Pyreon] no .dbf next to ${shpName} in the zip`)
+  const fc = (await readShapefile(arrayBuffer(files.get(shpName)!), arrayBuffer(dbf))) as { features: { properties: Record<string, unknown>; geometry: unknown }[] }
 
   // Puerto Rico (FIPS 72) is left out: the Albers USA composite has no inset for it, so it would be projected far off the
   // map and shrink everything else to make room.
   return fc.features
     .filter((f) => String(f.properties.STATEFP) !== '72')
     .map((f) => ({ type: 'Feature', id: String(f.properties.STATEFP), properties: { name: f.properties.NAME, abbr: f.properties.STUSPS, fips: String(f.properties.STATEFP) }, geometry: f.geometry }))
-}
-
-function readdirShp(dir: string): string {
-  const out = execFileSync('ls', [dir]).toString().split('\n').find((n) => n.endsWith('.shp'))
-  if (out === undefined) throw new Error(`[Pyreon] no .shp in ${dir}`)
-  return join(dir, out)
 }
 
 interface ModuleSpec { topo: unknown; object: string; projection: string; nameProperty: string; idProperty: string; header: string }
@@ -117,14 +146,14 @@ function moduleSource(m: ModuleSpec): string {
 
 async function main(): Promise<void> {
   const offline = process.argv.indexOf('--offline')
-  const dir = offline >= 0 ? process.argv[offline + 1]! : mkdtempSync(join(tmpdir(), 'charts-maps-src-'))
-  mkdirSync(dir, { recursive: true })
+  const dir = offline >= 0 ? process.argv[offline + 1] : undefined
+  if (offline >= 0 && dir === undefined) throw new Error('[Pyreon] --offline needs the directory holding the downloaded sources')
 
-  const world = await fetchSource(SOURCES.world!, dir)
+  const world = await loadSource(SOURCES.world!, dir)
   const wTopo = topology({ countries: { type: 'FeatureCollection', features: worldFeatures(world) } }, QUANTISE.world)
   writeFileSync(join(OUT, 'world-110m.ts'), moduleSource({ topo: wTopo, object: 'countries', projection: 'equalEarth', nameProperty: 'name', idProperty: 'id', header: `Natural Earth 1:110m countries, public domain. ${SOURCES.world!.id}.` }))
 
-  const us = await fetchSource(SOURCES.us!, dir)
+  const us = await loadSource(SOURCES.us!, dir)
   const uTopo = topology({ states: { type: 'FeatureCollection', features: await usFeatures(us) } }, QUANTISE.us)
   writeFileSync(join(OUT, 'us-states.ts'), moduleSource({ topo: uTopo, object: 'states', projection: 'albersUsa', nameProperty: 'name', idProperty: 'id', header: `US Census cartographic boundary states 1:20m, public domain. ${SOURCES.us!.id}.` }))
   console.log('wrote src/world-110m.ts and src/us-states.ts')

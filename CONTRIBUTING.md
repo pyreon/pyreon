@@ -142,7 +142,11 @@ Two layers enforce this:
 
 **Breaking changes are still allowed** in 0.x — write the changeset as `minor` and call out the breaking change explicitly in the prose. Consumers who track minor bumps get the right signal from the changelog.
 
-When Pyreon goes 1.0 someday, **remove BOTH the CI guard and the release-time cap in a single deliberate PR**. That removal IS the explicit signal "we're going 1.0 now" — it's intentionally a manual step so it can't happen by accident.
+When Pyreon goes 1.0, **remove BOTH the CI guard and the release-time cap in a single deliberate PR**. That removal IS the explicit signal "we're going 1.0 now" — it's intentionally a manual step so it can't happen by accident.
+
+### From 1.0: Stable and Experimental tiers
+
+The semver promise after 1.0 covers **Stable** packages only. Every published package declares its tier in `package.json` (`"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`); Experimental packages, and the experimental subpaths of Stable packages, may break in a minor release. A breaking change to a Stable package is a major release. Compiler-emitted runtime helpers (`_rp`, `_tpl`, …) are an additive-only ABI within 1.x; every other `_` export is internal. `scripts/check-stability-tier.ts` (in `validate-fast`) gates the tier field, README status lines, dependency direction, `@pyreon/meta` and `@deprecated` tags. The full policy, including deprecations, is [Stability, Versioning & Direction](https://pyreon.dev/docs/stability-and-direction).
 
 ### Release workflow
 

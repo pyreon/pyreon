@@ -296,7 +296,7 @@
   },
   {
    "q": "Is it ready for my production app?",
-   "a": "The web side is pre-1.0, with the same stability rules as the rest of the framework. The native targets are experimental, and the multiplatform guide says so in its status line. The device-test matrix there is the source of truth for what is proven."
+   "a": "`@pyreon/primitives` is an Experimental package, so its API can still change in a minor release. The native targets are experimental too, and the multiplatform guide says so in its status line. The device-test matrix there is the source of truth for what is proven."
   }
  ],
  "sources": [

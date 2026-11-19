@@ -144,3 +144,20 @@ describe('registerMap with TopoJSON and defaults', () => {
     expect(layoutGeo(def, { x: 0, y: 0, w: 200, h: 100 }, { projection: 'equirectangular' }).transform.projection).toBe('equirectangular')
   })
 })
+
+describe('topoToGeo: an object name is an own key of the file', () => {
+  it('"__proto__", "constructor" and "toString" name no object, so they throw the same error as a missing name', () => {
+    const { topo } = encode([{ col: 0, row: 0 }], false)
+
+    for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+      expect(() => topoToGeo(topo, name), name).toThrow(/the topology has no object/)
+    }
+  })
+
+  it('a real object is still found by name, and the first object by default', () => {
+    const { topo } = encode([{ col: 0, row: 0 }], false)
+
+    expect(topoToGeo(topo, 'cells').features).toHaveLength(1)
+    expect(topoToGeo(topo).features).toHaveLength(1)
+  })
+})

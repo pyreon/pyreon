@@ -1,5 +1,7 @@
 # @pyreon/charts-maps
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Boundary data for [`@pyreon/charts`](../charts) maps: the countries of the world and the US states, as TopoJSON, one
 module per map so an app bundles only the map it imports.
 

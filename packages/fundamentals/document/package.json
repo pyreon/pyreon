@@ -75,5 +75,8 @@
     "pptxgenjs": {
       "optional": true
     }
+  },
+  "pyreon": {
+    "stability": "stable"
   }
 }

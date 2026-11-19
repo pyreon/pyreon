@@ -1,5 +1,7 @@
 # @pyreon/rich-text
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./webview`, `./native-plugin`.
+
 Reactive WYSIWYG rich-text editor for Pyreon — a thin, signal-backed layer over
 [TipTap](https://tiptap.dev) (the MIT, framework-agnostic headless editor
 framework built on [ProseMirror](https://prosemirror.net)). Same adapter shape

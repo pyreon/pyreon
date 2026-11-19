@@ -114,5 +114,8 @@
     "@pyreon/validation": {
       "optional": true
     }
+  },
+  "pyreon": {
+    "stability": "stable"
   }
 }

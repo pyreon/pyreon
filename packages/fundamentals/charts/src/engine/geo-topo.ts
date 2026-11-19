@@ -81,7 +81,8 @@ function featureOf(g: TopoGeometry, arcs: number[][][]): GeoFeature {
  */
 export function topoToGeo(topo: Topology, object?: string): GeoJson {
   const name = object ?? Object.keys(topo.objects)[0]
-  const root = name === undefined ? undefined : topo.objects[name]
+  // Own keys only: an object named `__proto__` or `constructor` is not a geometry of the file (it is the prototype's).
+  const root = name === undefined || !Object.hasOwn(topo.objects, name) ? undefined : topo.objects[name]
   if (root === undefined) throw new Error(`[Pyreon] topoToGeo: the topology has no object ${object === undefined ? '(it has none at all)' : `"${object}"`}; its objects are ${Object.keys(topo.objects).join(', ') || '(none)'}.`)
   const arcs = decodeArcs(topo)
   const geometries = root.type === 'GeometryCollection' ? root.geometries ?? [] : [root]

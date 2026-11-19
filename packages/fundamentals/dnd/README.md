@@ -1,5 +1,7 @@
 # @pyreon/dnd
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Signal-driven drag and drop over `@atlaskit/pragmatic-drag-and-drop`.
 
 A small Pyreon-native wrapper over Atlassian's `pragmatic-drag-and-drop` (the same library Trello / Jira ship with). pdnd handles the native-event lifecycle, hit-testing, and edge detection; `@pyreon/dnd` adapts every state field into a Pyreon signal (`isDragging` / `isOver` / `activeId` / `overEdge` / `dragData`) so consumers compose with `effect` / `computed` / JSX without re-bridging. Five hooks cover the common surfaces — single draggable, single drop target, sortable list with edge detection + auto-scroll + keyboard reordering, native-file drop with MIME / count filtering, and a global drag monitor for overlays / analytics.
