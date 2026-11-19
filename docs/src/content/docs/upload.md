@@ -7,7 +7,7 @@ description: File selection, validation, preview and upload with progress as sig
 
 `@pyreon/upload` is the part of a file upload that is the same in every app: choosing files, checking them, uploading them with real progress, retrying what a retry can fix, and cleaning up after itself. The state is signals (status, progress, speed, time left, error, preview) so a progress bar or a file list is a few lines of JSX. It has no UI: you bring the markup.
 
-> **Experimental.** This page covers the core, the queue, the XHR transport, the picker and the drop zone. Resumable transports (chunked, S3, tus) and headless components come in follow-up releases.
+> **Experimental.** This page covers the core, the queue, the transports (XHR, chunked, S3, tus), resume state, the picker and the drop zone. Headless components come in a follow-up release.
 
 ## Installation
 
@@ -36,6 +36,9 @@ yarn add @pyreon/upload @pyreon/reactivity
 | `@pyreon/upload/core` | nothing | Validation, `sniffType`, chunk planning, progress math, the error taxonomy. Pure functions. |
 | `@pyreon/upload` | `@pyreon/reactivity` | The core, plus `createUploader` / `useUploader`, `useFilePicker` and `useFileDrop`. |
 | `@pyreon/upload/transport-xhr` | nothing | `xhrTransport`: one request per file with real upload progress. |
+| `@pyreon/upload/transport-chunked` | nothing | `chunkedTransport`: resumable parts with a small server contract. |
+| `@pyreon/upload/transport-s3` | nothing | `s3Transport`: presigned single and multipart uploads, no SDK. |
+| `@pyreon/upload/transport-tus` | nothing | `tusTransport`: the tus 1.0 protocol. |
 
 ## What exists already, and how this fits
 
@@ -228,6 +231,181 @@ const transport = xhrTransport({ client: api, url: '/photos' })
 typeof transport.upload // => 'function'
 ```
 
+## Resumable uploads
+
+A big file over a flaky connection should not start over. The three resumable transports send the file in parts with `Blob.slice` (never reading it whole), report real progress for each part, and save a small resume state after every part (`saveResumeState`). A retry, a pause and a page reload (with the state persisted) continue from the parts the server already has. Each transport is its own entry, so only the one you use is bundled; they do not import each other.
+
+### The chunked contract and a reference handler
+
+`chunkedTransport({ url, chunkSize, parallel, checksum })` speaks a small contract (`BASE` is `url`):
+
+| Request | Body | Answer |
+| --- | --- | --- |
+| `POST BASE` | JSON `{ name, size, type, chunkSize, meta }` | `{ uploadId }` (200 or 201); may add `chunkSize` |
+| `GET BASE/:uploadId` | | `{ received: number[] }`: the parts it has (used to resume; the server's list wins over the saved state) |
+| `PUT BASE/:uploadId/parts/:n` | the raw bytes of part `n` (from 0); with `checksum: 'sha-256'` the header `x-part-sha256` is the part's hex digest | 2xx; putting a part twice is harmless |
+| `POST BASE/:uploadId/complete` | `{ parts }` | the result (JSON), which becomes `file.result()`; 409 `{ missing }` if parts are missing |
+| `DELETE BASE/:uploadId` | | 204; sent when the file is cancelled or removed |
+
+Retries are the queue's: 408, 429 and 5xx are retried, other 4xx (a 422 for a bad checksum, say) are not. This is a complete handler for it, written against the standard `Request` and `Response` so it runs in any server or edge runtime and as a `@pyreon/zero` server route with no other code. It keeps parts in memory to stay short: store them on disk or in object storage in a real server, and check size, type and content on `complete`. The package's tests run exactly this file as the server of the Chromium tests (a test checks that the code on this page is that file).
+
+```ts
+// The reference handler of the chunked contract, as shown in the docs (the docs test checks this file is the code on the page).
+// It keeps parts in memory to stay short: store them on disk or in object storage in a real server.
+
+interface Upload {
+  name: string
+  size: number
+  chunkSize: number
+  parts: Map<number, Uint8Array>
+}
+
+const uploads = new Map<string, Upload>()
+const json = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+/** Handle `POST /`, `GET /:id`, `PUT /:id/parts/:n`, `POST /:id/complete` and `DELETE /:id` under `base`. */
+export async function chunkedHandler(request: Request, base = '/api/uploads'): Promise<Response> {
+  const path = new URL(request.url).pathname.slice(base.length).split('/').filter(Boolean)
+  const [id, kind, n] = path
+  const upload = id === undefined ? undefined : uploads.get(id)
+
+  if (id === undefined && request.method === 'POST') {
+    const info = (await request.json()) as { name: string; size: number; chunkSize: number }
+    const uploadId = crypto.randomUUID()
+
+    uploads.set(uploadId, { name: info.name, size: info.size, chunkSize: info.chunkSize, parts: new Map() })
+
+    return json({ uploadId }, 201)
+  }
+  if (upload === undefined) return json({ error: 'unknown upload' }, 404)
+  if (request.method === 'GET' && kind === undefined) return json({ received: [...upload.parts.keys()] })
+  if (request.method === 'DELETE' && kind === undefined) {
+    uploads.delete(id!)
+
+    return new Response(null, { status: 204 })
+  }
+  if (request.method === 'PUT' && kind === 'parts') {
+    const bytes = new Uint8Array(await request.arrayBuffer())
+    const expected = request.headers.get('x-part-sha256')
+
+    if (expected !== null) {
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+
+      if ([...digest].map((b) => b.toString(16).padStart(2, '0')).join('') !== expected) return json({ error: 'checksum mismatch' }, 422)
+    }
+    upload.parts.set(Number(n), bytes)
+
+    return new Response(null, { status: 204 })
+  }
+  if (request.method === 'POST' && kind === 'complete') {
+    const count = Math.max(1, Math.ceil(upload.size / upload.chunkSize))
+    const missing = Array.from({ length: count }, (_, i) => i).filter((i) => !upload.parts.has(i))
+
+    if (missing.length > 0) return json({ missing }, 409)
+    const size = [...upload.parts.values()].reduce((sum, p) => sum + p.length, 0)
+
+    if (size !== upload.size) return json({ error: 'size mismatch', size }, 422)
+    uploads.delete(id!)
+
+    return json({ name: upload.name, size })
+  }
+
+  return json({ error: 'not found' }, 404)
+}
+
+/** For the tests: how many uploads are still open. */
+export const openUploads = (): number => uploads.size
+```
+
+In a `@pyreon/zero` server route, forward the request: `export const POST = (request: Request) => chunkedHandler(request)`, and likewise for `GET`, `PUT` and `DELETE`.
+
+```ts
+// @check
+import { chunkedTransport } from '@pyreon/upload/transport-chunked'
+
+const transport = chunkedTransport({ url: '/api/uploads', chunkSize: 5 * 1024 * 1024, parallel: 3, checksum: 'sha-256' })
+
+typeof transport.upload // => 'function'
+```
+
+### Direct to S3 with presigned URLs
+
+`s3Transport` needs no AWS SDK in the browser. You give it functions that call your server; your server signs. A file up to `partSize` (8 MiB by default, at least 5 MiB, never more than 10,000 parts) is one presigned `PUT`; a bigger one is a multipart upload.
+
+```ts
+// @check
+import { s3Transport } from '@pyreon/upload/transport-s3'
+
+const post = async (path: string, body?: unknown): Promise<any> => (await fetch(`/api/s3${path}`, { method: 'POST', ...(body === undefined ? {} : { body: JSON.stringify(body) }) })).json()
+
+const transport = s3Transport({
+  presign: (file) => post(`/sign?key=${encodeURIComponent(file.name)}`),
+  multipart: {
+    create: (file) => post(`/create?key=${encodeURIComponent(file.name)}`),
+    signPart: (_file, part) => post(`/sign-part?uploadId=${part.uploadId}&partNumber=${part.partNumber}`),
+    complete: (_file, upload) => post(`/complete?uploadId=${upload.uploadId}`, { parts: upload.parts }),
+    abort: async (_file, upload) => void (await fetch(`/api/s3/abort?uploadId=${upload.uploadId}`, { method: 'DELETE' })),
+    list: async (_file, upload) => (await fetch(`/api/s3/list?uploadId=${upload.uploadId}`)).json(),
+  },
+})
+
+typeof transport.upload // => 'function'
+```
+
+On the server (the AWS SDK v3, shown for orientation; the package's tests run a server that mimics this contract, not AWS itself):
+
+```ts
+import { CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand, ListPartsCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+
+const s3 = new S3Client({})
+
+// POST /sign?key=...  and  POST /sign-part?uploadId=...&partNumber=...
+await getSignedUrl(s3, new PutObjectCommand({ Bucket, Key: key }), { expiresIn: 300 })
+await getSignedUrl(s3, new UploadPartCommand({ Bucket, Key: key, UploadId: uploadId, PartNumber: partNumber }), { expiresIn: 300 })
+// POST /create, /complete and DELETE /abort call CreateMultipartUpload, CompleteMultipartUpload (Parts: [{ PartNumber, ETag }]) and AbortMultipartUpload.
+```
+
+Things that must be true: the key is chosen by your server (never by the client's file name), each URL is one key and one method with a short expiry, and the bucket's CORS rule lists `ETag` in `ExposeHeaders` (the transport reads each part's ETag and says so if it is missing). Cancelling a file calls `abort`; `list` lets a resumed upload ask S3 which parts exist.
+
+### tus
+
+`tusTransport({ endpoint })` implements the tus 1.0 protocol with the creation and termination extensions, so any tus server (tusd, the Node and Go servers, Cloudflare Stream, Vimeo) works: `POST` creates the upload with its length and metadata, `PATCH` sends each part at the right offset, `HEAD` asks where the server is when resuming, `DELETE` terminates a cancelled upload. A saved URL that the server has forgotten (404 or 410) or that has another length starts a new upload.
+
+```ts
+// @check
+import { tusTransport } from '@pyreon/upload/transport-tus'
+
+const transport = tusTransport({ endpoint: 'https://tus.example.com/files', chunkSize: 5 * 1024 * 1024, metadata: (file) => ({ filename: file.name, filetype: file.type }) })
+
+typeof transport.upload // => 'function'
+```
+
+### Continuing after a page reload
+
+Pass a resume store to the queue. It saves the transport's state by file fingerprint (name, size, type, last modified), loads it when the same file is added again, and clears it when the upload finishes, fails for good, or is cancelled or removed. Entries expire after seven days by default. The store takes anything with `getItem`, `setItem` and `removeItem`: `localStorage`, or an `@pyreon/storage` adapter.
+
+```ts
+// @check
+import { createResumeStore, createUploader } from '@pyreon/upload'
+import { tusTransport } from '@pyreon/upload/transport-tus'
+
+const memory = new Map<string, string>()
+const store = createResumeStore({ getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => void memory.set(k, v), removeItem: (k) => void memory.delete(k) })
+const video = new File([new Uint8Array(10)], 'holiday.mp4', { type: 'video/mp4', lastModified: 1 })
+
+store.save({ name: video.name, size: video.size, type: video.type, file: video }, { url: 'https://tus.example.com/files/abc' })
+store.load({ name: video.name, size: video.size, type: video.type, file: video }) // => { url: 'https://tus.example.com/files/abc' }
+
+const uploader = createUploader({ transport: tusTransport({ endpoint: 'https://tus.example.com/files' }), resume: store, autoStart: false })
+const [added] = uploader.add([video])
+
+added.status() // => 'queued'
+uploader.dispose()
+```
+
+A resumable video upload that survives a reload is therefore: `createUploader({ transport: tusTransport(...) or chunkedTransport(...), resume: createResumeStore(localStorage) })`, the same `add` call after the reload (the browser asks the user to choose the file again, and the fingerprint finds the saved state), and nothing else. The real-Chromium tests of the package do exactly this against the in-test servers: they upload part of a file, dispose the queue, create a new one with the same store, and check that the finished parts are not sent again.
+
 ## The file picker
 
 `useFilePicker({ multiple, accept, directory, capture, onPick, onCancel })` is the state of a picker. `open()` opens the system dialog (call it from a click or key handler); spread `inputProps` on an `<input>` you render, or render none and `open()` makes a detached one. The input is emptied after each pick, after the files are copied out, so choosing the same file twice works (a browser does not fire `change` when the same path is chosen again, unless the value was cleared). A cancelled dialog is reported through `onCancel`.
@@ -277,4 +455,5 @@ new Intl.NumberFormat('en', { style: 'percent' }).format(0.42) // => '42%'
 | FilePond `FilePond.create()` | `createUploader()` plus your own markup; the state is signals |
 | react-dropzone `useDropzone({ accept, maxFiles, onDrop })` | `useFileDrop({ accept, multiple, onDrop })`; `isDragActive` is `isOver()`, `isDragReject` is `isValid() === false` |
 | react-dropzone `fileRejections` | `onReject` and `file.rejections()` with `code`, `message` and `params` |
-| tus-js-client, `Upload` | a tus transport arrives with the resumable transports |
+| tus-js-client `new tus.Upload(file, { endpoint, chunkSize, metadata, retryDelays })` | `tusTransport({ endpoint, chunkSize, metadata })`; retries are the queue's `retry` option; `upload.start()` is `uploader.add`, `abort` is `pause`, `terminate` is `cancel` |
+| Uppy AwsS3 plugin (`getUploadParameters`, `createMultipartUpload`, `signPart`, `completeMultipartUpload`) | `s3Transport({ presign, multipart: { create, signPart, complete, abort, list } })`: the same five questions, as plain functions |

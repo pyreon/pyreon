@@ -146,7 +146,7 @@ export function stopRun(it: Item, why: string): void {
   const controller = it.controller
 
   it.controller = null
-  if (controller !== null && !controller.signal.aborted) controller.abort(uploadError('aborted', `The upload was stopped (${why}).`))
+  if (controller !== null && !controller.signal.aborted) controller.abort(uploadError('aborted', `The upload was stopped (${why}).`, { cause: why }))
 }
 
 function call(fn: () => void): void {
@@ -212,6 +212,7 @@ export function pump(q: Q): void {
 
 function finish(q: Q, it: Item, outcome: { result: unknown } | { error: UploadError }): void {
   it.controller = null
+  if ('result' in outcome || !outcome.error.retryable) call(() => q.o.resume?.clear(it.view))
   batch(() => {
     if ('result' in outcome) {
       it.high = it.size
@@ -269,6 +270,7 @@ function run(q: Q, it: Item): void {
     saveResumeState: (state: unknown) => {
       if (token !== it.token) return
       it.resumeState = state
+      call(() => q.o.resume?.save(it.view, state))
       call(() => q.o.onResumeState?.(it.view, state))
     },
   }
@@ -373,6 +375,13 @@ function reject(q: Q, it: Item, rejections: readonly FileRejection[]): void {
 function accept(q: Q, it: Item): void {
   if (q.disposed || q.items.get(it.view.id) !== it) return
   makePreview(q, it)
+  if (q.o.resume !== undefined && it.resumeState === undefined) {
+    try {
+      it.resumeState = q.o.resume.load(it.view)
+    } catch {
+      it.resumeState = undefined
+    }
+  }
   setStatus(it, 'queued')
   q.quiet = false
   pump(q)
@@ -411,6 +420,7 @@ export function removeItem(q: Q, id: string): void {
 
   if (it === undefined) return
   stopRun(it, 'remove')
+  call(() => q.o.resume?.clear(it.view))
   revoke(it)
   q.items.delete(id)
   publish(q)
@@ -455,6 +465,7 @@ export function cancelItems(q: Q, id?: string): void {
     for (const it of select(q, id)) {
       if (!ACTIVE.includes(it.status)) continue
       stopRun(it, 'cancel')
+      call(() => q.o.resume?.clear(it.view))
       it.paused = null
       setStatus(it, 'cancelled')
     }

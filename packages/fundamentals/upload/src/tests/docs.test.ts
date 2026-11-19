@@ -3,6 +3,9 @@ import { join } from 'node:path'
 import ts from 'typescript'
 import * as http from '@pyreon/http'
 import * as core from '../core'
+import * as chunked from '../transport-chunked'
+import * as s3 from '../transport-s3'
+import * as tus from '../transport-tus'
 import * as xhr from '../transport-xhr'
 import * as upload from '../index'
 
@@ -17,6 +20,9 @@ const MODULES: Record<string, unknown> = {
   '@pyreon/upload': upload,
   '@pyreon/upload/core': core,
   '@pyreon/upload/transport-xhr': xhr,
+  '@pyreon/upload/transport-chunked': chunked,
+  '@pyreon/upload/transport-s3': s3,
+  '@pyreon/upload/transport-tus': tus,
   '@pyreon/http': http,
 }
 
@@ -81,6 +87,15 @@ describe('the docs page runs', () => {
 
     new Function('__mods', '__check', js)(MODULES, check)
     if (/ \/\/ => /.test(b.code)) expect(checked).toBeGreaterThan(0)
+  })
+
+  it('the reference handler on the page is the file the Chromium tests run as their server', () => {
+    const file = readFileSync(join(import.meta.dirname, 'reference-chunked.ts'), 'utf8').trimEnd()
+    const first = file.split('\n')[0]!
+    const blocks = [...readFileSync(PAGE, 'utf8').matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!.trimEnd()).filter((b) => b.startsWith(first))
+
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]).toBe(file)
   })
 
   it('every runnable block imports what it uses: a block with no imports of its own sees no names', () => {

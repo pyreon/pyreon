@@ -227,6 +227,30 @@ export const SCENARIOS: Scenario[] = [
     imports: ['useFilePicker', 'useFileDrop'],
   },
   {
+    // The chunked transport is its own entry: it pulls the shared XHR part helper and chunk planning, no queue and no other transport.
+    id: '@pyreon/upload::chunked-transport',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'transport-chunked.js',
+    imports: ['chunkedTransport'],
+  },
+  {
+    // The S3 transport: presigned single and multipart, no SDK, no other transport.
+    id: '@pyreon/upload::s3-transport',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'transport-s3.js',
+    imports: ['s3Transport'],
+  },
+  {
+    // The tus transport: the tus 1.0 protocol, no other transport.
+    id: '@pyreon/upload::tus-transport',
+    pkg: '@pyreon/upload',
+    dir: 'fundamentals/upload',
+    entry: 'transport-tus.js',
+    imports: ['tusTransport'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.

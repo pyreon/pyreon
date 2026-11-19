@@ -5,7 +5,7 @@ description: "File selection, validation, preview and upload with progress as si
 
 > **Generated** from `upload`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [upload](/docs/upload).
 
-A reactive upload queue. `createUploader({ transport })` validates files (size, type, image dimensions, magic-number sniffing, your own rule), uploads them with a concurrency limit, retries only failures a retry can fix (network, 408, 429 with Retry-After honoured, 5xx; never a 4xx), pauses, resumes, cancels and reports progress, speed and time left as signals that never go backwards and are written once per animation frame. `xhrTransport` sends with XMLHttpRequest because fetch has no upload progress; pass an `@pyreon/http` client and its base URL, headers and middleware apply. `useFilePicker` and `useFileDrop` are the state of a picker and a drop zone: enter and leave are counted across children, files are judged while dragging, folders are read, paste is an option, and picking the same file twice works. `@pyreon/upload/core` has the pure parts (validation, `sniffType`, chunk planning, progress math, the error taxonomy) with no dependencies. Dispose aborts in-flight requests and removes timers, listeners and object URLs; creating anything on the server is inert. Client validation is UX: the server must check type, size and content.
+A reactive upload queue. `createUploader({ transport })` validates files (size, type, image dimensions, magic-number sniffing, your own rule), uploads them with a concurrency limit, retries only failures a retry can fix (network, 408, 429 with Retry-After honoured, 5xx; never a 4xx), pauses, resumes, cancels and reports progress, speed and time left as signals that never go backwards and are written once per animation frame. `xhrTransport` sends with XMLHttpRequest because fetch has no upload progress; pass an `@pyreon/http` client and its base URL, headers and middleware apply. `chunkedTransport`, `s3Transport` (presigned single and multipart, no SDK) and `tusTransport` (tus 1.0) resume after a failure, a pause or a page reload (`createResumeStore` persists the state). `useFilePicker` and `useFileDrop` are the state of a picker and a drop zone: enter and leave are counted across children, files are judged while dragging, folders are read, paste is an option, and picking the same file twice works. `@pyreon/upload/core` has the pure parts (validation, `sniffType`, chunk planning, progress math, the error taxonomy) with no dependencies. Dispose aborts in-flight requests and removes timers, listeners and object URLs; creating anything on the server is inert. Client validation is UX: the server must check type, size and content.
 
 ## Multiplatform
 
@@ -75,6 +75,11 @@ uploader.status()   // => 'idle'
 | [`defaultBackoff`](#defaultbackoff-function-experimental) | function | The delay before the next try: 500 ms doubling to a minute, with jitter between half and all of it. |
 | [`collectDropped`](#collectdropped-function-experimental) | function | The files of a drop, with folders read and flattened when the browser supports `webkitGetAsEntry`. |
 | [`collectPasted`](#collectpasted-function-experimental) | function | The files on the clipboard (a pasted image); text is not touched. |
+| [`chunkedTransport`](#chunkedtransport-function-experimental) | function | A generic resumable upload in parts with a small server contract: `POST BASE` (JSON… |
+| [`s3Transport`](#s3transport-function-experimental) | function | Upload straight to S3 (or R2, MinIO, anything with presigned URLs) with no SDK. |
+| [`tusTransport`](#tustransport-function-experimental) | function | The tus 1.0 resumable upload protocol with the creation and termination extensions: `POST` to create (with… |
+| [`createResumeStore`](#createresumestore-function-experimental) | function | Persist resume state in `localStorage` (or an `@pyreon/storage` adapter) so an upload continues after a page reload:… |
+| [`fingerprint`](#fingerprint-function-experimental) | function | What identifies a file across page loads: name, size, type and last-modified time. |
 | [`UploadFile`](#uploadfile-type-experimental) | type | One item of a queue: plain data and functions that read signals. |
 | [`Uploader`](#uploader-type-experimental) | type | The queue returned by `createUploader`. |
 | [`Transport`](#transport-type-experimental) | type | Sends one file. |
@@ -621,6 +626,92 @@ The files on the clipboard (a pasted image); text is not touched.
 
 ```tsx
 collectPasted(null)   // => []
+```
+
+---
+
+### `chunkedTransport` `function` — **experimental**
+
+```ts
+(options: { url, chunkSize?, parallel?, checksum?, headers?, withCredentials?, timeout? }) => Transport
+```
+
+A generic resumable upload in parts with a small server contract: `POST BASE` (JSON `{ name, size, type, chunkSize, meta }`, answers `{ uploadId }`), `GET BASE/:id` (`{ received: number[] }`), `PUT BASE/:id/parts/:n` (raw bytes, optional `x-part-sha256`), `POST BASE/:id/complete` (answers the result), `DELETE BASE/:id`. The file is sliced with `Blob.slice`, `parallel` parts at a time (default 3), each with real progress; after every part the state is saved so a retry, a pause or a reload continues from the parts the server has (its list of parts wins over the saved state). A reference handler for the contract is on the docs page.
+
+**Example**
+
+```tsx
+typeof chunkedTransport({ url: '/api/uploads' }).upload   // => 'function'
+```
+
+**See also:** `createResumeStore` · `s3Transport` · `tusTransport`
+
+---
+
+### `s3Transport` `function` — **experimental**
+
+```ts
+(options: { presign, multipart?, partSize?, parallel?, withCredentials? }) => Transport
+```
+
+Upload straight to S3 (or R2, MinIO, anything with presigned URLs) with no SDK. A file up to `partSize` is one presigned `PUT`; a bigger one is multipart if you give `multipart: { create, signPart, complete, abort?, list? }`: your server creates the upload and signs each part, the browser sends the parts with progress and collects the ETags, your server completes it. The part size is at least 5 MiB and never needs more than 10,000 parts. Resumable: the upload id and the parts with their ETags are saved after each part, and `list` (your `ListParts`) confirms which exist. Cancelling calls `abort`. The bucket CORS rule must expose the `ETag` header.
+
+**Example**
+
+```tsx
+typeof s3Transport({ presign: async () => ({ url: 'https://bucket.invalid/key' }) }).upload   // => 'function'
+```
+
+**Common mistakes**
+
+- Presigned URLs that are not scoped: one key, one method, a short expiry, a content-length range for single uploads
+
+---
+
+### `tusTransport` `function` — **experimental**
+
+```ts
+(options: { endpoint, chunkSize?, metadata?, headers?, withCredentials?, timeout? }) => Transport
+```
+
+The tus 1.0 resumable upload protocol with the creation and termination extensions: `POST` to create (with `Upload-Length` and `Upload-Metadata`), `PATCH` at the right `Upload-Offset`, `HEAD` to ask the offset on a resume, `DELETE` when the file is cancelled or removed. The upload URL is saved after creation, so a retry, a pause or a reload continues where the server is; a 404 or 410 for a saved URL, or a different length, starts a new upload. Retries are the queue's, not the transport's.
+
+**Example**
+
+```tsx
+typeof tusTransport({ endpoint: '/files' }).upload   // => 'function'
+```
+
+---
+
+### `createResumeStore` `function` — **experimental**
+
+```ts
+(storage: { getItem, setItem, removeItem }, options?: { prefix?, maxAge?, now? }) => ResumeStore
+```
+
+Persist resume state in `localStorage` (or an `@pyreon/storage` adapter) so an upload continues after a page reload: pass the store as `createUploader({ resume })`. The state is saved by file fingerprint, loaded when a file is added, and cleared when the upload finishes, fails for good, or is cancelled or removed. Entries expire after `maxAge` (default 7 days); a corrupt entry is removed; a storage that throws makes saving a no-op.
+
+**Example**
+
+```tsx
+createResumeStore({ getItem: () => null, setItem: () => {}, removeItem: () => {} }).load({ name: 'a', size: 1, type: '', file: new Blob(['a']) })   // => undefined
+```
+
+---
+
+### `fingerprint` `function` — **experimental**
+
+```ts
+(file) => string
+```
+
+What identifies a file across page loads: name, size, type and last-modified time.
+
+**Example**
+
+```tsx
+fingerprint({ name: 'a.mp4', size: 10, type: 'video/mp4', file: new File([], 'a.mp4', { lastModified: 5 }) })   // => 'a.mp4|10|video/mp4|5'
 ```
 
 ---

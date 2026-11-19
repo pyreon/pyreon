@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
+import { mountResumableServers } from './servers'
 
 /**
  * A local HTTP server for the real-Chromium tests, mounted on the test runner's own dev server (same origin, so no CORS).
@@ -7,6 +8,7 @@ import type { Plugin } from 'vite'
  *   POST /sink?chunk=<bytes>&every=<ms>   read the body slowly (so upload progress is observable) and answer { received }
  *   POST /status?code=N&retryAfter=...    answer N with a JSON body (and a Retry-After header)
  *   POST /flaky?key=K&fail=N              answer 503 the first N times for key K, then 200
+ *   PUT  /noetag                          answer 200 with no ETag header
  *   POST /hang                            read the body and never answer
  *   POST /echo                            answer the request headers and the body size
  *   GET  /active                          how many requests are open right now
@@ -49,6 +51,7 @@ export function uploadTestServer(): Plugin {
   return {
     name: 'pyreon-upload-test-server',
     configureServer(server) {
+      mountResumableServers(server)
       server.middlewares.use('/__u', (req, res, next) => {
         const url = new URL(req.url ?? '/', 'http://x')
         const q = url.searchParams
@@ -60,6 +63,11 @@ export function uploadTestServer(): Plugin {
           state.counts.clear()
 
           return json(res, 200, { ok: true })
+        }
+        if (url.pathname === '/noetag') {
+          req.resume()
+
+          return void req.on('end', () => json(res, 200, { ok: true }))
         }
         if (req.method !== 'POST') return next()
         state.active++

@@ -1,6 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
+import * as chunked from '../transport-chunked'
+import * as s3 from '../transport-s3'
+import * as tus from '../transport-tus'
 import * as xhr from '../transport-xhr'
 import * as upload from '../index'
 import manifest from '../manifest'
@@ -39,7 +42,7 @@ function lines(example: string): { code: string; expected: string }[] {
   return out
 }
 
-const scope: Record<string, unknown> = { ...upload, ...xhr }
+const scope: Record<string, unknown> = { ...upload, ...xhr, ...chunked, ...s3, ...tus }
 const scopeOf = (_name: string): Record<string, unknown> => scope
 
 describe('examples run and print what they claim', () => {
@@ -60,7 +63,7 @@ describe('examples run and print what they claim', () => {
     for (const l of long) run(scope, l.code, l.expected)
   })
 
-  const files = ['uploader.ts', 'picker.ts', 'drop.ts', 'transport-xhr.ts', 'validate.ts', 'sniff.ts', 'accept.ts', 'size.ts', 'chunks.ts', 'progress.ts', 'errors.ts', 'collect.ts']
+  const files = ['uploader.ts', 'picker.ts', 'drop.ts', 'transport-xhr.ts', 'validate.ts', 'sniff.ts', 'accept.ts', 'size.ts', 'chunks.ts', 'progress.ts', 'errors.ts', 'collect.ts', 'resume.ts', 'transport-chunked.ts', 'transport-s3.ts', 'transport-tus.ts']
   const fromSource = files.flatMap((file) =>
     readFileSync(join(SRC, file), 'utf8')
       .split('\n')
@@ -141,7 +144,11 @@ describe('the published shape', () => {
       return [...seen]
     }
 
-    for (const e of ['core', 'transport-xhr']) for (const bad of ['uploader', 'queue', 'picker', 'drop', 'index']) expect(reach(e), e).not.toContain(bad)
+    for (const e of ['core', 'transport-xhr', 'transport-chunked', 'transport-s3', 'transport-tus']) for (const bad of ['uploader', 'queue', 'picker', 'drop', 'index']) expect(reach(e), e).not.toContain(bad)
+    // A transport never pulls another transport.
+    const transports = ['transport-xhr', 'transport-chunked', 'transport-s3', 'transport-tus']
+
+    for (const e of transports) for (const other of transports.filter((t) => t !== e)) expect(reach(e), `${e} reaches ${other}`).not.toContain(other)
   })
 
   it('importing the package runs nothing and touches no browser global', async () => {
@@ -180,6 +187,7 @@ describe('the published shape', () => {
 
     expect(all('core.js')).toEqual([])
     expect(all('transport-xhr.js')).toEqual([])
+    for (const t of ['transport-chunked.js', 'transport-s3.js', 'transport-tus.js']) expect(all(t), t).toEqual([])
     expect(all('index.js')).toEqual(['@pyreon/reactivity'])
   })
 })

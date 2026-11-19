@@ -3,6 +3,7 @@
 import { computed, getCurrentScope } from '@pyreon/reactivity'
 import { sumProgress } from './progress'
 import { admit, cancelItems, countAccepted, createQ, disposeQ, goOffline, goOnline, makeItem, metaOf, pauseItems, publish, removeItem, resumeItems, retryItems, startItems } from './queue'
+import type { ResumeStore } from './resume'
 import type { FileRejection, FileRule, Progress, Transport, UploadError } from './types'
 
 export type FileStatus = 'queued' | 'validating' | 'rejected' | 'uploading' | 'paused' | 'done' | 'failed' | 'cancelled'
@@ -55,8 +56,10 @@ export interface UploaderOptions {
   onError?(file: UploadFile, error: UploadError): void
   onReject?(file: UploadFile, rejections: readonly FileRejection[]): void
   onAllDone?(files: readonly UploadFile[]): void
-  /** Called when a transport saves resume state, so an app can persist it (for example with `@pyreon/storage`). */
+  /** Called when a transport saves resume state. */
   onResumeState?(file: UploadFile, state: unknown): void
+  /** Persist resume state (see `createResumeStore`) so an upload can continue after a page reload: it is loaded when a file is added and cleared when the upload finishes, is cancelled or removed. */
+  resume?: ResumeStore
   /** Clock in ms, for tests. */
   now?: () => number
 }

@@ -32,6 +32,21 @@
       "bun": "./src/transport-xhr.ts",
       "import": "./lib/transport-xhr.js",
       "types": "./lib/types/transport-xhr.d.ts"
+    },
+    "./transport-chunked": {
+      "bun": "./src/transport-chunked.ts",
+      "import": "./lib/transport-chunked.js",
+      "types": "./lib/types/transport-chunked.d.ts"
+    },
+    "./transport-s3": {
+      "bun": "./src/transport-s3.ts",
+      "import": "./lib/transport-s3.js",
+      "types": "./lib/types/transport-s3.d.ts"
+    },
+    "./transport-tus": {
+      "bun": "./src/transport-tus.ts",
+      "import": "./lib/transport-tus.js",
+      "types": "./lib/types/transport-tus.d.ts"
     }
   },
   "files": [

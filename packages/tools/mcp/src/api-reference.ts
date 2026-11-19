@@ -3582,6 +3582,37 @@ errorFromStatus(422).retryable   // => false`,
     notes: '[EXPERIMENTAL] The files on the clipboard (a pasted image); text is not touched. Added in v0.53.0.',
   },
 
+  'upload/chunkedTransport': {
+    signature: '(options: { url, chunkSize?, parallel?, checksum?, headers?, withCredentials?, timeout? }) => Transport',
+    example: `typeof chunkedTransport({ url: '/api/uploads' }).upload   // => 'function'`,
+    notes: '[EXPERIMENTAL] A generic resumable upload in parts with a small server contract: `POST BASE` (JSON `{ name, size, type, chunkSize, meta }`, answers `{ uploadId }`), `GET BASE/:id` (`{ received: number[] }`), `PUT BASE/:id/parts/:n` (raw bytes, optional `x-part-sha256`), `POST BASE/:id/complete` (answers the result), `DELETE BASE/:id`. The file is sliced with `Blob.slice`, `parallel` parts at a time (default 3), each with real progress; after every part the state is saved so a retry, a pause or a reload continues from the parts the server has (its list of parts wins over the saved state). A reference handler for the contract is on the docs page. See also: createResumeStore, s3Transport, tusTransport. Added in v0.53.0.',
+  },
+
+  'upload/s3Transport': {
+    signature: '(options: { presign, multipart?, partSize?, parallel?, withCredentials? }) => Transport',
+    example: `typeof s3Transport({ presign: async () => ({ url: 'https://bucket.invalid/key' }) }).upload   // => 'function'`,
+    notes: '[EXPERIMENTAL] Upload straight to S3 (or R2, MinIO, anything with presigned URLs) with no SDK. A file up to `partSize` is one presigned `PUT`; a bigger one is multipart if you give `multipart: { create, signPart, complete, abort?, list? }`: your server creates the upload and signs each part, the browser sends the parts with progress and collects the ETags, your server completes it. The part size is at least 5 MiB and never needs more than 10,000 parts. Resumable: the upload id and the parts with their ETags are saved after each part, and `list` (your `ListParts`) confirms which exist. Cancelling calls `abort`. The bucket CORS rule must expose the `ETag` header. Added in v0.53.0.',
+    mistakes: '- Presigned URLs that are not scoped: one key, one method, a short expiry, a content-length range for single uploads',
+  },
+
+  'upload/tusTransport': {
+    signature: '(options: { endpoint, chunkSize?, metadata?, headers?, withCredentials?, timeout? }) => Transport',
+    example: `typeof tusTransport({ endpoint: '/files' }).upload   // => 'function'`,
+    notes: `[EXPERIMENTAL] The tus 1.0 resumable upload protocol with the creation and termination extensions: \`POST\` to create (with \`Upload-Length\` and \`Upload-Metadata\`), \`PATCH\` at the right \`Upload-Offset\`, \`HEAD\` to ask the offset on a resume, \`DELETE\` when the file is cancelled or removed. The upload URL is saved after creation, so a retry, a pause or a reload continues where the server is; a 404 or 410 for a saved URL, or a different length, starts a new upload. Retries are the queue's, not the transport's. Added in v0.53.0.`,
+  },
+
+  'upload/createResumeStore': {
+    signature: '(storage: { getItem, setItem, removeItem }, options?: { prefix?, maxAge?, now? }) => ResumeStore',
+    example: `createResumeStore({ getItem: () => null, setItem: () => {}, removeItem: () => {} }).load({ name: 'a', size: 1, type: '', file: new Blob(['a']) })   // => undefined`,
+    notes: '[EXPERIMENTAL] Persist resume state in `localStorage` (or an `@pyreon/storage` adapter) so an upload continues after a page reload: pass the store as `createUploader({ resume })`. The state is saved by file fingerprint, loaded when a file is added, and cleared when the upload finishes, fails for good, or is cancelled or removed. Entries expire after `maxAge` (default 7 days); a corrupt entry is removed; a storage that throws makes saving a no-op. Added in v0.53.0.',
+  },
+
+  'upload/fingerprint': {
+    signature: '(file) => string',
+    example: `fingerprint({ name: 'a.mp4', size: 10, type: 'video/mp4', file: new File([], 'a.mp4', { lastModified: 5 }) })   // => 'a.mp4|10|video/mp4|5'`,
+    notes: '[EXPERIMENTAL] What identifies a file across page loads: name, size, type and last-modified time. Added in v0.53.0.',
+  },
+
   'upload/UploadFile': {
     signature: 'interface UploadFile { id; file; name; size; type; meta; status(); progress(); speed(); remaining(); error(); result(); preview(); attempt(); rejections() }',
     example: 'const f = null as unknown as UploadFile',

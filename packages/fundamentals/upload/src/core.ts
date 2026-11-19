@@ -9,3 +9,5 @@ export { createSpeedMeter, monotonic, progressOf, remainingMs, sumProgress } fro
 export type { SpeedMeter } from './progress'
 export { defaultBackoff, errorFromStatus, isRetryableStatus, isUploadError, parseRetryAfter, toUploadError, uploadError } from './errors'
 export { collectDropped, collectPasted } from './collect'
+export { createResumeStore, fingerprint } from './resume'
+export type { ResumeStorage, ResumeStore, ResumeStoreOptions } from './resume'
