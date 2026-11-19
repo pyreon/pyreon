@@ -80,6 +80,8 @@
     "access": "public"
   },
   "pyreon": {
+    "stability": "stable",
+    "experimentalSubpaths": ["./webview", "./native-plugin"],
     "native": {
       "swift": "native/swift",
       "kotlin": "native/kotlin",

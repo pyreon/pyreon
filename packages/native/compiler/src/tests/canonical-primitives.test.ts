@@ -194,8 +194,8 @@ describe('Phase P2.1 — <Layer> emit (z-stack overlay)', () => {
       `<Layer padding={4} background="surface" radius="md"><Text>x</Text></Layer>`,
       'kotlin',
     )
-    expect(out).toContain('Modifier.padding(16.dp)')
-    expect(out).toContain('.clip(RoundedCornerShape(8.dp))')
+    // Compose's canonical surface order: clip so the fill is rounded, padding last so it insets inside the fill (#4345).
+    expect(out).toMatch(/Modifier\.clip\(RoundedCornerShape\(8\.dp\)\)\.background\(.+\)\.padding\(16\.dp\)/)
   })
 })
 

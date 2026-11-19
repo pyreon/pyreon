@@ -1,5 +1,7 @@
 # @pyreon/styler
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Lightweight CSS-in-JS engine — `styled` / `css` / `keyframes` / theme, ~3.8KB gzipped.
 
 `@pyreon/styler` is the CSS-in-JS layer that powers `@pyreon/rocketstyle`, `@pyreon/elements`, and every other rocketstyle-derived component. Singleton `StyleSheet` with FNV-1a class hashing and dedup cache. **Static templates resolve once at module load** (zero per-render cost); dynamic interpolations re-resolve on theme/prop change with class-cache dedup. `ThemeContext` is a **reactive** Pyreon context — whole-theme swaps (user-preference theme switching) propagate through the resolver effect in `styled()` and re-resolve CSS + swap class names WITHOUT remounting the VNode. SSR-isolated via `createSheet()`. CSS Nesting passes through to the browser unchanged.

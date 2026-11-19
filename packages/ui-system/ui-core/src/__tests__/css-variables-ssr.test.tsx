@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { h, useContext } from '@pyreon/core'
-import { renderToString } from '@pyreon/runtime-server'
+import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import { sheet, ThemeContext } from '@pyreon/styler'
 import { afterEach, describe, expect, it } from 'vitest'
 import { init } from '../config'
@@ -72,6 +72,39 @@ describe('PyreonUI cssVariables — SSR', () => {
     )
     expect(html).toContain('display: contents')
     expect(html).toContain('data-theme="dark"')
+  })
+
+  it('each request carries exactly ITS theme\'s :root block, emitted first', async () => {
+    init({ cssVariables: true })
+    // Per-request scope (what renderPage / the streaming handler use). The
+    // block used to be injected through the append-only, text-keyed
+    // `injectRules`, which kept one `bundle-<whole :root text>` entry per
+    // distinct theme in the process-lifetime rule map.
+    const render = (small: number) =>
+      runWithRequestContext(async () => {
+        await renderToString(
+          h(PyreonUI, { theme: { ...theme, spacing: { small } } } as any, h(Probe, null)),
+        )
+
+        return sheet.getStyleTag()
+      })
+    for (const small of [8, 24, 8]) {
+      const tag = await render(small)
+      const blocks = tag.match(/:root \{/g) ?? []
+      expect(blocks.length).toBe(1)
+      expect(tag).toContain(`--px-spacing-small: ${small / 16}rem`)
+      expect(tag.indexOf(':root')).toBe(tag.indexOf('>') + 1)
+    }
+  })
+
+  it('streaming: the :root block leads the first flush and is not re-sent unchanged', async () => {
+    init({ cssVariables: true })
+    await runWithRequestContext(async () => {
+      await renderToString(h(PyreonUI, { theme } as any, h(Probe, null)))
+      const first = sheet.flushSSRPending()
+      expect(first.startsWith(':root {')).toBe(true)
+      expect(sheet.flushSSRPending()).toBe('')
+    })
   })
 
   it('flag off: no wrapper, literal theme values (control)', async () => {

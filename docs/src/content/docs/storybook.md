@@ -5,7 +5,7 @@ description: Storybook renderer for developing and documenting Pyreon components
 
 `@pyreon/storybook` is a custom Storybook renderer that lets you develop, test, and document Pyreon components in isolation using Storybook's UI. It integrates directly with the Pyreon runtime so your stories behave exactly like real application code -- signals, effects, lifecycle hooks, and context all work as expected.
 
-<PackageBadge name="@pyreon/storybook" href="/docs/storybook" status="beta" />
+<PackageBadge name="@pyreon/storybook" href="/docs/storybook" />
 
 It ships:
 
