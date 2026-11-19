@@ -98,5 +98,12 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "pyreon": {
+    "stability": "stable",
+    "experimentalSubpaths": [
+      "./audits",
+      "./plain"
+    ]
   }
 }

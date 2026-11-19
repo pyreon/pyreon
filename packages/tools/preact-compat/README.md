@@ -1,5 +1,7 @@
 # @pyreon/preact-compat
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Preact-compatible API shim — write Preact-style code that runs on Pyreon's reactive engine.
 
 `@pyreon/preact-compat` mirrors Preact's module structure (`@pyreon/preact-compat`, `@pyreon/preact-compat/hooks`, `@pyreon/preact-compat/signals`) and provides `h` / `Fragment` / `render` / `hydrate` / `Component` / `PureComponent` / `createContext` / `createRef` / `cloneElement` / `createPortal` / `lazy` / `Suspense` / `ErrorBoundary` plus the standard hooks set, all backed by Pyreon's signal-based reactivity. **This is a compat shim, not Preact** — it intentionally diverges in places where Preact's render-on-state-change model conflicts with Pyreon's run-once + fine-grained-reactivity model. The escape hatch is to drop the compat layer and use Pyreon's native API directly.

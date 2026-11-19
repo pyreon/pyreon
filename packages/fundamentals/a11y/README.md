@@ -1,5 +1,7 @@
 # @pyreon/a11y
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Accessibility primitives for [Pyreon](https://github.com/pyreon/pyreon) — screen-reader announcements, visually-hidden content, and stable ARIA ids. **Zero setup**: no provider, no context, no component to mount.
 
 ```bash

@@ -568,4 +568,4 @@ hoistNonReactStatics(Wrapped, Original)
 
 > **System-mode subscription:** `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
 
-> **Deprecated internal Provider / context:** The package also exports a low-level `Provider` (default export) + `context` from `context.tsx` — an internal, `@deprecated`-tagged reactive-context provider `<PyreonUI>` no longer uses directly. It dev-warns on every mount. There is no reason to import it: use `<PyreonUI theme={theme}>` for the provider and `useMode()` / `useThemeValue()` for reads.
+> **Low-level Provider / context:** The package also exports a low-level `Provider` (default export) + `context` from `context.tsx`. It feeds the core theme + mode context and is the path `@pyreon/rocketstyle`'s public `Provider` delegates to, so it is supported and does not warn. App code should still mount `<PyreonUI theme={theme}>`, which sets up every context layer, and read with `useMode()` / `useThemeValue()`.
