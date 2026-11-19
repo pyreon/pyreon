@@ -82,6 +82,9 @@ const GOLDENS: Record<string, () => string> = {
   'plot-scale-symlog-y': () => chartToSvg({ data: [{ month: 'a', revenue: -900, cost: 1 }, { month: 'b', revenue: 4, cost: 1 }, { month: 'c', revenue: 600, cost: 1 }, { month: 'd', revenue: 0, cost: 1 }] as Row[], marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, yScale: symlog(), ...SIZE }),
   'plot-scale-log-x': () => chartToSvg({ data: [{ x: 2, y: 3 }, { x: 30, y: 5 }, { x: 400, y: 4 }, { x: 5000, y: 8 }], marks: [line<{ x: number; y: number }>((d) => d.y), points<{ x: number; y: number }>((d) => d.y)], xValue: (d) => d.x, xScale: log(), ...SIZE }),
   'plot-scale-symlog-x-inverse': () => chartToSvg({ data: [{ x: -800, y: 3 }, { x: -5, y: 5 }, { x: 0, y: 4 }, { x: 90, y: 8 }], marks: [line<{ x: number; y: number }>((d) => d.y)], xValue: (d) => d.x, xScale: symlog(), xInverse: true, ...SIZE }),
+  // Per-axis grid and minor lines.
+  'plot-grid-x-minor': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, xGrid: true, yMinor: 4, ...SIZE }),
+  'plot-grid-y-off-horizontal': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, horizontal: true, yGrid: false, xGrid: true, ...SIZE }),
   'plot-annotated': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, annotations: [{ y: 100, label: 'goal' }, { yFrom: 130, yTo: 150 }], ...SIZE }),
   pie: () => pieToSvg({ data: ROWS, value: (d) => d.revenue, label: (d) => d.month, innerRadius: 0.5, showLabels: true, ...SIZE }),
   gauge: () => gaugeToSvg({ value: 0.72, max: 1, showValue: true, ...SIZE }),

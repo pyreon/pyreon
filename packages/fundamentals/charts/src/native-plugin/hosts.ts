@@ -1084,6 +1084,9 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'xInverse', value: lit(true) })
           const xScaleAttr = attrOf(child, 'scale')
           if (xScaleAttr !== undefined) pushAttr(attrs, scaleAttr('x', xScaleAttr, warn))
+          if (flagOn(child, 'grid')) attrs.push({ kind: 'attr', name: 'xGrid', value: lit(true) })
+          const xMinor = attrOf(child, 'minor')
+          if (xMinor !== undefined) attrs.push({ kind: 'attr', name: 'xMinor', value: xMinor })
         } else if (flagOn(child, 'y2')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
           if (domain !== undefined) attrs.push({ kind: 'attr', name: 'y2Domain', value: domain })
@@ -1099,6 +1102,10 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           const scale = attrOf(child, 'scale')
           if (scale !== undefined) pushAttr(attrs, scaleAttr('y', scale, warn))
           if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'yInverse', value: lit(true) })
+          const gridAttr = attrOf(child, 'grid')
+          if (gridAttr !== undefined && gridAttr.kind === 'literal' && gridAttr.value === false) attrs.push({ kind: 'attr', name: 'yGrid', value: lit(false) })
+          const yMinor = attrOf(child, 'minor')
+          if (yMinor !== undefined) attrs.push({ kind: 'attr', name: 'yMinor', value: yMinor })
         }
         break
       }
@@ -2143,6 +2150,10 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'yInverse', kind: 'boolean' },
   { name: 'y2Inverse', kind: 'boolean' },
   { name: 'xInverse', kind: 'boolean' },
+  { name: 'yGrid', kind: 'boolean' },
+  { name: 'xGrid', kind: 'boolean' },
+  { name: 'yMinor', kind: 'number' },
+  { name: 'xMinor', kind: 'number' },
 ]
 
 /**

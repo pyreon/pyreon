@@ -69,6 +69,14 @@ export interface ChartToSvgOptions<T> {
   /** A NUMERIC x channel (spacing follows the values); with it `xScale` applies — see `PlotChartProps.xScale`. */
   xValue?: (d: T, index: number) => number
   xScale?: 'linear' | ScaleView
+  /** Value-axis grid lines (`false` hides them) — see `PlotChartProps.yGrid`. */
+  yGrid?: boolean
+  /** Grid lines at the category / x ticks — see `PlotChartProps.xGrid`. */
+  xGrid?: boolean
+  /** Minor grid lines between the value ticks — see `PlotChartProps.yMinor`. */
+  yMinor?: number
+  /** Minor grid lines on a numeric x axis — see `PlotChartProps.xMinor`. */
+  xMinor?: number
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -114,6 +122,10 @@ function optionFields<T>(options: ChartToSvgOptions<T>, rows: readonly T[]): Par
     yInverse: options.yInverse,
     y2Inverse: options.y2Inverse,
     xInverse: options.xInverse,
+    yGrid: options.yGrid,
+    xGrid: options.xGrid,
+    yMinor: options.yMinor,
+    xMinor: options.xMinor,
     yScale: typeof options.yScale === 'string' ? options.yScale : undefined,
     ...viewFields(options),
     xValues: options.xValue === undefined ? undefined : rows.map((d, i) => options.xValue!(d, i)),

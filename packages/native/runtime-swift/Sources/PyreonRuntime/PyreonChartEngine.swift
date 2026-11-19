@@ -881,8 +881,12 @@ public struct ChartSpec {
   public var yInverse: Bool? = nil
   public var y2Inverse: Bool? = nil
   public var xInverse: Bool? = nil
+  public var yGrid: Bool? = nil
+  public var xGrid: Bool? = nil
+  public var yMinor: Double? = nil
+  public var xMinor: Double? = nil
   public var rowKeys: [String]? = nil
-  public init(width: Double, height: Double, m4Density: Double? = nil, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yView: ScaleView? = nil, xView: ScaleView? = nil, yReal: Domain? = nil, xReal: Domain? = nil, yViewApplied: Bool? = nil, xViewApplied: Bool? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, barWidth: Double? = nil, barGap: Double? = nil, barCategoryGap: Double? = nil, yInverse: Bool? = nil, y2Inverse: Bool? = nil, xInverse: Bool? = nil, rowKeys: [String]? = nil) {
+  public init(width: Double, height: Double, m4Density: Double? = nil, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yView: ScaleView? = nil, xView: ScaleView? = nil, yReal: Domain? = nil, xReal: Domain? = nil, yViewApplied: Bool? = nil, xViewApplied: Bool? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, barWidth: Double? = nil, barGap: Double? = nil, barCategoryGap: Double? = nil, yInverse: Bool? = nil, y2Inverse: Bool? = nil, xInverse: Bool? = nil, yGrid: Bool? = nil, xGrid: Bool? = nil, yMinor: Double? = nil, xMinor: Double? = nil, rowKeys: [String]? = nil) {
     self.width = width
     self.height = height
     self.m4Density = m4Density
@@ -926,6 +930,10 @@ public struct ChartSpec {
     self.yInverse = yInverse
     self.y2Inverse = y2Inverse
     self.xInverse = xInverse
+    self.yGrid = yGrid
+    self.xGrid = xGrid
+    self.yMinor = yMinor
+    self.xMinor = xMinor
     self.rowKeys = rowKeys
   }
 }
@@ -6390,7 +6398,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       }
       return outPts
     }
-    if spec.showGrid {
+    if (spec.yGrid ?? spec.showGrid) {
       if spec.horizontal == true {
         for tick in l.xTicks {
           out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: tick.pos, y: plot.y), to: PyreonChartPt(x: tick.pos, y: plot.y + plot.h), stroke: t.grid, width: 1.0))
@@ -6399,6 +6407,23 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         for tick in l.yTicks {
           out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: plot.x, y: tick.pos), to: PyreonChartPt(x: plot.x + plot.w, y: tick.pos), stroke: t.grid, width: 1.0))
         }
+      }
+    }
+    if spec.xGrid == true {
+      for c in tickLines(spec.horizontal == true ? l.yTicks : l.xTicks, spec.horizontal != true, plot, t.grid, 1.0) {
+        out.append(c)
+      }
+    }
+    let majorTicks = spec.horizontal == true ? l.xTicks : l.yTicks
+    let minorLinear = raw.yScale != "log" && spec.yTime != true
+    if ((spec.yMinor ?? 0.0)) >= 2.0 && minorLinear {
+      for c in minorLines(majorTicks, (spec.yMinor ?? 0.0), spec.horizontal == true, plot, withAlpha(t.grid, 0.6)) {
+        out.append(c)
+      }
+    }
+    if ((spec.xMinor ?? 0.0)) >= 2.0 && ((spec.xValues ?? [])).count > 0 && spec.xTime != true {
+      for c in minorLines(spec.horizontal == true ? l.yTicks : l.xTicks, (spec.xMinor ?? 0.0), spec.horizontal != true, plot, withAlpha(t.grid, 0.6)) {
+        out.append(c)
       }
     }
     let yAxisX = plot.x
@@ -6972,6 +6997,29 @@ public func bridgeRuns(_ runs: [[PyreonChartPt]], _ connect: Bool) -> [[PyreonCh
       }
     }
     return [all]
+  }
+
+public func tickLines(_ ticks: [Tick], _ vertical: Bool, _ plot: PyreonChartRect, _ stroke: String, _ width: Double) -> [PyreonDrawCmd] {
+    var out: [PyreonDrawCmd] = []
+    for tick in ticks {
+      out.append(vertical ? PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: tick.pos, y: plot.y), to: PyreonChartPt(x: tick.pos, y: plot.y + plot.h), stroke: stroke, width: width) : PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: plot.x, y: tick.pos), to: PyreonChartPt(x: plot.x + plot.w, y: tick.pos), stroke: stroke, width: width))
+    }
+    return out
+  }
+
+public func minorLines(_ ticks: [Tick], _ n: Double, _ vertical: Bool, _ plot: PyreonChartRect, _ stroke: String) -> [PyreonDrawCmd] {
+    var mid: [Tick] = []
+    let parts = floor(Double(n))
+    for i in 1..<ticks.count {
+      let a = ticks[pyreonSub(i, 1)]
+      let b = ticks[i]
+      var k = 1.0
+      while k < parts {
+        mid.append(Tick(value: 0.0, pos: a.pos + Double(((b.pos - a.pos) * k)) / parts, label: ""))
+        k = k + 1.0
+      }
+    }
+    return tickLines(mid, vertical, plot, stroke, 0.5)
   }
 
 public func splitRuns(_ values: [Double], _ place: ([Double]) -> [PyreonChartPt]) -> [[PyreonChartPt]] {
