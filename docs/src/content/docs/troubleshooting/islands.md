@@ -55,6 +55,12 @@ The `visible` trigger observed the island element, then (one fix later) its elem
 
 ---
 
+### Interactive markup outside an island on an islands-only page (`export const hydrate = 'islands'`, #4371)
+
+The page never starts the app, so a handler, a signal or a `<RouterLink>`'s client navigation outside an `island()` silently does nothing (links are full page loads there, by design). Anything interactive on such a page is an island; an island that reads context gets its providers from `startClientLazy({ islandRoot })` / `hydrateIslandsAuto(registry, { root })`, which must render ONLY its children (an element around them breaks adoption). `useLoaderData()` inside an island there has nothing to read (no loader-data blob, no router): pass what it needs as props. Locks: `e2e/zero-islands-only.spec.ts`, `zero/src/tests/client-islands-only.browser.test.ts`.
+
+---
+
 ### Registering a `hydrate: 'never'` island in `hydrateIslands({ ... })`
 
 The loader never runs, but the import still pulls the component into the client bundle. Drop the entry.

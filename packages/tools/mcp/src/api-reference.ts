@@ -2459,7 +2459,7 @@ export default createHandler({
   mode: "stream",  // or "string"
   onError: (error, { phase, request }) => Sentry.captureException(error, { tags: { phase } }),
 })`,
-    notes: 'Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). `onError(error, { request, phase })` receives every unexpected server error (`phase`: `middleware` — including API routes —, `render`, `stream`, `action` from zero server actions, or `reported` via `ctx.reportError`) to forward to Sentry / OpenTelemetry; it runs after the console line, never changes the 500 response, and a throwing hook is caught. See also: prerender, island, useRequestLocals.',
+    notes: 'Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). `onError(error, { request, phase })` receives every unexpected server error (`phase`: `middleware` — including API routes —, `render`, `stream`, `action` from zero server actions, or `reported` via `ctx.reportError`) to forward to Sentry / OpenTelemetry; it runs after the console line, never changes the 500 response, and a throwing hook is caught. `clientPreload: { app?, islands? }` (base-prefixed hrefs) emits `<link rel=modulepreload>` for what the client entry loads with a dynamic import, per page kind: `app` on a page that starts the app, `islands` on an islands-only page with an island to hydrate (string mode in the head; streaming puts the app set in the head and the islands set before the scripts). `@pyreon/zero` fills it from the client manifest for `startClientLazy`. See also: prerender, island, useRequestLocals.',
     mistakes: `- Omitting \`<!--pyreon-app-->\` from the custom template — throws at handler-creation, not per request
 - Returning a \`Response\` from middleware and expecting downstream middleware to still run — the chain short-circuits on the first \`Response\`
 - Reading \`ctx.locals\` from inside the component without \`useRequestLocals()\` — the component tree only sees locals when bridged through that hook
@@ -2477,7 +2477,7 @@ const result = await renderPage(App, router, "/posts/42", {
 })
 if (result.kind === "redirect") return Response.redirect(result.to, result.status)
 if (result.kind === "html") compose(template, result)`,
-    notes: `The ONE string-mode page-render pipeline — preload (lazy components + loaders, with \`redirect()\` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's \`notFoundComponent\` chain). Shared by \`createHandler\`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. Returns discriminated parts (\`kind: "html" | "redirect" | "unmatched"\`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT \`path\` — \`preload\` warms caches but does not navigate. **\`collectStyles\` is OPTIONAL and defaults to the CSS-in-JS collector registered on \`globalThis.__PYREON_STYLER_COLLECT__\`** (set by \`@pyreon/styler\`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics. See also: createHandler, useRequestLocals.`,
+    notes: `The ONE string-mode page-render pipeline — preload (lazy components + loaders, with \`redirect()\` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's \`notFoundComponent\` chain). Shared by \`createHandler\`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. **Islands-only pages:** when the matched chain's merged meta declares \`hydrate: 'islands'\` (zero's \`export const hydrate = 'islands'\`), the head gets \`ISLANDS_ONLY_MARKER\` (\`<meta name="pyreon-hydrate" content="islands">\`), the loader-data script is left out (the loader output is in the HTML; store state is still shipped for islands that share a store), \`routeModules\` is empty, and \`result.hydrate\` is \`'islands'\` (\`'app'\` otherwise). \`createHandler\`'s streaming path honours the same meta. Returns discriminated parts (\`kind: "html" | "redirect" | "unmatched"\`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT \`path\` — \`preload\` warms caches but does not navigate. **\`collectStyles\` is OPTIONAL and defaults to the CSS-in-JS collector registered on \`globalThis.__PYREON_STYLER_COLLECT__\`** (set by \`@pyreon/styler\`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics. See also: createHandler, useRequestLocals.`,
     mistakes: `- Creating the router at a DIFFERENT url than \`path\` — \`preload\` does not navigate; the render shows the router's creation url, not \`path\`
 - Expecting \`kind: "unmatched"\` without setting \`bailOnUnmatched: true\` — by default an empty match renders through (the notFoundComponent chain is the framework's 404 story)
 - Wrapping the call in your own \`runWithRequestContext\` AND providing locals separately — pass \`locals\` in options; renderPage opens the request context itself
@@ -2563,7 +2563,7 @@ function Header() {
   },
 
   'server/hydrateIslands': {
-    signature: 'hydrateIslands(registry: Record<string, () => Promise<ComponentFn | { default: ComponentFn }>>): () => void',
+    signature: 'hydrateIslands(registry: Record<string, () => Promise<ComponentFn | { default: ComponentFn }>>, options?: { root?: () => Promise<ComponentFn | { default: ComponentFn }> }): () => void',
     example: `import { hydrateIslands } from "@pyreon/server/client"
 
 hydrateIslands({
@@ -2572,24 +2572,37 @@ hydrateIslands({
   // hydrate: "never" islands are intentionally omitted —
   // registering them defeats the zero-JS contract.
 })`,
-    notes: 'Client-side counterpart to `island()`. Walks every `<pyreon-island>` element on the page and schedules hydration per its `data-hydrate` strategy. Manual form: the user maintains the `Name → loader` mapping by hand (must match every `island()` `name` field). Returns a cleanup that ENDS every island it scheduled: pending triggers are cancelled, in-flight chunks never mount, hydrated islands are unmounted (`onUnmount` / effects / `onMount` cleanups run, their DOM is removed). A static page has no component tree to notice island DOM leaving, so a host that removes or replaces island DOM itself (an `innerHTML` swap, its own navigation) calls this cleanup; HMR passes it to `import.meta.hot.dispose`. An island already live from an earlier call is never hydrated twice. Use `hydrateIslandsAuto()` under `@pyreon/vite-plugin` to skip the manual sync. Imported from `@pyreon/server/client`, NOT from `@pyreon/server` (server-only entry). See also: island, hydrateIslandsAuto.',
+    notes: `Client-side counterpart to \`island()\`. Walks every \`<pyreon-island>\` element on the page and schedules hydration per its \`data-hydrate\` strategy. Manual form: the user maintains the \`Name → loader\` mapping by hand (must match every \`island()\` \`name\` field). Returns a cleanup that ENDS every island it scheduled: pending triggers are cancelled, in-flight chunks never mount, hydrated islands are unmounted (\`onUnmount\` / effects / \`onMount\` cleanups run, their DOM is removed). A static page has no component tree to notice island DOM leaving, so a host that removes or replaces island DOM itself (an \`innerHTML\` swap, its own navigation) calls this cleanup; HMR passes it to \`import.meta.hot.dispose\`. An island already live from an earlier call is never hydrated twice. \`options.root\` wraps every island the call hydrates in a component of yours (the providers a standalone island needs: a theme, a UI system's root scope); it is loaded once, with the first island that hydrates, and must render only its children so the island still adopts its server HTML. Use \`hydrateIslandsAuto()\` under \`@pyreon/vite-plugin\` to skip the manual sync. Imported from \`@pyreon/server/client\`, NOT from \`@pyreon/server\` (server-only entry). See also: island, hydrateIslandsAuto.`,
     mistakes: `- Registry key must match the \`island()\` \`name\` field exactly — typo / drift causes runtime \`data-island-error="no-loader"\`. Use \`hydrateIslandsAuto()\` to eliminate this manual sync.
 - Including a \`hydrate: "never"\` island in the registry — defeats the strategy by pulling its module into the client bundle. Skip never-islands; the runtime short-circuits silently for them.
 - Importing from \`@pyreon/server\` instead of \`@pyreon/server/client\` — the main entry is server-only and stubs/throws on client-side use.
-- Replacing island DOM (an \`innerHTML\` swap, a hand-rolled page transition) without calling the returned cleanup — the island's effects, timers and listeners keep running against detached DOM. Removal the framework did not perform is not observed; call the cleanup.`,
+- Replacing island DOM (an \`innerHTML\` swap, a hand-rolled page transition) without calling the returned cleanup — the island's effects, timers and listeners keep running against detached DOM. Removal the framework did not perform is not observed; call the cleanup.
+- A \`root\` that renders an element around its children (\`<div class="theme">{props.children}</div>\`) — the server rendered the island without it, so the island no longer matches its HTML. Render only providers: \`provide(...)\` and \`return props.children\`.`,
   },
 
   'server/hydrateIslandsAuto': {
-    signature: 'hydrateIslandsAuto(registry: AutoIslandRegistry): () => void',
+    signature: 'hydrateIslandsAuto(registry: AutoIslandRegistry, options?: HydrateIslandsOptions): () => void',
     example: `// src/entry-client.ts
 import { hydrateIslandsAuto } from "@pyreon/server/client"
 import * as registry from "virtual:pyreon/islands-registry"
 
 hydrateIslandsAuto(registry)`,
-    notes: 'Auto-discovered counterpart to `hydrateIslands()`. Under `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin pre-scans your source for `island()` declarations and emits a `virtual:pyreon/islands-registry` virtual module. The user imports it into `entry-client.ts` and passes it here. Eliminates the manual `Name → loader` sync that drives the #1 author foot-gun for islands. Never-strategy islands are omitted from the auto-registry by design — their components stay out of the client bundle. See also: hydrateIslands, island.',
+    notes: 'Auto-discovered counterpart to `hydrateIslands()`. Under `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin pre-scans your source for `island()` declarations and emits a `virtual:pyreon/islands-registry` virtual module. The user imports it into `entry-client.ts` and passes it here. Eliminates the manual `Name → loader` sync that drives the #1 author foot-gun for islands. Never-strategy islands are omitted from the auto-registry by design — their components stay out of the client bundle. `options` is forwarded to `hydrateIslands` (`root`). See also: hydrateIslands, island.',
     mistakes: `- Calling without the registry argument — the function takes the imported virtual module explicitly. The user-side \`import\` is what lets the plugin\\'s \`resolveId\` hook run; importing from inside \`@pyreon/server/client\` would fail at build time because Rolldown\\'s static-import analysis runs before plugin resolveId hooks for workspace sources.
 - Using under a non-Vite bundler — the virtual module only exists under \`@pyreon/vite-plugin\`. Fall back to manual \`hydrateIslands({ ... })\` for non-Vite consumers.
 - Setting \`pyreon({ islands: false })\` and still calling \`hydrateIslandsAuto()\` — the plugin emits a stub registry that throws at runtime with a clear error message. Either re-enable islands (the default) or use \`hydrateIslands({ ... })\` instead.`,
+  },
+
+  'server/islandsOnlyPages': {
+    signature: 'islandsOnlyPages(start: () => () => void): IslandsOnlyPages',
+    example: `// src/entry-client.ts
+import { hydrateIslandsAuto, islandsOnlyPages, startClient } from "@pyreon/server/client"
+import * as registry from "virtual:pyreon/islands-registry"
+
+startClient({ App, routes, islandsOnly: islandsOnlyPages(() => hydrateIslandsAuto(registry, { root: () => import("./IslandRoot") })) })`,
+    notes: `Islands-only page support for \`@pyreon/server\`'s own \`startClient\` (apps without \`@pyreon/zero\`). Pass the result as \`startClient({ App, routes, islandsOnly })\`: on a page the server marked islands-only (route \`meta: { hydrate: 'islands' }\`, so \`createHandler\` wrote \`<meta name="pyreon-hydrate" content="islands">\` and no loader data), \`start\` runs INSTEAD of the app (no router, no tree hydration) and its return is the cleanup; on an app page a client-side navigation to an islands-only route becomes a full page load (never for the current path). A separate function so the marker check, the guard and the islands runtime enter a bundle only when the app imports it: an app that never uses the mode pays 47 B gzip in \`startClient\` (measured, Vite production build). Without it, a marked page starts the whole app and warns in dev. \`ISLANDS_ONLY_SELECTOR\` is the matching CSS selector. See also: hydrateIslandsAuto, renderPage, createHandler.`,
+    mistakes: `- Calling \`startClient({ App, routes })\` alone on an app with islands-only routes: a marked page has no loader data, so the app re-runs the loaders in the browser and hydrates a page that was meant to stay static. Pass \`islandsOnly\`.
+- \`<RouterLink>\` inside an island on an islands-only page: there is no router there. Use \`<a href>\`.`,
   },
 
   'server/prerender': {
@@ -9538,6 +9551,47 @@ const fileRoutes = expandRoutesForLocales(baseRoutes, {
 - Modifying the returned \`FileRoute[]\` and expecting \`getStaticPaths\` inheritance to update — the duplicates carry frozen \`exports\` references at duplication time; later mutations don't propagate to the SSG enumerator
 - Setting \`strategy: 'prefix'\` and expecting \`/about\` (unprefixed) to ALSO render — under \`prefix\` every locale is prefixed; the default-locale unprefixed URL does NOT exist as a dist file. Use \`prefix-except-default\` if you need both
 - Passing user-controlled strings as locales without validation — the helper validates against path-traversal (\`..\`, \`/\`, backslash, \`.\`, NUL) but does NOT validate BCP-47 shape; an invalid locale silently produces oddly-shaped URLs`,
+  },
+
+  'zero/hydrate': {
+    signature: `export const hydrate: 'islands' | 'app' // route or _layout file export`,
+    example: `// src/routes/(marketing)/_layout.tsx — every page under it is static + islands
+export const hydrate = 'islands'
+export function layout() { return <SiteShell><RouterView /></SiteShell> }
+
+// src/routes/(marketing)/pricing.tsx — the loader runs at build; its output is in the HTML
+export async function loader() { return { plans: await readPlans() } }
+const Calculator = island(() => import('../../islands/Calculator'), { name: 'Calculator', hydrate: 'visible' })
+export default function Pricing() { /* static markup + <Calculator /> */ }
+
+// src/entry-client.ts — the app is loaded only on pages that start it
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+startClientLazy({ routes: () => import('virtual:zero/routes'), islands, islandRoot: () => import('./IslandRoot') })`,
+    notes: `Per-route (cascading from \`_layout\`, leaf wins, like \`renderMode\`) choice of how the browser takes over the page. \`'app'\` (the default) hydrates the whole tree under the router. \`'islands'\` keeps the page as static HTML plus its \`island()\`s: the server (SSG, SSR string and streaming, ISR, dev) marks the page with \`<meta name="pyreon-hydrate" content="islands">\`, leaves out the loader-data script (the loader still runs, its output is in the HTML) and the route's modulepreloads; \`startClient\` / \`startClientLazy\` then hydrate the islands from the \`islands\` registry and start nothing else (no router, no app tree). A client-side navigation from an app page TO an islands-only route becomes a full page load; on an islands-only page every link, \`<RouterLink>\` included, is a plain link. \`@pyreon/head\` does not run in the browser there (head tags are server-rendered). Must be a string literal, and never on a page rendered \`'spa'\` (both are \`[Pyreon]\` errors at route-scan time). \`zero({ routeRules: { '/docs/**': { hydrate: 'islands' } } })\` declares it centrally, with the same validation and the precedence \`renderMode\` has (page export > nearest \`_layout\` export > the most specific rule > \`'app'\`); the rule is applied to the route records at generation, so server, SSG, dev and the navigation guard read one value. In dev, an edit to a module the server rendered an islands-only page with reloads that page (there is no client module to hot-swap). See also: startClientLazy, zero.`,
+    mistakes: `- A handler or signal OUTSIDE an island on an islands-only page — that markup never runs in the browser, so the handler silently does nothing. Anything interactive must be an \`island()\`
+- Keeping \`startClient({ routes })\` with a static \`import { routes } from 'virtual:zero/routes'\` — islands-only pages still work, but the entry's static graph (the routes module, the layouts, the router) downloads on them. Use \`startClientLazy\` for the byte win
+- Forgetting \`islands\` in the client entry — an islands-only page then hydrates nothing and logs a \`[Pyreon]\` error naming the fix
+- An island that reads context (a theme) with no provider above it — on an islands-only page the island is its own root. Pass \`islandRoot\` (render only the providers and the children), or wrap inside the island
+- \`export const hydrate = 'islands'\` on an \`spa\` page (route, layout, \`routeRules\` or app mode) — an SPA page has no server HTML to keep; route-scan error
+- Expecting \`useLoaderData()\` inside an island on an islands-only page — there is no loader-data blob and no router; pass what the island needs as props`,
+  },
+
+  'zero/startClientLazy': {
+    signature: 'startClientLazy(options: { routes: () => Promise<{ routes: RouteRecord[] }>; layout?: ComponentFn; islands?: IslandsRegistry; islandRoot?: IslandRootLoader }): () => void // from @pyreon/zero/client-lazy',
+    example: `// src/entry-client.ts
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+
+startClientLazy({
+  routes: () => import('virtual:zero/routes'),
+  islands,
+  islandRoot: () => import('./IslandRoot'), // providers for standalone islands
+})`,
+    notes: `The client entry for an app with islands-only routes (\`export const hydrate = 'islands'\`). On a page the server marked islands-only it hydrates the islands with the \`islands\` registry (wrapped in \`islandRoot\` when given; loaded with the first island) and starts nothing else; a marked page with no islands loads nothing at all. On any other page it loads the routes and the app with dynamic imports, then hydrates or mounts exactly as \`startClient\` does. Its own subpath so the router never enters the entry chunk. \`startClient\` takes the same \`islands\` / \`islandRoot\` options and honours islands-only pages too, but its static \`routes\` import keeps the app in the entry. SSG, SSR (string and streaming) and ISR pages all preload the app chunks on app pages and the islands runtime on islands-only pages with an island, so neither waits for the entry to discover them (the SSR post-step reads them from the client manifest and bakes them into the server bundle as \`__ZERO_CLIENT_PRELOAD__\`; an ISR cache entry keeps the set its page kind was rendered with). When EVERY page is islands-only, the production client build carries no app: the client routes module is empty and the app path compiles out (\`__ZERO_APP_PAGES__\`). With any islands-only page, \`@pyreon/server/client\` and the islands runtime are grouped into one \`islands-runtime\` chunk (what the entry itself needs stays in the entry). See also: hydrate, zero.`,
+    mistakes: `- Importing it from \`@pyreon/zero/client\` — it is not exported there on purpose: that module's static imports (the router, the app) would join the entry chunk
+- Passing \`routes\` as the array instead of a loader — the point is that the routes module loads only on pages that start the app
+- An \`islandRoot\` that renders an element around its children — the island no longer matches its server HTML. Render only providers`,
   },
 
   'zero/GetStaticPaths': {
