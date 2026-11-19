@@ -17,7 +17,7 @@
    },
    {
     "key": "line chart, gzip",
-    "value": "39.9 KB<small>ECharts 6, tree-shaken: 155.9 KB</small>"
+    "value": "40.3 KB<small>ECharts 6, tree-shaken: 155.9 KB</small>"
    },
    {
     "key": "chart families",
@@ -36,7 +36,7 @@
    "source": "BENCHMARKS.md §2, charts vs ECharts 6, final pass, one run, real Chromium, M3 Max"
   },
   {
-   "stat": "39.9 KB",
+   "stat": "40.3 KB",
    "label": "gzipped for a line chart. ECharts 6, tree-shaken the documented way: 155.9 KB.",
    "source": "BENCHMARKS.md §7, bench:charts-bundle, re-measured 2026-11-19 (size build)"
   },
@@ -346,11 +346,11 @@
    },
    {
     "op": "line chart bundle, gzip",
-    "pyreon": 39.9,
+    "pyreon": 40.3,
     "rival": 155.9,
     "unit": "KB",
     "verdict": "win",
-    "label": "3.91× smaller than tree-shaken ECharts"
+    "label": "3.87× smaller than tree-shaken ECharts"
    },
    {
     "op": "pie chart bundle, gzip",
@@ -486,7 +486,7 @@
   },
   {
    "q": "How big is it, really?",
-   "a": "39.9 KB gzipped for a line chart and 19.8 KB for a pie, measured beyond a 12.1 KB Pyreon runtime baseline (size build, 2026-11-19). Tree-shaken ECharts: 155.9 KB and 117.2 KB."
+   "a": "40.3 KB gzipped for a line chart and 19.8 KB for a pie, measured beyond a 12.1 KB Pyreon runtime baseline (size build, 2026-11-19). Tree-shaken ECharts: 155.9 KB and 117.2 KB."
   },
   {
    "q": "Can I trust the numbers?",
@@ -503,7 +503,7 @@
    "path": "00-brief/BENCHMARKS-2026-11-05.md §2 \"Charts — vs uPlot 1.6, Chart.js 4, Recharts 3\" and footnote ¹; §14 losses item 5"
   },
   {
-   "claim": "Bundle: line 39.9 vs 155.9 KB (3.91×), pie 19.8 vs 117.2 KB (5.94×), beyond 12.1 KB runtime baseline, size build 2026-11-19",
+   "claim": "Bundle: line 40.3 vs 155.9 KB (3.87×), pie 19.8 vs 117.2 KB (5.94×), beyond 12.1 KB runtime baseline, size build 2026-11-19",
    "path": "00-brief/BENCHMARKS-2026-11-05.md §7 \"Charts (bench:charts-bundle …)\""
   },
   {
