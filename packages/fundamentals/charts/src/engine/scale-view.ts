@@ -160,5 +160,7 @@ function applyX(spec: ChartSpec, kind: string, param: Double): ChartSpec {
 
 /** The spec in a scale's view, for the named axis: what a scale descriptor's `apply` calls. */
 export function applyScaleView(spec: ChartSpec, axis: string, kind: string, param: Double): ChartSpec {
-  return axis === 'x' ? applyX(spec, kind, param) : applyY(spec, kind, param)
+  if (axis === 'x') return spec.xViewApplied === true ? spec : applyX(spec, kind, param)
+
+  return spec.yViewApplied === true ? spec : applyY(spec, kind, param)
 }

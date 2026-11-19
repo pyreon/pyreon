@@ -70,7 +70,7 @@ separate modules, so a bar chart never pulls the radial trigonometry or the
 finance and matrix families (locked by the repo's import budgets). WITHIN
 `PlotChart` the cartesian marks share one renderer and one interaction surface
 (tooltip, legend, zoom, brush, `maxPoints` decimation): a one-line chart
-measures the same 39.2 KB gz as a bar + line + tooltip + legend chart — see
+measures the same 39.9 KB gz as a bar + line + tooltip + legend chart — see
 "Bundle size" below.
 
 Marks: `bars`, `line`, `area`, `points`, `stackedBars`, `groupedBars`.
@@ -366,8 +366,8 @@ tree-shaken way).
 
 | Chart                          | `@pyreon/charts` | ECharts 6, tree-shaken | ECharts 6, whole package |
 | ------------------------------ | --------------------- | ---------------------- | ------------------------ |
-| Line                           | 39.2 KB (`PlotChart`) | 155.9 KB               | 361.0 KB                 |
-| Bar + line, tooltip, legend    | 39.2 KB (`PlotChart`) | 176.8 KB               | —                        |
+| Line                           | 39.9 KB (`PlotChart`) | 155.9 KB               | 361.0 KB                 |
+| Bar + line, tooltip, legend    | 39.9 KB (`PlotChart`) | 176.8 KB               | —                        |
 | Pie                            | 19.8 KB (`PieChart`)  | 117.2 KB               | —                        |
 
 Figures from the latest benchmark record (`BENCHMARKS.md`, `bench:charts-bundle`); that file is authoritative when they differ.

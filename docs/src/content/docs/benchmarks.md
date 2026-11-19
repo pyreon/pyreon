@@ -243,7 +243,7 @@ that label is wrong, because it compares against the leading *columns* arm
 rather than Chart.js (see [Harness caveats](#harness-caveats)). Pyreon renders
 an offscreen accessible data table by default; none of the others do. Bundle
 cost beyond the runtime (`bench:charts-bundle`, re-measured 2026-11-19): a line
-chart is 39.2KB gzipped vs ECharts tree-shaken 155.9KB (3.98×); a pie is 19.8
+chart is 39.9KB gzipped vs ECharts tree-shaken 155.9KB (3.91×); a pie is 19.8
 vs 117.2KB.
 
 Reproduce: `bun bench-scenarios.ts --scenario charts` / `--scenario charts-libs`,

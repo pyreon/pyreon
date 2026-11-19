@@ -2198,13 +2198,6 @@ fun valueTickTarget(width: Double, height: Double, fontSize: Double, horizontal:
     return autoTickCount(height - 8.0 - (fontSize + 10.0), Y_TICK_SPACING)
   }
 
-fun callViewTicks(ticks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> List<Tick>)?, real: Domain?, r0: Double, r1: Double, count: Double, format: ((Double) -> String)?): List<Tick> {
-    val build = (ticks ?: ::noViewTicks)
-    return build((real ?: Domain(min = 0.0, max = 1.0)), r0, r1, count, format)
-  }
-
-fun noViewTicks(_real: Domain, _r0: Double, _r1: Double, _count: Double, _format: ((Double) -> String)?): List<Tick> = listOf()
-
 fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotLayout {
     val padTop = 8.0
     val padRight = 12.0
@@ -2217,7 +2210,7 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val hasViewX = cfg.xViewTicks != null
     val logMin = (cfg.yLogMin ?: 1.0)
     val logMax = (cfg.yLogMax ?: 10.0)
-    val valueTicksY = { r0: Double, r1: Double -> if (hasViewY) callViewTicks(cfg.yViewTicks, cfg.yViewReal, if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, yCount, cfg.yFormat) else if (isLog) logViewTicks(logMin, logMax, if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
+    val valueTicksY = { r0: Double, r1: Double -> if (hasViewY) ((cfg.yViewTicks?.invoke((cfg.yViewReal ?: cfg.yDomain), if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, yCount, cfg.yFormat) ?: listOf())) else if (isLog) logViewTicks(logMin, logMax, if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
     val provisionalLabels = if (cfg.horizontal == true) if (cfg.showYAxis) cfg.categories else listOf() else if (cfg.showYAxis) valueTicksY(cfg.height, 0.0).map({ t -> t.label }) else listOf()
     val yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
     val widest = yProvisional.widest
@@ -2239,7 +2232,7 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val left = yBand
     val right = (if (hasY2) widest2 + labelGap + tickLen else padRight) + y2TitleH + ((cfg.rightReserve ?: 0.0))
     val provisionalW = Math.max(0.0, cfg.width - left - right)
-    val numericXTicks = { r0: Double, r1: Double, count: Double -> if (hasViewX) callViewTicks(cfg.xViewTicks, cfg.xViewReal, if (cfg.xDomain.inverse == true) r1 else r0, if (cfg.xDomain.inverse == true) r0 else r1, count, cfg.xFormat) else if (cfg.xTime == true) timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) else makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) }
+    val numericXTicks = { r0: Double, r1: Double, count: Double -> if (hasViewX) ((cfg.xViewTicks?.invoke((cfg.xViewReal ?: cfg.xDomain), if (cfg.xDomain.inverse == true) r1 else r0, if (cfg.xDomain.inverse == true) r0 else r1, count, cfg.xFormat) ?: listOf())) else if (cfg.xTime == true) timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) else makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) }
     val xCount = if (cfg.xTickCount > 0.0) cfg.xTickCount else autoTickCount(provisionalW, X_TICK_SPACING)
     val mode = (cfg.xLabels ?: "auto")
     var rotate = 0.0
@@ -3290,11 +3283,15 @@ fun stateFill(s: Series, index: Long, own: String): String {
 
 fun emphasisOutline(r: PyreonChartRect, level: Long, stroke: String): PyreonDrawCmd = PyreonDrawCmd(kind = "polyline", stroke = stroke, width = if (level == 2L) 2.5 else 1.5, points = listOf(PyreonChartPt(x = r.x, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y), PyreonChartPt(x = r.x + r.w, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y + r.h), PyreonChartPt(x = r.x, y = r.y)))
 
-fun resolveYDomain(spec: ChartSpec): Domain = invertIf((spec.yDomain ?: pinDomain(spec, leftAxisSeries(spec))), spec.yInverse == true)
+fun resolveYDomain(spec: ChartSpec): Domain {
+    val d = (spec.yDomain ?: pinDomain(spec, leftAxisSeries(spec)))
+    return Domain(min = d.min, max = d.max, inverse = spec.yInverse)
+  }
 
-fun invertIf(d: Domain, flip: Boolean): Domain = if (flip) Domain(min = d.min, max = d.max, inverse = true) else d
-
-fun resolveY2Domain(spec: ChartSpec): Domain = invertIf((spec.y2Domain ?: niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))), spec.y2Inverse == true)
+fun resolveY2Domain(spec: ChartSpec): Domain {
+    val d = (spec.y2Domain ?: niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec)))
+    return Domain(min = d.min, max = d.max, inverse = spec.y2Inverse)
+  }
 
 fun logBounds(spec: ChartSpec): Domain {
     val pinned = (spec.yDomain ?: Domain(min = 0.0, max = 0.0))
@@ -3327,14 +3324,9 @@ fun logBounds(spec: ChartSpec): Domain {
     return Domain(min = floor, max = ceil)
   }
 
-fun geometrySpec(spec: ChartSpec): ChartSpec = baseGeometry(applyScaleViews(spec))
-
-fun applyScaleViews(spec: ChartSpec): ChartSpec {
-    val keep = { s: ChartSpec, _axis: String -> s }
-    val runX = if (spec.xViewApplied == true) keep else (spec.xView?.apply ?: keep)
-    val x = runX(spec, "x")
-    val runY = if (x.yViewApplied == true) keep else (x.yView?.apply ?: keep)
-    return runY(x, "y")
+fun geometrySpec(spec: ChartSpec): ChartSpec {
+    val x = (spec.xView?.apply?.invoke(spec, "x") ?: spec)
+    return baseGeometry((x.yView?.apply?.invoke(x, "y") ?: x))
   }
 
 fun baseGeometry(spec: ChartSpec): ChartSpec {
@@ -3523,7 +3515,7 @@ fun layoutChart(raw: ChartSpec, measure: (String, Double) -> Double): PlotLayout
     val n = seriesMaxLength(spec.series)
     val isLog = raw.yScale == "log"
     val lb = if (isLog) logBounds(raw) else Domain(min = 1.0, max = 10.0)
-    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0L) invertIf(extent((spec.xValues ?: listOf())), spec.xInverse == true) else Domain(min = 0.0, max = if (n > 1L) (pyreonSub(n, 1L)).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = (spec.xTicks ?: 0.0), yTickCount = valueTicks(spec), showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, rightReserve = endLabelReserve(spec, measure), yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0L) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yViewTicks = spec.yView?.ticks, yViewReal = spec.yReal, xViewTicks = spec.xView?.ticks, xViewReal = spec.xReal, yTime = spec.yTime == true, xLabels = spec.xLabels)
+    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0L) extent((spec.xValues ?: listOf())).copy(inverse = spec.xInverse) else Domain(min = 0.0, max = if (n > 1L) (pyreonSub(n, 1L)).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = (spec.xTicks ?: 0.0), yTickCount = valueTicks(spec), showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, rightReserve = endLabelReserve(spec, measure), yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0L) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yViewTicks = spec.yView?.ticks, yViewReal = spec.yReal, xViewTicks = spec.xView?.ticks, xViewReal = spec.xReal, yTime = spec.yTime == true, xLabels = spec.xLabels)
     return computeLayout(cfg, measure)
   }
 
@@ -3703,31 +3695,13 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       }
       return outPts
     }
-    if ((spec.yGrid ?: spec.showGrid)) {
-      if (spec.horizontal == true) {
-        for (tick in l.xTicks) {
-          out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = tick.pos, y = plot.y), to = PyreonChartPt(x = tick.pos, y = plot.y + plot.h), stroke = t.grid, width = 1.0))
-        }
-      } else {
-        for (tick in l.yTicks) {
-          out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = tick.pos), to = PyreonChartPt(x = plot.x + plot.w, y = tick.pos), stroke = t.grid, width = 1.0))
-        }
-      }
-    }
-    if (spec.xGrid == true) {
-      for (c in tickLines(if (spec.horizontal == true) l.yTicks else l.xTicks, spec.horizontal != true, plot, t.grid, 1.0)) {
-        out.add(c)
-      }
-    }
-    val majorTicks = if (spec.horizontal == true) l.xTicks else l.yTicks
-    val minorLinear = raw.yScale != "log" && spec.yTime != true
-    if (((spec.yMinor ?: 0.0)) >= 2.0 && minorLinear) {
-      for (c in minorLines(majorTicks, (spec.yMinor ?: 0.0), spec.horizontal == true, plot, withAlpha(t.grid, 0.6))) {
-        out.add(c)
-      }
-    }
-    if (((spec.xMinor ?: 0.0)) >= 2.0 && ((spec.xValues ?: listOf())).length > 0L && spec.xTime != true) {
-      for (c in minorLines(if (spec.horizontal == true) l.yTicks else l.xTicks, (spec.xMinor ?: 0.0), spec.horizontal != true, plot, withAlpha(t.grid, 0.6))) {
+    val flat = spec.horizontal == true
+    val majorTicks = if (flat) l.xTicks else l.yTicks
+    val crossTicks = if (flat) l.yTicks else l.xTicks
+    val minorStroke = withAlpha(t.grid, 0.6)
+    val gridded = listOf(if ((spec.yGrid ?: spec.showGrid)) tickLines(majorTicks, flat, plot, t.grid, 1.0) else listOf(), if (spec.xGrid == true) tickLines(crossTicks, !flat, plot, t.grid, 1.0) else listOf(), if (((spec.yMinor ?: 0.0)) >= 2.0 && raw.yScale != "log" && spec.yTime != true) minorLines(majorTicks, (spec.yMinor ?: 0.0), flat, plot, minorStroke) else listOf(), if (((spec.xMinor ?: 0.0)) >= 2.0 && ((spec.xValues ?: listOf())).length > 0L && spec.xTime != true) minorLines(crossTicks, (spec.xMinor ?: 0.0), !flat, plot, minorStroke) else listOf())
+    for (lines in gridded) {
+      for (c in lines) {
         out.add(c)
       }
     }
@@ -5021,7 +4995,12 @@ fun applyX(spec: ChartSpec, kind: String, param: Double): ChartSpec {
     return spec.copy(series = series, annotations = if (spec.annotations == null) null else notes, xValues = xView, xReal = real, xViewApplied = true)
   }
 
-fun applyScaleView(spec: ChartSpec, axis: String, kind: String, param: Double): ChartSpec = if (axis == "x") applyX(spec, kind, param) else applyY(spec, kind, param)
+fun applyScaleView(spec: ChartSpec, axis: String, kind: String, param: Double): ChartSpec {
+    if (axis == "x") {
+      return if (spec.xViewApplied == true) spec else applyX(spec, kind, param)
+    }
+    return if (spec.yViewApplied == true) spec else applyY(spec, kind, param)
+  }
 
 fun labelWidth(s: VisualStrip): Double = s.fontSize * 3.2
 

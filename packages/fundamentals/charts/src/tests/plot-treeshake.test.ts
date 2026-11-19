@@ -19,6 +19,7 @@ import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
 const here = dirname(fileURLToPath(import.meta.url))
 const PLOT = join(here, '..', '..', 'lib', 'engine.js')
 const MAIN = join(here, '..', '..', 'lib', 'index.js')
+const SVG = join(here, '..', '..', 'lib', 'svg.js')
 
 /** A literal that appears ONLY in the named family's geometry. */
 const FAMILY_MARKERS: ReadonlyArray<readonly [string, string]> = [
@@ -127,6 +128,15 @@ describe.skipIf(!hasBuiltLib(MAIN, "the main entry's feature tree-shaking"))('<C
   it('<Chart> + <Line> + <Axis> bundles no scale view code', async () => {
     const code = await bundle(['Chart', 'Line', 'Axis'], MAIN)
     expect(hasLiteral(code, 'symlog'), 'a scale view reached a chart with no descriptor').toBe(false)
+  })
+
+  // The two plot entries a server or a lean app imports: marks and a serializer, no descriptor, so no view and no ramp.
+  it('PlotChart + marks and chartToSvg bundle neither scale view nor per-datum colour code', async () => {
+    const entries: ReadonlyArray<readonly [readonly string[], string]> = [[['PlotChart', 'bars', 'line'], PLOT], [['chartToSvg', 'bars', 'line'], SVG]]
+    for (const [names, from] of entries) {
+      const code = await bundle(names, from)
+      for (const lit of ['symlog', 'shade-by', 'fill-by']) expect(hasLiteral(code, lit), `${lit} reached ${names[0]!} with no descriptor imported`).toBe(false)
+    }
   })
 
   it('and the marker is real — importing sqrt, symlog or log brings the view in', async () => {

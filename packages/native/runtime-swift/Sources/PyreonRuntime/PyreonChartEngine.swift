@@ -4891,13 +4891,6 @@ public func valueTickTarget(_ width: Double, _ height: Double, _ fontSize: Doubl
     return autoTickCount(height - 8.0 - (fontSize + 10.0), Y_TICK_SPACING)
   }
 
-public func callViewTicks(_ ticks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> [Tick])?, _ real: Domain?, _ r0: Double, _ r1: Double, _ count: Double, _ format: ((Double) -> String)?) -> [Tick] {
-    let build = (ticks ?? noViewTicks)
-    return build((real ?? Domain(min: 0.0, max: 1.0)), r0, r1, count, format)
-  }
-
-public func noViewTicks(_ _real: Domain, _ _r0: Double, _ _r1: Double, _ _count: Double, _ _format: ((Double) -> String)?) -> [Tick] { [] }
-
 public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Double) -> PlotLayout {
     let padTop = 8.0
     let padRight = 12.0
@@ -4910,7 +4903,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let hasViewX = cfg.xViewTicks != nil
     let logMin = (cfg.yLogMin ?? 1.0)
     let logMax = (cfg.yLogMax ?? 10.0)
-    let valueTicksY = { (r0: Double, r1: Double) in hasViewY ? callViewTicks(cfg.yViewTicks, cfg.yViewReal, cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, yCount, cfg.yFormat) : isLog ? logViewTicks(logMin, logMax, cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
+    let valueTicksY = { (r0: Double, r1: Double) in hasViewY ? ((cfg.yViewTicks?((cfg.yViewReal ?? cfg.yDomain), cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, yCount, cfg.yFormat) ?? [])) : isLog ? logViewTicks(logMin, logMax, cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
     let provisionalLabels = cfg.horizontal == true ? cfg.showYAxis ? cfg.categories : [] : cfg.showYAxis ? valueTicksY(cfg.height, 0.0).map({ t in t.label }) : []
     let yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
     let widest = yProvisional.widest
@@ -4932,7 +4925,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let left = yBand
     let right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH + ((cfg.rightReserve ?? 0.0))
     let provisionalW = max(0.0, cfg.width - left - right)
-    let numericXTicks = { (r0: Double, r1: Double, count: Double) in hasViewX ? callViewTicks(cfg.xViewTicks, cfg.xViewReal, cfg.xDomain.inverse == true ? r1 : r0, cfg.xDomain.inverse == true ? r0 : r1, count, cfg.xFormat) : cfg.xTime == true ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) }
+    let numericXTicks = { (r0: Double, r1: Double, count: Double) in hasViewX ? ((cfg.xViewTicks?((cfg.xViewReal ?? cfg.xDomain), cfg.xDomain.inverse == true ? r1 : r0, cfg.xDomain.inverse == true ? r0 : r1, count, cfg.xFormat) ?? [])) : cfg.xTime == true ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) }
     let xCount = cfg.xTickCount > 0.0 ? cfg.xTickCount : autoTickCount(provisionalW, X_TICK_SPACING)
     let mode = (cfg.xLabels ?? "auto")
     var rotate = 0.0
@@ -5984,11 +5977,15 @@ public func stateFill(_ s: Series, _ index: Int, _ own: String) -> String {
 
 public func emphasisOutline(_ r: PyreonChartRect, _ level: Int, _ stroke: String) -> PyreonDrawCmd { PyreonDrawCmd(kind: "polyline", stroke: stroke, width: level == 2 ? 2.5 : 1.5, points: [PyreonChartPt(x: r.x, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y), PyreonChartPt(x: r.x + r.w, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y + r.h), PyreonChartPt(x: r.x, y: r.y)]) }
 
-public func resolveYDomain(_ spec: ChartSpec) -> Domain { invertIf((spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))), spec.yInverse == true) }
+public func resolveYDomain(_ spec: ChartSpec) -> Domain {
+    let d = (spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec)))
+    return Domain(min: d.min, max: d.max, inverse: spec.yInverse)
+  }
 
-public func invertIf(_ d: Domain, _ flip: Bool) -> Domain { flip ? Domain(min: d.min, max: d.max, inverse: true) : d }
-
-public func resolveY2Domain(_ spec: ChartSpec) -> Domain { invertIf((spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))), spec.y2Inverse == true) }
+public func resolveY2Domain(_ spec: ChartSpec) -> Domain {
+    let d = (spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec)))
+    return Domain(min: d.min, max: d.max, inverse: spec.y2Inverse)
+  }
 
 public func logBounds(_ spec: ChartSpec) -> Domain {
     let pinned = (spec.yDomain ?? Domain(min: 0.0, max: 0.0))
@@ -6021,14 +6018,9 @@ public func logBounds(_ spec: ChartSpec) -> Domain {
     return Domain(min: floor, max: ceil)
   }
 
-public func geometrySpec(_ spec: ChartSpec) -> ChartSpec { baseGeometry(applyScaleViews(spec)) }
-
-public func applyScaleViews(_ spec: ChartSpec) -> ChartSpec {
-    let keep = { (s: ChartSpec, _axis: String) in s }
-    let runX = spec.xViewApplied == true ? keep : (spec.xView?.apply ?? keep)
-    let x = runX(spec, "x")
-    let runY = x.yViewApplied == true ? keep : (x.yView?.apply ?? keep)
-    return runY(x, "y")
+public func geometrySpec(_ spec: ChartSpec) -> ChartSpec {
+    let x = (spec.xView?.apply?(spec, "x") ?? spec)
+    return baseGeometry((x.yView?.apply?(x, "y") ?? x))
   }
 
 public func baseGeometry(_ spec: ChartSpec) -> ChartSpec {
@@ -6217,7 +6209,7 @@ public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double)
     let n = seriesMaxLength(spec.series)
     let isLog = raw.yScale == "log"
     let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertIf(extent((spec.xValues ?? [])), spec.xInverse == true) : Domain(min: 0.0, max: n > 1 ? Double(pyreonSub(n, 1)) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: (spec.xTicks ?? 0.0), yTickCount: valueTicks(spec), showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, rightReserve: endLabelReserve(spec, measure), yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yViewTicks: spec.yView?.ticks, yViewReal: spec.yReal, xViewTicks: spec.xView?.ticks, xViewReal: spec.xReal, yTime: spec.yTime == true, xLabels: spec.xLabels)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? { var c = extent((spec.xValues ?? [])); c.inverse = spec.xInverse; return c }() : Domain(min: 0.0, max: n > 1 ? Double(pyreonSub(n, 1)) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: (spec.xTicks ?? 0.0), yTickCount: valueTicks(spec), showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, rightReserve: endLabelReserve(spec, measure), yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yViewTicks: spec.yView?.ticks, yViewReal: spec.yReal, xViewTicks: spec.xView?.ticks, xViewReal: spec.xReal, yTime: spec.yTime == true, xLabels: spec.xLabels)
     return computeLayout(cfg, measure)
   }
 
@@ -6398,31 +6390,13 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
       }
       return outPts
     }
-    if (spec.yGrid ?? spec.showGrid) {
-      if spec.horizontal == true {
-        for tick in l.xTicks {
-          out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: tick.pos, y: plot.y), to: PyreonChartPt(x: tick.pos, y: plot.y + plot.h), stroke: t.grid, width: 1.0))
-        }
-      } else {
-        for tick in l.yTicks {
-          out.append(PyreonDrawCmd(kind: "line", from: PyreonChartPt(x: plot.x, y: tick.pos), to: PyreonChartPt(x: plot.x + plot.w, y: tick.pos), stroke: t.grid, width: 1.0))
-        }
-      }
-    }
-    if spec.xGrid == true {
-      for c in tickLines(spec.horizontal == true ? l.yTicks : l.xTicks, spec.horizontal != true, plot, t.grid, 1.0) {
-        out.append(c)
-      }
-    }
-    let majorTicks = spec.horizontal == true ? l.xTicks : l.yTicks
-    let minorLinear = raw.yScale != "log" && spec.yTime != true
-    if ((spec.yMinor ?? 0.0)) >= 2.0 && minorLinear {
-      for c in minorLines(majorTicks, (spec.yMinor ?? 0.0), spec.horizontal == true, plot, withAlpha(t.grid, 0.6)) {
-        out.append(c)
-      }
-    }
-    if ((spec.xMinor ?? 0.0)) >= 2.0 && ((spec.xValues ?? [])).count > 0 && spec.xTime != true {
-      for c in minorLines(spec.horizontal == true ? l.yTicks : l.xTicks, (spec.xMinor ?? 0.0), spec.horizontal != true, plot, withAlpha(t.grid, 0.6)) {
+    let flat = spec.horizontal == true
+    let majorTicks = flat ? l.xTicks : l.yTicks
+    let crossTicks = flat ? l.yTicks : l.xTicks
+    let minorStroke = withAlpha(t.grid, 0.6)
+    let gridded = [(spec.yGrid ?? spec.showGrid) ? tickLines(majorTicks, flat, plot, t.grid, 1.0) : [], spec.xGrid == true ? tickLines(crossTicks, !flat, plot, t.grid, 1.0) : [], ((spec.yMinor ?? 0.0)) >= 2.0 && raw.yScale != "log" && spec.yTime != true ? minorLines(majorTicks, (spec.yMinor ?? 0.0), flat, plot, minorStroke) : [], ((spec.xMinor ?? 0.0)) >= 2.0 && ((spec.xValues ?? [])).count > 0 && spec.xTime != true ? minorLines(crossTicks, (spec.xMinor ?? 0.0), !flat, plot, minorStroke) : []]
+    for lines in gridded {
+      for c in lines {
         out.append(c)
       }
     }
@@ -7710,7 +7684,12 @@ public func applyX(_ spec: ChartSpec, _ kind: String, _ param: Double) -> ChartS
     return { var c = spec; c.series = series; c.annotations = spec.annotations == nil ? nil : notes; c.xValues = xView; c.xReal = real; c.xViewApplied = true; return c }()
   }
 
-public func applyScaleView(_ spec: ChartSpec, _ axis: String, _ kind: String, _ param: Double) -> ChartSpec { axis == "x" ? applyX(spec, kind, param) : applyY(spec, kind, param) }
+public func applyScaleView(_ spec: ChartSpec, _ axis: String, _ kind: String, _ param: Double) -> ChartSpec {
+    if axis == "x" {
+      return spec.xViewApplied == true ? spec : applyX(spec, kind, param)
+    }
+    return spec.yViewApplied == true ? spec : applyY(spec, kind, param)
+  }
 
 public func labelWidth(_ s: VisualStrip) -> Double { s.fontSize * 3.2 }
 

@@ -566,12 +566,10 @@ export function emphasisOutline(r: Rect, level: number, stroke: string): DrawCmd
 export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
-  return invertIf(spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec)), spec.yInverse === true)
-}
+  const d = spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))
 
-/** The domain with its mapping reversed (`Domain.inverse`) when `flip`; the same domain otherwise. */
-function invertIf(d: Domain, flip: boolean): Domain {
-  return flip ? { min: d.min, max: d.max, inverse: true } : d
+  // `inverse` rides on the domain (`Domain.inverse`): only the mapping from a value to a pixel flips.
+  return { min: d.min, max: d.max, inverse: spec.yInverse }
 }
 
 /**
@@ -583,7 +581,9 @@ function invertIf(d: Domain, flip: boolean): Domain {
  * it anyway.
  */
 export function resolveY2Domain(spec: ChartSpec): Domain {
-  return invertIf(spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec)), spec.y2Inverse === true)
+  const d = spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))
+
+  return { min: d.min, max: d.max, inverse: spec.y2Inverse }
 }
 
 /**
@@ -625,20 +625,10 @@ export function logBounds(spec: ChartSpec): Domain {
  * read the ORIGINAL spec, which is how they keep showing real values.
  */
 export function geometrySpec(spec: ChartSpec): ChartSpec {
-  // A scale descriptor (`sqrt()`, `symlog()`, `log()`) carries its own view; a chart with none never reaches it.
+  // A scale descriptor (`sqrt()`, `symlog()`, `log()`) carries its own view, x then y, and skips an axis it already applied.
+  const x = spec.xView?.apply?.(spec, 'x') ?? spec
 
-  return baseGeometry(applyScaleViews(spec))
-}
-
-/** The spec through each axis's scale descriptor, x then y; the same spec when there is none. */
-function applyScaleViews(spec: ChartSpec): ChartSpec {
-  // `?.apply ?? identity`: the optional is not narrowed through a guard on the native targets.
-  const keep = (s: ChartSpec, _axis: string): ChartSpec => s
-  const runX = spec.xViewApplied === true ? keep : spec.xView?.apply ?? keep
-  const x = runX(spec, 'x')
-  const runY = x.yViewApplied === true ? keep : x.yView?.apply ?? keep
-
-  return runY(x, 'y')
+  return baseGeometry(x.yView?.apply?.(x, 'y') ?? x)
 }
 
 function baseGeometry(spec: ChartSpec): ChartSpec {
@@ -865,7 +855,7 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
       (spec.xValues ?? []).length > 0
         /* v8 ignore next — the inner `?? []` is unreachable: the test above already
            established a non-empty list. Native needs the unwrap; the web cannot reach it. */
-        ? invertIf(extent(spec.xValues ?? []), spec.xInverse === true)
+        ? { ...extent(spec.xValues ?? []), inverse: spec.xInverse }
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
@@ -1118,37 +1108,19 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     return outPts
   }
 
-  if (spec.yGrid ?? spec.showGrid) {
-    if (spec.horizontal === true) {
-      // The grid follows the VALUE axis — vertical lines in this frame.
-      for (const tick of l.xTicks) {
-        out.push({
-          kind: 'line',
-          from: { x: tick.pos, y: plot.y },
-          to: { x: tick.pos, y: plot.y + plot.h },
-          stroke: t.grid,
-          width: 1.0,
-        })
-      }
-    } else {
-      for (const tick of l.yTicks) {
-        out.push({
-          kind: 'line',
-          from: { x: plot.x, y: tick.pos },
-          to: { x: plot.x + plot.w, y: tick.pos },
-          stroke: t.grid,
-          width: 1.0,
-        })
-      }
-    }
-  }
-  // The other axis's grid, and the minor lines, are opt-in: a chart that sets
-  // none of `xGrid`, `yMinor`, `xMinor` draws exactly the lines it always did.
-  if (spec.xGrid === true) for (const c of tickLines(spec.horizontal === true ? l.yTicks : l.xTicks, spec.horizontal !== true, plot, t.grid, 1.0)) out.push(c)
-  const majorTicks = spec.horizontal === true ? l.xTicks : l.yTicks
-  const minorLinear = raw.yScale !== 'log' && spec.yTime !== true
-  if ((spec.yMinor ?? 0.0) >= 2.0 && minorLinear) for (const c of minorLines(majorTicks, spec.yMinor ?? 0.0, spec.horizontal === true, plot, withAlpha(t.grid, 0.6))) out.push(c)
-  if ((spec.xMinor ?? 0.0) >= 2.0 && (spec.xValues ?? []).length > 0 && spec.xTime !== true) for (const c of minorLines(spec.horizontal === true ? l.yTicks : l.xTicks, spec.xMinor ?? 0.0, spec.horizontal !== true, plot, withAlpha(t.grid, 0.6))) out.push(c)
+  // The value axis's grid follows its ticks (vertical lines on a horizontal chart); the other axis's grid and the
+  // minor lines are opt-in, so a chart that sets none of `xGrid`, `yMinor`, `xMinor` draws exactly the lines it always did.
+  const flat = spec.horizontal === true
+  const majorTicks = flat ? l.xTicks : l.yTicks
+  const crossTicks = flat ? l.yTicks : l.xTicks
+  const minorStroke = withAlpha(t.grid, 0.6)
+  const gridded: DrawCmd[][] = [
+    spec.yGrid ?? spec.showGrid ? tickLines(majorTicks, flat, plot, t.grid, 1.0) : [],
+    spec.xGrid === true ? tickLines(crossTicks, !flat, plot, t.grid, 1.0) : [],
+    (spec.yMinor ?? 0.0) >= 2.0 && raw.yScale !== 'log' && spec.yTime !== true ? minorLines(majorTicks, spec.yMinor ?? 0.0, flat, plot, minorStroke) : [],
+    (spec.xMinor ?? 0.0) >= 2.0 && (spec.xValues ?? []).length > 0 && spec.xTime !== true ? minorLines(crossTicks, spec.xMinor ?? 0.0, !flat, plot, minorStroke) : [],
+  ]
+  for (const lines of gridded) for (const c of lines) out.push(c)
   const yAxisX = plot.x
   if (spec.showYAxis) {
     out.push({

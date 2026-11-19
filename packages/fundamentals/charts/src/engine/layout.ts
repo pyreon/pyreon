@@ -167,25 +167,6 @@ export function valueTickTarget(width: Double, height: Double, fontSize: Double,
   return autoTickCount(height - 8.0 - (fontSize + 10.0), Y_TICK_SPACING)
 }
 
-// oxlint-disable-next-line max-params -- positional like the tick builders it calls
-function callViewTicks(
-  ticks: ((real: Domain, r0: Double, r1: Double, count: Double, format: Formatter | undefined) => Tick[]) | undefined,
-  real: Domain | undefined,
-  r0: Double,
-  r1: Double,
-  count: Double,
-  format: Formatter | undefined,
-): Tick[] {
-  const build = ticks ?? noViewTicks
-
-  return build(real ?? { min: 0.0, max: 1.0 }, r0, r1, count, format)
-}
-
-/** The tick builder of an axis with no scale descriptor: no ticks (never reached, `viewTicks` is only called when one is set). */
-function noViewTicks(_real: Domain, _r0: Double, _r1: Double, _count: Double, _format: Formatter | undefined): Tick[] {
-  return []
-}
-
 export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayout {
   const padTop = 8.0
   const padRight = 12.0
@@ -208,7 +189,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // the final pass cannot disagree.
   const valueTicksY = (r0: Double, r1: Double): Tick[] =>
     hasViewY
-      ? callViewTicks(cfg.yViewTicks, cfg.yViewReal, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, yCount, cfg.yFormat)
+      ? (cfg.yViewTicks?.(cfg.yViewReal ?? cfg.yDomain, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, yCount, cfg.yFormat) ?? [])
       : isLog
       ? logViewTicks(logMin, logMax, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, cfg.yFormat)
       : cfg.yTime === true
@@ -261,7 +242,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // The numeric x ticks over a pixel range: view (log / sqrt / symlog), calendar steps, or the nice ladder.
   const numericXTicks = (r0: Double, r1: Double, count: Double): Tick[] =>
     hasViewX
-      ? callViewTicks(cfg.xViewTicks, cfg.xViewReal, cfg.xDomain.inverse === true ? r1 : r0, cfg.xDomain.inverse === true ? r0 : r1, count, cfg.xFormat)
+      ? (cfg.xViewTicks?.(cfg.xViewReal ?? cfg.xDomain, cfg.xDomain.inverse === true ? r1 : r0, cfg.xDomain.inverse === true ? r0 : r1, count, cfg.xFormat) ?? [])
       : cfg.xTime === true
         ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
         : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
