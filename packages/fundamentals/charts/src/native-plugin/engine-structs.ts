@@ -8488,6 +8488,12 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "label",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
         "name": "rings",
         "type": {
           "kind": "array",
@@ -8498,6 +8504,43 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "name": "PyreonChartPt",
               "args": []
             }
+          }
+        }
+      },
+      {
+        "name": "holes",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "array",
+            "element": {
+              "kind": "typeRef",
+              "name": "PyreonChartPt",
+              "args": []
+            }
+          }
+        }
+      },
+      {
+        "name": "fills",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "array",
+            "element": {
+              "kind": "typeRef",
+              "name": "PyreonChartPt",
+              "args": []
+            }
+          }
+        }
+      },
+      {
+        "name": "holeHost",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "number"
           }
         }
       },
@@ -8530,6 +8573,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "label",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "rings",
         "type": {
           "kind": "array",
@@ -8541,6 +8598,45 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "args": []
             }
           }
+        }
+      },
+      {
+        "name": "holes",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "array",
+                "element": {
+                  "kind": "typeRef",
+                  "name": "PyreonChartPt",
+                  "args": []
+                }
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "holeHost",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "number"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
         }
       }
     ],
@@ -8616,6 +8712,14 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "name": "GeoProjection",
           "args": []
         }
+      },
+      {
+        "name": "params",
+        "type": {
+          "kind": "typeRef",
+          "name": "GeoProjectionParams",
+          "args": []
+        }
       }
     ],
     "external": true
@@ -8681,7 +8785,143 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "centerLon",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "centerLat",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "parallel1",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "parallel2",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "sphere",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "sphereColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "graticule",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "graticuleColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "nameProperty",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "idProperty",
         "type": {
           "kind": "union",
           "branches": [
@@ -8729,6 +8969,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "emptyColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "hatchColor",
         "type": {
           "kind": "union",
           "branches": [
@@ -8880,6 +9134,65 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "hover",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "number"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "selected",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "number"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "emphasisColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "selectColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "inRange",
         "type": {
           "kind": "union",
@@ -8956,6 +9269,274 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "kind": "typeRef",
           "name": "Double",
           "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoProjectionParams",
+    "fields": [
+      {
+        "name": "lon0",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "lat0",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "p1",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "p2",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoFlow",
+    "fields": [
+      {
+        "name": "from",
+        "type": {
+          "kind": "typeRef",
+          "name": "GeoCoordinate",
+          "args": []
+        }
+      },
+      {
+        "name": "to",
+        "type": {
+          "kind": "typeRef",
+          "name": "GeoCoordinate",
+          "args": []
+        }
+      },
+      {
+        "name": "value",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "name",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoFlowOptions",
+    "fields": [
+      {
+        "name": "color",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "minWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "maxWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "progress",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "opacity",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoSizeLegendOptions",
+    "fields": [
+      {
+        "name": "radius",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "color",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "labelColor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "fontSize",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "title",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
         }
       }
     ],
@@ -12553,6 +13134,8 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "GanttTickUnit",
   "GaugeOptions",
   "GeoCoordinate",
+  "GeoFlow",
+  "GeoFlowOptions",
   "GeoHeatPoint",
   "GeoLayout",
   "GeoOptions",
@@ -12561,8 +13144,10 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "GeoOverlayPoint",
   "GeoPie",
   "GeoProjection",
+  "GeoProjectionParams",
   "GeoRegion",
   "GeoShape",
+  "GeoSizeLegendOptions",
   "GeoTrail",
   "GeoTransform",
   "GeoValue",

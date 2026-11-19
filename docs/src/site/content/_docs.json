@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 228,
+  "pageCount": 229,
   "pages": [
    {
     "path": "a11y.md",
@@ -596,6 +596,11 @@
     "path": "reference/charts.md",
     "title": "Charts on web, iOS and Android — API Reference",
     "href": "/docs/reference/charts"
+   },
+   {
+    "path": "reference/charts-maps.md",
+    "title": "@pyreon/charts-maps — API Reference",
+    "href": "/docs/reference/charts-maps"
    },
    {
     "path": "reference/code.md",
@@ -1460,6 +1465,7 @@
      "slugs": [
       "reference/a11y",
       "reference/charts",
+      "reference/charts-maps",
       "reference/code",
       "reference/command",
       "reference/connector-document",
@@ -2361,6 +2367,10 @@
       {
        "title": "Charts on web, iOS and Android",
        "href": "/docs/reference/charts"
+      },
+      {
+       "title": "Chart Maps (boundary data)",
+       "href": "/docs/reference/charts-maps"
       },
       {
        "title": "Code Editor",

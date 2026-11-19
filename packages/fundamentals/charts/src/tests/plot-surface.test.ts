@@ -10,7 +10,7 @@ const EXPECTED = [
   'FunnelChart', 'TreemapChart', 'SunburstChart', 'TreeChart', 'SankeyChart', 'GraphChart',
   'CalendarChart', 'ParallelChart', 'PolarChart', 'SingleAxisChart', 'RiverChart', 'MapChart',
   'funnelToSvg', 'treemapToSvg', 'sunburstToSvg', 'treeToSvg', 'sankeyToSvg', 'graphToSvg',
-  'calendarToSvg', 'parallelToSvg', 'polarToSvg', 'singleAxisToSvg', 'riverToSvg', 'geoToSvg', 'geoPointsToSvg',
+  'calendarToSvg', 'parallelToSvg', 'polarToSvg', 'singleAxisToSvg', 'riverToSvg', 'geoToSvg',
   'registerLocale', 'numberFormatter', 'registerMap',
   'zoomWindow', 'brushRange', 'renderTitle',
   'GanttChart', 'createChartLink', 'sonifyValues', 'valueToHz', 'visualMap', 'gaugeDial',

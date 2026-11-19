@@ -6808,9 +6808,10 @@ registerMap('eu', euGeoJson)
 // geoShapes() reads GeoJSON, so project on the web or in a build step, not here.
 const euShapes: GeoShape[] = geoShapes(euGeoJson)
 <MapChart map={euShapes} values={{ DE: 83, FR: 68, PL: 38 }} height={360} onSelectIndex={(i) => console.log(i)} />`,
-    notes: `GeoJSON regions filled by value. \`map\` takes three shapes: a name registered once with \`registerMap(name, geojson)\` (ECharts' shape), a FeatureCollection directly, or already-projected \`GeoShape[]\` (what \`geoShapes(json)\` returns) — the third is the one that LOWERS TO NATIVE (a \`Polygon | MultiPolygon\` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and \`geoShapes\` itself reads GeoJSON so shared source passes a PRECOMPUTED const). \`layoutGeoShapes\` fits the rings into the box with aspect preserved and north up; \`renderGeo\` colours through the SAME ramp the heatmap uses so a \`visualMap\` strip cannot disagree with the map; \`hitGeoIndex\` is ring-accurate. \`renderGeoPoints\` / \`renderGeoPaths\` draw scatter, effectScatter halos and flight paths on top through \`layout.project\`. The other coordinate families follow the same pattern: \`<CalendarChart>\` (contribution grid, strict ISO dates), \`<ParallelChart>\`, \`<PolarChart>\` (radial or concentric bars, polar lines), \`<RiverChart>\` (silhouette streamgraph) and \`layoutSingleAxis\`. See also: TreemapChart, Cell.`,
+    notes: `GeoJSON regions filled by value, with the inner rings (lakes, enclaves) cut out of the fill and out of the hit test. \`map\` takes three shapes: a name registered once with \`registerMap(name, geojson)\` (ECharts' shape), a FeatureCollection directly, or already-projected \`GeoShape[]\` (what \`geoShapes(json)\` returns) — the third is the one that LOWERS TO NATIVE (a \`Polygon | MultiPolygon\` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and \`geoShapes\` itself reads GeoJSON so shared source passes a PRECOMPUTED const). \`layoutGeoShapes\` fits the rings into the box with aspect preserved and north up; \`renderGeo\` colours through the SAME ramp the heatmap uses so a \`visualMap\` strip cannot disagree with the map; \`hitGeoIndex\` is ring-accurate. \`points\`, \`paths\`, \`heat\` and \`pies\` draw scatter, effectScatter halos, flight paths, heat blobs and pies on top, and \`geoToSvg\` (from \`@pyreon/charts/svg\`) draws the same layers server-side. The other coordinate families follow the same pattern: \`<CalendarChart>\` (contribution grid, strict ISO dates), \`<ParallelChart>\`, \`<PolarChart>\` (radial or concentric bars, polar lines), \`<RiverChart>\` (silhouette streamgraph) and \`layoutSingleAxis\`. \`map\` also takes TopoJSON (decoded with no dependency by \`topoToGeo\`) and a \`MapDefinition\` \`{ data, object, projection, nameProperty, idProperty }\`, which \`registerMap(name, source, { projection, nameProperty, idProperty, object })\` registers with its defaults; an explicit \`options\` value still wins over the map's own default. \`options.projection\` is \`equirectangular\`, \`mercator\`, \`equalEarth\`, \`naturalEarth1\`, \`albers\` or \`albersUsa\` (the lower 48 with Alaska and Hawaii in insets), with \`centerLon\`, \`centerLat\`, \`parallel1\` and \`parallel2\` for the central meridian and the Albers parallels; \`geoProject\` / \`geoUnproject\` map lon/lat to pixels and back (a pointer to lon/lat), all of it lowering to iOS and Android. \`options.sphere\` and \`options.graticule\` draw the whole-sphere outline and a graticule behind the land (and lower to native); \`flows\` draw great-circle arcs (\`flowOptions.progress\` is arc length on the sphere, a seam crossing is two runs), \`sizeLegend\` a key for sized \`points\`, \`fitTo\` / \`zoomOnClick\` zoom to regions, Point / MultiPoint / LineString features in the GeoJSON or TopoJSON become marks and paths, and rings that cross the seam half a turn from the central meridian are cut there. Boundary data is the separate \`@pyreon/charts-maps\` package. Interaction: hover outlines the region under the pointer (\`emphasis\`, default on), \`selectedMode\` \`'single'\` or \`'multiple'\` keeps a selection (click, or Enter / Space on the keyboard-focused region; \`onSelectionChange\` reports the table row indices), and the canvas description and the accessible table name the selected regions. \`options.idProperty\` (\`'id'\` or any feature property) joins \`values\` to something other than the display name, and \`tooltipFormatter\` / \`onSelect\` receive the region's join key, label, value and the feature's own GeoJSON properties. \`selectedMode\`, \`emphasis\`, \`onSelectionChange\` and \`tooltipFormatter\` are web-only: iOS and Android warn by name. See also: TreemapChart, Cell.`,
     mistakes: `- Keying \`values\` by a property the features do not carry — the region name comes from \`properties.name\` by default; pass \`options.nameProperty\` for ISO codes or ids
-- Expecting hole rings (lakes) to be cut out — only outer rings are drawn; a hole renders as part of its region
+- Expecting \`values\` keyed by an id to match — values match the region's JOIN key, which is its display name unless \`options.idProperty\` names another (\`'id'\` for the feature id, or any property); a \`FeatureCollection\` whose ids are numbers joins on their string form
+- Passing \`selectedMode\` or \`tooltipFormatter\` in a native app — they are web-only (the compiler warns by name); a native map selects through \`onSelectIndex\`
 - Passing coordinates in Mercator metres — \`projectLonLat\` takes DEGREES (lon, lat) and projects itself; pre-projected data double-projects
 - Using a hand-picked colour per region instead of \`values\` — the fill is a value → colour mapping through the ramp so the accessible table and any visualMap strip stay truthful
 - Reaching for \`registerMap\` in SHARED multiplatform source — the registry is a module map no native target has, and neither raw GeoJSON nor \`geoShapes()\` crosses; pass a PRECOMPUTED \`GeoShape[]\` const (projected on the web or in a build step) and the warnings go away`,
@@ -6889,6 +6890,36 @@ const sound = sonifyValues(closes, { duration: 3000, minHz: 220, maxHz: 880, lin
 - Closing an \`options.context\` you passed in and expecting the hook to have done it — a supplied context is the caller's to close; only the one the hook constructs is closed on settle`,
   },
   // <gen-docs:api-reference:end @pyreon/charts>
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/charts-maps
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/charts-maps>
+
+  'charts-maps/world-110m': {
+    signature: `import world from '@pyreon/charts-maps/world-110m'  // MapModule`,
+    example: `import { MapChart } from '@pyreon/charts'
+import world from '@pyreon/charts-maps/world-110m'
+
+<MapChart map={world} values={{ DEU: 83, FRA: 68 }} />`,
+    notes: 'The countries of the world as a `MapModule` for `<MapChart map>`: Natural Earth 1:110m TopoJSON (object `countries`), joined on the ISO 3166-1 alpha-3 feature id, named by `properties.name`, prepared for the Equal Earth projection. About 33 KB gzip. See also: us-states.',
+    mistakes: `- Joining values on the country NAME — the key is the ISO alpha-3 id (\`DEU\`), not \`Germany\`; the display name is only the label
+- Importing from the package root for the data — the root is types and a list; each map is its own subpath (\`@pyreon/charts-maps/world-110m\`) so it bundles only when imported
+- Expecting a disputed border to match your convention — Natural Earth draws de facto lines; this package takes no position on them`,
+  },
+
+  'charts-maps/us-states': {
+    signature: `import usStates from '@pyreon/charts-maps/us-states'  // MapModule`,
+    example: `import { MapChart } from '@pyreon/charts'
+import usStates from '@pyreon/charts-maps/us-states'
+
+<MapChart map={usStates} values={{ '06': 39, '48': 30 }} />`,
+    notes: 'The 50 US states and DC as a `MapModule`: Census cartographic boundary 1:20m TopoJSON (object `states`), joined on the two-digit state FIPS feature id (`"06"`), named by `properties.name`, prepared for Albers USA (Alaska and Hawaii in insets). About 34 KB gzip. See also: world-110m.',
+    mistakes: `- Writing FIPS codes as numbers — the id is a TWO-CHARACTER STRING (\`"06"\`, not \`6\`), so a numeric key never matches
+- Expecting counties — this is states only; the larger county file was measured (about 229 KB gzip) and left out`,
+  },
+  // <gen-docs:api-reference:end @pyreon/charts-maps>
   // ═══════════════════════════════════════════════════════════════════════════
 
   // <gen-docs:api-reference:start @pyreon/code>

@@ -31,6 +31,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | --- | --- |
 | [@pyreon/a11y](/docs/a11y) | Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup |
 | [@pyreon/charts](/docs/charts) | Charts for Pyreon on the web, iOS and Android: &lt;Chart&gt; with mark children over a first-party engine (21 chart families, one flat draw list), canvas and SVG, tree-shakeable marks |
+| [@pyreon/charts-maps](https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts-maps) | Boundary data for @pyreon/charts maps: world and US-state TopoJSON, one lazy module per map, with the projection and join keys each one is meant for |
 | [@pyreon/code](/docs/code) | Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages |
 | [@pyreon/command](/docs/command) | A command palette for Pyreon: a fuzzy matcher, a registry of commands with shortcuts, recents and async sources |
 | [@pyreon/dnd](/docs/dnd) | Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop |

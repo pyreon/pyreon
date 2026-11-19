@@ -3,6 +3,7 @@
   "bundle": 97543,
   "imports": {
     "chart-line": 40300,
+    "chart-map": 27400,
     "chart-pie": 26210,
     "plot-minimal": 40700,
     "plot-svg": 17950

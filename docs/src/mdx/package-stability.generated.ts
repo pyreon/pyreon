@@ -9,6 +9,7 @@ export const PACKAGE_STABILITY: Readonly<Record<string, PackageStability>> = {
   '@pyreon/atlas': 'experimental',
   '@pyreon/attrs': 'stable',
   '@pyreon/charts': 'stable',
+  '@pyreon/charts-maps': 'experimental',
   '@pyreon/cli': 'stable',
   '@pyreon/code': 'stable',
   '@pyreon/compiler': 'stable',

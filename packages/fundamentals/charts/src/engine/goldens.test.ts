@@ -23,6 +23,8 @@ import {
 } from './family-svg'
 import { boxplotToSvg } from './boxplot-svg'
 import { geoToSvg } from './geo-web'
+import { FLORIDA_LAKE, ITALY_ENCLAVES, SOUTH_AFRICA_LESOTHO } from './__fixtures__/geo-holes'
+import { gridGeo, gridValues, usGrid, usGridAleutians } from './__fixtures__/geo-grid'
 import type { GeoJson } from './geo-web'
 import type { TreeNode } from './treemap'
 
@@ -78,6 +80,23 @@ const GOLDENS: Record<string, () => string> = {
   // `map` was the only family host without a golden. One region deliberately
   // has NO value, so the ramp AND the no-data fill are both in the output.
   map: () => geoToSvg({ geo: WORLD, values: { West: 10, East: 40 }, ...SIZE }),
+  // Inner rings: Lesotho cut out of South Africa (and drawn on top), the Italian enclaves, Lake Okeechobee in Florida.
+  'map-holes-south-africa': () => geoToSvg({ geo: SOUTH_AFRICA_LESOTHO, values: { 'South Africa': 30, Lesotho: 80 }, ...SIZE }),
+  'map-holes-italy': () => geoToSvg({ geo: ITALY_ENCLAVES, values: { Italy: 20, 'San Marino': 90, 'Vatican City': 60 }, ...SIZE }),
+  // One golden per projection over a lon/lat grid (cells show the distortion without any boundary data).
+  'map-proj-equirectangular': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'equirectangular' }, ...SIZE }),
+  'map-proj-equal-earth': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'equalEarth' }, ...SIZE }),
+  'map-proj-natural-earth-1': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'naturalEarth1' }, ...SIZE }),
+  'map-proj-equal-earth-rotated': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'equalEarth', centerLon: 150 }, ...SIZE }),
+  'map-proj-albers': () => geoToSvg({ geo: gridGeo(-130, -60, 20, 55, 5), values: gridValues(gridGeo(-130, -60, 20, 55, 5)), options: { projection: 'albers' }, ...SIZE }),
+  'map-proj-albers-parallels': () => geoToSvg({ geo: gridGeo(-130, -60, 20, 55, 5), values: gridValues(gridGeo(-130, -60, 20, 55, 5)), options: { projection: 'albers', parallel1: 40, parallel2: 50, centerLon: -100 }, ...SIZE }),
+  'map-proj-albers-usa': () => geoToSvg({ geo: usGrid(), values: gridValues(usGrid()), options: { projection: 'albersUsa' }, ...SIZE }),
+  'map-proj-albers-usa-aleutians': () => geoToSvg({ geo: usGridAleutians(), values: gridValues(usGridAleutians()), options: { projection: 'albersUsa' }, ...SIZE }),
+  // Layers: sphere + graticule behind a world, great-circle flows (one crossing the seam), a bubble map with its size key.
+  'map-layers-sphere-graticule': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'equalEarth', sphere: true, graticule: 30 }, ...SIZE }),
+  'map-layers-flows': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 40), values: {}, options: { projection: 'equalEarth', sphere: true, graticule: 30 }, flows: [{ from: { lon: -74, lat: 40.7 }, to: { lon: 2.3, lat: 48.9 }, value: 8 }, { from: { lon: 139.7, lat: 35.7 }, to: { lon: -122.4, lat: 37.8 }, value: 4 }, { from: { lon: 151.2, lat: -33.9 }, to: { lon: 18.4, lat: -33.9 }, value: 2 }], flowOptions: { color: '#b42318' }, ...SIZE }),
+  'map-layers-bubbles': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 40), values: {}, options: { projection: 'equalEarth', sphere: true }, points: [{ lon: -74, lat: 40.7, value: 18_800_000 }, { lon: 139.7, lat: 35.7, value: 37_000_000 }, { lon: 2.3, lat: 48.9, value: 11_000_000 }, { lon: 28.9, lat: 41, value: 15_000_000 }], overlayOptions: { radius: 9, color: '#2563eb' }, sizeLegend: true, ...SIZE }),
+  'map-holes-lake': () => geoToSvg({ geo: FLORIDA_LAKE, values: { Florida: 55 }, ...SIZE }),
 }
 
 describe('draw-list goldens (SVG per family)', () => {

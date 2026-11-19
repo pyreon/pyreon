@@ -329,6 +329,29 @@ export const SCENARIOS: Scenario[] = [
     imports: ['Chart', 'Arc'],
   },
   {
+    id: '@pyreon/charts::chart-map',
+    pkg: '@pyreon/charts',
+    dir: 'fundamentals/charts',
+    // A choropleth through the main entry: the map family is a host of its own, so its size is locked on its own and
+    // a chart that is NOT a map must never pay for it (see plot-treeshake).
+    imports: ['MapChart'],
+  },
+  {
+    id: '@pyreon/charts-maps::world-110m',
+    pkg: '@pyreon/charts-maps',
+    dir: 'fundamentals/charts-maps',
+    entry: 'world-110m.js',
+    // One data module, one lazy file: importing it must cost about its own data and nothing else.
+    imports: ['data'],
+  },
+  {
+    id: '@pyreon/charts-maps::us-states',
+    pkg: '@pyreon/charts-maps',
+    dir: 'fundamentals/charts-maps',
+    entry: 'us-states.js',
+    imports: ['data'],
+  },
+  {
     id: '@pyreon/charts::chart-line',
     pkg: '@pyreon/charts',
     dir: 'fundamentals/charts',

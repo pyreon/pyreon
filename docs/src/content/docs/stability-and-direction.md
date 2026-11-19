@@ -35,9 +35,9 @@ The tier is the single source of truth for the package README's status line and 
 
 {/* gen:package-tiers:start */}
 
-Of the 76 published packages (not counting the per-platform `@pyreon/compiler-*` binaries, which follow `@pyreon/compiler`), 56 are Stable and 20 are Experimental. This list is generated from each package's `package.json`.
+Of the 77 published packages (not counting the per-platform `@pyreon/compiler-*` binaries, which follow `@pyreon/compiler`), 56 are Stable and 21 are Experimental. This list is generated from each package's `package.json`.
 
-**Experimental packages (20):** `@pyreon/atlas`, `@pyreon/connector-document`, `@pyreon/create-multiplatform`, `@pyreon/document-primitives`, `@pyreon/loom`, `@pyreon/mcp`, `@pyreon/native-cli`, `@pyreon/native-compiler`, `@pyreon/native-router-kotlin`, `@pyreon/native-router-swift`, `@pyreon/native-runtime-kotlin`, `@pyreon/native-runtime-swift`, `@pyreon/preact-compat`, `@pyreon/primitives`, `@pyreon/react-compat`, `@pyreon/solid-compat`, `@pyreon/storybook`, `@pyreon/svelte-compat`, `@pyreon/sync`, `@pyreon/vue-compat`.
+**Experimental packages (21):** `@pyreon/atlas`, `@pyreon/charts-maps`, `@pyreon/connector-document`, `@pyreon/create-multiplatform`, `@pyreon/document-primitives`, `@pyreon/loom`, `@pyreon/mcp`, `@pyreon/native-cli`, `@pyreon/native-compiler`, `@pyreon/native-router-kotlin`, `@pyreon/native-router-swift`, `@pyreon/native-runtime-kotlin`, `@pyreon/native-runtime-swift`, `@pyreon/preact-compat`, `@pyreon/primitives`, `@pyreon/react-compat`, `@pyreon/solid-compat`, `@pyreon/storybook`, `@pyreon/svelte-compat`, `@pyreon/sync`, `@pyreon/vue-compat`.
 
 **Stable packages with experimental subpaths:**
 

@@ -13,6 +13,7 @@
       "@pyreon/atlas",
       "@pyreon/attrs",
       "@pyreon/charts",
+      "@pyreon/charts-maps",
       "@pyreon/cli",
       "@pyreon/code",
       "@pyreon/command",
