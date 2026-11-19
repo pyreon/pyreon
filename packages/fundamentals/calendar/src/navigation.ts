@@ -1,5 +1,10 @@
 import { add, dayOfWeek } from '@pyreon/time/core'
+import { bad, checkDate, checkOptions } from './check'
 import type { PlainDate, Weekday } from './types'
+
+function checkKey(fn: string, input: unknown): void {
+  if (typeof input !== 'object' || input === null || typeof (input as { key?: unknown }).key !== 'string') bad(fn, 'input', 'a key event { key, shiftKey?, ... }', input, typeof input === 'string' ? `Pass { key: ${JSON.stringify(input)} }.` : undefined)
+}
 
 export interface GridMoveOptions {
   weekStart?: Weekday
@@ -43,6 +48,9 @@ function weekEdge(date: PlainDate, edge: 'first' | 'last', weekStart: Weekday, h
  * @example gridMove('2026-11-18', { key: 'PageDown', shiftKey: true }) // => '2027-11-18'
  */
 export function gridMove(date: PlainDate, input: KeyInput, options: GridMoveOptions = {}): PlainDate | null {
+  checkDate('gridMove', 'date', date)
+  checkKey('gridMove', input)
+  checkOptions('gridMove', 'options', options)
   if (input.ctrlKey === true || input.metaKey === true || input.altKey === true) return null
   const hidden = new Set(options.hiddenDays ?? [])
   const step = options.rtl === true ? -1 : 1
@@ -92,6 +100,10 @@ export interface SlotMoveOptions {
  * @example slotMove({ date: '2026-11-18', minute: 540 }, { key: 'ArrowDown' }, { from: 0, to: 1440, slot: 30, dates: ['2026-11-18'] }) // => { date: '2026-11-18', minute: 570 }
  */
 export function slotMove(cursor: SlotCursor, input: KeyInput, options: SlotMoveOptions): SlotCursor | null {
+  if (typeof cursor !== 'object' || cursor === null || typeof cursor.minute !== 'number') bad('slotMove', 'cursor', 'a cell { date, minute }', cursor)
+  checkDate('slotMove', 'cursor.date', cursor.date)
+  checkKey('slotMove', input)
+  if (typeof options !== 'object' || options === null || !Array.isArray(options.dates) || typeof options.slot !== 'number') bad('slotMove', 'options', 'an object { from, to, slot, dates }', options)
   if (input.ctrlKey === true || input.metaKey === true || input.altKey === true) return null
   const last = Math.floor((options.to - options.from - 1) / options.slot) * options.slot + options.from
   const clamp = (m: number): number => Math.min(Math.max(m, options.from), last)

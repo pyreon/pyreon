@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createCalendar, gridMove, slotMove } from '../index'
 import { allDay, dayBounds, daySignature, daySpan, expandOccurrences, layoutDay, layoutMonth, layoutRow, layoutTimeGrid, navigate, nowOffset, packColumns, slotTimes, viewTitle, visibleMinutes, visibleRange, wallMinute } from '../core'
 import type { EventOccurrence } from '../core'
 
@@ -51,6 +52,13 @@ const wrong: [string, () => unknown, RegExp][] = [
   ['navigate the whole view', () => navigate('week', shown as never, 1), /^\[Pyreon\] navigate: date must be/],
   ['viewTitle a range', () => viewTitle(shown.range as never), /^\[Pyreon\] viewTitle: shown must be/],
   ['viewTitle the formatter', () => viewTitle(shown, 'x' as never), /^\[Pyreon\] viewTitle: format must be/],
+  ['gridMove a string key', () => gridMove('2026-11-18', 'ArrowDown' as never), /^\[Pyreon\] gridMove: input must be/],
+  ['gridMove the view', () => gridMove(shown as never, { key: 'ArrowDown' }), /^\[Pyreon\] gridMove: date must be/],
+  ['slotMove a date for the cursor', () => slotMove('2026-11-18' as never, { key: 'ArrowDown' }, {} as never), /^\[Pyreon\] slotMove: cursor must be/],
+  ['slotMove options', () => slotMove({ date: '2026-11-18', minute: 0 }, { key: 'ArrowDown' }, shown as never), /^\[Pyreon\] slotMove: options must be/],
+  ['createCalendar events array', () => createCalendar({ events: events as never }), /^\[Pyreon\] createCalendar: options.events must be a function/],
+  ['createCalendar no options', () => createCalendar(undefined as never), /^\[Pyreon\] createCalendar: options must be/],
+  ['createCalendar date', () => createCalendar({ events: () => [], date: 'today' as never }), /^\[Pyreon\] createCalendar: options.date must be/],
 ]
 
 describe('every public function names itself and its argument when an argument has the wrong shape', () => {

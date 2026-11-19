@@ -2,6 +2,7 @@ import { formatDate, formatDateRange } from '@pyreon/format'
 import { batch, computed, effect, getCurrentScope, runUntracked } from '@pyreon/reactivity'
 import { toPlainDate } from '@pyreon/time/core'
 import type { Calendar, CalendarOptions } from './calendar-types'
+import { bad, isDateString } from './check'
 import { handleKey, moveCursor, rangeOf, selectRange } from './interaction'
 import { createMonthModel, createTimeGridModel } from './models'
 import { createState } from './state'
@@ -35,6 +36,9 @@ function shift<Meta>(s: CalState<Meta>, steps: number): void {
  * one event recomputes only the days it touches), the focused cell, a selection, and the grid keyboard. No drag or resize yet.
  */
 export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): Calendar<Meta> {
+  if (typeof options !== 'object' || options === null || Array.isArray(options)) bad('createCalendar', 'options', 'an options object { events, ... }', options)
+  if (typeof options.events !== 'function') bad('createCalendar', 'options.events', 'a function that returns the events (() => events)', options.events, Array.isArray(options.events) ? 'Pass () => yourArray, or a signal.' : undefined)
+  if (options.date !== undefined && typeof options.date !== 'function' && !isDateString(options.date)) bad('createCalendar', 'options.date', 'a date like "2026-11-18" or a signal of one', options.date)
   const s = createState(options)
   const month = createMonthModel(s)
   const timeGrid = createTimeGridModel(s)
