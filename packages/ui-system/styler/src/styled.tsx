@@ -198,11 +198,13 @@ export interface StyledOptions {
   shouldForwardProp?: (prop: string) => boolean
   /**
    * CSS @layer name. Rules are wrapped in `@layer <name> { ... }`.
-   * Framework CSS uses two layers with explicit ordering:
-   *   `@layer elements, rocketstyle;`
+   * Framework CSS uses three layers with explicit ordering (`LAYER_ORDER`):
+   *   `@layer elements, rocketstyle, instance;`
    * Elements (base layout) use `'elements'`, rocketstyle themes use
-   * `'rocketstyle'`. The ordering ensures themes always override base
-   * styles regardless of source order.
+   * `'rocketstyle'`, and an Element's per-instance `css` prop lands in
+   * `'instance'` (a nested `@layer instance { … }` block, hoisted by the
+   * sheet). The ordering makes each layer override the ones before it
+   * regardless of source order.
    */
   layer?: string
 }

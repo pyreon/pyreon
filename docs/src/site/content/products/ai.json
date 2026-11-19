@@ -17,7 +17,7 @@
    },
    {
     "key": "checks",
-    "value": "44 detector codes<small>19 React habits · 23 Pyreon mistakes · 2 native hazards</small>"
+    "value": "45 detector codes<small>19 React habits · 24 Pyreon mistakes · 2 native hazards</small>"
    },
    {
     "key": "in the editor",
@@ -310,7 +310,7 @@
    "path": "raw tools/list (scratch rawlist.mjs, sizes.mjs); packages/tools/mcp/src/index.ts:151 (server.tool without description); src/tests/token-budget.test.ts"
   },
   {
-   "claim": "44 detector codes = 19 React codes (all emitted) + 23 Pyreon + 2 native",
+   "claim": "45 detector codes = 19 React codes (all emitted) + 24 Pyreon + 2 native",
    "path": "packages/core/compiler/src/react-intercept.ts:32–50; pyreon-intercept.ts:133–156; packages/native/compiler/src/native-audit.ts:41"
   },
   {

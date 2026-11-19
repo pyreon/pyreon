@@ -1,3 +1,5 @@
+import { isBreakpointMap } from './isBreakpointMap'
+
 type AssignToBreakpointKey = (
   breakpoints: string[],
 ) => (
@@ -59,7 +61,7 @@ const handleValueCb = (value: unknown) => () => value
 const shouldNormalize = (props: Record<string, any>) => {
   for (const key in props) {
     const item = props[key]
-    if (typeof item === 'object' || Array.isArray(item)) return true
+    if (typeof item === 'object' && (item === null || Array.isArray(item) || isBreakpointMap(item))) return true
   }
   return false
 }
@@ -87,7 +89,7 @@ const normalizeTheme: NormalizeTheme = ({ theme, breakpoints }) => {
 
     if (Array.isArray(value)) {
       result[key] = getBpValues(handleArrayCb(value as (string | number | null | undefined)[]))
-    } else if (typeof value === 'object') {
+    } else if (typeof value === 'object' && isBreakpointMap(value)) {
       result[key] = getBpValues(handleObjectCb(value as Record<string, any>))
     } else {
       result[key] = getBpValues(handleValueCb(value))

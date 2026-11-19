@@ -169,7 +169,7 @@ $ echo $?
         },
         {
           name: '@pyreon/lint',
-          title: '141 rules that know the framework',
+          title: '144 rules that know the framework',
           text: 'Five presets, two `readable` layers, a config file with a JSON schema, watch mode, `--why-off` to explain a disabled rule, and an LSP server for your editor.',
           cmd: 'pyreon lint --watch',
           prompt: true,

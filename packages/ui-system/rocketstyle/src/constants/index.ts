@@ -49,4 +49,5 @@ export const ALL_RESERVED_KEYS = [
   ...CONFIG_KEYS,
   ...STATIC_KEYS,
   'attrs',
+  'params',
 ] as const

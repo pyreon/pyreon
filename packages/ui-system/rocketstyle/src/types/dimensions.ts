@@ -1,3 +1,4 @@
+import type { BreakpointKeys } from '@pyreon/ui-core'
 import type { DefaultDimensions } from '../constants/defaultDimensions'
 import type { Css } from './styles'
 import type { ThemeModeCallback } from './theme'
@@ -30,6 +31,7 @@ export type ExtractDimensionAttrsKeys<D extends Dimensions> = {
 }[keyof D]
 
 export type DimensionValuePrimitive = string
+
 export type DimensionValueObj = {
   propName: string
   multi?: boolean
@@ -47,21 +49,67 @@ export type MultiKeys<T extends Dimensions = Dimensions> = Partial<
 /** Mode-aware value — either the value directly or a m(light, dark) callback. */
 type ModeAware<T> = T | ((mode: 'light' | 'dark') => T)
 
+/**
+ * A style value in a dimension slice, in every form a `.theme()` value takes:
+ * a single value, a mobile-first array (`null` = inherit the smaller
+ * breakpoint) or a breakpoint object. A responsive slice value wins from its
+ * first breakpoint up (`mergeTheme` in utils/theme.ts).
+ */
+type ResponsiveValue<T> =
+  | ModeAware<T>
+  | readonly (ModeAware<T> | null | undefined)[]
+  | Partial<Record<BreakpointKeys, ModeAware<T> | null | undefined>>
+
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends (...args: any[]) => any
     ? T[K]
     : NonNullable<T[K]> extends Record<string, any>
       ? DeepPartial<NonNullable<T[K]>> | ModeAware<DeepPartial<NonNullable<T[K]>>> | Extract<T[K], null>
-      : ModeAware<T[K]>
+      : ResponsiveValue<T[K]>
+}
+
+/** The pseudo-state groups a theme nests (`hover: { color }` → `:hover`). */
+type PseudoGroup = 'hover' | 'focus' | 'active' | 'disabled' | 'pressed' | 'readOnly'
+
+/**
+ * One dimension value's style object. With a typed `StylesDefault` (an app
+ * augments it with unistyle's `ITheme`), the keys are checked, so a misspelt
+ * property is an error, and the pseudo groups nest one level. Without one
+ * (`StylesDefault` is `{}`), any object is accepted, as before.
+ */
+export type DimensionStyle<CT> = [keyof CT] extends [never]
+  ? DeepPartial<CT>
+  : DeepPartial<CT> & { [P in Exclude<PseudoGroup, keyof CT>]?: DeepPartial<CT> | undefined }
+
+/**
+ * A `.params()` mapper: one caller-chosen value (plus the app theme and the
+ * `mode(light, dark)` helper) to a theme slice.
+ */
+export type ParamMapper<TH = any, CT = any> = (value: any, theme: TH, mode: ThemeModeCallback) => DimensionStyle<CT>
+
+/**
+ * The prop a `.params()` mapper gets: its value type, or one per breakpoint
+ * (mobile-first array, `null` = keep the smaller breakpoint's value, or a
+ * breakpoint object). The framework splits a responsive value; the mapper
+ * always sees one value.
+ */
+export type ParamValue<V> =
+  | V
+  | readonly (V | null | undefined)[]
+  | Partial<Record<BreakpointKeys, V | null | undefined>>
+
+export type ParamProps<P extends Record<string, ParamMapper>> = {
+  [K in keyof P]?: ParamValue<Parameters<P[K]>[0]> | undefined
 }
 
 export type DimensionResult<CT, T = any> = Record<
   string,
   | boolean
   | null
-  | DeepPartial<CT>
-  | ((theme: CT, appTheme: T, mode: ThemeModeCallback, css: Css) => DeepPartial<CT>)
+  | DimensionStyle<CT>
+  | ((theme: CT, appTheme: T, mode: ThemeModeCallback, css: Css) => DimensionStyle<CT>)
 >
+
 export type DimensionObj<CT, T = any> = DimensionResult<CT, T>
 
 export type DimensionCb<T, CT> = (
@@ -121,6 +169,24 @@ export type DimensionBooleanAttrs<D extends Dimensions, DKP extends TDKP> = Part
  */
 type WithDimensionAccessor<T> = { [K in keyof T]: T[K] | (() => T[K]) }
 
+/**
+ * A multi-value dimension list may hold falsy entries, skipped at runtime
+ * (`calculateStylingAttrs`), so a modifier composes conditionally:
+ * `multiple={['threeUp', compact() && 'dense']}`. Props-facing only, like the
+ * accessor widening above; the resolved shape keeps the clean list.
+ */
+type Falsy = false | null | undefined | 0 | ''
+
+type WithFalsyEntries<T> = {
+  [K in keyof T]:
+    | T[K]
+    | ([Extract<T[K], readonly unknown[]>] extends [never]
+        ? never
+        : Extract<T[K], readonly unknown[]> extends readonly (infer E)[]
+          ? ReadonlyArray<E | Falsy>
+          : never)
+}
+
 export type ExtractDimensionProps<
   D extends Dimensions,
   DKP extends TDKP,
@@ -128,10 +194,10 @@ export type ExtractDimensionProps<
 > = UB extends true
   ? Partial<
       WithDimensionAccessor<
-        ExtractNullableDimensionKeys<DimensionObjAttrs<D, DKP> & DimensionBooleanAttrs<D, DKP>>
+        WithFalsyEntries<ExtractNullableDimensionKeys<DimensionObjAttrs<D, DKP> & DimensionBooleanAttrs<D, DKP>>>
       >
     >
-  : Partial<WithDimensionAccessor<ExtractNullableDimensionKeys<DimensionObjAttrs<D, DKP>>>>
+  : Partial<WithDimensionAccessor<WithFalsyEntries<ExtractNullableDimensionKeys<DimensionObjAttrs<D, DKP>>>>>
 
 export type ExtractDimensions<
   D extends Dimensions,

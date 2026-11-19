@@ -211,7 +211,7 @@ describe('StyleSheet — layerDecl with a configured layer but no layered rules'
     s.injectRules(['.pyr-raw{color:red}'], 'k')
     const tag = s.getStyleTag()
     expect(tag).toContain('@layer mylayer;')
-    expect(tag).not.toContain('@layer elements, rocketstyle;')
+    expect(tag).not.toContain('@layer elements, rocketstyle, instance;')
   })
 
   it('flushSSRPending emits @layer <layer>; when first-flush buffer is non-layered', () => {
@@ -219,7 +219,7 @@ describe('StyleSheet — layerDecl with a configured layer but no layered rules'
     s.injectRules(['.pyr-raw{color:blue}'], 'k')
     const out = s.flushSSRPending()
     expect(out).toContain('@layer mylayer;')
-    expect(out).not.toContain('@layer elements, rocketstyle;')
+    expect(out).not.toContain('@layer elements, rocketstyle, instance;')
   })
 
   it('getStyles emits @layer <layer>; for a non-layered buffer', () => {
@@ -228,12 +228,12 @@ describe('StyleSheet — layerDecl with a configured layer but no layered rules'
     expect(s.getStyles()).toContain('@layer mylayer;')
   })
 
-  it('getStyleTag emits @layer elements, rocketstyle; when buffer IS layered', () => {
+  it('getStyleTag emits @layer elements, rocketstyle, instance; when buffer IS layered', () => {
     // SSR `insert` with a layer wraps each rule in `@layer …{…}`, so
     // hasLayeredRules() is true → the truthy side of the layerDecl ternary.
     const s = makeSSRSheet({ layer: 'comp' })
     s.insert('color: red')
-    expect(s.getStyleTag()).toContain('@layer elements, rocketstyle;')
+    expect(s.getStyleTag()).toContain('@layer elements, rocketstyle, instance;')
   })
 })
 

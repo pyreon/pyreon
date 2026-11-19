@@ -5,13 +5,13 @@ import type { Plugin } from 'vite'
  * CSS cascade layer `docs`, BELOW the UI system's layers. (styles/docs-v3.css opens its own `@layer docs` block.)
  *
  * Why: @pyreon/styler emits every kit component into `@layer elements` /
- * `@layer rocketstyle`, and unlayered CSS always beats layered CSS whatever
+ * `@layer rocketstyle` / `@layer instance`, and unlayered CSS always beats layered CSS whatever
  * its specificity. These files set bare elements (`body`, `a`, `h1`), so left
  * unlayered they would override what the kit sets on the pages that load
  * them. In one layer the files keep their order among themselves and the kit
  * wins over them.
  *
- * The order statement `@layer docs, elements, rocketstyle;` is the first
+ * The order statement `@layer docs, elements, rocketstyle, instance, site;` is the first
  * style in index.html, so the layers are ordered before any of them appears.
  */
 const LAYERED = [/\/docs\/src\/styles\/tokens\.css$/]

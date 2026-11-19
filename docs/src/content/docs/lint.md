@@ -1,6 +1,6 @@
 ---
 title: '@pyreon/lint'
-description: Pyreon-specific linter — 141 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage), and a readable style preset. CLI, programmatic API, watch mode, AST cache, and an LSP server.
+description: Pyreon-specific linter — 144 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices (frontend a11y/CLS, query/rx/form/i18n/router/storage library usage), and a readable style preset. CLI, programmatic API, watch mode, AST cache, and an LSP server.
 ---
 
 `@pyreon/lint` is a framework-specific linter that catches Pyreon anti-patterns at the AST level — bare signal reads in JSX, props destructuring that breaks reactivity, browser globals in SSR code, bundler-coupled dev gates, and dozens more. It is powered by [`oxc-parser`](https://oxc.rs) for fast ESTree/TS-ESTree parsing, ships a CLI (`pyreon-lint`), a programmatic API (`lint` / `lintFile`), watch mode, an AST cache, and an LSP server for editor integration.
@@ -509,7 +509,7 @@ pyreon-lint --why-off pyreon/rx-prefer-pipe
 
 The dependency gate is checked relative to a file, so pass a path (`pyreon-lint --why-off <id> src/`) when you want that reason evaluated. An unknown id exits non-zero and suggests the near miss. Programmatic equivalent: `explainRuleState(id, { config, filePath })`.
 
-There are **141 rules across 26 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in best-practice categories — off in the standard presets. `frontend` is mixed (6 of 12 on by default); the rest of the opt-in surface is individual rules scattered across otherwise-mandatory categories, marked `ᵒ` below. Run `pyreon-lint --list` for the authoritative list with live severities.
+There are **144 rules across 26 categories**. Six of them are **monorepo-scoped** (`meta.scope: 'monorepo'`) — `no-circular-import`, `no-cross-layer-import`, `no-error-without-prefix`, `no-query-selector-cast-in-test`, `require-browser-smoke-test`, `vitest-config-uses-shared`. They encode the Pyreon repository's own conventions (its layer order, its private internal packages, its `[Pyreon]` error prefix) rather than anything about Pyreon-the-framework, so **every preset a consumer selects forces them off**, `best-practices` included. The Pyreon repo re-enables them by id in its own `.pyreonlintrc.json`, which keeps that dependency visible in config instead of hidden inside a shared preset. `query`, `rx`, `i18n`, `storage`, `http`, and `portable` are wholesale opt-in best-practice categories — off in the standard presets. `frontend` is mixed (6 of 12 on by default); the rest of the opt-in surface is individual rules scattered across otherwise-mandatory categories, marked `ᵒ` below. Run `pyreon-lint --list` for the authoritative list with live severities.
 
 ### Categories at a glance
 
@@ -523,7 +523,7 @@ There are **141 rules across 26 categories**. Six of them are **monorepo-scoped*
 | `architecture`    | 11    |         | Import layering, dev gates, error prefixes, test/config contracts  |
 | `store`           | 3     |         | `defineStore` ids, mutation discipline, provider scope             |
 | `form`            | 4     | 1 of 4  | `useField`/`register`, validation, field arrays                    |
-| `styling`         | 5     | 1 of 5  | Inline style objects, dynamic `styled()`, theme/cx, rocketstyle `.attrs()` |
+| `styling`         | 8     | 2 of 8  | Inline style objects, dynamic `styled()`, theme/cx, rocketstyle `.attrs()`, no styles through props (`css`, raw CSS text, theme-owned inline style) |
 | `hooks`           | 3     |         | Prefer auto-cleanup hooks over raw listeners/timers/storage        |
 | `accessibility`   | 3     |         | Dialog / overlay / toast ARIA                                      |
 | `router`          | 5     | 1 of 5  | `<Link>` vs `<a>`, navigate-in-render, fallback, active state      |
@@ -648,7 +648,7 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/prefer-field-array`                 | info     | `signal([])` in form files — use `useFieldArray()` |
 | `pyreon/no-signal-in-form-initial-values` ᵒ | warn     | `useForm({ initialValues: { x: sig() } })` snapshots the signal once — pass the plain value / use a reactive field |
 
-### Styling (5)
+### Styling (8)
 
 | Rule                               | Severity | Description                                        |
 | ------------------------------------ | -------- | ------------------------------------------------- |
@@ -657,6 +657,9 @@ Opt-in (`ᵒ`) rules below are off in `recommended`/`strict`/`app`/`lib` — ena
 | `pyreon/no-theme-outside-provider` ᵒ | warn   | `useTheme()` without provider                      |
 | `pyreon/prefer-cx`                 | info     | String concatenation for class names — use `cx()`  |
 | `pyreon/no-signal-read-in-attrs-callback` | warn | Signal/computed read inside a rocketstyle `.attrs()` callback — the callback runs once at setup, so the read captures a dead value (auto-gated on `@pyreon/rocketstyle`) |
+| `pyreon/prefer-style-modifier`     | warn     | `css` on a component — a fixed look becomes a named `.multiple()` modifier (`multiple="look"`), a caller-chosen value a typed `.params()` param (`columns={3}`); the message carries both snippets (the param first when the CSS interpolates a value), the modifier built from the declarations of a plain `css` template. Not an autofix: the fix edits the component's definition. Keep `css` for a selector or an at-rule, with a suppression comment (auto-gated on `@pyreon/elements`; skips HTML elements, `@pyreon/coolgrid` and the slot props, which a root modifier cannot reach) |
+| `pyreon/no-raw-css-string`         | error    | Raw CSS text (a string or an untagged template, also per breakpoint or through an `as` cast) in `css` / `contentCss` / `beforeContentCss` / `afterContentCss` on a component, in JSX, `h()` or `.attrs({ … })` — unchecked text the type no longer accepts (auto-gated on `@pyreon/elements`; skips `@pyreon/coolgrid`) |
+| `pyreon/no-theme-props-in-style` ᵒ | warn     | Inline `style` on a rocketstyle / Element component fixing a layout or theme-owned property to a literal value — use a modifier, a typed prop or a variant. Computed values and custom properties are never flagged (auto-gated on `@pyreon/elements`) |
 
 ### Hooks (3)
 

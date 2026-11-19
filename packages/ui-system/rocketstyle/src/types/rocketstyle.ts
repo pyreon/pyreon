@@ -10,6 +10,8 @@ import type {
   ExtractDimensionProps,
   ExtractDimensions,
   MultiKeys,
+  ParamMapper,
+  ParamProps,
   TDKP,
 } from './dimensions'
 import type { ComposeParam } from './hoc'
@@ -206,6 +208,13 @@ export interface IRocketStyleComponent<
   theme: <P extends TObj = TObj>(
     param: ThemeObject<Partial<P> | Partial<Styles<CSS>>> | ThemeCb<P, Theme<T>>,
   ) => RocketStyleComponent<OA, EA, T, MergeTypes<[CSS, P]>, S, HOC, D, UB, DKP>
+
+  // PARAMS chaining method — caller-chosen values mapped into the theme.
+  // Each key becomes an optional prop typed from the mapper's first
+  // parameter, widened to the responsive forms.
+  params: <P extends Record<string, ParamMapper<Theme<T>, Styles<CSS>>>>(
+    param: P,
+  ) => RocketStyleComponent<OA, MergeTypes<[EA, ParamProps<P>]>, T, CSS, S, HOC, D, UB, DKP>
 
   // STYLES chaining method
   styles: (param: StylesCb<CSS>) => RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>

@@ -1789,7 +1789,7 @@ const diags = detectPyreonPatterns(
   "A.tsx",
 )
 console.log(diags[0]?.code) // "props-destructured-body"`,
-    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 23 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `props-early-return-conditional`, `props-object-copy`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`). The detector arm behind the MCP `validate` tool and `pyreon doctor` `pyreon-patterns` gate. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
+    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 24 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `props-early-return-conditional`, `props-object-copy`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`, `css-prop-on-component`). The detector arm behind the MCP `validate` tool and `pyreon doctor` `pyreon-patterns` gate. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
     mistakes: `- Reading \`fixable\` as sometimes-true — it is an enforced \`false\` invariant for every Pyreon code; wiring auto-fix UX off it applies nothing
 - Expecting it to flag \`const { x } = props.nested\` or an \`onMount\`-scoped destructure — \`props-destructured-body\` is deliberately scoped to the canonical \`= props\` body-scope shape for zero false positives`,
   },
@@ -7677,7 +7677,7 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '141 rules across 26 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`, `best-practices`, composable with the `readable` / `readable-strict` layers (`preset: ["recommended", "readable"]`). Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
+    notes: '144 rules across 26 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`, `best-practices`, composable with the `readable` / `readable-strict` layers (`preset: ["recommended", "readable"]`). Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
   },
 
   'lint/lintAsync': {
@@ -7711,7 +7711,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
 pyreon-lint --init                      # scaffold .pyreonlintrc.json for this project
-pyreon-lint --list                      # list all 141 rules
+pyreon-lint --list                      # list all 144 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
 pyreon-lint --format gha                # GitHub Actions annotations
@@ -8552,7 +8552,7 @@ const Button = styled("button")\`
   padding: \${(p) => (p.$compact ? "4px" : "12px")};
 \`
 // <Button $compact onClick={...}>Go</Button>  — $compact not forwarded to <button>`,
-    notes: `Component factory. \`styled('div')\`, \`styled(MyComp)\`, and \`styled.div\` (Proxy sugar) are all tagged templates returning a \`ComponentFn\` that injects a generated class. Tagged-template interpolations are called with the live \`props\` object (theme included), so a function interpolation reading \`p.theme.color\` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic \`as\` prop and \`$\`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM); \`innerRef\` is accepted as an alias for \`ref\`. \`options\` takes \`shouldForwardProp(prop)\` (per-component DOM prop filter — replaces the default allowlist) and \`layer\` (wrap the generated rules in \`@layer <name>\`). A template with NO function interpolation is resolved and injected ONCE, when the component is defined; per-definition caching keys generated classes so repeat mounts skip re-resolution. See also: css, useCSS, useTheme.`,
+    notes: `Component factory. \`styled('div')\`, \`styled(MyComp)\`, and \`styled.div\` (Proxy sugar) are all tagged templates returning a \`ComponentFn\` that injects a generated class. Tagged-template interpolations are called with the live \`props\` object (theme included), so a function interpolation reading \`p.theme.color\` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic \`as\` prop and \`$\`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM); \`innerRef\` is accepted as an alias for \`ref\`. \`options\` takes \`shouldForwardProp(prop)\` (per-component DOM prop filter — replaces the default allowlist) and \`layer\` (wrap the generated rules in \`@layer <name>\`; a NAMED \`@layer x { … }\` block written inside the template goes to the top-level layer \`x\` under the same class, not a sublayer — the framework order is \`@layer elements, rocketstyle, instance;\`, declared once per sheet). A template with NO function interpolation is resolved and injected ONCE, when the component is defined; per-definition caching keys generated classes so repeat mounts skip re-resolution. See also: css, useCSS, useTheme.`,
     mistakes: `- Expecting \`$\`-prefixed props to reach the DOM — they are transient by design (consumed by the template, stripped before forwarding). Use a non-\`$\` name if the attribute must land on the element
 - Destructuring \`props\` in the interpolation (\`\${({ theme }) => …}\`) and being surprised it does not update on a whole-theme swap — read \`props.theme\` lazily; the theme context is reactive and the styled resolver re-runs on swap
 - Passing a resolved value where a function interpolation is needed for reactivity — \`\${signal()}\` snapshots once at definition; use \`\${() => signal()}\` (or \`\${(p) => p.x}\`) to stay on the dynamic path
@@ -8793,7 +8793,8 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
 - Passing children to a void \`tag\` (\`hr\` / \`img\` / \`br\` / \`input\`) — Element correctly drops them; do not rely on a children slot for void tags
 - Relying on \`equalBeforeAfter\` measuring async slot content where \`ResizeObserver\` is undefined (older runtimes / SSR) — it falls back to the one-shot mount measurement there
 - Reaching for a theme-level flex \`gap\` because the \`gap\` prop "does nothing" — historical: before 0.51 \`gap\` was wired only into the before/after slot margins; it now renders CSS gap on simple elements and the button flex-fix layer too
-- Passing a design-token NAME as \`gap\` (\`gap="md"\`) — \`gap\` is a length: a number (converted to rem) or a CSS length string (\`"1rem"\`); a bare token name is emitted verbatim as invalid CSS`,
+- Passing a design-token NAME as \`gap\` (\`gap="md"\`) — \`gap\` is a length: a number (converted to rem) or a CSS length string (\`"1rem"\`); a bare token name is emitted verbatim as invalid CSS
+- Styling one instance through \`css\` (\`css="grid-template-columns: …"\`) — a raw string no longer type-checks, and CSS through a prop is the wrong tool for a look: add a named \`.multiple()\` modifier to the rocketstyle component and apply it by name (\`multiple="threeUp"\`). Keep \`css\` (a tagged \`css\` template or a \`(css) => …\` callback) for a selector or an at-rule`,
   },
 
   'elements/Text': {
@@ -8804,7 +8805,7 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
     notes: 'Inline typography primitive — the text counterpart to `Element`. Carries typography props and renders an inline element; use it for runs of text that need the design-system typography contract rather than a raw `<span>`. Like `Element`, visual styling belongs in the styler/rocketstyle layer; `Text` owns the inline-flow structure. See also: Element.',
     mistakes: `- Expecting a signal-driven \`tag={sig()}\` / \`paragraph={sig()}\` to swap the rendered element — \`tag\` and \`paragraph\` are STATIC (mount-time) by design; the styled layer applies \`as\` once per mount and a reactive tag swap is architecturally unsupported. To change the tag, REMOUNT (e.g. wrap in \`<Show>\`).
 - Passing BOTH \`children\` and \`label\` expecting them to concatenate — Text resolves \`children ?? label\`, so \`children\` WINS and \`label\` is ignored. \`label\` is the inline-syntax alternative to \`children\`, not an extra slot.
-- Driving structure through a signal but styling through a static value — it is the inverse: \`css\` IS reactive (a signal-driven \`css\` re-resolves with a class swap, no remount), while \`tag\` is NOT. Put dynamic STYLING in \`css\`; put dynamic STRUCTURE behind a remount.`,
+- Driving structure through a signal but styling through a static value — it is the inverse: \`css\` IS reactive (a signal-driven \`css\` re-resolves with a class swap, no remount), while \`tag\` is NOT. Put dynamic STYLING in a signal-driven modifier list on the rocketstyle component (\`multiple={["base", on() && "active"]}\`); put dynamic STRUCTURE behind a remount.`,
   },
 
   'elements/List': {
@@ -11888,6 +11889,14 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '
     shadow: { boxShadow: '0 2px 8px rgba(0,0,0,0.15)' },
   })
 <Box multiple={['rounded', 'shadow']} />       // both slices compose
+<Box multiple={['rounded', raised() && 'shadow']} />  // falsy entries are skipped
+
+// A one-off look on a shipped component: a modifier, not a style prop
+const Grid = BaseGrid.multiple({
+  threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } }, // theme value kept below md
+  dense: { gap: 8 },
+})
+<Grid multiple={['threeUp', compact() && 'dense']} />
 
 // Transform dimension — value fn receives the ACCUMULATED theme
 const Button2 = rs({ name: 'Button2', component: Element })
@@ -11897,10 +11906,31 @@ const Button2 = rs({ name: 'Button2', component: Element })
     outlined: (t) => ({ color: t.backgroundColor, backgroundColor: 'transparent' }),
   })
 <Button2 state="danger" modifier="outlined" />  // outlined sees danger's red`,
-    notes: `Multi-value dimension definition methods (from the default dimension map). \`.multiple({...})\` drives the \`multiple\` prop, \`.modifiers({...})\` drives \`modifier\` — both accept an ARRAY of active values at the call site (\`multiple={["rounded", "shadow"]}\`), all of which compose onto the theme. \`modifiers\` is additionally a TRANSFORM dimension: its value functions receive the theme ACCUMULATED from all prior dimensions, so a modifier can derive from the active state (e.g. \`outlined\` reading the current state's \`backgroundColor\`). Custom dimensions opt into the same behaviors via \`{ multi: true }\` / \`{ transform: true }\`. See also: .states() / .sizes() / .variants(), rocketstyle.`,
+    notes: `Multi-value dimension definition methods (from the default dimension map). \`.multiple({...})\` drives the \`multiple\` prop, \`.modifiers({...})\` drives \`modifier\` — both accept an ARRAY of active values at the call site (\`multiple={["rounded", "shadow"]}\`), all of which compose onto the theme. \`.multiple()\` is how a ONE-OFF LOOK is expressed: a named, typed modifier on the component (\`Grid.multiple({ threeUp: { gridTemplateColumns: { md: "repeat(3, minmax(0, 1fr))" } } })\` → \`<Grid multiple="threeUp" />\`), never CSS through a prop. A slice takes every value form a \`.theme()\` value takes (single value, mobile-first array, breakpoint object, \`mode()\` pair) and the \`hover\` / \`focus\` / \`active\` / \`disabled\` / \`pressed\` / \`readOnly\` groups; with a typed \`StylesDefault\` its keys are checked. A list may hold falsy entries, which are skipped (\`multiple={["threeUp", compact() && "dense"]}\`), so the memo and class are those of the list without them; a signal-driven list swaps the class on the same node. Slices merge in list order after state / size / variant, so a modifier beats them and the base theme; a responsive slice wins from its first breakpoint up and keeps the earlier value below it. Under \`useBooleans: true\` each value is also a boolean prop (\`<Grid threeUp />\`). \`modifiers\` is additionally a TRANSFORM dimension: its value functions receive the theme ACCUMULATED from all prior dimensions, so a modifier can derive from the active state (e.g. \`outlined\` reading the current state's \`backgroundColor\`). Custom dimensions opt into the same behaviors via \`{ multi: true }\` / \`{ transform: true }\`. See also: .states() / .sizes() / .variants(), rocketstyle.`,
     mistakes: `- Passing a single string to a multi dimension and expecting array semantics — \`multiple="rounded"\` and \`multiple={["rounded"]}\` both work, but composing several values requires the array form
 - Expecting a transform value fn to see the raw app theme — transform-dimension value functions receive the theme accumulated from PRIOR dimensions (base + active state/size/variant), which is the whole point; read app-theme tokens in a dimension-level callback instead
+- Passing CSS to one instance (\`css="…"\`, \`style={{ padding: 4 }}\`) for a one-off look — add a named \`.multiple()\` modifier to the component and apply it by name. A caller-chosen VALUE is a \`.params()\` param; a product-wide look is a variant
 - Declaring a custom multi dimension as a bare string — \`{ decorations: "decoration" }\` is single-value; multi needs the object form \`{ propName: "decoration", multi: true }\``,
+  },
+
+  'rocketstyle/.params()': {
+    signature: '<P extends Record<string, (value: V, theme, mode) => ThemeSlice>>(mappers: P) => RocketStyleComponent // adds props { [K in keyof P]?: V | (V | null)[] | Partial<Record<Breakpoint, V>> }',
+    example: `const Grid = el.config({ name: 'Grid' })
+  .theme(() => ({ display: 'grid' }))
+  .params({
+    columns: (n: number) => ({ gridTemplateColumns: \`repeat(\${n}, minmax(0, 1fr))\` }),
+    min: (px: number) => ({ gridTemplateColumns: \`repeat(auto-fit, minmax(\${px}px, 1fr))\` }),
+    pad: (step: 'small' | 'large', t) => ({ padding: t.spacing[step] }),
+  })
+
+<Grid columns={3} />
+<Grid columns={{ xs: 1, md: 3 }} />   // the mapper sees 1, then 3
+<Grid columns={[1, null, 3]} pad="small" />
+<Grid columns={cols()} />             // signal-driven: class swaps in place`,
+    notes: `Caller-chosen VALUES mapped into the theme. Each key becomes an optional prop typed from the mapper's first parameter and widened to the responsive forms (single value, mobile-first array with \`null\` = inherit, breakpoint object); the framework splits a responsive value per breakpoint, so the mapper always sees ONE value, plus the app theme and the \`mode(light, dark)\` helper, and returns the same slice a \`.theme()\` / dimension value takes (pseudo groups included). Resolved with the dimension props into \`$rocketstyle\` and memoized by value (JSON of the prop), so equal values share one class and a signal-driven value swaps the class on the same node. Order: base theme → state / size / variant → params → \`multiple\` → transform \`modifiers\`; between params, a later-declared param wins within a breakpoint. Param props never reach the DOM. A later \`.params()\` overrides by key. A param named like a dimension or pseudo prop throws in dev. A look is a \`.multiple()\` modifier; a value is a param; a product-wide look is a variant. See also: .multiple() / .modifiers(), .theme(), .attrs().`,
+    mistakes: `- Reading a prop inside \`.styles()\` to vary CSS per instance — that path is not in the memo key, so instances with the same resolved theme share the first one's class; declare the value with \`.params()\`
+- Passing an object or array as ONE value — a param value is a scalar; an array or plain object is read as a responsive value (per breakpoint)
+- Naming a param like an Element prop the base also takes (\`gap\`, \`tag\`) — the param swallows it (params are never forwarded)`,
   },
 
   'rocketstyle/.styles()': {

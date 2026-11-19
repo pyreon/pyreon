@@ -6,7 +6,8 @@
  * fill remaining space between before and after.
  */
 import { config } from '@pyreon/ui-core'
-import { alignContent, extendCss, makeItResponsive, value } from '@pyreon/unistyle'
+import { alignContent, makeItResponsive, value } from '@pyreon/unistyle'
+import { instanceCss } from '../instanceCss'
 import type { ResponsiveStylesCallback } from '../../types'
 import type { StyledProps, ThemeProps } from './types'
 
@@ -83,7 +84,7 @@ const styles: ResponsiveStylesCallback<ThemeProps> = ({ css: cssFn, theme: t, ro
     })
   };
 
-  ${t.extraStyles && extendCss(t.extraStyles as Parameters<typeof extendCss>[0])};
+  ${t.extraStyles && instanceCss(cssFn, t.extraStyles)};
 `
 
 const platformCSS = `box-sizing: border-box;`

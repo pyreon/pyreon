@@ -411,6 +411,21 @@ const FIXTURES: Record<string, Fixture> = {
     bad: `import { useTheme } from '@pyreon/ui-core'\nexport function C() { const t = useTheme(); return <div /> }`,
     good: `import { useTheme, PyreonUI } from '@pyreon/ui-core'\nexport function C() { const t = useTheme(); return <div /> }`,
   },
+  'pyreon/prefer-style-modifier': {
+    file: 'src/a.tsx',
+    bad: `import { css } from '@pyreon/styler'\nexport const A = () => <Card css={css\`color: red;\`} />`,
+    good: `export const A = () => <Card multiple={['accent', on && 'dense']} />`,
+  },
+  'pyreon/no-raw-css-string': {
+    file: 'src/a.tsx',
+    bad: `export const A = () => <Card css="color: red;" />`,
+    good: `import { css } from '@pyreon/styler'\nexport const A = () => <Card css={css\`color: red;\`} />`,
+  },
+  'pyreon/no-theme-props-in-style': {
+    file: 'src/a.tsx',
+    bad: `import { Element } from '@pyreon/elements'\nexport const A = () => <Element style={{ padding: 4 }} />`,
+    good: `import { Element } from '@pyreon/elements'\nexport const A = () => <Element style={{ transform: \`scale(\${s()})\` }} />`,
+  },
   'pyreon/no-signal-read-in-attrs-callback': {
     file: 'src/a.ts',
     bad: `${SIG}import { rocketstyle } from '@pyreon/rocketstyle'\nconst on = signal(false)\nexport const B = rocketstyle()().attrs(() => ({ 'aria-pressed': on() }))`,

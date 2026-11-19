@@ -15,4 +15,10 @@ export interface RocketstyleComponentIR {
    * pressed style carries exactly the payload it always did.
    */
   pressed?: Record<string, Extract<ExprIR, { kind: 'object' }>>
+  /**
+   * Props of web-only styling the native emit does not lower yet (`multiple`,
+   * `modifier`, each `.params()` name): stripped at the use site so they never
+   * reach the primitive. Absent when there are none.
+   */
+  unlowered?: string[]
 }
