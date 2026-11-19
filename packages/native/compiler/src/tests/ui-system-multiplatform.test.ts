@@ -55,7 +55,7 @@ describe('ui-system on native — interactive Button archetype', () => {
   it('theme tokens + reactive state + disabled + onPress lower (Swift)', () => {
     const { code, warnings } = transform(BUTTON_APP, { target: 'swift' })
     expect(code).toContain('.background(((busy) ?') // reactive state flip, theme-resolved
-    expect(code).toContain('.padding(((busy) ? 16 : 16))') // static size=large in both branches
+    expect(code).toContain('.padding(16)') // static size=large in both branches folds to the value
     expect(code).toContain('.disabled(busy)') // disabled prop
     expect(warnings.join('\n')).not.toMatch(/dropped|not yet lowered|not lowered/)
   })

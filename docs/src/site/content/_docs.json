@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 224,
+  "pageCount": 226,
   "pages": [
    {
     "path": "a11y.md",
@@ -76,6 +76,11 @@
     "path": "code.md",
     "title": "Code Editor",
     "href": "/docs/code"
+   },
+   {
+    "path": "command.md",
+    "title": "Command",
+    "href": "/docs/command"
    },
    {
     "path": "compare-app-frameworks.md",
@@ -586,6 +591,11 @@
     "path": "reference/code.md",
     "title": "Code Editor — API Reference",
     "href": "/docs/reference/code"
+   },
+   {
+    "path": "reference/command.md",
+    "title": "@pyreon/command — API Reference",
+    "href": "/docs/reference/command"
    },
    {
     "path": "reference/compiler.md",
@@ -1305,6 +1315,7 @@
       "permissions",
       "auth",
       "hotkeys",
+      "command",
       "toast",
       "rx",
       "url-state",
@@ -1438,6 +1449,7 @@
       "reference/a11y",
       "reference/charts",
       "reference/code",
+      "reference/command",
       "reference/connector-document",
       "reference/coolgrid",
       "reference/dnd",
@@ -1966,6 +1978,10 @@
      "productId": "hotkeys"
     },
     {
+     "title": "Command",
+     "href": "/docs/command"
+    },
+    {
      "title": "Drag and Drop",
      "href": "/docs/dnd",
      "productId": "dnd"
@@ -2329,6 +2345,10 @@
       {
        "title": "Code Editor",
        "href": "/docs/reference/code"
+      },
+      {
+       "title": "Command",
+       "href": "/docs/reference/command"
       },
       {
        "title": "JSX Reactive Transform",

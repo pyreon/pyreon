@@ -1,0 +1,8 @@
+{
+  "package": "@pyreon/command",
+  "bundle": 6724,
+  "imports": {
+    "matcher": 2802,
+    "registry": 6439
+  }
+}
