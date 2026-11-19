@@ -32,6 +32,7 @@ xcodebuild archive \
   -scheme PyreonTodoMVC \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \
+  -derivedDataPath build/DerivedData \
   DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
   CODE_SIGNING_ALLOWED=NO \
   | tail -5
