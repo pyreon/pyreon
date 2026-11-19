@@ -1,5 +1,120 @@
 # create-zero
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The `blog` template now runs on `@pyreon/zero-content/blog`, the same module as pyreon.dev/blog. Posts are markdown files in `src/content/blog/`, and the project gets a paginated index, tag pages, previous/next and related posts, reading time, scheduled posts by `date`, Open Graph / Twitter / JSON-LD tags, and an RSS feed at `/blog/rss.xml` emitted by the content plugin (it replaces the hand-written `/api/rss` route and the TSX posts).
+
+### Patch Changes
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - create-zero, create-multiplatform, `pyreon-native`, lathe, loom and atlas now print in the shared Pyreon terminal theme (the one `pyreon doctor`, `pyreon-lint` and `zero build` use): a header line naming what ran, findings as symbol · rule · message with a `↳ file:line:col` line, and a last line that is the verdict with counts and elapsed time. Colour is truecolor on dark or light terminals (`PYREON_CLI_THEME`, `COLORFGBG`), 16 colours otherwise, plain under `NO_COLOR`, `TERM=dumb` or a pipe, and symbols fall back to ASCII when the locale is not UTF-8. Every `--json`, lathe `diff --format github|markdown|json` and LSP payload is unchanged byte for byte.
+
+  - create-zero honours `FORCE_COLOR` and `TERM=dumb` (it ignored both), ends with `✓ created <name> · N files · <ms>`, and no longer erases earlier answers on a terminal that reports 0 columns.
+  - loom: warnings use `!`, findings point at the importing files or the declaring `package.json`, and the verdict is the last stdout line; the CLI no longer calls `process.exit()`, which cut piped output off mid-line.
+  - lathe: messages wrap instead of being truncated at 120 characters; `--color` / `--no-color` still force colour on and off.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every Pyreon command now prints in the shared terminal theme, and the theme gains a 256-colour level.
+
+  - New flags: `pyreon check --gha` and `pyreon-lint --format gha` print one GitHub Actions annotation per finding. `@pyreon/lint` also exports `formatGha` and the `TermChoice` type.
+  - 256 colours: a terminal that advertises 256 colours but not truecolor (`TERM=xterm-256color`, macOS Terminal, `FORCE_COLOR=2`) now gets the nearest xterm-256 colour for each role instead of 16 colours. Every index keeps at least 4.5:1 contrast on dark and light backgrounds. Colour-level options that took `0 | 1 | 2` (where 2 was truecolor) now take `0 | 1 | 2 | 3`: 2 is 256 colours and 3 is truecolor, the numbering `FORCE_COLOR` uses. `FORCE_COLOR=1|2|3` is a minimum: a terminal that advertises more keeps it.
+  - Migrated: `pyreon check`, `plain`, `add`, `context` and the usage errors; `pyreon-lint --list`, `--why-off`, `--init` and watch mode; `zero dev` and the failure output of every `zero` command; the zero build's route-mode table and perf advisor; `lathe pull` and `--watch`; usage errors in `pyreon-native`, atlas and loom; `loom build` and `loom dev` status lines; create-zero's argument and fatal errors; the MCP server's fatal error.
+  - States the reference did not show: an empty run ends on `ℹ` (never `✓`), a run stopped with Ctrl-C ends on `! interrupted · elapsed` and exits 130 (watch modes end on `ℹ stopped watching` and exit 0), and a table that does not fit a narrow terminal stacks its rows instead of cutting them.
+  - Lines wrap at the terminal's width, at most 100 columns; `PYREON_CLI_WIDTH` sets it. A verdict too long for the line moves its counts onto an indented line.
+  - `pyreon-lint --watch` now prints a verdict after a clean re-lint, so a fixed problem no longer stays on screen.
+  - Every `--json` output is unchanged byte for byte.
+
+- [#4500](https://github.com/pyreon/pyreon/pull/4500) [`357acfb`](https://github.com/pyreon/pyreon/commit/357acfb851de1f16eeb6749a252622ff53544d0b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Scaffold fixes, found by testing the fixtures against fresh scaffolder output:
+
+  - A `--compat react|vue|solid|preact` app no longer crashes on `/counter`. The app template's counter is written in Plain Mode, which only the Pyreon compiler understands, and a compat project hands its JSX to the compat runtime, so the page threw "state() from '@pyreon/core/plain' reached the runtime". Compat projects now get a signals version of the counter.
+  - The dashboard template's `/app/*` auth gate is a route loader again: a signed-out visitor gets a server redirect to `/login` with no authenticated markup, and a session that ends mid-visit is caught on the next client navigation. It used to check on mount, after first paint, and never re-checked while the layout stayed mounted.
+  - An SSG scaffold's `sitemap.xml` lists the pages `getStaticPaths` enumerates (every blog post). The generated config now sets `sitemap.useSsgPaths`; without it only file-system routes appeared.
+  - The generated `vite.config.ts` imports `@pyreon/zero/server` once (`import zero, { vercelAdapter } from …`); two imports from the same module failed `import/no-duplicates`.
+  - New projects declare `@types/bun` at `^1.4.4`.
+  - The app template's post route and the dashboard's invoice route typecheck under `noUncheckedIndexedAccess` (a route param is `string | undefined` there).
+
+- [#4001](https://github.com/pyreon/pyreon/pull/4001) [`1ba51e2`](https://github.com/pyreon/pyreon/commit/1ba51e28cfce2b35e57232a8405dc8541bfc1723) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Scaffolded Dockerfiles use the current base images: `node:26-alpine` (Node 26 becomes the active LTS line on 2026-10-28) for the node adapter, and the latest `oven/bun:1` digest for the bun adapter. Both stay pinned by sha256 digest.
+
+- [#4138](https://github.com/pyreon/pyreon/pull/4138) [`5ac3683`](https://github.com/pyreon/pyreon/commit/5ac3683659150fbe2f6c232f9e2303dda1a5ac62) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The `node` and `bun` adapter Dockerfiles now build and run.
+
+  The `node` Dockerfile ran `corepack prepare bun@latest` on `node:26-alpine`. Node 25+ no longer ships corepack and corepack never supported Bun, so `docker build` failed at the install step. It now builds in the official `oven/bun` image and runs on `node:26-alpine`.
+
+  Both images also copy production `node_modules` next to `dist/`. The server bundle imports the app's packages (`@pyreon/*` and the rest) at runtime: the node image crashed with `ERR_MODULE_NOT_FOUND`, and the bun image only started because Bun auto-installed the missing packages from npm on the first request, unpinned and only with network access.
+
+- [#4684](https://github.com/pyreon/pyreon/pull/4684) [`448c2d0`](https://github.com/pyreon/pyreon/commit/448c2d0e7eb0a34986ea3d97f117d923316abd1f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Scaffolded projects now get a `.gitignore` when created from the published package (npm never packs a file named `.gitignore`, so the template's was missing from the tarball), and it now also ignores the files Pyreon tooling writes into the app root: `.pyreon-lpih.json` and the temporary `__pyreon-zero-ssg-entry.js` / `__pyreon-zero-ssr-entry.js`.
+
+- [#4159](https://github.com/pyreon/pyreon/pull/4159) [`11d628e`](https://github.com/pyreon/pyreon/commit/11d628ed61551323d638acd0f80a5bb87af26cf4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Starter-app fixes in `create-pyreon-app`:
+
+  - The code samples on the app starter's home, counter, posts and dashboard pages kept their line breaks only in source. JSX drops a line break between children (in every JSX implementation, `<pre>` included), so they rendered as `state(0)const doubled = …`. Each line now ends with an explicit `{"\n"}`.
+  - The next-steps note uses the package manager the scaffolder was invoked with (`npm_config_user_agent`): `npm install` / `npm run dev` after `npm create`, `pnpm dev` after `pnpm create`, and so on. The monorepo template keeps bun, because its root scripts call `bun run --filter`.
+  - The lint prompt said "59 Pyreon-specific rules"; the registry has 133. The prompt is now a `lint-rule-count` claim surface of the doc-claims gate (`@pyreon/cli`), so CI fails when it drifts again.
+  - The starter footer reads "signal-based, fine-grained" instead of "blazing fast".
+  - `pyreon/no-secret-in-shared-module` treats `npm_config_user_agent` as environment plumbing, not a secret. Package managers set it to name themselves.
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The starter templates render lists with `<For each by>` instead of `.map()` in JSX, so a fresh app passes its own `pyreon doctor` react-patterns gate (`array-map-jsx`) now that the gate no longer skips files whose only habit is `.map()`.
+
+- [#4076](https://github.com/pyreon/pyreon/pull/4076) [`d9a8c55`](https://github.com/pyreon/pyreon/commit/d9a8c55bf8a47e4ebfc5dc47cc9c47ab4fbd60ec) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The node adapter's scaffolded Dockerfile pins the refreshed `node:26-alpine` image digest.
+
+- [#4579](https://github.com/pyreon/pyreon/pull/4579) [`f511cff`](https://github.com/pyreon/pyreon/commit/f511cff66985676f6d21cb79b0cc0f5da7121757) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Messages, docs and template comments that pointed at the removed `pyreon doctor --check-*` / `--audit-tests` flags now name the `--only <gate>` form (for example the islands dev warning and the SSG audit report now say `pyreon doctor --only islands-audit` / `--only ssg-audit`). The duplicate-instance error from `@pyreon/reactivity` now says `pyreon doctor --only check-dedup` (it named a `--check-dedup` flag that never existed and that `pyreon doctor` now rejects), and the `@pyreon/native-compiler` README names `--only native-audit`.
+
+- [#4530](https://github.com/pyreon/pyreon/pull/4530) [`5ab63c0`](https://github.com/pyreon/pyreon/commit/5ab63c0446a68b3cf9e1e570f01a3b214d4e54f9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Read a signal one way in JSX: `count()`.
+
+  The compiler auto-calls a bare `{count}` in JSX, but only for a `const` signal or computed it can see, TypeScript rejects the bare form in expressions and typed component props, and without the Pyreon compiler (vitest's JSX transform, compat projects) the two forms behave differently. One called form is the only rule that holds in every position.
+
+  - New rule `pyreon/consistent-signal-read` (style, on in the `readable` layer). It flags a bare known signal in JSX and fixes it to `count()` wherever the compiler emits the same code for both forms. It reports without a fix the whole value of a component prop (on iOS and Android `<Field value={draft}>` is a two-way binding). It skips Plain Mode files, files the Pyreon compiler does not lower, names bound more than once, identity uses (`{ count }`, spreads) and `on*` / `ref` values. `form: "bare"` asks for `{count}` where the bare form type-checks and compiles the same. There are now 141 rules.
+  - `pyreon/no-signal-in-props` now fires only in files the Pyreon compiler does not lower (test files, compat projects, a foreign `@jsxImportSource`). In a compiled file `<Comp x={sig()} />` is a reactive prop (`_rpd(sig)`), so the rule was wrong there and pushed authors toward the bare form.
+  - The `create-zero` dashboard template and the `create-multiplatform` scaffold read their signals with `count()`.
+
+- [#4479](https://github.com/pyreon/pyreon/pull/4479) [`e195518`](https://github.com/pyreon/pyreon/commit/e195518d5ac7384a0c6cafbfc3b4b4f3c1f3a1c6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/lint` gets a `readable` preset: rules about how code reads, with the spacing fixed for you.
+
+  Turn it on with one line in `.pyreonlintrc.json`:
+
+  ```json
+  { "preset": ["recommended", "readable"] }
+  ```
+
+  `preset` now takes a list, composed left to right. `readable` and `readable-strict` are layers: they set only their own rules, so `["strict", "readable"]` keeps strict's errors and adds readability warnings. They turn on six new opt-in rules in a new `style` category and group:
+
+  - `pyreon/padding-between-declarations` (auto-fixable): a blank line between adjacent top-level statements or class members when either spans lines.
+  - `pyreon/padding-before-return` (auto-fixable): a blank line before a `return` that follows a multi-line statement or three or more statements.
+  - `pyreon/padding-between-component-sections` (auto-fixable): a component reads setup → behaviour → render, with a blank line between sections. Handlers and effects share one section, because `effect()` runs when it is created.
+  - `pyreon/padding-around-multiline-blocks` (auto-fixable, `readable-strict`): a blank line around multi-line `if` / `for` / `try` / `switch` blocks inside a function.
+  - `pyreon/max-jsx-depth`: a component's JSX nests at most 6 deep (5 in strict), and the message names the subtree to extract. Fragments and control-flow components (`<For>`, `<Show>`, …) add no depth.
+  - `pyreon/no-nested-ternary-branch`: no ternary inside another ternary's branch; flat chains are fine up to 4 outcomes (3 in strict).
+
+  The fixes only insert blank lines between statements, which oxfmt keeps, so `--fix` and the formatter never fight. Two matching presets ship for the other tools: `@pyreon/lint/oxlint/readable.json` (function length, complexity, depth, parameters and file length, for `.oxlintrc.json` to extend) and `@pyreon/lint/oxfmt` (formatting with sorted imports, for `oxfmt.config.ts`).
+
+  Also in `@pyreon/lint`:
+
+  - The language server offers code actions: a quick fix for every auto-fixable finding, and `source.fixAll.pyreon` for `editor.codeActionsOnSave`. It now lints each file with the project's own `.pyreonlintrc.json` (it used a fixed `recommended` before), and diagnostic ranges are exact (they started one character early).
+  - `pyreon-lint` without `--preset` now uses the config file's preset. It used to apply `recommended` and ignore the file's choice. `--preset` takes a comma list.
+  - `--watch` now reads `.pyreonlintrc.json`.
+  - Suppression comments accept a reason: `// pyreon-lint-disable-next-line <rule> -- <why>`. A whole file opts out with `// pyreon-lint-disable-file <rule> -- <why>`. The reason is required there, and a directive without one is ignored and reported.
+  - The language server frames messages by bytes. A document containing any non-ASCII character used to be cut short and dropped.
+  - The VS Code extension starts the `pyreon-lint` bin (it used to start a module that exits immediately) and declares its `vscode-languageclient` dependency.
+
+  New `create-zero` projects with lint on, and every new `create-multiplatform` project, ship the readable setup: the preset plus block padding, `.oxlintrc.json`, `oxfmt.config.ts`, the `oxlint` and `oxfmt` dev dependencies, `lint` / `format` / `fix` scripts, and `.vscode/` settings that format and fix on save. A fresh create-zero project of every template lints with zero findings, and its first `bun run format` changes nothing: the templates use `<For>` lists, validate their API body, and are formatted with the shipped preset. The same holds for a new create-multiplatform project: every file it writes (`App.tsx`, `package.json`, the JSON configs, `index.html`, the Maestro flow and the markdown) is already in the formatter's shape. Its README no longer starts a line with `+`, which Markdown read as a list item.
+
+- [#4563](https://github.com/pyreon/pyreon/pull/4563) [`327771b`](https://github.com/pyreon/pyreon/commit/327771b3abd8513416f324aa7b202bcca800463c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package now declares its tier in `package.json`: `"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`. From 1.0 the semver promise covers Stable packages only; Experimental packages, and the experimental subpaths of Stable packages (every `./native-plugin`, `@pyreon/core/plain`, `@pyreon/compiler/audits` and `/plain`, `@pyreon/charts/engine`, and the `./webview` subpaths of code, flow and rich-text), may break in a minor release. Each README opens with a status line generated from the field. The policy, including the compiler-helper ABI rule and deprecations, is at https://pyreon.dev/docs/stability-and-direction.
+
+  The `@pyreon/http` and `@pyreon/loom` READMEs no longer claim the packages are unpublished.
+
+  **Breaking (`@pyreon/meta`):** the barrel no longer re-exports `@pyreon/document-primitives` (the `Doc*` components, `createDocumentExport`, `documentTheme`, `extractDocNode`, `DocumentPreview`) or `@pyreon/connector-document` (`extractDocumentTree`, `resolveStyles`), because both are Experimental and meta is Stable. Upgrade: install those packages and import from them directly.
+
+  The ui-core, unistyle, rocketstyle, coolgrid and elements manifests no longer claim that the low-level `Provider` logs a dev warning; it has not warned for some time.
+
+- [#4216](https://github.com/pyreon/pyreon/pull/4216) [`2c85b8d`](https://github.com/pyreon/pyreon/commit/2c85b8d6f68cc01a1bf9c38ecd43daf9b0bb5f95) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The `dashboard` template's generated auth is safe by default. Sign-in, sign-up, session lookup and sign-out now go through server endpoints (`/api/signin`, `/api/signup`, `/api/session`, `/api/signout`). The endpoints set the session cookie `HttpOnly; SameSite=Lax`, plus `Secure` everywhere except plain-HTTP localhost, so page JavaScript never holds a session id. The in-memory stub stores salted PBKDF2-SHA256 hashes instead of plain-text passwords and mints 256-bit random session ids instead of `Math.random`. The `demo@example.com` account exists only under `vite dev`. Credential endpoints accept JSON only, which blocks login CSRF, and sign-out is a POST.
+
+- [#4477](https://github.com/pyreon/pyreon/pull/4477) [`a2e002f`](https://github.com/pyreon/pyreon/commit/a2e002f8d3964a65a9e83f4d03374bb58e0ef6bd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A keyed `<For>` row that reads a field of an item replaced under the same key is now caught before it ships.
+
+  On the web, `<For each={todos} by={(t) => t.id}>` runs a row once per key. An update such as `todos.set(todos().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))` keeps the key, so the row is kept and `{t.done ? …}`, `class={t.done ? …}` or `<Row todo={t} />` with `props.todo.done` keep showing the first value. iOS and Android redraw the row, so the same source was right on two targets and stale on the web.
+
+  - `detectPyreonPatterns` has a new code, `for-stale-item-field`, so `pyreon check`, the MCP `validate` tool and the Reactivity Lens report it. It fires only when the file also replaces items under their key and the read field is one that update overrides. A `<For>` whose `each` is a call inside a `{() => …}` accessor is rebuilt on every list change, so it is skipped.
+  - `@pyreon/lint` has the matching rule, `pyreon/no-stale-for-item-field` (error in `recommended`, accepts `exemptPaths`). There are now 134 rules.
+  - The `diagnoseError` catalog (the MCP `diagnose` tool) recognises the symptom ("my <For> row does not update").
+  - The fix in each message: read the live value by key through a call (`isDone(t.id)`), which stays reactive on the web and lowers to a plain lookup on native, or give the field its own signal.
+  - The `@pyreon/primitives` docs example now reads `done` by id.
+
 ## 0.53.0
 
 No changes in this release.
@@ -394,7 +509,7 @@ No changes in this release.
 - [#1588](https://github.com/pyreon/pyreon/pull/1588) [`b59c7b0`](https://github.com/pyreon/pyreon/commit/b59c7b07f782e0ae0be2dda144e152504cdef7b7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(create-zero): interactive "Custom — pick features one by one" no longer crashes
 
   Picking the Custom feature preset crashed with `TypeError: Cannot read
-properties of undefined (reading 'label')`. The `state` and `ui` feature
+  properties of undefined (reading 'label')`. The `state` and `ui` feature
   categories (and the `full` preset) referenced `state-tree` / `coolgrid`, but
   those keys were never defined in `FEATURES` — so the grouped-multiselect builder
   dereferenced `undefined`. The `full` preset was broken the same way for any
@@ -588,7 +703,7 @@ properties of undefined (reading 'label')`. The `state` and `ui` feature
   - W4 verified: `/throw` test route surfaces "Intentional test error..."
     message + stack in the rendered body + `console.error`
   - W1 verified: scaffold output of `create-pyreon-app w1-test-2 --features
-query` has zero `app.store.` or `useAppStore` references
+    query` has zero `app.store.` or `useAppStore` references
   - W6 verified: `page.on('console')` warning capture returns empty on every
     page load (previously: one warning per page)
 
