@@ -139,6 +139,18 @@ describe.skipIf(!hasBuiltLib(MAIN, "the main entry's feature tree-shaking"))('<C
     }
   })
 
+  // Dev-only warnings are gated AT THE CALL SITE: `warnOnce` itself returns in production, but the message string
+  // is built by the caller and would still ship. These literals appear only inside warning messages.
+  it('no dev-warning text ships in a production bundle', async () => {
+    const entries: ReadonlyArray<readonly [readonly string[], string]> = [[['PlotChart', 'bars', 'line', 'shadeBy'], PLOT], [['Chart', 'Bar', 'Axis'], MAIN], [['chartToSvg', 'bars'], SVG]]
+    for (const [names, from] of entries) {
+      const code = await bundle(names, from)
+      for (const text of ['smallest LTTB can keep', 'coerced to a number', 'expected one of', 'returned a non-number', 'cannot place them']) {
+        expect(code.includes(text), `"${text}" shipped in ${names[0]!}`).toBe(false)
+      }
+    }
+  })
+
   it('and the marker is real — importing sqrt, symlog or log brings the view in', async () => {
     for (const d of ['sqrt', 'symlog', 'log']) {
       const code = await bundle(['Chart', 'Line', d], MAIN)
