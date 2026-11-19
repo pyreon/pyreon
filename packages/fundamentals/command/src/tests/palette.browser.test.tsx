@@ -393,6 +393,29 @@ describe('announcements', () => {
   })
 })
 
+describe('an inline source', () => {
+  it('lists the matching commands at once, keeps them while it loads, then adds its rows under its title; arrows walk through both', async () => {
+    const wait: ((rows: Command[]) => void)[] = []
+    const commands = registry(
+      cmd('settings', { title: 'Acme settings' }),
+      cmd('customers', { title: 'Customers', inline: true, children: () => new Promise<Command[]>((r) => wait.push(r)) }),
+    )
+    await openWith(commands, { debounce: 0 })
+    await userEvent.keyboard('acme')
+    await sleep()
+    expect(titles()).toEqual(['Acme settings'])
+    expect(live()).toBe('1 result')
+    wait.at(-1)!([cmd('c1', { title: 'Acme Corp' }), cmd('c2', { title: 'Acme Ltd' })])
+    await sleep()
+    expect(titles()).toEqual(['Acme settings', 'Acme Corp', 'Acme Ltd'])
+    expect(live()).toBe('3 results')
+    const headings = [...dialog()!.querySelectorAll('.pcmd-heading')].map((h) => h.textContent)
+    expect(headings).toEqual(['Customers'])
+    await userEvent.keyboard('{End}')
+    expect(activeOption()?.textContent).toContain('Acme Ltd')
+  })
+})
+
 describe('right to left', () => {
   it('mirrors: the shortcut sits at the inline end (the left), keys are not swapped, the chevron flips', async () => {
     const commands = registry(cmd('a', { title: 'Alpha', shortcut: 'ctrl+1', children: [cmd('x')] }))

@@ -632,6 +632,128 @@ describe('async sources', () => {
   })
 })
 
+describe('inline async sources (searched from the root while typing)', () => {
+  const deferred = <T,>(): { promise: Promise<T>; resolve(v: T): void; reject(e: unknown): void } => {
+    let resolve!: (v: T) => void
+    let reject!: (e: unknown) => void
+    const promise = new Promise<T>((a, b) => {
+      resolve = a
+      reject = b
+    })
+
+    return { promise, resolve, reject }
+  }
+  const customers = (children: NonNullable<Command['children']>, extra?: Partial<Command>): Command => cmd('customers', { title: 'Customers', inline: true, children, ...extra })
+
+  it('the matching commands are listed at once and stay while the source loads; its rows follow under its title', async () => {
+    const d = deferred<Command[]>()
+    registry.register([cmd('acme-settings', { title: 'Acme settings' }), customers(() => d.promise)])
+    const p = make({ debounce: 0 })
+    p.open()
+    p.setQuery('acme')
+    expect(ids(p)).toEqual(['acme-settings'])
+    expect(p.status()).toBe('loading')
+    expect(p.announcement()).toBe('1 result')
+    d.resolve([cmd('c1', { title: 'Acme Corp' }), cmd('c2', { title: 'Acme Ltd' })])
+    await Promise.resolve()
+    expect(ids(p)).toEqual(['acme-settings', 'c1', 'c2'])
+    expect(p.groups().map((g) => [g.id, g.title, g.items.length])).toEqual([[undefined, undefined, 1], ['$source:customers', 'Customers', 2]])
+    expect(p.status()).toBe('idle')
+    expect(p.results()[1]!.ranges).toEqual([[0, 4]])
+    expect(p.announcement()).toBe('3 results')
+  })
+
+  it('a source is only searched from the root when it asks for it, is enabled, and the query is not empty', () => {
+    const asked: string[] = []
+    registry.register([
+      customers((q) => { asked.push(`inline:${q}`); return [] }),
+      cmd('page-only', { children: (q) => { asked.push(`page:${q}`); return [] } }),
+      cmd('off', { inline: true, enabled: false, children: (q) => { asked.push(`off:${q}`); return [] } }),
+    ])
+    const p = make({ debounce: 0 })
+    p.open()
+    expect(asked).toEqual([])
+    p.setQuery('a')
+    expect(asked).toEqual(['inline:a'])
+  })
+
+  it('the first request is immediate, the next ones debounced; latest wins out of order', async () => {
+    vi.useFakeTimers()
+    const waiting = new Map<string, ReturnType<typeof deferred<Command[]>>>()
+    registry.register(customers((q) => { const d = deferred<Command[]>(); waiting.set(q, d); return d.promise }))
+    const p = make({ debounce: 100 })
+    p.open()
+    p.setQuery('a')
+    expect([...waiting.keys()]).toEqual(['a'])
+    p.setQuery('ab')
+    p.setQuery('abc')
+    expect([...waiting.keys()]).toEqual(['a'])
+    await vi.advanceTimersByTimeAsync(101)
+    expect([...waiting.keys()]).toEqual(['a', 'abc'])
+    waiting.get('abc')!.resolve([cmd('new', { title: 'abc newest' })])
+    await vi.advanceTimersByTimeAsync(0)
+    waiting.get('a')!.resolve([cmd('old', { title: 'a stale' })])
+    await vi.advanceTimersByTimeAsync(0)
+    expect(ids(p)).toEqual(['new'])
+  })
+
+  it('closing, going into a page and clearing the query abort the request and drop the rows', async () => {
+    const signals: AbortSignal[] = []
+    registry.register([customers((_q, signal) => { signals.push(signal); return Promise.resolve([cmd('r', { title: 'row' })]) }), cmd('theme', { children: [cmd('dark')] })])
+    const p = make({ debounce: 0 })
+    p.open()
+    p.setQuery('r')
+    await Promise.resolve()
+    expect(ids(p)).toContain('r')
+    p.setQuery('')
+    expect(p.results().some((r) => r.id === 'r')).toBe(false)
+    expect(signals.at(-1)!.aborted).toBe(true)
+    p.setQuery('ro')
+    await Promise.resolve()
+    expect(ids(p)).toContain('r')
+    p.close()
+    expect(p.results()).toEqual([])
+    expect(signals.at(-1)!.aborted).toBe(true)
+    p.open()
+    p.setQuery('row')
+    await Promise.resolve()
+    p.open('theme')
+    expect(ids(p)).toEqual(['dark'])
+  })
+
+  it('a source whose command is unregistered, or disabled, while the palette is open is aborted and forgotten', () => {
+    const signals: AbortSignal[] = []
+    const off = registry.register(customers((_q, signal) => { signals.push(signal); return new Promise<Command[]>(() => {}) }))
+    registry.register(cmd('x'))
+    const p = make({ debounce: 0 })
+    p.open()
+    p.setQuery('x')
+    expect(signals.map((s) => s.aborted)).toEqual([false])
+    off()
+    expect(signals[0]!.aborted).toBe(true)
+    expect(p.status()).toBe('idle')
+  })
+
+  it('an error from the source is announced and exposed, the commands stay, and rows already listed are not repeated', async () => {
+    registry.register([cmd('shared', { title: 'Shared item' }), customers(() => Promise.reject(new Error('offline')))])
+    const p = make({ debounce: 0 })
+    p.open()
+    p.setQuery('shared')
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(p.status()).toBe('error')
+    expect(p.announcement()).toBe('Failed: offline')
+    expect(ids(p)).toEqual(['shared'])
+    registry.dispose()
+    registry = createCommands()
+    registry.register([cmd('dup', { title: 'Dup' }), customers(() => [cmd('dup', { title: 'Dup again' }), cmd('fresh', { title: 'Dup fresh' })])])
+    const q = make({ debounce: 0 })
+    q.open()
+    q.setQuery('dup')
+    expect(ids(q)).toEqual(['dup', 'fresh'])
+  })
+})
+
 describe('title functions', () => {
   it('follow the locale: switching re-ranks and re-renders the rows', () => {
     const locale = signal<'en' | 'cs'>('en')

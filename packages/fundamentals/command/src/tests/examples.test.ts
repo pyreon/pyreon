@@ -109,6 +109,7 @@ describe('the published shape', () => {
       'shortcut-binding.ts': ['@pyreon/hotkeys', '@pyreon/reactivity'],
       'shortcuts.ts': ['@pyreon/hotkeys'],
       'source.ts': ['@pyreon/reactivity'],
+      'inline-sources.ts': ['@pyreon/reactivity'],
       'router.ts': [],
       'palette.ts': ['@pyreon/hotkeys', '@pyreon/reactivity'],
       'palette-actions.ts': ['@pyreon/reactivity'],

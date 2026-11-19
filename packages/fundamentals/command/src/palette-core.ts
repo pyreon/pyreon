@@ -2,6 +2,8 @@ import { signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
 import { resolveText } from './entry'
 import type { PaletteMessages, PaletteOptions } from './palette-types'
+import { createInline } from './inline-sources'
+import type { Inline } from './inline-sources'
 import { createSource } from './source'
 import type { Source } from './source'
 import type { Command, Commands } from './types'
@@ -42,6 +44,7 @@ export interface PaletteCore {
   readonly running: Signal<string | null>
   readonly runError: Signal<unknown>
   readonly source: Source
+  readonly inline: Inline
   readonly ids: { base: string; input: string; list: string }
   /** Bumped at every open and close: work that outlives its session checks it. */
   session: number
@@ -70,6 +73,7 @@ export function createCore(options: PaletteOptions, commands: Commands): Palette
     running: signal<string | null>(null),
     runError: signal<unknown>(undefined),
     source: createSource(options.debounce ?? 150),
+    inline: createInline(options.debounce ?? 150),
     ids: { base, input: `${base}-input`, list: `${base}-list` },
     session: 0,
     runController: null,

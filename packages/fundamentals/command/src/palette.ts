@@ -16,13 +16,13 @@ const DEFAULT_HOTKEY = 'mod+k'
 /** The text of the polite live region: what a screen-reader user needs to hear when the list or the active row changes. */
 function announce(core: PaletteCore, results: Results): string {
   if (!core.open() || isServer) return ''
-  const error = core.runError() ?? core.source.error()
+  const error = core.runError() ?? core.source.error() ?? core.inline.error()
   if (error !== undefined) return core.messages.failed(error)
   const items = results.items()
   const active = items.find((item) => item.id === core.active())
   if (active !== undefined && !active.enabled) return core.messages.unavailable(active.title, active.disabledReason)
   if (core.running() !== null) return core.messages.loading
-  if (items.length === 0) return core.source.loading() ? core.messages.loading : core.query().trim() === '' && results.pages().length === 0 ? '' : core.messages.noResults
+  if (items.length === 0) return core.source.loading() || core.inline.loading() ? core.messages.loading : core.query().trim() === '' && results.pages().length === 0 ? '' : core.messages.noResults
 
   return core.query().trim() === '' && results.pages().length === 0 ? '' : core.messages.results(items.length)
 }
@@ -51,9 +51,9 @@ function bindHotkey(core: PaletteCore, toggle: () => void): (() => void) | null 
 }
 
 function status(core: PaletteCore): PaletteStatus {
-  if (core.runError() !== undefined || core.source.error() !== undefined) return 'error'
+  if (core.runError() !== undefined || core.source.error() !== undefined || core.inline.error() !== undefined) return 'error'
 
-  return core.source.loading() || core.running() !== null ? 'loading' : 'idle'
+  return core.source.loading() || core.inline.loading() || core.running() !== null ? 'loading' : 'idle'
 }
 
 /**
@@ -95,6 +95,7 @@ export function createPalette(options: PaletteOptions = {}): Palette {
     parts.stopActive()
     message.dispose()
     core.source.reset()
+    core.inline.reset()
   }
   getCurrentScope()?.add(dispose)
 
@@ -115,7 +116,7 @@ export function createPalette(options: PaletteOptions = {}): Palette {
     results: () => results.items(),
     groups: () => results.groups(),
     status: () => status(core),
-    error: () => core.runError() ?? core.source.error(),
+    error: () => core.runError() ?? core.source.error() ?? core.inline.error(),
     running: () => core.running(),
     activeId: () => core.active(),
     setActive: actions.setActive,

@@ -158,6 +158,25 @@ function staticItems(core: PaletteCore, query: string, top: PageFrame | undefine
     .map((command) => toItem(command, [], [], false))
 }
 
+/** The rows of the `inline` sources, one group each, headed by the command that owns the source. Rows already listed are skipped. */
+function inlineGroups(core: PaletteCore, query: string, listed: readonly Omit<ResultItem, 'index'>[]): { id: string | undefined; title: string | undefined; items: Omit<ResultItem, 'index'>[] }[] {
+  core.inline.version()
+  const seen = new Set(listed.map((item) => item.id))
+  const out: { id: string | undefined; title: string | undefined; items: Omit<ResultItem, 'index'>[] }[] = []
+  for (const command of inlineCommands(core)) {
+    const rows = unique(fromSource(core.inline.results(command.id), query)).filter((row) => !seen.has(row.id))
+    for (const row of rows) seen.add(row.id)
+    if (rows.length > 0) out.push({ id: `$source:${command.id}`, title: resolveText(command.title), items: rows })
+  }
+
+  return out
+}
+
+/** The commands whose async source is searched from the root. */
+function inlineCommands(core: PaletteCore): Command[] {
+  return core.commands.commands().filter((command) => command.inline === true && typeof command.children === 'function' && isCommandEnabled(command))
+}
+
 /** The valid page stack: it stops at the first page whose command is no longer registered. */
 function validPages(core: PaletteCore): PageFrame[] {
   const out: PageFrame[] = []
@@ -189,8 +208,10 @@ export function createResults(core: PaletteCore): Results {
     const children = top !== undefined && Array.isArray(top.command.children) ? (top.command.children as readonly Command[]) : core.commands.commands()
     const items = unique(staticItems(core, query, top, children))
     if (top === undefined && query.trim() === '') return emptyRootGroups(items, core.options.emptyQuery ?? 'recents', core)
+    const groups = groupInOrder(items, core.commands.groups())
+    if (top === undefined) groups.push(...inlineGroups(core, query, items))
 
-    return numbered(groupInOrder(items, core.commands.groups()))
+    return numbered(groups)
   })
   const items = computed<readonly ResultItem[]>(() => groups().flatMap((g) => g.items))
 
@@ -211,12 +232,22 @@ export function createResults(core: PaletteCore): Results {
     core.source.request(load, query, entering)
   })
 
+  const askingInline = isServer
+    ? null
+    : effect(() => {
+        const query = core.query()
+        const atRoot = core.open() && pages().length === 0 && query.trim() !== ''
+        if (atRoot) core.inline.sync(inlineCommands(core), query)
+        else core.inline.reset()
+      })
+
   return {
     pages,
     groups,
     items,
     dispose() {
       asking?.dispose()
+      askingInline?.dispose()
       items.dispose()
       groups.dispose()
       pages.dispose()

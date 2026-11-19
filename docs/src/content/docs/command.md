@@ -353,6 +353,26 @@ commands.register({
 
 A synchronous function works too (it answers at once, with no loading state).
 
+**Searching a source from the root.** By default a source is only asked inside its page. Give the command `inline: true` and it is also asked from the root while the user types, so "acme" finds the matching commands and, when the server answers, the customers under a "Customers" heading:
+
+```ts
+import { createCommands } from '@pyreon/command'
+
+const commands = createCommands()
+commands.register({
+  id: 'customers',
+  title: 'Customers',
+  inline: true,
+  children: async (query, signal) => {
+    const response = await fetch(`/api/customers?q=${encodeURIComponent(query)}`, { signal })
+    const found: { id: string; name: string }[] = await response.json()
+    return found.map((c) => ({ id: `customer-${c.id}`, title: c.name, run: () => openCustomer(c.id) }))
+  },
+})
+```
+
+The matching commands are listed at once and **stay on screen while the source loads** (no flicker); the source's rows are appended in a group headed by the command's title, with the same rules as a page: the first request is immediate, the next ones are debounced, the latest answer wins, a superseded request and closing abort the signal, an error is announced and the commands stay, and a row that is already listed is not repeated. Not asked for an empty query. Every inline source is asked on every keystroke (after the debounce), so use it for a few, cheap sources; the others stay in their page.
+
 ### Running
 
 `run` receives `{ id, source: 'palette', query, signal, commands }`. While an async `run` is pending the row is marked `data-running`, `status()` is `'loading'`, and a second Enter is ignored. On success the palette closes (unless `keepOpen`); on failure it **stays open** with the error (`status()` is `'error'`, announced, cleared by the next keystroke). Closing the palette while a run is pending aborts `signal`, and nothing the run does afterwards touches the palette. A run that never settles holds the palette until it is closed; the next time it opens it is free.

@@ -66,7 +66,7 @@ export function createInputProps(core: PaletteCore, results: Results, actions: P
       return item === undefined ? undefined : optionId(core, item)
     },
     'aria-label': label,
-    'aria-busy': () => (core.source.loading() || core.running() !== null ? 'true' : undefined),
+    'aria-busy': () => (core.source.loading() || core.inline.loading() || core.running() !== null ? 'true' : undefined),
     placeholder,
     value: () => core.query(),
     onInput: (event: Event) => actions.setQuery((event.target as HTMLInputElement).value),
