@@ -111,12 +111,12 @@ describe('ONE branch carries the slot — static emit + a named warning', () => 
   })
 })
 
-describe('COMPOSITE slots can only ever be emitted statically (v1 gap)', () => {
-  it('a border in BOTH branches still emits the THEN branch + warns', () => {
+describe('COMPOSITE slots: a border in every branch folds piecewise; one-branch and frame stay static (v1 gap)', () => {
+  it('a border in BOTH branches folds its width and colour into conditionals, with no warning (#4346)', () => {
     const style = `on() ? { borderWidth: 1, borderColor: '#ff0000' } : { borderWidth: 2, borderColor: '#00ff00' }`
-    expect(code(style)).toContain('lineWidth: 1')
-    expect(code(style)).not.toContain('lineWidth: 2')
-    expect(warns(style)).toContain('property [border] differ in shape')
+    expect(code(style)).toContain('lineWidth: ((on) ? 1 : 2)')
+    expect(code(style)).toContain('.stroke(((on) ? Color(')
+    expect(warns(style)).not.toContain('[border]')
   })
 
   it('a border in ONE branch only takes the same arm', () => {
@@ -125,9 +125,11 @@ describe('COMPOSITE slots can only ever be emitted statically (v1 gap)', () => {
     expect(warns(style)).toContain('[border]')
   })
 
-  it('Kotlin composes the same static border', () => {
+  it('Kotlin folds the same border', () => {
     const style = `on() ? { borderWidth: 1, borderColor: '#ff0000' } : { borderWidth: 2, borderColor: '#00ff00' }`
-    expect(code(style, 'kotlin')).toContain('.border(BorderStroke(1.dp, Color(0xFFFF0000))')
+    expect(code(style, 'kotlin')).toContain(
+      '.border(BorderStroke((if (on) 1 else 2).dp, (if (on) Color(0xFFFF0000) else Color(0xFF00FF00))), RoundedCornerShape(0.dp))',
+    )
   })
 
   it('frame constraints in BOTH branches emit the THEN frame + warn by group name', () => {
