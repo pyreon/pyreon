@@ -485,21 +485,24 @@ describe('the marketing site carries the lint counts', () => {
   const onHome = (r: GateResult, id: string): Finding[] =>
     forCheck(r, id).filter((f) => f.code.endsWith('-drift') && f.location?.relPath === HOME)
 
-  it('reports a stale site rule count and category count', () => {
-    build(repo(3, 1))
+  it('refuses a site lint count written in digits: the content derives it', () => {
+    build(repo(4, 2))
     return run().then((r) => {
-      expect(onHome(r, 'lint-rule-count').map((f) => f.message)).toEqual([
-        `lint rule count: ${HOME} claims 3, actual 4.`,
+      const hard = (id: string): Finding[] => forCheck(r, id).filter((f) => f.code.endsWith('-hardcoded') && f.location?.relPath === HOME)
+      expect(hard('lint-rule-count').map((f) => f.message)).toEqual([
+        `lint rule count: ${HOME} states "4" in digits; this count is derived (actual 4).`,
       ])
-      expect(onHome(r, 'lint-category-count').length).toBe(1)
+      expect(hard('lint-category-count').length).toBe(1)
     })
   })
 
-  it('stays quiet when the site matches the registry', () => {
-    build(repo(4, 2))
+  it('stays quiet when the site carries the placeholders', () => {
+    build({ ...repo(4, 2), [HOME]: '{ "items": [ { "name": "{{@lintRuleCount}} lint rules", "text": "In {{@lintCategoryCount}} categories, from props to SSR." } ] }\n' })
     return run().then((r) => {
       expect(onHome(r, 'lint-rule-count')).toEqual([])
-      expect(onHome(r, 'lint-category-count')).toEqual([])
+      const errors = (id: string): Finding[] => forCheck(r, id).filter((f) => f.severity === 'error' && f.location?.relPath === HOME)
+      expect(errors('lint-rule-count')).toEqual([])
+      expect(errors('lint-category-count')).toEqual([])
     })
   })
 
@@ -528,60 +531,71 @@ describe('the marketing site carries the lint counts', () => {
   })
 })
 
-describe('the marketing site carries the product count, the anti-pattern total and the package count', () => {
-  // pyreon.dev said "40 products" in six files after the forty-first page was added, "522" anti-patterns
-  // against a catalog past 560, and its package count was typed into five files by hand.
+describe('the marketing site derives the counts that are facts about the repository', () => {
+  // pyreon.dev said "40 products" in six files after the forty-first page was added, and "522" anti-patterns against a
+  // catalog past 560, because the numbers were typed into the staging content set. They are placeholders now
+  // (`{{@productCount}}`), computed from the repository when the site is built (docs/src/site/derived.ts), so a pull
+  // request that adds an anti-pattern entry changes no site content. The gate keeps digits out of those sentences.
   const SITE = 'docs/src/site/content'
-  const index = (n: number): string => `{ "order": [${Array.from({ length: n }, (_, i) => `"p${i}"`).join(', ')}] }\n`
   const catalog = (n: number): string => `# Anti-patterns\n\n## Reactivity\n\n${Array.from({ length: n }, (_, i) => `- **Mistake ${i}** is wrong.\n`).join('')}`
+  const HOME = `${SITE}/_home.json`
+  const AI = `${SITE}/products/ai.json`
   const files = (over: Record<string, string> = {}): Record<string, string> => ({
-    [`${SITE}/products/_index.json`]: index(3),
-    [`${SITE}/_home.json`]: '{ "title": "3 products. One version.", "label": "See all 3 products", "text": "80 packages, one version" }\n',
-    [`${SITE}/_nav.json`]: '{ "a": { "label": "All 3 products" }, "b": { "label": "All 3 products" } }\n',
+    [HOME]: '{ "title": "{{@productCount}} products. One version.", "label": "See all {{@productCount}} products", "text": "{{@packageCount}} packages, one version" }\n',
     '.agents/rules/anti-patterns.md': catalog(5),
-    [`${SITE}/products/ai.json`]: '{ "text": "catalog (5 entries on main)" }\n',
+    [`${SITE}/products/_index.json`]: '{ "order": ["a", "b", "c"] }\n',
     [`${SITE}/_counts.json`]: '{ "packages": 80 }\n',
+    'docs/src/content/blog/introducing-pyreon.md': '80 published packages, all versioned together:\n',
+    'docs/src/content/blog/2026-in-review.md': '3,881 commits, 80 packages and one\nempty repository in March to 80 packages\nmerged pull requests, 80 published packages\n| published packages | 80 |\n',
+    [`${SITE}/_assets.json`]: '{ "alt": "3 products. One reactive core. The glyphs of all 3 Pyreon products." }\n',
+    [AI]: '{ "text": "a paged index of the whole catalog ({{@antiPatternCount}} entries in the catalog); ask by name" }\n',
     ...over,
   })
-  const drift = (r: GateResult, id: string, file: string): string[] =>
+  const on = (r: GateResult, id: string, file: string, kind: string): string[] =>
     forCheck(r, id)
-      .filter((f) => f.code.endsWith('-drift') && f.location?.relPath === file)
+      .filter((f) => f.code.endsWith(kind) && f.location?.relPath === file)
       .map((f) => f.message)
 
-  it('stays quiet when every statement matches its source', async () => {
+  it('stays quiet when the sentences carry placeholders', async () => {
     build(files())
     const r = await run()
     for (const id of ['site-product-count', 'site-anti-pattern-count', 'site-package-count']) {
-      expect(forCheck(r, id).filter((f) => f.code.endsWith('-drift'))).toEqual([])
+      expect(forCheck(r, id).filter((f) => f.severity === 'error')).toEqual([])
     }
   })
 
-  it('reports a product count that was not bumped in every file, and names the one occurrence', async () => {
-    build(files({ [`${SITE}/_home.json`]: '{ "title": "2 products. One version.", "label": "See all 3 products", "text": "80 packages, one version" }\n', [`${SITE}/_nav.json`]: '{ "a": { "label": "All 3 products" }, "b": { "label": "All 2 products" } }\n' }))
+  it('a pull request that adds an anti-pattern entry changes no site content, and the gate stays quiet', async () => {
+    build(files({ '.agents/rules/anti-patterns.md': catalog(6) }))
     const r = await run()
-    expect(drift(r, 'site-product-count', `${SITE}/_home.json`)).toEqual([`site product count: ${SITE}/_home.json claims 2, actual 3.`])
-    expect(drift(r, 'site-product-count', `${SITE}/_nav.json`)).toEqual([`site product count: ${SITE}/_nav.json claims 2 (one of 2 occurrences), actual 3.`])
+    expect(forCheck(r, 'site-anti-pattern-count').filter((f) => f.severity === 'error')).toEqual([])
   })
 
-  it('reports an anti-pattern total that no longer matches the catalog', async () => {
-    build(files({ '.agents/rules/anti-patterns.md': catalog(7) }))
-    const r = await run()
-    expect(drift(r, 'site-anti-pattern-count', `${SITE}/products/ai.json`)).toEqual([`site anti-pattern total: ${SITE}/products/ai.json claims 5, actual 7.`])
+  it('refuses a count written in digits, even a correct one, and says which placeholder to write', async () => {
+    build(files({ [AI]: '{ "text": "a paged index of the whole catalog (5 entries in the catalog); ask by name" }\n' }))
+    const msg = on(await run(), 'site-anti-pattern-count', AI, '-hardcoded')
+    expect(msg).toEqual([`site anti-pattern total: ${AI} states "5" in digits; this count is derived (actual 5).`])
   })
 
-  it('reports a blog post whose package count was not moved with the constant', async () => {
+  it('refuses a hard-coded product count and package count in the content set', async () => {
+    build(files({ [HOME]: '{ "title": "42 products. One version.", "label": "See all {{@productCount}} products", "text": "80 packages, one version" }\n' }))
+    const r = await run()
+    expect(on(r, 'site-product-count', HOME, '-hardcoded').length).toBe(1)
+    expect(on(r, 'site-package-count', HOME, '-hardcoded').length).toBe(1)
+  })
+
+  it('reports a placeholder whose key is not derived, which would fail the build', async () => {
+    build(files({ [`${SITE}/_nav.json`]: '{ "label": "All {{@productCunt}} products", "bad": "{{@ broken" }\n' }))
+    const found = forCheck(await run(), 'site').filter((f) => f.code === 'doc-claims/site-derived-placeholder')
+    expect(found.map((f) => f.message)).toEqual([
+      expect.stringContaining('unknown derived count "{{@productCunt}}"'),
+      expect.stringContaining('a malformed "{{@" placeholder'),
+    ])
+  })
+
+  it('still checks the blog posts against the package-count constant (Markdown cannot read it)', async () => {
     const POST = 'docs/src/content/blog/introducing-pyreon.md'
     build(files({ [POST]: '77 published packages, all versioned together:\n' }))
-    expect(drift(await run(), 'site-package-count', POST)).toEqual([`site package count (the content set constant): ${POST} claims 77, actual 80.`])
-  })
-
-  it('checks the package count against the constant, not against the repository', async () => {
-    // The site says 80 on purpose, ahead of npm: two published packages here, and 80 is still right.
-    build(files({ 'packages/a/package.json': '{ "name": "@pyreon/a" }\n', 'packages/b/package.json': '{ "name": "@pyreon/b" }\n' }))
-    expect(drift(await run(), 'site-package-count', `${SITE}/_home.json`)).toEqual([])
-    // Changing the decision without changing the files is the drift.
-    build(files({ [`${SITE}/_counts.json`]: '{ "packages": 81 }\n' }))
-    expect(drift(await run(), 'site-package-count', `${SITE}/_home.json`)).toEqual([`site package count (the content set constant): ${SITE}/_home.json claims 80, actual 81.`])
+    expect(on(await run(), 'site-package-count', POST, '-drift')).toEqual([`site package count (the content set constant): ${POST} claims 77, actual 80.`])
   })
 })
 

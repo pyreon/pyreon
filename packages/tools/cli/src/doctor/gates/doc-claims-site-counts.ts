@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import type { Finding } from '../types'
 import type { ClaimCheck } from './doc-claims'
 import { SITE_ANTI_PATTERN_CLAIMS, SITE_PACKAGE_COUNT_CLAIMS, SITE_PACKAGE_COUNT_FILE, SITE_PRODUCT_COUNT_CLAIMS } from './doc-claims-site'
 
@@ -59,3 +60,39 @@ export const SITE_COUNT_CHECKS: ClaimCheck[] = [
     claims: SITE_PACKAGE_COUNT_CLAIMS,
   },
 ]
+
+/** The keys a `{{@key}}` placeholder may name: the same list as `DERIVED_KEYS` in docs/src/site/derived.ts (a docs test keeps them equal). */
+export const SITE_DERIVED_KEYS = ['antiPatternCount', 'hookCount', 'lintCategoryCount', 'lintRuleCount', 'mcpToolCount', 'packageCount', 'productCount'] as const
+
+const contentJson = (dir: string, out: string[] = []): string[] => {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) contentJson(p, out)
+    else if (name.endsWith('.json')) out.push(p)
+  }
+
+  return out
+}
+
+/** A `{{@…}}` in the site content that the build could not resolve: a key that is not derived, or a malformed marker. */
+export const findUnknownPlaceholders = (repoRoot: string): Finding[] => {
+  const root = join(repoRoot, 'docs/src/site/content')
+  if (!existsSync(root)) return []
+  const findings: Finding[] = []
+  for (const path of contentJson(root)) {
+    const relPath = path.slice(repoRoot.length + 1)
+    for (const m of readFileSync(path, 'utf8').matchAll(/\{\{@([^{}]*)\}\}|\{\{@(?![^{}]*\}\})/g)) {
+      if (m[1] !== undefined && (SITE_DERIVED_KEYS as readonly string[]).includes(m[1])) continue
+      findings.push({
+        category: 'documentation',
+        severity: 'error',
+        code: 'doc-claims/site-derived-placeholder',
+        gate: 'doc-claims',
+        message: `${relPath}: ${m[1] === undefined ? 'a malformed "{{@" placeholder' : `unknown derived count "{{@${m[1]}}}"`}; the build would fail. Known keys: ${SITE_DERIVED_KEYS.join(', ')}.`,
+        location: { path, relPath },
+      })
+    }
+  }
+
+  return findings
+}

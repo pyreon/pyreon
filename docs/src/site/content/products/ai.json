@@ -7,7 +7,7 @@
  "hero": {
   "title": "Your assistant learned React. This teaches it Pyreon.",
   "emberWord": "Pyreon",
-  "lede": "An MCP server gives Claude Code, Cursor, Windsurf or any MCP client 24 tools: the real API from each package's manifest, the compiler's verdict on a snippet, and your own routes and components. In the editor, the Reactivity Lens marks each JSX expression `live` or `static` while you type.",
+  "lede": "An MCP server gives Claude Code, Cursor, Windsurf or any MCP client {{@mcpToolCount}} tools: the real API from each package's manifest, the compiler's verdict on a snippet, and your own routes and components. In the editor, the Reactivity Lens marks each JSX expression `live` or `static` while you type.",
   "install": "bun add -D @pyreon/mcp",
   "ctaShort": "Add to your editor",
   "facts": [
@@ -63,7 +63,7 @@
    "code": "validate(Counter.tsx) → Found 5 issues:\n\n1. react-import (line 1)          Auto-fixable: yes\n   Fix: import { ... } from \"@pyreon/core\"\n2. props-destructured (line 3)    Auto-fixable: no\n   Fix: (props: Props) => /* read props.x directly */\n3. use-state (line 4)             Auto-fixable: yes\n   Fix: count = signal(start)\n4. use-effect-deps (line 5)       Auto-fixable: yes\n   Fix: effect(() => { /* reads are auto-tracked */ })\n5. class-name-prop (line 6)       Auto-fixable: yes\n   Fix: class=\"btn\""
   }
  },
- "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">all 24 tools</div><h2>Six jobs your assistant can now do properly.</h2></div><div class=\"p-api\"><div><h4>discover · 5</h4><div class=\"chips\"><span>mcp_overview</span><span>get_api</span><span>get_pattern</span><span>get_anti_patterns</span><span>get_changelog</span></div></div><div><h4>check code · 4</h4><div class=\"chips\"><span>validate</span><span>explain_reactivity</span><span>diagnose</span><span>explain_error</span></div></div><div><h4>rewrite code · 2</h4><div class=\"chips\"><span>migrate_react</span><span>migrate_pyreon</span></div></div><div><h4>read your project · 5</h4><div class=\"chips\"><span>get_routes</span><span>get_components</span><span>get_content_collection</span><span>get_content_entry</span><span>get_dependency_fabric</span></div></div><div><h4>audit · 3</h4><div class=\"chips\"><span>audit_test_environment</span><span>audit_islands</span><span>get_browser_smoke_status</span></div></div><div><h4>components and APIs · 5</h4><div class=\"chips\"><span>get_atlas_catalog</span><span>get_atlas_component</span><span>get_api_client</span><span>get_api_operation</span><span>explain_api_diff</span></div></div></div></div></section><section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">beyond the server</div><h2>Built for machines to read.</h2></div><div class=\"p-inside c3\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">Reactivity Lens</span><b>in your editor</b><p>Inlay hints from <code>pyreon-lint --lsp</code>: <code>live</code> where an expression updates, <code>static</code> where it was read once. Footguns arrive as warnings.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">pyreon check</span><b>before you commit</b><p>The compiler's React-habit and Pyreon-misuse detectors, over the files you changed. Prints each fix, exits 1 on any finding.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">llms.txt</span><b>for any model</b><p><code>llms.txt</code> and <code>llms-full.txt</code> are generated from every package manifest, and the docs build publishes both at the site root.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">create-zero --ai</span><b>at scaffold time</b><p><code>--ai mcp,claude,cursor,copilot,agents</code> writes <code>.mcp.json</code>, <code>CLAUDE.md</code>, Cursor rules, Copilot instructions or <code>AGENTS.md</code>.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">pyreon context</span><b>a project snapshot</b><p>Writes <code>.pyreon/context.json</code>: components with their props and signal names, routes and islands.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">your own llms.txt</span><b>for your docs</b><p><code>@pyreon/zero-content</code> emits <code>dist/llms.txt</code> for your site when you set <code>seo.llms</code>.</p></div></div></div></div></section>",
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">all {{@mcpToolCount}} tools</div><h2>Six jobs your assistant can now do properly.</h2></div><div class=\"p-api\"><div><h4>discover · 5</h4><div class=\"chips\"><span>mcp_overview</span><span>get_api</span><span>get_pattern</span><span>get_anti_patterns</span><span>get_changelog</span></div></div><div><h4>check code · 4</h4><div class=\"chips\"><span>validate</span><span>explain_reactivity</span><span>diagnose</span><span>explain_error</span></div></div><div><h4>rewrite code · 2</h4><div class=\"chips\"><span>migrate_react</span><span>migrate_pyreon</span></div></div><div><h4>read your project · 5</h4><div class=\"chips\"><span>get_routes</span><span>get_components</span><span>get_content_collection</span><span>get_content_entry</span><span>get_dependency_fabric</span></div></div><div><h4>audit · 3</h4><div class=\"chips\"><span>audit_test_environment</span><span>audit_islands</span><span>get_browser_smoke_status</span></div></div><div><h4>components and APIs · 5</h4><div class=\"chips\"><span>get_atlas_catalog</span><span>get_atlas_component</span><span>get_api_client</span><span>get_api_operation</span><span>explain_api_diff</span></div></div></div></div></section><section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">beyond the server</div><h2>Built for machines to read.</h2></div><div class=\"p-inside c3\"><div class=\"card\"><div class=\"in\"><span class=\"pk\">Reactivity Lens</span><b>in your editor</b><p>Inlay hints from <code>pyreon-lint --lsp</code>: <code>live</code> where an expression updates, <code>static</code> where it was read once. Footguns arrive as warnings.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">pyreon check</span><b>before you commit</b><p>The compiler's React-habit and Pyreon-misuse detectors, over the files you changed. Prints each fix, exits 1 on any finding.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">llms.txt</span><b>for any model</b><p><code>llms.txt</code> and <code>llms-full.txt</code> are generated from every package manifest, and the docs build publishes both at the site root.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">create-zero --ai</span><b>at scaffold time</b><p><code>--ai mcp,claude,cursor,copilot,agents</code> writes <code>.mcp.json</code>, <code>CLAUDE.md</code>, Cursor rules, Copilot instructions or <code>AGENTS.md</code>.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">pyreon context</span><b>a project snapshot</b><p>Writes <code>.pyreon/context.json</code>: components with their props and signal names, routes and islands.</p></div></div><div class=\"card\"><div class=\"in\"><span class=\"pk\">your own llms.txt</span><b>for your docs</b><p><code>@pyreon/zero-content</code> emits <code>dist/llms.txt</code> for your site when you set <code>seo.llms</code>.</p></div></div></div></div></section>",
  "demo": {
   "title": "Watch the tools answer.",
   "text": "Pick a question. Each answer is real output from the server on this snippet, recorded over stdio and trimmed to fit.",
@@ -91,7 +91,7 @@
    },
    {
     "name": "get_anti_patterns",
-    "text": "a paged index of the whole catalog (572 entries on main); ask by name or category, or pass `full: true` for every entry in full."
+    "text": "a paged index of the whole catalog ({{@antiPatternCount}} entries in the catalog); ask by name or category, or pass `full: true` for every entry in full."
    },
    {
     "name": "diagnose and explain_error",
@@ -120,7 +120,7 @@
   ]
  },
  "api": {
-  "title": "24 tools, and the pieces around them.",
+  "title": "{{@mcpToolCount}} tools, and the pieces around them.",
   "groups": [
    {
     "name": "discover",
@@ -256,9 +256,9 @@
    "source": "Codes that a detector emits: ReactDiagnosticCode in packages/core/compiler/src/react-intercept.ts:32 (19, all emitted; #4476 removed the five declared-only codes), PyreonDiagnosticCode (23, all emitted; props-early-return-conditional and props-object-copy added for #4254) in pyreon-intercept.ts:133, NativeFindingCode (2) in packages/native/compiler/src/native-audit.ts:41 via packages/tools/mcp/src/native-detect.ts"
   },
   {
-   "stat": "572",
+   "stat": "{{@antiPatternCount}}",
    "label": "known mistakes in the anti-pattern catalog on main, served as a compact index your assistant pages through.",
-   "source": "get_anti_patterns({}) header \"572 total, page 1 of 3, 9 categories\", 18 Nov 2026, on the merged tree of the format, time and ambient PRs; the total is the number of `- **` entries in .agents/rules/anti-patterns.md"
+   "source": "get_anti_patterns({}) index header \"{{@antiPatternCount}} total\"; the number is the count of `- **` entries in .agents/rules/anti-patterns.md, computed at build time (docs/src/site/derived.ts)"
   }
  ],
  "recipes": [
@@ -302,7 +302,7 @@
  ],
  "sources": [
   {
-   "claim": "24 tools, names as listed",
+   "claim": "{{@mcpToolCount}} tools, names as listed",
    "path": "tools/list over stdio, `node packages/tools/mcp/lib/index.js` (scratch mcp-client.mjs, 11 Nov 2026); 24 server.tool( calls in packages/tools/mcp/src/index.ts"
   },
   {
@@ -330,7 +330,7 @@
    "path": "measured via tools/call get_api; packages/tools/mcp/src/api-reference.ts"
   },
   {
-   "claim": "Anti-pattern catalog 572 entries, index page 1 of 3, ~34,284 chars; full: true ~453,238 chars (parseAntiPatterns / formatAntiPatterns on the merged tree, 18 Nov 2026)",
+   "claim": "Anti-pattern catalog {{@antiPatternCount}} entries, computed from the catalog at build time",
    "path": "measured via get_anti_patterns({}) and ({ full: true }) (scratch sizes.mjs)"
   },
   {

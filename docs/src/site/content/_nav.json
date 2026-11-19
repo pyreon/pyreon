@@ -183,7 +183,7 @@
             "id": "hooks",
             "name": "Hooks",
             "href": "/products/hooks",
-            "sub": "65 hooks"
+            "sub": "{{@hookCount}} hooks"
           },
           {
             "id": "kinetic",
@@ -393,7 +393,7 @@
             "id": "ai",
             "name": "AI and MCP",
             "href": "/products/ai",
-            "sub": "MCP server, 24 tools"
+            "sub": "MCP server, {{@mcpToolCount}} tools"
           },
           {
             "id": "migrate",
@@ -406,7 +406,7 @@
     ],
     "footer": [
       {
-        "label": "All 42 products",
+        "label": "All {{@productCount}} products",
         "href": "/products"
       },
       {
@@ -600,7 +600,7 @@
             "href": "/products/charts"
           },
           {
-            "label": "All 42 products",
+            "label": "All {{@productCount}} products",
             "href": "/products"
           }
         ]

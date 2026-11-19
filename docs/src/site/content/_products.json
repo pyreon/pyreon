@@ -1,7 +1,7 @@
 {
  "hero": {
   "eyebrow": "all products",
-  "title": "42 products. One reactive core.",
+  "title": "{{@productCount}} products. One reactive core.",
   "lede": "Forms, charts, routing, auth, i18n, a native compiler and the tools that check all of it, built together on the same signals and released as one version. Use one in the app you have, or build the whole thing on them."
  },
  "groupingNote": "Follows products.html with two fixes: HTTP moves from Foundations to Data and state (it is the transport under Query, and the mega menu already files it there), and Content moves from Visual and content to Build apps (it is Zero's content layer and cannot run without Zero). RX stays in Data and state, as on products.html.",
@@ -497,7 +497,7 @@
    "package": "@pyreon/cli · lint · devtools · mcp · testing",
    "group": "tools",
    "href": "/products/tooling",
-   "pitch": "`pyreon doctor` runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to 141 lint rules, `pyreon check`, a test kit and devtools for the reactive graph."
+   "pitch": "`pyreon doctor` runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to {{@lintRuleCount}} lint rules, `pyreon check`, a test kit and devtools for the reactive graph."
   },
   {
    "id": "ai",
@@ -505,7 +505,7 @@
    "package": "@pyreon/mcp",
    "group": "tools",
    "href": "/products/ai",
-   "pitch": "An MCP server with 24 tools: your assistant looks up the real API, validates its code against Pyreon's misuse detectors and explains reactivity. No network calls."
+   "pitch": "An MCP server with {{@mcpToolCount}} tools: your assistant looks up the real API, validates its code against Pyreon's misuse detectors and explains reactivity. No network calls."
   },
   {
    "id": "atlas",
@@ -547,7 +547,7 @@
   }
  ],
  "underneath": {
-  "text": "Underneath sit the compiler, both runtimes, the server, head management and the rest of the 80 published packages. Each one is covered on the product page that uses it.",
+  "text": "Underneath sit the compiler, both runtimes, the server, head management and the rest of the {{@packageCount}} published packages. Each one is covered on the product page that uses it.",
   "link": {
    "label": "Browse the package catalog",
    "href": "/docs/package-catalog"
