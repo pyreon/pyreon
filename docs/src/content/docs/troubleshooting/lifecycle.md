@@ -101,15 +101,15 @@ The ISR memory store capped its cache at `maxEntries` but its tag index only gre
 
 ---
 
-### A disk-backed cache is a cache too (Class C)
-
-`createFsStore` wrote one file per cache key and never evicted, so under the default `pathname + search` key an anonymous visitor could fill the disk with distinct query strings; it also rewrote one shared `_tags.json` index on every tagged miss (O(N) bytes per miss). Rules: a persistent cache gets the same cap as its in-memory sibling, and the cap is enforced against what is ON DISK — count the directory at start and trim, so a restart (or an older version's directory) cannot reset it; eviction removes the entry and every file that references it; keep per-entry metadata in per-entry files so a write costs O(1), not O(cached); write tmp+rename so a crash leaves no torn file, and sweep leftover temp files at start; serialize fs mutations per key so a later `delete` cannot be overtaken by an earlier `set`. Reference: `packages/zero/zero/src/isr-fs-store.ts`; locked by `isr-fs-store-bounds.test.ts`.
-
----
-
 ### Keeping a block whose CONTENT changes under a stable identity in an append-only, content-keyed store
 
 `<PyreonUI>` under `cssVariables` injected each theme's `:root { --px-… }` block with `sheet.injectRules([css], css)`. The variable NAMES depend only on the theme path, so every block redefined the same names and the last INSERTED one won: theme A -&gt; B -&gt; A inserted nothing the third time (A's text was already "injected") and the page kept showing B, while the sheet (and, server side, the process-lifetime rule map) grew by one block per distinct theme. After `clearCache()`, SSR also stopped emitting the block (the dedup set survived, the rules did not). Rule: a block that represents CURRENT state ("the theme now") gets one owned, replaceable slot keyed by its role, not by its content: `sheet.setRootVariables(css)`. Reference: `packages/ui-system/styler/src/sheet.ts`, `packages/ui-system/ui-core/src/PyreonUI.tsx`; locked by `rocketstyle/src/__tests__/css-variables-theme-swap.browser.test.tsx` and `styler/src/__tests__/sheet-root-variables.test.ts`.
+
+---
+
+### A disk-backed cache is a cache too (Class C)
+
+`createFsStore` wrote one file per cache key and never evicted, so under the default `pathname + search` key an anonymous visitor could fill the disk with distinct query strings; it also rewrote one shared `_tags.json` index on every tagged miss (O(N) bytes per miss). Rules: a persistent cache gets the same cap as its in-memory sibling, and the cap is enforced against what is ON DISK — count the directory at start and trim, so a restart (or an older version's directory) cannot reset it; eviction removes the entry and every file that references it; keep per-entry metadata in per-entry files so a write costs O(1), not O(cached); write tmp+rename so a crash leaves no torn file, and sweep leftover temp files at start; serialize fs mutations per key so a later `delete` cannot be overtaken by an earlier `set`. Reference: `packages/zero/zero/src/isr-fs-store.ts`; locked by `isr-fs-store-bounds.test.ts`.
 
 ---
 
