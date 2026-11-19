@@ -44,3 +44,18 @@ describe('uploadMutation', () => {
     up.dispose()
   })
 })
+
+describe('uploadMutation: a cancelled file', () => {
+  it('a cancelled file (no error of its own) rejects with "cancelled" in both the Error and its aborted upload error', async () => {
+    const t = fakeTransport()
+    const up = createUploader({ transport: t.transport })
+    const p = uploadMutation(up).mutationFn([file('a')])
+
+    p.catch(() => {})
+    await flush()
+    up.cancel()
+    await vi.advanceTimersByTimeAsync(100)
+    await expect(p).rejects.toMatchObject({ message: 'The upload was cancelled.', uploadError: { kind: 'aborted', message: 'The upload was cancelled.', retryable: false }, file: { name: 'a' } })
+    up.dispose()
+  })
+})

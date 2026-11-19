@@ -98,3 +98,10 @@ describe('files as a form field', () => {
     uploader.dispose()
   })
 })
+
+describe('fileValidator: counts and no rules', () => {
+  it('says "files are" for a limit above one; with files and no rules there is nothing to check', () => {
+    expect(fileValidator({ rules: { maxFiles: 2 } })([file('a'), file('b'), file('c')])).toBe('At most 2 files are allowed.')
+    expect(fileValidator({ required: true })([file('a')])).toBeUndefined()
+  })
+})

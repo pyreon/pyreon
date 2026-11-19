@@ -32,8 +32,9 @@ export function uploadMutation(uploader: Uploader): { mutationFn: (files: readon
           const failed = added.find((f) => f.status() === 'failed' || f.status() === 'rejected' || f.status() === 'cancelled')
 
           if (failed !== undefined) {
-            const error = failed.error()
-            const e = Object.assign(new Error(error?.message ?? 'The upload failed.'), { uploadError: error ?? { kind: 'aborted' as const, message: 'The upload was cancelled.', retryable: false }, file: failed })
+            // A cancelled file has no error of its own: the Error and its uploadError then both say it was cancelled.
+            const error = failed.error() ?? { kind: 'aborted' as const, message: 'The upload was cancelled.', retryable: false }
+            const e = Object.assign(new Error(error.message), { uploadError: error, file: failed })
 
             return reject(e)
           }
