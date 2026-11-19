@@ -104,6 +104,35 @@ export function ownByScope(cleanup: () => void): void {
 }
 
 /**
+ * Mount content that a REACTIVE BOUNDARY owns and removes itself — the range a
+ * `mountReactive` run renders, a `TransitionGroup` item, `KeepAlive`'s
+ * children, the polymorphic text core's subtree. Always at element depth 0, so
+ * every cleanup it returns is a real remover.
+ *
+ * The depth window (`_elementDepth > 0` → effect-only cleanups) is valid only
+ * for children mounted SYNCHRONOUSLY by the element being built, which leave
+ * with it. A boundary's effect does not run only there: a component that
+ * writes a signal during its setup re-runs an earlier sibling boundary right
+ * then, inside the parent element's children loop, and that run used to
+ * inherit the parent's depth — its content got no-op cleanups, so a later run
+ * of the boundary that rendered nothing left the old nodes in the document.
+ * Every boundary mounts through this, so no run of any of them can.
+ */
+export function mountOwned(
+  child: VNodeChild | VNodeChild[] | (() => VNodeChild | VNodeChild[]),
+  parent: Node,
+  anchor: Node | null,
+): Cleanup {
+  const prevDepth = _elementDepth
+  _elementDepth = 0
+  try {
+    return mountChild(child, parent, anchor)
+  } finally {
+    _elementDepth = prevDepth
+  }
+}
+
+/**
  * Mount a STATIC child (a value, never an accessor) as part of a freshly built
  * element — the same depth window `mountElement` gives its own children, so
  * descendants return effect-only cleanups and their DOM leaves with the
@@ -1126,16 +1155,13 @@ export function createPolyTextCore(
         runUntracked(previous)
       }
       const liveParent = marker!.parentNode ?? parentAtSetup
-      // Reset _elementDepth: this mount can run at SETUP time (a signal that
-      // ALREADY holds a VNode at bind time, inside a `_tpl` bind under
-      // mountChildren's depth>0 window). The subtree is torn down INDIVIDUALLY on
-      // the next textish flip, so its cleanups must be REAL removers.
-      const prevDepth = _elementDepth
-      _elementDepth = 0
+      // `mountOwned`: this mount can run at SETUP time (a signal that ALREADY
+      // holds a VNode at bind time, inside a `_tpl` bind under mountChildren's
+      // depth>0 window), and the subtree is torn down INDIVIDUALLY on the next
+      // textish flip, so its cleanups must be REAL removers.
       const mounted = runUntracked(() =>
-        runWithContextOwner(ownerAtSetup, () => mountChild(v as VNodeChild, liveParent, marker)),
+        runWithContextOwner(ownerAtSetup, () => mountOwned(v as VNodeChild, liveParent, marker)),
       )
-      _elementDepth = prevDepth
       if (myGen !== applyGen) {
         runUntracked(mounted)
         return
@@ -1335,14 +1361,16 @@ function mountAccessorChild(
                 child as () => VNode[],
                 parent,
                 anchor,
-                (vn, p, a) => mountChild(vn, p, a),
+                mountOwned,
                 reads === null ? undefined : { value: v as unknown as VNode[], reads, run },
               )
             : mountReactive(
                 child as () => VNodeChild,
                 parent,
                 anchor,
-                mountChild,
+                // Every later run of the machinery mounts through this too, at
+                // depth 0 whatever is mounting around it (see `mountOwned`).
+                mountOwned,
                 reads === null ? undefined : { value: v, reads, run },
               )
         })

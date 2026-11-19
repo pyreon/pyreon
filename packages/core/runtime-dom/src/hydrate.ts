@@ -69,6 +69,7 @@ import {
   bindPolymorphicText,
   componentProps,
   mountChild,
+  mountOwned,
 } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
@@ -421,7 +422,7 @@ function hydrateSoleAccessorChild(
  */
 function mountOverEmpty(child: () => VNodeChild, parent: Node, anchor: Node | null, path: string): Cleanup {
   const before = anchor === null ? parent.lastChild : anchor.previousSibling
-  const cleanup = mountReactive(child, parent, anchor, mountChild)
+  const cleanup = mountReactive(child, parent, anchor, mountOwned)
   for (let n = before === null ? parent.firstChild : before.nextSibling; n !== null && n !== anchor; n = n.nextSibling) {
     if (n.nodeType === Node.ELEMENT_NODE) {
       warnHydrationMismatch('tag', (n as Element).localName, '', `${path} > reactive`)
@@ -568,9 +569,7 @@ function adoptReactiveRange(
     // what was just mounted.
     const stale: ChildNode[] = []
     for (let n: ChildNode | null = rangeFirst; n && n !== end; n = n.nextSibling) stale.push(n)
-    const keyed = mountKeyedList(child as () => VNode[], parent, end, (vn, p, a) =>
-      mountChild(vn, p, a),
-    )
+    const keyed = mountKeyedList(child as () => VNode[], parent, end, mountOwned)
     for (const n of stale) n.remove()
 
     return keyed
@@ -579,7 +578,7 @@ function adoptReactiveRange(
   const startMarker = document.createComment('pyreon')
   parent.insertBefore(startMarker, rangeFirst)
   const cleanup = mountReactive(child, parent, end, (value, p, a) => {
-    if (hydrated) return mountChild(value, p, a)
+    if (hydrated) return mountOwned(value, p, a)
     hydrated = true
     // `rangeFirst` may itself be a comment the walk should skip.
     const cursor = rangeFirst.nodeType === 1 ? rangeFirst : firstReal(rangeFirst)
@@ -824,7 +823,7 @@ function hydrateReactiveChild(
   // Legacy SSR output (no range markers — older @pyreon/runtime-server).
   if (initial == null || typeof initial === 'boolean') {
     const marker = insertMarker(parent, domNode, 'pyreon')
-    const cleanup = mountReactive(child, parent, marker, mountChild)
+    const cleanup = mountReactive(child, parent, marker, mountOwned)
     return [cleanup, domNode]
   }
 
@@ -882,7 +881,7 @@ function adoptUnmarkedRange(
   let hydrated = false
   let keyedFirst = false
   const cleanup = mountReactive(child, parent, domNode ?? anchor, (value, p, a) => {
-    if (hydrated) return mountChild(value, p, a)
+    if (hydrated) return mountOwned(value, p, a)
     hydrated = true
     // The first run's value IS the accessor's initial value (primed).
     keyedFirst = needsKeyedReconcile(value)
@@ -921,7 +920,7 @@ function adoptUnmarkedRange(
     const end = document.createComment('pyreon')
     parent.insertBefore(end, after ?? anchor)
     cleanup()
-    const keyed = mountKeyedList(child as () => VNode[], parent, end, (vn, p, a) => mountChild(vn, p, a))
+    const keyed = mountKeyedList(child as () => VNode[], parent, end, mountOwned)
     start.remove()
 
     return [

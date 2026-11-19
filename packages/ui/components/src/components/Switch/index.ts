@@ -27,6 +27,11 @@ const Switch = el.config({ name: 'Switch', component: SwitchBase })
     disabled: { ...disabledState(), pointerEvents: 'none' },
     // Read by the thumb/checked layer below (mode already resolved).
     switchOnColor: t.color.system.primary.base,
+    // The thumb is a knob that travels between the off track and the on
+    // track, not a glyph drawn on the fill, so it keeps one surface colour
+    // rather than `primary.contrast` (which would flip it to ink on toggle).
+    // White measures ≥ 3:1 (WCAG 1.4.11) on both tracks in the default and
+    // brand themes, in both modes; `text-on-fill-contrast` locks that.
     switchThumbColor: t.color.system.light.base,
   }))
   .sizes(() => ({

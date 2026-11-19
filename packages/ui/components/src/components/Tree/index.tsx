@@ -7,7 +7,7 @@ import {
   type TreeNode,
   type TreeState,
 } from '@pyreon/ui-primitives'
-import { disabledState, el, tintText, tones } from '../../factory'
+import { disabledState, el, themeColor, tintText, tones } from '../../factory'
 
 /**
  * Tree — batteries-included WAI-ARIA tree (Element-first composition, the
@@ -52,16 +52,6 @@ const StyledTreeBase = el.config({ name: 'Tree', component: TreeBase }).theme((t
   fontSize: t.fontSize.small,
   color: tones(t, m).text,
 }))
-
-/**
- * A colour a `.theme()` set, as `.styles()` receives it: resolved for the mode
- * (the declared type of a `mode(light, dark)` value is its callback, so it is
- * read as `unknown`).
- */
-const themeColor = (theme: Record<string, unknown>, key: string): string => {
-  const value = theme[key]
-  return typeof value === 'string' ? value : ''
-}
 
 /**
  * One tree row. Selection styling is STATIC CSS keyed on the base's
