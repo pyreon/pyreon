@@ -69,8 +69,7 @@ Native leaves Experimental when all four hold on `main`, each checkable by the n
 
    The record is the `silent-miscompile` label's history plus the tracker's summaries. A run that goes red for infrastructure and turns green on rerun does not reset the clock, but the rerun has to be noted on the run.
 
-**Known leftovers to close before the clock starts.** These are correctness fixes and earn no matrix points:
-- a change handler passed by reference and called without its value (#4544).
+**Known leftovers to close before the clock starts.** None open. The last one, a change handler passed by reference and called without its value (#4544), is fixed: a value-change handler passed by reference (`onChangeText={save}`, `onChange={props.onPick}`, `onChangeText={draft.set}`) now receives the value on both targets when the referenced function takes a parameter, and a zero-parameter callback keeps the no-argument call.
 
 The other leftovers listed here before landed together in the 2026-11-17 native batch: the fix PRs #4533, #4534, #4538, #4549, #4550 and #4552 (#4547 merged on its own), the ISO-string `Date` field (#4567, fixed by #4597), and the iOS key-order and duplicate-key decodes (#4568, fixed by #4594).
 
