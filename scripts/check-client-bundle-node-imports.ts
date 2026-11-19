@@ -89,6 +89,10 @@ const CLIENT_SAFE_PACKAGES: ReadonlyArray<{
   // crashed islands inside zero routes (dual @pyreon/* instance + node: in
   // the browser bundle).
   { pkg: '@pyreon/server/client', dir: 'packages/core/server', subpath: './client' },
+  // @pyreon/zero's two browser entries: `startClient` and `startClientLazy`
+  // (#4371), which dynamically imports the first. Both run in the browser.
+  { pkg: '@pyreon/zero/client', dir: 'packages/zero/zero', subpath: './client' },
+  { pkg: '@pyreon/zero/client-lazy', dir: 'packages/zero/zero', subpath: './client-lazy' },
 ]
 
 interface Finding {

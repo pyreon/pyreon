@@ -56,10 +56,10 @@ export function CalendarChart(props: CalendarChartProps): VNode {
       readValues()
       vm.track()
     },
-    layout: (rawBox, _measure, theme) => {
+    layout: (rawBox, measure, theme) => {
       outer = rawBox
       const box = vm.chartBox(rawBox)
-      return layoutCalendar(props.start, props.end, { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, { labelColor: theme.label, emptyColor: theme.muted, stops: theme.ramp, ...props.calendar })
+      return layoutCalendar(props.start, props.end, { x: box.x + 4.0, y: box.y + 4.0, w: box.w - 8.0, h: box.h - 8.0 }, { labelColor: theme.label, emptyColor: theme.muted, stops: theme.ramp, ...props.calendar }, measure)
     },
     animates: true,
     render: (layout, _measure, theme, progress) => {

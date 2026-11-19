@@ -88,11 +88,13 @@ export type {
 export { provideRequestLocals, useRequestLocals } from './middleware'
 // Shared string-mode page renderer (handler + zero SSG + zero dev SSR)
 export type {
+  ClientStartPreload,
+  PageHydration,
   RenderablePageRouter,
   RenderPageOptions,
   RenderPageResult,
 } from './render-page'
-export { renderPage } from './render-page'
+export { ISLANDS_ONLY_MARKER, isIslandsOnlyMeta, renderPage } from './render-page'
 // Server islands (Phase 4) — marker component + client activation are on
 // the client-safe `/client` subentry; the fragment RENDERER is server-only.
 export type { FragmentResult } from './server-island-render'
