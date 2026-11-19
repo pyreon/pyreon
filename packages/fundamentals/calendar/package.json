@@ -1,0 +1,80 @@
+{
+  "name": "@pyreon/calendar",
+  "version": "0.53.0",
+  "description": "An event calendar and scheduler for Pyreon: event model, recurrence and zones, month and time-grid layout, headless state and views",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/calendar#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/calendar"
+  },
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./core": {
+      "bun": "./src/core.ts",
+      "import": "./lib/core.js",
+      "types": "./lib/types/core.d.ts"
+    },
+    "./components": {
+      "bun": "./src/components.tsx",
+      "import": "./lib/components.js",
+      "types": "./lib/types/components.d.ts"
+    },
+    "./styles.css": "./styles.css"
+  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "styles.css",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run --maxWorkers=2",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts"
+  },
+  "dependencies": {
+    "@pyreon/ambient": "workspace:^",
+    "@pyreon/format": "workspace:^",
+    "@pyreon/schedule": "workspace:^",
+    "@pyreon/time": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^5.1.0",
+    "axe-core": "^4.14.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/core": "workspace:^"
+  }
+}

@@ -36,6 +36,7 @@
 export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/ambient', "not lowered by PMTC: the package is context plus timers on the web runtime (`document.hidden`, `setTimeout`, the owner-based context); native apps carry their own locale, zone and clock through the host runtime"],
   ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
+  ['@pyreon/calendar', "an event calendar is a DOM view (pointer, keyboard and layout); the pure core is plain TypeScript a native app can call itself"],
   ['@pyreon/charts-maps', "it is DATA: TopoJSON modules a web `<MapChart>` decodes at load. A native map takes a precomputed `GeoShape[]` const (a world boundary constant that compiles within the Swift and Kotlin limits is under investigation), so these modules are not lowered to iOS or Android yet."],
   ['@pyreon/command', "a keyboard-driven DOM overlay built on @pyreon/hotkeys; native apps have no command palette convention and the matcher is plain TypeScript a native app can call itself"],
   ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],

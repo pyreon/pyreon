@@ -47,6 +47,7 @@
     "@pyreon/command",
     "@pyreon/time",
     "@pyreon/ambient",
-    "@pyreon/upload"
+    "@pyreon/upload",
+    "@pyreon/calendar"
   ]
 }
