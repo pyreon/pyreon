@@ -5,14 +5,32 @@ import { openUploads } from './reference-chunked'
 import * as zeroRoute from './reference-zero-routes'
 
 /** In-test servers for the resumable transports, mounted on the runner's dev server under `/__u/`. */
-const read = (req: IncomingMessage): Promise<Buffer> =>
+/**
+ * The body, or `null` when the client went away before sending all of it (a cancelled, paused or disposed upload). A real server
+ * never stores a truncated part, so the routes drop such a request instead of handling a partial body.
+ */
+const read = (req: IncomingMessage): Promise<Buffer | null> =>
   new Promise((resolve) => {
     const chunks: Buffer[] = []
 
     req.on('data', (c: Buffer) => chunks.push(c))
-    req.on('end', () => resolve(Buffer.concat(chunks)))
-    req.on('error', () => resolve(Buffer.concat(chunks)))
+    req.on('end', () => resolve(req.complete ? Buffer.concat(chunks) : null))
+    req.on('error', () => resolve(null))
+    req.on('close', () => {
+      if (!req.complete) resolve(null)
+    })
   })
+
+/** Requests the resumable servers are handling right now (their `/state` reads excluded), so a test can wait for quiet. */
+let inflight = 0
+
+function track(req: IncomingMessage, res: ServerResponse): void {
+  if ((req.url ?? '').startsWith('/state')) return
+  inflight++
+  res.on('close', () => {
+    inflight--
+  })
+}
 
 const send = (res: ServerResponse, status: number, body?: unknown, headers: Record<string, string> = {}): void => {
   res.writeHead(status, body === undefined ? headers : { 'content-type': 'application/json', ...headers })
@@ -87,11 +105,13 @@ const S3_ROUTES: Record<string, S3Handler> = {
     send(res, 204)
   },
   '/complete': s3Complete,
-  '/state': (_q, _b, _r, res) => send(res, 200, { open: s3.uploads.size, aborts: s3.aborts, puts: s3.puts }),
+  '/state': (_q, _b, _r, res) => send(res, 200, { open: s3.uploads.size, aborts: s3.aborts, puts: s3.puts, inflight }),
 }
 
 async function s3Route(path: string, q: URLSearchParams, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await read(req)
+
+  if (body === null) return void res.destroy()
   const handler = S3_ROUTES[path]
 
   if (handler === undefined) send(res, 404, { error: 'unknown' })
@@ -110,11 +130,13 @@ const tus = { uploads: new Map<string, TusUpload>(), nextId: 1, requests: [] as 
 
 async function tusRoute(path: string, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await read(req)
+
+  if (body === null) return void res.destroy()
   const base = { 'tus-resumable': '1.0.0', 'cache-control': 'no-store' }
   const log = `${req.method} ${path}`
 
   tus.requests.push(log)
-  if (path === '/state') return send(res, 200, { requests: tus.requests, open: tus.uploads.size, uploads: [...tus.uploads].map(([id, u]) => ({ id, offset: u.offset, length: u.length, metadata: u.metadata })) })
+  if (path === '/state') return send(res, 200, { inflight, requests: tus.requests, open: tus.uploads.size, uploads: [...tus.uploads].map(([id, u]) => ({ id, offset: u.offset, length: u.length, metadata: u.metadata })) })
   if (req.headers['tus-resumable'] !== '1.0.0') return send(res, 412, undefined, { ...base, 'tus-version': '1.0.0' })
   if (path === '' || path === '/') {
     if (req.method !== 'POST') return send(res, 405, undefined, base)
@@ -162,14 +184,17 @@ function routeFor(method: string, request: Request): Promise<Response> {
 
 export function mountResumableServers(server: ViteDevServer): void {
   server.middlewares.use('/__u/chunked', (req, res) => {
+    track(req, res)
     void (async () => {
       const body = await read(req)
+
+      if (body === null) return void res.destroy()
       const path = req.url === '/' ? '' : (req.url ?? '')
       if (req.method === 'PUT') chunkPuts++
       const hasBody = body.length > 0 && req.method !== 'GET' && req.method !== 'HEAD'
       const response =
         path === '/state'
-          ? new Response(JSON.stringify({ open: openUploads(), puts: chunkPuts }), { headers: { 'content-type': 'application/json' } })
+          ? new Response(JSON.stringify({ open: openUploads(), puts: chunkPuts, inflight }), { headers: { 'content-type': 'application/json' } })
           : await routeFor(req.method ?? 'GET', new Request(`http://x/api/uploads${path}`, { method: req.method ?? 'GET', headers: req.headers as Record<string, string>, ...(hasBody ? { body: new Uint8Array(body) } : {}) }))
 
       res.writeHead(response.status, Object.fromEntries(response.headers))
@@ -177,11 +202,13 @@ export function mountResumableServers(server: ViteDevServer): void {
     })()
   })
   server.middlewares.use('/__u/s3', (req, res) => {
+    track(req, res)
     const url = new URL(req.url ?? '/', 'http://x')
 
     void s3Route(url.pathname, url.searchParams, req, res)
   })
   server.middlewares.use('/__u/tus', (req, res) => {
+    track(req, res)
     void tusRoute(new URL(req.url ?? '/', 'http://x').pathname, req, res)
   })
 }

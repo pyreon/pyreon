@@ -143,7 +143,7 @@ describe('chunkedTransport against the reference handler', () => {
 
     await until(async () => f!.progress().loaded > 0 && (await getJson('/chunked/state')).open === open + 1)
     up.cancel(f!.id)
-    await until(async () => (await getJson('/chunked/state')).open === open, 5000)
+    await until(async () => (await getJson('/chunked/state')).open === open)
     up.dispose()
   })
 })
@@ -209,7 +209,8 @@ describe('s3Transport against a server that mimics the S3 contract', () => {
 
     await until(() => a!.progress().loaded >= 5 * MB)
     up1.dispose()
-    await sleep(200)
+    // Wait until the server has dealt with the part request the dispose cut off, instead of guessing how long that takes.
+    await until(async () => (await getJson('/s3/state')).inflight === 0)
     const putsBefore = (await getJson('/s3/state')).puts
     const up2 = createUploader({ transport: s3Transport(options({ partSize: 5 * MB, parallel: 1 })), resume: store })
     const [b] = up2.add([file])
@@ -230,7 +231,7 @@ describe('s3Transport against a server that mimics the S3 contract', () => {
 
     await until(() => a!.progress().loaded >= 5 * MB)
     up1.dispose()
-    await sleep(200)
+    await until(async () => (await getJson('/s3/state')).inflight === 0)
     const lost = options({ partSize: 5 * MB, parallel: 1 })
 
     lost.multipart!.list = async () => []
@@ -251,7 +252,7 @@ describe('s3Transport against a server that mimics the S3 contract', () => {
 
     await until(async () => f!.progress().loaded > 0 && (await getJson('/s3/state')).open >= 1)
     up.cancel(f!.id)
-    await until(async () => (await getJson('/s3/state')).aborts === aborts + 1, 5000)
+    await until(async () => (await getJson('/s3/state')).aborts === aborts + 1)
     up.dispose()
   })
 })
@@ -291,7 +292,7 @@ describe('tusTransport against a minimal tus 1.0 server', () => {
 
     await until(() => a!.progress().loaded >= MB)
     up1.dispose()
-    await sleep(200)
+    await until(async () => (await getJson('/tus/state')).inflight === 0)
     const log = (await getJson('/tus/state')).requests.length
     const up2 = createUploader({ transport: tus({ chunkSize: 64 * 1024 }), resume: store })
     const [b] = up2.add([file])
@@ -322,7 +323,7 @@ describe('tusTransport against a minimal tus 1.0 server', () => {
 
     await until(async () => f!.progress().loaded > 0)
     up.cancel(f!.id)
-    await until(async () => (await getJson('/tus/state')).requests.some((r: string) => r.startsWith('DELETE')), 5000)
+    await until(async () => (await getJson('/tus/state')).requests.some((r: string) => r.startsWith('DELETE')))
     expect((await getJson('/tus/state')).open).toBeLessThanOrEqual(open)
     up.dispose()
   })

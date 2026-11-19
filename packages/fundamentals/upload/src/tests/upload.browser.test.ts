@@ -2,7 +2,7 @@
 import { createHttp } from '@pyreon/http'
 import { effect } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createUploader, type UploadFile } from '../index'
+import { createUploader, type Transport, type UploadFile } from '../index'
 import { validateFileAsync } from '../core'
 import { xhrTransport } from '../transport-xhr'
 
@@ -20,6 +20,34 @@ const until = async (cond: () => boolean | Promise<boolean>, ms = 15_000): Promi
   }
 }
 
+/** Waits on a server-side handshake (see the gate in `test-server.ts`), not on how fast this machine is. CI is slow. */
+const LONG = 60_000
+const MB = 1024 * 1024
+
+interface GateState {
+  requests: number
+  received: number
+  length: number
+  held: boolean
+  closed: boolean
+  complete: boolean
+  ended: number
+  cut: number
+}
+
+/** A gated endpoint: the server reads 256 KB of each body, then stops reading (back-pressure) until `release()`. */
+function gate(name: string, hold = 256 * 1024): { url: string; state(): Promise<GateState>; release(): Promise<void> } {
+  const id = `${name}-${Math.random().toString(36).slice(2)}`
+
+  return {
+    url: `/__u/gate?id=${id}&hold=${hold}`,
+    state: async () => (await api(`/gate-state?id=${id}`)) as unknown as GateState,
+    release: async () => {
+      await fetch(`/__u/gate-release?id=${id}`, { signal: AbortSignal.timeout(30_000) })
+    },
+  }
+}
+
 const settled = (f: UploadFile): boolean => ['done', 'failed', 'cancelled', 'rejected'].includes(f.status())
 
 beforeEach(async () => {
@@ -31,22 +59,35 @@ afterEach(async () => {
 })
 
 describe('real XHR progress', () => {
-  it('reports distinct, increasing byte counts while a throttled server reads the body, then finishes', async () => {
-    const up = createUploader({ transport: xhrTransport({ url: '/__u/sink?chunk=262144&every=40' }) })
-    const [f] = up.add([blob(6 * 1024 * 1024)])
+  it('while the server holds the body back, progress is strictly between 0 and the size; it never goes back and ends at the size', async () => {
+    const g = gate('progress')
+    const up = createUploader({ transport: xhrTransport({ url: g.url }) })
+    // 48 MB: more than the socket buffers on both ends can absorb, so a held server really holds the browser back.
+    const size = 48 * MB
+    const [f] = up.add([blob(size)])
     const seen: number[] = []
     const stop = effect(() => { seen.push(f!.progress().loaded) })
 
-    await until(() => settled(f!))
+    await until(async () => (await g.state()).held, LONG)
+    await until(() => f!.progress().loaded > 0, LONG)
+    const mid = f!.progress().loaded
+
+    expect(mid).toBeGreaterThan(0)
+    expect(mid).toBeLessThan(size)
+    expect(f!.status()).toBe('uploading')
+    await g.release()
+    await until(() => settled(f!), LONG)
     stop.dispose()
     expect(f!.status()).toBe('done')
-    expect(f!.result()).toMatchObject({ type: 'multipart/form-data' })
-    expect(new Set(seen).size).toBeGreaterThan(4)
+    const server = await g.state()
+
+    expect(f!.result()).toEqual({ received: server.length, type: 'multipart/form-data' })
+    expect(server.complete).toBe(true)
+    expect(seen).toContain(mid)
     for (let i = 1; i < seen.length; i++) expect(seen[i]!).toBeGreaterThanOrEqual(seen[i - 1]!)
-    expect(f!.progress().ratio).toBe(1)
-    expect(f!.speed()).not.toBeNull()
+    expect(f!.progress()).toEqual({ loaded: size, total: size, ratio: 1 })
     up.dispose()
-  })
+  }, 3 * LONG)
 
   it('coalesces progress into per-frame signal writes even for a big burst of real events', async () => {
     const up = createUploader({ transport: xhrTransport({ url: '/__u/sink?chunk=65536&every=2' }) })
@@ -79,43 +120,75 @@ describe('real XHR progress', () => {
 })
 
 describe('abort, pause and resume', () => {
-  it('cancel aborts the request mid-upload: the server sees the connection close', async () => {
-    const up = createUploader({ transport: xhrTransport({ url: '/__u/sink?chunk=65536&every=50' }) })
-    const [f] = up.add([blob(8 * 1024 * 1024)])
+  it('cancel aborts the request mid-upload: the server sees the connection end before the body did', async () => {
+    const g = gate('cancel')
+    const up = createUploader({ transport: xhrTransport({ url: g.url }) })
+    const [f] = up.add([blob(48 * MB)])
 
-    await until(async () => f!.progress().loaded > 0 && (await active()) === 1)
+    await until(async () => (await g.state()).held && f!.progress().loaded > 0, LONG)
     up.cancel(f!.id)
     expect(f!.status()).toBe('cancelled')
-    // The 8 MB body would take about 6 s to read: the connection is gone within 2 s only because the request was aborted.
-    await until(async () => (await active()) === 0, 2000)
+    // Let the server read what is still in flight: it then meets the end of the connection, not the end of the body.
+    await g.release()
+    await until(async () => (await g.state()).closed, LONG)
+    const server = await g.state()
+
+    expect(server.complete).toBe(false)
+    expect(server.received).toBeLessThan(server.length)
+    await until(async () => (await active()) === 0, LONG)
     expect(f!.progress().ratio).toBeLessThan(1)
     up.dispose()
-  })
+  }, 3 * LONG)
 
   it('pause aborts, resume sends again, progress never goes back, and the upload finishes', async () => {
-    const up = createUploader({ transport: xhrTransport({ url: '/__u/sink?chunk=131072&every=25' }) })
-    const [f] = up.add([blob(5 * 1024 * 1024)])
+    // The first attempt is held deep in the body (24 MB read), the resumed one early (256 KB): the new request's own progress
+    // really starts below what the file had reached, so "never goes back" is exercised, not assumed.
+    const first = gate('pause-1', 24 * MB)
+    const second = gate('pause-2')
+    const raw: number[][] = []
+    let attempt = 0
+    const inner = xhrTransport({ url: () => (attempt === 1 ? first.url : second.url) })
+    const transport: Transport = {
+      upload: (file, ctx) => {
+        const mine: number[] = []
+
+        attempt++
+        raw.push(mine)
+
+        return inner.upload(file, { ...ctx, onProgress: (n) => { mine.push(n); ctx.onProgress(n) } })
+      },
+    }
+    const up = createUploader({ transport })
+    const size = 48 * MB
+    const [f] = up.add([blob(size)])
     const seen: number[] = []
     const stop = effect(() => { seen.push(f!.progress().loaded) })
 
-    await until(() => f!.progress().loaded > 300_000)
+    await until(async () => (await first.state()).held && f!.progress().loaded >= 24 * MB, LONG)
     up.pause(f!.id)
     expect(f!.status()).toBe('paused')
-    await until(async () => (await active()) === 0, 2000)
     const held = f!.progress().loaded
 
+    // Let the server read on: it meets the end of the connection, not the end of the body.
+    await first.release()
+    await until(async () => (await first.state()).closed, LONG)
+    expect((await first.state())).toMatchObject({ complete: false, cut: 1, ended: 0 })
     up.resume(f!.id)
-    await until(() => settled(f!))
+    await until(async () => (await second.state()).held && (raw[1]?.some((n) => n > 0) ?? false), LONG)
+    // The resumed request's own count is below where the file was; the file's progress is not.
+    expect(Math.max(...raw[1]!)).toBeLessThan(held)
+    expect(f!.progress().loaded).toBeGreaterThanOrEqual(held)
+    await second.release()
+    await until(() => settled(f!), LONG)
     stop.dispose()
     expect(f!.status()).toBe('done')
-    expect((await api('/count?key=/sink')).count).toBe(2)
-    expect(held).toBeGreaterThan(0)
+    expect(await second.state()).toMatchObject({ requests: 1, complete: true, ended: 1 })
+    expect(held).toBeLessThan(size)
     for (let i = 1; i < seen.length; i++) expect(seen[i]!).toBeGreaterThanOrEqual(seen[i - 1]!)
+    expect(f!.progress().ratio).toBe(1)
     up.dispose()
-  })
-})
+  }, 3 * LONG)
 
-describe('errors from a real server', () => {
   it('a 422 with a JSON body is not retried and keeps the body', async () => {
     const up = createUploader({ transport: xhrTransport({ url: '/__u/status?code=422' }), retry: { backoff: () => 10 } })
     const [f] = up.add([blob(10)])
@@ -213,13 +286,20 @@ describe('dispose leaves nothing behind', () => {
     URL.revokeObjectURL = ((u: string) => { urls.delete(u); realRevoke(u) }) as never
     try {
       const png = new File([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0))], 'p.png', { type: 'image/png' })
-      const up = createUploader({ transport: xhrTransport({ url: '/__u/sink?chunk=65536&every=50' }), preview: true, retry: { backoff: () => 50 } })
+      const g = gate('dispose')
+      // The two big bodies go to the gate, which holds them, so both requests are open when dispose runs; the tiny image goes
+      // to the plain sink.
+      const up = createUploader({ transport: xhrTransport({ url: (f) => (f.size > 1024 ? g.url : '/__u/sink?every=0') }), preview: true, retry: { backoff: () => 50 } })
 
-      up.add([png, blob(8 * 1024 * 1024), blob(3 * 1024 * 1024)])
-      await until(async () => (await active()) >= 2)
+      up.add([png, blob(48 * MB), blob(48 * MB)])
+      await until(async () => (await g.state()).requests === 2 && (await g.state()).held, LONG)
       expect(urls.size).toBe(1)
       up.dispose()
-      await until(async () => (await active()) === 0, 2000)
+      // Let the server read on: both requests must end cut off by the client, not by reaching the end of their bodies.
+      await g.release()
+      await until(async () => (await g.state()).cut === 2, LONG)
+      expect((await g.state()).ended).toBe(0)
+      await until(async () => (await active()) === 0, LONG)
       await sleep(300)
       expect(urls.size).toBe(0)
       expect([...listeners.values()].every((n) => n === 0)).toBe(true)
@@ -232,7 +312,7 @@ describe('dispose leaves nothing behind', () => {
       URL.createObjectURL = realCreate
       URL.revokeObjectURL = realRevoke
     }
-  })
+  }, 3 * LONG)
 })
 
 describe('image rules', () => {
