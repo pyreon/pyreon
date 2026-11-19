@@ -1,7 +1,8 @@
 // Plot-area layout and per-mark geometry.
 
 import { barThickness, isFiniteNumber, makeTicks, xPx, yPx } from './scale'
-import { logViewTicks, timeTicks } from './scale-extra'
+import { timeTicks } from './scale-extra'
+import { viewTicks } from './scale-view'
 import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
 
@@ -110,6 +111,12 @@ export interface LayoutConfig {
   yLog?: boolean | undefined
   yLogMin?: Double | undefined
   yLogMax?: Double | undefined
+  /** Which view the y domain is: 'log', 'sqrt' or 'symlog' (with `yLogMin` / `yLogMax` the REAL bounds the ticks are nice in). */
+  yViewKind?: string | undefined
+  /** The same for a numeric x axis: the view kind and the real bounds. */
+  xViewKind?: string | undefined
+  xViewMin?: Double | undefined
+  xViewMax?: Double | undefined
   /** Label the y axis with calendar steps — the y twin of `xTime`. */
   yTime?: boolean | undefined
   /**
@@ -181,7 +188,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // the final pass cannot disagree.
   const valueTicksY = (r0: Double, r1: Double): Tick[] =>
     isLog
-      ? logViewTicks(logMin, logMax, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, cfg.yFormat)
+      ? viewTicks(cfg.yViewKind ?? 'log', { min: logMin, max: logMax }, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, yCount, cfg.yFormat)
       : cfg.yTime === true
         ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat)
         : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat)
@@ -229,6 +236,13 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // labels are provisionally laid out over the width the plot will have,
   // measured, and the mode is chosen before the plot rect exists.
   const provisionalW = Math.max(0.0, cfg.width - left - right)
+  // The numeric x ticks over a pixel range: view (log / sqrt / symlog), calendar steps, or the nice ladder.
+  const numericXTicks = (r0: Double, r1: Double, count: Double): Tick[] =>
+    (cfg.xViewKind ?? '') !== ''
+      ? viewTicks(cfg.xViewKind ?? 'log', { min: cfg.xViewMin ?? 1.0, max: cfg.xViewMax ?? 10.0 }, cfg.xDomain.inverse === true ? r1 : r0, cfg.xDomain.inverse === true ? r0 : r1, count, cfg.xFormat)
+      : cfg.xTime === true
+        ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
+        : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
   const xCount = cfg.xTickCount > 0.0 ? cfg.xTickCount : autoTickCount(provisionalW, X_TICK_SPACING)
   const mode = cfg.xLabels ?? 'auto'
   let rotate = 0.0
@@ -237,9 +251,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   if (cfg.showXAxis && cfg.horizontal !== true) {
     const xLabels = cfg.categories.length > 0
       ? cfg.categories
-      : (cfg.xTime === true
-          ? timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
-          : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)).map((t) => t.label)
+      : numericXTicks(0.0, provisionalW, xCount).map((t) => t.label)
     const xSample = labelSample(xLabels, cfg.fontSize, labelGap, measure)
     const need = xSample.need
     const widestX = xSample.widest
@@ -272,9 +284,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   if (cfg.showXAxis && rotate === 0.0 && (cfg.horizontal === true || cfg.categories.length === 0)) {
     const edgeTicks = cfg.horizontal === true
       ? makeTicks(cfg.yDomain, 0.0, provisionalW, yCount, cfg.yFormat)
-      : cfg.xTime === true
-        ? timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
-        : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
+      : numericXTicks(0.0, provisionalW, xCount)
     for (const tick of edgeTicks) {
       const half = measure(tick.label, cfg.fontSize) / 2.0
       const overLeft = half - tick.pos + labelGap
@@ -323,9 +333,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const xTicks = cfg.showXAxis
     ? cfg.categories.length > 0
       ? bandTicks(cfg.categories, plot)
-      : cfg.xTime === true
-        ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat)
-        : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat)
+      : numericXTicks(plot.x, plot.x + plot.w, xCount)
     : []
 
   const y2Ticks = hasY2

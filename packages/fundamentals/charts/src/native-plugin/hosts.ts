@@ -1002,6 +1002,8 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           const labels = attrOf(child, 'labels')
           if (labels !== undefined) attrs.push({ kind: 'attr', name: 'xLabels', value: labels })
           if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'xInverse', value: lit(true) })
+          const xScaleAttr = attrOf(child, 'scale')
+          if (xScaleAttr !== undefined) attrs.push({ kind: 'attr', name: 'xScale', value: xScaleAttr })
         } else if (flagOn(child, 'y2')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
           if (domain !== undefined) attrs.push({ kind: 'attr', name: 'y2Domain', value: domain })
@@ -1027,6 +1029,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         else if (y !== undefined) attrs.push({ kind: 'attr', name: 'yScale', value: y })
         const x = attrOf(child, 'x')
         if (x !== undefined && x.kind === 'literal' && x.value === 'time') attrs.push({ kind: 'attr', name: 'xTime', value: lit(true) })
+        else if (x !== undefined && x.kind === 'literal' && x.value !== 'linear') attrs.push({ kind: 'attr', name: 'xScale', value: x })
         if (flagOn(child, 'normalize')) attrs.push({ kind: 'attr', name: 'stackNormalize', value: lit(true) })
         break
       }
@@ -2048,6 +2051,7 @@ export const PLOT_MARK_ACCESSOR_OPTIONS: readonly string[] = ['errorLow', 'error
  */
 export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'string' | 'boolean' | 'number' }> = [
   { name: 'yScale', kind: 'string' },
+  { name: 'xScale', kind: 'string' },
   { name: 'yTime', kind: 'boolean' },
   { name: 'stackNormalize', kind: 'boolean' },
   { name: 'xTitle', kind: 'string' },

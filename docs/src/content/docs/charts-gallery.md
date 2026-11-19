@@ -37,6 +37,13 @@ depth increases downward. The data and the table keep their order.
 
 <Example file="./examples/charts/gallery-rank-inverse" title="Rank and depth, inverted" />
 
+## Scaled axes
+
+`xScale` and `yScale` take `log`, `sqrt` and `symlog`: the picture reshapes, the tick
+labels, the tooltip and the table keep the real values.
+
+<Example file="./examples/charts/gallery-scales" title="Linear, sqrt, symlog and log x" />
+
 ## Bar thickness
 
 `barWidth` caps one bar's thickness in px, `barGap` spaces the bars of a group and

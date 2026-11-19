@@ -1181,6 +1181,16 @@
       "bytes": 4259,
       "warnings": 0
     },
+    "golden-fixture:chart-scale-view.tsx|swift": {
+      "sha": "22011b31a0c8f9a274d76c2285fc34b82bb4358b2c3c400d41df9293ac6c9998",
+      "bytes": 5610,
+      "warnings": 0
+    },
+    "golden-fixture:chart-scale-view.tsx|kotlin": {
+      "sha": "ea379a55b786d1949353bf221265baea80ab6cb76c5cce2c6d38d3aeb172198e",
+      "bytes": 5914,
+      "warnings": 0
+    },
     "golden-fixture:chart-swift-01.tsx|swift": {
       "sha": "2debc891b5620743352340208f94c05f94e458db52be15b75620d6e5b1473d4a",
       "bytes": 346,

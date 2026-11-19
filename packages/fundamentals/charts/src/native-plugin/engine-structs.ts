@@ -2021,6 +2021,66 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "yViewKind",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xViewKind",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xViewMin",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xViewMax",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "yTime",
         "type": {
           "kind": "union",
@@ -4089,6 +4149,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "yScale",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xScale",
         "type": {
           "kind": "union",
           "branches": [

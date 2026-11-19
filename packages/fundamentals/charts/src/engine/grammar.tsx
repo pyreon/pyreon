@@ -154,8 +154,8 @@ export interface AxisProps {
   title?: string
   /** x only: what the labels do when they run out of room (`auto` rotates categories, thins numbers). */
   labels?: AxisLabelMode
-  /** y only: the scale type; `<Scale y="log">` is the same switch. */
-  scale?: 'linear' | 'log'
+  /** The scale type of a y axis, or of a NUMERIC x axis (`xValue`): `linear`, `log`, `sqrt`, `symlog`. `<Scale y="log">` is the same switch. */
+  scale?: 'linear' | 'log' | 'sqrt' | 'symlog'
   /** Reverse the axis. y / y2: the high end at the bottom (the left, on a horizontal chart), bars hanging from the top. x: the DIRECTION of the x axis (first category at the right) — the y axis does not move. The data, callbacks and the accessible table keep their order. */
   inverse?: boolean
 }
@@ -165,8 +165,8 @@ export interface AxisProps {
  * per axis; this is the place to state them together.
  */
 export interface ScaleProps {
-  y?: 'linear' | 'log' | 'time'
-  x?: 'linear' | 'time'
+  y?: 'linear' | 'log' | 'time' | 'sqrt' | 'symlog'
+  x?: 'linear' | 'time' | 'log' | 'sqrt' | 'symlog'
   /** Draw the stacked bars as shares of each column. */
   normalize?: boolean
 }
@@ -679,6 +679,7 @@ export function resolveGrammar<T>(rows: readonly T[], chart: ChartProps<T>, chil
           if (a.time === true) props.xTime = true
           if (a.ticks !== undefined) props.xTicks = a.ticks
           if (a.hidden === true) props.showXAxis = false
+          if (a.scale !== undefined) props.xScale = a.scale
           if (a.title !== undefined) props.xTitle = a.title
           if (a.labels !== undefined) props.xLabels = a.labels
           if (a.inverse === true) props.xInverse = true
@@ -701,7 +702,8 @@ export function resolveGrammar<T>(rows: readonly T[], chart: ChartProps<T>, chil
       }
       case 'Scale': {
         const sc = p as ScaleProps
-        if (sc.y === 'log' || sc.y === 'linear') props.yScale = sc.y
+        if (sc.y === 'log' || sc.y === 'linear' || sc.y === 'sqrt' || sc.y === 'symlog') props.yScale = sc.y
+        if (sc.x === 'log' || sc.x === 'sqrt' || sc.x === 'symlog') props.xScale = sc.x
         if (sc.y === 'time') props.yTime = true
         if (sc.x === 'time') props.xTime = true
         if (sc.normalize === true) props.stackNormalize = true
@@ -950,7 +952,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
   }
   // Every `<PlotChart>` prop a child can set, forwarded as an accessor; the chart's own props win when both are given,
   // except `format`: an `<Axis y format>` is the more specific of the two and overrides the chart's (as `ChartProps.format` says).
-  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize', 'yInverse', 'y2Inverse', 'xInverse'] as const
+  const forwarded = ['format', 'xFormat', 'xTime', 'showXAxis', 'showYAxis', 'yDomain', 'y2Format', 'y2Domain', 'tooltip', 'crosshair', 'tooltipFormatter', 'showLegend', 'endLabels', 'xTicks', 'yTicks', 'legendToggle', 'legendMaxRows', 'legendPosition', 'dataZoom', 'navigator', 'initialZoom', 'zoomLimits', 'zoomPresets', 'link', 'brush', 'onBrush', 'annotations', 'markers', 'toolbox', 'xTitle', 'yTitle', 'y2Title', 'xLabels', 'yScale', 'yTime', 'stackNormalize', 'yInverse', 'y2Inverse', 'xInverse', 'xScale'] as const
   for (const key of forwarded) {
     plotProps[key] = key === 'format'
       ? reactiveProp(() => (resolved().props as Record<string, unknown>).format ?? props.format)

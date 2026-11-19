@@ -64,6 +64,11 @@ export interface ChartToSvgOptions<T> {
   y2Inverse?: boolean
   /** Reverse the x axis direction — see `PlotChartProps.xInverse`. Accessors then see the REVERSED index. */
   xInverse?: boolean
+  /** The value-axis scale — see `PlotChartProps.yScale`. */
+  yScale?: 'linear' | 'log' | 'sqrt' | 'symlog'
+  /** A NUMERIC x channel (spacing follows the values); with it `xScale` applies — see `PlotChartProps.xScale`. */
+  xValue?: (d: T, index: number) => number
+  xScale?: 'linear' | 'log' | 'sqrt' | 'symlog'
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -136,6 +141,9 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     yInverse: options.yInverse,
     y2Inverse: options.y2Inverse,
     xInverse: options.xInverse,
+    yScale: options.yScale,
+    xScale: options.xScale,
+    xValues: options.xValue === undefined ? undefined : rows.map((d, i) => options.xValue!(d, i)),
   }
   const measure = options.measure ?? measureApprox()
   // Same seam as the canvas host's `present`: RTL is the mirror of the

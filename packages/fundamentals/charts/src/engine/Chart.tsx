@@ -389,7 +389,9 @@ export interface PlotChartProps<T> {
    * decades on the axis, non-positive values as gaps, bars growing from the
    * axis floor. The tooltip and the table keep the real values.
    */
-  yScale?: 'linear' | 'log'
+  yScale?: 'linear' | 'log' | 'sqrt' | 'symlog'
+  /** The scale of a NUMERIC x axis (`xValue`): `linear`, `log`, `sqrt` or `symlog`. Values the scale cannot place (log: ≤ 0, sqrt: < 0) are gaps; a time axis stays linear. */
+  xScale?: 'linear' | 'log' | 'sqrt' | 'symlog'
   /** Label the y axis with calendar steps — the y twin of `xTime` (values are epoch ms). */
   yTime?: boolean
   /**
@@ -1015,6 +1017,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     xFormat: resolvedXFormat(),
     ...(props.xTime === true ? { xTime: true } : {}),
     yScale: props.yScale,
+    xScale: props.xScale,
     yTime: props.yTime === true,
     stackNormalize: props.stackNormalize === true,
     xTitle: props.xTitle,
@@ -1059,7 +1062,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
    * a set `yDomain` reads as an author-pinned range (`logBounds`).
    */
   const withFrameDomain = (spec: ChartSpec): ChartSpec =>
-    spec.yDomain === undefined && spec.yScale !== 'log' ? { ...spec, yDomain: resolveYDomain(spec) } : spec
+    spec.yDomain === undefined && (spec.yScale ?? 'linear') !== 'log' ? { ...spec, yDomain: resolveYDomain(spec) } : spec
 
   const draw = (): void => {
     const el = canvas
@@ -1314,6 +1317,14 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       width: 2.0,
       dash: [4.0, 3.0],
     }]
+  }
+
+  /** The sentence that names a non-linear scale for the spoken description: the picture's spacing is not the data's, and a listener should know. */
+  const scaleNote = (): string => {
+    const y = props.yScale === undefined || props.yScale === 'linear' ? '' : ` The value axis is on a ${props.yScale} scale.`
+    const x = props.xScale === undefined || props.xScale === 'linear' ? '' : ` The x axis is on a ${props.xScale} scale.`
+
+    return y + x
   }
 
   /** An x pixel mirrored about the plot's centre when the x axis is reversed — the pointer's place on the plot as it reads in DATA order. */
@@ -2092,7 +2103,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     'aria-label': () => {
       const input = a11yInput()
       if (!labelReady() && chartRowCount(input) > DEFER_ROWS) return props.title ?? 'Chart'
-      return describeChart(input)
+      return describeChart(input) + scaleNote()
     },
     ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
     // The box the client will paint into, as SSR attributes: `prepareCanvas`

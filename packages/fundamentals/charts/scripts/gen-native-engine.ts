@@ -60,6 +60,7 @@ export const ENGINE_FILES = [
   'candlestick',
   'heat',
   'shade',
+  'scale-view',
   'visual-strip',
   'funnel',
   'treemap',
