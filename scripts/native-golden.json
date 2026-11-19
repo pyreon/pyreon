@@ -551,6 +551,16 @@
       "bytes": 607,
       "warnings": 4
     },
+    "golden-fixture:chart-axis-grid.tsx|swift": {
+      "sha": "a93e5efa5ef8c03a40cb55bc97f6857183b6b52c8ea09aa2f37b5ff900a7674d",
+      "bytes": 2828,
+      "warnings": 0
+    },
+    "golden-fixture:chart-axis-grid.tsx|kotlin": {
+      "sha": "805dd46f60b34725fa1e9cc645c95f8d3f81d7442529cffd58591b42e7bb1a09",
+      "bytes": 3182,
+      "warnings": 0
+    },
     "golden-fixture:chart-axis-inverse.tsx|swift": {
       "sha": "17a8292b51f8d9ad3a875ca9547659d280adbef0aac803e0ec53ec9693dffe3a",
       "bytes": 3102,

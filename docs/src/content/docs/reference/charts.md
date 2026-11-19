@@ -136,7 +136,7 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
 (props: AxisProps) => VNode | null
 ```
 
-Configures one axis of a `<Chart>`: `<Axis y format={currency('$')} domain title ticks hidden scale time inverse />`, `<Axis y2 …>` for the right axis, `<Axis x time format title labels ticks hidden />`. One `format` feeds the axis, the tooltip and the accessible description. `inverse` (y and y2, independently) REVERSES the value axis: the high end at the bottom (the left, on a horizontal chart), bars and areas hanging from the top with their rounded ends and the ticks following, composing with log and time axes, dual axes, zoom, the crosshair and the tooltip. Only the value-to-pixel mapping flips: the data, the tooltip rows and the accessible table keep their order, and under `rtl` the two commute (RTL mirrors x, `inverse` flips y). `<Axis x inverse>` is not supported yet and warns. `yInverse` / `y2Inverse` lower to iOS and Android as literals.
+Configures one axis of a `<Chart>`: `<Axis y format={currency('$')} domain title ticks hidden scale time inverse />`, `<Axis y2 …>` for the right axis, `<Axis x time format title labels ticks hidden />`. One `format` feeds the axis, the tooltip and the accessible description. `inverse` (y and y2, independently) REVERSES the value axis: the high end at the bottom (the left, on a horizontal chart), bars and areas hanging from the top with their rounded ends and the ticks following, composing with log and time axes, dual axes, zoom, the crosshair and the tooltip. Only the value-to-pixel mapping flips: the data, the tooltip rows and the accessible table keep their order, and under `rtl` the two commute (RTL mirrors x, `inverse` flips y). `<Axis x inverse>` is not supported yet and warns. `grid` / `minor` set the grid per axis: `<Axis y grid={false}>` hides the value-axis lines, `<Axis x grid>` adds vertical lines at the x ticks, `<Axis y minor={4}>` draws three thin lines between each pair of major ticks (linear axes). `yInverse` / `y2Inverse` and the grid fields lower to iOS and Android as literals.
 
 **Example**
 
@@ -159,6 +159,7 @@ const teams: Team[] = [{ name: 'Ada', rank: 3 }, { name: 'Bao', rank: 1 }]
 - Expecting bars on a reversed axis to rise from the bottom — their baseline is the axis floor, which is now the TOP, so they hang down from it (the rank-chart look); a value below zero hangs the other way
 - `<Axis x inverse>` to reverse the categories — only the value axes reverse; the category axis keeps its order and the prop warns by name (reverse the rows, or use `horizontal`)
 - Passing a computed `inverse` in a native app — only a literal `inverse` lowers (`yInverse` / `y2Inverse` are compile-time spec fields); a computed one warns and the axis stays as it was
+- Expecting `showGrid={false}` to hide only one axis's lines, or `<Axis x grid>` to draw them under a log or time x axis — `showGrid` is the master switch; per-axis control is `<Axis y grid={false}>` and `<Axis x grid>`, and `minor` only subdivides linear axes (a log or time axis ticks its own way)
 - Reversing y on a dual-axis chart and expecting both to flip — each axis reverses on its own: `<Axis y inverse>` the left, `<Axis y2 inverse>` the right
 
 **See also:** `Chart` · `Bar`

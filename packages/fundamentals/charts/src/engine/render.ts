@@ -16,7 +16,7 @@ import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
 import { pictorialCommands } from './pictorial'
 import type { PictorialBar } from './pictorial'
-import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
+import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
 
 /** One drawable series. */
 export interface Series {
@@ -378,6 +378,20 @@ export interface ChartSpec {
   yInverse?: boolean | undefined
   /** `yInverse` for the right axis of a dual-axis chart; each axis flips on its own. */
   y2Inverse?: boolean | undefined
+  /**
+   * Grid lines of the VALUE axis (horizontal on a vertical chart): on by
+   * default when `showGrid` is, `false` hides them while the other axis keeps its own.
+   */
+  yGrid?: boolean | undefined
+  /**
+   * Grid lines at the CATEGORY / x axis ticks (vertical on a vertical chart;
+   * off by default — a bar chart's grid has always been the value lines).
+   */
+  xGrid?: boolean | undefined
+  /** Minor grid lines: this many equal subdivisions between the value axis's major ticks (2 or more). Linear value axes only; a log or time axis already ticks its own way. */
+  yMinor?: Double | undefined
+  /** `yMinor` for a numeric x axis (`xValue`); a category axis has no ticks between categories. */
+  xMinor?: Double | undefined
   /**
    * One key per row (`<Chart by>`), aligned with the series values. When set,
    * every plain / stacked / grouped bar command carries its row's `key` and
@@ -1044,7 +1058,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     return outPts
   }
 
-  if (spec.showGrid) {
+  if (spec.yGrid ?? spec.showGrid) {
     if (spec.horizontal === true) {
       // The grid follows the VALUE axis — vertical lines in this frame.
       for (const tick of l.xTicks) {
@@ -1068,6 +1082,13 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       }
     }
   }
+  // The other axis's grid, and the minor lines, are opt-in: a chart that sets
+  // none of `xGrid`, `yMinor`, `xMinor` draws exactly the lines it always did.
+  if (spec.xGrid === true) for (const c of tickLines(spec.horizontal === true ? l.yTicks : l.xTicks, spec.horizontal !== true, plot, t.grid, 1.0)) out.push(c)
+  const valueTicks = spec.horizontal === true ? l.xTicks : l.yTicks
+  const minorLinear = raw.yScale !== 'log' && spec.yTime !== true
+  if ((spec.yMinor ?? 0.0) >= 2.0 && minorLinear) for (const c of minorLines(valueTicks, spec.yMinor ?? 0.0, spec.horizontal === true, plot, withAlpha(t.grid, 0.6))) out.push(c)
+  if ((spec.xMinor ?? 0.0) >= 2.0 && (spec.xValues ?? []).length > 0 && spec.xTime !== true) for (const c of minorLines(spec.horizontal === true ? l.yTicks : l.xTicks, spec.xMinor ?? 0.0, spec.horizontal !== true, plot, withAlpha(t.grid, 0.6))) out.push(c)
   const yAxisX = plot.x
   if (spec.showYAxis) {
     out.push({
@@ -1805,6 +1826,33 @@ function bridgeRuns(runs: Pt[][], connect: boolean): Pt[][] {
   for (const run of runs) for (const p of run) all.push(p)
 
   return [all]
+}
+
+/** A grid line at each tick: vertical (at the tick's x) or horizontal (at its y), across the plot. */
+function tickLines(ticks: Tick[], vertical: boolean, plot: Rect, stroke: string, width: Double): DrawCmd[] {
+  const out: DrawCmd[] = []
+  for (const tick of ticks) {
+    out.push(vertical ? { kind: 'line', from: { x: tick.pos, y: plot.y }, to: { x: tick.pos, y: plot.y + plot.h }, stroke, width } : { kind: 'line', from: { x: plot.x, y: tick.pos }, to: { x: plot.x + plot.w, y: tick.pos }, stroke, width })
+  }
+
+  return out
+}
+
+/** `n - 1` thin lines between each pair of consecutive major ticks, at equal steps of the pixel distance between them. */
+function minorLines(ticks: Tick[], n: Double, vertical: boolean, plot: Rect, stroke: string): DrawCmd[] {
+  const mid: Tick[] = []
+  const parts = Math.floor(n)
+  for (let i = 1; i < ticks.length; i++) {
+    const a = ticks[i - 1]!
+    const b = ticks[i]!
+    let k = 1.0
+    while (k < parts) {
+      mid.push({ value: 0.0, pos: a.pos + ((b.pos - a.pos) * k) / parts, label: '' })
+      k = k + 1.0
+    }
+  }
+
+  return tickLines(mid, vertical, plot, stroke, 0.5)
 }
 
 function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] {

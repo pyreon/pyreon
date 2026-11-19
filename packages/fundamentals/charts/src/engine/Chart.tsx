@@ -422,6 +422,14 @@ export interface PlotChartProps<T> {
   yInverse?: boolean
   /** `yInverse` for the right axis of a dual-axis chart. */
   y2Inverse?: boolean
+  /** Grid lines of the value axis; `false` hides them while `showGrid` stays on for the rest. */
+  yGrid?: boolean
+  /** Grid lines at the category / x axis ticks (off by default). */
+  xGrid?: boolean
+  /** Minor grid lines: this many subdivisions between the value axis's major ticks (2 or more; linear axes). */
+  yMinor?: number
+  /** Minor grid lines on a numeric x axis (`xValue`). */
+  xMinor?: number
   /**
    * A BCP 47 tag that formats the numbers (axis, tooltip, table, value
    * labels) and, with `xTime` / `yTime`, the dates through `Intl` — `de-DE`
@@ -1010,6 +1018,10 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     barCategoryGap: props.barCategoryGap,
     yInverse: props.yInverse,
     y2Inverse: props.y2Inverse,
+    yGrid: props.yGrid,
+    xGrid: props.xGrid,
+    yMinor: props.yMinor,
+    xMinor: props.xMinor,
     ...(props.xValue !== undefined
       ? { xValues: rows.map((d, i) => props.xValue!(d, gi(i))) }
       : {}),

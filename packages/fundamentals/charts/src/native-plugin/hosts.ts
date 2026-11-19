@@ -1001,6 +1001,9 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'xTitle', value: title })
           const labels = attrOf(child, 'labels')
           if (labels !== undefined) attrs.push({ kind: 'attr', name: 'xLabels', value: labels })
+          if (flagOn(child, 'grid')) attrs.push({ kind: 'attr', name: 'xGrid', value: lit(true) })
+          const xMinor = attrOf(child, 'minor')
+          if (xMinor !== undefined) attrs.push({ kind: 'attr', name: 'xMinor', value: xMinor })
           if (flagOn(child, 'inverse')) warn('<Axis x inverse>: reversing the x (category) axis is not supported yet, on any target; the axis keeps its order. `<Axis y inverse>` and `<Axis y2 inverse>` reverse the value axes.')
         } else if (flagOn(child, 'y2')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
@@ -1017,6 +1020,10 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           const scale = attrOf(child, 'scale')
           if (scale !== undefined) attrs.push({ kind: 'attr', name: 'yScale', value: scale })
           if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'yInverse', value: lit(true) })
+          const gridAttr = attrOf(child, 'grid')
+          if (gridAttr !== undefined && gridAttr.kind === 'literal' && gridAttr.value === false) attrs.push({ kind: 'attr', name: 'yGrid', value: lit(false) })
+          const yMinor = attrOf(child, 'minor')
+          if (yMinor !== undefined) attrs.push({ kind: 'attr', name: 'yMinor', value: yMinor })
         }
         break
       }
@@ -2059,6 +2066,10 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'barCategoryGap', kind: 'number' },
   { name: 'yInverse', kind: 'boolean' },
   { name: 'y2Inverse', kind: 'boolean' },
+  { name: 'yGrid', kind: 'boolean' },
+  { name: 'xGrid', kind: 'boolean' },
+  { name: 'yMinor', kind: 'number' },
+  { name: 'xMinor', kind: 'number' },
 ]
 
 /**

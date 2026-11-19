@@ -339,6 +339,14 @@ iOS and Android as a literal.
   2× and 5× minors under two decades), non-positive values as gaps, bars
   growing from the axis floor. Tooltip, table and value labels keep the real
   values — the view is geometry, not a data edit. A right axis stays linear.
+- **Grid and minor lines per axis** — `showGrid` has always meant the value-axis
+  lines. `<Axis y grid={false}>` hides just those; `<Axis x grid>` adds vertical
+  lines at the x ticks (on a horizontal chart, the category rows); `<Axis y minor={4}>`
+  draws three thin lines between each pair of major ticks, and `<Axis x minor>` does
+  the same on a numeric (`xValue`) axis. Minor lines are for linear axes: a log or
+  time axis already ticks its own way and is left alone. They compose with a
+  reversed axis (the lines move with the ticks) and lower to iOS and Android as
+  literals.
 - **Reversed value axis** — `<Axis y inverse>` (and `<Axis y2 inverse>` for the
   right axis, independently) puts the high end at the bottom, the left on a
   horizontal chart: a rank chart reads 1 at the top, a depth profile reads depth

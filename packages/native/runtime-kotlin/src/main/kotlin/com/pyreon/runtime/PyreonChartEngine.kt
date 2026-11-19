@@ -98,7 +98,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Long, var selected: List<Long>)
 
-data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var barWidth: Double? = null, var barGap: Double? = null, var barCategoryGap: Double? = null, var yInverse: Boolean? = null, var y2Inverse: Boolean? = null, var rowKeys: List<String>? = null)
+data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var barWidth: Double? = null, var barGap: Double? = null, var barCategoryGap: Double? = null, var yInverse: Boolean? = null, var y2Inverse: Boolean? = null, var yGrid: Boolean? = null, var xGrid: Boolean? = null, var yMinor: Double? = null, var xMinor: Double? = null, var rowKeys: List<String>? = null)
 
 data class ExtentSpan(var seen: Boolean, var lo: Double, var hi: Double)
 
@@ -3681,7 +3681,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
       }
       return outPts
     }
-    if (spec.showGrid) {
+    if ((spec.yGrid ?: spec.showGrid)) {
       if (spec.horizontal == true) {
         for (tick in l.xTicks) {
           out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = tick.pos, y = plot.y), to = PyreonChartPt(x = tick.pos, y = plot.y + plot.h), stroke = t.grid, width = 1.0))
@@ -3690,6 +3690,23 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         for (tick in l.yTicks) {
           out.add(PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = tick.pos), to = PyreonChartPt(x = plot.x + plot.w, y = tick.pos), stroke = t.grid, width = 1.0))
         }
+      }
+    }
+    if (spec.xGrid == true) {
+      for (c in tickLines(if (spec.horizontal == true) l.yTicks else l.xTicks, spec.horizontal != true, plot, t.grid, 1.0)) {
+        out.add(c)
+      }
+    }
+    val valueTicks = if (spec.horizontal == true) l.xTicks else l.yTicks
+    val minorLinear = spec.yScale != "log" && spec.yTime != true
+    if (((spec.yMinor ?: 0.0)) >= 2.0 && minorLinear) {
+      for (c in minorLines(valueTicks, (spec.yMinor ?: 0.0), spec.horizontal == true, plot, withAlpha(t.grid, 0.6))) {
+        out.add(c)
+      }
+    }
+    if (((spec.xMinor ?: 0.0)) >= 2.0 && ((spec.xValues ?: listOf())).length > 0L && spec.xTime != true) {
+      for (c in minorLines(if (spec.horizontal == true) l.yTicks else l.xTicks, (spec.xMinor ?: 0.0), spec.horizontal != true, plot, withAlpha(t.grid, 0.6))) {
+        out.add(c)
       }
     }
     val yAxisX = plot.x
@@ -4269,6 +4286,29 @@ fun bridgeRuns(runs: List<List<PyreonChartPt>>, connect: Boolean): List<List<Pyr
       }
     }
     return listOf(all)
+  }
+
+fun tickLines(ticks: List<Tick>, vertical: Boolean, plot: PyreonChartRect, stroke: String, width: Double): List<PyreonDrawCmd> {
+    val out: MutableList<PyreonDrawCmd> = mutableListOf()
+    for (tick in ticks) {
+      out.add(if (vertical) PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = tick.pos, y = plot.y), to = PyreonChartPt(x = tick.pos, y = plot.y + plot.h), stroke = stroke, width = width) else PyreonDrawCmd(kind = "line", from = PyreonChartPt(x = plot.x, y = tick.pos), to = PyreonChartPt(x = plot.x + plot.w, y = tick.pos), stroke = stroke, width = width))
+    }
+    return out
+  }
+
+fun minorLines(ticks: List<Tick>, n: Double, vertical: Boolean, plot: PyreonChartRect, stroke: String): List<PyreonDrawCmd> {
+    val mid: MutableList<Tick> = mutableListOf()
+    val parts = Math.floor(n)
+    for (i in 1L until ticks.length) {
+      val a = ticks[(pyreonSub(i, 1L)).toInt()]
+      val b = ticks[(i).toInt()]
+      var k = 1.0
+      while (k < parts) {
+        mid.add(Tick(value = 0.0, pos = a.pos + (((b.pos - a.pos) * k)).toDouble() / (parts).toDouble(), label = ""))
+        k = k + 1.0
+      }
+    }
+    return tickLines(mid, vertical, plot, stroke, 0.5)
   }
 
 fun splitRuns(values: List<Double>, place: (List<Double>) -> List<PyreonChartPt>): List<List<PyreonChartPt>> {

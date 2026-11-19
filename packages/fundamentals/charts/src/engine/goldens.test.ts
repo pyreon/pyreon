@@ -72,6 +72,9 @@ const GOLDENS: Record<string, () => string> = {
   'plot-inverse-area-dual': () => chartToSvg({ data: ROWS, marks: [area<Row>((d) => d.revenue, { label: 'Revenue' }), line<Row>((d) => d.cost, { label: 'Cost', axis: 'right' })], x: (d) => d.month, yInverse: true, y2Inverse: true, ...SIZE }),
   'plot-inverse-dual-right-only': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue), line<Row>((d) => d.cost, { axis: 'right' })], x: (d) => d.month, y2Inverse: true, ...SIZE }),
   'plot-inverse-rtl': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, yInverse: true, rtl: true, ...SIZE }),
+  // Per-axis grid and minor lines.
+  'plot-grid-x-minor': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, xGrid: true, yMinor: 4, ...SIZE }),
+  'plot-grid-y-off-horizontal': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, horizontal: true, yGrid: false, xGrid: true, ...SIZE }),
   'plot-annotated': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, annotations: [{ y: 100, label: 'goal' }, { yFrom: 130, yTo: 150 }], ...SIZE }),
   pie: () => pieToSvg({ data: ROWS, value: (d) => d.revenue, label: (d) => d.month, innerRadius: 0.5, showLabels: true, ...SIZE }),
   gauge: () => gaugeToSvg({ value: 0.72, max: 1, showValue: true, ...SIZE }),

@@ -62,6 +62,14 @@ export interface ChartToSvgOptions<T> {
   yInverse?: boolean
   /** Reverse the right axis — see `PlotChartProps.y2Inverse`. */
   y2Inverse?: boolean
+  /** Value-axis grid lines (`false` hides them) — see `PlotChartProps.yGrid`. */
+  yGrid?: boolean
+  /** Grid lines at the category / x ticks — see `PlotChartProps.xGrid`. */
+  xGrid?: boolean
+  /** Minor grid lines between the value ticks — see `PlotChartProps.yMinor`. */
+  yMinor?: number
+  /** Minor grid lines on a numeric x axis — see `PlotChartProps.xMinor`. */
+  xMinor?: number
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -121,6 +129,10 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     barCategoryGap: options.barCategoryGap,
     yInverse: options.yInverse,
     y2Inverse: options.y2Inverse,
+    yGrid: options.yGrid,
+    xGrid: options.xGrid,
+    yMinor: options.yMinor,
+    xMinor: options.xMinor,
   }
   const measure = options.measure ?? measureApprox()
   // Same seam as the canvas host's `present`: RTL is the mirror of the
