@@ -1,4 +1,5 @@
 import type { Theme } from '@pyreon/ui-theme'
+import { focusRingTone, type ToneKey } from './fragments'
 
 /**
  * Mode-aware neutral tones for form controls — the light/dark decision in ONE
@@ -60,6 +61,78 @@ const STATUS_TEXT_DARK: Record<StatusTone, string> = {
 /** Legible text in a status tone (≥ 4.5:1 on the page and on that tone's `[100]` tint). */
 export const toneText = (t: Theme, m: ModeFn, tone: StatusTone) =>
   m(t.color.system[tone].text, STATUS_TEXT_DARK[tone])
+
+/**
+ * `toneKeys` (in `fragments.ts`) for a neutral (`secondary`) state: a slate
+ * outline, the mode's primary text, and the neutral tints. A neutral state has
+ * no solid fill of its own, so `toneFill` / `toneContrast` are the outline and
+ * the text.
+ */
+export const neutralToneKeys = (t: Theme, m: ModeFn) => {
+  const tone = tones(t, m)
+  return {
+    toneFill: tone.border,
+    toneContrast: tone.text,
+    toneText: tone.text,
+    toneTint50: t.color.system.base[50],
+    toneTint100: t.color.system.base[100],
+    toneTint200: t.color.system.base[200],
+  } satisfies Record<ToneKey, unknown>
+}
+
+/** The field keys a text field's theme sets. */
+export type FieldKey = 'fieldSurface' | 'fieldBorder' | 'fieldFocus' | 'fieldStatus'
+
+/** The field keys as a variant reads them: every key resolved for the current mode. */
+export type FieldKeys = Record<FieldKey, string>
+
+/**
+ * A text field's colours as plain theme keys, for its variants to read.
+ * Spread into the field's base `.theme()`; a status state overrides them with
+ * {@link fieldStatus}. The variants are transforms ({@link fieldVariant}), so a
+ * `filled` or `underline` field keeps the state's border instead of drawing
+ * its own (#4425).
+ */
+export const fieldKeys = (t: Theme, m: ModeFn) => ({
+  /** The resting surface; a `filled` field returns to it on focus. */
+  fieldSurface: tones(t, m).surface,
+  /** The resting boundary. */
+  fieldBorder: tones(t, m).border,
+  /** The boundary while focused. */
+  fieldFocus: t.color.system.primary.base,
+  /** The status colour, or `''` when the field has no status. */
+  fieldStatus: '',
+}) satisfies Record<FieldKey, unknown>
+
+/** A status state (`error` / `success`) of a text field: its border, focused or not, and its focus ring. */
+export const fieldStatus = (t: Theme, tone: 'error' | 'success') => ({
+  fieldBorder: t.color.system[tone].base,
+  fieldFocus: t.color.system[tone].base,
+  fieldStatus: t.color.system[tone].base,
+  borderColor: t.color.system[tone].base,
+  focus: { ...focusRingTone(t, tone), borderColor: t.color.system[tone].base },
+})
+
+
+const readField = (theme: object): FieldKeys => {
+  const read = (key: FieldKey): string => {
+    const value: unknown = Reflect.get(theme, key)
+    return typeof value === 'string' ? value : ''
+  }
+
+  return {
+    fieldSurface: read('fieldSurface'),
+    fieldBorder: read('fieldBorder'),
+    fieldFocus: read('fieldFocus'),
+    fieldStatus: read('fieldStatus'),
+  }
+}
+
+/** A text-field variant drawn from {@link fieldKeys}, as a `.variants()` value. */
+export const fieldVariant =
+  <S extends object>(styles: (field: FieldKeys) => S) =>
+  (theme: object): S =>
+    styles(readField(theme))
 
 /** The common text-field look: surface, text, boundary. */
 export const fieldSurface = (t: Theme, m: ModeFn) => {
