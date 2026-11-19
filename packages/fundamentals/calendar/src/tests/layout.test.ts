@@ -230,7 +230,7 @@ describe('the time grid', () => {
     expect(blocks[1]!.height).toBeCloseTo(20 / 600, 10)
     expect(blocks[2]).toMatchObject({ continuesAfter: true })
     expect(slotTimes({ dayStart: '08:00', dayEnd: '10:00', slot: { minutes: 45 } })).toEqual(['08:00', '08:45', '09:30'])
-    expect(() => layoutDay('2026-11-18', list, 'UTC', { dayStart: '10:00', dayEnd: '09:00' })).toThrow('[Pyreon] calendar: dayStart and dayEnd')
+    expect(() => layoutDay('2026-11-18', list, 'UTC', { dayStart: '10:00', dayEnd: '09:00' })).toThrow('[Pyreon] layoutDay: dayStart and dayEnd')
   })
 
   it('shows the same slots every day and a now line only on its own day', () => {

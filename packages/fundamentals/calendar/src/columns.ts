@@ -1,3 +1,5 @@
+import { bad, checkOptions } from './check'
+
 /** One block to place in a day column: its key and its start and end in minutes. */
 export interface PackInput {
   key: string
@@ -93,6 +95,8 @@ function assign(group: readonly Item[], pinned: ReadonlyMap<string, number> | un
  * @example packColumns([{ key: 'a', start: 540, end: 600 }, { key: 'b', start: 570, end: 630 }]).map((p) => [p.key, p.column, p.columns]) // => [['a', 0, 2], ['b', 1, 2]]
  */
 export function packColumns(blocks: readonly PackInput[], options: PackOptions = {}): Packed[] {
+  if (!Array.isArray(blocks) || (blocks[0] !== undefined && !(typeof blocks[0]?.key === 'string' && typeof blocks[0]?.start === 'number' && typeof blocks[0]?.end === 'number'))) bad('packColumns', 'blocks', 'an array of { key, start, end } (minutes)', blocks, 'Map occurrences to blocks first.')
+  checkOptions('packColumns', 'options', options)
   const items = sorted(blocks, options.minMinutes ?? 15)
   const out: Packed[] = []
   let from = 0

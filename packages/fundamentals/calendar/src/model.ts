@@ -1,10 +1,11 @@
 import { add, isPlainDate, isPlainDateTime, isTimeZone, toInstant, toPlainDate, toPlainDateTime } from '@pyreon/time/core'
+import { bad } from './check'
 import type { CalendarEvent, EventTime, Instant, PlainDate, PlainDateTime, TimeZone } from './types'
 
 export const DAY_MS = 86_400_000
 
-const fail = (message: string): never => {
-  throw new Error(`[Pyreon] calendar: ${message}`)
+const fail = (message: string, fn = 'expandOccurrences'): never => {
+  throw new Error(`[Pyreon] ${fn}: ${message}`)
 }
 
 const label = (event: { id?: unknown }): string => `event ${JSON.stringify(event.id)}`
@@ -17,8 +18,8 @@ const label = (event: { id?: unknown }): string => `event ${JSON.stringify(event
  * @example allDay('2026-11-18', 3).end // => '2026-11-21'
  */
 export function allDay(date: PlainDate, days = 1): { start: PlainDate; end: PlainDate; allDay: true } {
-  if (!isPlainDate(date)) return fail(`allDay(): expected a date like "2026-11-18", got ${JSON.stringify(date)}`)
-  if (!Number.isInteger(days) || days < 1) return fail(`allDay(): days must be a whole number of at least 1, got ${String(days)}`)
+  if (!isPlainDate(date)) return bad('allDay', 'date', 'a date like "2026-11-18"', date)
+  if (!Number.isInteger(days) || days < 1) return bad('allDay', 'days', 'a whole number of at least 1', days)
 
   return { start: date, end: add(date, { days }), allDay: true }
 }

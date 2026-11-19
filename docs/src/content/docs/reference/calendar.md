@@ -101,7 +101,7 @@ allDay('2026-11-30', 3).end   // => '2026-12-03'
 (events, range: Interval<PlainDate>, zone: TimeZone) => EventOccurrence[]
 ```
 
-The occurrences of the events that fall in a half-open window of dates in the display zone, placed in that zone and sorted by start. Single and recurring events (with overrides and cancellations through `@pyreon/schedule`), events in their own zone, floating wall clocks and instants. An all-day event never moves with the zone. A malformed event throws a `[Pyreon] calendar:` error that names it; two events with one id are both listed, the second with a numbered key.
+The occurrences of the events that fall in a half-open window of dates in the display zone, placed in that zone and sorted by start. Single and recurring events (with overrides and cancellations through `@pyreon/schedule`), events in their own zone, floating wall clocks and instants. An all-day event never moves with the zone. A malformed event throws a `[Pyreon] expandOccurrences:` error that names it; `range` may be the whole result of `visibleRange()`; two events with one id are both listed, the second with a numbered key.
 
 **Example**
 

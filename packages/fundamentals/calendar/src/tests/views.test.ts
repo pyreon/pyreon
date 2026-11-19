@@ -42,7 +42,7 @@ describe('visibleRange', () => {
   })
 
   it('rejects a count that is not a whole number', () => {
-    expect(() => visibleRange('days', '2026-11-18', { days: 0 })).toThrow('[Pyreon] calendar: days must be a whole number')
+    expect(() => visibleRange('days', '2026-11-18', { days: 0 })).toThrow('[Pyreon] visibleRange: days must be a whole number')
   })
 })
 

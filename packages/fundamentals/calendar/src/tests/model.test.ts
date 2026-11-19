@@ -13,7 +13,7 @@ describe('allDay', () => {
   })
 
   it('rejects a bad date and a bad count with a [Pyreon] error', () => {
-    expect(() => allDay('18 Nov' as never)).toThrow('[Pyreon] calendar: allDay(): expected a date')
+    expect(() => allDay('18 Nov' as never)).toThrow('[Pyreon] allDay: date must be a date')
     expect(() => allDay('2026-11-18', 0)).toThrow('days must be a whole number')
     expect(() => allDay('2026-11-18', 1.5)).toThrow('days must be a whole number')
   })
@@ -33,7 +33,7 @@ describe('validation of events', () => {
     ['an all-day end before the start', { start: '2026-11-19', end: '2026-11-18' }, 'ends before it starts'],
   ]
   it.each(bad)('rejects %s, naming the event', (_name, patch, message) => {
-    expect(() => run([{ ...ok, ...patch }])).toThrow(`[Pyreon] calendar:`)
+    expect(() => run([{ ...ok, ...patch }])).toThrow('[Pyreon] expandOccurrences:')
     expect(() => run([{ ...ok, ...patch }])).toThrow(message)
   })
 
