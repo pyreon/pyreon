@@ -158,9 +158,13 @@ unsubscribe() // removes the subscription
 count.set(3) // nothing logged
 ```
 
+A `subscribe()` listener runs before the effects of the same write (and, inside `batch()`, once at the end like everything else). Do not rely on the order between listeners and effects for correctness; derive shared values with `computed()`.
+
 ### Signal Internals
 
 Signals are implemented as function objects with state stored as properties. Only one closure is allocated per signal (the read function). Methods like `peek`, `set`, `update`, and `subscribe` are shared implementations assigned to every signal instance, not per-signal closures. This design keeps memory overhead minimal while maintaining a clean API.
+
+Computeds, effects and render bindings are nodes in a dependency graph with one small edge object per dependency. A write marks what may be stale (it evaluates nothing); a read resolves stale computeds bottom-up, re-evaluating only those whose inputs really changed; effects run once each, in one flush, when the outermost write or `batch()` ends.
 
 ### Derived Signal Patterns
 
@@ -246,7 +250,7 @@ interface Computed<T> {
 
 ### Custom Equality
 
-By default, a computed notifies downstream whenever any dependency changes. Use the `equals` option to suppress updates when the derived value has not meaningfully changed. This is especially useful for derived arrays and objects:
+By default a computed compares its new value with the previous one using `Object.is` (like `signal.set`): when they are equal it keeps the previous value and nothing that reads it re-runs. A derivation that builds a fresh array or object is never `Object.is`-equal to the previous one, so pass `equals` when identity is the wrong test:
 
 ```ts
 const items = signal([3, 1, 4, 1, 5])
@@ -273,7 +277,9 @@ items.set([5, 3, 1])
 items.set([1, 5, 3])
 ```
 
-With `equals`, the computed eagerly re-evaluates when dependencies change, but only notifies downstream effects if the equality check returns `false`.
+`equals` changes only the comparison, not when the computed evaluates. Every computed is lazy: a dependency change only marks it as possibly stale, and it re-evaluates when something reads it — directly, or through an effect, binding or computed that depends on it — and only if a value it read really changed. A computed nobody reads evaluates zero times, with or without `equals`.
+
+When a computed re-evaluates to an equal value, nothing below it re-evaluates either: a chain or diamond downstream of an unchanged node is cleared without running.
 
 ### Disposing
 
@@ -364,7 +370,9 @@ Rules:
 
 ## Effects
 
-An effect runs a function and automatically re-runs it whenever any signal or computed it reads changes. Effects run synchronously on creation and re-run synchronously on each dependency change.
+An effect runs a function and automatically re-runs it whenever any signal or computed it reads changes. Effects run synchronously on creation and re-run synchronously on each dependency change. An effect that reads a computed re-runs only when the computed's value really changes.
+
+When one write reaches several effects, each runs once, in depth-first subscription order (an effect behind a computed can run before a later effect on the signal itself). That order is not a contract — if one effect needs another's result, derive it with `computed()`. An effect whose first run writes a signal it has already read runs again right after that first run, before `effect()` returns — never nested inside itself.
 
 ```ts
 import { signal, effect } from '@pyreon/reactivity'
@@ -1169,7 +1177,7 @@ effect(() => {
 
 ### How createSelector Works
 
-Internally, `createSelector` maintains a `Map<T, Set<listener>>`. Each call to `isSelected(value)` registers a subscription in the bucket for that value. When the source changes from `old` to `new`, only the `old` bucket and `new` bucket are notified -- O(1) regardless of list size.
+Internally, `createSelector` keeps one small subscription bucket per value. Each call to `isSelected(value)` inside an effect subscribes it to the bucket for that value. When the source changes from `old` to `new`, only the `old` bucket and `new` bucket are notified -- O(1) regardless of list size. Their effects run right after the selector's own update, in the same flush.
 
 ### List Selection Example
 

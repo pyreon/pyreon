@@ -333,15 +333,17 @@ describe('api-reference', () => {
       expect(entry?.notes).toContain('.peek()')
     })
 
-    it('effect documents the auto-tracking contract + 6 mistakes', () => {
+    it('effect documents the auto-tracking contract, run order + 7 mistakes', () => {
       const entry = API_REFERENCE['reactivity/effect']
-      expect(entry?.mistakes?.split('\n').length).toBe(6)
+      expect(entry?.mistakes?.split('\n').length).toBe(7)
       expect(entry?.notes).toContain('auto-tracks')
+      expect(entry?.mistakes).toContain('depth-first subscription order')
     })
 
-    it('batch documents the pointer-swap implementation', () => {
+    it('batch documents that reads inside a batch are fresh and the flush waits for the outermost end', () => {
       const entry = API_REFERENCE['reactivity/batch']
-      expect(entry?.notes).toContain('pointer swap')
+      expect(entry?.notes).toContain('outermost batch')
+      expect(entry?.notes).toContain('always fresh')
     })
   })
 

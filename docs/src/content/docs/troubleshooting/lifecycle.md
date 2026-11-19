@@ -263,7 +263,7 @@ A primitive whose effect body mounts children (`mountFor`, `mountKeyedList`, `Ke
 
 ### Re-entrant signal write inside an effect's own flush
 
-An effect that writes a signal it depends on must re-fire on the next pass. The batch flush in `packages/core/reactivity/src/batch.ts` has two tiers: tier 1 (`recomputeQueue`) settles computeds, marked via `_markRecompute`, before any effect runs; tier 2 runs effects in passes (`curEffects`, then `nextEffects`), so an already-run effect is re-queued for the next pass. `MAX_PASSES` caps effect passes at 32. `ErrorBoundary`'s handler relies on this: it calls `error.set(err)` synchronously and the boundary re-renders with its fallback on the next pass.
+An effect that writes a signal it depends on must re-fire on the next pass. The flush in `packages/core/reactivity/src/graph.ts` runs one queue; a run's write marks and re-queues the running effect (through an edge it already read), and an entry that already ran opens a new pass. `MAX_PASSES` caps passes at 32. `ErrorBoundary`'s handler relies on this: it calls `error.set(err)` synchronously and the boundary re-renders with its fallback on the next pass (on a first run, right after it — design D9).
 
 ---
 
