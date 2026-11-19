@@ -17,10 +17,11 @@ import type { ItemStateProps } from './host-states'
 import { plain } from './format'
 import { geoDomainAligned, geoRoamPan, geoRoamZoom, hitGeoIndex, layoutGeoShapes, renderGeoAligned } from './geo'
 import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoTrails, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
-import { alignGeoValues, geoFeatures, getMap } from './geo-web'
-import type { GeoLayout, GeoOptions, GeoRegion, GeoShape, GeoValue, GeoView } from './geo'
+import { alignGeoValues, geoFeatures, getMapDefinition, resolveMapSource } from './geo-web'
+import type { GeoLayout, GeoOptions, GeoProjection, GeoRegion, GeoShape, GeoValue, GeoView } from './geo'
 import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie, GeoTrail } from './geo-overlay'
-import type { GeoJson, GeoSource } from './geo-web'
+import type { GeoJson, GeoSource, MapDefinition } from './geo-web'
+import type { Topology } from './geo-topo'
 import type { Double, Rect } from './types'
 import type { VisualMapSpec } from './visual-map'
 import { visualMapHost } from './visual-map-host'
@@ -34,7 +35,7 @@ export interface MapChartProps extends CanvasHostProps, ItemStateProps {
    * Already-projected shapes (the form that lowers to native), inline GeoJSON,
    * or the name of a map registered with `registerMap`.
    */
-  map: readonly GeoShape[] | GeoJson | string
+  map: readonly GeoShape[] | GeoJson | Topology | MapDefinition | string
   values: MapChartValues | (() => MapChartValues)
   options?: GeoOptions
   /** Native-safe point marks drawn over the regions. */
@@ -101,21 +102,30 @@ export interface MapRegionInfo {
   properties: Record<string, unknown> | null
 }
 
-const isShapes = (m: readonly GeoShape[] | GeoJson | string): m is readonly GeoShape[] => Array.isArray(m)
+const isShapes = (m: unknown): m is readonly GeoShape[] => Array.isArray(m)
 
 export function MapChart(props: MapChartProps): VNode {
   // The projected features of the map, memoised: a roam frame lays out again, and re-projecting every vertex of a
   // GeoJSON / registry map each time is the cost. Keyed on the map, its projection and the two properties.
   let sourceMemo: { m: unknown; key: string; out: GeoSource } | null = null
+  // The projection the shapes were projected with (the chart's option, else the map's own default).
+  let projectionNow: GeoProjection = 'equirectangular'
   const source = (): GeoSource => {
     const m = props.map
     if (isShapes(m)) return { shapes: m as GeoShape[], properties: [] }
-    const json = typeof m === 'string' ? getMap(m) : m
-    if (json === null) return { shapes: [], properties: [] }
-    const key = `${props.options?.projection ?? 'equirectangular'}|${props.options?.nameProperty ?? 'name'}|${props.options?.idProperty ?? ''}`
-    if (sourceMemo !== null && sourceMemo.m === json && sourceMemo.key === key) return sourceMemo.out
-    const out = geoFeatures(json, props.options?.projection ?? 'equirectangular', props.options?.nameProperty ?? 'name', props.options?.idProperty)
-    sourceMemo = { m: json, key, out }
+    // A registered name, TopoJSON, a definition or GeoJSON: decode to GeoJSON and pick up the map's own defaults,
+    // which an explicit `options` value overrides.
+    const registered = typeof m === 'string' ? getMapDefinition(m) : null
+    if (typeof m === 'string' && registered === null) return { shapes: [], properties: [] }
+    const base = registered ?? resolveMapSource(m as GeoJson | Topology | MapDefinition)
+    const projection = props.options?.projection ?? base.projection ?? 'equirectangular'
+    const nameProperty = props.options?.nameProperty ?? base.nameProperty ?? 'name'
+    const idProperty = props.options?.idProperty ?? base.idProperty
+    projectionNow = projection
+    const key = `${projection}|${nameProperty}|${idProperty ?? ''}`
+    if (sourceMemo !== null && sourceMemo.m === m && sourceMemo.key === key) return sourceMemo.out
+    const out = geoFeatures(base.geo, projection, nameProperty, idProperty)
+    sourceMemo = { m, key, out }
 
     return out
   }
@@ -181,7 +191,9 @@ export function MapChart(props: MapChartProps): VNode {
       const box = vm.chartBox(rawBox)
       lastBox = box
 
-      return layoutGeoShapes(shapes(), box, viewed())
+      const laid = shapes()
+
+      return layoutGeoShapes(laid, box, { ...viewed(), projection: projectionNow })
     },
     animates: true,
     // Took `_theme` and threw it away, so a geo chart was the one host that

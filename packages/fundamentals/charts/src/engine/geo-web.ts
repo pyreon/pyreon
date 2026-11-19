@@ -17,6 +17,8 @@ import { geoDomainAligned, layoutGeoShapes, projectLonLat, renderGeoAligned } fr
 import type { GeoLayout, GeoOptions, GeoProjection, GeoShape, GeoValue } from './geo'
 import { geoHeatStops, renderGeoHeat, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
 import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie } from './geo-overlay'
+import { isTopology, topoToGeo } from './geo-topo'
+import type { Topology } from './geo-topo'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
@@ -34,15 +36,68 @@ export interface GeoJson {
   features: GeoFeature[]
 }
 
-const registry = new Map<string, GeoJson>()
-
-/** Register (or replace) a map under a name for `type: 'map'` options. */
-export function registerMap(name: string, geo: GeoJson): void {
-  registry.set(name, geo)
+/**
+ * A map as a module ships it: the data (GeoJSON, or TopoJSON with the object to read) and the choices that go with
+ * it. `<MapChart map={definition}>` and `registerMap(name, definition)` take one; a per-map default (a projection
+ * that suits it, the property that names its regions) lives here so the call site does not repeat it, and an
+ * explicit `options` still wins.
+ */
+export interface MapDefinition {
+  data: GeoJson | Topology
+  /** The TopoJSON object to read; default the first. */
+  object?: string | undefined
+  projection?: GeoProjection | undefined
+  nameProperty?: string | undefined
+  idProperty?: string | undefined
 }
 
-/** A registered map, or null. */
+/** Whether `x` is a `MapDefinition` (an object carrying `data`). */
+export function isMapDefinition(x: unknown): x is MapDefinition {
+  return typeof x === 'object' && x !== null && 'data' in x && (isTopology((x as { data: unknown }).data) || (x as { data: { type?: unknown } }).data?.type === 'FeatureCollection')
+}
+
+/** What the registry keeps per name: the decoded GeoJSON and the map's own defaults. */
+interface RegisteredMap {
+  geo: GeoJson
+  projection?: GeoProjection | undefined
+  nameProperty?: string | undefined
+  idProperty?: string | undefined
+}
+
+const registry = new Map<string, RegisteredMap>()
+
+/** Decode a map source (GeoJSON, TopoJSON or a definition) to GeoJSON plus the defaults it carries. */
+export function resolveMapSource(source: GeoJson | Topology | MapDefinition, object?: string): RegisteredMap {
+  if (isMapDefinition(source)) {
+    const data = source.data
+    return { geo: isTopology(data) ? topoToGeo(data, source.object ?? object) : data, projection: source.projection, nameProperty: source.nameProperty, idProperty: source.idProperty }
+  }
+
+  return { geo: isTopology(source) ? topoToGeo(source, object) : source }
+}
+
+/**
+ * Register (or replace) a map under a name, for `<MapChart map="name">`. The source is GeoJSON, TopoJSON (decoded
+ * once, here) or a `MapDefinition`; `projection`, `nameProperty`, `idProperty` and `object` set that map's defaults
+ * (an explicit chart option still wins).
+ */
+export function registerMap(name: string, source: GeoJson | Topology | MapDefinition, options: { projection?: GeoProjection; nameProperty?: string; idProperty?: string; object?: string } = {}): void {
+  const base = resolveMapSource(source, options.object)
+  registry.set(name, {
+    geo: base.geo,
+    projection: options.projection ?? base.projection,
+    nameProperty: options.nameProperty ?? base.nameProperty,
+    idProperty: options.idProperty ?? base.idProperty,
+  })
+}
+
+/** A registered map as GeoJSON, or null. */
 export function getMap(name: string): GeoJson | null {
+  return registry.get(name)?.geo ?? null
+}
+
+/** A registered map with its defaults, or null. */
+export function getMapDefinition(name: string): RegisteredMap | null {
   return registry.get(name) ?? null
 }
 
@@ -162,12 +217,16 @@ function projectRing(coords: number[][], projection: GeoProjection): Pt[] {
 }
 
 /** Project every feature's outer rings and fit them into `box` (aspect preserved, centred). */
-export function layoutGeo(geo: GeoJson, box: Rect, options?: GeoOptions): GeoLayout {
-  return layoutGeoShapes(geoShapes(geo, options?.projection ?? 'equirectangular', options?.nameProperty ?? 'name', options?.idProperty), box, options)
+export function layoutGeo(geo: GeoJson | Topology | MapDefinition, box: Rect, options?: GeoOptions): GeoLayout {
+  const base = resolveMapSource(geo)
+  const projection = options?.projection ?? base.projection ?? 'equirectangular'
+
+  return layoutGeoShapes(geoShapes(base.geo, projection, options?.nameProperty ?? base.nameProperty ?? 'name', options?.idProperty ?? base.idProperty), box, { ...options, projection })
 }
 
 export interface GeoToSvgOptions {
-  geo: GeoJson
+  /** GeoJSON, TopoJSON or a `MapDefinition`. */
+  geo: GeoJson | Topology | MapDefinition
   values: Record<string, Double> | readonly GeoValue[]
   width?: Double
   height?: Double
