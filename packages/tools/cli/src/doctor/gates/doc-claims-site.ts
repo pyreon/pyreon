@@ -152,6 +152,7 @@ export const SITE_MCP_TOOL_CLAIMS: ClaimSpec[] = [
   { file: `${SITE}/products/ai.json`, pattern: /"claim": "(\d+) tools, names as listed"/ },
   { file: `${SITE}/extra-sections.more.ts`, pattern: /label: 'all (\d+) tools'/ },
 ]
+
 export const SITE_HOOK_CLAIMS: ClaimSpec[] = [
   { file: `${SITE}/_nav.json`, pattern: /"sub": "(\d+) hooks"/ },
   { file: `${SITE}/products/hooks.json`, pattern: /"title": "(\d+) hooks\. Zero cleanup code to write\."/ },
@@ -173,6 +174,7 @@ export function markDerived(list: ClaimSpec[], key: string): ClaimSpec[] {
 
   return list
 }
+
 markDerived(SITE_LINT_RULE_CLAIMS, 'lintRuleCount')
 markDerived(SITE_LINT_CATEGORY_CLAIMS, 'lintCategoryCount')
 markDerived(SITE_PRODUCT_COUNT_CLAIMS, 'productCount')

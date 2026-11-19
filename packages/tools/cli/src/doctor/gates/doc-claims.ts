@@ -20,14 +20,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import type { Finding, GateResult } from '../types'
-import {
-  type ClaimSpec,
-  SITE_LINT_CATEGORY_CLAIMS,
-  SITE_HOOK_CLAIMS,
-  SITE_LINT_RULE_CLAIMS,
-  SITE_MCP_TOOL_CLAIMS,
-} from './doc-claims-site'
-import { findUnknownPlaceholders, SITE_COUNT_CHECKS } from './doc-claims-site-counts'
+import { type ClaimSpec, SITE_LINT_CATEGORY_CLAIMS, SITE_HOOK_CLAIMS, SITE_LINT_RULE_CLAIMS, SITE_MCP_TOOL_CLAIMS } from './doc-claims-site'
+import { derivedClaimFindings, findUnknownPlaceholders, SITE_COUNT_CHECKS } from './doc-claims-site-counts'
 
 export interface ClaimCheck {
   /** Human-readable name shown in findings */
@@ -703,7 +697,6 @@ const checks: ClaimCheck[] = [
       },
     ],
   },
-  ...SITE_COUNT_CHECKS,
   {
     name: 'published package count',
     codeId: 'package-count',
@@ -947,15 +940,12 @@ export const runDocClaimsGate = async (
   }
 
   findings.push(...findUnknownPlaceholders(opts.cwd))
-
-  for (const check of checks) {
+  for (const check of [...checks, ...SITE_COUNT_CHECKS]) {
     const actual = check.actual(opts.cwd)
     for (const claim of check.claims) {
       const filePath = join(opts.cwd, claim.file)
       const relPath = claim.file
-
-      // A derived claim in a file that is not there states nothing in digits.
-      if (claim.derived && !existsSync(filePath)) continue
+      if (claim.derived) { findings.push(...derivedClaimFindings(filePath, claim, check, actual)); continue }
       if (!existsSync(filePath)) {
         findings.push({
           category: 'documentation',
@@ -968,36 +958,6 @@ export const runDocClaimsGate = async (
         continue
       }
       const content = readClaimText(filePath)
-
-      if (claim.derived) {
-        // The site content derives this number at build time (docs/src/site/derived.ts): the sentence must carry the
-        // placeholder, and a count in digits is an error whatever its value, because it goes stale with the next
-        // pull request that changes the thing counted.
-        const flags = claim.pattern.flags.replace('g', '')
-        const hardCoded = content.match(new RegExp(claim.pattern.source, flags))
-        const placeholder = content.match(new RegExp(claim.pattern.source.replace('(\\d+)', `(\\{\\{@${claim.derived}\\}\\})`), flags))
-        if (hardCoded?.[1]) {
-          findings.push({
-            category: 'documentation',
-            severity: 'error',
-            code: `doc-claims/${check.codeId}-hardcoded`,
-            gate: 'doc-claims',
-            message: `${check.name}: ${claim.file} states "${hardCoded[1]}" in digits; this count is derived (actual ${actual}).`,
-            location: { path: filePath, relPath },
-            fix: `Write {{@${claim.derived}}} where the number goes (in the staging content set first, then sync)`,
-          })
-        } else if (!placeholder) {
-          findings.push({
-            category: 'documentation',
-            severity: 'warning',
-            code: `doc-claims/${check.codeId}-pattern-miss`,
-            gate: 'doc-claims',
-            message: `${check.name}: neither the placeholder {{@${claim.derived}}} nor a count was found by the pattern in ${claim.file} (the sentence was likely deleted or rephrased).`,
-            location: { path: filePath, relPath },
-          })
-        }
-        continue
-      }
 
       const rejectHedged = claim.rejectHedged ?? hedgedVariant(claim.pattern)
       if (rejectHedged) {

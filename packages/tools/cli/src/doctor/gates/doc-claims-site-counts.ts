@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Finding } from '../types'
 import type { ClaimCheck } from './doc-claims'
+import type { ClaimSpec } from './doc-claims-site'
 import { SITE_ANTI_PATTERN_CLAIMS, SITE_PACKAGE_COUNT_CLAIMS, SITE_PACKAGE_COUNT_FILE, SITE_PRODUCT_COUNT_CLAIMS } from './doc-claims-site'
 
 // The sources of truth for the marketing-site claims in doc-claims-site.ts. They text-parse the in-repo files
@@ -95,4 +96,40 @@ export const findUnknownPlaceholders = (repoRoot: string): Finding[] => {
   }
 
   return findings
+}
+
+/**
+ * The verdict on one claim site whose number the site content derives at build time (docs/src/site/derived.ts): the
+ * sentence must carry the placeholder, and a count in digits is an error whatever its value, because it goes stale with
+ * the next pull request that changes the thing counted. No findings when the sentence is fine.
+ */
+export const derivedClaimFindings = (filePath: string, claim: ClaimSpec, check: { name: string; codeId: string }, actual: number): Finding[] => {
+  // A derived claim in a file that is not there states nothing in digits.
+  if (!existsSync(filePath)) return []
+  const content = readFileSync(filePath, 'utf8')
+  const key = claim.derived as string
+  const flags = claim.pattern.flags.replace('g', '')
+  const hardCoded = content.match(new RegExp(claim.pattern.source, flags))
+  const base = { category: 'documentation', gate: 'doc-claims', location: { path: filePath, relPath: claim.file } } as const
+  if (hardCoded?.[1]) {
+    return [
+      {
+        ...base,
+        severity: 'error',
+        code: `doc-claims/${check.codeId}-hardcoded`,
+        message: `${check.name}: ${claim.file} states "${hardCoded[1]}" in digits; this count is derived (actual ${actual}).`,
+        fix: `Write {{@${key}}} where the number goes (in the staging content set first, then sync)`,
+      },
+    ]
+  }
+  if (content.match(new RegExp(claim.pattern.source.replace('(\\d+)', `(\\{\\{@${key}\\}\\})`), flags))) return []
+
+  return [
+    {
+      ...base,
+      severity: 'warning',
+      code: `doc-claims/${check.codeId}-pattern-miss`,
+      message: `${check.name}: neither the placeholder {{@${key}}} nor a count was found by the pattern in ${claim.file} (the sentence was likely deleted or rephrased).`,
+    },
+  ]
 }
