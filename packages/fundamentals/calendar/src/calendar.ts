@@ -5,6 +5,8 @@ import type { Calendar, CalendarOptions } from './calendar-types'
 import { bad, isDateString } from './check'
 import { handleKey, moveCursor, rangeOf, selectRange } from './interaction'
 import { createMonthModel, createTimeGridModel } from './models'
+import { defaultMessages } from './messages'
+import type { CalendarMessages } from './messages'
 import { createState } from './state'
 import type { CalState } from './state'
 import type { PlainDate } from './types'
@@ -42,6 +44,13 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
   const s = createState(options)
   const month = createMonthModel(s)
   const timeGrid = createTimeGridModel(s)
+  const messages = computed<CalendarMessages>(() => {
+    const locale = s.locale()
+    const own = typeof options.messages === 'function' ? options.messages(locale) : options.messages
+    const base = defaultMessages(locale)
+
+    return { ...base, ...own, views: { ...base.views, ...own?.views }, recurringScope: { ...base.recurringScope, ...own?.recurringScope } }
+  })
   const rangeTitle = computed(() => viewTitle(s.shown(), (info) => title(s, info)))
   const stops: { dispose(): void }[] = []
   const rangeWatcher = effect(() => {
@@ -59,7 +68,7 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
 
         return
       }
-      runUntracked(() => s.announcement.set(`${text}, ${view}`))
+      runUntracked(() => s.announcement.set(messages().navigated(text, view)))
     }),
   )
   const api: Calendar<Meta> = {
@@ -73,6 +82,7 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
     range: () => s.shown().range,
     dates: () => s.shown().dates,
     title: () => rangeTitle(),
+    messages: () => messages(),
     month,
     timeGrid,
     occurrences: () => s.occurrences(),
@@ -103,6 +113,7 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
       month.dispose()
       timeGrid.dispose()
       rangeTitle.dispose()
+      messages.dispose()
     },
   }
   getCurrentScope()?.add(() => api.dispose())

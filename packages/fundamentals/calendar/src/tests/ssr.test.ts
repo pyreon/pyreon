@@ -22,8 +22,8 @@ describe('the views render on the server', () => {
     expect(html).toContain('role="grid"')
     expect(html).toContain('Calendar, November 2026')
     expect(html).toContain('aria-current="date"')
-    expect(html).toContain('Design review, Wednesday 18 November, 14:00 to 15:00')
-    expect(html).toContain('Conference, Monday 16 November to Wednesday 18 November, all day')
+    expect(html).toContain('Design review, Wednesday 18 November, 14:00 – 15:00')
+    expect(html).toContain('Conference, Monday 16 November – Wednesday 18 November, all day')
     expect(await render('month')).toBe(html)
   })
 
@@ -33,5 +33,28 @@ describe('the views render on the server', () => {
     expect(html).toContain('data-minute="720"')
     expect(html.match(/class="pcal-slot"/g)).toHaveLength(48 * 7)
     expect(await render('week')).toBe(html)
+  })
+
+  it('built-in text follows the locale: no English word of the defaults is left in the toolbar, the cells or the gutter', async () => {
+    const english = ['Today', 'Month', 'Week', 'Day', 'Previous', 'Next', 'more', 'last month', 'next month', 'Calendar']
+    for (const locale of ['ar', 'cs', 'ja']) {
+      for (const view of ['month', 'week'] as const) {
+        const calendar = createCalendar({ events: () => [], date: '2026-11-18', view, now: () => NOW, timeZone: () => 'UTC', locale: () => locale })
+        const html = await renderToString(h(Calendar as never, { calendar }))
+        const text = html.replace(/<[^>]*aria-live[^>]*>.*?<\/output>/g, '')
+        for (const word of english) expect(text, `${locale} ${view} has "${word}"`).not.toMatch(new RegExp(`(^|[^A-Za-z])${word}([^A-Za-z]|$)`))
+        expect(text).toContain(calendar.messages().today)
+        expect(calendar.messages().today).not.toBe('Today')
+      }
+    }
+  })
+
+  it('the messages option replaces any word, as an object or a function of the locale, and numbers use the locale', () => {
+    const calendar = createCalendar({ events: () => [], date: '2026-11-18', locale: () => 'cs', messages: (locale) => ({ today: `dnes-${locale}` }) })
+    expect(calendar.messages().today).toBe('dnes-cs')
+    expect(calendar.messages().more(3)).toBe('\u200E+3')
+    const arabic = createCalendar({ events: () => [], date: '2026-11-18', locale: () => 'ar-EG' })
+    expect(arabic.messages().more(3)).toBe('\u200E+٣')
+    expect(createCalendar({ events: () => [], date: '2026-11-18', locale: () => 'en-GB' }).messages().more(3)).toBe('3 more')
   })
 })

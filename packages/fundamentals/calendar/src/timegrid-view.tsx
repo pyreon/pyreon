@@ -4,7 +4,7 @@ import type { VNodeChild } from '@pyreon/core'
 import { computed } from '@pyreon/reactivity'
 import type { TimeGridDay, TimeGridModel } from './calendar-types'
 import { dayLabel, eventLabel } from './labels'
-import { colorStyle, dayWeekday, followCursor, isRtl, resolveView } from './month-view'
+import { colorStyle, dayWeekday, followCursor, isRtl } from './month-view'
 import type { ResolvedView, ViewProps } from './month-view'
 import type { EventOccurrence, EventSegment, TimedBlock } from './types'
 import { formatDate, formatTime } from '@pyreon/format'
@@ -20,7 +20,7 @@ function blockStyle(block: TimedBlock, slotStart: number, slot: number, from: nu
   // percentages are of the slot cell: top inside it, height in slots, left and width of the column
   const height = (block.height * span) / slot
 
-  return `top:${(offset * 100).toFixed(4)}%;height:${(height * 100).toFixed(4)}%;inset-inline-start:${(block.left * 100).toFixed(4)}%;inline-size:${(block.width * 100).toFixed(4)}%`
+  return `top:${(offset * 100).toFixed(4)}%;height:${(height * 100).toFixed(4)}%;inset-inline-start:${(block.left * 100).toFixed(4)}%;inline-size:${(block.width * 100).toFixed(4)}%;--pcal-slots:${height.toFixed(3)}`
 }
 
 function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ResolvedView<Meta> }): VNodeChild {
@@ -28,7 +28,8 @@ function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences:
   if (o === undefined) return null
   const calendar = props.view.calendar
   const grid = calendar.timeGrid()
-  const label = eventLabel(o as EventOccurrence, calendar.locale(), props.view.labels)
+
+  const label = (): string => eventLabel(o as EventOccurrence, calendar.locale(), calendar.messages())
   const slot = props.view.renderEvent
 
   return (
@@ -41,18 +42,16 @@ function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences:
       data-continues-before={props.block.continuesBefore ? '' : undefined}
       data-continues-after={props.block.continuesAfter ? '' : undefined}
       data-key={o.key}
-      data-time={formatTime(o.start, { locale: calendar.locale(), timeStyle: 'short' })}
-      aria-label={label}
+      aria-label={() => label()}
       onClick={(e: MouseEvent) => {
         e.stopPropagation()
         calendar.eventClick(o.key)
       }}
     >
-      {slot === undefined ? (
-        <span class="pcal-event-title">{o.title}</span>
-      ) : (
-        slot({ occurrence: o, label, continuesBefore: props.block.continuesBefore, continuesAfter: props.block.continuesAfter })
-      )}
+      <span class="pcal-block-in">
+        {slot === undefined ? <span class="pcal-event-title">{o.title}</span> : slot({ occurrence: o, label: label(), continuesBefore: props.block.continuesBefore, continuesAfter: props.block.continuesAfter })}
+        <span class="pcal-block-time" aria-hidden="true" data-time={() => formatTime(o.start, { locale: calendar.locale(), timeStyle: 'short' })} />
+      </span>
     </button>
   )
 }
@@ -60,7 +59,8 @@ function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences:
 function AllDayEvent<Meta>(props: { segment: EventSegment; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ResolvedView<Meta> }): VNodeChild {
   const o = props.occurrences().get(props.segment.occurrenceKey)
   if (o === undefined) return null
-  const label = eventLabel(o as EventOccurrence, props.view.calendar.locale(), props.view.labels)
+
+  const label = (): string => eventLabel(o as EventOccurrence, props.view.calendar.locale(), props.view.calendar.messages())
 
   return (
     <button
@@ -70,13 +70,13 @@ function AllDayEvent<Meta>(props: { segment: EventSegment; occurrences: () => Ma
       data-continues-before={props.segment.continuesBefore ? '' : undefined}
       data-continues-after={props.segment.continuesAfter ? '' : undefined}
       data-key={o.key}
-      aria-label={label}
+      aria-label={() => label()}
       onClick={(e: MouseEvent) => {
         e.stopPropagation()
         props.view.calendar.eventClick(o.key)
       }}
     >
-      {props.view.renderEvent === undefined ? <span class="pcal-event-title">{o.title}</span> : props.view.renderEvent({ occurrence: o, label, continuesBefore: props.segment.continuesBefore, continuesAfter: props.segment.continuesAfter })}
+      {props.view.renderEvent === undefined ? <span class="pcal-event-title">{o.title}</span> : props.view.renderEvent({ occurrence: o, label: label(), continuesBefore: props.segment.continuesBefore, continuesAfter: props.segment.continuesAfter })}
     </button>
   )
 }
@@ -119,7 +119,7 @@ function SlotCell<Meta>(props: { ctx: GridContext<Meta>; day: TimeGridDay; minut
       tabIndex={() => (calendar.cursor().date === day.date && calendar.cursor().minute === minute ? 0 : -1)}
       onClick={() => calendar.selectSlot(day.date, minute)}
     >
-      <span class="pcal-sr">{`${dayLabel(day.date, calendar.locale())}, ${timeText(minute)}`}</span>
+      <span class="pcal-sr">{() => `${dayLabel(day.date, calendar.locale())}, ${formatTime(`${day.date}T${timeText(minute)}` as never, { locale: calendar.locale(), timeStyle: 'short' })}`}</span>
       <For each={() => day.blocks().filter((b) => b.startMinute >= minute && b.startMinute < minute + grid().slot)} by={(b: TimedBlock) => b.key}>
         {(block: TimedBlock) => <Block block={block} slotStart={minute} occurrences={ctx.occurrences} view={ctx.view} />}
       </For>
@@ -144,7 +144,7 @@ function SlotRow<Meta>(props: { ctx: GridContext<Meta>; index: number }): VNodeC
   return (
     <div class="pcal-row" role="row" data-hour={minute % 60 === 0 ? '' : undefined}>
       <div class="pcal-gutter-cell" role="rowheader" data-hour={minute % 60 === 0 ? '' : undefined}>
-        <span>{formatTime(timeText(minute) as never, { locale: calendar.locale(), timeStyle: 'short' })}</span>
+        <span>{() => formatTime(`2026-01-01T${timeText(minute)}` as never, { locale: calendar.locale(), timeStyle: 'short' })}</span>
       </div>
       <For each={() => ctx.grid().days} by={(d: TimeGridDay) => d.key}>
         {(day: TimeGridDay) => <SlotCell ctx={ctx} day={day} minute={minute} />}
@@ -159,14 +159,14 @@ function AllDayRow<Meta>(props: { ctx: GridContext<Meta> }): VNodeChild {
 
   return (
     <div class="pcal-allday" role="row" style={() => `--pcal-lanes:${Math.max(1, ctx.grid().allDay().lanes.length)}`}>
-      <div class="pcal-gutter-cell" role="rowheader">{ctx.view.labels.allDayRow}</div>
+      <div class="pcal-gutter-cell" role="rowheader">{() => calendar.messages().allDayRow}</div>
       <For each={() => ctx.grid().days} by={(d: TimeGridDay) => d.key}>
         {(day: TimeGridDay) => {
           const index = ctx.grid().days.findIndex((d) => d.date === day.date)
 
           return (
             <div class="pcal-allday-cell" role="gridcell" data-date={day.date} tabIndex={-1}>
-              <span class="pcal-sr">{`${dayLabel(day.date, calendar.locale())}, ${ctx.view.labels.allDayRow}`}</span>
+              <span class="pcal-sr">{() => `${dayLabel(day.date, calendar.locale())}, ${calendar.messages().allDayRow}`}</span>
               <For each={() => ctx.grid().allDay().lanes.flat().filter((s) => s.startColumn === index)} by={(s: EventSegment) => s.key}>
                 {(segment: EventSegment) => <AllDayEvent segment={segment} occurrences={ctx.occurrences} view={ctx.view} />}
               </For>
@@ -185,7 +185,7 @@ function HeaderRow<Meta>(props: { ctx: GridContext<Meta> }): VNodeChild {
   return (
     <div class="pcal-head" role="row">
       <div class="pcal-corner" role="columnheader">
-        <span class="pcal-sr">{ctx.view.labels.timeGrid}</span>
+        <span class="pcal-sr">{() => calendar.messages().timeGrid}</span>
       </div>
       <For each={() => ctx.grid().days} by={(d: TimeGridDay) => d.key}>
         {(day: TimeGridDay) => (
@@ -211,7 +211,7 @@ export function TimeGridView<Meta = unknown>(props: TimeGridViewProps<Meta>): VN
   let root: HTMLElement | null = null
   const occurrences = computed(() => new Map(calendar.occurrences().map((o) => [o.key, o as EventOccurrence<Meta>])))
   const grid = computed(() => calendar.timeGrid())
-  const view = resolveView(props)
+  const view = props
   const ctx: GridContext<Meta> = { view, grid: () => grid(), occurrences: () => occurrences() }
   followCursor(
     () => root,
@@ -223,7 +223,7 @@ export function TimeGridView<Meta = unknown>(props: TimeGridViewProps<Meta>): VN
     <div
       class={props.class ?? 'pcal-timegrid'}
       role="grid"
-      aria-label={() => `${view.labels.timeGrid}, ${calendar.title()}`}
+      aria-label={() => `${calendar.messages().timeGrid}, ${calendar.title()}`}
       aria-multiselectable="true"
       aria-colcount={() => grid().days.length + 1}
       data-view="timegrid"

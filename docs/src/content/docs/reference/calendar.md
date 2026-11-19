@@ -63,9 +63,10 @@ layoutDay('2026-11-18', occurrences, 'Europe/Prague').map((b) => [b.column, b.co
 | [`createCalendar`](#createcalendar-function-experimental) | function | The reactive calendar (it returns a `Calendar`: `view`, `setView`, `date`, `goTo`, `next`, `previous`, `today`, `range`,… |
 | [`gridMove`](#gridmove-function-experimental) | function | Where a key moves the focused date of a month grid (the WAI-ARIA grid pattern): arrows by a day or a week (Left and… |
 | [`slotMove`](#slotmove-function-experimental) | function | Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in… |
-| [`eventLabel`](#eventlabel-function-experimental) | function | What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 to 15:00"; an all-day event says… |
+| [`eventLabel`](#eventlabel-function-experimental) | function | What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 – 15:00"; an all-day event says… |
 | [`dayLabel`](#daylabel-function-experimental) | function | A date as it is read: "Tuesday 18 November". |
-| [`DEFAULT_LABELS`](#default_labels-constant-experimental) | constant | The words the calendar says (labels, "all day", "N more", the names of the views). |
+| [`defaultMessages`](#defaultmessages-function-experimental) | function | Every word the calendar says, for a locale. |
+| [`capitalise`](#capitalise-function-experimental) | function | Upper-case the first grapheme where the script has case (Arabic and Japanese are left alone). |
 | [`Calendar`](#calendar-component-experimental) | component | The calendar component (import `@pyreon/calendar/components`): an optional toolbar, the view the calendar is on (the… |
 | [`MonthView`](#monthview-component-experimental) | component | The month: a WAI-ARIA grid of day cells with roving focus, the events as labelled buttons inside the cell they start in… |
 | [`TimeGridView`](#timegridview-component-experimental) | component | The time grid of a week, work week, day or days: a WAI-ARIA grid whose rows are slots and columns are days, with the… |
@@ -430,15 +431,15 @@ slotMove({ date: '2026-11-18', minute: 540 }, { key: 'ArrowDown' }, { from: 0, t
 ### `eventLabel` `function` — **experimental**
 
 ```ts
-(occurrence, locale, labels) => string
+(occurrence, locale, messages) => string
 ```
 
-What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 to 15:00"; an all-day event says so; one over several days says where it starts and ends.
+What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 – 15:00"; an all-day event says so; one over several days says where it starts and ends.
 
 **Example**
 
 ```tsx
-eventLabel(expandOccurrences([{ id: 'p', title: 'Public holiday', start: '2026-11-17', end: '2026-11-18' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC')[0]!, 'en-GB', DEFAULT_LABELS)   // => 'Public holiday, Tuesday 17 November, all day'
+eventLabel(expandOccurrences([{ id: 'p', title: 'Public holiday', start: '2026-11-17', end: '2026-11-18' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC')[0]!, 'en-GB', defaultMessages('en-GB'))   // => 'Public holiday, Tuesday 17 November, all day'
 ```
 
 ---
@@ -459,18 +460,34 @@ dayLabel('2026-11-18', 'en-GB')   // => 'Wednesday 18 November'
 
 ---
 
-### `DEFAULT_LABELS` `constant` — **experimental**
+### `defaultMessages` `function` — **experimental**
 
 ```ts
-CalendarLabels
+(locale) => CalendarMessages
 ```
 
-The words the calendar says (labels, "all day", "N more", the names of the views). Replace any of them through the `labels` prop for a translation.
+Every word the calendar says, for a locale. "Month", "week", "day" and "year" come from `Intl.DisplayNames`, "today" and the previous/next button names from `Intl.RelativeTimeFormat`, numbers from `Intl.NumberFormat`; "all day" from a small table (en, cs, ar, ja, de, fr, es); the rest are English placeholders (symbols such as "+3" outside English) that the `messages` option replaces. Use it to see what you would override.
 
 **Example**
 
 ```tsx
-DEFAULT_LABELS.allDay   // => 'all day'
+defaultMessages('cs').today   // => 'Dnes'
+```
+
+---
+
+### `capitalise` `function` — **experimental**
+
+```ts
+(text, locale) => string
+```
+
+Upper-case the first grapheme where the script has case (Arabic and Japanese are left alone).
+
+**Example**
+
+```tsx
+capitalise('dnes', 'cs')   // => 'Dnes'
 ```
 
 ---

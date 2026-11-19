@@ -2938,9 +2938,9 @@ gridMove('2026-11-18', { key: 'ArrowRight' }, { rtl: true })   // => '2026-11-17
   },
 
   'calendar/eventLabel': {
-    signature: '(occurrence, locale, labels) => string',
-    example: `eventLabel(expandOccurrences([{ id: 'p', title: 'Public holiday', start: '2026-11-17', end: '2026-11-18' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC')[0]!, 'en-GB', DEFAULT_LABELS)   // => 'Public holiday, Tuesday 17 November, all day'`,
-    notes: '[EXPERIMENTAL] What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 to 15:00"; an all-day event says so; one over several days says where it starts and ends. Added in v0.53.0.',
+    signature: '(occurrence, locale, messages) => string',
+    example: `eventLabel(expandOccurrences([{ id: 'p', title: 'Public holiday', start: '2026-11-17', end: '2026-11-18' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC')[0]!, 'en-GB', defaultMessages('en-GB'))   // => 'Public holiday, Tuesday 17 November, all day'`,
+    notes: '[EXPERIMENTAL] What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 – 15:00"; an all-day event says so; one over several days says where it starts and ends. Added in v0.53.0.',
   },
 
   'calendar/dayLabel': {
@@ -2949,10 +2949,16 @@ gridMove('2026-11-18', { key: 'ArrowRight' }, { rtl: true })   // => '2026-11-17
     notes: '[EXPERIMENTAL] A date as it is read: "Tuesday 18 November". Added in v0.53.0.',
   },
 
-  'calendar/DEFAULT_LABELS': {
-    signature: 'CalendarLabels',
-    example: `DEFAULT_LABELS.allDay   // => 'all day'`,
-    notes: '[EXPERIMENTAL] The words the calendar says (labels, "all day", "N more", the names of the views). Replace any of them through the `labels` prop for a translation. Added in v0.53.0.',
+  'calendar/defaultMessages': {
+    signature: '(locale) => CalendarMessages',
+    example: `defaultMessages('cs').today   // => 'Dnes'`,
+    notes: '[EXPERIMENTAL] Every word the calendar says, for a locale. "Month", "week", "day" and "year" come from `Intl.DisplayNames`, "today" and the previous/next button names from `Intl.RelativeTimeFormat`, numbers from `Intl.NumberFormat`; "all day" from a small table (en, cs, ar, ja, de, fr, es); the rest are English placeholders (symbols such as "+3" outside English) that the `messages` option replaces. Use it to see what you would override. Added in v0.53.0.',
+  },
+
+  'calendar/capitalise': {
+    signature: '(text, locale) => string',
+    example: `capitalise('dnes', 'cs')   // => 'Dnes'`,
+    notes: '[EXPERIMENTAL] Upper-case the first grapheme where the script has case (Arabic and Japanese are left alone). Added in v0.53.0.',
   },
 
   'calendar/Calendar': {

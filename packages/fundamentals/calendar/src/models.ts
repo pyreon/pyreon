@@ -90,7 +90,7 @@ function memoLayout<T, R>(signature: () => string, data: () => T, compute: (data
 }
 
 /** The weeks of the month on show; each week's layout is recomputed only when that week's events change. */
-export function createMonthModel<Meta>(s: CalState<Meta>): Computed<{ key: string; weeks: readonly MonthWeek[]; weekdays: readonly Weekday[] }> {
+export function createMonthModel<Meta>(s: CalState<Meta>): Computed<{ key: string; weeks: readonly MonthWeek[]; weekdays: readonly Weekday[]; capacity: number }> {
   const memo = new Memo<Computed<WeekLayout>>()
   const capacity = (): number => s.options.monthCapacity ?? 3
 
@@ -118,7 +118,7 @@ export function createMonthModel<Meta>(s: CalState<Meta>): Computed<{ key: strin
     })
     memo.sweep(keep)
 
-    return { key: monthKey, weeks, weekdays: (shown.rows[0] ?? []).map((d) => dayOfWeek(d)) }
+    return { key: monthKey, weeks, weekdays: (shown.rows[0] ?? []).map((d) => dayOfWeek(d)), capacity: capacity() }
   })
 }
 

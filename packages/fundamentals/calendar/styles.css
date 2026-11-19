@@ -2,67 +2,169 @@
  * @pyreon/calendar: the default look of <Calendar>, <MonthView>, <WeekView>, <DayView> and <CalendarToolbar>. Import it once
  * (`import '@pyreon/calendar/styles.css'`) or write your own: every part has a `pcal-*` class and state is on data attributes
  * (`data-today`, `data-selected`, `data-outside`, `data-weekend`, `data-business`, `data-continues-before`, `data-continues-after`,
- * `data-recurring`; an event's `color` is its `--pcal-event`). Sizes and colours are custom properties on `.pcal`. Logical properties throughout, so it
- * mirrors in right-to-left text; it animates nothing.
+ * `data-recurring`, `data-short`). Everything you may want to change is a custom property on `.pcal` (listed below); an event's
+ * `color` sets its `--pcal-event`. Logical properties throughout, so it mirrors in right-to-left text. Light and dark follow the
+ * page's `color-scheme` (the system colours Canvas and CanvasText); it animates only when the user has not asked for less
+ * motion, and in forced-colors (high contrast) events keep a border and the focus ring stays visible.
  */
 .pcal {
-  --pcal-border: color-mix(in srgb, CanvasText 16%, Canvas);
-  --pcal-muted: color-mix(in srgb, CanvasText 62%, Canvas);
-  --pcal-today: color-mix(in srgb, Highlight 18%, Canvas);
-  --pcal-selected: color-mix(in srgb, Highlight 30%, Canvas);
-  --pcal-outside: color-mix(in srgb, CanvasText 4%, Canvas);
-  --pcal-closed: color-mix(in srgb, CanvasText 5%, Canvas);
-  --pcal-event: #1d4ed8;
-  --pcal-event-text: #fff;
-  --pcal-lane-size: 22px;
-  --pcal-day-head: 24px;
-  --pcal-slot: 28px;
-  --pcal-gutter: 56px;
-  --pcal-col-min: 96px;
+  /* type */
+  --pcal-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+  --pcal-font-size: 14px;
+  /* colours */
+  --pcal-bg: Canvas;
+  --pcal-fg: CanvasText;
+  --pcal-accent: #2563eb;
+  --pcal-accent-fg: #fff;
+  --pcal-border: color-mix(in srgb, var(--pcal-fg) 14%, var(--pcal-bg));
+  --pcal-border-soft: color-mix(in srgb, var(--pcal-fg) 8%, var(--pcal-bg));
+  --pcal-muted: color-mix(in srgb, var(--pcal-fg) 62%, var(--pcal-bg));
+  --pcal-today: color-mix(in srgb, var(--pcal-accent) 7%, var(--pcal-bg));
+  --pcal-selected: color-mix(in srgb, var(--pcal-accent) 16%, var(--pcal-bg));
+  --pcal-outside: color-mix(in srgb, var(--pcal-fg) 3%, var(--pcal-bg));
+  --pcal-weekend: color-mix(in srgb, var(--pcal-fg) 2.5%, var(--pcal-bg));
+  --pcal-closed: color-mix(in srgb, var(--pcal-fg) 5%, var(--pcal-bg));
+  --pcal-now: #e11d48;
   --pcal-focus: #1d4ed8;
+  /* events: --pcal-event is the colour of one event (its edge); the chip tint and the text derive from it */
+  --pcal-event: #2563eb;
+  --pcal-event-tint: 16%;
+  --pcal-event-bg: color-mix(in srgb, var(--pcal-event) var(--pcal-event-tint), var(--pcal-bg));
+  --pcal-event-fg: color-mix(in srgb, var(--pcal-event) 42%, var(--pcal-fg));
+  --pcal-event-edge: 3px;
+  /* shape and size */
+  --pcal-radius: 8px;
+  --pcal-event-radius: 5px;
+  --pcal-lane-size: 22px;
+  --pcal-day-head: 28px;
+  --pcal-slot-n: 28;
+  --pcal-slot: calc(var(--pcal-slot-n) * 1px);
+  --pcal-gutter: 64px;
+  --pcal-col-min: 96px;
   container-type: inline-size;
 
-  color: CanvasText;
-  background: Canvas;
+  box-sizing: border-box;
+  color: var(--pcal-fg);
+  background: var(--pcal-bg);
   color-scheme: light dark;
-  font: inherit;
+  font-family: var(--pcal-font);
+  font-size: var(--pcal-font-size);
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
 }
 
+.pcal *,
+.pcal *::before,
+.pcal *::after {
+  box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pcal {
+    --pcal-accent: #60a5fa;
+    --pcal-accent-fg: #0b1220;
+    --pcal-border: color-mix(in srgb, var(--pcal-fg) 11%, var(--pcal-bg));
+    --pcal-border-soft: color-mix(in srgb, var(--pcal-fg) 6%, var(--pcal-bg));
+    --pcal-today: color-mix(in srgb, var(--pcal-accent) 10%, var(--pcal-bg));
+    --pcal-selected: color-mix(in srgb, var(--pcal-accent) 24%, var(--pcal-bg));
+    --pcal-event-tint: 26%;
+    --pcal-event-fg: color-mix(in srgb, var(--pcal-event) 40%, var(--pcal-fg));
+    --pcal-now: #fb7185;
+    --pcal-focus: #93c5fd;
+  }
+}
+
+/* ---- toolbar ---- */
 .pcal-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-block: 8px;
   flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-block: 0 12px;
 }
 
 .pcal-nav,
 .pcal-views {
   display: inline-flex;
-  gap: 4px;
+  align-items: stretch;
+  gap: 8px;
 }
 
 .pcal-title {
-  flex: 1;
+  flex: 1 1 auto;
+  min-inline-size: 0;
   margin: 0;
-  font-size: 1.1em;
-  font-weight: 600;
+  font-size: 1.25em;
+  font-weight: 650;
+  text-align: start;
+  text-wrap: balance;
 }
 
 .pcal-btn {
   min-inline-size: 36px;
   min-block-size: 36px;
-  padding-inline: 10px;
+  padding-inline: 12px;
   border: 1px solid var(--pcal-border);
-  border-radius: 8px;
-  background: transparent;
+  border-radius: var(--pcal-radius);
+  background: var(--pcal-bg);
   color: inherit;
   font: inherit;
+  font-weight: 500;
   cursor: pointer;
 }
 
+.pcal-btn:hover {
+  background: var(--pcal-outside);
+}
+
+.pcal-prev,
+.pcal-next {
+  padding-inline: 0;
+  font-size: 1.3em;
+  line-height: 1;
+}
+
+/* previous and next point the way the text reads: they flip in right-to-left */
+.pcal-prev span,
+.pcal-next span {
+  display: inline-block;
+}
+
+.pcal-prev:dir(rtl) span,
+.pcal-next:dir(rtl) span {
+  transform: scaleX(-1);
+}
+
+/* the view switch: one segmented control */
+.pcal-views {
+  gap: 0;
+}
+
+.pcal-views .pcal-btn {
+  border-radius: 0;
+}
+
+.pcal-views .pcal-btn + .pcal-btn {
+  margin-inline-start: -1px;
+}
+
+.pcal-views .pcal-btn:first-child {
+  border-start-start-radius: var(--pcal-radius);
+  border-end-start-radius: var(--pcal-radius);
+}
+
+.pcal-views .pcal-btn:last-child {
+  border-start-end-radius: var(--pcal-radius);
+  border-end-end-radius: var(--pcal-radius);
+}
+
 .pcal-btn[aria-pressed='true'] {
+  position: relative;
   background: var(--pcal-selected);
+  border-color: color-mix(in srgb, var(--pcal-accent) 55%, var(--pcal-border));
+  color: color-mix(in srgb, var(--pcal-accent) 70%, var(--pcal-fg));
+  font-weight: 650;
 }
 
 .pcal-btn:focus-visible,
@@ -73,16 +175,15 @@
   outline-offset: -3px;
 }
 
-@media (prefers-color-scheme: dark) {
-  .pcal {
-    --pcal-focus: #93c5fd;
-  }
+.pcal-btn:focus-visible {
+  outline-offset: 1px;
+  z-index: 1;
 }
 
 /* ---- month ---- */
 .pcal-month {
   border: 1px solid var(--pcal-border);
-  border-radius: 8px;
+  border-radius: var(--pcal-radius);
   overflow: hidden;
 }
 
@@ -92,22 +193,40 @@
   grid-template-columns: repeat(var(--pcal-days, 7), minmax(0, 1fr));
 }
 
+/* every row is as tall as the lanes the month shows (the capacity) and a "+N more" line: rows do not jump */
+.pcal-week {
+  block-size: calc(var(--pcal-day-head) + (var(--pcal-capacity, 3) + 1) * var(--pcal-lane-size) + 6px);
+}
+
 .pcal-weekday {
-  padding: 6px 8px;
+  padding: 8px;
   color: var(--pcal-muted);
   font-size: 0.8em;
   font-weight: 600;
+  text-align: start;
   text-transform: uppercase;
   border-block-end: 1px solid var(--pcal-border);
 }
 
 .pcal-day {
   position: relative;
-  box-sizing: border-box;
-  min-block-size: calc(var(--pcal-day-head) + var(--pcal-lanes, 1) * var(--pcal-lane-size) + 8px);
   min-inline-size: 0;
-  border-inline-end: 1px solid var(--pcal-border);
-  border-block-end: 1px solid var(--pcal-border);
+  border-inline-end: 1px solid var(--pcal-border-soft);
+  border-block-end: 1px solid var(--pcal-border-soft);
+}
+
+.pcal-week:last-child .pcal-day {
+  border-block-end: 0;
+}
+
+.pcal-day:last-child {
+  border-inline-end: 0;
+}
+
+.pcal-day[data-weekend],
+.pcal-slot[data-weekend],
+.pcal-colhead[data-weekend] {
+  background: var(--pcal-weekend);
 }
 
 .pcal-day[data-outside] {
@@ -115,7 +234,8 @@
   color: var(--pcal-muted);
 }
 
-.pcal-day[data-today] {
+.pcal-day[data-today],
+.pcal-colhead[data-today] {
   background: var(--pcal-today);
 }
 
@@ -124,37 +244,59 @@
   background: var(--pcal-selected);
 }
 
-.pcal-day-head {
-  display: block;
-  block-size: var(--pcal-day-head);
-  padding: 4px 8px 0;
-  font-size: 0.85em;
+/* the day number; today's is a filled circle (the same in the month and in the column heads of the time grid) */
+.pcal-day-head,
+.pcal-colhead-date {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 24px;
+  block-size: 24px;
+  margin: 2px 4px 0;
+  padding-inline: 4px;
+  border-radius: 12px;
+  font-size: 0.9em;
+  font-weight: 500;
 }
 
-.pcal-day[data-today] .pcal-day-head {
+.pcal-day[data-today] .pcal-day-head,
+.pcal-colhead[data-today] .pcal-colhead-date {
+  background: var(--pcal-accent);
+  color: var(--pcal-accent-fg);
   font-weight: 700;
 }
 
+/* ---- events ---- */
 .pcal-event {
-  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 6px;
+  min-inline-size: 0;
   padding: 0 6px;
   border: 0;
-  border-radius: 4px;
-  background: var(--pcal-event);
-  color: var(--pcal-event-text);
+  border-inline-start: var(--pcal-event-edge) solid var(--pcal-event);
+  border-radius: var(--pcal-event-radius);
+  background: var(--pcal-event-bg);
+  color: var(--pcal-event-fg);
   font: inherit;
-  font-size: 0.85em;
+  font-size: 0.9em;
+  font-weight: 550;
   text-align: start;
   cursor: pointer;
   overflow: hidden;
-  white-space: nowrap;
+}
+
+.pcal-event-title {
+  /* a title is read in its own direction, so an English title in an Arabic page still truncates at its end */
+  unicode-bidi: plaintext;
+  min-inline-size: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pcal-event[data-continues-before] {
+  border-inline-start-width: 0;
   border-start-start-radius: 0;
   border-end-start-radius: 0;
 }
@@ -175,19 +317,28 @@
 }
 
 .pcal-more {
-  background: transparent;
+  padding-inline: 6px;
   border: 0;
+  border-radius: var(--pcal-event-radius);
+  background: transparent;
   color: var(--pcal-muted);
   font: inherit;
-  font-size: 0.8em;
+  font-size: 0.85em;
+  font-weight: 600;
   text-align: start;
+  white-space: nowrap;
   cursor: pointer;
+}
+
+.pcal-more:hover {
+  background: var(--pcal-border-soft);
+  color: var(--pcal-fg);
 }
 
 /* ---- time grid ---- */
 .pcal-timegrid {
   border: 1px solid var(--pcal-border);
-  border-radius: 8px;
+  border-radius: var(--pcal-radius);
   overflow: auto;
   max-block-size: 70vh;
 }
@@ -202,28 +353,33 @@
 .pcal-head {
   position: sticky;
   inset-block-start: 0;
-  z-index: 3;
-  background: Canvas;
+  z-index: 4;
+  background: var(--pcal-bg);
   border-block-end: 1px solid var(--pcal-border);
 }
 
 .pcal-colhead {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 4px;
   padding: 6px 4px;
-  border-inline-start: 1px solid var(--pcal-border);
+  border-inline-start: 1px solid var(--pcal-border-soft);
 }
 
-.pcal-colhead[data-today] {
-  background: var(--pcal-today);
-  font-weight: 700;
+.pcal-colhead-date {
+  margin: 0;
 }
 
 .pcal-colhead-weekday {
   color: var(--pcal-muted);
-  font-size: 0.75em;
+  font-size: 0.8em;
+  font-weight: 600;
   text-transform: uppercase;
+}
+
+.pcal-colhead[data-today] .pcal-colhead-weekday {
+  color: var(--pcal-accent);
 }
 
 .pcal-allday {
@@ -233,7 +389,7 @@
 .pcal-allday-cell {
   position: relative;
   min-block-size: calc(var(--pcal-lanes, 1) * var(--pcal-lane-size) + 6px);
-  border-inline-start: 1px solid var(--pcal-border);
+  border-inline-start: 1px solid var(--pcal-border-soft);
 }
 
 .pcal-allday-event {
@@ -249,15 +405,22 @@
 .pcal-corner {
   position: sticky;
   inset-inline-start: 0;
-  z-index: 2;
-  background: Canvas;
+  z-index: 3;
+  background: var(--pcal-bg);
 }
 
 .pcal-gutter-cell {
-  padding-inline: 6px;
+  padding-inline: 8px;
   color: var(--pcal-muted);
   font-size: 0.75em;
   text-align: end;
+  white-space: nowrap;
+}
+
+/* the hour is written at the line it belongs to; the half hours are for screen readers */
+.pcal-gutter-cell[data-hour] span {
+  position: relative;
+  inset-block-start: -0.7em;
 }
 
 .pcal-gutter-cell:not([data-hour]) span {
@@ -271,57 +434,122 @@
 
 .pcal-slot {
   position: relative;
-  box-sizing: border-box;
   block-size: var(--pcal-slot);
-  border-inline-start: 1px solid var(--pcal-border);
-  border-block-start: 1px dotted var(--pcal-border);
+  border-inline-start: 1px solid var(--pcal-border-soft);
+  border-block-start: 1px dotted var(--pcal-border-soft);
 }
 
 .pcal-row[data-hour] .pcal-slot {
-  border-block-start-style: solid;
+  border-block-start: 1px solid var(--pcal-border);
 }
 
 .pcal-slot[data-business='closed'] {
   background: var(--pcal-closed);
 }
 
-.pcal-slot[data-weekend] {
-  background-image: linear-gradient(var(--pcal-outside), var(--pcal-outside));
+.pcal-slot[data-business='closed'][data-selected] {
+  background: var(--pcal-selected);
+}
+
+/* a block: tinted, with a stronger edge in the event's colour; the title truncates with an ellipsis and the time goes first */
+.pcal-block {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  min-block-size: 20px;
+  padding: 2px 5px;
+  font-size: 0.85em;
+  line-height: 1.25;
+  box-shadow: 0 0 0 1px var(--pcal-bg);
+}
+
+.pcal-block-in {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  container-type: inline-size;
+  overflow: hidden;
+}
+
+.pcal-block .pcal-event-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--pcal-lines, 1);
+  line-clamp: var(--pcal-lines, 1);
+  white-space: normal;
+  overflow-wrap: break-word;
+  overflow: hidden;
 }
 
 .pcal-block {
-  font-size: 0.8em;
-  line-height: 1.15;
-  min-block-size: 18px;
-  overflow-wrap: break-word;
-  position: absolute;
-  z-index: 1;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-start;
-  padding: 1px 3px;
-  white-space: normal;
-  border: 1px solid Canvas;
+  /* the whole lines the block's height holds: the title takes them all, minus one for the time when that shows */
+  --pcal-lines: max(1, round(down, calc((var(--pcal-slots, 1) * var(--pcal-slot-n) - 8) / 15), 1));
 }
 
-.pcal-block[data-short]::after {
+.pcal-block:not([data-short]) .pcal-event-title {
+  -webkit-line-clamp: max(1, calc(var(--pcal-lines) - 1));
+  line-clamp: max(1, calc(var(--pcal-lines) - 1));
+}
+
+.pcal-block-time {
+  display: block;
+  font-size: 0.9em;
+  font-weight: 450;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.pcal-block-time::after {
+  /* drawn, not part of the text: the accessible name of the button has the time */
+  content: attr(data-time);
+}
+
+.pcal-block[data-short] .pcal-block-time {
   display: none;
 }
 
-.pcal-block::after {
-  /* the time, drawn but not part of the text (the accessible name has it) */
-  content: attr(data-time);
-  font-size: 0.85em;
-  opacity: 0.85;
+@container (max-inline-size: 80px) {
+  .pcal-block-time {
+    display: none;
+  }
 }
 
+/* a sliver (four events side by side): one line, cut with an ellipsis, never in the middle of a glyph */
+@container (max-inline-size: 72px) {
+  .pcal-block .pcal-event-title {
+    display: block;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+/* a narrow block opens up on hover and focus so its title can be read over its neighbours */
+.pcal-block:hover,
+.pcal-block:focus-visible {
+  z-index: 5;
+  min-inline-size: min(160px, 100%);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--pcal-fg) 25%, transparent);
+}
+
+/* the now line: under the text of the events, with a dot at the start of today's column */
 .pcal-now {
   position: absolute;
-  z-index: 2;
+  z-index: 0;
   inset-inline: 0;
   block-size: 0;
-  border-block-start: 2px solid red;
+  border-block-start: 2px solid var(--pcal-now);
   pointer-events: none;
+}
+
+.pcal-now::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -5px;
+  inset-block-start: -6px;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  background: var(--pcal-now);
 }
 
 /* text for assistive technology only: the full date of a cell */
@@ -337,20 +565,92 @@
   border: 0;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .pcal-btn,
+  .pcal-more,
+  .pcal-block {
+    transition:
+      background-color 0.12s ease,
+      box-shadow 0.12s ease;
+  }
+}
+
 /* a narrow calendar (a phone): the month shows events as bars (their names stay in the markup; a tap on a day selects it), and the
    time grid keeps readable columns and scrolls sideways with its time gutter and header fixed */
 @container (max-width: 560px) {
   .pcal-month {
     --pcal-lane-size: 10px;
-    --pcal-day-head: 22px;
+    --pcal-day-head: 26px;
   }
 
   .pcal-month .pcal-event {
     padding: 0;
+    border-inline-start-width: 0;
     font-size: 0;
   }
 
   .pcal-month .pcal-more {
+    padding-inline: 2px;
     font-size: 0.65em;
+  }
+
+  .pcal-title {
+    flex-basis: 100%;
+    order: -1;
+  }
+}
+
+/* high contrast: the colours are the user's, so shape does the work: events keep a border, state is an outline */
+@media (forced-colors: active) {
+  .pcal-event {
+    border: 1px solid ButtonText;
+    border-inline-start-width: var(--pcal-event-edge);
+    background: ButtonFace;
+    color: ButtonText;
+    forced-color-adjust: none;
+  }
+
+  .pcal-day[data-today],
+  .pcal-colhead[data-today] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .pcal-day[data-today] .pcal-day-head,
+  .pcal-colhead[data-today] .pcal-colhead-date {
+    border: 2px solid Highlight;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .pcal-btn[aria-pressed='true'] {
+    border: 3px solid Highlight;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+
+  .pcal-day[data-selected],
+  .pcal-slot[data-selected] {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+
+  .pcal-btn:focus-visible,
+  .pcal-event:focus-visible,
+  .pcal-more:focus-visible,
+  [role='gridcell']:focus-visible {
+    outline: 3px solid Highlight;
+  }
+
+  .pcal-now {
+    border-block-start-color: Highlight;
+  }
+
+  .pcal-now::before {
+    background: Highlight;
+  }
+
+  .pcal-slot[data-business='closed'] {
+    background: repeating-linear-gradient(135deg, GrayText 0 1px, transparent 1px 7px);
   }
 }
