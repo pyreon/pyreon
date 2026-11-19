@@ -7,6 +7,28 @@ import { diagnoseError } from '../diagnose'
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('diagnoseError (browser-safe error catalog)', () => {
+  it('explains a memory router initialIndex outside its entries', () => {
+    const result = diagnoseError(
+      '[Pyreon Router] initialIndex 5 is outside initialEntries (0–2) — starting at entry 2. Pass an index into the initialEntries array.',
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('initialIndex')
+    expect(result!.fix).toContain('initialEntries.length - 1')
+    // The option name alone is not this entry.
+    expect(diagnoseError('what does initialIndex do?')?.cause ?? '').not.toContain('clamps')
+  })
+
+  it('explains a memory router that cancelled an external redirect', () => {
+    const result = diagnoseError(
+      `[Pyreon Router] mode: 'memory' does not follow the external redirect to "https://example.com/pay" — it would navigate the whole page. Navigation cancelled; call window.location.assign() yourself if leaving the page is intended.`,
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('memory')
+    expect(result!.fix).toContain('window.location.assign')
+    // An ordinary redirect message is not this entry.
+    expect(diagnoseError('redirect loop detected')?.fix ?? '').not.toContain('window.location.assign')
+  })
+
   it('explains a loader notFound() that answered 500 (SSR and the data endpoint)', () => {
     for (const message of [
       '[Pyreon] SSR render failed for /items/9999: Error: Not Found',
@@ -639,5 +661,20 @@ describe('diagnoseError — visible island with nothing to observe (#4435)', () 
 
   it('does not fire on unrelated visible-strategy text', () => {
     expect(diagnoseError("island uses hydrate: 'visible' and loads late")?.cause ?? '').not.toContain('box-less')
+  })
+})
+
+describe('diagnoseError — a throw while hydrating a subtree', () => {
+  test('the runtime-dom message names the component and the containment', () => {
+    const result = diagnoseError('[Pyreon] <ProfileCard> threw during hydration: TypeError: x is undefined')
+    expect(result?.cause).toContain('<ProfileCard>')
+    expect(result?.cause).toContain('hydrated')
+    expect(result?.fix).toContain('ErrorBoundary')
+  })
+
+  test('an unrelated message does not match', () => {
+    expect(diagnoseError('[Pyreon] <ProfileCard> threw during render: boom')?.cause ?? '').not.toContain(
+      'hydrated',
+    )
   })
 })

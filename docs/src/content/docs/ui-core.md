@@ -222,7 +222,7 @@ init({ cssVariables: { prefix: 'px', attribute: 'data-theme' } })
 
 What `PyreonUI` does under this flag:
 
-- Autogenerates `--px-*` custom properties from the enriched theme (`themeToCssVars`) and injects the `:root` block once per theme identity (SSR-aware — the block rides `getStyleTag()` / the stream flush on the server).
+- Autogenerates `--px-*` custom properties from the enriched theme (`themeToCssVars`) and writes the `:root` block into the sheet's ONE root-variables slot (`sheet.setRootVariables`), replacing the previous theme's block on every swap (SSR-aware — per request on the server, leading `getStyleTag()` / the first stream flush).
 - Provides a **var-leaf** theme tree — every eligible theme value becomes a `var(--px-…)` reference string that flows through the styler / unistyle value pipeline untouched.
 - The **root** `PyreonUI` writes the mode attribute to `document.documentElement` (so it sits at `:root`, where the var rules cascade from).
 - **Nested / `inversed`** providers render a layout-neutral `display: contents` wrapper carrying the mode attribute, scoping the override to their subtree via the CSS cascade.

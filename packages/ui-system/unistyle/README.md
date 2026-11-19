@@ -1,5 +1,7 @@
 # @pyreon/unistyle
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Responsive CSS engine — property-centric theme objects, automatic media queries, breakpoint dedup.
 
 `@pyreon/unistyle` transforms theme objects (`{ padding: { xs: 8, md: 16 }, fontSize: 14 }`) into breakpoint-centric CSS with mobile-first media queries. Automatic px→rem conversion, 170+ CSS property mappings, three input shapes per property (scalar / mobile-first array / breakpoint object), and an optimizer that emits only the per-breakpoint DELTAS — so a property set at `xs` doesn't re-emit at every larger breakpoint. Powers the responsive system behind `@pyreon/elements`, `@pyreon/coolgrid`, and `@pyreon/rocketstyle`. Per-theme cached so re-renders against the same theme reference return the previous output verbatim.

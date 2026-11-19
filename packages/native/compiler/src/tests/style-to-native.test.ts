@@ -351,11 +351,12 @@ describe('inline style — border (emit)', () => {
     expect(warnings.join('\n')).toMatch(/only a solid border lowers/)
   })
 
-  it('a dynamic border (ternary) emits the then-branch statically + warns', () => {
+  it('a dynamic border (ternary) folds its width and colour per branch (#4346)', () => {
     const src = `<Stack style={active() ? { borderWidth: 2, borderColor: '#2563eb' } : { borderWidth: 1, borderColor: '#6b7280' }}><Text>x</Text></Stack>`
     const { code, warnings } = dynSwift(src)
-    expect(code).toContain('.overlay(RoundedRectangle(cornerRadius: 0).stroke(Color(.sRGB, red: 0.145')
-    expect(warnings.join('\n')).toMatch(/\[border\].*differ in shape or exist in only one branch/)
+    expect(code).toContain('.overlay(RoundedRectangle(cornerRadius: 0).stroke(((active) ? Color(.sRGB, red: 0.145')
+    expect(code).toContain('lineWidth: ((active) ? 2 : 1))')
+    expect(warnings.join('\n')).not.toMatch(/\[border\]/)
   })
 })
 

@@ -1,5 +1,7 @@
 # @pyreon/mcp
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 MCP server for AI-assisted Pyreon development — API reference, validation, migration, project audits.
 
 `@pyreon/mcp` is a Model Context Protocol server that gives AI coding assistants (Claude Code, Cursor, Windsurf, etc.) direct access to Pyreon's API reference + foot-gun catalogue + project audits. **24 tools** span discovery (`mcp_overview`), API lookup (`get_api`), static validation (`validate`, `explain_reactivity`), codemods (`migrate_react`, `migrate_pyreon`), error diagnosis (`diagnose`, `explain_error`), project introspection (`get_routes`, `get_components`), content navigation (`get_content_collection`, `get_content_entry`), proactive docs (`get_pattern`, `get_anti_patterns`, `get_changelog`), project-wide audits (`audit_test_environment`, `audit_islands`, `get_browser_smoke_status`), workspace / component-catalog verification (`get_dependency_fabric`, `get_atlas_catalog`, `get_atlas_component`), and the project's generated API client (`get_api_client`, `get_api_operation`, `explain_api_diff`). Token-frugal by default: `get_anti_patterns` returns a compact index — kept at least ~60% smaller than the full catalogue by a density gate, not a pinned size (see `src/tests/token-budget.test.ts`).

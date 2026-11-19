@@ -4750,6 +4750,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     if (afterEach.length > 0) decl.afterEach = afterEach
     const tabs = tryExtractRouterTabs(init.arguments?.[0], ctx.warnings)
     if (tabs !== undefined) decl.tabs = tabs
+    warnRouterStartPosition(init.arguments?.[0], ctx.warnings)
 
     return decl
   }
@@ -5298,6 +5299,23 @@ function tryExtractRouterTabs(arg: AnyNode | undefined, warnings: string[]): { n
   }
 
   return out.length > 0 ? out : undefined
+}
+
+/**
+ * `createRouter({ mode: 'memory', initialEntries, initialIndex })`. `mode` needs nothing: the native routers are
+ * in-memory stacks already, whatever the web mode. The start position has no native counterpart (the router opens on
+ * its root route), so it is NAMED here rather than dropped silently.
+ */
+function warnRouterStartPosition(arg: AnyNode | undefined, warnings: string[]): void {
+  if (!arg || arg.type !== 'ObjectExpression') return
+  const keys = ((arg.properties as AnyNode[] | undefined) ?? [])
+    .filter((p) => p?.type === 'Property')
+    .map((p) => staticPropKey(p))
+    .filter((k) => k === 'initialEntries' || k === 'initialIndex')
+  if (keys.length === 0) return
+  warnings.push(
+    `[pyreon-native] createRouter ${keys.map((k) => `\`${k}\``).join(' / ')} (the web memory router's start position) is IGNORED on iOS/Android — the native router always opens on its root route with an empty stack. Navigate from the root page (\`useNavigate()\`) if it must start deeper.`,
+  )
 }
 
 function tryExtractGuardRefArray(

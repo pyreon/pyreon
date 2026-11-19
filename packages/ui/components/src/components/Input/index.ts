@@ -1,4 +1,4 @@
-import { disabledState, el, focusRingTone, tones } from '../../factory'
+import { disabledState, el, fieldKeys, fieldStatus, fieldVariant, focusRingTone, tones } from '../../factory'
 
 const Input = el
   .config({ name: 'Input' })
@@ -19,6 +19,7 @@ const Input = el
     required?: boolean
   }>({ tag: 'input', block: true })
   .theme((t, m) => ({
+    ...fieldKeys(t, m),
     width: '100%',
     backgroundColor: tones(t, m).surface,
     color: tones(t, m).text,
@@ -37,14 +38,8 @@ const Input = el
     },
   }))
   .states((t) => ({
-    error: {
-      borderColor: t.color.system.error.base,
-      focus: focusRingTone(t, 'error'),
-    },
-    success: {
-      borderColor: t.color.system.success.base,
-      focus: focusRingTone(t, 'success'),
-    },
+    error: fieldStatus(t, 'error'),
+    success: fieldStatus(t, 'success'),
   }))
   .sizes((t) => ({
     small: {
@@ -72,29 +67,31 @@ const Input = el
       borderRadius: t.borderRadius.medium,
     },
   }))
-  .variants((t, m) => ({
+  // The variants keep the state's border (`fieldKeys` / `fieldStatus`): a
+  // `filled` or `underline` field in `state="error"` still shows red.
+  .variants((t) => ({
     outline: {},
-    filled: {
+    filled: fieldVariant((field) => ({
       backgroundColor: t.color.system.base[100],
-      borderColor: t.color.system.transparent,
+      borderColor: field.fieldStatus || t.color.system.transparent,
       focus: {
-        backgroundColor: tones(t, m).surface,
-        borderColor: t.color.system.primary.base,
+        backgroundColor: field.fieldSurface,
+        borderColor: field.fieldFocus,
       },
-    },
-    underline: {
+    })),
+    underline: fieldVariant((field) => ({
       borderWidth: 0,
       borderWidthBottom: 2,
       borderStyleBottom: 'solid',
-      borderColorBottom: tones(t, m).border,
+      borderColorBottom: field.fieldBorder,
       borderRadius: 0,
       paddingLeft: 0,
       paddingRight: 0,
       focus: {
         boxShadow: 'none',
-        borderColorBottom: t.color.system.primary.base,
+        borderColorBottom: field.fieldFocus,
       },
-    },
+    })),
   }))
 
 export default Input
@@ -114,6 +111,7 @@ export const Textarea = el
     maxLength?: number
   }>({ tag: 'textarea', block: true })
   .theme((t, m) => ({
+    ...fieldKeys(t, m),
     width: '100%',
     backgroundColor: tones(t, m).surface,
     color: tones(t, m).text,
@@ -133,14 +131,8 @@ export const Textarea = el
     },
   }))
   .states((t) => ({
-    error: {
-      borderColor: t.color.system.error.base,
-      focus: focusRingTone(t, 'error'),
-    },
-    success: {
-      borderColor: t.color.system.success.base,
-      focus: focusRingTone(t, 'success'),
-    },
+    error: fieldStatus(t, 'error'),
+    success: fieldStatus(t, 'success'),
   }))
   .sizes((t) => ({
     small: {
@@ -171,27 +163,29 @@ export const Textarea = el
       minHeight: '120px',
     },
   }))
-  .variants((t, m) => ({
+  // The variants keep the state's border (`fieldKeys` / `fieldStatus`): a
+  // `filled` or `underline` field in `state="error"` still shows red.
+  .variants((t) => ({
     outline: {},
-    filled: {
+    filled: fieldVariant((field) => ({
       backgroundColor: t.color.system.base[100],
-      borderColor: t.color.system.transparent,
+      borderColor: field.fieldStatus || t.color.system.transparent,
       focus: {
-        backgroundColor: tones(t, m).surface,
-        borderColor: t.color.system.primary.base,
+        backgroundColor: field.fieldSurface,
+        borderColor: field.fieldFocus,
       },
-    },
-    underline: {
+    })),
+    underline: fieldVariant((field) => ({
       borderWidth: 0,
       borderWidthBottom: 2,
       borderStyleBottom: 'solid',
-      borderColorBottom: tones(t, m).border,
+      borderColorBottom: field.fieldBorder,
       borderRadius: 0,
       paddingLeft: 0,
       paddingRight: 0,
       focus: {
         boxShadow: 'none',
-        borderColorBottom: t.color.system.primary.base,
+        borderColorBottom: field.fieldFocus,
       },
-    },
+    })),
   }))
