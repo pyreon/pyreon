@@ -81,6 +81,7 @@ import { formatRouteModeTable } from './route-modes'
 import { writeServiceWorker } from './pwa'
 import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
 import { serializeServerConfig } from './server-config'
+import { computeClientStartPreload, type ViteManifest } from './ssg-modulepreload'
 import type { ZeroConfig } from './types'
 
 /**
@@ -148,6 +149,11 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   let userPlugins: readonly Plugin[] = []
   // The client build's `index.html`, read in `writeBundle` (see there).
   let builtTemplate: string | undefined
+  // The client build manifest, read in `writeBundle` too: the SSG plugin
+  // (which enables it, for modulepreload) deletes it in its own closeBundle,
+  // which runs before ours. `build.manifest` decides its file name.
+  let manifestOption: BuildOptions['manifest'] = false
+  let clientManifest: ViteManifest | undefined
   // Capture inner-build state once at plugin instantiation. The inner
   // build re-loads zero's plugin chain (same as SSG); without this gate
   // the inner plugin instance would re-enter its own closeBundle.
@@ -203,6 +209,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       assetsDir = resolved.build.assetsDir
       resolvedBase = resolved.base
       userPlugins = resolved.plugins as readonly Plugin[]
+      manifestOption = resolved.build.manifest
     },
 
     // Snapshot the production SSR template the moment the client build has
@@ -222,6 +229,18 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
         )
       } catch {
         builtTemplate = undefined
+      }
+      clientManifest = undefined
+      if (manifestOption) {
+        const file = typeof manifestOption === 'string' ? manifestOption : '.vite/manifest.json'
+        try {
+          clientManifest = JSON.parse(
+            await readFile(join(outputOptions.dir ?? distDir, file), 'utf-8'),
+          ) as ViteManifest
+        } catch {
+          // No manifest: server-rendered pages get no client-start preloads.
+          clientManifest = undefined
+        }
       }
     },
 
@@ -308,6 +327,20 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
         ? join(edgeOutDir, SSR_OUTPUT_FILENAME)
         : undefined
 
+      // #4371: what each kind of page's client loads first beyond the entry
+      // (the app with a lazy entry, the islands runtime on an islands-only
+      // page), the same sets the SSG pages preload. Baked into the server
+      // bundle; `createServer` hands them to the handler, which emits them
+      // per page. Empty when the entry is not lazy.
+      const clientPreload =
+        clientManifest && builtTemplate
+          ? computeClientStartPreload(clientManifest, builtTemplate, resolvedBase)
+          : undefined
+      const define =
+        clientPreload && (clientPreload.app.length > 0 || clientPreload.islands.length > 0)
+          ? { __ZERO_CLIENT_PRELOAD__: JSON.stringify(clientPreload) }
+          : undefined
+
       try {
         if (edgeServerEntry !== undefined) {
           await buildSsrBundle({
@@ -322,6 +355,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
             userPlugins,
             base: resolvedBase,
             edge: true,
+            ...(define ? { define } : {}),
           })
         }
         await buildSsrBundle({
@@ -335,6 +369,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           assetsDir,
           userPlugins,
           base: resolvedBase,
+          ...(define ? { define } : {}),
         })
       } catch (buildError) {
         // Surface with structured context — mode + entry + output +

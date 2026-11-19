@@ -1,5 +1,7 @@
 # @pyreon/svelte-compat
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Svelte-compatible importable runtime — stores, lifecycle, context — running on Pyreon's reactive engine.
 
 `@pyreon/svelte-compat` shims the Svelte APIs your code actually `import`s — `svelte/store` (`writable` / `readable` / `derived` / `get` / `readonly`) and the `svelte` lifecycle / context / dispatch surface (`onMount`, `onDestroy`, `beforeUpdate`, `afterUpdate`, `tick`, `setContext` / `getContext` / `hasContext` / `getAllContexts`, `createEventDispatcher`, `mount` / `unmount` / `flushSync`) — all backed by Pyreon's signal-based reactivity. **This is a runtime shim, not a Svelte compiler.** Single-file components (`.svelte`), Svelte 5 rune *syntax* (`$state` / `$derived` / `$effect` / `$store` auto-subscription), and `<svelte:component>` directives are compiler constructs and are out of scope — only what code imports at runtime is covered (the same boundary `@pyreon/solid-compat` draws around Solid's compiler).

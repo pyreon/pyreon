@@ -1,5 +1,7 @@
 # @pyreon/permissions
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Reactive permissions — RBAC, ABAC, feature flags, subscription tiers.
 
 A unified callable `can(key, context?)` over a map of permission keys to either static booleans or predicate functions. Pyreon-signal-backed: reads inside effects / computeds / JSX track and re-evaluate when permissions change. Universal model — the same API covers role-based access control (boolean keys per role), attribute-based access control (predicate keys reading the resource), feature flags (boolean per flag name), and subscription tiers (predicate reading the user's plan). Wildcard matching (`'posts.*'` matches any `'posts.X'`) and an SSR-isolatable provider for per-request permission state.

@@ -42,6 +42,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { parseSync } from 'oxc-parser'
+import { importedModuleState } from './imported-module-state'
+import { isRelative, resolveModule } from './module-resolve'
 
 // oxc's ESTree output, read structurally.
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -120,11 +122,12 @@ function inlineOnce(
   if (ast.errors.length > 0) return null
   const program = ast.program as Node
   const hooks = collectHooks(program, source)
+  // Module state imported from another file has no native form; it is named once, at the import.
+  const warnings: string[] = [...importedModuleState(program, filename, readModule).values()]
   const unresolved = new Map<string, string>()
   for (const [local, def] of collectImportedHooks(program, filename, readModule, unresolved)) hooks.set(local, def)
   const callerTop = moduleTopBindings(program, source)
   const additions = new Map<string, string>()
-  const warnings: string[] = []
   // Types imported from a sibling module travel too: natively there is no other file to resolve them from.
   const importedTypes = collectImportedTypes(program, filename, readModule, callerTop, additions, warnings)
   if (hooks.size === 0 && unresolved.size === 0 && importedTypes.size === 0) return warnings.length > 0 ? { code: source, warnings } : null
@@ -463,21 +466,6 @@ type TopBinding =
 /** Keys of the pending additions map — one per copied type, one per added import, so a repeat is a no-op. */
 const typeKey = (name: string): string => 'type:' + name
 const importKey = (name: string): string => 'import:' + name
-
-const isRelative = (spec: string): boolean => spec === '.' || spec.startsWith('./') || spec.startsWith('../')
-
-const MODULE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js', '/index.jsx']
-
-function resolveModule(fromFile: string, spec: string, readModule: (p: string) => string | undefined): { path: string; source: string } | undefined {
-  const base = resolve(dirname(fromFile), spec)
-  for (const candidate of [base, ...MODULE_EXTENSIONS.map((e) => base + e)]) {
-    if (/\.(c|m)?[jt]sx?$/.test(candidate) || candidate !== base) {
-      const source = readModule(candidate)
-      if (source !== undefined) return { path: candidate, source }
-    }
-  }
-  return undefined
-}
 
 /**
  * Hooks the calling file imports from a relative module, keyed by their LOCAL name. A hook that cannot be read or

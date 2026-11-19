@@ -79,7 +79,7 @@ describe('bare-signal value with a change handler that does more than set it', (
     expect(swift('<Field value={draft()} onChangeText={(t) => draft.set(t.trim())} />')).toContain('get: { draft }')
   })
 
-  it('a handler passed by reference keeps the earlier shapes (its value argument is a separate gap)', () => {
+  it('a handler passed by reference that takes the value runs through the Binding with it (#4544)', () => {
     const src = (jsx: string) => `import { Stack, Field } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
 function App() {
@@ -87,7 +87,9 @@ function App() {
   const save = (t: string) => draft.set(t)
   return (<Stack>${jsx}</Stack>)
 }`
-    expect(transform(src('<Field value={draft} onChangeText={save} />'), { target: 'swift' }).code).toContain('text: $draft')
+    const sw = transform(src('<Field value={draft} onChangeText={save} />'), { target: 'swift' }).code
+    expect(sw).not.toContain('text: $draft')
+    expect(sw).toContain('set: { newValue in save(newValue) }')
   })
 
   it('a handler that sets a DIFFERENT signal is not redundant', () => {

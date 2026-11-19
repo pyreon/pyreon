@@ -4,6 +4,7 @@
 // `var x by remember { mutableStateOf(initial) }`, computeds to
 // `derivedStateOf { ... }`, JSX elements to Composable function calls.
 
+import { unloweredSignalMethodWarning } from './signal-object-methods'
 import { bitwiseHelper, integerOpHelper, isNumericConstant, numericKind } from './integer-arithmetic'
 import { dateFieldWarning, kotlinDateSerializer } from './date-json'
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
@@ -39,6 +40,7 @@ import {
 } from './async-function'
 import { kotlinStr } from './string-literals'
 import { resolveDateFieldShape, type DateBound } from './date-field-shape'
+import { componentNamesTakingAValue, namesTakingAValue, withValueArgument } from './value-change-handler'
 import { resolveFieldShape } from './field-shape'
 import { resolveSelectOptions } from './select-shape'
 import {
@@ -148,6 +150,7 @@ import {
   isInlineObjectAnnotation,
   registerComponentFnReturns,
   widenFloatLocals,
+  rootedAtExtDecl,
   widenFloatSignals,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
@@ -702,6 +705,10 @@ const _argExpectedTypesKotlin: WeakMap<object, TypeIR> = new WeakMap()
 let _zeroArgFnNames: Set<string> = new Set()
 /** File-scope half of `_zeroArgFnNames`, re-seeded per component. */
 let _zeroArgHelperNames: Set<string> = new Set()
+/** Per-component: the function names in scope that take a value (`value-change-handler.ts`). */
+let _valueArgFnNames: Set<string> = new Set()
+/** File-scope half of `_valueArgFnNames`. */
+let _valueArgHelperNames: Set<string> = new Set()
 /**
  * C5.3: per-component map from router-decl name → its routes array.
  * Populated at the start of each `emitKotlinComponent` from the
@@ -895,6 +902,7 @@ export function emitKotlin(
   _helperReturns = new Map(helperFns.map((h) => [h.name, h.returnType]))
   _helperParamTypesKotlin = new Map(helperFns.map((h) => [h.name, h.params.map((p) => p.type)]))
   _zeroArgHelperNames = new Set(helperFns.filter((h) => h.params.length === 0).map((h) => h.name))
+  _valueArgHelperNames = namesTakingAValue(helperFns)
   _constStringMapKotlin = new Map()
   // Declared structs for per-component inference (typed object-array
   // element fields — `todos().map(t => t.id)` resolves `t.id` to Int).
@@ -1403,6 +1411,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = moduleFunctionNamesKotlin()
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
+  _valueArgFnNames = componentNamesTakingAValue(c, _valueArgHelperNames)
   _serviceBindingsKotlin = bindServices(c.decls)
   _asyncDeclsKotlin = []
   // M4.5: fresh per component — set by emitKotlinAction if an async handler emits.
@@ -2289,7 +2298,9 @@ function emitKotlinStmtLinesScoped(
     if (s.kind === 'let' && !_kotlinExprInferCtx.locals.has(s.name)) {
       const t = inferType(s.expr, _kotlinExprInferCtx)
       const typed = t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t
-      if (typeIsOptional(typed)) _kotlinExprInferCtx.locals.set(s.name, typed)
+      // Any known type, not only an optional one: every type-gated lowering of a nested local
+      // (`Object.keys(r)` over a `Record`, a numeric coercion) needs it (#4588).
+      if (typed.kind !== 'unknown') _kotlinExprInferCtx.locals.set(s.name, typed)
     }
   }
 
@@ -4296,6 +4307,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}.value`
       }
+      // `count.subscribe(fn)`, `theme.remove()`, … — the rest of the signal OBJECT's API, called on the signal itself,
+      // has no native counterpart: natively the name is a plain property holding the value (signal-object-methods.ts).
+      if (e.callee.kind === 'member' && e.callee.object.kind === 'identifier' && _signalNames.has(e.callee.object.name)) {
+        const w = unloweredSignalMethodWarning(e.callee.object.name, e.callee.property, 'kotlin')
+        if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
+      }
       // `.update(fn)` lowering — mirror of emit-swift's (see its doc
       // comment): IR-level param substitution into an assignment.
       if (e.callee.kind === 'member' && e.callee.property === 'update' && e.args.length === 1) {
@@ -4497,6 +4514,17 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (prop === 'delete' && e.args.length === 1)
               return `${obj}${objDot}remove(${argExprs[0]!})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}clear()`
+          }
+          // `d.toJSON()` / `d.valueOf()` — natively a date IS its epoch milliseconds (date-lowering.ts). No JavaScript
+          // number has a `toJSON`, so on a number receiver it is a date's: the ISO string `d.toISOString()` lowers to. An
+          // UNKNOWN receiver is a date too: a signal seeded with `new Date(…)` infers no type here, and a plugin binding
+          // whose runtime defines `toJSON` (a flow) was lowered above. `valueOf()` is the receiver itself for every
+          // value — a date's milliseconds, a number, a string — so it needs no type.
+          if (e.args.length === 0 && e.callee.optional !== true) {
+            if (prop === 'toJSON' && (recvT.kind === 'number' || (recvT.kind === 'unknown' && !rootedAtExtDecl(e.callee.object, _kotlinExprInferCtx)))) {
+              return emitKotlinExpr({ kind: 'call', callee: { kind: 'identifier', name: 'pyreonDateISO' }, args: [e.callee.object] }, indent)
+            }
+            if (prop === 'valueOf') return `(${obj})`
           }
         }
         switch (prop) {
@@ -6627,6 +6655,19 @@ function kotlinEnabledArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   return /^[A-Za-z_][\w.]*(\(\))?$/.test(read) ? `enabled = !${read}` : `enabled = !(${read})`
 }
 
+/**
+ * A value-change event (`<Field onChangeText>`, `<Toggle|Select|Tabs onChange>`) whose by-reference handler takes the
+ * value, rewritten to pass it: `onChangeText={save}` → `(newValue) => save(newValue)`, and a signal setter `draft.set` alike
+ * (value-change-handler.ts, #4544).
+ */
+function kotlinValueChangeEvent<A extends Extract<AttrIR, { kind: 'event' }> | undefined>(attr: A): A {
+  return withValueArgument(attr, {
+    takesValue: (n) => _valueArgFnNames.has(n) && _functionNames.has(n),
+    isSignal: (n) => _signalNames.has(n),
+    propsParam: _activePropsParamName,
+  })
+}
+
 function emitKotlinAction(handler: ExprIR, indent: number): string {
   return withKotlinThrowCtx('none', () => emitKotlinActionBody(handler, indent))
 }
@@ -7700,29 +7741,6 @@ function emitKotlinLayoutModifier(
   if (marginY !== undefined) {
     parts.push(`.padding(vertical = ${marginY}.dp)`)
   }
-  const padding = stylingValue('padding', resolveSpace)
-  if (padding !== undefined) {
-    parts.push(`.padding(${padding}.dp)`)
-  }
-  const paddingX = stylingValue('paddingX', resolveSpace)
-  if (paddingX !== undefined) {
-    parts.push(`.padding(horizontal = ${paddingX}.dp)`)
-  }
-  const paddingY = stylingValue('paddingY', resolveSpace)
-  if (paddingY !== undefined) {
-    parts.push(`.padding(vertical = ${paddingY}.dp)`)
-  }
-  const background = stylingValue('background', (v) => resolveColor(String(v), 'kotlin'))
-  if (background !== undefined) {
-    parts.push(`.background(${background})`)
-  }
-  const radius = stylingValue('radius', (v) => resolveRadius(String(v)))
-  if (radius !== undefined) {
-    // Bare `RoundedCornerShape` — consumer imports from
-    // androidx.compose.foundation.shape. Same convention as Color +
-    // @Serializable.
-    parts.push(`.clip(RoundedCornerShape(${radius}.dp))`)
-  }
   // Inline `style={{ … }}` → Compose Modifier calls (the CSS-in-JS connector).
   // Read the raw object literal off the attr (an object value isn't reachable
   // via `readStaticAttrKotlin`, which returns only string/number/boolean).
@@ -7744,6 +7762,35 @@ function emitKotlinLayoutModifier(
     )
     parts.push(...modifiers)
     for (const w of warnings) _emitWarnings.push(w)
+  }
+  // The token surface (`radius`, `background`, `padding` / `paddingX` / `paddingY`) is the INNERMOST layer, in
+  // Compose's canonical order `.clip().background().padding()`: clip first so the fill is rounded, padding last so it
+  // insets the content INSIDE the fill. This is the exact reverse of the Swift chain, which applies the same tokens
+  // first (`.padding().background().cornerRadius()`, SwiftUI wraps outward) and the `style={{…}}` modifiers around
+  // them. The tokens used to lead the chain here, so the padding sat OUTSIDE a style background on Android only, a
+  // token background was not rounded by a token radius, and a style `width` excluded the token padding (#4345).
+  const radius = stylingValue('radius', (v) => resolveRadius(String(v)))
+  if (radius !== undefined) {
+    // Bare `RoundedCornerShape` — consumer imports from
+    // androidx.compose.foundation.shape. Same convention as Color +
+    // @Serializable.
+    parts.push(`.clip(RoundedCornerShape(${radius}.dp))`)
+  }
+  const background = stylingValue('background', (v) => resolveColor(String(v), 'kotlin'))
+  if (background !== undefined) {
+    parts.push(`.background(${background})`)
+  }
+  const padding = stylingValue('padding', resolveSpace)
+  if (padding !== undefined) {
+    parts.push(`.padding(${padding}.dp)`)
+  }
+  const paddingX = stylingValue('paddingX', resolveSpace)
+  if (paddingX !== undefined) {
+    parts.push(`.padding(horizontal = ${paddingX}.dp)`)
+  }
+  const paddingY = stylingValue('paddingY', resolveSpace)
+  if (paddingY !== undefined) {
+    parts.push(`.padding(vertical = ${paddingY}.dp)`)
   }
   // E3.1 — `data-testid` becomes Compose's `Modifier.testTag()` (from
   // androidx.compose.ui.platform). Same string the web e2e selects
@@ -8769,8 +8816,10 @@ function emitKotlinTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const valueAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  const onChange = kotlinValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+    ),
   )
   const { tabs, warnings } = planTabs(e)
   for (const w of warnings) pushKotlinNavWarning(w)
@@ -9303,9 +9352,11 @@ function emitKotlinField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   // here, a shared source using `onChange` compiled to a controlled TextField on
   // iOS but fell through to a literal `Field(...)` (uncompilable) on Android —
   // a one-source-two-outcomes cross-platform break.
-  const onChangeText = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> =>
-      a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
+  const onChangeText = kotlinValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> =>
+        a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
+    ),
   )
   // Signal-bound `value` is the contract that distinguishes the
   // specialized emit from the generic fallback. `onChangeText` is
@@ -9452,8 +9503,10 @@ function emitKotlinSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   const attr = (n: string) =>
     e.attrs.find((a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n)
   const valueAttr = attr('value')
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  const onChange = kotlinValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+    ),
   )
   if (valueAttr === undefined || onChange === undefined) {
     _emitWarnings.push(
@@ -9544,8 +9597,10 @@ function emitKotlinToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   //    (Compose `Switch` has no binding-projection equivalent —
   //    onCheckedChange is mandatory). Unblocks Checkbox→Toggle
   //    migration for the parent-owns-state shape.
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  const onChange = kotlinValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+    ),
   )
   const isSignalShape =
     valueAttr.value.kind === 'identifier' && _signalNames.has(valueAttr.value.name)

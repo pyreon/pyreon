@@ -3,7 +3,7 @@ title: '@pyreon/meta'
 description: Barrel package re-exporting the full Pyreon fundamentals ecosystem for convenience.
 ---
 
-`@pyreon/meta` is a barrel package that re-exports the entire Pyreon fundamentals + UI-system ecosystem (store, form, validation, query, table, virtual, state-tree, feature, charts, code, document, document-primitives, connector-document, flow, hotkeys, machine, permissions, storage, rx, toast, url-state, dnd, hooks, styler, unistyle, elements, coolgrid, kinetic, kinetic-presets, attrs, rocketstyle, ui-core) from a single import. Tree-shakeable end-to-end (every package declares `sideEffects`; `@pyreon/unistyle` marks only its entry module, which registers the theme engine), and heavy renderers (PDF/DOCX/XLSX/PPTX in `document`; ECharts in `charts`; CodeMirror grammars in `code`; elkjs in `flow`) stay lazy-loaded at the source — `import { … } from '@pyreon/meta'` does not bundle them.
+`@pyreon/meta` is a barrel package that re-exports the entire Pyreon fundamentals + UI-system ecosystem (store, form, validation, query, table, virtual, state-tree, feature, charts, code, document, flow, hotkeys, machine, permissions, storage, rx, toast, url-state, dnd, hooks, styler, unistyle, elements, coolgrid, kinetic, kinetic-presets, attrs, rocketstyle, ui-core) from a single import. Tree-shakeable end-to-end (every package declares `sideEffects`; `@pyreon/unistyle` marks only its entry module, which registers the theme engine), and heavy renderers (PDF/DOCX/XLSX/PPTX in `document`; ECharts in `charts`; CodeMirror grammars in `code`; elkjs in `flow`) stay lazy-loaded at the source — `import { … } from '@pyreon/meta'` does not bundle them.
 
 <PackageBadge name="@pyreon/meta" href="/docs/meta" />
 
