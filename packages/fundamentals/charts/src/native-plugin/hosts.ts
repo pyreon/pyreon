@@ -861,7 +861,7 @@ const lit = (value: string | number | boolean): ExprIR => ({ kind: 'literal', va
  */
 /** The `input` of a `describeChart(input)` expression, with any ` + "note"` suffix (`scaleNote`) left off. */
 export function describeInput(describe: string): string {
-  const end = describe.indexOf(' + "')
+  const end = describe.indexOf(' + /*scale-note*/')
 
   return describe.slice('describeChart('.length, (end < 0 ? describe.length : end) - 1)
 }
@@ -875,7 +875,7 @@ export function scaleNote(yScale: unknown, yView: { kind: string } | undefined, 
   const y = yView !== undefined ? yView.kind : typeof yScale === 'string' && yScale !== 'linear' ? yScale : ''
   const text = (y === '' ? '' : ` The value axis is on a ${y} scale.`) + (xView === undefined ? '' : ` The x axis is on a ${xView.kind} scale.`)
 
-  return text === '' ? '' : ` + "${text}"`
+  return text === '' ? '' : ` + /*scale-note*/"${text}"`
 }
 
 /** The `{ kind, param }` literal `scaleAttr` made, or undefined. */

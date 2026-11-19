@@ -59,6 +59,15 @@ describe.each(['swift', 'kotlin'] as const)('scale views on %s', (target) => {
   })
 })
 
+describe('the scale note and an inline-arrow formatter share the description expression', () => {
+  const WITH_FORMAT = SRC.replace('<Axis y scale={sqrt()} />', "<Axis y scale={sqrt()} format={(v) => v.toFixed(1) + ' kg'} />")
+  it.each(['swift', 'kotlin'] as const)('%s: the formatter\'s own `+` is not mistaken for the note', (target) => {
+    const r = transform(WITH_FORMAT, { target })
+    expect(r.code).toContain('The value axis is on a sqrt scale.')
+    if (target === 'kotlin' && isKotlincAvailable()) expect(validateKotlin(r.code)).toMatchObject({ ok: true })
+  })
+})
+
 describe('the emit compiles', () => {
   it.skipIf(!isSwiftUIAvailable())('swiftc accepts it', () => {
     const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + transform(SRC, { target: 'swift' }).code)
