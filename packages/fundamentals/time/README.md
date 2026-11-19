@@ -1,8 +1,10 @@
 # @pyreon/time
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Dates and times as plain strings and numbers: ISO values, DST-correct zone math, calendar grids. No classes, no method chains, one tree-shakeable function per operation.
 
-> **Experimental.** The value layer is complete and checked against `Temporal`. The clock hooks read `@pyreon/ambient`.
+> The value layer is complete and checked against `Temporal`. The clock hooks read `@pyreon/ambient`.
 
 A date is `"2026-11-18"`, a time is `"14:30"`, an instant is the epoch-millisecond number `Date.now()` returns. Literals type-check without casts, and `add('2026-01-31', { months: 1 })` is a `PlainDate`.
 

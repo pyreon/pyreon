@@ -1,8 +1,10 @@
 # @pyreon/ambient
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 The ambient values every formatted thing depends on: the **locale**, the **time zone** and the **clock**, with self-updating tickers.
 
-> **Experimental.** The locale and time zone behaviour is what `@pyreon/format` shipped; the clock is new.
+> The locale and time zone behaviour is what `@pyreon/format` shipped; the clock is new.
 
 Most apps reach it through `@pyreon/format`, `@pyreon/time`, `@pyreon/i18n` or `@pyreon/zero`. You use it directly to set app defaults, scope a subtree or a server request, pin the clock in tests, and read the clock reactively.
 

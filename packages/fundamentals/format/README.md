@@ -1,6 +1,6 @@
 # @pyreon/format
 
-> **Status: Experimental.** The API may change in a minor release before it is promoted to Stable.
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
 
 Locale-aware formatting and parsing for Pyreon: numbers, currency, bytes, durations, lists, dates, relative time. Plain functions over `Intl` that follow the active locale and time zone, work on the server per request, never throw on bad data, and cache every `Intl.*Format` in bounded tables.
 

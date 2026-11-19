@@ -1,8 +1,10 @@
 # @pyreon/money
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Exact amounts of money as plain data. A `Money` is `{ amount: "9.99", currency: "EUR" }`: JSON-safe, comparable field by field, and never computed in binary floating point (all arithmetic is on `bigint` scaled integers).
 
-> **Experimental.** Zero dependencies. It formats nothing; `@pyreon/format` displays a Money.
+> Zero dependencies. It formats nothing; `@pyreon/format` displays a Money.
 
 ## Install
 

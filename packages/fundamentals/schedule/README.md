@@ -1,8 +1,10 @@
 # @pyreon/schedule
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Recurrence, working time and availability as plain data, on top of `@pyreon/time`. A rule is a plain object that follows RFC 5545 (iCalendar RRULE); occurrences are wall-clock strings, so a daily 09:00 stays 09:00 across daylight saving time; expansion jumps to the window you ask for instead of stepping.
 
-> **Experimental.** Verified against RFC 5545's own examples, the `rrule` library and a brute-force oracle.
+> Verified against RFC 5545's own examples, the `rrule` library and a brute-force oracle.
 
 ## Install
 

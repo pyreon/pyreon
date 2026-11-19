@@ -81,5 +81,8 @@
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
+  },
+  "pyreon": {
+    "stability": "experimental"
   }
 }
