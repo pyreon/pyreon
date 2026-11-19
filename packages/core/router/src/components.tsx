@@ -91,7 +91,7 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
     useContext(RouterContext)) as RouterInstance | null
   if (!router) return null
 
-  // Inside a tab of a tab-bar router (`createRouter({ tabs })`), this view
+  // Inside a tab of a tab-bar router (`createRouter({ tabs: routerTabs([...]) })`), this view
   // shows ITS tab's top entry — not the URL's — so a hidden tab keeps its own
   // page mounted. Depth comes from the tab scope (each tab starts at 0) rather
   // than the shared counter, which numbers sibling views in mount order and so

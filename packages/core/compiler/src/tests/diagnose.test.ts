@@ -696,3 +696,40 @@ describe('diagnoseError — a throw while hydrating a subtree', () => {
     )
   })
 })
+
+// Router tabs (`routerTabs()`, 0.54). The messages below are the router's REAL
+// runtime text, captured from `createRouter` / `selectTab` (the tab name is
+// JSON-quoted at runtime), plus the source-shaped form the catalog gate samples.
+describe('diagnoseError — router tabs', () => {
+  it('explains a plain tabs array and names routerTabs()', () => {
+    const d = diagnoseError(
+      '[Pyreon Router] createRouter({ tabs }) takes routerTabs([...]) from @pyreon/router, not an array (`pyreon upgrade` rewrites it).',
+    )
+    expect(d?.cause).toContain('plain array')
+    expect(d?.fixCode).toContain('tabs: routerTabs([')
+  })
+
+  it('explains selectTab of an unknown tab, quoted (runtime) or not (source)', () => {
+    for (const msg of [
+      '[Pyreon Router] selectTab("nope"): no tab with that name (configured: feed, me).',
+      '[Pyreon Router] selectTab(nope): no tab with that name (configured: feed, me).',
+    ]) {
+      const d = diagnoseError(msg)
+      expect(d?.cause).toContain('selectTab("nope")')
+      expect(d?.cause).toContain('configured: feed, me')
+      expect(d?.fixCode).toContain('routerTabs([')
+    }
+  })
+
+  it('explains selectTab on a router without tabs', () => {
+    const d = diagnoseError(
+      '[Pyreon Router] selectTab("feed"): this router has no `tabs` — pass `createRouter({ tabs: routerTabs([...]) })`.',
+    )
+    expect(d?.cause).toContain('WITHOUT `tabs`')
+    expect(d?.fixCode).toContain('routerTabs([')
+  })
+
+  it('does not fire on unrelated router text', () => {
+    expect(diagnoseError('[Pyreon Router] navigation to /x was cancelled by a guard')).toBeNull()
+  })
+})

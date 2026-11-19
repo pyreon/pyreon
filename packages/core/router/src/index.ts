@@ -141,3 +141,6 @@ export type {
 } from './types'
 // Lazy helper
 export { lazy } from './types'
+// Per-tab back stacks (a function, so the tab engine is bundled only when used)
+export type { RouterTabs } from './tabs'
+export { routerTabs } from './tabs'

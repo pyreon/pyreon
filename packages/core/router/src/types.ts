@@ -1,4 +1,5 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import type { RouterTabs } from './tabs'
 import type { LinkConfig } from './typed-routes'
 
 export type { ComponentFn }
@@ -513,11 +514,11 @@ export interface RouterOptions {
    */
   links?: LinkConfig
   /**
-   * Per-tab back stacks for a tab-bar app. Each tab owns its own stack of
-   * entries, rooted at `root`; the router keeps one ACTIVE tab, and
-   * `push` / `replace` / `useNavigate()` act on the active tab's stack.
-   * Bind a `<Tabs router={router}>` (from `@pyreon/primitives`) to it and
-   * put a `<RouterView />` in each `<Tab>`:
+   * Per-tab back stacks for a tab-bar app, built with `routerTabs([...])`.
+   * Each tab owns its own stack of entries, rooted at `root`; the router keeps
+   * one ACTIVE tab, and `push` / `replace` / `useNavigate()` act on the active
+   * tab's stack. Bind a `<Tabs router={router}>` (from `@pyreon/primitives`)
+   * to it and put a `<RouterView />` in each `<Tab>`:
    *
    * - a path under ANOTHER tab's root selects that tab and pushes onto it
    *   (the longest matching root wins, so a `'/'` root is the fallback);
@@ -533,16 +534,19 @@ export interface RouterOptions {
    * Android each tab keeps its own stack and the system Back pops the active
    * tab first.
    *
+   * `routerTabs()` rather than a plain array, so the tab engine is in a bundle
+   * only when the app uses tabs. A plain array throws.
+   *
    * @example
    * createRouter({
    *   routes,
-   *   tabs: [
+   *   tabs: routerTabs([
    *     { name: 'feed', root: '/feed' },
    *     { name: 'me', root: '/me' },
-   *   ],
+   *   ]),
    * })
    */
-  tabs?: RouterTab[]
+  tabs?: RouterTabs
 }
 
 /** One tab of a tab-bar router — see {@link RouterOptions.tabs}. */

@@ -2636,24 +2636,38 @@ console.log(JSON.stringify(src.slice(offset - 40, offset + 40)))`,
   },
   {
     // Per-tab back stacks (#4060). `router.selectTab(name)` / `<Tabs router>`
-    // need `createRouter({ tabs })`, and each `<Tab value>` must name a
+    // need `createRouter({ tabs: routerTabs([...]) })`, and each `<Tab value>` must name a
     // configured tab. Both failures used to read as "the tab bar does nothing":
     // the router warns and the navigation is cancelled.
     pattern:
-      /\[Pyreon Router\] selectTab\("([^"\n]*)"\): (?:no tab with that name \(configured: ([^)\n]*)\)|this router has no `tabs`)|<Tabs router=\{router\}>: this router has no `tabs`/,
+      // The name is JSON-quoted at runtime (`selectTab("feed")`); the quotes are
+      // optional so the pattern also matches the message as written in source.
+      /\[Pyreon Router\] selectTab\("?([^"\n)]*)"?\): (?:no tab with that name \(configured: ([^)\n]*)\)|this router has no `tabs`)|<Tabs router=\{router\}>: this router has no `tabs`/,
     diagnose: (m) =>
       m[2] !== undefined
         ? {
-            cause: `\`selectTab("${m[1]}")\` names no tab of this router (configured: ${m[2]}). A \`<Tab value>\` inside \`<Tabs router>\` is the tab's NAME, so a typo or a tab missing from \`createRouter({ tabs })\` makes that tab unselectable — the navigation is cancelled.`,
-            fix: `Make the \`<Tab value>\` match a \`tabs[].name\`, or add \`{ name: "${m[1]}", root: "/${m[1]}" }\` to \`createRouter({ tabs })\` (with a route at that root).`,
-            fixCode: `createRouter({ routes, tabs: [{ name: '${m[1]}', root: '/${m[1]}' }] })`,
+            cause: `\`selectTab("${m[1]}")\` names no tab of this router (configured: ${m[2]}). A \`<Tab value>\` inside \`<Tabs router>\` is the tab's NAME, so a typo or a tab missing from \`routerTabs([...])\` makes that tab unselectable — the navigation is cancelled.`,
+            fix: `Make the \`<Tab value>\` match a \`tabs[].name\`, or add \`{ name: "${m[1]}", root: "/${m[1]}" }\` to \`routerTabs([...])\` (with a route at that root).`,
+            fixCode: `createRouter({ routes, tabs: routerTabs([{ name: '${m[1]}', root: '/${m[1]}' }]) })`,
           }
         : {
             cause:
               'The router passed to `<Tabs router>` / `selectTab()` was created WITHOUT `tabs`, so it has one stack and no tabs to select: the tab bar never switches and a push from inside a tab is not kept per tab.',
-            fix: 'Configure the tabs on the router — `createRouter({ routes, tabs: [{ name, root }] })` — with one entry per `<Tab value>`, and put a `<RouterView />` in each `<Tab>`. For a tab bar whose selection is your own signal, use `<Tabs value onChange>` instead.',
-            fixCode: `createRouter({ routes, tabs: [{ name: 'feed', root: '/feed' }, { name: 'me', root: '/me' }] })`,
+            fix: 'Configure the tabs on the router — `createRouter({ routes, tabs: routerTabs([{ name, root }]) })` — with one entry per `<Tab value>`, and put a `<RouterView />` in each `<Tab>`. For a tab bar whose selection is your own signal, use `<Tabs value onChange>` instead.',
+            fixCode: `createRouter({ routes, tabs: routerTabs([{ name: 'feed', root: '/feed' }, { name: 'me', root: '/me' }]) })`,
           },
+  },
+  {
+    // `createRouter({ tabs })` takes the value `routerTabs([...])` returns (0.54):
+    // the tab engine is reached only through it, so apps without tabs do not
+    // bundle it. A plain array (the pre-0.54 shape) throws at createRouter.
+    pattern: /\[Pyreon Router\] createRouter\(\{ tabs \}\) takes routerTabs\(\[\.\.\.\]\)/,
+    diagnose: () => ({
+      cause:
+        '`createRouter({ tabs })` was given a plain array of `{ name, root }`. Since router 0.54 the option takes the value `routerTabs([...])` returns, so the per-tab back-stack engine is bundled only by apps that use tabs.',
+      fix: 'Wrap the array in `routerTabs(...)`, exported next to `createRouter`. The tabs themselves and every router method (`activeTab`, `selectTab`, `tabStack`, `withTab`) are unchanged. `pyreon upgrade` rewrites it (codemod `router-tabs-function`).',
+      fixCode: `createRouter({ routes, tabs: routerTabs([{ name: 'feed', root: '/feed' }, { name: 'me', root: '/me' }]) })`,
+    }),
   },
   {
     pattern: /Plugin "([^"\n]+)" recognized a declaration of type "([^"\n]+)" but declares no/,
