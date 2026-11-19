@@ -1,5 +1,7 @@
 # @pyreon/server
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 SSR handler + SSG prerenderer + island architecture for Pyreon.
 
 `createHandler({ App, routes, … })` produces a Web-standard `(req: Request) => Promise<Response>` for SSR — the HTML template is precompiled ONCE at handler creation (not per request), and a middleware chain short-circuits on the first returned `Response`. `prerender({ handler, paths, outDir, onPage? })` turns the same handler into a static-site generator. `island(loader, { name, hydrate, prefetch? })` wraps a lazy-loaded component in a `<pyreon-island>` boundary with a hydration strategy (`load` / `idle` / `visible` / `media(...)` / `interaction(...)` / `never`) and an optional prefetch hint. Client hydration helpers (`startClient`, `hydrateIslands`, `hydrateIslandsAuto`) live at the tree-shakeable `/client` subpath.

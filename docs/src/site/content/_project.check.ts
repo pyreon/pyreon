@@ -7,19 +7,19 @@ export const checked = {
   "id": "status",
   "route": "/status",
   "title": "Status",
-  "lede": "Pyreon is pre-1.0. This page says what that means: how versions change, which parts are mature, which are experimental, and which directions are under consideration. Nothing here is a dated commitment.",
+  "lede": "This page says how Pyreon versions change, which packages are Stable and covered by semver, which are Experimental, and which directions are under consideration. Nothing here is a dated commitment.",
   "sections": [
    {
     "kind": "list",
     "title": "Versioning",
     "items": [
      {
-      "title": "Pre-1.0, one version for everything",
+      "title": "One version for everything",
       "text": "Every published `@pyreon/*` package is released as one fixed version group, so every release gives all of them the same version number. The current version is in any package's `package.json` and on npm."
      },
      {
-      "title": "Breaking changes are minor bumps",
-      "text": "While the version is `0.x`, a breaking change ships as a `minor` release. Patch releases do not intentionally break APIs. Every consumer-affecting change in a published package carries a changeset, and CI refuses a changeset that declares a major bump."
+      "title": "Semver for Stable packages",
+      "text": "From 1.0, a breaking change to a Stable package ships only in a major release, while Experimental packages and the experimental subpaths of Stable ones can break in a minor. While the version is `0.x`, a breaking change ships as a `minor` release and CI refuses a changeset that declares a major bump. Patch releases do not intentionally break APIs, and every consumer-affecting change in a published package carries a changeset."
      },
      {
       "title": "Release notes",
@@ -41,7 +41,7 @@ export const checked = {
     "rows": [
      [
       "Reactivity, core, runtime-dom, router, head, server, vite-plugin",
-      "Core web framework; the surface most apps use. Pre-1.0 versioning rules apply."
+      "Stable. The core web framework; the surface most apps use."
      ],
      [
       "`@pyreon/zero` (SSR, SSG, ISR, SPA, islands)",
@@ -138,7 +138,7 @@ export const checked = {
    }
   ],
   "end": {
-   "title": "Pre-1.0, and specific about it.",
+   "title": "Stable or Experimental, and specific about it.",
    "cta": {
     "label": "Read the stability page",
     "href": "/docs/stability-and-direction"
@@ -146,7 +146,7 @@ export const checked = {
   },
   "sources": [
    {
-    "claim": "Fixed version group; breaking = minor in 0.x; CI refuses major; CHANGELOG.md + get_changelog; pyreon info / upgrade",
+    "claim": "Fixed version group; semver for Stable packages from 1.0; breaking = minor in 0.x; CI refuses major in 0.x; CHANGELOG.md + get_changelog; pyreon info / upgrade",
     "path": "docs/src/content/docs/stability-and-direction.md \"Versioning\""
    },
    {
@@ -183,7 +183,7 @@ export const checked = {
     "items": [
      {
       "title": "A change lands with a changeset",
-      "text": "Each pull request that changes a published package adds a changeset (`bun changeset`) describing the change for users. While Pyreon is `0.x`, a changeset is `minor` or `patch`, never `major`; a breaking change is written as `minor` and called out in the prose."
+      "text": "Each pull request that changes a published package adds a changeset (`bun changeset`) describing the change for users. While Pyreon is `0.x`, a changeset is `minor` or `patch`, never `major`; a breaking change is written as `minor` and called out in the prose. From 1.0, a breaking change to a Stable package is a `major`, and only Experimental packages and subpaths can break in a `minor`."
      },
      {
       "title": "Changesets collects them",

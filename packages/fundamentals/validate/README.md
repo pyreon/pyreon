@@ -1,5 +1,7 @@
 # `@pyreon/validate`
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Pyreon's validator + **Standard Schema** DX layer — field metadata, reactive parse, i18n-aware error formatting, and (since v1) Pyreon's own validator runtime.
 
 > **Not to be confused with [`@pyreon/validation`](../validation/).** Two published packages, near-identical names, different jobs. **`@pyreon/validate`** (this package) is a *validator you use*: the `s` schema runtime + DX helpers on top of any Standard Schema library. **`@pyreon/validation`** is the *stack-wide contract*: the `ValidationError`/`ValidateFn` types, the `~standard` bridge, and the `zodSchema`/`valibotSchema`/`arktypeSchema` typed adapters that `@pyreon/form`/`store`/`state-tree` consume. If you're writing schemas (`import { s } from …`), you want **this** package; if you're wiring a third-party validator into a form/store with a typed adapter, you want `@pyreon/validation`.

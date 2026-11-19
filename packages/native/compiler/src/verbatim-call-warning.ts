@@ -301,6 +301,18 @@ const JS_ONLY_METHODS: readonly string[] = [
   'setHours',
   'setMinutes',
   'setSeconds',
+  'setMilliseconds',
+  'setTime',
+  'setUTCFullYear',
+  'setUTCMonth',
+  'setUTCDate',
+  'setUTCHours',
+  'setUTCMinutes',
+  'setUTCSeconds',
+  'setUTCMilliseconds',
+  'getYear',
+  'setYear',
+  'toGMTString',
   'toFixed',
   'toPrecision',
   'toExponential',
@@ -370,6 +382,18 @@ export function verbatimPlatformWarnings(
       `${name} is a JavaScript/browser global with no native lowering — it is reproduced verbatim in the emitted ` +
         `${targetLabel(target)}, where no such symbol exists, so the native build fails with ${missingSymbolError(target, name)}. ` +
         `${advice[0]!.toUpperCase()}${advice.slice(1)}.`,
+    )
+  }
+  // `Date.prototype.toISOString.call(d)`, `Object.prototype.hasOwnProperty.call(o, k)`: no Swift or Kotlin value has a
+  // `prototype`, so one that survives into the emit is always a build failure.
+  const prototypeUse = /(?<![\w.$])([A-Za-z_$][\w$]*)\s*\.\s*prototype\b/g
+  const sourcePrototypes = new Set([...sourceBody.matchAll(prototypeUse)].map((m) => m[1]!))
+  for (const owner of new Set([...body.matchAll(prototypeUse)].map((m) => m[1]!))) {
+    if (!sourcePrototypes.has(owner) || mentioned(`${owner}.prototype`)) continue
+    out.push(
+      `${owner}.prototype has no native counterpart — no Swift or Kotlin value has a prototype, so the expression is reproduced ` +
+        `verbatim and the native build fails. Call the method on the value itself (\`d.toISOString()\`, not ` +
+        `\`Date.prototype.toISOString.call(d)\`), or keep the code behind a \`<Web>\` escape hatch.`,
     )
   }
   const methods = target === 'swift' ? [...JS_ONLY_METHODS, ...JS_METHODS_SWIFT_ONLY] : JS_ONLY_METHODS

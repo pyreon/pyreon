@@ -664,6 +664,21 @@ describe('diagnoseError — visible island with nothing to observe (#4435)', () 
   })
 })
 
+describe('diagnoseError — a throw while hydrating a subtree', () => {
+  test('the runtime-dom message names the component and the containment', () => {
+    const result = diagnoseError('[Pyreon] <ProfileCard> threw during hydration: TypeError: x is undefined')
+    expect(result?.cause).toContain('<ProfileCard>')
+    expect(result?.cause).toContain('hydrated')
+    expect(result?.fix).toContain('ErrorBoundary')
+  })
+
+  test('an unrelated message does not match', () => {
+    expect(diagnoseError('[Pyreon] <ProfileCard> threw during render: boom')?.cause ?? '').not.toContain(
+      'hydrated',
+    )
+  })
+})
+
 // Router tabs (`routerTabs()`, 0.54). The messages below are the router's REAL
 // runtime text, captured from `createRouter` / `selectTab` (the tab name is
 // JSON-quoted at runtime), plus the source-shaped form the catalog gate samples.

@@ -79,14 +79,16 @@ describe('margin is OUTSIDE the visual box, and the targets order it oppositely'
     expect(bg).toBeGreaterThan(pad)
   })
 
-  it('kotlin PREPENDS margin, ahead of the content padding', () => {
+  it('kotlin PREPENDS margin, ahead of the background, with the content padding inside the background', () => {
     const out = emit('Stack', 'padding={2} background="primary" margin={4}', 'kotlin')
     const margin = out.indexOf('.padding(16.dp)')
     const pad = out.indexOf('.padding(8.dp)')
     const bg = out.indexOf('.background(')
     expect(margin).toBeGreaterThan(-1)
-    expect(margin).toBeLessThan(pad)
-    expect(pad).toBeLessThan(bg)
+    expect(margin).toBeLessThan(bg)
+    // Compose applies the chain outside-in: padding AFTER the background insets the content inside the fill, as
+    // SwiftUI's `.padding().background()` does (#4345).
+    expect(bg).toBeLessThan(pad)
   })
 
   it('swift puts margin after a background set by `style`, not before it', () => {
