@@ -277,6 +277,19 @@ describe('pages', () => {
     expect(p.isOpen()).toBe(true)
   })
 
+  it('when the page a source row opened is below a page that is unregistered, both go', async () => {
+    const off = registry.register(cmd('s', { children: () => [cmd('r', { title: 'Row', children: [cmd('inner')] })] }))
+    registry.register(cmd('other'))
+    const p = make({ debounce: 0 })
+    p.open('s')
+    p.setActive('r')
+    await p.runActive()
+    expect(p.page()).toEqual(['s', 'r'])
+    off()
+    expect(p.page()).toEqual([])
+    expect(ids(p)).toEqual(['other'])
+  })
+
   it('a page whose command is unregistered while it is open closes itself back to the root', async () => {
     const off = registry.register(cmd('theme', { children: [cmd('light')] }))
     registry.register(cmd('other'))
@@ -377,6 +390,50 @@ describe('running', () => {
     p.setActive('off')
     await p.runActive()
     expect(calls).toBe(1)
+  })
+})
+
+describe('a run that outlives its session', () => {
+  it('a rejection that arrives after the palette was closed and reopened does not show up in the new session', async () => {
+    let fail!: (e: Error) => void
+    registry.register(cmd('slow', { run: () => new Promise<void>((_, reject) => (fail = reject)) }))
+    const p = make()
+    p.open()
+    const done = p.runActive()
+    p.close()
+    p.open()
+    fail(new Error('late'))
+    await done
+    expect(p.error()).toBeUndefined()
+    expect(p.status()).toBe('idle')
+  })
+
+  it('the old run settling does not clear the pending state of the new one', async () => {
+    const finish: (() => void)[] = []
+    registry.register(cmd('slow', { run: () => new Promise<void>((r) => finish.push(r)) }))
+    const p = make()
+    p.open()
+    const first = p.runActive()
+    p.close()
+    p.open()
+    const second = p.runActive()
+    expect(p.running()).toBe('slow')
+    finish[0]!()
+    await first
+    expect(p.running()).toBe('slow')
+    finish[1]!()
+    await second
+    expect(p.running()).toBeNull()
+  })
+
+  it('a disabled row is ignored quietly: no run, no error state', async () => {
+    registry.register(cmd('off', { enabled: false, disabledReason: 'Nope', run: () => {} }))
+    const p = make({ showDisabled: true })
+    p.open()
+    await p.runActive()
+    expect(p.status()).toBe('idle')
+    expect(p.error()).toBeUndefined()
+    expect(p.isOpen()).toBe(true)
   })
 })
 
@@ -541,6 +598,13 @@ describe('async sources', () => {
     p.close()
     p.open('throws')
     expect(p.status()).toBe('error')
+  })
+
+  it('rows with the same id are listed once, so option ids stay unique', async () => {
+    registry.register(cmd('s', { children: () => [cmd('same', { title: 'First' }), cmd('same', { title: 'Second' }), cmd('other')] }))
+    const p = make({ debounce: 0 })
+    p.open('s')
+    expect(p.results().map((r) => [r.id, r.title, r.index])).toEqual([['same', 'First', 0], ['other', 'other', 1]])
   })
 
   it('rows from a source can be run, and can open a page of their own', async () => {
