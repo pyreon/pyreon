@@ -134,18 +134,6 @@ function tracePolyline(ctx: CanvasRenderingContext2D, points: Pt[]): void {
   for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]!.x, points[i]!.y)
 }
 
-/** The polygon's outline as one path with its holes after it, so an even-odd fill leaves the holes empty. */
-function tracePolygon(ctx: CanvasRenderingContext2D, c: DrawCmd & { kind: 'polygon' }): void {
-  tracePolyline(ctx, c.points)
-  ctx.closePath()
-  for (const hole of c.holes ?? []) {
-    if (hole.length < 3) continue
-    ctx.moveTo(hole[0]!.x, hole[0]!.y)
-    for (let i = 1; i < hole.length; i++) ctx.lineTo(hole[i]!.x, hole[i]!.y)
-    ctx.closePath()
-  }
-}
-
 /** Bounded: a chart names a handful of textures; an unbounded map would grow with every URL ever drawn. */
 const IMAGE_CACHE_LIMIT = 64
 const imageCache = new Map<string, HTMLImageElement>()
@@ -293,10 +281,12 @@ export function paint(
     } else if (c.kind === 'polygon') {
       if (c.points.length > 2) {
         ctx.fillStyle = fillStyleFor(ctx, c.fill, c.grad)
-        tracePolygon(ctx, c)
-        ctx.fill('evenodd')
+        tracePolyline(ctx, c.points)
+        ctx.closePath()
+        ctx.fill()
         if (c.pattern !== undefined) {
-          tracePolygon(ctx, c)
+          tracePolyline(ctx, c.points)
+          ctx.closePath()
           const xs = c.points.map((p) => p.x)
           const ys = c.points.map((p) => p.y)
           const x = Math.min(...xs)

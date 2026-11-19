@@ -152,6 +152,12 @@ The same kind of hierarchy drawn as nodes and links, left to right.
 
 <Example file="./examples/charts/gallery-tree" title="Tree" />
 
+## A map
+
+A choropleth over GeoJSON: hover outlines a region, a click keeps it selected (`selectedMode`), the keyboard walks and selects the regions, and the tooltip reads the feature's own properties. The islands and the lake are inner rings, cut out of the fill.
+
+<Example file="./examples/charts/gallery-map" title="Map with holes, selection and feature properties" />
+
 ## A treemap
 
 Each leaf a rectangle with area proportional to its value, nested inside its

@@ -28,16 +28,6 @@ function mixGrad(a: ChartGradient | undefined, b: ChartGradient | undefined, e: 
   return { from: mixPt(a.from, b.from, e), to: mixPt(a.to, b.to, e), stops: b.stops, radial: b.radial }
 }
 
-/** Two polygons' hole lists have the same number of rings with the same number of points each. */
-function sameHoleShape(a: Pt[][] | undefined, b: Pt[][] | undefined): boolean {
-  const x = a ?? []
-  const y = b ?? []
-  if (x.length !== y.length) return false
-  for (let i = 0; i < x.length; i++) if (x[i]!.length !== y[i]!.length) return false
-
-  return true
-}
-
 /** True when the two lists can be interpolated command by command. */
 export function sameCmdShape(a: DrawCmd[], b: DrawCmd[]): boolean {
   if (a.length !== b.length) return false
@@ -46,7 +36,6 @@ export function sameCmdShape(a: DrawCmd[], b: DrawCmd[]): boolean {
     const y = b[i]!
     if (x.kind !== y.kind) return false
     if ((x.kind === 'polyline' || x.kind === 'polygon') && (y.kind === 'polyline' || y.kind === 'polygon') && x.points.length !== y.points.length) return false
-    if (x.kind === 'polygon' && y.kind === 'polygon' && !sameHoleShape(x.holes, y.holes)) return false
     if (x.kind === 'text' && y.kind === 'text' && x.text !== y.text) return false
   }
   return true
@@ -91,7 +80,7 @@ export function tweenCmds(from: DrawCmd[], to: DrawCmd[], e: Double): DrawCmd[] 
       }
       case 'polygon': {
         const ap = a as DrawCmd & { kind: 'polygon' }
-        out.push({ ...b, points: b.points.map((p, j) => mixPt(ap.points[j]!, p, e)), ...(b.holes === undefined ? {} : { holes: b.holes.map((h, k) => h.map((p, j) => mixPt(ap.holes![k]![j]!, p, e))) }), grad: mixGrad(ap.grad, b.grad, e) })
+        out.push({ ...b, points: b.points.map((p, j) => mixPt(ap.points[j]!, p, e)), grad: mixGrad(ap.grad, b.grad, e) })
         break
       }
       case 'circle': {
@@ -156,7 +145,7 @@ function targetAtSource(source: DrawCmd | undefined, target: DrawCmd): DrawCmd {
     case 'rect': return { ...target, rect: box }
     case 'line': return { ...target, from: { x: box.x, y: box.y }, to: { x: box.x + box.w, y: box.y + box.h } }
     case 'polyline':
-    case 'polygon': return { ...target, points: repeatedPoint(center, target.points.length), ...(target.kind === 'polygon' && target.holes !== undefined ? { holes: target.holes.map((h) => repeatedPoint(center, h.length)) } : {}) }
+    case 'polygon': return { ...target, points: repeatedPoint(center, target.points.length) }
     case 'circle': return { ...target, center, radius: Math.max(box.w, box.h) / 2 }
     case 'text': return { ...target, at: center, size: source?.kind === 'text' ? source.size : 0 }
     // A clip does not morph: it takes its target region at once.
@@ -172,7 +161,7 @@ function collapsed(cmd: DrawCmd): DrawCmd {
     case 'rect': return { ...cmd, rect: { x: center.x, y: center.y, w: 0, h: 0 } }
     case 'line': return { ...cmd, from: center, to: center }
     case 'polyline':
-    case 'polygon': return { ...cmd, points: repeatedPoint(center, cmd.points.length), ...(cmd.kind === 'polygon' && cmd.holes !== undefined ? { holes: cmd.holes.map((h) => repeatedPoint(center, h.length)) } : {}) }
+    case 'polygon': return { ...cmd, points: repeatedPoint(center, cmd.points.length) }
     case 'circle': return { ...cmd, center, radius: 0 }
     case 'text': return { ...cmd, at: center, size: 0 }
     case 'clip':
@@ -221,9 +210,6 @@ export function cmdsEqual(a: DrawCmd[], b: DrawCmd[]): boolean {
       case 'polygon': {
         const p = (x as DrawCmd & { kind: 'polyline' }).points
         for (let j = 0; j < p.length; j++) if (p[j]!.x !== y.points[j]!.x || p[j]!.y !== y.points[j]!.y) return false
-        const hx = x.kind === 'polygon' ? x.holes ?? [] : []
-        const hy = y.kind === 'polygon' ? y.holes ?? [] : []
-        for (let k = 0; k < hx.length; k++) for (let j = 0; j < hx[k]!.length; j++) if (hx[k]![j]!.x !== hy[k]![j]!.x || hx[k]![j]!.y !== hy[k]![j]!.y) return false
         break
       }
       case 'circle': {

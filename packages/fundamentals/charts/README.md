@@ -303,6 +303,12 @@ const sound = sonifyValues(price.map((d) => d.close), { duration: 3000, link }) 
 
 `navigator` is the slider dataZoom, `zoomPresets` the range selector, `keyboard` walks the data with a focus ring and a live-region announcement (Up/Down pick one series to follow), and a data change of the same shape tweens instead of snapping (`updateAnimation`). A web plot receiving another update mid-animation starts from the displayed values or keyed geometry, keeps visible entering/exiting bars, and settles once at the newest target. Shape morphs under `universalTransition` retarget the displayed draw list; disabling updates cancels the active animation. Every handler is a pointer handler — a finger drags, pans, brushes and pinch-zooms, a tap shows the tooltip. The family hosts (pie, treemap, sankey, …) carry the same stack: `keyboard` (on by default), `updateAnimation` (a draw-list tween), `legendPosition`, `toolbox={{ saveAsImage: true }}` (a PNG), and the canvas is `aria-describedby` its hidden table.
 
+### Maps
+
+`<MapChart map values>` fills GeoJSON regions by value (`registerMap(name, geojson)`, inline GeoJSON, or a precomputed `GeoShape[]`, the form that lowers to iOS and Android). Inner rings (lakes, enclaves) are cut out of the fill and the hit test. Hovering outlines the region under the pointer, `selectedMode="single" | "multiple"` keeps a selection from a click or Enter / Space (`onSelectionChange`; the canvas description and the accessible table name the selected regions), `options.idProperty` joins `values` on the feature id or any property, and `tooltipFormatter` / `onSelect` receive the feature's own properties. `geoToSvg` draws the same layers (points, paths, heat, pies) on the server.
+
+The interaction is `withItemStates` (`engine/host-states.ts`), a wrapper over the shared canvas host rather than code inside it, so a chart that is not a map bundles none of it. Pie, treemap and sankey can adopt it by reporting `states.at` (the item index under a point, in the accessible table's row space) and `states.label`, and painting the `states` argument of their `render`; none does yet.
+
 ## Install
 
 ```bash

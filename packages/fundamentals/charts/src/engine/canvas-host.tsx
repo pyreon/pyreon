@@ -251,7 +251,7 @@ export function shiftCmds(cmds: DrawCmd[], dx: Double, dy: Double): DrawCmd[] {
       case 'polyline':
         return { ...c, points: c.points.map(pt) }
       case 'polygon':
-        return shiftGradient(c, { ...c, points: c.points.map(pt), ...(c.holes === undefined ? {} : { holes: c.holes.map((h) => h.map(pt)) }) })
+        return shiftGradient(c, { ...c, points: c.points.map(pt) })
       case 'circle':
         return shiftGradient(c, { ...c, center: pt(c.center) })
       case 'text':
@@ -405,34 +405,11 @@ export interface CanvasHostProps {
   /** An item that ignores the pointer: no tooltip, no cursor, no selection (ECharts' `silent`). */
   itemSilent?: ((item: HostItem) => boolean) | undefined
   /**
-   * Hover emphasis for a family that reports `states` (a map's regions today): the item under the pointer is drawn
-   * emphasised. Default on; `false` turns it off.
-   */
-  emphasis?: boolean | undefined
-  /**
-   * Persistent selection for a family that reports `states`: a click (or Enter / Space on the keyboard-focused item)
-   * selects the item; `'single'` replaces the selection, `'multiple'` toggles. Off by default.
-   */
-  selectedMode?: false | 'single' | 'multiple' | undefined
-  /** Fired with the selected item indices (the accessible table's row indices) whenever the selection changes. */
-  onSelectionChange?: ((indices: number[]) => void) | undefined
-  /**
    * Lay the family out in this rect (canvas pixels) instead of the box the
    * chrome leaves. ECharts places a series in the whole chart — a pie at its
    * `center` with a 75% radius — and draws the title and legend over it.
    */
   frame?: Rect | undefined
-}
-
-/**
- * The state of the host's items — what hover emphasis and persistent selection paint. Item indices are the
- * accessible table's row indices, so the pointer, the keyboard and the table agree on what "item 3" is.
- */
-export interface ItemStates {
-  /** The item under the pointer, or -1. */
-  hover: number
-  /** The selected items, in selection order. */
-  selected: readonly number[]
 }
 
 /** What a family gives the host. `L` is its layout; the host never looks inside it. */
@@ -444,19 +421,7 @@ export interface CanvasHostSpec<L> {
   /** Lay the family out in the box left after the chrome. */
   layout: (box: Rect, measure: MeasureText, theme: ChartTheme) => L
   /** Paint a layout; `progress` is 0..1 during the entrance (families that cannot grow ignore it). */
-  render: (layout: L, measure: MeasureText, theme: ChartTheme, progress: Double, time: Double, states: ItemStates) => DrawCmd[]
-  /**
-   * Item states: which item is under a point and how it is called. A family that supplies this gets hover emphasis
-   * and persistent selection from the host (`emphasis`, `selectedMode`, `onSelectionChange`), with the keyboard and
-   * the live region following; it paints them from the `states` argument of `render`. Written for the map's regions;
-   * pie, treemap and sankey can adopt it by reporting their slice / cell / node index here.
-   */
-  states?: {
-    /** The item index under a point (the accessible table's row index), or -1. */
-    at: (layout: L, px: Double, py: Double) => number
-    /** The spoken name of an item, for the live region and the canvas description. */
-    label: (layout: L, index: number) => string
-  } | undefined
+  render: (layout: L, measure: MeasureText, theme: ChartTheme, progress: Double, time: Double) => DrawCmd[]
   /**
    * Whether this layout draws a continuous effect (a `lines` trail) that
    * `render` reads from `time`. While true, the host runs a frame clock —
@@ -641,13 +606,6 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   // Keyboard focus item (an index into the accessible table's rows); -1 = none.
   const focusIdx = signal(-1)
   const announce = signal('')
-  // Item states (see `CanvasHostSpec.states`): the hovered item and the selection.
-  let hoverIdx = -1
-  const selection = signal<readonly number[]>([])
-  const stateNow = (): ItemStates => ({ hover: props.emphasis === false ? -1 : hoverIdx, selected: untrack(selection) })
-  /** The next redraw snaps instead of tweening: a hover or a selection is not a data update. */
-  let snapNext = false
-  const selectMode = (): false | 'single' | 'multiple' => (spec.states === undefined ? false : props.selectedMode ?? false)
 
   // Entrance progress — 1 (finished) except during the one tween on first paint.
   let entrance = 1.0
@@ -838,7 +796,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const measure = sharedCanvasMeasure(ctx, FONT)
     const f = frame(w, hgt, measure, t)
     last = f
-    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, entrance, effectTime, stateNow())) : spec.render(f.layout, measure, t, entrance, effectTime, stateNow())
+    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, entrance, effectTime)) : spec.render(f.layout, measure, t, entrance, effectTime)
     // A clock-driven frame changes every tick by design; it is never an update to tween.
     const clockDriven = clockWanted(f.layout)
     syncClock(f.layout)
@@ -853,7 +811,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
         paint(ctx, present([...f.chrome, ...shownFamily(), ...ringCmds(f)], w), w, hgt, FONT)
         return
       }
-      const enabled = !snapNext && props.updateAnimation !== false && hasRaf() && !prefersReducedMotion() && (props.updateDuration ?? t.updateMs) > 0
+      const enabled = props.updateAnimation !== false && hasRaf() && !prefersReducedMotion() && (props.updateDuration ?? t.updateMs) > 0
       const transitionable = lastFamily !== null && (sameCmdShape(lastFamily, family) || props.universalTransition === true)
       if (enabled && transitionable && lastFamily !== null && !cmdsEqual(lastFamily, family)) {
         // Retarget a running tween from where it is; start one from the last frame otherwise.
@@ -865,7 +823,6 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
         return
       }
       // A shape change snaps, and cancels any tween still running toward the old shape.
-      snapNext = false
       cancelFrame(tweenFrame)
       tweenFrame = 0
       tweenFrom = null
@@ -924,40 +881,6 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     }
   }
 
-  /** Repaint for a changed hover or selection: snapped, not tweened. */
-  const redrawStates = (): void => {
-    snapNext = true
-    draw()
-  }
-  const setHover = (i: number): void => {
-    if (i === hoverIdx) return
-    hoverIdx = i
-    if (props.emphasis !== false) redrawStates()
-  }
-  /** Select (or, in `multiple` mode or on the selected item itself, deselect) item `i`. */
-  const toggleItem = (i: number): void => {
-    const mode = selectMode()
-    const st = spec.states
-    if (mode === false || st === undefined || i < 0) return
-    const cur = untrack(selection)
-    const has = cur.includes(i)
-    const next = mode === 'single' ? (has ? [] : [i]) : has ? cur.filter((k) => k !== i) : [...cur, i]
-    selection.set(next)
-    const f = last
-    if (f !== null) announce.set(`${st.label(f.layout, i)}, ${has ? 'not selected' : 'selected'}`)
-    props.onSelectionChange?.([...next])
-    redrawStates()
-  }
-  const hoverFrom = (ev: PointerEvent): void => {
-    const el = canvas
-    const st = spec.states
-    if (st === undefined || el === null) return
-    const f = layoutNow(el)
-    if (f === null) return
-    const p = localPoint(el, ev)
-    setHover(transposed() ? st.at(f.layout, p.y, p.x) : st.at(f.layout, p.x, p.y))
-  }
-
   const handleClick = (ev: MouseEvent): void => {
     const el = canvas
     if (el === null) return
@@ -969,10 +892,6 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
         saveImage(el)
         return
       }
-    }
-    if (spec.states !== undefined && selectMode() !== false) {
-      const sf = layoutNow(el)
-      if (sf !== null) toggleItem(transposed() ? spec.states.at(sf.layout, p.y, p.x) : spec.states.at(sf.layout, p.x, p.y))
     }
     if (spec.select === undefined) return
     const f = layoutNow(el)
@@ -1104,7 +1023,6 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     else if (key === 'Enter' || key === ' ') {
       const i = focusIdx()
       const f = last
-      toggleItem(i)
       if (i >= 0 && f !== null && spec.pick !== undefined) spec.pick(f.layout, i)
     } else if (key === 'Escape') {
       batch(() => {
@@ -1194,13 +1112,11 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   const onPointerDown = (ev: PointerEvent): void => {
     if (dragDown(ev)) return
     roamDown(ev)
-    hoverFrom(ev)
     if (tooltipOn()) handleMove(ev)
   }
   const onPointerMove = (ev: PointerEvent): void => {
     if (dragMove(ev)) return
     roamMove(ev)
-    if (!dragMoved) hoverFrom(ev)
     if (tooltipOn() && !dragMoved) handleMove(ev)
   }
   const onClickRoamAware = (ev: MouseEvent): void => {
@@ -1218,10 +1134,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     role: 'img',
     'aria-label': () => {
       a11yVersion()
-      const base = spec.describe === undefined ? describeChart(a11yNow()) : spec.describe(layoutForA11y())
-      const chosen = selection()
-      const st = spec.states
-      return st === undefined || chosen.length === 0 ? base : `${base} Selected: ${chosen.map((i) => st.label(layoutForA11y(), i)).join(', ')}.`
+      return spec.describe === undefined ? describeChart(a11yNow()) : spec.describe(layoutForA11y())
     },
     'aria-describedby': () => tableOn() ? tableId : undefined,
     // The SSR box (see `canvasSizeAttrs`): without it a hydrated chart shifts
@@ -1264,8 +1177,8 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     onBlur: () => { batch(() => { focusIdx.set(-1); announce.set('') }); paintCached() },
     // Pointer events, not mouse events: a finger gets the tooltip on tap
     // (pointerdown) and on drag (pointermove) exactly as a mouse does on hover.
-    ...(spec.tooltip !== undefined || roam !== undefined || chartDrag !== undefined || spec.states !== undefined ? { onPointerMove, onPointerDown } : {}),
-    ...(spec.tooltip !== undefined || spec.states !== undefined ? { onPointerLeave: () => { setHover(-1); if (tooltipOn()) handleLeave() }, onPointerCancel: () => { roamUp(); setHover(-1); if (tooltipOn()) handleLeave() } } : roam !== undefined || chartDrag !== undefined ? { onPointerCancel: roamUp } : {}),
+    ...(spec.tooltip !== undefined || roam !== undefined || chartDrag !== undefined ? { onPointerMove, onPointerDown } : {}),
+    ...(spec.tooltip !== undefined ? { onPointerLeave: () => { if (tooltipOn()) handleLeave() }, onPointerCancel: () => { roamUp(); if (tooltipOn()) handleLeave() } } : roam !== undefined || chartDrag !== undefined ? { onPointerCancel: roamUp } : {}),
   })
 
   const tipNode = (): VNode | null =>
@@ -1306,7 +1219,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const t = theme()
     const measure = ser.measure()
     const f = frame(w, hgt, measure, t)
-    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, 1.0, 0.0, { hover: -1, selected: [] })) : spec.render(f.layout, measure, t, 1.0, 0.0, { hover: -1, selected: [] })
+    const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, 1.0, 0.0)) : spec.render(f.layout, measure, t, 1.0, 0.0)
     const svg = ser.svg(present([...f.chrome, ...family], w), w, hgt, { fontFamily: FONT, idPrefix: `${tableId}-frame` })
     return props.width === undefined ? svg.replace(`width="${w}"`, 'width="100%"') : svg
   }

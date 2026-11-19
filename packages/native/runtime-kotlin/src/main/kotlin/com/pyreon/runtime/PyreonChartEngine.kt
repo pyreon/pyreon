@@ -234,7 +234,7 @@ data class CalendarParsed(var ok: Boolean, var days: Double)
 
 data class CalendarCellValues(var has: List<Boolean>, var value: List<Double>)
 
-data class GeoRegion(var name: String, var label: String, var rings: List<List<PyreonChartPt>>, var holes: List<List<PyreonChartPt>>, var holeHost: List<Long>, var centroid: PyreonChartPt, var bbox: PyreonChartRect)
+data class GeoRegion(var name: String, var label: String, var rings: List<List<PyreonChartPt>>, var holes: List<List<PyreonChartPt>>, var fills: List<List<PyreonChartPt>>, var holeHost: List<Long>, var centroid: PyreonChartPt, var bbox: PyreonChartRect)
 
 data class GeoShape(var name: String, var label: String? = null, var rings: List<List<PyreonChartPt>>, var holes: List<List<PyreonChartPt>>? = null, var holeHost: List<Long>? = null)
 
@@ -7787,7 +7787,9 @@ fun layoutGeoShapes(shapes: List<GeoShape>, box: PyreonChartRect, options: GeoOp
       val bbox = if (bseen == 0L) PyreonChartRect(x = box.x, y = box.y, w = 0.0, h = 0.0) else PyreonChartRect(x = bx0, y = by0, w = bx1 - bx0, h = by1 - by0)
       val fallback = PyreonChartPt(x = bbox.x + (bbox.w).toDouble() / (2.0).toDouble(), y = bbox.y + (bbox.h).toDouble() / (2.0).toDouble())
       val centroid = if (bestAt < 0L) fallback else (ringCentroid(rings[(bestAt).toInt()]) ?: fallback)
-      return@map GeoRegion(name = r.name, label = (r.label ?: r.name), rings = rings, holes = holes, holeHost = ((r.holeHost ?: listOf())), centroid = centroid, bbox = bbox)
+      val host = ((r.holeHost ?: listOf()))
+      val fills = rings.mapIndexed({ pyreonIdx, ring -> val ri = pyreonIdx.toLong(); bridgeHoles(ring, holes.filterIndexed({ pyreonIdx, _h -> val k = pyreonIdx.toLong(); k < host.length && host[(k).toInt()] == ri })) })
+      return@map GeoRegion(name = r.name, label = (r.label ?: r.name), rings = rings, holes = holes, fills = fills, holeHost = host, centroid = centroid, bbox = bbox)
     })
     return GeoLayout(regions = regions, transform = GeoTransform(minX = minX, maxY = maxY, scale = scale, ox = ox, oy = oy, projection = projection))
   }
@@ -7855,9 +7857,8 @@ fun renderGeoAligned(layout: GeoLayout, aligned: List<Double>, options: GeoOptio
       val has = isFiniteNumber(v) && progress > 0.0
       val t = if (!has) 0.0 else if (span <= 0.0) 1.0 else (((v - lo)).toDouble() / (span).toDouble()) * progress
       val fill = if (!has) emptyColor else if (visualOutside(v, options?.inRange, options?.outBands)) (options?.outColor ?: "#cccccc") else rampColor(stops, if (t < 0.0) 0.0 else if (t > 1.0) 1.0 else t)
-      for (ri in 0L until r.rings.length) {
-        val holes = holesOf(r, ri)
-        out.add(PyreonDrawCmd(kind = "polygon", fill = fill, points = r.rings[(ri).toInt()], holes = if (holes.length > 0L) holes else null))
+      for (ring in r.fills) {
+        out.add(PyreonDrawCmd(kind = "polygon", fill = fill, points = ring))
       }
     }
     for (r in layout.regions) {
@@ -7913,14 +7914,107 @@ fun outlineRegion(layout: GeoLayout, ri: Long, stroke: String, width: Double): L
     return out
   }
 
-fun holesOf(r: GeoRegion, ri: Long): List<List<PyreonChartPt>> {
-    val out: MutableList<List<PyreonChartPt>> = mutableListOf()
-    for (k in 0L until r.holes.length) {
-      if (k < r.holeHost.length && r.holeHost[(k).toInt()] == ri) {
-        out.add(r.holes[(k).toInt()])
-      }
+fun bridgeHoles(outer: List<PyreonChartPt>, holes: List<List<PyreonChartPt>>): List<PyreonChartPt> {
+    if (holes.length == 0L) {
+      return outer
+    }
+    val sign = if (ringArea(outer) >= 0.0) 1.0 else -1.0
+    var ring = outer
+    for (hi in 0L until holes.length) {
+      val raw = holes[(hi).toInt()]
+      val hole = if (ringArea(raw) * sign > 0.0) reversedRing(raw) else raw
+      ring = bridgeOne(ring, hole, holes, hi)
+    }
+    return ring
+  }
+
+fun reversedRing(ring: List<PyreonChartPt>): List<PyreonChartPt> {
+    val out: MutableList<PyreonChartPt> = mutableListOf()
+    for (k in pyreonSub(ring.length, 1L) downTo 0L) {
+      out.add(ring[(k).toInt()])
     }
     return out
+  }
+
+fun bridgeOne(ring: List<PyreonChartPt>, hole: List<PyreonChartPt>, all: List<List<PyreonChartPt>>, self: Long): List<PyreonChartPt> {
+    var mi = 0L
+    for (k in 1L until hole.length) {
+      if (hole[(k).toInt()].x > hole[(mi).toInt()].x) {
+        mi = k
+      }
+    }
+    val m = hole[(mi).toInt()]
+    var prevD = -1.0
+    var prevK = -1L
+    for (attempt in 0L until ring.length) {
+      var best = -1L
+      var bestD = 0.0
+      for (k in 0L until ring.length) {
+        val d = (ring[(k).toInt()].x - m.x) * (ring[(k).toInt()].x - m.x) + (ring[(k).toInt()].y - m.y) * (ring[(k).toInt()].y - m.y)
+        val after = d > prevD || (d == prevD && k > prevK)
+        if (after && (best < 0L || d < bestD)) {
+          best = k
+          bestD = d
+        }
+      }
+      if (best < 0L) {
+        break
+      }
+      prevD = bestD
+      prevK = best
+      if (!bridgeClear(ring, hole, all, self, m, ring[(best).toInt()])) {
+        continue
+      }
+      val out: MutableList<PyreonChartPt> = mutableListOf()
+      for (k in 0L..best) {
+        out.add(ring[(k).toInt()])
+      }
+      for (k in 0L until hole.length) {
+        out.add(hole[(pyreonRem((pyreonAdd(mi, k)), hole.length)).toInt()])
+      }
+      out.add(m)
+      for (k in best until ring.length) {
+        out.add(ring[(k).toInt()])
+      }
+      return out
+    }
+    return ring
+  }
+
+fun bridgeClear(ring: List<PyreonChartPt>, hole: List<PyreonChartPt>, all: List<List<PyreonChartPt>>, self: Long, m: PyreonChartPt, o: PyreonChartPt): Boolean {
+    if (ringHitsBridge(ring, m, o) || ringHitsBridge(hole, m, o)) {
+      return false
+    }
+    for (k in 0L until all.length) {
+      if (k != self && ringHitsBridge(all[(k).toInt()], m, o)) {
+        return false
+      }
+    }
+    return true
+  }
+
+fun ringHitsBridge(ring: List<PyreonChartPt>, m: PyreonChartPt, o: PyreonChartPt): Boolean {
+    for (i in 0L until ring.length) {
+      val a = ring[(i).toInt()]
+      val b = ring[(if (i == pyreonSub(ring.length, 1L)) 0L else pyreonAdd(i, 1L)).toInt()]
+      if (samePt(a, m) || samePt(b, m) || samePt(a, o) || samePt(b, o)) {
+        continue
+      }
+      if (segmentsCross(m, o, a, b)) {
+        return true
+      }
+    }
+    return false
+  }
+
+fun samePt(a: PyreonChartPt, b: PyreonChartPt): Boolean = a.x == b.x && a.y == b.y
+
+fun segmentsCross(p1: PyreonChartPt, p2: PyreonChartPt, p3: PyreonChartPt, p4: PyreonChartPt): Boolean {
+    val d1 = (p4.x - p3.x) * (p1.y - p3.y) - (p4.y - p3.y) * (p1.x - p3.x)
+    val d2 = (p4.x - p3.x) * (p2.y - p3.y) - (p4.y - p3.y) * (p2.x - p3.x)
+    val d3 = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
+    val d4 = (p2.x - p1.x) * (p4.y - p1.y) - (p2.y - p1.y) * (p4.x - p1.x)
+    return ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0)) && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))
   }
 
 fun closedLine(ring: List<PyreonChartPt>, stroke: String, width: Double): PyreonDrawCmd {
@@ -7986,17 +8080,8 @@ fun hitGeoIndex(layout: GeoLayout, px: Double, py: Double): Long {
       if (px < r.bbox.x || px > r.bbox.x + r.bbox.w || py < r.bbox.y || py > r.bbox.y + r.bbox.h) {
         continue
       }
-      for (ri in 0L until r.rings.length) {
-        if (!pointInRing(r.rings[(ri).toInt()], px, py)) {
-          continue
-        }
-        var inHole = false
-        for (hole in holesOf(r, ri)) {
-          if (pointInRing(hole, px, py)) {
-            inHole = true
-          }
-        }
-        if (!inHole) {
+      for (ring in r.fills) {
+        if (pointInRing(ring, px, py)) {
           return i
         }
       }

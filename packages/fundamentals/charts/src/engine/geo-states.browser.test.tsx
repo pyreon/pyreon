@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { MapChart } from './MapChart'
 import { layoutGeo } from './geo-web'
+import { FLORIDA_LAKE, SOUTH_AFRICA_LESOTHO } from './__fixtures__/geo-holes'
 import type { GeoJson } from './geo-web'
 
 const square = (x: number): number[][][] => [[[x, 0], [x + 10, 0], [x + 10, 10], [x, 10], [x, 0]]]
@@ -104,7 +105,11 @@ describe('MapChart states (real browser)', () => {
     key(' ')
     await settle()
     expect(seen).toEqual([[0], [0, 1]])
-    expect(container.querySelector('[role="status"]')!.textContent).toContain('selected')
+    // The state is spoken: the live region reads the row as the table names it, and so does the table.
+    key('Home')
+    await settle()
+    expect(container.querySelector('[role="status"]')!.textContent).toBe('A (selected), 1')
+    expect([...container.querySelectorAll('table tbody th')].map((e) => e.textContent)).toEqual(['A (selected)', 'B (selected)'])
     unmount()
   })
 
@@ -147,6 +152,48 @@ describe('MapChart states (real browser)', () => {
     expect(snap(c), 'the wheel did redraw').not.toBe(before)
     expect(coordReads, 'projection calls per roam frame').toBe(firstCoords)
     expect(valueReads, 'value reads per roam frame').toBe(firstValues)
+    unmount()
+  })
+
+  it('a hole is cut out of the fill in a real canvas, with no seam along the bridge', async () => {
+    const { container, unmount } = mountInBrowser(() => MapChart({ animate: false, map: FLORIDA_LAKE, values: { Florida: 5 }, width: 400, height: 300, options: { borderWidth: 0 } }))
+    await flush()
+    const c = container.querySelector('canvas')!
+    const dpr = window.devicePixelRatio || 1
+    const alphaAt = (x: number, y: number): number => c.getContext('2d')!.getImageData(Math.round(x * dpr), Math.round(y * dpr), 1, 1).data[3]!
+    const layout = layoutGeo(FLORIDA_LAKE, { x: 0, y: 0, w: 400, h: 300 }, { padding: 4 })
+    const r = layout.regions[0]!
+    const lake = r.holes[0]!
+    const lakeAt = { x: lake.reduce((a, p) => a + p.x, 0) / lake.length, y: lake.reduce((a, p) => a + p.y, 0) / lake.length }
+    expect(alphaAt(lakeAt.x, lakeAt.y), 'the lake is empty').toBe(0)
+    // land beside the lake
+    expect(alphaAt(lakeAt.x, lakeAt.y - 18)).toBe(255)
+    // every bridge midpoint of the fill ring is solid: the bridge edges are walked in and out, so they cancel
+    const fill = r.fills[0]!
+    const ring = r.rings[0]!
+    for (let i = 1; i < fill.length; i++) {
+      const a = fill[i - 1]!
+      const b = fill[i]!
+      const onOutline = ring.some((p) => p.x === a.x && p.y === a.y) && ring.some((p) => p.x === b.x && p.y === b.y) && Math.abs(ring.findIndex((p) => p === a) - ring.findIndex((p) => p === b)) === 1
+      const onHole = lake.some((p) => p.x === a.x && p.y === a.y) && lake.some((p) => p.x === b.x && p.y === b.y)
+      if (onOutline || onHole) continue
+      expect(alphaAt((a.x + b.x) / 2, (a.y + b.y) / 2), 'a bridge midpoint').toBe(255)
+    }
+    unmount()
+  })
+
+  it('Lesotho is a hole in South Africa and is drawn by its own feature on top', async () => {
+    const { container, unmount } = mountInBrowser(() => MapChart({ animate: false, map: SOUTH_AFRICA_LESOTHO, values: { 'South Africa': 1, Lesotho: 100 }, width: 400, height: 300, options: { borderWidth: 0 } }))
+    await flush()
+    const c = container.querySelector('canvas')!
+    const layout = layoutGeo(SOUTH_AFRICA_LESOTHO, { x: 0, y: 0, w: 400, h: 300 }, { padding: 4 })
+    const ls = layout.regions[1]!.centroid
+    const dpr = window.devicePixelRatio || 1
+    const px = c.getContext('2d')!.getImageData(Math.round(ls.x * dpr), Math.round(ls.y * dpr), 1, 1).data
+    const za = layout.regions[0]!.rings[0]![2]!
+    const zaPx = c.getContext('2d')!.getImageData(Math.round((za.x + 6) * dpr), Math.round((za.y - 6) * dpr), 1, 1).data
+    expect(px[3]).toBe(255)
+    expect(`${px[0]},${px[1]},${px[2]}`, 'Lesotho (value 100) is not South Africa\'s colour (value 1)').not.toBe(`${zaPx[0]},${zaPx[1]},${zaPx[2]}`)
     unmount()
   })
 })

@@ -1,11 +1,8 @@
 // GeoJSON inner rings (holes): kept end to end, filled even-odd, hit-tested, and a lake is not in the country.
 import { describe, expect, it } from 'vitest'
 import { FLORIDA_LAKE, ITALY_ENCLAVES, SOUTH_AFRICA_LESOTHO } from './__fixtures__/geo-holes'
-import { hitGeoIndex, holesOf, layoutGeoShapes, renderGeo } from './geo'
-import { geoShapes, geoToSvg } from './geo-web'
-import { renderSvg } from './svg'
-import { cmdsEqual, sameCmdShape, tweenCmds } from './cmd-tween'
-import { mirrorCmds } from './rtl'
+import { bridgeHoles, hitGeoIndex, layoutGeoShapes, renderGeo } from './geo'
+import { geoShapes } from './geo-web'
 import type { DrawCmd } from './types'
 
 const BOX = { x: 0, y: 0, w: 400, h: 300 }
@@ -26,36 +23,51 @@ describe('geoShapes keeps inner rings', () => {
   })
 })
 
-describe('draw list', () => {
+const area = (ring: { x: number; y: number }[]): number => {
+  let a = 0
+  for (let i = 0; i < ring.length; i++) {
+    const j = i === 0 ? ring.length - 1 : i - 1
+    a += ring[j]!.x * ring[i]!.y - ring[i]!.x * ring[j]!.y
+  }
+  return a / 2
+}
+
+describe('fill rings (keyhole bridging)', () => {
   const layout = layoutGeoShapes(geoShapes(SOUTH_AFRICA_LESOTHO), BOX)
   const cmds = renderGeo(layout, [])
   const polys = cmds.filter((c): c is DrawCmd & { kind: 'polygon' } => c.kind === 'polygon')
 
-  it('the polygon of a country with a hole carries it; one without carries none', () => {
-    expect(polys[0]!.holes).toHaveLength(1)
-    expect(polys[1]!.holes).toBeUndefined()
+  it('a country with a hole fills ONE ring whose area is the outline minus the hole; one without is its own ring', () => {
+    const za = layout.regions[0]!
+    expect(polys).toHaveLength(2)
+    expect(Math.abs(area(polys[0]!.points))).toBeCloseTo(Math.abs(area(za.rings[0]!)) - Math.abs(area(za.holes[0]!)), 6)
+    expect(polys[1]!.points).toEqual(layout.regions[1]!.rings[0])
   })
-  it('the hole is also stroked, so the border follows the lake', () => {
-    expect(cmds.filter((c) => c.kind === 'polyline').length).toBe(2 + 1)
+  it('the bridge is walked twice (in and back out) and the hole is wound against the outline', () => {
+    const fill = layout.regions[0]!.fills[0]!
+    const ring = layout.regions[0]!.rings[0]!
+    expect(fill.length).toBe(ring.length + layout.regions[0]!.holes[0]!.length + 2)
+    expect(Math.sign(area(fill))).toBe(Math.sign(area(ring)))
   })
-  it('SVG fills the outline and its hole as one even-odd path; a plain polygon stays a <polygon>', () => {
-    const svg = renderSvg(cmds, BOX.w, BOX.h)
-    expect(svg).toContain('fill-rule="evenodd"')
-    expect(svg.match(/<polygon /g)).toHaveLength(1)
-    expect(svg.match(/<path d="M[^"]*Z M?[^"]*"|<path d="M[^"]*Z"/g)?.length).toBeGreaterThan(0)
+  it('the border strokes the outline and the hole, never the bridge', () => {
+    const lines = cmds.filter((c) => c.kind === 'polyline')
+    expect(lines).toHaveLength(3)
+    expect((lines[0] as DrawCmd & { kind: 'polyline' }).points).toHaveLength(layout.regions[0]!.rings[0]!.length + 1)
   })
-  it('RTL mirrors the holes with the outline', () => {
-    const mirrored = mirrorCmds(cmds, BOX.w).filter((c): c is DrawCmd & { kind: 'polygon' } => c.kind === 'polygon')
-    expect(mirrored[0]!.holes![0]![0]!.x).toBeCloseTo(BOX.w - polys[0]!.holes![0]![0]!.x, 9)
+  it('a concave outline whose nearest vertex is NOT visible still gets a clear bridge', () => {
+    // a "C" with the hole inside its throat: the nearest outline vertices sit behind the C's arms
+    const outer = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 3 }, { x: 4, y: 3 }, { x: 4, y: 7 }, { x: 10, y: 7 }, { x: 10, y: 10 }, { x: 0, y: 10 }]
+    const hole = [{ x: 1, y: 4 }, { x: 3, y: 4 }, { x: 3, y: 6 }, { x: 1, y: 6 }]
+    const fill = bridgeHoles(outer, [hole])
+    expect(fill.length).toBe(outer.length + hole.length + 2)
+    expect(Math.abs(area(fill))).toBeCloseTo(Math.abs(area(outer)) - Math.abs(area(hole)), 9)
   })
-  it('a tween interpolates the holes and refuses a pair whose holes differ in shape', () => {
-    const shifted = cmds.map((c) => (c.kind === 'polygon' && c.holes !== undefined ? { ...c, holes: c.holes.map((h) => h.map((p) => ({ x: p.x + 10, y: p.y }))) } : c))
-    expect(sameCmdShape(cmds, shifted)).toBe(true)
-    const mid = tweenCmds(cmds, shifted, 0.5).find((c) => c.kind === 'polygon' && c.holes !== undefined) as DrawCmd & { kind: 'polygon' }
-    expect(mid.holes![0]![0]!.x).toBeCloseTo(polys[0]!.holes![0]![0]!.x + 5, 9)
-    expect(cmdsEqual(cmds, shifted)).toBe(false)
-    const fewer = cmds.map((c) => (c.kind === 'polygon' && c.holes !== undefined ? { ...c, holes: [c.holes[0]!.slice(1)] } : c))
-    expect(sameCmdShape(cmds, fewer)).toBe(false)
+  it('several holes in one ring each get bridged; an unreachable hole is left out of the fill rather than corrupting it', () => {
+    const outer = [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }]
+    const h1 = [{ x: 2, y: 2 }, { x: 5, y: 2 }, { x: 5, y: 5 }, { x: 2, y: 5 }]
+    const h2 = [{ x: 10, y: 10 }, { x: 14, y: 10 }, { x: 14, y: 14 }, { x: 10, y: 14 }]
+    const fill = bridgeHoles(outer, [h1, h2])
+    expect(Math.abs(area(fill))).toBeCloseTo(400 - 9 - 16, 9)
   })
 })
 
@@ -66,7 +78,7 @@ describe('hit testing', () => {
     // Lesotho is drawn after South Africa, and the hole means South Africa never claims the point either.
     expect(hitGeoIndex(layout, c.x, c.y)).toBe(1)
     const reg = layout.regions[0]!
-    expect(holesOf(reg, 0)).toHaveLength(1)
+    expect(reg.holes).toHaveLength(1)
     // without the Lesotho feature the point falls in the hole: a miss
     const alone = layoutGeoShapes(geoShapes({ ...SOUTH_AFRICA_LESOTHO, features: [SOUTH_AFRICA_LESOTHO.features[0]!] }), BOX)
     const c2 = centroidOf(alone.regions[0]!.holes[0]!)
@@ -84,11 +96,5 @@ describe('hit testing', () => {
     expect(layout.regions[0]!.holes).toHaveLength(2)
     const sm = centroidOf(layout.regions[0]!.holes[0]!)
     expect(hitGeoIndex(layout, sm.x, sm.y)).toBe(1)
-  })
-})
-
-describe('geoToSvg with holes', () => {
-  it('draws the cut-out as an even-odd path', () => {
-    expect(geoToSvg({ geo: FLORIDA_LAKE, values: { Florida: 3 }, width: 300, height: 240 })).toContain('fill-rule="evenodd"')
   })
 })

@@ -1969,14 +1969,16 @@ public struct GeoRegion: Codable {
   public var label: String
   public var rings: [[PyreonChartPt]]
   public var holes: [[PyreonChartPt]]
+  public var fills: [[PyreonChartPt]]
   public var holeHost: [Int]
   public var centroid: PyreonChartPt
   public var bbox: PyreonChartRect
-  public init(name: String, label: String, rings: [[PyreonChartPt]], holes: [[PyreonChartPt]], holeHost: [Int], centroid: PyreonChartPt, bbox: PyreonChartRect) {
+  public init(name: String, label: String, rings: [[PyreonChartPt]], holes: [[PyreonChartPt]], fills: [[PyreonChartPt]], holeHost: [Int], centroid: PyreonChartPt, bbox: PyreonChartRect) {
     self.name = name
     self.label = label
     self.rings = rings
     self.holes = holes
+    self.fills = fills
     self.holeHost = holeHost
     self.centroid = centroid
     self.bbox = bbox
@@ -10438,7 +10440,9 @@ public func layoutGeoShapes(_ shapes: [GeoShape], _ box: PyreonChartRect, _ opti
       let bbox = bseen == 0 ? PyreonChartRect(x: box.x, y: box.y, w: 0.0, h: 0.0) : PyreonChartRect(x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0)
       let fallback = PyreonChartPt(x: bbox.x + bbox.w / 2.0, y: bbox.y + bbox.h / 2.0)
       let centroid = bestAt < 0 ? fallback : (ringCentroid(rings[bestAt]) ?? fallback)
-      return GeoRegion(name: r.name, label: (r.label ?? r.name), rings: rings, holes: holes, holeHost: ((r.holeHost ?? [])), centroid: centroid, bbox: bbox)
+      let host = ((r.holeHost ?? []))
+      let fills = rings.enumerated().map({ (ri, ring) in bridgeHoles(ring, holes.enumerated().filter({ (k, _h) in k < host.count && host[k] == ri }).map({ $0.element })) })
+      return GeoRegion(name: r.name, label: (r.label ?? r.name), rings: rings, holes: holes, fills: fills, holeHost: host, centroid: centroid, bbox: bbox)
     })
     return GeoLayout(regions: regions, transform: GeoTransform(minX: minX, maxY: maxY, scale: scale, ox: ox, oy: oy, projection: projection))
   }
@@ -10506,9 +10510,8 @@ public func renderGeoAligned(_ layout: GeoLayout, _ aligned: [Double], _ options
       let has = isFiniteNumber(v) && progress > 0.0
       let t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
       let fill = !has ? emptyColor : visualOutside(v, options?.inRange, options?.outBands) ? (options?.outColor ?? "#cccccc") : rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t)
-      for ri in 0..<r.rings.count {
-        let holes = holesOf(r, ri)
-        out.append(PyreonDrawCmd(kind: "polygon", fill: fill, points: r.rings[ri], holes: holes.count > 0 ? holes : nil))
+      for ring in r.fills {
+        out.append(PyreonDrawCmd(kind: "polygon", fill: fill, points: ring))
       }
     }
     for r in layout.regions {
@@ -10564,14 +10567,107 @@ public func outlineRegion(_ layout: GeoLayout, _ ri: Int, _ stroke: String, _ wi
     return out
   }
 
-public func holesOf(_ r: GeoRegion, _ ri: Int) -> [[PyreonChartPt]] {
-    var out: [[PyreonChartPt]] = []
-    for k in 0..<r.holes.count {
-      if k < r.holeHost.count && r.holeHost[k] == ri {
-        out.append(r.holes[k])
-      }
+public func bridgeHoles(_ outer: [PyreonChartPt], _ holes: [[PyreonChartPt]]) -> [PyreonChartPt] {
+    if holes.count == 0 {
+      return outer
+    }
+    let sign = ringArea(outer) >= 0.0 ? 1.0 : -1.0
+    var ring = outer
+    for hi in 0..<holes.count {
+      let raw = holes[hi]
+      let hole = ringArea(raw) * sign > 0.0 ? reversedRing(raw) : raw
+      ring = bridgeOne(ring, hole, holes, hi)
+    }
+    return ring
+  }
+
+public func reversedRing(_ ring: [PyreonChartPt]) -> [PyreonChartPt] {
+    var out: [PyreonChartPt] = []
+    for k in stride(from: pyreonSub(ring.count, 1), through: 0, by: -1) {
+      out.append(ring[k])
     }
     return out
+  }
+
+public func bridgeOne(_ ring: [PyreonChartPt], _ hole: [PyreonChartPt], _ all: [[PyreonChartPt]], _ `self`: Int) -> [PyreonChartPt] {
+    var mi = 0
+    for k in 1..<hole.count {
+      if hole[k].x > hole[mi].x {
+        mi = k
+      }
+    }
+    let m = hole[mi]
+    var prevD = -1.0
+    var prevK = -1
+    for attempt in 0..<ring.count {
+      var best = -1
+      var bestD = 0.0
+      for k in 0..<ring.count {
+        let d = (ring[k].x - m.x) * (ring[k].x - m.x) + (ring[k].y - m.y) * (ring[k].y - m.y)
+        let after = d > prevD || (d == prevD && k > prevK)
+        if after && (best < 0 || d < bestD) {
+          best = k
+          bestD = d
+        }
+      }
+      if best < 0 {
+        break
+      }
+      prevD = bestD
+      prevK = best
+      if !bridgeClear(ring, hole, all, `self`, m, ring[best]) {
+        continue
+      }
+      var out: [PyreonChartPt] = []
+      for k in 0...best {
+        out.append(ring[k])
+      }
+      for k in 0..<hole.count {
+        out.append(hole[pyreonRem((pyreonAdd(mi, k)), hole.count)])
+      }
+      out.append(m)
+      for k in best..<ring.count {
+        out.append(ring[k])
+      }
+      return out
+    }
+    return ring
+  }
+
+public func bridgeClear(_ ring: [PyreonChartPt], _ hole: [PyreonChartPt], _ all: [[PyreonChartPt]], _ `self`: Int, _ m: PyreonChartPt, _ o: PyreonChartPt) -> Bool {
+    if ringHitsBridge(ring, m, o) || ringHitsBridge(hole, m, o) {
+      return false
+    }
+    for k in 0..<all.count {
+      if k != `self` && ringHitsBridge(all[k], m, o) {
+        return false
+      }
+    }
+    return true
+  }
+
+public func ringHitsBridge(_ ring: [PyreonChartPt], _ m: PyreonChartPt, _ o: PyreonChartPt) -> Bool {
+    for i in 0..<ring.count {
+      let a = ring[i]
+      let b = ring[i == pyreonSub(ring.count, 1) ? 0 : pyreonAdd(i, 1)]
+      if samePt(a, m) || samePt(b, m) || samePt(a, o) || samePt(b, o) {
+        continue
+      }
+      if segmentsCross(m, o, a, b) {
+        return true
+      }
+    }
+    return false
+  }
+
+public func samePt(_ a: PyreonChartPt, _ b: PyreonChartPt) -> Bool { a.x == b.x && a.y == b.y }
+
+public func segmentsCross(_ p1: PyreonChartPt, _ p2: PyreonChartPt, _ p3: PyreonChartPt, _ p4: PyreonChartPt) -> Bool {
+    let d1 = (p4.x - p3.x) * (p1.y - p3.y) - (p4.y - p3.y) * (p1.x - p3.x)
+    let d2 = (p4.x - p3.x) * (p2.y - p3.y) - (p4.y - p3.y) * (p2.x - p3.x)
+    let d3 = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
+    let d4 = (p2.x - p1.x) * (p4.y - p1.y) - (p2.y - p1.y) * (p4.x - p1.x)
+    return ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0)) && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))
   }
 
 public func closedLine(_ ring: [PyreonChartPt], _ stroke: String, _ width: Double) -> PyreonDrawCmd {
@@ -10637,17 +10733,8 @@ public func hitGeoIndex(_ layout: GeoLayout, _ px: Double, _ py: Double) -> Int 
       if px < r.bbox.x || px > r.bbox.x + r.bbox.w || py < r.bbox.y || py > r.bbox.y + r.bbox.h {
         continue
       }
-      for ri in 0..<r.rings.count {
-        if !pointInRing(r.rings[ri], px, py) {
-          continue
-        }
-        var inHole = false
-        for hole in holesOf(r, ri) {
-          if pointInRing(hole, px, py) {
-            inHole = true
-          }
-        }
-        if !inHole {
+      for ring in r.fills {
+        if pointInRing(ring, px, py) {
           return i
         }
       }

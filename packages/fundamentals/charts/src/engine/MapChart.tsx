@@ -12,6 +12,8 @@ import type { VNode } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { canvasHost, orNull } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
+import { withItemStates } from './host-states'
+import type { ItemStateProps } from './host-states'
 import { plain } from './format'
 import { geoDomainAligned, geoRoamPan, geoRoamZoom, hitGeoIndex, layoutGeoShapes, renderGeoAligned } from './geo'
 import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoTrails, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
@@ -27,7 +29,7 @@ import type { VisualMapSelection } from './visual-map-host'
 /** Region values as a record (`{ DE: 83 }`) or as the crossing list. */
 export type MapChartValues = Record<string, Double> | readonly GeoValue[]
 
-export interface MapChartProps extends CanvasHostProps {
+export interface MapChartProps extends CanvasHostProps, ItemStateProps {
   /**
    * Already-projected shapes (the form that lowers to native), inline GeoJSON,
    * or the name of a map registered with `registerMap`.
@@ -154,7 +156,7 @@ export function MapChart(props: MapChartProps): VNode {
     end: () => vm.end(),
   }
   const viewed = (): GeoOptions => ({ ...props.options, ...view() })
-  return canvasHost<GeoLayout>({
+  return canvasHost<GeoLayout>(withItemStates<GeoLayout>({
     props,
     drag: dragSpec,
     roam: props.roam === undefined || props.roam === false
@@ -262,5 +264,5 @@ export function MapChart(props: MapChartProps): VNode {
         series: [{ label: props.title ?? `Values from ${dom.min} to ${dom.max}`, values: [...values], kind: 'bars' }],
       }
     },
-  })
+  }))
 }

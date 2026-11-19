@@ -114,8 +114,6 @@ public struct PyreonDrawCmd: Codable, Equatable {
     public var weight: String?
     /// A text halo's width (ECharts' `textBorderWidth`); the colour is `stroke`.
     public var strokeWidth: Double?
-    /// A `polygon`'s inner rings (lakes, enclaves), cut out of the fill (even-odd).
-    public var holes: [[PyreonChartPt]]?
     // Full defaulted-parameter init in the GENERATED engine's field order —
     // the emitted geometry constructs commands as named-subset calls
     // (`PyreonDrawCmd(kind: "rect", rect: r, fill: f)`), and Swift requires
@@ -138,7 +136,6 @@ public struct PyreonDrawCmd: Codable, Equatable {
         dash: [Double]? = nil,
         points: [PyreonChartPt]? = nil,
         pointKeys: [String]? = nil,
-        holes: [[PyreonChartPt]]? = nil,
         center: PyreonChartPt? = nil,
         radius: Double? = nil,
         text: String? = nil,
@@ -159,7 +156,6 @@ public struct PyreonDrawCmd: Codable, Equatable {
         self.key = key
         self.enter = enter
         self.pointKeys = pointKeys
-        self.holes = holes
         self.from = from
         self.to = to
         self.stroke = stroke
@@ -257,7 +253,6 @@ public func pyreonShiftCmdsXY(_ cmds: [PyreonDrawCmd], _ dx: Double, _ dy: Doubl
         if let f = c.from { s.from = PyreonChartPt(x: f.x + dx, y: f.y + dy) }
         if let t = c.to { s.to = PyreonChartPt(x: t.x + dx, y: t.y + dy) }
         if let pts = c.points { s.points = pts.map { PyreonChartPt(x: $0.x + dx, y: $0.y + dy) } }
-        if let hs = c.holes { s.holes = hs.map { ring in ring.map { PyreonChartPt(x: $0.x + dx, y: $0.y + dy) } } }
         if let ctr = c.center { s.center = PyreonChartPt(x: ctr.x + dx, y: ctr.y + dy) }
         if let at = c.at { s.at = PyreonChartPt(x: at.x + dx, y: at.y + dy) }
         out.append(s)
@@ -293,7 +288,6 @@ public func pyreonMirrorCmds(_ cmds: [PyreonDrawCmd], _ width: Double) -> [Pyreo
         if let f = c.from { m.from = mp(f) }
         if let t = c.to { m.to = mp(t) }
         if let pts = c.points { m.points = pts.map { mp($0) } }
-        if let hs = c.holes { m.holes = hs.map { ring in ring.map { mp($0) } } }
         if let ctr = c.center { m.center = mp(ctr) }
         if let at = c.at { m.at = mp(at) }
         if let cs = c.corners, cs.count == 4 { m.corners = [cs[1], cs[0], cs[3], cs[2]] }
@@ -321,7 +315,6 @@ public func pyreonTransposeCmds(_ cmds: [PyreonDrawCmd]) -> [PyreonDrawCmd] {
         if let f = c.from { m.from = tp(f) }
         if let t = c.to { m.to = tp(t) }
         if let pts = c.points { m.points = pts.map { tp($0) } }
-        if let hs = c.holes { m.holes = hs.map { ring in ring.map { tp($0) } } }
         if let ctr = c.center { m.center = tp(ctr) }
         if let at = c.at { m.at = tp(at) }
         // Corners run top-left, top-right, bottom-right, bottom-left; the
@@ -510,8 +503,7 @@ private func pyreonPaintPattern(_ context: inout GraphicsContext, _ pattern: Pyr
                 p.move(to: CGPoint(x: first.x, y: first.y))
                 for q in pts.dropFirst() { p.addLine(to: CGPoint(x: q.x, y: q.y)) }
                 p.closeSubpath()
-                for hole in m.holes ?? [] { pyreonAddHole(&p, hole) }
-                layer.fill(p, with: .color(pyreonChartColor(m.fill ?? pattern.color)), style: FillStyle(eoFill: true))
+                layer.fill(p, with: .color(pyreonChartColor(m.fill ?? pattern.color)))
             }
         }
     }
@@ -522,29 +514,11 @@ private func pyreonChartMixPoint(_ a: PyreonChartPt, _ b: PyreonChartPt, _ t: Do
     PyreonChartPt(x: pyreonChartMix(a.x, b.x, t), y: pyreonChartMix(a.y, b.y, t))
 }
 
-/// Two polygons' hole lists have the same number of rings with the same number of points each.
-public func pyreonSameHoleShape(_ a: [[PyreonChartPt]]?, _ b: [[PyreonChartPt]]?) -> Bool {
-    let x = a ?? []
-    let y = b ?? []
-    if x.count != y.count { return false }
-    for i in x.indices where x[i].count != y[i].count { return false }
-    return true
-}
-
-/// Append a hole ring to a polygon path (the fill is even-odd, so it cuts the hole out).
-public func pyreonAddHole(_ path: inout Path, _ hole: [PyreonChartPt]) {
-    guard hole.count > 2 else { return }
-    path.move(to: CGPoint(x: hole[0].x, y: hole[0].y))
-    for q in hole.dropFirst() { path.addLine(to: CGPoint(x: q.x, y: q.y)) }
-    path.closeSubpath()
-}
-
 public func pyreonSameChartCommandShape(_ a: [PyreonDrawCmd], _ b: [PyreonDrawCmd]) -> Bool {
     guard a.count == b.count else { return false }
     for i in a.indices {
         if a[i].kind != b[i].kind { return false }
         if (a[i].kind == "polyline" || a[i].kind == "polygon") && a[i].points?.count != b[i].points?.count { return false }
-        if a[i].kind == "polygon" && !pyreonSameHoleShape(a[i].holes, b[i].holes) { return false }
         if a[i].kind == "text" && a[i].text != b[i].text { return false }
     }
     return true
@@ -567,9 +541,6 @@ public func pyreonTweenChartCommands(_ from: [PyreonDrawCmd], _ to: [PyreonDrawC
         case "polyline", "polygon":
             if let ap = a.points, let bp = b.points, ap.count == bp.count {
                 b.points = bp.indices.map { pyreonChartMixPoint(ap[$0], bp[$0], progress) }
-            }
-            if let ah = a.holes, let bh = b.holes, pyreonSameHoleShape(ah, bh) {
-                b.holes = bh.indices.map { k in bh[k].indices.map { j in pyreonChartMixPoint(ah[k][j], bh[k][j], progress) } }
             }
         case "circle":
             if let ac = a.center, let bc = b.center, let ar = a.radius, let br = b.radius {
@@ -609,7 +580,7 @@ private func pyreonCollapsedChartCommand(_ command: PyreonDrawCmd) -> PyreonDraw
     switch command.kind {
     case "rect": result.rect = PyreonChartRect(x: center.x, y: center.y, w: 0, h: 0)
     case "line": result.from = center; result.to = center
-    case "polyline", "polygon": result.points = Array(repeating: center, count: command.points?.count ?? 0); result.holes = command.holes?.map { Array(repeating: center, count: $0.count) }
+    case "polyline", "polygon": result.points = Array(repeating: center, count: command.points?.count ?? 0)
     case "circle": result.center = center; result.radius = 0
     case "text": result.at = center; result.size = 0
     default: break
@@ -625,7 +596,7 @@ private func pyreonChartTarget(_ target: PyreonDrawCmd, at source: PyreonDrawCmd
     switch target.kind {
     case "rect": result.rect = box
     case "line": result.from = PyreonChartPt(x: box.x, y: box.y); result.to = PyreonChartPt(x: box.x + box.w, y: box.y + box.h)
-    case "polyline", "polygon": result.points = Array(repeating: center, count: target.points?.count ?? 0); result.holes = target.holes?.map { Array(repeating: center, count: $0.count) }
+    case "polyline", "polygon": result.points = Array(repeating: center, count: target.points?.count ?? 0)
     case "circle": result.center = center; result.radius = max(box.w, box.h) / 2.0
     case "text": result.at = center; result.size = source.kind == "text" ? source.size : 0
     default: break
@@ -788,8 +759,7 @@ private struct PyreonStaticChartCanvas: View {
                     p.move(to: CGPoint(x: pts[0].x, y: pts[0].y))
                     for q in pts.dropFirst() { p.addLine(to: CGPoint(x: q.x, y: q.y)) }
                     p.closeSubpath()
-                    for hole in c.holes ?? [] { pyreonAddHole(&p, hole) }
-                    context.fill(p, with: pyreonChartShading(fill, c.grad), style: FillStyle(eoFill: true))
+                    context.fill(p, with: pyreonChartShading(fill, c.grad))
                     let xs = pts.map { $0.x }
                     let ys = pts.map { $0.y }
                     if let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() {

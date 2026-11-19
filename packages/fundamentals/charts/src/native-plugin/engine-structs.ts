@@ -589,28 +589,6 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
-        "name": "holes",
-        "type": {
-          "kind": "union",
-          "branches": [
-            {
-              "kind": "array",
-              "element": {
-                "kind": "array",
-                "element": {
-                  "kind": "typeRef",
-                  "name": "PyreonChartPt",
-                  "args": []
-                }
-              }
-            },
-            {
-              "kind": "undefined"
-            }
-          ]
-        }
-      },
-      {
         "name": "center",
         "type": {
           "kind": "union",
@@ -8531,6 +8509,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "holes",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "array",
+            "element": {
+              "kind": "typeRef",
+              "name": "PyreonChartPt",
+              "args": []
+            }
+          }
+        }
+      },
+      {
+        "name": "fills",
         "type": {
           "kind": "array",
           "element": {

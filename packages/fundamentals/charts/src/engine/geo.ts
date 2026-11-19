@@ -18,8 +18,15 @@ export interface GeoRegion {
   label: string
   /** Outer rings in pixel space. */
   rings: Pt[][]
-  /** Inner rings (holes: lakes, enclaves) in pixel space, filled even-odd with their host outer ring. */
+  /** Inner rings (holes: lakes, enclaves) in pixel space; stroked, and cut out of the fill. */
   holes: Pt[][]
+  /**
+   * What is FILLED and hit-tested, one ring per outer ring: the outer ring itself, or, when it has holes, one ring
+   * that runs into each hole along a zero-width bridge and back out (a "keyhole" polygon). A plain polygon with
+   * that ring fills as the outer shape with the holes cut out under EVERY fill rule, so no draw executor (canvas,
+   * SVG, either native runtime, the tween, the mirror) needed to learn about holes.
+   */
+  fills: Pt[][]
   /** For each hole, the index of the outer ring (in `rings`) it cuts out of. */
   holeHost: number[]
   centroid: Pt
@@ -267,7 +274,9 @@ export function layoutGeoShapes(shapes: readonly GeoShape[], box: Rect, options?
     const bbox: Rect = bseen === 0 ? { x: box.x, y: box.y, w: 0.0, h: 0.0 } : { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 }
     const fallback: Pt = { x: bbox.x + bbox.w / 2.0, y: bbox.y + bbox.h / 2.0 }
     const centroid = bestAt < 0 ? fallback : ringCentroid(rings[bestAt]!) ?? fallback
-    return { name: r.name, label: r.label ?? r.name, rings, holes, holeHost: [...(r.holeHost ?? [])], centroid, bbox }
+    const host = [...(r.holeHost ?? [])]
+    const fills = rings.map((ring, ri) => bridgeHoles(ring, holes.filter((_h, k) => k < host.length && host[k] === ri)))
+    return { name: r.name, label: r.label ?? r.name, rings, holes, holeHost: host, fills, centroid, bbox }
   })
   return { regions, transform: { minX, maxY, scale, ox, oy, projection } }
 }
@@ -353,10 +362,7 @@ export function renderGeoAligned(layout: GeoLayout, aligned: readonly Double[], 
     const has = isFiniteNumber(v) && progress > 0.0
     const t = !has ? 0.0 : span <= 0.0 ? 1.0 : ((v - lo) / span) * progress
     const fill = !has ? emptyColor : visualOutside(v, options?.inRange, options?.outBands) ? options?.outColor ?? '#cccccc' : rampColor(stops, t < 0.0 ? 0.0 : t > 1.0 ? 1.0 : t)
-    for (let ri = 0; ri < r.rings.length; ri++) {
-      const holes = holesOf(r, ri)
-      out.push({ kind: 'polygon', points: r.rings[ri]!, fill, holes: holes.length > 0 ? holes : undefined })
-    }
+    for (const ring of r.fills) out.push({ kind: 'polygon', points: ring, fill })
   }
   for (const r of layout.regions) {
     for (const ring of r.rings) out.push(closedLine(ring, border, borderWidth))
@@ -393,12 +399,101 @@ function outlineRegion(layout: GeoLayout, ri: number, stroke: string, width: Dou
   return out
 }
 
-/** The region's holes that cut the outer ring `ri`. */
-export function holesOf(r: GeoRegion, ri: number): Pt[][] {
-  const out: Pt[][] = []
-  for (let k = 0; k < r.holes.length; k++) if (k < r.holeHost.length && r.holeHost[k] === ri) out.push(r.holes[k]!)
+/**
+ * `outer` with each of `holes` joined in along a zero-width bridge: the ring walks to the nearest outer vertex a hole
+ * can see, around the hole, and back along the same edge. Filled, it is the outer shape with the holes cut out under
+ * the nonzero and the even-odd rule alike (a hole is wound against the outer ring), and a crossing-number test sees
+ * the bridge twice. A hole with no visible vertex is left out of the fill (it is still stroked).
+ */
+export function bridgeHoles(outer: Pt[], holes: Pt[][]): Pt[] {
+  if (holes.length === 0) return outer
+  const sign = ringArea(outer) >= 0.0 ? 1.0 : -1.0
+  let ring = outer
+  for (let hi = 0; hi < holes.length; hi++) {
+    const raw = holes[hi]!
+    // Wound AGAINST the outer ring.
+    const hole = ringArea(raw) * sign > 0.0 ? reversedRing(raw) : raw
+    ring = bridgeOne(ring, hole, holes, hi)
+  }
+
+  return ring
+}
+
+/** The ring in the opposite direction. */
+function reversedRing(ring: Pt[]): Pt[] {
+  const out: Pt[] = []
+  for (let k = ring.length - 1; k >= 0; k--) out.push(ring[k]!)
 
   return out
+}
+
+/** One hole bridged into `ring`: from its rightmost vertex to the nearest ring vertex that sees it, or `ring` unchanged. */
+function bridgeOne(ring: Pt[], hole: Pt[], all: Pt[][], self: number): Pt[] {
+  let mi = 0
+  for (let k = 1; k < hole.length; k++) if (hole[k]!.x > hole[mi]!.x) mi = k
+  const m = hole[mi]!
+  // The ring's vertices nearest-first WITHOUT a mutable marker array: each pass takes the smallest (distance, index)
+  // after the previous pick.
+  let prevD = -1.0
+  let prevK = -1
+  for (let attempt = 0; attempt < ring.length; attempt++) {
+    let best = -1
+    let bestD = 0.0
+    for (let k = 0; k < ring.length; k++) {
+      const d = (ring[k]!.x - m.x) * (ring[k]!.x - m.x) + (ring[k]!.y - m.y) * (ring[k]!.y - m.y)
+      const after = d > prevD || (d === prevD && k > prevK)
+      if (after && (best < 0 || d < bestD)) {
+        best = k
+        bestD = d
+      }
+    }
+    if (best < 0) break
+    prevD = bestD
+    prevK = best
+    if (!bridgeClear(ring, hole, all, self, m, ring[best]!)) continue
+    const out: Pt[] = []
+    for (let k = 0; k <= best; k++) out.push(ring[k]!)
+    for (let k = 0; k < hole.length; k++) out.push(hole[(mi + k) % hole.length]!)
+    out.push(m)
+    for (let k = best; k < ring.length; k++) out.push(ring[k]!)
+
+    return out
+  }
+
+  return ring
+}
+
+/** The bridge m -> o crosses no edge of the ring, this hole or any other hole (edges that share an endpoint with it do not count). */
+function bridgeClear(ring: Pt[], hole: Pt[], all: Pt[][], self: number, m: Pt, o: Pt): boolean {
+  if (ringHitsBridge(ring, m, o) || ringHitsBridge(hole, m, o)) return false
+  for (let k = 0; k < all.length; k++) if (k !== self && ringHitsBridge(all[k]!, m, o)) return false
+
+  return true
+}
+
+function ringHitsBridge(ring: Pt[], m: Pt, o: Pt): boolean {
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]!
+    const b = ring[i === ring.length - 1 ? 0 : i + 1]!
+    if (samePt(a, m) || samePt(b, m) || samePt(a, o) || samePt(b, o)) continue
+    if (segmentsCross(m, o, a, b)) return true
+  }
+
+  return false
+}
+
+function samePt(a: Pt, b: Pt): boolean {
+  return a.x === b.x && a.y === b.y
+}
+
+/** Proper crossing of segments p1p2 and p3p4 (the orientation test; touching and collinear overlap do not count). */
+function segmentsCross(p1: Pt, p2: Pt, p3: Pt, p4: Pt): boolean {
+  const d1 = (p4.x - p3.x) * (p1.y - p3.y) - (p4.y - p3.y) * (p1.x - p3.x)
+  const d2 = (p4.x - p3.x) * (p2.y - p3.y) - (p4.y - p3.y) * (p2.x - p3.x)
+  const d3 = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
+  const d4 = (p2.x - p1.x) * (p4.y - p1.y) - (p2.y - p1.y) * (p4.x - p1.x)
+
+  return ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0)) && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))
 }
 
 /** A ring as a closed stroked polyline. */
@@ -463,13 +558,9 @@ export function hitGeoIndex(layout: GeoLayout, px: Double, py: Double): number {
   for (let i = layout.regions.length - 1; i >= 0; i--) {
     const r = layout.regions[i]!
     if (px < r.bbox.x || px > r.bbox.x + r.bbox.w || py < r.bbox.y || py > r.bbox.y + r.bbox.h) continue
-    // A point in a lake is not in the country: inside an outer ring and outside every one of ITS holes.
-    for (let ri = 0; ri < r.rings.length; ri++) {
-      if (!pointInRing(r.rings[ri]!, px, py)) continue
-      let inHole = false
-      for (const hole of holesOf(r, ri)) if (pointInRing(hole, px, py)) inHole = true
-      if (!inHole) return i
-    }
+    // A point in a lake is not in the country: the fill ring has its holes cut out, and the crossing test counts
+    // each bridge twice, so it cancels.
+    for (const ring of r.fills) if (pointInRing(ring, px, py)) return i
   }
   return -1
 }

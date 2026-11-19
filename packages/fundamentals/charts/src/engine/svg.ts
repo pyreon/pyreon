@@ -220,9 +220,7 @@ export function svgCommand(c: DrawCmd, fontFamily: string, gradientId?: string, 
   }
   if (c.kind === 'polygon') {
     if (c.points.length < 3) return ''
-    // With holes the outline and its holes are ONE path filled even-odd; without, the plain element it always was.
-    const holes = (c.holes ?? []).filter((h) => h.length >= 3)
-    const shape = holes.length === 0 ? `<polygon points="${pointsAttr(c.points)}"` : `<path d="${[c.points, ...holes].map((r) => `M${pointsAttr(r).replace(/ /g, 'L')}Z`).join('')}" fill-rule="evenodd"`
+    const shape = `<polygon points="${pointsAttr(c.points)}"`
     return `${shape} fill="${paint(c.fill, c.grad)}"/>${c.pattern === undefined || !patternId ? '' : `${shape} fill="url(#${patternId})"/>`}`
   }
   if (c.kind === 'circle') {
