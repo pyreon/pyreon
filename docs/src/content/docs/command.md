@@ -706,19 +706,17 @@ The names differ; the ideas map.
 | | cmdk | kbar | ninja-keys | `@pyreon/command` |
 | --- | --- | --- | --- | --- |
 | What a command is | JSX (`<Command.Item>`) | an action object | an item in a `data` array | an object: `{ id, title, ... }` |
-| Where commands live | in the tree you render | `KBarProvider actions` or `useRegisterActions` | the `data` property of the element | a registry; `useCommand` registers for a component's life |
-| Per-screen commands | render the items on that screen | `useRegisterActions(actions, deps)` | set `data` again | `useCommand` (removed on unmount) |
-| Keyboard shortcut of a command | not included | `shortcut` (a sequence of keys) | `hotkey` | `shortcut`, registered through `@pyreon/hotkeys` |
-| Nested pages | state of your own, `pages` | `parent` ids | `children` and `parent` | `children` (a list) |
-| Async results | `shouldFilter={false}` and your own state | `useRegisterActions` with fetched actions | set `data` | `children` as a function: debounced, aborted, latest wins |
-| Matching | built in (a scoring filter) | built in (a fuzzy library) | built in (a fuzzy library) | `fuzzyMatch`: accents, kana, words in any order, ranges for highlighting; `filter` replaces it |
-| Grouping | `<Command.Group heading>` | `section` | `section` | `group` (declared once, in order) |
-| Recents | yours | yours | yours | built in, bounded, persistable |
-| Dialog | `<Command.Dialog>` (a dialog library) | portal and animator parts | the element itself | a native modal `<dialog>` |
-| Styling | unstyled, data attributes | unstyled | CSS variables | unstyled parts, `pcmd-*` classes, data attributes, an optional stylesheet |
-| Framework | React | React | any (a web component) | Pyreon (the registry and matcher are plain functions) |
+| Where commands live | in the tree you render | the actions you give its provider | the `data` property of the element | a registry; `useCommand` registers for a component's life |
+| Keyboard shortcut of a command | not included (you add a `keydown` listener) | `shortcut`, an array of keys | `hotkey` | `shortcut`, registered through `@pyreon/hotkeys` |
+| Nested pages | no API: a `pages` stack in your own state | see its docs | `children` and `parent` | `children` (a list) |
+| Async results | `shouldFilter={false}` and your own state | see its docs | set `data` | `children` as a function: debounced, aborted, latest wins |
+| Matching | built in; `filter` replaces it | built in | built in | `fuzzyMatch`: accents, kana, words in any order, ranges for highlighting; `filter` replaces it |
+| Grouping | `<Command.Group heading>` | see its docs | `section` | `group` (declared once, in order) |
+| Dialog | `<Command.Dialog>` (a dialog library) | see its docs | the element itself | a native modal `<dialog>` |
 
-If you used cmdk: a `<Command.Item onSelect>` becomes a registered `{ run }`, and `value` is the title plus `keywords`. If you used kbar: `name` is `title`, `section` is `group`, `perform` is `run`, `parent` becomes `children` on the parent, and a sequence like `['g', 'h']` is the hotkeys syntax `'g h'`. If you used ninja-keys: `hotkey` is `shortcut` (`'cmd+k'` is `'mod+k'`), `handler` is `run`, `section` is `group`, `mdIcon`/`icon` is `icon`.
+Checked against each library's README in 2026; a cell that says "see its docs" is one I could not confirm and chose not to state. kbar's page I could read only gave `id`, `name`, `shortcut`, `keywords` and `perform`.
+
+If you used cmdk: a `<Command.Item onSelect>` becomes a registered `{ run }`, `keywords` stay `keywords`, and pages that were your own `pages` state become `children`. If you used kbar: `name` is `title`, `perform` is `run`, and a shortcut like `['g', 'h']` is the hotkeys syntax `'g h'`. If you used ninja-keys: `handler` is `run`, `hotkey` is `shortcut` (`'cmd+k'` is `'mod+k'`), `section` is `group`, `mdIcon` and `icon` are `icon`, and `children` and `parent` map to `children`.
 
 ## Server rendering
 
