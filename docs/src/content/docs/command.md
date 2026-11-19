@@ -7,7 +7,7 @@ description: A command palette for Pyreon — a fuzzy matcher, a registry of com
 
 `@pyreon/command` is the part of a command palette that is the same in every app: finding an action by typing a few letters of it, knowing which actions exist on the current screen, and binding them to keys. The matcher and the registry are plain functions and signals; the palette state and the components are built on them.
 
-> **Experimental.** This page covers the matcher and the registry with shortcuts, recents and nested pages. The palette state, the components and the recipes follow. Typo tolerance is not part of v0.
+> **Experimental.** This page covers the matcher, the registry (shortcuts, recents, nested pages), the palette state and the dialog components. Recipes, the integrations and the "coming from" table follow. Typo tolerance is not part of v0.
 
 ## Installation
 
@@ -20,7 +20,9 @@ bun add @pyreon/command @pyreon/reactivity @pyreon/core
 | Entry | What |
 | --- | --- |
 | `@pyreon/command/core` | the matcher: `fuzzyMatch`, `rank`, `createRanker`. Pure, no dependencies. |
-| `@pyreon/command` | the core plus the registry: `createCommands`, `useCommands`, `useCommand`, `provideCommands`, `formatShortcut`. |
+| `@pyreon/command` | the core plus the registry (`createCommands`, `useCommands`, `useCommand`, `provideCommands`, `formatShortcut`) and the palette state (`createPalette`). |
+| `@pyreon/command/components` | `<CommandPalette>` and its parts. Needs `@pyreon/core`. |
+| `@pyreon/command/style.css` | an optional default look. |
 
 ## The matcher
 
@@ -273,9 +275,183 @@ const commands = createCommands({
 
 A command that ran successfully (from a shortcut, the palette or `run`) moves to the front of `recents()`; the list is unique and capped at `max` (default 8). An empty query lists recents first. For a typed query the recent gets a boost that shrinks down the list and is at most 10 points, less than one word-start bonus: it settles close calls and never overturns a clearly better match. The storage is any `{ get, set }`; a storage that throws is reported in development and the recents stay in memory. Only recency is kept (the storage holds ids, not counts): frequency is not tracked.
 
+## The palette state
+
+`createPalette` is a palette with no markup: whether it is open, the query, the stack of nested pages, the rows (grouped and ranked), the active row, and the ARIA wiring. `<CommandPalette>` is a renderer built on it; build your own the same way.
+
+```ts
+import { createCommands, createPalette } from '@pyreon/command'
+
+const commands = createCommands()
+commands.register([
+  { id: 'new', title: 'New Project', run: () => newProject() },
+  { id: 'theme', title: 'Change theme…', children: [{ id: 'dark', title: 'Dark', run: () => setTheme('dark') }] },
+])
+
+const palette = createPalette({ commands }) // mod+k opens and closes it
+palette.open()
+palette.setQuery('np')
+palette.results()[0]?.title // 'New Project'
+palette.results()[0]?.ranges // [[0, 1], [4, 5]]
+await palette.runActive() // runs it, then closes
+```
+
+| | |
+| --- | --- |
+| `open(page?)`, `close()`, `toggle()` | Opening an open palette only navigates (`open('theme')` opens at that page). One palette is open at a time: opening a second closes the first. Client only. |
+| `query()`, `setQuery(q)` | A new session starts with an empty query on the root page. |
+| `page()`, `pageTitle()`, `back()` | The stack of nested pages, as command ids, any depth. `back()` returns `false` at the root and restores the query that was typed above the page. A page whose command is unregistered while it is open drops out of the stack. |
+| `results()`, `groups()` | The rows, flat in display order, and the same in their groups. Each row has `id`, `command`, `title`, `subtitle`, `ranges`, `subtitleRanges`, `group`, `enabled`, `disabledReason`, `recent`, `hasPage`, `shortcuts` (as the user reads them) and `index`. |
+| `activeId()`, `setActive(id)`, `move(...)` | The first row is active until the user moves; it moves back to the first row when the active command leaves the list. `move(1)`, `move(-1)`, `'first'`, `'last'`, `'nextGroup'`, `'prevGroup'`, wrapping at the ends. |
+| `runActive()`, `runItem(row)` | A row with children opens its page. Otherwise the command runs and the palette closes, unless it has `keepOpen`. A disabled row does not run. |
+| `status()`, `error()`, `running()` | `'loading'` while an async source or a run is pending, `'error'` after one failed. |
+| `announcement()` | What the live region says. |
+| `inputProps`, `listProps`, `itemProps(row)`, `groupProps(group)` | Spreadable attributes and handlers; see below. |
+| `dispose()` | Removes the hotkey, aborts what is pending and releases everything. In a component it runs on unmount. |
+
+Options:
+
+| Option | Default | |
+| --- | --- | --- |
+| `commands` | `useCommands()` | The registry to search. |
+| `hotkey` | `'mod+k'` | `false` for none. Registered through `@pyreon/hotkeys` with `enableOnInputs`, so it also closes the palette from inside its own input. |
+| `placeholder`, `label`, `messages` | English | See "Words". |
+| `emptyQuery` | `'recents'` | What an empty query lists at the root. `'recents'`: a Recent group, then the groups in declared order. `'groups'`: the groups only (a recent stays in its group). `'all'`: one flat list in registration order. |
+| `showDisabled` | `false` | List disabled commands, with their reason, instead of hiding them. |
+| `filter` | | Replace the matching: the commands that pass are listed in registration order, without ranges. |
+| `debounce` | `150` | Milliseconds an async source waits after the last keystroke. |
+| `pageSize` | `8` | How far PageUp and PageDown move. |
+| `restoreFocus` | `true` | Return focus to the element that had it when the palette opened. |
+| `onOpenChange` | | Called with `true` and `false`, on changes only. |
+
+### Pages and async sources
+
+`children` as a list is a page. `children` as a function is an **async source**: "Search customers…" opens a page whose rows are whatever the function returns for the query.
+
+```ts
+import { createCommands } from '@pyreon/command'
+
+const commands = createCommands()
+commands.register({
+  id: 'customers',
+  title: 'Search customers…',
+  children: async (query, signal) => {
+    const response = await fetch(`/api/customers?q=${encodeURIComponent(query)}`, { signal })
+    const found: { id: string; name: string }[] = await response.json()
+    return found.map((c) => ({ id: `customer-${c.id}`, title: c.name, run: () => openCustomer(c.id) }))
+  },
+})
+```
+
+- **Debounced.** The function is called immediately when the page opens (with an empty query), and then once the user has paused for `debounce` ms.
+- **Cancellable.** The `AbortSignal` is aborted when a newer query supersedes the request and when the palette closes. Pass it to `fetch`; an aborted request is never reported as an error.
+- **The latest answer wins.** Each request takes a ticket, and an answer is used only if its ticket is still the newest: a slow earlier response can never overwrite a newer one, whatever order they arrive in.
+- **No flicker.** The previous rows stay on screen while the next request is pending, and are replaced when it answers. `status()` is `'loading'` meanwhile, and the default components show it and the live region says "Loading…".
+- **Errors.** A rejected request (or one that throws, or returns something that is not an array) sets `status()` to `'error'` and `error()`; the rows stay, the live region announces `Failed: …`, and the next query tries again.
+- The rows are highlighted for the query locally. A row can itself have `children` (a page of its own, three deep and more) and is run like any other command; rows are not registered, so they have no shortcuts.
+
+A synchronous function works too (it answers at once, with no loading state).
+
+### Running
+
+`run` receives `{ id, source: 'palette', query, signal, commands }`. While an async `run` is pending the row is marked `data-running`, `status()` is `'loading'`, and a second Enter is ignored. On success the palette closes (unless `keepOpen`); on failure it **stays open** with the error (`status()` is `'error'`, announced, cleared by the next keystroke). Closing the palette while a run is pending aborts `signal`, and nothing the run does afterwards touches the palette. A run that never settles holds the palette until it is closed; the next time it opens it is free.
+
+## `<CommandPalette>`
+
+```tsx
+import { CommandPalette } from '@pyreon/command/components'
+import '@pyreon/command/style.css'
+
+export function App() {
+  return <CommandPalette />
+}
+```
+
+With no props it searches `useCommands()` and opens on `mod+k`. Give it a `palette` of your own, or the palette options (`commands`, `hotkey`, `placeholder`, `messages`, `emptyQuery`, `showDisabled`, `filter`, `debounce`, `onOpenChange`). It renders nothing while closed, on the server and on the first client render alike, so there is nothing to mismatch when it hydrates.
+
+### What the dialog does
+
+It is a native `<dialog>` shown with `showModal()`, in a portal in `<body>`:
+
+- **Focus** moves to the input when it opens, **Tab and Shift+Tab stay inside** (the input and the two buttons), and focus **returns to the element that had it** when it closes, whether by Escape, by running a command, by the close button or by the hotkey. If that element is gone, focus goes to the page.
+- **The page behind is inert**: the browser makes everything outside a modal dialog inert (`inert` semantics: not focusable, not clickable, hidden from assistive technology). A browser without `showModal` gets a fallback: the other children of `<body>` get `inert` and `aria-hidden` while the palette is open, and are restored after.
+- **Scroll is locked** without a layout shift: the page scrollbar's width is added as padding on its side (in right-to-left pages too) and everything is restored on close. It is counted, so nested dialogs do not unlock each other.
+- **It works inside an open modal.** A modal dialog opened later goes on top and makes the earlier one inert; closing it makes the earlier one live again, and focus goes back into it.
+- **Escape goes back one page, then closes.** It is handled on `keydown`, not through the browser's `cancel` event, because a cancelled `cancel` is not honoured a second time in a row without an interaction in between (three pages deep, Escape must walk back three times). A click on the backdrop closes.
+- **Direction**: the dialog takes the direction (`dir`) of the element that had focus when it opened (the portal would otherwise lose a direction set on a container), or the `dir` prop.
+
+### Keyboard
+
+| Key | |
+| --- | --- |
+| Up, Down | Move the active row, wrapping. Focus stays in the input; `aria-activedescendant` names the row. |
+| Home, End | First and last row. (They do not move the caret in the input.) |
+| PageUp, PageDown | Move by `pageSize` rows. |
+| Enter | Run the active row, or open its page. Not while an IME composition is confirmed. |
+| Escape | Back one page; at the root, close. |
+| Backspace | On an empty query, back one page. |
+| Tab, Shift+Tab | Cycle through the input, the back button (in a page) and the close button; they never leave the dialog. |
+| the hotkey | Closes it. |
+
+### Accessibility
+
+The input is `role="combobox"` with `aria-expanded`, `aria-controls` (the list), `aria-autocomplete="list"` and `aria-activedescendant` (the active row); the list is `role="listbox"` with `role="group"` groups named by their heading (`aria-labelledby`) and `role="option"` rows with `aria-selected`, `aria-disabled`, `aria-setsize` and `aria-posinset`. The active row is scrolled into view. A polite live region **inside the dialog** (outside it, the modal makes it inert) says "5 results", "No results", "Loading…", `Failed: …`, and, when the active command is disabled, why: "Save, unavailable: Nothing changed". It says nothing for an empty query at the root. A disabled row is listed (with `showDisabled`), can be made active so its reason is heard, and does not run. The default dialog is checked with `axe-core` in a real browser, open, in a page, with a disabled row and with no results.
+
+### Long lists
+
+Beyond 300 rows (`virtualizeAfter`) only the rows in view are in the DOM, with a few around them: every row, group headings included, has one height (`rowHeight`, 40 px), so the window is arithmetic. Rows keep `aria-setsize` and `aria-posinset` ("7 of 5,000"); headings become `role="presentation"` there, because a group element cannot wrap rows that are not all in the DOM. Keyboard movement scrolls the active row into the window first.
+
+### Parts
+
+For a layout of your own, give `<CommandPalette>` children and build from the parts; each reads the palette through `usePalette()`.
+
+```tsx
+import { CommandEmpty, CommandInput, CommandList, CommandPalette, CommandLoading } from '@pyreon/command/components'
+
+export function MyPalette() {
+  return (
+    <CommandPalette placeholder="Search…">
+      <CommandInput class="my-input" />
+      <CommandList class="my-list" />
+      <CommandEmpty>Nothing matches.</CommandEmpty>
+      <CommandLoading />
+    </CommandPalette>
+  )
+}
+```
+
+`CommandGroup`, `CommandItem` (with `Highlight` for the matched runs and `CommandShortcut`) are the pieces of the list; `CommandItem` takes children to replace the row content. With `createPalette` alone you can spread `palette.inputProps` on your own `<input>`, `palette.listProps` on your list, `palette.itemProps(row)` on a row and `palette.groupProps(group)` on a group, which carries the same ARIA wiring.
+
+### Words
+
+Everything the palette says can be replaced, for a translation:
+
+```tsx
+import { CommandPalette } from '@pyreon/command/components'
+
+export const Czech = () => (
+  <CommandPalette
+    messages={{
+      label: 'Příkazy',
+      placeholder: 'Zadejte příkaz…',
+      results: (n) => (n === 1 ? '1 výsledek' : n < 5 ? `${n} výsledky` : `${n} výsledků`),
+      noResults: 'Nic nenalezeno',
+      loading: 'Načítání…',
+      recent: 'Naposledy použité',
+      back: 'Zpět',
+      close: 'Zavřít',
+    }}
+  />
+)
+```
+
+### Styling
+
+`@pyreon/command/style.css` is a small default look (system colours, logical properties so it mirrors in right-to-left text, larger targets on touch, an opening animation only when the user has not asked for reduced motion). Or style the classes: `pcmd` (the dialog), `pcmd-panel`, `pcmd-header`, `pcmd-input`, `pcmd-btn` (`pcmd-back`, `pcmd-close`), `pcmd-list`, `pcmd-group`, `pcmd-heading`, `pcmd-item`, `pcmd-title`, `pcmd-subtitle`, `pcmd-reason`, `pcmd-mark`, `pcmd-kbd`, `pcmd-empty`, `pcmd-loading`. State is on data attributes: `data-active`, `data-disabled`, `data-recent`, `data-page`, `data-running`. Colours and sizes are custom properties on `.pcmd` (`--pcmd-bg`, `--pcmd-fg`, `--pcmd-active-bg`, `--pcmd-width`, ...).
+
 ## Server rendering
 
-On the server the registry is inert: `register` registers nothing, `commands()` and `search()` are empty and nothing is kept between requests. A component that calls `useCommand` renders as usual. (The registry is module state shared by every request on a server, which is why it must keep nothing.)
+On the server the registry is inert: `register` registers nothing, `commands()` and `search()` are empty and nothing is kept between requests. A component that calls `useCommand` renders as usual. A palette is inert too: `open()` does nothing, there are no rows, and `<CommandPalette>` renders only the empty markers of a reactive child. (The registry is module state shared by every request on a server, which is why it must keep nothing.)
 
 ## Cleanup
 

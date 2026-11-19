@@ -7,7 +7,7 @@ export default defineManifest({
   title: 'Command',
   tagline: 'A command palette for Pyreon: a fuzzy matcher, a registry of commands with shortcuts, recents and nested pages',
   description:
-    'Every action of an app, found by typing and run from the keyboard. `@pyreon/command/core` is the pure matcher: `fuzzyMatch` and `rank` are case- and diacritic-insensitive (Résumé is found by "resume", Straße by "strasse", ユーザー by ゆーざー), score word starts, camelCase humps, consecutive characters and prefixes (so "np" finds New Project), match the words of a query in any order, and return ranges in UTF-16 offsets that are right for emoji and combining marks, for highlighting. `createRanker` keeps the prepared texts and narrows: a query that extends the previous one only looks at what the previous one matched. The registry (`createCommands`, `useCommands`, `useCommand`, `provideCommands`) holds the commands: `useCommand` registers one for the lifetime of a component, so the list always matches what is on screen; a title can be a function (switching the locale re-ranks); a command can have nested pages (`children`); recents are kept and can be persisted; a command with a `shortcut` is registered through `@pyreon/hotkeys` exactly once while it is registered and enabled, with a development warning that names both commands when two share a shortcut. Typo tolerance is not part of v0. On the server the registry is inert.',
+    'Every action of an app, found by typing and run from the keyboard. `@pyreon/command/core` is the pure matcher: `fuzzyMatch` and `rank` are case- and diacritic-insensitive (Résumé is found by "resume", Straße by "strasse", ユーザー by ゆーざー), score word starts, camelCase humps, consecutive characters and prefixes (so "np" finds New Project), match the words of a query in any order, and return ranges in UTF-16 offsets that are right for emoji and combining marks, for highlighting. `createRanker` keeps the prepared texts and narrows: a query that extends the previous one only looks at what the previous one matched. The registry (`createCommands`, `useCommands`, `useCommand`, `provideCommands`) holds the commands: `useCommand` registers one for the lifetime of a component, so the list always matches what is on screen; a title can be a function (switching the locale re-ranks); a command can have nested pages (`children`); recents are kept and can be persisted; a command with a `shortcut` is registered through `@pyreon/hotkeys` exactly once while it is registered and enabled, with a development warning that names both commands when two share a shortcut. Typo tolerance is not part of v0. `createPalette` is the state of the palette with no markup: open and close, the query, nested pages three deep, the rows grouped and ranked, async sources (debounced, cancellable, latest answer wins, the previous rows kept while the next load), the active row and the whole ARIA combobox wiring. `<CommandPalette>` (`@pyreon/command/components`) is a complete renderer in a native modal `<dialog>`: the page behind is inert, focus is kept inside and comes back, scroll is locked without a shift, a polite live region announces counts and reasons, and long lists are windowed. On the server the registry and the palette are inert.',
   category: 'universal',
   multiplatform: {
     tier: 'web-only',
@@ -20,6 +20,7 @@ export default defineManifest({
     'A registry: useCommand registers for the life of a component; the latest registration of an id wins and gives it back when removed; titles as functions follow the locale',
     'Shortcuts through @pyreon/hotkeys: one registration per enabled command, moved only when the shortcut changed, modifier shortcuts fire in text fields and bare keys do not, a dev warning for two commands on one shortcut',
     'Recents with a bounded recency boost, persisted through any { get, set } storage',
+    'createPalette: the state of a palette (pages, grouped ranked rows, async sources with latest-wins, the ARIA wiring) with no markup; <CommandPalette> renders it as a modal dialog with focus trap and return, inert background, announcements and windowed long lists',
     'Inert on the server; unregister, dispose and unmount leave no hotkey, listener, computed or effect behind',
   ],
   longExample: `import { createCommands } from '@pyreon/command'
@@ -51,6 +52,44 @@ const off = commands.register({ id: 'save', title: 'Save', keywords: ['write'] }
 commands.search('write')[0]!.field   // => 'keyword'
 off()
 commands.commands().length   // => 0`),
+    entry('createPalette', '(options?: PaletteOptions) => Palette', 'The state of a command palette with no markup. `open(page?)`, `close()`, `toggle()`, a query, a stack of nested pages (`back()`), `results()` (rows grouped and ranked, async rows as they arrive) and `groups()`, the active row and `move(...)`, `runActive()` (opens a page, or runs and closes unless `keepOpen`; an error stays on the palette), a polite `announcement()`, and `inputProps`, `listProps`, `itemProps(item)` and `groupProps(group)` for a renderer of your own. Registers `mod+k` through `@pyreon/hotkeys` (`hotkey: false` for none). One palette is open at a time. Inert on the server.', `const commands = createCommands()
+commands.register([{ id: 'save', title: 'Save' }, { id: 'open', title: 'Open File' }])
+const palette = createPalette({ commands, hotkey: false })
+palette.open()
+palette.setQuery('sav')
+palette.results().map((r) => r.id)   // => ['save']
+(palette.open(), palette.setQuery('xyz'), palette.announcement())   // => 'No results'`),
+    entry('CommandPalette', '(props: CommandPaletteProps) => VNode', 'A complete palette in a native modal `<dialog>` (import `@pyreon/command/components`): opens on `mod+k`, focus moves to the input, Tab stays inside, the page behind is inert, scroll is locked without a layout shift, Escape goes back a page and then closes, focus returns to what had it, and the close and back buttons work on touch. Pass `palette` (from `createPalette`) or the palette options (`commands`, `hotkey`, `placeholder`, `messages`, `emptyQuery`, `showDisabled`, `filter`, `debounce`). Closed, it renders nothing, so the server and the first client render agree. Give it children to lay it out yourself with the parts.', `import { CommandPalette } from '@pyreon/command/components'
+import { createCommands } from '@pyreon/command'
+import '@pyreon/command/style.css'
+
+const commands = createCommands()
+export const App = () => <CommandPalette commands={commands} hotkey="mod+k" />`, { kind: 'component' }),
+    entry('CommandInput', '(props: { class? }) => VNode', 'The `<input role="combobox">` of the nearest palette: `aria-expanded`, `aria-controls`, `aria-activedescendant` and the keyboard are wired.', `import { CommandInput } from '@pyreon/command/components'
+
+export const Field = () => <CommandInput class="my-input" />`, { kind: 'component' }),
+    entry('CommandList', '(props: { class?, virtualizeAfter?, rowHeight?, children? }) => VNode', 'The `role="listbox"` element with the groups and rows of the nearest palette. Beyond `virtualizeAfter` rows (300) only the rows in view are in the DOM; they keep `aria-setsize` and `aria-posinset`, and every row has one height (`rowHeight`).', `import { CommandList } from '@pyreon/command/components'
+
+export const Results = () => <CommandList virtualizeAfter={500} rowHeight={44} />`, { kind: 'component' }),
+    entry('CommandGroup', '(props: { group, class?, headingClass?, children? }) => VNode', 'A `role="group"` with its heading (named by `aria-labelledby`) and its rows.', `import { CommandGroup, usePalette } from '@pyreon/command/components'
+
+export const Groups = () => <>{usePalette().groups().map((group) => <CommandGroup group={group} />)}</>`, { kind: 'component' }),
+    entry('CommandItem', '(props: { item, class?, style?, children? }) => VNode', 'A `role="option"` row: the pointer moves the active row, a click runs it, pressing it keeps focus in the input. The default content is the icon, the highlighted title and subtitle, the reason a disabled command cannot run, the shortcuts and a chevron for a page; pass children to replace it.', `import { CommandItem, Highlight, usePalette } from '@pyreon/command/components'
+
+export const Rows = () => <>{usePalette().results().map((item) => <CommandItem item={item}><Highlight text={item.title} ranges={item.ranges} /></CommandItem>)}</>`, { kind: 'component' }),
+    entry('Highlight', '(props: { text, ranges, markClass? }) => VNode', 'A text with the runs of `ranges` in `<mark>`.', `import { Highlight } from '@pyreon/command/components'
+
+export const Title = () => <Highlight text="New Project" ranges={[[0, 1], [4, 5]]} />`, { kind: 'component' }),
+    entry('CommandShortcut', '(props: { shortcut?, class?, children? }) => VNode', 'A `<kbd>` for a shortcut.', `import { CommandShortcut } from '@pyreon/command/components'
+
+export const Keys = () => <CommandShortcut shortcut="Ctrl+K" />`, { kind: 'component' }),
+    entry('CommandEmpty', '(props: { class?, children? }) => VNode', 'Shown when a query or a page has no rows (and nothing is loading).', `import { CommandEmpty } from '@pyreon/command/components'
+
+export const None = () => <CommandEmpty>Nothing matches.</CommandEmpty>`, { kind: 'component' }),
+    entry('CommandLoading', '(props: { class?, children? }) => VNode', 'Shown while an async source or a run is pending (hidden from assistive technology: the live region says it).', `import { CommandLoading } from '@pyreon/command/components'
+
+export const Busy = () => <CommandLoading />`, { kind: 'component' }),
+    entry('usePalette', '() => Palette', 'The palette of the nearest `<CommandPalette>`, for parts of your own.', `typeof usePalette`),
     entry('useCommands', '() => Commands', 'The registry provided by the nearest `provideCommands`, or the app-wide default registry.', `typeof useCommands   // => 'function'`),
     entry('useCommand', '(command | () => command) => void', 'Register a command for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed.', `typeof useCommand   // => 'function'`),
     entry('provideCommands', '(commands: Commands) => void', 'Make a registry the one used by this component and everything below it.', `typeof provideCommands   // => 'function'`),
@@ -61,6 +100,8 @@ commands.commands().length   // => 0`),
     typeEntry('Command', 'interface Command { id; title; subtitle?; keywords?; group?; icon?; shortcut?; enabled?; disabledReason?; run?(context); children?; keepOpen?; priority? }', 'One command. `title`, `subtitle` and `disabledReason` can be functions; `children` is a nested page (a list) or, for an async source, a function of the query and an AbortSignal.', `const command: Command = { id: 'save', title: 'Save', shortcut: 'mod+s', run: () => {} }`),
     typeEntry('Commands', 'interface Commands { register(); registerGroup(); commands(); groups(); get(); run(); search(); recents(); clearRecents(); dispose() }', 'The registry returned by `createCommands`.', `const commands: Commands = createCommands()`),
     typeEntry('Match', 'interface Match { command; id; title; score; field: "title" | "subtitle" | "keyword"; ranges; group; enabled; disabledReason; recent }', 'One search result. `ranges` are offsets into the text named by `field`.', `const none: readonly Match[] = createCommands().search('x')`),
+    typeEntry('Palette', 'interface Palette { isOpen(); open(page?); close(); toggle(); query(); setQuery(); page(); pageTitle(); back(); results(); groups(); status(); error(); running(); activeId(); setActive(); move(); runActive(); runItem(); announcement(); inputProps; listProps; itemProps(); groupProps(); ids; dispose() }', 'What `createPalette` returns.', `const palette: Palette = createPalette({ hotkey: false })`),
+    typeEntry('ResultItem', 'interface ResultItem { id; command; title; subtitle; ranges; subtitleRanges; group; enabled; disabledReason; recent; hasPage; shortcuts; index }', 'One row of the list, with the ranges to highlight and the shortcuts as the user reads them.', `const rows: readonly ResultItem[] = createPalette({ hotkey: false }).results()`),
     typeEntry('RunContext', 'interface RunContext { id; source: "palette" | "shortcut" | "programmatic"; query; signal; commands }', 'What a command\'s `run` receives.', `const run = (ctx: RunContext) => ctx.source`),
   ],
   gotchas: [

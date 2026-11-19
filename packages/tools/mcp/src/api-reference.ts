@@ -7250,6 +7250,99 @@ commands.commands().length   // => 0`,
     notes: '[EXPERIMENTAL] A registry of commands. `register` takes a command, a list or a function that returns one, and returns the unregister (inside a component it also runs on unmount). `search` ranks the registered commands (or the `children` of `parent`), `run` runs one by id, `recents` lists the last ones run. Registering an id that is registered shadows it until the new one is removed. Inert on the server. Added in v0.53.0.',
   },
 
+  'command/createPalette': {
+    signature: '(options?: PaletteOptions) => Palette',
+    example: `const commands = createCommands()
+commands.register([{ id: 'save', title: 'Save' }, { id: 'open', title: 'Open File' }])
+const palette = createPalette({ commands, hotkey: false })
+palette.open()
+palette.setQuery('sav')
+palette.results().map((r) => r.id)   // => ['save']
+(palette.open(), palette.setQuery('xyz'), palette.announcement())   // => 'No results'`,
+    notes: '[EXPERIMENTAL] The state of a command palette with no markup. `open(page?)`, `close()`, `toggle()`, a query, a stack of nested pages (`back()`), `results()` (rows grouped and ranked, async rows as they arrive) and `groups()`, the active row and `move(...)`, `runActive()` (opens a page, or runs and closes unless `keepOpen`; an error stays on the palette), a polite `announcement()`, and `inputProps`, `listProps`, `itemProps(item)` and `groupProps(group)` for a renderer of your own. Registers `mod+k` through `@pyreon/hotkeys` (`hotkey: false` for none). One palette is open at a time. Inert on the server. Added in v0.53.0.',
+  },
+
+  'command/CommandPalette': {
+    signature: '(props: CommandPaletteProps) => VNode',
+    example: `import { CommandPalette } from '@pyreon/command/components'
+import { createCommands } from '@pyreon/command'
+import '@pyreon/command/style.css'
+
+const commands = createCommands()
+export const App = () => <CommandPalette commands={commands} hotkey="mod+k" />`,
+    notes: '[EXPERIMENTAL] A complete palette in a native modal `<dialog>` (import `@pyreon/command/components`): opens on `mod+k`, focus moves to the input, Tab stays inside, the page behind is inert, scroll is locked without a layout shift, Escape goes back a page and then closes, focus returns to what had it, and the close and back buttons work on touch. Pass `palette` (from `createPalette`) or the palette options (`commands`, `hotkey`, `placeholder`, `messages`, `emptyQuery`, `showDisabled`, `filter`, `debounce`). Closed, it renders nothing, so the server and the first client render agree. Give it children to lay it out yourself with the parts. Added in v0.53.0.',
+  },
+
+  'command/CommandInput': {
+    signature: '(props: { class? }) => VNode',
+    example: `import { CommandInput } from '@pyreon/command/components'
+
+export const Field = () => <CommandInput class="my-input" />`,
+    notes: '[EXPERIMENTAL] The `<input role="combobox">` of the nearest palette: `aria-expanded`, `aria-controls`, `aria-activedescendant` and the keyboard are wired. Added in v0.53.0.',
+  },
+
+  'command/CommandList': {
+    signature: '(props: { class?, virtualizeAfter?, rowHeight?, children? }) => VNode',
+    example: `import { CommandList } from '@pyreon/command/components'
+
+export const Results = () => <CommandList virtualizeAfter={500} rowHeight={44} />`,
+    notes: '[EXPERIMENTAL] The `role="listbox"` element with the groups and rows of the nearest palette. Beyond `virtualizeAfter` rows (300) only the rows in view are in the DOM; they keep `aria-setsize` and `aria-posinset`, and every row has one height (`rowHeight`). Added in v0.53.0.',
+  },
+
+  'command/CommandGroup': {
+    signature: '(props: { group, class?, headingClass?, children? }) => VNode',
+    example: `import { CommandGroup, usePalette } from '@pyreon/command/components'
+
+export const Groups = () => <>{usePalette().groups().map((group) => <CommandGroup group={group} />)}</>`,
+    notes: '[EXPERIMENTAL] A `role="group"` with its heading (named by `aria-labelledby`) and its rows. Added in v0.53.0.',
+  },
+
+  'command/CommandItem': {
+    signature: '(props: { item, class?, style?, children? }) => VNode',
+    example: `import { CommandItem, Highlight, usePalette } from '@pyreon/command/components'
+
+export const Rows = () => <>{usePalette().results().map((item) => <CommandItem item={item}><Highlight text={item.title} ranges={item.ranges} /></CommandItem>)}</>`,
+    notes: '[EXPERIMENTAL] A `role="option"` row: the pointer moves the active row, a click runs it, pressing it keeps focus in the input. The default content is the icon, the highlighted title and subtitle, the reason a disabled command cannot run, the shortcuts and a chevron for a page; pass children to replace it. Added in v0.53.0.',
+  },
+
+  'command/Highlight': {
+    signature: '(props: { text, ranges, markClass? }) => VNode',
+    example: `import { Highlight } from '@pyreon/command/components'
+
+export const Title = () => <Highlight text="New Project" ranges={[[0, 1], [4, 5]]} />`,
+    notes: '[EXPERIMENTAL] A text with the runs of `ranges` in `<mark>`. Added in v0.53.0.',
+  },
+
+  'command/CommandShortcut': {
+    signature: '(props: { shortcut?, class?, children? }) => VNode',
+    example: `import { CommandShortcut } from '@pyreon/command/components'
+
+export const Keys = () => <CommandShortcut shortcut="Ctrl+K" />`,
+    notes: '[EXPERIMENTAL] A `<kbd>` for a shortcut. Added in v0.53.0.',
+  },
+
+  'command/CommandEmpty': {
+    signature: '(props: { class?, children? }) => VNode',
+    example: `import { CommandEmpty } from '@pyreon/command/components'
+
+export const None = () => <CommandEmpty>Nothing matches.</CommandEmpty>`,
+    notes: '[EXPERIMENTAL] Shown when a query or a page has no rows (and nothing is loading). Added in v0.53.0.',
+  },
+
+  'command/CommandLoading': {
+    signature: '(props: { class?, children? }) => VNode',
+    example: `import { CommandLoading } from '@pyreon/command/components'
+
+export const Busy = () => <CommandLoading />`,
+    notes: '[EXPERIMENTAL] Shown while an async source or a run is pending (hidden from assistive technology: the live region says it). Added in v0.53.0.',
+  },
+
+  'command/usePalette': {
+    signature: '() => Palette',
+    example: 'typeof usePalette',
+    notes: '[EXPERIMENTAL] The palette of the nearest `<CommandPalette>`, for parts of your own. Added in v0.53.0.',
+  },
+
   'command/useCommands': {
     signature: '() => Commands',
     example: `typeof useCommands   // => 'function'`,
@@ -7308,6 +7401,18 @@ commands.commands().length   // => 0`,
     signature: 'interface Match { command; id; title; score; field: "title" | "subtitle" | "keyword"; ranges; group; enabled; disabledReason; recent }',
     example: `const none: readonly Match[] = createCommands().search('x')`,
     notes: '[EXPERIMENTAL] One search result. `ranges` are offsets into the text named by `field`. Added in v0.53.0.',
+  },
+
+  'command/Palette': {
+    signature: 'interface Palette { isOpen(); open(page?); close(); toggle(); query(); setQuery(); page(); pageTitle(); back(); results(); groups(); status(); error(); running(); activeId(); setActive(); move(); runActive(); runItem(); announcement(); inputProps; listProps; itemProps(); groupProps(); ids; dispose() }',
+    example: 'const palette: Palette = createPalette({ hotkey: false })',
+    notes: '[EXPERIMENTAL] What `createPalette` returns. Added in v0.53.0.',
+  },
+
+  'command/ResultItem': {
+    signature: 'interface ResultItem { id; command; title; subtitle; ranges; subtitleRanges; group; enabled; disabledReason; recent; hasPage; shortcuts; index }',
+    example: 'const rows: readonly ResultItem[] = createPalette({ hotkey: false }).results()',
+    notes: '[EXPERIMENTAL] One row of the list, with the ranges to highlight and the shortcuts as the user reads them. Added in v0.53.0.',
   },
 
   'command/RunContext': {
