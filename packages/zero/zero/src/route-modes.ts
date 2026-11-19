@@ -52,7 +52,21 @@ function recordRenderMode(record: RouteRecord): RenderMode | undefined {
  * wildcard keys; among wildcards, more segments beat fewer; `*` beats `**`
  * at equal segment count.
  */
-export type RouteRules = Record<string, { renderMode?: RenderMode }>
+export type RouteRules = Record<string, RouteRule>
+
+/** One `routeRules` entry. Each key applies on its own (see {@link matchRouteRule}). */
+export interface RouteRule {
+  renderMode?: RenderMode
+  /**
+   * How the browser takes over the matched pages, as the route export
+   * `export const hydrate` (#4371): `'islands'` keeps them as static HTML plus
+   * their islands (no router, no route code), `'app'` (the default) hydrates
+   * the whole app. Same precedence as `renderMode`: a page's or a `_layout`'s
+   * own `hydrate` export wins over the rule. An `'islands'` rule on a page
+   * that renders `'spa'` is a build error.
+   */
+  hydrate?: 'islands' | 'app'
+}
 
 /** One segment (`*`) / any-depth (`**`) glob match against a path. Pure. */
 export function matchesRouteGlob(glob: string, path: string): boolean {
@@ -97,12 +111,25 @@ export function matchRouteRules(
   rules: RouteRules | undefined,
   path: string,
 ): RenderMode | undefined {
+  return matchRouteRule(rules, path, 'renderMode')?.value
+}
+
+/**
+ * The most specific rule matching `path` that sets `key`, with its glob.
+ * Each key resolves on its own: a more specific rule that sets only
+ * `renderMode` does not hide a broader rule's `hydrate`.
+ */
+export function matchRouteRule<K extends keyof RouteRule>(
+  rules: RouteRules | undefined,
+  path: string,
+  key: K,
+): { glob: string; value: NonNullable<RouteRule[K]> } | undefined {
   if (!rules) return undefined
   const keys = Object.keys(rules).sort((a, b) => ruleSpecificity(b) - ruleSpecificity(a))
-  for (const key of keys) {
-    if (matchesRouteGlob(key, path)) {
-      const mode = rules[key]?.renderMode
-      if (mode !== undefined) return mode
+  for (const glob of keys) {
+    if (matchesRouteGlob(glob, path)) {
+      const value = rules[glob]?.[key]
+      if (value !== undefined && value !== null) return { glob, value: value as NonNullable<RouteRule[K]> }
     }
   }
   return undefined
