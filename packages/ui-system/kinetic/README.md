@@ -1,5 +1,7 @@
 # @pyreon/kinetic
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 CSS-transition animation library — enter/exit, stagger, collapse, list reconciliation, ~3KB.
 
 `@pyreon/kinetic` delegates interpolation to the browser's CSS transition engine (GPU compositor thread for `transform` / `opacity`) and only handles orchestration: mount/unmount lifecycle, stagger timing, height measurement, and key-based list diffing. The result is 60/120fps animations with a 3.2KB footprint and four composable modes (transition, collapse, stagger, group) accessed through a chainable, immutable API. Pair with `@pyreon/kinetic-presets` for 120+ ready-made animations, or define your own via inline `.enter()` / `.enterTo()` styles or class-based transitions (Tailwind, CSS modules). Reduced-motion is detected automatically; SSR renders children in their hidden-state class so scroll-reveal patterns reach SEO crawlers.

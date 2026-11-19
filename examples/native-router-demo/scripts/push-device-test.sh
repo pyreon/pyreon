@@ -39,12 +39,23 @@ xcrun simctl bootstatus "$UDID" -b
 bash scripts/build-ios.sh
 (cd ios && xcodegen generate)
 
+# Build output stays inside the project (ios/DerivedData is gitignored), not in
+# ~/Library/Developer/Xcode/DerivedData where it outlives the checkout.
+DERIVED="ios/DerivedData"
+
 xcodebuild build-for-testing \
   -project ios/PyreonRouterDemo.xcodeproj -scheme PyreonRouterDemo \
+  -derivedDataPath "$DERIVED" \
   -destination "platform=iOS Simulator,id=$UDID" \
   -configuration Debug
 
-PAYLOAD=$(mktemp -t pyreon-push).json
+# The payload lives in a private directory that the EXIT trap removes whole.
+# (`$(mktemp -t pyreon-push).json` created one file and wrote to another, so
+# the created file was never removed.)
+INJECTOR=""
+PAYLOAD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/pyreon-push.XXXXXX")
+trap 'if [ -n "$INJECTOR" ]; then kill "$INJECTOR" 2>/dev/null || true; fi; rm -rf "$PAYLOAD_DIR"' EXIT
+PAYLOAD="$PAYLOAD_DIR/payload.json"
 cat > "$PAYLOAD" <<'JSON'
 {
   "aps": {
@@ -64,10 +75,10 @@ JSON
   done
 ) &
 INJECTOR=$!
-trap 'kill "$INJECTOR" 2>/dev/null || true; rm -f "$PAYLOAD"' EXIT
 
 TEST_RUNNER_PYREON_PUSH_INJECTED=1 xcodebuild test-without-building \
   -project ios/PyreonRouterDemo.xcodeproj -scheme PyreonRouterDemo \
+  -derivedDataPath "$DERIVED" \
   -destination "platform=iOS Simulator,id=$UDID" \
   -configuration Debug \
   -only-testing:PyreonRouterDemoUITests/PyreonRouterDemoUITests/test_pushReceiptRendersInjectedPayload

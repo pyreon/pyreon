@@ -24,7 +24,7 @@ describe('_tpl SVG-rooted templates in real Chromium', () => {
     host.setAttribute('height', '100')
     document.body.appendChild(host)
 
-    const item = _tpl('<g><path fill="none" d="M0 0 L50 50"></path></g>', () => null)
+    const item = _tpl('<g><path fill="none" d="M0 0 L50 50"></path></g>', () => null, 2)
     const g = item.el as unknown as SVGGElement
     host.appendChild(g)
 
@@ -43,7 +43,7 @@ describe('_tpl SVG-rooted templates in real Chromium', () => {
   it('a bare <rect> (minimap dot) mounts as a live SVGRectElement', () => {
     const host = document.createElementNS(SVG_NS, 'svg')
     document.body.appendChild(host)
-    const item = _tpl('<rect x="1" y="2" width="8" height="6"></rect>', () => null)
+    const item = _tpl('<rect x="1" y="2" width="8" height="6"></rect>', () => null, 2)
     const rect = item.el as unknown as SVGRectElement
     host.appendChild(rect)
     expect(rect).toBeInstanceOf(SVGRectElement)
