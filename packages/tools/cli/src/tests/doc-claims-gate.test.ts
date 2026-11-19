@@ -546,7 +546,7 @@ describe('the marketing site derives the counts that are facts about the reposit
     [`${SITE}/products/_index.json`]: '{ "order": ["a", "b", "c"] }\n',
     [`${SITE}/_counts.json`]: '{ "packages": 80 }\n',
     'docs/src/content/blog/introducing-pyreon.md': '80 published packages, all versioned together:\n',
-    'docs/src/content/blog/2026-in-review.md': '3,881 commits, 80 packages and one\nempty repository in March to 80 packages\nmerged pull requests, 80 published packages\n| published packages | 80 |\n',
+    'docs/src/content/blog/2026-in-review.md': '3,881 commits, 80 packages and one\nempty repository in March to 80 packages\ntoday it counts 80 packages and a framework\n| packages, counting the newest ones | 80 |\n',
     [`${SITE}/_assets.json`]: '{ "alt": "3 products. One reactive core. The glyphs of all 3 Pyreon products." }\n',
     [AI]: '{ "text": "a paged index of the whole catalog ({{@antiPatternCount}} entries in the catalog); ask by name" }\n',
     ...over,

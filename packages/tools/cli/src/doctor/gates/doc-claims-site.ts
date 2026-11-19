@@ -113,9 +113,10 @@ export const SITE_ANTI_PATTERN_CLAIMS: ClaimSpec[] = [
 ]
 
 /**
- * The package count the marketing site states. Maintainer decision, 2026-11-18:
- * the site and the marketing say 80, deliberately ahead of npm ("count with
- * all packages already": 76 published, plus auth, format, time and ambient).
+ * The package count the marketing site states. Maintainer decision, 2026-11-18
+ * (extended 2026-11-19): the site and the marketing say 86, deliberately ahead
+ * of npm ("count with all packages already": 76 published, plus auth and nine
+ * new packages; the names are in `_counts.json`).
  * So this is NOT checked against the published count: it is checked against
  * the one constant, `${SITE}/_counts.json` (`packages`), which the staging
  * content set owns, so every statement of the number comes from one place and
@@ -133,8 +134,8 @@ export const SITE_PACKAGE_COUNT_CLAIMS: ClaimSpec[] = [
   { file: `${BLOG}/introducing-pyreon.md`, pattern: /(\d+) published packages, all versioned together/ },
   { file: `${BLOG}/2026-in-review.md`, pattern: /3,881 commits, (\d+) packages and one/ },
   { file: `${BLOG}/2026-in-review.md`, pattern: /empty repository in March to (\d+) packages/ },
-  { file: `${BLOG}/2026-in-review.md`, pattern: /merged pull requests, (\d+) published packages/ },
-  { file: `${BLOG}/2026-in-review.md`, pattern: /\| published packages \| (\d+) \|/ },
+  { file: `${BLOG}/2026-in-review.md`, pattern: /today it counts (\d+) packages and a framework/ },
+  { file: `${BLOG}/2026-in-review.md`, pattern: /\| packages, counting the newest ones \| (\d+) \|/ },
 ]
 
 /** MCP tools and hooks: facts about the repository the site states in its JSON content (placeholders, like the rest). */

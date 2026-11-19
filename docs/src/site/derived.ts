@@ -13,7 +13,7 @@ import { join, resolve } from 'node:path'
  * i18n examples are not placeholders: the marker is `{{@`.
  *
  * Not derived, on purpose: the package count (`packageCount` reads the one constant `_counts.json`, the maintainer's
- * decision of 2026-11-18, 80, ahead of npm). Counts printed inside generated images and their alt text
+ * decision of 2026-11-18, extended 2026-11-19: 86, ahead of npm). Counts printed inside generated images and their alt text
  * (`_assets.json`) cannot be placeholders: the doctor gate (doc-claims, `site-*`) checks those against the repository.
  */
 

@@ -1,4 +1,4 @@
 {
- "packages": 80,
- "decision": "The package count the site and the marketing state. Maintainer decision, 2026-11-18: 80, counted ahead of npm (76 published, plus auth, format, time and ambient). It is not the repository's published count on purpose, so it is locked to this one constant, not to the repo. Every statement of it in the content set must equal it (doc-claims gate, site-package-count)."
+ "packages": 86,
+ "decision": "The package count the site and the marketing state. Maintainer decision, 2026-11-18, extended 2026-11-19: 86, counted ahead of npm (\"count with all packages already\"): 76 published, plus @pyreon/auth and nine new packages (@pyreon/format, @pyreon/time, @pyreon/ambient, @pyreon/money, @pyreon/schedule, @pyreon/upload, @pyreon/command, @pyreon/calendar, @pyreon/charts-maps). It is not the repository's published count on purpose, so it is locked to this one constant, not to the repo. Every statement of it in the content set must equal it (doc-claims gate, site-package-count)."
 }
