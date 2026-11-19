@@ -264,14 +264,17 @@ function PyreonUI(props: PyreonUIProps): VNodeChild {
     const enriched = engine.enrichTheme(t)
     if (!cssVars.enabled) return enriched
     // CSS-variables mode: every eligible theme leaf becomes a 'var(--px-…)'
-    // string and the :root block is injected ONCE per theme identity
-    // (injectRules is idempotent by key and SSR-aware — on the server the
-    // block lands in the ssrBuffer that getStyleTag()/the stream flush emit).
+    // string and the :root block goes into the sheet's ONE root-variables
+    // slot, replacing the previous theme's block (variable names depend only
+    // on the theme PATH, so two blocks would fight and the last INSERTED would
+    // win: `injectRules` used to append one per theme, never remove one, and
+    // dedup by text — A -> B -> A kept showing B). Server side the slot is
+    // per request and leads getStyleTag() / the first stream flush.
     // Downstream consumers (styler templates, rocketstyle callbacks, the
     // unistyle value pipeline) read the var references verbatim, so a mode
     // flip never re-resolves any of them.
     const { vars, css: varsCss } = engine.themeToCssVars(enriched, { prefix: cssVars.prefix })
-    if (varsCss) sheet.injectRules([varsCss], varsCss)
+    sheet.setRootVariables(varsCss)
     // Same tree shape; leaves are var() reference strings — every theme
     // value position accepts strings, so the widened leaf type is safe.
     return vars as unknown as PyreonTheme

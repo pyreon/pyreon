@@ -45,11 +45,9 @@
     "@pyreon/attrs": "workspace:^",
     "@pyreon/charts": "workspace:^",
     "@pyreon/code": "workspace:^",
-    "@pyreon/connector-document": "workspace:^",
     "@pyreon/coolgrid": "workspace:^",
     "@pyreon/dnd": "workspace:^",
     "@pyreon/document": "workspace:^",
-    "@pyreon/document-primitives": "workspace:^",
     "@pyreon/elements": "workspace:^",
     "@pyreon/feature": "workspace:^",
     "@pyreon/flow": "workspace:^",
@@ -83,5 +81,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "author": "Vit Bokisch"
+  "author": "Vit Bokisch",
+  "pyreon": {
+    "stability": "stable"
+  }
 }

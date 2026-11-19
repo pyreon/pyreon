@@ -1,5 +1,7 @@
 # @pyreon/config
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 One `pyreon.config.ts` for the whole ecosystem — a typed section per package.
 
 ```bash

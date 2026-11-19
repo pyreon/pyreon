@@ -143,6 +143,10 @@ A `major` changeset moves every package in the `fixed` group to the next major. 
 
 The 1.0 cut sets the switch to `'1.0.0'` in one deliberate PR, together with `bun changeset pre enter rc` and the one `major` changeset. The exact steps (enter, release candidates, exit) are in `.agents/guides/ci/README.md`, "Release candidates and the 1.0 cut".
 
+### From 1.0: Stable and Experimental tiers
+
+The semver promise after 1.0 covers **Stable** packages only. Every published package declares its tier in `package.json` (`"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`); Experimental packages, and the experimental subpaths of Stable packages, may break in a minor release. A breaking change to a Stable package is a major release. Compiler-emitted runtime helpers (`_rp`, `_tpl`, …) are an additive-only ABI within 1.x; every other `_` export is internal. `scripts/check-stability-tier.ts` (in `validate-fast`) gates the tier field, README status lines, dependency direction, `@pyreon/meta` and `@deprecated` tags. The full policy, including deprecations, is [Stability, Versioning & Direction](https://pyreon.dev/docs/stability-and-direction).
+
 ### Release workflow
 
 `.github/workflows/release.yml` runs on every push to `main`:

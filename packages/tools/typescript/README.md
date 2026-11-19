@@ -1,5 +1,7 @@
 # @pyreon/typescript
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 TypeScript config presets for Pyreon projects — base, app, lib.
 
 `@pyreon/typescript` ships three `tsconfig.json` presets you extend from your own config. The `base` preset configures the JSX import source (`@pyreon/core`), ES2024 target, bundler module resolution, strict mode (including `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`), and source maps. The `app` preset adds `noEmit` (type-check only — bundler handles emit). The `lib` preset adds `declaration` + `declarationMap` for publishable packages. No `compilerOptions` ceremony at the consumer side.

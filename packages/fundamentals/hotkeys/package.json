@@ -68,6 +68,8 @@
     }
   },
   "pyreon": {
+    "stability": "stable",
+    "experimentalSubpaths": ["./native-plugin"],
     "native": {
       "plugin": "./lib/native-plugin.js",
       "modules": [

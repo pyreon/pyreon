@@ -191,6 +191,7 @@ function normalizeHandlerBase(base: string | undefined): string {
   if (!base || base === '/') return ''
   let b = base.startsWith('/') ? base : `/${base}`
   while (b.length > 1 && b.endsWith('/')) b = b.slice(0, -1)
+
   return b === '/' ? '' : b
 }
 
@@ -202,6 +203,7 @@ function stripHandlerBase(path: string, base: string): string {
   const rest = q === -1 ? '' : path.slice(q)
   if (pathname === base) return `/${rest}`
   if (pathname.startsWith(`${base}/`)) return pathname.slice(base.length) + rest
+
   return path
 }
 
@@ -340,6 +342,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           headers: { Allow: 'GET, HEAD, OPTIONS' },
         })
       }
+
       return new Response(null, {
         status: 405,
         headers: { Allow: 'GET, HEAD, OPTIONS' },
@@ -379,6 +382,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
             meta?: Readonly<Record<string, unknown>>
           }
           const streamStatus = streamResolved?.isNotFound === true ? 404 : 200
+
           return renderStreamResponse(
             app,
             router,
@@ -404,6 +408,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           }
           logServerError('SSR render failed', path, err)
           callOnError(onError, err, req, 'render')
+
           return new Response('Internal Server Error', {
             status: 500,
             headers: { 'Content-Type': 'text/plain' },
@@ -460,6 +465,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       if (method === 'HEAD') {
         return new Response(null, { status: result.status, headers: ctx.headers })
       }
+
       return new Response(fullHtml, { status: result.status, headers: ctx.headers })
     } catch (err) {
       logServerError('SSR render failed', path, err)
@@ -541,6 +547,10 @@ async function renderStreamResponse(
       ? renderToStream(app, streamOptions)
       : renderToStream(app)
   const reader = appStream.getReader()
+  // Set when the CONSUMER cancels the response body (the client disconnected).
+  // From then on nothing is written to it, so a disconnect is never logged or
+  // reported as a render failure (an enqueue into the cancelled body threw).
+  let cancelled = false
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -554,6 +564,7 @@ async function renderStreamResponse(
         let done = false
         while (!done) {
           const result = await reader.read()
+          if (cancelled) return
           done = result.done
           if (result.value) {
             if (islandPreloads && !sawIsland) sawIsland = hasIslandToHydrate(result.value)
@@ -575,8 +586,16 @@ async function renderStreamResponse(
         push(shellTail())
         /* v8 ignore stop */
       } finally {
-        controller.close()
+        if (!cancelled) controller.close()
       }
+    },
+    cancel(reason) {
+      // Forward the disconnect to the render: without this the inner stream
+      // kept rendering until every Suspense boundary settled or timed out
+      // (never, with `suspenseTimeoutMs: Infinity`), holding the request's work
+      // and memory for a reader that was gone.
+      cancelled = true
+      return reader.cancel(reason)
     },
   })
 

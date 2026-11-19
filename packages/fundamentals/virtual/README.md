@@ -1,5 +1,7 @@
 # @pyreon/virtual
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Pyreon adapter for TanStack Virtual — efficient rendering of very large lists.
 
 `@pyreon/virtual` wraps `@tanstack/virtual-core` so a Pyreon app can render 10k+ items by only drawing the slice in the viewport. `useVirtualizer` is for element-scoped scrolling (an inner scroll container); `useWindowVirtualizer` is for window-scoped scrolling and is SSR-safe. Both take **options as a function** so reactive signals (count, estimateSize, scrollElement ref) trigger automatic recalculation. The exposed reactive surface — `virtualItems`, `totalSize`, `isScrolling` — is updated in a single `batch()` so consumers don't see torn state mid-scroll.
