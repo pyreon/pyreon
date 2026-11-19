@@ -11,6 +11,8 @@ import { CHARTS_LIBS_FRAMEWORKS, runChartsLibs } from './scenario-charts-libs'
 import { DBMON_FRAMEWORKS, runDbmon } from './scenario-dbmon'
 import { EFFECTS_FRAMEWORKS, runEffects } from './scenario-effects'
 import { FLOW_FRAMEWORKS, runFlow } from './scenario-flow'
+import { MAPLIST_FRAMEWORKS, runMapList } from './scenario-maplist'
+import { ROUTER_FRAMEWORKS, runRouter } from './scenario-router'
 import { TABLE_FRAMEWORKS, runTable } from './scenario-table'
 import { VIRTUAL_FRAMEWORKS, runVirtual } from './scenario-virtual'
 import { MEMO_FRAMEWORKS, runMemo } from './scenario-memo'
@@ -77,6 +79,18 @@ export const SCENARIOS: ScenarioDef[] = [
     label: 'charts — @pyreon/charts vs uPlot, Chart.js, Recharts, visx, Observable Plot, D3, lightweight-charts (line 1k–1M, update, 1k bars; 800×300)',
     frameworks: CHARTS_LIBS_FRAMEWORKS,
     run: runChartsLibs,
+  },
+  {
+    id: 'maplist',
+    label: 'keyed .map() list + conditional JSX in slots (1,000 rows)',
+    frameworks: MAPLIST_FRAMEWORKS,
+    run: runMapList,
+  },
+  {
+    id: 'router',
+    label: 'router navigation — push() through guards, commit and <RouterView> (Pyreon only)',
+    frameworks: ROUTER_FRAMEWORKS,
+    run: runRouter,
   },
 ]
 

@@ -195,6 +195,22 @@ export const SCENARIOS: Scenario[] = [
     imports: ['defineStore'],
   },
   {
+    // The matcher alone: the `core` entry has no @pyreon dependency, so a palette-less app that only filters a list pays for this and nothing else.
+    id: '@pyreon/command::matcher',
+    pkg: '@pyreon/command',
+    dir: 'fundamentals/command',
+    entry: 'core.js',
+    imports: ['fuzzyMatch', 'rank'],
+  },
+  {
+    // The registry without the palette or the components: the matcher, the registry and the hotkeys glue.
+    id: '@pyreon/command::registry',
+    pkg: '@pyreon/command',
+    dir: 'fundamentals/command',
+    entry: 'index.js',
+    imports: ['createCommands', 'useCommand'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.
