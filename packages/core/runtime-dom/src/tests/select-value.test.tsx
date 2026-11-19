@@ -38,6 +38,7 @@ import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { _tpl, _bindText, _bindDirect } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import {
   _applyProps,
   _bindProp,
@@ -65,7 +66,7 @@ function stripImports(code: string): string {
 }
 
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   _bindText,
   _bindProp,

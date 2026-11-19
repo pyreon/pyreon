@@ -28,11 +28,11 @@ describe('compiler — single-disposer fast path', () => {
     expect(out).not.toMatch(/return \(\) => \{ __d0\(\) \}/)
   })
 
-  it('a multi-binding template still wraps all disposers in one closure', () => {
+  it('a multi-binding template still combines all disposers into one cleanup', () => {
     const out = code(
       `${SIG}export const B = () => <div class="row"><span>{t()}</span><span>{c()}</span></div>`,
     )
-    expect(out).toMatch(/return \(\) => \{ __d0\(\); __d1\(\) \}/)
+    expect(out).toContain('return _dispose2(__d0, __d1)')
     // must NOT degrade to returning a single disposer when there are two
     expect(out).not.toMatch(/return __d0\b(?! *\(\))/)
   })

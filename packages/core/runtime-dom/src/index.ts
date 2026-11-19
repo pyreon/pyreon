@@ -83,6 +83,7 @@ export {
   _tpl,
   createTemplate,
 } from './template'
+export { _dispose2, _dispose3, _dispose4, _disposeN } from './dispose-helpers'
 export type { TransitionProps } from './transition'
 export { Transition } from './transition'
 export type { TransitionGroupProps } from './transition-group'

@@ -8,7 +8,7 @@ import {
   _rdNodeId,
   _rdOpenBindingFrame,
   getContextOwner,
-  renderEffect,
+  _renderBind,
 } from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
 import { _takeParkedRange, hasParkedRange, isMidSlotText, peekParkedRange } from './slot-brands'
@@ -29,7 +29,7 @@ import {
   reportFirstText,
   reportTextWrite,
 } from './hydration-debug'
-import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, type PolyTextCore } from './mount'
+import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -129,8 +129,9 @@ export function _setChild(node: Element, value: unknown): void {
   // branch). The compiler routes every child it cannot type statically here —
   // a named binding (`const label = () => …`, `function label() {}`), a helper
   // param, a function-valued prop — and `textContent = fn` rendered the
-  // closure's SOURCE (#4086). Mount it reactively instead; the binding's effect
-  // registers with the active EffectScope, so it is disposed with its owner.
+  // closure's SOURCE (#4086). Mount it reactively instead; the mount's cleanup
+  // goes to the active EffectScope (`ownByScope`), so it is disposed with its
+  // owner.
   //
   // ADOPTED element (hydration, `!_freshBind`): the server already rendered the
   // value as this element's whole child list (SSR elides the range markers for
@@ -144,10 +145,12 @@ export function _setChild(node: Element, value: unknown): void {
   // child list and adopts it.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
-      _slotHydrator(value as never, node, null)
+      ownByScope(_slotHydrator(value as never, node, null))
       return
     }
-    mountChild(value as VNodeChild, node, null)
+    // The element leaves as a unit with its template, so the mount needs only
+    // its effect cleanups (`mountChildAsUnit`): no per-node removers.
+    ownByScope(mountChildAsUnit(value as VNodeChild, node, null))
   } else {
     // Sole-text fast path: when the element already holds exactly one text
     // node (the hydration-ADOPTION case — the SSR text is still in place —
@@ -229,12 +232,12 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
   // child list, so it is handed over as `_mountSlot` hands over its own.
   const open = isRangeOpen(placeholder)
   if (_slotHydrator !== null && (open || (!isCloneSlotPlaceholder(placeholder) && !isMidSlotText(placeholder)))) {
-    _slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null)
+    ownByScope(_slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null))
     return
   }
   // A function is an accessor (see `_setChild`) — mount it reactively.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
-    mountChild(value as VNodeChild, parent, placeholder)
+    ownByScope(mountChildAsUnit(value as VNodeChild, parent, placeholder))
     placeholder.remove()
   } else {
     // The shared child-text rule (`_childText`): nullish and `false` render
@@ -408,7 +411,7 @@ function bindTextTracked(fn: () => unknown, node: Text, ownerAtSetup: ReturnType
   let core: PolyTextCore | null = null
   // Last string written — same read-back saving as the fast path above.
   let written: string | null | undefined = null
-  const disposeEffect = renderEffect(() => {
+  const disposeEffect = _renderBind(() => {
     const v = fn()
     if (core !== null) {
       core.apply(v as VNodeChild)
@@ -603,7 +606,7 @@ export function _bindDirect(
   // is one (preserves `this` for member-expression sources); otherwise call
   // source directly.
   const fn = resolveSlowCaller(source, caller, receiver)
-  const dispose = renderEffect(() => updater(fn()))
+  const dispose = _renderBind(() => updater(fn()))
   // Dev: keep the label the updater's DOM setter reported; point the location
   // at the compiled template rather than at this helper.
   if (process.env.NODE_ENV !== 'production')
@@ -782,6 +785,7 @@ export function _setHydrationActive(v: boolean): boolean {
   const prev = _walkActive
   _walkActive = v
   _hydrationActive = v || _asyncPending > 0
+
   return prev
 }
 
@@ -796,6 +800,7 @@ export function _holdTplDeferral(): () => void {
   _asyncPending++
   _hydrationActive = true
   let held = true
+
   return () => {
     if (!held) return
     held = false
@@ -1502,7 +1507,7 @@ export function _rsCollapseDyn(
     // exactly ONCE per re-run: the `_bindDirect` fallback calls the source and
     // passes the result, and calling `valueIndex()` again inside would fire a
     // side-effecting cond expression twice.
-    const disposeClass = renderEffect(() => {
+    const disposeClass = _renderBind(() => {
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
@@ -1581,7 +1586,7 @@ export function _rsCollapseDynH(
     // Reactive class — identical shape to `_rsCollapseDyn`: one `renderEffect`
     // reads both accessors, so a change to EITHER re-runs only this className
     // assignment, no remount.
-    const disposeClass = renderEffect(() => {
+    const disposeClass = _renderBind(() => {
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })

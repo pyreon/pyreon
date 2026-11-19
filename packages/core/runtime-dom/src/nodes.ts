@@ -19,7 +19,7 @@ export interface FirstRun<T> {
 }
 
 import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
-import { _frameReads, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+import { _abortOwnerFrame, _closeOwnerFrame, _frameReads, _openOwnerFrame, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 
 /**
@@ -1446,10 +1446,14 @@ function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null 
   const prev = getCurrentScope()
   const collector = rowCollector ?? (rowCollector = effectScope())
   setCurrentScope(collector)
+  // Template bindings the row builds are owned by the row's cleanup, not the
+  // collector; this frame owns them only if the callback throws.
+  const ownerFrame = _openOwnerFrame()
   let result: R
   try {
     result = fn()
   } catch (err) {
+    _abortOwnerFrame(ownerFrame)
     // A half-filled collector must never be handed to the next row.
     collector.stop()
     rowCollector = null
@@ -1457,6 +1461,7 @@ function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null 
   } finally {
     setCurrentScope(prev)
   }
+  _closeOwnerFrame(ownerFrame)
   if (collector._isEmpty()) return { result, scope: null }
   rowCollector = null
   return { result, scope: collector }

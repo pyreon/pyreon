@@ -1528,6 +1528,8 @@ export function transformJSX_JS(
   let needsSetPropStaticImportGlobal = false
   let needsSetHtmlImportGlobal = false
   let needsRefImportGlobal = false
+  // Template cleanup helper names (`_dispose2/3/4/N`) used anywhere in the file.
+  const disposeHelpersGlobal = new Set<string>()
   // Compile-to-string SSR fast path (`options.ssrTemplate`): which
   // `@pyreon/runtime-server` helpers this module used.
   let needsSsrImport = false
@@ -5710,6 +5712,8 @@ export function transformJSX_JS(
     if (needsSetPropStaticImportGlobal) runtimeDomImports.push('_setPropStatic')
     if (needsSetHtmlImportGlobal) runtimeDomImports.push('_setHtml')
     if (needsRefImportGlobal) runtimeDomImports.push('_ref')
+    for (const name of ['_dispose2', '_dispose3', '_dispose4', '_disposeN'])
+      if (disposeHelpersGlobal.has(name)) runtimeDomImports.push(name)
     const reactivitySpecs = [
       ...(needsBindImportGlobal ? ['_bind'] : []),
       ...(needsRenderEffectImportGlobal ? ['renderEffect'] : []),
@@ -7761,7 +7765,18 @@ export function transformJSX_JS(
       // reactive text child) that's one fewer closure + retained scope per row.
       body += `\n  return ${disposerNames[0]}`
     } else if (disposerNames.length > 0) {
-      body += `\n  return () => { ${disposerNames.map((d) => `${d}()`).join('; ')} }`
+      // A runtime helper builds the combined cleanup, NOT an arrow here: an
+      // arrow created inside the bind function chains its context to the
+      // component function's, so it kept the component's props and captured
+      // locals alive for the template's lifetime (runtime-dom `_dispose2`).
+      if (disposerNames.length <= 4) {
+        const helper = `_dispose${disposerNames.length}`
+        disposeHelpersGlobal.add(helper)
+        body += `\n  return ${helper}(${disposerNames.join(', ')})`
+      } else {
+        disposeHelpersGlobal.add('_disposeN')
+        body += `\n  return _disposeN([${disposerNames.join(', ')}])`
+      }
     } else {
       body += '\n  return null'
     }
