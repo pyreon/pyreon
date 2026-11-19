@@ -142,15 +142,12 @@ export function renderGeoFlows(layout: GeoLayout, flows: readonly GeoFlow[], opt
   const rawP = options?.progress ?? 1.0
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
   if (progress <= 0.0) return out
-  let hi = 0.0
-  for (const f of flows) if ((f.value ?? 0.0) > hi) hi = f.value ?? 0.0
+  const hi = largestFlow(flows)
   const minW = options?.minWidth ?? 1.0
   const maxW = options?.maxWidth ?? 4.0
   const alpha = options?.opacity ?? 0.7
   for (const f of flows) {
-    const fv = f.value ?? 0.0
-    const share = hi <= 0.0 ? 0.5 : Math.sqrt(Math.max(0.0, fv) / hi)
-    const width = f.value === undefined ? (minW + maxW) / 2.0 : minW + (maxW - minW) * share
+    const width = flowWidth(f.value, hi, minW, maxW)
     const stroke = withAlpha(f.color ?? options?.color ?? '#b42318', alpha)
     const samples = Math.max(8.0, Math.min(128.0, Math.ceil(greatCircleDegrees(f.from, f.to) / 2.0)))
     const runs = flowRuns(layout, f, samples, progress)
@@ -158,6 +155,23 @@ export function renderGeoFlows(layout: GeoLayout, flows: readonly GeoFlow[], opt
   }
 
   return out
+}
+
+/** The largest flow value (0 when none has one). */
+function largestFlow(flows: readonly GeoFlow[]): Double {
+  let hi = 0.0
+  for (const f of flows) if ((f.value ?? 0.0) > hi) hi = f.value ?? 0.0
+
+  return hi
+}
+
+/** A flow's line width: the midpoint without a value, else between the bounds by the root of its share of the largest. */
+// oxlint-disable-next-line max-params -- positional like the other width rules
+function flowWidth(value: Double | undefined, hi: Double, minW: Double, maxW: Double): Double {
+  if (value === undefined) return (minW + maxW) / 2.0
+  const share = hi <= 0.0 ? 0.5 : Math.sqrt(Math.max(0.0, value) / hi)
+
+  return minW + (maxW - minW) * share
 }
 
 /** The projected runs of one flow up to `progress`, split wherever the great circle crosses the seam. */
@@ -254,10 +268,10 @@ export function renderGeoSizeLegend(points: readonly GeoOverlayPoint[], box: Rec
   let lastY = -1000000.0
   for (const v of values) {
     const r = radiusOf(v)
-    const top = bottom - 2.0 * r
-    const y = Math.max(top, lastY + fontSize + 3.0)
+    const ringTop = bottom - 2.0 * r
+    const y = Math.max(ringTop, lastY + fontSize + 3.0)
     lastY = y
-    out.push({ kind: 'polyline', points: [{ x: cx, y: top }, { x: cx + big + 6.0, y }], stroke: withAlpha(labelColor, 0.5), width: 0.5 })
+    out.push({ kind: 'polyline', points: [{ x: cx, y: ringTop }, { x: cx + big + 6.0, y }], stroke: withAlpha(labelColor, 0.5), width: 0.5 })
     out.push({ kind: 'text', text: legendNumber(v), at: { x: cx + big + 9.0, y }, fill: labelColor, size: fontSize, align: 'start', baseline: 'middle' })
   }
   if (title !== '') out.push({ kind: 'text', text: title, at: { x: box.x + 12.0, y: bottom + 4.0 }, fill: labelColor, size: fontSize, align: 'start', baseline: 'top' })

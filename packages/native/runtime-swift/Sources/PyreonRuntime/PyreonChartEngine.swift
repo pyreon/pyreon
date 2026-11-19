@@ -11174,19 +11174,12 @@ public func renderGeoFlows(_ layout: GeoLayout, _ flows: [GeoFlow], _ options: G
     if progress <= 0.0 {
       return out
     }
-    var hi = 0.0
-    for f in flows {
-      if ((f.value ?? 0.0)) > hi {
-        hi = (f.value ?? 0.0)
-      }
-    }
+    let hi = largestFlow(flows)
     let minW = (options?.minWidth ?? 1.0)
     let maxW = (options?.maxWidth ?? 4.0)
     let alpha = (options?.opacity ?? 0.7)
     for f in flows {
-      let fv = (f.value ?? 0.0)
-      let share = hi <= 0.0 ? 0.5 : sqrt(Double(max(0.0, fv) / hi))
-      let width = f.value == nil ? (minW + maxW) / 2.0 : minW + (maxW - minW) * share
+      let width = flowWidth(f.value, hi, minW, maxW)
       let stroke = withAlpha(((f.color ?? options?.color) ?? "#b42318"), alpha)
       let samples = max(8.0, min(128.0, ceil(Double(greatCircleDegrees(f.from, f.to) / 2.0))))
       let runs = flowRuns(layout, f, samples, progress)
@@ -11197,6 +11190,24 @@ public func renderGeoFlows(_ layout: GeoLayout, _ flows: [GeoFlow], _ options: G
       }
     }
     return out
+  }
+
+public func largestFlow(_ flows: [GeoFlow]) -> Double {
+    var hi = 0.0
+    for f in flows {
+      if ((f.value ?? 0.0)) > hi {
+        hi = (f.value ?? 0.0)
+      }
+    }
+    return hi
+  }
+
+public func flowWidth(_ value: Double?, _ hi: Double, _ minW: Double, _ maxW: Double) -> Double {
+    guard let value else {
+      return (minW + maxW) / 2.0
+    }
+    let share = hi <= 0.0 ? 0.5 : sqrt(Double(max(0.0, value) / hi))
+    return minW + (maxW - minW) * share
   }
 
 public func flowRuns(_ layout: GeoLayout, _ f: GeoFlow, _ samples: Double, _ progress: Double) -> [[PyreonChartPt]] {
@@ -11277,10 +11288,10 @@ public func renderGeoSizeLegend(_ points: [GeoOverlayPoint], _ box: PyreonChartR
     var lastY = -1000000.0
     for v in values {
       let r = radiusOf(v)
-      let top = bottom - 2.0 * r
-      let y = max(top, lastY + fontSize + 3.0)
+      let ringTop = bottom - 2.0 * r
+      let y = max(ringTop, lastY + fontSize + 3.0)
       lastY = y
-      out.append(PyreonDrawCmd(kind: "polyline", stroke: withAlpha(labelColor, 0.5), width: 0.5, points: [PyreonChartPt(x: cx, y: top), PyreonChartPt(x: cx + big + 6.0, y: y)]))
+      out.append(PyreonDrawCmd(kind: "polyline", stroke: withAlpha(labelColor, 0.5), width: 0.5, points: [PyreonChartPt(x: cx, y: ringTop), PyreonChartPt(x: cx + big + 6.0, y: y)]))
       out.append(PyreonDrawCmd(kind: "text", fill: labelColor, text: legendNumber(v), at: PyreonChartPt(x: cx + big + 9.0, y: y), size: fontSize, align: "start", baseline: "middle"))
     }
     if title != "" {

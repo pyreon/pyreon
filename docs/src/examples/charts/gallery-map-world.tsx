@@ -1,4 +1,4 @@
-import { Chart, MapChart, mapRamp, visualMap } from '@pyreon/charts'
+import { MapChart, mapRamp, visualMap } from '@pyreon/charts'
 import world from '@pyreon/charts-maps/world-110m'
 import { signal } from '@pyreon/reactivity'
 

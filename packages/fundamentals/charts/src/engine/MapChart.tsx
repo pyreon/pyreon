@@ -190,6 +190,9 @@ export function MapChart(props: MapChartProps): VNode {
 
     return { index: i, name: r.name, label: r.label, value: v ?? Number.NaN, properties: source().properties[i] ?? null }
   }
+  /** The bubble size key, when asked for. */
+  const sizeKey = (labelColor: string): DrawCmd[] =>
+    props.sizeLegend === undefined || props.sizeLegend === false ? [] : renderGeoSizeLegend(allPoints(), lastBox, { radius: props.overlayOptions?.radius, color: props.overlayOptions?.color, labelColor, ...(props.sizeLegend === true ? {} : props.sizeLegend) })
   /** The point marks of the call and of the map's own Point / MultiPoint features. */
   const allPoints = (): readonly GeoOverlayPoint[] => [...(props.points ?? []), ...source().points]
   const allPaths = (): readonly GeoOverlayPath[] => [...(props.paths ?? []), ...source().lines]
@@ -294,7 +297,7 @@ export function MapChart(props: MapChartProps): VNode {
       ...renderGeoPies(layout, props.pies ?? [], progress),
       ...(props.trail === undefined ? [] : renderGeoTrails(layout, allPaths(), props.trail, time, props.overlayOptions?.color ?? '#b42318')),
       ...renderGeoOverlayPoints(layout, allPoints(), { labelColor: theme.label, ...props.overlayOptions, progress }),
-      ...(props.sizeLegend === undefined || props.sizeLegend === false ? [] : renderGeoSizeLegend(allPoints(), lastBox, { radius: props.overlayOptions?.radius, color: props.overlayOptions?.color, labelColor: theme.label, ...(props.sizeLegend === true ? {} : props.sizeLegend) })),
+      ...sizeKey(theme.label),
       ...vm.cmds(outer),
       ...noDataKey(vm.current(), outer, aligned().some((v) => !Number.isFinite(v)), theme),
     ],

@@ -14,8 +14,7 @@
 // Same split, and the same reasons, as `calendar.ts` / `calendar-web.ts`.
 
 import { geoDomainAligned, geoOptionParams, layoutGeoShapes, renderGeoAligned } from './geo'
-import { geoProjectionParams, projectLonLatWith } from './geo-projection'
-import { geoWrapsLongitude } from './geo-projection'
+import { geoProjectionParams, geoWrapsLongitude, projectLonLatWith } from './geo-projection'
 import type { GeoProjectionParams } from './geo-projection'
 import type { GeoLayout, GeoOptions, GeoProjection, GeoShape, GeoValue } from './geo'
 import { renderGeoBelow, renderGeoFlows, renderGeoSizeLegend } from './geo-layers'

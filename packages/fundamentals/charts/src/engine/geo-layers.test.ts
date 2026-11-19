@@ -103,7 +103,10 @@ describe('sphere and graticule', () => {
     expect(renderGeoGraticule(layout, 0.5, '#ccc')).toEqual([])
   })
   it('no graticule line crosses the seam: every run stays inside the box', () => {
-    for (const line of lines(renderGeoGraticule(world({ sphere: true, padding: 0 }), 15, '#ccc'))) for (const p of line.points) expect(p.x).toBeGreaterThanOrEqual(-1e-6), expect(p.x).toBeLessThanOrEqual(BOX.w + 1e-6)
+    for (const line of lines(renderGeoGraticule(world({ sphere: true, padding: 0 }), 15, '#ccc'))) {for (const p of line.points) {
+        expect(p.x).toBeGreaterThanOrEqual(-1e-6)
+        expect(p.x).toBeLessThanOrEqual(BOX.w + 1e-6)
+      }}
   })
   it('renderGeoBelow draws nothing unless asked', () => {
     expect(renderGeoBelow(world())).toEqual([])
@@ -188,10 +191,10 @@ describe('cutting rings at the seam', () => {
       const ring = [[lon, lat], [lon + w, lat], [lon + w, lat + 10], [lon, lat + 10], [lon, lat]]
       const lon0 = -180 + next() * 360
       const pieces = cutRingAtSeam(ring, lon0)
-      for (const p of pieces) for (const v of p) {
+      for (const p of pieces) {for (const v of p) {
         expect(v[0]!).toBeGreaterThanOrEqual(lon0 - 180 - 1e-9)
         expect(v[0]!).toBeLessThanOrEqual(lon0 + 180 + 1e-9)
-      }
+      }}
       expect(pieces.reduce((s, p) => s + area(p), 0)).toBeCloseTo(w * 10, 6)
     }
   })

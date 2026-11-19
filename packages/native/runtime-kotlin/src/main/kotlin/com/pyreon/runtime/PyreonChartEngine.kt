@@ -8451,19 +8451,12 @@ fun renderGeoFlows(layout: GeoLayout, flows: List<GeoFlow>, options: GeoFlowOpti
     if (progress <= 0.0) {
       return out
     }
-    var hi = 0.0
-    for (f in flows) {
-      if (((f.value ?: 0.0)) > hi) {
-        hi = (f.value ?: 0.0)
-      }
-    }
+    val hi = largestFlow(flows)
     val minW = (options?.minWidth ?: 1.0)
     val maxW = (options?.maxWidth ?: 4.0)
     val alpha = (options?.opacity ?: 0.7)
     for (f in flows) {
-      val fv = (f.value ?: 0.0)
-      val share = if (hi <= 0.0) 0.5 else Math.sqrt(((Math.max(0.0, fv)).toDouble() / (hi).toDouble()).toDouble())
-      val width = if (f.value == null) ((minW + maxW)).toDouble() / (2.0).toDouble() else minW + (maxW - minW) * share
+      val width = flowWidth(f.value, hi, minW, maxW)
       val stroke = withAlpha(((f.color ?: options?.color) ?: "#b42318"), alpha)
       val samples = Math.max(8.0, Math.min(128.0, Math.ceil((greatCircleDegrees(f.from, f.to)).toDouble() / (2.0).toDouble())))
       val runs = flowRuns(layout, f, samples, progress)
@@ -8474,6 +8467,24 @@ fun renderGeoFlows(layout: GeoLayout, flows: List<GeoFlow>, options: GeoFlowOpti
       }
     }
     return out
+  }
+
+fun largestFlow(flows: List<GeoFlow>): Double {
+    var hi = 0.0
+    for (f in flows) {
+      if (((f.value ?: 0.0)) > hi) {
+        hi = (f.value ?: 0.0)
+      }
+    }
+    return hi
+  }
+
+fun flowWidth(value: Double?, hi: Double, minW: Double, maxW: Double): Double {
+    if (value == null) {
+      return ((minW + maxW)).toDouble() / (2.0).toDouble()
+    }
+    val share = if (hi <= 0.0) 0.5 else Math.sqrt(((Math.max(0.0, value)).toDouble() / (hi).toDouble()).toDouble())
+    return minW + (maxW - minW) * share
   }
 
 fun flowRuns(layout: GeoLayout, f: GeoFlow, samples: Double, progress: Double): List<List<PyreonChartPt>> {
@@ -8554,10 +8565,10 @@ fun renderGeoSizeLegend(points: List<GeoOverlayPoint>, box: PyreonChartRect, opt
     var lastY = -1000000.0
     for (v in values) {
       val r = radiusOf(v)
-      val top = bottom - 2.0 * r
-      val y = Math.max(top, lastY + fontSize + 3.0)
+      val ringTop = bottom - 2.0 * r
+      val y = Math.max(ringTop, lastY + fontSize + 3.0)
       lastY = y
-      out.add(PyreonDrawCmd(kind = "polyline", stroke = withAlpha(labelColor, 0.5), width = 0.5, points = listOf(PyreonChartPt(x = cx, y = top), PyreonChartPt(x = cx + big + 6.0, y = y))))
+      out.add(PyreonDrawCmd(kind = "polyline", stroke = withAlpha(labelColor, 0.5), width = 0.5, points = listOf(PyreonChartPt(x = cx, y = ringTop), PyreonChartPt(x = cx + big + 6.0, y = y))))
       out.add(PyreonDrawCmd(kind = "text", fill = labelColor, text = legendNumber(v), at = PyreonChartPt(x = cx + big + 9.0, y = y), size = fontSize, align = "start", baseline = "middle"))
     }
     if (title != "") {
