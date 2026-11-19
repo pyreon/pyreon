@@ -42,5 +42,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "author": "Vit Bokisch"
+  "author": "Vit Bokisch",
+  "pyreon": {
+    "stability": "experimental"
+  }
 }

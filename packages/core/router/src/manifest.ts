@@ -4,9 +4,9 @@ export default defineManifest({
   name: '@pyreon/router',
   title: 'Router',
   tagline:
-    'hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params',
+    'hash+history+memory+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params',
   description:
-    'Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (`RouterContext`) with hash and history mode support. Route params are inferred from path strings (`"/user/:id"` yields `{ id: string }`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit), not after animation completion.',
+    'Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (`RouterContext`) with hash, history and in-memory mode support. Route params are inferred from path strings (`"/user/:id"` yields `{ id: string }`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit), not after animation completion.',
   category: 'browser',
   multiplatform: {
     tier: 'service-backend',
@@ -69,7 +69,7 @@ const User = () => {
   features: [
     'Native compiler tooling: routerPlugin from @pyreon/router/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly',
     'Server loaders (zero integration): records carry `serverLoader` (SSR module graph only) / `hasServerLoader` (client marker) — client navigations fetch the whole chain via ONE request to the `dataEndpoint` (default `<base>/_pyreon/data`); redirect() from a server loader arrives as a JSON envelope the client turns into a navigation',
-    'createRouter() — factory with routes, guards, middleware, loaders, hash/history mode',
+    'createRouter() — factory with routes, guards, middleware, loaders, hash/history/memory mode',
     'RouterProvider / RouterView / RouterLink — context-based rendering components',
     'useRouter / useRoute — programmatic navigation and typed route access',
     'useIsActive — reactive boolean for path matching (segment-aware prefix)',
@@ -104,7 +104,7 @@ return json({ data: result.data }) // keyed by matched-chain index`,
       kind: 'function',
       signature: 'createRouter(options: RouterOptions | RouteRecord[]): Router',
       summary:
-        'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: [{ name, root }]` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab\'s root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab\'s top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first.',
+        'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"hash"` default | `"history"` | `"memory"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: [{ name, root }]` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab\'s root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab\'s top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first. `mode: "memory"` keeps the location in an entry stack inside the router (start it with `initialEntries` / `initialIndex`; default `[url ?? "/"]`, last entry): `push` / `replace` / `back` / `forward` / `go` run the full pipeline against the stack (a cancelled traversal keeps the position; a step past either end is a no-op), nothing touches `window.history` / `location` / `document.title`, no window listener is attached, and it never takes over the page router\'s cancelled-traversal restores, so it embeds in a page that already has a router and runs with no `window`. `<RouterLink>` renders the plain route path as `href`. The native routers are in-memory stacks already, so `mode` needs no lowering there; `initialEntries` / `initialIndex` are ignored on iOS/Android with a named compiler warning.',
       example: `const router = createRouter([
   { path: "/", component: Home },
   { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) },
@@ -114,6 +114,7 @@ return json({ data: result.data }) // keyed by matched-chain index`,
 ])`,
       mistakes: [
         '`createRouter({ routes: [...], mode: "hash" })` and using `window.location.hash` elsewhere — hash mode uses `history.pushState`, not `location.hash`. Reading `location.hash` directly will not reflect router state',
+        'Using `mode: "memory"` for an app that owns the page — the URL never changes, so reload, deep links, sharing and "open in new tab" do not work. It is for routers EMBEDDED in a page that has its own (a demo, a widget), tests and native previews. It also does not write `document.title`, does not use View Transitions, scrolls only with an explicit `scrollBehavior`, and resolves an external `redirect("https://…")` as `"cancelled"`',
         'Defining route paths without leading `/` in root routes — all root-level paths must start with `/`',
         'Using `redirect: "/target"` with a guard on the same route — redirects bypass guards. Use `beforeEnter` to conditionally redirect instead',
         'Forgetting the catch-all route — `{ path: "(.*)", component: NotFound }` should be the last route to handle 404s',
@@ -568,7 +569,7 @@ function PostsPage() {
       signature:
         'getActiveRouter(): RouterInstance | null · setActiveRouter(router: RouterInstance | null): void',
       summary:
-        'The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. Every router hook (`useRouter`, `useRoute`, `RouterLink`\'s internal resolution, …) reads `useContext(RouterContext) ?? _activeRouter` — the context wins when present, and `setActiveRouter(router)` (called once by app setup code — `createApp`/`startClient` in `@pyreon/zero`, or by hand in a non-JSX-provider app) supplies the fallback for code that runs OUTSIDE any component tree (a route loader, a plain utility module). `getActiveRouter()` reads the SAME resolution a hook would, without throwing when nothing is installed — useful for "is a router active at all?" checks in framework-adjacent code.',
+        'The module-level FALLBACK a hook resolves against when no `<RouterProvider>` context is above it. Every router hook (`useRouter`, `useRoute`, `RouterLink`\'s internal resolution, …) reads `useContext(RouterContext) ?? _activeRouter` — the context wins when present, and `setActiveRouter(router)` (called once by app setup code — `createApp`/`startClient` in `@pyreon/zero`, or by hand in a non-JSX-provider app) supplies the fallback for code that runs OUTSIDE any component tree (a route loader, a plain utility module). `getActiveRouter()` reads the SAME resolution a hook would, without throwing when nothing is installed — useful for "is a router active at all?" checks in framework-adjacent code. The fallback is CLIENT-ONLY: on a server one process serves every request, so `setActiveRouter` stores nothing there and the hooks resolve through `<RouterProvider>` context alone (a render with no provider above it gets the "no router installed" error, never another request\'s router).',
       example: `// App setup (once):
 setActiveRouter(router)
 
@@ -577,6 +578,7 @@ const router = getActiveRouter()
 if (router) router.push('/dashboard')`,
       mistakes: [
         'Calling `setActiveRouter` more than once per app expecting multiple active routers to coexist — it is a single module-level fallback slot; the LAST call wins. Multiple simultaneous routers need `<RouterProvider>` context scoping, not this',
+        'Relying on the fallback during SSR (`setActiveRouter` in server code, or a router hook in a render with no `<RouterProvider>` above it, such as a server-island fragment) — on a server it is never written or read, because a module slot there is shared by every request; pass the router through `<RouterProvider>`',
         'Reaching for `getActiveRouter()` inside an ordinary component instead of `useRouter()` — `useRouter()` throws a clear error with no router installed; `getActiveRouter()` silently returns `null`, which is right for library/framework code but usually wrong for app components (a silent `null` there reads as "nothing happened")',
       ],
       seeAlso: ['useRouter', 'RouterProvider', 'createRouter'],

@@ -11,7 +11,7 @@ import type { Formatter } from './format'
 import type { Double, MeasureText, Rect } from './types'
 
 export interface BoxplotChartProps<T> extends CanvasHostProps {
-  data: T[] | (() => T[])
+  data: readonly T[] | (() => readonly T[])
   /** The raw samples per category; reduced with `fiveNumber`. */
   values?: (d: T, index: number) => Double[]
   /** Precomputed five-number summary. Takes precedence over `values`. */
@@ -29,7 +29,7 @@ export interface BoxplotChartProps<T> extends CanvasHostProps {
 interface Geometry { rows: FiveNumber[]; categories: string[]; box: Rect; plot: Rect; fontSize: Double; measure: MeasureText }
 
 export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
-  const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
+  const readData = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
   const hitAt = (g: Geometry, px: Double, py: Double): number => hitBox(g.rows.length, g.plot, px - g.box.x, py - g.box.y)
   return canvasHost<Geometry>({
     props,

@@ -11,8 +11,8 @@ import type { GraphLayout, GraphLayoutNode, GraphLink, GraphNode, GraphOptions }
 import type { Rect } from './types'
 
 export interface GraphChartProps extends CanvasHostProps {
-  nodes: GraphNode[] | (() => GraphNode[])
-  links: GraphLink[] | (() => GraphLink[])
+  nodes: readonly GraphNode[] | (() => readonly GraphNode[])
+  links: readonly GraphLink[] | (() => readonly GraphLink[])
   graph?: GraphOptions
   /** Fired with the node under the click, or null for a miss. */
   onSelect?: (node: GraphLayoutNode | null) => void
@@ -23,8 +23,8 @@ export interface GraphChartProps extends CanvasHostProps {
 interface Geometry { layout: GraphLayout; box: Rect }
 
 export function GraphChart(props: GraphChartProps): VNode {
-  const readNodes = (): GraphNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
-  const readLinks = (): GraphLink[] => (typeof props.links === 'function' ? props.links() : props.links)
+  const readNodes = (): readonly GraphNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
+  const readLinks = (): readonly GraphLink[] => (typeof props.links === 'function' ? props.links() : props.links)
   const opts = (t: ChartTheme): GraphOptions => ({ palette: t.palette, labelColor: t.label, linkColor: t.label, ...props.graph })
   return canvasHost<Geometry>({
     props,
