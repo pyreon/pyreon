@@ -2914,6 +2914,108 @@ nowOffset('2026-11-19', Date.UTC(2026, 10, 18, 12), 'UTC')   // => null`,
     notes: '[EXPERIMENTAL] The visible window of a day in wall-clock minutes; throws when `dayEnd` is not after `dayStart`. Added in v0.53.0.',
   },
 
+  'calendar/createCalendar': {
+    signature: '(options: CalendarOptions) => Calendar',
+    example: `const calendar = createCalendar({ events: () => [{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], date: '2026-11-18', view: 'week', now: () => Date.UTC(2026, 10, 18, 12), timeZone: () => 'UTC', locale: () => 'en-GB' })
+calendar.range()   // => { start: '2026-11-16', end: '2026-11-23' }
+calendar.timeGrid().days[2]!.blocks()[0]!.top   // => 0.5833333333333334
+calendar.timeGrid().days[2]!.nowOffset()   // => 0.5`,
+    notes: `[EXPERIMENTAL] The reactive calendar. \`events\` is a reactive source the calendar never changes; \`view\` and \`date\` are values (uncontrolled) or signals you own (controlled); the zone and the locale default to the ambient ones; \`weekStart\` and the weekend default to the locale's. It gives the \`range()\` and \`title()\` (through \`@pyreon/format\`, in the active locale), the \`month()\` and \`timeGrid()\` view models whose layouts are memoised per week and per day (changing one event recomputes only the days it touches), the focused \`cursor()\`, a \`selection()\` and the grid keyboard. \`onRangeChange\` is the place to fetch events for the visible window. Added in v0.53.0.`,
+  },
+
+  'calendar/gridMove': {
+    signature: '(date, key, options?: { weekStart?, hiddenDays?, rtl? }) => PlainDate | null',
+    example: `gridMove('2026-11-18', { key: 'ArrowDown' })   // => '2026-11-25'
+gridMove('2026-11-18', { key: 'PageDown', shiftKey: true })   // => '2027-11-18'
+gridMove('2026-11-18', { key: 'ArrowRight' }, { rtl: true })   // => '2026-11-17'`,
+    notes: `[EXPERIMENTAL] Where a key moves the focused date of a month grid (the WAI-ARIA grid pattern): arrows by a day or a week (Left and Right swap in right-to-left text and skip hidden weekdays), Home and End to the week's first and last shown day, PageUp and PageDown by a month, with Shift by a year. It is pure, so a date picker's grid can share it. Added in v0.53.0.`,
+  },
+
+  'calendar/slotMove': {
+    signature: '(cursor, key, options) => SlotCursor | null',
+    example: `slotMove({ date: '2026-11-18', minute: 540 }, { key: 'ArrowDown' }, { from: 0, to: 1440, slot: 30, dates: ['2026-11-18'] })   // => { date: '2026-11-18', minute: 570 }`,
+    notes: '[EXPERIMENTAL] Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in right-to-left), Home and End to the first and last slot, PageUp and PageDown by a week of columns. It stays inside the grid. Added in v0.53.0.',
+  },
+
+  'calendar/eventLabel': {
+    signature: '(occurrence, locale, labels) => string',
+    example: `eventLabel(expandOccurrences([{ id: 'p', title: 'Public holiday', start: '2026-11-17', end: '2026-11-18' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC')[0]!, 'en-GB', DEFAULT_LABELS)   // => 'Public holiday, Tuesday 17 November, all day'`,
+    notes: '[EXPERIMENTAL] What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 to 15:00"; an all-day event says so; one over several days says where it starts and ends. Added in v0.53.0.',
+  },
+
+  'calendar/dayLabel': {
+    signature: '(date, locale) => string',
+    example: `dayLabel('2026-11-18', 'en-GB')   // => 'Wednesday 18 November'`,
+    notes: '[EXPERIMENTAL] A date as it is read: "Tuesday 18 November". Added in v0.53.0.',
+  },
+
+  'calendar/DEFAULT_LABELS': {
+    signature: 'CalendarLabels',
+    example: `DEFAULT_LABELS.allDay   // => 'all day'`,
+    notes: '[EXPERIMENTAL] The words the calendar says (labels, "all day", "N more", the names of the views). Replace any of them through the `labels` prop for a translation. Added in v0.53.0.',
+  },
+
+  'calendar/Calendar': {
+    signature: '(props: CalendarProps) => VNode',
+    example: `import { Calendar } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+import '@pyreon/calendar/styles.css'
+
+const calendar = createCalendar({ events: () => [] })
+export const App = () => <Calendar calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] The calendar component (import `@pyreon/calendar/components`): an optional toolbar, the view the calendar is on (the month grid, or the time grid of a week, work week, day or days) and a polite live region that says where navigation went. Render slots: `renderEvent`, `renderDay`, `renderMore`; words through `labels`. Added in v0.53.0.',
+  },
+
+  'calendar/MonthView': {
+    signature: '(props: MonthViewProps) => VNode',
+    example: `import { MonthView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [] })
+export const Month = () => <MonthView calendar={calendar} labels={{}} />`,
+    notes: '[EXPERIMENTAL] The month: a WAI-ARIA grid of day cells with roving focus, the events as labelled buttons inside the cell they start in (spanning the days they last, in lanes, "+N more"), today and the selection marked. Added in v0.53.0.',
+  },
+
+  'calendar/TimeGridView': {
+    signature: '(props: ViewProps) => VNode',
+    example: `import { TimeGridView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'week' })
+export const Week = () => <TimeGridView calendar={calendar} labels={{}} />`,
+    notes: '[EXPERIMENTAL] The time grid of a week, work week, day or days: a WAI-ARIA grid whose rows are slots and columns are days, with the all-day row, a time gutter, events placed by the column packing, opening hours shaded and the now line. Added in v0.53.0.',
+  },
+
+  'calendar/WeekView': {
+    signature: '(props: CalendarViewProps) => VNode',
+    example: `import { WeekView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'week' })
+export const Week = () => <WeekView calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] The time grid for a calendar on the `week` or `workWeek` view. Added in v0.53.0.',
+  },
+
+  'calendar/DayView': {
+    signature: '(props: CalendarViewProps) => VNode',
+    example: `import { DayView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'day' })
+export const Day = () => <DayView calendar={calendar} />`,
+    notes: '[EXPERIMENTAL] The time grid for a calendar on the `day` view. Added in v0.53.0.',
+  },
+
+  'calendar/CalendarToolbar': {
+    signature: '(props: CalendarToolbarProps) => VNode',
+    example: `import { CalendarToolbar } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [] })
+export const Bar = () => <CalendarToolbar calendar={calendar} views={['month', 'week']} />`,
+    notes: '[EXPERIMENTAL] The title with Today, Previous and Next buttons and a switch of the view (buttons with `aria-pressed`). Added in v0.53.0.',
+  },
+
   'calendar/CalendarEvent': {
     signature: 'interface CalendarEvent<Meta> { id; title; start; end; allDay?; timeZone?; recurrence?; overrides?; resourceId?; editable?; color?; meta? }',
     example: `const event: CalendarEvent = { id: 'a', title: 'A', start: '2026-11-18', end: '2026-11-19' }`,
@@ -2924,6 +3026,12 @@ nowOffset('2026-11-19', Date.UTC(2026, 10, 18, 12), 'UTC')   // => null`,
     signature: 'interface EventOccurrence<Meta> { key; event; occurrence; title; allDay; start; end; startMs; endMs; recurring }',
     example: 'const none: EventOccurrence[] = []',
     notes: '[EXPERIMENTAL] One occurrence of an event placed in the display zone; the key (`"<id>:<occurrence>"`) is the same in every window. Added in v0.53.0.',
+  },
+
+  'calendar/Calendar': {
+    signature: 'interface Calendar<Meta> { view(); setView(); date(); goTo(); next(); previous(); today(); range(); dates(); title(); month(); timeGrid(); occurrences(); cursor(); setCursor(); selection(); selectDay(); selectSlot(); clearSelection(); eventClick(); announcement(); onKeyDown(); dispose() }',
+    example: 'const calendar: Calendar = createCalendar({ events: () => [] })',
+    notes: '[EXPERIMENTAL] What `createCalendar` returns. Added in v0.53.0.',
   },
 
   'calendar/TimedBlock': {

@@ -1,6 +1,6 @@
 # @pyreon/calendar
 
-An event calendar and scheduler for Pyreon, built in slices. This README describes what has landed: the pure core, `@pyreon/calendar/core` (no DOM, no `@pyreon/core`): the event model, recurrence and zones, the window of each view, and the month and time-grid layout algorithms.
+An event calendar and scheduler for Pyreon, built in slices. Landed: the pure core (`@pyreon/calendar/core`), the reactive calendar (`createCalendar`) and the month and time-grid views. Not yet: drag to move, resize and create, the agenda, year and timeline views, resources.
 
 > **Experimental.**
 
@@ -8,16 +8,31 @@ An event calendar and scheduler for Pyreon, built in slices. This README describ
 bun add @pyreon/calendar
 ```
 
-```ts
-import { expandOccurrences, layoutDay, visibleRange } from '@pyreon/calendar/core'
+| Entry | What |
+| --- | --- |
+| `@pyreon/calendar/core` | event model, recurrence and zones, view windows, month lanes, column packing; no DOM, no `@pyreon/core` |
+| `@pyreon/calendar` | the core plus `createCalendar`, the labels and the grid-keyboard helpers |
+| `@pyreon/calendar/components` | `<Calendar>`, `<MonthView>`, `<WeekView>`, `<DayView>`, `<CalendarToolbar>` |
+| `@pyreon/calendar/styles.css` | an optional default look |
 
-const week = visibleRange('week', '2026-11-18')
-const occurrences = expandOccurrences(events, week.range, 'Europe/Prague')
-for (const date of week.dates) layoutDay(date, occurrences, 'Europe/Prague') // blocks with top, height, column, columns
+```tsx
+import { createCalendar } from '@pyreon/calendar'
+import { Calendar } from '@pyreon/calendar/components'
+import '@pyreon/calendar/styles.css'
+
+const calendar = createCalendar({
+  events: () => events(),
+  onRangeChange: (range) => load(range), // the visible window, end exclusive
+  onSelect: (range) => openNewEventDialog(range),
+})
+
+export const App = () => <Calendar calendar={calendar} />
 ```
 
-- **Events are plain data.** A date start and end make an all-day event (the end is exclusive: `allDay('2026-11-18')`); a date-time is a wall clock, in the event's own `timeZone` or floating in the display zone; a number is an instant. Recurrence and overrides (moved, retitled, cancelled) go through `@pyreon/schedule`.
-- **Layouts are pure functions with stable keys**: month lanes (longer first, a total order, split at week edges with continuation flags, "+N more") and column packing for a time grid (overlapping events share the width and grow into free columns; pinned columns; minimum height; midnight splits).
+- **Events are plain data.** A date start and end make an all-day event (the end is exclusive: `allDay('2026-11-18')`); a date-time is a wall clock, in the event's own `timeZone` or floating in the display zone; a number is an instant. Recurrence and overrides go through `@pyreon/schedule`.
+- **Fine-grained.** Layouts are pure functions with stable keys, memoised per week and per day: changing one event recomputes only the days it touches.
+- **Accessible.** Month and time grid are WAI-ARIA grids with one tab stop and arrows, Home and End, PageUp and PageDown, Shift to select; events are labelled buttons; today and the selection are marked; a live region announces navigation; right to left works. Checked with `axe-core` in a real browser.
 - **The time grid is a wall-clock grid.** On the day a zone skips an hour, that row is empty; on the day it repeats an hour the second pass is drawn over the first. Block positions and the now line follow the clock.
+- **SSR-safe.** The views render on the server for a date, zone and locale, and hydrate without a mismatch (the now line uses the ambient clock hand-over).
 
 Full guide: [docs/calendar](https://pyreon.dev/docs/calendar).

@@ -1,1 +1,5 @@
 export * from './core'
+export { createCalendar } from './calendar'
+export type { Calendar, CalendarOptions, DayCell, MonthWeek, Selection, TimeGridDay, TimeGridModel } from './calendar-types'
+export { DEFAULT_LABELS, dayLabel, eventLabel } from './labels'
+export type { CalendarLabels } from './labels'

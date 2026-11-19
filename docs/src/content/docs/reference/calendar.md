@@ -60,8 +60,21 @@ layoutDay('2026-11-18', occurrences, 'Europe/Prague').map((b) => [b.column, b.co
 | [`wallMinute`](#wallminute-function-experimental) | function | The wall-clock minute from midnight an instant shows at in a zone. |
 | [`slotTimes`](#slottimes-function-experimental) | function | The start times of the rows of the grid between `dayStart` and `dayEnd`, every `slot` (30 minutes by default). |
 | [`visibleMinutes`](#visibleminutes-function-experimental) | function | The visible window of a day in wall-clock minutes; throws when `dayEnd` is not after `dayStart`. |
+| [`createCalendar`](#createcalendar-function-experimental) | function | The reactive calendar. |
+| [`gridMove`](#gridmove-function-experimental) | function | Where a key moves the focused date of a month grid (the WAI-ARIA grid pattern): arrows by a day or a week (Left and… |
+| [`slotMove`](#slotmove-function-experimental) | function | Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in… |
+| [`eventLabel`](#eventlabel-function-experimental) | function | What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 to 15:00"; an all-day event says… |
+| [`dayLabel`](#daylabel-function-experimental) | function | A date as it is read: "Tuesday 18 November". |
+| [`DEFAULT_LABELS`](#default_labels-constant-experimental) | constant | The words the calendar says (labels, "all day", "N more", the names of the views). |
+| [`Calendar`](#calendar-component-experimental) | component | The calendar component (import `@pyreon/calendar/components`): an optional toolbar, the view the calendar is on (the… |
+| [`MonthView`](#monthview-component-experimental) | component | The month: a WAI-ARIA grid of day cells with roving focus, the events as labelled buttons inside the cell they start in… |
+| [`TimeGridView`](#timegridview-component-experimental) | component | The time grid of a week, work week, day or days: a WAI-ARIA grid whose rows are slots and columns are days, with the… |
+| [`WeekView`](#weekview-component-experimental) | component | The time grid for a calendar on the `week` or `workWeek` view. |
+| [`DayView`](#dayview-component-experimental) | component | The time grid for a calendar on the `day` view. |
+| [`CalendarToolbar`](#calendartoolbar-component-experimental) | component | The title with Today, Previous and Next buttons and a switch of the view (buttons with `aria-pressed`). |
 | [`CalendarEvent`](#calendarevent-type-experimental) | type | An event as plain JSON-safe data. |
 | [`EventOccurrence`](#eventoccurrence-type-experimental) | type | One occurrence of an event placed in the display zone; the key (`"<id>:<occurrence>"`) is the same in every window. |
+| [`Calendar`](#calendar-type-experimental) | type | What `createCalendar` returns. |
 | [`TimedBlock`](#timedblock-type-experimental) | type | A block of a time-grid column; `top`, `height`, `left` and `width` are fractions. |
 
 ## API
@@ -362,6 +375,228 @@ visibleMinutes({ dayStart: '08:00', dayEnd: '18:00' })   // => { from: 480, to: 
 
 ---
 
+### `createCalendar` `function` — **experimental**
+
+```ts
+(options: CalendarOptions) => Calendar
+```
+
+The reactive calendar. `events` is a reactive source the calendar never changes; `view` and `date` are values (uncontrolled) or signals you own (controlled); the zone and the locale default to the ambient ones; `weekStart` and the weekend default to the locale's. It gives the `range()` and `title()` (through `@pyreon/format`, in the active locale), the `month()` and `timeGrid()` view models whose layouts are memoised per week and per day (changing one event recomputes only the days it touches), the focused `cursor()`, a `selection()` and the grid keyboard. `onRangeChange` is the place to fetch events for the visible window.
+
+**Example**
+
+```tsx
+const calendar = createCalendar({ events: () => [{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], date: '2026-11-18', view: 'week', now: () => Date.UTC(2026, 10, 18, 12), timeZone: () => 'UTC', locale: () => 'en-GB' })
+calendar.range()   // => { start: '2026-11-16', end: '2026-11-23' }
+calendar.timeGrid().days[2]!.blocks()[0]!.top   // => 0.5833333333333334
+calendar.timeGrid().days[2]!.nowOffset()   // => 0.5
+```
+
+---
+
+### `gridMove` `function` — **experimental**
+
+```ts
+(date, key, options?: { weekStart?, hiddenDays?, rtl? }) => PlainDate | null
+```
+
+Where a key moves the focused date of a month grid (the WAI-ARIA grid pattern): arrows by a day or a week (Left and Right swap in right-to-left text and skip hidden weekdays), Home and End to the week's first and last shown day, PageUp and PageDown by a month, with Shift by a year. It is pure, so a date picker's grid can share it.
+
+**Example**
+
+```tsx
+gridMove('2026-11-18', { key: 'ArrowDown' })   // => '2026-11-25'
+gridMove('2026-11-18', { key: 'PageDown', shiftKey: true })   // => '2027-11-18'
+gridMove('2026-11-18', { key: 'ArrowRight' }, { rtl: true })   // => '2026-11-17'
+```
+
+---
+
+### `slotMove` `function` — **experimental**
+
+```ts
+(cursor, key, options) => SlotCursor | null
+```
+
+Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in right-to-left), Home and End to the first and last slot, PageUp and PageDown by a week of columns. It stays inside the grid.
+
+**Example**
+
+```tsx
+slotMove({ date: '2026-11-18', minute: 540 }, { key: 'ArrowDown' }, { from: 0, to: 1440, slot: 30, dates: ['2026-11-18'] })   // => { date: '2026-11-18', minute: 570 }
+```
+
+---
+
+### `eventLabel` `function` — **experimental**
+
+```ts
+(occurrence, locale, labels) => string
+```
+
+What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 to 15:00"; an all-day event says so; one over several days says where it starts and ends.
+
+**Example**
+
+```tsx
+eventLabel(expandOccurrences([{ id: 'p', title: 'Public holiday', start: '2026-11-17', end: '2026-11-18' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC')[0]!, 'en-GB', DEFAULT_LABELS)   // => 'Public holiday, Tuesday 17 November, all day'
+```
+
+---
+
+### `dayLabel` `function` — **experimental**
+
+```ts
+(date, locale) => string
+```
+
+A date as it is read: "Tuesday 18 November".
+
+**Example**
+
+```tsx
+dayLabel('2026-11-18', 'en-GB')   // => 'Wednesday 18 November'
+```
+
+---
+
+### `DEFAULT_LABELS` `constant` — **experimental**
+
+```ts
+CalendarLabels
+```
+
+The words the calendar says (labels, "all day", "N more", the names of the views). Replace any of them through the `labels` prop for a translation.
+
+**Example**
+
+```tsx
+DEFAULT_LABELS.allDay   // => 'all day'
+```
+
+---
+
+### `Calendar` `component` — **experimental**
+
+```ts
+(props: CalendarProps) => VNode
+```
+
+The calendar component (import `@pyreon/calendar/components`): an optional toolbar, the view the calendar is on (the month grid, or the time grid of a week, work week, day or days) and a polite live region that says where navigation went. Render slots: `renderEvent`, `renderDay`, `renderMore`; words through `labels`.
+
+**Example**
+
+```tsx
+import { Calendar } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+import '@pyreon/calendar/styles.css'
+
+const calendar = createCalendar({ events: () => [] })
+export const App = () => <Calendar calendar={calendar} />
+```
+
+---
+
+### `MonthView` `component` — **experimental**
+
+```ts
+(props: MonthViewProps) => VNode
+```
+
+The month: a WAI-ARIA grid of day cells with roving focus, the events as labelled buttons inside the cell they start in (spanning the days they last, in lanes, "+N more"), today and the selection marked.
+
+**Example**
+
+```tsx
+import { MonthView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [] })
+export const Month = () => <MonthView calendar={calendar} labels={{}} />
+```
+
+---
+
+### `TimeGridView` `component` — **experimental**
+
+```ts
+(props: ViewProps) => VNode
+```
+
+The time grid of a week, work week, day or days: a WAI-ARIA grid whose rows are slots and columns are days, with the all-day row, a time gutter, events placed by the column packing, opening hours shaded and the now line.
+
+**Example**
+
+```tsx
+import { TimeGridView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'week' })
+export const Week = () => <TimeGridView calendar={calendar} labels={{}} />
+```
+
+---
+
+### `WeekView` `component` — **experimental**
+
+```ts
+(props: CalendarViewProps) => VNode
+```
+
+The time grid for a calendar on the `week` or `workWeek` view.
+
+**Example**
+
+```tsx
+import { WeekView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'week' })
+export const Week = () => <WeekView calendar={calendar} />
+```
+
+---
+
+### `DayView` `component` — **experimental**
+
+```ts
+(props: CalendarViewProps) => VNode
+```
+
+The time grid for a calendar on the `day` view.
+
+**Example**
+
+```tsx
+import { DayView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'day' })
+export const Day = () => <DayView calendar={calendar} />
+```
+
+---
+
+### `CalendarToolbar` `component` — **experimental**
+
+```ts
+(props: CalendarToolbarProps) => VNode
+```
+
+The title with Today, Previous and Next buttons and a switch of the view (buttons with `aria-pressed`).
+
+**Example**
+
+```tsx
+import { CalendarToolbar } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [] })
+export const Bar = () => <CalendarToolbar calendar={calendar} views={['month', 'week']} />
+```
+
+---
+
 ### `CalendarEvent` `type` — **experimental**
 
 ```ts
@@ -390,6 +625,22 @@ One occurrence of an event placed in the display zone; the key (`"<id>:<occurren
 
 ```tsx
 const none: EventOccurrence[] = []
+```
+
+---
+
+### `Calendar` `type` — **experimental**
+
+```ts
+interface Calendar<Meta> { view(); setView(); date(); goTo(); next(); previous(); today(); range(); dates(); title(); month(); timeGrid(); occurrences(); cursor(); setCursor(); selection(); selectDay(); selectSlot(); clearSelection(); eventClick(); announcement(); onKeyDown(); dispose() }
+```
+
+What `createCalendar` returns.
+
+**Example**
+
+```tsx
+const calendar: Calendar = createCalendar({ events: () => [] })
 ```
 
 ---

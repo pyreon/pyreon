@@ -203,6 +203,38 @@ export const SCENARIOS: Scenario[] = [
     imports: ['expandOccurrences', 'layoutMonth', 'layoutDay'],
   },
   {
+    // The reactive calendar without a view: the state, the view models and the keyboard.
+    id: '@pyreon/calendar::calendar-state',
+    pkg: '@pyreon/calendar',
+    dir: 'fundamentals/calendar',
+    entry: 'index.js',
+    imports: ['createCalendar'],
+  },
+  {
+    // The month view alone (the grid, the lanes, the keyboard): no time grid.
+    id: '@pyreon/calendar::month-view',
+    pkg: '@pyreon/calendar',
+    dir: 'fundamentals/calendar',
+    entry: 'components.js',
+    imports: ['MonthView'],
+  },
+  {
+    // The week and day time grid alone.
+    id: '@pyreon/calendar::week-view',
+    pkg: '@pyreon/calendar',
+    dir: 'fundamentals/calendar',
+    entry: 'components.js',
+    imports: ['WeekView'],
+  },
+  {
+    // The whole calendar component: toolbar, month and time grid.
+    id: '@pyreon/calendar::full',
+    pkg: '@pyreon/calendar',
+    dir: 'fundamentals/calendar',
+    entry: 'components.js',
+    imports: ['Calendar'],
+  },
+  {
     // Date arithmetic on plain strings: parsing, the padded writer and the duration loader, and nothing of the zone code.
     // `add` must not drag `Intl.DateTimeFormat` handling in; zone conversion is a separate import.
     id: '@pyreon/time::add',

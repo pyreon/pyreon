@@ -45,6 +45,7 @@
     "@pyreon/auth",
     "@pyreon/devtools",
     "@pyreon/time",
-    "@pyreon/ambient"
+    "@pyreon/ambient",
+    "@pyreon/calendar"
   ]
 }

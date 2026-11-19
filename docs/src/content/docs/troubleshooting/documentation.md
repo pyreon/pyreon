@@ -190,3 +190,9 @@ Both registry discovery and auto-naming validate regex candidates against parsed
 Parse emitted source independently and keep fallback assertions alive without the optional binary. Prop inlining and signal auto-calls use the same original AST offsets, so compose their edits before emission; static hoist declarations terminate explicitly before a following JSX statement. Controls: `packages/core/compiler/src/tests/jsx-composed-edits.test.ts`, the curated syntax corpus and seeded fallback grammar.
 
 ---
+
+### Positioning calendar events by hand, an all-day event that ends on its own day, rows keyed by index (`@pyreon/calendar`)
+
+Pixels computed from a `Date` in a component put overlapping events on top of each other, lose an event across midnight and are wrong on the 23 and 25 hour days — `createCalendar` places events with pure layout functions (column packing, lanes) and a wall-clock grid with defined DST behaviour. An event's `end` is exclusive: an all-day event on the 18th ends on the 19th (`allDay(date)` makes the pair); one that ends on its own day is a single moment. A wall clock without a `timeZone` is floating (it shows the same clock in every zone), "9:00 in Prague" needs `timeZone: 'Europe/Prague'`. Key rows by `occurrence.key` (`<id>:<original start>`, the same in every window), not by index. Fetch the window `onRangeChange` reports, not every event. Reference: `packages/fundamentals/calendar`, pattern `patterns/calendar`.
+
+---

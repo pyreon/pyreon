@@ -22,9 +22,10 @@ describe('loadPatternRegistry — real repo docs/patterns', () => {
     expect(registry.root).toContain('docs/patterns')
   })
 
-  it('loads all 20 seeded patterns', () => {
+  it('loads all 21 seeded patterns', () => {
     const names = registry.patterns.map((p) => p.name).sort()
     expect(names).toEqual([
+      'calendar',
       'controllable-state',
       'data-fetching',
       'dates-and-times',

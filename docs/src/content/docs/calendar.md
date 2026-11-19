@@ -5,9 +5,9 @@ description: An event calendar and scheduler for Pyreon — event model, recurre
 
 <PackageBadge name="@pyreon/calendar" href="/docs/calendar" />
 
-`@pyreon/calendar` is an event calendar: the events of an app laid out in a month, a week or a day. It is built in slices. This page covers the pure core, `@pyreon/calendar/core`, which has no DOM and no `@pyreon/core`: the event model, recurrence and zones, the window and title of each view, and the two layout algorithms. The reactive calendar and the view components follow.
+`@pyreon/calendar` is an event calendar: the events of an app laid out in a month, a week or a day. It is built in slices. This page covers the pure core, `@pyreon/calendar/core` (no DOM, no `@pyreon/core`: the event model, recurrence and zones, the window of each view, the two layout algorithms), the reactive calendar (`createCalendar`) and the month and time-grid views. Drag to move, resize and create, the agenda, year and timeline views, and resources follow.
 
-> **Experimental.**
+> **Experimental.** No drag or resize yet: you can read the calendar, move around it, select a day or a slot and click an event.
 
 ## Installation
 
@@ -15,7 +15,14 @@ description: An event calendar and scheduler for Pyreon — event model, recurre
 bun add @pyreon/calendar
 ```
 
-It depends on `@pyreon/time` (values, grids, zones) and `@pyreon/schedule` (recurrence), which install with it.
+It depends on `@pyreon/time` (values, grids, zones), `@pyreon/schedule` (recurrence), `@pyreon/ambient` (locale, zone, clock) and `@pyreon/format` (labels), which install with it. The components also need `@pyreon/core`.
+
+| Entry | What |
+| --- | --- |
+| `@pyreon/calendar/core` | the pure core. Only `@pyreon/time/core` and `@pyreon/schedule/core`. |
+| `@pyreon/calendar` | the core plus `createCalendar`, the labels and the keyboard helpers. |
+| `@pyreon/calendar/components` | `<Calendar>`, `<MonthView>`, `<WeekView>`, `<DayView>`, `<CalendarToolbar>`. |
+| `@pyreon/calendar/styles.css` | an optional default look. |
 
 ## Events
 
@@ -130,6 +137,157 @@ A time grid is a **wall-clock grid**: a row is the hour the clock shows, and eve
 - **The now line** follows the clock: during the repeated hour it is at the same row in both passes. `dayBounds(date, zone).elapsedMinutes` is 1380 or 1500 on those days, if you need the real length.
 
 This is the choice Google Calendar and most schedulers make; the alternative (a grid in elapsed time) would give the DST day different rows from its neighbours and break the shared time gutter.
+
+## The reactive calendar
+
+```tsx
+import { createCalendar } from '@pyreon/calendar'
+import { Calendar } from '@pyreon/calendar/components'
+import '@pyreon/calendar/styles.css'
+
+const calendar = createCalendar({
+  events: () => events(), // a reactive source; the calendar never changes it
+  view: 'month', // a value, or a signal you own
+  onRangeChange: (range) => load(range), // fetch the events of the visible window
+  onSelect: (range) => openNewEventDialog(range), // a clicked day or slot, or a confirmed keyboard range
+  onEventClick: (event, occurrence) => openEvent(event.id, occurrence.occurrence),
+})
+
+export const App = () => <Calendar calendar={calendar} />
+```
+
+`createCalendar(options)` returns the state; the components are one way to draw it, and you can draw it yourself.
+
+| Option | |
+| --- | --- |
+| `events` | Reactive. A new array is fine; an unchanged event costs nothing. |
+| `view`, `date` | A value (the calendar owns the state; `setView`, `goTo`, `next`, `previous` and `today` change it) or a `signal` you own (controlled: the calendar follows it and writes to it). `date` defaults to today in the display zone. |
+| `timeZone`, `locale` | Accessors. Default: the ambient ones from `@pyreon/ambient` (`setLocale`, `provideLocale`, `setTimeZone`), so a change re-renders the title, the labels and the places of events. |
+| `weekStart`, `weekend`, `hiddenDays` | Default to the locale's (`weekStartOf`, `weekendOf`); `hiddenDays: [6, 7]` removes weekend columns. |
+| `dayStart`, `dayEnd`, `slot`, `minBlockMinutes` | The visible hours, the row size (30 minutes) and the shortest block (15). |
+| `businessHours` | A `WorkingHours` (from `@pyreon/schedule`) or a `BusinessCalendar` (with `weekend` and `holidays`): the hours outside it are shaded (`data-business="closed"`). |
+| `monthCapacity` | Segments per week row before "+N more" (3). |
+| `days` | How many days the `'days'` view shows (3). |
+| `now` | The clock for the now line. Default: the ambient clock (a minute tick; on the server, the instant the page was rendered at, which is how the HTML matches what the client hydrates). |
+
+What it gives: `range()` (the visible window, end exclusive, a month with its leading and trailing days), `dates()`, `title()` (through `@pyreon/format`, in the active locale: "November 2026", "16 – 22 Nov 2026"), `month()` and `timeGrid()` (the view models below), `occurrences()`, `cursor()` (the focused cell), `selection()`, `announcement()`.
+
+### View models, and what recomputes
+
+`month()` is the weeks of the grid; `timeGrid()` is the days of a time grid. Each week's `layout()` and each day's `blocks()` and `nowOffset()` is its own computed, **memoised by a signature of the occurrences it holds**: changing one event recomputes only the days and weeks it touches (a test counts the layouts, and a real-browser test checks that the other days' DOM nodes are not mutated and their event components do not run again). Node identity is stable too: weeks and days are keyed, so a keyed `<For>` keeps their nodes when you navigate. `instrument: { layoutDay, layoutRow }` is a hook that is called on each layout, for tests and profiling.
+
+## Views
+
+```tsx
+import { CalendarToolbar, MonthView, WeekView } from '@pyreon/calendar/components'
+
+export function Planner(props: { calendar: Calendar }) {
+  return (
+    <>
+      <CalendarToolbar calendar={props.calendar} views={['month', 'week']} />
+      <MonthView calendar={props.calendar} labels={{}} />
+    </>
+  )
+}
+```
+
+`<Calendar calendar>` is the toolbar, the view the calendar is on and a live region; `<MonthView>`, `<WeekView>`/`<DayView>` (the time grid) and `<CalendarToolbar>` are usable on their own. The agenda, year and timeline views are not part of this release; `<Calendar>` shows the month for them.
+
+- **Render slots**: `renderEvent({ occurrence, label, continuesBefore, continuesAfter })` (what goes inside an event; keep the accessible name, which is `label`), `renderDay(cell)` (the head of a day in a month), `renderMore(count, date)` and `onMore(date)` (the "+N more" button).
+- **Words**: `labels` replaces every string the calendar says ("all day", "today", "N more", the names of the views, the grid names), for a translation.
+- **Styling**: `@pyreon/calendar/styles.css` is a small default look; or style the `pcal-*` classes and data attributes (`data-today`, `data-selected`, `data-outside`, `data-weekend`, `data-business`, `data-continues-before`, `data-continues-after`, `data-recurring`). Sizes and colours are custom properties on `.pcal` (`--pcal-slot`, `--pcal-lane-size`, `--pcal-event`, ...); an event's `color` becomes its `--pcal-event`.
+
+### The month
+
+A WAI-ARIA **grid** of day cells. The events are buttons inside the cell they start in, sized to span the days they last, in lanes (longer first), with "+N more" when a week holds more than `monthCapacity` lanes. A multi-day event that continues into the next week starts again, with `data-continues-before`, in that week's first cell.
+
+### The week, the work week, the day
+
+A WAI-ARIA **grid** whose rows are the slots and whose columns are the days, with a header row, an all-day row, a time gutter, each event a button inside the slot it starts in (placed and sized by the column packing), opening hours shaded, and the now line in the slot the clock is in (also on a day with a skipped or repeated hour: see "Days that change length"). A week in `hiddenDays` has fewer columns. Slots are `slot` minutes (30 by default) from `dayStart` to `dayEnd`.
+
+## Keyboard and accessibility
+
+| Key | Month | Time grid |
+| --- | --- | --- |
+| Left, Right | a day (swapped in right-to-left; skips hidden weekdays) | a day |
+| Up, Down | a week | a slot |
+| Home, End | the first and last shown day of the week | the first and last slot of the day |
+| PageUp, PageDown | a month (Shift: a year) | a week of columns |
+| Shift with the arrows or Home and End | extends a selection | extends a selection (slots, across days) |
+| Enter, Space | selects the focused day, or confirms the range Shift made (`onSelect`) | the same for slots |
+| Escape | clears the selection | the same |
+
+Exactly one cell is in the tab order (the cursor), so Tab enters the grid once and leaves it once; events and "+N more" are buttons you reach with Tab inside it. When the cursor leaves the visible window (PageDown into the next month), the calendar moves there and **focus follows**: it is kept on the cursor cell across view changes and range changes if it was in the grid.
+
+**Why a grid for both views.** A month is a table of days: the grid pattern gives arrow navigation and a cell per day. The time grid is also a grid because its job is choosing a slot (a day and a time) with the keyboard; the events are reachable as buttons inside it, and each carries a full label. A list would read events well but gives no way to choose an empty slot. The events' order in the DOM is row by row (by start time across the days).
+
+**What a screen reader hears.** A day cell is named by its content: its full date ("Wednesday 18 November, today") and the events that start in it. An event is a button named "Design review, Wednesday 18 November, 14:00 to 15:00"; all-day events say "all day" and ones over several days say where they start and end ("Conference, Monday 16 November to Wednesday 18 November, all day"). Today is `aria-current="date"`; selected cells are `aria-selected`. Colour is never the only carrier: a continuation has a square corner (and `data-continues-*`), "+N more" is text. A polite live region says where navigation went ("December 2026, month"). Visible text and accessible names agree (the time of a block is drawn from `data-time`, not as text), which is what `axe-core` checks in the package's tests (month, week and day).
+
+**Right to left.** The arrow keys swap, the layout uses logical properties, events start at the inline start. Direction comes from the element (`dir`); no option is needed. There is no animation, so nothing to reduce.
+
+## Recipes
+
+### A team calendar that loads what is on screen
+
+```tsx
+import { createCalendar } from '@pyreon/calendar'
+import { Calendar } from '@pyreon/calendar/components'
+import type { CalendarEvent } from '@pyreon/calendar'
+import { useQuery } from '@pyreon/query'
+import { signal } from '@pyreon/reactivity'
+
+export function TeamCalendar() {
+  const range = signal<{ start: string; end: string } | null>(null)
+  const query = useQuery(() => ({
+    queryKey: ['events', range()?.start, range()?.end],
+    queryFn: async (): Promise<CalendarEvent[]> => {
+      const r = range()
+      const response = await fetch(`/api/events?from=${r?.start}&to=${r?.end}`)
+      return response.json()
+    },
+    enabled: range() !== null,
+    placeholderData: (previous: CalendarEvent[] | undefined) => previous,
+  }))
+  const calendar = createCalendar({
+    events: () => query.data() ?? [],
+    onRangeChange: (r) => range.set(r),
+  })
+
+  return <Calendar calendar={calendar} />
+}
+```
+
+`onRangeChange` is called once at the start and whenever the window moves (not when an event changes), with a half-open window of dates in the display zone: fetch that range (send a margin if your server stores events in other zones). Keeping the previous data as a placeholder means the events do not blink while the next window loads.
+
+### Business hours
+
+```ts
+const calendar = createCalendar({
+  events: () => [],
+  view: 'week',
+  businessHours: { hours: { 1: [{ from: '09:00', to: '17:00' }], 2: [{ from: '09:00', to: '17:00' }], 3: [{ from: '09:00', to: '12:00' }] }, weekend: [6, 7], holidays: ['2026-12-25'] },
+  dayStart: '07:00',
+  dayEnd: '20:00',
+})
+```
+
+A `WorkingHours` alone (`{ 1: [{ from, to }] }`) also works; a window that ends before it starts (22:00 to 02:00) runs overnight and shades the early hours of the next day. Closed slots have `data-business="closed"`.
+
+### Recurring events
+
+```ts
+const standup = {
+  id: 'standup',
+  title: 'Standup',
+  start: '2026-11-16T09:00',
+  end: '2026-11-16T09:15',
+  timeZone: 'Europe/Prague',
+  recurrence: { every: 'week', on: { weekdays: [1, 2, 3, 4, 5] }, start: '2026-11-16T09:00' },
+  overrides: { '2026-11-18T09:00': { cancelled: true } },
+}
+```
+
+Every occurrence has its own key (`standup:2026-11-18T09:00`), the same in every window, and `onEventClick(event, occurrence)` is told which one was clicked (`occurrence.occurrence` is the key of an override).
 
 ## Notes
 

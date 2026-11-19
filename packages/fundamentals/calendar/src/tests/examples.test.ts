@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
+import * as components from '../components'
 import * as command from '../index'
 import manifest from '../manifest'
 
@@ -37,7 +38,7 @@ function lines(example: string): { code: string; expected: string }[] {
   return out
 }
 
-const scope: Record<string, unknown> = { ...command }
+const scope: Record<string, unknown> = { ...command, ...components }
 
 describe('examples run and print what they claim', () => {
   const fromManifest = manifest.api.filter((a) => a.kind !== 'type' && a.example !== undefined).flatMap((a) => lines(a.example!).map((l) => [`${a.name}: ${l.code}`, a.name, l] as const))
@@ -69,7 +70,7 @@ interface Pkg {
   dependencies?: Record<string, string>
   sideEffects: boolean | string[]
   type: string
-  exports: Record<string, Record<string, string>>
+  exports: Record<string, Record<string, string> | string>
 }
 
 const imports = (text: string): string[] => [...text.matchAll(/(?:^|\n)\s*(?:import|export)\b[^'"\n]*?from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]!).filter((s) => !s.startsWith('.'))
@@ -78,24 +79,33 @@ describe('the published shape', () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as Pkg
   const sources = readdirSync(SRC).filter((f) => f.endsWith('.ts') || f.endsWith('.tsx'))
 
-  it('depends on @pyreon/time and @pyreon/schedule only, is ESM only and side-effect free', () => {
-    expect(Object.keys(pkg.dependencies ?? {})).toEqual(['@pyreon/schedule', '@pyreon/time'])
+  it('depends on the date stack, is ESM only and has no side effect but its stylesheet', () => {
+    expect(Object.keys(pkg.dependencies ?? {})).toEqual(['@pyreon/ambient', '@pyreon/format', '@pyreon/schedule', '@pyreon/time'])
     expect(pkg.type).toBe('module')
-    expect(pkg.sideEffects).toBe(false)
+    expect(pkg.sideEffects).toEqual(['**/*.css'])
     expect(JSON.stringify(pkg.exports)).not.toMatch(/"require"|"default"/)
   })
 
   it('every exports target that points at source exists', () => {
-    for (const target of Object.values(pkg.exports)) expect(existsSync(join(ROOT, target.bun!)), target.bun).toBe(true)
+    for (const target of Object.values(pkg.exports)) {
+      const file = typeof target === 'string' ? target : target.bun!
+
+      expect(existsSync(join(ROOT, file)), file).toBe(true)
+    }
   })
 
-  it('the core imports only the core entries of the date packages, never the DOM or @pyreon/core, and no node: module', () => {
-    for (const f of sources.filter((n) => n !== 'manifest.ts' && n !== 'manifest-parts.ts')) {
+  const CORE_FILES = ['columns.ts', 'core.ts', 'expand.ts', 'lanes.ts', 'model.ts', 'navigation.ts', 'timegrid.ts', 'types.ts', 'views.ts']
+
+  it('the core files import only the core entries of the date packages: no DOM, no @pyreon/core, no reactivity', () => {
+    for (const f of CORE_FILES) {
       const found = [...new Set(imports(readFileSync(join(SRC, f), 'utf8')))]
 
-      expect(found.filter((s) => s.startsWith('node:')), f).toEqual([])
       expect(found.every((s) => s === '@pyreon/time/core' || s === '@pyreon/schedule/core'), `${f}: ${found.join()}`).toBe(true)
     }
+  })
+
+  it('no file imports a node: module', () => {
+    for (const f of sources.filter((n) => n !== 'manifest.ts' && n !== 'manifest-parts.ts')) expect(imports(readFileSync(join(SRC, f), 'utf8')).filter((s) => s.startsWith('node:')), f).toEqual([])
   })
 
   const lib = join(ROOT, 'lib')
@@ -122,5 +132,7 @@ describe('the published shape', () => {
     }
 
     expect(all('core.js')).toEqual(['@pyreon/schedule/core', '@pyreon/time/core'])
+    expect(all('index.js')).toEqual(['@pyreon/ambient', '@pyreon/format', '@pyreon/reactivity', '@pyreon/schedule/core', '@pyreon/time/core'])
+    expect(all('components.js')).toEqual(['@pyreon/core', '@pyreon/core/jsx-runtime', '@pyreon/format', '@pyreon/reactivity'])
   })
 })

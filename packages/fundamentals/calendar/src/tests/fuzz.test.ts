@@ -33,7 +33,7 @@ describe('fuzz: random events through every export', () => {
       try {
         list = expandOccurrences(events, shown.range, zone)
       } catch (error) {
-        throw new Error(`${String(error)} :: ${JSON.stringify({ zone, view, range: shown.range, events })}`)
+        throw new Error(`${String(error)} :: ${JSON.stringify({ zone, view, range: shown.range, events })}`, { cause: error })
       }
       expect(new Set(list.map((o) => o.key)).size).toBe(list.length)
       for (const o of list) expect(o.endMs).toBeGreaterThanOrEqual(o.startMs)

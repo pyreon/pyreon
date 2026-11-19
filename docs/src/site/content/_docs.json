@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 240,
+  "pageCount": 241,
   "pages": [
    {
     "path": "a11y.md",
@@ -421,6 +421,11 @@
     "path": "package-catalog.md",
     "title": "Package catalog",
     "href": "/docs/package-catalog"
+   },
+   {
+    "path": "patterns/calendar.md",
+    "title": "Event calendar",
+    "href": "/docs/patterns/calendar"
    },
    {
     "path": "patterns/controllable-state.md",
@@ -1267,6 +1272,7 @@
       "patterns/dates-and-times",
       "patterns/money",
       "patterns/schedule",
+      "patterns/calendar",
       "patterns/styler-theming",
       "patterns/ssr-safe-hooks",
       "patterns/islands",
@@ -2268,6 +2274,10 @@
     {
      "title": "Schedule",
      "href": "/docs/patterns/schedule"
+    },
+    {
+     "title": "Event calendar",
+     "href": "/docs/patterns/calendar"
     },
     {
      "title": "Forms and validation",
