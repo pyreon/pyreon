@@ -1,5 +1,5 @@
-import { batch, computed, effect, signal } from '@pyreon/reactivity'
-import type { Computed, Effect, Signal } from '@pyreon/reactivity'
+import { batch, computed, signal } from '@pyreon/reactivity'
+import type { Computed, Signal } from '@pyreon/reactivity'
 import type { Entry } from './entry'
 import { detached, textsOf, warn } from './entry'
 import type { Command, CommandGroup } from './types'
@@ -14,14 +14,13 @@ export interface Store {
   seq: number
   dynamicCount: number
   topEntries: Entry[] | null
-  watcher: Effect | null
+  /** Changes whenever a text that is matched changed; see `textsEpoch`. */
+  epoch: Computed<number> | null
   disposed: boolean
-  /** Called when a text that is matched changed: the rankers must forget their previous candidates. */
-  onTextsChanged: () => void
 }
 
 export function createStore(groups: readonly CommandGroup[]): Store {
-  return { entries: [], byId: new Map(), version: signal(0), groups: signal(groups), seq: 0, dynamicCount: 0, topEntries: null, watcher: null, disposed: false, onTextsChanged: () => {} }
+  return { entries: [], byId: new Map(), version: signal(0), groups: signal(groups), seq: 0, dynamicCount: 0, topEntries: null, epoch: null, disposed: false }
 }
 
 export function bump(store: Store): void {
@@ -63,19 +62,26 @@ export function findCommand(store: Store, id: string): Command | undefined {
 }
 
 /**
- * Narrowing reuses the previous candidates, which is only right while the texts are the same: a title that follows the
- * locale (or a function registration) resets every ranker when it changes. One effect reads them all (each read is a
- * cached computed), so a registry of plain titles pays nothing.
+ * A number that changes whenever a text that is matched changed (a title that follows the locale, a function registration)
+ * or the set of commands did. A ranker narrows only while it stays the same: reading it before ranking is what keeps
+ * narrowing exact, whatever order the reactive graph settles in. It is a computed, so a registry of plain titles pays
+ * nothing, and it is created outside any component: owned by the one that happened to search first it would be disposed
+ * with it while the registry kept pointing at it.
  */
-export function ensureWatcher(store: Store): void {
-  if (store.watcher !== null || store.dynamicCount === 0) return
-  store.watcher = detached(() =>
-    effect(() => {
+export function textsEpoch(store: Store): number {
+  if (store.dynamicCount === 0) return 0
+  store.epoch ??= detached(() => {
+    let counter = 0
+
+    return computed(() => {
       store.version()
       for (const entry of store.entries) if (entry.dynamic) entry.texts()
-      store.onTextsChanged()
-    }),
-  )
+
+      return ++counter
+    })
+  })
+
+  return store.epoch()
 }
 
 function warnNestedShortcuts(children: readonly Command[]): void {
@@ -154,8 +160,8 @@ export function removeEntries(store: Store, removed: readonly Entry[]): void {
     store.entries.length = write
     bump(store)
   })
-  if (store.dynamicCount === 0 && store.watcher !== null) {
-    store.watcher.dispose()
-    store.watcher = null
+  if (store.dynamicCount === 0 && store.epoch !== null) {
+    store.epoch.dispose()
+    store.epoch = null
   }
 }

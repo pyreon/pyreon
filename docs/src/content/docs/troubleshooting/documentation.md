@@ -190,3 +190,9 @@ Both registry discovery and auto-naming validate regex candidates against parsed
 Parse emitted source independently and keep fallback assertions alive without the optional binary. Prop inlining and signal auto-calls use the same original AST offsets, so compose their edits before emission; static hoist declarations terminate explicitly before a following JSX statement. Controls: `packages/core/compiler/src/tests/jsx-composed-edits.test.ts`, the curated syntax corpus and seeded fallback grammar.
 
 ---
+
+### A global `keydown` listener per command, a hand-kept list of commands, a palette built from a `div` (`@pyreon/command`)
+
+A bare `window.addEventListener('keydown', ...)` fires while the user types in a field, differs between macOS and Windows (`metaKey` against `ctrlKey`; use `mod`), and registers twice when the module loads twice — give the command a `shortcut` and let `@pyreon/command` register it through `@pyreon/hotkeys` once, while the command is registered and enabled. A list of commands someone keeps in sync with the screens goes stale (it offers "Mark paid" on a page with no invoice): `useCommand` in the screen, so the list is true by construction and the shortcut is released on unmount. A palette that is a positioned `div` has no inert background and no focus return: use `<CommandPalette>` (a native modal `<dialog>`). Reading a title once (`title: i18n.t('save')`) pins the locale: pass a function. Reference: `packages/fundamentals/command`, pattern `patterns/command`.
+
+---

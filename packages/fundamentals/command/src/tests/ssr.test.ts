@@ -2,7 +2,8 @@
 import { h } from '@pyreon/core'
 import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
-import { createCommands, provideCommands, useCommand, useCommands } from '../index'
+import { CommandPalette } from '../components'
+import { createCommands, createPalette, provideCommands, useCommand, useCommands } from '../index'
 
 describe('the registry is inert on the server', () => {
   it('there is no document, so nothing registers, nothing is listed, nothing is kept between requests', () => {
@@ -38,6 +39,19 @@ describe('the registry is inert on the server', () => {
     }
     await renderToString(h(Root as never, null))
     expect(seen).toBe(own)
+  })
+
+  it('a palette on the server is inert: open does nothing, there are no rows, and <CommandPalette> renders nothing', async () => {
+    const c = createCommands()
+    c.register({ id: 'a', title: 'A' })
+    const palette = createPalette({ commands: c })
+    palette.open()
+    expect(palette.isOpen()).toBe(false)
+    expect(palette.results()).toEqual([])
+    expect(palette.announcement()).toBe('')
+    const html = await renderToString(h('div', null, h(CommandPalette as never, { commands: c })))
+    // only the hydration markers of an empty reactive child: no dialog, no input, no text
+    expect(html).toBe('<div><!--$--><!--/$--></div>')
   })
 
   it('formatting a shortcut does not need a browser', async () => {

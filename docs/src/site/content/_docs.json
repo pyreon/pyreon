@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 227,
+  "pageCount": 228,
   "pages": [
    {
     "path": "a11y.md",
@@ -411,6 +411,11 @@
     "path": "package-catalog.md",
     "title": "Package catalog",
     "href": "/docs/package-catalog"
+   },
+   {
+    "path": "patterns/command.md",
+    "title": "Command palette",
+    "href": "/docs/patterns/command"
    },
    {
     "path": "patterns/controllable-state.md",
@@ -1204,6 +1209,7 @@
       "patterns/islands",
       "patterns/event-listeners",
       "patterns/imperative-toasts",
+      "patterns/command",
       "patterns/multiplatform",
       "patterns/offline-and-installable-apps",
       "accessibility"
@@ -2202,6 +2208,10 @@
     {
      "title": "Imperative toasts",
      "href": "/docs/patterns/imperative-toasts"
+    },
+    {
+     "title": "Command palette",
+     "href": "/docs/patterns/command"
     },
     {
      "title": "One source, web + iOS + Android",

@@ -211,6 +211,30 @@ export const SCENARIOS: Scenario[] = [
     imports: ['createCommands', 'useCommand'],
   },
   {
+    // The palette state without the components: the registry, the matcher and the state of the palette (pages, async source, ARIA wiring).
+    id: '@pyreon/command::palette-state',
+    pkg: '@pyreon/command',
+    dir: 'fundamentals/command',
+    entry: 'index.js',
+    imports: ['createCommands', 'createPalette'],
+  },
+  {
+    // The full palette: the registry, the palette state and the dialog components.
+    id: '@pyreon/command::full-palette',
+    pkg: '@pyreon/command',
+    dir: 'fundamentals/command',
+    entry: 'components.js',
+    imports: ['CommandPalette'],
+  },
+  {
+    // Navigation commands from a route table: its own entry, no dependency, nothing of the palette.
+    id: '@pyreon/command::router',
+    pkg: '@pyreon/command',
+    dir: 'fundamentals/command',
+    entry: 'router.js',
+    imports: ['routeCommands'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.

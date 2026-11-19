@@ -13,7 +13,9 @@
     "directory": "packages/fundamentals/command"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -27,12 +29,24 @@
       "bun": "./src/core.ts",
       "import": "./lib/core.js",
       "types": "./lib/types/core.d.ts"
+    },
+    "./components": {
+      "bun": "./src/components.tsx",
+      "import": "./lib/components.js",
+      "types": "./lib/types/components.d.ts"
+    },
+    "./style.css": "./style.css",
+    "./router": {
+      "bun": "./src/router.ts",
+      "import": "./lib/router.js",
+      "types": "./lib/types/router.d.ts"
     }
   },
   "files": [
     "lib",
     "!lib/analysis",
     "src",
+    "style.css",
     "README.md",
     "LICENSE"
   ],
@@ -41,7 +55,8 @@
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run --maxWorkers=2",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts"
   },
   "dependencies": {
     "@pyreon/hotkeys": "workspace:^"
@@ -52,12 +67,16 @@
   },
   "devDependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
-    "@pyreon/vitest-config": "workspace:*"
+    "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^5.1.0",
+    "axe-core": "^4.14.1"
   },
   "publishConfig": {
     "access": "public"

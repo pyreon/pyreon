@@ -1935,9 +1935,8 @@ return json({ data: result.data }) // keyed by matched-chain index`,
     { path: "settings", component: Settings },
   ]},
 ])`,
-    notes: `Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full \`RouterOptions\` object with \`routes\`, \`mode\` (\`"hash"\` default | \`"history"\` | \`"memory"\`), \`scrollBehavior\`, and global \`beforeEach\` / \`afterEach\` guard arrays (which run before any added later with \`router.beforeEach()\` / \`router.afterEach()\`, and are the form the native targets lower). Middleware is per-route (\`RouteRecord.middleware\`), not a router option. The returned \`Router\` is generic over route names for typed programmatic navigation. \`tabs: [{ name, root }]\` gives a tab-bar app one back stack per tab: \`push\` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), \`selectTab(name)\` switches and keeps every stack (re-selecting the active tab pops to root), and \`<Tabs router={router}>\` from \`@pyreon/primitives\` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a \`NavigationStack\` per tab inside the \`TabView\`; Android: per-tab stacks with the system Back popping the active tab first. \`mode: "memory"\` keeps the location in an entry stack inside the router (start it with \`initialEntries\` / \`initialIndex\`; default \`[url ?? "/"]\`, last entry): \`push\` / \`replace\` / \`back\` / \`forward\` / \`go\` run the full pipeline against the stack (a cancelled traversal keeps the position; a step past either end is a no-op), nothing touches \`window.history\` / \`location\` / \`document.title\`, no window listener is attached, and it never takes over the page router's cancelled-traversal restores, so it embeds in a page that already has a router and runs with no \`window\`. \`<RouterLink>\` renders the plain route path as \`href\`. The native routers are in-memory stacks already, so \`mode\` needs no lowering there; \`initialEntries\` / \`initialIndex\` are ignored on iOS/Android with a named compiler warning. See also: RouterProvider, useRouter, useRoute.`,
+    notes: `Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full \`RouterOptions\` object with \`routes\`, \`mode\` (\`"history"\` | \`"hash"\`), \`scrollBehavior\`, and global \`beforeEach\` / \`afterEach\` guard arrays (which run before any added later with \`router.beforeEach()\` / \`router.afterEach()\`, and are the form the native targets lower). Middleware is per-route (\`RouteRecord.middleware\`), not a router option. The returned \`Router\` is generic over route names for typed programmatic navigation. \`tabs: [{ name, root }]\` gives a tab-bar app one back stack per tab: \`push\` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), \`selectTab(name)\` switches and keeps every stack (re-selecting the active tab pops to root), and \`<Tabs router={router}>\` from \`@pyreon/primitives\` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a \`NavigationStack\` per tab inside the \`TabView\`; Android: per-tab stacks with the system Back popping the active tab first. See also: RouterProvider, useRouter, useRoute.`,
     mistakes: `- \`createRouter({ routes: [...], mode: "hash" })\` and using \`window.location.hash\` elsewhere — hash mode uses \`history.pushState\`, not \`location.hash\`. Reading \`location.hash\` directly will not reflect router state
-- Using \`mode: "memory"\` for an app that owns the page — the URL never changes, so reload, deep links, sharing and "open in new tab" do not work. It is for routers EMBEDDED in a page that has its own (a demo, a widget), tests and native previews. It also does not write \`document.title\`, does not use View Transitions, scrolls only with an explicit \`scrollBehavior\`, and resolves an external \`redirect("https://…")\` as \`"cancelled"\`
 - Defining route paths without leading \`/\` in root routes — all root-level paths must start with \`/\`
 - Using \`redirect: "/target"\` with a guard on the same route — redirects bypass guards. Use \`beforeEnter\` to conditionally redirect instead
 - Forgetting the catch-all route — \`{ path: "(.*)", component: NotFound }\` should be the last route to handle 404s
@@ -2459,7 +2458,7 @@ export default createHandler({
   mode: "stream",  // or "string"
   onError: (error, { phase, request }) => Sentry.captureException(error, { tags: { phase } }),
 })`,
-    notes: 'Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). `onError(error, { request, phase })` receives every unexpected server error (`phase`: `middleware` — including API routes —, `render`, `stream`, `action` from zero server actions, or `reported` via `ctx.reportError`) to forward to Sentry / OpenTelemetry; it runs after the console line, never changes the 500 response, and a throwing hook is caught. `clientPreload: { app?, islands? }` (base-prefixed hrefs) emits `<link rel=modulepreload>` for what the client entry loads with a dynamic import, per page kind: `app` on a page that starts the app, `islands` on an islands-only page with an island to hydrate (string mode in the head; streaming puts the app set in the head and the islands set before the scripts). `@pyreon/zero` fills it from the client manifest for `startClientLazy`. See also: prerender, island, useRequestLocals.',
+    notes: 'Build a production SSR handler from your `App`, `routes`, and optional template / client entry / middleware. The template is precompiled once at handler-creation (split into 4 parts to skip three string scans per request); a missing `<!--pyreon-app-->` placeholder throws at creation time, not per request. Middleware runs before render with `ctx.locals` for cross-middleware data passing — return a `Response` to short-circuit the chain. `mode: "stream"` uses `renderToStream` so Suspense boundaries flush out-of-order; `mode: "string"` uses `renderToString` (default). `onError(error, { request, phase })` receives every unexpected server error (`phase`: `middleware` — including API routes —, `render`, `stream`, `action` from zero server actions, or `reported` via `ctx.reportError`) to forward to Sentry / OpenTelemetry; it runs after the console line, never changes the 500 response, and a throwing hook is caught. See also: prerender, island, useRequestLocals.',
     mistakes: `- Omitting \`<!--pyreon-app-->\` from the custom template — throws at handler-creation, not per request
 - Returning a \`Response\` from middleware and expecting downstream middleware to still run — the chain short-circuits on the first \`Response\`
 - Reading \`ctx.locals\` from inside the component without \`useRequestLocals()\` — the component tree only sees locals when bridged through that hook
@@ -2477,7 +2476,7 @@ const result = await renderPage(App, router, "/posts/42", {
 })
 if (result.kind === "redirect") return Response.redirect(result.to, result.status)
 if (result.kind === "html") compose(template, result)`,
-    notes: `The ONE string-mode page-render pipeline — preload (lazy components + loaders, with \`redirect()\` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's \`notFoundComponent\` chain). Shared by \`createHandler\`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. **Islands-only pages:** when the matched chain's merged meta declares \`hydrate: 'islands'\` (zero's \`export const hydrate = 'islands'\`), the head gets \`ISLANDS_ONLY_MARKER\` (\`<meta name="pyreon-hydrate" content="islands">\`), the loader-data script is left out (the loader output is in the HTML; store state is still shipped for islands that share a store), \`routeModules\` is empty, and \`result.hydrate\` is \`'islands'\` (\`'app'\` otherwise). \`createHandler\`'s streaming path honours the same meta. Returns discriminated parts (\`kind: "html" | "redirect" | "unmatched"\`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT \`path\` — \`preload\` warms caches but does not navigate. **\`collectStyles\` is OPTIONAL and defaults to the CSS-in-JS collector registered on \`globalThis.__PYREON_STYLER_COLLECT__\`** (set by \`@pyreon/styler\`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics. See also: createHandler, useRequestLocals.`,
+    notes: `The ONE string-mode page-render pipeline — preload (lazy components + loaders, with \`redirect()\` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's \`notFoundComponent\` chain). Shared by \`createHandler\`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. Returns discriminated parts (\`kind: "html" | "redirect" | "unmatched"\`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT \`path\` — \`preload\` warms caches but does not navigate. **\`collectStyles\` is OPTIONAL and defaults to the CSS-in-JS collector registered on \`globalThis.__PYREON_STYLER_COLLECT__\`** (set by \`@pyreon/styler\`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics. See also: createHandler, useRequestLocals.`,
     mistakes: `- Creating the router at a DIFFERENT url than \`path\` — \`preload\` does not navigate; the render shows the router's creation url, not \`path\`
 - Expecting \`kind: "unmatched"\` without setting \`bailOnUnmatched: true\` — by default an empty match renders through (the notFoundComponent chain is the framework's 404 story)
 - Wrapping the call in your own \`runWithRequestContext\` AND providing locals separately — pass \`locals\` in options; renderPage opens the request context itself
@@ -2563,7 +2562,7 @@ function Header() {
   },
 
   'server/hydrateIslands': {
-    signature: 'hydrateIslands(registry: Record<string, () => Promise<ComponentFn | { default: ComponentFn }>>, options?: { root?: () => Promise<ComponentFn | { default: ComponentFn }> }): () => void',
+    signature: 'hydrateIslands(registry: Record<string, () => Promise<ComponentFn | { default: ComponentFn }>>): () => void',
     example: `import { hydrateIslands } from "@pyreon/server/client"
 
 hydrateIslands({
@@ -2572,37 +2571,24 @@ hydrateIslands({
   // hydrate: "never" islands are intentionally omitted —
   // registering them defeats the zero-JS contract.
 })`,
-    notes: `Client-side counterpart to \`island()\`. Walks every \`<pyreon-island>\` element on the page and schedules hydration per its \`data-hydrate\` strategy. Manual form: the user maintains the \`Name → loader\` mapping by hand (must match every \`island()\` \`name\` field). Returns a cleanup that ENDS every island it scheduled: pending triggers are cancelled, in-flight chunks never mount, hydrated islands are unmounted (\`onUnmount\` / effects / \`onMount\` cleanups run, their DOM is removed). A static page has no component tree to notice island DOM leaving, so a host that removes or replaces island DOM itself (an \`innerHTML\` swap, its own navigation) calls this cleanup; HMR passes it to \`import.meta.hot.dispose\`. An island already live from an earlier call is never hydrated twice. \`options.root\` wraps every island the call hydrates in a component of yours (the providers a standalone island needs: a theme, a UI system's root scope); it is loaded once, with the first island that hydrates, and must render only its children so the island still adopts its server HTML. Use \`hydrateIslandsAuto()\` under \`@pyreon/vite-plugin\` to skip the manual sync. Imported from \`@pyreon/server/client\`, NOT from \`@pyreon/server\` (server-only entry). See also: island, hydrateIslandsAuto.`,
+    notes: 'Client-side counterpart to `island()`. Walks every `<pyreon-island>` element on the page and schedules hydration per its `data-hydrate` strategy. Manual form: the user maintains the `Name → loader` mapping by hand (must match every `island()` `name` field). Returns a cleanup that ENDS every island it scheduled: pending triggers are cancelled, in-flight chunks never mount, hydrated islands are unmounted (`onUnmount` / effects / `onMount` cleanups run, their DOM is removed). A static page has no component tree to notice island DOM leaving, so a host that removes or replaces island DOM itself (an `innerHTML` swap, its own navigation) calls this cleanup; HMR passes it to `import.meta.hot.dispose`. An island already live from an earlier call is never hydrated twice. Use `hydrateIslandsAuto()` under `@pyreon/vite-plugin` to skip the manual sync. Imported from `@pyreon/server/client`, NOT from `@pyreon/server` (server-only entry). See also: island, hydrateIslandsAuto.',
     mistakes: `- Registry key must match the \`island()\` \`name\` field exactly — typo / drift causes runtime \`data-island-error="no-loader"\`. Use \`hydrateIslandsAuto()\` to eliminate this manual sync.
 - Including a \`hydrate: "never"\` island in the registry — defeats the strategy by pulling its module into the client bundle. Skip never-islands; the runtime short-circuits silently for them.
 - Importing from \`@pyreon/server\` instead of \`@pyreon/server/client\` — the main entry is server-only and stubs/throws on client-side use.
-- Replacing island DOM (an \`innerHTML\` swap, a hand-rolled page transition) without calling the returned cleanup — the island's effects, timers and listeners keep running against detached DOM. Removal the framework did not perform is not observed; call the cleanup.
-- A \`root\` that renders an element around its children (\`<div class="theme">{props.children}</div>\`) — the server rendered the island without it, so the island no longer matches its HTML. Render only providers: \`provide(...)\` and \`return props.children\`.`,
+- Replacing island DOM (an \`innerHTML\` swap, a hand-rolled page transition) without calling the returned cleanup — the island's effects, timers and listeners keep running against detached DOM. Removal the framework did not perform is not observed; call the cleanup.`,
   },
 
   'server/hydrateIslandsAuto': {
-    signature: 'hydrateIslandsAuto(registry: AutoIslandRegistry, options?: HydrateIslandsOptions): () => void',
+    signature: 'hydrateIslandsAuto(registry: AutoIslandRegistry): () => void',
     example: `// src/entry-client.ts
 import { hydrateIslandsAuto } from "@pyreon/server/client"
 import * as registry from "virtual:pyreon/islands-registry"
 
 hydrateIslandsAuto(registry)`,
-    notes: 'Auto-discovered counterpart to `hydrateIslands()`. Under `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin pre-scans your source for `island()` declarations and emits a `virtual:pyreon/islands-registry` virtual module. The user imports it into `entry-client.ts` and passes it here. Eliminates the manual `Name → loader` sync that drives the #1 author foot-gun for islands. Never-strategy islands are omitted from the auto-registry by design — their components stay out of the client bundle. `options` is forwarded to `hydrateIslands` (`root`). See also: hydrateIslands, island.',
+    notes: 'Auto-discovered counterpart to `hydrateIslands()`. Under `@pyreon/vite-plugin` (`pyreon({ islands: true })` is the default), the plugin pre-scans your source for `island()` declarations and emits a `virtual:pyreon/islands-registry` virtual module. The user imports it into `entry-client.ts` and passes it here. Eliminates the manual `Name → loader` sync that drives the #1 author foot-gun for islands. Never-strategy islands are omitted from the auto-registry by design — their components stay out of the client bundle. See also: hydrateIslands, island.',
     mistakes: `- Calling without the registry argument — the function takes the imported virtual module explicitly. The user-side \`import\` is what lets the plugin\\'s \`resolveId\` hook run; importing from inside \`@pyreon/server/client\` would fail at build time because Rolldown\\'s static-import analysis runs before plugin resolveId hooks for workspace sources.
 - Using under a non-Vite bundler — the virtual module only exists under \`@pyreon/vite-plugin\`. Fall back to manual \`hydrateIslands({ ... })\` for non-Vite consumers.
 - Setting \`pyreon({ islands: false })\` and still calling \`hydrateIslandsAuto()\` — the plugin emits a stub registry that throws at runtime with a clear error message. Either re-enable islands (the default) or use \`hydrateIslands({ ... })\` instead.`,
-  },
-
-  'server/islandsOnlyPages': {
-    signature: 'islandsOnlyPages(start: () => () => void): IslandsOnlyPages',
-    example: `// src/entry-client.ts
-import { hydrateIslandsAuto, islandsOnlyPages, startClient } from "@pyreon/server/client"
-import * as registry from "virtual:pyreon/islands-registry"
-
-startClient({ App, routes, islandsOnly: islandsOnlyPages(() => hydrateIslandsAuto(registry, { root: () => import("./IslandRoot") })) })`,
-    notes: `Islands-only page support for \`@pyreon/server\`'s own \`startClient\` (apps without \`@pyreon/zero\`). Pass the result as \`startClient({ App, routes, islandsOnly })\`: on a page the server marked islands-only (route \`meta: { hydrate: 'islands' }\`, so \`createHandler\` wrote \`<meta name="pyreon-hydrate" content="islands">\` and no loader data), \`start\` runs INSTEAD of the app (no router, no tree hydration) and its return is the cleanup; on an app page a client-side navigation to an islands-only route becomes a full page load (never for the current path). A separate function so the marker check, the guard and the islands runtime enter a bundle only when the app imports it: an app that never uses the mode pays 47 B gzip in \`startClient\` (measured, Vite production build). Without it, a marked page starts the whole app and warns in dev. \`ISLANDS_ONLY_SELECTOR\` is the matching CSS selector. See also: hydrateIslandsAuto, renderPage, createHandler.`,
-    mistakes: `- Calling \`startClient({ App, routes })\` alone on an app with islands-only routes: a marked page has no loader data, so the app re-runs the loaders in the browser and hydrates a page that was meant to stay static. Pass \`islandsOnly\`.
-- \`<RouterLink>\` inside an island on an islands-only page: there is no router there. Use \`<a href>\`.`,
   },
 
   'server/prerender': {
@@ -2705,14 +2691,14 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
   },
 
   'runtime-dom/_tpl': {
-    signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined, flags?: number): NativeItem',
+    signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined, remountable?: 1): NativeItem',
     example: `// Compiler output for <div class="box">{text()}</div>:
 _tpl("<div class=\\"box\\"> </div>", (__root) => {
   const __t0 = __root.firstChild as Text
   const __d0 = _bindText(text, __t0)
   return () => { __d0() }
 })`,
-    notes: 'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The optional third argument is a bit set the compiler computes: `1` when a template is emitted as a component child (that item is built once but may be torn down and mounted again — `<Show>` re-showing — so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting), and `2` when the template is rooted at a bare SVG element such as `<g>` or `<path>` (the string is parsed inside an `<svg>` wrapper so it lands in the SVG namespace; the compiler decides this from the root tag, so the runtime carries no SVG tag list). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
+    notes: 'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The compiler passes a third argument, `1`, when a template is emitted as a component child: that item is built once but may be torn down and mounted again (`<Show>` re-showing), so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting. Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
     mistakes: `- COMPILER-EMITTED — never hand-write \`_tpl()\`; the html string + the bind walks (\`.firstChild\`/\`.nextSibling\` captures) are generated to match the JSX exactly, and a hand-written mismatch corrupts the ref walks
 - The html is parsed + cached per DISTINCT string (module-level) then \`cloneNode(true)\`d — a dynamically-built html string defeats the cache (a \`<template>\` parse per unique string)
 - Bindings run against the CLONE after ALL node references are captured (the two-phase ref-hoist) — this is what keeps a dynamic slot before static siblings from corrupting their walks; the capture-before-mutate ordering is load-bearing, not cosmetic`,
@@ -4408,9 +4394,7 @@ const persister = createSyncStoragePersister({ storage: localStorage })
     notes: `Drop-in replacement for \`<QueryClientProvider>\` that ALSO restores the query cache from a persister on mount and keeps it persisted on every change — the offline / reload-survival story. Provides both the \`QueryClient\` AND the reactive \`isRestoring\` flag, so descendant \`useQuery\` calls DEFER their first fetch until restoration completes (no redundant network request for data the cache is about to restore). Import from \`@pyreon/query/persist\`. Built on TanStack's framework-agnostic \`persistQueryClient\` engine; pair with \`createSyncStoragePersister({ storage: localStorage })\`. See also: useIsRestoring, QueryClientProvider, HydrationBoundary.`,
     mistakes: `- Using BOTH \`<QueryClientProvider>\` and \`<PersistQueryClientProvider>\` — the persist provider already provides the client; nest only one
 - Expecting synchronous restore — restoration is async (even sync localStorage resolves on a microtask). Gate UI on \`useIsRestoring()\` during the window
-- A heavy \`staleTime: 0\` default — restored queries immediately refetch on subscribe; set a \`staleTime\` so the restored cache is treated as fresh
-- Expecting an offline mutation to be sent after a reload without registering its function — a PAUSED mutation is persisted (variables + \`mutationKey\`) but a function cannot be serialised: give it a \`mutationKey\` and register \`client.setMutationDefaults(key, { mutationFn })\` at module load. The provider then resumes persisted paused mutations once restoration settles. A mutation that was never paused (made online) is not persisted, and one that already resumed is gone if the page dies mid-request (at-most-once, no retry queue, no ordering guarantee beyond TanStack's creation order)
-- Treating \`navigator.onLine\` as proof of reachability — \`onlineManager\` follows the browser online/offline events, which only report "a network interface is up"; a captive portal or a dead backend still looks online, so the mutation is sent and fails normally (default \`retry: 0\` for mutations)`,
+- A heavy \`staleTime: 0\` default — restored queries immediately refetch on subscribe; set a \`staleTime\` so the restored cache is treated as fresh`,
   },
 
   'query/useIsRestoring': {
@@ -7266,6 +7250,107 @@ commands.commands().length   // => 0`,
     notes: '[EXPERIMENTAL] A registry of commands. `register` takes a command, a list or a function that returns one, and returns the unregister (inside a component it also runs on unmount). `search` ranks the registered commands (or the `children` of `parent`), `run` runs one by id, `recents` lists the last ones run. Registering an id that is registered shadows it until the new one is removed. Inert on the server. Added in v0.53.0.',
   },
 
+  'command/createPalette': {
+    signature: '(options?: PaletteOptions) => Palette',
+    example: `const commands = createCommands()
+commands.register([{ id: 'save', title: 'Save' }, { id: 'open', title: 'Open File' }])
+const palette = createPalette({ commands, hotkey: false })
+palette.open()
+palette.setQuery('sav')
+palette.results().map((r) => r.id)   // => ['save']
+(palette.open(), palette.setQuery('xyz'), palette.announcement())   // => 'No results'`,
+    notes: '[EXPERIMENTAL] The state of a command palette with no markup. `open(page?)`, `close()`, `toggle()`, a query, a stack of nested pages (`back()`), `results()` (rows grouped and ranked, async rows as they arrive) and `groups()`, the active row and `move(...)`, `runActive()` (opens a page, or runs and closes unless `keepOpen`; an error stays on the palette), a polite `announcement()`, and `inputProps`, `listProps`, `itemProps(item)` and `groupProps(group)` for a renderer of your own. Registers `mod+k` through `@pyreon/hotkeys` (`hotkey: false` for none). One palette is open at a time. Inert on the server. Added in v0.53.0.',
+  },
+
+  'command/CommandPalette': {
+    signature: '(props: CommandPaletteProps) => VNode',
+    example: `import { CommandPalette } from '@pyreon/command/components'
+import { createCommands } from '@pyreon/command'
+import '@pyreon/command/style.css'
+
+const commands = createCommands()
+export const App = () => <CommandPalette commands={commands} hotkey="mod+k" />`,
+    notes: '[EXPERIMENTAL] A complete palette in a native modal `<dialog>` (import `@pyreon/command/components`): opens on `mod+k`, focus moves to the input, Tab stays inside, the page behind is inert, scroll is locked without a layout shift, Escape goes back a page and then closes, focus returns to what had it, and the close and back buttons work on touch. Pass `palette` (from `createPalette`) or the palette options (`commands`, `hotkey`, `placeholder`, `messages`, `emptyQuery`, `showDisabled`, `filter`, `debounce`). Closed, it renders nothing, so the server and the first client render agree. Give it children to lay it out yourself with the parts. Added in v0.53.0.',
+  },
+
+  'command/CommandInput': {
+    signature: '(props: { class? }) => VNode',
+    example: `import { CommandInput } from '@pyreon/command/components'
+
+export const Field = () => <CommandInput class="my-input" />`,
+    notes: '[EXPERIMENTAL] The `<input role="combobox">` of the nearest palette: `aria-expanded`, `aria-controls`, `aria-activedescendant` and the keyboard are wired. Added in v0.53.0.',
+  },
+
+  'command/CommandList': {
+    signature: '(props: { class?, virtualizeAfter?, rowHeight?, children? }) => VNode',
+    example: `import { CommandList } from '@pyreon/command/components'
+
+export const Results = () => <CommandList virtualizeAfter={500} rowHeight={44} />`,
+    notes: '[EXPERIMENTAL] The `role="listbox"` element with the groups and rows of the nearest palette. Beyond `virtualizeAfter` rows (300) only the rows in view are in the DOM; they keep `aria-setsize` and `aria-posinset`, and every row has one height (`rowHeight`). Added in v0.53.0.',
+  },
+
+  'command/CommandGroup': {
+    signature: '(props: { group, class?, headingClass?, children? }) => VNode',
+    example: `import { CommandGroup, usePalette } from '@pyreon/command/components'
+
+export const Groups = () => <>{usePalette().groups().map((group) => <CommandGroup group={group} />)}</>`,
+    notes: '[EXPERIMENTAL] A `role="group"` with its heading (named by `aria-labelledby`) and its rows. Added in v0.53.0.',
+  },
+
+  'command/CommandItem': {
+    signature: '(props: { item, class?, style?, children? }) => VNode',
+    example: `import { CommandItem, Highlight, usePalette } from '@pyreon/command/components'
+
+export const Rows = () => <>{usePalette().results().map((item) => <CommandItem item={item}><Highlight text={item.title} ranges={item.ranges} /></CommandItem>)}</>`,
+    notes: '[EXPERIMENTAL] A `role="option"` row: the pointer moves the active row, a click runs it, pressing it keeps focus in the input. The default content is the icon, the highlighted title and subtitle, the reason a disabled command cannot run, the shortcuts and a chevron for a page; pass children to replace it. Added in v0.53.0.',
+  },
+
+  'command/Highlight': {
+    signature: '(props: { text, ranges, markClass? }) => VNode',
+    example: `import { Highlight } from '@pyreon/command/components'
+
+export const Title = () => <Highlight text="New Project" ranges={[[0, 1], [4, 5]]} />`,
+    notes: '[EXPERIMENTAL] A text with the runs of `ranges` in `<mark>`. Added in v0.53.0.',
+  },
+
+  'command/CommandShortcut': {
+    signature: '(props: { shortcut?, class?, children? }) => VNode',
+    example: `import { CommandShortcut } from '@pyreon/command/components'
+
+export const Keys = () => <CommandShortcut shortcut="Ctrl+K" />`,
+    notes: '[EXPERIMENTAL] A `<kbd>` for a shortcut. Added in v0.53.0.',
+  },
+
+  'command/CommandEmpty': {
+    signature: '(props: { class?, children? }) => VNode',
+    example: `import { CommandEmpty } from '@pyreon/command/components'
+
+export const None = () => <CommandEmpty>Nothing matches.</CommandEmpty>`,
+    notes: '[EXPERIMENTAL] Shown when a query or a page has no rows (and nothing is loading). Added in v0.53.0.',
+  },
+
+  'command/CommandLoading': {
+    signature: '(props: { class?, children? }) => VNode',
+    example: `import { CommandLoading } from '@pyreon/command/components'
+
+export const Busy = () => <CommandLoading />`,
+    notes: '[EXPERIMENTAL] Shown while an async source or a run is pending (hidden from assistive technology: the live region says it). Added in v0.53.0.',
+  },
+
+  'command/usePalette': {
+    signature: '() => Palette',
+    example: 'typeof usePalette',
+    notes: '[EXPERIMENTAL] The palette of the nearest `<CommandPalette>`, for parts of your own. Added in v0.53.0.',
+  },
+
+  'command/routeCommands': {
+    signature: '(routes: RouteLike[], options: { navigate, filter?, title?, group?, keywords?, id? }) => Command[]',
+    example: `const routes = [{ path: '/', name: 'home' }, { path: '/settings', meta: { title: 'Settings' }, children: [{ path: 'profile' }, { path: ':section' }] }, { path: '/users/:id' }]
+routeCommands(routes, { navigate: () => {} }).map((c) => c.id)   // => ['route:/', 'route:/settings', 'route:/settings/profile']
+routeCommands(routes, { navigate: () => {}, filter: (r) => r.path !== '/' }).map((c) => c.title)   // => ['Settings', 'Profile']`,
+    notes: '[EXPERIMENTAL] Navigation commands from the routes you gave `createRouter` (import `@pyreon/command/router`): one per route you can go to without more information; a path with a parameter or a wildcard, and a redirect, are left out, and a child path is joined to its parent. The router does not expose its route table, so this takes the same array; `navigate` is `router.push`. The title is `meta.title`, else the name or the last segment made readable, "Home" for the root; the path is always a keyword. Added in v0.53.0.',
+  },
+
   'command/useCommands': {
     signature: '() => Commands',
     example: `typeof useCommands   // => 'function'`,
@@ -7273,9 +7358,9 @@ commands.commands().length   // => 0`,
   },
 
   'command/useCommand': {
-    signature: '(command | () => command) => void',
+    signature: '(command | command[] | () => command) => void',
     example: `typeof useCommand   // => 'function'`,
-    notes: '[EXPERIMENTAL] Register a command for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed. Added in v0.53.0.',
+    notes: '[EXPERIMENTAL] Register a command, a list, or a function that returns a command, for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed. Added in v0.53.0.',
   },
 
   'command/provideCommands': {
@@ -7324,6 +7409,24 @@ commands.commands().length   // => 0`,
     signature: 'interface Match { command; id; title; score; field: "title" | "subtitle" | "keyword"; ranges; group; enabled; disabledReason; recent }',
     example: `const none: readonly Match[] = createCommands().search('x')`,
     notes: '[EXPERIMENTAL] One search result. `ranges` are offsets into the text named by `field`. Added in v0.53.0.',
+  },
+
+  'command/Palette': {
+    signature: 'interface Palette { isOpen(); open(page?); close(); toggle(); query(); setQuery(); page(); pageTitle(); back(); results(); groups(); status(); error(); running(); activeId(); setActive(); move(); runActive(); runItem(); announcement(); inputProps; listProps; itemProps(); groupProps(); ids; dispose() }',
+    example: 'const palette: Palette = createPalette({ hotkey: false })',
+    notes: '[EXPERIMENTAL] What `createPalette` returns. Added in v0.53.0.',
+  },
+
+  'command/ResultItem': {
+    signature: 'interface ResultItem { id; command; title; subtitle; ranges; subtitleRanges; group; enabled; disabledReason; recent; hasPage; shortcuts; index }',
+    example: 'const rows: readonly ResultItem[] = createPalette({ hotkey: false }).results()',
+    notes: '[EXPERIMENTAL] One row of the list, with the ranges to highlight and the shortcuts as the user reads them. Added in v0.53.0.',
+  },
+
+  'command/RouteLike': {
+    signature: 'interface RouteLike { path: string; name?: string; meta?: { title? }; redirect?: unknown; children?: RouteLike[] }',
+    example: `const route: RouteLike = { path: '/', meta: { title: 'Home' } }`,
+    notes: '[EXPERIMENTAL] The part of a `@pyreon/router` route record that `routeCommands` reads. A `RouteRecord` fits. Added in v0.53.0.',
   },
 
   'command/RunContext': {
@@ -8011,9 +8114,9 @@ get_api_client({ search: 'order' })`,
 // → full canonical pattern body
 get_pattern({})
 // → [{ name: 'controllable-state', summary: '...' }, ...]`,
-    notes: `Fetch a canonical "how do I do X" pattern body from \`docs/src/content/docs/patterns/\` (the same files the docs site renders — one source, two surfaces). 18 foundational patterns ship: \`controllable-state\`, \`data-fetching\`, \`dev-warnings\`, \`dynamic-fields\`, \`event-listeners\`, \`form-fields\`, \`imperative-toasts\`, \`islands\`, \`keyed-lists\`, \`multiplatform\`, \`offline-and-installable-apps\`, \`reactive-context\`, \`reactive-spread\`, \`routing-setup\`, \`signal-writes\`, \`ssr-safe-hooks\`, \`state-management\`, \`styler-theming\`. Omit \`name\` to list available patterns. Drop a new \`docs/src/content/docs/patterns/<slug>.md\` file to add one — picked up on next call (no code change, no bundling step in dev; \`scripts/copy-content.ts\` mirrors it into this package's bundled \`content/patterns/\` for the published \`bunx @pyreon/mcp\` consumer case at build time). See also: get_anti_patterns.`,
+    notes: `Fetch a canonical "how do I do X" pattern body from \`docs/src/content/docs/patterns/\` (the same files the docs site renders — one source, two surfaces). 17 foundational patterns ship: \`controllable-state\`, \`data-fetching\`, \`dev-warnings\`, \`dynamic-fields\`, \`event-listeners\`, \`form-fields\`, \`imperative-toasts\`, \`islands\`, \`keyed-lists\`, \`multiplatform\`, \`reactive-context\`, \`reactive-spread\`, \`routing-setup\`, \`signal-writes\`, \`ssr-safe-hooks\`, \`state-management\`, \`styler-theming\`. Omit \`name\` to list available patterns. Drop a new \`docs/src/content/docs/patterns/<slug>.md\` file to add one — picked up on next call (no code change, no bundling step in dev; \`scripts/copy-content.ts\` mirrors it into this package's bundled \`content/patterns/\` for the published \`bunx @pyreon/mcp\` consumer case at build time). See also: get_anti_patterns.`,
     mistakes: `- Passing a name in CamelCase or PascalCase — pattern names are kebab-case (\`controllable-state\`, not \`ControllableState\`). A wrong-case name 404s.
-- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 18 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a \`get_pattern\` slug.
+- Expecting the pattern list to include every Pyreon idiom — \`get_pattern\` covers the 17 foundational shapes (data fetching, forms, signal writes, multiplatform, etc.). Specialized topics (PMTC internals, native compat shims, devtools wiring) live in the wider docs site, not as a \`get_pattern\` slug.
 - Confusing patterns with anti-patterns — \`get_pattern\` returns "how to do X correctly"; \`get_anti_patterns\` returns "what to avoid". They're complementary.`,
   },
 
@@ -8086,7 +8189,7 @@ const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
 
 // mode="system" auto-detects OS dark mode via prefers-color-scheme
 // inversed flips the resolved mode (light↔dark)`,
-    notes: `Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched \`theme\` object (merge with defaults via \`enrichTheme()\`), a \`mode\` of \`'light' | 'dark' | 'system'\`, and an optional \`inversed\` flip. When \`mode='system'\`, the provider subscribes to \`matchMedia('(prefers-color-scheme: dark)')\` and re-resolves the mode reactively. Calls \`init()\` internally so consumers don\\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode. Under \`init({ cssVariables: true })\` the provider additionally autogenerates CSS custom properties from the theme (unistyle\\'s \`themeToCssVars\`), writes the \`:root\` block into the sheet's one root-variables slot (replaced on every theme swap, so A -> B -> A shows A), provides a var-leaf theme tree, and renders a layout-neutral \`display: contents\` wrapper carrying the mode attribute — a dark/light flip becomes ONE attribute write (zero re-resolution, zero className churn), nested \`inversed\` providers scope via the CSS cascade, and SSR ships the right mode server-rendered. See also: useMode, enrichTheme, init.`,
+    notes: `Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched \`theme\` object (merge with defaults via \`enrichTheme()\`), a \`mode\` of \`'light' | 'dark' | 'system'\`, and an optional \`inversed\` flip. When \`mode='system'\`, the provider subscribes to \`matchMedia('(prefers-color-scheme: dark)')\` and re-resolves the mode reactively. Calls \`init()\` internally so consumers don\\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode. Under \`init({ cssVariables: true })\` the provider additionally autogenerates CSS custom properties from the theme (unistyle\\'s \`themeToCssVars\`), injects the \`:root\` block once, provides a var-leaf theme tree, and renders a layout-neutral \`display: contents\` wrapper carrying the mode attribute — a dark/light flip becomes ONE attribute write (zero re-resolution, zero className churn), nested \`inversed\` providers scope via the CSS cascade, and SSR ships the right mode server-rendered. See also: useMode, enrichTheme, init.`,
     mistakes: `- Hand-wiring the theme, mode and config contexts separately — \`PyreonUI\` is the single provider covering all three
 - Flipping \`init({ cssVariables })\` after the first render — the switch is a boot-time contract; theme-resolution caches across the ui-system assume it does not change mid-session
 - Expecting \`mode(a, b)\` pairs with NUMBER values to unit-convert under \`cssVariables\` — pairs are emitted verbatim into CSS custom properties; pass unit-complete strings
@@ -8655,7 +8758,7 @@ const s = new StyleSheet({ /* options */ })`,
     signature: 'sheet: StyleSheet',
     example: `import { sheet } from "@pyreon/styler"
 // SSR: render the app, then read the collected rules off \`sheet\` for the <head>`,
-    notes: 'The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. For SSR, render the app and then emit `sheet.getStyleTag(nonce?)` (a complete `<style>` tag) or `sheet.getStyles()` (the CSS text) into the document head; do not mutate it directly. `sheet.setRootVariables(css)` owns ONE replaceable root-variables block (what `<PyreonUI>` writes its `cssVariables` `:root` block into): each call replaces the previous block, server side it is per request and emitted first. See also: StyleSheet, createSheet.',
+    notes: 'The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. For SSR, render the app and then emit `sheet.getStyleTag(nonce?)` (a complete `<style>` tag) or `sheet.getStyles()` (the CSS text) into the document head; do not mutate it directly. See also: StyleSheet, createSheet.',
   },
 
   'styler/resolve': {
@@ -9261,7 +9364,7 @@ setUrlRouter(router)
 // The router also decides WHERE the params live: in the router's default
 // hash mode they ride inside the fragment (#/products?page=3), not in
 // location.search — read them through useUrlState, never location.search.`,
-    notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs \`replace(path)\`; \`push(path)\` is optional but is what makes \`{ replace: false }\` mean anything — without it a push-intent update falls back to \`replace\` and dev-warns once, so Back will not undo it. \`@pyreon/router\` has both. The registered router also decides WHERE the params live: its \`mode\` (\`@pyreon/router\` defaults to \`hash\`) puts the query inside the fragment beside the route (\`#/products?page=3\`) rather than in \`location.search\`, a memory-mode router (\`mode: "memory"\`) keeps it inside the router (url-state reads and writes the router's own location and never touches \`location\`), and its \`base\` is re-applied by the router itself, so url-state hands it a base-relative path. Without a registered router, url-state owns \`location.search\` and preserves whatever fragment is there. See also: useUrlState.`,
+    notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of the raw history API. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. The router needs \`replace(path)\`; \`push(path)\` is optional but is what makes \`{ replace: false }\` mean anything — without it a push-intent update falls back to \`replace\` and dev-warns once, so Back will not undo it. \`@pyreon/router\` has both. The registered router also decides WHERE the params live: its \`mode\` (\`@pyreon/router\` defaults to \`hash\`) puts the query inside the fragment beside the route (\`#/products?page=3\`) rather than in \`location.search\`, and its \`base\` is re-applied by the router itself, so url-state hands it a base-relative path. Without a registered router, url-state owns \`location.search\` and preserves whatever fragment is there. See also: useUrlState.`,
     mistakes: '- Reading the params back with `new URLSearchParams(location.search)` in a hash-routed app — the router owns the fragment, so `location.search` is empty and the read returns nothing. `getParam` / `useUrlState` ask the registered router which half of the URL the route lives in.',
   },
 
@@ -9620,47 +9723,6 @@ const fileRoutes = expandRoutesForLocales(baseRoutes, {
 - Passing user-controlled strings as locales without validation — the helper validates against path-traversal (\`..\`, \`/\`, backslash, \`.\`, NUL) but does NOT validate BCP-47 shape; an invalid locale silently produces oddly-shaped URLs`,
   },
 
-  'zero/hydrate': {
-    signature: `export const hydrate: 'islands' | 'app' // route or _layout file export`,
-    example: `// src/routes/(marketing)/_layout.tsx — every page under it is static + islands
-export const hydrate = 'islands'
-export function layout() { return <SiteShell><RouterView /></SiteShell> }
-
-// src/routes/(marketing)/pricing.tsx — the loader runs at build; its output is in the HTML
-export async function loader() { return { plans: await readPlans() } }
-const Calculator = island(() => import('../../islands/Calculator'), { name: 'Calculator', hydrate: 'visible' })
-export default function Pricing() { /* static markup + <Calculator /> */ }
-
-// src/entry-client.ts — the app is loaded only on pages that start it
-import { startClientLazy } from '@pyreon/zero/client-lazy'
-import * as islands from 'virtual:pyreon/islands-registry'
-startClientLazy({ routes: () => import('virtual:zero/routes'), islands, islandRoot: () => import('./IslandRoot') })`,
-    notes: `Per-route (cascading from \`_layout\`, leaf wins, like \`renderMode\`) choice of how the browser takes over the page. \`'app'\` (the default) hydrates the whole tree under the router. \`'islands'\` keeps the page as static HTML plus its \`island()\`s: the server (SSG, SSR string and streaming, ISR, dev) marks the page with \`<meta name="pyreon-hydrate" content="islands">\`, leaves out the loader-data script (the loader still runs, its output is in the HTML) and the route's modulepreloads; \`startClient\` / \`startClientLazy\` then hydrate the islands from the \`islands\` registry and start nothing else (no router, no app tree). A client-side navigation from an app page TO an islands-only route becomes a full page load; on an islands-only page every link, \`<RouterLink>\` included, is a plain link. \`@pyreon/head\` does not run in the browser there (head tags are server-rendered). Must be a string literal, and never on a page rendered \`'spa'\` (both are \`[Pyreon]\` errors at route-scan time). \`zero({ routeRules: { '/docs/**': { hydrate: 'islands' } } })\` declares it centrally, with the same validation and the precedence \`renderMode\` has (page export > nearest \`_layout\` export > the most specific rule > \`'app'\`); the rule is applied to the route records at generation, so server, SSG, dev and the navigation guard read one value. In dev, an edit to a module the server rendered an islands-only page with reloads that page (there is no client module to hot-swap). See also: startClientLazy, zero.`,
-    mistakes: `- A handler or signal OUTSIDE an island on an islands-only page — that markup never runs in the browser, so the handler silently does nothing. Anything interactive must be an \`island()\`
-- Keeping \`startClient({ routes })\` with a static \`import { routes } from 'virtual:zero/routes'\` — islands-only pages still work, but the entry's static graph (the routes module, the layouts, the router) downloads on them. Use \`startClientLazy\` for the byte win
-- Forgetting \`islands\` in the client entry — an islands-only page then hydrates nothing and logs a \`[Pyreon]\` error naming the fix
-- An island that reads context (a theme) with no provider above it — on an islands-only page the island is its own root. Pass \`islandRoot\` (render only the providers and the children), or wrap inside the island
-- \`export const hydrate = 'islands'\` on an \`spa\` page (route, layout, \`routeRules\` or app mode) — an SPA page has no server HTML to keep; route-scan error
-- Expecting \`useLoaderData()\` inside an island on an islands-only page — there is no loader-data blob and no router; pass what the island needs as props`,
-  },
-
-  'zero/startClientLazy': {
-    signature: 'startClientLazy(options: { routes: () => Promise<{ routes: RouteRecord[] }>; layout?: ComponentFn; islands?: IslandsRegistry; islandRoot?: IslandRootLoader }): () => void // from @pyreon/zero/client-lazy',
-    example: `// src/entry-client.ts
-import { startClientLazy } from '@pyreon/zero/client-lazy'
-import * as islands from 'virtual:pyreon/islands-registry'
-
-startClientLazy({
-  routes: () => import('virtual:zero/routes'),
-  islands,
-  islandRoot: () => import('./IslandRoot'), // providers for standalone islands
-})`,
-    notes: `The client entry for an app with islands-only routes (\`export const hydrate = 'islands'\`). On a page the server marked islands-only it hydrates the islands with the \`islands\` registry (wrapped in \`islandRoot\` when given; loaded with the first island) and starts nothing else; a marked page with no islands loads nothing at all. On any other page it loads the routes and the app with dynamic imports, then hydrates or mounts exactly as \`startClient\` does. Its own subpath so the router never enters the entry chunk. \`startClient\` takes the same \`islands\` / \`islandRoot\` options and honours islands-only pages too, but its static \`routes\` import keeps the app in the entry. SSG, SSR (string and streaming) and ISR pages all preload the app chunks on app pages and the islands runtime on islands-only pages with an island, so neither waits for the entry to discover them (the SSR post-step reads them from the client manifest and bakes them into the server bundle as \`__ZERO_CLIENT_PRELOAD__\`; an ISR cache entry keeps the set its page kind was rendered with). When EVERY page is islands-only, the production client build carries no app: the client routes module is empty and the app path compiles out (\`__ZERO_APP_PAGES__\`). With any islands-only page, \`@pyreon/server/client\` and the islands runtime are grouped into one \`islands-runtime\` chunk (what the entry itself needs stays in the entry). See also: hydrate, zero.`,
-    mistakes: `- Importing it from \`@pyreon/zero/client\` — it is not exported there on purpose: that module's static imports (the router, the app) would join the entry chunk
-- Passing \`routes\` as the array instead of a loader — the point is that the routes module loads only on pages that start the app
-- An \`islandRoot\` that renders an element around its children — the island no longer matches its server HTML. Render only providers`,
-  },
-
   'zero/GetStaticPaths': {
     signature: 'type GetStaticPaths<TParams> = () => Array<{ params: TParams }> | Promise<Array<{ params: TParams }>>',
     example: `import type { GetStaticPaths } from '@pyreon/zero/server'
@@ -9901,47 +9963,10 @@ registerServiceWorker({
     if (confirm('A new version is available. Reload?')) activate()
   },
 })`,
-    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit \`Cache-Control: public\` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. SPA output also precaches the app shell and answers every failed navigation with it; \`pwa.offlineFallback\` (SSG) names a prerendered page used as the shell for routes never prerendered or visited. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
+    notes: `Registers the worker generated by \`zero({ pwa })\` (\`<base>sw.js\`, \`updateViaCache: 'none'\`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under \`mode: 'ssg'\`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit \`Cache-Control: public\` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. New versions WAIT by default; \`onUpdate(activate)\` fires when one is installed so the app can ask, and \`activate()\` switches + reloads. Resolves \`null\` during SSR, outside production builds, and without service-worker support. See also: zero.`,
     mistakes: `- Expecting it to register in \`vite dev\` — it no-ops outside production builds on purpose (a caching worker fights HMR)
 - Setting \`pwa.skipWaiting: true\` without understanding it swaps the asset cache under running tabs — prefer \`onUpdate\` + \`activate()\`
 - Serving \`sw.js\` with a long or immutable Cache-Control from a custom host — the worker script is the update channel; zero's adapters serve it must-revalidate`,
-  },
-
-  'zero/useServiceWorkerUpdate': {
-    signature: 'function useServiceWorkerUpdate(): { updateReady: () => boolean; apply: () => void }',
-    example: `import { useServiceWorkerUpdate } from '@pyreon/zero/client'
-
-const update = useServiceWorkerUpdate()
-<Show when={() => update.updateReady()}>
-  <button onClick={() => update.apply()}>New version available. Reload</button>
-</Show>`,
-    notes: 'Reactive "a new version is waiting" state over `registerServiceWorker()`: `updateReady()` flips once a new worker finished installing (only when `pwa.skipWaiting` is off); `apply()` activates it and reloads into the new version. Always `false` on the server and in development. Needs `registerServiceWorker()` called once in the client entry; works with or without its `onUpdate` option. Exported from `@pyreon/zero` and `@pyreon/zero/client`. See also: registerServiceWorker, useInstallPrompt.',
-    mistakes: `- Using it without calling \`registerServiceWorker()\` — nothing ever sets \`updateReady\`
-- Reading \`update.updateReady\` without calling it in JSX — it is an accessor; use \`() => update.updateReady()\`
-- Expecting other open tabs to reload on \`apply()\` — only the calling tab reloads; the others keep running the old page until closed or reloaded`,
-  },
-
-  'zero/useInstallPrompt': {
-    signature: `function useInstallPrompt(): { canInstall: () => boolean; prompt: () => Promise<'accepted' | 'dismissed' | 'unavailable'>; isInstalled: () => boolean }`,
-    example: `import { useInstallPrompt } from '@pyreon/zero/client'
-
-const install = useInstallPrompt()
-<Show when={() => install.canInstall() && !install.isInstalled()}>
-  <button onClick={() => install.prompt()}>Install app</button>
-</Show>`,
-    notes: `Install-prompt state for an installable PWA (Chromium: Chrome, Edge, Samsung Internet). ONE shared, refcounted set of \`beforeinstallprompt\` / \`appinstalled\` / \`display-mode: standalone\` listeners regardless of how many callers; the event is held (and the browser's own infobar suppressed) until the app calls \`prompt()\` from its own button. \`prompt()\` resolves \`'unavailable'\` when the browser offered nothing (iOS Safari and Firefox never do), and the event is single-use. \`isInstalled()\` is true in standalone display mode, iOS \`navigator.standalone\`, or after \`appinstalled\`. Inert on the server. Call it early (root layout): the browser fires \`beforeinstallprompt\` once per page load and an event fired while no caller is mounted is missed. Lives in \`@pyreon/zero\` (not \`@pyreon/hooks\`) because it is the install half of the same PWA client surface as \`registerServiceWorker\`. See also: registerServiceWorker, useServiceWorkerUpdate.`,
-    mistakes: `- Mounting it only on a settings page — \`beforeinstallprompt\` fires early, once per page load; call it in the root layout
-- Expecting \`canInstall()\` on iOS Safari — it never fires there; document "Share, Add to Home Screen" instead
-- Calling \`prompt()\` outside a user gesture — the browser rejects it; call it from a click handler`,
-  },
-
-  'zero/unregisterServiceWorkers': {
-    signature: 'function unregisterServiceWorkers(cacheName?: string): Promise<number>',
-    example: `import { unregisterServiceWorkers } from '@pyreon/zero/client'
-
-if (import.meta.env.DEV) void unregisterServiceWorkers()`,
-    notes: `Unregisters every service worker of the origin and deletes this app's caches (names starting with \`cacheName\`, default \`'pyreon'\`); resolves the number of workers removed. The escape hatch for the stale-worker trap: a production build previewed on the same origin (\`localhost:PORT\`) as a later dev server leaves the old worker serving cached modules over HMR. Dev never registers a worker but cannot remove one it did not install. See also: registerServiceWorker.`,
-    mistakes: '- Calling it in production code paths — it removes the offline cache; use it from a dev entry or a "reset app" action',
   },
 
   'zero/i18nRouting': {
@@ -11980,6 +12005,7 @@ import { PyreonUI } from '@pyreon/ui-core'
 - Expecting a nested \`<Provider inversed>\` to follow the parent when the parent's mode changes — the parent context is read ONCE at setup, so the inverted mode is frozen at mount; \`<PyreonUI inversed>\` stays reactive
 - Setting only \`mode\` with no theme in scope — the default delegate provides nothing when the resolved theme is empty, so \`<Provider mode="dark">\` outside any themed ancestor leaves descendants on \`"light"\`; pass a \`theme\` or use \`<PyreonUI>\`
 - Expecting \`styled()\` / \`useTheme()\` from \`@pyreon/styler\` to see the theme passed here — this Provider writes only the ui-core context that rocketstyle reads; \`<PyreonUI>\` writes both
+- Being surprised by the dev warning \`[Pyreon] CoreProvider is internal\` — mounting this Provider delegates to ui-core's internal provider, which logs it in development; switch to \`<PyreonUI>\`
 - Mounting a fresh \`Provider\`/\`PyreonUI\` per view — the \`_rsMemo\` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider
 - Expecting \`inversed\` to FORCE dark — it inverts whatever mode the parent resolves (light↔dark), and tracks that parent as it changes
 - Confusing this theme/mode provider with \`.config({ provider: true })\` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming`,

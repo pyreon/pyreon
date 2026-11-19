@@ -40,6 +40,12 @@ export interface Command {
    * AbortSignal that is aborted when a newer query supersedes this one or the palette closes.
    */
   children?: readonly Command[] | ((query: string, signal: AbortSignal) => readonly Command[] | Promise<readonly Command[]>)
+  /**
+   * For a function `children`: also search this source from the root while the user types. Its rows are listed in a group
+   * headed by this command's title, after the matching commands, which stay on screen while it loads. Default: the source is
+   * only searched inside its page.
+   */
+  inline?: boolean
   /** Toggles and the like: running the command does not close the palette. */
   keepOpen?: boolean
   /** Breaks ties between equal scores: higher first. */

@@ -4,7 +4,7 @@ import { createRecents } from './recents'
 import { createRunner } from './run'
 import { createSearch } from './search'
 import { bindShortcuts } from './shortcut-binding'
-import { bump, createStore, ensureWatcher, findCommand, makeEntry, pushEntry, removeEntries, topList } from './store'
+import { bump, createStore, findCommand, makeEntry, pushEntry, removeEntries, textsEpoch, topList } from './store'
 import type { Command, CommandGroup, Commands, CreateCommandsOptions } from './types'
 
 export { isCommandEnabled } from './entry'
@@ -17,8 +17,7 @@ export function createCommands(options?: CreateCommandsOptions): Commands {
   const recents = createRecents(options?.recents)
   const warnedConflicts = new Set<string>()
   const find = (id: string): Command | undefined => findCommand(store, id)
-  const searcher = createSearch({ version: () => store.version(), topList: () => topList(store), find, groups: () => store.groups(), ensureWatcher: () => ensureWatcher(store) }, recents)
-  store.onTextsChanged = () => searcher.resetRankers()
+  const searcher = createSearch({ version: () => store.version(), topList: () => topList(store), find, groups: () => store.groups(), epoch: () => textsEpoch(store) }, recents)
   const runner = createRunner(find, recents, () => api, options?.onError)
   const topCommands = computed<readonly Command[]>(() => {
     store.version()
@@ -38,7 +37,6 @@ export function createCommands(options?: CreateCommandsOptions): Commands {
       }
       bump(store)
     })
-    ensureWatcher(store)
 
     return added
   }
@@ -84,8 +82,8 @@ export function createCommands(options?: CreateCommandsOptions): Commands {
       if (store.disposed) return
       removeEntries(store, [...store.entries])
       store.disposed = true
-      store.watcher?.dispose()
-      store.watcher = null
+      store.epoch?.dispose()
+      store.epoch = null
       searcher.clear()
       store.groups.set([])
     },
