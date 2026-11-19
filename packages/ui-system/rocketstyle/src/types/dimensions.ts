@@ -13,8 +13,16 @@ export type ExtractDimensionKey<T extends DimensionValue> = T extends DimensionV
   ? T['propName']
   : T
 
+// Multi only when the object form declares `multi` (and not `multi: false`) —
+// the runtime (`getMultipleDimensions`) checks `multi === true`. A
+// transform-only dimension (`{ propName, transform: true }`) is single-value;
+// typing every object form as multi accepted an array prop it never had.
 export type ExtractDimensionMulti<T extends DimensionValue> = T extends DimensionValueObj
-  ? true
+  ? 'multi' extends keyof T
+    ? T['multi' & keyof T] extends false | undefined
+      ? false
+      : true
+    : false
   : false
 
 export type ExtractDimensionAttrsKeys<D extends Dimensions> = {
