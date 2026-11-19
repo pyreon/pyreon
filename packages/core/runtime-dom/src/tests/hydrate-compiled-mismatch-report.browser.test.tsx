@@ -194,4 +194,25 @@ describe('compiled hydration reports what it corrects — real browser', () => {
     ])
     expect(r.host.innerHTML).toContain('browser')
   })
+
+  it('the h() path reports an accessor that renders an element over an empty server element (#4582)', () => {
+    const r = hydrate('<p id="w"></p>', () => h('p', { id: 'w' }, () => h('b', null, 'on')))
+    expect(r.reports).toEqual([
+      { type: 'tag', expected: 'b', actual: '', path: 'root > p > reactive' },
+    ])
+    expect(r.warnings).toEqual([
+      '[Pyreon] Hydration mismatch (tag): expected b, got  at root > p > reactive',
+    ])
+    expect(r.host.innerHTML).toContain('<b>on</b>')
+  })
+
+  it('the h() path reports an accessor that renders an array into an empty server range (#4582)', () => {
+    const r = hydrate('<p><!--$--><!--/$--><b>b</b></p>', () =>
+      h('p', null, () => [h('i', null, 'on'), 'x'], h('b', null, 'b')),
+    )
+    expect(r.reports).toEqual([
+      { type: 'tag', expected: 'i', actual: '', path: 'root > p > reactive' },
+    ])
+    expect(content(r.host.innerHTML)).toBe('<p><i>on</i>x<b>b</b></p>')
+  })
 })
