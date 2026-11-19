@@ -2920,7 +2920,7 @@ nowOffset('2026-11-19', Date.UTC(2026, 10, 18, 12), 'UTC')   // => null`,
 calendar.range()   // => { start: '2026-11-16', end: '2026-11-23' }
 calendar.timeGrid().days[2]!.blocks()[0]!.top   // => 0.5833333333333334
 calendar.timeGrid().days[2]!.nowOffset()   // => 0.5`,
-    notes: `[EXPERIMENTAL] The reactive calendar. \`events\` is a reactive source the calendar never changes; \`view\` and \`date\` are values (uncontrolled) or signals you own (controlled); the zone and the locale default to the ambient ones; \`weekStart\` and the weekend default to the locale's. It gives the \`range()\` and \`title()\` (through \`@pyreon/format\`, in the active locale), the \`month()\` and \`timeGrid()\` view models whose layouts are memoised per week and per day (changing one event recomputes only the days it touches), the focused \`cursor()\`, a \`selection()\` and the grid keyboard. \`onRangeChange\` is the place to fetch events for the visible window. Added in v0.53.0.`,
+    notes: `[EXPERIMENTAL] The reactive calendar (it returns a \`Calendar\`: \`view\`, \`setView\`, \`date\`, \`goTo\`, \`next\`, \`previous\`, \`today\`, \`range\`, \`dates\`, \`title\`, \`month\`, \`timeGrid\`, \`occurrences\`, \`cursor\`, \`selection\`, \`selectDay\`, \`selectSlot\`, \`onKeyDown\`, \`dispose\`). \`events\` is a reactive source the calendar never changes; \`view\` and \`date\` are values (uncontrolled) or signals you own (controlled); the zone and the locale default to the ambient ones; \`weekStart\` and the weekend default to the locale's. It gives the \`range()\` and \`title()\` (through \`@pyreon/format\`, in the active locale), the \`month()\` and \`timeGrid()\` view models whose layouts are memoised per week and per day (changing one event recomputes only the days it touches), the focused \`cursor()\`, a \`selection()\` and the grid keyboard. \`onRangeChange\` is the place to fetch events for the visible window. Added in v0.53.0.`,
   },
 
   'calendar/gridMove': {
@@ -2972,7 +2972,7 @@ export const App = () => <Calendar calendar={calendar} />`,
 import { createCalendar } from '@pyreon/calendar'
 
 const calendar = createCalendar({ events: () => [] })
-export const Month = () => <MonthView calendar={calendar} labels={{}} />`,
+export const Month = () => <MonthView calendar={calendar} />`,
     notes: '[EXPERIMENTAL] The month: a WAI-ARIA grid of day cells with roving focus, the events as labelled buttons inside the cell they start in (spanning the days they last, in lanes, "+N more"), today and the selection marked. Added in v0.53.0.',
   },
 
@@ -2982,7 +2982,7 @@ export const Month = () => <MonthView calendar={calendar} labels={{}} />`,
 import { createCalendar } from '@pyreon/calendar'
 
 const calendar = createCalendar({ events: () => [], view: 'week' })
-export const Week = () => <TimeGridView calendar={calendar} labels={{}} />`,
+export const Week = () => <TimeGridView calendar={calendar} />`,
     notes: '[EXPERIMENTAL] The time grid of a week, work week, day or days: a WAI-ARIA grid whose rows are slots and columns are days, with the all-day row, a time gutter, events placed by the column packing, opening hours shaded and the now line. Added in v0.53.0.',
   },
 
@@ -3026,12 +3026,6 @@ export const Bar = () => <CalendarToolbar calendar={calendar} views={['month', '
     signature: 'interface EventOccurrence<Meta> { key; event; occurrence; title; allDay; start; end; startMs; endMs; recurring }',
     example: 'const none: EventOccurrence[] = []',
     notes: '[EXPERIMENTAL] One occurrence of an event placed in the display zone; the key (`"<id>:<occurrence>"`) is the same in every window. Added in v0.53.0.',
-  },
-
-  'calendar/Calendar': {
-    signature: 'interface Calendar<Meta> { view(); setView(); date(); goTo(); next(); previous(); today(); range(); dates(); title(); month(); timeGrid(); occurrences(); cursor(); setCursor(); selection(); selectDay(); selectSlot(); clearSelection(); eventClick(); announcement(); onKeyDown(); dispose() }',
-    example: 'const calendar: Calendar = createCalendar({ events: () => [] })',
-    notes: '[EXPERIMENTAL] What `createCalendar` returns. Added in v0.53.0.',
   },
 
   'calendar/TimedBlock': {

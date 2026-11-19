@@ -30,12 +30,12 @@ const merged = (labels: Partial<CalendarLabels> | undefined): CalendarLabels => 
 
 /** The time grid of the week: use it with `view: 'week'` (or 'workWeek'); it shows the dates the calendar's window has. */
 export function WeekView<Meta = unknown>(props: CalendarViewProps<Meta>): VNodeChild {
-  return <TimeGridView {...props} labels={merged(props.labels)} />
+  return <TimeGridView {...props} />
 }
 
 /** The time grid of one day (or `days(n)` days): the same view as `WeekView` with the window of the calendar's `day` view. */
 export function DayView<Meta = unknown>(props: CalendarViewProps<Meta>): VNodeChild {
-  return <TimeGridView {...props} labels={merged(props.labels)} />
+  return <TimeGridView {...props} />
 }
 
 export interface CalendarToolbarProps<Meta = unknown> {

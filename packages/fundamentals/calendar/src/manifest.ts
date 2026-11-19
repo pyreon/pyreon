@@ -55,7 +55,7 @@ nowOffset('2026-11-19', Date.UTC(2026, 10, 18, 12), 'UTC')   // => null`),
     entry('wallMinute', '(ms, zone) => number', 'The wall-clock minute from midnight an instant shows at in a zone.', `wallMinute(Date.UTC(2026, 10, 18, 15, 30), 'UTC')   // => 930`),
     entry('slotTimes', '(options?) => PlainTime[]', 'The start times of the rows of the grid between `dayStart` and `dayEnd`, every `slot` (30 minutes by default).', `slotTimes({ dayStart: '08:00', dayEnd: '10:00', slot: { minutes: 45 } })   // => ['08:00', '08:45', '09:30']`),
     entry('visibleMinutes', '(options?) => { from, to }', 'The visible window of a day in wall-clock minutes; throws when `dayEnd` is not after `dayStart`.', `visibleMinutes({ dayStart: '08:00', dayEnd: '18:00' })   // => { from: 480, to: 1080 }`),
-    entry('createCalendar', '(options: CalendarOptions) => Calendar', 'The reactive calendar. `events` is a reactive source the calendar never changes; `view` and `date` are values (uncontrolled) or signals you own (controlled); the zone and the locale default to the ambient ones; `weekStart` and the weekend default to the locale\'s. It gives the `range()` and `title()` (through `@pyreon/format`, in the active locale), the `month()` and `timeGrid()` view models whose layouts are memoised per week and per day (changing one event recomputes only the days it touches), the focused `cursor()`, a `selection()` and the grid keyboard. `onRangeChange` is the place to fetch events for the visible window.', `const calendar = createCalendar({ events: () => [{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], date: '2026-11-18', view: 'week', now: () => Date.UTC(2026, 10, 18, 12), timeZone: () => 'UTC', locale: () => 'en-GB' })
+    entry('createCalendar', '(options: CalendarOptions) => Calendar', 'The reactive calendar (it returns a `Calendar`: `view`, `setView`, `date`, `goTo`, `next`, `previous`, `today`, `range`, `dates`, `title`, `month`, `timeGrid`, `occurrences`, `cursor`, `selection`, `selectDay`, `selectSlot`, `onKeyDown`, `dispose`). `events` is a reactive source the calendar never changes; `view` and `date` are values (uncontrolled) or signals you own (controlled); the zone and the locale default to the ambient ones; `weekStart` and the weekend default to the locale\'s. It gives the `range()` and `title()` (through `@pyreon/format`, in the active locale), the `month()` and `timeGrid()` view models whose layouts are memoised per week and per day (changing one event recomputes only the days it touches), the focused `cursor()`, a `selection()` and the grid keyboard. `onRangeChange` is the place to fetch events for the visible window.', `const calendar = createCalendar({ events: () => [{ id: 'a', title: 'A', start: '2026-11-18T14:00', end: '2026-11-18T15:00' }], date: '2026-11-18', view: 'week', now: () => Date.UTC(2026, 10, 18, 12), timeZone: () => 'UTC', locale: () => 'en-GB' })
 calendar.range()   // => { start: '2026-11-16', end: '2026-11-23' }
 calendar.timeGrid().days[2]!.blocks()[0]!.top   // => 0.5833333333333334
 calendar.timeGrid().days[2]!.nowOffset()   // => 0.5`),
@@ -76,12 +76,12 @@ export const App = () => <Calendar calendar={calendar} />`, { kind: 'component' 
 import { createCalendar } from '@pyreon/calendar'
 
 const calendar = createCalendar({ events: () => [] })
-export const Month = () => <MonthView calendar={calendar} labels={{}} />`, { kind: 'component' }),
+export const Month = () => <MonthView calendar={calendar} />`, { kind: 'component' }),
     entry('TimeGridView', '(props: ViewProps) => VNode', 'The time grid of a week, work week, day or days: a WAI-ARIA grid whose rows are slots and columns are days, with the all-day row, a time gutter, events placed by the column packing, opening hours shaded and the now line.', `import { TimeGridView } from '@pyreon/calendar/components'
 import { createCalendar } from '@pyreon/calendar'
 
 const calendar = createCalendar({ events: () => [], view: 'week' })
-export const Week = () => <TimeGridView calendar={calendar} labels={{}} />`, { kind: 'component' }),
+export const Week = () => <TimeGridView calendar={calendar} />`, { kind: 'component' }),
     entry('WeekView', '(props: CalendarViewProps) => VNode', 'The time grid for a calendar on the `week` or `workWeek` view.', `import { WeekView } from '@pyreon/calendar/components'
 import { createCalendar } from '@pyreon/calendar'
 
@@ -99,7 +99,6 @@ const calendar = createCalendar({ events: () => [] })
 export const Bar = () => <CalendarToolbar calendar={calendar} views={['month', 'week']} />`, { kind: 'component' }),
     typeEntry('CalendarEvent', 'interface CalendarEvent<Meta> { id; title; start; end; allDay?; timeZone?; recurrence?; overrides?; resourceId?; editable?; color?; meta? }', 'An event as plain JSON-safe data. A date start and end make it all-day; a date-time is a wall clock (in `timeZone`, or floating in the display zone); a number is an instant. The end is exclusive.', `const event: CalendarEvent = { id: 'a', title: 'A', start: '2026-11-18', end: '2026-11-19' }`),
     typeEntry('EventOccurrence', 'interface EventOccurrence<Meta> { key; event; occurrence; title; allDay; start; end; startMs; endMs; recurring }', 'One occurrence of an event placed in the display zone; the key (`"<id>:<occurrence>"`) is the same in every window.', `const none: EventOccurrence[] = []`),
-    typeEntry('Calendar', 'interface Calendar<Meta> { view(); setView(); date(); goTo(); next(); previous(); today(); range(); dates(); title(); month(); timeGrid(); occurrences(); cursor(); setCursor(); selection(); selectDay(); selectSlot(); clearSelection(); eventClick(); announcement(); onKeyDown(); dispose() }', 'What `createCalendar` returns.', `const calendar: Calendar = createCalendar({ events: () => [] })`),
     typeEntry('TimedBlock', 'interface TimedBlock { key; occurrenceKey; top; height; column; columns; span; left; width; startMinute; endMinute; continuesBefore; continuesAfter }', 'A block of a time-grid column; `top`, `height`, `left` and `width` are fractions.', `const blocks: TimedBlock[] = []`),
   ],
   gotchas: [

@@ -60,7 +60,7 @@ layoutDay('2026-11-18', occurrences, 'Europe/Prague').map((b) => [b.column, b.co
 | [`wallMinute`](#wallminute-function-experimental) | function | The wall-clock minute from midnight an instant shows at in a zone. |
 | [`slotTimes`](#slottimes-function-experimental) | function | The start times of the rows of the grid between `dayStart` and `dayEnd`, every `slot` (30 minutes by default). |
 | [`visibleMinutes`](#visibleminutes-function-experimental) | function | The visible window of a day in wall-clock minutes; throws when `dayEnd` is not after `dayStart`. |
-| [`createCalendar`](#createcalendar-function-experimental) | function | The reactive calendar. |
+| [`createCalendar`](#createcalendar-function-experimental) | function | The reactive calendar (it returns a `Calendar`: `view`, `setView`, `date`, `goTo`, `next`, `previous`, `today`, `range`,… |
 | [`gridMove`](#gridmove-function-experimental) | function | Where a key moves the focused date of a month grid (the WAI-ARIA grid pattern): arrows by a day or a week (Left and… |
 | [`slotMove`](#slotmove-function-experimental) | function | Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in… |
 | [`eventLabel`](#eventlabel-function-experimental) | function | What a screen reader hears for an event: "Design review, Wednesday 18 November, 14:00 to 15:00"; an all-day event says… |
@@ -74,7 +74,6 @@ layoutDay('2026-11-18', occurrences, 'Europe/Prague').map((b) => [b.column, b.co
 | [`CalendarToolbar`](#calendartoolbar-component-experimental) | component | The title with Today, Previous and Next buttons and a switch of the view (buttons with `aria-pressed`). |
 | [`CalendarEvent`](#calendarevent-type-experimental) | type | An event as plain JSON-safe data. |
 | [`EventOccurrence`](#eventoccurrence-type-experimental) | type | One occurrence of an event placed in the display zone; the key (`"<id>:<occurrence>"`) is the same in every window. |
-| [`Calendar`](#calendar-type-experimental) | type | What `createCalendar` returns. |
 | [`TimedBlock`](#timedblock-type-experimental) | type | A block of a time-grid column; `top`, `height`, `left` and `width` are fractions. |
 
 ## API
@@ -381,7 +380,7 @@ visibleMinutes({ dayStart: '08:00', dayEnd: '18:00' })   // => { from: 480, to: 
 (options: CalendarOptions) => Calendar
 ```
 
-The reactive calendar. `events` is a reactive source the calendar never changes; `view` and `date` are values (uncontrolled) or signals you own (controlled); the zone and the locale default to the ambient ones; `weekStart` and the weekend default to the locale's. It gives the `range()` and `title()` (through `@pyreon/format`, in the active locale), the `month()` and `timeGrid()` view models whose layouts are memoised per week and per day (changing one event recomputes only the days it touches), the focused `cursor()`, a `selection()` and the grid keyboard. `onRangeChange` is the place to fetch events for the visible window.
+The reactive calendar (it returns a `Calendar`: `view`, `setView`, `date`, `goTo`, `next`, `previous`, `today`, `range`, `dates`, `title`, `month`, `timeGrid`, `occurrences`, `cursor`, `selection`, `selectDay`, `selectSlot`, `onKeyDown`, `dispose`). `events` is a reactive source the calendar never changes; `view` and `date` are values (uncontrolled) or signals you own (controlled); the zone and the locale default to the ambient ones; `weekStart` and the weekend default to the locale's. It gives the `range()` and `title()` (through `@pyreon/format`, in the active locale), the `month()` and `timeGrid()` view models whose layouts are memoised per week and per day (changing one event recomputes only the days it touches), the focused `cursor()`, a `selection()` and the grid keyboard. `onRangeChange` is the place to fetch events for the visible window.
 
 **Example**
 
@@ -512,7 +511,7 @@ import { MonthView } from '@pyreon/calendar/components'
 import { createCalendar } from '@pyreon/calendar'
 
 const calendar = createCalendar({ events: () => [] })
-export const Month = () => <MonthView calendar={calendar} labels={{}} />
+export const Month = () => <MonthView calendar={calendar} />
 ```
 
 ---
@@ -532,7 +531,7 @@ import { TimeGridView } from '@pyreon/calendar/components'
 import { createCalendar } from '@pyreon/calendar'
 
 const calendar = createCalendar({ events: () => [], view: 'week' })
-export const Week = () => <TimeGridView calendar={calendar} labels={{}} />
+export const Week = () => <TimeGridView calendar={calendar} />
 ```
 
 ---
@@ -625,22 +624,6 @@ One occurrence of an event placed in the display zone; the key (`"<id>:<occurren
 
 ```tsx
 const none: EventOccurrence[] = []
-```
-
----
-
-### `Calendar` `type` — **experimental**
-
-```ts
-interface Calendar<Meta> { view(); setView(); date(); goTo(); next(); previous(); today(); range(); dates(); title(); month(); timeGrid(); occurrences(); cursor(); setCursor(); selection(); selectDay(); selectSlot(); clearSelection(); eventClick(); announcement(); onKeyDown(); dispose() }
-```
-
-What `createCalendar` returns.
-
-**Example**
-
-```tsx
-const calendar: Calendar = createCalendar({ events: () => [] })
 ```
 
 ---

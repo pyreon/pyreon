@@ -4,8 +4,8 @@ import type { VNodeChild } from '@pyreon/core'
 import { computed } from '@pyreon/reactivity'
 import type { TimeGridDay, TimeGridModel } from './calendar-types'
 import { dayLabel, eventLabel } from './labels'
-import { colorStyle, dayWeekday, followCursor, isRtl } from './month-view'
-import type { ViewProps } from './month-view'
+import { colorStyle, dayWeekday, followCursor, isRtl, resolveView } from './month-view'
+import type { ResolvedView, ViewProps } from './month-view'
 import type { EventOccurrence, EventSegment, TimedBlock } from './types'
 import { formatDate, formatTime } from '@pyreon/format'
 
@@ -23,7 +23,7 @@ function blockStyle(block: TimedBlock, slotStart: number, slot: number, from: nu
   return `top:${(offset * 100).toFixed(4)}%;height:${(height * 100).toFixed(4)}%;inset-inline-start:${(block.left * 100).toFixed(4)}%;inline-size:${(block.width * 100).toFixed(4)}%`
 }
 
-function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ViewProps<Meta> }): VNodeChild {
+function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ResolvedView<Meta> }): VNodeChild {
   const o = props.occurrences().get(props.block.occurrenceKey)
   if (o === undefined) return null
   const calendar = props.view.calendar
@@ -56,7 +56,7 @@ function Block<Meta>(props: { block: TimedBlock; slotStart: number; occurrences:
   )
 }
 
-function AllDayEvent<Meta>(props: { segment: EventSegment; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ViewProps<Meta> }): VNodeChild {
+function AllDayEvent<Meta>(props: { segment: EventSegment; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ResolvedView<Meta> }): VNodeChild {
   const o = props.occurrences().get(props.segment.occurrenceKey)
   if (o === undefined) return null
   const label = eventLabel(o as EventOccurrence, props.view.calendar.locale(), props.view.labels)
@@ -81,7 +81,7 @@ function AllDayEvent<Meta>(props: { segment: EventSegment; occurrences: () => Ma
 }
 
 interface GridContext<Meta> {
-  view: ViewProps<Meta>
+  view: ResolvedView<Meta>
   grid: () => TimeGridModel
   occurrences: () => Map<string, EventOccurrence<Meta>>
 }
@@ -210,7 +210,8 @@ export function TimeGridView<Meta = unknown>(props: TimeGridViewProps<Meta>): VN
   let root: HTMLElement | null = null
   const occurrences = computed(() => new Map(calendar.occurrences().map((o) => [o.key, o as EventOccurrence<Meta>])))
   const grid = computed(() => calendar.timeGrid())
-  const ctx: GridContext<Meta> = { view: props as ViewProps<Meta>, grid: () => grid(), occurrences: () => occurrences() }
+  const view = resolveView(props)
+  const ctx: GridContext<Meta> = { view, grid: () => grid(), occurrences: () => occurrences() }
   followCursor(
     () => root,
     () => `[data-date="${calendar.cursor().date}"][data-minute="${calendar.cursor().minute}"]`,
@@ -221,7 +222,7 @@ export function TimeGridView<Meta = unknown>(props: TimeGridViewProps<Meta>): VN
     <div
       class={props.class ?? 'pcal-timegrid'}
       role="grid"
-      aria-label={() => `${props.labels.timeGrid}, ${calendar.title()}`}
+      aria-label={() => `${view.labels.timeGrid}, ${calendar.title()}`}
       aria-multiselectable="true"
       aria-colcount={() => grid().days.length + 1}
       data-view="timegrid"
