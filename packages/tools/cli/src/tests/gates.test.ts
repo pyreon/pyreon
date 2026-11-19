@@ -202,9 +202,10 @@ describe('runDocClaimsGate', () => {
     // 85 with three blog posts (+4: one also states the category count) and the
     // /docs/cli share-image alt text in `_docs-og.json` and `_assets.json` (+2).
     // 87 with the document-primitives README and the llms-full.txt format-count sites (#4315: both still said "14+"
-    // against a real 20); 110 with the marketing site's product-count (10), anti-pattern (4) and package-count (4)
-    // sites and the five blog sites that state the package count.
-    expect(result.meta.scanned).toBe(110)
+    // against a real 20); 103 with the sites the marketing site states that are not derived (the five blog sites that
+    // state the package count, the share-image alt text and the typed sections). The site's derived counts are
+    // placeholders and are checked for digits instead (doc-claims-site-counts.ts), not counted here.
+    expect(result.meta.scanned).toBe(103)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
