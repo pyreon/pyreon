@@ -387,10 +387,22 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
   return () => _removeDirect(self, updater)
 }
 
-/** Number of subscriber edges of a source plus its direct-tier entries. */
+/**
+ * Subscribers of a source: the distinct nodes with an edge to it (a node can
+ * hold a second edge for a non-adjacent repeated read, see `link`) plus its
+ * direct-tier entries.
+ */
 export function _subscriberCount(s: { _subs: Link | null; _d1?: (() => void) | null; _d?: Set<() => void> | null }): number {
   let n = 0
-  for (let l = s._subs; l !== null; l = l.nextSub) n++
+  const first = s._subs
+  if (first !== null) {
+    if (first.nextSub === null) n = 1
+    else {
+      const seen = new Set<unknown>()
+      for (let l: Link | null = first; l !== null; l = l.nextSub) seen.add(l.sub)
+      n = seen.size
+    }
+  }
   if (s._d1 != null) n++
   if (s._d != null) n += s._d.size
   return n

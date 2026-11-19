@@ -10,8 +10,19 @@ interface LinkLike {
   nextSub: LinkLike | null
 }
 
-/** Tracked subscribers of a source (signal / computed / selector bucket): its graph edges. */
+/**
+ * Tracked subscribers of a source (signal / computed / selector bucket): the
+ * DISTINCT nodes with an edge to it. (A node can hold a second edge to one
+ * source for a non-adjacent repeated read; `rawEdgeCount` counts those.)
+ */
 export function edgeCount(source: unknown): number {
+  const seen = new Set<unknown>()
+  for (let l = (source as { _subs: LinkLike | null })._subs; l !== null; l = l.nextSub) seen.add(l.sub)
+  return seen.size
+}
+
+/** Every edge object on a source — what a leak check counts: 0 after teardown. */
+export function rawEdgeCount(source: unknown): number {
   let n = 0
   for (let l = (source as { _subs: LinkLike | null })._subs; l !== null; l = l.nextSub) n++
   return n

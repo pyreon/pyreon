@@ -315,6 +315,22 @@ function generateCase(seed: number, steps: number): Case {
 
 // ─── execution + oracle ─────────────────────────────────────────────────────
 
+/**
+ * The THROWING-run rule (pinned in stage ii; the design errata left it open):
+ * a run that throws drops no dependency — it keeps every dependency of the
+ * last completed run until a run completes. Returns the previous run's reads
+ * the throwing run did not read again.
+ */
+function keptTail(
+  prev: Array<[number, number]>,
+  reads: Array<[number, number]>,
+): Array<[number, number]> {
+  const read = new Set(reads.map(([j]) => j))
+  const kept: Array<[number, number]> = []
+  for (const r of prev) if (!read.has(r[0]) && !kept.some(([j]) => j === r[0])) kept.push(r)
+  return kept
+}
+
 class FuzzError extends Error {}
 
 interface Stats {
@@ -540,8 +556,8 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         if (throwOn !== null && ((raw % 7) + 7) % 7 === throwOn) {
           // A throwing evaluation keeps the unconfirmed tail of its previous
           // deps (as effects do), so it may still pull them on a later check.
-          if (prev && prev.length > reads.length && reads.every(([j], k) => prev[k]![0] === j))
-            lastReads[i] = [...reads, ...prev.slice(reads.length)]
+          const kept = keptTail(prev ?? [], reads)
+          if (kept.length > 0) lastReads[i] = [...reads, ...kept]
           const e = new FuzzError(`computed ${i}`)
           thrown.push(e)
           throw e
@@ -616,17 +632,14 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
     rec.untrackedSeen =
       spec.untracked === null ? null : [spec.untracked, untrack(() => get(spec.untracked!))]
     if (spec.throwOn !== null && ((v % 5) + 5) % 5 === spec.throwOn) {
-      // A run that throws keeps the unconfirmed tail of its previous deps when
-      // it read a positional prefix of them (design §1.5: "a throwing run
-      // keeps its tail"); a run that diverged has already dropped it.
-      const prev = prevReads
-      if (prev.length > reads.length && reads.every(([j], k) => prev[k]![0] === j))
+      // A run that throws drops no dependency: it keeps every dependency of
+      // the previous runs until a run completes (design §1.5 "a throwing run
+      // keeps its tail", made order-independent in stage ii — see `keptTail`).
+      const kept = keptTail(prevReads, reads)
+      if (kept.length > 0)
         // Tail values are filled in from the reference once the op settles
         // (NaN = "subscribed, baseline unknown yet").
-        rec.reads = [
-          ...reads,
-          ...prev.slice(reads.length).map(([j]) => [j, Number.NaN] as [number, number]),
-        ]
+        rec.reads = [...reads, ...kept.map(([j]) => [j, Number.NaN] as [number, number])]
       // Thrown BEFORE any onCleanup: cleanups registered earlier in a throwing
       // run are dropped today (reported in the PR), so the fuzz does not rely
       // on either behaviour.

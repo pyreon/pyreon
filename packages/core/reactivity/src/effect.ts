@@ -22,6 +22,8 @@ import {
   endBatch,
   purgeDeps,
   settleFirstRun,
+  settleUnread,
+  unconfirmed,
   unlinkAllDeps,
 } from './graph'
 import { type EffectScope, getCurrentScope } from './scope'
@@ -250,9 +252,11 @@ class EffectNode implements WatcherNode, Effect {
       const f = this._f & ~F_RUNNING
       this._f = f
       // Disposed by its own run: drop what the run linked. A run that THREW
-      // keeps its unconfirmed dependency tail (a later change to it re-runs).
+      // keeps its unconfirmed dependency tail (a later change to it re-runs),
+      // with any stale marks on it resolved (`settleUnread`).
       if ((f & F_DISPOSED) !== 0) unlinkAllDeps(this)
       else if (ok) purgeDeps(this)
+      else settleUnread(unconfirmed(this))
       // What this run registered is APPENDED, never assigned (cleanups
       // registered before a throw are kept too).
       const own = _c.c
@@ -486,10 +490,14 @@ class BindingNode implements WatcherNode {
       if ((f & F_STATIC) !== 0) {
         // Static deps: no tracking frame (reads see `_t.e === null` in the flush).
         this._f = (this._f & ~(F_DIRTY | F_PENDING)) | F_RUNNING
+        let ok = false
         try {
           this._call(true)
+          ok = true
         } finally {
           this._f &= ~F_RUNNING
+          // A throw may have skipped reading some of its (static) deps.
+          if (!ok) settleUnread(this._deps)
         }
         return
       }
@@ -522,6 +530,7 @@ class BindingNode implements WatcherNode {
       this._f = f
       if ((f & F_DISPOSED) !== 0) unlinkAllDeps(this)
       else if (ok) purgeDeps(this)
+      else settleUnread(unconfirmed(this))
     }
   }
 

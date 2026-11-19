@@ -35,10 +35,11 @@
  * ─── Dependency tracking ────────────────────────────────────────────────────
  * A run resets its cursor and every tracked read calls `link`: a read of the
  * same source as the next recorded edge just advances the cursor (one compare,
- * no allocation — the steady state). A read that diverges drops the
- * unconfirmed tail at that point and appends; a successful run then drops any
- * edge after the cursor (`purgeDeps`). A run that THROWS keeps its unconfirmed
- * tail (the previous behaviour, pinned by the contract fuzz).
+ * no allocation — the steady state). A read that diverges inserts a new edge
+ * at the cursor; a successful run then drops every edge after the cursor
+ * (`purgeDeps`). A run that THROWS drops nothing: it keeps every dependency of
+ * the last completed run until a run completes, and resolves any stale mark
+ * among the ones it did not read (`settleUnread`).
  *
  * ─── Flush ──────────────────────────────────────────────────────────────────
  * One array queue. Watchers are appended in depth-first subscription order as
@@ -212,31 +213,27 @@ function unlinkSub(l: Link): void {
  */
 export function link(dep: Source, sub: Subscriber): void {
   const prev = sub._depsTail
+  // The same source read again right after itself (`a(); a()`): one edge.
+  if (prev !== null && prev.dep === dep) return
   const next = prev !== null ? prev.nextDep : sub._deps
   if (next !== null) {
     if (next.dep === dep) {
       sub._depsTail = next
       return
     }
-    // Divergence (new source, reorder, branch flip — or a repeated read where
-    // the last run read something else): drop the unconfirmed tail now. Any
-    // of it read again later in this run re-links below.
-    if (prev !== null) prev.nextDep = null
-    else sub._deps = null
-    let l: Link | null = next
-    do {
-      unlinkSub(l)
-      l = l.nextDep
-    } while (l !== null)
+  } else {
+    // Nothing unconfirmed is left, so every edge `sub` holds was read by this
+    // run: a source whose newest edge comes from `sub` was read earlier in it
+    // (`a(); b(); a()`) and keeps its one edge.
+    const last = dep._subsTail
+    if (last !== null && last.sub === sub) return
   }
-  // A repeated read (`a(); a()`, `a(); b(); a()`) keeps the one edge: every
-  // edge `sub` still holds is confirmed by this run here (the unconfirmed
-  // tail is empty or was just dropped), so the source's newest edge coming
-  // from `sub`, or the cursor's own source, means it is already linked.
-  if (prev !== null && prev.dep === dep) return
+  // A new source, a reorder or a branch flip: insert the edge at the cursor.
+  // The unconfirmed tail after it stays linked until the run completes
+  // (`purgeDeps` drops it then); a run that throws keeps it.
   const tail = dep._subsTail
-  if (tail !== null && tail.sub === sub) return
   const nl = new Link(dep, sub, tail)
+  nl.nextDep = next
   if (prev !== null) prev.nextDep = nl
   else sub._deps = nl
   sub._depsTail = nl
@@ -437,6 +434,7 @@ export function updateComputed(c: ComputedNode): boolean {
     // evaluation compares against it.
     c._f = (c._f & ~F_RUNNING) | F_HAS_VALUE
     _errorHandler(err)
+    settleUnread(unconfirmed(c))
     return false
   }
   _t.e = prevSub
@@ -458,6 +456,29 @@ export function updateComputed(c: ComputedNode): boolean {
   c._value = next
   c._f = f | F_HAS_VALUE
   return (f0 & F_HAS_VALUE) !== 0
+}
+
+/**
+ * A run that THREW keeps the dependencies it did not reach (`link` drops them
+ * only on divergence, `purgeDeps` only after a successful run). Resolve any of
+ * them still marked: a dependency left marked above a subscriber that is now
+ * clean would stop every later write's marking at itself, and the subscriber
+ * would never be reached again. Starts at `from` (the first edge the run did
+ * not confirm; a static binding passes its first edge). Evaluations report
+ * their own errors, so this never throws.
+ */
+export function settleUnread(from: Link | null): void {
+  for (let l = from; l !== null; l = l.nextDep) {
+    const dep = l.dep as Source & Partial<ComputedNode>
+    const df = dep._f
+    if (df !== undefined && (df & F_MARKED) !== 0 && (df & F_DISPOSED) === 0) refreshComputed(dep as ComputedNode)
+  }
+}
+
+/** The first edge `sub`'s current run has not confirmed. */
+export function unconfirmed(sub: Subscriber): Link | null {
+  const tail = sub._depsTail
+  return tail !== null ? tail.nextDep : sub._deps
 }
 
 /** After a computed's value changed: upgrade its readers, and its direct updaters. */

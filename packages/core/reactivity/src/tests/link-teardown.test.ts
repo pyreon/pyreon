@@ -22,7 +22,7 @@ import {
   signal,
   type SubscriberHost,
 } from '../index'
-import { depCount, directCount, edgeCount } from './graph-internals'
+import { depCount, directCount, rawEdgeCount as edgeCount } from './graph-internals'
 
 describe('effect', () => {
   test('dispose removes every edge, including a source read several times', () => {
