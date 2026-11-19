@@ -235,6 +235,136 @@ export const SCENARIOS: Scenario[] = [
     imports: ['routeCommands'],
   },
   {
+    // Date arithmetic on plain strings: parsing, the padded writer and the duration loader, and nothing of the zone code.
+    // `add` must not drag `Intl.DateTimeFormat` handling in; zone conversion is a separate import.
+    id: '@pyreon/time::add',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'core.js',
+    imports: ['add'],
+  },
+  {
+    // The typical set a calendar or scheduler writes: arithmetic, truncation, a grid and one zone conversion.
+    id: '@pyreon/time::typical',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'core.js',
+    imports: ['add', 'diff', 'startOf', 'monthGrid', 'toInstant'],
+  },
+  {
+    // The value-last entry is a thin wrapper: one fp function must cost core's function plus a closure, and must not pull the
+    // other fp functions.
+    id: '@pyreon/time::fp-add',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'fp.js',
+    imports: ['add'],
+  },
+  {
+    // A typical pipeline: adjusters composed with pipe.
+    id: '@pyreon/time::fp-pipeline',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    entry: 'fp.js',
+    imports: ['add', 'startOf', 'pipe', 'isBetween'],
+  },
+  {
+    // Exact money arithmetic on plain data: parsing, the canonical writer and one fast-path add and multiply. Rounding is one
+    // bigint routine shared by every function, so this is the floor of the package.
+    id: '@pyreon/money::add-multiply',
+    pkg: '@pyreon/money',
+    dir: 'fundamentals/money',
+    entry: 'index.js',
+    imports: ['money', 'add', 'multiply'],
+  },
+  {
+    // Allocation adds the largest-remainder loop and the ratio reader on top of the floor.
+    id: '@pyreon/money::allocate',
+    pkg: '@pyreon/money',
+    dir: 'fundamentals/money',
+    entry: 'index.js',
+    imports: ['money', 'allocate'],
+  },
+  {
+    // The decimal entry alone: strings in, strings out, no currency table.
+    id: '@pyreon/money::decimal',
+    pkg: '@pyreon/money',
+    dir: 'fundamentals/money',
+    entry: 'decimal.js',
+    imports: ['add', 'multiply', 'divide', 'round'],
+  },
+  {
+    // The whole value layer: every function of the main entry.
+    id: '@pyreon/money::everything',
+    pkg: '@pyreon/money',
+    dir: 'fundamentals/money',
+    entry: 'index.js',
+    imports: ['money', 'fromMinor', 'toMinor', 'isMoney', 'zero', 'add', 'subtract', 'negate', 'abs', 'sum', 'multiply', 'divide', 'allocate', 'split', 'percentage', 'ratio', 'compare', 'equals', 'min', 'max', 'isZero', 'isPositive', 'isNegative', 'round', 'convert', 'defineCurrency', 'currencyDigits', 'isCurrency'],
+  },
+  {
+    // Recurrence only: expansion and the next occurrence. Business time, intervals, RRULE text and descriptions are separate imports and
+    // must not come along (the exports are tree-shakeable: the `guard` wrapper is marked pure).
+    id: '@pyreon/schedule::recurrence',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['occurrencesBetween', 'nextOccurrence'],
+  },
+  {
+    // Business days only: weekends and holidays, no recurrence and no interval code.
+    id: '@pyreon/schedule::business-days',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['isBusinessDay', 'addBusinessDays'],
+  },
+  {
+    // Intervals only: overlap, merge, subtract; nothing of the calendar or the rule code.
+    id: '@pyreon/schedule::intervals',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['overlaps', 'mergeIntervals', 'subtractIntervals'],
+  },
+  {
+    // Free slots: intervals plus the opening-hours code, but no recurrence.
+    id: '@pyreon/schedule::free-slots',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['freeSlots'],
+  },
+  {
+    // RFC 5545 text: the reader and the writer.
+    id: '@pyreon/schedule::rrule-text',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['parseRRule', 'toRRule'],
+  },
+  {
+    // The whole value layer: every function of the core entry.
+    id: '@pyreon/schedule::everything',
+    pkg: '@pyreon/schedule',
+    dir: 'fundamentals/schedule',
+    entry: 'core.js',
+    imports: ['occurrences', 'occurrencesBetween', 'nextOccurrence', 'previousOccurrence', 'occursOn', 'toInstants', 'parseRRule', 'tryParseRRule', 'toRRule', 'describeRule', 'isBusinessDay', 'addBusinessDays', 'businessDaysBetween', 'nextBusinessDay', 'previousBusinessDay', 'addBusinessTime', 'businessTimeBetween', 'isOpen', 'nextOpening', 'nextClosing', 'overlaps', 'intersection', 'mergeIntervals', 'subtractIntervals', 'freeSlots', 'expandEvents'],
+  },
+  {
+    // The ambient clock hook alone: the shared ticker machinery, without the locale and zone context.
+    id: '@pyreon/ambient::useNow',
+    pkg: '@pyreon/ambient',
+    dir: 'fundamentals/ambient',
+    imports: ['useNow'],
+  },
+  {
+    // The reactive time entry with one clock hook: the hook, the ambient clock it sits on, and the date math it needs.
+    id: '@pyreon/time::reactive-useRelative',
+    pkg: '@pyreon/time',
+    dir: 'fundamentals/time',
+    imports: ['useRelative'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.
@@ -360,6 +490,141 @@ export const SCENARIOS: Scenario[] = [
     // family mark carries its own host, so an unused mark leaves its
     // renderer unreferenced — nor the ECharts wrapper.
     imports: ['Chart', 'Line'],
+  },
+  {
+    id: '@pyreon/format::core-formatNumber',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    // One number formatter from the pure entry must not pull the date, duration,
+    // list, parse or defineFormats code: every function is individually shakeable.
+    imports: ['formatNumber'],
+  },
+  {
+    id: '@pyreon/format::core-formatBytes',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['formatBytes'],
+  },
+  {
+    id: '@pyreon/format::core-formatCurrency',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['formatCurrency'],
+  },
+  {
+    id: '@pyreon/format::core-formatDuration',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['formatDuration'],
+  },
+  {
+    id: '@pyreon/format::core-parseNumber',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['parseNumber'],
+  },
+  {
+    id: '@pyreon/format::core-parseDate',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['parseDate'],
+  },
+  {
+    id: '@pyreon/format::core-formatRelativeTo',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    // The calendar-aware relative words, with the zone arithmetic of the date-only rule.
+    imports: ['formatRelativeTo'],
+  },
+  {
+    id: '@pyreon/format::units-convert',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'units/core.js',
+    // The conversion alone: the exact-rational table and `convert`, nothing of the formatters.
+    imports: ['convert'],
+  },
+  {
+    id: '@pyreon/format::units-formatUnit',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'units/core.js',
+    // A converting unit formatter: the conversion, the measurement-system table and the unit formatter it wraps.
+    imports: ['formatUnit', 'measurementSystem', 'preferredUnit'],
+  },
+  {
+    id: '@pyreon/format::core-formatDate',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['formatDate'],
+  },
+  {
+    id: '@pyreon/format::core-all',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    // The whole pure entry: every formatter, both parsers, createFormatter, defineFormats.
+    imports: [
+      'createFormatter', 'defineFormats', 'formatBytes', 'formatCompact', 'formatCurrency', 'formatDate',
+      'formatDateRange', 'formatDateTime', 'formatDateToParts', 'formatDuration', 'formatList', 'formatNumber',
+      'formatNumberRange', 'formatNumberToParts', 'formatPercent', 'formatRelative', 'formatRelativeTo',
+      'formatTime', 'formatUnit', 'parseDate', 'parseNumber', 'numberFormatter', 'currencyFormatter',
+      'percentFormatter', 'compactFormatter', 'unitFormatter', 'bytesFormatter', 'durationFormatter', 'listFormatter',
+      'dateFormatter', 'timeFormatter', 'dateTimeFormatter', 'relativeFormatter',
+    ],
+  },
+  {
+    id: '@pyreon/format::useRelativeTime',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'index.js',
+    // The self-updating relative label: the hook, the calendar words and the date-only rule; the ambient clock (@pyreon/ambient) is external, as every workspace dependency is in this method.
+    imports: ['useRelativeTime'],
+  },
+  {
+    id: '@pyreon/format::formatNumber',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    // The reactive entry with one formatter: the locale signal and context are
+    // the only extras over the pure entry.
+    imports: ['formatNumber'],
+  },
+  {
+    id: '@pyreon/format::core-numberFormatter',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    // One reusable number formatter from the pure entry: the formatter machinery
+    // (with / from / fallback / parts / range) plus the number kind, nothing else.
+    imports: ['numberFormatter'],
+  },
+  {
+    id: '@pyreon/format::core-currencyFormatter',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    entry: 'core.js',
+    imports: ['currencyFormatter'],
+  },
+  {
+    id: '@pyreon/format::currencyFormatter',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    // The reactive entry with one factory: the locale signal and context are the extras over core.
+    imports: ['currencyFormatter'],
+  },
+  {
+    id: '@pyreon/format::formatNumber-and-setLocale',
+    pkg: '@pyreon/format',
+    dir: 'fundamentals/format',
+    imports: ['formatNumber', 'setLocale'],
   },
 ]
 

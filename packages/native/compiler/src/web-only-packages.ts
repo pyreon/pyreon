@@ -34,6 +34,7 @@
 // warning quotes, so one blanket line does not have to serve packages as
 // different as a linter, a `<head>` manager and an animation engine.
 export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
+  ['@pyreon/ambient', "not lowered by PMTC: the package is context plus timers on the web runtime (`document.hidden`, `setTimeout`, the owner-based context); native apps carry their own locale, zone and clock through the host runtime"],
   ['@pyreon/atlas', "the component workbench — dev tooling that runs in a browser, not app runtime"],
   ['@pyreon/command', "a keyboard-driven DOM overlay built on @pyreon/hotkeys; native apps have no command palette convention and the matcher is plain TypeScript a native app can call itself"],
   ['@pyreon/compiler', "the web JSX compiler + build tooling itself; the native sibling is @pyreon/native-compiler — nothing here ships to an app runtime"],
@@ -41,14 +42,18 @@ export const WEB_ONLY_PACKAGES: ReadonlyMap<string, string> = new Map([
   ['@pyreon/connector-document', "bridges ui-components to @pyreon/document extraction — both ends are web/document engines"],
   ['@pyreon/document', "wraps pdfmake/docx/exceljs/pptxgenjs (browser/node document engines); no native lowering. Build the file on a server and fetch it (useFetch / @pyreon/http lower), or hand the result to the platform share sheet (useShare lowers)."],
   ['@pyreon/document-primitives', "document-authoring primitives feeding the pdfmake/docx renderers"],
+  ['@pyreon/format', "formats through the platform's Intl; the PMTC native lowering of these calls is planned (the native compiler already lowers a core set of Intl number/date formatting) but not shipped, so native apps render it behind the Web escape hatch or format on the web side today"],
   ['@pyreon/lathe', "the code generator — build-time tooling that emits app code, not app runtime itself"],
   ['@pyreon/lint', "lint tooling — runs at dev time, not app runtime"],
   ['@pyreon/loom', "the dependency observatory — dev tooling, not app runtime"],
   ['@pyreon/mcp', "the MCP server — dev/AI tooling, not app runtime"],
+  ['@pyreon/money', "not lowered by PMTC yet: pure computation on strings and bigint, so it can become `shared` once Swift and Kotlin ports of the same functions exist (a Money is already how payment APIs send amounts); until then the compiler warns on import rather than miscompiling"],
   ['@pyreon/runtime-dom', "the DOM renderer — on native, PMTC emits SwiftUI/Compose instead of running a renderer; `<Transition>` / `<TransitionGroup>` DO cross, but import them from `@pyreon/primitives` (this package is web-only, so importing them from here warns)"],
   ['@pyreon/runtime-server', "server-side HTML rendering (SSR/streaming) — a web-platform concern with no native analogue"],
+  ['@pyreon/schedule', "not lowered by PMTC yet: pure computation on strings and numbers over @pyreon/time, which is web-only itself; it can become `shared` together with @pyreon/time once Swift and Kotlin ports exist; until then the compiler warns on import rather than miscompiling"],
   ['@pyreon/server', "SSR handler + islands for web deployments; native apps have no server-rendered HTML"],
   ['@pyreon/testing', "the web testing kit (Testing-Library parity over the DOM renderer); native testing is XCUITest/Compose-test territory"],
+  ['@pyreon/time', "not lowered by PMTC yet: the package is pure computation on strings and numbers (an Instant is epoch milliseconds, exactly how a date is represented natively), so it can become `shared` once the Swift and Kotlin ports of the same functions exist; until then the compiler warns on import rather than miscompiling"],
   ['@pyreon/ui-components', ""],
   ['@pyreon/ui-primitives', ""],
   ['@pyreon/unistyle', "responsive breakpoints + CSS-variable theming over real CSS; native theming is compile-time tokens + the 2-bucket size-class model"],

@@ -1,0 +1,67 @@
+{
+  "name": "@pyreon/ambient",
+  "version": "0.53.0",
+  "description": "The ambient values every formatted thing depends on for Pyreon: locale, time zone and a shared clock with self-updating tickers, SSR-safe and request-scoped",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/ambient#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/ambient"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./testing": {
+      "bun": "./src/testing.ts",
+      "import": "./lib/testing.js",
+      "types": "./lib/types/testing.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "bench": "NODE_ENV=production bun bench/ticker-bench.ts"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "21.0.4",
+    "@pyreon/core": "workspace:*",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^5.1.0",
+    "happy-dom": "^21.0.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

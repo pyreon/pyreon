@@ -131,6 +131,7 @@
     "check-agp-gradle-lockstep": "bun scripts/check-agp-gradle-lockstep.ts",
     "check-declarations": "bun scripts/check-declarations.ts",
     "check-distribution": "bun scripts/check-distribution.ts",
+    "check-declared-imports": "bun scripts/check-declared-imports.ts",
     "check-export-entries": "bun scripts/check-export-entries.ts",
     "check-doc-claims": "bun scripts/check-doc-claims.ts",
     "check-leak-ratchet": "bun scripts/check-leak-ratchet.ts",

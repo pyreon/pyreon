@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 229,
+  "pageCount": 243,
   "pages": [
    {
     "path": "a11y.md",
@@ -16,6 +16,11 @@
     "path": "accessibility.md",
     "title": "Accessibility",
     "href": "/docs/accessibility"
+   },
+   {
+    "path": "ambient.md",
+    "title": "Ambient values",
+    "href": "/docs/ambient"
    },
    {
     "path": "architecture-and-prior-art.md",
@@ -248,6 +253,11 @@
     "href": "/docs/hotkeys"
    },
    {
+    "path": "format.md",
+    "title": "Format",
+    "href": "/docs/format"
+   },
+   {
     "path": "http.md",
     "title": "HTTP",
     "href": "/docs/http"
@@ -428,6 +438,21 @@
     "href": "/docs/patterns/data-fetching"
    },
    {
+    "path": "patterns/dates-and-times.md",
+    "title": "Dates and times",
+    "href": "/docs/patterns/dates-and-times"
+   },
+   {
+    "path": "patterns/money.md",
+    "title": "Money",
+    "href": "/docs/patterns/money"
+   },
+   {
+    "path": "patterns/schedule.md",
+    "title": "Schedule",
+    "href": "/docs/patterns/schedule"
+   },
+   {
     "path": "patterns/dev-warnings.md",
     "title": "Dev-mode warnings",
     "href": "/docs/patterns/dev-warnings"
@@ -446,6 +471,11 @@
     "path": "patterns/form-fields.md",
     "title": "Form fields",
     "href": "/docs/patterns/form-fields"
+   },
+   {
+    "path": "patterns/formatting.md",
+    "title": "Formatting numbers, dates and money",
+    "href": "/docs/patterns/formatting"
    },
    {
     "path": "patterns/imperative-toasts.md",
@@ -578,6 +608,11 @@
     "href": "/docs/reference/a11y"
    },
    {
+    "path": "reference/ambient.md",
+    "title": "Ambient values — API Reference",
+    "href": "/docs/reference/ambient"
+   },
+   {
     "path": "reference/atlas.md",
     "title": "Component Workbench — API Reference",
     "href": "/docs/reference/atlas"
@@ -686,6 +721,11 @@
     "path": "reference/hotkeys.md",
     "title": "Keyboard Shortcuts — API Reference",
     "href": "/docs/reference/hotkeys"
+   },
+   {
+    "path": "reference/format.md",
+    "title": "Formatting and Parsing — API Reference",
+    "href": "/docs/reference/format"
    },
    {
     "path": "reference/http.md",
@@ -826,6 +866,21 @@
     "path": "reference/testing.md",
     "title": "Testing — API Reference",
     "href": "/docs/reference/testing"
+   },
+   {
+    "path": "reference/time.md",
+    "title": "Dates and Times — API Reference",
+    "href": "/docs/reference/time"
+   },
+   {
+    "path": "reference/money.md",
+    "title": "Money",
+    "href": "/docs/reference/money"
+   },
+   {
+    "path": "reference/schedule.md",
+    "title": "Schedule",
+    "href": "/docs/reference/schedule"
    },
    {
     "path": "reference/toast.md",
@@ -971,6 +1026,21 @@
     "path": "table.md",
     "title": "Table",
     "href": "/docs/table"
+   },
+   {
+    "path": "time.md",
+    "title": "Time",
+    "href": "/docs/time"
+   },
+   {
+    "path": "money.md",
+    "title": "Money",
+    "href": "/docs/money"
+   },
+   {
+    "path": "schedule.md",
+    "title": "Schedule",
+    "href": "/docs/schedule"
    },
    {
     "path": "toast.md",
@@ -1209,11 +1279,15 @@
       "patterns/dynamic-fields",
       "patterns/routing-setup",
       "patterns/data-fetching",
+      "patterns/dates-and-times",
+      "patterns/money",
+      "patterns/schedule",
       "patterns/styler-theming",
       "patterns/ssr-safe-hooks",
       "patterns/islands",
       "patterns/event-listeners",
       "patterns/imperative-toasts",
+      "patterns/formatting",
       "patterns/command",
       "patterns/multiplatform",
       "patterns/offline-and-installable-apps",
@@ -1332,6 +1406,10 @@
       "permissions",
       "auth",
       "hotkeys",
+      "format",
+      "time",
+      "money",
+      "schedule",
       "command",
       "toast",
       "rx",
@@ -1372,7 +1450,8 @@
       "rich-text",
       "flow",
       "feature",
-      "a11y"
+      "a11y",
+      "ambient"
      ],
      "source": "docs/src/sidebar-config.ts"
     },
@@ -1435,6 +1514,10 @@
       "reference/form",
       "reference/hooks",
       "reference/hotkeys",
+      "reference/format",
+      "reference/time",
+      "reference/money",
+      "reference/schedule",
       "reference/http",
       "reference/i18n",
       "reference/kinetic-presets",
@@ -1464,6 +1547,7 @@
      "collapsed": true,
      "slugs": [
       "reference/a11y",
+      "reference/ambient",
       "reference/charts",
       "reference/charts-maps",
       "reference/code",
@@ -1817,6 +1901,10 @@
      "title": "Accessibility",
      "href": "/docs/a11y",
      "productId": "a11y"
+    },
+    {
+     "title": "Ambient values",
+     "href": "/docs/ambient"
     }
    ]
   },
@@ -1996,6 +2084,22 @@
      "productId": "hotkeys"
     },
     {
+     "title": "Format",
+     "href": "/docs/format"
+    },
+    {
+     "title": "Time",
+     "href": "/docs/time"
+    },
+    {
+     "title": "Money",
+     "href": "/docs/money"
+    },
+    {
+     "title": "Schedule",
+     "href": "/docs/schedule"
+    },
+    {
      "title": "Command",
      "href": "/docs/command"
     },
@@ -2172,6 +2276,18 @@
      "href": "/docs/patterns/data-fetching"
     },
     {
+     "title": "Dates and times",
+     "href": "/docs/patterns/dates-and-times"
+    },
+    {
+     "title": "Money",
+     "href": "/docs/patterns/money"
+    },
+    {
+     "title": "Schedule",
+     "href": "/docs/patterns/schedule"
+    },
+    {
      "title": "Forms and validation",
      "href": "/docs/guides/forms"
     },
@@ -2214,6 +2330,10 @@
     {
      "title": "Imperative toasts",
      "href": "/docs/patterns/imperative-toasts"
+    },
+    {
+     "title": "Formatting",
+     "href": "/docs/patterns/formatting"
     },
     {
      "title": "Command palette",
@@ -2353,6 +2473,10 @@
        "href": "/docs/reference/a11y"
       },
       {
+       "title": "Ambient values",
+       "href": "/docs/reference/ambient"
+      },
+      {
        "title": "Component Workbench",
        "href": "/docs/reference/atlas"
       },
@@ -2439,6 +2563,22 @@
       {
        "title": "Keyboard Shortcuts",
        "href": "/docs/reference/hotkeys"
+      },
+      {
+       "title": "Formatting and Parsing",
+       "href": "/docs/reference/format"
+      },
+      {
+       "title": "Dates and Times",
+       "href": "/docs/reference/time"
+      },
+      {
+       "title": "Money",
+       "href": "/docs/reference/money"
+      },
+      {
+       "title": "Schedule",
+       "href": "/docs/reference/schedule"
       },
       {
        "title": "HTTP Client",

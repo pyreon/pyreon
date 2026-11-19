@@ -383,6 +383,23 @@ The `run` column says which run each row comes from. Final-pass rows are one run
 
 **Animation — `@pyreon/kinetic` vs Motion (real Chromium, 25 samples, overnight run) — PROVISIONAL, not a published claim:** enter 500 kinetic 2.42 / Motion 11.40 / CSS baseline 6.51 ms; enter 2,000 7.10 / 40.01 / 21.22; stagger 300 2.62 / 10.19 / 4.93; stagger 1,000 11.72 / 38.70 / 13.57. Still withheld: kinetic measures **below** the hand-written CSS baseline in every cell, which the same work cannot do.
 
+### `@pyreon/time` vs Date, Temporal, date-fns, Day.js, Luxon: bundle size (2026-11-18, `main` + the time PR)
+
+*Separate run from the 2026-11-05 record above; bun 1.4.0, one machine (Apple M3 Max). Bundle size does not depend on machine load.* Same ten operations in every arm (add days and months, diff in days, compare, start of week and month, month grid, parse ISO, instant to wall time and back in a zone), tree-shaken by the same Bun bundler settings (`minify`, `target: browser`, `NODE_ENV=production`), gzip -9. `cd packages/fundamentals/time && bun run bench:bundle`. date-fns 4.4.0 (+ `@date-fns/tz` 1.5.0), dayjs 1.11.23, luxon 3.7.2.
+
+| arm | minified | gzip |
+| --- | ---: | ---: |
+| Temporal (native, adapter code only) | 0.9 kB | 0.41 kB |
+| Date (hand-written UTC code) | 1.3 kB | 0.58 kB |
+| Day.js + utc, timezone, isoWeek | 13.7 kB | 5.42 kB |
+| **Pyreon (`@pyreon/time/core`)** | 15.7 kB | **5.90 kB** |
+| date-fns + `@date-fns/tz` | 28.6 kB | 8.53 kB |
+| Luxon | 71.4 kB | 21.89 kB |
+
+**Loss:** Day.js is 8% smaller than Pyreon for this task set (5.42 vs 5.90 kB gzip), and the platform (`Date`, `Temporal`) is far smaller than any library. Pyreon is 1.4× smaller than date-fns and 3.7× smaller than Luxon. The Pyreon figure includes full DST disambiguation, ISO weeks and strict validation with fix-it error messages. One function alone: `add` is 2.65 kB gzip, a five-function typical set (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`) 5.47 kB (locked in `scripts/size-budgets/packages/time.json`).
+
+**Timing is not recorded here.** The head-to-head timing bench (`bun run bench:rivals`, and `bun run bench:fp` for the composition overhead) was written, gate-checked against Temporal on every input, and run during development while other sessions held the machine at a 1-minute load of 5 to 35 (the record's rule is below 4), so no timing figure is entered in this file. Run both on a quiet machine and replace this paragraph with the result.
+
 ## 11. Pyreon-only throughput (no competitor)
 
 *Overnight run · 2026-11-05 · `d47fa5a2f` · not re-measured by the final pass.*

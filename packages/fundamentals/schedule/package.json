@@ -1,0 +1,73 @@
+{
+  "name": "@pyreon/schedule",
+  "version": "0.53.0",
+  "description": "Recurrence, business time and availability as plain data for Pyreon: RFC 5545 rules, DST-correct wall-clock expansion, working hours, free slots",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/schedule#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/schedule"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./core": {
+      "bun": "./src/core.ts",
+      "import": "./lib/core.js",
+      "types": "./lib/types/core.d.ts"
+    },
+    "./fp": {
+      "bun": "./src/fp.ts",
+      "import": "./lib/fp.js",
+      "types": "./lib/types/fp.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run --maxWorkers=2",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "devDependencies": {
+    "@pyreon/ambient": "workspace:*",
+    "@pyreon/core": "workspace:*",
+    "@pyreon/format": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "happy-dom": "^21.0.4",
+    "rrule": "2.8.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@pyreon/time": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
+  }
+}

@@ -94,9 +94,9 @@ describe('SCENARIOS', () => {
     }
   })
 
-  it('an entry override is a bare lib-relative .js filename (never a path escape)', () => {
+  it('an entry override is a lib-relative .js filename, at most one directory deep (never a path escape)', () => {
     for (const s of SCENARIOS) {
-      if (s.entry !== undefined) expect(s.entry).toMatch(/^[\w-]+\.js$/)
+      if (s.entry !== undefined) expect(s.entry).toMatch(/^(?:[\w-]+\/)?[\w-]+\.js$/)
     }
   })
 
