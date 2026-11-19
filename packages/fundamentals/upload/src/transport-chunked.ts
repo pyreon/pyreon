@@ -83,9 +83,7 @@ export function chunkedTransport(options: ChunkedTransportOptions): Transport {
 
       try {
         if (state !== null) {
-          const known = await sendPart({ url: `${base}/${state.uploadId}`, method: 'GET', headers, ...common }, (s) => (s >= 200 && s < 300) || s === 404 || s === 410).catch((e: unknown) => {
-            throw e
-          })
+          const known = await sendPart({ url: `${base}/${state.uploadId}`, method: 'GET', headers, ...common }, (s) => (s >= 200 && s < 300) || s === 404 || s === 410)
 
           if (known.status === 404 || known.status === 410) state = null
           else state.done = [...new Set(((known.body as { received?: number[] } | undefined)?.received ?? []).filter((n) => Number.isInteger(n) && n >= 0))]
@@ -97,7 +95,7 @@ export function chunkedTransport(options: ChunkedTransportOptions): Transport {
           if (typeof answer?.uploadId !== 'string') throw uploadError('server', '[Pyreon] chunkedTransport: the server did not answer { uploadId } to the first request.', { retryable: false, body: created.body })
           state = { uploadId: answer.uploadId, chunkSize: typeof answer.chunkSize === 'number' && answer.chunkSize >= 1 ? Math.floor(answer.chunkSize) : wanted, done: [] }
         }
-        ctx.saveResumeState({ ...state })
+        ctx.saveResumeState({ ...state, done: [...state.done] })
         report()
         const total = chunkCount(file.size, state.chunkSize)
         const todo = Array.from({ length: total }, (_, i) => i).filter((i) => !state!.done.includes(i))
@@ -113,7 +111,7 @@ export function chunkedTransport(options: ChunkedTransportOptions): Transport {
           }, ...common })
           sent.delete(index)
           state!.done.push(index)
-          ctx.saveResumeState({ ...state })
+          ctx.saveResumeState({ ...state!, done: [...state!.done] })
           report()
         })
         const finished = await sendPart({ url: `${base}/${state.uploadId}/complete`, method: 'POST', headers: json, body: JSON.stringify({ parts: total }), ...common })

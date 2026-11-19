@@ -31,10 +31,11 @@ export interface FileDrop {
   dispose(): void
 }
 
-const hasFiles = (e: DragEvent): boolean => e.dataTransfer !== null && Array.from(e.dataTransfer.types ?? []).includes('Files')
+// A type guard: after it, `e.dataTransfer` is known to be there, so the handlers need no second null check.
+const hasFiles = (e: DragEvent): e is DragEvent & { readonly dataTransfer: DataTransfer } => e.dataTransfer !== null && Array.from(e.dataTransfer.types ?? []).includes('Files')
 
-function judge(data: DataTransfer | null, options: FileDropOptions): boolean {
-  const items = data === null ? [] : Array.from(data.items ?? []).filter((i) => i.kind === 'file')
+function judge(data: DataTransfer, options: FileDropOptions): boolean {
+  const items = Array.from(data.items ?? []).filter((i) => i.kind === 'file')
 
   if (options.multiple === false && items.length > 1) return false
   if (options.accept === undefined || options.accept.length === 0) return true
@@ -110,7 +111,7 @@ export function useFileDrop(options: FileDropOptions = {}): FileDrop {
     onDragOver(e: DragEvent) {
       if (options.disabled === true || !hasFiles(e)) return
       e.preventDefault()
-      if (e.dataTransfer !== null) e.dataTransfer.dropEffect = valid() === false ? 'none' : 'copy'
+      e.dataTransfer.dropEffect = valid() === false ? 'none' : 'copy'
     },
     onDragLeave(e: DragEvent) {
       if (depth === 0 || !hasFiles(e)) return
