@@ -3697,10 +3697,10 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
         out.add(c)
       }
     }
-    val valueTicks = if (spec.horizontal == true) l.xTicks else l.yTicks
-    val minorLinear = spec.yScale != "log" && spec.yTime != true
+    val majorTicks = if (spec.horizontal == true) l.xTicks else l.yTicks
+    val minorLinear = raw.yScale != "log" && spec.yTime != true
     if (((spec.yMinor ?: 0.0)) >= 2.0 && minorLinear) {
-      for (c in minorLines(valueTicks, (spec.yMinor ?: 0.0), spec.horizontal == true, plot, withAlpha(t.grid, 0.6))) {
+      for (c in minorLines(majorTicks, (spec.yMinor ?: 0.0), spec.horizontal == true, plot, withAlpha(t.grid, 0.6))) {
         out.add(c)
       }
     }

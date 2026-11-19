@@ -6359,10 +6359,10 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
         out.append(c)
       }
     }
-    let valueTicks = spec.horizontal == true ? l.xTicks : l.yTicks
-    let minorLinear = spec.yScale != "log" && spec.yTime != true
+    let majorTicks = spec.horizontal == true ? l.xTicks : l.yTicks
+    let minorLinear = raw.yScale != "log" && spec.yTime != true
     if ((spec.yMinor ?? 0.0)) >= 2.0 && minorLinear {
-      for c in minorLines(valueTicks, (spec.yMinor ?? 0.0), spec.horizontal == true, plot, withAlpha(t.grid, 0.6)) {
+      for c in minorLines(majorTicks, (spec.yMinor ?? 0.0), spec.horizontal == true, plot, withAlpha(t.grid, 0.6)) {
         out.append(c)
       }
     }

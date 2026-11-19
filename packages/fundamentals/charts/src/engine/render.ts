@@ -1085,9 +1085,9 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // The other axis's grid, and the minor lines, are opt-in: a chart that sets
   // none of `xGrid`, `yMinor`, `xMinor` draws exactly the lines it always did.
   if (spec.xGrid === true) for (const c of tickLines(spec.horizontal === true ? l.yTicks : l.xTicks, spec.horizontal !== true, plot, t.grid, 1.0)) out.push(c)
-  const valueTicks = spec.horizontal === true ? l.xTicks : l.yTicks
+  const majorTicks = spec.horizontal === true ? l.xTicks : l.yTicks
   const minorLinear = raw.yScale !== 'log' && spec.yTime !== true
-  if ((spec.yMinor ?? 0.0) >= 2.0 && minorLinear) for (const c of minorLines(valueTicks, spec.yMinor ?? 0.0, spec.horizontal === true, plot, withAlpha(t.grid, 0.6))) out.push(c)
+  if ((spec.yMinor ?? 0.0) >= 2.0 && minorLinear) for (const c of minorLines(majorTicks, spec.yMinor ?? 0.0, spec.horizontal === true, plot, withAlpha(t.grid, 0.6))) out.push(c)
   if ((spec.xMinor ?? 0.0) >= 2.0 && (spec.xValues ?? []).length > 0 && spec.xTime !== true) for (const c of minorLines(spec.horizontal === true ? l.yTicks : l.xTicks, spec.xMinor ?? 0.0, spec.horizontal !== true, plot, withAlpha(t.grid, 0.6))) out.push(c)
   const yAxisX = plot.x
   if (spec.showYAxis) {
