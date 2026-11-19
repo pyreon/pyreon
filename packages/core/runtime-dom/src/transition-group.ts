@@ -1,7 +1,7 @@
 import type { Props, VNode, VNodeChild } from '@pyreon/core'
 import { createRef, h, nativeCompat, onMount, onUnmount } from '@pyreon/core'
 import { effect, runUntracked, signal } from '@pyreon/reactivity'
-import { mountChild } from './mount'
+import { mountOwned } from './mount'
 
 export interface TransitionGroupProps<T = unknown> {
   /** Wrapper element tag. Default: "div" */
@@ -234,7 +234,7 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
       const key = keyFn(item, i)
       if (entries.has(key)) continue
       const itemRef = createRef<HTMLElement>()
-      // Both render AND mountChild must run untracked — child component setup
+      // Both render AND the mount must run untracked — child component setup
       // must NOT subscribe this effect. Otherwise an unrelated signal flip re-runs
       // TransitionGroup, runCleanup() disposes the children's inner effects, and
       // the next mount skips re-rendering kept entries, losing inner reactivity.
@@ -245,7 +245,7 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
           typeof rawVNode.type === 'string'
             ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
             : rawVNode
-        return mountChild(vnode, container, null)
+        return mountOwned(vnode, container, null)
       })
       const entry: ItemEntry = { key, ref: itemRef, cleanup, leaving: false, cancelTransition: null }
       entries.set(key, entry)
