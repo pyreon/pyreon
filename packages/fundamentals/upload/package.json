@@ -95,7 +95,7 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.1.0",
-    "axe-core": "4.14.1"
+    "axe-core": "^4.14.1"
   },
   "publishConfig": {
     "access": "public"
