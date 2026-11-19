@@ -10717,7 +10717,10 @@ const Button = styled("button")\`
     mistakes: `- Expecting \`$\`-prefixed props to reach the DOM — they are transient by design (consumed by the template, stripped before forwarding). Use a non-\`$\` name if the attribute must land on the element
 - Destructuring \`props\` in the interpolation (\`\${({ theme }) => …}\`) and being surprised it does not update on a whole-theme swap — read \`props.theme\` lazily; the theme context is reactive and the styled resolver re-runs on swap
 - Passing a resolved value where a function interpolation is needed for reactivity — \`\${signal()}\` snapshots once at definition; use \`\${() => signal()}\` (or \`\${(p) => p.x}\`) to stay on the dynamic path
-- Using \`styled.div\` and expecting a different identity per call — the Proxy returns the same tag template fn shape; per-definition caches key on the template, not the call site`,
+- Using \`styled.div\` and expecting a different identity per call — the Proxy returns the same tag template fn shape; per-definition caches key on the template, not the call site
+- Enumerating the props inside an interpolation or a helper it calls (\`({ theme, ...rest }) => …\`, \`Object.keys(props)\`, \`{ ...props }\`) — the class cache records which props the styles read, and styles that enumerate them may depend on any prop, so that component's class is never cached and every mount re-resolves. Read the props you need by name
+- Calling a FUNCTION prop inside an interpolation to compute CSS — the class cache keys a function prop by presence (handlers change identity per instance), so every instance gets the first one's result. Pass the computed value as a primitive prop instead
+- Expecting a signal-driven prop that the styles read (\`columns={() => n()}\` reaching \`props.columns\`) to update the class after mount — only the \`$rocketstyle\` / \`$rocketstate\` / \`$element\` / \`$text\` accessors and the theme are tracked. For a value that changes, use a rocketstyle \`.multiple()\` modifier or the reactive \`css\` prop of \`@pyreon/elements\``,
   },
 
   'styler/css': {

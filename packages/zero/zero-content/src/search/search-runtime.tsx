@@ -73,6 +73,13 @@ let _instance: MiniSearch | null = null
 let _loading: Promise<MiniSearch> | null = null
 let _instanceUrl: string | null = null
 let _subscribers = 0
+// Bumped whenever the cache is dropped (last subscriber released, reset) or
+// a load for a different URL starts. A load writes its result into the cache
+// only if the generation it started under is still current (leak class F):
+// otherwise a load finishing after the last `<Search>` unmounted re-pinned the
+// whole MiniSearch with no subscriber, and a slow load for an older URL
+// overwrote the current index.
+let _generation = 0
 
 /**
  * Reset the cached MiniSearch instance. Test-only.
@@ -80,6 +87,7 @@ let _subscribers = 0
  * @internal exported for testing
  */
 export function _resetSearchForTesting(): void {
+  _generation++
   _instance = null
   _loading = null
   _instanceUrl = null
@@ -87,13 +95,22 @@ export function _resetSearchForTesting(): void {
 }
 
 /**
+ * What the module cache currently holds. Test-only.
+ *
+ * @internal exported for testing
+ */
+export function _searchCacheStateForTesting(): { instance: boolean; loading: boolean } {
+  return { instance: _instance !== null, loading: _loading !== null }
+}
+
+/**
  * Acquire a refcount on the cached search instance. Returns a release
  * callback the caller MUST invoke on unmount; when refcount hits zero
  * the instance is released.
  *
- * @internal
+ * @internal exported for testing
  */
-function acquireSearchInstance(): () => void {
+export function acquireSearchInstance(): () => void {
   _subscribers++
   let released = false
   return () => {
@@ -101,6 +118,7 @@ function acquireSearchInstance(): () => void {
     released = true
     _subscribers--
     if (_subscribers <= 0) {
+      _generation++
       _instance = null
       _loading = null
       _instanceUrl = null
@@ -184,7 +202,8 @@ export async function loadSearchIndex(
   if (_instance && _instanceUrl === catalogUrl) return _instance
   if (_loading && _instanceUrl === catalogUrl) return _loading
   _instanceUrl = catalogUrl
-  _loading = (async () => {
+  const generation = ++_generation
+  const loading = (async (): Promise<MiniSearch> => {
     const catalogRes = await fetchFn(catalogUrl)
     if (!catalogRes.ok) {
       throw new Error(
@@ -223,11 +242,26 @@ export async function loadSearchIndex(
       // than minisearch's internal format AND easier to merge.
       if (Array.isArray(json.docs)) ms.addAll(json.docs)
     }
-    _instance = ms
-    _loading = null
     return ms
   })()
-  return _loading
+  _loading = loading
+  // Settle the cache on BOTH paths, and only for the load that is still
+  // current. A failure clears the cached promise so the next call retries
+  // (it used to stay cached as a rejection, failing every later load of
+  // that URL until the last subscriber unmounted).
+  loading.then(
+    (ms) => {
+      if (generation !== _generation) return
+      _instance = ms
+      _loading = null
+    },
+    () => {
+      if (generation !== _generation) return
+      _loading = null
+      _instanceUrl = null
+    },
+  )
+  return loading
 }
 
 /**

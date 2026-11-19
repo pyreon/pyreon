@@ -129,7 +129,12 @@ const themeCache = new WeakMap<object, ThemeCacheEntry>()
  */
 const makeItResponsive: MakeItResponsive =
   ({ theme: customTheme, key = '', css, styles, normalize = true }) =>
-  ({ theme = {}, ...props }) => {
+  (props) => {
+    // Read `theme` and `props[key]` directly. A `{ theme, ...props }` rest
+    // spread ENUMERATES every prop, and the styler's class cache treats styles
+    // that enumerate props as depending on all of them, so it stopped caching
+    // every component styled through here (each warm mount re-resolved).
+    const theme = props.theme === undefined ? {} : props.theme
     // `props[key]` carries a styled-component-injected theme prop whose
     // shape is determined by the styles callback's generic — opaque from
     // here. The outer `MakeItResponsive` props index signature is
