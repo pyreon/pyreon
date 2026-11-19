@@ -1,64 +1,29 @@
-import { onUnmount } from '@pyreon/core'
-import { isServer } from '@pyreon/reactivity'
-
-let lockCount = 0
-let savedBodyOverflow = ''
-let savedHtmlOverflow = ''
-let savedPaddingRight = ''
+import { lockScroll, onUnmount } from '@pyreon/core'
 
 /**
- * Lock page scroll. Uses reference counting for concurrent locks.
- * Returns an unlock function.
+ * Lock page scroll. Returns `lock` / `unlock` for this caller's one hold.
+ *
+ * The hold goes through `lockScroll` from `@pyreon/core` — the ONE page lock
+ * shared with `@pyreon/elements` `useOverlay({ type: 'modal' })` — so locks
+ * taken by different packages count together and the last release restores
+ * the page's previous inline styles. Released automatically on unmount.
  */
 export function useScrollLock(): { lock: () => void; unlock: () => void } {
-  let isLocked = false
+  let release: (() => void) | null = null
 
   const lock = () => {
-    // SSR-safe: scroll locking is meaningless without a document. Guards
-    // against accidental call from a non-browser context (e.g. SSR
-    // rendering a component that opens a modal in its setup).
-    /* v8 ignore next — SSR/isServer guard; tests run with happy-dom */
-    if (isServer) return
-    if (isLocked) return
-    isLocked = true
-    if (lockCount === 0) {
-      const body = document.body
-      const html = document.documentElement
-      // Measured BEFORE hiding overflow: once the scrollbar is gone the page
-      // widens by its width and every centred element jumps sideways.
-      // Padding the body by that width keeps the layout still.
-      const scrollbar = window.innerWidth - html.clientWidth
-      savedBodyOverflow = body.style.overflow
-      savedHtmlOverflow = html.style.overflow
-      savedPaddingRight = body.style.paddingRight
-      if (scrollbar > 0) {
-        const current = Number.parseFloat(getComputedStyle(body).paddingRight) || 0
-        body.style.paddingRight = `${current + scrollbar}px`
-      }
-      // `overflow: hidden` on <body> alone does not stop iOS Safari scrolling
-      // the page; the root scroller is <html>, so lock both.
-      body.style.overflow = 'hidden'
-      html.style.overflow = 'hidden'
-    }
-    lockCount++
+    if (release) return
+    release = lockScroll()
   }
 
   const unlock = () => {
-    /* v8 ignore next — SSR/isServer guard; tests run with happy-dom */
-    if (isServer) return
-    if (!isLocked) return
-    isLocked = false
-    lockCount--
-    if (lockCount === 0) {
-      document.body.style.overflow = savedBodyOverflow
-      document.documentElement.style.overflow = savedHtmlOverflow
-      document.body.style.paddingRight = savedPaddingRight
-    }
+    if (!release) return
+    const r = release
+    release = null
+    r()
   }
 
-  onUnmount(() => {
-    if (isLocked) unlock()
-  })
+  onUnmount(unlock)
 
   return { lock, unlock }
 }

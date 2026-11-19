@@ -422,7 +422,15 @@ function hydrateSoleAccessorChild(
  */
 function mountOverEmpty(child: () => VNodeChild, parent: Node, anchor: Node | null, path: string): Cleanup {
   const before = anchor === null ? parent.lastChild : anchor.previousSibling
-  const cleanup = mountReactive(child, parent, anchor, mountOwned)
+  // Nothing to adopt, so mount exactly what a cold mount builds: the accessor
+  // dispatcher (`mountChild` → `mountAccessorChild`). It chose `mountReactive`
+  // directly before, which pinned an EMPTY server list to the general path, so
+  // a keyed list whose data arrived after hydration re-created every row on
+  // every update (the dispatcher waits for a value it can classify — see
+  // `isUndecidedChild`). Through `mountOwned`, so the dispatcher starts at
+  // element depth 0: a textish value gets a real remover, and the structural
+  // machinery it hands off to mounts every run through `mountOwned` itself.
+  const cleanup = mountOwned(child, parent, anchor)
   for (let n = before === null ? parent.firstChild : before.nextSibling; n !== null && n !== anchor; n = n.nextSibling) {
     if (n.nodeType === Node.ELEMENT_NODE) {
       warnHydrationMismatch('tag', (n as Element).localName, '', `${path} > reactive`)
@@ -521,7 +529,7 @@ function needsKeyedReconcile(value: unknown): boolean {
  * other branch of this walker does. So a `lazy()` route whose chunk has not
  * landed still gets the old rebuild — at that instant the client really does
  * render nothing. Such a host must resolve its component BEFORE hydrating;
- * `@pyreon/zero`'s `startClient` calls `router.preload(...)` for exactly this
+ * `@pyreon/zero`'s `startClient` calls `router.preloadComponents(...)` for exactly this
  * reason. A `lazy()` component is the exception, because it CAN say which of
  * the two it is — see `hydrateDeferredLazy`, which keeps its range.
  *

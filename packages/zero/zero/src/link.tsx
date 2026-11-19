@@ -137,7 +137,7 @@ function doPrefetch(href: string, router: ReturnType<typeof useRouter> | null) {
   // Warm the route's real JS chunk via the router's own lazy loader — the
   // Vite-resolved `import()` inside the matched route record, populated into
   // the component cache so the imminent SPA navigation renders synchronously.
-  // `skipLoaders: true` keeps it a pure CODE prefetch (no loader/data fetches,
+  // `preloadComponents` keeps it a pure CODE prefetch (no loader/data fetches,
   // no side effects on hover). Best-effort: a failed prefetch never surfaces.
   //
   // We deliberately do NOT inject `<link rel="modulepreload" href={href}>`:
@@ -147,9 +147,9 @@ function doPrefetch(href: string, router: ReturnType<typeof useRouter> | null) {
   // The per-route chunk URL is not knowable from the client path (it lives in
   // the route record's loader closure), so preloading through the router is the
   // only reliable way to warm the actual chunk.
-  // `?.catch` (not `.catch`) — when no router is active `router?.preload(...)`
+  // `?.catch` (not `.catch`) — when no router is active `router?.preloadComponents(...)`
   // short-circuits to undefined, and `.catch` on undefined would throw.
-  void router?.preload(href, undefined, { skipLoaders: true })?.catch(() => {})
+  void router?.preloadComponents(href)?.catch(() => {})
 }
 
 /**

@@ -753,7 +753,7 @@ export default defineConfig({
 
 ```tsx
 import { renderWithHead } from '@pyreon/head/ssr'
-import { createRouter, serializeLoaderData, stringifyLoaderDataForScript } from '@pyreon/router'
+import { createRouter, preloadRoute, serializeLoaderData, stringifyLoaderDataForScript } from '@pyreon/router'
 import { routes } from './routes'
 import { App } from './App'
 
@@ -766,7 +766,7 @@ export async function handler(req: Request): Promise<Response> {
 
   // Resolve the matched route's lazy components and run its loaders.
   // (`prefetchLoaderData` runs loaders only — a lazy page would render empty.)
-  await router.preload(url.pathname + url.search, req)
+  await preloadRoute(router, url.pathname + url.search, req)
 
   // Render the app to HTML with head management
   const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App router={router} />)

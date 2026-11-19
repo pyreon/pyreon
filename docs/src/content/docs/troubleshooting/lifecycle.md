@@ -47,6 +47,18 @@ The web `RouterView` claims its depth from `router._viewDepth`, a counter every 
 
 ---
 
+### [FIXED, 2026-11] A JSX-building expression the emit SLICES loses the JSX rules.
+
+Wherever the compiler copies source text into a generated accessor without walking it, the JSX inside never gets the rules every other JSX element gets: `{row.label()}` is not made an accessor, a component's `label={row.label()}` gets no `_rp`. In a keyed `.map()` the read then runs in the LIST's accessor, the reconciler keeps the row for the unchanged key, and the cell never updates. Four slice sites, all walked in place now: the `_mountSlot(() => (…))` hole of a compiled template (walked WITH templates, `clientWalksHole`); the same hole in SVG/MathML content (`<svg>{rows().map(…)}</svg>`; a `_tpl` root is namespaced by its own tag, so this hole is walked with its JSX kept on the h() path, `hPathHoles` / `h_path_holes`); the `() => (…)` an h()-path child or DOM attribute gets (`<Comp>{rows().map(…)}</Comp>`, the inner `.map` of a keyed row); and a component prop's `_rp(() => …)` (both `wrapWalked` / `wrap_walked`, JSX kept on the h() path so a component receiving it still gets vnodes). **Rule: an expression that builds JSX is never copied into an accessor as a slice. It is walked in place, with templates only where the consumer is a template hole outside foreign content; everywhere else its JSX stays on the h() path.** A slice of JSX survives only where the JSX is not rendered by the emit (an event handler's body), and there an exactly-bare signal stays bare (`isBareDomBinding`). Reference: `compiler/src/jsx.ts:wrapWalked`, `processOneChild` (`hPathHoles`); locked by `compiler/src/tests/wrap-walked-jsx.test.ts`, `template-hole-walk.test.ts` and `runtime-dom/src/tests/keyed-map-row-reactivity.test.tsx` (JS and Rust each reverted alone fail them).
+
+---
+
+### [FIXED, 2026-11] A binding that picks its machinery for life must not pick on a value that carries no evidence.
+
+The accessor dispatcher (`mountAccessorChild`) chooses keyed reconciler, general reactive mount or text once. It chose on the first value, so a keyed list whose first value was `[]` (or `undefined`, `rows()?.map(…)`) was pinned to the general path and re-created every row on every later update — focus, typed input and transitions lost — in the common data-arrives-after-mount case; hydration over an empty server list chose `mountReactive` directly. Fix: an empty array or nullish value is UNDECIDED (`isUndecidedChild`): the dispatcher mounts a placeholder and classifies again on its next run; hydration over an empty range mounts that same dispatcher (`mountOverEmpty`). The keyed reconciler also takes a non-array value (nullish → no rows, anything else → one row), which it threw on before. **Rule: defer a once-only classification until a value can decide it; keep a placeholder for the position meanwhile.** Reference: `runtime-dom/src/mount.ts:mountAccessorChild`, `hydrate.ts:mountOverEmpty`; locked by `tests/keyed-map-undecided-first.test.tsx` (+ `.browser` twin for focus and input value).
+
+---
+
 ### [FIXED, 2026-10] An `effect()` / `computed()` created in a `<For>` row callback had no owner.
 
 The callback runs after the surrounding component's setup, when no scope is current, so the effect registered nowhere: a removed row kept running it, and so did every row after the list unmounted. Each row callback now runs under a pooled collector scope that the row keeps (and stops on removal) only when something registered — zero allocation otherwise, no measurable cost on the fair board. **Rule: any framework construct that runs a user callback outside component setup must give that callback an owner, or effects created in it are unowned.** Reference: `runtime-dom/src/nodes.ts:runRowCallback`; locked by `for-row-effect-scope.test.tsx` (bisect-verified).
@@ -62,6 +74,12 @@ The callback runs after the surrounding component's setup, when no scope is curr
 ### [FIXED, 2026-11] A hydration walk that lets a subtree throw escape.
 
 `mountComponent` contains a throw from its subtree (stop the component's scope, restore the owner, route to the nearest error boundary or log, continue), but `hydrateComponent`'s `hydrateChild` call had no try/catch. A throw during hydration escaped `hydrateRoot`, so the caller got no cleanup and everything already hydrated (a sibling's effects) could never be disposed, and the context owner stayed pointing at the dead component, so the next mount chained to it. **Rule: the hydrate path contains a throw exactly where and how the mount path does, and every root entry restores the ambient walk state (flags AND context owner) in `finally`.** Reference: `runtime-dom/src/hydrate.ts` (`hydrateComponent`, `hydrateRoot`); locked by `hydrate-throw-disposes.test.ts` (bisect-verified).
+
+---
+
+### [FIXED, 2026-11] An `effect()` / `computed()` created during server rendering had no owner.
+
+The server never mounts, so no component scope exists and nothing disposed what a component created. Each one reading a signal that outlives the request (module state, a cache, `systemColorMode()` under `<ColorModeProvider mode="system">`) kept one subscriber per request, forever, and its closure pinned props, children and request data. **Rule: on the server the REQUEST owns every node created with no current scope.** `@pyreon/runtime-server` keeps an `EffectScope` on the request's AsyncLocalStorage store; reactivity reads it (`_setRequestOwnerReader`) only where a node registers and only when no scope is current; the request's last hold (the call that opened it, plus every render or stream inside it until that ends, so a streamed body outlives the handler's `runWithRequestContext` callback) stops it. Never make a request scope current with `setCurrentScope` around a render: renders interleave across `await`s, and a slot held over one hands one request's nodes to another. A per-request registry whose entries own their own scope (a store's `effectScope` and plugin cleanups) must publish a disposer the renderer calls at request end (`__PYREON_STORE_DISPOSE_REGISTRY__`); dropping the map is not disposing it. Corollary, the same as on the client: a module-level singleton created lazily inside a render must build its nodes under its own `effectScope()`, or the first request disposes them. Reference: `runtime-server/src/index.ts` (`RequestCtx`, `releaseRequest`); locked by `ssr-reactive-ownership.test.ts` (includes two interleaved async renders) and store `ssr-request-dispose.ssr.test.ts` (bisect-verified).
 
 ---
 
@@ -116,6 +134,18 @@ The ISR memory store capped its cache at `maxEntries` but its tag index only gre
 ### A refcounted module cache whose async load writes back unconditionally (Class F)
 
 `@pyreon/zero-content` search released its MiniSearch when the last `<Search>` unmounted, but a load still in flight then assigned `_instance = ms`, re-pinning the whole index with zero subscribers; a rejected load stayed cached as `_loading`, so every later load of that URL failed until the last subscriber left; and a slow load for an older catalog URL overwrote the current one. Rule: a load writes into a shared cache only if the generation it started under is still current (bump on release-to-zero, reset and every new load), and both settle paths clear the promise cache. Reference: `packages/zero/zero-content/src/search/search-runtime.tsx` (`_generation`); locked by `src/tests/search-load-race.test.ts`.
+
+---
+
+### A resource held for the component's LIFETIME when it belongs to a STATE, and released by writing a constant
+
+`useOverlay({ type: 'modal' })` took the page scroll lock in `setupListeners` (on mount) and released it with `document.body.style.overflow = ''`, so a closed modal blocked page scrolling while its trigger was on the page, and its release wiped the value `@pyreon/hooks` `useScrollLock` (its own counter) had saved under an open `ModalBase`. Rules: acquire when the state that needs it begins (open) and release when it ends (close) AND on unmount if still held; release by restoring what the first hold saved, never by writing a default; one shared resource gets ONE counter for the whole framework. Page and element scroll locks go through `lockScroll()` from `@pyreon/core`. Reference: `packages/core/core/src/scroll-lock.ts`, `packages/ui-system/elements/src/Overlay/useOverlay.tsx`; locked by `Overlay-modal-scroll-lock.browser.test.tsx` (every older modal test mounted with `isOpen: true`, which is why mount-time locking passed).
+
+---
+
+### A hold on someone else's counter released only by the opposite EVENT, never by teardown
+
+A nested `useOverlay` blocked its parent in `showContent` and unblocked only in `hideContent`. A child removed while open (conditional render, route change) never hid, so the parent stayed blocked and never again closed on outside click or Escape; a child shown twice double-counted, and a hide on a never-opened child released someone else's block. Rule: each holder records whether it holds (at most one hold per holder), takes it when its state begins, and releases it exactly once — on the opposite event OR on detach, whichever comes first. Reference: `packages/ui-system/elements/src/Overlay/useOverlay.tsx` (`blockParent` / `releaseParent`); locked by `Overlay-nested-unmount-block.browser.test.tsx`.
 
 ---
 
@@ -325,6 +355,12 @@ The streaming handler copied the app stream into the response body from `start()
 ### [FIXED, 2026-11] `{ once: true }` on a CALLER's signal is not a cleanup (Class D).
 
 `renderToStream({ signal })` chained the caller's signal with `addEventListener('abort', …, { once: true })`, which removes the listener only if that signal fires. A caller sharing one long-lived signal across operations (a shutdown signal, a reused connection signal) gained one listener, and the stream it closed over, per render. **Rule: a listener on a signal or target you do not own comes off on every end of your operation (success, error, cancel), through an idempotent detach.** Reference: `runtime-server/src/index.ts:chainCallerSignal`; locked by `stream-abort-listener.test.ts` (bisect-verified).
+
+---
+
+### [FIXED, 2026-11] Ref-dependent DOM work scheduled from setup with `queueMicrotask` / a timer.
+
+`<RouterLink prefetch="viewport">` called `observer.observe(ref.current)` from a microtask queued at setup. A link unmounted in the same tick had its ref cleared first, so `observe(null)` threw an uncaught TypeError. **Rule: work that needs a component's DOM runs in `onMount` (the ref is set there) and is undone in that hook's returned cleanup; never in a microtask or timer queued from the body, which can outlive the component.** Reference: `router/src/components.tsx` (RouterLink); locked by `router-link-viewport-unmount.test.ts` (bisect-verified).
 
 ---
 

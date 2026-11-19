@@ -7,7 +7,7 @@ import {
   _rdRegisterBinding,
   _rdTagHandle,
 } from './reactive-devtools'
-import { getCurrentScope } from './scope'
+import { _ownerScope, getCurrentScope } from './scope'
 import {
   exactDeps,
   getInnerEffectCollector,
@@ -413,7 +413,7 @@ function registerEffectHere(e: Effect): void {
     }
   } else {
     // Otherwise auto-register with the active EffectScope (if any)
-    getCurrentScope()?.add(e)
+    _ownerScope()?.add(e)
   }
 }
 
@@ -735,7 +735,7 @@ function renderEffectImpl(fn: () => void, owned: boolean): () => void {
     if (_of.d > 0) _of.l.push(dispose)
   } else {
     // Auto-register with scope so render effects are disposed during teardown
-    getCurrentScope()?.add(dispose)
+    _ownerScope()?.add(dispose)
   }
 
   return dispose

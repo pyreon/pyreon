@@ -38,7 +38,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import type { RouteRecord } from '@pyreon/router'
-import { createRouter, resolveRoute } from '@pyreon/router'
+import { createRouter, preloadRoute, resolveRoute } from '@pyreon/router'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import type { Middleware } from '@pyreon/server'
 import {
@@ -126,7 +126,7 @@ export async function renderRouteOgSvg(
       // same field.
       _loaderData: Map<RouteRecord, unknown>
     }
-    await router.preload(path, request)
+    await preloadRoute(router, path, request)
     return renderOgSvgFromLoaded(routes, path, router._loaderData)
   })
 }

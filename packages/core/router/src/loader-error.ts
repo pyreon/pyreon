@@ -1,7 +1,7 @@
 /**
  * Dev-only tag: which route's loader threw.
  *
- * `router.preload` (the server-side loader pass every SSR host runs) rethrows
+ * `preloadRoute` (the server-side loader pass every SSR host runs) rethrows
  * a loader's error unchanged. In development it first stores the throwing
  * record's `path` on the error under this registered symbol, so a dev host
  * can tell a loader failure from a render failure and name the route. Zero's

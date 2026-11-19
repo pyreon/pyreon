@@ -47,18 +47,20 @@ const DIRECT = `function C(props){ const a = props.x; return <div>{a}</div> }`
 describe('Round 7 — prop-derived inlining inside callback-nested JSX (JS≡Rust)', () => {
   it('JS backend inlines the prop-derived const in the callback (the contract)', () => {
     const out = js(CALLBACK_NESTED)
-    expect(out).toContain("class={(props.theme + '-btn')}")
+    // Walked (the `.map` child keeps the h() path): the inlined read is the
+    // attribute's own accessor.
+    expect(out).toContain("class={() => (props.theme + '-btn')}")
     expect(out).not.toMatch(/class=\{cls\}/)
   })
 
   it('CONTRACT: native backend now inlines callback-nested prop-derived (R7 fixed)', () => {
     expect(rust(CALLBACK_NESTED)).toBe(js(CALLBACK_NESTED))
-    expect(rust(CALLBACK_NESTED)).toContain("class={(props.theme + '-btn')}")
+    expect(rust(CALLBACK_NESTED)).toContain("class={() => (props.theme + '-btn')}")
   })
 
   it('CONTRACT: transitive prop-derived chain also inlines in a callback, both backends', () => {
     expect(rust(TRANSITIVE_CB)).toBe(js(TRANSITIVE_CB))
-    expect(rust(TRANSITIVE_CB)).toContain('{((props.x) + 1)}')
+    expect(rust(TRANSITIVE_CB)).toContain('{() => ((props.x) + 1)}')
   })
 
   it('CONTRACT: a shadowing arrow param is NOT clobbered (filter prevents the R2 bug in Rust)', () => {

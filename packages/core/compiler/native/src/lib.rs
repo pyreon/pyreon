@@ -808,6 +808,14 @@ struct Ctx<'a> {
     /// Attribute-value arrows (`component={(p) => …}`) take a different path
     /// and are NOT affected — they can be real inline components.
     in_jsx_child_callback: bool,
+    /// > 0 while walking JSX inside an accessor the emit wraps (`wrap_walked`):
+    /// that JSX keeps the h() path. Mirrors JS `wrappedJsxDepth`.
+    wrapped_jsx_depth: u32,
+    /// Span starts of preserved template holes in SVG/MathML content that build
+    /// JSX: walked like every hole, but under `wrapped_jsx_depth` so the JSX
+    /// keeps the h() path (mounted in its parent's namespace). Mirrors JS
+    /// `hPathHoles`.
+    h_path_holes: FxHashSet<u32>,
 
     /// Whether the expression currently being walked is a DIRECT
     /// argument-position arrow/function of a CallExpression
@@ -990,6 +998,8 @@ impl<'a> Ctx<'a> {
             ssr_next_eager: false,
             needs_slot_import: false,
             in_jsx_child_callback: false,
+            wrapped_jsx_depth: 0,
+            h_path_holes: FxHashSet::default(),
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
@@ -5903,6 +5913,19 @@ fn handle_jsx_attribute(
             return;
         }
 
+        // A prop value that builds JSX: walked, not sliced (see `wrap_walked`).
+        if should_wrap(expr, ctx) && contains_jsx_in_expr(expr) {
+            ctx.needs_rp_import = true;
+            wrap_walked(expr, "_rp(() => (", "))", ctx);
+            let sp = expr.span();
+            ctx.lens(
+                sp.start,
+                sp.end,
+                "reactive-prop",
+                "live prop — signal reads here are tracked into the component".to_string(),
+            );
+            return;
+        }
         // Wrap with _rp() if dynamic
         if should_wrap(expr, ctx) {
             let sliced = slice_expr(expr, ctx);
@@ -6103,9 +6126,10 @@ fn is_svg_only_tag(tag: &str) -> bool {
 /// element sits in SVG or MathML content by its JSX ancestry: the chain runs
 /// through elements (components included) and fragments up to the first
 /// non-JSX parent; `svg`, `math` or an SVG-only tag enter foreign content and
-/// `foreignObject` returns to HTML. A hole there is never walked
+/// `foreignObject` returns to HTML. A hole there is never walked WITH templates
 /// (`client_walks_hole`), because each element it builds would be a template
-/// root namespaced by its own tag alone. A pre-pass because the walk has no
+/// root namespaced by its own tag alone; it is walked with its JSX kept on the
+/// h() path instead (`h_path_holes`). A pre-pass because the walk has no
 /// parent pointers. Mirrors jsx.ts `inForeignContent`.
 fn collect_foreign_holes(program: &Program) -> FxHashSet<u32> {
     struct F {
@@ -6349,7 +6373,7 @@ const SSR_CLIENT_RAW: u8 = 2;
 /// Would the client's `try_template_emit` lower this element to a template root?
 /// `eager` is the client's `parent_eager_mount` verdict for it.
 fn client_templates_root(el: &JSXElement, eager: bool, ctx: &Ctx) -> bool {
-    if is_self_closing(el) {
+    if is_self_closing(el) || ctx.wrapped_jsx_depth > 0 {
         return false;
     }
     if ctx.client_tpl_components && eager && template_absorbs_component(&el.children) {
@@ -6536,6 +6560,17 @@ fn unwrap_type_layers<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
 }
 
 fn wrap_expr(expr: &Expression, ctx: &mut Ctx) {
+    if contains_jsx_in_expr(expr) {
+        wrap_walked(expr, "() => (", ")", ctx);
+        let sp = expr.span();
+        ctx.lens(
+            sp.start,
+            sp.end,
+            "reactive",
+            "live — re-evaluates whenever its signals change".to_string(),
+        );
+        return;
+    }
     let sliced = slice_expr(expr, ctx);
     // Parenthesize an expression that STARTS with `{` (see jsx.ts wrap).
     let text = if sliced.starts_with('{') {
@@ -6551,6 +6586,30 @@ fn wrap_expr(expr: &Expression, ctx: &mut Ctx) {
         "reactive",
         "live — re-evaluates whenever its signals change".to_string(),
     );
+}
+
+/// Wrap an accessor around an expression that BUILDS JSX, walking it in place
+/// instead of slicing it, so the JSX inside gets the reactivity rules every
+/// other JSX element gets (a keyed `.map` row's `{row.label()}` becomes the
+/// row's own binding). The JSX stays on the h() path. Mirrors JS `wrapWalked`
+/// — see its doc comment.
+fn wrap_walked(expr: &Expression, open: &str, close: &str, ctx: &mut Ctx) {
+    let sp = expr.span();
+    ctx.add_replacement(sp.start, sp.start, open.to_string());
+    ctx.wrapped_jsx_depth += 1;
+    let old = ctx.parent_is_jsx;
+    let old_eager = ctx.parent_eager_mount;
+    let old_cb = ctx.in_jsx_child_callback;
+    ctx.parent_is_jsx = false;
+    ctx.parent_eager_mount = false;
+    ctx.in_jsx_child_callback = false;
+    slice_unsliced(expr, ctx);
+    walk_expression(expr, ctx);
+    ctx.in_jsx_child_callback = old_cb;
+    ctx.parent_is_jsx = old;
+    ctx.parent_eager_mount = old_eager;
+    ctx.wrapped_jsx_depth -= 1;
+    ctx.add_replacement(sp.end, sp.end, close.to_string());
 }
 
 // ─── Compile-to-string SSR fast path (`options.ssrTemplate`) ─────────────────
@@ -8553,6 +8612,9 @@ fn find_jsx_element_by_span_in<'a>(
 }
 
 fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
+    if ctx.wrapped_jsx_depth > 0 {
+        return false;
+    }
     // A KEYED root stays a JSX element, as the client compile keeps it on the
     // h() path. The root is the value a parent component receives as a child,
     // and `_ssr` carries no key (#4382). Mirrors the JS `trySsrTemplateEmit`.
@@ -8751,7 +8813,7 @@ fn brace_template_child(call: String, ctx: &mut Ctx) -> String {
 }
 
 fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
-    if ctx.ssr {
+    if ctx.ssr || ctx.wrapped_jsx_depth > 0 {
         return false;
     }
     if is_self_closing(el) {
@@ -8851,7 +8913,14 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
             // the container's direct expression (that bails the template), so
             // no root inside it is eagerly ordered. Mirrors jsx.ts
             // `walkUnslicedExpr(hole)`.
+            let h_path = ctx.h_path_holes.contains(&hole.start);
+            if h_path {
+                ctx.wrapped_jsx_depth += 1;
+            }
             walk_preserved_child_expr(e, false, ctx);
+            if h_path {
+                ctx.wrapped_jsx_depth -= 1;
+            }
         }
     }
     ctx.parent_is_jsx = old_parent_is_jsx;
@@ -10876,8 +10945,13 @@ fn process_one_child(
             // never a source slice the walk cannot see. A function child IS the
             // slot's accessor and is preserved whole. Mirrors jsx.ts
             // `processOneChild` (`holdsJsx` / `holeArg`) and `client_walks_hole`.
-            let walk =
-                contains_jsx_in_expr(expr) && !ctx.foreign_holes.contains(&raw_expr.span().start);
+            // A hole in SVG/MathML content is preserved and walked too, but its
+            // JSX keeps the h() path (`h_path_holes`), as `wrap_walked` keeps an
+            // h()-path child's. Mirrors jsx.ts `hPathHoles`.
+            let walk = contains_jsx_in_expr(expr);
+            if walk && ctx.foreign_holes.contains(&raw_expr.span().start) {
+                ctx.h_path_holes.insert(expr.span().start);
+            }
             let is_fn_child = matches!(
                 expr,
                 Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
@@ -11849,7 +11923,7 @@ fn detect_collapsible_shape(
 /// PR-1 scope: full collapse only — a non-full shape keeps the normal mount
 /// (the partial / dynamic / element-child fallthrough is a follow-on PR).
 fn try_rocketstyle_collapse(el: &JSXElement, ctx: &mut Ctx) -> bool {
-    if ctx.collapse.is_none() {
+    if ctx.collapse.is_none() || ctx.wrapped_jsx_depth > 0 {
         return false;
     }
     let tag = jsx_tag_name(el);

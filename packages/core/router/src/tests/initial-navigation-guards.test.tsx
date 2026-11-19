@@ -1,6 +1,7 @@
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { RouterProvider, RouterView } from '../index'
+import { preloadRoute } from '../server-loaders'
 import { createRouter } from '../router'
 import type { NavigationGuard, RouteRecord } from '../types'
 
@@ -111,7 +112,7 @@ describe('initial navigation runs the guard pipeline (client)', () => {
         } },
       ],
     })
-    await router.preload('/admin')
+    await preloadRoute(router, '/admin')
     expect(loaderRan).toBe(false)
   })
 
