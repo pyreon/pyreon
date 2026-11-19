@@ -45,7 +45,7 @@ const parses = (o: string): boolean => {
 
 describe('Round 11 — signal auto-call respects lexical shadowing', () => {
   it('destructured-shorthand callback param shadowing a signal is NOT auto-called', () => {
-    const out = emit(`function C(){ const x = signal(0); return <ul>{[{x:1}].map(({x}) => <li>{x}</li>)}</ul> }`)
+    const out = emit(`function C(){ const x = signal(0); return <List>{[{x:1}].map(({x}) => <li>{x}</li>)}</List> }`)
     expect(parses(out)).toBe(true)
     expect(out).not.toContain('{x()}')
     expect(out).toContain('({x}) => <li>{x}</li>')

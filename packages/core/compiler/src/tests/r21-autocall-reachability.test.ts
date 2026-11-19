@@ -103,13 +103,19 @@ describeNative('R21 — JS ≡ Rust on the fuzz-found corpus (client + SSR)', ()
 
 describe('R21 — emitted FORM (semantic assertions, JS backend)', () => {
   const t = (src: string) => transformJSX_JS(src, 'r21.tsx').code
+  // The SLICE form: under a component parent the `{…}` child is wrapped as a
+  // slice, and the JSX inside it is the source text with `sliceExpr`'s edits.
+  // Under the corpus's DOM parent the same child is a template hole, preserved
+  // and walked (`template-hole-walk.test.ts`), so its JSX compiles instead.
+  const sliced = (src: string) => t(src.replace('<ul>', '<List>').replace('</ul>', '</List>'))
 
   it('handler body auto-calls the signal read: s1.set(s1() + 1)', () => {
     expect(t(CORPUS[0]![1])).toContain('s1.set(s1() + 1)')
   })
 
   it('.map callback ternary auto-calls: title={s1() ? ...}', () => {
-    expect(t(CORPUS[1]![1])).toContain('title={s1() ? "a" : "b"}')
+    expect(sliced(CORPUS[1]![1])).toContain('title={s1() ? "a" : "b"}')
+    expect(t(CORPUS[1]![1])).toContain('_setAttr(__root, "title", s1() ? "a" : "b")')
   })
 
   it('slot template-literal attr auto-calls: `v${s1()}`', () => {
@@ -117,16 +123,22 @@ describe('R21 — emitted FORM (semantic assertions, JS backend)', () => {
   })
 
   it('EXACTLY-BARE slot attr stays bare (fine-grained accessor binding)', () => {
-    expect(t(CORPUS[6]![1])).toContain('title={s1}')
-    expect(t(CORPUS[6]![1])).not.toContain('title={s1()}')
+    expect(sliced(CORPUS[6]![1])).toContain('title={s1}')
+    expect(sliced(CORPUS[6]![1])).not.toContain('title={s1()}')
+    // Walked: the template binds the signal itself — the same fine-grained read.
+    expect(t(CORPUS[6]![1])).toContain('_bindDirect(s1, (v) => _setAttr(__root, "title", v))')
   })
 
   it('EXACTLY-BARE slot child stays bare', () => {
-    expect(t(CORPUS[8]![1])).toContain('<span>{s1}</span>')
+    expect(sliced(CORPUS[8]![1])).toContain('<span>{s1}</span>')
+    expect(t(CORPUS[8]![1])).toContain('_bindText(s1, __t0)')
   })
 
   it('parens are transparent for the bare-skip: id={(s1)} stays bare', () => {
-    expect(t(CORPUS[7]![1])).toContain('id={(s1)}')
+    expect(sliced(CORPUS[7]![1])).toContain('id={(s1)}')
+    // Walked: a self-closing root stays on h(), whose attribute walk wraps the
+    // read in an accessor — reactive either way, never a one-time value.
+    expect(t(CORPUS[7]![1])).toContain('id={() => (s1())}')
   })
 
   it('paren-wrapped literals BAKE into the template (no runtime setAttribute)', () => {
