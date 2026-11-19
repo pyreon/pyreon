@@ -1,4 +1,4 @@
-import { disabledState, el, focusRing, tones, toneText } from '../../factory'
+import { disabledState, el, focusRing, tintText, tones } from '../../factory'
 
 const Chip = el
   .config({ name: 'Chip' })
@@ -21,7 +21,7 @@ const Chip = el
   .states((t, m) => ({
     primary: {
       backgroundColor: t.color.system.primary[100],
-      color: toneText(t, m, 'primary'),
+      color: tintText(t, m, 'primary'),
       hover: {
         backgroundColor: t.color.system.primary[200],
       },
@@ -35,14 +35,14 @@ const Chip = el
     },
     success: {
       backgroundColor: t.color.system.success[100],
-      color: toneText(t, m, 'success'),
+      color: tintText(t, m, 'success'),
       hover: {
         backgroundColor: t.color.system.success[200],
       },
     },
     error: {
       backgroundColor: t.color.system.error[100],
-      color: toneText(t, m, 'error'),
+      color: tintText(t, m, 'error'),
       hover: {
         backgroundColor: t.color.system.error[200],
       },
