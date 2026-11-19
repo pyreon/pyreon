@@ -1,5 +1,7 @@
 # @pyreon/connector-document
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Bridge between `@pyreon/ui-system` JSX trees and `@pyreon/document` for multi-format export.
 
 `@pyreon/connector-document` walks a Pyreon JSX tree of document-primitive components (`DocDocument`, `DocHeading`, `DocText`, …) and produces a serializable `DocNode` tree that `@pyreon/document` can render to PDF, DOCX, XLSX, PPTX, email, Markdown, HTML, and 10+ other formats. Components carry `_documentType` markers (set via `attrs().statics()` on rocketstyle primitives, or directly on user components); the extractor finds them, resolves `_documentProps` and `$rocketstyle` styles, and recursively walks children. The hot path is fast — for real rocketstyle primitives it runs the accumulated `.attrs()` chain directly instead of invoking the full component (no JSX tree creation, no dimension resolution).

@@ -398,7 +398,6 @@ import { PyreonUI } from '@pyreon/ui-core'
         "Expecting a nested `<Provider inversed>` to follow the parent when the parent's mode changes — the parent context is read ONCE at setup, so the inverted mode is frozen at mount; `<PyreonUI inversed>` stays reactive",
         'Setting only `mode` with no theme in scope — the default delegate provides nothing when the resolved theme is empty, so `<Provider mode="dark">` outside any themed ancestor leaves descendants on `"light"`; pass a `theme` or use `<PyreonUI>`',
         'Expecting `styled()` / `useTheme()` from `@pyreon/styler` to see the theme passed here — this Provider writes only the ui-core context that rocketstyle reads; `<PyreonUI>` writes both',
-        "Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — mounting this Provider delegates to ui-core's internal provider, which logs it in development; switch to `<PyreonUI>`",
         'Mounting a fresh `Provider`/`PyreonUI` per view — the `_rsMemo` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider',
         'Expecting `inversed` to FORCE dark — it inverts whatever mode the parent resolves (light↔dark), and tracks that parent as it changes',
         'Confusing this theme/mode provider with `.config({ provider: true })` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming',

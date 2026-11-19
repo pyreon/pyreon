@@ -23,7 +23,7 @@ import { themedDial } from './dial'
 
 
 export interface PieChartProps<T> extends CanvasHostProps {
-  data: T[] | (() => T[])
+  data: readonly T[] | (() => readonly T[])
   value: (d: T, index: number) => Double
   label: (d: T, index: number) => string
   /** Per-slice colour; the theme palette otherwise. */
@@ -47,7 +47,7 @@ export interface PieChartProps<T> extends CanvasHostProps {
 }
 
 export function PieChart<T>(props: PieChartProps<T>): VNode {
-  const readData = (): T[] => (typeof props.data === 'function' ? (props.data as () => T[])() : props.data)
+  const readData = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
   const slices = (palette: readonly string[]): Slice[] =>
     readData().map((d, i) => ({ value: props.value(d, i), label: props.label(d, i), color: props.color?.(d, i) ?? paletteAt(palette, i) }))
   return canvasHost<PieGeometry>({

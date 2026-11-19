@@ -1,5 +1,7 @@
 # @pyreon/atlas
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 > **Working name — a rebrand is pending.** Published on npm as `@pyreon/atlas`.
 
 An **AI-native component workbench** for the Pyreon ecosystem. Atlas is "in the

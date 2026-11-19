@@ -81,7 +81,7 @@ export function sankeyRgba(hex: string, alpha: Double): string {
 }
 
 /** Node index by name, or -1. */
-function sankeyIndexOf(nodes: SankeyNode[], name: string): number {
+function sankeyIndexOf(nodes: readonly SankeyNode[], name: string): number {
   // Returns at the first match: the guard form kept walking every node per
   // lookup, and a layout does two lookups per LINK, so the scan was O(L·N).
   for (let i = 0; i < nodes.length; i++) if (nodes[i]!.name === name) return i
@@ -89,7 +89,7 @@ function sankeyIndexOf(nodes: SankeyNode[], name: string): number {
 }
 
 /** Lay out the flow graph into `box`. */
-export function layoutSankey(nodes: SankeyNode[], links: SankeyLink[], box: Rect, options?: SankeyOptions): SankeyLayout {
+export function layoutSankey(nodes: readonly SankeyNode[], links: readonly SankeyLink[], box: Rect, options?: SankeyOptions): SankeyLayout {
   const palette = options?.palette ?? DEFAULT_PALETTE
   const nodeWidth = options?.nodeWidth ?? 16.0
   const padding = options?.nodePadding ?? 8.0

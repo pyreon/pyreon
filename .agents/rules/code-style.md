@@ -88,6 +88,7 @@ Before gating a rule or forcing a fix, read its findings. Several rules that loo
 - Context: `provide(ctx, value)` — provides for the current component's subtree and is released on unmount
 - `ExtractProps<T>` extracts props from a ComponentFn or passes through
 - `HigherOrderComponent<HOP, P>` for typed HOC patterns
+- A repo script that creates scratch on disk (a `mkdtemp` directory, a git worktree, a directory in the source tree) registers it with `removeOnExit` from `scripts/remove-on-exit.ts` and calls the returned function in `finally`. A `finally` or an `exit` handler alone misses SIGINT / SIGTERM / SIGHUP; `{ gitWorktree: repoRoot }` also unregisters the worktree. A signal arriving while the script is blocked in `spawnSync` is handled when that child returns. Published packages cannot import `scripts/`: `@pyreon/native-compiler` has `onProcessEnd` (`src/exit-cleanup.ts`).
 
 ## Terminal output (every Pyreon command)
 

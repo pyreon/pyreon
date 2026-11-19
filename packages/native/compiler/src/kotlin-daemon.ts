@@ -51,6 +51,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
+import { onProcessEnd } from './exit-cleanup'
 import { cacheDir } from './validate-cache'
 
 /** Field separator inside a request line; U+0001 cannot appear in a path. */
@@ -130,6 +131,8 @@ interface Daemon {
   stderr: string[]
   /** Whether this process owns the JVM (and must clean up its spool). */
   owned: boolean
+  /** Unregisters the process-end cleanup (owned daemons only). */
+  release?: () => void
 }
 
 /**
@@ -382,6 +385,7 @@ function stopDaemon(d: Daemon): void {
   // An attached daemon belongs to the run (globalSetup); only its owner
   // kills it and removes the spool.
   if (!d.owned) return
+  d.release?.()
   try {
     d.child?.kill()
   } catch {
@@ -420,10 +424,18 @@ function spawnDaemon(kotlincVersion: string): Daemon | string {
   if (!java) return 'no runnable java (set JAVACMD or JAVA_HOME)'
 
   const spool = mkdtempSync(join(tmpdir(), 'pyreon-kotlin-daemon-'))
+  // Registered before the (up to 180 s) server compile, so a kill at any point
+  // after this line removes the spool, and stops the JVM once there is one.
+  let started: Daemon | undefined
+  const release = onProcessEnd(() => {
+    if (started) stopDaemon(started)
+    else rmSync(spool, { recursive: true, force: true })
+  })
   let jar: string
   try {
     jar = serverJar(kotlincVersion, libDir, spool)
   } catch (err) {
+    release()
     rmSync(spool, { recursive: true, force: true })
     return `server did not compile: ${(err as Error).message.split('\n')[0]}`
   }
@@ -438,7 +450,8 @@ function spawnDaemon(kotlincVersion: string): Daemon | string {
   const child = spawn(java, ['-Xss4m', '-XX:+UseSerialGC', '-cp', cp, 'ServerKt', spool], {
     stdio: ['pipe', 'ignore', 'pipe'],
   })
-  const d: Daemon = { child, pid: child.pid ?? -1, spool, seq: 0, libDir, stderr: [], owned: true }
+  const d: Daemon = { child, pid: child.pid ?? -1, spool, seq: 0, libDir, stderr: [], owned: true, release }
+  started = d
   child.stderr?.on('data', (b: Buffer) => {
     d.stderr.push(b.toString('utf8'))
     if (d.stderr.length > 50) d.stderr.shift()
@@ -446,13 +459,12 @@ function spawnDaemon(kotlincVersion: string): Daemon | string {
   child.on('error', () => {
     /* surfaced through exitCode/readiness below */
   })
-  process.once('exit', () => stopDaemon(d))
   // The daemon must never keep its HOST alive. A test runner exits
   // explicitly, but a CLI (`lathe generate` verifies native output through
   // `validateKotlin`) ends when its event loop drains — and a referenced
   // child plus its piped stdin/stderr kept that loop open forever, so the
   // command finished its work and then hung. Unreferenced, the host exits
-  // normally and the `exit` handler above stops the JVM.
+  // normally and the process-end cleanup registered above stops the JVM.
   child.unref()
   ;(child.stdin as { unref?: () => void } | null)?.unref?.()
   ;(child.stderr as { unref?: () => void } | null)?.unref?.()

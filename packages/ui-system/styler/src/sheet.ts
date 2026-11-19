@@ -7,6 +7,7 @@
  */
 import { hash } from './hash'
 import { clearNormCache } from './resolve'
+import { replaceLiveRules } from './replace-live-rules'
 import { isUrlOpen, type LayeredRule, skipQuoted, splitAtRules } from './split-at-rules'
 
 /**
@@ -261,6 +262,25 @@ interface StylerSSRState {
    * dropping it from `seen` would re-emit the rule rather than free anything.
    */
   seen: Set<string>
+  /**
+   * This request's root-variables block (`setRootVariables`), emitted AHEAD of
+   * every other rule. One slot, replaced, never appended: a theme swap mid-
+   * render leaves exactly the latest block.
+   */
+  rootVars: string
+  /** The `rootVars` text the last `flushSSRPending()` emitted (streaming). */
+  rootVarsFlushed: string
+}
+
+/** Empty a request's SSR state in place (request boundary / buffer reset). */
+const resetSSRState = (st: StylerSSRState): void => {
+  st.buffer = []
+  st.flushedIdx = 0
+  st.ambientIdx = 0
+  st.layerDeclEmitted = false
+  st.seen.clear()
+  st.rootVars = ''
+  st.rootVarsFlushed = ''
 }
 
 const freshSSRState = (): StylerSSRState => ({
@@ -269,6 +289,8 @@ const freshSSRState = (): StylerSSRState => ({
   ambientIdx: 0,
   layerDeclEmitted: false,
   seen: new Set(),
+  rootVars: '',
+  rootVarsFlushed: '',
 })
 
 export class StyleSheet {
@@ -308,7 +330,15 @@ export class StyleSheet {
     ambientIdx: 0,
     layerDeclEmitted: false,
     seen: new Set(),
+    rootVars: '',
+    rootVarsFlushed: '',
   }
+
+  // Client only: the ONE owned root-variables slot (`setRootVariables`). The
+  // text currently applied, and the live rules that carry it, so a new block
+  // REPLACES the old one in place instead of piling up behind it.
+  private rootVarsCss = ''
+  private rootVarsRules: CSSRule[] = []
 
   // SSR only: the final rule text per cache key, so a request whose render
   // references a class the instance-wide `cache` already knows can still push
@@ -402,14 +432,18 @@ export class StyleSheet {
    * The rule list a READ of the active SSR state emits. Unscoped (instance
    * state — SSG legacy callers, the collapse resolver, direct `renderToString`
    * users): the buffer exactly as before. Request-scoped: ambient rules first,
-   * then the rules THIS request's render touched.
+   * then the rules THIS request's render touched. Either way the root-variables
+   * slot (`setRootVariables`) leads.
    */
   private collectedRules(): string[] {
     const st = this._ssr
-    if (st === this._instanceSSR) return st.buffer
-    const amb = this.ambientRules()
+    let own = st.buffer
+    if (st !== this._instanceSSR) {
+      const amb = this.ambientRules()
+      if (amb.length > 0) own = amb.concat(st.buffer)
+    }
 
-    return amb.length === 0 ? st.buffer : amb.concat(st.buffer)
+    return st.rootVars ? [st.rootVars, ...own] : own
   }
 
   /**
@@ -1103,6 +1137,34 @@ export class StyleSheet {
   }
 
   /**
+   * Set the document's ROOT VARIABLES block (e.g. `:root { --px-…: … }` from
+   * `themeToCssVars`). One owned slot per sheet, REPLACED on every call —
+   * never appended — so swapping themes A -> B -> A shows A again and the
+   * sheet holds exactly one block however many themes were seen. An empty
+   * string removes it. Server side the slot is per request (the active SSR
+   * state) and is emitted ahead of every other rule; `reset()` clears it.
+   *
+   * Use this, not `injectRules`, for any block whose CONTENT changes under a
+   * stable identity: `injectRules` is append-only and deduped by key.
+   */
+  setRootVariables(css: string): void {
+    if (this.isSSR) {
+      this._ssr.rootVars = css
+      return
+    }
+    if (css === this.rootVarsCss) return
+    this.rootVarsCss = css
+    this.applyRootVariables()
+  }
+
+  /** Client: replace the live root-variables rules with `rootVarsCss`. */
+  private applyRootVariables(): void {
+    if (!this.sheet) return
+    const rules = this.rootVarsCss ? splitTopLevelRules(this.rootVarsCss) : []
+    this.rootVarsRules = replaceLiveRules(this.sheet, this.rootVarsRules, rules)
+  }
+
+  /**
    * Test-only: live `cssRules.length` (0 in SSR). Mirrors runtime-dom's
    * `_tplCacheSize()` test-only-accessor convention; lets injectRules /
    * eviction tests assert without reaching into the private sheet.
@@ -1144,11 +1206,7 @@ export class StyleSheet {
    * dropped wholesale).
    */
   resetSSRBuffer(): void {
-    this._ssr.buffer = []
-    this._ssr.flushedIdx = 0
-    this._ssr.ambientIdx = 0
-    this._ssr.layerDeclEmitted = false
-    this._ssr.seen.clear()
+    resetSSRState(this._ssr)
   }
 
   /**
@@ -1183,12 +1241,19 @@ export class StyleSheet {
    */
   flushSSRPending(): string {
     const st = this._ssr
+    // The root-variables slot, when it changed since the last flush. Emitted
+    // first; a later re-emission (theme swapped mid-stream) wins the cascade
+    // by source order, exactly like the client slot's replacement.
+    let ambient = ''
+    if (st.rootVars !== st.rootVarsFlushed) {
+      ambient = st.rootVars
+      st.rootVarsFlushed = st.rootVars
+    }
     // Scoped streams also emit ambient rules (keyframes / static globals)
     // declared since the last flush — AHEAD of the request's own rules, the
     // same order a scoped `getStyleTag()` uses. Unscoped: unchanged.
-    let ambient = ''
     if (st !== this._instanceSSR && st.ambientIdx < this.ambientKeys.length) {
-      ambient = this.ambientRules(st.ambientIdx).join('')
+      ambient += this.ambientRules(st.ambientIdx).join('')
       st.ambientIdx = this.ambientKeys.length
     }
     if (st.buffer.length === st.flushedIdx) return ambient
@@ -1237,15 +1302,19 @@ export class StyleSheet {
     return layerDecl + rules.join('')
   }
 
-  /** Reset SSR buffer and cache (call between server requests). */
+  /**
+   * Reset the SSR buffer, the caches and the registry of module-level
+   * keyframes / static global styles. For tests and teardown.
+   *
+   * NOT for server request boundaries: keyframes and static globals are
+   * inserted once, at module evaluation, so after a reset every later
+   * response ships without them. Request isolation is automatic under
+   * `runWithRequestContext` (a per-request styler scope).
+   */
   reset(): void {
     if (this.cache.size > 0) this.removals++
     this.held.clear()
-    this._ssr.buffer = []
-    this._ssr.flushedIdx = 0
-    this._ssr.ambientIdx = 0
-    this._ssr.layerDeclEmitted = false
-    this._ssr.seen.clear()
+    resetSSRState(this._ssr)
     this.ssrRules.clear()
     this.cache.clear()
     this.insertCache.clear()
@@ -1290,16 +1359,17 @@ export class StyleSheet {
     this.icKeysByClass.clear()
     this.domRules.clear()
     clearNormCache()
-    this._ssr.buffer = []
-    this._ssr.flushedIdx = 0
-    this._ssr.ambientIdx = 0
-    this._ssr.layerDeclEmitted = false
-    this._ssr.seen.clear()
+    resetSSRState(this._ssr)
     if (this.sheet) {
       while (this.sheet.cssRules.length > 0) {
         this.sheet.deleteRule(0)
       }
     }
+    // The root variables are owned STATE (the current theme), not a cache:
+    // re-apply them, or an HMR purge leaves every `var(--…)` unresolved
+    // until the theme next changes.
+    this.rootVarsRules = []
+    this.applyRootVariables()
     fireSheetClearSubscribers()
   }
 
