@@ -19,6 +19,14 @@
  *          same result, with 300 consumers behind it. The complement of dbmon —
  *          dbmon removes a signal graph's advantage by making everything
  *          change, this one asks what happens when nothing meaningfully does.
+ *   maplist a keyed `.map()` list of 1,000 rows with conditional JSX in its
+ *          slots — the two source shapes every other list here (all `<For>` or
+ *          the framework's list primitive) never contains. Pyreon `.map()`,
+ *          `.map()` first rendered empty, and `<For>` against the rivals' own
+ *          idioms. Ops with a correctness-gate failure print "not timed".
+ *   router `@pyreon/router` navigation in real Chromium, with and without tab
+ *          stacks. A REGRESSION instrument (Pyreon only, no medals): read an
+ *          arm across two builds, not against a rival.
  *
  * Protocol is the repo standard (mirrors bench-fair.ts / bench-hydration.ts):
  *  - production `vite build`, real Chromium, `--expose-gc`;
@@ -46,7 +54,7 @@
  * of this suite. Ratios are the portable signal; absolute ms are machine- and
  * load-dependent. Stamp `uptime` and discard anything measured above load ~8.
  *
- * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|table|virtual|charts] [--wait-quiet [maxLoad]]
+ * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|table|virtual|charts|charts-libs|maplist|router] [--wait-quiet [maxLoad]]
  */
 import { execSync, spawn } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -107,7 +115,18 @@ const NARROW = (() => {
 // Kept in sync with src/impl/scenarios.ts. Duplicated rather than imported
 // because this driver runs in bun with no bundler and the impl module pulls in
 // every framework's browser entry.
-const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
+const SCENARIOS: {
+  id: string
+  label: string
+  frameworks: string[]
+  /**
+   * `'regression'`: every arm is the same framework, so the report prints each
+   * arm's ratio to the fastest arm and no medals or tie/win verdicts.
+   */
+  kind?: 'regression'
+  /** Extra Chromium flags; the scenario then gets its OWN browser instance. */
+  chromiumArgs?: string[]
+}[] = [
   {
     id: 'dbmon',
     label: 'dbmon — sustained wide update (100 rows × 6 cells, all changing)',
@@ -228,6 +247,32 @@ const SCENARIOS: { id: string; label: string; frameworks: string[] }[] = [
       'Vanilla canvas (control)',
     ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
   },
+  {
+    // See src/impl/scenario-maplist.ts for the arms, ops and fairness notes.
+    id: 'maplist',
+    label: 'keyed .map() list + conditional JSX in slots (1,000 rows)',
+    frameworks: [
+      'Pyreon (.map)',
+      'Pyreon (.map, first render empty)',
+      'Pyreon (<For>)',
+      'React 19',
+      'Preact',
+      'Vue 3',
+      'SolidJS',
+      'Svelte 5',
+    ].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+  },
+  {
+    // See src/impl/scenario-router.ts. Pyreon only: a regression instrument.
+    id: 'router',
+    label: 'router navigation — @pyreon/router push() round trips, with and without tab stacks (regression instrument, Pyreon only)',
+    frameworks: ['Pyreon', 'Pyreon (tabs)'].filter((f) => (NARROW ? NARROW.includes(f) : true)),
+    kind: 'regression',
+    // Safeguard against Chromium's `history.pushState` flood throttle (the
+    // scenario pushes thousands of times). Not load-bearing on the 2026-11-19
+    // Playwright Chromium; the scenario's pathname checks catch a dropped push.
+    chromiumArgs: ['--disable-ipc-flooding-protection'],
+  },
 ]
 
 /**
@@ -266,11 +311,17 @@ const NON_RANKING = new Set([
   // table: AG Grid as shipped renders only its viewport, so its rows are not
   // the same work as the arms that render all 6,000 cells.
   'AG Grid 36 (default, virtualised)',
+  // maplist: the same `.map()` component mounted while its list is empty. The
+  // runtime pins the slot to the non-keyed path on that first (empty) render,
+  // so it measures a different code path; shown so that cost stays visible.
+  'Pyreon (.map, first render empty)',
 ])
 
 interface SuiteResult {
   framework: string
   results: { name: string; median: number; samples: number[] }[]
+  /** Ops the arm failed in the scenario's pre-timing correctness gate (not timed). */
+  gateFailures?: { name: string; error: string }[]
 }
 
 /** Ranked arms that are Pyreon itself — never each other's competitor. */
@@ -395,11 +446,23 @@ if (preview) {
   }
 }
 
-const browser = POOL_FILES
-  ? null
-  : await chromium.launch({
-      args: ['--js-flags=--expose-gc', '--enable-precise-memory-info'],
-    })
+const BASE_CHROMIUM_ARGS = ['--js-flags=--expose-gc', '--enable-precise-memory-info']
+/**
+ * One browser per distinct flag set: the shared one for every scenario without
+ * `chromiumArgs`, and a dedicated one for a scenario that needs extra flags, so
+ * those flags never touch another scenario's measurements.
+ */
+const browsers = new Map<string, Awaited<ReturnType<typeof chromium.launch>>>()
+async function browserFor(extra: string[] | undefined) {
+  const key = (extra ?? []).join(' ')
+  let b = browsers.get(key)
+  if (!b) {
+    b = await chromium.launch({ args: [...BASE_CHROMIUM_ARGS, ...(extra ?? [])] })
+    browsers.set(key, b)
+  }
+  return b
+}
+if (!POOL_FILES) await browserFor(undefined)
 
 // The build above is itself a load spike; waiting is opt-in.
 if (!POOL_FILES && WAIT_QUIET !== null) await waitForQuietMachine('bench-scenarios', WAIT_QUIET)
@@ -409,6 +472,8 @@ try {
   // key: `${scenarioId}\u0000${opName}\u0000${framework}` → one sample array
   // per page-load (cluster), for the cluster bootstrap.
   const pooled = new Map<string, number[][]>()
+  // Same key → the arm's gate error for an op it was NOT timed on.
+  const gateFailures = new Map<string, string>()
 
   if (POOL_FILES) {
     for (const f of POOL_FILES) {
@@ -418,7 +483,9 @@ try {
         clusters?: [string, number[][]][]
         /** Legacy flat pool — one page-load per key per file (`--repeat 1` passes). */
         pooled?: [string, number[]][]
+        gateFailures?: [string, string][]
       }
+      for (const [k, v] of raw.gateFailures ?? []) gateFailures.set(k, v)
       const loads = raw.stamps.map((st) => `${st.label}=${st.load1.toFixed(2)}`).join(' · ')
       console.log(`[bench-scenarios] pooling ${f}\n    load stamps: ${loads}`)
       if (raw.clusters) {
@@ -446,7 +513,7 @@ try {
       for (const fw of order) {
         process.stdout.write(`[bench-scenarios]   ▸ ${fw} … `)
         if (previewGone !== null) throw new Error(`[bench-scenarios] ${previewGone}\n${previewStderr}`)
-        const page = await browser!.newPage()
+        const page = await (await browserFor(scenario.chromiumArgs)).newPage()
         const errors: string[] = []
         page.on('pageerror', (e) => errors.push(String(e)))
         await page
@@ -478,6 +545,9 @@ try {
             const key = `${scenario.id}\u0000${r.name}\u0000${s.framework}`
             pooled.set(key, [...(pooled.get(key) ?? []), [...r.samples]])
           }
+          for (const f of s.gateFailures ?? []) {
+            gateFailures.set(`${scenario.id}\u0000${f.name}\u0000${s.framework}`, f.error)
+          }
         }
         console.log('ok')
         await page.close()
@@ -488,7 +558,7 @@ try {
 
   if (!POOL_FILES) stamp('load after measuring')
   if (RAW_OUT) {
-    writeFileSync(RAW_OUT, JSON.stringify({ stamps: load.report().stamps, machine: load.report().machine, clusters: [...pooled] }))
+    writeFileSync(RAW_OUT, JSON.stringify({ stamps: load.report().stamps, machine: load.report().machine, clusters: [...pooled], gateFailures: [...gateFailures] }))
     console.log(`[bench-scenarios] raw samples + load stamps → ${RAW_OUT}`)
   }
 
@@ -498,7 +568,7 @@ try {
     console.log('═'.repeat(78))
     const ops = [
       ...new Set(
-        [...pooled.keys()]
+        [...pooled.keys(), ...gateFailures.keys()]
           .filter((k) => k.startsWith(`${scenario.id}\u0000`))
           .map((k) => k.split('\u0000')[1] as string),
       ),
@@ -521,6 +591,12 @@ try {
         })
         .filter((r) => r.n > 0)
         .sort((a, b) => a.med - b.med)
+      const notTimed = scenario.frameworks
+        .map((fw) => [fw, gateFailures.get(`${scenario.id}\u0000${op}\u0000${fw}`)] as const)
+        .filter((e): e is readonly [string, string] => e[1] !== undefined)
+      for (const [fw, error] of notTimed) {
+        console.log(`  ${fw.padEnd(28)} ✗ NOT TIMED — failed the correctness gate: ${error}`)
+      }
       if (rows.length === 0) continue
       const best = rows[0] as (typeof rows)[number]
       // Rank against the best RANKING framework — Vanilla is the floor and the
@@ -539,7 +615,9 @@ try {
       }
       for (const r of rows) {
         const marker =
-          r.fw === 'Vanilla JS'
+          scenario.kind === 'regression'
+            ? `(regression instrument — ${(r.med / best.med).toFixed(2)}× the fastest arm)`
+            : r.fw === 'Vanilla JS'
             ? '(floor)'
             : r.fw === 'SolidJS (eager props)'
               ? `(diagnostic — ${(r.med / bestFw.med).toFixed(2)}× vs SolidJS)`
@@ -558,8 +636,14 @@ try {
       }
     }
   }
+  if (gateFailures.size > 0) {
+    console.log(
+      `\n⚠ ${gateFailures.size} arm × op cell(s) failed the correctness gate and were NOT timed (listed above as ✗). ` +
+        'A missing row is a correctness finding, not a missing measurement.',
+    )
+  }
 } finally {
-  await browser?.close()
+  for (const b of browsers.values()) await b.close()
   preview?.kill()
   if (!POOL_FILES) stamp('load AFTER')
 }
