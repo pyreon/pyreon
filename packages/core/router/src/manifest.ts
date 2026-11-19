@@ -84,18 +84,32 @@ const User = () => {
   ],
   api: [
     {
+      name: 'preloadRoute',
+      kind: 'function',
+      signature: 'preloadRoute(router: Router, path: string, request?: Request): Promise<void>',
+      summary:
+        "Resolve `path` for a server render: the initial navigation's guards, the matched lazy route components (`router.preloadComponents`), then the matched loaders (`serverLoader` when the record has one, else `loader`) with `request`. Afterwards a `RouterView` for `path` renders final HTML synchronously. A loader's `redirect()` rejects (hosts turn it into HTTP 30x); a loader's `notFound()` puts the router in the not-found state (status 404); a route the initial guards cancel runs no loaders. A free function, so client bundles that never call it do not carry it. `@pyreon/server`'s handler and `renderPage`, zero's SSG and OG images all call it.",
+      mistakes: [
+        'Calling `router.preloadComponents(path)` in an SSR host and expecting loader data — it loads code only; `preloadRoute` runs the loaders',
+        'Only running `prefetchLoaderData` before `renderToString` — that runs loaders but does not resolve `lazy()` components, so the page renders blank',
+      ],
+      example: `const router = createRouter({ routes, url: path })
+await preloadRoute(router, path, request)
+const html = await renderToString(h(RouterProvider, { router }, h(App, null)))`,
+    },
+    {
       name: 'runServerLoaders',
       kind: 'function',
       signature:
-        "router.runServerLoaders(path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number }>",
+        "runServerLoaders(router: Router, path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number } | { kind: 'notFound' }>",
       summary:
-        "The single-fetch data endpoint's worker (server-only — `serverLoader` functions exist only in the SSR module graph). Runs ONLY the matched chain's `serverLoader` records (NOT isomorphic `loader`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a `path`, so path-keying collided). A `redirect()` thrown by any server loader returns the redirect descriptor instead of data.",
+        "The single-fetch data endpoint's worker (server-only — `serverLoader` functions exist only in the SSR module graph). Runs ONLY the matched chain's `serverLoader` records (NOT isomorphic `loader`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a `path`, so path-keying collided). A `redirect()` thrown by any server loader returns the redirect descriptor instead of data; a `notFound()` returns `{ kind: 'notFound' }`. A free function, so client bundles do not carry it.",
       mistakes: [
         'Calling it client-side — `serverLoader` is undefined in the client graph; the client router does the single FETCH instead',
         'Expecting isomorphic `loader`s to run here — deliberately excluded (double-fire prevention); they run on the client during navigation',
       ],
       example: `// zero's /_pyreon/data endpoint does exactly this:
-const result = await router.runServerLoaders('/dash', ctx.req)
+const result = await runServerLoaders(router, '/dash', ctx.req)
 if (result.kind === 'redirect') return jsonRedirect(result)
 return json({ data: result.data }) // keyed by matched-chain index`,
     },
@@ -155,7 +169,7 @@ const Admin = () => (
   </div>
 )`,
       mistakes: [
-        'SSR renders a BLANK page for a lazy route when the handler only ran `prefetchLoaderData` — that runs LOADERS ONLY, it does NOT resolve `lazy()` route components. `renderToString` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must ALSO call `router.preload(path, req)` (resolves lazy components into `_componentCache`) before rendering.',
+        'SSR renders a BLANK page for a lazy route when the handler only ran `prefetchLoaderData` — that runs LOADERS ONLY, it does NOT resolve `lazy()` route components. `renderToString` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must call `preloadRoute(router, path, req)` (resolves lazy components into `_componentCache` AND runs the loaders) before rendering.',
         'Forgetting the inner `<RouterView />` inside a LAYOUT component — nested child routes render by placing a SECOND `<RouterView />` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).',
         "Expecting a param-only navigation (`/user/1 → /user/2`) to re-run the layout body — it does NOT. Each depth is a single atomic `computed` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth's own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.",
         'Passing the route component as a prop or child to `<RouterView>` — it takes none except `router?` (explicit router override; defaults to the context/active router) and `announceRouteChanges` (a11y live-region opt-out). It reads the matched chain from `RouterContext`; configure routes in `createRouter`, never on RouterView.',
@@ -305,7 +319,7 @@ const User = () => {
       mistakes: [
         'Getting `undefined` when the route has NO `loader` — it reads `LoaderDataContext` (default `undefined`). The `<T>` generic is an unchecked CAST, not validation; `data.name` then throws on the undefined.',
         'Wrapping `useLoaderData()` in an `effect` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS the route component on a real navigation, which re-runs the body and re-reads the hook; there is no signal to subscribe to.',
-        'SSR returning `undefined` at render time — loaders are async but `renderToString` is synchronous, so the handler must run loaders (`prefetchLoaderData` or `router.preload`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.',
+        'SSR returning `undefined` at render time — loaders are async but `renderToString` is synchronous, so the handler must run loaders (`preloadRoute` or `prefetchLoaderData`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.',
         'Calling it in a component NOT rendered by `<RouterView>` (a sibling inside `<RouterProvider>`, a portal outside the route tree) — no `LoaderDataProvider` wraps it, so the context is the default `undefined`.',
         "Expecting a nested LAYOUT's `useLoaderData()` to return the child PAGE's data — each depth is wrapped with its OWN `LoaderDataProvider`, so a layout reads its own loader's data and the page reads the page's. The hook reads the nearest provider, not the leaf.",
       ],
@@ -539,7 +553,7 @@ const app = (
 ]`,
       mistakes: [
         'Calling the result like a component (`lazy(...)()`) — it is an inert DESCRIPTOR; assign it to a route `component` and the router resolves it (into `_componentCache`) on navigation.',
-        'Assuming `lazy()` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; `router.preload()` warms it before SSR renderToString, which is required so a lazy route is not blank on the server).',
+        'Assuming `lazy()` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; `preloadRoute()` / `router.preloadComponents()` warm it before SSR renderToString, which is required so a lazy route is not blank on the server).',
       ],
       seeAlso: ['createRouter', 'RouterView'],
     },

@@ -44,7 +44,7 @@ test.describe("SSR node deploy artifact", () => {
     const html = await resp.text();
     expect(html).toContain('data-testid="nav-about"');
     // The about PAGE's own marker — empty pre-fix (lazy component unresolved),
-    // present after the handler resolves lazy components via `router.preload`.
+    // present after the handler resolves lazy components via `preloadRoute`.
     expect(html).toContain('data-testid="about-page"');
     expect(html).not.toContain("<!--pyreon-app-->");
   });
@@ -375,7 +375,7 @@ test.describe("SSR node deploy artifact", () => {
  * The href is the ROUTE PATH, which this SSR server returns as `text/html`, so
  * the browser fetched it as a module script and logged strict-MIME "Failed to
  * load module script" on EVERY hovered link. The fix warms the real chunk via
- * `router.preload(...)` and keeps only the valid `rel="prefetch" as="document"`
+ * `router.preloadComponents(...)` and keeps only the valid `rel="prefetch" as="document"`
  * hint. This runs against the real built SSR server (route paths return HTML),
  * so it observes the ACTUAL browser console error — happy-dom can't.
  *

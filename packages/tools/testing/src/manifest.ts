@@ -310,7 +310,7 @@ setMode('dark') // reactive re-style — same element, new classes`,
       signature:
         "renderWithRouter(ui: VNodeChild | null, options: { routes?: RouteRecord[]; route?: string; mode?: 'hash' | 'history'; router?: Router; wrapper?; container?; baseElement? }) => Promise<RenderResult & { router: Router; navigate(path): Promise<NavigationResult> }> (from '@pyreon/testing/router')",
       summary:
-        "ASYNC render harness for `@pyreon/router`. Creates a router pinned to `route` (default `'/'`), then `await router.preload(route)` — the SSR-handler contract: lazy route components resolved into the cache AND the matched chain's loaders run — so the FIRST render shows final content (`useLoaderData()` populated, no loading fallbacks). Mounts `ui` inside `<RouterProvider>` (pass `null` for a bare `<RouterView/>`); `unmount()` destroys the router. `navigate(path)` = `router.push` — resolves with `NavigationResult` AFTER guards + loaders + DOM commit.",
+        "ASYNC render harness for `@pyreon/router`. Creates a router pinned to `route` (default `'/'`), then `await preloadRoute(router, route)` — the SSR-handler contract: lazy route components resolved into the cache AND the matched chain's loaders run — so the FIRST render shows final content (`useLoaderData()` populated, no loading fallbacks). Mounts `ui` inside `<RouterProvider>` (pass `null` for a bare `<RouterView/>`); `unmount()` destroys the router. `navigate(path)` = `router.push` — resolves with `NavigationResult` AFTER guards + loaders + DOM commit.",
       example: `const { router, navigate, getByText } = await renderWithRouter(null, {
   routes: [{ path: '/posts/:id', component: Post, loader: fetchPost }],
   route: '/posts/1',

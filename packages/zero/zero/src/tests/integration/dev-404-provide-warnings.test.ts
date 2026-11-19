@@ -11,7 +11,7 @@ import { h, Show, type VNodeChild } from '@pyreon/core'
 import { Element } from '@pyreon/elements'
 import { signal } from '@pyreon/reactivity'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
-import { createRouter, RouterProvider, RouterView, type RouteRecord } from '@pyreon/router'
+import { createRouter, preloadRoute, RouterProvider, RouterView, type RouteRecord } from '@pyreon/router'
 import { PyreonUI } from '@pyreon/ui-core'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -68,7 +68,7 @@ async function probeRoutes(label: string, routes: RouteRecord[], url: string) {
   let effectErrors: string[] = []
   try {
     const router = createRouter({ routes, mode: 'history', url })
-    await router.preload(url)
+    await preloadRoute(router, url)
     await runWithRequestContext(async () => {
       const app = h(
         RouterProvider as Parameters<typeof h>[0],
@@ -118,7 +118,7 @@ describe('dev-404 SSR — provide() warning storm probe', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const router = createRouter({ routes, mode: 'history', url: '/unmatched-path' })
-    await router.preload('/unmatched-path')
+    await preloadRoute(router, '/unmatched-path')
     const resolved = router.currentRoute() as { matched?: unknown[]; isNotFound?: boolean }
 
     // The synthetic chain should be set (Layout + NotFound)

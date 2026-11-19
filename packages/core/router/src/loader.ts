@@ -33,7 +33,7 @@ export function useLoaderData<T = unknown>(): T {
  * Call this before `renderToString` so route components can read data via `useLoaderData()`.
  *
  * NOTE: this runs LOADERS only — it does NOT resolve lazy route *components*.
- * The SSR handler additionally calls `router.preload(path)` to resolve lazy
+ * The SSR handler additionally calls `preloadRoute(router, path)` (or `router.preloadComponents(path)`) to resolve lazy
  * components into the cache before the synchronous render (an unresolved
  * `lazy()` would otherwise fall back to its empty loading state and ship a
  * blank page). This function stays loaders-only because it is also the
@@ -85,7 +85,7 @@ export async function prefetchLoaderData(
             ...(request ? { request } : {}),
           })
         } catch (err) {
-          // `notFound()` → the path's not-found state (see `router.preload`),
+          // `notFound()` → the path's not-found state (see `preloadRoute`),
           // not a rejection. A navigation's commit overwrites it.
           if (!isNotFoundError(err)) throw err
           router._loaderNotFound?.set(route.path)
