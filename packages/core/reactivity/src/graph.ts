@@ -687,6 +687,35 @@ export function drain(): void {
   }
 }
 
+/**
+ * After a watcher's FIRST run (which runs inside its own batch window): if the
+ * run re-queued the watcher itself — it wrote a signal it had already read —
+ * re-run it now, iteratively, until it settles. So the re-run happens right
+ * after the first run returns and before `effect()` / `renderEffect()` returns,
+ * in the same surrounding context as the first run (design D9), even when the
+ * first run is nested inside another window. Capped by MAX_PASSES like the
+ * flush. Other work the first run queued waits for the outermost close.
+ */
+export function settleFirstRun(node: WatcherNode): void {
+  let passes = 0
+  for (;;) {
+    const f = node._f
+    if ((f & (F_QUEUED | F_DISPOSED)) !== F_QUEUED) return
+    // Take its queue entry out (it was pushed during the run just finished, so
+    // it sits after anything a flush in progress is dispatching).
+    const q = _q
+    const at = q.lastIndexOf(node as QueueEntry)
+    if (at !== -1) q.splice(at, 1)
+    if (++passes >= MAX_PASSES) {
+      warnMaxPasses(1)
+      settleDropped(node as QueueEntry)
+      return
+    }
+    node._f = f & ~F_QUEUED
+    node.run()
+  }
+}
+
 /** Close a batch window opened with `_b.d++`; flushes at the outermost close. */
 export function endBatch(): void {
   if (--_b.d === 0 && _q.length !== 0) {

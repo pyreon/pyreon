@@ -21,6 +21,7 @@ import {
   checkDirty,
   endBatch,
   purgeDeps,
+  settleFirstRun,
   unlinkAllDeps,
 } from './graph'
 import { type EffectScope, getCurrentScope } from './scope'
@@ -357,11 +358,14 @@ export function effect(
 
   // The first run happens inside a batch window, so a write it makes to a
   // signal it already read RE-QUEUES this effect instead of re-running it
-  // nested inside itself. The re-run happens when the window closes — still
-  // synchronously, before `effect()` returns, and counted by MAX_PASSES.
+  // nested inside itself (design D9). `settleFirstRun` then re-runs it right
+  // after the first run returns — synchronously, before `effect()` returns,
+  // counted by MAX_PASSES. Other effects the first run's writes reached run
+  // when the outermost window closes.
   _b.d++
   try {
     node._exec(true)
+    settleFirstRun(node)
   } finally {
     endBatch()
   }
@@ -533,6 +537,7 @@ function firstRun(node: BindingNode): void {
   _b.d++
   try {
     node._track(false)
+    settleFirstRun(node)
   } finally {
     endBatch()
   }
