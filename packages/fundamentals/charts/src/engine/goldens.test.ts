@@ -52,6 +52,15 @@ const WORLD: GeoJson = {
 
 const SIZE = { width: 480, height: 280 }
 
+// Bars on a continuous x axis (`bar-band.ts`): each bar centred on its scaled x, the axis padded by half a slot.
+interface Day { t: number; revenue: number; cost: number }
+const DAY = 86_400_000
+const day = (d: number): number => Date.UTC(2026, 2, d)
+/** Daily revenue with MISSING days (the 5th-6th, the 11th, the 17th-18th have no row): slots stay one day wide and the gaps stay empty. */
+const DAILY: Day[] = [1, 2, 3, 4, 7, 8, 9, 10, 12, 13, 14, 15, 16, 19, 20].map((d, i) => ({ t: day(d), revenue: 40 + ((i * 37) % 70), cost: 20 + ((i * 17) % 40) }))
+const HOURLY: Day[] = Array.from({ length: 10 }, (_, i) => ({ t: Date.UTC(2026, 2, 1, i * 2), revenue: 10 + ((i * 29) % 50), cost: 5 + ((i * 13) % 20) }))
+const BAND = { xValue: (d: Day) => d.t, xTime: true } as const
+
 const GOLDENS: Record<string, () => string> = {
   'plot-bars-line': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue, { label: 'Revenue' }), line<Row>((d) => d.cost, { label: 'Cost', dash: [4, 2] })], x: (d) => d.month, title: 'Revenue', ...SIZE }),
   'plot-area-points': () => chartToSvg({ data: ROWS, marks: [area<Row>((d) => d.revenue), points<Row>((d) => d.cost)], x: (d) => d.month, ...SIZE }),
@@ -84,6 +93,19 @@ const GOLDENS: Record<string, () => string> = {
   'plot-scale-symlog-x-inverse': () => chartToSvg({ data: [{ x: -800, y: 3 }, { x: -5, y: 5 }, { x: 0, y: 4 }, { x: 90, y: 8 }], marks: [line<{ x: number; y: number }>((d) => d.y)], xValue: (d) => d.x, xScale: symlog(), xInverse: true, ...SIZE }),
   // Per-axis grid and minor lines.
   'plot-grid-x-minor': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, xGrid: true, yMinor: 4, ...SIZE }),
+  // Bars on a numeric / time x axis.
+  'plot-bars-time-daily-gaps': () => chartToSvg({ data: DAILY, marks: [bars<Day>((d) => d.revenue)], ...BAND, ...SIZE }),
+  'plot-bars-time-hourly': () => chartToSvg({ data: HOURLY, marks: [bars<Day>((d) => d.revenue)], ...BAND, ...SIZE }),
+  'plot-bars-time-grouped': () => chartToSvg({ data: DAILY, marks: [groupedBars<Day>((d) => d.revenue), groupedBars<Day>((d) => d.cost)], ...BAND, ...SIZE }),
+  'plot-bars-time-stacked': () => chartToSvg({ data: DAILY, marks: [stackedBars<Day>((d) => d.revenue), stackedBars<Day>((d) => d.cost)], ...BAND, ...SIZE }),
+  'plot-bars-time-bar-line': () => chartToSvg({ data: DAILY, marks: [bars<Day>((d) => d.revenue), line<Day>((d) => d.cost)], ...BAND, ...SIZE }),
+  'plot-bars-time-horizontal': () => chartToSvg({ data: HOURLY, marks: [bars<Day>((d) => d.revenue)], horizontal: true, ...BAND, ...SIZE }),
+  'plot-bars-time-rtl': () => chartToSvg({ data: DAILY, marks: [bars<Day>((d) => d.revenue)], rtl: true, ...BAND, ...SIZE }),
+  'plot-bars-time-inverse': () => chartToSvg({ data: DAILY, marks: [bars<Day>((d) => d.revenue)], xInverse: true, ...BAND, ...SIZE }),
+  'plot-bars-time-inverse-rtl': () => chartToSvg({ data: DAILY, marks: [bars<Day>((d) => d.revenue)], xInverse: true, rtl: true, ...BAND, ...SIZE }),
+  'plot-bars-time-barwidth': () => chartToSvg({ data: DAILY, marks: [bars<Day>((d) => d.revenue)], barWidth: 10, ...BAND, ...SIZE }),
+  'plot-bars-time-barspan': () => chartToSvg({ data: DAILY, marks: [bars<Day>((d) => d.revenue)], barSpan: DAY / 2, ...BAND, ...SIZE }),
+  'plot-bars-numeric-uneven': () => chartToSvg({ data: [{ x: 1, y: 3 }, { x: 2, y: 5 }, { x: 4, y: 2 }, { x: 5, y: 6 }], marks: [bars<{ x: number; y: number }>((d) => d.y)], xValue: (d) => d.x, ...SIZE }),
   'plot-grid-y-off-horizontal': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, horizontal: true, yGrid: false, xGrid: true, ...SIZE }),
   'plot-annotated': () => chartToSvg({ data: ROWS, marks: [bars<Row>((d) => d.revenue)], x: (d) => d.month, annotations: [{ y: 100, label: 'goal' }, { yFrom: 130, yTo: 150 }], ...SIZE }),
   pie: () => pieToSvg({ data: ROWS, value: (d) => d.revenue, label: (d) => d.month, innerRadius: 0.5, showLabels: true, ...SIZE }),

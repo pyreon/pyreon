@@ -581,6 +581,16 @@
       "bytes": 3285,
       "warnings": 0
     },
+    "golden-fixture:chart-bar-band.tsx|swift": {
+      "sha": "ab60853fd1c760652cf41a70138122790a4e5f02537ef257f9c93f7da0832d79",
+      "bytes": 2873,
+      "warnings": 0
+    },
+    "golden-fixture:chart-bar-band.tsx|kotlin": {
+      "sha": "fdcd657235df07142188ebfe96dbbc51756c11588bd52d27b79d1acbc8e36fd6",
+      "bytes": 2808,
+      "warnings": 0
+    },
     "golden-fixture:chart-bar-geometry.tsx|swift": {
       "sha": "f746cf69630e43b481a8f0c014302be9c8ed25ae130563bd8c4aafebaf7dd1df",
       "bytes": 5764,

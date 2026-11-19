@@ -126,6 +126,10 @@ import { Bar, Chart, Line, fillBy, shadeBy } from '@pyreon/charts'
 </Chart>
 ```
 
+Bars on a time or numeric axis: `<Chart data={days} xValue="at" barSpan={86_400_000}>` with `<Axis x time />`
+puts each bar at its own x (centred, the axis padded by half a slot, `barSpan` optional: unset, the slot is the
+smallest gap between two x values), so a day with no row is an empty stretch.
+
 `barWidth` is a px **ceiling** on one bar (never wider than its band's slot),
 `barGap` the space between the bars of a group (a fraction of a bar),
 `barCategoryGap` the space between categories (a fraction of the band, 0.25 by

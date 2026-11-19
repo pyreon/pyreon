@@ -32,6 +32,7 @@ import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView, Series } from './render'
 import { xPx } from './scale'
+import { bandFrame } from './bar-band'
 import { columnLength, isColumnMark, markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
@@ -420,6 +421,8 @@ export interface PlotChartProps<T> {
   barGap?: number
   /** The space between categories, as a fraction of the band (default 0.25, clamped to 0..0.9). */
   barCategoryGap?: number
+  /** Bars on a NUMERIC or time x axis (`xValue`): the width of one bar's slot, in x-domain units (a day is `86_400_000` on a time axis). Unset, the slot is the smallest positive gap between neighbouring x values; bars are centred on x and the axis is padded by half a slot. `barWidth` / `barGap` / `barCategoryGap` work inside the slot. Ignored on a category axis. */
+  barSpan?: number
   /** Reverse the value axis (high end at the bottom; bars hang from the top). Data and table order are unchanged. */
   yInverse?: boolean
   /** `yInverse` for the right axis of a dual-axis chart. */
@@ -930,7 +933,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const max = props.maxPoints
     if (max === undefined) return null
     if (max < 3) {
-      warnOnce('maxPoints', `maxPoints=${max} is below 3, the smallest LTTB can keep (first, last, one interior point) — decimation is off.`)
+      if (process.env.NODE_ENV !== 'production') warnOnce('maxPoints', `maxPoints=${max} is below 3, the smallest LTTB can keep (first, last, one interior point) — decimation is off.`)
       return null
     }
     if (rows.length <= max) return null
@@ -1039,6 +1042,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     barWidth: props.barWidth,
     barGap: props.barGap,
     barCategoryGap: props.barCategoryGap,
+    barSpan: props.barSpan,
     yInverse: props.yInverse,
     y2Inverse: props.y2Inverse,
     xInverse: props.xInverse,
@@ -1318,6 +1322,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const v = spec.xValues[idx]
       if (v === undefined) return []
       cx = xPx(l.xDomainUsed, plot, v)
+      // Bars on a numeric axis: the ring is the datum's slot, not a fixed 16 px.
+      const slot = bandFrame(spec, plot, false, 1)
+      if (slot.shifts.length > 0) bw = slot.frame.w
     } else if (spec.categories.length > 0) {
       bw = plot.w / spec.categories.length
       cx = plot.x + bw * (idx + 0.5)
@@ -1337,10 +1344,10 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
 
   /** The sentence that names a non-linear scale for the spoken description: the picture's spacing is not the data's, and a listener should know. */
   const scaleNote = (): string => {
-    const y = props.yScale === undefined || props.yScale === 'linear' ? '' : ` The value axis is on a ${typeof props.yScale === 'string' ? props.yScale : props.yScale.kind} scale.`
-    const x = props.xScale === undefined || props.xScale === 'linear' ? '' : ` The x axis is on a ${props.xScale.kind} scale.`
+    const note = (axis: string, scale: 'linear' | 'log' | ScaleView | undefined): string =>
+      scale === undefined || scale === 'linear' ? '' : ` The ${axis} axis is on a ${typeof scale === 'string' ? scale : scale.kind} scale.`
 
-    return y + x
+    return note('value', props.yScale) + note('x', props.xScale)
   }
 
   /** An x pixel mirrored about the plot's centre when the x axis is reversed — the pointer's place on the plot as it reads in DATA order. */
@@ -1511,13 +1518,15 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const live = brushDrag
     const bf = band()
     if (bf === undefined) return []
-    if (zoomSelect() && live !== null) return bf.renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
+    // Either end may come first (a drag runs both ways, and a reversed axis swaps them).
+    const drawBand = (p: Double, q: Double): DrawCmd[] => bf.renderBrushBand(plot, Math.min(p, q), Math.max(p, q), spec.theme.axis)
+    if (zoomSelect() && live !== null) return drawBand(live.a, live.b)
     if (props.brush !== true || props.horizontal === true) return []
-    if (live !== null) return bf.renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
+    if (live !== null) return drawBand(live.a, live.b)
     const committed = brushSel()
     if (committed === null) return []
     const vis = bf.brushBand(plot, committed, zoomWin() ?? { start: 0.0, end: 1.0 }, readData().length)
-    return vis.visible ? bf.renderBrushBand(plot, props.xInverse === true ? xFlip(plot, vis.hi) : vis.lo, props.xInverse === true ? xFlip(plot, vis.lo) : vis.hi, spec.theme.axis) : []
+    return vis.visible ? drawBand(xFlip(plot, vis.lo), xFlip(plot, vis.hi)) : []
   }
 
   /**

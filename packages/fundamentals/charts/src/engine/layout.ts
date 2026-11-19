@@ -116,6 +116,8 @@ export interface LayoutConfig {
   /** The same for a numeric x axis. */
   xViewTicks?: ((real: Domain, r0: Double, r1: Double, count: Double, format: Formatter | undefined) => Tick[]) | undefined
   xViewReal?: Domain | undefined
+  /** The x axis is NUMERIC (`xValues`): a horizontal chart then ticks it down the y axis instead of labelling categories. */
+  xNumeric?: boolean | undefined
   /** Label the y axis with calendar steps — the y twin of `xTime`. */
   yTime?: boolean | undefined
   /**
@@ -183,6 +185,14 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const logMin = cfg.yLogMin ?? 1.0
   const logMax = cfg.yLogMax ?? 10.0
 
+  // The numeric x ticks over a pixel range: view (log / sqrt / symlog), calendar steps, or the nice ladder.
+  const numericXTicks = (r0: Double, r1: Double, count: Double): Tick[] =>
+    hasViewX
+      ? (cfg.xViewTicks?.(cfg.xViewReal ?? cfg.xDomain, cfg.xDomain.inverse === true ? r1 : r0, cfg.xDomain.inverse === true ? r0 : r1, count, cfg.xFormat) ?? [])
+      : cfg.xTime === true
+        ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
+        : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
+
   // The y-side value ticks, over a pixel range. Three labellings share one
   // domain: the linear ladder, the calendar steps, and the log view's
   // decades — chosen once here so the provisional (gutter-sizing) pass and
@@ -201,9 +211,12 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // the y axis, so it measures those instead — long category names are the
   // reason horizontal bars exist, and a gutter sized for numbers would clip
   // every one of them.
+  // A horizontal chart with a numeric x axis (and no categories) puts the numeric ticks down the y side.
+  const numericY = cfg.categories.length === 0 && cfg.xNumeric === true
+  const sideLabels = numericY ? numericXTicks(0.0, cfg.height, autoTickCount(cfg.height, Y_TICK_SPACING)).map((t) => t.label) : cfg.categories
   const provisionalLabels = cfg.horizontal === true
     ? cfg.showYAxis
-      ? cfg.categories
+      ? sideLabels
       : []
     : cfg.showYAxis
       ? valueTicksY(cfg.height, 0.0).map((t) => t.label)
@@ -239,13 +252,6 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // labels are provisionally laid out over the width the plot will have,
   // measured, and the mode is chosen before the plot rect exists.
   const provisionalW = Math.max(0.0, cfg.width - left - right)
-  // The numeric x ticks over a pixel range: view (log / sqrt / symlog), calendar steps, or the nice ladder.
-  const numericXTicks = (r0: Double, r1: Double, count: Double): Tick[] =>
-    hasViewX
-      ? (cfg.xViewTicks?.(cfg.xViewReal ?? cfg.xDomain, cfg.xDomain.inverse === true ? r1 : r0, cfg.xDomain.inverse === true ? r0 : r1, count, cfg.xFormat) ?? [])
-      : cfg.xTime === true
-        ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
-        : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
   const xCount = cfg.xTickCount > 0.0 ? cfg.xTickCount : autoTickCount(provisionalW, X_TICK_SPACING)
   const mode = cfg.xLabels ?? 'auto'
   let rotate = 0.0
@@ -314,7 +320,9 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     // runs along x. The value ticks reuse the y domain — that is where the
     // data lives — and the same formatter, so a chart flipped horizontal
     // keeps its "$3.2K" labels without re-wiring anything.
-    const yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
+    // A numeric x axis (`xValues`, no categories) puts its own ticks down the y axis.
+    const bandY = numericY ? numericXTicks(plot.y, plot.y + plot.h, autoTickCount(plot.h, Y_TICK_SPACING)) : bandTicksY(cfg.categories, plot)
+    const yTicks = cfg.showYAxis ? bandY : []
     const xTicks = cfg.showXAxis
       ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, yCount, cfg.yFormat)
       : []

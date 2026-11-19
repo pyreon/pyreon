@@ -264,8 +264,23 @@ They reach plain, stacked, grouped and waterfall bars in both orientations, and 
 hit target, the keyed update morph and the server-rendered first frame follow the
 drawn bar. `barWidth` is px and the two gaps are fractions on purpose: a pixel
 width is what a designer asks for, and a fraction survives a resize. On iOS and
-Android all three lower as literals (a computed value warns by name). Bars on a
-time or numeric axis are a separate chart and are not covered here.
+Android all three lower as literals (a computed value warns by name).
+
+### Bars on a time or numeric axis
+
+With `xValue` (and `<Axis x time>` for dates) each bar sits at its own x instead of in an
+equal band. Its **slot** is the smallest positive gap between two x values, or `barSpan` (in
+x units; a day is `86_400_000` on a time axis). Bars are centred on x, the axis is padded by
+half a slot so the first and last bar are whole, and `barWidth` / `barGap` / `barCategoryGap`
+work inside the slot as they do inside a band. Plain, grouped, stacked and waterfall bars,
+horizontal charts (the numeric axis runs down the y side), `<Axis x inverse>` and RTL all
+follow. A missing day is an empty stretch, not a squeezed bar. The hit rects, the tooltip,
+the keyed update morph (give the chart `by`; a series with a line keeps the plain update)
+and the server-rendered first frame use the same rects; the accessible table is unchanged.
+Zoom and brush windows are fractions of the DATA INDEX, as for every numeric axis, so on
+an irregular series the window edge is not at the same x as the pointer. On iOS and Android
+`barSpan` lowers as a literal (a computed value warns by name). A non-linear x scale lays
+the slots out in the scale's view, so their widths follow it.
 
 ### Colouring a datum
 

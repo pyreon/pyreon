@@ -863,6 +863,31 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "BandFrame",
+    "fields": [
+      {
+        "name": "frame",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartRect",
+          "args": []
+        }
+      },
+      {
+        "name": "shifts",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Slice",
     "fields": [
       {
@@ -2211,6 +2236,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "typeRef",
               "name": "Domain",
               "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xNumeric",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
             },
             {
               "kind": "undefined"
@@ -4647,6 +4686,22 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "barCategoryGap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barSpan",
         "type": {
           "kind": "union",
           "branches": [
@@ -13129,6 +13184,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Annotation",
   "ArcConfig",
   "ArcGeometry",
+  "BandFrame",
   "Bin",
   "BoxplotFrame",
   "BoxplotOptions",

@@ -380,10 +380,12 @@ function toNumber(v: unknown, label: string): Double {
   if (typeof v === 'string' && v.trim() !== '') {
     const n = Number(v)
     if (Number.isFinite(n)) {
-      warnOnce(
-        `string:${label}`,
-        `mark "${label}" returned the string "${v}" — coerced to a number. Convert your data to numbers (Number(row.value)) so the accessor returns one.`,
-      )
+      if (process.env.NODE_ENV !== 'production') {
+        warnOnce(
+          `string:${label}`,
+          `mark "${label}" returned the string "${v}" — coerced to a number. Convert your data to numbers (Number(row.value)) so the accessor returns one.`,
+        )
+      }
       return n
     }
   }
@@ -466,7 +468,7 @@ export function resolveMarks<T>(data: readonly T[], marks: readonly Mark<T>[], p
   const slots = labelSlots(marks.map((m, k) => markLabel(m, k)))
   return marks.map((m, seriesIndex) => {
     const name = markLabel(m, seriesIndex)
-    if (!KNOWN_KINDS.has(m.kind)) {
+    if (!KNOWN_KINDS.has(m.kind) && process.env.NODE_ENV !== 'production') {
       warnOnce(`kind:${String(m.kind)}`, `unknown mark kind "${String(m.kind)}" — expected one of ${[...KNOWN_KINDS].join(', ')}. It will not be drawn.`)
     }
     let raw: Double[] = []

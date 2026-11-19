@@ -1,9 +1,9 @@
 ---
 title: "Examples"
-description: "A gallery of 120 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 121 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 120 examples across 44 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 121 examples across 44 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Shared state and effects
 
@@ -74,6 +74,10 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Gallery Bars
 
 <Example file="./examples/charts/gallery-bars" />
+
+### Gallery Bars Time
+
+<Example file="./examples/charts/gallery-bars-time" />
 
 ### Gallery Boxplot
 

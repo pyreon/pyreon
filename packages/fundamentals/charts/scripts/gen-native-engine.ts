@@ -45,6 +45,7 @@ export const ENGINE_FILES = [
   'gradient',
   'format',
   'scale',
+  'bar-band',
   'scale-extra',
   'curve',
   'arc',

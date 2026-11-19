@@ -4,10 +4,11 @@ import { computeLayout, valueTickTarget, layoutBars, layoutBarsH, layoutSeriesPo
 import { m4CategoryPoints, m4Pixels } from './decimate-values'
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackLevels, layoutStackLevelsH, layoutWaterfall, normalizeStack, stackLevels, stackLevelsExtent, waterfallExtent } from './stack'
-import type { StackLevels, StackSegment } from './stack'
+import type { StackLevels, StackSegment, WaterfallStep } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, isFiniteNumber, niceDomain, xPx, yPx } from './scale'
+import { bandFrame, barBand, numericXDomain, shiftRect } from './bar-band'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
 import { polygonCmd, rectCmd } from './corners'
@@ -399,6 +400,12 @@ export interface ChartSpec {
   barGap?: Double | undefined
   /** The space between categories, as a fraction of the band (0.25 by default, clamped to 0..0.9). */
   barCategoryGap?: Double | undefined
+  /**
+   * Bars on a NUMERIC or time x axis (`xValues`): the width of one bar's slot, in x-domain units (a day is 86400000 on a time axis).
+   * Unset, the slot is the smallest positive gap between neighbouring x values. `barWidth` / `barGap` / `barCategoryGap` then
+   * work inside the slot as they do inside a category band. Ignored on a category axis.
+   */
+  barSpan?: Double | undefined
   /**
    * Reverse the value axis: its high end at the bottom (the left, on a
    * horizontal chart) and bars hanging from the top. The data and the
@@ -855,8 +862,9 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
       (spec.xValues ?? []).length > 0
         /* v8 ignore next — the inner `?? []` is unreachable: the test above already
            established a non-empty list. Native needs the unwrap; the web cannot reach it. */
-        ? { ...extent(spec.xValues ?? []), inverse: spec.xInverse }
+        ? numericXDomain(spec, barBand(spec))
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
+    xNumeric: (spec.xValues ?? []).length > 0,
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
     fontSize: spec.theme.fontSize,
@@ -963,9 +971,18 @@ export function categoryPoints(values: Double[], plot: Rect, dom: Domain): Pt[] 
   return layoutSeriesPoints(values, plot, dom)
 }
 
-/** `layoutBars` for series `k`. */
+/** `layoutBars` / `layoutBarsH` for series `k`; on a numeric x axis each bar is centred on its scaled x (see `bar-band.ts`). */
+function barsLaidIn(spec: ChartSpec, k: number, plot: Rect, dom: Domain, horizontal: boolean): Rect[] {
+  const values = spec.series[k]!.values
+  const bf = bandFrame(spec, plot, horizontal, values.length)
+  const gap = spec.barCategoryGap ?? 0.25
+  const rects = horizontal ? layoutBarsH(values, bf.frame, dom, gap, spec.barWidth) : layoutBars(values, bf.frame, dom, gap, spec.barWidth)
+
+  return rects.map((r, i) => shiftRect(r, bf.shifts, i, horizontal))
+}
+
 export function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
-  return layoutBars(spec.series[k]!.values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth)
+  return barsLaidIn(spec, k, plot, dom, false)
 }
 
 /** The global series indices of a kind, in order. */
@@ -982,23 +999,41 @@ function levelsOf(series: Series[]): StackLevels {
   return stackLevels(values)
 }
 
-/** `layoutStackLevels` / `layoutGroupedBars` for a kind. */
+/** The stacked or grouped segments of a kind, in either frame, each slot centred on its x on a numeric axis. */
+function setLaidIn(spec: ChartSpec, kind: string, plot: Rect, dom: Domain, horizontal: boolean): StackSegment[] {
+  const idx = indicesOf(spec, kind)
+  const values = idx.map((k) => spec.series[k]!.values)
+  let n = 0
+  for (const v of values) if (v.length > n) n = v.length
+  const bf = bandFrame(spec, plot, horizontal, n)
+  const gap = spec.barCategoryGap ?? 0.25
+  const levels = kind === 'stacked' ? levelsOf(idx.map((k) => spec.series[k]!)) : stackLevels([])
+  const stacked = kind === 'stacked'
+  const shifted = (segs: StackSegment[]): StackSegment[] => segs.map((seg) => ({ ...seg, rect: shiftRect(seg.rect, bf.shifts, seg.datumIndex, horizontal) }))
+  if (horizontal) return shifted(stacked ? layoutStackLevelsH(levels, values, bf.frame, dom, gap, spec.barWidth) : layoutGroupedBarsH(values, bf.frame, dom, gap, spec.barWidth, spec.barGap))
+
+  return shifted(stacked ? layoutStackLevels(levels, values, bf.frame, dom, gap, spec.barWidth) : layoutGroupedBars(values, bf.frame, dom, gap, spec.barWidth, spec.barGap))
+}
+
 export function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
-  const idx = indicesOf(spec, kind)
-  const values = idx.map((k) => spec.series[k]!.values)
-  return kind === 'stacked' ? layoutStackLevels(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth) : layoutGroupedBars(values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth, spec.barGap)
+  return setLaidIn(spec, kind, plot, dom, false)
 }
 
-/** `layoutBarsH` for series `k`. */
+/** `barsLaid` for the horizontal frame. */
 export function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
-  return layoutBarsH(spec.series[k]!.values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth)
+  return barsLaidIn(spec, k, plot, dom, true)
 }
 
-/** `layoutStackLevelsH` / `layoutGroupedBarsH` for a kind. */
+/** `setLaid` for the horizontal frame. */
 export function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
-  const idx = indicesOf(spec, kind)
-  const values = idx.map((k) => spec.series[k]!.values)
-  return kind === 'stacked' ? layoutStackLevelsH(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth) : layoutGroupedBarsH(values, plot, dom, spec.barCategoryGap ?? 0.25, spec.barWidth, spec.barGap)
+  return setLaidIn(spec, kind, plot, dom, true)
+}
+
+/** `layoutWaterfall` for a series' values, each step centred on its scaled x on a numeric axis. */
+function waterfallLaid(spec: ChartSpec, values: Double[], plot: Rect, dom: Domain): WaterfallStep[] {
+  const bf = bandFrame(spec, plot, false, values.length)
+
+  return layoutWaterfall(values, bf.frame, dom, spec.barCategoryGap ?? 0.25, spec.barWidth).map((st) => ({ ...st, rect: shiftRect(st.rect, bf.shifts, st.datumIndex, false) }))
 }
 
 /**
@@ -1477,7 +1512,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     } else if (s.kind === 'waterfall') {
       // Floating bars from running total to running total, joined by a thin
       // dashed connector so the eye carries the level across each gap.
-      const steps = layoutWaterfall(s.values, plot, sDomain, spec.barCategoryGap ?? 0.25, spec.barWidth)
+      const steps = waterfallLaid(spec, s.values, plot, sDomain)
       for (let si = 0; si < steps.length; si++) {
         const st = steps[si]!
         const fill = stateFill(s, st.datumIndex, st.value < 0.0 ? s.negativeColor ?? withAlpha(s.color, 0.55) : s.color)
@@ -1993,7 +2028,7 @@ export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
     // can land in, so the datum index a hit reports stays the row's.
     const rects: Rect[] = []
     for (let i = 0; i < s.values.length; i++) rects.push({ x: 0.0, y: 0.0, w: -1.0, h: -1.0 })
-    for (const st of layoutWaterfall(s.values, plot, dom, raw.barCategoryGap ?? 0.25, raw.barWidth)) rects[st.datumIndex] = st.rect
+    for (const st of waterfallLaid(spec, s.values, plot, dom)) rects[st.datumIndex] = st.rect
     return rects
   }
   return spec.horizontal === true ? barsLaidH(spec, index, plot, dom) : barsLaid(spec, index, plot, dom)

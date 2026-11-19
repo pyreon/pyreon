@@ -51,6 +51,14 @@ labels, the tooltip and the table keep the real values.
 
 <Example file="./examples/charts/gallery-bar-geometry" title="Bar width and gaps" />
 
+## Bars on a time axis
+
+`xValue` puts each bar at its own x: the slot is the smallest gap between two x values
+(`barSpan` sets it explicitly, in x units), bars are centred on their day and the axis is
+padded by half a slot, so a missing day is an empty stretch, not a squeezed bar.
+
+<Example file="./examples/charts/gallery-bars-time" title="Daily revenue with missing days" />
+
 ## Colour a datum
 
 `fill={fillBy('status')}` reads a colour off each row; `fill={shadeBy('margin')}`

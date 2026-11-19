@@ -522,6 +522,8 @@ export interface ChartProps<T> {
   barGap?: number
   /** The space between categories, as a fraction of the band (default 0.25). */
   barCategoryGap?: number
+  /** Bars on a numeric or time x axis: the width of one bar's slot, in x-domain units — see `PlotChartProps.barSpan`. */
+  barSpan?: number
   animate?: boolean
   /** Tween data changes (default on); `updateDuration` in ms. */
   updateAnimation?: boolean
@@ -969,7 +971,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
       : reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   }
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale', 'barWidth', 'barGap', 'barCategoryGap'] as const) {
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale', 'barWidth', 'barGap', 'barCategoryGap', 'barSpan'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
   plotProps.onSelect = reactiveProp(() => props.onSelect)

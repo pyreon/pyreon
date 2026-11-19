@@ -58,6 +58,8 @@ export interface ChartToSvgOptions<T> {
   barGap?: number
   /** Space between categories, as a fraction of the band — see `PlotChartProps.barCategoryGap`. */
   barCategoryGap?: number
+  /** Bars on a numeric or time x axis: the width of one bar's slot in x-domain units — see `PlotChartProps.barSpan`. */
+  barSpan?: number
   /** Reverse the value axis — see `PlotChartProps.yInverse`. */
   yInverse?: boolean
   /** Reverse the right axis — see `PlotChartProps.y2Inverse`. */
@@ -68,6 +70,8 @@ export interface ChartToSvgOptions<T> {
   yScale?: 'linear' | 'log' | ScaleView
   /** A NUMERIC x channel (spacing follows the values); with it `xScale` applies — see `PlotChartProps.xScale`. */
   xValue?: (d: T, index: number) => number
+  /** Label a numeric x axis with calendar steps (the x values are epoch milliseconds) — see `PlotChartProps.xTime`. */
+  xTime?: boolean
   xScale?: 'linear' | ScaleView
   /** Value-axis grid lines (`false` hides them) — see `PlotChartProps.yGrid`. */
   yGrid?: boolean
@@ -119,9 +123,11 @@ function optionFields<T>(options: ChartToSvgOptions<T>, rows: readonly T[]): Par
     barWidth: options.barWidth,
     barGap: options.barGap,
     barCategoryGap: options.barCategoryGap,
+    barSpan: options.barSpan,
     yInverse: options.yInverse,
     y2Inverse: options.y2Inverse,
     xInverse: options.xInverse,
+    xTime: options.xTime,
     yGrid: options.yGrid,
     xGrid: options.xGrid,
     yMinor: options.yMinor,

@@ -2147,6 +2147,7 @@ export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'strin
   { name: 'barWidth', kind: 'number' },
   { name: 'barGap', kind: 'number' },
   { name: 'barCategoryGap', kind: 'number' },
+  { name: 'barSpan', kind: 'number' },
   { name: 'yInverse', kind: 'boolean' },
   { name: 'y2Inverse', kind: 'boolean' },
   { name: 'xInverse', kind: 'boolean' },

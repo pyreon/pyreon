@@ -53,7 +53,10 @@ function morphKind(s: Series): MorphKind | null {
 
 /** True when every series of `spec` can be morphed by key (and there is at least one). */
 export function canKeyMorph(spec: ChartSpec): boolean {
-  return spec.series.length > 0 && !spec.xValues?.length && spec.series.every((s) => morphKind(s) !== null)
+  // A numeric x axis morphs too when it only draws bars (its slots are placed by `bar-band.ts`); a line places points by index here.
+  const numeric = (spec.xValues ?? []).length > 0
+
+  return spec.series.length > 0 && spec.series.every((s) => morphKind(s) !== null && !(numeric && s.kind === 'line'))
 }
 
 /** Each series' geometry by key, laid out exactly as `renderChartIn` lays it out. */

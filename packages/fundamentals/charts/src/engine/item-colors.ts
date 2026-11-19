@@ -127,7 +127,7 @@ export function shadeBy<T>(channel: ItemChannel<T, number | undefined>, options:
       const shades: Double[] = []
       for (let i = 0; i < data.length; i++) {
         const raw = read(channel, data[i]!, i)
-        if (raw !== undefined && typeof raw !== 'number') warnOnce('shade:nonnumber', 'shadeBy: the channel returned a non-number; that datum keeps the series colour.')
+        if (process.env.NODE_ENV !== 'production' && raw !== undefined && typeof raw !== 'number') warnOnce('shade:nonnumber', 'shadeBy: the channel returned a non-number; that datum keeps the series colour.')
         shades.push(typeof raw === 'number' && Number.isFinite(raw) ? raw : Number.NaN)
       }
       const domain = options.domain ?? shadeExtent(shades)
