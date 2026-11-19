@@ -9,11 +9,12 @@
 //      number of dependency writes. (Was forfeited by `{ equals }`, which
 //      re-evaluated eagerly on every notification.)
 //
-// The mechanism: the dirty cascade stays lazy until it reaches a RUNNER (an
-// effect notify, a raw listener, or a `direct()` updater), at which point the
-// computed immediately above books a tier-1 refresh whose gate decides whether
-// that runner fires at all. See `createComputed` in computed.ts and
-// `propagateLazyDirty`'s `owner` parameter in batch.ts.
+// The mechanism (since stage ii of the reactivity redesign): a write only
+// MARKS — its direct readers DIRTY, everything below PENDING — and queues the
+// watchers (effects, bindings, computeds with direct updaters). A watcher at
+// its turn resolves its marks bottom-up (`checkDirty` in graph.ts): a computed
+// evaluates only if a source it read really changed, and one that comes back
+// equal stops everything below it. Nothing evaluates without a reader.
 
 import { describe, expect, test } from 'vitest'
 import { batch } from '../batch'
@@ -92,7 +93,7 @@ describe('computed — default value gate', () => {
     eff.dispose()
   })
 
-  test('the gate lands on the computed IMMEDIATELY above the runner, and costs no extra evaluations', () => {
+  test('the gate lands on the node whose value did not change: nothing below it evaluates', () => {
     const n = signal(0)
     let bEvals = 0
     let cEvals = 0
@@ -115,17 +116,17 @@ describe('computed — default value gate', () => {
 
     n.set(1)
     n.set(2)
-    // `c` is the node directly above the runner, so `c` is the one that refreshes
-    // and gates; its evaluation pulls `b` exactly as the effect's own read would
-    // have. So the chain costs the SAME evaluations it costs today — the saving
-    // is the effect body, which no longer runs at all.
-    expect(cEvals - cBase).toBe(2)
+    // Exact cutoff (design D3/C7, since stage ii): `b`'s own source changed, so
+    // `b` evaluates; it comes back unchanged, so `c` is cleared WITHOUT
+    // evaluating, and the effect does not run. (Before stage ii the gate sat
+    // on `c`, the node above the runner, and `c` evaluated on every write.)
     expect(bEvals - bBase).toBe(2)
+    expect(cEvals - cBase).toBe(0)
     expect(runs).toBe(1)
 
     // A real change propagates normally.
     n.set(10)
-    expect(cEvals - cBase).toBe(3)
+    expect(cEvals - cBase).toBe(1)
     expect(runs).toBe(2)
 
     eff.dispose()
@@ -183,12 +184,12 @@ describe('computed — laziness is preserved by the gate', () => {
     expect(evals).toBe(6)
   })
 
-  test('an EXPLICIT `{ equals }` stays EAGER — the author placed the gate at that node', () => {
-    // Unchanged contract, and load-bearing: `@pyreon/flow`'s `_edgeById` passes
-    // `{ equals: Object.is }` precisely so the cascade dies THERE, above an edge-
-    // geometry computed that rebuilds a fresh object and could therefore never
-    // gate on its own. Demoting an explicit gate to the runner boundary would
-    // re-run every unmoved edge's geometry on every drag frame.
+  test('an EXPLICIT `{ equals }` is lazy too — and still gates at its own node', () => {
+    // Design D3 (since stage ii): under pull-checking every computed gates at
+    // its own node, so `equals` no longer needs to be eager to place the gate.
+    // `@pyreon/flow`'s `_edgeById` (`{ equals: Object.is }` above an
+    // edge-geometry computed that rebuilds a fresh object) keeps its effect:
+    // an unchanged `_edgeById` clears the geometry computed without running it.
     const n = signal(0)
     let evals = 0
     const c = computed(
@@ -201,7 +202,39 @@ describe('computed — laziness is preserved by the gate', () => {
 
     expect(c()).toBe(0)
     for (let i = 1; i <= 20; i++) n.set(i)
-    expect(evals).toBe(21) // one per dependency change — the documented trade
+    expect(evals).toBe(1) // no reader, no evaluation (before stage ii: 21)
+
+    // The gate: a fresh-object consumer below an unchanged `{ equals }` node.
+    const id = signal(1)
+    const other = signal(0)
+    let lookups = 0
+    let geometries = 0
+    const lookup = computed(
+      () => {
+        lookups++
+        other()
+        return { id: id() }
+      },
+      { equals: (a, b) => a.id === b.id },
+    )
+    const geometry = computed(() => {
+      geometries++
+      return { x: lookup().id * 10 }
+    })
+    let runs = 0
+    const e = effect(() => {
+      geometry()
+      runs++
+    })
+    other.set(1) // `lookup` re-evaluates to an equal value …
+    other.set(2)
+    expect(lookups).toBe(3)
+    expect(geometries).toBe(1) // … so `geometry` never re-runs
+    expect(runs).toBe(1)
+    id.set(2)
+    expect(geometries).toBe(2)
+    expect(runs).toBe(2)
+    e.dispose()
   })
 
   test('a computed goes lazy again once its last runner unsubscribes', () => {

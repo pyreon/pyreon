@@ -8,9 +8,7 @@
  *
  * Uncovered branches addressed (per baseline):
  *   - tracking.ts:70-71 — cleanupEffect WeakMap path (legacy non-collector branch)
- *   - tracking.ts:81 — notifySubscribers single-subscriber NON-batching arm
- *   - tracking.ts:95-100 — notifySubscribers multi-subscriber NON-batching loop
- *   - batch.ts:103-115 — MAX_PASSES bailout + dev-mode warn with labels
+ *   - MAX_PASSES bailout + dev-mode warn
  *   - cell.ts:49 — Cell.listen promotion from _l → _s with _l present
  *   - computed.ts:298 — error catch inside computed read body
  *   - createSelector.ts:10 — notifyBucket empty-set early return
@@ -28,7 +26,7 @@
  *   - reactive-devtools.ts:624-633 — getFireSummaries same-location collision
  *   - debug.ts:58 — inspectSignal subscriber-count fallback
  */
-import { batch, _markRecompute } from '../batch'
+import { batch } from '../batch'
 import { Cell, cell } from '../cell'
 import { computed } from '../computed'
 import { createSelector } from '../createSelector'
@@ -55,74 +53,12 @@ import {
   withSilent,
   withSilentSync,
 } from '../singleton-sentinel'
-import { notifySubscribers } from '../tracking'
 
 // Cast helpers: @pyreon/reactivity narrows process.env to { NODE_ENV?: string }
 // for tree-shaking purposes; tests need wider access to PYREON_SINGLE_INSTANCE.
 const _env = process.env as Record<string, string | undefined>
 const _psi = () => _env.PYREON_SINGLE_INSTANCE
 const _setPsi = (v: string | undefined) => { _env.PYREON_SINGLE_INSTANCE = v }
-
-// ─── tracking.ts ────────────────────────────────────────────────────────────
-
-describe('tracking — notifySubscribers non-batching arms (lines 81, 95-100)', () => {
-  test('size==1 non-batching arm invokes the single subscriber inline (line 81)', () => {
-    // Construct the Set directly so we can call notifySubscribers without going
-    // through signal._set's batch wrap. This is the framework-internal contract;
-    // tests can exercise it directly to lock the non-batching arm.
-    let fired = 0
-    const sub = () => {
-      fired++
-    }
-    const subs = new Set<() => void>([sub])
-
-    // No batching context — direct call should fire the single subscriber inline.
-    notifySubscribers(subs)
-
-    expect(fired).toBe(1)
-  })
-
-  test('size>1 non-batching arm iterates the original-size-capped loop (lines 95-100)', () => {
-    const order: number[] = []
-    const subs = new Set<() => void>([() => order.push(1), () => order.push(2), () => order.push(3)])
-
-    notifySubscribers(subs)
-
-    expect(order).toEqual([1, 2, 3])
-  })
-
-  test('size>1 non-batching arm respects the originalSize cap when a subscriber re-adds itself', () => {
-    // A subscriber that re-inserts another subscriber during its run. The cap
-    // prevents the re-inserted entry from firing in the same notify pass.
-    const order: string[] = []
-    const subs = new Set<() => void>()
-    const reAdder = () => {
-      order.push('a')
-      // Add a new subscriber mid-iteration. Cap at originalSize=2 means this
-      // new sub WON'T fire in the current loop.
-      subs.add(() => order.push('NEW'))
-    }
-    const sub2 = () => {
-      order.push('b')
-    }
-    subs.add(reAdder)
-    subs.add(sub2)
-
-    notifySubscribers(subs)
-
-    // Only the two original subscribers fired; the late-added NEW didn't.
-    expect(order).toEqual(['a', 'b'])
-    expect(subs.size).toBe(3) // NEW still in the Set (not removed)
-  })
-
-  test('size==0 short-circuit returns without iteration (line 76)', () => {
-    const empty = new Set<() => void>()
-    // No throw, no side effects.
-    expect(() => notifySubscribers(empty)).not.toThrow()
-  })
-})
-
-// ─── batch.ts ───────────────────────────────────────────────────────────────
 
 describe('batch — MAX_PASSES bailout (lines 102-131)', () => {
   test('an effect that re-fires itself across passes trips MAX_PASSES and warns', () => {
@@ -147,47 +83,6 @@ describe('batch — MAX_PASSES bailout (lines 102-131)', () => {
     const msg = warnMock.mock.calls[0]?.[0] as string
     expect(msg).toMatch(/MAX_PASSES/)
     expect(msg).toMatch(/pending effects dropped/)
-
-    eff.dispose()
-    warnMock.mockRestore()
-  })
-
-  test('MAX_PASSES warn includes labelled effects when available (lines 110-115)', () => {
-    const warnMock = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const s = signal(0)
-
-    // Set up the runaway effect, but tag its internal run callback with
-    // `_label` BEFORE triggering the runaway. The batch warn at line 110
-    // walks `pendingEffects` and reads `._label` on each.
-    const eff = effect(() => {
-      const v = s()
-      if (v < 200) s.set(v + 1)
-    })
-
-    // After initial mount, find the subscribed run callback on s._s and tag it.
-    const internalS = s as unknown as {
-      _s1: (() => void) | null
-      _s: Set<() => void> | null
-    }
-    // Two-tier tracking storage — the sole subscriber lives in `_s1`.
-    if (internalS._s1) (internalS._s1 as { _label?: string })._label = 'my-loop-effect'
-    if (internalS._s) {
-      for (const sub of internalS._s) {
-        ;(sub as { _label?: string })._label = 'my-loop-effect'
-      }
-    }
-
-    // Trigger a fresh write to start the runaway flush.
-    s.set(50) // Different value to bypass equality short-circuit
-
-    // The labeled run was queued into pendingEffects across MAX_PASSES, so
-    // the warn should contain "Sample labels:" listing it.
-    const calls = warnMock.mock.calls
-    const sawLabel = calls.some((args) => {
-      const m = args[0] as string
-      return typeof m === 'string' && m.includes('Sample labels')
-    })
-    expect(sawLabel).toBe(true)
 
     eff.dispose()
     warnMock.mockRestore()
@@ -1127,13 +1022,10 @@ describe('reactive-devtools — getFireSummaries collision branches', () => {
     expect(() => getFireSummaries()).not.toThrow()
   })
 
-  test('getReactiveGraph: host with null _s skips edge emission (line 561 FALSE arm)', async () => {
-    // Register a node with a host that has _s = null (no subscribers).
+  test('getReactiveGraph: a host with no subscriber edges emits none', async () => {
+    // Register a node with a host that has no subscribers.
     const node = (() => {}) as object
-    const host: { _s1: (() => void) | null; _s: Set<() => void> | (() => void) | null } = {
-      _s1: null,
-      _s: null,
-    }
+    const host = { _subs: null, _subsTail: null }
     _rdRegister(node, 'signal', host, null, 'host-null-subs', undefined)
 
     // No throw — the if-subs branch falls through correctly.

@@ -113,4 +113,24 @@ describe('disposed computed — no re-subscription on read', () => {
     expect(runs).toBe(1)
     expect(subs(s)).toBe(0)
   })
+
+  test('a computed disposed DURING its own evaluation returns that evaluation, keeps it, and links nothing', () => {
+    // The @pyreon/flow shape: a per-id computed's read builds the id map, whose
+    // rebuild sweeps (disposes) the ids it does not contain — including the
+    // very computed being evaluated.
+    const s = signal(1)
+    let self: { dispose(): void } | null = null
+    const c = computed(() => {
+      const v = s() * 10
+      self?.dispose()
+      return v
+    })
+    self = c
+    expect(c()).toBe(10)
+    expect(c()).toBe(10)
+    s.set(2)
+    expect(c()).toBe(10) // disposed: keeps its last value, never re-links
+    expect(subs(s)).toBe(0)
+  })
 })
+

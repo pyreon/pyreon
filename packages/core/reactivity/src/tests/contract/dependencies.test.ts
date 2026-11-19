@@ -162,6 +162,98 @@ describe('C13 — a throwing run keeps its unconfirmed tail (design §1.5, kept 
   })
 })
 
+describe('C13 — what a throwing run keeps, precisely (pinned in stage ii)', () => {
+  // A run that throws drops no dependency: it keeps every dependency of the
+  // last completed run until a run completes (the order-independent form of
+  // "a throwing run keeps its tail"). The next completed run is exact again.
+  test('C13: a throwing run that read something else keeps the last completed run\'s deps', () => {
+    const a = signal(0)
+    const b = signal(0)
+    const x = signal(0)
+    const trip = signal(false)
+    let runs = 0
+    const prev = console.error
+    console.error = () => {}
+    try {
+      effect(() => {
+        runs++
+        if (trip()) {
+          x()
+          throw new Error('diverged, then threw')
+        }
+        a()
+        b()
+      })
+      trip.set(true) // reads [trip, x], throws
+      expect(runs).toBe(2)
+      b.set(1) // still a dependency
+      expect(runs).toBe(3)
+      x.set(1) // read by the throwing runs
+      expect(runs).toBe(4)
+      trip.set(false) // completes: reads [trip, a, b] — exact again
+      expect(runs).toBe(5)
+      x.set(2)
+      expect(runs).toBe(5)
+    } finally {
+      console.error = prev
+    }
+  })
+
+  test('C13: [a, a, b] then a throwing [a, a] is a prefix — b stays a dependency', () => {
+    const a = signal(0)
+    const b = signal(0)
+    const trip = signal(false)
+    let runs = 0
+    const prev = console.error
+    console.error = () => {}
+    try {
+      effect(() => {
+        runs++
+        trip()
+        a()
+        a()
+        if (trip()) throw new Error('after a, a')
+        b()
+      })
+      trip.set(true)
+      expect(runs).toBe(2)
+      b.set(1) // b is in the kept tail: re-runs
+      expect(runs).toBe(3)
+    } finally {
+      console.error = prev
+    }
+  })
+
+  test('C13: a kept dependency that was already stale is resolved, so a later write still reaches the effect', () => {
+    // The throwing run stops before reading `level`, which an earlier write in
+    // the same batch had marked stale. Left marked above a clean effect, it
+    // would stop every later write's marking at itself.
+    const sel = signal(1)
+    const x = signal(0)
+    const mid = computed(() => x() * 2)
+    const level = computed(() => (mid() > 1 ? 1 : 0))
+    let runs = 0
+    const prev = console.error
+    console.error = () => {}
+    try {
+      effect(() => {
+        runs++
+        if (sel() === 0) throw new Error('before level')
+        level()
+      })
+      batch(() => {
+        x.set(1) // level: 0 → 1, not yet evaluated
+        sel.set(0) // the effect re-runs and throws before reading level
+      })
+      expect(runs).toBe(2)
+      x.set(0) // level: 1 → 0 — the effect is still subscribed to it
+      expect(runs).toBe(3)
+    } finally {
+      console.error = prev
+    }
+  })
+})
+
 describe('C18 — 10,000-deep chains neither overflow nor lose updates', () => {
   const DEPTH = 10_000
 

@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Fine-grained reactivity: signal, computed, linked, effect, batch, onCleanup, createStore, watch, createResource, untrack',
   description:
-    'Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (`count()` to read, `count.set(5)` to write, `count.update(n => n + 1)` to derive). Direct subscribers use a single-subscriber inline slot (`_d1`) promoting to a `Set` only on the 2nd subscriber (a 10k-row `<For>` allocates zero subscriber Sets); effect subscribers use a lazy `Set`; batch uses pointer swap for zero-allocation grouping. Every other Pyreon package builds on this foundation but `@pyreon/reactivity` can be used independently in Node, Bun, or browser scripts without any framework overhead. `wrapSignal(base, { set, update? })` builds a writable side-effect facade (persistence, patch emission, validation) that forwards the internal `_v` field and `.direct` by construction, so the bind-fast-path contract cannot be silently broken.',
+    'Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (`count()` to read, `count.set(5)` to write, `count.update(n => n + 1)` to derive). Direct subscribers (compiled bindings, `subscribe()` listeners) use a single-entry inline slot (`_d1`) promoting to a `Set` only on the 2nd entry (a 10k-row `<For>` allocates zero subscriber Sets); computeds, effects and render bindings are nodes in a dependency graph with one small edge object per dependency — a write marks what may be stale and a read re-evaluates only what really changed. Every other Pyreon package builds on this foundation but `@pyreon/reactivity` can be used independently in Node, Bun, or browser scripts without any framework overhead. `wrapSignal(base, { set, update? })` builds a writable side-effect facade (persistence, patch emission, validation) that forwards the internal `_v` field and `.direct` by construction, so the bind-fast-path contract cannot be silently broken.',
   category: 'universal',
   multiplatform: {
     tier: 'shared',
@@ -22,7 +22,7 @@ count.set(5)         // write
 count.update(n => n + 1)  // derive
 count.peek()         // read WITHOUT subscribing
 
-// computed<T>() — auto-tracked; caches its value, notifies unconditionally (see equals)
+// computed<T>() — auto-tracked, lazy; caches its value, an equal result stops propagation
 const doubled = computed(() => count() * 2)
 
 // effect() — re-runs when dependencies change
@@ -54,7 +54,7 @@ effect(() => {
   features: [
     'Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata',
     'signal<T>() — callable function with .set(), .update(), .trigger()',
-    'computed<T>() — auto-tracked derivation; caches its value, but notifies downstream on every dependency change unless you pass `equals`',
+    'computed<T>() — auto-tracked, lazy derivation; caches its value, and an equal result (`Object.is`, or your `equals`) stops propagation',
     'linked<T>() — writable derived value that resets when its source changes (Angular linkedSignal)',
     'effect() / renderEffect() — side-effects with auto-tracking',
     'batch() / nextTick() — write-grouping + flush awaiter',
@@ -157,15 +157,15 @@ const initial = isClient ? navigator.onLine : true`,
           name: 'options',
           type: '{ equals?: (a: T, b: T) => boolean }',
           optional: true,
-          description: 'Custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke.',
+          description: 'Custom equality comparator, replacing the default `Object.is`. When it says the re-evaluated value equals the previous one, the computed keeps the PREVIOUS value (a stable reference) and nothing that reads it re-runs or re-evaluates. Use it when identity is the wrong test — typically a derivation that rebuilds a fresh array/object with unchanged contents. It does not change WHEN the computed evaluates: like every computed it is lazy and evaluates only when something reads it (directly or through an effect, binding or computed that depends on it). (Before 1.0 an explicit `equals` made the computed eager — one evaluation per dependency change even with no reader; that is gone.)',
         },
       ],
       returns: {
         type: 'Computed<T>',
-        description: 'A read-only callable — call to read the cached value; recomputes lazily only when a dependency changes. Caching is about RECOMPUTATION, not propagation: without `equals` it still notifies downstream even when the recomputed value is identical.',
+        description: 'A read-only callable — call to read the cached value; re-evaluates lazily, only when a dependency really changed, and an equal result stops propagation.',
       },
       summary:
-        'Create a derived value that caches its result and recomputes lazily. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). This is the one place Pyreon diverges from Solid `createMemo` / Vue + Preact `computed`, which all gate on equality by default; if you are porting from those, an unchanged result does NOT stop propagation here. Pass `equals` to gate on value, which is what stops an effect re-running on an identical result.',
+        'Create a derived value that caches its result and re-evaluates lazily. Dependencies are auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). A write only MARKS the computed as possibly stale; the next read re-evaluates it if (and only if) a value it read really changed, resolving its own dependencies bottom-up first. When the re-evaluated value equals the previous one (`Object.is` by default, like `signal.set`, Solid `createMemo`, Vue `computed`; or your `equals`), the computed keeps the previous value and nothing below it re-evaluates or re-runs. A computed nobody reads evaluates zero times. A read inside `batch()` is always fresh.',
       example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
 doubled()  // 0
@@ -175,8 +175,8 @@ doubled()  // 10`,
         '`computed(() => count)` — must CALL the signal: `computed(() => count())`',
         'Using `computed()` for side effects — use `effect()` instead; computed is for pure derivation',
         'Expecting `computed()` to re-run when a `.peek()`-read signal changes — `.peek()` bypasses tracking',
-        'Expecting eager evaluation — the default computed is LAZY: a dependency change only marks it dirty; the derivation runs on the next read. Pass `options.equals` for the eager variant that re-evaluates on notification and gates downstream updates',
-        'Assuming `computed()` de-duplicates identical results — it does NOT. A signal write gates on `Object.is`, so `set(same)` is a no-op; a COMPUTED has no such gate, and every dependency change notifies downstream even when the derived value is byte-identical. `computed(() => items().length)` re-runs its effects on every item mutation that leaves the length alone. Pass `{ equals }` (`Object.is` if that is what you meant) to gate on value',
+        'Expecting eager evaluation — a computed is LAZY, with or without `equals`: a dependency change only marks it; the derivation runs on the next read. A computed body used for a side effect (logging, a write) therefore does not run until something reads it — use `effect()` for side effects',
+        'Expecting a fresh object/array result to stop propagation — the default gate is `Object.is`, so `computed(() => items().filter(f))` builds a new array every time and always counts as changed. Pass `{ equals }` with a structural comparison (or derive a primitive, like `.length`) when identity is the wrong test',
         'Reasoning about memory from stale branches — a re-evaluated computed drops subscriptions to sources it no longer reads (exact dep list per evaluation), so `dispose()` fully unsubscribes even after conditional-branch flips',
       ],
       seeAlso: ['signal', 'effect'],
@@ -224,7 +224,7 @@ const kept = linked(options, (opts, prev): string =>
         description: 'A dispose function — call it to stop the effect and run its final cleanup.',
       },
       summary:
-        'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.',
+        'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. Effects run synchronously: once at creation, and again before the write (or the outermost `batch()`) that changed a dependency returns. An effect behind a computed re-runs only if the computed\'s value really changed. If the first run writes a signal it already read, the effect re-runs right after that first run, still before `effect()` returns (never nested inside itself). For DOM-specific effects with lighter overhead, use `renderEffect()` instead.',
       example: `const count = signal(0)
 const dispose = effect(() => {
   console.log("Count:", count())
@@ -242,6 +242,7 @@ effect(() => {
         'Nesting `effect()` inside `effect()` — use `computed()` for derived values instead',
         'Creating signals inside an effect — they re-create on every run; create once outside',
         'Passing an `async` function — only signal reads BEFORE the first `await` are tracked (dev mode warns at registration); read every tracked signal before awaiting, or use `watch(source, asyncCb)`',
+        'Depending on the RUN ORDER of two effects reached by the same write — effects run in depth-first subscription order (an effect behind a computed can run before a later effect on the signal itself), and `subscribe()` listeners and compiled bindings run before effects. Neither order is a contract: if one effect needs another\'s result, derive it with `computed()`',
         'Assuming a conditional read (`cond() ? a() : b()`) keeps BOTH branches subscribed — only the branch actually read this run is a dependency; the effect re-runs when the read branch or the condition changes, then re-tracks (stale-branch subscriptions are dropped on the next run)',
       ],
       seeAlso: ['onCleanup', 'computed', 'renderEffect'],
@@ -294,7 +295,7 @@ const dispose = renderEffect(() => {
         description: 'Nothing — runs `fn` synchronously and flushes a single update pass.',
       },
       summary:
-        'Group multiple signal writes so subscribers fire only once — after the batch completes. Uses pointer swap (zero allocation). Essential when updating 3+ signals that downstream effects read together; without batch, each `.set()` triggers an independent notification pass.',
+        'Group multiple signal writes so subscribers fire only once — after the outermost batch completes. Writes commit immediately and a computed read inside the batch is always fresh; only the effects, listeners and DOM bindings wait for the end. Essential when updating 3+ signals that downstream effects read together; without batch, each `.set()` triggers an independent flush.',
       example: `const a = signal(1)
 const b = signal(2)
 batch(() => {
@@ -846,7 +847,7 @@ deactivateReactiveDevtools() // → registry cleared`,
       signature:
         'getReactiveGraph(): { nodes: ReactiveNode[]; edges: { from: number; to: number }[] }  ·  getReactiveFires(): { id: number; ts: number }[]',
       summary:
-        'Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. `getReactiveGraph()` returns every tracked node (`{ id, kind: "signal"|"derived"|"effect", name, value, subscribers, fires, lastFire, loc?, binding?, target?, key? }`) plus dependency edges recomputed on demand from the real subscriber slots, both the tracked `_s1`/`_s` pair and the `direct()` `_d1`/`_d` pair (source → subscriber: signal→derived, derived→effect, signal→DOM binding). Every live DOM binding (compiled `_bindText` / `_bindDirect` / `_bind` / `renderEffect`, `createSelector().subscribe` row bindings, h()-path props and children, `<For>` / `<Show>` boundaries) is an `effect` node with `binding` set to what it writes (`text`, `attr`, `class`, `style`, `prop`, `child`, `list`, or `dom` when a compiled updater assigns the DOM without a setter) and a name like `aria-busy on <div>`; its mount run counts as fire 1 and each re-run as another — always consistent with the framework’s actual subscription state, no incremental drift. `getReactiveFires()` returns a fixed-size ring buffer of recent fires (`{ id, ts }`, oldest → newest) powering the Effects/Profiler tabs. Both require `activateReactiveDevtools()` first and return empty otherwise. Names come from `signal(v, { name })` / the vite-plugin dev auto-naming; anonymous computeds/effects get a synthetic `derived#id` / `effect#id`.',
+        'Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. `getReactiveGraph()` returns every tracked node (`{ id, kind: "signal"|"derived"|"effect", name, value, subscribers, fires, lastFire, loc?, binding?, target?, key? }`) plus dependency edges recomputed on demand from the real subscriber state, both the tracked graph edges and the `direct()` / `subscribe()` `_d1`/`_d` pair (source → subscriber: signal→derived, derived→effect, signal→DOM binding). Every live DOM binding (compiled `_bindText` / `_bindDirect` / `_bind` / `renderEffect`, `createSelector().subscribe` row bindings, h()-path props and children, `<For>` / `<Show>` boundaries) is an `effect` node with `binding` set to what it writes (`text`, `attr`, `class`, `style`, `prop`, `child`, `list`, or `dom` when a compiled updater assigns the DOM without a setter) and a name like `aria-busy on <div>`; its mount run counts as fire 1 and each re-run as another — always consistent with the framework’s actual subscription state, no incremental drift. `getReactiveFires()` returns a fixed-size ring buffer of recent fires (`{ id, ts }`, oldest → newest) powering the Effects/Profiler tabs. Both require `activateReactiveDevtools()` first and return empty otherwise. Names come from `signal(v, { name })` / the vite-plugin dev auto-naming; anonymous computeds/effects get a synthetic `derived#id` / `effect#id`.',
       example: `activateReactiveDevtools()
 const a = signal(1, { name: '$a' })
 const b = computed(() => a() + 1)

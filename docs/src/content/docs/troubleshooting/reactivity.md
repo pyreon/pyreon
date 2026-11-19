@@ -22,50 +22,54 @@ The template emitter combined every general reactive attr (`disabled={() => pend
 Tracking collectors, owners and the lifecycle frame nest, so frame exit must restore the value captured at entry, never reset to `null`.
   - Reset-to-null at depth 2 silently drops work: a nested `effect()` dropped the outer effect's later `onCleanup()` calls; a computed's first eval inside an effect left the effect's later reads subscribed but unrecorded (retained after `dispose()`); `runWithHooks` dropped every `onMount`/`onUnmount`/`onUpdate`/`onErrorCaptured` registered after a nested child mount.
   - Nesting is not visible in the calling code: `_tpl(html, bindFn)` runs `bindFn` synchronously, so `const box = <div>{show && <Child/>}</div>` runs `Child`'s whole setup inside the parent's.
-  - Use the `tracking.ts` frame helpers (`runCollect` / `runVerify`); `runWithHooks` saves `getCurrentHooks()` and restores it (`packages/core/core/src/component.ts`).
+  - Save the tracking frame at run entry and restore it at exit, as every run in `@pyreon/reactivity` does (`updateComputed` in `graph.ts`, `EffectNode._exec` / `BindingNode._track` in `effect.ts`); `runWithHooks` saves `getCurrentHooks()` and restores it (`packages/core/core/src/component.ts`).
   - Tests: `reactivity/src/tests/verify-deps.test.ts` ("frame-restore regressions"), `core/src/tests/lifecycle-frame.test.ts`, `runtime-dom/src/tests/nested-setup-hooks-frame.test.tsx` (compiled through the real `transformJSX`; vitest's JSX transform never emits `_tpl`).
 
 ---
 
-### Dispatching a computed's direct subscribers during an inline recompute
+### Dispatching a computed's direct subscribers during a mid-batch evaluation
 
-An inline write-time recompute may mark dirty and propagate, but direct (`_d1`/`_d`) subscribers must fire in the batch drain.
+A computed may be evaluated mid-batch (a pull), but its direct (`_d1`/`_d`) subscribers must fire in the flush, once, on the settled value.
   - Inside `batch(() => { a.set(); b.set() })` the value is torn between writes, so an inline dispatch fires on half-updated values (`[12, 30]` instead of `[30]`) and a torn eval that throws reports a phantom error.
-  - `computed.ts:propagateEagerChange` defers the dispatch via `enqueuePendingNotification`; the `_dirty` guard keeps it idempotent.
-  - The write-time dirty cascade must stay depth-bounded: `batch.ts` recurses while `_cascadeDepth` is below `MAX_CASCADE_RECURSION`, then switches to an explicit stack. An overflow caught downstream would otherwise clear `_dirty` with a stale value (a silent lost update).
+  - `graph.ts:computedChanged` only sets `F_DIRECT_STALE`; the computed sits in the flush queue as a watcher and `runComputedWatcher` fires the updaters at its turn, if the settled value changed.
+  - Marking and resolution must stay iterative (`propagate` / `checkDirty` use explicit stacks): a recursive walk overflowed around 8,000 deep, and an overflow caught downstream cleared a stale node's mark with a stale value (a silent lost update).
   - Test: `reactivity/src/tests/batch-glitch-freedom.test.ts` (includes a 10,001-deep chain).
 
 ---
 
-### Trusting a pulled dep's cache during a subscription-order drain
+### A write walk that both marks and schedules, and stops marking where it schedules
 
-Tier-1 drains in subscription order, not topological order, so a queued evaluator must never read a dep that was queued but not marked dirty.
-  - Dirty-mark every computed inline during the write's notify phase, so a pull-read evaluates a dirty dep in place.
-  - Clear an entry's queue-membership flag before running it, so a re-notify after its visit re-queues it instead of being deduped away. A DAG settles in at most depth sweeps.
-  - The old direct inline eager path was faster because it was wrong (torn and stale); do not chase that speed.
-  - Never end the write walk early while computeds remain below the marked node (a runner sighting, a direct updater, an `{ equals }` notify). Mark them STRICT CHECK instead (resolve deps first, never evaluate on a guess): a skipped computed keeps its clean flag and a pull before the owner's refresh returns its stale cache, while a DIRTY mark makes a fresh-object computed re-run its effects. Tests: `staleness-fuzz.test.ts`.
-  - Code: `computed.ts:createComputed` (the read's dirty branch is the single evaluator) + `batch.ts` (`enqueueEagerRefresh`, `recomputeQueue`). Test: `reactivity/src/tests/tier1-topo-staleness.test.ts`.
+The pre-graph core's walk ended early at every node that booked its own refresh (a gated fan-out, a computed with direct updaters, an `{ equals }` computed), so everything below stayed unmarked and a pull inside `batch()` returned a stale cache (393 stale reads per 1,000 fuzz graphs); its refresh queue drained in subscription order, so a queued evaluator could read a dep that was queued but not yet marked.
+  - Marking must be TOTAL (stop only at an already-marked node) and must run no user code; scheduling only queues watchers; evaluation is a separate pull that resolves "maybe stale" bottom-up. That is the graph core (`graph.ts`: `propagate`, `checkDirty`, `refreshComputed`).
+  - A "maybe stale" mark (PENDING) is not "certainly stale" (DIRTY): PENDING resolves its deps before deciding, so a fresh-object computed below an unchanged node is not re-run on a guess.
+  - Tests: `staleness-fuzz.test.ts`, `tier1-topo-staleness.test.ts`, `contract/differential-fuzz.test.ts`.
 
 ---
 
 ### A queue routing rule that is only valid while a pass runs
 
-The effect drain parks a re-enqueue of an effect that "already ran this pass" in `nextEffects`, which is promoted once at the end of each pass.
-  - If that rule is still in force BETWEEN passes (a tier-1 refresh after the pass re-queues an effect that ran in it), the entry lands after the promotion, the loop sees its live queues empty and exits, and the effect never re-runs: a silent lost update. `runEffectPass` closes its generation (`_b.g++`) on exit, so outside a running pass every enqueue goes to the current queue.
+The pre-graph drain parked a re-enqueue of an effect that "already ran this pass" in a second queue promoted once per pass; a re-enqueue between passes landed after the promotion, the loop saw its live queues empty and exited, and the effect never re-ran (a silent lost update, B1).
+  - The graph core has ONE queue that the flush re-reads to its end; passes are counted, not queued (`F_RAN`: an entry that already ran opens the next pass).
   - Any new queue or routing flag must answer: who drains an entry added after the loop's last look? Test: `contract/bug-regressions.test.ts` (B1).
+
+---
+
+### Dropping queued work without clearing its marks
+
+Marking stops at an already-marked node, so in the graph core a flush cut short (a throw escaping a raw listener or render binding, `MAX_PASSES`) that left its unrun watchers, and the computeds above them, marked would stop every later write there, and the effect would never run again. `graph.ts:settleDropped` resolves a dropped watcher's marked deps and clears its marks; any new early exit from the flush must do the same. Tests: `contract/errors.test.ts` ("leaves no mark behind"; bisect-verified against `settleDropped`).
 
 ---
 
 ### Notifying the reader that pulled the change
 
 A read that re-evaluates a changed computed propagates the change to the computed's subscribers. The reader doing the read is one of them, and it is reading the new value right now.
-  - Re-queueing it ran every such effect twice per change (twice at creation, the second time nested inside the first). `computed.ts:pullReader` skips that reader unless it already read the computed earlier in the same run, when its earlier read is stale and the re-run is real. Test: `contract/bug-regressions.test.ts` (B2).
+  - Re-queueing it ran every such effect twice per change (twice at creation, the second time nested inside the first). In the graph core the computed links to its reader only AFTER resolving, and a found change only upgrades readers already marked PENDING (`shallowPropagate`), so the reader is reached only if it read the computed earlier in the same run — when its earlier value is stale and the re-run is real. A mark reaching a RUNNING subscriber re-queues it only through an edge its current run already read (`isConfirmed`). Test: `contract/bug-regressions.test.ts` (B2).
 
 ---
 
 ### Assigning per-run effect state that a re-entered run already set
 
-An effect that writes a signal it read during its first run re-runs NESTED inside that run. Whatever the inner run stored (inner effects, `onCleanup` callbacks, the returned cleanup) must be appended to, never overwritten by, the enclosing run; overwriting leaked inner effects that not even `scope.stop()` reached.
+An effect that wrote a signal it read during its first run used to re-run NESTED inside that run, and the enclosing run overwrote what the inner run stored (inner effects, `onCleanup` callbacks, the returned cleanup), leaking inner effects that not even `scope.stop()` reached. Since design D9 a first run is serialised (it runs in its own batch window; `settleFirstRun` re-runs it right after), so runs never nest; `EffectNode._exec` still appends rather than assigns, as a defence.
   - `onCleanup` callbacks registered before a throw are kept the same way (they used to be dropped).
   - Test: `contract/bug-regressions.test.ts` (B3).
 
@@ -221,12 +225,12 @@ The `??` fires each getter once, so `<Text label={sig()} />` never updates.
 
 ---
 
-### Checking subscribers by reading `_d` or `_s` alone
+### Checking subscribers by reading one field alone
 
-Both subscriber channels are tiered, so a one-field presence check misses single-subscriber signals.
-  - Direct channel: `_d1` (inline) then `_d` (Set). Tracking channel: `_s1` (inline), then `_s` holding a second inline subscriber as a function, then a Set in `_s` (with `_s1 === null`) for 3+.
-  - Use `_hasSubscribers(sig)` / `_tierCount` from `@pyreon/reactivity`; inside reactivity use `addSubscriber` / `removeSubscriber` from `tracking.ts`. Never call `.size`/`.delete`/iterate on `_s` directly.
-  - `addSubscriber` must stay idempotent, and code adding to the tiers must promote inline occupants first, or a subscriber is stranded. `@pyreon/store` wires field detectors on the first `api.subscribe()`, after components already tracked the field (test: `store/src/tests/subscribe-after-tracked-read.test.ts`).
+A source has two subscriber channels, and the direct one is tiered, so a one-field presence check misses subscribers.
+  - Direct channel (compiled bindings, `subscribe()` listeners): `_d1` (inline) then `_d` (Set). Tracked channel (computeds, effects, render bindings): graph edges from `_subs`.
+  - Use `_hasSubscribers(sig)` from `@pyreon/reactivity`; inside reactivity use `_addDirect` / `_removeDirect` (`signal.ts`) and `link` / `unlinkAllDeps` (`graph.ts`). Never call `.size`/`.delete`/iterate on `_d` directly.
+  - `_addDirect` must stay idempotent, and code adding to the tier must promote the inline occupant first, or a subscriber is stranded. `@pyreon/store` wires field detectors on the first `api.subscribe()`, after components already tracked the field (test: `store/src/tests/subscribe-after-tracked-read.test.ts`).
   - Fixed readers: `solid-compat`'s `sweepUnusedSignals`, the devtools graph, `createSelector`'s sweep.
 
 ---
@@ -257,11 +261,11 @@ Both subscriber channels are tiered, so a one-field presence check misses single
 
 ---
 
-### Re-reading tiered subscriber storage after dispatching
+### Re-reading subscriber storage after dispatching
 
-A dispatched subscriber can add a third subscriber, promoting the inline slots into a Set, so an identity check against the inline slots skips a live subscriber.
-  - Snapshot the subscribers, then ask "still subscribed?" with a predicate covering every shape (`createSelector.ts:isSubscribed`, whose `typeof s !== 'function'` discriminator mirrors `removeSubscriber`).
-  - `signal.ts`'s `_set`/`_trigger` and `batch.ts:propagateLazyDirty` never re-read, so they are safe. Test: `reactivity/src/tests/createSelector-tier-promotion.test.ts`.
+A dispatched subscriber can add or remove subscribers (promoting an inline slot into a Set), so a walk that dispatches while it iterates can skip a live subscriber or fire a new one.
+  - Walk first, run later: graph marking (`propagate`) runs no user code and only queues; the selector marks its two buckets the same way, so the rows run after the source effect. A direct-tier Set is snapshotted into the queue before anything in it runs.
+  - Test: `reactivity/src/tests/createSelector-tier-promotion.test.ts`.
 
 ---
 

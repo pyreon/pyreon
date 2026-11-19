@@ -5,7 +5,7 @@
  * that introduced this suite records, per test, the one-line source breakage
  * that makes it fail.
  */
-import { batch, computed, effect, signal } from '../../index'
+import { batch, computed, effect, renderEffect, signal } from '../../index'
 
 describe('C1 — effects run once at creation and synchronously before an unbatched set returns', () => {
   test('C1: the first run happens inside effect(), exactly once', () => {
@@ -292,3 +292,63 @@ describe('C15 — an effect disposed during a flush does not run', () => {
     expect(runs).toBe(1)
   })
 })
+
+describe('D9 — a first run that writes a signal it read re-runs right after it, before effect() returns', () => {
+  test('D9: also when the effect is created inside another effect run (a nested window)', () => {
+    const outer = signal(0)
+    const s = signal(0)
+    const log: string[] = []
+    effect(() => {
+      outer()
+      log.push('outer:start')
+      effect(() => {
+        const v = s()
+        log.push(`inner:${v}`)
+        if (v === 0) s.set(1)
+      })
+      log.push('outer:after-inner')
+    })
+    expect(log).toEqual(['outer:start', 'inner:0', 'inner:1', 'outer:after-inner'])
+  })
+
+  test('D9: renderEffect first runs settle the same way', () => {
+    const s = signal(0)
+    const log: string[] = []
+    effect(() => {
+      renderEffect(() => {
+        const v = s()
+        log.push(`bind:${v}`)
+        if (v < 2) s.set(v + 1)
+      })
+      log.push('after')
+    })
+    expect(log).toEqual(['bind:0', 'bind:1', 'bind:2', 'after'])
+  })
+
+  test('D9: an unconditional first-run self-refire is cut off by MAX_PASSES and the effect stays live', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const s = signal(0)
+      let runs = 0
+      let armed = true
+      effect(() => {
+        s()
+        runs++
+        if (armed) s.set(s.peek() + 1)
+      })
+      const messages = [...warn.mock.calls, ...error.mock.calls].map((c) => String(c[0]))
+      expect(messages.some((m) => m.includes('MAX_PASSES'))).toBe(true)
+      expect(runs).toBeGreaterThanOrEqual(32)
+      expect(runs).toBeLessThanOrEqual(34)
+      armed = false
+      runs = 0
+      s.set(1000)
+      expect(runs).toBe(1)
+    } finally {
+      warn.mockRestore()
+      error.mockRestore()
+    }
+  })
+})
+
