@@ -11,7 +11,6 @@ Commands are data with an id and a title. A screen registers the commands it can
 ```tsx
 import { useCommand } from '@pyreon/command'
 import { CommandPalette } from '@pyreon/command/components'
-import '@pyreon/command/style.css'
 
 function Editor() {
   useCommand({ id: 'save', title: 'Save', shortcut: 'mod+s', run: () => save() })
@@ -52,3 +51,11 @@ function InvoicePage(props: { paid: boolean }) {
   return <h1>Invoice</h1>
 }
 ```
+
+Also: reading a title once (`title: i18n.t('save')` pins the locale: pass a function so a locale change re-ranks), calling `useHotkey` for a command's shortcut as well as giving the command a `shortcut` (two registrations, and a conflict warning), and treating `enabled: false` as access control (the code behind the command still runs when called: check on the server).
+
+## Related
+
+- `@pyreon/command` for the functions, and its docs page for the registry, the palette state, async sources, the recipes and the accessibility notes.
+- `@pyreon/hotkeys` for the shortcut syntax, scopes and the input rule that a command's shortcut follows.
+- Anti-pattern: "A global keydown listener per command, a hand-kept list of commands, a palette built from a div".
