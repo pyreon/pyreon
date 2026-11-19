@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { MapChart } from './MapChart'
 import { layoutGeo } from './geo-web'
+import { geoProject } from './geo'
 import { FLORIDA_LAKE, SOUTH_AFRICA_LESOTHO } from './__fixtures__/geo-holes'
 import type { GeoJson } from './geo-web'
 
@@ -255,4 +256,17 @@ describe('MapChart states (real browser)', () => {
       })
     }
   }
+
+  it('a map definition\'s own projection reaches the overlay: a point lands where the same map lays it out', async () => {
+    const def = { data: WORLD, projection: 'equalEarth' as const }
+    const { container, unmount } = mountInBrowser(() => MapChart({ animate: false, map: def, values: {}, width: 400, height: 300, points: [{ lon: 5, lat: 5, color: '#00ff00', name: 'P' }], overlayOptions: { radius: 6 } }))
+    await flush()
+    const c = container.querySelector('canvas')!
+    const layout = layoutGeo(def, { x: 0, y: 0, w: 400, h: 300 })
+    const at = geoProject(layout.transform, 5, 5)
+    const dpr = window.devicePixelRatio || 1
+    const d = c.getContext('2d')!.getImageData(Math.round(at.x * dpr), Math.round(at.y * dpr), 1, 1).data
+    expect(`${d[0]},${d[1]},${d[2]}`).toBe('0,255,0')
+    unmount()
+  })
 })
