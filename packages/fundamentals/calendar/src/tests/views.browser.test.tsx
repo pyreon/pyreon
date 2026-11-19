@@ -66,7 +66,7 @@ describe('the month view', () => {
     expect(root.querySelectorAll('.pcal-week')).toHaveLength(6)
     const today = cell(root, '2026-11-18')
     expect(today.getAttribute('aria-current')).toBe('date')
-    expect(today.textContent).toContain('Wednesday 18 November, today')
+    expect(today.textContent).toContain('Wednesday 18 November, Today')
     expect(today.hasAttribute('data-today')).toBe(true)
     expect(cell(root, '2026-10-27').hasAttribute('data-outside')).toBe(true)
     expect(root.querySelectorAll('[aria-current=date]')).toHaveLength(1)
@@ -75,12 +75,12 @@ describe('the month view', () => {
   it('has events as labelled buttons in the cell they start in, spanning the days they last', async () => {
     const { root } = make()
     const review = root.querySelector<HTMLElement>('[data-key^="Design review"]')!
-    expect(review.getAttribute('aria-label')).toBe('Design review, Wednesday 18 November, 14:00 to 15:00')
+    expect(review.getAttribute('aria-label')).toBe('Design review, Wednesday 18 November, 14:00 – 15:00')
     expect(review.closest('[role=gridcell]')!.getAttribute('data-date')).toBe('2026-11-18')
     const holiday = root.querySelector<HTMLElement>('[data-key^="Public holiday"]')!
     expect(holiday.getAttribute('aria-label')).toBe('Public holiday, Tuesday 17 November, all day')
     const conf = root.querySelector<HTMLElement>('[data-key^="Conference"]')!
-    expect(conf.getAttribute('aria-label')).toBe('Conference, Monday 16 November to Wednesday 18 November, all day')
+    expect(conf.getAttribute('aria-label')).toBe('Conference, Monday 16 November – Wednesday 18 November, all day')
     expect(conf.closest('[role=gridcell]')!.getAttribute('data-date')).toBe('2026-11-16')
     const cellWidth = cell(root, '2026-11-16').getBoundingClientRect().width
     expect(conf.getBoundingClientRect().width).toBeGreaterThan(cellWidth * 2.5)
@@ -113,7 +113,7 @@ describe('the month view', () => {
     expect(await press('{End}')).toBe('2026-11-22')
     expect(await press('{PageDown}')).toBe('2026-12-22')
     expect(calendar.title()).toBe('December 2026')
-    expect(live(root)).toBe('December 2026, month')
+    expect(live(root)).toBe('December 2026, Month')
     expect(await press('{PageUp}')).toBe('2026-11-22')
     expect(await press('{Shift>}{PageDown}{/Shift}')).toBe('2027-11-22')
     expect(calendar.title()).toBe('November 2027')
@@ -217,7 +217,7 @@ describe('the time grid', () => {
     const { root } = week()
     const block = root.querySelector<HTMLElement>('.pcal-block')!
     expect(block.closest('.pcal-slot')).toBe(slot(root, '2026-11-18', 840))
-    expect(block.getAttribute('aria-label')).toBe('Design review, Wednesday 18 November, 14:00 to 15:00')
+    expect(block.getAttribute('aria-label')).toBe('Design review, Wednesday 18 November, 14:00 – 15:00')
     const slotBox = slot(root, '2026-11-18', 840).getBoundingClientRect()
     expect(Math.abs(block.getBoundingClientRect().height - slotBox.height * 2)).toBeLessThanOrEqual(3)
     expect(Math.abs(block.getBoundingClientRect().top - slotBox.top)).toBeLessThanOrEqual(2)
@@ -358,11 +358,11 @@ describe('what is announced and what the markup claims', () => {
     expect(root.querySelector('.pcal-live')!.getAttribute('aria-live')).toBe('polite')
     calendar.next()
     await sleep()
-    expect(live(root)).toBe('December 2026, month')
+    expect(live(root)).toBe('December 2026, Month')
     setLocale('cs')
     calendar.setView('week')
     await sleep()
-    expect(live(root)).toContain('week')
+    expect(live(root)).toContain('Týden')
   })
 
   it('has no axe violations: the month, the week and the day, with events, a selection and a business-hours shading', async () => {

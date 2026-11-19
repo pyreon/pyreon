@@ -3,8 +3,7 @@ import { For, onMount } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { computed, effect } from '@pyreon/reactivity'
 import type { Calendar, DayCell, MonthWeek } from './calendar-types'
-import type { CalendarLabels } from './labels'
-import { DEFAULT_LABELS, dayLabel, eventLabel } from './labels'
+import { dayLabel, eventLabel } from './labels'
 import type { EventOccurrence, EventSegment, PlainDate } from './types'
 import { formatDate } from '@pyreon/format'
 
@@ -19,8 +18,6 @@ export interface EventSlotContext<Meta = unknown> {
 
 export interface ViewProps<Meta = unknown> {
   calendar: Calendar<Meta>
-  /** Words to replace (for a translation). */
-  labels?: Partial<CalendarLabels>
   class?: string
   /** What goes inside an event: default its title. */
   renderEvent?: (context: EventSlotContext<Meta>) => VNodeChild
@@ -30,12 +27,8 @@ export interface ViewProps<Meta = unknown> {
   renderMore?: (count: number, date: PlainDate) => VNodeChild
 }
 
-/** The props with every word filled in. */
-export type ResolvedView<Meta = unknown> = ViewProps<Meta> & { labels: CalendarLabels }
-
-export function resolveView<Meta>(props: ViewProps<Meta>): ResolvedView<Meta> {
-  return { ...props, labels: { ...DEFAULT_LABELS, ...props.labels, views: { ...DEFAULT_LABELS.views, ...props.labels?.views } } }
-}
+/** The props of a view (the words come from `calendar.messages()`). */
+export type ResolvedView<Meta = unknown> = ViewProps<Meta>
 
 /** Called when a "+N more" button is pressed. */
 export interface MonthViewProps<Meta = unknown> extends ViewProps<Meta> {
@@ -95,7 +88,8 @@ function segmentStyle(segment: EventSegment, color: string | undefined): string 
 function Segment<Meta>(props: { segment: EventSegment; occurrences: () => Map<string, EventOccurrence<Meta>>; view: ResolvedView<Meta> }): VNodeChild {
   const o = props.occurrences().get(props.segment.occurrenceKey)
   if (o === undefined) return null
-  const label = eventLabel(o as EventOccurrence, props.view.calendar.locale(), props.view.labels)
+
+  const label = (): string => eventLabel(o as EventOccurrence, props.view.calendar.locale(), props.view.calendar.messages())
   const slot = props.view.renderEvent
 
   return (
@@ -108,20 +102,19 @@ function Segment<Meta>(props: { segment: EventSegment; occurrences: () => Map<st
       data-continues-before={props.segment.continuesBefore ? '' : undefined}
       data-continues-after={props.segment.continuesAfter ? '' : undefined}
       data-key={o.key}
-      aria-label={label}
+      aria-label={() => label()}
       onClick={(e: MouseEvent) => {
         e.stopPropagation()
         props.view.calendar.eventClick(o.key)
       }}
     >
-      {slot === undefined ? <span class="pcal-event-title">{o.title}</span> : slot({ occurrence: o, label, continuesBefore: props.segment.continuesBefore, continuesAfter: props.segment.continuesAfter })}
+      {slot === undefined ? <span class="pcal-event-title">{o.title}</span> : slot({ occurrence: o, label: label(), continuesBefore: props.segment.continuesBefore, continuesAfter: props.segment.continuesAfter })}
     </button>
   )
 }
 
 function WeekRow<Meta>(props: { week: MonthWeek; view: ResolvedView<Meta>; occurrences: () => Map<string, EventOccurrence<Meta>> }): VNodeChild {
   const calendar = props.view.calendar
-  const labels = props.view.labels
   const week = props.week
   const layout = computed(() => week.layout())
 
@@ -155,7 +148,7 @@ function WeekRow<Meta>(props: { week: MonthWeek; view: ResolvedView<Meta>; occur
             calendar.selectDay(cell.date)
           }}
         >
-          <span class="pcal-sr">{() => `${dayLabel(cell.date, calendar.locale())}${calendar.todayDate() === cell.date ? `, ${labels.today}` : ''}`}</span>
+          <span class="pcal-sr">{() => `${dayLabel(cell.date, calendar.locale())}${calendar.todayDate() === cell.date ? `, ${calendar.messages().today}` : ''}`}</span>
           <span class="pcal-day-head" aria-hidden="true">
             {props.view.renderDay === undefined ? formatDate(cell.date, { locale: calendar.locale(), day: 'numeric' }) : props.view.renderDay(cell)}
           </span>
@@ -173,7 +166,7 @@ function WeekRow<Meta>(props: { week: MonthWeek; view: ResolvedView<Meta>; occur
                   ;(props.view as ResolvedView<Meta> & MonthViewProps<Meta>).onMore?.(cell.date)
                 }}
               >
-                {props.view.renderMore === undefined ? labels.more(layout().more[column] ?? 0) : props.view.renderMore(layout().more[column] ?? 0, cell.date)}
+                {props.view.renderMore === undefined ? calendar.messages().more(layout().more[column] ?? 0) : props.view.renderMore(layout().more[column] ?? 0, cell.date)}
               </button>
             ) : null
           }
@@ -190,7 +183,7 @@ function WeekRow<Meta>(props: { week: MonthWeek; view: ResolvedView<Meta>; occur
  * marked in the markup and in the cell's name; focus stays on the cursor cell across moves, view changes and range changes.
  */
 export function MonthView<Meta = unknown>(props: MonthViewProps<Meta>): VNodeChild {
-  const view = resolveView(props)
+  const view = props
   const calendar = props.calendar
   let root: HTMLElement | null = null
   const occurrences = computed(() => new Map(calendar.occurrences().map((o) => [o.key, o as EventOccurrence<Meta>])))
@@ -204,10 +197,10 @@ export function MonthView<Meta = unknown>(props: MonthViewProps<Meta>): VNodeChi
     <div
       class={props.class ?? 'pcal-month'}
       role="grid"
-      aria-label={() => `${view.labels.monthGrid}, ${calendar.title()}`}
+      aria-label={() => `${calendar.messages().monthGrid}, ${calendar.title()}`}
       aria-multiselectable="true"
       data-view="month"
-      style={() => `--pcal-days:${calendar.month().weekdays.length}`}
+      style={() => `--pcal-days:${calendar.month().weekdays.length};--pcal-capacity:${calendar.month().capacity}`}
       ref={(el: HTMLElement | null) => {
         root = el
       }}

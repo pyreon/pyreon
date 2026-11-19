@@ -2,6 +2,7 @@ import type { BusinessCalendar, WorkingHours } from '@pyreon/schedule/core'
 import type { Duration, PlainTime } from '@pyreon/time/core'
 import type { Signal } from '@pyreon/reactivity'
 import type { CalendarEvent, EventOccurrence, Interval, PlainDate, PlainDateTime, TimedBlock, TimeZone, Weekday, WeekLayout } from './types'
+import type { CalendarMessages } from './messages'
 import type { ViewName } from './views'
 
 /** The selection: a day or a range of days (all-day), or a range of time in a day. `end` is exclusive. */
@@ -39,6 +40,8 @@ export interface CalendarOptions<Meta = unknown> {
   monthCapacity?: number
   /** Whether a click or a key on an empty day or slot selects. Default true. */
   selectable?: boolean
+  /** The words the calendar says: replace any of them (an object, or a function of the locale that can read your translation signals). */
+  messages?: Partial<CalendarMessages> | ((locale: string) => Partial<CalendarMessages>)
   /** The clock for the "now" line, in milliseconds. Default: `@pyreon/ambient`'s, a reactive minute tick. */
   now?: () => number
   /** Called with the range of a clicked day or slot, or of a keyboard selection that was confirmed. */
@@ -101,8 +104,10 @@ export interface Calendar<Meta = unknown> {
   /** The shown dates. */
   dates(): readonly PlainDate[]
   title(): string
+  /** Every word the calendar says, in the active locale (reactive: it follows the locale and your `messages`). */
+  messages(): CalendarMessages
   /** The month on show, as `YYYY-MM` (what a month grid highlights). */
-  month(): { key: string; weeks: readonly MonthWeek[]; weekdays: readonly Weekday[] }
+  month(): { key: string; weeks: readonly MonthWeek[]; weekdays: readonly Weekday[]; capacity: number }
   timeGrid(): TimeGridModel
   /** Every occurrence in the window. */
   occurrences(): readonly EventOccurrence<Meta>[]

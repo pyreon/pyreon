@@ -168,6 +168,7 @@ export const App = () => <Calendar calendar={calendar} />
 | `weekStart`, `weekend`, `hiddenDays` | Default to the locale's (`weekStartOf`, `weekendOf`); `hiddenDays: [6, 7]` removes weekend columns. |
 | `dayStart`, `dayEnd`, `slot`, `minBlockMinutes` | The visible hours, the row size (30 minutes) and the shortest block (15). |
 | `businessHours` | A `WorkingHours` (from `@pyreon/schedule`) or a `BusinessCalendar` (with `weekend` and `holidays`): the hours outside it are shaded (`data-business="closed"`). |
+| `messages` | Every word the calendar says (an object, or a function of the locale): see "Messages and languages". |
 | `monthCapacity` | Segments per week row before "+N more" (3). |
 | `days` | How many days the `'days'` view shows (3). |
 | `now` | The clock for the now line. Default: the ambient clock (a minute tick; on the server, the instant the page was rendered at, which is how the HTML matches what the client hydrates). |
@@ -187,7 +188,7 @@ export function Planner(props: { calendar: Calendar }) {
   return (
     <>
       <CalendarToolbar calendar={props.calendar} views={['month', 'week']} />
-      <MonthView calendar={props.calendar} labels={{}} />
+      <MonthView calendar={props.calendar} />
     </>
   )
 }
@@ -196,8 +197,8 @@ export function Planner(props: { calendar: Calendar }) {
 `<Calendar calendar>` is the toolbar, the view the calendar is on and a live region; `<MonthView>`, `<WeekView>`/`<DayView>` (the time grid) and `<CalendarToolbar>` are usable on their own. The agenda, year and timeline views are not part of this release; `<Calendar>` shows the month for them.
 
 - **Render slots**: `renderEvent({ occurrence, label, continuesBefore, continuesAfter })` (what goes inside an event; keep the accessible name, which is `label`), `renderDay(cell)` (the head of a day in a month), `renderMore(count, date)` and `onMore(date)` (the "+N more" button).
-- **Words**: `labels` replaces every string the calendar says ("all day", "today", "N more", the names of the views, the grid names), for a translation.
-- **Styling**: `@pyreon/calendar/styles.css` is a small default look; or style the `pcal-*` classes and data attributes (`data-today`, `data-selected`, `data-outside`, `data-weekend`, `data-business`, `data-continues-before`, `data-continues-after`, `data-recurring`). Sizes and colours are custom properties on `.pcal` (`--pcal-slot`, `--pcal-lane-size`, `--pcal-event`, ...); an event's `color` becomes its `--pcal-event`.
+- **Words**: see "Messages and languages" below. Nothing in the components is a hard-coded English string.
+- **Styling**: `@pyreon/calendar/styles.css` is a finished default look (see "The default look and its variables"); or style the `pcal-*` classes and data attributes (`data-today`, `data-selected`, `data-outside`, `data-weekend`, `data-business`, `data-continues-before`, `data-continues-after`, `data-recurring`, `data-short`). An event's `color` becomes its `--pcal-event`.
 
 ### The month
 
@@ -210,6 +211,42 @@ A WAI-ARIA **grid** whose rows are the slots and whose columns are the days, wit
 ### On a phone
 
 The stylesheet answers to the width of the calendar (a container query), not the screen. Below 560 px the **month** shows events as thin bars (their names stay in the markup, and a tap on a day calls `onSelect`, so open a day view or a list there); the **time grid** keeps columns at least `--pcal-col-min` wide (96 px) and **scrolls sideways** with the time gutter and the header kept in place, instead of squeezing seven columns into 40 px each. For a phone the better answer is usually fewer columns: `view: 'days'` with `days: 1` to `3` (and `views` of the toolbar to match). A group of many overlapping events is crowded in any narrow column; a one-day view gives them the whole width. Focus rings are 3 px in `--pcal-focus` (a stronger blue in light mode, a light blue in dark mode); colours follow `prefers-color-scheme` through the system colours, so dark mode needs no extra CSS.
+
+### Messages and languages
+
+Every word the calendar says comes from `calendar.messages()`, which follows the locale. Defaults come from the platform where it has the word: "Month", "Week", "Day" and "Year" from `Intl.DisplayNames`, "Today" and the names of the previous and next buttons ("last week", "next month") from `Intl.RelativeTimeFormat`, numbers from `Intl.NumberFormat` (so "+٣" in Arabic), the hour cycle of the time gutter from the locale through `@pyreon/format` (12 hours in `en-US`, 24 in `cs`). The platform has no word for "all day", so a small table covers `en`, `cs`, `ar`, `ja`, `de`, `fr` and `es`; for any other language, and for the announcements ("moved to", "change cancelled") and the recurring-edit choices, the default is an English placeholder (or a symbol such as "+3" where one works), because inventing a translation is worse than saying so. Replace what you need:
+
+```ts
+const calendar = createCalendar({
+  events: () => events(),
+  // an object, or a function of the locale (it may read your translation signals, and the calendar follows them)
+  messages: (locale) => ({
+    allDay: t('calendar.allDay'),
+    more: (n) => t('calendar.more', { count: n }),
+    moved: (title, when) => t('calendar.moved', { title, when }),
+  }),
+})
+```
+
+With `@pyreon/i18n`, call your translator inside that function: `messages: () => ({ allDay: i18n.t('allDay') })` re-runs when the language changes. `defaultMessages(locale)` shows every key and its default.
+
+### The default look and its variables
+
+The stylesheet sets a system UI font stack (set `--pcal-font: inherit` to use the page's), tabular numbers, tinted event chips with a stronger edge in the event's colour, today as a filled day number, subtle weekend and business-hours shading, equal month rows, and a dark scheme that follows `prefers-color-scheme`. In `forced-colors` mode events keep a border, today and the selection are outlined, and the focus ring is the system `Highlight`; transitions run only when `prefers-reduced-motion` is not `reduce`. All of it is custom properties on `.pcal`:
+
+| Variable | What |
+| --- | --- |
+| `--pcal-font`, `--pcal-font-size` | The font stack and base size (14px). |
+| `--pcal-bg`, `--pcal-fg` | Page colours (default `Canvas` and `CanvasText`, so the page's `color-scheme` decides light or dark). |
+| `--pcal-accent`, `--pcal-accent-fg` | Today's number, the pressed view button, the selection tint. |
+| `--pcal-border`, `--pcal-border-soft`, `--pcal-muted` | Lines (grid, cells) and secondary text. |
+| `--pcal-today`, `--pcal-selected`, `--pcal-outside`, `--pcal-weekend`, `--pcal-closed` | Backgrounds of today, a selection, days outside the month, weekends and closed hours. |
+| `--pcal-event`, `--pcal-event-tint`, `--pcal-event-bg`, `--pcal-event-fg`, `--pcal-event-edge` | An event's colour (set per event by `color`), how strongly it tints the chip (16%, 26% in dark), the chip background and text derived from it, and the edge width. |
+| `--pcal-now`, `--pcal-focus` | The now line and the focus ring. |
+| `--pcal-radius`, `--pcal-event-radius` | Corners of the calendar and of an event. |
+| `--pcal-lane-size`, `--pcal-day-head`, `--pcal-slot-n`, `--pcal-gutter`, `--pcal-col-min` | Month lane height and day head, the height of a time slot in pixels (a number), the time gutter and the narrowest day column of the time grid. |
+
+**Overlaps.** Events that overlap share the day column. A block narrower than 72px shows its title on one line with an ellipsis (never cut inside a glyph) and the time goes first; hovering or focusing it opens it to at least 160px over its neighbours, and its accessible name always has the full text. The calendar does not collapse four or more overlaps into a "+N" stack in this release: use `renderEvent` and a narrower `dayStart` to `dayEnd` window, or the day view, for very busy days.
 
 ## Keyboard and accessibility
 
@@ -227,7 +264,7 @@ Exactly one cell is in the tab order (the cursor), so Tab enters the grid once a
 
 **Why a grid for both views.** A month is a table of days: the grid pattern gives arrow navigation and a cell per day. The time grid is also a grid because its job is choosing a slot (a day and a time) with the keyboard; the events are reachable as buttons inside it, and each carries a full label. A list would read events well but gives no way to choose an empty slot. The events' order in the DOM is row by row (by start time across the days).
 
-**What a screen reader hears.** A day cell is named by its content: its full date ("Wednesday 18 November, today") and the events that start in it. An event is a button named "Design review, Wednesday 18 November, 14:00 to 15:00"; all-day events say "all day" and ones over several days say where they start and end ("Conference, Monday 16 November to Wednesday 18 November, all day"). Today is `aria-current="date"`; selected cells are `aria-selected`. Colour is never the only carrier: a continuation has a square corner (and `data-continues-*`), "+N more" is text. A polite live region says where navigation went ("December 2026, month"). Visible text and accessible names agree (the time of a block is drawn from `data-time`, not as text), which is what `axe-core` checks in the package's tests (month, week and day).
+**What a screen reader hears.** A day cell is named by its content: its full date ("Wednesday 18 November, today") and the events that start in it. An event is a button named "Design review, Wednesday 18 November, 14:00 – 15:00"; all-day events say "all day" and ones over several days say where they start and end ("Conference, Monday 16 November – Wednesday 18 November, all day"). Today is `aria-current="date"`; selected cells are `aria-selected`. Colour is never the only carrier: a continuation has a square corner (and `data-continues-*`), "+N more" is text. A polite live region says where navigation went ("December 2026, month"). Visible text and accessible names agree (the time of a block is drawn from `data-time`, not as text), which is what `axe-core` checks in the package's tests (month, week and day).
 
 **Right to left.** The arrow keys swap, the layout uses logical properties, events start at the inline start. Direction comes from the element (`dir`); no option is needed. There is no animation, so nothing to reduce.
 
