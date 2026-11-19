@@ -1,9 +1,16 @@
 import { add, dateParts } from '@pyreon/time/core'
+import { bad, checkCapacity, checkOccurrences, isShown, toDates, toRows } from './check'
 import { dateOf } from './model'
 import type { EventOccurrence, EventSegment, PlainDate, WeekLayout } from './types'
+import type { VisibleRange } from './views'
 
 /** The first and last date (inclusive) an occurrence touches. An end exactly at midnight does not touch that day. */
 export function daySpan(o: EventOccurrence): { first: PlainDate; last: PlainDate } {
+  checkOccurrences('daySpan', 'occurrence', [o])
+  return spanOf(o)
+}
+
+function spanOf(o: EventOccurrence): { first: PlainDate; last: PlainDate } {
   const first = dateOf(o.start)
   if (o.allDay) return { first, last: add(o.end as PlainDate, { days: -1 }) < first ? first : add(o.end as PlainDate, { days: -1 }) }
   const endDate = dateOf(o.end)
@@ -31,7 +38,7 @@ interface Candidate {
 
 /** Columns of `dates` an occurrence covers: from the first shown day on or after its start to the last on or before its end. */
 function columnsOf(o: EventOccurrence, dates: readonly PlainDate[]): Candidate | null {
-  const { first, last } = daySpan(o)
+  const { first, last } = spanOf(o)
   let startColumn = -1
   let endColumn = -1
   for (let i = 0; i < dates.length; i++) {
@@ -75,7 +82,15 @@ function freeLane(busy: boolean[][], from: number, to: number): number {
  * go first, so they get the top lanes; the order is total, so the lanes do not depend on the order of `occurrences`. With a
  * `capacity`, lanes beyond it are dropped and counted per day in `more`.
  */
-export function layoutRow(occurrences: readonly EventOccurrence[], dates: readonly PlainDate[], capacity = Number.POSITIVE_INFINITY): WeekLayout {
+export function layoutRow(occurrences: readonly EventOccurrence[], dates: readonly PlainDate[] | VisibleRange, capacityInput?: number): WeekLayout {
+  checkOccurrences('layoutRow', 'occurrences', occurrences)
+  const row = toDates('layoutRow', 'dates', dates)
+  const capacity = checkCapacity('layoutRow', 'capacity', capacityInput)
+
+  return layoutChecked(occurrences, row, capacity)
+}
+
+function layoutChecked(occurrences: readonly EventOccurrence[], dates: readonly PlainDate[], capacity: number): WeekLayout {
   const placed = occurrences.map((o) => columnsOf(o, dates)).filter((c): c is Candidate => c !== null).sort(order)
   const busy: boolean[][] = []
   const lanes: EventSegment[][] = []
@@ -97,16 +112,22 @@ export function layoutRow(occurrences: readonly EventOccurrence[], dates: readon
 }
 
 /** The rows of a month grid (or any rows of dates), laid out. Each occurrence is placed in every row it touches. */
-export function layoutMonth(occurrences: readonly EventOccurrence[], rows: readonly (readonly PlainDate[])[], capacity = Number.POSITIVE_INFINITY): WeekLayout[] {
+export function layoutMonth(occurrences: readonly EventOccurrence[], rowsInput: readonly (readonly PlainDate[])[] | VisibleRange, capacityInput?: number | { capacity?: number }): WeekLayout[] {
+  checkOccurrences('layoutMonth', 'occurrences', occurrences)
+  const rows = toRows('layoutMonth', 'rows', rowsInput)
+  if (typeof capacityInput === 'object' && capacityInput !== null && Array.isArray(capacityInput)) bad('layoutMonth', 'the third argument', 'a number of lanes or { capacity }', capacityInput)
+  const capacity = checkCapacity('layoutMonth', 'capacity', typeof capacityInput === 'object' && capacityInput !== null ? capacityInput.capacity : capacityInput)
+  void isShown
+
   return rows.map((row) => {
     const first = row[0]
     const last = row.at(-1)
     const touching = occurrences.filter((o) => {
-      const span = daySpan(o)
+      const span = spanOf(o)
 
       return first !== undefined && last !== undefined && span.first <= last && span.last >= first
     })
 
-    return layoutRow(touching, row, capacity)
+    return layoutChecked(touching, row, capacity)
   })
 }

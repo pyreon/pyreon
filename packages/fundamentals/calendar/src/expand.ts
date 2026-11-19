@@ -2,7 +2,9 @@ import { expandEvents } from '@pyreon/schedule/core'
 import type { CalendarEvent as ScheduleEvent, EventOverride } from '@pyreon/schedule/core'
 import { add, toInstant, toPlainDate, toPlainDateTime } from '@pyreon/time/core'
 import type { PlainDate, PlainDateTime } from '@pyreon/time/core'
+import { bad, checkZone, toRange } from './check'
 import { checkEvent, checkOrder, DAY_MS, resolvePoint } from './model'
+import type { VisibleRange } from './views'
 import type { CalendarEvent, EventOccurrence, EventOverrideValue, EventTime, Instant, Interval, TimeZone } from './types'
 
 type Wall = PlainDate | PlainDateTime
@@ -106,11 +108,19 @@ function byStart(a: EventOccurrence, b: EventOccurrence): number {
  * The occurrences of `events` that fall in `range` (a half-open window of dates in the display zone), placed in that zone and
  * sorted by start (longer first among equal starts, then by key). Single and recurring events (through `@pyreon/schedule`'s
  * `expandEvents`, with `overrides` and cancellations), events in their own zone, floating wall clocks and instants are
- * handled; an all-day event never moves with the zone. Malformed events throw a `[Pyreon] calendar:` error that names them.
+ * handled; an all-day event never moves with the zone. Malformed events throw a `[Pyreon] expandOccurrences:` error that names them; so does a window or a zone of the wrong shape. `range` may be the whole result of `visibleRange()`.
  *
  * @example expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18', end: '2026-11-19' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC').map((o) => o.key) // => ['a:2026-11-18']
  */
-export function expandOccurrences<Meta>(events: readonly CalendarEvent<Meta>[], range: Interval<PlainDate>, zone: TimeZone): EventOccurrence<Meta>[] {
+export function expandOccurrences<Meta>(events: readonly CalendarEvent<Meta>[], range: Interval<PlainDate> | VisibleRange, zone: TimeZone): EventOccurrence<Meta>[] {
+  if (!Array.isArray(events)) bad('expandOccurrences', 'events', 'an array of events { id, title, start, end }', events)
+  const window = toRange('expandOccurrences', 'range', range)
+  checkZone('expandOccurrences', 'zone', zone)
+
+  return expandChecked(events, window, zone)
+}
+
+function expandChecked<Meta>(events: readonly CalendarEvent<Meta>[], range: Interval<PlainDate>, zone: TimeZone): EventOccurrence<Meta>[] {
   const from = toInstant(range.start, zone)
   const to = toInstant(range.end, zone)
   const out: EventOccurrence[] = []

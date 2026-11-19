@@ -71,6 +71,8 @@ occurrences[0]?.start // '2026-11-16T03:00': in the display zone
 
 It returns the occurrences that touch the window (half-open, in dates of the display zone), placed in the display zone, sorted by start (longer first among equal starts, then by key). The `key` is `"<id>:<original start>"`: the same in every window, so a view can key its rows by it. Two events with one id are both listed and the second key gets a `~2`, but give events unique ids.
 
+The window can be the whole result of `visibleRange()` (`expandOccurrences(events, shown, zone)`) or its `range`; `layoutMonth(occurrences, shown, { capacity })` and `layoutTimeGrid(occurrences, shown, zone)` likewise take the whole result or its `rows` or `dates`. Every public function checks the shape of its arguments at the boundary and throws `[Pyreon] <function>: <argument> must be ..., got ...` with what was given (and, for the result of a sibling function, what it is), never a message from an inner function.
+
 ## Views
 
 ```ts

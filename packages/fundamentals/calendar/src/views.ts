@@ -1,4 +1,5 @@
 import { add, dayOfWeek, eachDay, monthGrid, startOf, weekendOf } from '@pyreon/time/core'
+import { bad, checkDate, checkOptions, isShown } from './check'
 import type { Interval, PlainDate, Weekday } from './types'
 
 export type ViewName = 'month' | 'week' | 'workWeek' | 'day' | 'days' | 'agenda' | 'timeline' | 'year'
@@ -39,7 +40,7 @@ function hiddenSet(view: ViewName, options: ViewOptions): ReadonlySet<Weekday> {
 
 function count(name: string, value: number | undefined, fallback: number): number {
   const n = value ?? fallback
-  if (!Number.isInteger(n) || n < 1 || n > 366) throw new Error(`[Pyreon] calendar: ${name} must be a whole number from 1 to 366, got ${String(value)}`)
+  if (!Number.isInteger(n) || n < 1 || n > 366) bad('visibleRange', name, 'a whole number from 1 to 366', value)
 
   return n
 }
@@ -88,7 +89,16 @@ function rowsOf(view: ViewName, dates: readonly PlainDate[], columns: number): (
  * @example visibleRange('week', '2026-11-18').range // => { start: '2026-11-16', end: '2026-11-23' }
  * @example visibleRange('workWeek', '2026-11-18').dates.length // => 5
  */
+const VIEWS: readonly string[] = ['month', 'week', 'workWeek', 'day', 'days', 'agenda', 'timeline', 'year']
+
+function checkView(fn: string, view: unknown): void {
+  if (typeof view !== 'string' || !VIEWS.includes(view)) bad(fn, 'view', `one of ${VIEWS.join(', ')}`, view)
+}
+
 export function visibleRange(view: ViewName, date: PlainDate, options: ViewOptions = {}): VisibleRange {
+  checkView('visibleRange', view)
+  checkDate('visibleRange', 'date', date)
+  checkOptions('visibleRange', 'options', options)
   const range = windowOf(view, date, options)
   const hidden = hiddenSet(view, options)
   const dates = eachDay(range.start, add(range.end, { days: -1 })).filter((d) => !hidden.has(dayOfWeek(d)))
@@ -99,6 +109,10 @@ export function visibleRange(view: ViewName, date: PlainDate, options: ViewOptio
 
 /** The anchor date after moving `steps` views forward (negative: back): a month, a week, a day, `days` days, an agenda, a year. */
 export function navigate(view: ViewName, date: PlainDate, steps: number, options: ViewOptions = {}): PlainDate {
+  checkView('navigate', view)
+  checkDate('navigate', 'date', date)
+  if (!Number.isInteger(steps)) bad('navigate', 'steps', 'a whole number of views (negative goes back)', steps)
+  checkOptions('navigate', 'options', options)
   switch (view) {
     case 'month':
       return add(date, { months: steps })
@@ -136,6 +150,8 @@ export const plainTitle: TitleFormatter = ({ view, date, first, last }) => {
 
 /** The title of a view: the month for a month, the first and last day for a week or a range, the date for a day, the year for a year. */
 export function viewTitle(shown: VisibleRange, format: TitleFormatter = plainTitle): string {
+  if (!isShown(shown)) bad('viewTitle', 'shown', 'the result of visibleRange()', shown)
+  if (typeof format !== 'function') bad('viewTitle', 'format', 'a function ({ view, date, first, last }) => string', format)
   const first = shown.dates[0] ?? shown.range.start
   const last = shown.dates.at(-1) ?? shown.range.start
 

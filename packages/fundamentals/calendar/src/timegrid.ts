@@ -1,8 +1,10 @@
 import { add, timeParts, toInstant, toPlainTime } from '@pyreon/time/core'
 import type { Duration, PlainTime } from '@pyreon/time/core'
+import { bad, checkDate, checkNumber, checkOccurrences, checkOptions, checkZone, toDates } from './check'
 import { packColumns } from './columns'
 import { layoutRow } from './lanes'
 import type { EventOccurrence, Instant, PlainDate, TimedBlock, TimeZone, WeekLayout } from './types'
+import type { VisibleRange } from './views'
 
 export interface TimeGridOptions {
   /** First visible time of each day. Default `'00:00'`. */
@@ -26,6 +28,8 @@ export interface DayBounds {
 
 /** The instants a calendar day starts and ends at in a zone. On the day a zone moves its clock the day is 23 or 25 hours. */
 export function dayBounds(date: PlainDate, zone: TimeZone): DayBounds {
+  checkDate('dayBounds', 'date', date)
+  checkZone('dayBounds', 'zone', zone)
   const startMs = toInstant(date, zone)
   const endMs = toInstant(add(date, { days: 1 }), zone)
 
@@ -34,6 +38,8 @@ export function dayBounds(date: PlainDate, zone: TimeZone): DayBounds {
 
 /** The wall-clock minute (from midnight, with fractions) an instant shows at in a zone. */
 export function wallMinute(ms: Instant, zone: TimeZone): number {
+  checkNumber('wallMinute', 'ms', ms)
+  checkZone('wallMinute', 'zone', zone)
   const t = timeParts(toPlainTime(ms, zone))
 
   return t.hour * 60 + t.minute + t.second / 60 + t.millisecond / 60_000
@@ -46,10 +52,11 @@ function minutesOf(time: string): number {
 }
 
 /** The visible window of a day in wall-clock minutes. */
-export function visibleMinutes(options: TimeGridOptions = {}): { from: number; to: number } {
+export function visibleMinutes(options: TimeGridOptions = {}, fn = 'visibleMinutes'): { from: number; to: number } {
+  checkOptions(fn, 'options', options)
   const from = minutesOf(options.dayStart ?? '00:00')
   const to = minutesOf(options.dayEnd ?? '24:00')
-  if (!(from >= 0 && to <= 1440 && to > from)) throw new Error(`[Pyreon] calendar: dayStart and dayEnd must be times of one day with dayEnd after dayStart (got ${String(options.dayStart)} and ${String(options.dayEnd)})`)
+  if (!(from >= 0 && to <= 1440 && to > from)) bad(fn, 'dayStart and dayEnd', 'times of one day with dayEnd after dayStart', `${String(options.dayStart)} and ${String(options.dayEnd)}`)
 
   return { from, to }
 }
@@ -58,9 +65,9 @@ const pad = (n: number): string => String(n).padStart(2, '0')
 
 /** The start times of the rows of the grid between `dayStart` and `dayEnd`. */
 export function slotTimes(options: TimeGridOptions = {}): PlainTime[] {
-  const { from, to } = visibleMinutes(options)
-  const step = options.slot === undefined ? 30 : Math.round(((options.slot.hours ?? 0) * 60 + (options.slot.minutes ?? 0)) || 30)
-  if (step < 1 || step > 1440) throw new Error(`[Pyreon] calendar: slot must be between 1 minute and 24 hours (got ${step} minutes)`)
+  const { from, to } = visibleMinutes(options, 'slotTimes')
+  const step = options.slot === undefined ? 30 : Math.round((options.slot.hours ?? 0) * 60 + (options.slot.minutes ?? 0))
+  if (step < 1 || step > 1440) bad('slotTimes', 'slot', 'between 1 minute and 24 hours', `${step} minutes`)
   const out: PlainTime[] = []
   for (let m = from; m < to; m += step) out.push(`${pad(Math.floor(m / 60))}:${pad(m % 60)}` as PlainTime)
 
@@ -104,8 +111,11 @@ function cutOn(o: EventOccurrence, bounds: DayBounds, zone: TimeZone, window: { 
  * the second pass is drawn over the same rows as the first (the two share columns when they overlap on screen).
  */
 export function layoutDay(date: PlainDate, occurrences: readonly EventOccurrence[], zone: TimeZone, options: TimeGridOptions = {}): TimedBlock[] {
+  checkDate('layoutDay', 'date', date)
+  checkOccurrences('layoutDay', 'occurrences', occurrences)
+  checkZone('layoutDay', 'zone', zone)
+  const window = visibleMinutes(options, 'layoutDay')
   const bounds = dayBounds(date, zone)
-  const window = visibleMinutes(options)
   const span = window.to - window.from
   const min = options.minBlockMinutes ?? 15
   const cuts = occurrences.filter((o) => touches(o, bounds)).map((o) => cutOn(o, bounds, zone, window)).filter((c): c is Cut => c !== null)
@@ -138,9 +148,12 @@ export function layoutDay(date: PlainDate, occurrences: readonly EventOccurrence
 
 /** Where the "now" line is on a day, as a fraction of the visible day; `null` when `now` is not on that day or is outside the visible hours. */
 export function nowOffset(date: PlainDate, now: Instant, zone: TimeZone, options: TimeGridOptions = {}): number | null {
+  checkDate('nowOffset', 'date', date)
+  checkNumber('nowOffset', 'now', now)
+  checkZone('nowOffset', 'zone', zone)
   const bounds = dayBounds(date, zone)
   if (now < bounds.startMs || now >= bounds.endMs) return null
-  const { from, to } = visibleMinutes(options)
+  const { from, to } = visibleMinutes(options, 'nowOffset')
   const minute = wallMinute(now, zone)
 
   return minute < from || minute >= to ? null : (minute - from) / (to - from)
@@ -148,6 +161,9 @@ export function nowOffset(date: PlainDate, now: Instant, zone: TimeZone, options
 
 /** A string that changes exactly when the blocks of a day would: use it to skip recomputing a day whose occurrences did not change. */
 export function daySignature(date: PlainDate, occurrences: readonly EventOccurrence[], zone: TimeZone): string {
+  checkDate('daySignature', 'date', date)
+  checkOccurrences('daySignature', 'occurrences', occurrences)
+  checkZone('daySignature', 'zone', zone)
   const bounds = dayBounds(date, zone)
 
   return occurrences
@@ -165,7 +181,11 @@ export interface TimeGridLayout {
 }
 
 /** A whole time grid: the all-day row (lanes across the days), a column of blocks per day, and the slot times. */
-export function layoutTimeGrid(occurrences: readonly EventOccurrence[], dates: readonly PlainDate[], zone: TimeZone, options: TimeGridOptions & { allDayCapacity?: number } = {}): TimeGridLayout {
+export function layoutTimeGrid(occurrences: readonly EventOccurrence[], datesInput: readonly PlainDate[] | VisibleRange, zone: TimeZone, options: TimeGridOptions & { allDayCapacity?: number } = {}): TimeGridLayout {
+  checkOccurrences('layoutTimeGrid', 'occurrences', occurrences)
+  const dates = toDates('layoutTimeGrid', 'dates', datesInput)
+  checkZone('layoutTimeGrid', 'zone', zone)
+  checkOptions('layoutTimeGrid', 'options', options)
   const allDayCapacity = options.allDayCapacity ?? Number.POSITIVE_INFINITY
 
   return {
