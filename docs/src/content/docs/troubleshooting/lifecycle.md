@@ -119,6 +119,18 @@ The ISR memory store capped its cache at `maxEntries` but its tag index only gre
 
 ---
 
+### A resource held for the component's LIFETIME when it belongs to a STATE, and released by writing a constant
+
+`useOverlay({ type: 'modal' })` took the page scroll lock in `setupListeners` (on mount) and released it with `document.body.style.overflow = ''`, so a closed modal blocked page scrolling while its trigger was on the page, and its release wiped the value `@pyreon/hooks` `useScrollLock` (its own counter) had saved under an open `ModalBase`. Rules: acquire when the state that needs it begins (open) and release when it ends (close) AND on unmount if still held; release by restoring what the first hold saved, never by writing a default; one shared resource gets ONE counter for the whole framework. Page and element scroll locks go through `lockScroll()` from `@pyreon/core`. Reference: `packages/core/core/src/scroll-lock.ts`, `packages/ui-system/elements/src/Overlay/useOverlay.tsx`; locked by `Overlay-modal-scroll-lock.browser.test.tsx` (every older modal test mounted with `isOpen: true`, which is why mount-time locking passed).
+
+---
+
+### A hold on someone else's counter released only by the opposite EVENT, never by teardown
+
+A nested `useOverlay` blocked its parent in `showContent` and unblocked only in `hideContent`. A child removed while open (conditional render, route change) never hid, so the parent stayed blocked and never again closed on outside click or Escape; a child shown twice double-counted, and a hide on a never-opened child released someone else's block. Rule: each holder records whether it holds (at most one hold per holder), takes it when its state begins, and releases it exactly once — on the opposite event OR on detach, whichever comes first. Reference: `packages/ui-system/elements/src/Overlay/useOverlay.tsx` (`blockParent` / `releaseParent`); locked by `Overlay-nested-unmount-block.browser.test.tsx`.
+
+---
+
 ### Two sources suspending one timer through one shared flag
 
 `<Toaster>` paused auto-dismiss on hover and focus through a single `_paused` boolean, so `mouseleave` cleared a keyboard user's focus hold and the toast dismissed under them. Key holds by source identity (`'hover' | 'focus' | 'hidden'`), release individually, restart the clock only when the set is empty. Do not use a depth counter: removing a focused element need not fire `focusout`, so a count can stick above zero and freeze every later toast, while a stranded `'focus'` hold is cleared by the next `focusout`. Pause while the tab is hidden (`visibilitychange`), make the handler idempotent against its own last-known state, read `document.visibilityState` at setup, and release a held hold in `onCleanup`. `document.visibilityState` is read-only in a real browser, so the spec redefines it — read it back before asserting. Reference: `packages/fundamentals/toast/src/toast.ts` (`PauseSource`, `_pauseHolds`) + `toaster.tsx` (`syncVisibility`); `tests/pause-sources.test.ts` + `tests/toaster.browser.test.tsx`.

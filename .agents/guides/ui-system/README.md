@@ -79,9 +79,11 @@ Component libraries in `packages/ui/` (private):
 - Use `useOverlay` for tooltips, popovers and dropdowns; never reimplement positioning. It returns `{ triggerRef, contentRef, active, align, alignX, alignY, showContent, hideContent, setContentPosition, setupListeners, blocked, setBlocked, setUnblocked, Provider }`. There is no `isOpen`, `open`, `close`, `toggle` or `triggerProps`.
 - Trigger and content render props receive a `ref` (`{ ref, active, showContent, hideContent }`, plus `align` / `alignX` / `alignY` for content). Attach it, or the hook cannot measure, position, detect outside clicks or manage focus.
 - On close, focus returns to the trigger only when focus was inside the closing overlay (or was lost).
+- `type: 'modal'` locks page scrolling only while OPEN (and `parentContainer` likewise for non-hover overlays), through `lockScroll()` from `@pyreon/core` — the one counter `@pyreon/hooks` `useScrollLock` shares. Released on close and on unmount; the last release restores the saved inline value (`Overlay-modal-scroll-lock.browser.test.tsx`).
 - Content receives `align` / `alignX` / `alignY` as live reactive props, so a viewport-edge flip restyles it in place without a remount (`Overlay-content-reactive-align.browser.test.tsx`).
 - Content hover listeners re-bind whenever `isContentLoaded` changes, so moving the pointer from trigger to content keeps a hover overlay open (`Overlay-hover-content.browser.test.tsx`).
 - `OverlayProvider` coordination props (`blocked` / `setBlocked` / `setUnblocked`) are optional; the default context is a working no-op.
+- A nested overlay holds at most ONE block on its parent while open, released on hide or when it unmounts open (`Overlay-nested-unmount-block.browser.test.tsx`).
 
 ## @pyreon/ui-core — `<PyreonUI>`
 
