@@ -1,6 +1,6 @@
 {
   "package": "@pyreon/charts",
-  "bundle": 97543,
+  "bundle": 111390,
   "imports": {
     "chart-line": 40300,
     "chart-map": 27400,
