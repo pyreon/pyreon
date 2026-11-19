@@ -226,6 +226,9 @@ describe('template-bail census over examples/', () => {
   })
 
   it('element jsx() calls in total stay at or below the walked level', () => {
-    expect(r.total).toBeLessThanOrEqual(347)
+    // 349 = 347 + 2 from the e2e fixture `examples/fixtures/pwa-offline/src/routes/index.tsx`
+    // (#4722): its `<main>` root has component children (`<Show>`, `<For>`) that are not in a
+    // trailing run (`root:other`), and one child element of that `h()` root (`child-of-h`).
+    expect(r.total).toBeLessThanOrEqual(349)
   })
 })
