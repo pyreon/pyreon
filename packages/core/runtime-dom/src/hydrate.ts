@@ -518,7 +518,7 @@ function needsKeyedReconcile(value: unknown): boolean {
  * other branch of this walker does. So a `lazy()` route whose chunk has not
  * landed still gets the old rebuild — at that instant the client really does
  * render nothing. Such a host must resolve its component BEFORE hydrating;
- * `@pyreon/zero`'s `startClient` calls `router.preload(...)` for exactly this
+ * `@pyreon/zero`'s `startClient` calls `router.preloadComponents(...)` for exactly this
  * reason. A `lazy()` component is the exception, because it CAN say which of
  * the two it is — see `hydrateDeferredLazy`, which keeps its range.
  *

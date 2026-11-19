@@ -196,7 +196,14 @@ const data = useLoaderData<{ name: string }>()
 
 - **`serverLoader`** on a `RouteRecord` is a server-only data loader — present as a real function ONLY in the SSR module graph (zero's `.server.ts` sibling convention); it never ships to the client. A record must not have both `loader` and `serverLoader`.
 - **`hasServerLoader`** is the serializable marker client builds carry instead — it triggers ONE fetch to the data endpoint for the whole matched chain on client navigations (single-fetch).
-- **`router.runServerLoaders(path, request?)`** runs only the matched chain's serverLoaders, keyed by matched-chain index; returns `{ kind: 'data', data }` or `{ kind: 'redirect', to, status }`. Server-side use — it's what the data endpoint's worker calls.
+- **`runServerLoaders(router, path, request?)`** runs only the matched chain's serverLoaders, keyed by matched-chain index; returns `{ kind: 'data', data }`, `{ kind: 'redirect', to, status }` or `{ kind: 'notFound' }`. Server-side use — it's what the data endpoint's worker calls.
+
+### Preloading for SSR
+
+- **`preloadRoute(router, path, request?)`** prepares a server render: the initial route's guards, the matched lazy components, then the matched loaders. Every SSR/SSG host calls it before rendering.
+- **`router.preloadComponents(path)`** loads the matched lazy components only (never loaders) and resolves `false` when the initial guards refuse the route. Zero's hydrating client calls it before `hydrateRoot`, and `<Link>` calls it to warm a chunk.
+
+`preloadRoute` and `runServerLoaders` are free functions rather than router methods so client bundles, which never call them, do not carry them.
 - **`dataEndpoint`** (createRouter option, default `` `${base}/_pyreon/data` ``) is the URL the client router fetches server-loader data from; zero's `createServer` auto-mounts it.
 
 ### Compiling loaders out

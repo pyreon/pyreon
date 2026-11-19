@@ -72,6 +72,40 @@ export async function serverLoader({ params }) {
     }),
   },
   {
+    // Router 0.54 moved its server-only loader passes off the router object
+    // (client bundles stop carrying them): `router.preload` and
+    // `router.runServerLoaders` are gone. Old call sites throw a TypeError.
+    pattern: /\b(?:[\w$]+\.)*[\w$]*router\.(preload|runServerLoaders) is not a function/i,
+    diagnose: (m) =>
+      m[1] === 'runServerLoaders'
+        ? {
+            cause:
+              '`router.runServerLoaders` was removed in router 0.54: the single-fetch data endpoint\'s worker is a free function now, so client bundles do not carry it.',
+            fix: 'Call `runServerLoaders(router, path, request)`, exported next to `createRouter`. `pyreon upgrade` rewrites it (codemod `router-server-loader-functions`).',
+            fixCode: `const result = await runServerLoaders(router, path, request)`,
+          }
+        : {
+            cause:
+              '`router.preload` was removed in router 0.54. Its server half (running loaders) became the free function `preloadRoute`, and its components-only form became `router.preloadComponents`, so client bundles do not carry the loader pass.',
+            fix: 'In an SSR/SSG host (components AND loaders, with the request): `await preloadRoute(router, path, request)`. To warm only the route\'s lazy components (hydration, link prefetch, the former `{ skipLoaders: true }`): `await router.preloadComponents(path)`. `pyreon upgrade` rewrites both (codemod `router-server-loader-functions`).',
+            fixCode: `// server render
+await preloadRoute(router, path, request)
+// code only (client)
+await router.preloadComponents(path)`,
+          },
+  },
+  {
+    // Dev-only warning: `preloadComponents` received the old `preload`
+    // arguments (a request / `{ skipLoaders }`) — usually a mechanical rename.
+    pattern: /\[Pyreon Router\] router\.preloadComponents\(path\) takes one argument and never runs loaders/,
+    diagnose: () => ({
+      cause:
+        '`router.preloadComponents(path)` was called with extra arguments, typically the request from a renamed `router.preload(path, request)` call. It only loads the route\'s lazy components and never runs loaders, so a server render built on it would have no loader data.',
+      fix: 'For a server render call `preloadRoute(router, path, request)` (components AND loaders). Keep `router.preloadComponents(path)`, with the path only, for code-only warming on the client.',
+      fixCode: `await preloadRoute(router, path, request)`,
+    }),
+  },
+  {
     pattern: /initialIndex\b[^\n]*\bis outside initialEntries/,
     diagnose: () => ({
       cause:
@@ -626,7 +660,7 @@ function Panel() {
   {
     // A one-character unauthenticated 500: `GET /?q=%`. Every decode in the
     // matcher runs on attacker-supplied text, and the matcher is reached
-    // pre-auth from `router.preload` inside the SSR handler — so this needed
+    // pre-auth from `preloadRoute` inside the SSR handler — so this needed
     // no dynamic route and no session, because the QUERY parser decodes too.
     pattern: /URIError|URI malformed|malformed URI sequence/i,
     diagnose: () => ({
@@ -2038,7 +2072,7 @@ const html = renderToString(<App />).replace('<!--x-->', head)
 // RIGHT — correct for both the sync and the async-promoted path
 const html = (await renderToString(<App />)).replace('<!--x-->', head)`,
       related:
-        'Same for `renderToStream`. A `lazy()` component whose chunk has not loaded yet is WAITED for exactly like an async component, so it promotes the subtree too; under `renderToStream` a lazy inside `<Suspense>` resolves inside the boundary without holding up the shell. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and preload lazy chunks before rendering (`router.preload`). The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
+        'Same for `renderToStream`. A `lazy()` component whose chunk has not loaded yet is WAITED for exactly like an async component, so it promotes the subtree too; under `renderToStream` a lazy inside `<Suspense>` resolves inside the boundary without holding up the shell. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and preload lazy chunks before rendering (`preloadRoute(router, path)` or `router.preloadComponents(path)`). The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
     }),
   },
   {

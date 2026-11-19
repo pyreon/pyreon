@@ -383,7 +383,7 @@ Never chain `.theme({})` as a no-op; omit `.theme()` when there is no base theme
 
 ### Unguarded `decodeURIComponent` on request text
 
-It throws `URIError` on `%`, `%zz` or a truncated escape. `@pyreon/router`'s matcher runs on path segments and query keys/values before auth (via `router.preload` in the SSR handler), so `GET /?q=%` returned 500 even for static routes. The matcher cannot answer 400, so `safeDecodeURIComponent` keeps an undecodable segment literal; `@pyreon/zero`'s island-fragment middleware answers 400. Params may contain a literal `%`, so decode once at the edge. Every decode reachable from request text needs an explicit raw-or-400 decision; grep for sibling decodes. Reference: `packages/core/router/src/match.ts`; test `tests/malformed-url-decode.test.ts`.
+It throws `URIError` on `%`, `%zz` or a truncated escape. `@pyreon/router`'s matcher runs on path segments and query keys/values before auth (via `preloadRoute` in the SSR handler), so `GET /?q=%` returned 500 even for static routes. The matcher cannot answer 400, so `safeDecodeURIComponent` keeps an undecodable segment literal; `@pyreon/zero`'s island-fragment middleware answers 400. Params may contain a literal `%`, so decode once at the edge. Every decode reachable from request text needs an explicit raw-or-400 decision; grep for sibling decodes. Reference: `packages/core/router/src/match.ts`; test `tests/malformed-url-decode.test.ts`.
 
 ---
 

@@ -715,14 +715,14 @@ describe('ssgPlugin', () => {
   })
 
   describe('SSR entry source — redirect catch (PR B)', () => {
-    // The SSG entry must catch redirects from `router.preload(path)`
+    // The SSG entry must catch redirects from `preloadRoute(router, path)`
     // BEFORE rendering. Rendering past a redirect produces HTML for
     // the wrong page AND leaks auth-gated layout structure for
     // unauthenticated users — same reason `@pyreon/server`'s SSR
     // handler short-circuits on redirect-throw.
     it('delegates redirect catching to renderPage (PR B semantics preserved)', () => {
       // Pre-unification the entry hand-rolled try/catch + getRedirectInfo
-      // around router.preload. renderPage owns that now — the entry just
+      // around preloadRoute. renderPage owns that now — the entry just
       // forwards skipLoaders (PR C) and maps the result kind. Rendering
       // past a redirect (wrong-page HTML + auth-layout leak) stays
       // impossible because renderPage catches BEFORE rendering.

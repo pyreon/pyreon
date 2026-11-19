@@ -25,6 +25,7 @@ export { defineCrossModuleState } from '@pyreon/reactivity'
 // typically imports from @pyreon/core). Defined in @pyreon/reactivity.
 export { isClient, isServer } from '@pyreon/reactivity'
 export { useControllableState, type UseControllableState } from './controllable-state'
+export { lockScroll } from './scroll-lock'
 export { ColorModeProvider, provideColorMode, systemColorMode, useColorMode, useProvidedColorMode } from './color-mode'
 export type { ColorMode, ColorModeInput, ColorModeProviderProps } from './color-mode'
 export { mapCompatDomProps, shallowEqualProps } from './compat-shared'

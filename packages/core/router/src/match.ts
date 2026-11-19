@@ -40,7 +40,7 @@ export function _setDefaultChromeLayout(component: RouteComponent): void {
  * `decodeURIComponent` throws `URIError` on a malformed escape — a lone `%`,
  * `%zz`, a truncated `%E0%A4`. Every decode in this module is applied to
  * ATTACKER-CONTROLLED text (a path segment, a query value), and this module is
- * reached PRE-AUTH from `router.preload` inside the SSR handler, so an
+ * reached PRE-AUTH from `preloadRoute` inside the SSR handler, so an
  * unguarded decode turned `GET /?q=%` — one character, no auth, a STATIC route,
  * no dynamic params needed — into a 500 on every server-rendered Pyreon app.
  *
