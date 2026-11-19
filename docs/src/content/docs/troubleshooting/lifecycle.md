@@ -119,6 +119,18 @@ The ISR memory store capped its cache at `maxEntries` but its tag index only gre
 
 ---
 
+### A resource held for the component's LIFETIME when it belongs to a STATE, and released by writing a constant
+
+`useOverlay({ type: 'modal' })` took the page scroll lock in `setupListeners` (on mount) and released it with `document.body.style.overflow = ''`, so a closed modal blocked page scrolling while its trigger was on the page, and its release wiped the value `@pyreon/hooks` `useScrollLock` (its own counter) had saved under an open `ModalBase`. Rules: acquire when the state that needs it begins (open) and release when it ends (close) AND on unmount if still held; release by restoring what the first hold saved, never by writing a default; one shared resource gets ONE counter for the whole framework. Page and element scroll locks go through `lockScroll()` from `@pyreon/core`. Reference: `packages/core/core/src/scroll-lock.ts`, `packages/ui-system/elements/src/Overlay/useOverlay.tsx`; locked by `Overlay-modal-scroll-lock.browser.test.tsx` (every older modal test mounted with `isOpen: true`, which is why mount-time locking passed).
+
+---
+
+### A hold on someone else's counter released only by the opposite EVENT, never by teardown
+
+A nested `useOverlay` blocked its parent in `showContent` and unblocked only in `hideContent`. A child removed while open (conditional render, route change) never hid, so the parent stayed blocked and never again closed on outside click or Escape; a child shown twice double-counted, and a hide on a never-opened child released someone else's block. Rule: each holder records whether it holds (at most one hold per holder), takes it when its state begins, and releases it exactly once — on the opposite event OR on detach, whichever comes first. Reference: `packages/ui-system/elements/src/Overlay/useOverlay.tsx` (`blockParent` / `releaseParent`); locked by `Overlay-nested-unmount-block.browser.test.tsx`.
+
+---
+
 ### A disk-backed cache is a cache too (Class C)
 
 `createFsStore` wrote one file per cache key and never evicted, so under the default `pathname + search` key an anonymous visitor could fill the disk with distinct query strings; it also rewrote one shared `_tags.json` index on every tagged miss (O(N) bytes per miss). Rules: a persistent cache gets the same cap as its in-memory sibling, and the cap is enforced against what is ON DISK — count the directory at start and trim, so a restart (or an older version's directory) cannot reset it; eviction removes the entry and every file that references it; keep per-entry metadata in per-entry files so a write costs O(1), not O(cached); write tmp+rename so a crash leaves no torn file, and sweep leftover temp files at start; serialize fs mutations per key so a later `delete` cannot be overtaken by an earlier `set`. Reference: `packages/zero/zero/src/isr-fs-store.ts`; locked by `isr-fs-store-bounds.test.ts`.
@@ -331,6 +343,12 @@ The streaming handler copied the app stream into the response body from `start()
 ### [FIXED, 2026-11] `{ once: true }` on a CALLER's signal is not a cleanup (Class D).
 
 `renderToStream({ signal })` chained the caller's signal with `addEventListener('abort', …, { once: true })`, which removes the listener only if that signal fires. A caller sharing one long-lived signal across operations (a shutdown signal, a reused connection signal) gained one listener, and the stream it closed over, per render. **Rule: a listener on a signal or target you do not own comes off on every end of your operation (success, error, cancel), through an idempotent detach.** Reference: `runtime-server/src/index.ts:chainCallerSignal`; locked by `stream-abort-listener.test.ts` (bisect-verified).
+
+---
+
+### [FIXED, 2026-11] Ref-dependent DOM work scheduled from setup with `queueMicrotask` / a timer.
+
+`<RouterLink prefetch="viewport">` called `observer.observe(ref.current)` from a microtask queued at setup. A link unmounted in the same tick had its ref cleared first, so `observe(null)` threw an uncaught TypeError. **Rule: work that needs a component's DOM runs in `onMount` (the ref is set there) and is undone in that hook's returned cleanup; never in a microtask or timer queued from the body, which can outlive the component.** Reference: `router/src/components.tsx` (RouterLink); locked by `router-link-viewport-unmount.test.ts` (bisect-verified).
 
 ---
 
