@@ -7923,7 +7923,7 @@ fun bridgeHoles(outer: List<PyreonChartPt>, holes: List<List<PyreonChartPt>>): L
     for (hi in 0L until holes.length) {
       val raw = holes[(hi).toInt()]
       val hole = if (ringArea(raw) * sign > 0.0) reversedRing(raw) else raw
-      ring = bridgeOne(ring, hole, holes, hi)
+      ring = bridgeOne(ring, hole, holes)
     }
     return ring
   }
@@ -7936,7 +7936,7 @@ fun reversedRing(ring: List<PyreonChartPt>): List<PyreonChartPt> {
     return out
   }
 
-fun bridgeOne(ring: List<PyreonChartPt>, hole: List<PyreonChartPt>, all: List<List<PyreonChartPt>>, self: Long): List<PyreonChartPt> {
+fun bridgeOne(ring: List<PyreonChartPt>, hole: List<PyreonChartPt>, all: List<List<PyreonChartPt>>): List<PyreonChartPt> {
     var mi = 0L
     for (k in 1L until hole.length) {
       if (hole[(k).toInt()].x > hole[(mi).toInt()].x) {
@@ -7962,7 +7962,7 @@ fun bridgeOne(ring: List<PyreonChartPt>, hole: List<PyreonChartPt>, all: List<Li
       }
       prevD = bestD
       prevK = best
-      if (!bridgeClear(ring, hole, all, self, m, ring[(best).toInt()])) {
+      if (!bridgeClear((listOf(ring) + all), m, ring[(best).toInt()])) {
         continue
       }
       val out: MutableList<PyreonChartPt> = mutableListOf()
@@ -7981,12 +7981,9 @@ fun bridgeOne(ring: List<PyreonChartPt>, hole: List<PyreonChartPt>, all: List<Li
     return ring
   }
 
-fun bridgeClear(ring: List<PyreonChartPt>, hole: List<PyreonChartPt>, all: List<List<PyreonChartPt>>, self: Long, m: PyreonChartPt, o: PyreonChartPt): Boolean {
-    if (ringHitsBridge(ring, m, o) || ringHitsBridge(hole, m, o)) {
-      return false
-    }
-    for (k in 0L until all.length) {
-      if (k != self && ringHitsBridge(all[(k).toInt()], m, o)) {
+fun bridgeClear(blockers: List<List<PyreonChartPt>>, m: PyreonChartPt, o: PyreonChartPt): Boolean {
+    for (ring in blockers) {
+      if (ringHitsBridge(ring, m, o)) {
         return false
       }
     }

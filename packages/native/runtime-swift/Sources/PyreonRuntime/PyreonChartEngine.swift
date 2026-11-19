@@ -10576,7 +10576,7 @@ public func bridgeHoles(_ outer: [PyreonChartPt], _ holes: [[PyreonChartPt]]) ->
     for hi in 0..<holes.count {
       let raw = holes[hi]
       let hole = ringArea(raw) * sign > 0.0 ? reversedRing(raw) : raw
-      ring = bridgeOne(ring, hole, holes, hi)
+      ring = bridgeOne(ring, hole, holes)
     }
     return ring
   }
@@ -10589,7 +10589,7 @@ public func reversedRing(_ ring: [PyreonChartPt]) -> [PyreonChartPt] {
     return out
   }
 
-public func bridgeOne(_ ring: [PyreonChartPt], _ hole: [PyreonChartPt], _ all: [[PyreonChartPt]], _ `self`: Int) -> [PyreonChartPt] {
+public func bridgeOne(_ ring: [PyreonChartPt], _ hole: [PyreonChartPt], _ all: [[PyreonChartPt]]) -> [PyreonChartPt] {
     var mi = 0
     for k in 1..<hole.count {
       if hole[k].x > hole[mi].x {
@@ -10615,7 +10615,7 @@ public func bridgeOne(_ ring: [PyreonChartPt], _ hole: [PyreonChartPt], _ all: [
       }
       prevD = bestD
       prevK = best
-      if !bridgeClear(ring, hole, all, `self`, m, ring[best]) {
+      if !bridgeClear(([ring] + all), m, ring[best]) {
         continue
       }
       var out: [PyreonChartPt] = []
@@ -10634,12 +10634,9 @@ public func bridgeOne(_ ring: [PyreonChartPt], _ hole: [PyreonChartPt], _ all: [
     return ring
   }
 
-public func bridgeClear(_ ring: [PyreonChartPt], _ hole: [PyreonChartPt], _ all: [[PyreonChartPt]], _ `self`: Int, _ m: PyreonChartPt, _ o: PyreonChartPt) -> Bool {
-    if ringHitsBridge(ring, m, o) || ringHitsBridge(hole, m, o) {
-      return false
-    }
-    for k in 0..<all.count {
-      if k != `self` && ringHitsBridge(all[k], m, o) {
+public func bridgeClear(_ blockers: [[PyreonChartPt]], _ m: PyreonChartPt, _ o: PyreonChartPt) -> Bool {
+    for ring in blockers {
+      if ringHitsBridge(ring, m, o) {
         return false
       }
     }
