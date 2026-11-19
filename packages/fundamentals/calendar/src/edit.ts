@@ -238,21 +238,36 @@ export function nudgeTarget(o: EventOccurrence, key: string, options: NudgeOptio
   const vertical = ARROWS[key]?.[1] ?? 0
   if (sideways === 0 && vertical === 0) return null
   const timed = grid === 'time' && !o.allDay
-  const step = timed ? vertical * snap : vertical * (grid === 'month' || o.allDay ? 7 : 0) * DAY_MINUTES
-  const days = sideways
-  if (!shift) {
-    if (timed) return days !== 0 ? shifted(o, days) : { start: fromMinutes(minutesOf(o.start) + step, false), end: fromMinutes(minutesOf(o.end) + step, false), allDay: false }
-    const total = days + (step / DAY_MINUTES)
+  // minutes for a slot-by-slot move in the time grid, else days (up and down is a week in the month)
+  const rows = timed ? vertical * snap : vertical * (grid === 'month' || o.allDay ? 7 : 0) * DAY_MINUTES
+  const move = shift ? resizeBy : moveBy
 
-    return total === 0 ? null : shifted(o, total)
-  }
+  return move(o, { timed, sideways, rows, minDuration })
+}
+
+interface Step {
+  timed: boolean
+  sideways: number
+  rows: number
+  minDuration: number
+}
+
+/** An arrow without Shift: the whole occurrence by a slot (time grid) or by days. */
+function moveBy(o: EventOccurrence, step: Step): Target | null {
+  if (step.timed && step.sideways === 0) return { start: fromMinutes(minutesOf(o.start) + step.rows, false), end: fromMinutes(minutesOf(o.end) + step.rows, false), allDay: false }
+  const days = step.sideways + (step.timed ? 0 : step.rows / DAY_MINUTES)
+
+  return days === 0 ? null : shifted(o, days)
+}
+
+/** An arrow with Shift: the end, by a slot (time grid) or by days, never before the start plus the minimum. */
+function resizeBy(o: EventOccurrence, step: Step): Target | null {
   if (o.allDay) {
-    const dayStep = days + (step / DAY_MINUTES)
-    const end = Math.max(dayOf(o.end) + dayStep, dayOf(o.start) + 1)
+    const days = step.sideways + step.rows / DAY_MINUTES
 
-    return dayStep === 0 ? null : { start: o.start, end: fromMinutes(end * DAY_MINUTES, true), allDay: true }
+    return days === 0 ? null : { start: o.start, end: fromMinutes(Math.max(dayOf(o.end) + days, dayOf(o.start) + 1) * DAY_MINUTES, true), allDay: true }
   }
-  const delta = timed ? step : days * DAY_MINUTES
+  const delta = step.timed ? step.rows : step.sideways * DAY_MINUTES
 
-  return delta === 0 ? null : { start: o.start, end: fromMinutes(Math.max(minutesOf(o.end) + delta, minutesOf(o.start) + minDuration), false), allDay: false }
+  return delta === 0 ? null : { start: o.start, end: fromMinutes(Math.max(minutesOf(o.end) + delta, minutesOf(o.start) + step.minDuration), false), allDay: false }
 }
