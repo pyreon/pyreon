@@ -8,8 +8,10 @@ import { HEAT_RAMP, rampColor, visualOutside } from './heat'
 import { approxTextWidth } from './treemap'
 import type { Domain, Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 import { isFiniteNumber } from './scale'
+import { geoProjectionParams, projectLonLatWith, unprojectLonLatWith } from './geo-projection'
+import type { GeoProjectionParams } from './geo-projection'
 
-export type GeoProjection = 'equirectangular' | 'mercator'
+export type GeoProjection = 'equirectangular' | 'mercator' | 'equalEarth' | 'naturalEarth1' | 'albers' | 'albersUsa'
 
 export interface GeoRegion {
   /** The join key values are matched against (the feature's name, or its id / chosen property). */
@@ -111,6 +113,8 @@ export interface GeoTransform {
   ox: Double
   oy: Double
   projection: GeoProjection
+  /** The projection's numeric parameters (central meridian, origin latitude, Albers parallels). */
+  params: GeoProjectionParams
 }
 
 export interface GeoLayout {
@@ -121,13 +125,29 @@ export interface GeoLayout {
 
 /** The `layout.project(lon, lat)` closure, as a free function over the data. */
 export function geoProject(t: GeoTransform, lon: Double, lat: Double): Pt {
-  const p = projectLonLat(lon, lat, t.projection)
+  const p = projectLonLatWith(lon, lat, t.projection, t.params)
   return { x: t.ox + (p.x - t.minX) * t.scale, y: t.oy + (t.maxY - p.y) * t.scale }
+}
+
+/**
+ * The inverse of `geoProject`: a pixel on the map to `{ x: lon, y: lat }` in degrees (what a tooltip or a drawing tool
+ * wants). Valid inside the projection's domain; a pixel off the map's shape unprojects to a meaningless point.
+ */
+export function geoUnproject(t: GeoTransform, px: Double, py: Double): Pt {
+  return unprojectLonLatWith((px - t.ox) / t.scale + t.minX, t.maxY - (py - t.oy) / t.scale, t.projection, t.params)
 }
 
 export interface GeoOptions {
   projection?: GeoProjection | undefined
   padding?: Double | undefined
+  /** The central meridian of a world or Albers projection, degrees (default 0; -96 for `albers`). */
+  centerLon?: Double | undefined
+  /** The latitude of origin of an Albers conic, degrees (it only shifts the picture; the fit removes it). */
+  centerLat?: Double | undefined
+  /** The first Albers standard parallel, degrees (default 29.5). */
+  parallel1?: Double | undefined
+  /** The second Albers standard parallel, degrees (default 45.5). */
+  parallel2?: Double | undefined
   /** Property holding the region's DISPLAY name; default `name`. */
   nameProperty?: string | undefined
   /** What values are joined against: `'id'` (the feature's own `id`) or a property key; absent, the display name. Web-only: it reads GeoJSON. */
@@ -161,14 +181,9 @@ export interface GeoOptions {
   outColor?: string | undefined
 }
 
+/** lon/lat to the plane of `projection` with its default parameters (see `projectLonLatWith`). */
 export function projectLonLat(lon: Double, lat: Double, projection: GeoProjection): Pt {
-  if (projection === 'mercator') {
-    const clamped = lat > 85.0 ? 85.0 : lat < -85.0 ? -85.0 : lat
-    const phi = (clamped * Math.PI) / 180.0
-    return { x: lon, y: (Math.log(Math.tan(Math.PI / 4.0 + phi / 2.0)) * 180.0) / Math.PI }
-  }
-
-  return { x: lon, y: lat }
+  return projectLonLatWith(lon, lat, projection, geoProjectionParams(projection))
 }
 
 function ringArea(ring: Pt[]): Double {
@@ -194,6 +209,11 @@ function ringCentroid(ring: Pt[]): Pt | null {
   }
 
   return { x: cx / (6.0 * a), y: cy / (6.0 * a) }
+}
+
+/** The projection parameters a set of options names, defaults filled in. */
+export function geoOptionParams(projection: GeoProjection, options?: GeoOptions): GeoProjectionParams {
+  return geoProjectionParams(projection, options?.centerLon, options?.centerLat, options?.parallel1, options?.parallel2)
 }
 
 export function layoutGeoShapes(shapes: readonly GeoShape[], box: Rect, options?: GeoOptions): GeoLayout {
@@ -283,7 +303,7 @@ export function layoutGeoShapes(shapes: readonly GeoShape[], box: Rect, options?
     return { name: r.name, label: r.label ?? r.name, rings, holes, holeHost: host, fills, centroid, bbox }
   })
 
-  return { regions, transform: { minX, maxY, scale, ox, oy, projection } }
+  return { regions, transform: { minX, maxY, scale, ox, oy, projection, params: geoOptionParams(projection, options) } }
 }
 
 /** A roam view: the zoom and pan a host keeps between frames. */

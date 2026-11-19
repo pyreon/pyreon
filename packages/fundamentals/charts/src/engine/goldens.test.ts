@@ -24,6 +24,7 @@ import {
 import { boxplotToSvg } from './boxplot-svg'
 import { geoToSvg } from './geo-web'
 import { FLORIDA_LAKE, ITALY_ENCLAVES, SOUTH_AFRICA_LESOTHO } from './__fixtures__/geo-holes'
+import { gridGeo, gridValues, usGrid } from './__fixtures__/geo-grid'
 import type { GeoJson } from './geo-web'
 import type { TreeNode } from './treemap'
 
@@ -82,6 +83,14 @@ const GOLDENS: Record<string, () => string> = {
   // Inner rings: Lesotho cut out of South Africa (and drawn on top), the Italian enclaves, Lake Okeechobee in Florida.
   'map-holes-south-africa': () => geoToSvg({ geo: SOUTH_AFRICA_LESOTHO, values: { 'South Africa': 30, Lesotho: 80 }, ...SIZE }),
   'map-holes-italy': () => geoToSvg({ geo: ITALY_ENCLAVES, values: { Italy: 20, 'San Marino': 90, 'Vatican City': 60 }, ...SIZE }),
+  // One golden per projection over a lon/lat grid (cells show the distortion without any boundary data).
+  'map-proj-equirectangular': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'equirectangular' }, ...SIZE }),
+  'map-proj-equal-earth': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'equalEarth' }, ...SIZE }),
+  'map-proj-natural-earth-1': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'naturalEarth1' }, ...SIZE }),
+  'map-proj-equal-earth-rotated': () => geoToSvg({ geo: gridGeo(-180, 180, -80, 80, 20), values: gridValues(gridGeo(-180, 180, -80, 80, 20)), options: { projection: 'equalEarth', centerLon: 150 }, ...SIZE }),
+  'map-proj-albers': () => geoToSvg({ geo: gridGeo(-130, -60, 20, 55, 5), values: gridValues(gridGeo(-130, -60, 20, 55, 5)), options: { projection: 'albers' }, ...SIZE }),
+  'map-proj-albers-parallels': () => geoToSvg({ geo: gridGeo(-130, -60, 20, 55, 5), values: gridValues(gridGeo(-130, -60, 20, 55, 5)), options: { projection: 'albers', parallel1: 40, parallel2: 50, centerLon: -100 }, ...SIZE }),
+  'map-proj-albers-usa': () => geoToSvg({ geo: usGrid(), values: gridValues(usGrid()), options: { projection: 'albersUsa' }, ...SIZE }),
   'map-holes-lake': () => geoToSvg({ geo: FLORIDA_LAKE, values: { Florida: 55 }, ...SIZE }),
 }
 

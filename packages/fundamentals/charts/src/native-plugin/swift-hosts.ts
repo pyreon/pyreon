@@ -1,4 +1,4 @@
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartThemeFields, desugarChartGrammar, UNLOWERED_CHART_HOSTS, chartDouble, chartRichSelectWarning, chartOrientVertical, chartRoamConfig, chartVisualMap } from './hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartThemeFields, desugarChartGrammar, UNLOWERED_CHART_HOSTS, chartDouble, chartRichSelectWarning, chartOrientVertical, chartRoamConfig, chartVisualMap, geoProjectionEnum } from './hosts'
 import type { ChartHostArgs } from './hosts'
 import { swiftStr, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './swift-facade'
@@ -119,7 +119,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     }
   }
   const optV = chartAttrExpr(e, spec.options)
-  const userOptions = optV === undefined ? 'nil' : host.exprAs(chartStructRef(spec.optionsStruct), optV, indent)
+  const userOptions = optV === undefined ? 'nil' : geoProjectionEnum(host.exprAs(chartStructRef(spec.optionsStruct), optV, indent), 'swift')
   // The theme, read once: chrome colours, the tooltip box, and — when the
   // options struct has a palette — its default, as the web host merges it.
   const tf = swiftChartThemeFields(e, tag)

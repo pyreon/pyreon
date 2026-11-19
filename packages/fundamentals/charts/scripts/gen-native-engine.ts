@@ -70,7 +70,7 @@ export const ENGINE_FILES = [
   'sankey',
   'graph',
   'calendar',
-  'geo',
+  'geo', 'geo-projection',
   'geo-overlay',
   'gantt',
   'parallel',

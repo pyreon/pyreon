@@ -13,7 +13,9 @@
 //
 // Same split, and the same reasons, as `calendar.ts` / `calendar-web.ts`.
 
-import { geoDomainAligned, layoutGeoShapes, projectLonLat, renderGeoAligned } from './geo'
+import { geoDomainAligned, geoOptionParams, layoutGeoShapes, renderGeoAligned } from './geo'
+import { geoProjectionParams, projectLonLatWith } from './geo-projection'
+import type { GeoProjectionParams } from './geo-projection'
 import type { GeoLayout, GeoOptions, GeoProjection, GeoShape, GeoValue } from './geo'
 import { geoHeatStops, renderGeoHeat, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
 import type { GeoHeatPoint, GeoOverlayOptions, GeoOverlayPath, GeoOverlayPoint, GeoPie } from './geo-overlay'
@@ -156,14 +158,14 @@ export interface GeoSource {
  * `nameProperty` is the DISPLAY name (default `name`). `idProperty` picks what values are joined
  * against: `'id'` (the feature's own `id`) or any property key; absent, the display name is the key.
  */
-export function geoFeatures(geo: GeoJson, projection: GeoProjection = 'equirectangular', nameProperty = 'name', idProperty?: string): GeoSource {
+export function geoFeatures(geo: GeoJson, projection: GeoProjection = 'equirectangular', nameProperty = 'name', idProperty?: string, params: GeoProjectionParams = geoProjectionParams(projection)): GeoSource {
   const shapes: GeoShape[] = []
   const properties: (Record<string, unknown> | null)[] = []
   for (let fi = 0; fi < geo.features.length; fi++) {
     const f = geo.features[fi]!
     const g = f.geometry
     if (g === null) continue
-    const { rings, holes, holeHost } = featureRings(g.type === 'Polygon' ? [g.coordinates] : g.coordinates, projection)
+    const { rings, holes, holeHost } = featureRings(g.type === 'Polygon' ? [g.coordinates] : g.coordinates, projection, params)
     const propName = f.properties?.[nameProperty]
     const label = typeof propName === 'string' ? propName : 'Region ' + String(fi + 1)
     const key = joinKey(f, idProperty) ?? label
@@ -184,19 +186,19 @@ function joinKey(f: GeoFeature, idProperty: string | undefined): string | undefi
 }
 
 /** The projected outer rings of a feature's polygons, with each polygon's inner rings and the outer ring each cuts. */
-function featureRings(polys: number[][][][], projection: GeoProjection): { rings: Pt[][]; holes: Pt[][]; holeHost: number[] } {
+function featureRings(polys: number[][][][], projection: GeoProjection, params: GeoProjectionParams): { rings: Pt[][]; holes: Pt[][]; holeHost: number[] } {
   const rings: Pt[][] = []
   const holes: Pt[][] = []
   const holeHost: number[] = []
   for (const poly of polys) {
     const outer = poly[0]
     if (outer === undefined || outer.length < 3) continue
-    rings.push(projectRing(outer, projection))
+    rings.push(projectRing(outer, projection, params))
     // Inner rings belong to THIS polygon's outer ring.
     for (let hi = 1; hi < poly.length; hi++) {
       const inner = poly[hi]!
       if (inner.length < 3) continue
-      holes.push(projectRing(inner, projection))
+      holes.push(projectRing(inner, projection, params))
       holeHost.push(rings.length - 1)
     }
   }
@@ -205,13 +207,13 @@ function featureRings(polys: number[][][][], projection: GeoProjection): { rings
 }
 
 /** `geoFeatures(...).shapes`. */
-export function geoShapes(geo: GeoJson, projection: GeoProjection = 'equirectangular', nameProperty = 'name', idProperty?: string): GeoShape[] {
-  return geoFeatures(geo, projection, nameProperty, idProperty).shapes
+export function geoShapes(geo: GeoJson, projection: GeoProjection = 'equirectangular', nameProperty = 'name', idProperty?: string, params: GeoProjectionParams = geoProjectionParams(projection)): GeoShape[] {
+  return geoFeatures(geo, projection, nameProperty, idProperty, params).shapes
 }
 
-function projectRing(coords: number[][], projection: GeoProjection): Pt[] {
+function projectRing(coords: number[][], projection: GeoProjection, params: GeoProjectionParams): Pt[] {
   const ring: Pt[] = []
-  for (const c of coords) ring.push(projectLonLat(c[0] ?? 0.0, c[1] ?? 0.0, projection))
+  for (const c of coords) ring.push(projectLonLatWith(c[0] ?? 0.0, c[1] ?? 0.0, projection, params))
 
   return ring
 }
@@ -221,7 +223,7 @@ export function layoutGeo(geo: GeoJson | Topology | MapDefinition, box: Rect, op
   const base = resolveMapSource(geo)
   const projection = options?.projection ?? base.projection ?? 'equirectangular'
 
-  return layoutGeoShapes(geoShapes(base.geo, projection, options?.nameProperty ?? base.nameProperty ?? 'name', options?.idProperty ?? base.idProperty), box, { ...options, projection })
+  return layoutGeoShapes(geoShapes(base.geo, projection, options?.nameProperty ?? base.nameProperty ?? 'name', options?.idProperty ?? base.idProperty, geoOptionParams(projection, options)), box, { ...options, projection })
 }
 
 export interface GeoToSvgOptions {

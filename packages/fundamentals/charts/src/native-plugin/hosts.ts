@@ -550,6 +550,18 @@ export const geoValuesAdapter: ChartHostAdapter = (attrs, t, warn, resolve, emit
   return t.list(items)
 }
 
+/**
+ * `projection: "equalEarth"` inside a `GeoOptions(...)` literal, as the enum case the engine's `GeoProjection` is: the
+ * struct-literal lowering writes a string literal for a union-typed field, and an enum needs its case. Only the
+ * map's options carry this field, so the rewrite is keyed on the field name and the six known cases.
+ */
+export function geoProjectionEnum(text: string, target: 'swift' | 'kotlin'): string {
+  const cases = 'equirectangular|mercator|equalEarth|naturalEarth1|albers|albersUsa'
+  return target === 'swift'
+    ? text.replace(new RegExp(`projection: "(${cases})"`, 'g'), 'projection: .$1')
+    : text.replace(new RegExp(`projection = "(${cases})"`, 'g'), 'projection = GeoProjection.$1')
+}
+
 const box00 = (a: ChartHostArgs, t: ChartHostTarget): string => t.rect('0.0', '0.0', a.W, a.H)
 
 /**

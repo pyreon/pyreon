@@ -15,7 +15,7 @@ import type { CanvasHostProps } from './canvas-host'
 import { withItemStates } from './host-states'
 import type { ItemStateProps } from './host-states'
 import { plain } from './format'
-import { geoDomainAligned, geoRoamPan, geoRoamZoom, hitGeoIndex, layoutGeoShapes, renderGeoAligned } from './geo'
+import { geoDomainAligned, geoOptionParams, geoRoamPan, geoRoamZoom, hitGeoIndex, layoutGeoShapes, renderGeoAligned } from './geo'
 import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoTrails, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
 import { alignGeoValues, geoFeatures, getMapDefinition, resolveMapSource } from './geo-web'
 import type { GeoLayout, GeoOptions, GeoProjection, GeoRegion, GeoShape, GeoValue, GeoView } from './geo'
@@ -122,9 +122,10 @@ export function MapChart(props: MapChartProps): VNode {
     const nameProperty = props.options?.nameProperty ?? base.nameProperty ?? 'name'
     const idProperty = props.options?.idProperty ?? base.idProperty
     projectionNow = projection
-    const key = `${projection}|${nameProperty}|${idProperty ?? ''}`
+    const params = geoOptionParams(projection, props.options)
+    const key = `${projection}|${nameProperty}|${idProperty ?? ''}|${params.lon0}|${params.lat0}|${params.p1}|${params.p2}`
     if (sourceMemo !== null && sourceMemo.m === m && sourceMemo.key === key) return sourceMemo.out
-    const out = geoFeatures(base.geo, projection, nameProperty, idProperty)
+    const out = geoFeatures(base.geo, projection, nameProperty, idProperty, params)
     sourceMemo = { m, key, out }
 
     return out

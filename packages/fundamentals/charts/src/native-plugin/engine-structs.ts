@@ -8712,6 +8712,14 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "name": "GeoProjection",
           "args": []
         }
+      },
+      {
+        "name": "params",
+        "type": {
+          "kind": "typeRef",
+          "name": "GeoProjectionParams",
+          "args": []
+        }
       }
     ],
     "external": true
@@ -8762,6 +8770,70 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "padding",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "centerLon",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "centerLat",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "parallel1",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "parallel2",
         "type": {
           "kind": "union",
           "branches": [
@@ -9121,6 +9193,44 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "panY",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "GeoProjectionParams",
+    "fields": [
+      {
+        "name": "lon0",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "lat0",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "p1",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "p2",
         "type": {
           "kind": "typeRef",
           "name": "Double",
@@ -12730,6 +12840,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "GeoOverlayPoint",
   "GeoPie",
   "GeoProjection",
+  "GeoProjectionParams",
   "GeoRegion",
   "GeoShape",
   "GeoTrail",
