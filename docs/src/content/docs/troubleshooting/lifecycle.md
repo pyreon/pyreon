@@ -322,6 +322,12 @@ The streaming handler copied the app stream into the response body from `start()
 
 ---
 
+### [FIXED, 2026-11] `{ once: true }` on a CALLER's signal is not a cleanup (Class D).
+
+`renderToStream({ signal })` chained the caller's signal with `addEventListener('abort', …, { once: true })`, which removes the listener only if that signal fires. A caller sharing one long-lived signal across operations (a shutdown signal, a reused connection signal) gained one listener, and the stream it closed over, per render. **Rule: a listener on a signal or target you do not own comes off on every end of your operation (success, error, cancel), through an idempotent detach.** Reference: `runtime-server/src/index.ts:chainCallerSignal`; locked by `stream-abort-listener.test.ts` (bisect-verified).
+
+---
+
 ### A module-scoped store reached on the server
 
 A module-level `Map` is correctly app-wide in a browser, where one process serves one user, but on a server it is shared by every request. `useDatabase` and `useSecureStorage` returned one request's records and secrets to another under SSR. Their server arms are now inert (consistent within a render, nothing carried across requests). Before reusing a module-scoped cache on the server, ask what one process means there. A `/* v8 ignore */` claiming a branch is untestable, while sibling files test the same shape, signals an unexamined branch. Reference: `packages/fundamentals/hooks/src/{useDatabase,useSecureStorage}.ts`; `hooks/src/tests/server-store-isolation.ssr.test.ts`.
