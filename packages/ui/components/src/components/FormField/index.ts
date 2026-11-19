@@ -1,4 +1,4 @@
-import { el, tones, toneText, txt } from '../../factory'
+import { el, tintText, tones, txt } from '../../factory'
 
 const FormField = el
   .config({ name: 'FormField' })
@@ -29,7 +29,7 @@ export const FieldError = txt
   .theme((t, m) => ({
     fontSize: t.fontSize.xSmall,
     // error.base (red-500) is 3.8:1 on white: use the legible status text tone.
-    color: toneText(t, m, 'error'),
+    color: tintText(t, m, 'error'),
   }))
 
 export const FieldDescription = txt
