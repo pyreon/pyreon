@@ -549,7 +549,8 @@ const App = () => <div class="a"><span class="s">s</span>{() => [1, 2].map((n) =
       )
     const off = await hydrateAndMeasure(tree(), src, {})
     expect(off.ssrHtml).toContain('<!--$-->')
-    expect(off.adopts).toBe(1)
+    // The `<div>`, and each `<b>`: the `.map` accessor is a walked hole.
+    expect(off.adopts).toBe(3)
     expect(off.retained).toBe(off.total)
 
     // The option is not what decides this shape: identical adoption, identical

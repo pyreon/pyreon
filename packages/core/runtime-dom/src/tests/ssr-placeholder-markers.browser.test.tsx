@@ -8,7 +8,7 @@
  */
 import { For, Fragment, h } from '@pyreon/core'
 import { afterEach, describe, expect, it } from 'vitest'
-import { _mountChild, _mountSlot, _setChildAt, _tpl, hydrateRoot, mount, onHydrationMismatch } from '../index'
+import { _mountChild, _mountSlot, _setChild, _setChildAt, _tpl, hydrateRoot, mount, onHydrationMismatch } from '../index'
 import { PLACEHOLDER_RANGE_CASES, type PlaceholderRangeCase } from './_placeholder-range-cases'
 
 const SCOPE = {
@@ -20,7 +20,7 @@ const SCOPE = {
   ],
 }
 
-const DEPS = { _mountChild, _mountSlot, _setChildAt, _tpl, For, Fragment, h, ...SCOPE }
+const DEPS = { _mountChild, _mountSlot, _setChild, _setChildAt, _tpl, For, Fragment, h, ...SCOPE }
 
 function compiledApp(c: PlaceholderRangeCase): () => unknown {
   return new Function(...Object.keys(DEPS), `${c.compiled}\nreturn App`)(...Object.values(DEPS)) as () => unknown

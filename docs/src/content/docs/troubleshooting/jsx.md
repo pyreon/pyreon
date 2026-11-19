@@ -106,6 +106,18 @@ The option bakes an element skeleton and mounts trailing component children into
 
 ---
 
+### [FIXED, 2026-11] JSX inside a template hole sliced as raw source
+
+An expression child of a templated element that builds JSX (`{items.map((x) => <li/>)}`, `{cond() ? <a/> : <b/>}`, `{() => …}`) was sliced into the `_tpl` bind, and the walk never visits a slice, so every element in it fell to `jsx()` (347 of the 616 element `jsx()` calls the example corpus compiled to). It is now a preserved hole, walked like an absorbed component child. Rules:
+  - One predicate decides it, `clientWalksHole` / `client_walks_hole`, and the client emit, the SSR `h()`-path emit and the `_ssr` emit all read it. The server walks the same expression under no template (`SSR_CLIENT_NONE`, not `RAW`), so the nested templates' `<!>` placeholders get their server ranges. A `.map` inside a walked hole takes the `_ssr` `foritem` mode (a `<For>` row's semantics), not `mapitem` (value children).
+  - A hole in SVG or MathML content (by JSX ancestry: `svg`, `math` or an SVG-only tag, `foreignObject` returning to HTML) stays a slice: each element a walked hole builds is a template ROOT, which `_tpl` namespaces by its own tag alone, so `<svg>{on && <a/>}</svg>` would build an HTML `<a>`. Lift this only when a template can carry its namespace.
+  - Semantics move to the walked compile: a signal read inside a `.map` item binds the item's own effect instead of re-running the whole list, and a component inside gets `_rp` props. A component that destructures its props no longer refreshes by being re-created.
+  - A generated `_ssr` item body slices its holes without walking the callback, so it must enter the callback's scope first (`inCallbackScope` / `in_callback_scope`): a parameter shadowing a signal was auto-called (`x()` on a number item, an SSR crash) and one shadowing a prop-derived alias was inlined. That was already true of `.map` and `<For>` rows before holes were walked.
+  - The native walk set no callback flags for an optional call (`rows()?.map((r) => …)`), so `r` was registered as reactive props and `{r.label}` wrapped; the JS backend's parent check treats `?.(…)` as a call. Fixed with `walk_call_arguments`.
+  - Reference: `compiler/src/jsx.ts:processOneChild` (`holeArg`), `clientWalksHole`, `inForeignContent`, `ssrSerializeExprChild` (+ `native/src/lib.rs`). Locked by `compiler/src/tests/template-hole-walk.test.ts` (shapes, both backends, example-corpus census ratchet), `runtime-dom/src/tests/template-hole-walk.test.tsx` (behaviour + SSR→hydrate) and the walked-hole cases of `ssr-placeholder-markers.browser.test.tsx`. `bun packages/core/compiler/scripts/template-bail-census.ts` prints what is still left to `jsx()`.
+
+---
+
 ### A template mount hole without extent, hydrate counterpart and sweep
 
 A template's skeleton is adoptable only while it fully describes the DOM it claims. For a trailing mount hole the compiler bakes `data-pyreon-hole` (`TPL_HOLE_ATTR`) on the element, which `_tpl` strips at parse time.

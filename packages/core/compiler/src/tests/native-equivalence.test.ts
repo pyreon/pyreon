@@ -3231,17 +3231,27 @@ describe('SSR brackets a fixed child on a client placeholder (#4385 D)', () => {
     const src = 'const A = () => <span><Comp />{v}<i /></span>'
     expect(ssrH(src, true)).not.toContain('_slot')
   })
-  test('JSX inside a placeholder child is raw on the client, so its children take no range', () => {
+  test('JSX inside a placeholder child is walked on the client, so its own placeholders take a range', () => {
+    // The hole is preserved and walked: `<b>` is a template of its own on the
+    // client, whose `{v}` is a `<!>` placeholder that needs a server range.
     const out = ssrH('const A = () => <span>{flag ? <b><i />{v}<u /></b> : null}<s /></span>')
-    expect(out.match(/_slot\(/g)?.length).toBe(1)
+    expect(out).toContain('<span>{_slot(flag ? <b><i />{_slot(v)}<u /></b> : null)}<s /></span>')
   })
   test('a <For> row the client templates brackets its fixed field', () => {
     const src = 'const A = () => <ul><For each={rows} by={(r) => r.id}>{(r) => <li><b />{r.name}<i /></li>}</For></ul>'
     expect(ssrH(src)).toContain('<li><b />{_slot(r.name)}<i /></li>')
     expect(ssrT(src)).toContain('"<li><b></b><!--$-->" + _h0 + "<!--/$--><i></i></li>"')
   })
-  test('a `.map` item is sliced on the client, so it takes no range', () => {
-    expect(ssrH('const A = () => <ul><b />{xs.map((x) => <li><b />{x}<i /></li>)}</ul>')).not.toContain('_slot')
+  test('a `.map` item the client templates brackets its fixed field', () => {
+    const src = 'const A = () => <ul><b />{xs.map((x) => <li><b />{x}<i /></li>)}</ul>'
+    expect(ssrH(src)).toContain('{() => (xs.map((x) => <li><b />{_slot(x)}<i /></li>))}')
+    // `_ssr` keeps its `.map` fast path, with a `<For>` row's item semantics.
+    expect(ssrT(src)).toContain('_ssrChildren(xs.map((x) => {')
+    expect(ssrT(src)).toContain('"<li><b></b><!--$-->" + _h0 + "<!--/$--><i></i></li>"')
+  })
+  test('a `.map` item under an h() parent is a slice on both sides, so it takes no range', () => {
+    // A component parent wraps the child as a slice: nothing in it is a template.
+    expect(ssrH('const A = () => <List><b />{xs.map((x) => <li><b />{x}<i /></li>)}</List>')).not.toContain('_slot')
   })
   test('an element the client templates only with templatizeComponentChildren', () => {
     // `<p>` absorbs `<Comp />` only with the option; without it `<div>` holds a
