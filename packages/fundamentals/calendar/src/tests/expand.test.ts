@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { toPlainDateTime } from '@pyreon/time/core'
 import { expandOccurrences } from '../core'
 import type { CalendarEvent } from '../core'
 
@@ -31,6 +32,9 @@ describe('what an event is shown as', () => {
     for (const zone of ['Pacific/Kiritimati', 'Pacific/Pago_Pago', 'UTC', 'Asia/Kolkata']) {
       const [o] = expandOccurrences([e], week, zone)
       expect([o!.start, o!.end, o!.allDay]).toEqual(['2026-11-18', '2026-11-19', true])
+      // and it is the day in the display zone: midnight to midnight there
+      expect(o!.endMs - o!.startMs).toBe(24 * 3_600_000)
+      expect(toPlainDateTime(o!.startMs, zone)).toBe('2026-11-18T00:00')
     }
   })
 

@@ -43,7 +43,7 @@ describe('packColumns', () => {
     const a = got.find((p) => p.key === 'a')!
     expect(a.columns).toBe(3)
     expect(a.span).toBe(1)
-    expect(d.span).toBeGreaterThanOrEqual(1)
+    expect([d.column, d.span]).toEqual([1, 2])
   })
 
   it('does not group blocks that only touch, and gives a short block the minimum height', () => {
@@ -216,6 +216,9 @@ describe('the time grid', () => {
     const list = occ([ev('a', '2026-11-18T20:00', '2026-11-19T00:00')], '2026-11-16', '2026-11-23')
     const grid = layoutTimeGrid(list, ['2026-11-18', '2026-11-19'] as never, 'UTC')
     expect(grid.days.map((d) => d.blocks.length)).toEqual([1, 0])
+    const [block] = grid.days[0]!.blocks
+    expect([block!.endMinute, block!.continuesAfter]).toEqual([1440, false])
+    expect(block!.top + block!.height).toBeCloseTo(1, 10)
   })
 
   it('cuts at dayStart and dayEnd, drops what is outside, and gives a short event its minimum height', () => {
