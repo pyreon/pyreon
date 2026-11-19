@@ -72,6 +72,35 @@ export async function serverLoader({ params }) {
     }),
   },
   {
+    pattern: /initialIndex\b[^\n]*\bis outside initialEntries/,
+    diagnose: () => ({
+      cause:
+        "`createRouter({ mode: 'memory', initialEntries, initialIndex })` got an `initialIndex` that is not a position in `initialEntries` (negative, past the end, or not a whole number). The router clamps it into range and starts there, so the app opens on a different entry than the one asked for.",
+      fix: 'Pass an index that exists in the list: `0` is the first entry and `initialEntries.length - 1` the last. Leave `initialIndex` out to start on the last entry, which is what a history that was navigated through looks like.',
+      fixCode: `const entries = ['/', '/users', '/users/2']
+const router = createRouter({
+  routes,
+  mode: 'memory',
+  initialEntries: entries,
+  initialIndex: entries.length - 1, // start on /users/2; router.back() goes to /users
+})`,
+    }),
+  },
+  {
+    pattern: /mode: 'memory' does not follow the external redirect/,
+    diagnose: () => ({
+      cause:
+        "A guard or a `redirect` in a memory-mode router pointed at an external URL (another origin, or a non-route scheme). A hash or history router follows that by navigating the page. A memory router is embedded in a page it does not own (a demo, a widget, a test), so it cancels the navigation instead of replacing the host page.",
+      fix: 'Decide who owns the page. If leaving it is intended, do it yourself from the guard with `window.location.assign(url)` and return `false`. If the link should stay inside the embedded app, redirect to a route path of the memory router.',
+      fixCode: `beforeEnter: (to) => {
+  if (to.path === '/billing') {
+    window.location.assign('https://billing.example.com') // leaving the host page on purpose
+    return false
+  }
+}`,
+    }),
+  },
+  {
     pattern: /\b([A-Za-z_$][\w$]*)\([^)]*\)\??\.(set|update|peek|trigger) is not a function/,
     diagnose: (m) => ({
       cause: `A signal method is called on its value: \`${m[1]}().${m[2]}\`.`,
@@ -2621,6 +2650,16 @@ export const collections = {
       cause: `\`${m[1]}\` ran detached from its signal. Signal methods live on a shared prototype and read \`this\`; a reference such as \`promise.then(sig.${m[1]})\` or \`ref={props.sig.${m[1]}}\` loses it. Inside JSX the compiler binds a reference to a signal it knows (\`ref={el.set}\` works), but not one reached through props, an object or code outside JSX.`,
       fix: `Call the method on the signal: \`(v) => sig.${m[1]}(v)\`, or bind it: \`sig.${m[1]}.bind(sig)\`.`,
       fixCode: `(v) => sig.${m[1]}(v)`,
+    }),
+  },
+  {
+    // @pyreon/runtime-dom `hydrateComponent`: a throw while hydrating a
+    // component's subtree, contained exactly like a mount-time render throw.
+    pattern: /<([\w$.]+)> threw during hydration/,
+    diagnose: (m) => ({
+      cause: `\`<${m[1]}>\` threw while its server-rendered subtree was being hydrated: in a reactive accessor, a child component or a compiled template binding. Hydration contained it like a mount-time throw: the component's effects were disposed, the error went to the nearest <ErrorBoundary> (or this log), and the rest of the page hydrated. The component's server HTML stays in place but is not interactive.`,
+      fix: 'Read the logged error and its stack: it names the accessor or child that threw. A value that exists on the server but not yet on the client (a browser-only API, data loaded after hydration) is the usual cause; guard it, or wrap the subtree in <ErrorBoundary> to show a fallback.',
+      fixCode: '<ErrorBoundary fallback={(err) => <p>Could not load: {String(err)}</p>}>\n  <Widget />\n</ErrorBoundary>',
     }),
   },
 ]

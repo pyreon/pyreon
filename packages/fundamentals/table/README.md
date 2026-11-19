@@ -1,5 +1,7 @@
 # @pyreon/table
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Pyreon adapter for TanStack Table v9 — reactive `useTable` + `flexRender`.
 
 `@pyreon/table` wraps `@tanstack/table-core` so a Pyreon app gets all the headless table machinery (sorting, filtering, pagination, grouping, expanding, faceting) with signal-driven options. `useTable(() => opts)` returns the `Table` instance **directly**: v9 exposes a pluggable reactivity seam, so the adapter binds every table state slice to a Pyreon signal and reads track natively inside templates and effects — no accessor wrapper, no version counter. `flexRender` handles the four column-def shapes TanStack supports (string, number, function, VNode). `flexRenderCell` gives **fine-grained per-cell updates**: an in-place data edit patches only the changed rows' cells (via per-row signals), matching a hand-memoized `@tanstack/react-table` row with no `React.memo` boilerplate. The TanStack Table author surface is re-exported, so consumers import everything from `@pyreon/table`. The package also ships a second, dependency-free engine — [`createTableState`](#createtablestate--the-multiplatform-core) — for apps that want sort/filter/paginate/select without TanStack, including on iOS/Android via PMTC.

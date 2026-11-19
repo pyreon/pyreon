@@ -180,6 +180,10 @@ describe('a non-GET stream is a TRIGGERED native component', () => {
         'xcrun',
         [
           '--sdk', 'iphonesimulator', 'swiftc', '-typecheck', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk,
+          // PyreonStream.swift imports the base runtime, which an app links as a
+          // module. Here its sources are compiled alongside, so this compilation
+          // IS that module: swiftc then treats the import as a no-op.
+          '-module-name', 'PyreonRuntime',
           ...files,
           join(RUNTIME, 'swift/PyreonStream.swift'),
           join(CORE_SWIFT, 'PyreonHttp.swift'),

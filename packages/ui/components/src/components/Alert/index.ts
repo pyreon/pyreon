@@ -1,4 +1,4 @@
-import { el, tintText } from '../../factory'
+import { el, tintText, toneKeys, toneVariant } from '../../factory'
 
 /**
  * Alert banner. A11y: a live region whose politeness follows the `state`
@@ -41,6 +41,8 @@ const Alert = el
     }
   })
   .theme((t, m) => ({
+    // The tone a variant draws in when no state is set (the base is an info alert).
+    ...toneKeys(t, m, 'info'),
     padding: t.spacing.small,
     borderRadius: t.borderRadius.base,
     fontSize: t.fontSize.small,
@@ -56,33 +58,39 @@ const Alert = el
   }))
   .states((t, m) => ({
     info: {
+      ...toneKeys(t, m, 'info'),
       backgroundColor: t.color.system.info[100],
       color: tintText(t, m, 'info'),
       borderColorLeft: t.color.system.info.base,
     },
     success: {
+      ...toneKeys(t, m, 'success'),
       backgroundColor: t.color.system.success[100],
       color: tintText(t, m, 'success'),
       borderColorLeft: t.color.system.success.base,
     },
     warning: {
+      ...toneKeys(t, m, 'warning'),
       backgroundColor: t.color.system.warning[100],
       color: tintText(t, m, 'warning'),
       borderColorLeft: t.color.system.warning.base,
     },
     error: {
+      ...toneKeys(t, m, 'error'),
       backgroundColor: t.color.system.error[100],
       color: tintText(t, m, 'error'),
       borderColorLeft: t.color.system.error.base,
     },
   }))
-  .variants((t) => ({
+  // `solid` fills with the active state's tone (`toneKeys`); `outline` draws in
+  // `currentColor`, which the state already set.
+  .variants(() => ({
     subtle: {},
-    solid: {
-      backgroundColor: t.color.system.info.base,
-      color: t.color.system.info.contrast,
+    solid: toneVariant((tone) => ({
+      backgroundColor: tone.toneFill,
+      color: tone.toneContrast,
       borderWidthLeft: '0',
-    },
+    })),
     outline: {
       backgroundColor: 'transparent',
       borderWidth: '1px',

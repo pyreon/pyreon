@@ -140,6 +140,31 @@ fn is_raw_text_element(tag: &str) -> bool {
     )
 }
 
+/// Every SVG element name (case-sensitive) that is NOT also an HTML element
+/// name. A template rooted at one carries `_tpl` flag 2, so the runtime parses
+/// it inside an `<svg>` wrapper. Mirrors JS `SVG_ROOT_TAGS` — see its doc
+/// comment for why the list must be complete and why `a`/`script`/`style`/
+/// `title`/`font` are left out.
+fn is_svg_root_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "altGlyph" | "altGlyphDef" | "altGlyphItem" | "animate" | "animateColor" | "animateMotion"
+            | "animateTransform" | "circle" | "clipPath" | "color-profile" | "cursor" | "defs"
+            | "desc" | "discard" | "ellipse" | "feBlend" | "feColorMatrix" | "feComponentTransfer"
+            | "feComposite" | "feConvolveMatrix" | "feDiffuseLighting" | "feDisplacementMap"
+            | "feDistantLight" | "feDropShadow" | "feFlood" | "feFuncA" | "feFuncB" | "feFuncG"
+            | "feFuncR" | "feGaussianBlur" | "feImage" | "feMerge" | "feMergeNode"
+            | "feMorphology" | "feOffset" | "fePointLight" | "feSpecularLighting"
+            | "feSpotLight" | "feTile" | "feTurbulence" | "filter" | "font-face"
+            | "font-face-format" | "font-face-name" | "font-face-src" | "font-face-uri"
+            | "foreignObject" | "g" | "glyph" | "glyphRef" | "hkern" | "image" | "line"
+            | "linearGradient" | "marker" | "mask" | "metadata" | "missing-glyph" | "mpath"
+            | "path" | "pattern" | "polygon" | "polyline" | "radialGradient" | "rect" | "set"
+            | "stop" | "switch" | "symbol" | "text" | "textPath" | "tref" | "tspan" | "use"
+            | "view" | "vkern"
+    )
+}
+
 fn is_void_element(tag: &str) -> bool {
     matches!(
         tag,
@@ -8462,9 +8487,14 @@ fn brace_template_child(call: String, ctx: &mut Ctx) -> String {
     }
     // A template in a CHILD position is built once and may be torn down then
     // mounted again as the same object (`<Show>` re-showing). The third `_tpl`
-    // argument marks it re-mountable. SSR `_ssr(…)` calls are left alone. Mirrors
-    // the JS backend's `braceTemplateChild`.
-    let call = if call.starts_with("_tpl(") && call.ends_with(')') {
+    // argument is a bit set; 1 marks it re-mountable, and it combines with the
+    // SVG-root flag 2 that `build_template_call` may already have written (a
+    // bind closure ends in `})` and a static one in `null)`, so a trailing
+    // `, 2)` can only be that flag). SSR `_ssr(…)` calls are left alone. Mirrors
+    // the JS backend's `buildTemplateCall`.
+    let call = if call.starts_with("_tpl(") && call.ends_with(", 2)") {
+        format!("{}, 3)", &call[..call.len() - 4])
+    } else if call.starts_with("_tpl(") && call.ends_with(')') {
         format!("{}, 1)", &call[..call.len() - 1])
     } else {
         call
@@ -9144,8 +9174,12 @@ fn build_template_call(
 
     holes_out.extend(tb.hole_spans.iter().copied());
 
+    // `_tpl` flag 2: rooted at a bare SVG element (see `is_svg_root_tag`).
+    // `brace_template_child` adds the re-mountable bit to it.
+    let svg_arg = if is_svg_root_tag(jsx_tag_name(el)) { ", 2" } else { "" };
+
     if tb.ref_lines.is_empty() && tb.bind_lines.is_empty() && tb.disposer_names.is_empty() {
-        return Some(format!("_tpl(\"{}\", () => null)", escaped));
+        return Some(format!("_tpl(\"{}\", () => null{})", escaped, svg_arg));
     }
 
     // Phase 1 (pristine-clone ref captures) BEFORE phase 2 (mutations/
@@ -9190,7 +9224,7 @@ fn build_template_call(
         body.push_str("\n  return null");
     }
 
-    Some(format!("_tpl(\"{}\", (__root) => {{\n{}\n}})", escaped, body))
+    Some(format!("_tpl(\"{}\", (__root) => {{\n{}\n}}{})", escaped, body, svg_arg))
 }
 
 fn resolve_element_var(

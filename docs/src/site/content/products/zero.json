@@ -364,7 +364,7 @@
  "faq": [
   {
    "q": "Is it ready for production?",
-   "a": "Zero is pre-1.0: breaking changes land in minor versions with a changelog entry, and `pyreon upgrade --write` aligns your `@pyreon/*` versions and runs the codemod for any break that can be migrated mechanically. pyreon.dev itself is built and deployed with it."
+   "a": "Zero is a Stable package: from 1.0 a breaking change lands only in a major version (before 1.0, in a minor), always with a changelog entry, and `pyreon upgrade --write` aligns your `@pyreon/*` versions and runs the codemod for any break that can be migrated mechanically. pyreon.dev itself is built and deployed with it."
   },
   {
    "q": "How is it different from Next.js?",

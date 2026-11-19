@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { spawnSwiftToolSync } from '../packages/native/compiler/src/swift-tool'
 
 interface CommandResult {
   status: number | null
@@ -12,7 +13,12 @@ interface CommandResult {
 
 type RunCommand = (command: string, args: readonly string[]) => CommandResult
 
-const runCommand: RunCommand = (command, args) => spawnSync(command, args, { encoding: 'utf8' })
+// The compile goes through the Swift-tool helper so the driver's own temp
+// directory does not land in the shared temp dir; the smoke binary runs plainly.
+const runCommand: RunCommand = (command, args) =>
+  command === 'swiftc'
+    ? spawnSwiftToolSync('swiftc', args, { encoding: 'utf8' })
+    : spawnSync(command, args, { encoding: 'utf8' })
 
 /** Compile and execute one smoke test without sharing its binary with another gate run. */
 export function runSwiftSmoke(

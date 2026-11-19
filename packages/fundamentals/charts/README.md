@@ -1,5 +1,7 @@
 # @pyreon/charts
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./engine`, `./native-plugin`.
+
 Charts for Pyreon, on the web, iOS and Android.
 
 `<Chart>` takes your rows and marks as children. Channels are field names typed

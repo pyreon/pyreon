@@ -46,6 +46,7 @@
  * the same CI-only failure.
  */
 
+import { spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -89,6 +90,73 @@ export function findSigningViolations(source: string, file = ''): Violation[] {
 }
 
 /**
+ * A shell line whose command is `xcodebuild`: at the start of the line after
+ * optional `VAR=value` prefixes, or handed to a wrapper after ` -- `.
+ */
+const XCODEBUILD_COMMAND = /(?:^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*|\s--\s+)xcodebuild(?:\s|$)/
+
+/**
+ * Find shell `xcodebuild` invocations that build without `-derivedDataPath`.
+ *
+ * Without it Xcode writes the build into
+ * `~/Library/Developer/Xcode/DerivedData/<Scheme>-<hash>`, outside the
+ * checkout, where it outlives the worktree that produced it: every worktree is
+ * a new folder (24 folders, 3 GB were found on one machine). With it the
+ * output stays in the project and goes when the worktree goes.
+ *
+ * An invocation is the matching line plus the lines it continues onto with a
+ * trailing backslash. `-version`, `-showsdks` and `-list` build nothing and are
+ * exempt.
+ */
+export function findDerivedDataGaps(source: string, file = ''): Violation[] {
+  const lines = source.split('\n')
+  const out: Violation[] = []
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!XCODEBUILD_COMMAND.test(lines[i]!)) continue
+    const start = i
+    let invocation = lines[i]!
+    while (lines[i]!.trimEnd().endsWith('\\') && i + 1 < lines.length) {
+      i += 1
+      invocation += `\n${lines[i]!}`
+    }
+    if (/\s-derivedDataPath\s/.test(invocation)) continue
+    if (/\s-(?:version|showsdks|list)(?:\s|$)/.test(invocation)) continue
+    out.push({ file, line: start + 1, snippet: lines[start]!.trim() })
+  }
+  return out
+}
+
+/**
+ * The same rule for a TypeScript spawn: every `'xcodebuild'` program argument
+ * must have `'-derivedDataPath'` in the argument array that follows it.
+ */
+export function findDerivedDataGapsInTs(source: string, file = ''): Violation[] {
+  const out: Violation[] = []
+  for (const m of source.matchAll(/['"]xcodebuild['"]\s*,\s*\[/g)) {
+    const end = source.indexOf(']', m.index)
+    const args = source.slice(m.index, end === -1 ? undefined : end)
+    if (/['"]-derivedDataPath['"]/.test(args)) continue
+    out.push({ file, line: source.slice(0, m.index).split('\n').length, snippet: m[0] })
+  }
+  return out
+}
+
+/** Tracked shell scripts and non-test TypeScript, the places an `xcodebuild` call can live outside a workflow. */
+function trackedXcodebuildSources(): { file: string; source: string; ts: boolean }[] {
+  const listed = spawnSync('git', ['ls-files', '-z', '--', '*.sh', '*.ts'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
+  if (listed.status !== 0) throw new Error(`[Pyreon] check-ios-signing-policy: git ls-files failed: ${listed.stderr}`)
+  return listed.stdout
+    .split('\0')
+    .filter((f) => f !== '' && !/(?:\.test\.ts|\/tests\/)/.test(f) && f !== 'scripts/check-ios-signing-policy.ts')
+    .map((file) => ({ file, source: readFileSync(join(REPO_ROOT, file), 'utf8'), ts: file.endsWith('.ts') }))
+    .filter(({ source }) => source.includes('xcodebuild'))
+}
+
+/**
  * Every iOS example project must set `CODE_SIGN_ENTITLEMENTS`. Returns the
  * ones that do not.
  */
@@ -124,10 +192,25 @@ function main(): number {
   const violations: Violation[] = []
   let scannedInvocations = 0
 
+  const derivedDataGaps: Violation[] = []
   for (const f of files) {
     const src = readFileSync(join(WORKFLOWS, f), 'utf8')
     scannedInvocations += (src.match(/\bxcodebuild\s+test\b/g) ?? []).length
     violations.push(...findSigningViolations(src, `.github/workflows/${f}`))
+    derivedDataGaps.push(...findDerivedDataGaps(src, `.github/workflows/${f}`))
+  }
+  for (const { file, source, ts } of trackedXcodebuildSources()) {
+    derivedDataGaps.push(...(ts ? findDerivedDataGapsInTs(source, file) : findDerivedDataGaps(source, file)))
+  }
+  if (derivedDataGaps.length > 0) {
+    console.error('✗ check-ios-signing-policy: `xcodebuild` without -derivedDataPath\n')
+    for (const v of derivedDataGaps) console.error(`  ${v.file}:${v.line}   ${v.snippet}`)
+    console.error(
+      '\n  Without it Xcode builds into ~/Library/Developer/Xcode/DerivedData, outside\n' +
+        '  the checkout, and the folder outlives the worktree. Pass a gitignored path\n' +
+        '  inside the project, e.g. `-derivedDataPath ios/DerivedData`.',
+    )
+    return 1
   }
 
   // An empty scan is a skip wearing a pass. If the repo stops running

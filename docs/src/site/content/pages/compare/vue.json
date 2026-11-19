@@ -104,7 +104,7 @@
       },
       {
         "topic": "Ecosystem and maturity",
-        "pyreon": "Pre-1.0.",
+        "pyreon": "No adoption claims yet.",
         "rival": "Nuxt, Pinia, Vue Router and years in production.",
         "verdict": "rival",
         "source": "00-brief/facts.md (status labels)"
