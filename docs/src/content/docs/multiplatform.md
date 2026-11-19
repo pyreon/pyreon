@@ -1583,7 +1583,13 @@ when it changes; reads and writes in components, handlers, helpers and the
 state's own computeds all go through it, and a local of the same name shadows
 it. The singleton's name carries the file's suffix, so two files never
 collide. A block-bodied module `computed` or a persisted module signal is
-named in a warning.
+named in a warning. Module state is shared only WITHIN the file that declares
+it: a module `signal()` or `computed()` imported from another file (named,
+aliased, default, through a namespace, or re-exported by a barrel) has no
+native lowering and is named in a warning at the import —
+declare it in the `.tsx` file whose components share it, or own it in one
+component and pass the value and a setter down as props
+(`native-imported-module-state.test.ts`).
 
 ### Consuming compiler diagnostics
 
