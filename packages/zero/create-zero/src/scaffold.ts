@@ -6,7 +6,7 @@
  *
  * Flow (flat templates):
  *   1. Copy the picked template's base files (`templates/<template>/`).
- *   2. Copy `templates/_shared/` base (`.gitignore`, `env.d.ts`,
+ *   2. Copy `templates/_shared/` base (`gitignore` → `.gitignore`, `env.d.ts`,
  *      `src/entry-server.ts` with `{{ssrMode}}` substitution). Underscore-
  *      prefixed sub-dirs are skipped — they're per-selection overlays.
  *   3. Apply feature overlays (`templates/_features/<feature>/`). Each

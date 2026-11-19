@@ -34,6 +34,8 @@ const routerStub = {
   // this the stub throws and `startClient` never mounts at all — which is
   // how the missing guard for an absent `preload` was found.
   preload: vi.fn(() => Promise.resolve()),
+  // The islands-only navigation guard (#4371) is registered on every start.
+  beforeEach: vi.fn(() => () => {}),
 }
 const hydrateLoaderDataMock = vi.fn()
 

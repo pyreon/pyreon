@@ -39,7 +39,7 @@
       "kind": "story",
       "title": "Experimental, stated plainly.",
       "text": [
-        "The multiplatform docs call PMTC, the Pyreon Multi-Target Compiler, \"experimental — demo-quality, not production-ready\". We mean it. The web framework is pre-1.0; the native targets are a step behind that.",
+        "The multiplatform docs call PMTC, the Pyreon Multi-Target Compiler, \"experimental — demo-quality, not production-ready\". We mean it. The web framework is Stable; the native targets are Experimental.",
         "What is device-proven is measured, not described: the multiplatform page carries a weighted capability matrix that credits a capability only when a test on a real iOS Simulator or Android emulator asserts it, and a CI gate recomputes the headline from the table. Check the rows your app needs before you commit."
       ]
     },

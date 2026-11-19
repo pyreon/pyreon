@@ -5,7 +5,7 @@ description: Chrome DevTools extension for inspecting Pyreon component trees, th
 
 `@pyreon/devtools` is a Chrome DevTools extension for inspecting Pyreon applications — a component tree, a live reactive graph (signals / computeds / effects), fire timeline, and a page-world console. It is a private workspace package (`packages/tools/devtools`), built and loaded unpacked.
 
-<PackageBadge name="@pyreon/devtools" href="/docs/devtools" status="beta" />
+<PackageBadge name="@pyreon/devtools" href="/docs/devtools" />
 
 ## Installation
 

@@ -305,6 +305,21 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // Islands-only pages (#4371): zero's own fixture as a real SSG build
+    // served per route, a real SSR build run by `node`, and the dev server
+    // (HMR). Built from zero's SOURCE by the fixture's build.ts / dev.ts.
+    name: 'zero-islands-only',
+    script: 'test:e2e:zero-islands-only',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/core/server/',
+      'packages/zero/zero/',
+      'packages/tools/vite-plugin/',
+      'e2e/zero-islands-only.spec.ts',
+      'e2e-configs/zero-islands-only.config.ts',
+    ],
+  },
+  {
     // `https()` in a real browser. The node-side suites prove the certificate
     // parses and Vite applies it; only a browser can say whether the page is a
     // secure context and the gated APIs are consequently DEFINED.

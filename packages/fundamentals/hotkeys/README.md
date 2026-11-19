@@ -1,5 +1,7 @@
 # @pyreon/hotkeys
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Reactive keyboard shortcut management — scope-aware, platform-aware, lifecycle-cleaned.
 
 Register global or component-scoped keyboard shortcuts with automatic unregistration on unmount. Supports modifier keys (`ctrl` / `shift` / `alt` / `meta` / `cmd` / `command` / `mod`), scope-based activation (only fire while a scope is active), input filtering (off by default in form fields), and the `mod` modifier that maps to `⌘` on Mac and `Ctrl` everywhere else. Pairs naturally with `@pyreon/router` (per-route scopes), `@pyreon/dialog` (modal scope), and command-palette UIs.

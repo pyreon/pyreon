@@ -1,5 +1,7 @@
 # @pyreon/zero-cli
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Unified CLI for `@pyreon/zero` — dev, build, preview, doctor, scaffold.
 
 Wraps Vite with framework-aware defaults: the dev command prints the route table on startup, the build command resolves rendering mode and adapter from `vite.config.ts`, and `doctor` runs the Pyreon health gates (React patterns, framework foot-guns, lint, distribution checks). Installed as the `zero` binary.

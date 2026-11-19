@@ -1,5 +1,7 @@
 # @pyreon/compiler-win32-x64-msvc
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Prebuilt native binary for [`@pyreon/compiler`](https://www.npmjs.com/package/@pyreon/compiler) on Windows x64 (MSVC toolchain).
 
 This package contains only the platform-specific `.node` binary. It is resolved automatically as an `optionalDependency` of `@pyreon/compiler` when you install on a matching platform — you should not depend on it directly.

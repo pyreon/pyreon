@@ -59,7 +59,9 @@ import {
 } from './ssr-build-shared'
 import {
   type ViteManifest,
+  computeClientStartKeys,
   computeEntryHrefs,
+  computeKeysPreloadHrefs,
   computeRoutePreloadHrefs,
   parseExistingModulePreloads,
   renderModulePreloadLinks,
@@ -137,6 +139,24 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 // has to compare paths against the known locale list. Wrapping the
 // source template in a function lets the outer plugin pass
 // `config.i18n?.locales ?? []` per build.
+/** An island the client will hydrate (`hydrate: 'never'` ones load nothing). */
+const ISLAND_TO_HYDRATE = /<pyreon-island\b(?![^>]*\bdata-hydrate="never")/
+
+/**
+ * #4371 — the client-start chunks one page preloads: the app (lazy entry) on
+ * an app page; the islands runtime on an islands-only page, only when it has
+ * an island to hydrate (a page without one loads nothing beyond the entry).
+ */
+function pageStartKeys(
+  hydrate: 'app' | 'islands' | undefined,
+  appHtml: string,
+  keys: { app: string[]; islands: string[] },
+): string[] {
+  if (hydrate !== 'islands') return keys.app
+
+  return ISLAND_TO_HYDRATE.test(appHtml) ? keys.islands : []
+}
+
 const renderSsgEntrySource = (
   locales: readonly string[] = [],
   appMode: string = 'ssg',
@@ -145,6 +165,7 @@ const renderSsgEntrySource = (
   const i18nLocalesLiteral = JSON.stringify(locales)
   const appModeLiteral = JSON.stringify(appMode)
   const routeRulesLiteral = routeRules ? JSON.stringify(routeRules) : 'undefined'
+
   return `
 import { routes } from "virtual:zero/routes"
 // h / renderWithHead / runWithRequestContext serve ONLY the legacy
@@ -251,6 +272,7 @@ export default async function renderPath(path, options) {
     head: result.head,
     loaderScript: result.loaderScript,
     routeModules: result.routeModules,
+    hydrate: result.hydrate,
     ogSvg,
   }
 }
@@ -461,6 +483,7 @@ export function expandUrlPattern(pattern: string, params: Record<string, string>
             `must not contain path-traversal ("." / "..")${isCatchAll ? '' : ' or "/"'}.`,
         )
       }
+
       return value
     })
     .join('/')
@@ -630,6 +653,7 @@ async function resolvePaths(
     return Array.isArray(result) ? result : []
   }
   if (Array.isArray(explicit)) return explicit
+
   return autoDetectStaticPaths(routesDir, registry, errors, config.i18n, config.routeRules, fileModeFor(config))
 }
 
@@ -704,6 +728,7 @@ function buildLocaleSummary(
   }
   const parts: string[] = []
   for (const locale of i18n.locales) parts.push(`${locale}: ${counts.get(locale) ?? 0}`)
+
   return ` [${parts.join(', ')}]`
 }
 
@@ -726,6 +751,7 @@ function detectPathCollisions(paths: readonly string[]): string[] {
     if (seen.has(p)) duplicates.add(p)
     seen.add(p)
   }
+
   return [...duplicates].sort()
 }
 
@@ -788,6 +814,7 @@ export function findReservedOutputCollisions(
       if (name !== undefined) out.push({ path, target, name })
     }
   }
+
   return out
 }
 
@@ -929,6 +956,7 @@ async function writeRouteOutputs(
     await mkdirOnce(dirname(target))
     await writeFile(target, body, 'utf-8')
   }
+
   return true
 }
 
@@ -947,6 +975,7 @@ export function injectCanonical(html: string, href: string): string {
   const idx = html.search(/<\/head\s*>/i)
   if (idx === -1) return html
   const escaped = href.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
+
   return `${html.slice(0, idx)}<link rel="canonical" href="${escaped}">${html.slice(idx)}`
 }
 
@@ -1034,6 +1063,7 @@ export function renderNetlifyRedirects(entries: RedirectEntry[]): string {
   for (const e of entries) {
     lines.push(`${oneLine(e.from)} ${oneLine(e.to)} ${e.status}`)
   }
+
   return `${lines.join('\n')}\n`
 }
 
@@ -1051,6 +1081,7 @@ export function renderEarlyHintHeaders(hrefsByPath: ReadonlyMap<string, readonly
     const lines = hrefs.map((h) => `  Link: <${h}>; rel=modulepreload`)
     blocks.push(`${oneLine(p)}\n${lines.join('\n')}`)
   }
+
   return `# pyreon: early hints (modulepreload)\n${blocks.join('\n')}\n`
 }
 
@@ -1096,6 +1127,7 @@ function renderMetaRefreshHtml(target: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -1283,6 +1315,7 @@ export function buildRevalidateManifest(
       manifest[concretePath] = best.revalidate
     }
   }
+
   return manifest
 }
 
@@ -1315,6 +1348,7 @@ function compileUrlPatternMatcher(urlPath: string): (concrete: string) => boolea
     .replace(/:([A-Za-z_$][\w$-]*)\*/g, '.*')
     .replace(/:([A-Za-z_$][\w$-]*)/g, '[^/]+')
   const re = new RegExp(`^${regex}$`)
+
   return (concrete) => re.test(concrete)
 }
 
@@ -1325,6 +1359,7 @@ function renderErrorArtifact(entries: { path: string; error: unknown }[]): strin
     name: error instanceof Error ? error.name : 'Error',
     stack: error instanceof Error ? error.stack : undefined,
   }))
+
   return `${JSON.stringify({ errors }, null, 2)}\n`
 }
 
@@ -1426,6 +1461,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const m = userViteConfig.build?.manifest
       userEnabledManifest = m === true || typeof m === 'string'
       manifestIsInternal = !userEnabledManifest
+
       return { build: { manifest: true } }
     },
 
@@ -1512,6 +1548,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         console.warn(
           `[zero:ssg] Skipping SSG — ${indexHtmlPath} not found. Did the client build complete?`,
         )
+
         return
       }
 
@@ -1594,6 +1631,8 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               head: string
               loaderScript: string
               routeModules?: string[]
+              /** `'islands'` for an islands-only page (#4371). Absent from older entries. */
+              hydrate?: 'app' | 'islands'
               /** Route OG image SVG (leaf route declares `export const og`). */
               ogSvg?: string | null
             }
@@ -1664,6 +1703,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       const preloadBase = config.base ?? '/'
       let preloadManifest: ViteManifest | null = null
       let entryPreloadedHrefs: Set<string> = new Set()
+      let clientStartKeys: { app: string[]; islands: string[] } = { app: [], islands: [] }
       if (modulePreloadEnabled) {
         try {
           const manifestRaw = await readFile(join(distDir, '.vite', 'manifest.json'), 'utf-8')
@@ -1674,6 +1714,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             ...computeEntryHrefs(preloadManifest, preloadBase),
             ...parseExistingModulePreloads(template),
           ])
+          clientStartKeys = computeClientStartKeys(preloadManifest)
         } catch {
           preloadManifest = null
         }
@@ -1805,10 +1846,12 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                     await mkdirOnce(dirname(assetFile))
                     await writeFileAtomic(assetFile, css)
                     const baseUrl = (config.base ?? '/').replace(/\/$/, '')
+
                     return `${baseUrl}/${dir}/${name}`
                     })()
                     written.set(h, p)
                   }
+
                   return p
                 },
               }
@@ -1832,6 +1875,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         await mkdirOnce(dirname(file))
         await writeFileAtomic(file, png)
         const baseUrl = (config.base ?? '/').replace(/\/$/, '')
+
         return ogMetaTags(absoluteOgUrl(`${baseUrl}/${rel}`, config.routeOg?.siteUrl), ogWidth, ogHeight)
       }
 
@@ -1879,6 +1923,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                 errors,
               )
             }
+
             return
           }
 
@@ -1887,15 +1932,26 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           // graph). Islands-safe: only manifest `imports` are followed, never
           // `dynamicImports`. No-op if the manifest is unavailable or the route
           // has no resolvable modules.
-          if (preloadManifest && result.routeModules && result.routeModules.length > 0) {
-            const hrefs = computeRoutePreloadHrefs({
-              manifest: preloadManifest,
-              routeModules: result.routeModules,
-              root,
-              base: preloadBase,
-              alreadyPreloaded: entryPreloadedHrefs,
-              relativeFn: relative,
-            })
+          if (preloadManifest) {
+            const routeHrefs = result.routeModules && result.routeModules.length > 0
+              ? computeRoutePreloadHrefs({
+                  manifest: preloadManifest,
+                  routeModules: result.routeModules,
+                  root,
+                  base: preloadBase,
+                  alreadyPreloaded: entryPreloadedHrefs,
+                  relativeFn: relative,
+                })
+              : []
+            // #4371 — what this page's client starts from, beyond the entry:
+            // the app (lazy entry) on an app page, the islands runtime on an
+            // islands-only page that has an island to hydrate. An islands-only
+            // page has no `routeModules` (renderPage leaves them out).
+            const startKeys = pageStartKeys(result.hydrate, result.appHtml, clientStartKeys)
+            const startHrefs = computeKeysPreloadHrefs(preloadManifest, startKeys, preloadBase, entryPreloadedHrefs)
+            const hrefs = startHrefs.length === 0
+              ? routeHrefs
+              : [...new Set([...routeHrefs, ...startHrefs])].sort()
             if (hrefs.length > 0) {
               result.head = `${renderModulePreloadLinks(hrefs)}\n${result.head}`
               // Phase 6 — collect for the per-path `Link:` headers block
