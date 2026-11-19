@@ -208,10 +208,10 @@ export function createResults(core: PaletteCore): Results {
     const children = top !== undefined && Array.isArray(top.command.children) ? (top.command.children as readonly Command[]) : core.commands.commands()
     const items = unique(staticItems(core, query, top, children))
     if (top === undefined && query.trim() === '') return emptyRootGroups(items, core.options.emptyQuery ?? 'recents', core)
-    const groups = groupInOrder(items, core.commands.groups())
-    if (top === undefined) groups.push(...inlineGroups(core, query, items))
+    const listed = groupInOrder(items, core.commands.groups())
+    if (top === undefined) listed.push(...inlineGroups(core, query, items))
 
-    return numbered(groups)
+    return numbered(listed)
   })
   const items = computed<readonly ResultItem[]>(() => groups().flatMap((g) => g.items))
 
