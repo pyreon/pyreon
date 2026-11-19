@@ -31,13 +31,16 @@ import { _applyProps, _bindProp, _setAttr, _setStyle, _setStyleOnce, bindPolymor
 import { _bindDirect, _bindText, _mountSlot, _setChild, _setChildAt, _textSlot, _tpl } from '../template'
 
 const containers: HTMLElement[] = []
+
 afterEach(() => {
   for (const c of containers.splice(0)) c.remove()
 })
+
 const host = (): HTMLElement => {
   const el = document.createElement('div')
   document.body.appendChild(el)
   containers.push(el)
+
   return el
 }
 
@@ -155,6 +158,7 @@ const RUNTIME_DEPS = {
   Fragment,
   document,
 } as const
+
 const lower = (code: string) =>
   transformSync(code, { loader: 'tsx', jsx: 'transform', jsxFactory: 'h', jsxFragment: 'Fragment' }).code
 
@@ -165,6 +169,7 @@ function compileAndMount(source: string, globals: Record<string, unknown>): { el
   const App = fn(...Object.values(RUNTIME_DEPS), ...Object.values(globals)) as () => unknown
   const el = host()
   mountChild(h(App as never, null), el)
+
   return { el, code }
 }
 

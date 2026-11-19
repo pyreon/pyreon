@@ -12,8 +12,10 @@ import { TransitionGroup } from '../index'
 // A real, short leave transition so `transitionend` fires (without one the
 // leave waits on its 5 s safety timer).
 const style = document.createElement('style')
+
 style.textContent =
   'li.pyreon-leave-active, li.pyreon-enter-active { transition: opacity 20ms linear } li.pyreon-leave-to, li.pyreon-enter-from { opacity: 0 }'
+
 document.head.appendChild(style)
 
 const settle = async () => {
