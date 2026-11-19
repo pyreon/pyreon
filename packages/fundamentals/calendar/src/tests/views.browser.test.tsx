@@ -162,6 +162,17 @@ describe('the month view', () => {
     expect(onMore).toHaveBeenCalledWith('2026-11-18')
   })
 
+  it('arrow keys pressed on an event button do not move the grid', async () => {
+    const { root, calendar } = make()
+    const before = calendar.cursor().date
+    const button = root.querySelector<HTMLElement>('[data-key^="Design review"]')!
+    button.focus()
+    await userEvent.keyboard('{ArrowRight}{ArrowDown}')
+    await sleep()
+    expect(calendar.cursor().date).toBe(before)
+    expect(document.activeElement).toBe(button)
+  })
+
   it('keeps focus on the cursor cell when the toolbar changes the month', async () => {
     const { root, calendar } = make()
     cell(root, '2026-11-18').focus()
@@ -264,6 +275,42 @@ describe('the time grid', () => {
   })
 })
 
+describe('edge cases of the views', () => {
+  it('a week starts on any weekday, in the month header and in the time grid', async () => {
+    for (const weekStart of [1, 3, 6, 7] as const) {
+      const month = make({ weekStart, view: 'month' })
+      const first = month.root.querySelector<HTMLElement>('.pcal-weekday')!.getAttribute('aria-label')
+      expect(first).toBe({ 1: 'Monday', 3: 'Wednesday', 6: 'Saturday', 7: 'Sunday' }[weekStart])
+      const week = make({ weekStart, view: 'week' })
+      const day = new Date(`${week.root.querySelector<HTMLElement>('.pcal-slot')!.dataset.date}T00:00:00Z`).getUTCDay() || 7
+      expect(day).toBe(weekStart)
+    }
+  })
+
+  it('a 400-day event is in every week row it crosses, once per row, as one button per row', async () => {
+    const { root } = make({ events: () => [ev('long', '2026-01-01', '2027-02-05')] })
+    const buttons = root.querySelectorAll('[data-key^="long"]')
+    expect(buttons).toHaveLength(6)
+    expect(root.querySelectorAll('[data-key^="long"][data-continues-before][data-continues-after]')).toHaveLength(6)
+  })
+
+  it('the week of a spring-forward day: seven columns, the clock decides the now line, an event across the skipped hour is as tall as the rows it spans', async () => {
+    const dst = Date.UTC(2026, 2, 29, 1, 30) // 03:30 in Prague, after the clocks moved
+    const { root } = make({ date: '2026-03-29', view: 'week', now: () => dst, events: () => [ev('across', '2026-03-29T01:30', '2026-03-29T03:30', { timeZone: 'Europe/Prague' })] })
+    expect(root.querySelectorAll('.pcal-colhead')).toHaveLength(7)
+    expect(root.querySelector('.pcal-now')!.closest('.pcal-slot')).toBe(slot(root, '2026-03-29', 210))
+    const block = root.querySelector<HTMLElement>('.pcal-block')!
+    const rows = block.getBoundingClientRect().height / slot(root, '2026-03-29', 90).getBoundingClientRect().height
+    expect(Math.round(rows)).toBe(4)
+    expect(slot(root, '2026-03-29', 120).isConnected).toBe(true)
+  })
+
+  it('a view that is not part of this release shows the month', async () => {
+    const { root } = make({ view: 'agenda' as never })
+    expect(root.querySelector('[data-view=month]')).not.toBeNull()
+  })
+})
+
 describe('right to left', () => {
   it('month: the arrows swap, the weekday order mirrors, an event starts at the inline start', async () => {
     const { root } = make({}, {}, 'rtl')
@@ -294,6 +341,7 @@ describe('what is announced and what the markup claims', () => {
   it('announces where navigation went, in the active locale', async () => {
     const { root, calendar } = make()
     expect(live(root)).toBe('')
+    expect(root.querySelector('.pcal-live')!.getAttribute('aria-live')).toBe('polite')
     calendar.next()
     await sleep()
     expect(live(root)).toBe('December 2026, month')
