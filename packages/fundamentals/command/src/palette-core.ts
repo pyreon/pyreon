@@ -1,6 +1,5 @@
 import { signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
-import { resolveText } from './entry'
 import type { PaletteMessages, PaletteOptions } from './palette-types'
 import { createInline } from './inline-sources'
 import type { Inline } from './inline-sources'
@@ -53,10 +52,6 @@ export interface PaletteCore {
   /** What had focus when the palette opened. */
   opener: Element | null
   disposed: boolean
-}
-
-export function resolvedText(option: PaletteOptions['placeholder'], fallback: string): string {
-  return resolveText(option) ?? fallback
 }
 
 export function createCore(options: PaletteOptions, commands: Commands): PaletteCore {
