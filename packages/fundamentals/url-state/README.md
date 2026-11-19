@@ -122,8 +122,9 @@ The `UrlRouter` interface is minimal:
 interface UrlRouter {
   replace(path: string): void | Promise<void>
   push?(path: string): void | Promise<void>
-  mode?: 'hash' | 'history'
+  mode?: 'hash' | 'history' | 'memory'
   _base?: string
+  _currentPath?: () => string // read in memory mode, where the page URL is not the route
   currentRoute?: () => unknown // when present, navigations update every live signal
 }
 ```
@@ -149,7 +150,10 @@ https://app.example/#/products?page=3
 So once a router is registered, `useUrlState` reads and writes the query on the
 side of the URL that router owns: inside the fragment in hash mode, in
 `location.search` in history mode (where it also preserves any `#fragment` and
-hands the router a path relative to its `base`). `useRouter()` exposes `mode`, so
+hands the router a path relative to its `base`), and inside the router itself
+in memory mode (`createRouter({ mode: 'memory' })` — url-state never touches
+`location` then, which belongs to the page the router is embedded in).
+`useRouter()` exposes `mode`, so
 `setUrlRouter(useRouter())` picks this up with no extra configuration.
 
 One consequence worth stating: in a hash-routed app, **do not read the params

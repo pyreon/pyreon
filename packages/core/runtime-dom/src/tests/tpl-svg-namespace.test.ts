@@ -10,6 +10,11 @@
 // templatized because it has reactive `<For>` children — rendered fine. That
 // asymmetry is why "nodes show, lines don't."
 //
+// The compiler marks such a template with `_tpl` flag 2 (it knows the root tag;
+// its table lives in `compiler/src/jsx.ts` `SVG_ROOT_TAGS`, locked by
+// `compiler/src/tests/tpl-svg-root-flag.test.ts`), so the runtime carries no
+// tag list. These calls pass the flag the compiler emits.
+//
 // This asserts the ACTUAL namespace, not a `querySelector('path')` count: a CSS
 // type selector matches by localName in an HTML document, so it counts the
 // broken HTML-namespaced <path> too — exactly what masked this bug in the flow
@@ -22,7 +27,7 @@ const HTML_NS = 'http://www.w3.org/1999/xhtml'
 
 describe('_tpl — SVG-rooted templates are SVG-namespaced', () => {
   it('the flow edge shape <g><path> is SVG, descendants too', () => {
-    const item = _tpl('<g><path fill="none"></path><!></g>', () => null) as {
+    const item = _tpl('<g><path fill="none"></path><!></g>', () => null, 2) as {
       el: Element
     }
     expect(item.el.namespaceURI).toBe(SVG_NS)
@@ -34,14 +39,14 @@ describe('_tpl — SVG-rooted templates are SVG-namespaced', () => {
   })
 
   it('a minimap node dot <rect> is SVG', () => {
-    const item = _tpl('<rect x="1" y="2" width="3" height="4"></rect>', () => null) as {
+    const item = _tpl('<rect x="1" y="2" width="3" height="4"></rect>', () => null, 2) as {
       el: Element
     }
     expect(item.el.namespaceURI).toBe(SVG_NS)
   })
 
   it('a camelCase SVG tag <linearGradient> is SVG', () => {
-    const item = _tpl('<linearGradient><stop></stop></linearGradient>', () => null) as {
+    const item = _tpl('<linearGradient><stop></stop></linearGradient>', () => null, 2) as {
       el: Element
     }
     expect(item.el.namespaceURI).toBe(SVG_NS)
@@ -49,17 +54,18 @@ describe('_tpl — SVG-rooted templates are SVG-namespaced', () => {
   })
 
   // #4453: the root list was a partial SVG vocabulary, so a template rooted at
-  // any SVG element missing from it parsed as an inert HTML element.
+  // any SVG element missing from it parsed as an inert HTML element. The list
+  // is the compiler's now; this checks the flagged parse keeps the case.
   it.each(['feDropShadow', 'feFuncA', 'feDistantLight', 'mpath', 'switch', 'view', 'animateColor'])(
-    'an SVG element that was missing from the root list, <%s>, is SVG',
+    'a flagged <%s> root is SVG',
     (tag) => {
-      const item = _tpl(`<${tag}></${tag}>`, () => null) as { el: Element }
+      const item = _tpl(`<${tag}></${tag}>`, () => null, 2) as { el: Element }
       expect(item.el.localName).toBe(tag)
       expect(item.el.namespaceURI).toBe(SVG_NS)
     },
   )
 
-  it.each(['a', 'script', 'style', 'font'])('the HTML-collision tag <%s> stays HTML', (tag) => {
+  it.each(['a', 'script', 'style', 'font', 'g', 'path'])('an UNflagged <%s> root parses as HTML', (tag) => {
     const item = _tpl(`<${tag}></${tag}>`, () => null) as { el: Element }
     expect(item.el.namespaceURI).toBe(HTML_NS)
   })
@@ -75,7 +81,7 @@ describe('_tpl — SVG-rooted templates are SVG-namespaced', () => {
     expect(item.el.firstElementChild!.namespaceURI).toBe(SVG_NS)
   })
 
-  it('the HTML-collision tag <title> stays HTML (not SVG-wrapped)', () => {
+  it('an unflagged <title> stays HTML (not SVG-wrapped)', () => {
     const item = _tpl('<title>Page</title>', () => null) as { el: Element }
     expect(item.el.namespaceURI).toBe(HTML_NS)
   })
@@ -88,7 +94,7 @@ describe('_tpl — SVG-rooted templates are SVG-namespaced', () => {
       bound = root as unknown as Element
       ;(root as unknown as Element).setAttribute('d', 'M0 0 L10 10')
       return null
-    }) as { el: Element }
+    }, 2) as { el: Element }
     expect(bound).toBe(item.el)
     expect(item.el.getAttribute('d')).toBe('M0 0 L10 10')
     expect(item.el.namespaceURI).toBe(SVG_NS)

@@ -4,3 +4,9 @@ dist
 *.local
 .pyreon
 src/pyreon-routes.d.ts
+# Written into the project root by Pyreon tooling (regenerated, never source):
+# @pyreon/vite-plugin's dev perf hints for the LSP, and the temporary server
+# entries a @pyreon/zero SSG/SSR build writes next to the app and removes.
+.pyreon-lpih.json
+__pyreon-zero-ssg-entry.js
+__pyreon-zero-ssr-entry.js

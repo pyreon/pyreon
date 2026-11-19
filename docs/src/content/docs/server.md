@@ -89,11 +89,11 @@ interface HandlerOptions {
    * there is none) — forward it to `sheet.getStyleTag(nonce)` so a strict
    * `style-src 'nonce-…'` policy admits the emitted tag.
    *
-   *   collectStyles: (nonce) => {
-   *     const tag = sheet.getStyleTag(nonce)
-   *     sheet.reset()
-   *     return tag
-   *   }
+   *   collectStyles: (nonce) => sheet.getStyleTag(nonce)
+   *
+   * Never call `sheet.reset()` here: it drops the module-level keyframes and
+   * static global styles from every later response, and request isolation is
+   * already automatic (each request renders in its own styler scope).
    *
    * **You usually don't need to pass this at all when using `@pyreon/styler`.**
    * `createHandler` only forwards `collectStyles` to the shared render
@@ -101,7 +101,7 @@ interface HandlerOptions {
    * back to `globalThis.__PYREON_STYLER_COLLECT__`, which styler's own
    * singleton registers on SSR module init. So a plain `createHandler({ App, routes })`
    * already ships the correct CSS with no FOUC, and `collectStyles` is only
-   * needed to override the default (a custom flush/reset sequence, a
+   * needed to override the default (post-processing the tag, a
    * different CSS-in-JS library).
    */
   collectStyles?: (nonce?: string) => string

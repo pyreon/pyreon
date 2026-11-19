@@ -262,6 +262,13 @@ android/keystore.properties
 # Crash symbols retained by every release build (R8 mapping.txt, iOS dSYMs) —
 # build output: archive them with each release you ship, do not commit them.
 symbols/
+# Written into the project root by Pyreon tooling (regenerated, never source):
+# @pyreon/vite-plugin's AI context map and dev perf hints for the LSP, and the
+# temporary server entries a @pyreon/zero SSG/SSR build writes and removes.
+.pyreon/
+.pyreon-lpih.json
+__pyreon-zero-ssg-entry.js
+__pyreon-zero-ssr-entry.js
 `,
   )
   add(

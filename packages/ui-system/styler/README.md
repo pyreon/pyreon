@@ -175,17 +175,19 @@ declare module '@pyreon/styler' {
 
 ### `sheet` / `createSheet`
 
-The singleton `sheet` manages CSS-rule injection. Use `createSheet()` for per-request SSR isolation:
+The singleton `sheet` manages CSS-rule injection. For SSR, render each request inside `runWithRequestContext` (`@pyreon/server`'s `createHandler` and zero do this for you): each request gets its own styler scope, and `getStyleTag()` returns exactly the rules that render used plus the module-level keyframes and global styles. Never call `sheet.reset()` between requests, because it drops those module-level rules from every later response.
 
 ```ts
-import { sheet, createSheet } from '@pyreon/styler'
+import { sheet } from '@pyreon/styler'
+import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 
-// SSR
-const requestSheet = createSheet()
-const html = renderToString(<App />)
-const styleTags = requestSheet.getStyleTag()
-requestSheet.reset()
+const { html, styleTag } = await runWithRequestContext(async () => ({
+  html: await renderToString(<App />),
+  styleTag: sheet.getStyleTag(),
+}))
 ```
+
+`createSheet()` makes an isolated sheet for shadow roots, iframes or tests.
 
 #### CSP nonce (strict `style-src`)
 

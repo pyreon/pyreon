@@ -56,6 +56,54 @@ import { provideRequestLocals, useRequestLocals } from './middleware'
  */
 export type RenderablePageRouter = Router
 
+/**
+ * How the browser takes over a page: `'app'` (the default) hydrates the whole
+ * tree under the router; `'islands'` keeps the page as static HTML and
+ * hydrates only its `<pyreon-island>` elements, without starting the app.
+ * Declared on a route record as `meta: { hydrate }` (zero's
+ * `export const hydrate`), cascading from layouts like any meta key.
+ */
+export type PageHydration = 'app' | 'islands'
+
+/**
+ * The marker an islands-only page carries in its head. The client entry reads
+ * it before loading anything (`@pyreon/zero/client`), so it must stay a plain
+ * element any script can query: `meta[name="pyreon-hydrate"][content="islands"]`.
+ */
+export const ISLANDS_ONLY_MARKER = '<meta name="pyreon-hydrate" content="islands">'
+
+/** True when a matched chain's merged meta declares an islands-only page. */
+export function isIslandsOnlyMeta(meta: Readonly<Record<string, unknown>> | undefined): boolean {
+  return meta?.hydrate === 'islands'
+}
+
+/**
+ * Module preloads for what the client entry loads with a dynamic import, per
+ * page kind: `app` on a page that starts the app (with `startClientLazy`, the
+ * routes module and the app client), `islands` on an islands-only page that
+ * has an island to hydrate (the islands runtime). Base-prefixed hrefs.
+ * `@pyreon/zero` computes both from the client build manifest.
+ */
+export interface ClientStartPreload {
+  app?: readonly string[] | undefined
+  islands?: readonly string[] | undefined
+}
+
+/**
+ * True when rendered markup holds an island the client will hydrate
+ * (`hydrate: 'never'` islands load nothing). An islands-only page without one
+ * loads nothing beyond the entry, so it preloads nothing. zero's SSG applies
+ * the same rule (`ssg-plugin.ts`, `pageStartKeys`).
+ */
+export function hasIslandToHydrate(html: string): boolean {
+  return /<pyreon-island\b(?![^>]*\bdata-hydrate="never")/.test(html)
+}
+
+/** `<link rel="modulepreload" … crossorigin>` tags, one per line (build-manifest paths, as zero's SSG writes them). */
+export function renderModulePreloads(hrefs: readonly string[] = []): string {
+  return hrefs.map((href) => `<link rel="modulepreload" href="${href}" crossorigin>`).join('\n')
+}
+
 export interface RenderPageOptions {
   /**
    * The incoming request (runtime SSR). Forwarded to `preloadRoute` so
@@ -124,9 +172,16 @@ export type RenderPageResult =
       /**
        * Source-module ids (`component._hmrId`) of the matched chain's lazy
        * components — the SSG plugin maps these onto the client manifest for
-       * per-route `<link rel=modulepreload>`. Empty for non-lazy chains.
+       * per-route `<link rel=modulepreload>`. Empty for non-lazy chains, and
+       * for an islands-only page (the browser never loads the route's code).
        */
       routeModules: string[]
+      /**
+       * `'islands'` when the matched chain declares `meta.hydrate: 'islands'`:
+       * the head carries {@link ISLANDS_ONLY_MARKER}, and neither the loader
+       * data nor `routeModules` are emitted. `'app'` otherwise.
+       */
+      hydrate: PageHydration
     }
 
 /**
@@ -186,7 +241,12 @@ export async function renderPage(
       = typeof rawNonce === 'string' && rawNonce ? rawNonce.replace(/["'<>\s]/g, '') : undefined
     const nonceAttr = cspNonce ? ` nonce="${cspNonce}"` : ''
 
-    const { html: appHtml, head } = await renderWithHead(app, { nonce: cspNonce })
+    const { html: appHtml, head: renderedHead } = await renderWithHead(app, { nonce: cspNonce })
+    // An islands-only page is static HTML plus its islands: the browser never
+    // starts the app on it. Mark it (the client entry reads the marker before
+    // loading anything) and leave out what only a hydrating app reads.
+    const islandsOnly = isIslandsOnlyMeta(resolved?.meta)
+    const head = islandsOnly ? `${ISLANDS_ONLY_MARKER}\n${renderedHead}` : renderedHead
 
     // Styler (or any CSS-in-JS) tag goes BEFORE @pyreon/head's tags so the
     // cascade orders correctly against user-added <style>/<link> tags. An
@@ -211,7 +271,9 @@ export async function renderPage(
     const styleIsEmpty = !styleTag || styleTag.indexOf('></style>') !== -1
     const finalHead = styleIsEmpty ? head : `${styleTag}\n${head}`
 
-    const loaderData = serializeLoaderData(router as never)
+    // The loaders still ran: their output is in `appHtml`. Only the blob a
+    // hydration would read is left out of an islands-only page.
+    const loaderData = islandsOnly ? null : serializeLoaderData(router as never)
     let loaderScript
       = loaderData && Object.keys(loaderData).length > 0
         ? `<script${nonceAttr}>window.__PYREON_LOADER_DATA__=${stringifyLoaderDataForScript(loaderData)}</script>`
@@ -232,9 +294,13 @@ export async function renderPage(
       }
     }
 
-    const routeModules = (resolved?.matched ?? [])
-      .map((r) => (r.component as { _hmrId?: unknown } | undefined)?._hmrId)
-      .filter((id): id is string => typeof id === 'string')
+    // Store state stays on an islands-only page (above): islands that share
+    // a store read it. The route's modules do not: nothing loads them.
+    const routeModules = islandsOnly
+      ? []
+      : (resolved?.matched ?? [])
+          .map((r) => (r.component as { _hmrId?: unknown } | undefined)?._hmrId)
+          .filter((id): id is string => typeof id === 'string')
 
     return {
       kind: 'html' as const,
@@ -243,6 +309,7 @@ export async function renderPage(
       loaderScript,
       status,
       routeModules,
+      hydrate: islandsOnly ? ('islands' as const) : ('app' as const),
     }
   })
 }

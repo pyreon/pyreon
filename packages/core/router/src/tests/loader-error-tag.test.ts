@@ -1,5 +1,5 @@
 /**
- * In development, `router.preload` tags a loader's error with the path of the
+ * In development, `preloadRoute` tags a loader's error with the path of the
  * route whose loader threw, under `Symbol.for('pyreon.router.loaderErrorRoute')`,
  * and rethrows the SAME error. Zero's dev error overlay reads the tag to say
  * "Loader threw" on that route instead of "Server render failed".

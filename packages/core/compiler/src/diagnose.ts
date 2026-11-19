@@ -106,6 +106,35 @@ await router.preloadComponents(path)`,
     }),
   },
   {
+    pattern: /initialIndex\b[^\n]*\bis outside initialEntries/,
+    diagnose: () => ({
+      cause:
+        "`createRouter({ mode: 'memory', initialEntries, initialIndex })` got an `initialIndex` that is not a position in `initialEntries` (negative, past the end, or not a whole number). The router clamps it into range and starts there, so the app opens on a different entry than the one asked for.",
+      fix: 'Pass an index that exists in the list: `0` is the first entry and `initialEntries.length - 1` the last. Leave `initialIndex` out to start on the last entry, which is what a history that was navigated through looks like.',
+      fixCode: `const entries = ['/', '/users', '/users/2']
+const router = createRouter({
+  routes,
+  mode: 'memory',
+  initialEntries: entries,
+  initialIndex: entries.length - 1, // start on /users/2; router.back() goes to /users
+})`,
+    }),
+  },
+  {
+    pattern: /mode: 'memory' does not follow the external redirect/,
+    diagnose: () => ({
+      cause:
+        "A guard or a `redirect` in a memory-mode router pointed at an external URL (another origin, or a non-route scheme). A hash or history router follows that by navigating the page. A memory router is embedded in a page it does not own (a demo, a widget, a test), so it cancels the navigation instead of replacing the host page.",
+      fix: 'Decide who owns the page. If leaving it is intended, do it yourself from the guard with `window.location.assign(url)` and return `false`. If the link should stay inside the embedded app, redirect to a route path of the memory router.',
+      fixCode: `beforeEnter: (to) => {
+  if (to.path === '/billing') {
+    window.location.assign('https://billing.example.com') // leaving the host page on purpose
+    return false
+  }
+}`,
+    }),
+  },
+  {
     pattern: /\b([A-Za-z_$][\w$]*)\([^)]*\)\??\.(set|update|peek|trigger) is not a function/,
     diagnose: (m) => ({
       cause: `A signal method is called on its value: \`${m[1]}().${m[2]}\`.`,
