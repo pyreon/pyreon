@@ -91,9 +91,12 @@ function single<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>): Ca
 function thisOne<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>): CalendarEvent<Meta>[] {
   if (change.allDay !== (typeof event.start === 'string' && event.start.length === 10)) bad('applyEventChange', 'change', 'a change that keeps the occurrence all-day or timed like its event (a single occurrence cannot switch)', change.allDay ? 'an all-day change for a timed event' : 'a timed change for an all-day event')
 
-  if (change.resourceId !== undefined && change.resourceId !== change.fromResourceId) bad('applyEventChange', 'change.scope', "'all' or 'following' when the resource changes (an override cannot move one occurrence to another resource)", 'this')
+  const key = change.occurrence as string
+  const own = event.overrides?.[key] as { resourceId?: string | readonly string[] } | undefined
+  // the resource of this one occurrence is kept in the override (the calendar's own field; `@pyreon/schedule` only sees start, end and cancelled)
+  const resource = change.resourceId === undefined ? {} : { resourceId: movedResource(own?.resourceId ?? event.resourceId, change.fromResourceId, change.resourceId) }
 
-  return [{ ...event, overrides: { ...event.overrides, [change.occurrence as string]: { start: change.start, end: change.end } } }]
+  return [{ ...event, overrides: { ...event.overrides, [key]: { ...own, start: change.start, end: change.end, ...resource } } }]
 }
 
 function allOfThem<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>, wallZone: TimeZone): CalendarEvent<Meta>[] {

@@ -273,6 +273,99 @@ describe('the timeline', () => {
   })
 })
 
+describe('the timeline: now line, per-row layout, select by dragging, one occurrence to another resource', () => {
+  const base = [ev('A1', '2026-11-18T09:00', '2026-11-18T12:00', { resourceId: 'a' }), ev('B1', '2026-11-18T09:00', '2026-11-18T12:00', { resourceId: 'b' }), ev('C1', '2026-11-18T09:00', '2026-11-18T12:00', { resourceId: 'c' })]
+
+  it('draws the now line where the ambient clock says, and none when today is not shown', async () => {
+    const { root, calendar } = make({ view: 'timeline', events: () => base, resources: () => rooms, dayStart: '08:00', dayEnd: '18:00' })
+    // 12:00 in Prague on the 18th, the third of seven days: (2 + 0.4) / 7 of the axis
+    const line = root.querySelector('.pcal-tl-now') as HTMLElement
+    expect(line).not.toBeNull()
+    expect(Number.parseFloat(line.style.insetInlineStart)).toBeCloseTo(((2 + 0.4) / 7) * 100, 1)
+    expect(root.querySelector('.pcal-tl-nowarea')!.getAttribute('aria-hidden')).toBe('true')
+    calendar.goTo('2026-12-18')
+    await sleep(60)
+    expect(root.querySelector('.pcal-tl-now')).toBeNull()
+  })
+
+  it('moving the window lays the rows out again even when the events are the same ones', async () => {
+    const { root, calendar } = make({ view: 'timeline', events: () => [ev('Long', '2026-11-20', '2026-11-27', { resourceId: 'a' })], resources: () => rooms, dayStart: '08:00', dayEnd: '18:00' })
+    const left = (): string => (root.querySelector('.pcal-tl-row[data-resource="a"] .pcal-tl-block') as HTMLElement).style.insetInlineStart
+    const before = left()
+    calendar.goTo('2026-11-23')
+    await sleep(60)
+    expect(before).not.toBe('')
+    expect(left()).not.toBe(before)
+    expect(Number.parseFloat(left())).toBeCloseTo(0, 3)
+  })
+
+  it('changing one event lays out only its row', async () => {
+    const events = signal<CalendarEvent[]>(base)
+    const laid: string[] = []
+    const { root } = make({ view: 'timeline', events: () => events(), resources: () => rooms, dayStart: '08:00', dayEnd: '18:00', instrument: { layoutResource: (id) => void laid.push(id) } })
+    expect(laid.sort()).toEqual(['\u0000unassigned', 'a', 'b', 'c'])
+    laid.length = 0
+    events.set([ev('B1', '2026-11-18T10:00', '2026-11-18T12:00', { resourceId: 'b' }), base[0]!, base[2]!])
+    await sleep(60)
+    expect(laid).toEqual(['b'])
+    laid.length = 0
+    events.set([ev('B1', '2026-11-18T10:00', '2026-11-18T12:00', { resourceId: ['b', 'c'] }), base[0]!, base[2]!])
+    await sleep(60)
+    // row b holds the same occurrence at the same time: it is not laid out again, only the row that gained it
+    expect(laid).toEqual(['c'])
+    expect(root.querySelectorAll('.pcal-tl-row[data-resource="c"] .pcal-tl-block')).toHaveLength(2)
+  })
+
+  it('dragging on an empty stretch of a row selects it and onSelect says which resource', async () => {
+    const onSelect = vi.fn()
+    const { root } = make({ view: 'timeline', events: () => [], resources: () => rooms, dayStart: '08:00', dayEnd: '18:00', onSelect, editable: true })
+    const lane = root.querySelector('.pcal-tl-row[data-resource="b"] .pcal-tl-lane') as HTMLElement
+    const r = lane.getBoundingClientRect()
+    const y = r.top + r.height / 2
+    // the lane is seven days of ten hours: 280 px a day, 28 px an hour
+    await drag({ x: r.left + 2 * 280 + 28 * 1 + 4, y }, [{ x: r.left + 2 * 280 + 28 * 3 + 4, y }])
+    expect(onSelect).toHaveBeenCalled()
+    expect(onSelect.mock.calls.at(-1)![0]).toMatchObject({ resourceId: 'b', allDay: false, start: '2026-11-18T09:00', end: '2026-11-18T11:30' })
+    expect(root.querySelector('.pcal-tl-row[data-resource="b"] .pcal-tl-selection')).not.toBeNull()
+    expect(root.querySelector('.pcal-tl-row[data-resource="a"] .pcal-tl-selection')).toBeNull()
+  })
+
+  it('one occurrence of a recurring event goes to another resource with scope this: the override carries it and the others stay', async () => {
+    const weekly = ev('W', '2026-11-16T09:00', '2026-11-16T12:00', { resourceId: 'a', recurrence: { every: 'week', start: '2026-11-16T09:00', count: 3 } as never })
+    const events = signal<CalendarEvent[]>([weekly])
+    const { root, calendar } = make({
+      view: 'timeline',
+      events: () => events(),
+      resources: () => rooms,
+      date: '2026-11-23',
+      days: 7,
+      dayStart: '08:00',
+      dayEnd: '18:00',
+      editable: true,
+      chooseScope: () => 'this',
+      onEventChange: async (c) => {
+        const { applyEventChange } = await import('../index')
+        events.set(applyEventChange(c.event, c, 'Europe/Prague'))
+      },
+    })
+    const bar = root.querySelector('.pcal-tl-row[data-resource="a"] .pcal-tl-block[data-key^="W:2026-11-23"]') as HTMLElement
+    const lane = root.querySelector('.pcal-tl-row[data-resource="b"] .pcal-tl-lane') as HTMLElement
+    const from = centre(bar)
+    await drag(from, [{ x: from.x + 5, y: from.y + 20 }, { x: from.x + 8, y: centre(lane).y }])
+    await sleep(60)
+    expect(events()).toHaveLength(1)
+    expect((events()[0]!.overrides as Record<string, { resourceId?: unknown }>)['2026-11-23T09:00']!.resourceId).toBe('b')
+    expect(events()[0]!.resourceId).toBe('a')
+    expect(root.querySelectorAll('.pcal-tl-row[data-resource="b"] .pcal-tl-block')).toHaveLength(1)
+    expect(root.querySelectorAll('.pcal-tl-row[data-resource="a"] .pcal-tl-block')).toHaveLength(0)
+    // the next occurrence (a week on) is still on room A
+    calendar.goTo('2026-11-30')
+    await sleep(60)
+    expect(root.querySelectorAll('.pcal-tl-row[data-resource="a"] .pcal-tl-block')).toHaveLength(1)
+    expect(root.querySelectorAll('.pcal-tl-row[data-resource="b"] .pcal-tl-block')).toHaveLength(0)
+  })
+})
+
 describe('the "+N more" popover', () => {
   const crowded = Array.from({ length: 6 }, (_, i) => ev(`E${i}`, '2026-11-18', '2026-11-19'))
 

@@ -1067,3 +1067,48 @@
     border: 2px solid CanvasText;
   }
 }
+
+/* the now line of the timeline: along the axis, under the bars, with a dot at its head; and a range selected by dragging on a row */
+.pcal-tl-nowarea {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--pcal-resource-w);
+  inline-size: calc(var(--pcal-tl-days, 7) * var(--pcal-tl-day-w));
+  pointer-events: none;
+}
+
+.pcal-tl-now {
+  position: absolute;
+  inset-block: 0;
+  inline-size: 0;
+  border-inline-start: 2px solid var(--pcal-now);
+}
+
+.pcal-tl-now::before {
+  content: '';
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline-start: -6px;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  background: var(--pcal-now);
+}
+
+.pcal-tl-selection {
+  position: absolute;
+  inset-block: 0;
+  background: var(--pcal-selected);
+  pointer-events: none;
+}
+
+@media (forced-colors: active) {
+  .pcal-tl-now {
+    border-inline-start-color: Highlight;
+  }
+
+  .pcal-tl-selection {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+}

@@ -83,7 +83,10 @@ function laneAt<Meta>(c: Ctx<Meta>, lane: HTMLElement, x: number): Where | null 
   const pos = Math.min(frac * dates.length * size, dates.length * size - 1e-6)
   const index = Math.floor(pos / size)
 
-  return { hit: { date: dates[index] as PlainDate, minute: from + pos - index * size }, cell: lane, resourceId: lane.dataset.resource as string }
+  const minute = from + pos - index * size
+  const slot = c.calendar.timeGrid().slot
+
+  return { hit: { date: dates[index] as PlainDate, minute }, cell: lane, resourceId: lane.dataset.resource as string, slotStart: from + Math.floor((minute - from) / slot) * slot }
 }
 
 /** The x of a moment on a lane (the start of a day and a minute of it, or of a date). */
@@ -250,7 +253,7 @@ function update<Meta>(c: Ctx<Meta>, s: Session): void {
     return
   }
   if (s.kind === 'select') {
-    c.calendar.select({ date: s.anchor.date, minute: s.anchorSlot }, { date: at.hit.date, minute: at.slotStart ?? 0 }, c.grid === 'month' ? 'month' : 'time')
+    c.calendar.select({ date: s.anchor.date, minute: s.anchorSlot }, { date: at.hit.date, minute: at.slotStart ?? 0 }, c.grid === 'month' ? 'month' : 'time', s.fromResource)
 
     return
   }
@@ -306,7 +309,7 @@ function onDown<Meta>(c: Ctx<Meta>, event: PointerEvent): void {
   const base = { id: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, started: false, origin: null, originCell: null, saved: '', timer: 0, last: null, type: event.pointerType }
   if (at === null) return
   if (ev === null) {
-    if (event.pointerType !== 'touch' && c.grid !== 'timeline') c.session = { ...base, kind: 'select', holder: c.root, el: null, key: '', edge: 'end', grab: at.hit, fromResource: undefined, anchor: at.hit, anchorSlot: at.slotStart ?? 0 }
+    if (event.pointerType !== 'touch') c.session = { ...base, kind: 'select', holder: c.root, el: null, key: '', edge: 'end', grab: at.hit, fromResource: at.resourceId, anchor: at.hit, anchorSlot: at.slotStart ?? 0 }
 
     return
   }

@@ -69,7 +69,8 @@ function windowIn(range: Interval<PlainDate>, zone: TimeZone, wallZone: TimeZone
 }
 
 function toOccurrence(event: CalendarEvent, placed: Placed, allDayEvent: boolean, wallZone: TimeZone, zone: TimeZone): EventOccurrence {
-  const base = { key: `${event.id}:${placed.occurrence}`, event, occurrence: placed.occurrence, title: placed.title, allDay: allDayEvent, recurring: placed.recurring }
+  const moved = (event.overrides?.[placed.occurrence] as { resourceId?: string | readonly string[] } | undefined)?.resourceId
+  const base = { key: `${event.id}:${placed.occurrence}`, event, occurrence: placed.occurrence, title: placed.title, allDay: allDayEvent, recurring: placed.recurring, ...(moved === undefined ? {} : { resourceIds: typeof moved === 'string' ? [moved] : moved }) }
   if (allDayEvent) {
     const end = placed.end <= placed.start ? add(placed.start as PlainDate, { days: 1 }) : (placed.end as PlainDate)
 

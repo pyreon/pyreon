@@ -7,7 +7,7 @@ export type { Instant, Interval, PlainDate, PlainDateTime, Recurrence, TimeZone,
 export type EventTime = PlainDate | PlainDateTime | Instant
 
 /** What one occurrence of a recurring event is changed to, or that it is cancelled. Keyed by the occurrence's original start. */
-export type EventOverrideValue = Partial<{ start: EventTime; end: EventTime; title: string }> | { cancelled: true }
+export type EventOverrideValue = Partial<{ start: EventTime; end: EventTime; title: string; resourceId: string | readonly string[] }> | { cancelled: true }
 
 /**
  * An event, as plain JSON-safe data. The app owns it; the calendar never changes it.
@@ -49,6 +49,8 @@ export interface EventOccurrence<Meta = unknown> {
   startMs: Instant
   endMs: Instant
   recurring: boolean
+  /** The resources of this occurrence when an override gave it others than its event's (`overrides[key].resourceId`). */
+  resourceIds?: readonly string[]
 }
 
 /** A piece of an occurrence in a row of days (a month week, or the all-day row of a time grid). */
