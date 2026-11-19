@@ -1,5 +1,7 @@
 # @pyreon/sized-map
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 A bounded-`Map<K, V>` primitive that evicts the oldest entry when a size cap is exceeded. One implementation, two configurations:
 
 - **FIFO** (default, `lru: false`) — `.get()` does NOT touch ordering; eviction always drops the first-inserted entry. Cheapest semantics, fits hot paths where re-insert-on-read would dominate (`runtime-dom`'s `_tplCache`).

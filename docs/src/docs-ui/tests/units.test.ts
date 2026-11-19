@@ -65,12 +65,17 @@ describe('TOC entries', () => {
   })
 })
 
-describe('PackageBadge status labels (facts.md: never "stable")', () => {
-  it('maps the old vocabulary', () => {
-    expect(packageStatusLabel('stable')).toBe('pre-1.0')
-    expect(packageStatusLabel(undefined)).toBe('pre-1.0')
-    expect(packageStatusLabel('beta')).toBe('pre-1.0')
-    expect(packageStatusLabel('alpha')).toBe('experimental')
-    expect(packageStatusLabel('deprecated')).toBe('deprecated')
+describe('PackageBadge tier labels (generated from package.json pyreon.stability)', () => {
+  it('prints the tier each package declares', () => {
+    expect(packageStatusLabel('@pyreon/core')).toBe('stable')
+    expect(packageStatusLabel('@pyreon/zero')).toBe('stable')
+    expect(packageStatusLabel('@pyreon/react-compat')).toBe('experimental')
+    expect(packageStatusLabel('@pyreon/native-compiler')).toBe('experimental')
+  })
+
+  it('says "unpublished" for a name with no published package', () => {
+    expect(packageStatusLabel('@pyreon/devtools')).toBe('unpublished')
+    // A private workspace package with a docs page: no tier until it is published.
+    expect(packageStatusLabel('@pyreon/auth')).toBe('unpublished')
   })
 })

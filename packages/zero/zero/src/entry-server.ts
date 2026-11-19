@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import type { ComponentFn } from '@pyreon/core'
 import type { RouteRecord } from '@pyreon/router'
-import type { Middleware, ServerErrorHandler } from '@pyreon/server'
+import type { ClientStartPreload, Middleware, ServerErrorHandler } from '@pyreon/server'
 import { createHandler } from '@pyreon/server'
 import type { CreateActionMiddlewareOptions } from './actions'
 import { createActionRerenderMiddleware } from './form-actions-server'
@@ -114,6 +114,17 @@ export interface CreateServerOptions {
  */
 declare const __ZERO_SERVER_CONFIG__: ZeroConfig | undefined
 
+/**
+ * What each kind of page's client loads first beyond the entry (#4371), read
+ * from the client manifest at build time by the SSR post-step (`ssr-plugin.ts`,
+ * `computeClientStartPreload`): with `startClientLazy`, the app chunks on an
+ * app page and the islands runtime on an islands-only page. The handler emits
+ * them as modulepreloads per page, so a server-rendered page preloads what the
+ * same page prerendered by SSG does. Undefined when the entry is not lazy and
+ * outside a zero build.
+ */
+declare const __ZERO_CLIENT_PRELOAD__: ClientStartPreload | undefined
+
 /** Built config first, then the entry's own `config` wins key by key. */
 export function mergeServerConfig(
   built: ZeroConfig | undefined,
@@ -158,6 +169,55 @@ function readBuiltTemplate(): string | undefined {
   } catch {
     return undefined
   }
+}
+
+/**
+ * The template, client entry and client-start preloads every page handler of
+ * {@link createServer} uses.
+ */
+function resolveServerTemplate(options: CreateServerOptions): {
+  resolvedTemplate: string | undefined
+  resolvedClientEntry: string | false | undefined
+  clientPreload: ClientStartPreload | undefined
+} {
+  // Production SSR template resolution (zero-config path): ONLY when the
+  // caller customized neither `template` nor `clientEntry` do we auto-load the
+  // built `dist/server/template.html` sibling — the SSR build copies the built
+  // client index.html there (see ssr-plugin.ts) and every deploy adapter
+  // copies the whole server dir, so it travels with entry-server.js to
+  // node/bun/vercel/netlify/cloudflare alike. That template carries the hashed
+  // client `<script>` + CSS `<link>` + injection placeholders, so we use it
+  // AND suppress the handler's client-entry injection below (the template
+  // already references the hashed entry). If the caller set EITHER option we
+  // leave both untouched — auto-loading alongside an explicit `clientEntry`
+  // would inject two module scripts. A missing template in the zero path is a
+  // build error the SSR plugin reports at build time (+ verify-modes and the
+  // ssr-node/isr-node e2e gate it); custom builds pass their own `template`
+  // (with `clientEntry: false` — see the option JSDoc). In dev / tests the
+  // sibling doesn't exist → undefined → the handler's defaults apply.
+  const autoTemplate =
+    !options.template && options.clientEntry === undefined ? readBuiltTemplate() : undefined
+
+  // Prefer an explicit template; else the auto-resolved built one. `||` (not
+  // `??`) so an empty-string template falls back too — consistent with the
+  // truthy `!options.template` check above.
+  const resolvedTemplate = options.template || autoTemplate
+  // The auto-loaded built template already carries the hashed client
+  // <script>, so suppress the handler's injection. An explicit `clientEntry`
+  // (including `false`) always wins.
+  let resolvedClientEntry = options.clientEntry
+  if (resolvedClientEntry === undefined && autoTemplate) {
+    resolvedClientEntry = false
+  }
+  // Client-start preloads only make sense for the BUILT client (its template
+  // carries the hashed entry, so `clientEntry` is false); a dev entry has no
+  // chunks to preload.
+  const clientPreload =
+    resolvedClientEntry === false && typeof __ZERO_CLIENT_PRELOAD__ !== 'undefined'
+      ? __ZERO_CLIENT_PRELOAD__
+      : undefined
+
+  return { resolvedTemplate, resolvedClientEntry, clientPreload }
 }
 
 /**
@@ -211,35 +271,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
     ...(config.base && config.base !== '/' ? { base: config.base } : {}),
   })
 
-  // Production SSR template resolution (zero-config path): ONLY when the
-  // caller customized neither `template` nor `clientEntry` do we auto-load the
-  // built `dist/server/template.html` sibling — the SSR build copies the built
-  // client index.html there (see ssr-plugin.ts) and every deploy adapter
-  // copies the whole server dir, so it travels with entry-server.js to
-  // node/bun/vercel/netlify/cloudflare alike. That template carries the hashed
-  // client `<script>` + CSS `<link>` + injection placeholders, so we use it
-  // AND suppress the handler's client-entry injection below (the template
-  // already references the hashed entry). If the caller set EITHER option we
-  // leave both untouched — auto-loading alongside an explicit `clientEntry`
-  // would inject two module scripts. A missing template in the zero path is a
-  // build error the SSR plugin reports at build time (+ verify-modes and the
-  // ssr-node/isr-node e2e gate it); custom builds pass their own `template`
-  // (with `clientEntry: false` — see the option JSDoc). In dev / tests the
-  // sibling doesn't exist → undefined → the handler's defaults apply.
-  const autoTemplate =
-    !options.template && options.clientEntry === undefined ? readBuiltTemplate() : undefined
-
-  // Prefer an explicit template; else the auto-resolved built one. `||` (not
-  // `??`) so an empty-string template falls back too — consistent with the
-  // truthy `!options.template` check above.
-  const resolvedTemplate = options.template || autoTemplate
-  // The auto-loaded built template already carries the hashed client
-  // <script>, so suppress the handler's injection. An explicit `clientEntry`
-  // (including `false`) always wins.
-  let resolvedClientEntry = options.clientEntry
-  if (resolvedClientEntry === undefined && autoTemplate) {
-    resolvedClientEntry = false
-  }
+  const { resolvedTemplate, resolvedClientEntry, clientPreload } = resolveServerTemplate(options)
 
   // `og:image` injection is NOT applied here: it is per-request (absolute,
   // from the request origin unless `routeOg.siteUrl` is set) and this
@@ -262,6 +294,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
     ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
     ...(config.base && config.base !== '/' ? { base: config.base } : {}),
     ...(options.onError ? { onError: options.onError } : {}),
+    ...(clientPreload ? { clientPreload } : {}),
   })
 
   // A no-JS action post re-renders its page through a handler whose ONLY
@@ -281,6 +314,7 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
         ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
         ...(config.base && config.base !== '/' ? { base: config.base } : {}),
         ...(options.onError ? { onError: options.onError } : {}),
+        ...(clientPreload ? { clientPreload } : {}),
       }),
       options.routes,
       config.routeOg,
@@ -312,9 +346,11 @@ export function createServer(options: CreateServerOptions): (req: Request) => Pr
           ...(resolvedClientEntry !== undefined ? { clientEntry: resolvedClientEntry } : {}),
           ...(config.base && config.base !== '/' ? { base: config.base } : {}),
           ...(options.onError ? { onError: options.onError } : {}),
+        ...(clientPreload ? { clientPreload } : {}),
         }),
       isEndpoint,
       gate,
+      clientPreload,
     ),
     options.routes,
     config.routeOg,
@@ -444,6 +480,7 @@ export function wirePerRouteModes(
   makeBufferedHandler?: () => RequestHandler,
   isEndpoint?: (pathname: string) => boolean,
   gate?: PipelineGate,
+  clientPreload?: ClientStartPreload,
 ): RequestHandler {
   const entries = collectRouteModes(routes, appMode, config.routeRules)
   const divergent = entries.some((e) => e.declared && e.mode !== appMode)
@@ -465,9 +502,14 @@ export function wirePerRouteModes(
   // CSR shell for 'spa' routes: the built template with the injection
   // placeholders blanked. `startClient` sees no SSR content and takes the
   // mount + run-loaders cold-start path (the documented SPA contract).
+  // The shell starts the app, so it preloads the app set (#4371), as an
+  // app page the server renders does.
+  const shellPreloads = (clientPreload?.app ?? [])
+    .map((href) => `<link rel="modulepreload" href="${href.replace(/"/g, '&quot;')}" crossorigin>`)
+    .join('\n')
   const spaShell = builtTemplate
     ? builtTemplate
-        .replace('<!--pyreon-head-->', '')
+        .replace('<!--pyreon-head-->', () => shellPreloads)
         .replace('<!--pyreon-app-->', '')
         .replace('<!--pyreon-scripts-->', '')
     : undefined

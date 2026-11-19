@@ -74,3 +74,65 @@ export const solidFill = (t: Theme, tone: FillTone) => ({
  */
 export const tintText = (t: Theme, m: ThemeModeCallback, tone: FillTone) =>
   m(t.color.system[tone].text, t.color.system[tone].textDark)
+
+/**
+ * The active tone as plain theme keys, for a variant to read.
+ *
+ * `state` and `variant` are separate rocketstyle dimensions, and a variant
+ * slice cannot see which state is active: a variant written against
+ * `t.color.system.primary` drew primary whatever the state (#4425). Instead the
+ * component's base `.theme()` and each `.states()` slice spread these keys,
+ * and every variant is a transform (see `rs.ts`) that reads them back through
+ * {@link toneVariant} — one definition per variant, in the state's hue.
+ *
+ * The keys are not CSS properties, so unistyle ignores them; mode-aware values
+ * are already resolved by the time a transform runs.
+ */
+export const toneKeys = (t: Theme, m: ThemeModeCallback, tone: FillTone) =>
+  ({
+    /** The solid fill; also the outline colour. */
+    toneFill: t.color.system[tone].base,
+    /** Text and glyphs on {@link toneFill}. */
+    toneContrast: t.color.system[tone].contrast,
+    /** Text in the tone, on the page and on the tone's tints. */
+    toneText: tintText(t, m, tone),
+    toneTint50: t.color.system[tone][50],
+    toneTint100: t.color.system[tone][100],
+    toneTint200: t.color.system[tone][200],
+  }) satisfies Record<ToneKey, unknown>
+
+/** The tone keys a state sets. */
+export type ToneKey = 'toneFill' | 'toneContrast' | 'toneText' | 'toneTint50' | 'toneTint100' | 'toneTint200'
+
+/** The tone as a variant reads it: every key resolved for the current mode. */
+export type Tone = Record<ToneKey, string>
+
+/** Reads the tone keys back from a resolved theme. A key nobody set reads as `''`, which unistyle drops. */
+const readTone = (theme: object): Tone => {
+  const read = (key: ToneKey): string => {
+    const value: unknown = Reflect.get(theme, key)
+    return typeof value === 'string' ? value : ''
+  }
+
+  return {
+    toneFill: read('toneFill'),
+    toneContrast: read('toneContrast'),
+    toneText: read('toneText'),
+    toneTint50: read('toneTint50'),
+    toneTint100: read('toneTint100'),
+    toneTint200: read('toneTint200'),
+  }
+}
+
+/**
+ * A variant drawn in the active tone. Use as a `.variants()` value:
+ *
+ *   outline: toneVariant((tone) => ({ borderColor: tone.toneFill, color: tone.toneText })),
+ *
+ * The component must spread {@link toneKeys} into its base `.theme()` (the
+ * tone with no state) and into each `.states()` slice.
+ */
+export const toneVariant =
+  <S extends object>(styles: (tone: Tone) => S) =>
+  (theme: object): S =>
+    styles(readTone(theme))

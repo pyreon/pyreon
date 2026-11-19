@@ -1,6 +1,8 @@
 # @pyreon/native-runtime-kotlin
 
-> **EXPERIMENTAL.** The Kotlin/Jetpack Compose runtime that compiler-emitted Compose code links against on Android. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for why Kotlin source ships through npm and how a Gradle build resolves it. The Android twin of [`@pyreon/native-runtime-swift`](../runtime-swift/) — same scope, idiomatic Compose + minimal-dependency implementation.
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
+The Kotlin/Jetpack Compose runtime that compiler-emitted Compose code links against on Android. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for why Kotlin source ships through npm and how a Gradle build resolves it. The Android twin of [`@pyreon/native-runtime-swift`](../runtime-swift/) — same scope, idiomatic Compose + minimal-dependency implementation.
 
 ## Installation
 

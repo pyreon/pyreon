@@ -1,5 +1,7 @@
 # @pyreon/head
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Reactive `<head>` tag management — `useHead()` + `HeadProvider` + SSR `renderWithHead()`.
 
 Register `<title>` / `<meta>` / `<link>` / `<script>` / `<style>` / `<noscript>` / `<base>` / JSON-LD / Speculation Rules entries from ANY component (static or signal-driven via a thunk). `<HeadProvider>` collects them on the client and syncs to the live `document.head`. `renderWithHead()` (subpath `/ssr`) collects them server-side and returns a serialized `head` string plus `htmlAttrs` / `bodyAttrs`. Innermost component wins per key; the inheritance contract makes `<HeadProvider>` mounted inside `renderWithHead()` compose without manual context plumbing.

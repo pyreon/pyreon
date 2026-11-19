@@ -282,14 +282,12 @@ export function mountReactive(
 }
 
 // ─── Keyed list reconciler ────────────────────────────────────────────────────
-
 /**
- * Efficient keyed list reconciler.
- *
- * When a reactive accessor returns VNode[] where every vnode carries a key,
- * this reconciler reuses, moves, and creates DOM nodes surgically instead of
- * tearing down and rebuilding the full list on every signal update.
+ * A key in a keyed list. `<For>` keys are strings or numbers (its `by`); a
+ * keyless vnode in a keyed `.map()` list gets a fresh `Symbol` per run, which
+ * no user key can equal (see `mountKeyedList`).
  */
+type ListKey = string | number | symbol
 
 
 /** LIS-based reorder state — shared across keyed list instances, grown as needed */
@@ -300,7 +298,7 @@ interface LisState {
   stay: Uint8Array
   // Reused per-update buffer of resolved cache entries (mountFor only). Lets the
   // reorder resolve `cache.get(key)` ONCE per index instead of 3x — for a 1k swap
-  // that's ~2k fewer Map hashes per update. mountKeyedList leaves it empty.
+  // that's ~2k fewer Map hashes per update.
   entries: (ForEntry | undefined)[]
 }
 
@@ -347,296 +345,74 @@ function markStayingEntries(lis: LisState, lisLen: number): void {
 
 
 
+/**
+ * Keyed reconciler for an accessor that returns `VNode[]` whose vnodes carry a
+ * `key` (a keyed `.map()` in a reactive child, a compat layer's keyed list).
+ *
+ * It is `<For>`'s reconciler (`mountFor`) with the vnode as the item, its `key`
+ * as the key and identity as the render callback — one keyed core, not two, so
+ * every fast path and every fix `<For>` gets (contiguous insert/remove,
+ * small-k permutation, the LIS reorder, duplicate handling, owns-parent bulk
+ * clear) applies here too. A vnode already mounted under a key is kept on
+ * later runs, exactly as before: the new vnode for a cached key is not
+ * re-mounted.
+ *
+ * A vnode WITHOUT a key has no identity, so the only correct reconciliation
+ * for it is replace: it gets a fresh key on every run (a new `Symbol`, which
+ * can never collide with a user key), so it is mounted anew and the previous
+ * run's keyless entry is removed as stale. Keyed siblings keep their rows.
+ * (Classification is pinned at the first run — see `mountAccessorChild` — so
+ * a list that later loses keys cannot hand itself back to the general path.)
+ */
 export function mountKeyedList(
   accessor: () => VNode[],
   parent: Node,
   listAnchor: Node | null,
-  mountVNode: (vnode: VNode, p: Node, a: Node | null) => Cleanup,
+  mountVNode: MountFn,
   first?: FirstRun<VNode[]>,
 ): Cleanup {
-  const startMarker = document.createComment('')
-  const tailMarker = document.createComment('')
-  parent.insertBefore(startMarker, listAnchor)
-  parent.insertBefore(tailMarker, listAnchor)
+  return mountFor<VNode>(
+    first === undefined
+      ? accessor
+      : () => {
+          // First run: the caller already called the accessor. Mount that value
+          // and replay its reads into this effect's frame instead of calling
+          // again (see `FirstRun`).
+          if (first === undefined) return accessor()
+          const f = first
+          first = undefined
+          _replayReads(f.reads)
+          _releaseRun(f.run)
+          return f.value
+        },
+    keyOfVNode,
+    identityVNode,
+    parent,
+    listAnchor,
+    mountVNode,
+  )
+}
 
-  // Entries carry their current position (`pos`), so a reorder runs through
-  // `<For>`'s own LIS (`forLisReorder`) — one reconciler core, not two.
-  const cache = new Map<string | number, ForEntry>()
-  let currentKeyOrder: (string | number)[] = []
-
-  // Starts as the shared zero-capacity state: the first reorder's
-  // `growLisArrays` allocates this list's own buffers (see EMPTY_LIS).
-  let lis: LisState = EMPTY_LIS
-
-  /**
-   * The key sequence this update actually reconciles, DEDUPED first-wins, plus
-   * how many vnodes carried a key at all.
-   *
-   * Both halves are load-bearing. `mountNewEntries` mounts the FIRST vnode for
-   * a key and skips the rest, so the cache — and therefore the DOM — holds the
-   * deduped sequence; every consumer downstream (the position map, the LIS, the
-   * move pass, `currentKeyOrder`) has to agree with it or it addresses rows
-   * that are not there. A raw sequence disagreed in exactly that way: a
-   * duplicate wrote its LAST index into the position map while the cached entry
-   * belonged to the first, so the next reorder computed an already-increasing
-   * sequence, moved nothing, and left the list rendering the PREVIOUS order.
-   *
-   * `keyed` is counted separately because "has duplicates" and "has a keyless
-   * vnode" are different questions with different answers — deduping is the
-   * right response to the first and is silently wrong for the second.
-   */
-  const collectKeyOrder = (newList: VNode[]): { order: (string | number)[]; keyed: number } => {
-    const order: (string | number)[] = []
-    let keyed = 0
-    let seen: Set<string | number> | null = null
-    for (const vnode of newList) {
-      const key = vnode.key
-      if (key === null || key === undefined) continue
-      keyed++
-      // Allocated only once a key repeats — the dominant list has none, and a
-      // Set per update on the hot path would be a real cost for a rare shape.
-      if (seen !== null) {
-        if (seen.has(key)) continue
-        seen.add(key)
-      } else if (order.includes(key)) {
-        seen = new Set(order)
-        continue
-      }
-      order.push(key)
-    }
-    return { order, keyed }
+/** Drop repeated keys in place, keeping each key's FIRST occurrence. */
+function dedupeKeys(keys: ListKey[]): void {
+  const seen = new Set<ListKey>()
+  let w = 0
+  for (let r = 0; r < keys.length; r++) {
+    const key = keys[r] as ListKey
+    if (seen.has(key)) continue
+    seen.add(key)
+    keys[w++] = key
   }
+  keys.length = w
+}
 
-  const removeStaleEntries = (newKeySet: Set<string | number>) => {
-    for (const [key, entry] of cache) {
-      if (newKeySet.has(key)) continue
-      _emitCleanup()
-      ;(entry.cleanup as Cleanup)()
-      entry.anchor.parentNode?.removeChild(entry.anchor)
-      cache.delete(key)
-    }
-  }
+function keyOfVNode(vnode: VNode): ListKey {
+  const key = vnode !== null && typeof vnode === 'object' ? vnode.key : null
+  return key === null || key === undefined ? Symbol() : key
+}
 
-  const mountNewEntries = (newList: VNode[], liveParent: Node): number => {
-    let added = 0
-    for (const vnode of newList) {
-      const key = vnode.key
-      if (key === null || key === undefined) continue
-      if (cache.has(key)) continue
-      const anchor = document.createComment('')
-      liveParent.insertBefore(anchor, tailMarker)
-      const cleanup = mountVNode(vnode, liveParent, tailMarker)
-      // Content just mounted immediately before tailMarker — its last node is
-      // tailMarker's previous sibling (or the anchor itself when empty).
-      const last = tailMarker.previousSibling
-      cache.set(key, { anchor, cleanup, pos: -1, end: last === anchor ? null : last, seen: 0 })
-      added++
-    }
-    return added
-  }
-
-  /**
-   * Pure contiguous insertion fast path — the keyed-array sibling of mountFor's
-   * `tryContiguousInsertion` (same class, same proof; see the comment there).
-   * When `newKeyOrder` is exactly `currentKeyOrder` with one contiguous run of
-   * NEW keys inserted, mounting the run at its slot IS the whole update: no key
-   * can be stale (`p + s === oldLen` proves every old key survives) and no
-   * survivor moves — so the newKey-Set build + O(m) stale scan AND the O(n) LIS
-   * reorder are skipped. The caller's shared tail (position rebuild +
-   * `currentKeyOrder` assignment) still runs, so bookkeeping is untouched.
-   *
-   * Guards: bails when any vnode is KEYLESS (`newKeyOrder.length !== n` —
-   * key↔vnode index alignment would be unsound), on non-growth, and duplicates
-   * in the run are SKIPPED with the same first-wins semantics as
-   * `mountNewEntries`.
-   */
-  const tryContiguousInsertionKeyed = (
-    newList: VNode[],
-    n: number,
-    newKeyOrder: (string | number)[],
-    liveParent: Node,
-  ): boolean => {
-    if (newKeyOrder.length !== n) return false // keyless vnodes — indices misalign
-    const oldLen = currentKeyOrder.length
-    if (n <= oldLen || oldLen === 0) return false
-
-    let p = 0
-    while (p < oldLen && currentKeyOrder[p] === newKeyOrder[p]) p++
-    let s = 0
-    const maxS = oldLen - p
-    while (s < maxS && currentKeyOrder[oldLen - 1 - s] === newKeyOrder[n - 1 - s]) s++
-    if (p + s !== oldLen) return false
-
-    const runEnd = n - s
-    let before: Node = tailMarker
-    if (s > 0) {
-      const suffixEntry = cache.get(newKeyOrder[runEnd] as string | number)
-      if (!suffixEntry) return false
-      before = suffixEntry.anchor
-    }
-
-    for (let i = p; i < runEnd; i++) {
-      const key = newKeyOrder[i] as string | number
-      if (cache.has(key)) continue // duplicate — first wins, like mountNewEntries
-      const anchor = document.createComment('')
-      liveParent.insertBefore(anchor, before)
-      const cleanup = mountVNode(newList[i] as VNode, liveParent, before)
-      // Content just mounted immediately before `before` — its last node is
-      // `before`'s previous sibling (or the anchor itself when empty).
-      const last = before.previousSibling
-      cache.set(key, { anchor, cleanup, pos: -1, end: last === anchor ? null : last, seen: 0 })
-    }
-    if (process.env.NODE_ENV !== 'production')
-      _countSink.__pyreon_count__?.('runtime.mountFor.insertFast')
-    return true
-  }
-
-  // ── Not-fully-keyed fallback ───────────────────────────────────────────────
-  // Every path in the keyed reconciler addresses rows BY KEY, so a vnode
-  // without one is invisible to all of them: `collectKeyOrder` omits it,
-  // `mountNewEntries` skips it, and `removeStaleEntries` then evicts the keyed
-  // rows that are no longer in the (short) new key set. A list that was fully
-  // keyed on its first render and later lost a key therefore rendered EMPTY —
-  // or, when only some keys went missing, silently dropped exactly those rows.
-  //
-  // Classification is pinned at the first run (see `mountAccessorChild`), so
-  // this list cannot hand itself back to the general array path; it has to
-  // carry that path itself. A keyless vnode has no identity by definition, so
-  // the only correct reconciliation for it is REPLACE — which is what the
-  // general path would have done for the whole list had the first array been
-  // keyless. Mount positionally, and resume the keyed path the moment an
-  // update is fully keyed again.
-  let unkeyedCleanups: Cleanup[] | null = null
-
-  const dropKeyedState = () => {
-    for (const entry of cache.values()) {
-      _emitCleanup()
-      ;(entry.cleanup as Cleanup)()
-      entry.anchor.parentNode?.removeChild(entry.anchor)
-    }
-    cache.clear()
-    currentKeyOrder = []
-  }
-
-  const disposeUnkeyed = () => {
-    if (unkeyedCleanups === null) return
-    for (const c of unkeyedCleanups) c()
-    unkeyedCleanups = null
-  }
-
-  const renderUnkeyed = (newList: VNode[], liveParent: Node) => {
-    dropKeyedState()
-    disposeUnkeyed()
-    // Sweep whatever the per-item cleanups left behind (anchors, text nodes),
-    // exactly as the empty-list branch does — the range between the markers is
-    // this list's and nothing else's.
-    clearBetween(startMarker, tailMarker)
-    const cleanups: Cleanup[] = []
-    for (const vnode of newList) cleanups.push(mountVNode(vnode, liveParent, tailMarker))
-    unkeyedCleanups = cleanups
-  }
-
-  const e = effect(() => {
-    let newList: VNode[]
-    if (first !== undefined) {
-      newList = first.value
-      _replayReads(first.reads)
-      _releaseRun(first.run)
-      first = undefined
-    } else newList = accessor()
-    if (process.env.NODE_ENV !== 'production' && !_structuralDead.has(startMarker))
-      _structuralDead.set(startMarker, _frameReads()?.length === 0)
-    const n = newList.length
-    // Same untracking rationale as mountFor — see comment there. Child
-    // mounts via mountVNode must not re-track on this effect's run.
-    runUntracked(() => {
-      // Use the marker's LIVE parent, not the closure-captured `parent`: when
-      // this was created inside a DocumentFragment that mountFor later moved via
-      // `insertBefore(frag, tailMarker)`, the captured `parent` is a stale
-      // reference to the now-empty fragment. The markers moved with the
-      // fragment's contents, so `marker.parentNode` is the live parent. Fall back
-      // to `parent` only when the marker is detached (cleanup edge case).
-      const liveParent = tailMarker.parentNode ?? parent
-
-      const { order: newKeyOrder, keyed } = collectKeyOrder(newList)
-      if (keyed !== n) {
-        renderUnkeyed(newList, liveParent)
-        return
-      }
-      // Distinct keys actually reconciled. Equal to `n` for the dominant
-      // duplicate-free list; smaller when a key repeats, and every index-based
-      // pass below must be sized by THIS, not by the raw item count.
-      const m = newKeyOrder.length
-      // Fully keyed again (or still) — release anything the fallback owns
-      // before the keyed paths below repopulate the range.
-      disposeUnkeyed()
-
-      if (n === 0 && cache.size > 0) {
-        for (const entry of cache.values()) {
-          _emitCleanup()
-          ;(entry.cleanup as Cleanup)()
-        }
-        cache.clear()
-        currentKeyOrder = []
-        if (liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker) {
-          // Owns-parent bulk clear — the keyed-array sibling of mountFor's
-          // handleFastClear fast branch (same proof, same counter). NOTE the
-          // entry cleanups above may already have detached their own DOM
-          // (mountVNode cleanups remove their elements) — replaceChildren then
-          // clears only the leftovers (anchors) in one native call, still
-          // fewer ops than the per-node clearBetween walk.
-          ;(liveParent as Element).replaceChildren(startMarker, tailMarker)
-          if (process.env.NODE_ENV !== 'production')
-            _countSink.__pyreon_count__?.('runtime.mountFor.clearFast')
-        } else {
-          clearBetween(startMarker, tailMarker)
-        }
-        return
-      }
-
-      // Pure contiguous insertion (append / prepend / middle-insert with all old
-      // keys surviving in order) mounts the run and skips stale scan + reorder;
-      // the shared position/currentKeyOrder tail below still runs.
-      if (!tryContiguousInsertionKeyed(newList, n, newKeyOrder, liveParent)) {
-        // Pure-reorder skip (mirrors mountFor): mount new entries FIRST + count.
-        // Nothing added AND the cache already holds exactly the keyed count means a
-        // same-key-set reorder, so skip the newKey Set + O(m) stale scan.
-        const added = mountNewEntries(newList, liveParent)
-        if (added !== 0 || cache.size !== newKeyOrder.length) {
-          removeStaleEntries(new Set(newKeyOrder))
-        }
-
-        if (currentKeyOrder.length > 0 && m > 0) {
-          lis = forLisReorder(lis, m, newKeyOrder, cache, liveParent, tailMarker)
-        }
-      }
-
-      for (let i = 0; i < newKeyOrder.length; i++) {
-        const entry = cache.get(newKeyOrder[i] as string | number)
-        if (entry) entry.pos = i
-      }
-      currentKeyOrder = newKeyOrder
-    })
-  })
-  // Dev: name this boundary's graph node; its creation site is this file.
-  if (process.env.NODE_ENV !== 'production') {
-    if (_structuralDead.get(startMarker) === true) _rdDropBinding(e)
-    else _rdLabelBinding(e, 'list', parent, undefined, null)
-    _structuralDead.set(startMarker, false)
-  }
-
-  return () => {
-    e.dispose()
-    disposeUnkeyed()
-    for (const entry of cache.values()) {
-      _emitCleanup()
-      ;(entry.cleanup as Cleanup)()
-      entry.anchor.parentNode?.removeChild(entry.anchor)
-    }
-    cache.clear()
-    startMarker.parentNode?.removeChild(startMarker)
-    tailMarker.parentNode?.removeChild(tailMarker)
-  }
+function identityVNode(vnode: VNode): VNode {
+  return vnode
 }
 
 // ─── For — source-aware keyed reconciler ─────────────────────────────────────
@@ -662,9 +438,9 @@ interface ForEntry {
 /** Try small-k reorder; returns true if handled, false if LIS fallback needed. */
 function trySmallKReorder(
   n: number,
-  newKeys: (string | number)[],
-  currentKeys: (string | number)[],
-  cache: Map<string | number, ForEntry>,
+  newKeys: ListKey[],
+  currentKeys: ListKey[],
+  cache: Map<ListKey, ForEntry>,
   liveParent: Node,
   tailMarker: Comment,
 ): boolean {
@@ -678,7 +454,7 @@ function trySmallKReorder(
   }
   if (diffs.length > 0) smallKPlace(liveParent, diffs, newKeys, cache, tailMarker)
   for (const i of diffs) {
-    const cached = cache.get(newKeys[i] as string | number)
+    const cached = cache.get(newKeys[i] as ListKey)
     if (cached) cached.pos = i
   }
   return true
@@ -700,9 +476,9 @@ function trySmallKReorder(
  */
 function trySmallKPermutation(
   n: number,
-  newKeys: (string | number)[],
-  currentKeys: (string | number)[],
-  cache: Map<string | number, ForEntry>,
+  newKeys: ListKey[],
+  currentKeys: ListKey[],
+  cache: Map<ListKey, ForEntry>,
   liveParent: Node,
   tailMarker: Comment,
 ): 'done' | 'many' | 'no' {
@@ -734,7 +510,7 @@ function trySmallKPermutation(
   if (k > 0) smallKPlace(liveParent, diffs, newKeys, cache, tailMarker)
   for (let a = 0; a < k; a++) {
     const i = diffs[a] as number
-    const cached = cache.get(newKeys[i] as string | number)
+    const cached = cache.get(newKeys[i] as ListKey)
     if (cached) cached.pos = i
   }
   return 'done'
@@ -822,8 +598,8 @@ function applyForMoves(
 function forLisReorder(
   lis: LisState,
   n: number,
-  newKeys: (string | number)[],
-  cache: Map<string | number, ForEntry>,
+  newKeys: ListKey[],
+  cache: Map<ListKey, ForEntry>,
   liveParent: Node,
   tailMarker: Comment,
 ): LisState {
@@ -835,7 +611,7 @@ function forLisReorder(
   // the pos-refresh below all read them, so this replaces 3× Map.get(key) per
   // entry with 1× (a 1k swap drops ~2k key hashes per update).
   const entries = grown.entries
-  for (let i = 0; i < n; i++) entries[i] = cache.get(newKeys[i] as string | number)
+  for (let i = 0; i < n; i++) entries[i] = cache.get(newKeys[i] as ListKey)
 
   const lisLen = computeForLis(grown, n)
   markStayingEntries(grown, lisLen)
@@ -924,7 +700,7 @@ export function _takePendingForAdoption(): ForAdoption | null {
 
 export function mountFor<T>(
   source: () => readonly T[],
-  getKey: (item: T) => string | number,
+  getKey: (item: T) => ListKey,
   renderItem: (item: T) => import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
   parent: Node,
   anchor: Node | null,
@@ -947,10 +723,10 @@ export function mountFor<T>(
   }
   let pendingAdoption: ForAdoption | null = adoption ?? null
 
-  let cache = new Map<string | number, ForEntry>()
-  let currentKeys: (string | number)[] = []
+  let cache = new Map<ListKey, ForEntry>()
+  let currentKeys: ListKey[] = []
   // Allocated on the first update that removes keys — most lists never do.
-  let _reusableKeySet: Set<string | number> | null = null
+  let _reusableKeySet: Set<ListKey> | null = null
   let cleanupCount = 0
   // Per-update stamp + distinct-survivor count (see `mountNewForEntries`).
   let updateGen = 0
@@ -960,7 +736,7 @@ export function mountFor<T>(
   // `growLisArrays` allocates this list's own buffers (see EMPTY_LIS).
   let lis: LisState = EMPTY_LIS
 
-  const warnForKey = (seen: Set<string | number> | null, key: string | number) => {
+  const warnForKey = (seen: Set<ListKey> | null, key: ListKey) => {
     if (!seen) return
     if (process.env.NODE_ENV !== 'production' && key == null) {
       console.warn(
@@ -986,7 +762,7 @@ export function mountFor<T>(
    * same skip-the-duplicate semantics as `warnForKey`, minus the `add` — the
    * caller's `renderInto` inserts the key.
    */
-  const warnForKeyIn = (seen: Map<string | number, ForEntry>, key: string | number) => {
+  const warnForKeyIn = (seen: Map<ListKey, ForEntry>, key: ListKey) => {
     if (process.env.NODE_ENV !== 'production' && key == null) {
       console.warn(
         '[Pyreon] <For> `by` function returned null/undefined. ' +
@@ -1006,7 +782,7 @@ export function mountFor<T>(
   /** Render item into container, update cache+cleanupCount. */
   const renderInto = (
     item: T,
-    key: string | number,
+    key: ListKey,
     pos: number,
     container: Node,
     before: Node | null,
@@ -1096,7 +872,7 @@ export function mountFor<T>(
    *    subtree, `liveParent` is that subtree and the two shapes cost the same.
    */
   const handleFreshRender = (items: readonly T[], n: number, liveParent: Node) => {
-    const keys = new Array<string | number>(n)
+    const keys = new Array<ListKey>(n)
     // Duplicate detection reuses `cache` instead of a second `Set`. `cache` is
     // provably EMPTY here (this path only runs when `currentKeys.length === 0`,
     // and the one site that empties `currentKeys` resets `cache` on the line
@@ -1117,8 +893,8 @@ export function mountFor<T>(
     currentKeys = keys
   }
 
-  const collectNewKeys = (items: readonly T[], n: number): (string | number)[] => {
-    const newKeys = new Array<string | number>(n)
+  const collectNewKeys = (items: readonly T[], n: number): ListKey[] => {
+    const newKeys = new Array<ListKey>(n)
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
     }
@@ -1127,8 +903,8 @@ export function mountFor<T>(
     // reorder path allocates zero Set. The fresh-render path keeps its
     // load-bearing dedup, which DOES skip duplicates to prevent DOM corruption.
     if (process.env.NODE_ENV !== 'production') {
-      const _seenUpdate = new Set<string | number>()
-      for (let i = 0; i < n; i++) warnForKey(_seenUpdate, newKeys[i] as string | number)
+      const _seenUpdate = new Set<ListKey>()
+      for (let i = 0; i < n; i++) warnForKey(_seenUpdate, newKeys[i] as ListKey)
     }
     return newKeys
   }
@@ -1136,7 +912,7 @@ export function mountFor<T>(
   const handleReplaceAll = (
     items: readonly T[],
     n: number,
-    newKeys: (string | number)[],
+    newKeys: ListKey[],
     liveParent: Node,
   ) => {
     if (cleanupCount > 0) {
@@ -1170,13 +946,21 @@ export function mountFor<T>(
     } else {
       clearBetween(startMarker, tailMarker)
     }
+    // Duplicates are skipped first-wins and the kept keys compacted, exactly as
+    // in `handleFreshRender`: a second `renderInto` for a key would overwrite
+    // the first row's cache entry and strand its DOM and cleanup.
+    let w = 0
     for (let i = 0; i < n; i++) {
-      renderInto(items[i] as T, newKeys[i] as string | number, i, liveParent, tailMarker)
+      const key = newKeys[i] as ListKey
+      if (cache.has(key)) continue
+      renderInto(items[i] as T, key, w, liveParent, tailMarker)
+      newKeys[w++] = key
     }
+    newKeys.length = w
     currentKeys = newKeys
   }
 
-  const removeStaleForEntries = (newKeySet: Set<string | number>) => {
+  const removeStaleForEntries = (newKeySet: Set<ListKey>) => {
     for (const [key, entry] of cache) {
       if (newKeySet.has(key)) continue
       if (entry.cleanup) {
@@ -1216,7 +1000,7 @@ export function mountFor<T>(
    * anchor → drop from cache + decrement `cleanupCount`) so multi-node entries
    * behave exactly as on the general path.
    */
-  const tryContiguousRemoval = (n: number, newKeys: (string | number)[]): boolean => {
+  const tryContiguousRemoval = (n: number, newKeys: ListKey[]): boolean => {
     const oldLen = currentKeys.length
     if (n >= oldLen) return false // not a shrink — let the general path decide
 
@@ -1233,7 +1017,7 @@ export function mountFor<T>(
 
     // Unmount the removed run `currentKeys[p .. oldLen - s)`.
     for (let i = p; i < oldLen - s; i++) {
-      const key = currentKeys[i] as string | number
+      const key = currentKeys[i] as ListKey
       const entry = cache.get(key)
       if (!entry) continue
       if (entry.cleanup) {
@@ -1250,7 +1034,7 @@ export function mountFor<T>(
     // entries keep their pos (unchanged index). Keeping `pos === current index`
     // means the NEXT reorder's Tier-2 LIS fast path stays contiguous.
     for (let i = p; i < n; i++) {
-      const entry = cache.get(newKeys[i] as string | number)
+      const entry = cache.get(newKeys[i] as ListKey)
       if (entry) entry.pos = i
     }
     if (process.env.NODE_ENV !== 'production')
@@ -1295,7 +1079,7 @@ export function mountFor<T>(
   const tryContiguousInsertion = (
     items: readonly T[],
     n: number,
-    newKeys: (string | number)[],
+    newKeys: ListKey[],
     liveParent: Node,
   ): boolean => {
     const oldLen = currentKeys.length
@@ -1320,22 +1104,36 @@ export function mountFor<T>(
     const runEnd = n - s
     let before: Node = tailMarker
     if (s > 0) {
-      const suffixEntry = cache.get(newKeys[runEnd] as string | number)
+      const suffixEntry = cache.get(newKeys[runEnd] as ListKey)
       if (!suffixEntry) return false
       before = suffixEntry.anchor
     }
 
     // Mount the run `newKeys[p .. runEnd)` in place, before the suffix.
+    let dup = false
     for (let i = p; i < runEnd; i++) {
-      const key = newKeys[i] as string | number
-      if (cache.has(key)) continue // duplicate — first wins, like mountNewForEntries
+      const key = newKeys[i] as ListKey
+      if (cache.has(key)) {
+        dup = true // duplicate — first wins, like mountNewForEntries
+        continue
+      }
       renderInto(items[i] as T, key, i, liveParent, before)
     }
 
     // Refresh the shifted suffix's pos to its new indices `[runEnd .. n)`.
     for (let i = runEnd; i < n; i++) {
-      const entry = cache.get(newKeys[i] as string | number)
+      const entry = cache.get(newKeys[i] as ListKey)
       if (entry) entry.pos = i
+    }
+    if (dup) {
+      // A run key that is already cached repeats a survivor or an earlier run
+      // key. First wins: a repeat of a SUFFIX key first occurs here in the run,
+      // so that row has to move up to it — the "nothing moves" premise of this
+      // path is false. The pos values above follow DOM order (prefix, mounted
+      // run, suffix), so the general LIS can finish the job over the
+      // deduplicated order; the caller then stores that order as current.
+      dedupeKeys(newKeys)
+      lis = forLisReorder(lis, newKeys.length, newKeys, cache, liveParent, tailMarker)
     }
     if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('runtime.mountFor.insertFast')
@@ -1345,7 +1143,7 @@ export function mountFor<T>(
   const mountNewForEntries = (
     items: readonly T[],
     n: number,
-    newKeys: (string | number)[],
+    newKeys: ListKey[],
     liveParent: Node,
   ): number => {
     // New entries are physically mounted at the TAIL, but the LIS reorder reads
@@ -1379,7 +1177,7 @@ export function mountFor<T>(
     const gen = ++updateGen
     let distinct = 0
     for (let i = 0; i < n; i++) {
-      const e = cache.get(newKeys[i] as string | number)
+      const e = cache.get(newKeys[i] as ListKey)
       if (e !== undefined) {
         lastSurvivorIdx = i
         if (e.seen !== gen) {
@@ -1392,7 +1190,7 @@ export function mountFor<T>(
     const tailBase = currentKeys.length
     let added = 0
     for (let i = 0; i < n; i++) {
-      const key = newKeys[i] as string | number
+      const key = newKeys[i] as ListKey
       if (cache.has(key)) continue
       const pos = i > lastSurvivorIdx ? tailBase + added : -1
       renderInto(items[i] as T, key, pos, liveParent, tailMarker)
@@ -1428,9 +1226,9 @@ export function mountFor<T>(
     currentKeys = []
   }
 
-  const hasAnyKeptKey = (n: number, newKeys: (string | number)[]): boolean => {
+  const hasAnyKeptKey = (n: number, newKeys: ListKey[]): boolean => {
     for (let i = 0; i < n; i++) {
-      if (cache.has(newKeys[i] as string | number)) return true
+      if (cache.has(newKeys[i] as ListKey)) return true
     }
     return false
   }
@@ -1438,7 +1236,7 @@ export function mountFor<T>(
   const handleIncrementalUpdate = (
     items: readonly T[],
     n: number,
-    newKeys: (string | number)[],
+    newKeys: ListKey[],
     liveParent: Node,
   ) => {
     // Fast path: pure contiguous removal (the krausest `remove` op). A cheap
@@ -1476,10 +1274,19 @@ export function mountFor<T>(
     // Mounting before removing is order-independent: new and stale keys are
     // disjoint, and `removeStaleForEntries` skips any key in the newKey Set.
     const added = mountNewForEntries(items, n, newKeys, liveParent)
+    // Every distinct key is either a kept entry or a newly mounted one, so
+    // fewer than `n` of them means `newKeys` repeats a key. The DOM holds each
+    // key once (first wins), and every pass below addresses rows by index, so
+    // they must see the same deduplicated order — the raw one moved a
+    // duplicated row twice and left it at its LAST position.
+    if (keptDistinct + added !== n) {
+      dedupeKeys(newKeys)
+      n = newKeys.length
+    }
     if (added !== 0 || keptDistinct !== cache.size) {
-      const keySet = (_reusableKeySet ??= new Set<string | number>())
+      const keySet = (_reusableKeySet ??= new Set<ListKey>())
       keySet.clear()
-      for (let i = 0; i < newKeys.length; i++) keySet.add(newKeys[i] as string | number)
+      for (let i = 0; i < newKeys.length; i++) keySet.add(newKeys[i] as ListKey)
       removeStaleForEntries(keySet)
     }
 
@@ -1668,8 +1475,8 @@ function withRowScope(scope: EffectScope | null, cleanup: Cleanup | null): Clean
 function smallKPlace(
   parent: Node,
   diffs: number[],
-  newKeys: (string | number)[],
-  cache: Map<string | number, { anchor: Node; cleanup: Cleanup | null; end: Node | null }>,
+  newKeys: ListKey[],
+  cache: Map<ListKey, { anchor: Node; cleanup: Cleanup | null; end: Node | null }>,
   tailMarker: Comment,
 ): void {
   const diffSet = new Set(diffs)
@@ -1688,11 +1495,11 @@ function smallKPlace(
     }
 
     if (nextNonDiff >= 0) {
-      const nc = cache.get(newKeys[nextNonDiff] as string | number)?.anchor
+      const nc = cache.get(newKeys[nextNonDiff] as ListKey)?.anchor
       if (nc) cursor = nc
     }
 
-    const entry = cache.get(newKeys[i] as string | number)
+    const entry = cache.get(newKeys[i] as ListKey)
     if (!entry) {
       prevDiffIdx = i
       continue
