@@ -198,4 +198,61 @@ describe('MapChart states (real browser)', () => {
     expect(`${px[0]},${px[1]},${px[2]}`, 'Lesotho (value 100) is not South Africa\'s colour (value 1)').not.toBe(`${zaPx[0]},${zaPx[1]},${zaPx[2]}`)
     unmount()
   })
+
+  // Bridge seams show up through anti-aliasing at fractional scales. The proof is exact: render the same land WITHOUT the
+  // lake and require every pixel outside the lake (the bridge, the coast, the land between) to be identical, at device
+  // pixel ratios 1, 1.5 and 2 and roam zooms 0.7, 1 and 3.3; the lake itself must be empty. The tolerance is 4 levels
+  // of 255: where the bridge meets the coast two coverage contributions round differently by one to three levels, which
+  // is not a seam (a real seam, measured by the first version of this test along the bridge, was 20 to 180 levels).
+  for (const dpr of [1, 1.5, 2]) {
+    for (const zoom of [0.7, 1, 3.3]) {
+      it(`a lake leaves no seam at devicePixelRatio ${dpr}, zoom ${zoom}: the land outside it is the same, to within 4 of 255, as the same land without it`, async () => {
+        const real = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio')
+        Object.defineProperty(window, 'devicePixelRatio', { configurable: true, get: () => dpr })
+        try {
+          const solid: GeoJson = { ...FLORIDA_LAKE, features: [{ ...FLORIDA_LAKE.features[0]!, geometry: { type: 'Polygon', coordinates: [(FLORIDA_LAKE.features[0]!.geometry as { coordinates: number[][][] }).coordinates[0]!] } }] }
+          const draw = async (geo: GeoJson): Promise<{ c: HTMLCanvasElement; done: () => void }> => {
+            const m = mountInBrowser(() => MapChart({ animate: false, map: geo, values: { Florida: 5 }, width: 400, height: 300, options: { borderWidth: 0, zoom } }))
+            await flush()
+            return { c: m.container.querySelector('canvas')!, done: m.unmount }
+          }
+          const withLake = await draw(FLORIDA_LAKE)
+          const without = await draw(solid)
+          const w = withLake.c.width
+          const h = withLake.c.height
+          const a = withLake.c.getContext('2d')!.getImageData(0, 0, w, h).data
+          const b = without.c.getContext('2d')!.getImageData(0, 0, w, h).data
+          const layout = layoutGeo(FLORIDA_LAKE, { x: 0, y: 0, w: 400, h: 300 }, { padding: 4, zoom })
+          const lake = layout.regions[0]!.holes[0]!
+          const pad = 2.5
+          const x0 = (Math.min(...lake.map((p) => p.x)) - pad) * dpr
+          const x1 = (Math.max(...lake.map((p) => p.x)) + pad) * dpr
+          const y0 = (Math.min(...lake.map((p) => p.y)) - pad) * dpr
+          const y1 = (Math.max(...lake.map((p) => p.y)) + pad) * dpr
+          const bad: string[] = []
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              if (x >= x0 && x <= x1 && y >= y0 && y <= y1) continue
+              const i = (y * w + x) * 4
+              if (Math.max(Math.abs(a[i]! - b[i]!), Math.abs(a[i + 1]! - b[i + 1]!), Math.abs(a[i + 2]! - b[i + 2]!), Math.abs(a[i + 3]! - b[i + 3]!)) > 4) bad.push(`${x},${y}:${a[i]},${a[i + 1]},${a[i + 2]},${a[i + 3]}/${b[i]},${b[i + 1]},${b[i + 2]},${b[i + 3]}`)
+            }
+          }
+          expect(bad.length, `${bad.length} pixels differ outside the lake: ${bad.slice(0, 4).join(' | ')}`).toBe(0)
+          // The lake's centre is empty (alpha 0) with it, solid without it.
+          const cx = Math.round(((x0 + x1) / 2))
+          const cy = Math.round(((y0 + y1) / 2))
+          // (At a large zoom the lake can be panned off the canvas: then only the surrounding land is compared.)
+          if (cx >= 0 && cx < w && cy >= 0 && cy < h) {
+            expect(a[(cy * w + cx) * 4 + 3], 'lake centre with the lake').toBe(0)
+            expect(b[(cy * w + cx) * 4 + 3], 'lake centre without it').toBe(255)
+          }
+          withLake.done()
+          without.done()
+        } finally {
+          if (real !== undefined) Object.defineProperty(window, 'devicePixelRatio', real)
+          else delete (window as unknown as Record<string, unknown>).devicePixelRatio
+        }
+      })
+    }
+  }
 })

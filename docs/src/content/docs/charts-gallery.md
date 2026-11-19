@@ -154,7 +154,7 @@ The same kind of hierarchy drawn as nodes and links, left to right.
 
 ## A map
 
-A choropleth over GeoJSON: hover outlines a region, a click keeps it selected (`selectedMode`), the keyboard walks and selects the regions, and the tooltip reads the feature's own properties. The islands and the lake are inner rings, cut out of the fill.
+A choropleth over GeoJSON: hover outlines a region, a click keeps it selected (`selectedMode`), the keyboard walks and selects the regions, and the tooltip reads the feature's own properties. The enclave and the lake are inner rings, cut out of the fill. (Hover, selection and the tooltip formatter are web-only for now; native warns by name.)
 
 <Example file="./examples/charts/gallery-map" title="Map with holes, selection and feature properties" />
 
