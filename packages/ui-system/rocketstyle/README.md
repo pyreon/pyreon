@@ -1,5 +1,7 @@
 # @pyreon/rocketstyle
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Multi-dimensional component styling — states, sizes, variants, themes, light/dark, all cached.
 
 `@pyreon/rocketstyle` is the styling layer Pyreon's UI system builds on. Organize styles by named DIMENSIONS — `state` (`primary` / `danger` / `success`), `size` (`sm` / `md` / `lg`), `variant`, plus any custom dimension you declare — instead of flat boolean props. Each dimension is a chainable method (`.states({...})`, `.sizes({...})`); per-dimension values are themed via `.theme()` callbacks that receive `(theme, mode, css)`, with light/dark mode threaded through and pseudo-states (`hover` / `focus` / `pressed` / `active` / `disabled`) auto-detected. Built on `@pyreon/attrs` + `@pyreon/styler`. Per-definition WeakMap caches make per-mount cost near zero for same-definition components — verified 73% reduction in `styler.resolve` calls on real-app benchmarks.

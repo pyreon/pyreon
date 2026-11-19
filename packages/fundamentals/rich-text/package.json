@@ -79,6 +79,8 @@
     }
   },
   "pyreon": {
+    "stability": "stable",
+    "experimentalSubpaths": ["./webview", "./native-plugin"],
     "native": {
       "plugin": "./lib/native-plugin.js",
       "modules": [

@@ -1,5 +1,7 @@
 # @pyreon/zero-content
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Pyreon Zero's content layer. Compile-time `.md` / `.mdx` → Pyreon JSX, typed content collections (Standard Schema-compatible), convention-scanned MDX components.
 
 Tightly coupled to `@pyreon/zero` — that integration IS the value:

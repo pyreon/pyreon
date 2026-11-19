@@ -252,9 +252,11 @@ export {
 // NOT bundle eagerly into consumers' main chunk. Document's generic JSX
 // primitive names (`Text` / `List` / `Row` / `Table` / `Image` / …) are
 // deliberately NOT re-exported here because they collide with `@pyreon/
-// elements` / `@pyreon/coolgrid`; use the `Doc*`-named primitives from
-// `@pyreon/document-primitives` (re-exported below) for JSX, or import the
-// builder primitives directly from `@pyreon/document` when needed.
+// elements` / `@pyreon/coolgrid`; import the builder primitives directly
+// from `@pyreon/document` when needed. The `Doc*` JSX primitives
+// (`@pyreon/document-primitives`) and `@pyreon/connector-document` are
+// Experimental packages, so this Stable barrel does not re-export them
+// (`scripts/check-stability-tier.ts` enforces it): import them directly.
 
 export type {
   DocumentBuilder,
@@ -272,51 +274,6 @@ export {
   render,
   unregisterRenderer,
 } from '@pyreon/document'
-
-// ─── Document Primitives ─────────────────────────────────────────────────────
-// The `Doc*`-prefixed JSX primitives (the rocketstyle-based components that
-// render in the browser AND export to 20 formats via `extractDocNode`).
-
-export type {
-  DocumentExportOptions,
-  DocumentTheme,
-} from '@pyreon/document-primitives'
-export {
-  DocButton,
-  DocCode,
-  DocColumn,
-  DocDivider,
-  DocDocument,
-  DocHeading,
-  DocImage,
-  DocLink,
-  DocList,
-  DocListItem,
-  DocPage,
-  DocPageBreak,
-  DocQuote,
-  DocRow,
-  DocSection,
-  DocSpacer,
-  DocTable,
-  DocText,
-  DocumentPreview,
-  documentTheme,
-  extractDocNode,
-} from '@pyreon/document-primitives'
-
-// ─── Connector Document ──────────────────────────────────────────────────────
-// Bridge between rocketstyle / styled UI trees and `@pyreon/document`'s node
-// graph — used by export pipelines. Generic `DocChild`/`DocNode`/`NodeType`
-// types are NOT re-exported here to avoid duplicate-name surfaces against
-// `@pyreon/document`; import them from `@pyreon/document` directly.
-
-export type {
-  DocumentMarker,
-  ExtractOptions,
-  ResolvedStyles,
-} from '@pyreon/connector-document'
-export { extractDocumentTree, resolveStyles } from '@pyreon/connector-document'
 
 // ─── UI Core (provider surface) ──────────────────────────────────────────────
 // Only the high-value consumer-app surface: `PyreonUI` (the unified provider)

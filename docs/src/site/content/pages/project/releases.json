@@ -10,7 +10,7 @@
       "items": [
         {
           "title": "A change lands with a changeset",
-          "text": "Each pull request that changes a published package adds a changeset (`bun changeset`) describing the change for users. While Pyreon is `0.x`, a changeset is `minor` or `patch`, never `major`; a breaking change is written as `minor` and called out in the prose."
+          "text": "Each pull request that changes a published package adds a changeset (`bun changeset`) describing the change for users. While Pyreon is `0.x`, a changeset is `minor` or `patch`, never `major`; a breaking change is written as `minor` and called out in the prose. From 1.0, a breaking change to a Stable package is a `major`, and only Experimental packages and subpaths can break in a `minor`."
         },
         {
           "title": "Changesets collects them",

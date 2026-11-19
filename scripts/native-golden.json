@@ -157,7 +157,7 @@
       "warnings": 0
     },
     "fixture:every-primitive.tsx|kotlin": {
-      "sha": "e3f12ad44c2494cfdca59c609abf80ccc552d9348934a7322052f936c2e2f427",
+      "sha": "9885eafd4cae837bcdc8176bad182d38bfc3657610e94d40bb23b03714e87654",
       "bytes": 7490,
       "warnings": 0
     },
@@ -7412,13 +7412,13 @@
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|swift": {
-      "sha": "a392860408ad07a8a79f918253d53afa50bf8d2ba9088a30e6399d56a7343a31",
-      "bytes": 23636,
+      "sha": "9175754dd612bc8f93f4175306f9ff078b2011928114e8aeacb52a9040a0945b",
+      "bytes": 23613,
       "warnings": 0
     },
     "example:native-counter/Counter.tsx|kotlin": {
-      "sha": "e434c824c46ae9a5b9918a0a670b088e7d98880a5248061bf8d36e5275638d5f",
-      "bytes": 22394,
+      "sha": "4df67c9c9ecd07a296798e53cc63c5d568d3f84743f3d26c4d2cb0a7aa0f1cb4",
+      "bytes": 22367,
       "warnings": 0
     },
     "example:native-finance/FinanceApp.tsx|swift": {
@@ -7452,13 +7452,13 @@
       "warnings": 1
     },
     "example:native-showcase/TodayApp.tsx|swift": {
-      "sha": "8daa64b655f2f6c472c38e4411755ad8e4f71c285e2974d7ac7c7c88dc35fc40",
-      "bytes": 5630,
+      "sha": "8fd88beb427e5287c7a96e58bb1fad647bb96063e6b8bcf656880aff38995fe2",
+      "bytes": 5579,
       "warnings": 0
     },
     "example:native-showcase/TodayApp.tsx|kotlin": {
-      "sha": "48e21cac9d88fb835591245c7514f1730273c42800ad9d7f693bef773f70b8b7",
-      "bytes": 4794,
+      "sha": "40f7722867207bfc9e09e792370393242deede354c061f405df9bd5c90e9af4d",
+      "bytes": 4735,
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
