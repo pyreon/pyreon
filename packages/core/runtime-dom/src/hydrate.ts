@@ -401,14 +401,38 @@ function hydrateSoleAccessorChild(
 
     return cleanup
   }
-  // SSR rendered nothing into the element — no region to adopt. A client value
-  // that renders text is a divergence the mount below corrects: report it, as
-  // the adopting branch above does (#4419).
-  if ((typeof initial === 'string' && initial !== '') || typeof initial === 'number') {
-    warnHydrationMismatch('text', _childText(initial), '', `${path} > reactive`)
+  // SSR rendered nothing into the element — no region to adopt.
+  return mountOverEmpty(child, el, null, path)
+}
+
+/**
+ * Mount an accessor where the server rendered NOTHING (an empty `<!--$-->`
+ * range, or an empty element whose sole child it is) and report what the
+ * client rendered there instead. Any content is a divergence: text (#4419) and
+ * structural values alike (#4582: `{() => open() && <Panel/>}` with `open` false
+ * on the server and true on the client).
+ *
+ * The rule reads the DOM the mount produced, not the value, so it needs no
+ * per-shape knowledge: a component that renders `null`, an empty array, `''`,
+ * a portal (which leaves only a comment here) or an async component (which
+ * renders later) inserted no content and is not reported. The first element or
+ * non-empty text node is reported, once per range.
+ */
+function mountOverEmpty(child: () => VNodeChild, parent: Node, anchor: Node | null, path: string): Cleanup {
+  const before = anchor === null ? parent.lastChild : anchor.previousSibling
+  const cleanup = mountReactive(child, parent, anchor, mountChild)
+  for (let n = before === null ? parent.firstChild : before.nextSibling; n !== null && n !== anchor; n = n.nextSibling) {
+    if (n.nodeType === Node.ELEMENT_NODE) {
+      warnHydrationMismatch('tag', (n as Element).localName, '', `${path} > reactive`)
+      break
+    }
+    if (n.nodeType === Node.TEXT_NODE && (n as Text).data !== '') {
+      warnHydrationMismatch('text', (n as Text).data, '', `${path} > reactive`)
+      break
+    }
   }
 
-  return mountReactive(child, el, null, mountChild)
+  return cleanup
 }
 
 /**
@@ -779,13 +803,10 @@ function hydrateReactiveChild(
       }
 
       // General case — mount the live binding at the range position, then remove
-      // the SSR range, markers included. Reached with an EMPTY range: a client
-      // value that renders text is then a divergence (#4419).
-      if ((typeof initial === 'string' && initial !== '') || typeof initial === 'number') {
-        warnHydrationMismatch('text', _childText(initial), '', `${path} > reactive`)
-      }
+      // the SSR range, markers included. Reached with an EMPTY range, so any
+      // content the client renders is a divergence (`mountOverEmpty`).
       const marker = insertMarker(parent, domNode, 'pyreon')
-      const cleanup = mountReactive(child, parent, marker, mountChild)
+      const cleanup = mountOverEmpty(child, parent, marker, path)
       let cur: ChildNode | null = domNode
       while (cur) {
         const nx: ChildNode | null = cur === end ? null : cur.nextSibling
@@ -1362,13 +1383,16 @@ function hydrateMountSlot(
   // runtime-server elided the `<!--$-->` pair and the extent is the parent's
   // entire child list. See `_mountSlot` for why a `null` open provably means
   // SOLE rather than merely last.
+  const slotPath = process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot'
   if (open === null) {
     const first = parent.firstChild
     if (typeof children === 'function') {
       // SSR rendered nothing into the slot, so there is no region to adopt —
       // install the boundary a cold mount would have built, at the end of the
       // (empty) child list.
-      if (first === null) return mountReactive(children as () => VNodeChild, parent, null, mountChild)
+      if (first === null) {
+        return mountOverEmpty(children as () => VNodeChild, parent, null, slotPath)
+      }
       // Synthesize the close SSR elided so the shared adoption core runs on
       // exactly the shape it gets for a marked range — including the removal
       // contract, which a direct `hydrateChild` call does NOT carry: its
@@ -1377,14 +1401,7 @@ function hydrateMountSlot(
       const end = document.createComment('pyreon')
       parent.appendChild(end)
       const primed = primeAccessor(children as () => VNodeChild)
-      const cleanup = adoptReactiveRange(
-        primed.acc,
-        primed.initial,
-        parent,
-        first,
-        end,
-        process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
-      )
+      const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, end, slotPath)
       end.remove()
 
       return cleanup
@@ -1394,13 +1411,7 @@ function hydrateMountSlot(
     // cleanup would have to remove these nodes.
     const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
 
-    return hydrateChild(
-      children,
-      cursor,
-      parent,
-      null,
-      process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
-    )[0]
+    return hydrateChild(children, cursor, parent, null, slotPath)[0]
   }
   // A PARKED mid range (see `PARKED_RANGE` in template.ts): the verifier moved
   // this slot's server content out so the compiled refs after it resolved
@@ -1409,13 +1420,7 @@ function hydrateMountSlot(
   const parked = _takeParkedRange(open)
   if (parked !== null) parent.insertBefore(parked, open.nextSibling)
   if (typeof children === 'function') {
-    return hydrateChild(
-      children,
-      open,
-      parent,
-      null,
-      process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
-    )[0]
+    return hydrateChild(children, open, parent, null, slotPath)[0]
   }
   // Locate the range end (depth-aware — accessor ranges nest).
   let close: ChildNode | null = null
@@ -1441,13 +1446,7 @@ function hydrateMountSlot(
   }
   const first = open.nextSibling
   const cursor = first === close ? null : first!.nodeType === 1 ? first : firstReal(first)
-  const [cleanup] = hydrateChild(
-    children,
-    cursor,
-    parent,
-    close,
-    process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot',
-  )
+  const [cleanup] = hydrateChild(children, cursor, parent, close, slotPath)
   open.remove()
   close.remove()
 
