@@ -24,11 +24,11 @@ export function provideCommands(commands: Commands): void {
 }
 
 /**
- * Register a command for the lifetime of the component: when it unmounts the command and its shortcut go away, so the
+ * Register a command, a list of them, or a function that returns one, for the lifetime of the component: when it unmounts the command and its shortcut go away, so the
  * list always matches what is on screen. Pass a function to read signals: its fields update in place and the shortcut
  * is re-registered only when it changed.
  */
-export function useCommand(command: Command | (() => Command)): void {
+export function useCommand(command: Command | readonly Command[] | (() => Command)): void {
   useCommands().register(command)
 }
 

@@ -65,8 +65,9 @@ commands.search('np')[0]!.ranges   // => [[0, 1], [4, 5]]
 | [`CommandEmpty`](#commandempty-component-experimental) | component | Shown when a query or a page has no rows (and nothing is loading). |
 | [`CommandLoading`](#commandloading-component-experimental) | component | Shown while an async source or a run is pending (hidden from assistive technology: the live region says it). |
 | [`usePalette`](#usepalette-function-experimental) | function | The palette of the nearest `<CommandPalette>`, for parts of your own. |
+| [`routeCommands`](#routecommands-function-experimental) | function | Navigation commands from the routes you gave `createRouter` (import `@pyreon/command/router`): one per route you can go… |
 | [`useCommands`](#usecommands-function-experimental) | function | The registry provided by the nearest `provideCommands`, or the app-wide default registry. |
-| [`useCommand`](#usecommand-function-experimental) | function | Register a command for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the… |
+| [`useCommand`](#usecommand-function-experimental) | function | Register a command, a list, or a function that returns a command, for the lifetime of the component: it and its shortcut… |
 | [`provideCommands`](#providecommands-function-experimental) | function | Make a registry the one used by this component and everything below it. |
 | [`isCommandEnabled`](#iscommandenabled-function-experimental) | function | Whether a command is enabled: `enabled` is a boolean or a function, and absent means enabled. |
 | [`formatShortcut`](#formatshortcut-function-experimental) | function | A shortcut as the user reads it on this platform (`@pyreon/hotkeys` `formatCombo`): `mod+k` is "⌘+K" on macOS and… |
@@ -77,6 +78,7 @@ commands.search('np')[0]!.ranges   // => [[0, 1], [4, 5]]
 | [`Match`](#match-type-experimental) | type | One search result. |
 | [`Palette`](#palette-type-experimental) | type | What `createPalette` returns. |
 | [`ResultItem`](#resultitem-type-experimental) | type | One row of the list, with the ranges to highlight and the shortcuts as the user reads them. |
+| [`RouteLike`](#routelike-type-experimental) | type | The part of a `@pyreon/router` route record that `routeCommands` reads. |
 | [`RunContext`](#runcontext-type-experimental) | type | What a command's `run` receives. |
 
 ## API
@@ -455,6 +457,24 @@ typeof usePalette
 
 ---
 
+### `routeCommands` `function` — **experimental**
+
+```ts
+(routes: RouteLike[], options: { navigate, filter?, title?, group?, keywords?, id? }) => Command[]
+```
+
+Navigation commands from the routes you gave `createRouter` (import `@pyreon/command/router`): one per route you can go to without more information; a path with a parameter or a wildcard, and a redirect, are left out, and a child path is joined to its parent. The router does not expose its route table, so this takes the same array; `navigate` is `router.push`. The title is `meta.title`, else the name or the last segment made readable, "Home" for the root; the path is always a keyword.
+
+**Example**
+
+```tsx
+const routes = [{ path: '/', name: 'home' }, { path: '/settings', meta: { title: 'Settings' }, children: [{ path: 'profile' }, { path: ':section' }] }, { path: '/users/:id' }]
+routeCommands(routes, { navigate: () => {} }).map((c) => c.id)   // => ['route:/', 'route:/settings', 'route:/settings/profile']
+routeCommands(routes, { navigate: () => {}, filter: (r) => r.path !== '/' }).map((c) => c.title)   // => ['Settings', 'Profile']
+```
+
+---
+
 ### `useCommands` `function` — **experimental**
 
 ```ts
@@ -474,10 +494,10 @@ typeof useCommands   // => 'function'
 ### `useCommand` `function` — **experimental**
 
 ```ts
-(command | () => command) => void
+(command | command[] | () => command) => void
 ```
 
-Register a command for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed.
+Register a command, a list, or a function that returns a command, for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed.
 
 **Example**
 
@@ -643,6 +663,22 @@ One row of the list, with the ranges to highlight and the shortcuts as the user 
 
 ```tsx
 const rows: readonly ResultItem[] = createPalette({ hotkey: false }).results()
+```
+
+---
+
+### `RouteLike` `type` — **experimental**
+
+```ts
+interface RouteLike { path: string; name?: string; meta?: { title? }; redirect?: unknown; children?: RouteLike[] }
+```
+
+The part of a `@pyreon/router` route record that `routeCommands` reads. A `RouteRecord` fits.
+
+**Example**
+
+```tsx
+const route: RouteLike = { path: '/', meta: { title: 'Home' } }
 ```
 
 ---

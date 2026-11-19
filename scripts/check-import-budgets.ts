@@ -227,6 +227,14 @@ export const SCENARIOS: Scenario[] = [
     imports: ['CommandPalette'],
   },
   {
+    // Navigation commands from a route table: its own entry, no dependency, nothing of the palette.
+    id: '@pyreon/command::router',
+    pkg: '@pyreon/command',
+    dir: 'fundamentals/command',
+    entry: 'router.js',
+    imports: ['routeCommands'],
+  },
+  {
     // Locks the import-chosen drag preview: a plain draggable must not carry
     // pdnd's preview utilities (`setCustomNativeDragPreview` + offset presets),
     // which `dragPreview()` brings in only when used.

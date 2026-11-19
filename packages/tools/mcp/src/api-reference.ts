@@ -7343,6 +7343,14 @@ export const Busy = () => <CommandLoading />`,
     notes: '[EXPERIMENTAL] The palette of the nearest `<CommandPalette>`, for parts of your own. Added in v0.53.0.',
   },
 
+  'command/routeCommands': {
+    signature: '(routes: RouteLike[], options: { navigate, filter?, title?, group?, keywords?, id? }) => Command[]',
+    example: `const routes = [{ path: '/', name: 'home' }, { path: '/settings', meta: { title: 'Settings' }, children: [{ path: 'profile' }, { path: ':section' }] }, { path: '/users/:id' }]
+routeCommands(routes, { navigate: () => {} }).map((c) => c.id)   // => ['route:/', 'route:/settings', 'route:/settings/profile']
+routeCommands(routes, { navigate: () => {}, filter: (r) => r.path !== '/' }).map((c) => c.title)   // => ['Settings', 'Profile']`,
+    notes: '[EXPERIMENTAL] Navigation commands from the routes you gave `createRouter` (import `@pyreon/command/router`): one per route you can go to without more information; a path with a parameter or a wildcard, and a redirect, are left out, and a child path is joined to its parent. The router does not expose its route table, so this takes the same array; `navigate` is `router.push`. The title is `meta.title`, else the name or the last segment made readable, "Home" for the root; the path is always a keyword. Added in v0.53.0.',
+  },
+
   'command/useCommands': {
     signature: '() => Commands',
     example: `typeof useCommands   // => 'function'`,
@@ -7350,9 +7358,9 @@ export const Busy = () => <CommandLoading />`,
   },
 
   'command/useCommand': {
-    signature: '(command | () => command) => void',
+    signature: '(command | command[] | () => command) => void',
     example: `typeof useCommand   // => 'function'`,
-    notes: '[EXPERIMENTAL] Register a command for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed. Added in v0.53.0.',
+    notes: '[EXPERIMENTAL] Register a command, a list, or a function that returns a command, for the lifetime of the component: it and its shortcut go away on unmount, so the list matches the screen. A function reads signals; its fields update in place and the shortcut is re-registered only when it changed. Added in v0.53.0.',
   },
 
   'command/provideCommands': {
@@ -7413,6 +7421,12 @@ export const Busy = () => <CommandLoading />`,
     signature: 'interface ResultItem { id; command; title; subtitle; ranges; subtitleRanges; group; enabled; disabledReason; recent; hasPage; shortcuts; index }',
     example: 'const rows: readonly ResultItem[] = createPalette({ hotkey: false }).results()',
     notes: '[EXPERIMENTAL] One row of the list, with the ranges to highlight and the shortcuts as the user reads them. Added in v0.53.0.',
+  },
+
+  'command/RouteLike': {
+    signature: 'interface RouteLike { path: string; name?: string; meta?: { title? }; redirect?: unknown; children?: RouteLike[] }',
+    example: `const route: RouteLike = { path: '/', meta: { title: 'Home' } }`,
+    notes: '[EXPERIMENTAL] The part of a `@pyreon/router` route record that `routeCommands` reads. A `RouteRecord` fits. Added in v0.53.0.',
   },
 
   'command/RunContext': {

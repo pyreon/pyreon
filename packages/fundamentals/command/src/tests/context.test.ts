@@ -78,6 +78,18 @@ describe('useCommand and the registry context', () => {
     expect(ids()).toEqual(['a-only'])
   })
 
+  it('accepts a list, all removed together with the component', () => {
+    const Page = (): unknown => {
+      useCommand([{ id: 'one', title: 'One', shortcut: 'ctrl+1' }, { id: 'two', title: 'Two' }])
+      return h('i', null)
+    }
+    const un = mountApp(h(Page as never, null))
+    expect(useCommands().commands().map((c) => c.id)).toEqual(['one', 'two'])
+    un()
+    expect(useCommands().commands()).toEqual([])
+    expect(getRegisteredHotkeys()).toHaveLength(0)
+  })
+
   it('accepts a function: fields follow signals, the shortcut moves only when it changed', () => {
     const label = signal('Save draft')
     const key = signal('ctrl+1')

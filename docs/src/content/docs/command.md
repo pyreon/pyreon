@@ -7,7 +7,7 @@ description: A command palette for Pyreon — a fuzzy matcher, a registry of com
 
 `@pyreon/command` is the part of a command palette that is the same in every app: finding an action by typing a few letters of it, knowing which actions exist on the current screen, and binding them to keys. The matcher and the registry are plain functions and signals; the palette state and the components are built on them.
 
-> **Experimental.** This page covers the matcher, the registry (shortcuts, recents, nested pages), the palette state and the dialog components. Recipes, the integrations and the "coming from" table follow. Typo tolerance is not part of v0.
+> **Experimental.** This page covers the matcher, the registry (shortcuts, recents, nested pages), the palette state, the dialog components, recipes, the router and i18n integrations, and a "coming from" table. Typo tolerance is not part of v0.
 
 ## Installation
 
@@ -22,6 +22,7 @@ bun add @pyreon/command @pyreon/reactivity @pyreon/core
 | `@pyreon/command/core` | the matcher: `fuzzyMatch`, `rank`, `createRanker`. Pure, no dependencies. |
 | `@pyreon/command` | the core plus the registry (`createCommands`, `useCommands`, `useCommand`, `provideCommands`, `formatShortcut`) and the palette state (`createPalette`). |
 | `@pyreon/command/components` | `<CommandPalette>` and its parts. Needs `@pyreon/core`. |
+| `@pyreon/command/router` | `routeCommands`: navigation commands from your route table. No dependencies. |
 | `@pyreon/command/style.css` | an optional default look. |
 
 ## The matcher
@@ -448,6 +449,256 @@ export const Czech = () => (
 ### Styling
 
 `@pyreon/command/style.css` is a small default look (system colours, logical properties so it mirrors in right-to-left text, larger targets on touch, an opening animation only when the user has not asked for reduced motion). Or style the classes: `pcmd` (the dialog), `pcmd-panel`, `pcmd-header`, `pcmd-input`, `pcmd-btn` (`pcmd-back`, `pcmd-close`), `pcmd-list`, `pcmd-group`, `pcmd-heading`, `pcmd-item`, `pcmd-title`, `pcmd-subtitle`, `pcmd-reason`, `pcmd-mark`, `pcmd-kbd`, `pcmd-empty`, `pcmd-loading`. State is on data attributes: `data-active`, `data-disabled`, `data-recent`, `data-page`, `data-running`. Colours and sizes are custom properties on `.pcmd` (`--pcmd-bg`, `--pcmd-fg`, `--pcmd-active-bg`, `--pcmd-width`, ...).
+
+## Recipes
+
+### App-wide actions
+
+Actions that exist on every screen belong to one place near the root. `useCommand` in the root component registers them for as long as the app lives:
+
+```tsx
+import { useCommand } from '@pyreon/command'
+import { CommandPalette } from '@pyreon/command/components'
+import '@pyreon/command/style.css'
+
+export function App(props: { children?: unknown }) {
+  useCommand([
+    { id: 'toggle-theme', title: 'Toggle dark mode', shortcut: 'mod+shift+l', keywords: ['theme', 'light'], run: () => toggleTheme() },
+    { id: 'sign-out', title: 'Sign out', keywords: ['logout'], run: () => signOut() },
+  ])
+
+  return (
+    <>
+      {props.children}
+      <CommandPalette />
+    </>
+  )
+}
+```
+
+(`useCommand` takes one command or a function; for a list call `useCommands().register(list)`, which is removed on unmount in the same way.)
+
+### Commands that come and go with the screen
+
+Register a screen's commands in the screen. When the user leaves, they go, with their shortcuts; the palette never offers an action that cannot run:
+
+```tsx
+import { useCommand } from '@pyreon/command'
+
+export function InvoicePage(props: { invoice: { id: string; paid: boolean } }) {
+  useCommand(() => ({
+    id: 'invoice.markPaid',
+    title: 'Mark invoice as paid',
+    group: 'invoice',
+    shortcut: 'mod+shift+p',
+    enabled: !props.invoice.paid,
+    disabledReason: 'Already paid',
+    run: () => markPaid(props.invoice.id),
+  }))
+
+  return <h1>Invoice {props.invoice.id}</h1>
+}
+```
+
+Because the function reads `props.invoice.paid`, the command is hidden (or shown with its reason, with `showDisabled`) the moment the invoice is paid, and its shortcut is released. Declare the group once where the registry is made: `createCommands({ groups: [{ id: 'invoice', title: 'Invoice' }] })`, or from the screen: `useCommands().registerGroup({ id: 'invoice', title: 'Invoice' })`.
+
+### A nested page: "Change theme…"
+
+```tsx
+import { createCommands } from '@pyreon/command'
+
+const commands = createCommands()
+
+commands.register({
+  id: 'theme',
+  title: 'Change theme…',
+  keywords: ['appearance', 'colour'],
+  children: [
+    { id: 'theme.light', title: 'Light', run: () => setTheme('light') },
+    { id: 'theme.dark', title: 'Dark', run: () => setTheme('dark') },
+    { id: 'theme.system', title: 'Match the system', run: () => setTheme('system') },
+  ],
+})
+```
+
+Enter on "Change theme…" opens the page with an empty query; Escape or Backspace on an empty query goes back and restores what was typed. `palette.open('theme')` opens straight at the page, for a "Theme" button: `<button onClick={() => palette.open('theme')}>Theme</button>`.
+
+### Searching a server: "Search customers…"
+
+Shown under "Async sources" above. The one thing to remember is `signal`: pass it to `fetch` so a superseded query is cancelled on the wire, and not only ignored.
+
+### Showing the shortcuts
+
+A palette row shows its shortcuts (`item.shortcuts`, already formatted for the platform). For a "Keyboard shortcuts" page, list the registry:
+
+```tsx
+import { shortcutKeys, useCommands } from '@pyreon/command'
+
+export function ShortcutsHelp() {
+  const commands = useCommands()
+
+  return (
+    <dl>
+      {() =>
+        commands
+          .commands()
+          .filter((c) => c.shortcut !== undefined)
+          .map((c) => (
+            <>
+              <dt>{typeof c.title === 'function' ? c.title() : c.title}</dt>
+              <dd>
+                {shortcutKeys(typeof c.shortcut === 'string' ? c.shortcut : (c.shortcut?.[0] ?? '')).map((press) => (
+                  <kbd>{press.join(' + ')}</kbd>
+                ))}
+              </dd>
+            </>
+          ))
+      }
+    </dl>
+  )
+}
+```
+
+`formatShortcut` / `shortcutKeys` read the platform, so render them on the client (inside a reactive accessor, or after mount), not into server-rendered markup: "⌘" and "Ctrl" differ between the server's guess and the user's machine.
+
+### Recents that survive a reload
+
+```ts
+import { createCommands } from '@pyreon/command'
+
+export const commands = createCommands({
+  recents: {
+    max: 6,
+    storage: {
+      get: () => JSON.parse(localStorage.getItem('command-recents') ?? 'null') as string[] | null,
+      set: (ids) => localStorage.setItem('command-recents', JSON.stringify(ids)),
+    },
+  },
+})
+```
+
+The storage is read once when the registry is made and written after each successful run. Ids of commands that are not registered right now stay in the list (the screen may come back) and are simply not shown. With `emptyQuery: 'recents'` (the default) they open the palette.
+
+### A palette from a button, and a custom layout
+
+```tsx
+import { createPalette } from '@pyreon/command'
+import { CommandInput, CommandList, CommandPalette } from '@pyreon/command/components'
+
+export function Header() {
+  const palette = createPalette({ hotkey: 'mod+k', placeholder: 'Search or jump to…' })
+
+  return (
+    <header>
+      <button type="button" onClick={() => palette.open()}>
+        Search <kbd>⌘K</kbd>
+      </button>
+      <CommandPalette palette={palette}>
+        <CommandInput />
+        <CommandList />
+      </CommandPalette>
+    </header>
+  )
+}
+```
+
+`createPalette` inside a component is disposed with it. A button that opens the palette needs no special wiring: focus returns to it when the palette closes.
+
+### Testing
+
+The palette is state, so most of it needs no browser:
+
+```ts
+import { createCommands, createPalette } from '@pyreon/command'
+
+const commands = createCommands()
+commands.register({ id: 'save', title: 'Save', run: () => {} })
+
+const palette = createPalette({ commands, hotkey: false })
+palette.open()
+palette.setQuery('sav')
+palette.results().map((row) => row.id) // ['save']
+palette.announcement() // '1 result'
+```
+
+Use `hotkey: false` in tests so no key listener is installed, and `dispose()` the palette (and the registry) in `afterEach`. Anything that depends on layout, focus or the top layer (the dialog) needs a real browser.
+
+## Integrations
+
+### Router
+
+`@pyreon/command/router` makes navigation commands from the routes you gave `createRouter`. The router does not expose its route table, so the helper takes the same array:
+
+```tsx
+import { createCommands } from '@pyreon/command'
+import { routeCommands } from '@pyreon/command/router'
+import { createRouter } from '@pyreon/router'
+
+const routes = [
+  { path: '/', component: Home, name: 'home' },
+  { path: '/settings', component: Settings, meta: { title: 'Settings' }, children: [{ path: 'profile', component: Profile }] },
+  { path: '/users/:id', component: User },
+]
+const router = createRouter({ routes })
+
+export const commands = createCommands({ groups: [{ id: 'go', title: 'Go to' }] })
+commands.register(routeCommands(routes, { navigate: (path) => router.push(path), group: 'go' }))
+```
+
+It makes a command for every route that can be reached without more information: `/users/:id`, wildcards and redirects are left out, and a child's path is joined to its parent's (`/settings/profile`). The title is `meta.title`, else the route name or last segment made readable ("Billing details"), "Home" for `/`; the path is a keyword, so typing `/settings` works. `filter` leaves a route out (an admin area), `title` replaces the title (return a function to follow the locale), `keywords` adds match terms and `id` changes the command id. For a route with a parameter, write the command yourself: it is a function of data the palette does not have.
+
+### i18n
+
+A title (and `subtitle`, and `disabledReason`) can be a function, which is all `@pyreon/i18n` needs:
+
+```tsx
+import { createI18n } from '@pyreon/i18n'
+import { createCommands } from '@pyreon/command'
+
+const i18n = createI18n({
+  locale: 'en',
+  messages: {
+    en: { save: 'Save document' },
+    cs: { save: 'Uložit dokument' },
+  },
+})
+
+export const commands = createCommands()
+commands.register({ id: 'save', title: () => i18n.t('save'), run: () => save() })
+
+i18n.locale.set('cs')
+commands.search('ulozit')[0]?.title // 'Uložit dokument'
+```
+
+Switching the locale re-ranks and re-renders an open palette: the same query finds the other title, the highlights move, the page title changes, and the palette stays open. (A test in the package does exactly this with three locales.) Matching ignores accents, so "ulozit" finds "Uložit". Translate the palette's own words with `messages` (see "Words"). Keep `keywords` in the languages people type.
+
+## Notes
+
+- **A palette is a front door, not a permission check.** `enabled` hides a command; it does not stop the code behind it. Check on the server.
+- **Do not put secrets in titles or subtitles.** The list is on screen and in the live region.
+- **Dangerous commands** (delete, sign out everywhere) are better as a page with a confirmation row ("Delete project…" opens "Really delete?") than as a single Enter.
+- **Keep ids stable.** Recents and shadowing are by id; `route:/settings` today should be `route:/settings` next year.
+
+## Coming from
+
+The names differ; the ideas map.
+
+| | cmdk | kbar | ninja-keys | `@pyreon/command` |
+| --- | --- | --- | --- | --- |
+| What a command is | JSX (`<Command.Item>`) | an action object | an item in a `data` array | an object: `{ id, title, ... }` |
+| Where commands live | in the tree you render | `KBarProvider actions` or `useRegisterActions` | the `data` property of the element | a registry; `useCommand` registers for a component's life |
+| Per-screen commands | render the items on that screen | `useRegisterActions(actions, deps)` | set `data` again | `useCommand` (removed on unmount) |
+| Keyboard shortcut of a command | not included | `shortcut` (a sequence of keys) | `hotkey` | `shortcut`, registered through `@pyreon/hotkeys` |
+| Nested pages | state of your own, `pages` | `parent` ids | `children` and `parent` | `children` (a list) |
+| Async results | `shouldFilter={false}` and your own state | `useRegisterActions` with fetched actions | set `data` | `children` as a function: debounced, aborted, latest wins |
+| Matching | built in (a scoring filter) | built in (a fuzzy library) | built in (a fuzzy library) | `fuzzyMatch`: accents, kana, words in any order, ranges for highlighting; `filter` replaces it |
+| Grouping | `<Command.Group heading>` | `section` | `section` | `group` (declared once, in order) |
+| Recents | yours | yours | yours | built in, bounded, persistable |
+| Dialog | `<Command.Dialog>` (a dialog library) | portal and animator parts | the element itself | a native modal `<dialog>` |
+| Styling | unstyled, data attributes | unstyled | CSS variables | unstyled parts, `pcmd-*` classes, data attributes, an optional stylesheet |
+| Framework | React | React | any (a web component) | Pyreon (the registry and matcher are plain functions) |
+
+If you used cmdk: a `<Command.Item onSelect>` becomes a registered `{ run }`, and `value` is the title plus `keywords`. If you used kbar: `name` is `title`, `section` is `group`, `perform` is `run`, `parent` becomes `children` on the parent, and a sequence like `['g', 'h']` is the hotkeys syntax `'g h'`. If you used ninja-keys: `hotkey` is `shortcut` (`'cmd+k'` is `'mod+k'`), `handler` is `run`, `section` is `group`, `mdIcon`/`icon` is `icon`.
 
 ## Server rendering
 

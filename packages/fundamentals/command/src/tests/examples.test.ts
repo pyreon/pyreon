@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
 import * as components from '../components'
+import * as routerEntry from '../router'
 import * as command from '../index'
 import manifest from '../manifest'
 
@@ -38,7 +39,7 @@ function lines(example: string): { code: string; expected: string }[] {
   return out
 }
 
-const scope: Record<string, unknown> = { ...command, ...components }
+const scope: Record<string, unknown> = { ...command, ...components, ...routerEntry }
 
 describe('examples run and print what they claim', () => {
   const fromManifest = manifest.api.filter((a) => a.kind !== 'type' && a.example !== undefined).flatMap((a) => lines(a.example!).map((l) => [`${a.name}: ${l.code}`, a.name, l] as const))
@@ -108,6 +109,7 @@ describe('the published shape', () => {
       'shortcut-binding.ts': ['@pyreon/hotkeys', '@pyreon/reactivity'],
       'shortcuts.ts': ['@pyreon/hotkeys'],
       'source.ts': ['@pyreon/reactivity'],
+      'router.ts': [],
       'palette.ts': ['@pyreon/hotkeys', '@pyreon/reactivity'],
       'palette-actions.ts': ['@pyreon/reactivity'],
       'palette-core.ts': ['@pyreon/reactivity'],
@@ -167,6 +169,7 @@ describe('the published shape', () => {
 
     expect(all('core.js')).toEqual([])
     expect(all('index.js')).toEqual(['@pyreon/core', '@pyreon/hotkeys', '@pyreon/reactivity'])
+    expect(all('router.js')).toEqual([])
     expect(all('components.js')).toEqual(['@pyreon/core', '@pyreon/core/jsx-runtime', '@pyreon/hotkeys', '@pyreon/reactivity'])
   })
 })
