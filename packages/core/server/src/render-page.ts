@@ -37,8 +37,10 @@
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { renderWithHead } from '@pyreon/head/ssr'
+import type { Router } from '@pyreon/router'
 import {
   getRedirectInfo,
+  preloadRoute,
   safeRedirectLocation,
   RouterProvider,
   serializeLoaderData,
@@ -48,24 +50,11 @@ import { runWithRequestContext } from '@pyreon/runtime-server'
 import { provideRequestLocals, useRequestLocals } from './middleware'
 
 /**
- * Structural minimum of the router surface `renderPage` touches. Both
- * `createRouter(...)`'s concrete instance and zero's `createApp(...).router`
- * satisfy it; using the structural shape avoids coupling to the `Router<T>`
- * generic at this layer.
+ * The router `renderPage` renders against: `createRouter(...)`'s instance or
+ * zero's `createApp(...).router`. `preloadRoute` (loaders) needs the full
+ * router, so this is the public `Router` type.
  */
-export interface RenderablePageRouter {
-  preload(
-    path: string,
-    request?: Request,
-    options?: { skipLoaders?: boolean },
-  ): Promise<void>
-  currentRoute(): {
-    matched?: ReadonlyArray<{ component?: unknown }>
-    isNotFound?: boolean
-    /** The matched chain's merged meta (leaf wins); `hydrate` is read from it. */
-    meta?: Readonly<Record<string, unknown>>
-  }
-}
+export type RenderablePageRouter = Router
 
 /**
  * How the browser takes over a page: `'app'` (the default) hydrates the whole
@@ -117,7 +106,7 @@ export function renderModulePreloads(hrefs: readonly string[] = []): string {
 
 export interface RenderPageOptions {
   /**
-   * The incoming request (runtime SSR). Forwarded to `router.preload` so
+   * The incoming request (runtime SSR). Forwarded to `preloadRoute` so
    * loaders can read cookies / auth headers and `throw redirect()` BEFORE
    * the layout renders. Omit for build-time (SSG) renders.
    */
@@ -153,6 +142,12 @@ export interface RenderPageOptions {
    * `notFoundComponent` chain, which DOES match).
    */
   bailOnUnmatched?: boolean
+  /**
+   * Called once the preload (lazy route components and loaders) has settled,
+   * just before the render. Zero's dev SSR uses it to tell a loader failure
+   * from a render failure.
+   */
+  onPreloaded?: () => void
 }
 
 export type RenderPageResult =
@@ -193,7 +188,7 @@ export type RenderPageResult =
  * Render one page to composable parts. See the module docstring for what
  * belongs here vs in the callers.
  *
- * Runs the WHOLE sequence — including `router.preload` — inside
+ * Runs the WHOLE sequence — including `preloadRoute` — inside
  * `runWithRequestContext`, matching the production handler's semantic
  * (loaders observe per-request context/store isolation). A preload
  * rejection that is not a `redirect()` rethrows to the caller's error
@@ -209,11 +204,9 @@ export async function renderPage(
     if (options.locals) provideRequestLocals(options.locals)
 
     try {
-      await router.preload(
-        path,
-        options.request,
-        options.skipLoaders === true ? { skipLoaders: true } : undefined,
-      )
+      if (options.skipLoaders === true) await router.preloadComponents(path)
+      else await preloadRoute(router, path, options.request)
+      options.onPreloaded?.()
     } catch (err) {
       const info = getRedirectInfo(err)
       if (info) {

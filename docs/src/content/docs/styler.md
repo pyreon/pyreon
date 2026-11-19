@@ -341,7 +341,7 @@ const PureStyled = styled('div', {
 
 ### `layer` — CSS `@layer` wrapping
 
-`styled(tag, { layer })` wraps every rule this component generates in `@layer <name> { ... }`. This is how the framework's own UI layers avoid specificity wars: `@pyreon/elements` inserts its base layout rules under `layer: 'elements'`, and `@pyreon/rocketstyle` inserts theme rules under `layer: 'rocketstyle'` — the framework declares the cascade order once (`@layer elements, rocketstyle;`), so a rocketstyle theme rule always beats an Elements base rule regardless of source order or selector specificity.
+`styled(tag, { layer })` wraps every rule this component generates in `@layer <name> { ... }`. This is how the framework's own UI layers avoid specificity wars: `@pyreon/elements` inserts its base layout rules under `layer: 'elements'`, `@pyreon/rocketstyle` inserts theme rules under `layer: 'rocketstyle'`, and a per-instance `css` prop on an Elements primitive lands in `instance`. The framework declares the cascade order once (`@layer elements, rocketstyle, instance;`), so a rocketstyle theme rule always beats an Elements base rule, and a `css` prop passed on one instance beats both, regardless of source order or selector specificity. Unlayered CSS still beats every layer.
 
 ```ts
 const Panel = styled('div', { layer: 'app-base' })`
@@ -349,6 +349,19 @@ const Panel = styled('div', { layer: 'app-base' })`
 `
 // Emits: @layer app-base { .pyr-xyz { padding: 16px; } }
 ```
+
+A NAMED `@layer <name> { … }` block written inside a component's CSS goes into that top-level layer, under the same class name, instead of becoming a sublayer of the component's own `layer`. That is how one Elements class puts its base layout in `elements` and the instance `css` escape hatch in `instance`:
+
+```ts
+const Box = styled('div', { layer: 'elements' })`
+  display: flex;
+  @layer instance { @media (min-width: 768px) { display: grid; } }
+`
+// Emits: @layer elements{.pyr-xyz{display: flex;}}
+//        @layer instance{@media (min-width: 768px){.pyr-xyz{display: grid;}}}
+```
+
+A layer block nested inside another becomes the dotted sublayer (`@layer a { @layer b {…} }` → `a.b`), and anonymous `@layer { … }` blocks are left as they are.
 
 `insertLayer` on `sheet.insert()` is the lower-level per-call equivalent (see below). The sheet feature-detects `@layer` support once, when it first mounts its `<style>` element (by attempting to insert an `@layer` ordering rule and catching the failure): on the **client**, if that probe fails (e.g. a very old browser, or happy-dom in tests), every later `layer` wrapper is omitted entirely and rules are inserted un-layered — an unsupported `@layer` block would otherwise have its whole body dropped by the parser, which is worse than no layering. On the **server** the `@layer` wrapper is always emitted (SSR output is served to real, `@layer`-capable browsers). See [`sheet.insertGlobal(css)`](#sheetinsertglobalcss) for the equivalent fallback in the global-CSS path.
 

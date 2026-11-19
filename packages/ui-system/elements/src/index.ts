@@ -36,6 +36,8 @@ export type {
   AlignY,
   Content,
   ContentBoolean,
+  Css,
+  CssCallback,
   Direction,
   ExtendCss,
   InnerRef,

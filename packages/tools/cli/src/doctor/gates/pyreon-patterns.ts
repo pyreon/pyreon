@@ -51,7 +51,10 @@ export interface PyreonPatternsGateOptions {
  * `LINT_OWNED_CODES` = detector codes whose lint rule catches the SAME thing
  * with >= scope (verified): `no-process-dev-gate` (flags the typeof-process
  * compound AND import.meta.env.DEV — superset), `no-raw-addeventlistener`
- * (flags `addEventListener`), `query-options-as-function`. NOT included:
+ * (flags `addEventListener`), `query-options-as-function`,
+ * `css-prop-on-component` (`pyreon/prefer-style-modifier` + `pyreon/no-raw-css-string`,
+ * which gate on the project declaring `@pyreon/elements`, so an Emotion `css`
+ * prop is not reported). NOT included:
  * `raw-remove-event-listener` — `no-raw-addeventlistener` is ADD-only, so
  * pyreon-patterns is the SOLE catcher for `removeEventListener` (skipping it
  * would be a silent miss). It's kept, but with the SAME framework-layer
@@ -62,6 +65,7 @@ const LINT_OWNED_CODES = new Set<string>([
   'process-dev-gate',
   'raw-add-event-listener',
   'query-options-as-function',
+  'css-prop-on-component',
 ])
 
 /** Codes kept here but needing the framework-layer exemptions of a lint rule. */

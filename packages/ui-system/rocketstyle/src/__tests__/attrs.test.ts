@@ -168,6 +168,19 @@ describe('calculateStylingAttrs', () => {
     expect(result.multiple).toEqual(expect.arrayContaining(['a', 'b']))
   })
 
+  // Conditional composition: `multiple={['threeUp', compact() && 'dense']}`.
+  // A falsy entry is skipped, so the resolved state (and the memo key built
+  // from it) is the same as without it.
+  it('drops falsy entries from a multi-key array', () => {
+    const calc = calculateStylingAttrs({ useBooleans: false, multiKeys: { multiple: true } })
+    const dims = { multiple: { a: true, b: true } }
+    expect(calc({ props: { multiple: ['a', false, null, undefined, ''] }, dimensions: dims })).toEqual({
+      multiple: ['a'],
+    })
+    expect(calc({ props: { multiple: [false, null] }, dimensions: dims })).toEqual({ multiple: [] })
+    expect(calc({ props: { multiple: () => ['b', false] }, dimensions: dims })).toEqual({ multiple: ['b'] })
+  })
+
   it('prefers explicit string prop over boolean shorthand', () => {
     const calc = calculateStylingAttrs({
       useBooleans: true,

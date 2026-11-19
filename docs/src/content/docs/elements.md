@@ -179,11 +179,36 @@ Three separate axes, three separate prop groups — `content*` (simple elements)
 | `block`         | `boolean`                                    | `false`                         | When `true`, uses `display: flex` instead of `display: inline-flex`. Makes the element take full width of its parent.                                                       |
 | `equalCols`     | `boolean`                                    | `false`                         | When `true`, all three slots get `flex: 1; min-width: 0`, dividing the space equally instead of the default behavior where before/after shrink-wrap and the center expands. |
 | `equalBeforeAfter` | `boolean`                                 | `false`                         | When `true`, the `beforeContent` and `afterContent` slots are kept the same width via a `ResizeObserver` — handles async slot content (font swaps, lazy text, viewport resize) without snapping out of alignment. Falls back to a one-shot mount-time measurement when `ResizeObserver` is undefined (SSR or older runtimes).                                                                                                                          |
+| `css`           | `css` template result \| `(css) => …` \| responsive | --                    | Escape hatch for CSS a theme value cannot express (a selector, an at-rule). A raw string is not accepted. Renders into `@layer instance`, above the component's theme. `contentCss` / `beforeContentCss` / `afterContentCss` do the same for the slots. For a look, add a modifier to the component instead (below); `pyreon/prefer-style-modifier` flags `css` on a component and `pyreon/no-raw-css-string` raw CSS text. |
 | `class`         | `string`                                     | --                              | CSS class name applied to the outer element.                                                                                                                                |
 | `style`         | `string \| Record<string, string \| number>` | --                              | Inline styles merged with computed flex styles. Can be a CSS string or an object. Object styles are merged with the computed styles; string styles are appended.            |
 | `dangerouslySetInnerHTML` | `{ __html: string }`               | --                              | Inject raw HTML (React-compatible shape). Mutually exclusive with `children` — both runtime-dom and runtime-server treat both as inner-content sources. Forwarded through `Wrapper` correctly (was silently dropped pre-#486).                                                                                                                                                                                                                              |
 
 For the align props, `'block'` means stretch. Every direction and align prop, plus `gap` and `block`, also accepts the responsive forms: a mobile-first array (`['rows', 'inline']`) or an object keyed by breakpoint (`{ xs: 'rows', md: 'inline' }`). See [Unistyle](/docs/unistyle).
+
+#### One-off looks: a modifier, not a style prop
+
+There is no per-instance style prop. A look that some instances of a rocketstyle component need is a named, typed modifier on the component, declared with the multi-value `.multiple()` dimension and applied by name:
+
+```tsx
+const Grid = el
+  .config({ name: 'Grid' })
+  .attrs({ block: true })
+  .theme(() => ({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }))
+  .multiple({
+    threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } },
+    dense: { gap: 8 },
+  })
+
+// One column below md (the theme's), three from md.
+<Grid multiple="threeUp" />
+// Compose; a falsy entry is skipped, a signal-driven list swaps the class in place.
+<Grid multiple={['threeUp', compact() && 'dense']} />
+```
+
+A modifier is a theme slice: it takes every value form a `.theme()` value takes, its keys are type-checked, and it is merged over the theme and the `state` / `size` / `variant` slices, so it always wins. A caller-chosen value (a column count, a padding step) is a `.params()` param (`<Grid columns={{ xs: 1, md: 3 }} />`); a product-wide look is a variant. See [Rocketstyle](/docs/rocketstyle#one-off-looks-add-a-modifier-do-not-pass-styles).
+
+Elements' base layout, a rocketstyle component's `.theme()` and the `css` escape hatch each render into their own cascade layer, declared once as `@layer elements, rocketstyle, instance;`. When you need CSS a theme value cannot express (a selector, an at-rule), `css` is the escape hatch, written as a tagged template (``css={css`…`}`` or ``css={(css) => css`…`}``); it lands in `instance`, above the theme. A raw CSS string is not accepted. CSS that is not in a layer (your own stylesheet) still beats all three layers.
 
 Element also passes through any valid HTML attributes: `id`, `role`, `tabindex`, `title`, `href`, `src`, `alt`, `type`, `name`, `value`, `disabled`, `hidden`, `draggable`, `ref`, `key`, and any `on*` event handlers, `data-*` attributes, or `aria-*` attributes.
 

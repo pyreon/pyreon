@@ -1058,6 +1058,19 @@ cx(["a", ["b", { c: true }]])            // nested arrays
 - Assuming \`defaultValue\` still applies once \`value\` is supplied — controlled wins for the whole lifetime of the component`,
   },
 
+  'core/lockScroll': {
+    signature: 'lockScroll(element?: HTMLElement | null): () => void',
+    example: `import { lockScroll } from '@pyreon/core'
+
+let release: (() => void) | null = null
+const open = () => { release ??= lockScroll() }
+const close = () => { release?.(); release = null }`,
+    notes: `The ONE scroll lock every package shares. \`lockScroll()\` takes a hold on the PAGE (\`overflow: hidden\` on \`<body>\` and \`<html>\`, \`<body>\` padded by the scrollbar width); \`lockScroll(el)\` holds one element's \`overflow\`. Holds are counted per target: the first saves the target's inline styles, the last release restores them, and each returned release function releases its own hold once. \`@pyreon/hooks\` \`useScrollLock\` and \`@pyreon/elements\` \`useOverlay({ type: 'modal' })\` both go through it, so a closing modal never unlocks the page under another dialog. No-op on the server. See also: useScrollLock.`,
+    mistakes: `- Writing \`document.body.style.overflow = 'hidden'\` / \`''\` by hand — it clobbers every other owner's lock and the value the page had; take a hold instead
+- Taking the hold when a modal MOUNTS rather than when it OPENS — a closed modal then blocks page scrolling for as long as it is on the page
+- Dropping the release function — the page stays locked; release it on close AND on unmount`,
+  },
+
   'core/useColorMode': {
     signature: `useColorMode(): () => 'light' | 'dark'  // + provideColorMode(mode), <ColorModeProvider mode>, systemColorMode()`,
     example: `import { ColorModeProvider, useColorMode } from '@pyreon/core'
@@ -1776,7 +1789,7 @@ const diags = detectPyreonPatterns(
   "A.tsx",
 )
 console.log(diags[0]?.code) // "props-destructured-body"`,
-    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 23 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `props-early-return-conditional`, `props-object-copy`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`). The detector arm behind the MCP `validate` tool and `pyreon doctor` `pyreon-patterns` gate. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
+    notes: 'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 24 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `props-early-return-conditional`, `props-object-copy`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`, `css-prop-on-component`). The detector arm behind the MCP `validate` tool and `pyreon doctor` `pyreon-patterns` gate. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`. See also: hasPyreonPatterns, detectReactPatterns, analyzeReactivity.',
     mistakes: `- Reading \`fixable\` as sometimes-true — it is an enforced \`false\` invariant for every Pyreon code; wiring auto-fix UX off it applies nothing
 - Expecting it to flag \`const { x } = props.nested\` or an \`onMount\`-scoped destructure — \`props-destructured-body\` is deliberately scoped to the canonical \`= props\` body-scope shape for zero false positives`,
   },
@@ -1915,13 +1928,23 @@ deriveIslandName("Counter", islandRelPath(root, "/app/src/islands.ts"))
 
   // <gen-docs:api-reference:start @pyreon/router>
 
+  'router/preloadRoute': {
+    signature: 'preloadRoute(router: Router, path: string, request?: Request): Promise<void>',
+    example: `const router = createRouter({ routes, url: path })
+await preloadRoute(router, path, request)
+const html = await renderToString(h(RouterProvider, { router }, h(App, null)))`,
+    notes: `Resolve \`path\` for a server render: the initial navigation's guards, the matched lazy route components (\`router.preloadComponents\`), then the matched loaders (\`serverLoader\` when the record has one, else \`loader\`) with \`request\`. Afterwards a \`RouterView\` for \`path\` renders final HTML synchronously. A loader's \`redirect()\` rejects (hosts turn it into HTTP 30x); a loader's \`notFound()\` puts the router in the not-found state (status 404); a route the initial guards cancel runs no loaders. A free function, so client bundles that never call it do not carry it. \`@pyreon/server\`'s handler and \`renderPage\`, zero's SSG and OG images all call it.`,
+    mistakes: `- Calling \`router.preloadComponents(path)\` in an SSR host and expecting loader data — it loads code only; \`preloadRoute\` runs the loaders
+- Only running \`prefetchLoaderData\` before \`renderToString\` — that runs loaders but does not resolve \`lazy()\` components, so the page renders blank`,
+  },
+
   'router/runServerLoaders': {
-    signature: `router.runServerLoaders(path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number }>`,
+    signature: `runServerLoaders(router: Router, path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number } | { kind: 'notFound' }>`,
     example: `// zero's /_pyreon/data endpoint does exactly this:
-const result = await router.runServerLoaders('/dash', ctx.req)
+const result = await runServerLoaders(router, '/dash', ctx.req)
 if (result.kind === 'redirect') return jsonRedirect(result)
 return json({ data: result.data }) // keyed by matched-chain index`,
-    notes: `The single-fetch data endpoint's worker (server-only — \`serverLoader\` functions exist only in the SSR module graph). Runs ONLY the matched chain's \`serverLoader\` records (NOT isomorphic \`loader\`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a \`path\`, so path-keying collided). A \`redirect()\` thrown by any server loader returns the redirect descriptor instead of data.`,
+    notes: `The single-fetch data endpoint's worker (server-only — \`serverLoader\` functions exist only in the SSR module graph). Runs ONLY the matched chain's \`serverLoader\` records (NOT isomorphic \`loader\`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a \`path\`, so path-keying collided). A \`redirect()\` thrown by any server loader returns the redirect descriptor instead of data; a \`notFound()\` returns \`{ kind: 'notFound' }\`. A free function, so client bundles do not carry it.`,
     mistakes: `- Calling it client-side — \`serverLoader\` is undefined in the client graph; the client router does the single FETCH instead
 - Expecting isomorphic \`loader\`s to run here — deliberately excluded (double-fire prevention); they run on the client during navigation`,
   },
@@ -1970,7 +1993,7 @@ const Admin = () => (
   </div>
 )`,
     notes: `Render the matched route's component. For nested routes, the parent route component includes a \`<RouterView />\` that renders the matched child. Each \`<RouterView>\` renders one level of the route tree. See also: RouterProvider, createRouter.`,
-    mistakes: `- SSR renders a BLANK page for a lazy route when the handler only ran \`prefetchLoaderData\` — that runs LOADERS ONLY, it does NOT resolve \`lazy()\` route components. \`renderToString\` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must ALSO call \`router.preload(path, req)\` (resolves lazy components into \`_componentCache\`) before rendering.
+    mistakes: `- SSR renders a BLANK page for a lazy route when the handler only ran \`prefetchLoaderData\` — that runs LOADERS ONLY, it does NOT resolve \`lazy()\` route components. \`renderToString\` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must call \`preloadRoute(router, path, req)\` (resolves lazy components into \`_componentCache\` AND runs the loaders) before rendering.
 - Forgetting the inner \`<RouterView />\` inside a LAYOUT component — nested child routes render by placing a SECOND \`<RouterView />\` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).
 - Expecting a param-only navigation (\`/user/1 → /user/2\`) to re-run the layout body — it does NOT. Each depth is a single atomic \`computed\` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth's own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.
 - Passing the route component as a prop or child to \`<RouterView>\` — it takes none except \`router?\` (explicit router override; defaults to the context/active router) and \`announceRouteChanges\` (a11y live-region opt-out). It reads the matched chain from \`RouterContext\`; configure routes in \`createRouter\`, never on RouterView.
@@ -2082,7 +2105,7 @@ const User = () => {
     notes: `Access the data returned by the current route's \`loader\` function. The loader runs before the route component mounts; its return value is cached and available synchronously via this hook. Generic over the loader return type. See also: useMiddlewareData, useRoute.`,
     mistakes: `- Getting \`undefined\` when the route has NO \`loader\` — it reads \`LoaderDataContext\` (default \`undefined\`). The \`<T>\` generic is an unchecked CAST, not validation; \`data.name\` then throws on the undefined.
 - Wrapping \`useLoaderData()\` in an \`effect\` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS the route component on a real navigation, which re-runs the body and re-reads the hook; there is no signal to subscribe to.
-- SSR returning \`undefined\` at render time — loaders are async but \`renderToString\` is synchronous, so the handler must run loaders (\`prefetchLoaderData\` or \`router.preload\`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.
+- SSR returning \`undefined\` at render time — loaders are async but \`renderToString\` is synchronous, so the handler must run loaders (\`preloadRoute\` or \`prefetchLoaderData\`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.
 - Calling it in a component NOT rendered by \`<RouterView>\` (a sibling inside \`<RouterProvider>\`, a portal outside the route tree) — no \`LoaderDataProvider\` wraps it, so the context is the default \`undefined\`.
 - Expecting a nested LAYOUT's \`useLoaderData()\` to return the child PAGE's data — each depth is wrapped with its OWN \`LoaderDataProvider\`, so a layout reads its own loader's data and the page reads the page's. The hook reads the nearest provider, not the leaf.`,
   },
@@ -2257,7 +2280,7 @@ const app = (
 ]`,
     notes: `Code-split a route component. Returns a LazyComponent DESCRIPTOR (a branded object, NOT a rendered component) to assign as a route \`component\`. The loader may resolve a bare component OR an ES-module \`{ default }\` namespace (so \`() => import('./Page')\` works). \`options.loading\` / \`options.error\` supply Suspense fallbacks; \`options.hmrId\` is the dev-only module id fs-router emits for hot-swap. The ROUTER caches resolved chunks in a bounded LRU (\`maxCacheSize\`, default 100); \`lazy()\` itself does not dedupe. See also: createRouter, RouterView.`,
     mistakes: `- Calling the result like a component (\`lazy(...)()\`) — it is an inert DESCRIPTOR; assign it to a route \`component\` and the router resolves it (into \`_componentCache\`) on navigation.
-- Assuming \`lazy()\` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; \`router.preload()\` warms it before SSR renderToString, which is required so a lazy route is not blank on the server).`,
+- Assuming \`lazy()\` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; \`preloadRoute()\` / \`router.preloadComponents()\` warm it before SSR renderToString, which is required so a lazy route is not blank on the server).`,
   },
 
   'router/LoaderData': {
@@ -3188,8 +3211,8 @@ const result = await renderPage(App, router, "/posts/42", {
 })
 if (result.kind === "redirect") return Response.redirect(result.to, result.status)
 if (result.kind === "html") compose(template, result)`,
-    notes: `The ONE string-mode page-render pipeline — preload (lazy components + loaders, with \`redirect()\` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's \`notFoundComponent\` chain). Shared by \`createHandler\`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. **Islands-only pages:** when the matched chain's merged meta declares \`hydrate: 'islands'\` (zero's \`export const hydrate = 'islands'\`), the head gets \`ISLANDS_ONLY_MARKER\` (\`<meta name="pyreon-hydrate" content="islands">\`), the loader-data script is left out (the loader output is in the HTML; store state is still shipped for islands that share a store), \`routeModules\` is empty, and \`result.hydrate\` is \`'islands'\` (\`'app'\` otherwise). \`createHandler\`'s streaming path honours the same meta. Returns discriminated parts (\`kind: "html" | "redirect" | "unmatched"\`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT \`path\` — \`preload\` warms caches but does not navigate. **\`collectStyles\` is OPTIONAL and defaults to the CSS-in-JS collector registered on \`globalThis.__PYREON_STYLER_COLLECT__\`** (set by \`@pyreon/styler\`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics. See also: createHandler, useRequestLocals.`,
-    mistakes: `- Creating the router at a DIFFERENT url than \`path\` — \`preload\` does not navigate; the render shows the router's creation url, not \`path\`
+    notes: `The ONE string-mode page-render pipeline — preload (lazy components + loaders, with \`redirect()\` catching) → render with head collection → CSS-in-JS style collect → loader-data inline script → HTTP status (404 via the router's \`notFoundComponent\` chain). Shared by \`createHandler\`, zero's SSG prerender entry, and zero's dev SSR middleware so per-page concerns can never drift between them again. **Islands-only pages:** when the matched chain's merged meta declares \`hydrate: 'islands'\` (zero's \`export const hydrate = 'islands'\`), the head gets \`ISLANDS_ONLY_MARKER\` (\`<meta name="pyreon-hydrate" content="islands">\`), the loader-data script is left out (the loader output is in the HTML; store state is still shipped for islands that share a store), \`routeModules\` is empty, and \`result.hydrate\` is \`'islands'\` (\`'app'\` otherwise). \`createHandler\`'s streaming path honours the same meta. Returns discriminated parts (\`kind: "html" | "redirect" | "unmatched"\`) for the caller to compose into its own template; template injection and streaming stay caller-specific by design. The router MUST be a per-request instance created AT \`path\` — \`preloadRoute\` warms caches but does not navigate. **\`collectStyles\` is OPTIONAL and defaults to the CSS-in-JS collector registered on \`globalThis.__PYREON_STYLER_COLLECT__\`** (set by \`@pyreon/styler\`'s singleton on SSR init), so a page never ships class names whose CSS was left behind — pass one explicitly only to override the engine or add reset semantics. See also: createHandler, useRequestLocals.`,
+    mistakes: `- Creating the router at a DIFFERENT url than \`path\` — \`preloadRoute\` does not navigate; the render shows the router's creation url, not \`path\`
 - Expecting \`kind: "unmatched"\` without setting \`bailOnUnmatched: true\` — by default an empty match renders through (the notFoundComponent chain is the framework's 404 story)
 - Wrapping the call in your own \`runWithRequestContext\` AND providing locals separately — pass \`locals\` in options; renderPage opens the request context itself
 - Composing \`loaderScript\` into the template twice (it is already a complete \`<script>\` tag, not bare JSON)
@@ -9838,7 +9861,7 @@ lint({
     "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
   },
 })`,
-    notes: '141 rules across 26 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`, `best-practices`, composable with the `readable` / `readable-strict` layers (`preset: ["recommended", "readable"]`). Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
+    notes: '144 rules across 26 categories. Auto-loads `.pyreonlintrc.json`. Presets: `recommended`, `strict`, `app`, `lib`, `best-practices`, composable with the `readable` / `readable-strict` layers (`preset: ["recommended", "readable"]`). Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. `exemptPaths` is honoured CENTRALLY for every rule (the runner skips an exempt file before the rule runs), so it means the same thing everywhere rather than only in rules that opted in. Wrong-typed options surface on `result.configDiagnostics`, as does a `rules`/`groups`/`settings` key that names nothing — a mistyped rule id used to be silently ignored, which is indistinguishable from working. Uses `oxc-parser` with AST caching. See also: lintFile, lintAsync, getPreset, AstCache.',
   },
 
   'lint/lintAsync': {
@@ -9872,7 +9895,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
 pyreon-lint --init                      # scaffold .pyreonlintrc.json for this project
-pyreon-lint --list                      # list all 141 rules
+pyreon-lint --list                      # list all 144 rules
 pyreon-lint --why-off no-window-in-ssr  # why a rule will (or will not) run here
 pyreon-lint --format json               # machine-readable
 pyreon-lint --format gha                # GitHub Actions annotations
@@ -10713,7 +10736,7 @@ const Button = styled("button")\`
   padding: \${(p) => (p.$compact ? "4px" : "12px")};
 \`
 // <Button $compact onClick={...}>Go</Button>  — $compact not forwarded to <button>`,
-    notes: `Component factory. \`styled('div')\`, \`styled(MyComp)\`, and \`styled.div\` (Proxy sugar) are all tagged templates returning a \`ComponentFn\` that injects a generated class. Tagged-template interpolations are called with the live \`props\` object (theme included), so a function interpolation reading \`p.theme.color\` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic \`as\` prop and \`$\`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM); \`innerRef\` is accepted as an alias for \`ref\`. \`options\` takes \`shouldForwardProp(prop)\` (per-component DOM prop filter — replaces the default allowlist) and \`layer\` (wrap the generated rules in \`@layer <name>\`). A template with NO function interpolation is resolved and injected ONCE, when the component is defined; per-definition caching keys generated classes so repeat mounts skip re-resolution. See also: css, useCSS, useTheme.`,
+    notes: `Component factory. \`styled('div')\`, \`styled(MyComp)\`, and \`styled.div\` (Proxy sugar) are all tagged templates returning a \`ComponentFn\` that injects a generated class. Tagged-template interpolations are called with the live \`props\` object (theme included), so a function interpolation reading \`p.theme.color\` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic \`as\` prop and \`$\`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM); \`innerRef\` is accepted as an alias for \`ref\`. \`options\` takes \`shouldForwardProp(prop)\` (per-component DOM prop filter — replaces the default allowlist) and \`layer\` (wrap the generated rules in \`@layer <name>\`; a NAMED \`@layer x { … }\` block written inside the template goes to the top-level layer \`x\` under the same class, not a sublayer — the framework order is \`@layer elements, rocketstyle, instance;\`, declared once per sheet). A template with NO function interpolation is resolved and injected ONCE, when the component is defined; per-definition caching keys generated classes so repeat mounts skip re-resolution. See also: css, useCSS, useTheme.`,
     mistakes: `- Expecting \`$\`-prefixed props to reach the DOM — they are transient by design (consumed by the template, stripped before forwarding). Use a non-\`$\` name if the attribute must land on the element
 - Destructuring \`props\` in the interpolation (\`\${({ theme }) => …}\`) and being surprised it does not update on a whole-theme swap — read \`props.theme\` lazily; the theme context is reactive and the styled resolver re-runs on swap
 - Passing a resolved value where a function interpolation is needed for reactivity — \`\${signal()}\` snapshots once at definition; use \`\${() => signal()}\` (or \`\${(p) => p.x}\`) to stay on the dynamic path
@@ -10954,7 +10977,8 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
 - Passing children to a void \`tag\` (\`hr\` / \`img\` / \`br\` / \`input\`) — Element correctly drops them; do not rely on a children slot for void tags
 - Relying on \`equalBeforeAfter\` measuring async slot content where \`ResizeObserver\` is undefined (older runtimes / SSR) — it falls back to the one-shot mount measurement there
 - Reaching for a theme-level flex \`gap\` because the \`gap\` prop "does nothing" — historical: before 0.51 \`gap\` was wired only into the before/after slot margins; it now renders CSS gap on simple elements and the button flex-fix layer too
-- Passing a design-token NAME as \`gap\` (\`gap="md"\`) — \`gap\` is a length: a number (converted to rem) or a CSS length string (\`"1rem"\`); a bare token name is emitted verbatim as invalid CSS`,
+- Passing a design-token NAME as \`gap\` (\`gap="md"\`) — \`gap\` is a length: a number (converted to rem) or a CSS length string (\`"1rem"\`); a bare token name is emitted verbatim as invalid CSS
+- Styling one instance through \`css\` (\`css="grid-template-columns: …"\`) — a raw string no longer type-checks, and CSS through a prop is the wrong tool for a look: add a named \`.multiple()\` modifier to the rocketstyle component and apply it by name (\`multiple="threeUp"\`). Keep \`css\` (a tagged \`css\` template or a \`(css) => …\` callback) for a selector or an at-rule`,
   },
 
   'elements/Text': {
@@ -10965,7 +10989,7 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
     notes: 'Inline typography primitive — the text counterpart to `Element`. Carries typography props and renders an inline element; use it for runs of text that need the design-system typography contract rather than a raw `<span>`. Like `Element`, visual styling belongs in the styler/rocketstyle layer; `Text` owns the inline-flow structure. See also: Element.',
     mistakes: `- Expecting a signal-driven \`tag={sig()}\` / \`paragraph={sig()}\` to swap the rendered element — \`tag\` and \`paragraph\` are STATIC (mount-time) by design; the styled layer applies \`as\` once per mount and a reactive tag swap is architecturally unsupported. To change the tag, REMOUNT (e.g. wrap in \`<Show>\`).
 - Passing BOTH \`children\` and \`label\` expecting them to concatenate — Text resolves \`children ?? label\`, so \`children\` WINS and \`label\` is ignored. \`label\` is the inline-syntax alternative to \`children\`, not an extra slot.
-- Driving structure through a signal but styling through a static value — it is the inverse: \`css\` IS reactive (a signal-driven \`css\` re-resolves with a class swap, no remount), while \`tag\` is NOT. Put dynamic STYLING in \`css\`; put dynamic STRUCTURE behind a remount.`,
+- Driving structure through a signal but styling through a static value — it is the inverse: \`css\` IS reactive (a signal-driven \`css\` re-resolves with a class swap, no remount), while \`tag\` is NOT. Put dynamic STYLING in a signal-driven modifier list on the rocketstyle component (\`multiple={["base", on() && "active"]}\`); put dynamic STRUCTURE behind a remount.`,
   },
 
   'elements/List': {
@@ -12863,21 +12887,23 @@ createISRHandler(handler, { revalidate: 60, store: redisStore })`,
   'zero/createMemoryStore': {
     signature: 'function createMemoryStore<E = ISRCacheEntry>(opts?: { maxEntries?: number }): ISRStore<E>',
     example: 'createISRHandler(handler, { revalidate: 60, store: createMemoryStore({ maxEntries: 5000 }) })',
-    notes: 'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index prunes evicted keys lazily). Per-process — fine for single-instance deploys; multi-instance wants a shared external store. See also: createISRHandler, ISRStore, createFsStore.',
+    notes: 'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index drops a key the moment it is deleted, evicted or cleared). Per-process — fine for single-instance deploys; multi-instance wants a shared external store. See also: createISRHandler, ISRStore, createFsStore.',
   },
 
   'zero/createFsStore': {
-    signature: 'function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E>',
+    signature: 'function createFsStore<E = ISRCacheEntry>(dir: string, opts?: { maxEntries?: number }): ISRStore<E>',
     example: `import { createFsStore } from '@pyreon/zero/server'
 
 createISRHandler(handler, {
   revalidate: 60,
-  store: createFsStore('./.isr-cache'),
+  store: createFsStore('./.isr-cache', { maxEntries: 5000 }),
   tagsForRequest: (req) => (new URL(req.url).pathname.startsWith('/posts/') ? ['posts'] : []),
 })`,
-    notes: `Filesystem-backed ISR store for self-hosted node/bun: cache entries (and the tag index) persist as JSON files under \`dir\`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). One file per key (fs-safe encoded; over-length keys hash to a fixed name so long query strings can't silently ENAMETOOLONG-drop), \`_tags.json\` sidecar written atomically (tmp+rename). EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV. See also: createISRHandler, ISRStore, createMemoryStore.`,
+    notes: 'Filesystem-backed ISR store for self-hosted node/bun: cache entries (and their tags) persist as JSON files under `dir`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). Bounded like `createMemoryStore`: at most `maxEntries` entries (default 1000) on disk, least recently written or read evicted first (its file AND its tags); the cap holds across restarts because a new store counts what is already in `dir` and trims it. One file per entry (fs-safe encoded; a long key or one with upper-case letters gets a SHA-256 name, so a long query string cannot ENAMETOOLONG-drop and `/About` never shares a file with `/about` on a case-insensitive file system) plus a small per-entry tags sidecar, so a tagged miss writes O(1) bytes. Writes go through tmp+rename (a crash never leaves a torn entry; leftover temp files are removed at start), run in call order per key, and an older `_tags.json` index is migrated. EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV. See also: createISRHandler, ISRStore, createMemoryStore.',
     mistakes: `- Using it across multiple instances — each box has its own directory; tag invalidation on one box does not reach the others
-- Pointing \`dir\` at a tmpfs that clears on reboot — defeats the restart-survival purpose`,
+- Pointing \`dir\` at a tmpfs that clears on reboot — defeats the restart-survival purpose
+- Keeping the default \`pathname + search\` cache key on pages that ignore their query string — every distinct query string is its own entry, so random \`?x=\` requests evict real pages (the disk stays bounded by \`maxEntries\`); supply a \`cacheKey\` that keeps only the parameters the page reads
+- Sharing one \`dir\` between processes and expecting one cap — the index and \`maxEntries\` are per process (each adopts entries it reads), and a tag recorded by another process is only seen after a restart`,
   },
 
   'zero/vercelAdapter': {
@@ -14944,6 +14970,14 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '
     shadow: { boxShadow: '0 2px 8px rgba(0,0,0,0.15)' },
   })
 <Box multiple={['rounded', 'shadow']} />       // both slices compose
+<Box multiple={['rounded', raised() && 'shadow']} />  // falsy entries are skipped
+
+// A one-off look on a shipped component: a modifier, not a style prop
+const Grid = BaseGrid.multiple({
+  threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } }, // theme value kept below md
+  dense: { gap: 8 },
+})
+<Grid multiple={['threeUp', compact() && 'dense']} />
 
 // Transform dimension — value fn receives the ACCUMULATED theme
 const Button2 = rs({ name: 'Button2', component: Element })
@@ -14953,10 +14987,31 @@ const Button2 = rs({ name: 'Button2', component: Element })
     outlined: (t) => ({ color: t.backgroundColor, backgroundColor: 'transparent' }),
   })
 <Button2 state="danger" modifier="outlined" />  // outlined sees danger's red`,
-    notes: `Multi-value dimension definition methods (from the default dimension map). \`.multiple({...})\` drives the \`multiple\` prop, \`.modifiers({...})\` drives \`modifier\` — both accept an ARRAY of active values at the call site (\`multiple={["rounded", "shadow"]}\`), all of which compose onto the theme. \`modifiers\` is additionally a TRANSFORM dimension: its value functions receive the theme ACCUMULATED from all prior dimensions, so a modifier can derive from the active state (e.g. \`outlined\` reading the current state's \`backgroundColor\`). Custom dimensions opt into the same behaviors via \`{ multi: true }\` / \`{ transform: true }\`. See also: .states() / .sizes() / .variants(), rocketstyle.`,
+    notes: `Multi-value dimension definition methods (from the default dimension map). \`.multiple({...})\` drives the \`multiple\` prop, \`.modifiers({...})\` drives \`modifier\` — both accept an ARRAY of active values at the call site (\`multiple={["rounded", "shadow"]}\`), all of which compose onto the theme. \`.multiple()\` is how a ONE-OFF LOOK is expressed: a named, typed modifier on the component (\`Grid.multiple({ threeUp: { gridTemplateColumns: { md: "repeat(3, minmax(0, 1fr))" } } })\` → \`<Grid multiple="threeUp" />\`), never CSS through a prop. A slice takes every value form a \`.theme()\` value takes (single value, mobile-first array, breakpoint object, \`mode()\` pair) and the \`hover\` / \`focus\` / \`active\` / \`disabled\` / \`pressed\` / \`readOnly\` groups; with a typed \`StylesDefault\` its keys are checked. A list may hold falsy entries, which are skipped (\`multiple={["threeUp", compact() && "dense"]}\`), so the memo and class are those of the list without them; a signal-driven list swaps the class on the same node. Slices merge in list order after state / size / variant, so a modifier beats them and the base theme; a responsive slice wins from its first breakpoint up and keeps the earlier value below it. Under \`useBooleans: true\` each value is also a boolean prop (\`<Grid threeUp />\`). \`modifiers\` is additionally a TRANSFORM dimension: its value functions receive the theme ACCUMULATED from all prior dimensions, so a modifier can derive from the active state (e.g. \`outlined\` reading the current state's \`backgroundColor\`). Custom dimensions opt into the same behaviors via \`{ multi: true }\` / \`{ transform: true }\`. See also: .states() / .sizes() / .variants(), rocketstyle.`,
     mistakes: `- Passing a single string to a multi dimension and expecting array semantics — \`multiple="rounded"\` and \`multiple={["rounded"]}\` both work, but composing several values requires the array form
 - Expecting a transform value fn to see the raw app theme — transform-dimension value functions receive the theme accumulated from PRIOR dimensions (base + active state/size/variant), which is the whole point; read app-theme tokens in a dimension-level callback instead
+- Passing CSS to one instance (\`css="…"\`, \`style={{ padding: 4 }}\`) for a one-off look — add a named \`.multiple()\` modifier to the component and apply it by name. A caller-chosen VALUE is a \`.params()\` param; a product-wide look is a variant
 - Declaring a custom multi dimension as a bare string — \`{ decorations: "decoration" }\` is single-value; multi needs the object form \`{ propName: "decoration", multi: true }\``,
+  },
+
+  'rocketstyle/.params()': {
+    signature: '<P extends Record<string, (value: V, theme, mode) => ThemeSlice>>(mappers: P) => RocketStyleComponent // adds props { [K in keyof P]?: V | (V | null)[] | Partial<Record<Breakpoint, V>> }',
+    example: `const Grid = el.config({ name: 'Grid' })
+  .theme(() => ({ display: 'grid' }))
+  .params({
+    columns: (n: number) => ({ gridTemplateColumns: \`repeat(\${n}, minmax(0, 1fr))\` }),
+    min: (px: number) => ({ gridTemplateColumns: \`repeat(auto-fit, minmax(\${px}px, 1fr))\` }),
+    pad: (step: 'small' | 'large', t) => ({ padding: t.spacing[step] }),
+  })
+
+<Grid columns={3} />
+<Grid columns={{ xs: 1, md: 3 }} />   // the mapper sees 1, then 3
+<Grid columns={[1, null, 3]} pad="small" />
+<Grid columns={cols()} />             // signal-driven: class swaps in place`,
+    notes: `Caller-chosen VALUES mapped into the theme. Each key becomes an optional prop typed from the mapper's first parameter and widened to the responsive forms (single value, mobile-first array with \`null\` = inherit, breakpoint object); the framework splits a responsive value per breakpoint, so the mapper always sees ONE value, plus the app theme and the \`mode(light, dark)\` helper, and returns the same slice a \`.theme()\` / dimension value takes (pseudo groups included). Resolved with the dimension props into \`$rocketstyle\` and memoized by value (JSON of the prop), so equal values share one class and a signal-driven value swaps the class on the same node. Order: base theme → state / size / variant → params → \`multiple\` → transform \`modifiers\`; between params, a later-declared param wins within a breakpoint. Param props never reach the DOM. A later \`.params()\` overrides by key. A param named like a dimension or pseudo prop throws in dev. A look is a \`.multiple()\` modifier; a value is a param; a product-wide look is a variant. See also: .multiple() / .modifiers(), .theme(), .attrs().`,
+    mistakes: `- Reading a prop inside \`.styles()\` to vary CSS per instance — that path is not in the memo key, so instances with the same resolved theme share the first one's class; declare the value with \`.params()\`
+- Passing an object or array as ONE value — a param value is a scalar; an array or plain object is read as a responsive value (per breakpoint)
+- Naming a param like an Element prop the base also takes (\`gap\`, \`tag\`) — the param swallows it (params are never forwarded)`,
   },
 
   'rocketstyle/.styles()': {
@@ -15730,7 +15785,7 @@ setMode('dark') // reactive re-style — same element, new classes`,
 })
 expectRouter(router).toBeAt('/posts/:id')
 await navigate('/posts/2')`,
-    notes: `ASYNC render harness for \`@pyreon/router\`. Creates a router pinned to \`route\` (default \`'/'\`), then \`await router.preload(route)\` — the SSR-handler contract: lazy route components resolved into the cache AND the matched chain's loaders run — so the FIRST render shows final content (\`useLoaderData()\` populated, no loading fallbacks). Mounts \`ui\` inside \`<RouterProvider>\` (pass \`null\` for a bare \`<RouterView/>\`); \`unmount()\` destroys the router. \`navigate(path)\` = \`router.push\` — resolves with \`NavigationResult\` AFTER guards + loaders + DOM commit. See also: expectRouter, render.`,
+    notes: `ASYNC render harness for \`@pyreon/router\`. Creates a router pinned to \`route\` (default \`'/'\`), then \`await preloadRoute(router, route)\` — the SSR-handler contract: lazy route components resolved into the cache AND the matched chain's loaders run — so the FIRST render shows final content (\`useLoaderData()\` populated, no loading fallbacks). Mounts \`ui\` inside \`<RouterProvider>\` (pass \`null\` for a bare \`<RouterView/>\`); \`unmount()\` destroys the router. \`navigate(path)\` = \`router.push\` — resolves with \`NavigationResult\` AFTER guards + loaders + DOM commit. See also: expectRouter, render.`,
     mistakes: `- Not awaiting \`renderWithRouter\` itself — it is ASYNC (initial lazy components + loaders resolve before mount); an un-awaited call hands you a Promise, not a render result.
 - Not awaiting \`navigate()\` — assertions race the guards/loaders pipeline; the promise resolves only after the DOM committed.
 - Ignoring the \`NavigationResult\` — \`'cancelled'\` (guard/blocker refused) and \`'superseded'\` (a newer navigation won) resolve WITHOUT an error; assert the result when the test depends on the navigation landing.

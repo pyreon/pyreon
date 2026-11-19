@@ -43,6 +43,8 @@ export type Configuration<
   styles: StylesCbArray
   compose: Record<string, TFn | null | undefined | false>
   statics: Record<string, any>
+  /** `.params()` mappers, merged by key across calls. */
+  params?: Record<string, (value: any, theme: any, mode: any) => Record<string, any>> | undefined
 } & Record<string, any>
 
 export type ExtendedConfiguration<
@@ -64,6 +66,8 @@ export type ExtendedConfiguration<
   styles: StylesCbArray
   compose: Record<string, TFn | null | undefined | false>
   statics: Record<string, any>
+  /** `.params()` mappers, merged by key across calls. */
+  params?: Record<string, (value: any, theme: any, mode: any) => Record<string, any>> | undefined
 } & Record<string, any>
 
 export type DefaultProps = Partial<PseudoProps> & { children?: import('@pyreon/core').VNodeChild }

@@ -51,6 +51,19 @@ const DIMENSION_METHODS: Record<string, string> = {
   sizes: 'size',
   variants: 'variant',
 }
+/** Chain methods whose styling is web-only for now → the props they add (stripped at the use site). */
+const UNLOWERED_METHODS: Record<string, (arg: AnyNode | undefined) => string[]> = {
+  multiple: () => ['multiple'],
+  modifiers: () => ['modifier'],
+  params: (arg) => {
+    const obj = unwrap(arg)
+    if (!obj || obj.type !== 'ObjectExpression') return []
+    return (obj.properties as AnyNode[])
+      .map((p) => (p.type === 'Property' && p.key?.type === 'Identifier' ? (p.key.name as string) : ''))
+      .filter(Boolean)
+  },
+}
+
 /** The bases whose native emit owns a press state the pressed style can key on. */
 const PRESSABLE_BASES = new Set(['Button', 'Press'])
 
@@ -112,6 +125,8 @@ export function parseRocketstyleDefn(
   // Walk the chain bottom-up, collecting .theme + dimension calls.
   let themeArg: AnyNode | undefined
   const dimCalls: { dim: string; arg: AnyNode | undefined }[] = []
+  // Web-only styling the emit cannot lower yet: method → the props it adds.
+  const unlowered: { method: string; props: string[] }[] = []
   let cur: AnyNode | undefined = chainTop
   while (cur && cur.type === 'CallExpression') {
     const callee = unwrap(cur.callee)
@@ -122,6 +137,7 @@ export function parseRocketstyleDefn(
     const arg = (cur.arguments as AnyNode[])?.[0]
     if (method === 'theme') themeArg = arg
     else if (DIMENSION_METHODS[method]) dimCalls.unshift({ dim: DIMENSION_METHODS[method]!, arg })
+    else if (UNLOWERED_METHODS[method]) unlowered.unshift({ method, props: UNLOWERED_METHODS[method]!(arg) })
     // else (.attrs/.config/…) — walked through, ignored.
     cur = unwrap(callee.object)
   }
@@ -146,16 +162,28 @@ export function parseRocketstyleDefn(
   for (const { dim, arg } of dimCalls) {
     dims[dim] = dimensionMap(arg, name, dim, warnings, theme, pressed)
   }
-  if (Object.keys(pressed).length === 0) return { name, tag: prim, base, dims }
+  for (const { method, props } of unlowered) {
+    warnings.push(
+      method === 'params'
+        ? `rocketstyle(...) '${name}': .params() (${props.join(', ') || 'its params'}) is not lowered to native yet — ` +
+            `a caller-chosen value is DROPPED on iOS and Android (the base theme and state/size/variant still apply). ` +
+            `For a native target, express the value as a state, size or variant.`
+        : `rocketstyle(...) '${name}': .${method}() looks are not lowered to native yet — the \`${props[0]}\` prop's ` +
+            `styles are DROPPED on iOS and Android (the base theme and state/size/variant still apply). ` +
+            `For a native target, express the look as a state, size or variant.`,
+    )
+  }
+  const extra = unlowered.length > 0 ? { unlowered: unlowered.flatMap((u) => u.props) } : {}
+  if (Object.keys(pressed).length === 0) return { name, tag: prim, base, dims, ...extra }
   if (!PRESSABLE_BASES.has(prim)) {
     warnings.push(
       `rocketstyle(...) '${name}': an active/pressed style only lowers on a pressable base (Button or Press) — ` +
         `'${prim}' never receives a press on native, so the pressed style was dropped. On the web a non-interactive ` +
         `element only matches :active while the pointer is held on it.`,
     )
-    return { name, tag: prim, base, dims }
+    return { name, tag: prim, base, dims, ...extra }
   }
-  return { name, tag: prim, base, dims, pressed }
+  return { name, tag: prim, base, dims, pressed, ...extra }
 }
 
 /**

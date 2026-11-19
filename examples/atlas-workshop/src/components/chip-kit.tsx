@@ -13,7 +13,13 @@
  */
 import { Element } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
-import { makeItResponsive, styles } from '@pyreon/unistyle'
+import { type ITheme, makeItResponsive, styles } from '@pyreon/unistyle'
+
+// Theme slices (dimensions, `.multiple()` modifiers, `.params()` mappers) are
+// type-checked against unistyle's property names: a misspelt key is an error.
+declare module '@pyreon/rocketstyle' {
+  interface StylesDefault extends ITheme {}
+}
 
 /**
  * The tokens `atlas.config.ts` supplies as the theme. Bound on the factory with

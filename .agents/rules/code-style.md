@@ -4,7 +4,7 @@
 
 - **oxlint** for general JS/TS linting (400+ rules, Rust-powered)
 - **oxfmt** for formatting (Rust-powered, Prettier-compatible)
-- **@pyreon/lint** for Pyreon-specific rules (141 rules, 26 categories — the gated count also appears in AGENTS.md's package list; keep the two in sync)
+- **@pyreon/lint** for Pyreon-specific rules (144 rules, 26 categories — the gated count also appears in AGENTS.md's package list; keep the two in sync)
 - Config files: `.oxlintrc.json` (linting), `.oxfmtrc.json` (formatting), `.pyreonlintrc.json` (Pyreon-specific rules)
 - Commands: `bun run lint` (`oxlint .`), `bun run format` (`oxfmt --write .`), `bun run format:check` (`oxfmt --check .`)
 - Inline suppression: `// oxlint-disable-next-line rule-name` (not `biome-ignore`)
@@ -108,7 +108,9 @@ Before gating a rule or forcing a fix, read its findings. Several rules that loo
   - `gap` is a prop (number → rem), wired on the simple path and the flex-fix layer.
   - Use `block: true` for full-width elements and app roots. Element defaults to `inline-flex` and shrink-wraps.
   - Theme layout is correct only for `flexWrap` (no Element prop), CSS grid components, and text truncation (`display: 'block'` — a flex container never ellipsizes).
-  - Never put layout in an attrs `css` string: a per-instance `css` prop replaces it wholesale, and it sits outside the theme cascade.
+  - Never put layout in an attrs `css`: a per-instance `css` prop replaces it wholesale.
+  - **No styles through props.** A caller-chosen value is a `.params()` param (``Grid.params({ columns: (n: number) => ({ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }) })``, then `columns={{ xs: 1, md: 3 }}`: typed from the mapper, responsive forms handled by the framework, resolved into the theme and memoized by value); a one-off look is a named `.multiple()` modifier (`Grid.multiple({ threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } } })`, applied as `multiple="threeUp"` or `multiple={['threeUp', compact() && 'dense']}`); a product-wide look is a variant. Never `css="…"`, a per-instance style object, or a fixed theme-owned value in `style={{…}}` at a call site. `css` stays only as the escape hatch for a selector or an at-rule, as a tagged template (``css={css`…`}``) or callback; a raw CSS string does not type-check. Lint: `pyreon/prefer-style-modifier` (warn; a deliberate use takes `// pyreon-lint-disable-next-line pyreon/prefer-style-modifier` with the reason), `pyreon/no-raw-css-string` (error), `pyreon/no-theme-props-in-style` (opt-in).
+  - Cascade order (styler `LAYER_ORDER`, declared once): `@layer elements` (Element base layout) < `@layer rocketstyle` (`.theme()` and dimensions) < `@layer instance` (the `css` escape hatch on Element and Text; `contentCss` / `beforeContentCss` / `afterContentCss` on Element's slots). So an instance `css` beats the component's theme for the same property, pseudo-states included (a modifier needs no layer: it is merged into the theme); unlayered CSS beats every layer. The instance layer is a `@layer instance { … }` block the styler hoists out of the Element's class (same class name, no extra cache entry).
 - **Pseudo-state styles:** use `hover`, `focus`, `active`, `disabled` objects inside `.theme()` callbacks. The `el`/`txt` bases generate the selectors via `makeItResponsive`.
 - **Hover CSS is unconditional:** `:hover` styles apply to every component that defines them. Only `cursor: pointer` is gated on interactivity (onClick/href).
 - **CSS property naming:** unistyle order (`borderWidthTop`, `borderColorLeft`), not CSS-spec order (`borderTopWidth`).

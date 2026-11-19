@@ -80,6 +80,7 @@ import { Element } from "@pyreon/elements"
 - Relying on `equalBeforeAfter` measuring async slot content where `ResizeObserver` is undefined (older runtimes / SSR) — it falls back to the one-shot mount measurement there
 - Reaching for a theme-level flex `gap` because the `gap` prop "does nothing" — historical: before 0.51 `gap` was wired only into the before/after slot margins; it now renders CSS gap on simple elements and the button flex-fix layer too
 - Passing a design-token NAME as `gap` (`gap="md"`) — `gap` is a length: a number (converted to rem) or a CSS length string (`"1rem"`); a bare token name is emitted verbatim as invalid CSS
+- Styling one instance through `css` (`css="grid-template-columns: …"`) — a raw string no longer type-checks, and CSS through a prop is the wrong tool for a look: add a named `.multiple()` modifier to the rocketstyle component and apply it by name (`multiple="threeUp"`). Keep `css` (a tagged `css` template or a `(css) => …` callback) for a selector or an at-rule
 
 **See also:** `Text` · `List` · `Portal`
 
@@ -105,7 +106,7 @@ import { Text } from "@pyreon/elements"
 
 - Expecting a signal-driven `tag={sig()}` / `paragraph={sig()}` to swap the rendered element — `tag` and `paragraph` are STATIC (mount-time) by design; the styled layer applies `as` once per mount and a reactive tag swap is architecturally unsupported. To change the tag, REMOUNT (e.g. wrap in `<Show>`).
 - Passing BOTH `children` and `label` expecting them to concatenate — Text resolves `children ?? label`, so `children` WINS and `label` is ignored. `label` is the inline-syntax alternative to `children`, not an extra slot.
-- Driving structure through a signal but styling through a static value — it is the inverse: `css` IS reactive (a signal-driven `css` re-resolves with a class swap, no remount), while `tag` is NOT. Put dynamic STYLING in `css`; put dynamic STRUCTURE behind a remount.
+- Driving structure through a signal but styling through a static value — it is the inverse: `css` IS reactive (a signal-driven `css` re-resolves with a class swap, no remount), while `tag` is NOT. Put dynamic STYLING in a signal-driven modifier list on the rocketstyle component (`multiple={["base", on() && "active"]}`); put dynamic STRUCTURE behind a remount.
 
 **See also:** `Element`
 
@@ -321,6 +322,8 @@ import { Util } from "@pyreon/elements"
 ---
 
 ## Package-level notes
+
+> **No styles through props; css is the escape hatch:** A one-off look is a named `.multiple()` modifier on the rocketstyle component (`Grid.multiple({ threeUp: { gridTemplateColumns: { md: "repeat(3, 1fr)" } } })` → `<Grid multiple="threeUp" />`), typed and resolved through the theme. `css` (Element `css` / `contentCss` / `beforeContentCss` / `afterContentCss`, Text `css`) is only for a selector or an at-rule: a `css` tagged-template result or a `(css) => css`…`` callback, per breakpoint or as an array; a raw string does not type-check (and renders with a one-time dev warning when a cast or `h()` lets one through). It renders into `@layer instance`, declared after `@layer elements` (base layout) and `@layer rocketstyle` (`.theme()`): `@layer elements, rocketstyle, instance;`, so it beats the component theme, pseudo-classes included; unlayered CSS beats every layer. Lint: `pyreon/prefer-style-modifier` (warn) flags `css` on a component, `pyreon/no-raw-css-string` (error) flags raw CSS text.
 
 > **Layout in attrs, not theme:** Element/Text/List layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) are primitive ATTRS — they target the inner flex wrapper. Colors / spacing / borders / shadows belong in the styler or rocketstyle `.theme()` layer. `direction` accepts `inline` / `rows` / `reverseInline` / `reverseRows` — `row` is invalid.
 

@@ -291,6 +291,20 @@ describe('useOverlay', () => {
       expect(mockSetUnblocked).toHaveBeenCalledOnce()
     })
 
+    it('hideContent on an overlay that never opened releases no block (it holds none)', () => {
+      const o = useOverlay()
+      o.hideContent()
+      expect(mockSetUnblocked).not.toHaveBeenCalled()
+    })
+
+    it('an initially open overlay holds its parent block; detaching while open releases it', () => {
+      const o = useOverlay({ isOpen: true })
+      expect(mockSetBlocked).toHaveBeenCalledOnce()
+      const cleanup = o.setupListeners()
+      cleanup()
+      expect(mockSetUnblocked).toHaveBeenCalledOnce()
+    })
+
     it('toggle between show and hide works', () => {
       const o = useOverlay()
       o.showContent()
@@ -1230,14 +1244,27 @@ describe('useOverlay', () => {
   // 16. Parent container
   // =========================================================================
   describe('parentContainer', () => {
-    it('sets overflow hidden on parent when closeOn is not hover', () => {
+    it('leaves a CLOSED overlay\'s parent scrollable (it used to lock at mount)', () => {
       const parent = document.createElement('div')
+      parent.style.overflow = 'auto'
       const o = useOverlay({ parentContainer: parent, closeOn: 'click' })
       const cleanup = o.setupListeners()
+      expect(parent.style.overflow).toBe('auto')
+      cleanup()
+      expect(parent.style.overflow).toBe('auto')
+    })
 
+    it('locks the parent while open (closeOn is not hover) and restores its value on detach', () => {
+      // This file mocks signals with a no-op `subscribe`, so open/close
+      // transitions are covered in Overlay-modal-scroll-lock.browser.test.tsx;
+      // here the overlay starts open.
+      const parent = document.createElement('div')
+      parent.style.overflow = 'auto'
+      const o = useOverlay({ parentContainer: parent, closeOn: 'click', isOpen: true })
+      const cleanup = o.setupListeners()
       expect(parent.style.overflow).toBe('hidden')
       cleanup()
-      expect(parent.style.overflow).toBe('')
+      expect(parent.style.overflow).toBe('auto')
     })
 
     it('does not set overflow hidden on parent when closeOn is hover', () => {

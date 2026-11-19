@@ -73,8 +73,9 @@ export const rocketstylePlugin: CompilerPlugin = {
           },
           (message) => ctx.warn(message),
         )
+        const dropped = [...dimensions, ...(definition.unlowered ?? [])]
         const rest = element.attrs.filter(
-          (attr) => !(attr.kind === 'attr' && dimensions.includes(attr.name)),
+          (attr) => !(attr.kind === 'attr' && dropped.includes(attr.name)),
         )
         return {
           ...element,

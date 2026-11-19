@@ -320,8 +320,8 @@ export function startClient(options: StartClientOptions) {
     // listeners attached by non-Pyreon code) survives, and the client skips DOM
     // construction the server already paid for.
     //
-    // `skipLoaders` because loader data was already seeded from
-    // `__PYREON_LOADER_DATA__` above; this step is purely about code.
+    // Components only (`preloadComponents` never runs loaders): loader data
+    // was already seeded from `__PYREON_LOADER_DATA__` above.
     //
     // Cost: the route chunks are emitted with `<link rel="modulepreload">` by
     // the SSG/SSR build, so this normally resolves from cache. While it does,
@@ -332,19 +332,20 @@ export function startClient(options: StartClientOptions) {
     // A rejection must NOT leave the app dead: fall through and hydrate anyway,
     // which reproduces exactly the pre-change behaviour for that route.
     //
-    // An ABSENT `preload` is the stronger version of that same case and was
+    // An ABSENT `preloadComponents` is the stronger version of that same case and was
     // unhandled: calling it would throw synchronously out of `startClient`, so
     // the app never mounts at all — strictly worse than the rejection this
     // block already defends against. Guarded the way `_currentPath` is guarded
     // a few lines above, for the same reason: the router is reached through a
     // structural type here, so its shape is an assumption rather than a
     // guarantee.
-    const preload = (router as unknown as { preload?: typeof router.preload }).preload
-    if (typeof preload !== 'function') {
+    const preloadComponents = (router as unknown as { preloadComponents?: typeof router.preloadComponents })
+      .preloadComponents
+    if (typeof preloadComponents !== 'function') {
       hydrateOrMount()
     } else {
-      preload
-        .call(router, currentPath, undefined, { skipLoaders: true })
+      preloadComponents
+        .call(router, currentPath)
         .then(hydrateOrMount, (err) => {
           // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
           if (import.meta.env?.DEV === true) {

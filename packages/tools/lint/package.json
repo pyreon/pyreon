@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/lint",
   "version": "0.53.0",
-  "description": "Pyreon-specific linter \u2014 141 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices, and a readable style preset",
+  "description": "Pyreon-specific linter \u2014 144 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices, and a readable style preset",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/lint#readme",
   "bugs": {

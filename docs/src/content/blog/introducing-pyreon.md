@@ -77,7 +77,7 @@ Not everything lowers. Packages that depend on the DOM (the code editor, drag an
 
 ### 4. Built for AI coding assistants
 
-`@pyreon/mcp` is an MCP server with 24 tools: `get_api` answers API questions from the same manifests that generate the docs, `validate` statically catches React habits and Pyreon misuse, `explain_reactivity` returns the compiler's per-expression verdict, `diagnose` explains error strings, and more. `@pyreon/lint` has 141 rules and an LSP server that renders the Reactivity Lens hints. `pyreon check` runs the same detectors from your terminal and exits non-zero on a finding. `llms.txt` and `llms-full.txt` are generated from the package manifests.
+`@pyreon/mcp` is an MCP server with 24 tools: `get_api` answers API questions from the same manifests that generate the docs, `validate` statically catches React habits and Pyreon misuse, `explain_reactivity` returns the compiler's per-expression verdict, `diagnose` explains error strings, and more. `@pyreon/lint` has 144 rules and an LSP server that renders the Reactivity Lens hints. `pyreon check` runs the same detectors from your terminal and exits non-zero on a finding. `llms.txt` and `llms-full.txt` are generated from the package manifests.
 
 The scaffolder sets your assistant up on day one: `.mcp.json` and `CLAUDE.md` by default, plus `AGENTS.md`, Cursor rules or Copilot instructions if you pick them.
 

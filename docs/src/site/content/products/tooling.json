@@ -17,7 +17,7 @@
    },
    {
     "key": "lint",
-    "value": "{{@lintRuleCount}} rules · {{@lintCategoryCount}} categories<small>97 on in `recommended`; 31 more in `best-practices`</small>"
+    "value": "{{@lintRuleCount}} rules · {{@lintCategoryCount}} categories<small>99 on in `recommended`; 32 more in `best-practices`</small>"
    },
    {
     "key": "testing",
@@ -208,7 +208,7 @@
   },
   {
    "title": "check and lint are different engines",
-   "text": "`pyreon check` runs the compiler's detectors on changed files. The lint rules (97 on in `recommended`) run under `pyreon lint`. `pyreon doctor` runs both."
+   "text": "`pyreon check` runs the compiler's detectors on changed files. The lint rules (99 on in `recommended`) run under `pyreon lint`. `pyreon doctor` runs both."
   },
   {
    "title": "Review --fix on React code",
@@ -260,7 +260,7 @@
   {
    "stat": "{{@lintRuleCount}}",
    "label": "lint rules in {{@lintCategoryCount}} categories, from reactivity and JSX to SSR, routing, forms and security.",
-   "source": "allRules in packages/tools/lint/src/rules/index.ts, counted 13 Nov 2026 with #4479; `pyreon-lint --list` prints \"{{@lintRuleCount}} rules in 11 groups\""
+   "source": "allRules in packages/tools/lint/src/rules/index.ts, counted 13 Nov 2026 with #4479, +4 since (consistent-signal-read, prefer-style-modifier, no-raw-css-string, no-theme-props-in-style); `pyreon-lint --list` prints \"{{@lintRuleCount}} rules in 11 groups\""
   },
   {
    "stat": "10",
@@ -338,7 +338,7 @@
  "sources": [
   {
    "claim": "{{@lintRuleCount}} rules, {{@lintCategoryCount}} categories, 19 auto-fixable; per-category counts",
-   "path": "packages/tools/lint/src/rules/index.ts allRules (counted via scratch script lintcount.ts, 13 Nov 2026 with #4479; +1 style rule, consistent-signal-read, 17 Nov 2026); `pyreon-lint --list` header \"{{@lintRuleCount}} rules in 11 groups\""
+   "path": "packages/tools/lint/src/rules/index.ts allRules (counted via scratch script lintcount.ts, 13 Nov 2026 with #4479; +1 style rule, consistent-signal-read, 17 Nov 2026; +3 styling rules, prefer-style-modifier, no-raw-css-string and no-theme-props-in-style, 18 Nov 2026); `pyreon-lint --list` header \"{{@lintRuleCount}} rules in 11 groups\""
   },
   {
    "claim": "Presets: recommended 97 rules on, app 96, strict 97, lib 97, best-practices 128; 6 rules scope monorepo, 31 opt-in; 7 style rules in the readable layers (17 Nov 2026, with consistent-signal-read)",

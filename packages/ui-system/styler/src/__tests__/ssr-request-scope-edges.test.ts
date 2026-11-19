@@ -203,9 +203,9 @@ describe('styler — scoped SSR collection edges', () => {
       s.insert('color: khaki;', 'rocketstyle')
       return [f, s.flushSSRPending()]
     })
-    expect(first.startsWith('@layer elements, rocketstyle;')).toBe(true)
+    expect(first.startsWith('@layer elements, rocketstyle, instance;')).toBe(true)
     expect(first).toContain('@layer elements{')
-    expect(count(second, '@layer elements, rocketstyle;')).toBe(0)
+    expect(count(second, '@layer elements, rocketstyle, instance;')).toBe(0)
     expect(second).toContain('@layer rocketstyle{')
   })
 })

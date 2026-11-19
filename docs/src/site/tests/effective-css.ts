@@ -13,8 +13,8 @@ import { siteTheme } from '../theme'
  * tag and attributes (the hashed class and the rocketstyle name dropped) and
  * its effective CSS: per media query and per nested selector (`&:hover`,
  * `&:focus-visible`, a nested `@media` from `extendCss`), every property's
- * winning value after the cascade between the `elements` and `rocketstyle`
- * layers. A value that moved from the theme to an Element prop still counts
+ * winning value after the cascade between the `elements`, `rocketstyle` and
+ * `instance` layers. A value that moved from the theme to an Element prop still counts
  * as the same.
  */
 
@@ -24,7 +24,7 @@ export interface RenderedElement {
   css: Record<string, string>
 }
 
-const LAYER_ORDER = ['elements', 'rocketstyle']
+const LAYER_ORDER = ['elements', 'rocketstyle', 'instance']
 const RULE = /^@layer (\w+)\{(?:(@media[^{]+)\{)?\.([\w-]+)\{([\s\S]*)\}\}?\}$/
 
 /** Declarations and nested blocks of one rule body, flattened to `selector|property` keys. */
