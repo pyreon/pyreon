@@ -78,7 +78,7 @@ Keep this list honest and current; it mirrors `BENCHMARKS.md` §13:
 - The bimodality guard (`examples/benchmark/bimodality-guard.ts`) flags cells whose samples split between two timing modes.
 - Retained heap is read post-GC with `--enable-precise-memory-info`. `STABLE_DELTA` (16 KB) in `bench-fair.ts` is a GC-convergence threshold, not the metric's resolution.
 - Standard run: `cd examples/benchmark && bun bench-fair.ts --repeat 5 --wait-quiet 6`. Also `bench-scenarios.ts`, `bench-hydration.ts`, `bench-apppage.ts`, `bench-ssr.ts`, `bench-crossover.ts`.
-- A scenario with an explicit pre-timing correctness gate (`maplist`, `router`) reports a failing op as `✗ NOT TIMED` rather than aborting the arm (`BenchSuite.gateFailures`); a failure during timing still aborts.
+- A scenario with an explicit pre-timing correctness gate (`maplist`, `router`) reports a failing op as `✗ NOT TIMED` rather than aborting the arm (`gateThenTime` in `src/impl/scenario-gated.ts`, `BenchSuite.gateFailures`); a failure during timing still aborts.
 
 ### Instruments without published rows: `maplist` and `router`
 

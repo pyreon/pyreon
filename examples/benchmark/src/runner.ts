@@ -57,7 +57,7 @@ export interface BenchSuite {
   /**
    * Ops this arm FAILED in a scenario's pre-timing correctness gate, so they
    * were not timed. Only scenarios with an explicit gate phase fill it
-   * (`scenario-maplist.ts`, `scenario-router.ts`); `bench-scenarios.ts` prints
+   * (`gateThenTime` in `scenario-gated.ts`); `bench-scenarios.ts` prints
    * each one in place of a number.
    */
   gateFailures?: { name: string; error: string }[]

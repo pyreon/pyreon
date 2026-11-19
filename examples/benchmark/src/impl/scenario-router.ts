@@ -59,9 +59,10 @@
  * load-bearing today; the pathname checks are what prove no push was dropped.
  */
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
-import type { BenchOptions, BenchSuite } from '../runner'
-import { bench } from '../runner'
-import { createRoutedApp } from './scenario-router-pyreon'
+import type { Router } from '@pyreon/router'
+import type { BenchSuite } from '../runner'
+import { type GatedOp, gateThenTime } from './scenario-gated'
+import { type RoutedApp, createRoutedApp } from './scenario-router-pyreon'
 
 export const ROUTER_FRAMEWORKS = ['Pyreon', 'Pyreon (tabs)'] as const
 
@@ -93,23 +94,9 @@ function viewProbe(container: HTMLElement): number {
   return code * 10 + (location.pathname === VIEW_PATH[view] ? 1 : 0)
 }
 
-export async function runRouter(framework: string, container: HTMLElement): Promise<BenchSuite> {
-  if (framework !== 'Pyreon' && framework !== 'Pyreon (tabs)') {
-    throw new Error(`[router] unknown framework: ${framework}`)
-  }
-  const withTabs = framework === 'Pyreon (tabs)'
-  const suite: BenchSuite = { framework, container, results: [], gateFailures: [] }
-
-  // The page was loaded at `/?mode=scenarios&…`; the router owns the URL from
-  // here on, and the original is put back at teardown.
-  const originalUrl = location.pathname + location.search
-  history.replaceState(null, '', '/home')
-  const routed = createRoutedApp(withTabs)
-  const { router } = routed
-  const unmount = pyreonMount(routed.app(), container)
-  await router.isReady()
-
-  const verify = (view: string, path: string, userId?: string): void => {
+/** DOM + URL + router-state check after a navigation (untimed). */
+function makeVerify(container: HTMLElement, router: Router, withTabs: boolean) {
+  return (view: string, path: string, userId?: string): void => {
     const views = container.querySelectorAll('[data-view]')
     if (views.length !== 1) fail(`expected exactly one view on screen, got ${views.length}`)
     const shown = (views[0] as HTMLElement).dataset.view
@@ -128,39 +115,42 @@ export async function runRouter(framework: string, container: HTMLElement): Prom
       if (depth > 3) fail(`the home tab stack grew to ${depth} entries — the op is not doing bounded work`)
     }
   }
+}
 
+function routerOps(container: HTMLElement, routed: RoutedApp, withTabs: boolean): GatedOp[] {
+  const { router } = routed
+  const verify = makeVerify(container, router, withTabs)
   const push = async (path: string): Promise<void> => {
     const result = await router.push(path)
     if (result !== 'committed') fail(`push("${path}") returned "${result}"`)
   }
-
-  verify('home', '/home')
-
   let guardedPushes = 0
-  type RouterBatch = Required<Pick<BenchOptions, 'batchK' | 'batchProbe' | 'batchPreExpect' | 'batchExpect'>>
-  interface RouterOp {
-    name: string
-    reset: () => Promise<void>
-    fn: () => Promise<void>
-    after: () => void
-    batch?: RouterBatch
+  // Every guarded push must have run the guard exactly once.
+  const auditGuard = () => {
+    const guardBefore = routed.guardCalls()
+    const pushesBefore = guardedPushes
+    return () => {
+      const ran = routed.guardCalls() - guardBefore
+      if (ran !== guardedPushes - pushesBefore) fail(`the guard ran ${ran}× for ${guardedPushes - pushesBefore} guarded push(es)`)
+    }
   }
-  const toDetail: Omit<RouterOp, 'name'> = {
+  const toDetail = {
     reset: () => push('/home'),
     fn: () => push('/home/detail'),
     after: () => verify('detail', '/home/detail'),
   }
-  const toGuarded: Omit<RouterOp, 'name'> = {
+  const toGuarded = {
     reset: () => push('/home'),
     fn: () => {
       // One integer add in the timed region, identical in both arms: it is what
-      // lets the gate prove the guard ran on EVERY timed navigation.
+      // lets the audit prove the guard ran on EVERY timed navigation.
       guardedPushes++
       return push('/home/guarded')
     },
     after: () => verify('guarded', '/home/guarded'),
+    audit: auditGuard,
   }
-  const toUser2: Omit<RouterOp, 'name'> = {
+  const toUser2 = {
     reset: async () => {
       await push('/home')
       await push('/home/user/1')
@@ -168,78 +158,55 @@ export async function runRouter(framework: string, container: HTMLElement): Prom
     fn: () => push('/home/user/2'),
     after: () => verify('user', '/home/user/2', '2'),
   }
-  const roundTrip = (post: number): RouterBatch => ({
+  const batch = (pre: number, post: number) => () => ({
     batchK: ROUTER_K,
     batchProbe: viewProbe,
-    batchPreExpect: VIEW_CODE.home! * 10 + 1,
-    batchExpect: post * 10 + 1,
+    batchPreExpect: pre,
+    batchExpect: post,
   })
-
-  const ops: RouterOp[] = [
+  const home = VIEW_CODE.home! * 10 + 1
+  return [
     { name: 'push: route change (/home → /home/detail)', ...toDetail },
     {
       name: 'push round trip (batch cycle: /home → /home/detail → /home)',
       ...toDetail,
-      batch: roundTrip(VIEW_CODE.detail!),
+      batch: batch(home, VIEW_CODE.detail! * 10 + 1),
     },
     { name: 'push: through 1 beforeEnter guard (/home → /home/guarded)', ...toGuarded },
     {
       name: 'push round trip through the guard (batch cycle: /home → /home/guarded → /home)',
       ...toGuarded,
-      batch: roundTrip(VIEW_CODE.guarded!),
+      batch: batch(home, VIEW_CODE.guarded! * 10 + 1),
     },
     { name: 'push: param change (/home/user/1 → /home/user/2)', ...toUser2 },
     {
       name: 'push param change (batch cycle: /home → /home/user/1 → /home/user/2, 3 pushes)',
       ...toUser2,
-      batch: {
-        batchK: ROUTER_K,
-        batchProbe: viewProbe,
-        batchPreExpect: 1000 + VIEW_CODE.user! * 10 + 1,
-        batchExpect: 2000 + VIEW_CODE.user! * 10 + 1,
-      },
+      batch: batch(1000 + VIEW_CODE.user! * 10 + 1, 2000 + VIEW_CODE.user! * 10 + 1),
     },
   ]
+}
 
-  // ── Correctness gate, BEFORE any timing ───────────────────────────────────
-  const failed = new Set<string>()
-  for (const op of ops) {
-    try {
-      const guardBefore = routed.guardCalls()
-      const pushesBefore = guardedPushes
-      await op.reset()
-      if (op.batch && op.batch.batchProbe(container) !== op.batch.batchPreExpect) {
-        fail(`batch precondition probe is ${op.batch.batchProbe(container)}, expected ${op.batch.batchPreExpect}`)
-      }
-      await op.fn()
-      op.after()
-      if (op.batch && op.batch.batchProbe(container) !== op.batch.batchExpect) {
-        fail(`batch probe after the op is ${op.batch.batchProbe(container)}, expected ${op.batch.batchExpect}`)
-      }
-      if (routed.guardCalls() - guardBefore !== guardedPushes - pushesBefore) {
-        fail(`the guard ran ${routed.guardCalls() - guardBefore}× for ${guardedPushes - pushesBefore} guarded push(es)`)
-      }
-    } catch (err) {
-      failed.add(op.name)
-      suite.gateFailures?.push({ name: op.name, error: err instanceof Error ? err.message : String(err) })
-    }
+export async function runRouter(framework: string, container: HTMLElement): Promise<BenchSuite> {
+  if (framework !== 'Pyreon' && framework !== 'Pyreon (tabs)') {
+    throw new Error(`[router] unknown framework: ${framework}`)
   }
+  const withTabs = framework === 'Pyreon (tabs)'
+  const suite: BenchSuite = { framework, container, results: [], gateFailures: [] }
 
-  // ── Timing ────────────────────────────────────────────────────────────────
+  // The page was loaded at `/?mode=scenarios&…`; the router owns the URL from
+  // here on, and the original is put back at teardown.
+  const originalUrl = location.pathname + location.search
+  history.replaceState(null, '', '/home')
+  const routed = createRoutedApp(withTabs)
+  const unmount = pyreonMount(routed.app(), container)
   try {
-    for (const op of ops) {
-      if (failed.has(op.name)) continue
-      const guardBefore = routed.guardCalls()
-      const pushesBefore = guardedPushes
-      await bench(op.name, suite, op.fn, { reset: op.reset, verify: op.after, ...op.batch })
-      const ran = routed.guardCalls() - guardBefore
-      if (ran !== guardedPushes - pushesBefore) {
-        fail(`${op.name}: the guard ran ${ran}× for ${guardedPushes - pushesBefore} guarded pushes`)
-      }
-    }
+    await routed.router.isReady()
+    makeVerify(container, routed.router, withTabs)('home', '/home')
+    await gateThenTime(suite, routerOps(container, routed, withTabs), 'router')
   } finally {
     unmount()
-    router.destroy()
+    routed.router.destroy()
     history.replaceState(null, '', originalUrl)
   }
   return suite

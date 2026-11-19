@@ -84,41 +84,49 @@ function probeIndices(n: number): number[] {
 export function verifyMapList(container: HTMLElement, model: readonly PlainRow[]): void {
   const rows = rowList(container)
   if (rows.length !== model.length) fail(`expected ${model.length} rows, got ${rows.length}`)
+  verifyEmptyState(container, model.length)
+  for (const i of probeIndices(model.length)) verifyRow(rows[i] as HTMLElement, i, model[i] as PlainRow)
+}
+
+/** The empty-state slot renders exactly when the list is empty. */
+function verifyEmptyState(container: HTMLElement, n: number): void {
   const empty = container.querySelectorAll('.ml > p.empty')
-  if (model.length === 0) {
+  if (n === 0) {
     if (empty.length !== 1 || empty[0]?.textContent !== 'No rows') {
       fail(`empty list must render exactly one <p class="empty">No rows</p>, got ${empty.length}`)
     }
   } else if (empty.length !== 0) {
-    fail(`non-empty list (${model.length} rows) still renders the empty state`)
+    fail(`non-empty list (${n} rows) still renders the empty state`)
   }
-  for (const i of probeIndices(model.length)) {
-    const tr = rows[i] as HTMLElement
-    const want = model[i] as PlainRow
-    if (tr.tagName !== 'TR' || tr.children.length !== 3) {
-      fail(`row ${i}: expected a <tr> with 3 cells, got <${tr.tagName.toLowerCase()}> with ${tr.children.length}`)
-    }
-    const [idCell, labelCell, statusCell] = [...tr.children] as HTMLElement[]
-    if (idCell?.className !== 'id' || idCell.textContent !== String(want.id)) {
-      fail(`row ${i} id: expected "${want.id}", got "${idCell?.textContent}"`)
-    }
-    if (labelCell?.className !== 'label' || labelCell.textContent !== want.label) {
-      fail(`row ${i} label: expected ${JSON.stringify(want.label)}, got ${JSON.stringify(labelCell?.textContent)}`)
-    }
-    const branch = statusCell?.children
-    const wantTag = want.done ? 'SPAN' : 'EM'
-    const wantCls = want.done ? 'done' : 'todo'
-    if (
-      statusCell?.className !== 'status' ||
-      branch?.length !== 1 ||
-      branch[0]?.tagName !== wantTag ||
-      branch[0].className !== wantCls ||
-      statusCell.textContent !== wantCls
-    ) {
-      fail(
-        `row ${i} status: expected one <${wantTag.toLowerCase()} class="${wantCls}">, got ${JSON.stringify(statusCell?.innerHTML)}`,
-      )
-    }
+}
+
+function verifyRow(tr: HTMLElement, i: number, want: PlainRow): void {
+  if (tr.tagName !== 'TR' || tr.children.length !== 3) {
+    fail(`row ${i}: expected a <tr> with 3 cells, got <${tr.tagName.toLowerCase()}> with ${tr.children.length}`)
+  }
+  const [idCell, labelCell, statusCell] = [...tr.children] as HTMLElement[]
+  if (idCell?.className !== 'id' || idCell.textContent !== String(want.id)) {
+    fail(`row ${i} id: expected "${want.id}", got "${idCell?.textContent}"`)
+  }
+  if (labelCell?.className !== 'label' || labelCell.textContent !== want.label) {
+    fail(`row ${i} label: expected ${JSON.stringify(want.label)}, got ${JSON.stringify(labelCell?.textContent)}`)
+  }
+  verifyStatus(statusCell, i, want.done)
+}
+
+/** The conditional slot: exactly one element, the branch `done` selects. */
+function verifyStatus(cell: HTMLElement | undefined, i: number, done: boolean): void {
+  const wantTag = done ? 'SPAN' : 'EM'
+  const wantCls = done ? 'done' : 'todo'
+  const branch = cell?.children
+  const ok =
+    cell?.className === 'status' &&
+    branch?.length === 1 &&
+    branch[0]?.tagName === wantTag &&
+    branch[0].className === wantCls &&
+    cell.textContent === wantCls
+  if (!ok) {
+    fail(`row ${i} status: expected one <${wantTag.toLowerCase()} class="${wantCls}">, got ${JSON.stringify(cell?.innerHTML)}`)
   }
 }
 

@@ -362,6 +362,26 @@ function cv(xs: number[]): number {
   return (Math.sqrt(variance) / mean) * 100
 }
 
+/**
+ * Pool one page-load's results: one sample cluster per op, keyed
+ * `scenario \0 op \0 framework`, and the ops the arm failed in its pre-timing
+ * correctness gate (printed as NOT TIMED).
+ */
+function collectSuite(
+  scenarioId: string,
+  s: SuiteResult,
+  pooled: Map<string, number[][]>,
+  gateFailures: Map<string, string>,
+): void {
+  for (const r of s.results) {
+    const key = `${scenarioId}\u0000${r.name}\u0000${s.framework}`
+    pooled.set(key, [...(pooled.get(key) ?? []), [...r.samples]])
+  }
+  for (const f of s.gateFailures ?? []) {
+    gateFailures.set(`${scenarioId}\u0000${f.name}\u0000${s.framework}`, f.error)
+  }
+}
+
 function fmt(ms: number): string {
   return ms < 1 ? `${(ms * 1000).toFixed(0)}µs` : `${ms.toFixed(2)}ms`
 }
@@ -540,15 +560,7 @@ try {
         const suites = (await page.evaluate(
           () => (globalThis as { __benchResults?: unknown }).__benchResults,
         )) as SuiteResult[]
-        for (const s of suites) {
-          for (const r of s.results) {
-            const key = `${scenario.id}\u0000${r.name}\u0000${s.framework}`
-            pooled.set(key, [...(pooled.get(key) ?? []), [...r.samples]])
-          }
-          for (const f of s.gateFailures ?? []) {
-            gateFailures.set(`${scenario.id}\u0000${f.name}\u0000${s.framework}`, f.error)
-          }
-        }
+        for (const s of suites) collectSuite(scenario.id, s, pooled, gateFailures)
         console.log('ok')
         await page.close()
       }

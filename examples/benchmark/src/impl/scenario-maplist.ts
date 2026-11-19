@@ -97,11 +97,12 @@ import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUn
 import { createApp, defineComponent, nextTick, shallowRef } from 'vue'
 import { render as vueMapListRender } from 'virtual:maplist-vue-render'
 import { makeRow as solidMakeRow, mountMapList as solidMountMapList } from 'virtual:rival-solid/maplist'
-import type { BenchOptions, BenchSuite } from '../runner'
-import { bench, resetRng } from '../runner'
+import type { BenchSuite } from '../runner'
+import { resetRng } from '../runner'
 import MapList from './MapList.svelte'
 import { SvelteMapRow, getMapRows, setMapRows } from './maplist-state.svelte'
 import { preactJsxKeyed } from './preact-jsx-keyed'
+import { type GatedOp, gateThenTime } from './scenario-gated'
 import { type PyreonMapRow, PyreonForList, PyreonMapList } from './scenario-maplist-pyreon'
 import {
   ML_K,
@@ -416,19 +417,115 @@ function makeTarget(framework: string, container: HTMLElement, initial: readonly
   }
 }
 
-/**
- * One op: `prepare` (untimed, once, before the op's iterations) brings the list
- * to the op's starting state; `reset`/`fn`/`after` are the `bench()` reset, the
- * timed op and a model update + DOM check run after every iteration.
- */
-interface MapListOp {
-  name: string
-  prepare: () => Promise<void>
-  reset?: () => Promise<void>
-  fn: () => Promise<void>
-  after: () => void
-  /** Batch instrument: the probe, and its value before/after `fn` (omitted → derived from row 500's `done`). */
-  batch?: { batchProbe: (container: HTMLElement) => number; batchPreExpect?: number; batchExpect?: number }
+/** What the DOM must show, plus the single-row ops' starting values. Updated only outside timed regions. */
+interface MapListState {
+  model: PlainRow[]
+  next: PlainRow[]
+  origLabel: string
+  origDone: boolean
+}
+
+/** The single-row ops (update one cell, toggle one conditional), per-op and batch. */
+function singleRowOps(container: HTMLElement, target: MapListTarget, st: MapListState, fill: () => Promise<void>): GatedOp[] {
+  const prepare = async () => {
+    await fill()
+    st.origLabel = (st.model[ML_TARGET] as PlainRow).label
+    st.origDone = (st.model[ML_TARGET] as PlainRow).done
+  }
+  const updateCell = {
+    prepare,
+    reset: () => target.setLabel(ML_TARGET, st.origLabel),
+    fn: () => target.setLabel(ML_TARGET, st.origLabel + ML_UPDATED_SUFFIX),
+    after: () => verifyMapList(container, withRow(st.model, ML_TARGET, { label: st.origLabel + ML_UPDATED_SUFFIX })),
+  }
+  const toggle = {
+    prepare,
+    reset: () => target.setDone(ML_TARGET, st.origDone),
+    fn: () => target.setDone(ML_TARGET, !st.origDone),
+    after: () => verifyMapList(container, withRow(st.model, ML_TARGET, { done: !st.origDone })),
+  }
+  return [
+    { name: 'update one cell (row 500 label)', ...updateCell },
+    {
+      name: 'update one cell (batch cycle: set + restore)',
+      ...updateCell,
+      batch: () => ({ batchK: ML_K, batchProbe: labelUpdatedProbe, batchPreExpect: 0, batchExpect: 1 }),
+    },
+    { name: 'toggle one conditional (row 500 status)', ...toggle },
+    {
+      name: 'toggle one conditional (batch cycle: flip + restore)',
+      ...toggle,
+      // Whether row 500 starts `done` depends on its id, so read it after `prepare`.
+      batch: () => ({
+        batchK: ML_K,
+        batchProbe: statusDoneProbe,
+        batchPreExpect: st.origDone ? 1 : 0,
+        batchExpect: st.origDone ? 0 : 1,
+      }),
+    },
+  ]
+}
+
+function mapListOps(container: HTMLElement, target: MapListTarget, st: MapListState): GatedOp[] {
+  const fill = async () => {
+    st.model = buildPlainRows(ML_ROWS)
+    await target.set(st.model)
+  }
+  const commitNext = () => {
+    st.model = st.next
+    verifyMapList(container, st.model)
+  }
+  return [
+    {
+      name: `create ${ML_ROWS.toLocaleString('en-US')} rows (into the mounted, empty list)`,
+      prepare: () => target.clear(),
+      reset: async () => {
+        await target.clear()
+        st.next = buildPlainRows(ML_ROWS)
+      },
+      fn: () => target.set(st.next),
+      after: commitNext,
+    },
+    {
+      name: `replace all ${ML_ROWS.toLocaleString('en-US')} rows`,
+      prepare: fill,
+      reset: () => {
+        st.next = buildPlainRows(ML_ROWS)
+      },
+      fn: () => target.set(st.next),
+      after: commitNext,
+    },
+    ...singleRowOps(container, target, st, fill),
+    {
+      name: `swap rows (${ML_SWAP_A + 1} ↔ ${ML_SWAP_B + 1})`,
+      prepare: fill,
+      fn: () => target.swap(ML_SWAP_A, ML_SWAP_B),
+      after: () => {
+        st.model = swapped(st.model, ML_SWAP_A, ML_SWAP_B)
+        verifyMapList(container, st.model)
+      },
+    },
+    {
+      name: 'remove one row (row 500)',
+      prepare: fill,
+      reset: fill,
+      fn: () => target.remove(ML_TARGET),
+      after: () => {
+        st.model = without(st.model, ML_TARGET)
+        verifyMapList(container, st.model)
+      },
+    },
+    {
+      name: `clear ${ML_ROWS.toLocaleString('en-US')} rows`,
+      prepare: fill,
+      reset: fill,
+      fn: () => target.clear(),
+      after: () => {
+        st.model = []
+        verifyMapList(container, st.model)
+      },
+    },
+  ]
 }
 
 export async function runMapList(framework: string, container: HTMLElement): Promise<BenchSuite> {
@@ -439,161 +536,16 @@ export async function runMapList(framework: string, container: HTMLElement): Pro
   container.classList.add('bench-fixture')
   resetRng()
 
-  // The harness's model of what the DOM must show. Every model update happens
-  // in `prepare`/`reset`/`after`, never inside a timed region.
-  let model: PlainRow[] = buildPlainRows(ML_ROWS)
-  const target = makeTarget(framework, container, model)
-  verifyMapList(container, model)
+  // Every arm mounts with the same 1,000 rows (the first-render-empty arm sets
+  // them right after an empty mount), is checked, then cleared.
+  const st: MapListState = { model: buildPlainRows(ML_ROWS), next: [], origLabel: '', origDone: false }
+  const target = makeTarget(framework, container, st.model)
+  verifyMapList(container, st.model)
   await target.clear()
-  model = []
-  verifyMapList(container, model)
+  st.model = []
+  verifyMapList(container, st.model)
 
-  let next: PlainRow[] = []
-  const fill = async () => {
-    model = buildPlainRows(ML_ROWS)
-    await target.set(model)
-  }
-
-  // Single-row ops act on a fixed full list; these capture its row 500.
-  let origLabel = ''
-  let origDone = false
-  const prepSingleRow = async () => {
-    await fill()
-    origLabel = (model[ML_TARGET] as PlainRow).label
-    origDone = (model[ML_TARGET] as PlainRow).done
-  }
-  const labelModel = () => withRow(model, ML_TARGET, { label: origLabel + ML_UPDATED_SUFFIX })
-  const doneModel = () => withRow(model, ML_TARGET, { done: !origDone })
-
-  const updateCell: Omit<MapListOp, 'name'> = {
-    prepare: prepSingleRow,
-    reset: async () => target.setLabel(ML_TARGET, origLabel),
-    fn: async () => target.setLabel(ML_TARGET, origLabel + ML_UPDATED_SUFFIX),
-    after: () => verifyMapList(container, labelModel()),
-  }
-  const toggleCond: Omit<MapListOp, 'name'> = {
-    prepare: prepSingleRow,
-    reset: async () => target.setDone(ML_TARGET, origDone),
-    fn: async () => target.setDone(ML_TARGET, !origDone),
-    after: () => verifyMapList(container, doneModel()),
-  }
-
-  const ops: MapListOp[] = [
-    {
-      name: `create ${ML_ROWS.toLocaleString('en-US')} rows (into the mounted, empty list)`,
-      prepare: async () => target.clear(),
-      reset: async () => {
-        await target.clear()
-        next = buildPlainRows(ML_ROWS)
-      },
-      fn: async () => target.set(next),
-      after: () => {
-        model = next
-        verifyMapList(container, model)
-      },
-    },
-    {
-      name: `replace all ${ML_ROWS.toLocaleString('en-US')} rows`,
-      prepare: fill,
-      reset: async () => {
-        next = buildPlainRows(ML_ROWS)
-      },
-      fn: async () => target.set(next),
-      after: () => {
-        model = next
-        verifyMapList(container, model)
-      },
-    },
-    { name: 'update one cell (row 500 label)', ...updateCell },
-    {
-      name: 'update one cell (batch cycle: set + restore)',
-      ...updateCell,
-      batch: { batchProbe: labelUpdatedProbe, batchPreExpect: 0, batchExpect: 1 },
-    },
-    { name: 'toggle one conditional (row 500 status)', ...toggleCond },
-    {
-      name: 'toggle one conditional (batch cycle: flip + restore)',
-      ...toggleCond,
-      // Resolved at run time: whether row 500 starts `done` depends on its id.
-      batch: { batchProbe: statusDoneProbe },
-    },
-    {
-      name: `swap rows (${ML_SWAP_A + 1} ↔ ${ML_SWAP_B + 1})`,
-      prepare: fill,
-      fn: async () => target.swap(ML_SWAP_A, ML_SWAP_B),
-      after: () => {
-        model = swapped(model, ML_SWAP_A, ML_SWAP_B)
-        verifyMapList(container, model)
-      },
-    },
-    {
-      name: 'remove one row (row 500)',
-      prepare: fill,
-      reset: fill,
-      fn: async () => target.remove(ML_TARGET),
-      after: () => {
-        model = without(model, ML_TARGET)
-        verifyMapList(container, model)
-      },
-    },
-    {
-      name: `clear ${ML_ROWS.toLocaleString('en-US')} rows`,
-      prepare: fill,
-      reset: fill,
-      fn: async () => target.clear(),
-      after: () => {
-        model = []
-        verifyMapList(container, model)
-      },
-    },
-  ]
-
-  type BatchOptions = Required<Pick<BenchOptions, 'batchK' | 'batchProbe' | 'batchPreExpect' | 'batchExpect'>>
-  const batchOf = (op: MapListOp): BatchOptions | null => {
-    if (!op.batch) return null
-    return {
-      batchK: ML_K,
-      batchProbe: op.batch.batchProbe,
-      batchPreExpect: op.batch.batchPreExpect ?? (origDone ? 1 : 0),
-      batchExpect: op.batch.batchExpect ?? (origDone ? 0 : 1),
-    }
-  }
-
-  // ── Correctness gate, BEFORE any timing ───────────────────────────────────
-  // Each op once, on its own prepared list, checked against the model (and,
-  // for a batch op, its probe before and after). An op that fails is reported
-  // and not timed for this arm.
-  const failed = new Set<string>()
-  for (const op of ops) {
-    try {
-      await op.prepare()
-      if (op.reset) await op.reset()
-      const b = batchOf(op)
-      if (b && b.batchProbe(container) !== b.batchPreExpect) {
-        throw new Error(`[maplist] correctness gate failed — batch precondition probe is not ${b.batchPreExpect}`)
-      }
-      await op.fn()
-      op.after()
-      if (b && b.batchProbe(container) !== b.batchExpect) {
-        throw new Error(`[maplist] correctness gate failed — batch probe after the op is not ${b.batchExpect}`)
-      }
-    } catch (err) {
-      failed.add(op.name)
-      suite.gateFailures?.push({ name: op.name, error: err instanceof Error ? err.message : String(err) })
-    }
-  }
-
-  // ── Timing ────────────────────────────────────────────────────────────────
-  for (const op of ops) {
-    if (failed.has(op.name)) continue
-    await op.prepare()
-    const opts: BenchOptions = {
-      ...(op.reset ? { reset: op.reset } : {}),
-      verify: op.after,
-      ...batchOf(op),
-    }
-    await bench(op.name, suite, op.fn, opts)
-  }
+  await gateThenTime(suite, mapListOps(container, target, st), 'maplist')
 
   await target.clear()
   target.teardown()
