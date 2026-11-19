@@ -1,8 +1,10 @@
 # @pyreon/command
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 A command palette for Pyreon: every action of an app, found by typing and run from the keyboard. This package is built in three slices; this README describes what has landed: the fuzzy matcher and the command registry with shortcuts. The palette state and the components follow.
 
-> **Experimental.** Typo tolerance is not part of v0.
+> Typo tolerance is not part of v0.
 
 ## Install
 
