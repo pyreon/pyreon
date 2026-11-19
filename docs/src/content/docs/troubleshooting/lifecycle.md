@@ -328,6 +328,12 @@ The streaming handler copied the app stream into the response body from `start()
 
 ---
 
+### [FIXED, 2026-11] Ref-dependent DOM work scheduled from setup with `queueMicrotask` / a timer.
+
+`<RouterLink prefetch="viewport">` called `observer.observe(ref.current)` from a microtask queued at setup. A link unmounted in the same tick had its ref cleared first, so `observe(null)` threw an uncaught TypeError. **Rule: work that needs a component's DOM runs in `onMount` (the ref is set there) and is undone in that hook's returned cleanup; never in a microtask or timer queued from the body, which can outlive the component.** Reference: `router/src/components.tsx` (RouterLink); locked by `router-link-viewport-unmount.test.ts` (bisect-verified).
+
+---
+
 ### A module-scoped store reached on the server
 
 A module-level `Map` is correctly app-wide in a browser, where one process serves one user, but on a server it is shared by every request. `useDatabase` and `useSecureStorage` returned one request's records and secrets to another under SSR. Their server arms are now inert (consistent within a render, nothing carried across requests). Before reusing a module-scoped cache on the server, ask what one process means there. A `/* v8 ignore */` claiming a branch is untestable, while sibling files test the same shape, signals an unexamined branch. Reference: `packages/fundamentals/hooks/src/{useDatabase,useSecureStorage}.ts`; `hooks/src/tests/server-store-isolation.ssr.test.ts`.
