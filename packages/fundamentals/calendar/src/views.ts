@@ -45,7 +45,7 @@ function count(name: string, value: number | undefined, fallback: number): numbe
 }
 
 /** The window of a view around `date`, before hidden days are removed. */
-function window(view: ViewName, date: PlainDate, options: ViewOptions): Interval<PlainDate> {
+function windowOf(view: ViewName, date: PlainDate, options: ViewOptions): Interval<PlainDate> {
   const weekStart = options.weekStart ?? 1
   switch (view) {
     case 'month': {
@@ -89,7 +89,7 @@ function rowsOf(view: ViewName, dates: readonly PlainDate[], columns: number): (
  * @example visibleRange('workWeek', '2026-11-18').dates.length // => 5
  */
 export function visibleRange(view: ViewName, date: PlainDate, options: ViewOptions = {}): VisibleRange {
-  const range = window(view, date, options)
+  const range = windowOf(view, date, options)
   const hidden = hiddenSet(view, options)
   const dates = eachDay(range.start, add(range.end, { days: -1 })).filter((d) => !hidden.has(dayOfWeek(d)))
   const columns = 7 - [...hidden].length
