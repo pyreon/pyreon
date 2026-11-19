@@ -7,6 +7,28 @@ import { diagnoseError } from '../diagnose'
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('diagnoseError (browser-safe error catalog)', () => {
+  it('explains a memory router initialIndex outside its entries', () => {
+    const result = diagnoseError(
+      '[Pyreon Router] initialIndex 5 is outside initialEntries (0–2) — starting at entry 2. Pass an index into the initialEntries array.',
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('initialIndex')
+    expect(result!.fix).toContain('initialEntries.length - 1')
+    // The option name alone is not this entry.
+    expect(diagnoseError('what does initialIndex do?')?.cause ?? '').not.toContain('clamps')
+  })
+
+  it('explains a memory router that cancelled an external redirect', () => {
+    const result = diagnoseError(
+      `[Pyreon Router] mode: 'memory' does not follow the external redirect to "https://example.com/pay" — it would navigate the whole page. Navigation cancelled; call window.location.assign() yourself if leaving the page is intended.`,
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('memory')
+    expect(result!.fix).toContain('window.location.assign')
+    // An ordinary redirect message is not this entry.
+    expect(diagnoseError('redirect loop detected')?.fix ?? '').not.toContain('window.location.assign')
+  })
+
   it('explains an effect cleanup that threw when a server request ended', () => {
     const result = diagnoseError('[Pyreon SSR] An effect cleanup threw while a request ended: TypeError: x is not a function')
     expect(result).not.toBeNull()

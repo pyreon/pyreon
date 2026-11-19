@@ -215,6 +215,12 @@ An animation function that does not store its frame ID leaks frames when called 
 
 ---
 
+### [FIXED, 2026-11] A cancel that covers the work a frame STARTS but not the frame itself.
+
+`<Transition>` set its cancel (listeners, safety timer) inside the `requestAnimationFrame` callback, so an unmount before the frame left the frame to run on a detached element and fire `onAfterEnter`/`onAfterLeave` 5s later. **Rule: the cancel is installed when the work is scheduled (cancel the frame id), and the frame replaces it with the cancel for what it starts.** Reference: `runtime-dom/src/transition.ts`; locked by `transition-unmount-before-frame.test.ts` (bisect-verified).
+
+---
+
 ### Bare `requestAnimationFrame` in async animation paths
 
 An async path (`await computeLayout(...)`) can reach its rAF call after the test environment is torn down, throwing `ReferenceError: requestAnimationFrame is not defined` as an unhandled error that fails the run with all tests green. Wrap rAF/cAF in helpers that no-op when the global is not a function: `const _raf = (cb) => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(cb) : 0`. Applies to SSR and workers too. Reference: `flow/src/flow.ts` (`_raf`, `_caf`); `flow/src/tests/raf-teardown-safety.test.ts`.

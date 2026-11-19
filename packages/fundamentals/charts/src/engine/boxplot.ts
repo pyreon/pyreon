@@ -87,7 +87,7 @@ export function fiveNumber(values: Double[]): FiveNumber {
 }
 
 /** The value extent across every summary, outliers included. */
-export function boxplotExtent(rows: FiveNumber[]): Domain {
+export function boxplotExtent(rows: readonly FiveNumber[]): Domain {
   if (rows.length === 0) return { min: 0.0, max: 1.0 }
   let lo = rows[0]!.min
   let hi = rows[0]!.max
@@ -104,7 +104,7 @@ export function boxplotExtent(rows: FiveNumber[]): Domain {
 }
 
 /** Render one box per category across the plot's bands. */
-export function renderBoxplot(rows: FiveNumber[], plot: Rect, domain: Domain, options?: BoxplotOptions): DrawCmd[] {
+export function renderBoxplot(rows: readonly FiveNumber[], plot: Rect, domain: Domain, options?: BoxplotOptions): DrawCmd[] {
   const out: DrawCmd[] = []
   const n = rows.length
   if (n === 0) return out

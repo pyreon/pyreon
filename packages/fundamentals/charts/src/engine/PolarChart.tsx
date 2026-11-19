@@ -12,7 +12,7 @@ import type { PolarHit } from './polar-hit'
 
 export interface PolarChartProps extends CanvasHostProps {
   axes: PolarAxes
-  series: PolarSeries[] | (() => PolarSeries[])
+  series: readonly PolarSeries[] | (() => readonly PolarSeries[])
   polar?: PolarOptions
   /** Fired with the sector or line point under the click, or null for a miss. */
   onSelect?: (hit: PolarHit) => void
@@ -21,7 +21,7 @@ export interface PolarChartProps extends CanvasHostProps {
 }
 
 export function PolarChart(props: PolarChartProps): VNode {
-  const readSeries = (): PolarSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
+  const readSeries = (): readonly PolarSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
   const opts = (t: ChartTheme): PolarOptions => ({ palette: t.palette, labelColor: t.label, gridColor: t.grid, ...props.polar })
   return canvasHost<PolarLayout>({
     props,
