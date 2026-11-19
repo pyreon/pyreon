@@ -66,7 +66,7 @@ describe('gen-docs — hooks snapshot', () => {
 
       // 4. Focus management for modals / drawers.
       useFocusTrap(() => modalEl)                // traps Tab inside the element while it's present (null = inert)
-      const scroll = useScrollLock()             // scroll.lock() / scroll.unlock() — refcounted <body> lock
+      const scroll = useScrollLock()             // scroll.lock() / scroll.unlock() — one hold on the page lock shared with @pyreon/core lockScroll
 
       // 5. Responsive — driven by theme breakpoints, NOT raw media queries.
       const bp = useBreakpoint()                 // () => string — active breakpoint name ('xs'|'sm'|'md'|'lg'|'xl')
