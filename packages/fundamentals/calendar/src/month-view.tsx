@@ -33,14 +33,15 @@ export type ResolvedView<Meta = unknown> = ViewProps<Meta>
 
 /** Called when a "+N more" button is pressed. */
 export interface MonthViewProps<Meta = unknown> extends ViewProps<Meta> {
-  onMore?: (date: PlainDate) => void
+  /** Called with the day and the "+N more" button that was pressed (where `<Calendar>` anchors its popover). */
+  onMore?: (date: PlainDate, button: HTMLElement) => void
 }
 
 // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- only called from keydown handlers, which exist only in a browser
 export const isRtl = (el: Element | null): boolean => el !== null && getComputedStyle(el).direction === 'rtl'
 
 /** The pointer layer of a grid, attached on mount and removed on unmount; it also keeps focus on a keyboard-grabbed event while the layout moves it. */
-export function usePointer<Meta>(root: () => HTMLElement | null, calendar: Calendar<Meta>, grid: 'month' | 'time'): void {
+export function usePointer<Meta>(root: () => HTMLElement | null, calendar: Calendar<Meta>, grid: 'month' | 'time' | 'timeline'): void {
   onMount(() => {
     const el = root()
     if (el === null) return undefined
@@ -217,7 +218,7 @@ function WeekRow<Meta>(props: { week: MonthWeek; view: ResolvedView<Meta>; occur
                 style={`--pcal-lane:${capacity()}`}
                 onClick={(e: MouseEvent) => {
                   e.stopPropagation()
-                  ;(props.view as ResolvedView<Meta> & MonthViewProps<Meta>).onMore?.(cell.date)
+                  ;(props.view as ResolvedView<Meta> & MonthViewProps<Meta>).onMore?.(cell.date, e.currentTarget as HTMLElement)
                 }}
               >
                 {props.view.renderMore === undefined ? calendar.messages().more(layout().more[column] ?? 0) : props.view.renderMore(layout().more[column] ?? 0, cell.date)}
@@ -291,7 +292,7 @@ export function MonthView<Meta = unknown>(props: MonthViewProps<Meta>): VNodeChi
 }
 
 /** A weekday's name (1 Monday ... 7 Sunday) in the locale. */
-export function dayWeekday(weekday: number, locale: string, width: 'long' | 'short' = 'long'): string {
+export function dayWeekday(weekday: number, locale: string, width: 'long' | 'short' | 'narrow' = 'long'): string {
   // 2026-11-16 is a Monday
   const date = `2026-11-${String(15 + weekday).padStart(2, '0')}` as PlainDate
 

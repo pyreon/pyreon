@@ -5,6 +5,8 @@ import type { Calendar, CalendarOptions } from './calendar-types'
 import { bad, isDateString } from './check'
 import { beginEdit, cancelEdit, canEdit, dropEdit, editKey, minOf, previewEdit, propose, snapOf } from './editing'
 import { handleKey, moveCursor, rangeOf, selectRange } from './interaction'
+import { createAgendaModel, createTimelineModel, createYearModel, occurrencesOn } from './view-models'
+import type { Resource } from './timeline'
 import { createMonthModel, createTimeGridModel } from './models'
 import { createState } from './state'
 import type { CalState } from './state'
@@ -43,6 +45,10 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
   const s = createState(options)
   const month = createMonthModel(s)
   const timeGrid = createTimeGridModel(s)
+  const resources = (): readonly Resource[] => options.resources?.() ?? []
+  const agenda = createAgendaModel(s)
+  const year = createYearModel(s)
+  const timeline = createTimelineModel(s, resources)
   const messages = s.messages
   const rangeTitle = computed(() => viewTitle(s.shown(), (info) => title(s, info)))
   const stops: { dispose(): void }[] = []
@@ -75,6 +81,11 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
     range: () => s.shown().range,
     dates: () => s.shown().dates,
     title: () => rangeTitle(),
+    agenda: () => agenda(),
+    year: () => year(),
+    timeline: () => timeline(),
+    resources,
+    dayOccurrences: (date) => occurrencesOn(s, date),
     messages: () => messages(),
     month,
     timeGrid,
@@ -127,6 +138,9 @@ export function createCalendar<Meta = unknown>(options: CalendarOptions<Meta>): 
       for (const stop of stops) stop.dispose()
       month.dispose()
       timeGrid.dispose()
+      agenda.dispose()
+      year.dispose()
+      timeline.dispose()
       rangeTitle.dispose()
       messages.dispose()
       s.occurrences.dispose()

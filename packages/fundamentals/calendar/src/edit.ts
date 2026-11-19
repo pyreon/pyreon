@@ -15,7 +15,9 @@ export interface EventChange<Meta = unknown> {
   start: EventTime
   end: EventTime
   allDay: boolean
+  /** The resource the event is now on, and the one it was on (the row it was dragged from): only when a resource is involved. */
   resourceId?: string
+  fromResourceId?: string
   /** For a recurring event: what the user chose. */
   scope?: EditScope
 }
@@ -24,6 +26,23 @@ export interface Target {
   start: PlainDate | PlainDateTime
   end: PlainDate | PlainDateTime
   allDay: boolean
+  /** In the timeline: the row the event lands on, and the row it came from. */
+  resourceId?: string
+  fromResourceId?: string
+}
+
+/** The `resourceId` of an event after moving it from one resource to another (an event on several resources keeps the others). */
+export function movedResource(current: string | readonly string[] | undefined, from: string | undefined, to: string): string | string[] {
+  if (current === undefined || typeof current === 'string' || from === undefined) return typeof current === 'object' && from === undefined ? [...current, to] : to
+  const next = current.map((id) => (id === from ? to : id))
+
+  return [...new Set(next)]
+}
+
+function withResource<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>): CalendarEvent<Meta> {
+  if (change.resourceId === undefined) return event
+
+  return { ...event, resourceId: movedResource(event.resourceId, change.fromResourceId, change.resourceId) }
 }
 
 const wallMs = (value: string): number => toInstant(value as PlainDate | PlainDateTime, 'UTC')
@@ -62,7 +81,7 @@ function shiftOverrides(overrides: CalendarEvent['overrides'], deltaMs: number, 
 }
 
 function single<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>): CalendarEvent<Meta>[] {
-  const next: CalendarEvent<Meta> = { ...event, start: change.start, end: change.end }
+  const next: CalendarEvent<Meta> = { ...withResource(event, change), start: change.start, end: change.end }
   if (change.allDay) next.allDay = true
   else if (event.allDay === true) next.allDay = false
 
@@ -71,6 +90,8 @@ function single<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>): Ca
 
 function thisOne<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>): CalendarEvent<Meta>[] {
   if (change.allDay !== (typeof event.start === 'string' && event.start.length === 10)) bad('applyEventChange', 'change', 'a change that keeps the occurrence all-day or timed like its event (a single occurrence cannot switch)', change.allDay ? 'an all-day change for a timed event' : 'a timed change for an all-day event')
+
+  if (change.resourceId !== undefined && change.resourceId !== change.fromResourceId) bad('applyEventChange', 'change.scope', "'all' or 'following' when the resource changes (an override cannot move one occurrence to another resource)", 'this')
 
   return [{ ...event, overrides: { ...event.overrides, [change.occurrence as string]: { start: change.start, end: change.end } } }]
 }
@@ -85,7 +106,7 @@ function allOfThem<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>, 
   const masterEnd = fromWallMs(wallMs(masterStart) + duration, allDay)
   const asKind = (wall: PlainDate | PlainDateTime): EventTime => (typeof event.start === 'number' ? toInstant(wall as PlainDateTime, wallZone) : wall)
   const overrides = shiftOverrides(event.overrides, delta, allDay)
-  const next: CalendarEvent<Meta> = { ...event, start: asKind(masterStart), end: asKind(masterEnd), recurrence: { ...(event.recurrence as NonNullable<CalendarEvent['recurrence']>), start: masterStart } }
+  const next: CalendarEvent<Meta> = { ...withResource(event, change), start: asKind(masterStart), end: asKind(masterEnd), recurrence: { ...(event.recurrence as NonNullable<CalendarEvent['recurrence']>), start: masterStart } }
   if (overrides !== undefined) next.overrides = overrides
 
   return [next]
@@ -102,6 +123,7 @@ function following<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>, 
   const duration = wallMs(wallOf(change.end, wallZone)) - wallMs(newStart)
   const before = add(occurrence.slice(0, 10) as PlainDate, { days: -1 })
   const ended: CalendarEvent<Meta> = { ...event, recurrence: { ...rule } }
+  const withMoved = withResource(event, change)
   delete (ended.recurrence as { count?: number }).count
   ;(ended.recurrence as { until?: unknown }).until = before
   const kept = Object.fromEntries(Object.entries(event.overrides ?? {}).filter(([key]) => key < occurrence))
@@ -112,7 +134,7 @@ function following<Meta>(event: CalendarEvent<Meta>, change: EventChange<Meta>, 
   const createdRule: NonNullable<CalendarEvent['recurrence']> = { ...rule, start: newStart }
   if (rule.count !== undefined) createdRule.count = Math.max(1, rule.count - done)
   const asKind = (wall: PlainDate | PlainDateTime): EventTime => (typeof event.start === 'number' ? toInstant(wall as PlainDateTime, wallZone) : wall)
-  const created: CalendarEvent<Meta> = { ...event, id: `${event.id}~${occurrence}`, start: asKind(newStart), end: asKind(fromWallMs(wallMs(newStart) + duration, allDay)), recurrence: createdRule }
+  const created: CalendarEvent<Meta> = { ...withMoved, id: `${event.id}~${occurrence}`, start: asKind(newStart), end: asKind(fromWallMs(wallMs(newStart) + duration, allDay)), recurrence: createdRule }
   delete created.overrides
   if (moved !== undefined && Object.keys(moved).length > 0) created.overrides = moved
 

@@ -9,11 +9,13 @@ const LONG_PRESS_MS = 350
 const TOUCH_SLOP = 8
 const EDGE = 36
 const SCROLL_STEP = 14
-const CELL = '.pcal-slot, .pcal-day, .pcal-allday-cell'
+const CELL = '.pcal-slot, .pcal-day, .pcal-allday-cell, .pcal-tl-lane'
 
 interface Where {
   hit: Hit
   cell: HTMLElement
+  /** In the timeline: the row under the pointer. */
+  resourceId?: string
   /** The minute the slot under the pointer starts at (the unit of a selection). */
   slotStart?: number
 }
@@ -27,6 +29,8 @@ interface Session {
   key: string
   edge: 'start' | 'end'
   grab: Hit
+  /** The row a bar was taken from (timeline). */
+  fromResource: string | undefined
   startX: number
   startY: number
   x: number
@@ -46,7 +50,7 @@ interface Session {
 interface Ctx<Meta> {
   root: HTMLElement
   calendar: Calendar<Meta>
-  grid: 'month' | 'time'
+  grid: 'month' | 'time' | 'timeline'
   session: Session | null
   frame: number
   swallow: boolean
@@ -55,7 +59,8 @@ interface Ctx<Meta> {
 
 function whereAt<Meta>(c: Ctx<Meta>, x: number, y: number): Where | null {
   for (const el of document.elementsFromPoint(x, y)) {
-    if (!(el instanceof HTMLElement) || !c.root.contains(el) || !el.matches(CELL) || el.dataset.date === undefined) continue
+    if (!(el instanceof HTMLElement) || !c.root.contains(el) || !el.matches(CELL) || (el.dataset.date === undefined && el.dataset.resource === undefined)) continue
+    if (el.classList.contains('pcal-tl-lane')) return laneAt(c, el, x)
     const date = el.dataset.date as PlainDate
     if (el.dataset.minute === undefined) return { hit: { date, minute: null }, cell: el }
     const rect = el.getBoundingClientRect()
@@ -65,6 +70,32 @@ function whereAt<Meta>(c: Ctx<Meta>, x: number, y: number): Where | null {
   }
 
   return null
+}
+
+/** The day and minute under a point of a timeline row: the shown days side by side along the lane, each its visible hours. */
+function laneAt<Meta>(c: Ctx<Meta>, lane: HTMLElement, x: number): Where | null {
+  const { dates, from, to } = c.calendar.timeline()
+  if (dates.length === 0) return null
+  const rect = lane.getBoundingClientRect()
+  const flip = getComputedStyle(c.root).direction === 'rtl'
+  const frac = Math.min(1, Math.max(0, ((flip ? rect.right - x : x - rect.left) / rect.width)))
+  const size = to - from
+  const pos = Math.min(frac * dates.length * size, dates.length * size - 1e-6)
+  const index = Math.floor(pos / size)
+
+  return { hit: { date: dates[index] as PlainDate, minute: from + pos - index * size }, cell: lane, resourceId: lane.dataset.resource as string }
+}
+
+/** The x of a moment on a lane (the start of a day and a minute of it, or of a date). */
+function laneX<Meta>(c: Ctx<Meta>, lane: HTMLElement, value: string, allDay: boolean): number {
+  const { dates, from, to } = c.calendar.timeline()
+  const rect = lane.getBoundingClientRect()
+  const size = to - from
+  const index = Math.max(0, dates.indexOf(value.slice(0, 10) as PlainDate))
+  const minute = allDay ? 0 : Math.min(size, Math.max(0, Number(value.slice(11, 13)) * 60 + Number(value.slice(14, 16)) - from))
+  const frac = (index * size + minute) / (dates.length * size)
+
+  return getComputedStyle(c.root).direction === 'rtl' ? rect.right - frac * rect.width : rect.left + frac * rect.width
 }
 
 function cellOf<Meta>(c: Ctx<Meta>, date: string, minute: number | null): HTMLElement | null {
@@ -153,11 +184,35 @@ function placeSpan<Meta>(c: Ctx<Meta>, s: Session, target: Target): void {
   el.style.width = `${Math.max(8, right - left)}px`
 }
 
+/** A bar of the timeline follows the target: along the lane in time, across the rows to its resource. */
+function placeTimeline<Meta>(c: Ctx<Meta>, s: Session, target: Target): void {
+  const el = s.el as HTMLElement
+  const origin = s.origin as DOMRect
+  const row = target.resourceId ?? s.fromResource
+  const lane = c.root.querySelector<HTMLElement>(`.pcal-tl-lane[data-resource="${CSS.escape(row ?? '')}"]`)
+  const fromLane = s.originCell
+  if (lane === null || fromLane === null) return
+  const a = laneX(c, lane, target.start, target.allDay)
+  const b = laneX(c, lane, target.end, target.allDay)
+  const left = Math.min(a, b)
+  const right = Math.max(a, b)
+  const dy = lane.getBoundingClientRect().top - fromLane.getBoundingClientRect().top
+  if (s.kind === 'move') {
+    const flip = getComputedStyle(c.root).direction === 'rtl'
+    el.style.transform = `translate(${(flip ? right - origin.right : left - origin.left)}px, ${dy}px)`
+
+    return
+  }
+  el.style.transform = `translateX(${left - origin.left}px)`
+  el.style.width = `${Math.max(8, right - left)}px`
+}
+
 /** Show the dragged element where the target is: a transform (and a height for a resize), snapped to the cell. Nothing else is laid out. */
 function place<Meta>(c: Ctx<Meta>, s: Session, target: Target): void {
   const el = s.el
   const origin = s.origin
   if (el === null || origin === null || s.originCell === null) return
+  if (c.grid === 'timeline') return placeTimeline(c, s, target)
   if (s.kind === 'resize' && (c.grid === 'month' || el.classList.contains('pcal-allday-event'))) return placeSpan(c, s, target)
   const top = yOf(c, target.start, target.allDay)
   if (top === null) return
@@ -175,9 +230,16 @@ function place<Meta>(c: Ctx<Meta>, s: Session, target: Target): void {
 function compute<Meta>(c: Ctx<Meta>, s: Session, at: Where): Target | null {
   const o = c.calendar.occurrences().find((x) => x.key === s.key)
   if (o === undefined) return null
-  if (s.kind === 'move') return moveTarget(o, at.hit, s.grab, c.calendar.snap())
+  // along a timeline the date is a column, so an all-day event keeps being one
+  const hit = c.grid === 'timeline' && o.allDay ? { ...at.hit, minute: null } : at.hit
+  const grab = c.grid === 'timeline' && o.allDay ? { ...s.grab, minute: null } : s.grab
+  if (s.kind === 'move') {
+    const moved = moveTarget(o, hit, grab, c.calendar.snap())
 
-  return resizeTarget(o, s.edge, at.hit, c.calendar.snap(), c.calendar.minDuration())
+    return c.grid === 'timeline' && at.resourceId !== undefined && at.resourceId !== s.fromResource ? { ...moved, resourceId: at.resourceId, ...(s.fromResource === undefined ? {} : { fromResourceId: s.fromResource }) } : moved
+  }
+
+  return resizeTarget(o, s.edge, hit, c.calendar.snap(), c.calendar.minDuration())
 }
 
 function update<Meta>(c: Ctx<Meta>, s: Session): void {
@@ -188,7 +250,7 @@ function update<Meta>(c: Ctx<Meta>, s: Session): void {
     return
   }
   if (s.kind === 'select') {
-    c.calendar.select({ date: s.anchor.date, minute: s.anchorSlot }, { date: at.hit.date, minute: at.slotStart ?? 0 }, c.grid)
+    c.calendar.select({ date: s.anchor.date, minute: s.anchorSlot }, { date: at.hit.date, minute: at.slotStart ?? 0 }, c.grid === 'month' ? 'month' : 'time')
 
     return
   }
@@ -244,14 +306,14 @@ function onDown<Meta>(c: Ctx<Meta>, event: PointerEvent): void {
   const base = { id: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, started: false, origin: null, originCell: null, saved: '', timer: 0, last: null, type: event.pointerType }
   if (at === null) return
   if (ev === null) {
-    if (event.pointerType !== 'touch') c.session = { ...base, kind: 'select', holder: c.root, el: null, key: '', edge: 'end', grab: at.hit, anchor: at.hit, anchorSlot: at.slotStart ?? 0 }
+    if (event.pointerType !== 'touch' && c.grid !== 'timeline') c.session = { ...base, kind: 'select', holder: c.root, el: null, key: '', edge: 'end', grab: at.hit, fromResource: undefined, anchor: at.hit, anchorSlot: at.slotStart ?? 0 }
 
     return
   }
   const key = ev.dataset.key as string
   const kind = handle === null ? 'move' : 'resize'
   if (!c.calendar.canEdit(key, kind)) return
-  const s: Session = { ...base, kind, holder: ev, el: ev, key, edge: (handle?.dataset.edge as 'start' | 'end' | undefined) ?? 'end', grab: at.hit, anchor: at.hit, anchorSlot: at.slotStart ?? 0, originCell: ev.parentElement }
+  const s: Session = { ...base, kind, holder: ev, el: ev, key, edge: (handle?.dataset.edge as 'start' | 'end' | undefined) ?? 'end', grab: at.hit, fromResource: ev.dataset.resource, anchor: at.hit, anchorSlot: at.slotStart ?? 0, originCell: ev.parentElement }
   c.session = s
   if (event.pointerType === 'touch') s.timer = window.setTimeout(() => start(c, s), LONG_PRESS_MS)
 }
@@ -300,7 +362,7 @@ function onUp<Meta>(c: Ctx<Meta>, event: PointerEvent): void {
  * 4 px of movement, a touch after a long press (a finger that moves first is scrolling); Escape, a cancelled pointer, a drop
  * outside the grid and losing the pointer put everything back. Returns the cleanup: it removes every listener, timer and capture.
  */
-export function attachPointer<Meta>(root: HTMLElement, calendar: Calendar<Meta>, grid: 'month' | 'time'): () => void {
+export function attachPointer<Meta>(root: HTMLElement, calendar: Calendar<Meta>, grid: 'month' | 'time' | 'timeline'): () => void {
   const c: Ctx<Meta> = { root, calendar, grid, session: null, frame: 0, swallow: false, onEscape: () => undefined }
   c.onEscape = (event) => {
     if (event.key !== 'Escape' || c.session === null) return

@@ -159,7 +159,7 @@ describe('the month view', () => {
     expect(more.closest('[role=gridcell]')!.getAttribute('data-date')).toBe('2026-11-18')
     expect(root.querySelectorAll('[data-date="2026-11-18"] .pcal-event')).toHaveLength(2)
     more.click()
-    expect(onMore).toHaveBeenCalledWith('2026-11-18')
+    expect(onMore).toHaveBeenCalledWith('2026-11-18', expect.any(HTMLElement))
   })
 
   it('arrow keys pressed on an event button do not move the grid', async () => {

@@ -195,7 +195,7 @@ export function Planner(props: { calendar: Calendar }) {
 }
 ```
 
-`<Calendar calendar>` is the toolbar, the view the calendar is on and a live region; `<MonthView>`, `<WeekView>`/`<DayView>` (the time grid) and `<CalendarToolbar>` are usable on their own. The agenda, year and timeline views are not part of this release; `<Calendar>` shows the month for them.
+`<Calendar calendar>` is the toolbar, the view the calendar is on and a live region; `<MonthView>`, `<WeekView>`/`<DayView>` (the time grid) and `<CalendarToolbar>` are usable on their own.
 
 - **Render slots**: `renderEvent({ occurrence, label, continuesBefore, continuesAfter })` (what goes inside an event; keep the accessible name, which is `label`), `renderDay(cell)` (the head of a day in a month), `renderMore(count, date)` and `onMore(date)` (the "+N more" button).
 - **Words**: see "Messages and languages" below. Nothing in the components is a hard-coded English string.
@@ -249,6 +249,18 @@ The stylesheet sets a system UI font stack (set `--pcal-font: inherit` to use th
 
 **Overlaps.** Events that overlap share the day column. A block narrower than 72px shows its title on one line with an ellipsis (never cut inside a glyph) and the time goes first; hovering or focusing it opens it to at least 160px over its neighbours, and its accessible name always has the full text. The calendar does not collapse four or more overlaps into a "+N" stack in this release: use `renderEvent` and a narrower `dayStart` to `dayEnd` window, or the day view, for very busy days.
 
+## More views: agenda, year, timeline, and the "+N more" popover
+
+`<Calendar>` switches every view: `month`, `week`, `workWeek`, `day`, `days`, `agenda`, `year` and `timeline` (the toolbar's `views` prop chooses which buttons it shows). The agenda, timeline and year names in the switch come from `messages.views` (English placeholders until you set them).
+
+- **Agenda** (`<AgendaView>`): the days that have events in a window of `agendaDays` (30). A list of headings and buttons, not a grid: Tab walks the events, all-day first. It is windowed inside the package: the heights are known, so a binary search over the running total decides which days are in the page, and a year of events costs the days on screen. (`@pyreon/virtual` was not used: it would add TanStack Virtual for rows whose heights the calendar already knows.)
+- **Year** (`<YearView>`): twelve small months. A day with events is shaded by how many (1 to 4 or more) and its spoken name has the count ("Wednesday 18 November, 2 events"). One tab stop for the whole year; the arrows move by day and week across the months, PageUp and PageDown by a month. A click or Enter calls `onDayClick(date)`; `<Calendar>` opens that day in the day view.
+- **Timeline** (`<TimelineView>`, option `resources: () => [{ id, title }]`): one row per resource, the shown days side by side along the top (each day is its `dayStart` to `dayEnd`), events as bars in the row of their `resourceId` (a string, or a list for an event on several resources: it is in each row). Overlapping events stack in lanes in their row. Events with no resource, or one that is not in `resources`, go to an "Unassigned" row (`messages.unassigned`). Rows are windowed, so 200 resources cost the rows on screen; the resource column and the header stay in place when it scrolls. `days` sets how many days it shows (a week by default). It has no now line yet.
+- **Drag between resources**: with `editable`, drag a bar to another row (the pointer layer of the time grid, extended): `onEventChange` receives `resourceId` (where it went) and `fromResourceId`. For an event on several resources only the row it was dragged from changes. Keyboard: grab with Enter, Up and Down give it to the row above or below, Left and Right move it in time, Enter drops. `applyEventChange` applies the resource; for a recurring event the resource changes for `'all'` and `'following'`, and `'this'` throws a `[Pyreon]` error (an override cannot move one occurrence to another resource).
+- **"+N more" popover**: `<Calendar>` opens a non-modal dialog with every event of the day. Focus moves in, Tab and Shift+Tab stay inside, Escape closes it and returns the focus to the "+N more" button (or the day, if the button has been re-rendered), a press outside closes it without taking the focus, and choosing an event closes it and calls `onEventClick`. `moreDialog={false}` leaves it to `onMore(date, button)`; `<DayPopover>` is exported.
+
+**What it costs, measured here.** On this machine (one run each, in real Chromium: bounds the tests assert, not claims about other libraries): a month with 1,000 events first rendered in about 65 ms and an edit afterwards took about 9 ms (358 nodes in the page); 200 resources by a week with 1,000 events first rendered in about 45 ms with 22 rows drawn of 200, and scrolling by 4,000 px took about 63 ms. The tests fail above 1,500 ms and 500 ms for the month and 2,000 ms for the timeline, so a regression of an order of magnitude shows. The whole timeline is laid out again on any event change (O(events)); per-row memoisation is a possible later step.
+
 ## Editing: move, resize, select
 
 Set `editable: true` (an event's own `editable` wins: `false`, `true`, or `{ move, resize }`) and give `onEventChange`. The calendar proposes; **the app decides**.
@@ -273,7 +285,7 @@ const calendar = createCalendar({
 - **Recurring events.** `chooseScope(change)` (an app callback: open your dialog) returns `'this'`, `'following'`, `'all'` or `null` to cancel; the default is `'this'`. `applyEventChange(change.event, change, zone)` returns the plain data to store: an override for `this`, a shifted series (and overrides) for `all`, or the series ended the day before plus a new event with the id `<id>~<occurrence>` for `following`. Expanding the result with `expandOccurrences` shows the edit, and a fuzz test checks every scope against it.
 - **Keyboard.** On an event, Enter or Space grabs it (announced), the arrows move it by `snap` or a day (week in the month), Shift with the arrows resizes the end, Enter drops it, Escape cancels. The announcements say, for example, "Design review moved to Wednesday 18 November, 15:00 – 16:00"; they come from `messages` (`moved`, `resized`, `grabbed`, `cancelled`, `failed`), in English unless you replace them.
 - **The month moves, it does not resize, a timed event inside one day** (a day is too coarse for it; use the week or day view). All-day and multi-day events resize from either end.
-- **Not in this release.** Dragging between resources (the timeline view comes later) and a "+N more" popover are not here yet. A touch drag disables page scrolling only after the long press; `touch-action` is not changed.
+- **Touch.** A touch drag disables page scrolling only after the long press; `touch-action` is not changed.
 
 ## Keyboard and accessibility
 

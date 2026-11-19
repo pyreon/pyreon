@@ -1,16 +1,28 @@
 /* oxlint-disable jsx-a11y/prefer-tag-over-role -- the live region is an <output>; the toolbar's view switch is a group of buttons with aria-pressed */
 import type { VNodeChild } from '@pyreon/core'
 import type { Calendar, DayCell } from './calendar-types'
+import type { PlainDate } from './types'
 import type { CalendarMessages } from './messages'
+import { AgendaView } from './agenda-view'
 import { MonthView } from './month-view'
 import type { MonthViewProps, ViewProps } from './month-view'
+import { DayPopover } from './popover'
+import type { PopoverState } from './popover'
 import { TimeGridView } from './timegrid-view'
+import { TimelineView } from './timeline-view'
+import { YearView } from './year-view'
+import { signal } from '@pyreon/reactivity'
 import type { ViewName } from './views'
 
 export type { CalendarMessages } from './messages'
 export { MonthView } from './month-view'
 export type { EventSlotContext, MonthViewProps, ViewProps } from './month-view'
+export { AgendaView } from './agenda-view'
+export { DayPopover } from './popover'
 export { TimeGridView } from './timegrid-view'
+export { TimelineView } from './timeline-view'
+export { YearView } from './year-view'
+export type { YearViewProps } from './year-view'
 export type { DayCell }
 
 /** Hidden from sight, still read by screen readers. */
@@ -78,24 +90,61 @@ export interface CalendarProps<Meta = unknown> extends CalendarViewProps<Meta> {
   toolbar?: boolean
   /** The views of the toolbar's switch. */
   views?: readonly ViewName[]
+  /** The "+N more" popover (default true); `false` leaves `onMore` to you. */
+  moreDialog?: boolean
+  /** A day of the year view was chosen. Default: show that day in the day view. */
+  onDayClick?: (date: PlainDate) => void
 }
 
 /**
  * The calendar: an optional toolbar, the view the calendar is on (the month grid, or the time grid of a week, work week, day
  * or days), and a polite live region that says where navigation went ("December 2026, month"). The agenda, year and timeline
- * views are not part of this release: `<Calendar>` shows the month for them.
+ * views are not part of this release: `
  */
 export function Calendar<Meta = unknown>(props: CalendarProps<Meta>): VNodeChild {
   const calendar = props.calendar
   const shared = { calendar, ...(props.renderEvent === undefined ? {} : { renderEvent: props.renderEvent }), ...(props.renderDay === undefined ? {} : { renderDay: props.renderDay }), ...(props.renderMore === undefined ? {} : { renderMore: props.renderMore }) }
+  const popover = signal<PopoverState | null>(null)
+  let root: HTMLElement | null = null
+
+  const openMore = (date: PlainDate, anchor: HTMLElement): void => {
+    if (props.onMore !== undefined) props.onMore(date, anchor)
+    if (props.moreDialog === false || root === null) return
+    const box = root.getBoundingClientRect()
+    const at = anchor.getBoundingClientRect()
+    const width = 280
+    popover.set({ date, anchor, left: Math.max(0, Math.min(at.left - box.left, box.width - width)), top: at.bottom - box.top + 4 })
+  }
+  const dayClick = (date: PlainDate): void => {
+    if (props.onDayClick !== undefined) return props.onDayClick(date)
+    calendar.goTo(date)
+    calendar.setView('day')
+  }
 
   return (
-    <div class={props.class ?? 'pcal'} data-view={() => calendar.view()}>
+    <div
+      class={props.class ?? 'pcal'}
+      data-view={() => calendar.view()}
+      ref={(el: HTMLElement | null) => {
+        root = el
+      }}
+    >
       {props.toolbar === false ? null : <CalendarToolbar calendar={calendar} {...(props.views === undefined ? {} : { views: props.views })} />}
       {() => {
+        // a view that changes also closes the popover
         const view = calendar.view()
+        popover.set(null)
+        if (view === 'agenda') return <AgendaView {...shared} />
+        if (view === 'year') return <YearView {...shared} onDayClick={dayClick} />
+        if (view === 'timeline') return <TimelineView {...shared} />
+        if (view === 'week' || view === 'workWeek' || view === 'day' || view === 'days') return <TimeGridView {...shared} />
 
-        return view === 'week' || view === 'workWeek' || view === 'day' || view === 'days' ? <TimeGridView {...shared} /> : <MonthView {...shared} {...(props.onMore === undefined ? {} : { onMore: props.onMore })} />
+        return <MonthView {...shared} onMore={openMore} />
+      }}
+      {() => {
+        const open = popover()
+
+        return open === null ? null : <DayPopover calendar={calendar} state={open} view={shared} onClose={() => popover.set(null)} />
       }}
       <output class="pcal-live" style={VISUALLY_HIDDEN} aria-live="polite" aria-atomic="true">
         {() => calendar.announcement()}

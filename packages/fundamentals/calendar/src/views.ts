@@ -55,7 +55,9 @@ function windowOf(view: ViewName, date: PlainDate, options: ViewOptions): Interv
       return { start: grid[0]![0]!, end: add(grid.at(-1)!.at(-1)!, { days: 1 }) }
     }
     case 'week':
-    case 'workWeek': {
+    case 'workWeek':
+    case 'timeline': {
+      if (view === 'timeline' && options.days !== undefined) return { start: date, end: add(date, { days: count('days', options.days, 1) }) }
       const start = startOf(date, 'week', { weekStart })
 
       return { start, end: add(start, { days: 7 }) }
@@ -118,7 +120,8 @@ export function navigate(view: ViewName, date: PlainDate, steps: number, options
       return add(date, { months: steps })
     case 'week':
     case 'workWeek':
-      return add(date, { weeks: steps })
+    case 'timeline':
+      return add(date, view === 'timeline' && options.days !== undefined ? { days: steps * count('days', options.days, 1) } : { weeks: steps })
     case 'days':
       return add(date, { days: steps * count('days', options.days, 3) })
     case 'agenda':

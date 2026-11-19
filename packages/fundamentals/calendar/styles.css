@@ -717,3 +717,353 @@
     display: none;
   }
 }
+
+/* ---- agenda ---- */
+.pcal-agenda {
+  position: relative;
+  border: 1px solid var(--pcal-border);
+  border-radius: var(--pcal-radius);
+  overflow: auto;
+  max-block-size: 70vh;
+  min-block-size: 160px;
+}
+
+.pcal-agenda-space {
+  position: relative;
+}
+
+.pcal-agenda-window {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+}
+
+.pcal-agenda-day {
+  box-sizing: border-box;
+  padding-inline: 12px;
+  overflow: hidden;
+}
+
+.pcal-agenda-head {
+  box-sizing: border-box;
+  block-size: 40px;
+  margin: 0;
+  padding-block: 12px 0;
+  font-size: 0.95em;
+  font-weight: 650;
+}
+
+.pcal-agenda-day[data-today] .pcal-agenda-head {
+  color: var(--pcal-accent);
+}
+
+.pcal-agenda-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pcal-agenda-item {
+  block-size: 44px;
+  padding-block: 2px;
+}
+
+.pcal-agenda-event {
+  inline-size: 100%;
+  block-size: 100%;
+  gap: 12px;
+}
+
+.pcal-agenda-event::before {
+  content: attr(data-time);
+  flex: none;
+  min-inline-size: 7.5em;
+  color: var(--pcal-muted);
+  font-weight: 450;
+  white-space: nowrap;
+}
+
+.pcal-agenda-empty {
+  margin: 0;
+  padding: 24px;
+  color: var(--pcal-muted);
+  text-align: center;
+}
+
+/* ---- year ---- */
+.pcal-year {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 20px 24px;
+}
+
+.pcal-year-title {
+  margin: 0 0 6px;
+  font-size: 0.95em;
+  font-weight: 650;
+}
+
+.pcal-year-weekdays,
+.pcal-year-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.pcal-year-weekdays span {
+  color: var(--pcal-muted);
+  font-size: 0.7em;
+  font-weight: 600;
+  text-align: center;
+}
+
+.pcal-year-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 28px;
+  border-radius: 14px;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.pcal-year-day[data-empty] {
+  cursor: default;
+}
+
+.pcal-year-day:hover:not([data-empty]) {
+  background: var(--pcal-border-soft);
+}
+
+.pcal-year-day[data-busy='1'] {
+  background: color-mix(in srgb, var(--pcal-accent) 14%, var(--pcal-bg));
+}
+
+.pcal-year-day[data-busy='2'] {
+  background: color-mix(in srgb, var(--pcal-accent) 28%, var(--pcal-bg));
+}
+
+.pcal-year-day[data-busy='3'] {
+  background: color-mix(in srgb, var(--pcal-accent) 44%, var(--pcal-bg));
+}
+
+.pcal-year-day[data-busy='4'] {
+  background: color-mix(in srgb, var(--pcal-accent) 62%, var(--pcal-bg));
+  color: var(--pcal-accent-fg);
+}
+
+.pcal-year-day[data-today] {
+  outline: 2px solid var(--pcal-accent);
+  outline-offset: -2px;
+  font-weight: 700;
+}
+
+.pcal-year-day:focus-visible {
+  outline: 3px solid var(--pcal-focus);
+  outline-offset: -3px;
+}
+
+/* ---- timeline ---- */
+.pcal-timeline {
+  --pcal-resource-w: 160px;
+  --pcal-tl-day-w: 280px;
+
+  position: relative;
+  border: 1px solid var(--pcal-border);
+  border-radius: var(--pcal-radius);
+  overflow: auto;
+  max-block-size: 70vh;
+  min-block-size: 200px;
+}
+
+.pcal-tl-head,
+.pcal-tl-row {
+  display: grid;
+  grid-template-columns: var(--pcal-resource-w) calc(var(--pcal-tl-days, 7) * var(--pcal-tl-day-w));
+  min-inline-size: calc(var(--pcal-resource-w) + var(--pcal-tl-days, 7) * var(--pcal-tl-day-w));
+}
+
+.pcal-tl-head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 4;
+  background: var(--pcal-bg);
+  border-block-end: 1px solid var(--pcal-border);
+}
+
+.pcal-tl-corner,
+.pcal-tl-name {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 3;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  background: var(--pcal-bg);
+  border-inline-end: 1px solid var(--pcal-border);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcal-tl-corner {
+  color: var(--pcal-muted);
+  font-size: 0.8em;
+  text-transform: uppercase;
+}
+
+.pcal-tl-days {
+  display: grid;
+  grid-template-columns: repeat(var(--pcal-tl-days, 7), 1fr);
+}
+
+.pcal-tl-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 4px;
+  border-inline-start: 1px solid var(--pcal-border-soft);
+}
+
+.pcal-tl-day[data-today] {
+  background: var(--pcal-today);
+  font-weight: 700;
+}
+
+.pcal-tl-axis {
+  position: relative;
+}
+
+.pcal-tl-hours {
+  position: relative;
+  block-size: 16px;
+  color: var(--pcal-muted);
+  font-size: 0.7em;
+}
+
+.pcal-tl-hours span {
+  position: absolute;
+}
+
+.pcal-tl-body {
+  position: relative;
+}
+
+.pcal-tl-window {
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0;
+}
+
+.pcal-tl-row {
+  border-block-end: 1px solid var(--pcal-border-soft);
+}
+
+.pcal-tl-lane {
+  position: relative;
+  background-image: linear-gradient(to right, var(--pcal-border-soft) 1px, transparent 1px);
+  background-size: calc(100% / var(--pcal-tl-days, 7)) 100%;
+}
+
+.pcal-timeline:dir(rtl) .pcal-tl-lane {
+  background-image: linear-gradient(to left, var(--pcal-border-soft) 1px, transparent 1px);
+}
+
+.pcal-tl-block {
+  position: absolute;
+  z-index: 1;
+  min-inline-size: 52px;
+}
+
+.pcal-tl-block .pcal-handle {
+  inset-block: 0;
+  inline-size: 8px;
+  cursor: ew-resize;
+}
+
+.pcal-tl-block .pcal-handle[data-edge='start'] {
+  inset-inline-start: 0;
+}
+
+.pcal-tl-block .pcal-handle[data-edge='end'] {
+  inset-inline-end: 0;
+}
+
+/* ---- the "+N more" popover ---- */
+.pcal {
+  position: relative;
+}
+
+.pcal-popover {
+  position: absolute;
+  z-index: 30;
+  box-sizing: border-box;
+  inline-size: 280px;
+  max-inline-size: 100%;
+  max-block-size: 60vh;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--pcal-border);
+  border-radius: var(--pcal-radius);
+  background: var(--pcal-bg);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--pcal-fg) 22%, transparent);
+}
+
+.pcal-popover:focus-visible {
+  outline: 3px solid var(--pcal-focus);
+}
+
+.pcal-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-block-end: 8px;
+}
+
+.pcal-popover-title {
+  margin: 0;
+  font-size: 0.95em;
+  font-weight: 650;
+}
+
+.pcal-popover-close {
+  min-inline-size: 32px;
+  min-block-size: 32px;
+  padding-inline: 0;
+}
+
+.pcal-popover-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pcal-popover-event {
+  inline-size: 100%;
+  block-size: 28px;
+}
+
+@container (max-width: 560px) {
+  .pcal-timeline {
+    --pcal-resource-w: 110px;
+    --pcal-tl-day-w: 160px;
+  }
+
+  .pcal-year {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px;
+  }
+}
+
+@media (forced-colors: active) {
+  .pcal-year-day[data-busy] {
+    border: 1px solid ButtonText;
+  }
+
+  .pcal-popover {
+    border: 2px solid CanvasText;
+  }
+}

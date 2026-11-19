@@ -84,6 +84,7 @@ export function createState<Meta>(options: CalendarOptions<Meta>): CalState<Meta
       hiddenDays: hiddenDays(),
       weekend: options.weekend ?? weekendOf(locale()),
       ...(options.days === undefined ? {} : { days: options.days }),
+      ...(options.agendaDays === undefined ? {} : { agendaDays: options.agendaDays }),
     }),
   )
   const edit = createEditState()

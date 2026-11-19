@@ -4,7 +4,7 @@ import { toInstant } from '@pyreon/time/core'
 import { dayLabel } from './labels'
 import { formatTime } from '@pyreon/format'
 import { businessMinutes } from './models'
-import { applyEventChange, fitsWindows, moveTarget, nudgeTarget, reposition, resizeTarget } from './edit'
+import { applyEventChange, fitsWindows, movedResource, moveTarget, nudgeTarget, reposition, resizeTarget } from './edit'
 import type { EditScope, EventChange, Hit, Target } from './edit'
 import type { CalState } from './state'
 import type { EventOccurrence, PlainDate, PlainDateTime } from './types'
@@ -40,7 +40,9 @@ export function overlaid<Meta>(list: EventOccurrence<Meta>[], overlay: ReadonlyM
     const t = overlay.get(o.key)
     if (t === undefined) return o
 
-    return { ...o, start: t.start, end: t.end, allDay: t.allDay, startMs: toInstant(t.start as PlainDate | PlainDateTime, zone), endMs: toInstant(t.end as PlainDate | PlainDateTime, zone) }
+    const event = t.resourceId === undefined ? o.event : { ...o.event, resourceId: movedResource(o.event.resourceId, t.fromResourceId, t.resourceId) }
+
+    return { ...o, event, start: t.start, end: t.end, allDay: t.allDay, startMs: toInstant(t.start as PlainDate | PlainDateTime, zone), endMs: toInstant(t.end as PlainDate | PlainDateTime, zone) }
   })
 }
 
@@ -66,7 +68,7 @@ export function allowed<Meta>(s: CalState<Meta>, target: Target): boolean {
   return fitsWindows(target.start, target.end, (date) => businessMinutes(s, date))
 }
 
-const same = (a: Target, b: { start: string; end: string; allDay: boolean }): boolean => a.start === b.start && a.end === b.end && a.allDay === b.allDay
+const same = (a: Target, b: { start: string; end: string; allDay: boolean }): boolean => a.start === b.start && a.end === b.end && a.allDay === b.allDay && (a.resourceId === undefined || a.resourceId === a.fromResourceId)
 
 function whenText<Meta>(s: CalState<Meta>, t: Target): string {
   const locale = s.locale()
@@ -117,7 +119,7 @@ export async function propose<Meta>(s: CalState<Meta>, key: string, target: Targ
     return false
   }
   const rep = reposition(o, target, s.zone())
-  const change: EventChange<Meta> = { event: o.event, start: rep.start, end: rep.end, allDay: rep.allDay, ...(o.recurring ? { occurrence: o.occurrence } : {}) }
+  const change: EventChange<Meta> = { event: o.event, start: rep.start, end: rep.end, allDay: rep.allDay, ...(o.recurring ? { occurrence: o.occurrence } : {}), ...(target.resourceId === undefined ? {} : { resourceId: target.resourceId }), ...(target.fromResourceId === undefined ? {} : { fromResourceId: target.fromResourceId }) }
   if (o.recurring) {
     const scope = await askScope(s, change)
     if (scope === null) {
@@ -222,8 +224,11 @@ export function editKey<Meta>(s: CalState<Meta>, key: string, event: KeyboardEve
   const current = { ...o, ...s.edit.target.peek() } as EventOccurrence<Meta>
   const shift = event.shiftKey
   if (shift && !canEdit(s, o, 'resize')) return false
-  const next = nudgeTarget(current, event.key, { shift, grid, snap: snapOf(s), minDuration: minOf(s), rtl })
-  if (next === null) return false
+  const held = s.edit.target.peek()
+  const nudged = nudgeTarget(current, event.key, { shift, grid, snap: snapOf(s), minDuration: minOf(s), rtl })
+  if (nudged === null) return false
+  // the row a bar was given to in the timeline stays when it is moved in time
+  const next: Target = { ...nudged, ...(held?.resourceId === undefined ? {} : { resourceId: held.resourceId }), ...(held?.fromResourceId === undefined ? {} : { fromResourceId: held.fromResourceId }) }
   s.edit.editing.set({ ...editing, mode: shift ? 'resize' : editing.mode })
   previewEdit(s, next)
 

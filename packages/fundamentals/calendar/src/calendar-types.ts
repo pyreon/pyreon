@@ -2,7 +2,10 @@ import type { BusinessCalendar, WorkingHours } from '@pyreon/schedule/core'
 import type { Duration, PlainTime } from '@pyreon/time/core'
 import type { Signal } from '@pyreon/reactivity'
 import type { CalendarEvent, EventOccurrence, Interval, PlainDate, PlainDateTime, TimedBlock, TimeZone, Weekday, WeekLayout } from './types'
+import type { AgendaDay } from './agenda'
 import type { EditKind, Editing } from './editing'
+import type { Resource } from './timeline'
+import type { TimelineModel, YearModel } from './view-models'
 import type { EditScope, EventChange, Target } from './edit'
 import type { CalendarMessages } from './messages'
 import type { ViewName } from './views'
@@ -59,6 +62,10 @@ export interface CalendarOptions<Meta = unknown> {
   onEventChange?: (change: EventChange<Meta>) => boolean | void | Promise<boolean | void>
   /** For a recurring event: which occurrences a change is for. Return `null` to cancel. Default `'this'`. */
   chooseScope?: (change: EventChange<Meta>) => EditScope | null | Promise<EditScope | null>
+  /** The rows of the timeline view (the resource is an event's `resourceId`). Events without a resource are shown in a row of their own. */
+  resources?: () => readonly Resource[]
+  /** How many days the agenda lists. Default 30. */
+  agendaDays?: number
   /** The clock for the "now" line, in milliseconds. Default: `@pyreon/ambient`'s, a reactive minute tick. */
   now?: () => number
   /** Called with the range of a clicked day or slot, or of a keyboard selection that was confirmed. */
@@ -121,6 +128,15 @@ export interface Calendar<Meta = unknown> {
   /** The shown dates. */
   dates(): readonly PlainDate[]
   title(): string
+  /** The days of the agenda that have events (the window is `agendaDays` long). */
+  agenda(): AgendaDay[]
+  /** The twelve months of the year view. */
+  year(): YearModel
+  /** The timeline: a row per resource over the shown days. */
+  timeline(): TimelineModel
+  resources(): readonly Resource[]
+  /** The occurrences that touch a date, and how many (a year cell, a "+N more" popover). */
+  dayOccurrences(date: PlainDate): readonly EventOccurrence<Meta>[]
   /** Every word the calendar says, in the active locale (reactive: it follows the locale and your `messages`). */
   messages(): CalendarMessages
   /** The month on show, as `YYYY-MM` (what a month grid highlights). */

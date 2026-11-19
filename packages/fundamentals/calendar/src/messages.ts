@@ -24,6 +24,11 @@ export interface CalendarMessages {
   /** The summary of a day's events, and the empty state. */
   events(count: number): string
   noEvents: string
+  /** The timeline row of events without a resource, and the label of the resource column. */
+  unassigned: string
+  /** The close button of the "+N more" popover. */
+  close: string
+  resource: string
   /** Between two times of an event, in its spoken label: "14:00 – 15:00". */
   range(from: string, to: string): string
   /** What the live region says after navigation: "November 2026, month". */
@@ -112,7 +117,11 @@ export function defaultMessages(locale: string): CalendarMessages {
     timeGrid: english ? 'Calendar, time grid' : `${week}, ${day}`,
     more: (n) => (english ? `${count.format(n)} more` : signed.format(n)),
     events: (n) => (english ? `${n === 0 ? 'no' : count.format(n)} ${plural.select(n) === 'one' ? 'event' : 'events'}` : count.format(n)),
-    noEvents: english ? 'No events' : '–',
+    // English placeholders in every language (the platform has no word for them): replace through `messages`
+    noEvents: 'No events',
+    unassigned: 'Unassigned',
+    close: 'Close',
+    resource: 'Resource',
     range: (from, to) => `${from} – ${to}`,
     navigated: (title, view) => `${title}, ${viewName(view)}`,
     selected: (text) => (english ? `Selected ${text}` : text),

@@ -77,6 +77,15 @@ layoutDay('2026-11-18', occurrences, 'Europe/Prague').map((b) => [b.column, b.co
 | [`Calendar`](#calendar-component-experimental) | component | The calendar component (import `@pyreon/calendar/components`): an optional toolbar, the view the calendar is on (the… |
 | [`MonthView`](#monthview-component-experimental) | component | The month: a WAI-ARIA grid of day cells with roving focus, the events as labelled buttons inside the cell they start in… |
 | [`TimeGridView`](#timegridview-component-experimental) | component | The time grid of a week, work week, day or days: a WAI-ARIA grid whose rows are slots and columns are days, with the… |
+| [`AgendaView`](#agendaview-component-experimental) | component | The agenda: the days that have events (`agendaDays`, 30 by default), each with its events in order (all-day first). |
+| [`YearView`](#yearview-component-experimental) | component | The year: twelve small months; a day with events is shaded by how many and its spoken name has the count; `onDayClick`… |
+| [`TimelineView`](#timelineview-component-experimental) | component | Resources by time: a row per resource (`resources` option), the shown days side by side, each event a bar in the row of… |
+| [`DayPopover`](#daypopover-component-experimental) | component | The "+N more" popover `<Calendar>` shows: a non-modal dialog listing a day's events. |
+| [`layoutAgenda`](#layoutagenda-function-experimental) | function | The days of a list that have events, each with its occurrences (all-day first, then by start); a multi-day event is on… |
+| [`layoutTimeline`](#layouttimeline-function-experimental) | function | Resources by time: a row per resource with its events as blocks (fractions of the axis, the shown days side by side;… |
+| [`resourcesOf`](#resourcesof-function-experimental) | function | The resource ids of an occurrence (its `resourceId` as a list). |
+| [`windowRows`](#windowrows-function-experimental) | function | Which rows to draw when their heights are known: a binary search over the running total, so 10,000 rows cost what 10 do. |
+| [`movedResource`](#movedresource-function-experimental) | function | The `resourceId` of an event after it is moved from one resource to another (an event on several keeps the others). |
 | [`WeekView`](#weekview-component-experimental) | component | The time grid for a calendar on the `week` or `workWeek` view. |
 | [`DayView`](#dayview-component-experimental) | component | The time grid for a calendar on the `day` view. |
 | [`CalendarToolbar`](#calendartoolbar-component-experimental) | component | The title with Today, Previous and Next buttons and a switch of the view (buttons with `aria-pressed`). |
@@ -674,6 +683,165 @@ import { createCalendar } from '@pyreon/calendar'
 
 const calendar = createCalendar({ events: () => [], view: 'week' })
 export const Week = () => <TimeGridView calendar={calendar} />
+```
+
+---
+
+### `AgendaView` `component` — **experimental**
+
+```ts
+(props: ViewProps) => VNode
+```
+
+The agenda: the days that have events (`agendaDays`, 30 by default), each with its events in order (all-day first). A list of headings and buttons, not a grid; only the days near the viewport are in the page (windowed over known heights).
+
+**Example**
+
+```tsx
+import { AgendaView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'agenda' })
+export const Agenda = () => <AgendaView calendar={calendar} />
+```
+
+---
+
+### `YearView` `component` — **experimental**
+
+```ts
+(props: YearViewProps) => VNode
+```
+
+The year: twelve small months; a day with events is shaded by how many and its spoken name has the count; `onDayClick` gets the day chosen. One tab stop, arrows across months.
+
+**Example**
+
+```tsx
+import { YearView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'year' })
+export const Year = () => <YearView calendar={calendar} onDayClick={(date) => calendar.goTo(date)} />
+```
+
+---
+
+### `TimelineView` `component` — **experimental**
+
+```ts
+(props: ViewProps) => VNode
+```
+
+Resources by time: a row per resource (`resources` option), the shown days side by side, each event a bar in the row of its `resourceId` (an event with several resources is in each row; overlaps stack in lanes). Rows are windowed, so 200 resources cost the rows on screen; the resource column and header stay in place. Drag a bar to another row to change its resource.
+
+**Example**
+
+```tsx
+import { TimelineView } from '@pyreon/calendar/components'
+import { createCalendar } from '@pyreon/calendar'
+
+const calendar = createCalendar({ events: () => [], view: 'timeline', resources: () => [{ id: 'a', title: 'Room A' }] })
+export const Rooms = () => <TimelineView calendar={calendar} />
+```
+
+---
+
+### `DayPopover` `component` — **experimental**
+
+```ts
+(props: { calendar, state, view, onClose }) => VNode
+```
+
+The "+N more" popover `<Calendar>` shows: a non-modal dialog listing a day's events. Focus moves in, Tab stays inside, Escape closes and returns focus to the button, a press outside closes it.
+
+**Example**
+
+```tsx
+import { DayPopover } from '@pyreon/calendar/components'
+
+export const Popover = DayPopover
+```
+
+---
+
+### `layoutAgenda` `function` — **experimental**
+
+```ts
+(occurrences, dates) => AgendaDay[]
+```
+
+The days of a list that have events, each with its occurrences (all-day first, then by start); a multi-day event is on every day it touches; days without events are left out.
+
+**Example**
+
+```tsx
+layoutAgenda(expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T09:00', end: '2026-11-18T10:00' }], { start: '2026-11-16', end: '2026-11-23' }, 'UTC'), ['2026-11-17', '2026-11-18'])[0]!.date   // => '2026-11-18'
+```
+
+---
+
+### `layoutTimeline` `function` — **experimental**
+
+```ts
+(occurrences, resources, dates, { from, to, unassigned? }) => TimelineRow[]
+```
+
+Resources by time: a row per resource with its events as blocks (fractions of the axis, the shown days side by side; overlaps in lanes). An event with several resources is in each row.
+
+**Example**
+
+```tsx
+const rows = layoutTimeline(expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18T09:00', end: '2026-11-18T11:00', resourceId: 'r1' }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC'), [{ id: 'r1', title: 'Room' }], ['2026-11-18'], { from: 0, to: 1440 })
+rows[0]!.blocks[0]!.left   // => 0.375
+```
+
+---
+
+### `resourcesOf` `function` — **experimental**
+
+```ts
+(occurrence) => string[]
+```
+
+The resource ids of an occurrence (its `resourceId` as a list).
+
+**Example**
+
+```tsx
+resourcesOf(expandOccurrences([{ id: 'a', title: 'A', start: '2026-11-18', end: '2026-11-19', resourceId: ['x', 'y'] }], { start: '2026-11-18', end: '2026-11-19' }, 'UTC')[0]!)   // => ['x', 'y']
+```
+
+---
+
+### `windowRows` `function` — **experimental**
+
+```ts
+(heights, scrollTop, viewport, overscan?) => { start, end, offset, total }
+```
+
+Which rows to draw when their heights are known: a binary search over the running total, so 10,000 rows cost what 10 do.
+
+**Example**
+
+```tsx
+windowRows([40, 40, 40, 40], 70, 40, 0).start   // => 1
+```
+
+---
+
+### `movedResource` `function` — **experimental**
+
+```ts
+(current, from, to) => string | string[]
+```
+
+The `resourceId` of an event after it is moved from one resource to another (an event on several keeps the others).
+
+**Example**
+
+```tsx
+movedResource(['a', 'b'], 'a', 'c')   // => ['c', 'b']
 ```
 
 ---
