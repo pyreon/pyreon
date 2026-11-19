@@ -59,12 +59,16 @@ export function toRange(fn: string, argument: string, v: unknown): Interval<Plai
   return range as unknown as Interval<PlainDate>
 }
 
+const isOccurrence = (v: unknown): boolean => isObject(v) && typeof v.key === 'string' && typeof v.startMs === 'number' && typeof v.endMs === 'number'
+
 export function checkOccurrences(fn: string, argument: string, v: unknown): void {
   if (!Array.isArray(v)) return bad(fn, argument, 'an array of occurrences from expandOccurrences()', v, sibling(v))
-  const first = v[0]
-  if (first !== undefined && !(isObject(first) && typeof first.key === 'string' && typeof first.startMs === 'number' && typeof first.endMs === 'number')) {
-    bad(fn, argument, 'an array of occurrences from expandOccurrences()', v, 'The first item is not an occurrence (it has no key, startMs and endMs).')
-  }
+  if (v.length > 0 && !isOccurrence(v[0])) bad(fn, argument, 'an array of occurrences from expandOccurrences()', v, 'The first item is not an occurrence (it has no key, startMs and endMs).')
+}
+
+/** One occurrence (an item of `expandOccurrences()`), not an event and not the list. */
+export function checkOccurrence(fn: string, argument: string, v: unknown): void {
+  if (!isOccurrence(v)) bad(fn, argument, 'one occurrence from expandOccurrences()', v, Array.isArray(v) ? 'That is a list: pass one of its items.' : 'An event is not an occurrence (it has no key, startMs and endMs): pass an item of expandOccurrences().')
 }
 
 /** Dates to show: an array of dates, or the `visibleRange()` result (its `dates`). */

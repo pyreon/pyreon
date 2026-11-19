@@ -1,4 +1,4 @@
-import { add, isPlainDate, isPlainDateTime, isTimeZone, toInstant, toPlainDate, toPlainDateTime } from '@pyreon/time/core'
+import { add, isPlainDate, isPlainDateTime, isTimeZone, toInstant, toPlainDateTime } from '@pyreon/time/core'
 import { bad } from './check'
 import type { CalendarEvent, EventTime, Instant, PlainDate, PlainDateTime, TimeZone } from './types'
 
@@ -79,8 +79,4 @@ export function checkOrder(event: CalendarEvent, allDayEvent: boolean, wallZone:
 
 export function dateOf(value: PlainDate | PlainDateTime): PlainDate {
   return (value.length === 10 ? value : value.slice(0, 10)) as PlainDate
-}
-
-export function dateAt(ms: Instant, zone: TimeZone): PlainDate {
-  return toPlainDate(ms, zone)
 }

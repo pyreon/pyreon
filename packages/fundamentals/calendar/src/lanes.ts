@@ -1,12 +1,12 @@
 import { add, dateParts } from '@pyreon/time/core'
-import { bad, checkCapacity, checkOccurrences, isShown, toDates, toRows } from './check'
+import { bad, checkCapacity, checkOccurrence, checkOccurrences, isShown, toDates, toRows } from './check'
 import { dateOf } from './model'
 import type { EventOccurrence, EventSegment, PlainDate, WeekLayout } from './types'
 import type { VisibleRange } from './views'
 
 /** The first and last date (inclusive) an occurrence touches. An end exactly at midnight does not touch that day. */
 export function daySpan(o: EventOccurrence): { first: PlainDate; last: PlainDate } {
-  checkOccurrences('daySpan', 'occurrence', [o])
+  checkOccurrence('daySpan', 'occurrence', o)
   return spanOf(o)
 }
 
