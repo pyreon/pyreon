@@ -59,6 +59,12 @@ The callback runs after the surrounding component's setup, when no scope is curr
 
 ---
 
+### [FIXED, 2026-11] A hydration walk that lets a subtree throw escape.
+
+`mountComponent` contains a throw from its subtree (stop the component's scope, restore the owner, route to the nearest error boundary or log, continue), but `hydrateComponent`'s `hydrateChild` call had no try/catch. A throw during hydration escaped `hydrateRoot`, so the caller got no cleanup and everything already hydrated (a sibling's effects) could never be disposed, and the context owner stayed pointing at the dead component, so the next mount chained to it. **Rule: the hydrate path contains a throw exactly where and how the mount path does, and every root entry restores the ambient walk state (flags AND context owner) in `finally`.** Reference: `runtime-dom/src/hydrate.ts` (`hydrateComponent`, `hydrateRoot`); locked by `hydrate-throw-disposes.test.ts` (bisect-verified).
+
+---
+
 ### Measuring layout in a `ref` inside `<For>`
 
 `<For>` mounts its initial rows into a fragment and moves them into the document afterwards, so a row's `ref` fires on a detached element and `getBoundingClientRect()` returns zeros. Recording that size breaks consumers (in `@pyreon/virtual`, TanStack compensated scroll for the 0 → 40px corrections and the window rendered from the wrong row). A layout read in a `ref` must check `el.isConnected` and defer (a microtask is enough for `<For>`). Reference: `packages/fundamentals/virtual/src/detached-measure.ts` + `tests/detached-measure.test.ts`.
