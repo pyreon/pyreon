@@ -1,6 +1,5 @@
 import { untracked } from './entry'
 import type { PaletteCore } from './palette-core'
-import { resolvedText } from './palette-core'
 import type { Results } from './palette-results'
 import type { PaletteMove, Props, ResultGroup, ResultItem } from './palette-types'
 
@@ -111,5 +110,3 @@ export function createGroupProps(core: PaletteCore, group: ResultGroup): { group
     heading: { id: headingId, 'aria-hidden': 'true' },
   }
 }
-
-export { resolvedText }
