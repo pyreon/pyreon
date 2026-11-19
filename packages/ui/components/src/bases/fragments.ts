@@ -136,3 +136,15 @@ export const toneVariant =
   <S extends object>(styles: (tone: Tone) => S) =>
   (theme: object): S =>
     styles(readTone(theme))
+
+/**
+ * A colour a `.theme()` set, as a `.styles()` layer receives it in
+ * `$rocketstyle`: already resolved for the mode. The declared type of a
+ * `mode(light, dark)` value is its callback, so the key is read as `unknown`.
+ * This is how a mode-aware colour reaches a selector an `extendCss` string
+ * would otherwise carry (Tree's and Combobox's selected row).
+ */
+export const themeColor = (theme: Record<string, unknown>, key: string): string => {
+  const value = theme[key]
+  return typeof value === 'string' ? value : ''
+}

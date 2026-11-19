@@ -1,7 +1,7 @@
 import type { Props, VNodeChild } from '@pyreon/core'
 import { createRef, h, nativeCompat, onMount } from '@pyreon/core'
 import { effect, runUntracked } from '@pyreon/reactivity'
-import { mountChild } from './mount'
+import { mountOwned } from './mount'
 
 export interface KeepAliveProps extends Props {
   /**
@@ -56,7 +56,7 @@ function KeepAlive(props: KeepAliveProps): VNodeChild {
         // disposes the children's inner effects (collected as inner effects of
         // this run), and the `if (!childMounted)` guard skips re-mount, leaving
         // the children permanently un-reactive while still rendered.
-        childCleanup = runUntracked(() => mountChild(props.children ?? null, container, null))
+        childCleanup = runUntracked(() => mountOwned(props.children ?? null, container, null))
         childMounted = true
       }
 
