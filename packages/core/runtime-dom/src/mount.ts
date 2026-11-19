@@ -1407,10 +1407,7 @@ function mountAccessorChild(
       }
       if (isUndecidedChild(v)) {
         _releaseRun(run)
-        if (placeholder === null) {
-          placeholder = document.createComment('')
-          parent.insertBefore(placeholder, anchor)
-        }
+        placeholder ??= parent.insertBefore(document.createComment(''), anchor)
 
         return
       }
