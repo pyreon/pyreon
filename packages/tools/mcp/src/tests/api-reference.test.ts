@@ -472,11 +472,12 @@ describe('api-reference', () => {
       expect(entry!.notes).toBeTruthy()
     })
 
-    it('createRouter carries 7 mistakes covering hash mode, catch-all, tab stacks and initial-navigation guards', () => {
+    it('createRouter carries 8 mistakes covering hash mode, memory mode, catch-all, tab stacks and initial-navigation guards', () => {
       const entry = API_REFERENCE['router/createRouter']
       expect(entry?.notes).toContain('routes')
       expect(entry?.notes).toContain('Router')
-      expect(entry?.mistakes?.split('\n').length).toBe(7)
+      expect(entry?.mistakes?.split('\n').length).toBe(8)
+      expect(entry?.mistakes).toContain('mode: "memory"')
       expect(entry?.mistakes).toContain('initial navigation')
       expect(entry?.mistakes).toContain('mode: "hash"')
       expect(entry?.mistakes).toContain('catch-all')

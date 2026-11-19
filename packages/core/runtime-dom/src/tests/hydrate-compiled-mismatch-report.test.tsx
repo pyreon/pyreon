@@ -117,3 +117,21 @@ describe('compiled hydration reports what it corrects (happy-dom)', () => {
     })
   }
 })
+
+describe('a structural value over an empty server region is reported in production too (#4582)', () => {
+  for (const c of ALL.filter((x) => x.name.includes('#4582'))) {
+    it(`${c.name}`, () => {
+      const env = process.env.NODE_ENV
+      process.env.NODE_ENV = 'production'
+      try {
+        // Production keeps the bare `slot` path prefix; the kind and values are the same.
+        expect(reportsOf(c.server, c).map(({ path: _path, ...rest }) => rest)).toEqual(
+          c.reports.map(({ path: _path, ...rest }) => rest),
+        )
+      } finally {
+        if (env === undefined) delete process.env.NODE_ENV
+        else process.env.NODE_ENV = env
+      }
+    })
+  }
+})

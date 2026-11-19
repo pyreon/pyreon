@@ -40,12 +40,14 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
-  rmSync,
   statSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// Repo-only build script (not in the package's `files`), so it may use the
+// repository's shared helper.
+import { removeOnExit } from '../../../../scripts/remove-on-exit'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PACKAGE_DIR = dirname(__dirname) // packages/core/compiler/
@@ -136,6 +138,9 @@ function buildOutOfTree(): void {
   // invocations would be nice for incremental builds, but `mkdtemp` is
   // simplest and the build is fast (~10s on a warm cache).
   const buildDir = join(tmpRoot, 'native')
+  // A cargo target dir is hundreds of MB; an interrupted `bun install` must
+  // not leave it in the temp dir.
+  const removeTmpRoot = removeOnExit(tmpRoot)
   try {
     mkdirSync(tmpRoot, { recursive: true })
     cpSync(NATIVE_DIR, buildDir, {
@@ -161,11 +166,8 @@ function buildOutOfTree(): void {
     // oxlint-disable-next-line no-console
     console.log(`[build-native] Built ${OUTPUT_PATH}`)
   } finally {
-    try {
-      rmSync(tmpRoot, { recursive: true, force: true })
-    } catch {
-      // best-effort cleanup; macOS sometimes holds .lock files briefly
-    }
+    // Best effort inside the helper; macOS sometimes holds .lock files briefly.
+    removeTmpRoot()
   }
 }
 
