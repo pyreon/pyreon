@@ -3,6 +3,7 @@ import { createHttp } from '@pyreon/http'
 import { effect } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createUploader, type UploadFile } from '../index'
+import { validateFileAsync } from '../core'
 import { xhrTransport } from '../transport-xhr'
 
 const api = async (path: string): Promise<Record<string, number>> => (await fetch(`/__u${path}`)).json()
@@ -231,5 +232,19 @@ describe('dispose leaves nothing behind', () => {
       URL.createObjectURL = realCreate
       URL.revokeObjectURL = realRevoke
     }
+  })
+})
+
+describe('image rules', () => {
+  // The real decode behind the stubbed `createImageBitmap` of `core-edges.test.ts`.
+  it('decode a real PNG to check its size, and a file that is not an image cannot be read', async () => {
+    const canvas = new OffscreenCanvas(40, 20)
+
+    canvas.getContext('2d')!.fillRect(0, 0, 40, 20)
+    const png = new File([await canvas.convertToBlob({ type: 'image/png' })], 'a.png', { type: 'image/png' })
+
+    expect(await validateFileAsync(png, { image: { maxWidth: 40, maxHeight: 20, minWidth: 40, minHeight: 20, aspect: 2 } })).toEqual([])
+    expect((await validateFileAsync(png, { image: { maxWidth: 39 } }))[0]).toMatchObject({ code: 'dimensions', params: { width: 40, height: 20, maxWidth: 39 } })
+    expect((await validateFileAsync(new File(['not an image'], 'x.png', { type: 'image/png' }), { image: {} }))[0]!.message).toBe('The image could not be read.')
   })
 })
