@@ -53,8 +53,13 @@ export interface UrlRouter {
    * `useRouter()` exposes `mode` as a public field, so structural typing picks
    * this up with no cast at the call site. Absent (a hand-rolled router) →
    * `'history'`, which is what every such router has always meant.
+   *
+   * `'memory'` — the route lives inside the router (`createRouter({ mode:
+   * 'memory' })`), not in the page URL: url-state reads the query from
+   * `_currentPath` and writes through the router, and never touches
+   * `location`, which belongs to the page the router is embedded in.
    */
-  mode?: 'hash' | 'history'
+  mode?: 'hash' | 'history' | 'memory'
   /**
    * Base path for a sub-path deploy, history mode only. Underscore-prefixed
    * because that is the field `@pyreon/router` exposes (`_base`) — the name is
@@ -65,6 +70,12 @@ export interface UrlRouter {
    * handed to it must be base-RELATIVE; `location.pathname` is not.
    */
   _base?: string
+  /**
+   * The router's current location (path, query and fragment) — read in
+   * `mode: 'memory'`, where the page URL is not the route. Underscore-prefixed
+   * for the same reason as `_base`: it is `@pyreon/router`'s field name.
+   */
+  _currentPath?: () => string
   /**
    * The router's reactive current route. When present, every live
    * `useUrlState` signal re-reads its param after each navigation — so
@@ -124,32 +135,46 @@ function warnRouterCannotPush(): void {
 }
 
 /**
- * Which half of the URL the query lives in.
+ * Where the query lives: the registered router's route when the router owns it
+ * outside `location.pathname` + `location.search` — in the fragment (hash
+ * mode) or inside the router itself (memory mode) — else `null`, and the page
+ * URL is the route.
  *
  * Derived from the REGISTERED router, never guessed from the URL: without a
  * router url-state owns `location.search` outright (it writes history itself,
  * and a hash router that was never registered keeps its fragment untouched),
  * so `'history'` is both the honest default and the pre-existing behaviour.
  */
-function routeOwnsHash(): boolean {
-  return _router?.mode === 'hash'
+function routerOwnedRoute(): { path: string; search: string; hash: string } | null {
+  if (_router?.mode === 'memory') return splitRoute(_router._currentPath?.() ?? '/')
+  return _router?.mode === 'hash' ? splitHashRoute() : null
+}
+
+/**
+ * Split a route (`/products?page=3#top`) into its path, query and fragment.
+ * An empty path is the root route, which the router itself spells `/`.
+ */
+function splitRoute(raw: string): { path: string; search: string; hash: string } {
+  const h = raw.indexOf('#')
+  const route = h === -1 ? raw : raw.slice(0, h)
+  const hash = h === -1 ? '' : raw.slice(h)
+  const q = route.indexOf('?')
+  if (q === -1) return { path: route || '/', search: '', hash }
+  return { path: route.slice(0, q) || '/', search: route.slice(q + 1), hash }
 }
 
 /**
  * Split a hash route (`#/products?page=3`) into its path and query halves.
- * An empty hash is the root route, which the router itself spells `/`.
+ * An empty hash is the root route.
  */
-function splitHashRoute(): { path: string; search: string } {
+function splitHashRoute(): { path: string; search: string; hash: string } {
   // SSR guard for the same reason `currentParams` carries one: the callers are
   // already `isClient`-guarded, but the guard is cross-function and the
   // no-window-in-ssr rule cannot trace it.
   /* v8 ignore next — the SSR arm: `isClient` is true under happy-dom, so this
      guard is unreachable in tests; it exists so the helper is SSR-safe. */
-  if (!isClient) return { path: '/', search: '' }
-  const raw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
-  const q = raw.indexOf('?')
-  if (q === -1) return { path: raw || '/', search: '' }
-  return { path: raw.slice(0, q) || '/', search: raw.slice(q + 1) }
+  if (!isClient) return { path: '/', search: '', hash: '' }
+  return splitRoute(window.location.hash.slice(1))
 }
 
 /**
@@ -171,7 +196,7 @@ function currentParams(): URLSearchParams {
   // no-window-in-ssr rule can't trace the cross-function guard).
   /* v8 ignore next — the SSR arm, unreachable under happy-dom (see above). */
   if (!isClient) return new URLSearchParams()
-  return new URLSearchParams(routeOwnsHash() ? splitHashRoute().search : window.location.search)
+  return new URLSearchParams(routerOwnedRoute()?.search ?? window.location.search)
 }
 
 /**
@@ -195,12 +220,14 @@ function commit(params: URLSearchParams, replace: boolean): void {
   // `location.pathname` is. In hash mode the query belongs INSIDE the fragment
   // next to the route path; in history mode the path handed to the router is
   // base-relative, and the fragment is carried through because it is nobody
-  // else's to drop (`/docs#installation` used to become `/docs?page=2`).
-  const url = _router
-    ? routeOwnsHash()
-      ? `${splitHashRoute().path}${qs}`
-      : `${stripRouterBase(window.location.pathname)}${qs}${window.location.hash}`
-    : `${window.location.pathname}${qs}${window.location.hash}`
+  // else's to drop (`/docs#installation` used to become `/docs?page=2`). A
+  // memory router's route lives inside it, fragment included.
+  const owned = routerOwnedRoute()
+  const url = owned
+    ? `${owned.path}${qs}${owned.hash}`
+    : _router
+      ? `${stripRouterBase(window.location.pathname)}${qs}${window.location.hash}`
+      : `${window.location.pathname}${qs}${window.location.hash}`
 
   if (_router) {
     if (!replace && typeof _router.push === 'function') {

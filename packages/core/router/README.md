@@ -63,9 +63,46 @@ mount(<App />, document.getElementById('app')!)
 createRouter({ routes, mode: 'hash' })    // default; for static hosting; pushState w/ #
 createRouter({ routes, mode: 'history' }) // uses pushState (set `base` for sub-path deploys)
 createRouter({ routes, url: '/some/path' }) // SSR — pin to a URL for one render
+createRouter({ routes, mode: 'memory' })  // location inside the router; the page URL is never touched
 ```
 
 Hash mode uses `history.pushState` under the hood (not `window.location.hash`) to avoid the double-update jank.
+
+### Memory mode
+
+`mode: 'memory'` keeps the location in an entry stack inside the router, for a
+router embedded in a page that already has one (a live demo, a widget), for
+tests, and for hosts with no `window`:
+
+```ts
+const demo = createRouter({
+  routes,
+  mode: 'memory',
+  initialEntries: ['/', '/users/1'], // default [url ?? '/']
+  initialIndex: 1,                   // default: the last entry
+})
+await demo.push('/users/2') // 'committed' — the page URL and history.length do not change
+demo.back()                 // guards, blockers, loaders and afterEach run, as on a real Back
+```
+
+- `push` / `replace` / `back` / `forward` / `go` run the full navigation
+  pipeline against the stack. A traversal that a guard or blocker cancels
+  leaves the position where it was; a step past either end, or `go(0)`, does
+  nothing.
+- Nothing is read from or written to `window.history` / `location`, no window
+  listener is attached, and the router never takes over the page router's
+  cancelled-Back restores — two routers (one memory, one browser) share a page
+  without disturbing each other. It also works with no `window` at all.
+- `<RouterLink>` renders the plain route path as its `href` (`/users/2`), so
+  the link stays an accessible anchor; a click navigates the memory router.
+  There is no real URL, so "open in new tab" opens that path on the host
+  origin.
+- Left to the page: `document.title` (`meta.title` is not written), View
+  Transitions (not used), and scroll (only with an explicit `scrollBehavior`).
+  An external `redirect('https://…')` resolves `'cancelled'` with a dev
+  warning instead of navigating the page.
+- Native (iOS/Android) routers are in-memory stacks already; `initialEntries`
+  / `initialIndex` are ignored there with a compiler warning.
 
 ### Navigation results + browser Back/Forward
 

@@ -7,7 +7,7 @@ description: Type-safe client-side router with nested routes, navigation guards,
 
 <LiveDemo id="router" />
 
-`@pyreon/router` is Pyreon's type-safe client-side router. It supports nested routes, TypeScript param inference from path strings, navigation guards, data loaders, lazy loading with retries, scroll restoration, and both hash and history mode.
+`@pyreon/router` is Pyreon's type-safe client-side router. It supports nested routes, TypeScript param inference from path strings, navigation guards, data loaders, lazy loading with retries, scroll restoration, and hash, history and in-memory mode.
 
 <PackageBadge name="@pyreon/router" href="/docs/router" />
 
@@ -75,7 +75,7 @@ const router = createRouter({
     { path: '/', component: Home },
     { path: '/about', component: About },
   ],
-  mode: 'history', // "hash" (default) or "history"
+  mode: 'history', // "hash" (default), "history" or "memory"
   scrollBehavior: 'restore', // "top" | "restore" | "none" | ScrollBehaviorFn
 })
 
@@ -91,7 +91,9 @@ const router = createRouter([
 ```ts
 interface RouterOptions {
   routes: RouteRecord[]
-  mode?: 'hash' | 'history'
+  mode?: 'hash' | 'history' | 'memory'
+  initialEntries?: string[]
+  initialIndex?: number
   base?: string
   dataEndpoint?: string
   scrollBehavior?: ScrollBehaviorFn | 'top' | 'restore' | 'none'
@@ -107,7 +109,9 @@ interface RouterOptions {
 | Option           | Type                                               | Default   | Description                                                                                                                                        |
 | ---------------- | -------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `routes`         | `RouteRecord[]`                                    | required  | Route definitions                                                                                                                                  |
-| `mode`           | `"hash" \| "history"`                              | `"hash"`  | URL mode                                                                                                                                           |
+| `mode`           | `"hash" \| "history" \| "memory"`                  | `"hash"`  | Where the location lives. See [Memory mode](#memory-mode).                                                                                        |
+| `initialEntries` | `string[]`                                         | `[url ?? "/"]` | Memory mode only: the entry stack the router starts with, oldest first.                                                                     |
+| `initialIndex`   | `number`                                           | last entry | Memory mode only: the entry to start at (clamped into range, with a dev warning).                                                          |
 | `base`           | `string`                                           | `""`      | Base path for sub-path deployments (e.g. `"/app"`). Must start with `/`. Only applies in history mode.                                             |
 | `dataEndpoint`   | `string`                                           | `` `${base}/_pyreon/data` `` | URL the client router fetches server-loader data from (one single-fetch request per navigation). Zero's `createServer` auto-mounts it.  |
 | `scrollBehavior` | `ScrollBehaviorFn \| "top" \| "restore" \| "none"` | `"top"`   | Scroll behavior on navigation                                                                                                                      |
@@ -131,6 +135,31 @@ const router = createRouter({ routes, mode: 'history' })
 Hash mode uses `window.location.hash` and listens to `hashchange` events. History mode uses `pushState`/`replaceState` and listens to `popstate` events. History mode requires your server to serve the app for all routes (SPA fallback).
 
 **Browser Back/Forward runs the full navigation pipeline.** A `popstate`/`hashchange` traversal goes through the same flow as `router.push()`: blockers, middleware, guards, and loaders all run (so `useLoaderData()` is populated after pressing Back), `afterEach` fires (the route announcer announces the change), and `meta.title` updates. If a guard or blocker cancels the traversal, the router restores the URL and history position — `history.go()` when the target entry carries the router's position stamp (`history.state.__pyreonIdx`), `replaceState` otherwise. Traversal-driven route updates are asynchronous (they await the pipeline).
+
+### Memory mode
+
+`mode: 'memory'` keeps the location in an entry stack inside the router instead of the page URL. Use it for a router embedded in a page that already has one (a live demo, a widget, an in-page preview), for tests, and for hosts with no `window`:
+
+```ts
+const demo = createRouter({
+  routes,
+  mode: 'memory',
+  initialEntries: ['/', '/users/1'], // default: [url ?? '/']
+  initialIndex: 1, // default: the last entry
+})
+
+await demo.push('/users/2') // 'committed' — location.href and history.length are unchanged
+demo.back() // blockers, middleware, guards, loaders and afterEach run, as on a real Back
+```
+
+- `push`, `replace`, `back`, `forward` and `go` run the full navigation pipeline against the stack. A guard or blocker that cancels a traversal leaves the position where it was. A step past either end, or `go(0)`, does nothing.
+- Nothing is read from or written to `window.history` or `location`, no window listener is attached, and a memory router never takes over the page router's restore of a cancelled Back. A memory router and a hash- or history-mode router on the same page do not disturb each other.
+- It works with no `window` at all (a server render, a test runner). `url` seeds the single starting entry when there are no `initialEntries`, as it does for the other modes on the server.
+- `<RouterLink>` renders the plain route path as its `href` (`href="/users/2"`), so the link stays an accessible anchor and a click navigates the memory router. There is no real URL behind it: "open in new tab" opens that path on the host page's origin.
+- What belongs to the page is left to the page: `meta.title` is not written to `document.title`, View Transitions are not used (they snapshot the whole document), and the window is scrolled only when you set `scrollBehavior`. An external `redirect('https://…')` resolves `'cancelled'` with a dev warning instead of navigating the page away.
+- With `tabs`, each entry remembers its tab and that tab's stack, so `back()` restores both.
+- `@pyreon/url-state` registered with a memory router reads and writes the router's own query.
+- iOS and Android routers are in-memory stacks already, so `mode: 'memory'` needs nothing there; `initialEntries` / `initialIndex` are ignored on native with a named compiler warning (the native router opens on its root route).
 
 **Base path (sub-directory deployment):**
 
@@ -870,6 +899,7 @@ The active class is segment-aware. `/admin` is a prefix of `/admin/users` but NO
 
 - Hash mode: `href="#/about"`
 - History mode: `href="/about"`
+- Memory mode: `href="/about"` (the plain route path; a click navigates the memory router)
 
 The router is resolved the same way every router hook resolves it — the nearest `<RouterProvider>` context first, falling back to the active router (`setActiveRouter()`), so links rendered outside the provider subtree (portals, detached trees) still client-navigate when a router is active.
 

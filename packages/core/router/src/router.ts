@@ -651,6 +651,16 @@ export function createRouter<TNames extends string = string>(
 
   // Base path only applies to history mode — hash-based routing already namespaces via #
   const base = mode === 'history' ? normalizeBase(opts.base ?? '') : ''
+  // `mode: 'memory'` keeps the location in `memEntries` below. Every
+  // `window.history` / `location` / listener site in this factory is gated on
+  // `!memory`, so a memory router never touches the page it is embedded in —
+  // and never becomes `_navOwner`, since it attaches no traversal listener.
+  const memory = mode === 'memory'
+  // Whether this router owns the PAGE: its title and its View Transitions.
+  const ownsPage = isClient && !memory
+  // Whether a push / replace scrolls without an explicit `scrollBehavior`. A
+  // memory router's window is usually its host page's, so it does not.
+  const scrollOnPush = scrollBehavior !== undefined || !memory
   // Phase 5 — server-loader data endpoint (single-fetch). Base-prefixed so
   // sub-path deploys hit the right origin path.
   const dataEndpoint = opts.dataEndpoint ?? `${base}/_pyreon/data`
@@ -688,9 +698,35 @@ export function createRouter<TNames extends string = string>(
     return typeof st?.__pyreonIdx === 'number' ? st.__pyreonIdx : null
   }
 
+  // ── Memory history (`mode: 'memory'`) ─────────────────────────────────────
+  //
+  // The memory twin of the browser's history stack: one entry per position,
+  // holding its path and (tab-bar routers) the tab + tab stack it showed — what
+  // a browser entry carries in its `__pyreonTab` stamp. `memIdx` is the
+  // CURRENT entry (moved by a traversal before its pipeline runs, as the browser
+  // moves before popstate); `memShown` is the entry of the route on screen,
+  // where a cancelled traversal returns. Per-router state, emptied by
+  // `destroy()`; nothing module-level.
+  const memEntries: { path: string; tab: TabPlan | null }[] = []
+  let memIdx = 0
+  let memShown = 0
+  if (memory) {
+    // No entries → the `url` option (the server's initial location) or '/'.
+    const list = opts.initialEntries?.length ? opts.initialEntries : [opts.url ?? '/']
+    for (const p of list) memEntries.push({ path: normalizeTrailingSlash(p, trailingSlash), tab: null })
+    const want = opts.initialIndex ?? list.length - 1
+    memIdx = memShown = Math.min(Math.max(Math.trunc(want) || 0, 0), list.length - 1)
+    if (process.env.NODE_ENV !== 'production' && memIdx !== want) {
+      console.warn(
+        `[Pyreon Router] initialIndex ${want} is outside initialEntries (0–${list.length - 1}) — starting at entry ${memIdx}. Pass an index into the initialEntries array.`,
+      )
+    }
+  }
+
   // ── Initial location ──────────────────────────────────────────────────────
 
   const getInitialLocation = (): string => {
+    if (memory) return memEntries[memIdx]!.path
     // SSR: use explicitly provided url (strip base if present)
     if (opts.url) return stripBase(opts.url, base)
     if (!isClient) return '/'
@@ -749,8 +785,18 @@ export function createRouter<TNames extends string = string>(
           routes,
           normalize: (p) => normalizeTrailingSlash(p, trailingSlash),
           initialPath: currentPath.peek(),
+          // A reload restores the stack stamped on the current history entry;
+          // a memory router owns no browser history, so it starts fresh.
+          historyState: isClient && !memory ? window.history.state : null,
         })
       : null
+
+  /** The active tab and a copy of its stack — what a history entry records. */
+  const tabPlanNow = (): TabPlan | null => tabCtl?.current() ?? null
+
+  // The memory router's starting entry records its tab, as the browser modes
+  // stamp the initial history entry below.
+  if (memory) memEntries[memIdx]!.tab = tabPlanNow()
 
   // ── Browser-initiated navigation (Back/Forward, hash anchors) ────────────
   //
@@ -791,28 +837,9 @@ export function createRouter<TNames extends string = string>(
       return
     }
     const target = normalizeTrailingSlash(getCurrentLocation(), trailingSlash)
-    // With tabs, two entries can share a path (a detail page pushed in two
-    // tabs), so an entry is the SAME place only when its tab matches too.
-    const poppedTab = tabCtl?.parseStamp(window.history.state) ?? null
-    const expectedTab = _pendingBrowserTarget !== null ? _pendingBrowserTab : tabCtl?.active.peek()
-    const sameTab = poppedTab === null || poppedTab.tab === expectedTab
-    if (sameTab && target === (_pendingBrowserTarget ?? currentPath.peek())) {
-      // Fragment-only change (history mode), an echo, or a duplicate event
-      // for the traversal already in flight — native behavior wins.
-      if (poppedIdx !== null) _histIdx = poppedIdx
-      return
-    }
     const prevIdx = _histIdx
     if (poppedIdx !== null) _histIdx = poppedIdx
-    _pendingBrowserTarget = target
-    _pendingBrowserTab = poppedTab?.tab ?? tabCtl?.active.peek()
-    void navigate(target, true, 0, true, poppedTab ?? undefined)
-      .finally(() => {
-        // Identity-guarded: a NEWER browser traversal may own the field now.
-        if (_pendingBrowserTarget === target) _pendingBrowserTarget = null
-      })
-      .then((status) => {
-      if (status !== 'cancelled') return
+    traverse(target, tabCtl?.parseStamp(window.history.state) ?? null, () => {
       // Guard / blocker / middleware refused the traversal — the app state
       // never changed, so put the BROWSER back where the app is. Only the
       // OWNING router writes the shared URL back (a stale instance that
@@ -828,6 +855,49 @@ export function createRouter<TNames extends string = string>(
     })
   }
 
+  /**
+   * Run a traversal (browser Back/Forward, or `mode: 'memory'`'s back / go)
+   * to an entry the history has ALREADY moved to: replace semantics, the
+   * entry's tab plan, and `onCancelled` to move the history back when the
+   * pipeline refuses it. Returns `false` without running the pipeline when the
+   * entry is the place the app already is (or is going to).
+   */
+  function traverse(target: string, poppedTab: TabPlan | null, onCancelled: () => void): boolean {
+    // With tabs, two entries can share a path (a detail page pushed in two
+    // tabs), so an entry is the SAME place only when its tab matches too.
+    const expectedTab = _pendingBrowserTarget !== null ? _pendingBrowserTab : tabCtl?.active.peek()
+    const sameTab = poppedTab === null || poppedTab.tab === expectedTab
+    // Fragment-only change (history mode), an echo, or a duplicate event for
+    // the traversal already in flight — native behavior wins.
+    if (sameTab && target === (_pendingBrowserTarget ?? currentPath.peek())) return false
+    _pendingBrowserTarget = target
+    _pendingBrowserTab = poppedTab?.tab ?? tabCtl?.active.peek()
+    void navigate(target, true, 0, true, poppedTab ?? undefined)
+      .finally(() => {
+        // Identity-guarded: a NEWER browser traversal may own the field now.
+        if (_pendingBrowserTarget === target) _pendingBrowserTarget = null
+      })
+      .then((status) => {
+        if (status === 'cancelled') onCancelled()
+      })
+
+    return true
+  }
+
+  /** `mode: 'memory'` back / forward / go: move `memIdx`, then run the traversal. */
+  function memoryGo(delta: number): void {
+    const at = memIdx + delta
+    const entry = memEntries[at]
+    // Past either end (or `go(0)`, which reloads in a browser): nothing to do.
+    if (delta === 0 || entry === undefined) return
+    memIdx = at
+    const ran = traverse(entry.path, entry.tab, () => {
+      memIdx = memShown
+    })
+    // Same place, nothing in flight: the route on screen is this entry's.
+    if (!ran && _pendingBrowserTarget === null) memShown = at
+  }
+
   // Browser event listeners — stored so destroy() can remove them.
   // Ternary-bound on `isClient` (the canonical `@pyreon/reactivity` SSR-guard
   // primitive — a recognized guard name) so the lint rule can trace these to an
@@ -836,7 +906,7 @@ export function createRouter<TNames extends string = string>(
   const _popstateHandler: (() => void) | null =
     isClient && mode === 'history' ? handleBrowserNav : null
   const _hashchangeHandler: (() => void) | null =
-    isClient && mode !== 'history' ? handleBrowserNav : null
+    isClient && mode === 'hash' ? handleBrowserNav : null
 
   if (_popstateHandler) window.addEventListener('popstate', _popstateHandler)
   if (_hashchangeHandler) window.addEventListener('hashchange', _hashchangeHandler)
@@ -844,7 +914,7 @@ export function createRouter<TNames extends string = string>(
   // Stamp the INITIAL history entry with index 0 (merging any pre-existing
   // state) so a later Back to it carries a readable index. Entries stamped
   // by other code keep their fields — we only add `__pyreonIdx`.
-  if (isClient) {
+  if (isClient && !memory) {
     const existing = readHistoryIdx()
     if (existing !== null) _histIdx = existing
     // Tab mode always (re)stamps: the initial plan may have built the stack
@@ -867,7 +937,7 @@ export function createRouter<TNames extends string = string>(
   // ScrollManager entirely (see `commitNavigation`) and native restoration
   // keeps working exactly as before. `destroy()` restores the prior value.
   const _prevScrollRestoration: History['scrollRestoration'] | null =
-    isClient && scrollBehavior !== undefined && 'scrollRestoration' in window.history
+    isClient && !memory && scrollBehavior !== undefined && 'scrollRestoration' in window.history
       ? window.history.scrollRestoration
       : null
   if (isClient && _prevScrollRestoration !== null) window.history.scrollRestoration = 'manual'
@@ -880,8 +950,9 @@ export function createRouter<TNames extends string = string>(
   // `data-allow-reload`. Applies in BOTH modes (a path-style href full-reloads a
   // hash-mode app too; valid `#/x` hrefs classify as 'hash' and are skipped).
   // Registered ONCE per router and removed by identity in `destroy()` (leak D).
+  // Not for a memory router: the page's anchors are its host's business.
   const _devAnchorWarn: ((e: MouseEvent) => void) | null =
-    process.env.NODE_ENV !== 'production' && isClient
+    process.env.NODE_ENV !== 'production' && isClient && !memory
       ? (e: MouseEvent) => {
           if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
           // `closest?.` — e.target can be a non-Element (a Text node from a
@@ -1010,6 +1081,12 @@ export function createRouter<TNames extends string = string>(
   }
 
   function syncBrowserUrl(path: string, replace: boolean): void {
+    if (memory) {
+      // A push drops the forward entries, as a browser does.
+      if (!replace) memEntries.length = ++memIdx
+      memEntries[memIdx] = { path, tab: tabPlanNow() }
+      return
+    }
     if (!isClient) return
     const url = mode === 'history' ? `${base}${path}` : `#${path}`
     if (replace) {
@@ -1367,8 +1444,10 @@ export function createRouter<TNames extends string = string>(
       // Cancellation is the only case where the router legitimately writes a
       // browser-initiated URL, and `handleBrowserNav` owns that path.
       if (!fromBrowser) syncBrowserUrl(path, replace)
+      memShown = memIdx
 
-      if (isClient && to.meta.title) {
+      // The page's title belongs to the page, not to a memory router in it.
+      if (ownsPage && to.meta.title) {
         document.title = to.meta.title
       }
 
@@ -1407,8 +1486,10 @@ export function createRouter<TNames extends string = string>(
       return matchMedia('(prefers-reduced-motion: reduce)').matches
     }
     const reducedMotion = isClient && prefersReducedMotion()
+    // Not in memory mode: a view transition snapshots the WHOLE document and
+    // skips any other transition in flight — the page router's included.
     const useVT =
-      isClient &&
+      ownsPage &&
       !reducedMotion &&
       to.meta.viewTransition !== false &&
       typeof (document as any).startViewTransition === 'function'
@@ -1486,7 +1567,8 @@ export function createRouter<TNames extends string = string>(
     //     (`history.scrollRestoration` stays 'auto'), exactly the pre-pipeline
     //     behavior. With an explicit behavior, native restoration is switched
     //     to 'manual' at router creation so the two never fight.
-    if (isClient && (!fromBrowser || scrollBehavior !== undefined)) {
+    // A memory router scrolls only when `scrollBehavior` is set (`scrollOnPush`).
+    if (isClient && (fromBrowser ? scrollBehavior !== undefined : scrollOnPush)) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
   }
@@ -1548,6 +1630,16 @@ export function createRouter<TNames extends string = string>(
   ): Promise<NavigationResult> {
     const c = classifyRedirectTarget(target)
     if (c.kind === 'external') {
+      // A memory router must not navigate the page it is embedded in.
+      if (memory) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[Pyreon Router] mode: 'memory' does not follow the external redirect to "${c.url}" — it would navigate the whole page. Navigation cancelled; call window.location.assign() yourself if leaving the page is intended.`,
+          )
+        }
+
+        return 'cancelled'
+      }
       // `isClient` rather than a hand-rolled `typeof window` check: it is the
       // canonical env primitive (already imported above) and discriminates on
       // `document`, which does not misreport a DOM-less environment that
@@ -1864,15 +1956,18 @@ export function createRouter<TNames extends string = string>(
     },
 
     back() {
-      if (isClient) window.history.back()
+      if (memory) memoryGo(-1)
+      else if (isClient) window.history.back()
     },
 
     forward() {
-      if (isClient) window.history.forward()
+      if (memory) memoryGo(1)
+      else if (isClient) window.history.forward()
     },
 
     go(delta: number) {
-      if (isClient) window.history.go(delta)
+      if (memory) memoryGo(delta)
+      else if (isClient) window.history.go(delta)
     },
 
     beforeEach(guard: NavigationGuard) {
@@ -2126,6 +2221,7 @@ export function createRouter<TNames extends string = string>(
         window.history.scrollRestoration = _prevScrollRestoration
       }
       if (_devAnchorWarn) document.removeEventListener('click', _devAnchorWarn)
+      memEntries.length = 0
       guards.length = 0
       afterHooks.length = 0
       // Release beforeunload for any remaining blockers

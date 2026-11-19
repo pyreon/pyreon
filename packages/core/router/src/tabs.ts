@@ -1,6 +1,6 @@
 import { h, provide, useContext } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
-import { computed, isClient, signal, untrack } from '@pyreon/reactivity'
+import { computed, signal, untrack } from '@pyreon/reactivity'
 import type { Computed, Signal } from '@pyreon/reactivity'
 import { resolveRoute } from './match'
 import { RouterTabContext } from './tab-context'
@@ -23,6 +23,8 @@ export interface TabHost {
   normalize: (path: string) => string
   /** The router's initial path, already normalized. */
   initialPath: string
+  /** The history entry's state to restore the stacks from (a reload), or null. */
+  historyState: unknown
 }
 
 /** The live tab engine of one router. @internal */
@@ -33,6 +35,8 @@ export interface TabController {
   parseStamp(state: unknown): TabPlan | null
   /** How a programmatic navigation to `path` changes the stacks. */
   plan(path: string, replace: boolean): TabPlan
+  /** The active tab and a copy of its stack: what a history entry records. */
+  current(): TabPlan
   /** The active tab's stamp for the current history entry. */
   stamp(): Record<string, unknown>
   /** Apply a committed plan. The router calls it inside the batch that moves the path. */
@@ -118,8 +122,8 @@ function parseStamp(tabs: readonly RouterTab[], state: unknown): TabPlan | null 
  * fresh deep link selects the tab whose root prefixes it and PUSHES the path
  * onto that tab's root, so Back returns to the tab's root page.
  */
-function initialPlan(tabs: readonly RouterTab[], path: string): TabPlan {
-  const stamped = isClient ? parseStamp(tabs, window.history.state) : null
+function initialPlan(tabs: readonly RouterTab[], path: string, historyState: unknown): TabPlan {
+  const stamped = parseStamp(tabs, historyState)
   if (stamped !== null && stamped.stack[stamped.stack.length - 1] === path) return stamped
   const t = tabForPath(tabs, path) ?? tabs[0]!
 
@@ -165,7 +169,7 @@ function attachTabs(configured: readonly RouterTab[], host: TabHost): TabControl
   const stacks = new Map<string, Signal<string[]>>()
   const routesByTab = new Map<string, Computed<ResolvedRoute>>()
   if (tabs.length > 0) {
-    const initial = initialPlan(tabs, host.initialPath)
+    const initial = initialPlan(tabs, host.initialPath, host.historyState)
     for (const t of tabs) {
       if (stacks.has(t.name)) continue
       const state = tabState(t, t.name === initial.tab ? initial.stack : [t.root], host.routes)
@@ -192,6 +196,12 @@ function attachTabs(configured: readonly RouterTab[], host: TabHost): TabControl
       if (replace && stack.length > 1) return { tab: target.name, stack: [...stack.slice(0, -1), path] }
 
       return { tab: target.name, stack: [...stack, path] }
+    },
+
+    current() {
+      const tab = active.peek()!
+
+      return { tab, stack: [...(stacks.get(tab)?.peek() ?? [])] }
     },
 
     stamp() {

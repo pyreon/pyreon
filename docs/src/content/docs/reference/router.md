@@ -1,11 +1,11 @@
 ---
 title: "@pyreon/router — API Reference"
-description: "hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params"
+description: "hash+history+memory+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params"
 ---
 
 > **Generated** from `router`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [router](/docs/router).
 
-Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (`RouterContext`) with hash and history mode support. Route params are inferred from path strings (`"/user/:id"` yields `{ id: string }`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit), not after animation completion.
+Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (`RouterContext`) with hash, history and in-memory mode support. Route params are inferred from path strings (`"/user/:id"` yields `{ id: string }`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit), not after animation completion.
 
 ## Multiplatform
 
@@ -19,7 +19,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 - Native compiler tooling: routerPlugin from @pyreon/router/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly
 - Server loaders (zero integration): records carry `serverLoader` (SSR module graph only) / `hasServerLoader` (client marker) — client navigations fetch the whole chain via ONE request to the `dataEndpoint` (default `<base>/_pyreon/data`); redirect() from a server loader arrives as a JSON envelope the client turns into a navigation
-- createRouter() — factory with routes, guards, middleware, loaders, hash/history mode
+- createRouter() — factory with routes, guards, middleware, loaders, hash/history/memory mode
 - RouterProvider / RouterView / RouterLink — context-based rendering components
 - useRouter / useRoute — programmatic navigation and typed route access
 - useIsActive — reactive boolean for path matching (segment-aware prefix)
@@ -189,7 +189,7 @@ const router = createRouter({
 createRouter(options: RouterOptions | RouteRecord[]): Router
 ```
 
-Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: routerTabs([{ name, root }])` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first.
+Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"hash"` default | `"history"` | `"memory"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: routerTabs([{ name, root }])` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab's top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first. `mode: "memory"` keeps the location in an entry stack inside the router (start it with `initialEntries` / `initialIndex`; default `[url ?? "/"]`, last entry): `push` / `replace` / `back` / `forward` / `go` run the full pipeline against the stack (a cancelled traversal keeps the position; a step past either end is a no-op), nothing touches `window.history` / `location` / `document.title`, no window listener is attached, and it never takes over the page router's cancelled-traversal restores, so it embeds in a page that already has a router and runs with no `window`. `<RouterLink>` renders the plain route path as `href`. The native routers are in-memory stacks already, so `mode` needs no lowering there; `initialEntries` / `initialIndex` are ignored on iOS/Android with a named compiler warning.
 
 **Example**
 
@@ -206,6 +206,7 @@ const router = createRouter([
 **Common mistakes**
 
 - `createRouter({ routes: [...], mode: "hash" })` and using `window.location.hash` elsewhere — hash mode uses `history.pushState`, not `location.hash`. Reading `location.hash` directly will not reflect router state
+- Using `mode: "memory"` for an app that owns the page — the URL never changes, so reload, deep links, sharing and "open in new tab" do not work. It is for routers EMBEDDED in a page that has its own (a demo, a widget), tests and native previews. It also does not write `document.title`, does not use View Transitions, scrolls only with an explicit `scrollBehavior`, and resolves an external `redirect("https://…")` as `"cancelled"`
 - Defining route paths without leading `/` in root routes — all root-level paths must start with `/`
 - Using `redirect: "/target"` with a guard on the same route — redirects bypass guards. Use `beforeEnter` to conditionally redirect instead
 - Forgetting the catch-all route — `{ path: "(.*)", component: NotFound }` should be the last route to handle 404s

@@ -429,8 +429,38 @@ export interface RouterOptions {
   beforeEach?: NavigationGuard[]
   /** Hooks run after every committed navigation. Same contract as `router.afterEach(hook)`, which appends. */
   afterEach?: AfterEachHook[]
-  /** "hash" (default) uses location.hash; "history" uses pushState */
-  mode?: 'hash' | 'history'
+  /**
+   * Where the location lives:
+   *   - `'hash'` (default) — in `location.hash`;
+   *   - `'history'` — in the path, written with `pushState`;
+   *   - `'memory'` — in an entry stack inside the router. Nothing is read
+   *     from or written to `window.history` / `location`, no window listener
+   *     is attached, and `document.title` is left alone, so the router can be
+   *     embedded in a page that already has one (a live demo, a widget, a test
+   *     harness) and works with no `window` at all. `push` / `replace` /
+   *     `back` / `forward` / `go` run the full navigation pipeline against the
+   *     stack. `<RouterLink>` renders the plain route path as its `href`
+   *     (there is no real URL to open in a new tab). Scroll is managed only
+   *     when `scrollBehavior` is set, View Transitions are not used, and an
+   *     external `redirect('https://…')` resolves `'cancelled'` instead of
+   *     leaving the page. Start position: `initialEntries` / `initialIndex`.
+   */
+  mode?: 'hash' | 'history' | 'memory'
+  /**
+   * `mode: 'memory'` only — the entry stack the router starts with, oldest
+   * first. Default: `[url ?? '/']`. Ignored by the other modes, which read the
+   * page URL.
+   *
+   * @example
+   * createRouter({ routes, mode: 'memory', initialEntries: ['/', '/users/1'] })
+   */
+  initialEntries?: string[]
+  /**
+   * `mode: 'memory'` only — the index in `initialEntries` the router starts
+   * at. Default: the last entry. An index outside the stack is clamped (with a
+   * dev warning).
+   */
+  initialIndex?: number
   /**
    * Phase 5 — endpoint the client-side router fetches server-loader data
    * from on navigations (one request per navigation for the whole matched
@@ -551,8 +581,10 @@ export interface Router<TNames extends string = string> {
    * navigated a hash-mode app off its own route on the first param write. The
    * field was on the router object from the start — only the public TYPE
    * omitted it, which is what let the wrong assumption look correct.
+   *
+   * `'memory'` — the location lives inside the router, not in the page URL.
    */
-  readonly mode: 'hash' | 'history'
+  readonly mode: 'hash' | 'history' | 'memory'
   /** Navigate to a path. Resolves with what the navigation did — see {@link NavigationResult}. */
   push(path: string): Promise<NavigationResult>
   /** Navigate to a named route */
@@ -569,11 +601,19 @@ export interface Router<TNames extends string = string> {
     params?: Record<string, string>
     query?: Record<string, string>
   }): Promise<NavigationResult>
-  /** Go back one step in history */
+  /**
+   * Go back one step in history. In `mode: 'memory'` this moves through the
+   * router's own entry stack, through the full navigation pipeline (a guard
+   * that cancels leaves the position unchanged); at the first entry it does
+   * nothing.
+   */
   back(): void
-  /** Go forward one step in history */
+  /** Go forward one step in history (see {@link back} for `mode: 'memory'`). */
   forward(): void
-  /** Navigate forward or backward by `delta` steps in the history stack */
+  /**
+   * Navigate forward or backward by `delta` steps in the history stack. In
+   * `mode: 'memory'` a step past either end, or `go(0)`, does nothing.
+   */
   go(delta: number): void
   /** Register a global before-navigation guard. Returns an unregister function. */
   beforeEach(guard: NavigationGuard): () => void

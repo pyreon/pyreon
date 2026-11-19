@@ -446,7 +446,10 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     // `#${path}`, which is wrong for history-mode apps (the dominant mode)
     // and a dead destination without a router to interpret the hash.
     if (!inst) return path
-    return inst.mode === 'history' ? `${inst._base}${path}` : `#${path}`
+    // Memory mode has no real URL: the href is the plain route path (`_base`
+    // is '' there), which keeps the anchor accessible; the click navigates the
+    // memory router, and "open in new tab" opens that path on the host origin.
+    return inst.mode === 'hash' ? `#${path}` : `${inst._base}${path}`
   }
 
   // Auto target/rel for external links (overridable per-link). `_blank` gets a
