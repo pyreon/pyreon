@@ -2213,7 +2213,7 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 
 ## @pyreon/charts-maps — Chart Maps (boundary data)
 
-Boundary data for `<MapChart>`: `@pyreon/charts-maps/world-110m` (the countries of the world, Natural Earth 1:110m, joined on ISO alpha-3) and `@pyreon/charts-maps/us-states` (the 50 states, DC and Puerto Rico, Census 1:20m, joined on FIPS). Each subpath default-exports a `MapModule` — the topology plus the projection it was prepared for (Equal Earth for the world, Albers USA for the US), the name property and the join key — so `<MapChart map={world} values={...}>` just works and an app bundles only the maps it imports. Public-domain sources, pinned and checksummed; the data is committed and nothing is fetched at install or run time.
+Boundary data for `<MapChart>`: `@pyreon/charts-maps/world-110m` (the countries of the world, Natural Earth 1:110m, joined on ISO alpha-3) and `@pyreon/charts-maps/us-states` (the 50 states and DC, Census 1:20m, joined on FIPS). Each subpath default-exports a `MapModule` — the topology plus the projection it was prepared for (Equal Earth for the world, Albers USA for the US), the name property and the join key — so `<MapChart map={world} values={...}>` just works and an app bundles only the maps it imports. Public-domain sources, pinned and checksummed; the data is committed and nothing is fetched at install or run time.
 
 ```typescript
 import { MapChart } from '@pyreon/charts'

@@ -6929,7 +6929,7 @@ import world from '@pyreon/charts-maps/world-110m'
 import usStates from '@pyreon/charts-maps/us-states'
 
 <MapChart map={usStates} values={{ '06': 39, '48': 30 }} />`,
-    notes: 'The 50 US states, DC and Puerto Rico as a `MapModule`: Census cartographic boundary 1:20m TopoJSON (object `states`), joined on the two-digit state FIPS feature id (`"06"`), named by `properties.name`, prepared for Albers USA (Alaska and Hawaii in insets). About 34 KB gzip. See also: world-110m.',
+    notes: 'The 50 US states and DC as a `MapModule`: Census cartographic boundary 1:20m TopoJSON (object `states`), joined on the two-digit state FIPS feature id (`"06"`), named by `properties.name`, prepared for Albers USA (Alaska and Hawaii in insets). About 34 KB gzip. See also: world-110m.',
     mistakes: `- Writing FIPS codes as numbers — the id is a TWO-CHARACTER STRING (\`"06"\`, not \`6\`), so a numeric key never matches
 - Expecting counties — this is states only; the larger county file was measured (about 229 KB gzip) and left out`,
   },

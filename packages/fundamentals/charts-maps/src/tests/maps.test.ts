@@ -43,10 +43,11 @@ describe('world-110m', () => {
 
 describe('us-states', () => {
   const geo = topoToGeo(us.data, us.object)
-  it('has the 50 states, DC and Puerto Rico, keyed by two-digit FIPS', () => {
-    expect(geo.features.length).toBe(52)
+  it('has the 50 states and DC, keyed by two-digit FIPS (Puerto Rico is left out: Albers USA has no inset for it)', () => {
+    expect(geo.features.length).toBe(51)
     const ids = geo.features.map((f) => String(f.id))
-    expect(new Set(ids).size).toBe(52)
+    expect(new Set(ids).size).toBe(51)
+    expect(ids).not.toContain('72')
     for (const id of ids) expect(id).toMatch(/^\d{2}$/)
     expect(geo.features.find((f) => f.id === '06')?.properties?.name).toBe('California')
     expect(geo.features.find((f) => f.id === '02')?.properties?.abbr).toBe('AK')

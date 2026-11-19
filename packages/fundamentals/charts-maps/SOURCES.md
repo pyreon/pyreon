@@ -29,7 +29,7 @@ from the one recorded here.
   credited as "US Census Bureau, cartographic boundary files".
 - **Properties kept:** `name` (`NAME`), `abbr` (`STUSPS`), `fips` (`STATEFP`). The feature `id` is the two-digit state
   FIPS code, which is the join key.
-- **Coverage:** the 50 states, the District of Columbia and Puerto Rico (52 features).
+- **Coverage:** the 50 states and the District of Columbia (51 features). The source also has Puerto Rico (FIPS 72); it is filtered out because the Albers USA composite has no inset for it, so it would be projected far off the map and shrink everything else to make room.
 
 ## The conversion (both maps)
 

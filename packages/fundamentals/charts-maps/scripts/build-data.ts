@@ -94,7 +94,11 @@ async function usFeatures(buf: Buffer): Promise<Feature[]> {
   const shp = readdirShp(dir)
   const fc = (await readShapefile(shp, shp.replace(/\.shp$/, '.dbf'))) as { features: { properties: Record<string, unknown>; geometry: unknown }[] }
 
-  return fc.features.map((f) => ({ type: 'Feature', id: String(f.properties.STATEFP), properties: { name: f.properties.NAME, abbr: f.properties.STUSPS, fips: String(f.properties.STATEFP) }, geometry: f.geometry }))
+  // Puerto Rico (FIPS 72) is left out: the Albers USA composite has no inset for it, so it would be projected far off the
+  // map and shrink everything else to make room.
+  return fc.features
+    .filter((f) => String(f.properties.STATEFP) !== '72')
+    .map((f) => ({ type: 'Feature', id: String(f.properties.STATEFP), properties: { name: f.properties.NAME, abbr: f.properties.STUSPS, fips: String(f.properties.STATEFP) }, geometry: f.geometry }))
 }
 
 function readdirShp(dir: string): string {

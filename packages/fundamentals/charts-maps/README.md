@@ -20,7 +20,7 @@ world, `albersUsa` for the US), the property that names a region and the key val
 | Subpath | Draws | Join on | Size (built, raw / gzip) |
 | --- | --- | --- | --- |
 | `world-110m` | 177 countries, Natural Earth 1:110m | ISO alpha-3 (`id`) | about 161 KB / 33 KB |
-| `us-states` | 50 states, DC, Puerto Rico, Census 1:20m | state FIPS (`id`) | about 150 KB / 34 KB |
+| `us-states` | 50 states and DC, Census 1:20m | state FIPS (`id`) | about 150 KB / 34 KB |
 
 The root entry has the shared types and the list of what is available, and no boundary data.
 

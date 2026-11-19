@@ -5,7 +5,7 @@ description: "Boundary data for @pyreon/charts maps — world countries and US s
 
 > **Generated** from `charts-maps`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest.
 
-Boundary data for `<MapChart>`: `@pyreon/charts-maps/world-110m` (the countries of the world, Natural Earth 1:110m, joined on ISO alpha-3) and `@pyreon/charts-maps/us-states` (the 50 states, DC and Puerto Rico, Census 1:20m, joined on FIPS). Each subpath default-exports a `MapModule` — the topology plus the projection it was prepared for (Equal Earth for the world, Albers USA for the US), the name property and the join key — so `<MapChart map={world} values={...}>` just works and an app bundles only the maps it imports. Public-domain sources, pinned and checksummed; the data is committed and nothing is fetched at install or run time.
+Boundary data for `<MapChart>`: `@pyreon/charts-maps/world-110m` (the countries of the world, Natural Earth 1:110m, joined on ISO alpha-3) and `@pyreon/charts-maps/us-states` (the 50 states and DC, Census 1:20m, joined on FIPS). Each subpath default-exports a `MapModule` — the topology plus the projection it was prepared for (Equal Earth for the world, Albers USA for the US), the name property and the join key — so `<MapChart map={world} values={...}>` just works and an app bundles only the maps it imports. Public-domain sources, pinned and checksummed; the data is committed and nothing is fetched at install or run time.
 
 ## Multiplatform
 
@@ -18,7 +18,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 ## Features
 
 - world-110m: 177 countries, Natural Earth 1:110m (public domain), joined on ISO 3166-1 alpha-3
-- us-states: 50 states + DC + Puerto Rico, Census cartographic boundary 1:20m (public domain), joined on state FIPS
+- us-states: 50 states + DC, Census cartographic boundary 1:20m (public domain), joined on state FIPS
 - One module per map with lazy subpath exports — an app bundles only the maps it imports (about 33 KB gzip each)
 - Each module carries its default projection (Equal Earth / Albers USA), name property and join key; chart options override
 - Pinned, checksummed sources and a regeneration script (`bun run build:data`); SOURCES.md records URLs, dates, licences and the conversion
@@ -48,7 +48,7 @@ const { default: lazyWorld } = await import('@pyreon/charts-maps/world-110m')
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`world-110m`](#world-110m-function) | function | The countries of the world as a `MapModule` for `<MapChart map>`: Natural Earth 1:110m TopoJSON (object `countries`),… |
-| [`us-states`](#us-states-function) | function | The 50 US states, DC and Puerto Rico as a `MapModule`: Census cartographic boundary 1:20m TopoJSON (object `states`),… |
+| [`us-states`](#us-states-function) | function | The 50 US states and DC as a `MapModule`: Census cartographic boundary 1:20m TopoJSON (object `states`), joined on the… |
 
 ## API
 
@@ -85,7 +85,7 @@ import world from '@pyreon/charts-maps/world-110m'
 import usStates from '@pyreon/charts-maps/us-states'  // MapModule
 ```
 
-The 50 US states, DC and Puerto Rico as a `MapModule`: Census cartographic boundary 1:20m TopoJSON (object `states`), joined on the two-digit state FIPS feature id (`"06"`), named by `properties.name`, prepared for Albers USA (Alaska and Hawaii in insets). About 34 KB gzip.
+The 50 US states and DC as a `MapModule`: Census cartographic boundary 1:20m TopoJSON (object `states`), joined on the two-digit state FIPS feature id (`"06"`), named by `properties.name`, prepared for Albers USA (Alaska and Hawaii in insets). About 34 KB gzip.
 
 **Example**
 
