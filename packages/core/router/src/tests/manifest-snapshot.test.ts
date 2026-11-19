@@ -7,14 +7,14 @@ import routerManifest from '../manifest'
 
 describe('gen-docs — router snapshot', () => {
   it('renders @pyreon/router to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(routerManifest)).toMatchInlineSnapshot(`"- @pyreon/router — hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections."`)
+    expect(renderLlmsTxtLine(routerManifest)).toMatchInlineSnapshot(`"- @pyreon/router — hash+history+memory+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections."`)
   })
 
   it('renders @pyreon/router to its expected llms-full.txt section — full body snapshot', () => {
     expect(renderLlmsFullSection(routerManifest)).toMatchInlineSnapshot(`
       "## @pyreon/router — Router
 
-      Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (\`RouterContext\`) with hash and history mode support. Route params are inferred from path strings (\`"/user/:id"\` yields \`{ id: string }\`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses \`history.pushState\` (not \`window.location.hash\`) to avoid double-update. \`await router.push()\` resolves after the View Transition \`updateCallbackDone\` (DOM commit), not after animation completion.
+      Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (\`RouterContext\`) with hash, history and in-memory mode support. Route params are inferred from path strings (\`"/user/:id"\` yields \`{ id: string }\`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses \`history.pushState\` (not \`window.location.hash\`) to avoid double-update. \`await router.push()\` resolves after the View Transition \`updateCallbackDone\` (DOM commit), not after animation completion.
 
       \`\`\`typescript
       import { createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useIsActive, useTypedSearchParams, useTransition, useLoaderData, useMiddlewareData } from "@pyreon/router"
