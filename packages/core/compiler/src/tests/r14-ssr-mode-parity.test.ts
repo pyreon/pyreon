@@ -36,7 +36,7 @@ describe('Round 14 — SSR-mode codegen parity', () => {
   })
 
   it('prop-derived const still inlines in SSR (R2/R7 parity)', () => {
-    expect(ssr(`function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i=><li class={c}>{i}</li>)}</ul> }`))
+    expect(ssr(`function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i=><li class={c}>{i}</li>)}</List> }`))
       .toContain("class={(p.x+'-b')}")
   })
 
