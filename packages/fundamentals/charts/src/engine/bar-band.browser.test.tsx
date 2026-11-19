@@ -1,5 +1,4 @@
 // Bars on a numeric x axis in real Chromium: hits, the tooltip, zoom, brush and a streaming (keyed) update.
-import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it, vi } from 'vitest'
 import { query } from '@pyreon/test-utils'
