@@ -101,8 +101,14 @@ A new worker waits by default, so a running page never has its asset set swapped
 ```tsx
 import { useOnline } from '@pyreon/hooks'
 
-const online = useOnline()
-<Show when={() => !online()}><p>You are offline. Changes are saved and sent later.</p></Show>
+function OfflineBanner() {
+  const online = useOnline()
+  return (
+    <Show when={() => !online()}>
+      <p>You are offline. Changes are saved and sent later.</p>
+    </Show>
+  )
+}
 ```
 
 `navigator.onLine` is a hint, not proof: `true` only means a network interface is up. A captive portal, a dead backend or a firewall still reads as online. Nothing in Pyreon combines it with a reachability probe; if you need one, `fetch` a tiny `HEAD` endpoint with a timeout and treat failure as offline.
@@ -116,9 +122,13 @@ import { createSyncStoragePersister, PersistQueryClientProvider } from '@pyreon/
 const client = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, gcTime: 24 * 3_600_000 } } })
 const persister = createSyncStoragePersister({ storage: localStorage })
 
-<PersistQueryClientProvider client={client} persistOptions={{ persister, maxAge: 24 * 3_600_000 }}>
-  <App />
-</PersistQueryClientProvider>
+export function Root() {
+  return (
+    <PersistQueryClientProvider client={client} persistOptions={{ persister, maxAge: 24 * 3_600_000 }}>
+      <App />
+    </PersistQueryClientProvider>
+  )
+}
 ```
 
 After a reload with no network, `useQuery` shows the restored data and its fetch stays paused (`fetchStatus: 'paused'`); it refetches when the connection returns. `gcTime` must be at least `maxAge`, or restored entries are collected early. `localStorage` is synchronous, about 5 MB per origin and throws when full; for larger caches use `createAsyncStoragePersister` over an async, IndexedDB-backed storage. Do not persist private data on a shared device without a `buster` or a cleared cache on sign-out (`persister.removeClient()`).
@@ -162,3 +172,26 @@ if (import.meta.env.DEV) void unregisterServiceWorkers()
 - **Push notifications** from the service worker: out of scope for `zero({ pwa })` (the native `usePush` hook is separate).
 - **A runtime caching framework**: only navigations (network-first) and hashed assets (cache-first) are handled. API responses, images and fonts outside `/assets/` are left to the browser; cache API data with the persisted query cache instead.
 - **A Workbox dependency**: the worker is a small generated file with no runtime imports.
+
+## Anti-pattern
+
+```tsx
+// BROKEN — a persisted mutation has no function after a reload
+const add = useMutation({ mutationFn: (name: string) => post(name) })
+```
+
+A function cannot be serialised. The paused mutation is stored with its variables and `mutationKey` only, so after a reload there is nothing to run. Use a `mutationKey` plus `client.setMutationDefaults(key, { mutationFn })` at module load.
+
+```tsx
+// ALSO BROKEN — a signed-in page replayed to the next visitor
+// Cache-Control: public   on HTML that varies by cookie
+```
+
+The worker only replays navigations that say `Cache-Control: public` and do not vary by user state. Never mark per-user HTML public to make it available offline.
+
+## Related
+
+- Pattern: `data-fetching` — `useQuery` and `useMutation` basics
+- Pattern: `ssr-safe-hooks` — why the install and update hooks are inert on the server
+- Reference: `registerServiceWorker`, `useServiceWorkerUpdate`, `useInstallPrompt`, `unregisterServiceWorkers` in `@pyreon/zero`; `PersistQueryClientProvider` in `@pyreon/query/persist`
+- Reference: `@pyreon/sync` for local-first data with real merge semantics
