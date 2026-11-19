@@ -7693,7 +7693,7 @@ fun formatIsoDays(days: Double): String {
     return "${yp}${pyreonNumberString(pyreonRound(c.year))}-${mp}${pyreonNumberString(pyreonRound(c.month))}-${dp}${pyreonNumberString(pyreonRound(c.day))}"
   }
 
-fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: CalendarOptions? = null): CalendarLayout {
+fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: CalendarOptions? = null, measure: ((String, Double) -> Double)? = null): CalendarLayout {
     val p0 = parseIsoDays(start)
     val p1 = parseIsoDays(end)
     if (!p0.ok || !p1.ok || p1.days < p0.days) {
@@ -7725,6 +7725,9 @@ fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: Ca
     val originY = box.y + gutterY
     val cells: MutableList<CalendarCell> = mutableListOf()
     val monthLabels: MutableList<CalendarLabel> = mutableListOf()
+    val m = (measure ?: ::approxTextWidth)
+    val boxRight = box.x + box.w
+    var prevLabelEnd = originX - 1000000000.0
     var lastMonthKey = -1.0
     var iF = 0.0
     while (iF < days) {
@@ -7744,7 +7747,16 @@ fun layoutCalendar(start: String, end: String, box: PyreonChartRect, options: Ca
           mi = mi + 1L
           miF = miF + 1.0
         }
-        monthLabels.add(CalendarLabel(kind = "month", text = CALENDAR_MONTHS[(mi).toInt()], at = PyreonChartPt(x = originX + week * pitch, y = originY - fontSize * 0.4)))
+        val text = CALENDAR_MONTHS[(mi).toInt()]
+        val lw = m(text, fontSize)
+        val want = originX + week * pitch
+        val latest = boxRight - lw
+        val pulled = want > latest
+        val labelX = if (!pulled) want else if (latest < originX) originX else latest
+        if (!pulled || labelX >= prevLabelEnd) {
+          prevLabelEnd = labelX + lw
+          monthLabels.add(CalendarLabel(kind = "month", text = text, at = PyreonChartPt(x = labelX, y = originY - fontSize * 0.4)))
+        }
       }
       iF = iF + 1.0
     }
