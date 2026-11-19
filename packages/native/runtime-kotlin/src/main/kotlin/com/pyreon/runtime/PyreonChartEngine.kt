@@ -7667,6 +7667,8 @@ fun hitCalendarIndex(layout: CalendarLayout, px: Double, py: Double): Long {
     return hit
   }
 
+fun mapRamp(mode: String): List<String> = if (mode == "dark") GEO_RAMP_DARK else GEO_RAMP_LIGHT
+
 fun geoValueOf(values: List<GeoValue>, name: String): Double {
     for (v in values) {
       if (v.region == name) {

@@ -21,6 +21,11 @@ import type { GeoProjectionParams } from './geo-projection'
 export const GEO_RAMP_LIGHT: readonly string[] = ['#b0d0fc', '#60a5fa', '#2563eb', '#1e3a8a']
 export const GEO_RAMP_DARK: readonly string[] = ['#3f64c8', '#5b8def', '#9ec1ff', '#d6e6ff']
 
+/** The default map ramp for a ground, low to high: pass it to `visualMap({ stops })` so the legend strip matches the map. */
+export function mapRamp(mode: 'light' | 'dark'): string[] {
+  return mode === 'dark' ? [...GEO_RAMP_DARK] : [...GEO_RAMP_LIGHT]
+}
+
 export type GeoProjection = 'equirectangular' | 'mercator' | 'equalEarth' | 'naturalEarth1' | 'albers' | 'albersUsa'
 
 export interface GeoRegion {
