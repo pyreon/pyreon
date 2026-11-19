@@ -33,5 +33,8 @@
   ],
   "cpu": [
     "arm64"
-  ]
+  ],
+  "pyreon": {
+    "stability": "stable"
+  }
 }

@@ -56,7 +56,7 @@ describe('rocketstyle dynamic dimension — emit', () => {
     const { code } = swift(
       render(`<Btn state={active() ? 'primary' : 'danger'} size="large"><Text>x</Text></Btn>`),
     )
-    expect(code).toContain('.padding(((active) ? 16 : 16))') // static size in both
+    expect(code).toContain('.padding(16)') // static size in both: equal branches fold to the value
     expect(code).toContain('.cornerRadius(((active) ? 8 : 8))') // static theme in both
     expect(code).toContain('.background(((active) ?') // dynamic state flip
   })

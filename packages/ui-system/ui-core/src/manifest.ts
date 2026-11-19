@@ -59,7 +59,7 @@ const InvertedSection = () => (
       signature:
         "(props: { theme?: Theme; mode?: 'light' | 'dark' | 'system'; inversed?: boolean; children: VNodeChild }) => VNodeChild",
       summary:
-        "Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched `theme` object (merge with defaults via `enrichTheme()`), a `mode` of `'light' | 'dark' | 'system'`, and an optional `inversed` flip. When `mode='system'`, the provider subscribes to `matchMedia('(prefers-color-scheme: dark)')` and re-resolves the mode reactively. Calls `init()` internally so consumers don\\\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode. Under `init({ cssVariables: true })` the provider additionally autogenerates CSS custom properties from the theme (unistyle\\'s `themeToCssVars`), injects the `:root` block once, provides a var-leaf theme tree, and renders a layout-neutral `display: contents` wrapper carrying the mode attribute — a dark/light flip becomes ONE attribute write (zero re-resolution, zero className churn), nested `inversed` providers scope via the CSS cascade, and SSR ships the right mode server-rendered.",
+        "Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). Accepts an enriched `theme` object (merge with defaults via `enrichTheme()`), a `mode` of `'light' | 'dark' | 'system'`, and an optional `inversed` flip. When `mode='system'`, the provider subscribes to `matchMedia('(prefers-color-scheme: dark)')` and re-resolves the mode reactively. Calls `init()` internally so consumers don\\\'t need to wire it up themselves. Whole-theme swaps (user-preference themes) propagate through the styler resolver and re-resolve CSS without remounting the VNode. Under `init({ cssVariables: true })` the provider additionally autogenerates CSS custom properties from the theme (unistyle\\'s `themeToCssVars`), writes the `:root` block into the sheet's one root-variables slot (replaced on every theme swap, so A -> B -> A shows A), provides a var-leaf theme tree, and renders a layout-neutral `display: contents` wrapper carrying the mode attribute — a dark/light flip becomes ONE attribute write (zero re-resolution, zero className churn), nested `inversed` providers scope via the CSS cascade, and SSR ships the right mode server-rendered.",
       example: `import { PyreonUI } from "@pyreon/ui-core"
 import { enrichTheme } from "@pyreon/unistyle"
 
@@ -375,8 +375,8 @@ hoistNonReactStatics(Wrapped, Original)`,
       note: '`mode="system"` lazily creates a `matchMedia(\'(prefers-color-scheme: dark)\')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.',
     },
     {
-      label: 'Deprecated internal Provider / context',
-      note: 'The package also exports a low-level `Provider` (default export) + `context` from `context.tsx` — an internal, `@deprecated`-tagged reactive-context provider `<PyreonUI>` no longer uses directly. It dev-warns on every mount. There is no reason to import it: use `<PyreonUI theme={theme}>` for the provider and `useMode()` / `useThemeValue()` for reads.',
+      label: 'Low-level Provider / context',
+      note: 'The package also exports a low-level `Provider` (default export) + `context` from `context.tsx`. It feeds the core theme + mode context and is the path `@pyreon/rocketstyle`\'s public `Provider` delegates to, so it is supported and does not warn. App code should still mount `<PyreonUI theme={theme}>`, which sets up every context layer, and read with `useMode()` / `useThemeValue()`.',
     },
   ],
 })

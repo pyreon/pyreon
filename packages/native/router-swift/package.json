@@ -26,6 +26,7 @@
   },
   "sideEffects": false,
   "pyreon": {
+    "stability": "experimental",
     "native": {
       "swift": {
         "module": "PyreonRouter",

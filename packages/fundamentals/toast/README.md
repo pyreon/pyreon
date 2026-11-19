@@ -1,5 +1,7 @@
 # @pyreon/toast
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Imperative toast notifications — call `toast()` from anywhere, render `<Toaster />` once.
 
 A provider-less toast system: one `<Toaster />` mounted at the root, and any code (component bodies, event handlers, async functions, stores, route loaders) calls `toast(message)` / `toast.success(message)` / `toast.promise(promise, ...)` to enqueue. Backed by a signal so the Toaster picks updates up reactively. Includes auto-dismiss that suspends on hover, on keyboard focus, and while the tab is hidden, action buttons, an animated enter/leave, the loading → success / error promise pattern, and type-aware accessibility (`role="alert"` for error/warning, `role="status"` for info/success).
