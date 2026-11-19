@@ -1,4 +1,4 @@
-import { CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
+import { plotFillAccessor, plotFillSpec, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
 import type { ChartHostTarget, ChartThemeText } from './hosts'
 import { kotlinIdent, kotlinStr, substituteIdentifier, type ExprIR, type TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './kotlin-facade'
@@ -461,6 +461,35 @@ export function kotlinMarkErrorArgs(
   lets.push(`val ${namePrefix}ErrLow${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${lowBody}).toDouble()`, windowed, decimated)}`)
   lets.push(`val ${namePrefix}ErrHigh${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${highBody}).toDouble()`, windowed, decimated)}`)
   return [`errLow = ${namePrefix}ErrLow${seriesIndex}`, `errHigh = ${namePrefix}ErrHigh${seriesIndex}`]
+}
+
+/** Kotlin twin of `swiftMarkFillArgs`: the trailing `itemColors` (and `shades`) `Series` arguments of a mark's per-datum `fill`. */
+// oxlint-disable-next-line max-params -- same positional shape as the sibling `*MarkErrorArgs`, which every plot emit already calls
+export function kotlinMarkFillArgs(
+  opts: ExprIR | undefined,
+  tag: string,
+  seriesIndex: number,
+  rows: string,
+  windowed: boolean,
+  indent: number,
+  lets: string[],
+  decimated = false,
+): string[] | 'unsupported' {
+  const spec = plotFillSpec(opts, tag, seriesIndex, (m) => host.warn(m))
+  if (spec === undefined) return []
+  const body = kotlinAccessorExpr(plotFillAccessor(spec.field), tag, `mark ${seriesIndex + 1} fill`, indent)
+  if (body === 'unsupported') return 'unsupported'
+  if (!spec.shade) {
+    lets.push(`val pyreonFill${seriesIndex}: List<String> = ${kotlinPlotRowMap(rows, body, windowed, decimated)}`)
+
+    return [`itemColors = pyreonFill${seriesIndex}`]
+  }
+  lets.push(`val pyreonShade${seriesIndex}: List<Double> = ${kotlinPlotRowMap(rows, `(${body}).toDouble()`, windowed, decimated)}`)
+  const lo = spec.domain === undefined ? `shadeExtent(pyreonShade${seriesIndex}).min` : chartDouble(spec.domain.min)
+  const hi = spec.domain === undefined ? `shadeExtent(pyreonShade${seriesIndex}).max` : chartDouble(spec.domain.max)
+  lets.push(`val pyreonFill${seriesIndex}: List<String> = shadeColors(pyreonShade${seriesIndex}, listOf(${spec.ramp.map((r) => kotlinStr(r)).join(', ')}), ${lo}, ${hi})`)
+
+  return [`itemColors = pyreonFill${seriesIndex}`, `shades = pyreonShade${seriesIndex}`]
 }
 
 /** A `Formatter` prop as a Kotlin `(Double) -> String`: a bare engine formatter becomes a function reference; a factory call or an arrow lowers as is. */

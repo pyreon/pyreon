@@ -4,10 +4,11 @@ import { computeLayout, valueTickTarget, layoutBars, layoutBarsH, layoutSeriesPo
 import { m4CategoryPoints, m4Pixels } from './decimate-values'
 import { DEFAULT_PALETTE } from './palette'
 import { layoutGroupedBars, layoutGroupedBarsH, layoutStackLevels, layoutStackLevelsH, layoutWaterfall, normalizeStack, stackLevels, stackLevelsExtent, waterfallExtent } from './stack'
-import type { StackLevels, StackSegment } from './stack'
+import type { StackLevels, StackSegment, WaterfallStep } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
-import { extent, isFiniteNumber, niceDomain, scaleLinear } from './scale'
+import { extent, isFiniteNumber, niceDomain, xPx, yPx } from './scale'
+import { bandFrame, barBand, numericXDomain, shiftRect } from './bar-band'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
 import { polygonCmd, rectCmd } from './corners'
@@ -16,7 +17,23 @@ import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
 import { pictorialCommands } from './pictorial'
 import type { PictorialBar } from './pictorial'
-import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
+import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
+
+/**
+ * A non-linear scale as a VIEW (see `scale-view.ts`): `apply` returns the spec
+ * with values (and the x values, annotations, error bounds) in the view and the
+ * domain pinned to it; `ticks` places nice ticks in the REAL space, labelled
+ * with real values. Descriptors (`sqrt()`, `symlog()`, `log()`) build one, so
+ * the code is bundled only where one is imported; natively the emitter builds
+ * the same struct from the compile-time literal and the engine's functions.
+ */
+export interface ScaleView {
+  kind: string
+  /** The log floor (log) or the constant (symlog); unused by sqrt. */
+  param: Double
+  apply?: ((spec: ChartSpec, axis: string) => ChartSpec) | undefined
+  ticks?: ((real: Domain, r0: Double, r1: Double, count: Double, format: Formatter | undefined) => Tick[]) | undefined
+}
 
 /** One drawable series. */
 export interface Series {
@@ -78,6 +95,15 @@ export interface Series {
   dash?: Double[] | undefined
   /** The fill a `waterfall` step takes when its value is negative; `color` otherwise. */
   negativeColor?: string | undefined
+  /**
+   * Bridge the gaps of a `line` or `area`: one continuous stroke (or fill)
+   * through the finite points, instead of a break at every missing value. The
+   * gap is still missing data: it has no tooltip row and no table value, and
+   * the bridge is drawn straight between its neighbours. Default off (a gap
+   * breaks the line), which is the honest reading of a measurement that is
+   * absent.
+   */
+  connectNulls?: boolean | undefined
   /** `selectedMode: 'series'`: every datum of this series draws in its selected state. Set by `applySeriesSelection`. */
   seriesSelected?: boolean | undefined
   /** The brushed datums, in VISUAL indices; set with `brushOpacity` by `applyBrushSelection`. */
@@ -102,6 +128,18 @@ export interface Series {
    * region" the same request.
    */
   values2?: Double[] | undefined
+  /**
+   * One colour per datum (`fill={fillBy(…)}` / `fill={shadeBy(…)}`); '' leaves
+   * a datum in `color`. Painted by `stateFill`, the one place a bar or dot's
+   * fill is decided, so every bar kind and the brush fade honour it.
+   */
+  itemColors?: string[] | undefined
+  /**
+   * The VALUES a `shadeBy` colour was mapped from, index-aligned with `values`.
+   * Data, not presentation: a colour is not a number a reader can recover, so
+   * the tooltip and the accessible table print these.
+   */
+  shades?: Double[] | undefined
 }
 
 /**
@@ -320,6 +358,20 @@ export interface ChartSpec {
    * Bars grow from the axis floor (`lo`), the only place a log bar can start.
    */
   yScale?: 'linear' | 'log' | undefined
+  /**
+   * A scale DESCRIPTOR for the value axis (`sqrt()`, `symlog()`, `log()`): the
+   * view lives on the descriptor, so a chart that never imports one carries none
+   * of it. Set instead of `yScale`.
+   */
+  yView?: ScaleView | undefined
+  /** The same for a NUMERIC x axis (`xValues`); a time axis stays linear. */
+  xView?: ScaleView | undefined
+  /** The REAL bounds a view's ticks are nice in: set by the view's `apply`, read by the layout. */
+  yReal?: Domain | undefined
+  xReal?: Domain | undefined
+  /** Set by a view's `apply`: the spec is already in the view, so a second pass must not apply it again. */
+  yViewApplied?: boolean | undefined
+  xViewApplied?: boolean | undefined
   /** Label the y axis with calendar steps — the y twin of `xTime`. */
   yTime?: boolean | undefined
   /**
@@ -336,6 +388,56 @@ export interface ChartSpec {
   y2Title?: string | undefined
   /** How the x tick labels react to running out of room — see `LayoutConfig.xLabels`. */
   xLabels?: 'auto' | 'rotate' | 'thin' | 'all' | undefined
+  /**
+   * Bar thickness in px — the width of one bar across its band (x on a vertical
+   * chart, y on a horizontal one). It is a ceiling, not a stretch: a bar is
+   * never wider than the slot the band leaves, and a chart that sets nothing
+   * keeps the band-proportional width. Plain, stacked, grouped and waterfall
+   * bars; a pie, a heatmap and every other family ignore it.
+   */
+  barWidth?: Double | undefined
+  /** The space between the bars of one group, as a fraction of a bar's thickness (0 = abutting, the default). Grouped bars only. */
+  barGap?: Double | undefined
+  /** The space between categories, as a fraction of the band (0.25 by default, clamped to 0..0.9). */
+  barCategoryGap?: Double | undefined
+  /**
+   * Bars on a NUMERIC or time x axis (`xValues`): the width of one bar's slot, in x-domain units (a day is 86400000 on a time axis).
+   * Unset, the slot is the smallest positive gap between neighbouring x values. `barWidth` / `barGap` / `barCategoryGap` then
+   * work inside the slot as they do inside a category band. Ignored on a category axis.
+   */
+  barSpan?: Double | undefined
+  /**
+   * Reverse the value axis: its high end at the bottom (the left, on a
+   * horizontal chart) and bars hanging from the top. The data and the
+   * accessible table keep their order; only the mapping from a value to a pixel
+   * flips, through `Domain.inverse` (see `scaleLinear`).
+   */
+  yInverse?: boolean | undefined
+  /** `yInverse` for the right axis of a dual-axis chart; each axis flips on its own. */
+  y2Inverse?: boolean | undefined
+  /**
+   * Reverse the DIRECTION of the x axis (first category at the right). Only the
+   * direction: the y axis stays where it is. A NUMERIC x axis (`xValues`) flips
+   * through `Domain.inverse`, here; a category axis is reversed by the host
+   * handing the engine its rows in reverse (a "view": hits, brush ranges and
+   * callbacks map back to data order), so for a category axis this field is
+   * advisory and the engine lays out whatever order it is given.
+   */
+  xInverse?: boolean | undefined
+  /**
+   * Grid lines of the VALUE axis (horizontal on a vertical chart): on by
+   * default when `showGrid` is, `false` hides them while the other axis keeps its own.
+   */
+  yGrid?: boolean | undefined
+  /**
+   * Grid lines at the CATEGORY / x axis ticks (vertical on a vertical chart;
+   * off by default — a bar chart's grid has always been the value lines).
+   */
+  xGrid?: boolean | undefined
+  /** Minor grid lines: this many equal subdivisions between the value axis's major ticks (2 or more). Linear value axes only; a log or time axis already ticks its own way. */
+  yMinor?: Double | undefined
+  /** `yMinor` for a numeric x axis (`xValue`); a category axis has no ticks between categories. */
+  xMinor?: Double | undefined
   /**
    * One key per row (`<Chart by>`), aligned with the series values. When set,
    * every plain / stacked / grouped bar command carries its row's `key` and
@@ -354,6 +456,17 @@ export interface ChartSpec {
  * Stacked and grouped bars keep their mark corners only: rounding every
  * segment breaks a stack.
  */
+/**
+ * Whether a bar of value `v` grows toward the axis's high end (up on a vertical
+ * chart, right on a horizontal one). A reversed axis flips the direction, so
+ * the rounded corners — which sit on the free end — flip with it.
+ */
+function growsToward(spec: ChartSpec, s: Series, v: Double): boolean {
+  const flipped = seriesOnRightAxis(s, spec) ? spec.y2Inverse === true : spec.yInverse === true
+
+  return (v >= 0.0) !== flipped
+}
+
 export function themeCorners(radius: Double, positive: boolean, horizontal: boolean): Double[] | undefined {
   if (radius <= 0.0) return undefined
   if (horizontal) return positive ? [0.0, radius, radius, 0.0] : [radius, 0.0, 0.0, radius]
@@ -425,7 +538,9 @@ export function seriesEmphasisLevel(spec: ChartSpec, s: Series, index: number): 
 }
 
 /** The fill a datum paints with: faded when a brush leaves the datum out, else `fill`. */
-export function stateFill(s: Series, index: number, fill: string): string {
+export function stateFill(s: Series, index: number, own: string): string {
+  const item = s.itemColors ?? []
+  const fill = index < item.length && item[index]! !== '' ? item[index]! : own
   const brushed = s.inBrush ?? []
   const brushAlpha = s.brushOpacity ?? -1.0
   if (brushAlpha >= 0.0) {
@@ -458,7 +573,10 @@ export function emphasisOutline(r: Rect, level: number, stroke: string): DrawCmd
 export function resolveYDomain(spec: ChartSpec): Domain {
   // `?? derive` rather than an early return: Swift does not narrow
   // `spec.yDomain` through the guard, and the coalesce is the same contract.
-  return spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))
+  const d = spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))
+
+  // `inverse` rides on the domain (`Domain.inverse`): only the mapping from a value to a pixel flips.
+  return { min: d.min, max: d.max, inverse: spec.yInverse }
 }
 
 /**
@@ -470,7 +588,9 @@ export function resolveYDomain(spec: ChartSpec): Domain {
  * it anyway.
  */
 export function resolveY2Domain(spec: ChartSpec): Domain {
-  return spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))
+  const d = spec.y2Domain ?? niceDomain(rawExtentOver(rightAxisSeries(spec)), valueTicks(spec))
+
+  return { min: d.min, max: d.max, inverse: spec.y2Inverse }
 }
 
 /**
@@ -512,6 +632,13 @@ export function logBounds(spec: ChartSpec): Domain {
  * read the ORIGINAL spec, which is how they keep showing real values.
  */
 export function geometrySpec(spec: ChartSpec): ChartSpec {
+  // A scale descriptor (`sqrt()`, `symlog()`, `log()`) carries its own view, x then y, and skips an axis it already applied.
+  const x = spec.xView?.apply?.(spec, 'x') ?? spec
+
+  return baseGeometry(x.yView?.apply?.(x, 'y') ?? x)
+}
+
+function baseGeometry(spec: ChartSpec): ChartSpec {
   const isLog = spec.yScale === 'log'
   const norm = spec.stackNormalize === true
   if (!isLog && !norm) return spec
@@ -596,7 +723,7 @@ export function hasRightAxis(spec: ChartSpec): boolean {
   return false
 }
 
-function leftAxisSeries(spec: ChartSpec): Series[] {
+export function leftAxisSeries(spec: ChartSpec): Series[] {
   return spec.series.filter((s) => !seriesOnRightAxis(s, spec))
 }
 
@@ -608,7 +735,7 @@ function rightAxisSeries(spec: ChartSpec): Series[] {
  * The left axis' domain: its data extent (stack totals and all), any pinned
  * bound applied, niced.
  */
-function pinDomain(spec: ChartSpec, series: Series[]): Domain {
+export function pinDomain(spec: ChartSpec, series: Series[]): Domain {
   const raw = rawExtentOver(series)
   return niceDomain(raw, valueTicks(spec))
 }
@@ -735,8 +862,9 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
       (spec.xValues ?? []).length > 0
         /* v8 ignore next — the inner `?? []` is unreachable: the test above already
            established a non-empty list. Native needs the unwrap; the web cannot reach it. */
-        ? extent(spec.xValues ?? [])
+        ? numericXDomain(spec, barBand(spec))
         : { min: 0.0, max: n > 1 ? n - 1 : 1.0 },
+    xNumeric: (spec.xValues ?? []).length > 0,
     yDomain: resolveYDomain(spec),
     categories: spec.categories,
     fontSize: spec.theme.fontSize,
@@ -764,6 +892,10 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     yLog: isLog,
     yLogMin: lb.min,
     yLogMax: lb.max,
+    yViewTicks: spec.yView?.ticks,
+    yViewReal: spec.yReal,
+    xViewTicks: spec.xView?.ticks,
+    xViewReal: spec.xReal,
     yTime: spec.yTime === true,
     xLabels: spec.xLabels,
     rightReserve: endLabelReserve(spec, measure),
@@ -820,14 +952,14 @@ export function spreadLabels(ys: Double[], gap: Double, top: Double, bottom: Dou
  */
 export function categoryXPixel(spec: ChartSpec, xDomain: Domain, plot: Rect, v: Double): Double {
   const n = seriesMaxLength(spec.series)
-  if ((spec.xValues ?? []).length > 0 || n === 0) return scaleLinear(xDomain, plot.x, plot.x + plot.w, v)
+  if ((spec.xValues ?? []).length > 0 || n === 0) return xPx(xDomain, plot, v)
   return plot.x + (plot.w / countToDouble(n)) * (v + 0.5)
 }
 
 /** A category span `[from, to]` in pixels: band start of the first to band end of the last. */
 export function categorySpanPixels(spec: ChartSpec, xDomain: Domain, plot: Rect, from: Double, to: Double): Pt {
   const n = seriesMaxLength(spec.series)
-  if ((spec.xValues ?? []).length > 0 || n === 0) return { x: scaleLinear(xDomain, plot.x, plot.x + plot.w, from), y: scaleLinear(xDomain, plot.x, plot.x + plot.w, to) }
+  if ((spec.xValues ?? []).length > 0 || n === 0) return { x: xPx(xDomain, plot, from), y: xPx(xDomain, plot, to) }
   const lo = from < to ? from : to
   const hi = from < to ? to : from
   const band = plot.w / countToDouble(n)
@@ -839,9 +971,18 @@ export function categoryPoints(values: Double[], plot: Rect, dom: Domain): Pt[] 
   return layoutSeriesPoints(values, plot, dom)
 }
 
-/** `layoutBars` for series `k`. */
+/** `layoutBars` / `layoutBarsH` for series `k`; on a numeric x axis each bar is centred on its scaled x (see `bar-band.ts`). */
+function barsLaidIn(spec: ChartSpec, k: number, plot: Rect, dom: Domain, horizontal: boolean): Rect[] {
+  const values = spec.series[k]!.values
+  const bf = bandFrame(spec, plot, horizontal, values.length)
+  const gap = spec.barCategoryGap ?? 0.25
+  const rects = horizontal ? layoutBarsH(values, bf.frame, dom, gap, spec.barWidth) : layoutBars(values, bf.frame, dom, gap, spec.barWidth)
+
+  return rects.map((r, i) => shiftRect(r, bf.shifts, i, horizontal))
+}
+
 export function barsLaid(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
-  return layoutBars(spec.series[k]!.values, plot, dom, 0.25)
+  return barsLaidIn(spec, k, plot, dom, false)
 }
 
 /** The global series indices of a kind, in order. */
@@ -858,23 +999,41 @@ function levelsOf(series: Series[]): StackLevels {
   return stackLevels(values)
 }
 
-/** `layoutStackLevels` / `layoutGroupedBars` for a kind. */
+/** The stacked or grouped segments of a kind, in either frame, each slot centred on its x on a numeric axis. */
+function setLaidIn(spec: ChartSpec, kind: string, plot: Rect, dom: Domain, horizontal: boolean): StackSegment[] {
+  const idx = indicesOf(spec, kind)
+  const values = idx.map((k) => spec.series[k]!.values)
+  let n = 0
+  for (const v of values) if (v.length > n) n = v.length
+  const bf = bandFrame(spec, plot, horizontal, n)
+  const gap = spec.barCategoryGap ?? 0.25
+  const levels = kind === 'stacked' ? levelsOf(idx.map((k) => spec.series[k]!)) : stackLevels([])
+  const stacked = kind === 'stacked'
+  const shifted = (segs: StackSegment[]): StackSegment[] => segs.map((seg) => ({ ...seg, rect: shiftRect(seg.rect, bf.shifts, seg.datumIndex, horizontal) }))
+  if (horizontal) return shifted(stacked ? layoutStackLevelsH(levels, values, bf.frame, dom, gap, spec.barWidth) : layoutGroupedBarsH(values, bf.frame, dom, gap, spec.barWidth, spec.barGap))
+
+  return shifted(stacked ? layoutStackLevels(levels, values, bf.frame, dom, gap, spec.barWidth) : layoutGroupedBars(values, bf.frame, dom, gap, spec.barWidth, spec.barGap))
+}
+
 export function setLaid(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
-  const idx = indicesOf(spec, kind)
-  const values = idx.map((k) => spec.series[k]!.values)
-  return kind === 'stacked' ? layoutStackLevels(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBars(values, plot, dom, 0.25)
+  return setLaidIn(spec, kind, plot, dom, false)
 }
 
-/** `layoutBarsH` for series `k`. */
+/** `barsLaid` for the horizontal frame. */
 export function barsLaidH(spec: ChartSpec, k: number, plot: Rect, dom: Domain): Rect[] {
-  return layoutBarsH(spec.series[k]!.values, plot, dom, 0.25)
+  return barsLaidIn(spec, k, plot, dom, true)
 }
 
-/** `layoutStackLevelsH` / `layoutGroupedBarsH` for a kind. */
+/** `setLaid` for the horizontal frame. */
 export function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain): StackSegment[] {
-  const idx = indicesOf(spec, kind)
-  const values = idx.map((k) => spec.series[k]!.values)
-  return kind === 'stacked' ? layoutStackLevelsH(levelsOf(idx.map((k) => spec.series[k]!)), values, plot, dom, 0.25) : layoutGroupedBarsH(values, plot, dom, 0.25)
+  return setLaidIn(spec, kind, plot, dom, true)
+}
+
+/** `layoutWaterfall` for a series' values, each step centred on its scaled x on a numeric axis. */
+function waterfallLaid(spec: ChartSpec, values: Double[], plot: Rect, dom: Domain): WaterfallStep[] {
+  const bf = bandFrame(spec, plot, false, values.length)
+
+  return layoutWaterfall(values, bf.frame, dom, spec.barCategoryGap ?? 0.25, spec.barWidth).map((st) => ({ ...st, rect: shiftRect(st.rect, bf.shifts, st.datumIndex, false) }))
 }
 
 /**
@@ -886,11 +1045,11 @@ export function setLaidH(spec: ChartSpec, kind: string, plot: Rect, dom: Domain)
 export function growEdgeRect(r: Rect, dom: Domain, plot: Rect, horizontal: boolean): Rect {
   const zero = dom.min <= 0.0 && dom.max >= 0.0 ? 0.0 : dom.min > 0.0 ? dom.min : dom.max
   if (horizontal) {
-    const zx = scaleLinear(dom, plot.x, plot.x + plot.w, zero)
+    const zx = xPx(dom, plot, zero)
     const ex = r.x >= zx - 0.5 ? r.x : r.x + r.w
     return { x: ex, y: r.y, w: 0.0, h: r.h }
   }
-  const zy = scaleLinear(dom, plot.y + plot.h, plot.y, zero)
+  const zy = yPx(dom, plot, zero)
   const ey = r.y + r.h <= zy + 0.5 ? r.y + r.h : r.y
   return { x: r.x, y: ey, w: r.w, h: 0.0 }
 }
@@ -949,7 +1108,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // instead of sliding in from above.
   const growRect = (r: Rect, dom: Domain): Rect => {
     if (progress >= 1.0) return r
-    const zeroY = scaleLinear(dom, plot.y + plot.h, plot.y, dom.min < 0.0 && dom.max > 0.0 ? 0.0 : dom.min)
+    const zeroY = yPx(dom, plot, dom.min < 0.0 && dom.max > 0.0 ? 0.0 : dom.min)
     const h = r.h * progress
     const top = r.y + r.h <= zeroY + 0.5 ? zeroY - h : zeroY
     return { x: r.x, y: top, w: r.w, h }
@@ -959,7 +1118,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   // which in this frame is a VERTICAL line — a negative bar grows leftward.
   const growRectH = (r: Rect): Rect => {
     if (progress >= 1.0) return r
-    const zeroX = scaleLinear(yDomain, plot.x, plot.x + plot.w, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
+    const zeroX = xPx(yDomain, plot, yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min)
     const w = r.w * progress
     const left = r.x >= zeroX - 0.5 ? zeroX : zeroX - w
     return { x: left, y: r.y, w, h: r.h }
@@ -984,30 +1143,19 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     return outPts
   }
 
-  if (spec.showGrid) {
-    if (spec.horizontal === true) {
-      // The grid follows the VALUE axis — vertical lines in this frame.
-      for (const tick of l.xTicks) {
-        out.push({
-          kind: 'line',
-          from: { x: tick.pos, y: plot.y },
-          to: { x: tick.pos, y: plot.y + plot.h },
-          stroke: t.grid,
-          width: 1.0,
-        })
-      }
-    } else {
-      for (const tick of l.yTicks) {
-        out.push({
-          kind: 'line',
-          from: { x: plot.x, y: tick.pos },
-          to: { x: plot.x + plot.w, y: tick.pos },
-          stroke: t.grid,
-          width: 1.0,
-        })
-      }
-    }
-  }
+  // The value axis's grid follows its ticks (vertical lines on a horizontal chart); the other axis's grid and the
+  // minor lines are opt-in, so a chart that sets none of `xGrid`, `yMinor`, `xMinor` draws exactly the lines it always did.
+  const flat = spec.horizontal === true
+  const majorTicks = flat ? l.xTicks : l.yTicks
+  const crossTicks = flat ? l.yTicks : l.xTicks
+  const minorStroke = withAlpha(t.grid, 0.6)
+  const gridded: DrawCmd[][] = [
+    spec.yGrid ?? spec.showGrid ? tickLines(majorTicks, flat, plot, t.grid, 1.0) : [],
+    spec.xGrid === true ? tickLines(crossTicks, !flat, plot, t.grid, 1.0) : [],
+    (spec.yMinor ?? 0.0) >= 2.0 && raw.yScale !== 'log' && spec.yTime !== true ? minorLines(majorTicks, spec.yMinor ?? 0.0, flat, plot, minorStroke) : [],
+    (spec.xMinor ?? 0.0) >= 2.0 && (spec.xValues ?? []).length > 0 && spec.xTime !== true ? minorLines(crossTicks, spec.xMinor ?? 0.0, !flat, plot, minorStroke) : [],
+  ]
+  for (const lines of gridded) for (const c of lines) out.push(c)
   const yAxisX = plot.x
   if (spec.showYAxis) {
     out.push({
@@ -1049,8 +1197,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const yFrom = a.yFrom ?? 0.0
     const yTo = a.yTo ?? 0.0
     if (a.yFrom !== undefined && a.yTo !== undefined) {
-      const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yFrom)
-      const y2 = scaleLinear(yDomain, plot.y + plot.h, plot.y, yTo)
+      const y1 = yPx(yDomain, plot, yFrom)
+      const y2 = yPx(yDomain, plot, yTo)
       const top = y1 < y2 ? y1 : y2
       out.push({
         kind: 'rect',
@@ -1077,7 +1225,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
   for (const a of notes) {
     const ay = a.y ?? 0.0
     if (a.y !== undefined) {
-      const yPos = scaleLinear(yDomain, plot.y + plot.h, plot.y, ay)
+      const yPos = yPx(yDomain, plot, ay)
       out.push({
         kind: 'line',
         from: { x: plot.x, y: yPos },
@@ -1131,8 +1279,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const sx2 = a.x2 ?? 0.0
     const sy2 = a.y2 ?? 0.0
     if (a.x1 !== undefined && a.y1 !== undefined && a.x2 !== undefined && a.y2 !== undefined) {
-      const p1: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx1), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy1) }
-      const p2: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx2), y: scaleLinear(yDomain, plot.y + plot.h, plot.y, sy2) }
+      const p1: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx1), y: yPx(yDomain, plot, sy1) }
+      const p2: Pt = { x: categoryXPixel(spec, l.xDomainUsed, plot, sx2), y: yPx(yDomain, plot, sy2) }
       out.push({ kind: 'line', from: p1, to: p2, stroke: a.color ?? t.axis, width: 1.0, dash: [4.0, 4.0] })
       const segLabel = a.label ?? ''
       if (a.label !== undefined) {
@@ -1156,7 +1304,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     const xsE = spec.xValues ?? []
     const hi = emph.highlight
     if (xsE.length > emph.highlight) {
-      const cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, xsE[emph.highlight]!)
+      const cx = xPx(l.xDomainUsed, plot, xsE[emph.highlight]!)
       out.push({ kind: 'rect', rect: { x: cx - 6.0, y: plot.y, w: 12.0, h: plot.h }, fill: withAlpha(t.axis, 0.14) })
     } else if (spec.categories.length > emph.highlight) {
       const nb = spec.categories.length
@@ -1235,8 +1383,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const lo = isFiniteNumber(base[i]!) ? base[i]! : origin
         // A gap is a zero-height band: it sits on whatever it would have stacked on.
         const hiV = isFiniteNumber(top[i]!) ? top[i]! : k > 0 && isFiniteNumber(levels.tops[k - 1]![i]!) ? levels.tops[k - 1]![i]! : lo
-        upper.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, hiV) })
-        lower.push({ x: xAt, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, isFiniteNumber(top[i]!) ? lo : hiV) })
+        upper.push({ x: xAt, y: yPx(yDomain, plot, hiV) })
+        lower.push({ x: xAt, y: yPx(yDomain, plot, isFiniteNumber(top[i]!) ? lo : hiV) })
       }
       if (upper.length > 1) {
         const poly: Pt[] = []
@@ -1303,7 +1451,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          const cmdH = rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, true), sGrad, s.pattern)
+          const cmdH = rectCmd(grown, fillH, s.corners ?? themeCorners(spec.theme.radius, growsToward(spec, s, s.values[ri] ?? 0.0), true), sGrad, s.pattern)
           out.push(ri < rowKeys.length ? keyedBar(rowKeys[ri]!, growEdgeRect(r, yDomain, plot, true), cmdH) : cmdH)
         } else {
           for (const c of pictorialCommands(pictorialBar(s, grown, true, fillH))) out.push(c)
@@ -1339,7 +1487,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           /* v8 ignore next — `(s.values[ri] ?? 0.0)` is unreachable: `ri` indexes
              rects built FROM `s.values`, so the read is always in range. Native
              needs the unwrap; the web cannot reach it. */
-          const cmdV = rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, (s.values[ri] ?? 0.0) >= 0.0, false), sGrad, s.pattern)
+          const cmdV = rectCmd(grown, fillV, s.corners ?? themeCorners(spec.theme.radius, growsToward(spec, s, s.values[ri] ?? 0.0), false), sGrad, s.pattern)
           out.push(ri < rowKeys.length ? keyedBar(rowKeys[ri]!, growEdgeRect(r, sDomain, plot, false), cmdV) : cmdV)
         } else {
           for (const c of pictorialCommands(pictorialBar(s, grown, false, fillV))) out.push(c)
@@ -1364,13 +1512,13 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
     } else if (s.kind === 'waterfall') {
       // Floating bars from running total to running total, joined by a thin
       // dashed connector so the eye carries the level across each gap.
-      const steps = layoutWaterfall(s.values, plot, sDomain, 0.25)
+      const steps = waterfallLaid(spec, s.values, plot, sDomain)
       for (let si = 0; si < steps.length; si++) {
         const st = steps[si]!
         const fill = stateFill(s, st.datumIndex, st.value < 0.0 ? s.negativeColor ?? withAlpha(s.color, 0.55) : s.color)
         // Grows from its START level, not the axis zero: a step that begins
         // at 40 and adds 5 must rise from 40.
-        const startY = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.start)
+        const startY = yPx(sDomain, plot, st.start)
         const grownH = st.rect.h * progress
         const grown: Rect = progress >= 1.0 ? st.rect : { x: st.rect.x, y: st.value >= 0.0 ? startY - grownH : startY, w: st.rect.w, h: grownH }
         out.push(rectCmd(grown, fill, s.corners, sGrad, s.pattern))
@@ -1378,7 +1526,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (lvlW > 0) out.push(emphasisOutline(grown, lvlW, t.label))
         if (si + 1 < steps.length && progress >= 1.0) {
           const next = steps[si + 1]!
-          const level = scaleLinear(sDomain, plot.y + plot.h, plot.y, st.end)
+          const level = yPx(sDomain, plot, st.end)
           out.push({ kind: 'line', from: { x: st.rect.x + st.rect.w, y: level }, to: { x: next.rect.x, y: level }, stroke: t.axis, width: 1.0, dash: [2.0, 2.0] })
         }
         if (s.showValues === true && progress >= 1.0) {
@@ -1396,10 +1544,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // places, then reduces.
       const direct: Pt[] = s.curve === undefined && xs.length === 0 ? m4CategoryPoints(s.values, plot, sDomain, m4Density(spec)) : []
       const useDirect = direct.length > 0
-      const runs: Pt[][] = useDirect ? [direct] : splitRuns(s.values, place)
+      const runs: Pt[][] = useDirect ? [direct] : bridgeRuns(splitRuns(s.values, place), s.connectNulls === true)
       // Each run is a maximal stretch of finite values, so the rows it draws
       // are the next finite one onward: that is how a keyed run names them.
-      const keyedLine = rowKeys.length === s.values.length && s.curve === undefined
+      const keyedLine = rowKeys.length === s.values.length && s.curve === undefined && s.connectNulls !== true
       let runFrom = 0
       for (const run of runs) {
         while (runFrom < s.values.length && !isFiniteValue(s.values[runFrom]!)) runFrom = runFrom + 1
@@ -1474,7 +1622,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       // Gap-splitting (a non-finite value breaks the fill into runs, same
       // as the line branch above) combined with gradient fill support — two
       // independent fixes to this branch that landed as separate PRs.
-      for (const run of splitRuns(s.values, place)) {
+      for (const run of bridgeRuns(splitRuns(s.values, place), s.connectNulls === true)) {
         const pts = reveal(curveFn(run))
         if (pts.length > 1) {
           const poly: Pt[] = []
@@ -1482,7 +1630,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
           // Close down to the baseline so the fill is a band under the line
           // rather than a polygon between the first and last data points.
           // The baseline is the domain's minimum.
-          const baseY = scaleLinear(sDomain, plot.y + plot.h, plot.y, sDomain.min)
+          const baseY = yPx(sDomain, plot, sDomain.min)
           poly.push({ x: pts[pts.length - 1]!.x, y: baseY })
           poly.push({ x: pts[0]!.x, y: baseY })
           // Translucent by default, so the grid and anything drawn under the
@@ -1584,8 +1732,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         const hi = i < eHigh.length ? eHigh[i]! : 0.0 / 0.0
         if (!isFiniteValue(lo) || !isFiniteValue(hi)) continue
         const cx = centres[i]!
-        const yLo = scaleLinear(sDomain, plot.y + plot.h, plot.y, lo)
-        const yHi = scaleLinear(sDomain, plot.y + plot.h, plot.y, hi)
+        const yLo = yPx(sDomain, plot, lo)
+        const yHi = yPx(sDomain, plot, hi)
         out.push({ kind: 'line', from: { x: cx, y: yLo }, to: { x: cx, y: yHi }, stroke: t.text, width: 1.0 })
         out.push({ kind: 'line', from: { x: cx - cap, y: yLo }, to: { x: cx + cap, y: yLo }, stroke: t.text, width: 1.0 })
         out.push({ kind: 'line', from: { x: cx - cap, y: yHi }, to: { x: cx + cap, y: yHi }, stroke: t.text, width: 1.0 })
@@ -1735,6 +1883,45 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
  * every point at the x it would have had, so a gap removes a segment without
  * shifting its neighbours.
  */
+/**
+ * `connectNulls`: the runs a gap split apart, joined into one. Absent or off, the
+ * runs come back untouched, so a series that does not ask draws as it always did.
+ */
+function bridgeRuns(runs: Pt[][], connect: boolean): Pt[][] {
+  if (!connect || runs.length < 2) return runs
+  const all: Pt[] = []
+  for (const run of runs) for (const p of run) all.push(p)
+
+  return [all]
+}
+
+/** A grid line at each tick: vertical (at the tick's x) or horizontal (at its y), across the plot. */
+function tickLines(ticks: Tick[], vertical: boolean, plot: Rect, stroke: string, width: Double): DrawCmd[] {
+  const out: DrawCmd[] = []
+  for (const tick of ticks) {
+    out.push(vertical ? { kind: 'line', from: { x: tick.pos, y: plot.y }, to: { x: tick.pos, y: plot.y + plot.h }, stroke, width } : { kind: 'line', from: { x: plot.x, y: tick.pos }, to: { x: plot.x + plot.w, y: tick.pos }, stroke, width })
+  }
+
+  return out
+}
+
+/** `n - 1` thin lines between each pair of consecutive major ticks, at equal steps of the pixel distance between them. */
+function minorLines(ticks: Tick[], n: Double, vertical: boolean, plot: Rect, stroke: string): DrawCmd[] {
+  const mid: Tick[] = []
+  const parts = Math.floor(n)
+  for (let i = 1; i < ticks.length; i++) {
+    const a = ticks[i - 1]!
+    const b = ticks[i]!
+    let k = 1.0
+    while (k < parts) {
+      mid.push({ value: 0.0, pos: a.pos + ((b.pos - a.pos) * k) / parts, label: '' })
+      k = k + 1.0
+    }
+  }
+
+  return tickLines(mid, vertical, plot, stroke, 0.5)
+}
+
 function splitRuns(values: Double[], place: (values: Double[]) => Pt[]): Pt[][] {
   const runs: Pt[][] = []
   let hasGap = false
@@ -1841,7 +2028,7 @@ export function barsForIn(raw: ChartSpec, index: number, plot: Rect): Rect[] {
     // can land in, so the datum index a hit reports stays the row's.
     const rects: Rect[] = []
     for (let i = 0; i < s.values.length; i++) rects.push({ x: 0.0, y: 0.0, w: -1.0, h: -1.0 })
-    for (const st of layoutWaterfall(s.values, plot, dom, 0.25)) rects[st.datumIndex] = st.rect
+    for (const st of waterfallLaid(spec, s.values, plot, dom)) rects[st.datumIndex] = st.rect
     return rects
   }
   return spec.horizontal === true ? barsLaidH(spec, index, plot, dom) : barsLaid(spec, index, plot, dom)

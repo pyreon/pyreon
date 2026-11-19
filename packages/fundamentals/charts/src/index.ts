@@ -111,6 +111,15 @@ export type { CandlestickZoom } from './engine/CandlestickChart'
 export type { ZoomWindow } from './engine/zoom'
 export type { Double } from './engine/types'
 
+// Per-datum colour for bars and dots — imported bindings, so a chart that never colours a datum does not bundle them.
+export { fillBy, shadeBy } from './engine/item-colors'
+export type { ItemChannel, ItemFill, ShadeOptions } from './engine/item-colors'
+
+// Non-linear axis scales — descriptors, so a chart that never imports one does not bundle any of it.
+export { log, sqrt, symlog } from './engine/scale-descriptors'
+export type { SymlogOptions } from './engine/scale-descriptors'
+export type { ScaleView } from './engine/render'
+
 // Line and area curves — functions, so an unused one tree-shakes: `<Line y curve={smooth} />`.
 export { smooth, step } from './engine/curve'
 

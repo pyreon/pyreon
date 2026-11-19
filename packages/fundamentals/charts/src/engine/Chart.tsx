@@ -30,8 +30,9 @@ import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
-import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
-import { scaleLinear } from './scale'
+import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView, Series } from './render'
+import { xPx } from './scale'
+import { bandFrame } from './bar-band'
 import { columnLength, isColumnMark, markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
@@ -40,6 +41,7 @@ import type { A11yInput } from './a11y'
 import type { BrushArea } from './brush-area'
 import { hideHiddenSeries, legendEntriesGrouped, legendHitIndex, legendToggleGroup, pagerHit, pinSelection } from './legend-toggle'
 import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, windowOfRows, zoomWindow } from './zoom'
+import type { ItemFill } from './item-colors'
 import { ALL_PLOT_FEATURES } from './plot-features'
 import type { BandFeature, PlotFeatures } from './plot-features'
 import type { ZoomWindow } from './zoom'
@@ -388,7 +390,9 @@ export interface PlotChartProps<T> {
    * decades on the axis, non-positive values as gaps, bars growing from the
    * axis floor. The tooltip and the table keep the real values.
    */
-  yScale?: 'linear' | 'log'
+  yScale?: 'linear' | 'log' | ScaleView
+  /** The scale of a NUMERIC x axis (`xValue`): `linear`, `log`, `sqrt` or `symlog`. Values the scale cannot place (log: ≤ 0, sqrt: < 0) are gaps; a time axis stays linear. */
+  xScale?: 'linear' | ScaleView
   /** Label the y axis with calendar steps — the y twin of `xTime` (values are epoch ms). */
   yTime?: boolean
   /**
@@ -407,6 +411,32 @@ export interface PlotChartProps<T> {
    * force one, `'all'` draws every label upright and lets them collide.
    */
   xLabels?: AxisLabelMode
+  /**
+   * Bar thickness in px, across the band (a ceiling: a bar is never wider than
+   * the slot the band leaves). Plain, stacked, grouped and waterfall bars, in
+   * both orientations. Unset keeps the band-proportional width.
+   */
+  barWidth?: number
+  /** The space between the bars of a group, as a fraction of one bar's thickness (0 default). Grouped bars. */
+  barGap?: number
+  /** The space between categories, as a fraction of the band (default 0.25, clamped to 0..0.9). */
+  barCategoryGap?: number
+  /** Bars on a NUMERIC or time x axis (`xValue`): the width of one bar's slot, in x-domain units (a day is `86_400_000` on a time axis). Unset, the slot is the smallest positive gap between neighbouring x values; bars are centred on x and the axis is padded by half a slot. `barWidth` / `barGap` / `barCategoryGap` work inside the slot. Ignored on a category axis. */
+  barSpan?: number
+  /** Reverse the value axis (high end at the bottom; bars hang from the top). Data and table order are unchanged. */
+  yInverse?: boolean
+  /** `yInverse` for the right axis of a dual-axis chart. */
+  y2Inverse?: boolean
+  /** Reverse the direction of the x axis: first category (or smallest x) at the right. The y axis does not move; data order, callbacks, brush ranges and the keyboard walk stay in DATA order. Under `rtl` the two cancel (the plot reads left to right again). */
+  xInverse?: boolean
+  /** Grid lines of the value axis; `false` hides them while `showGrid` stays on for the rest. */
+  yGrid?: boolean
+  /** Grid lines at the category / x axis ticks (off by default). */
+  xGrid?: boolean
+  /** Minor grid lines: this many subdivisions between the value axis's major ticks (2 or more; linear axes). */
+  yMinor?: number
+  /** Minor grid lines on a numeric x axis (`xValue`). */
+  xMinor?: number
   /**
    * A BCP 47 tag that formats the numbers (axis, tooltip, table, value
    * labels) and, with `xTime` / `yTime`, the dates through `Intl` — `de-DE`
@@ -464,6 +494,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
  * references only the features its children ask for. An absent feature
  * behaves exactly as the feature does when unused.
  */
+/** The spec's scale fields from the props: a string stays `yScale`, a descriptor becomes a view. */
+function scaleFields(y: 'linear' | 'log' | ScaleView | undefined, x: 'linear' | ScaleView | undefined): Pick<ChartSpec, 'yScale' | 'yView' | 'xView'> {
+  return { yScale: typeof y === 'string' ? y : undefined, yView: typeof y === 'object' ? y : undefined, xView: typeof x === 'object' ? x : undefined }
+}
+
 export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): VNode {
   // The x-range band is drawn by `<Zoom brush>` and by the toolbox's dataZoom tool alike.
   const band = (): BandFeature | undefined => features.zoom ?? features.toolbox
@@ -845,6 +880,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // it. Read inside the draw effect so a mode flip repaints.
   const themeOf = useChartTheme()
   const theme = (): ChartTheme => resolveChartTheme(themeOf(), props.theme)
+  // The per-datum colour descriptor a mark carries (`fill`), if any: its table / tooltip companions and ramp legend ride on it, so a chart without one never references them.
+  const paintOf = (): ItemFill<T> | undefined => props.marks.find((m) => m.options.fill !== undefined)?.options.fill as ItemFill<T> | undefined
 
   /**
    * The visible slice of the data under the zoom window.
@@ -878,11 +915,25 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   /** The visible (thinned) row for a slice index, or -1 when decimation dropped it. */
   const visibleIndexOf = (sliceIndex: number, keep: number[] | null): number => (keep === null ? sliceIndex : (keepPos?.get(sliceIndex) ?? -1))
   const globalOf = (visibleIndex: number, off: number): number => (lastKeep === null ? visibleIndex : (lastKeep[visibleIndex] ?? visibleIndex)) + off
+  /**
+   * `xInverse` on a CATEGORY axis: the visible rows in REVERSE, as a `keep` map
+   * (visible index -> slice index). The thinning machinery already maps a hit, a
+   * pin, a keyboard step and a brush back to the global row through it, so a
+   * reversed view is the same kind of thing as a decimated one. A numeric x axis
+   * flips its domain instead (`Domain.inverse`), so it never takes this path.
+   */
   const decimateRows = (rows: readonly T[]): number[] | null => {
+    const kept = thinRows(rows)
+    if (props.xInverse !== true || props.xValue !== undefined) return kept
+    const out = kept === null ? rows.map((_d, i) => i) : kept.slice()
+
+    return out.reverse()
+  }
+  const thinRows = (rows: readonly T[]): number[] | null => {
     const max = props.maxPoints
     if (max === undefined) return null
     if (max < 3) {
-      warnOnce('maxPoints', `maxPoints=${max} is below 3, the smallest LTTB can keep (first, last, one interior point) — decimation is off.`)
+      if (process.env.NODE_ENV !== 'production') warnOnce('maxPoints', `maxPoints=${max} is below 3, the smallest LTTB can keep (first, last, one interior point) — decimation is off.`)
       return null
     }
     if (rows.length <= max) return null
@@ -961,7 +1012,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       column: undefined,
       y: (d: T, i: number) => m.y(d, gi(i)),
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
-    })), theme().palette)
+    })), theme().palette, theme().ramp)
     const resolvedCats = full !== null ? full.categories : resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i)))
     return {
     width: w,
@@ -981,13 +1032,24 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     yFormat: resolvedFormat(),
     xFormat: resolvedXFormat(),
     ...(props.xTime === true ? { xTime: true } : {}),
-    yScale: props.yScale,
+    ...scaleFields(props.yScale, props.xScale),
     yTime: props.yTime === true,
     stackNormalize: props.stackNormalize === true,
     xTitle: props.xTitle,
     yTitle: props.yTitle,
     y2Title: props.y2Title,
     xLabels: props.xLabels,
+    barWidth: props.barWidth,
+    barGap: props.barGap,
+    barCategoryGap: props.barCategoryGap,
+    barSpan: props.barSpan,
+    yInverse: props.yInverse,
+    y2Inverse: props.y2Inverse,
+    xInverse: props.xInverse,
+    yGrid: props.yGrid,
+    xGrid: props.xGrid,
+    yMinor: props.yMinor,
+    xMinor: props.xMinor,
     ...(props.xValue !== undefined
       ? { xValues: rows.map((d, i) => props.xValue!(d, gi(i))) }
       : {}),
@@ -1020,7 +1082,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
    * a set `yDomain` reads as an author-pinned range (`logBounds`).
    */
   const withFrameDomain = (spec: ChartSpec): ChartSpec =>
-    spec.yDomain === undefined && spec.yScale !== 'log' ? { ...spec, yDomain: resolveYDomain(spec) } : spec
+    spec.yDomain === undefined && (spec.yScale ?? 'linear') !== 'log' && spec.yView === undefined ? { ...spec, yDomain: resolveYDomain(spec) } : spec
 
   const draw = (): void => {
     const el = canvas
@@ -1131,7 +1193,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       legendRight = placed.right
     }
 
-    const top = titleH + legendH
+    const shadeLegend = paintOf()?.legend?.(resolveFull(rows).series, { x: 0, y: titleH + legendH, w }, theme())
+    for (const c of shadeLegend?.cmds ?? []) legendCmds.push(c)
+    const top = titleH + legendH + (shadeLegend?.height ?? 0)
     topOffset = top
     leftOffset = legendLeft
     const pw = Math.max(0.0, w - legendLeft - legendRight)
@@ -1257,12 +1321,15 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (spec.xValues !== undefined && spec.xValues.length > 0) {
       const v = spec.xValues[idx]
       if (v === undefined) return []
-      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, v)
+      cx = xPx(l.xDomainUsed, plot, v)
+      // Bars on a numeric axis: the ring is the datum's slot, not a fixed 16 px.
+      const slot = bandFrame(spec, plot, false, 1)
+      if (slot.shifts.length > 0) bw = slot.frame.w
     } else if (spec.categories.length > 0) {
       bw = plot.w / spec.categories.length
       cx = plot.x + bw * (idx + 0.5)
     } else {
-      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, idx)
+      cx = xPx(l.xDomainUsed, plot, idx)
     }
     const x0 = cx - bw / 2.0
     const x1 = cx + bw / 2.0
@@ -1275,13 +1342,28 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }]
   }
 
+  /** The sentence that names a non-linear scale for the spoken description: the picture's spacing is not the data's, and a listener should know. */
+  const scaleNote = (): string => {
+    const note = (axis: string, scale: 'linear' | 'log' | ScaleView | undefined): string =>
+      scale === undefined || scale === 'linear' ? '' : ` The ${axis} axis is on a ${typeof scale === 'string' ? scale : scale.kind} scale.`
+
+    return note('value', props.yScale) + note('x', props.xScale)
+  }
+
+  /** An x pixel mirrored about the plot's centre when the x axis is reversed — the pointer's place on the plot as it reads in DATA order. */
+  const xFlip = (plot: Rect, x: Double): Double => (props.xInverse === true ? 2.0 * plot.x + plot.w - x : x)
+
   /** Move the keyboard focus datum and announce it. */
   const moveFocus = (delta: number, absolute?: number): void => {
     const all = readData()
     const n = viewRows(all).length
     if (n === 0) return
     const cur = focusIdx()
-    let next = absolute !== undefined ? absolute : cur < 0 ? (delta > 0 ? 0 : n - 1) : cur + delta
+    // The walk is in DATA order: on a reversed category axis the view runs the other way, so the step and the ends flip.
+    const flipped = props.xInverse === true && props.xValue === undefined
+    const step = flipped ? -delta : delta
+    const goTo = absolute !== undefined && flipped ? n - 1 - absolute : absolute
+    let next = goTo !== undefined ? goTo : cur < 0 ? (step > 0 ? 0 : n - 1) : cur + step
     if (next < 0) next = 0
     if (next > n - 1) next = n - 1
     const off = viewRange(all).from
@@ -1364,7 +1446,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }
     else if (key === 'Enter' || key === ' ') {
       const idx = focusIdx()
-      if (idx >= 0) pickDatum(idx + viewRange(readData()).from)
+      if (idx >= 0) pickDatum(globalOf(idx, viewRange(readData()).from))
     } else if (key === 'Escape') {
       batch(() => {
         focusIdx.set(-1)
@@ -1393,12 +1475,12 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (spec.xValues !== undefined && spec.xValues.length > 0) {
       const v = spec.xValues[idx]
       if (v === undefined) return out
-      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, v)
+      cx = xPx(l.xDomainUsed, plot, v)
     } else if (spec.categories.length > 0) {
       const bw = plot.w / spec.categories.length
       cx = plot.x + bw * (idx + 0.5)
     } else {
-      cx = scaleLinear(l.xDomainUsed, plot.x, plot.x + plot.w, idx)
+      cx = xPx(l.xDomainUsed, plot, idx)
     }
     if (cx < plot.x || cx > plot.x + plot.w) return out
     out.push({
@@ -1436,13 +1518,15 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const live = brushDrag
     const bf = band()
     if (bf === undefined) return []
-    if (zoomSelect() && live !== null) return bf.renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
+    // Either end may come first (a drag runs both ways, and a reversed axis swaps them).
+    const drawBand = (p: Double, q: Double): DrawCmd[] => bf.renderBrushBand(plot, Math.min(p, q), Math.max(p, q), spec.theme.axis)
+    if (zoomSelect() && live !== null) return drawBand(live.a, live.b)
     if (props.brush !== true || props.horizontal === true) return []
-    if (live !== null) return bf.renderBrushBand(plot, live.a < live.b ? live.a : live.b, live.a < live.b ? live.b : live.a, spec.theme.axis)
+    if (live !== null) return drawBand(live.a, live.b)
     const committed = brushSel()
     if (committed === null) return []
     const vis = bf.brushBand(plot, committed, zoomWin() ?? { start: 0.0, end: 1.0 }, readData().length)
-    return vis.visible ? bf.renderBrushBand(plot, vis.lo, vis.hi, spec.theme.axis) : []
+    return vis.visible ? drawBand(xFlip(plot, vis.lo), xFlip(plot, vis.hi)) : []
   }
 
   /**
@@ -1536,7 +1620,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     ev.preventDefault()
     const rect = el.getBoundingClientRect()
     const px = localX(ev.clientX, rect) - leftOffset
-    const frac = plot.w <= 0.0 ? 0.5 : (px - plot.x) / plot.w
+    const frac = plot.w <= 0.0 ? 0.5 : (xFlip(plot, px) - plot.x) / plot.w
     const win = zoomWin() ?? { start: 0.0, end: 1.0 }
     const next = zoomWindow(win, ev.deltaY > 0 ? 1.25 : 0.8, frac)
     setZoom(next)
@@ -1558,7 +1642,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const pts = [...pointers.values()]
     if (pts.length < 2 || plot.w <= 0.0) return 0.5
     const mid = (pts[0]!.x + pts[1]!.x) / 2.0 - leftOffset
-    return (mid - plot.x) / plot.w
+    return (xFlip(plot, mid) - plot.x) / plot.w
   }
 
   const handleDown = (ev: PointerEvent): void => {
@@ -1628,7 +1712,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const rows = readData()
       const bf = band()
       if (bf !== undefined && plot !== null && rows.length > 0) {
-        const range = bf.brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, zoomWin() ?? { start: 0.0, end: 1.0 }, rows.length)
+        const range = bf.brushRange(plot.x, plot.w, xFlip(plot, dragStartX - leftOffset), xFlip(plot, dragLastX - leftOffset), zoomWin() ?? { start: 0.0, end: 1.0 }, rows.length)
         zoomHistory = [...zoomHistory, zoomWin()]
         setZoom(windowOfRows(range.start, range.end, rows.length))
       }
@@ -1649,7 +1733,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const bf = band()
       if (bf !== undefined && plot !== null && rows.length > 0) {
         const win = zoomWin() ?? { start: 0.0, end: 1.0 }
-        const range = bf.brushRange(plot.x, plot.w, dragStartX - leftOffset, dragLastX - leftOffset, win, rows.length)
+        const range = bf.brushRange(plot.x, plot.w, xFlip(plot, dragStartX - leftOffset), xFlip(plot, dragLastX - leftOffset), win, rows.length)
         brushSel.set(range)
         if (props.onBrush !== undefined) props.onBrush(range)
       }
@@ -1713,7 +1797,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         if (plot !== null && plot.w > 0.0) {
           const win = zoomWin() ?? { start: 0.0, end: 1.0 }
           // Dragging right moves the window LEFT — the data follows the hand.
-          const next = panWindow(win, (dragLastX - x) / plot.w)
+          const next = panWindow(win, ((dragLastX - x) / plot.w) * (props.xInverse === true ? -1.0 : 1.0))
           setZoom(next)
         }
       } else {
@@ -1743,7 +1827,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (f === null) return
     const hidden = hiddenSeries()
     const series = f.spec.series.filter((_x, i) => !hidden.includes(i))
-    const content = tooltipAt(idx, f.spec.categories, series)
+    const content = tooltipAt(idx, f.spec.categories, paintOf()?.companions?.(series) ?? series)
     const custom = props.tooltipFormatter
     box.textContent = custom === undefined ? tooltipLines(content, resolvedFormat()).join('\n') : custom(content)
     box.style.display = 'block'
@@ -1955,7 +2039,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const palette = theme().palette
     const m = lastFull
     if (m !== null && m.rows === rows && m.marks === props.marks && m.x === props.x && m.palette === palette) return m
-    const next = { rows, marks: props.marks, x: props.x, palette, series: resolveMarks(rows, props.marks, palette), categories: resolveCategories(rows, props.x) }
+    const next = { rows, marks: props.marks, x: props.x, palette, series: resolveMarks(rows, props.marks, palette, theme().ramp), categories: resolveCategories(rows, props.x) }
     lastFull = next
     return next
   }
@@ -1974,7 +2058,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       // chart to a sighted reader and another to a screen-reader user.
       format: fmtNow,
       categories: full.categories,
-      series: resolved.map((s, i) => ({
+      series: (paintOf()?.companions?.(resolved) ?? resolved).map((s, i) => ({
         // The mark's own label (`line(y, { label })`, `<Line label>`) — what the
         // legend and tooltip show. It used to fall straight to "Series N", so a
         // screen reader heard names no sighted reader ever saw.
@@ -2044,7 +2128,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     'aria-label': () => {
       const input = a11yInput()
       if (!labelReady() && chartRowCount(input) > DEFER_ROWS) return props.title ?? 'Chart'
-      return describeChart(input)
+      return describeChart(input) + scaleNote()
     },
     ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
     // The box the client will paint into, as SSR attributes: `prepareCanvas`

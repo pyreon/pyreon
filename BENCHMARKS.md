@@ -288,7 +288,7 @@ Pyreon was 16.6 KB on 2026-10-20 and 17.1 KB in the overnight run. The bundle-bu
 
 *Overnight run (`d47fa5a2f`), not re-measured:*
 
-**Charts (`bench:charts-bundle`, gzip, beyond an 11.2 KB Pyreon runtime baseline):** line chart 38.0 KB vs ECharts tree-shaken 155.9 KB (4.10×) / whole package 361.0 KB; bar + line + tooltip + legend 38.0 vs 176.7 KB (4.65×); pie 19.1 vs 117.2 KB (6.12×).
+**Charts (`bench:charts-bundle`, gzip, beyond a 12.1 KB Pyreon runtime baseline; re-measured 2026-11-19 for the cartesian-basics PR, a size build on a loaded machine, not the overnight run):** line chart 40.3 KB vs ECharts tree-shaken 155.9 KB (3.87×) / whole package 361.0 KB; bar + line + tooltip + legend 40.4 vs 176.8 KB (4.38×); pie 19.8 vs 117.2 KB (5.94×). Main at the same commit before that PR measured 38.8 KB for the line chart, so that PR moved the figure by +0.4 KB and the whole cartesian-basics campaign (bar width and gap, per-datum colour, `connectNulls`, the axis seam, `inverse`, grid, non-linear scales; consolidated, with the scale kinds as imported descriptors) by +1.5 KB (38.8 to 40.3 KB, with bars on a numeric x axis); the 38.0 / 19.1 / 11.2 KB of the 2026-11-05 record had already drifted on main.
 
 **`@pyreon/code`:** core editor 131.0 KB gz vs `@uiw/react-codemirror` 126.4 KB (4% larger; both wrap CodeMirror 6). The monaco-editor row still fails to bundle.
 

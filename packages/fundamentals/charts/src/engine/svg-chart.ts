@@ -6,11 +6,12 @@
 // text is wired by default instead of by remembering to.
 
 import { describeChart } from './a11y'
+import type { ItemFill } from './item-colors'
 import type { Mark } from './marks'
 import { resolveCategories, resolveMarks } from './marks'
 import { defaultTheme, renderChart } from './render'
 import { mirrorCmds } from './rtl'
-import type { Annotation, ChartTheme, PointMarker } from './render'
+import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView } from './render'
 import { measureApprox, renderSvg } from './svg'
 import type { Formatter } from './format'
 import type { SvgOptions } from './svg'
@@ -51,6 +52,35 @@ export interface ChartToSvgOptions<T> {
   markers?: readonly PointMarker[]
   /** Flip the frame — categories on Y, bars growing rightward. Bar marks only. */
   horizontal?: boolean
+  /** Bar thickness in px (a ceiling) — see `PlotChartProps.barWidth`. */
+  barWidth?: number
+  /** Space between the bars of a group, as a fraction of a bar — see `PlotChartProps.barGap`. */
+  barGap?: number
+  /** Space between categories, as a fraction of the band — see `PlotChartProps.barCategoryGap`. */
+  barCategoryGap?: number
+  /** Bars on a numeric or time x axis: the width of one bar's slot in x-domain units — see `PlotChartProps.barSpan`. */
+  barSpan?: number
+  /** Reverse the value axis — see `PlotChartProps.yInverse`. */
+  yInverse?: boolean
+  /** Reverse the right axis — see `PlotChartProps.y2Inverse`. */
+  y2Inverse?: boolean
+  /** Reverse the x axis direction — see `PlotChartProps.xInverse`. Accessors then see the REVERSED index. */
+  xInverse?: boolean
+  /** The value-axis scale — see `PlotChartProps.yScale`. */
+  yScale?: 'linear' | 'log' | ScaleView
+  /** A NUMERIC x channel (spacing follows the values); with it `xScale` applies — see `PlotChartProps.xScale`. */
+  xValue?: (d: T, index: number) => number
+  /** Label a numeric x axis with calendar steps (the x values are epoch milliseconds) — see `PlotChartProps.xTime`. */
+  xTime?: boolean
+  xScale?: 'linear' | ScaleView
+  /** Value-axis grid lines (`false` hides them) — see `PlotChartProps.yGrid`. */
+  yGrid?: boolean
+  /** Grid lines at the category / x ticks — see `PlotChartProps.xGrid`. */
+  xGrid?: boolean
+  /** Minor grid lines between the value ticks — see `PlotChartProps.yMinor`. */
+  yMinor?: number
+  /** Minor grid lines on a numeric x axis — see `PlotChartProps.xMinor`. */
+  xMinor?: number
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -72,26 +102,14 @@ export interface ChartToSvgOptions<T> {
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
-/**
- * Render a chart to a standalone `<svg>` string.
- *
- * Pure — no DOM, no canvas, no measurement context required — so this is the
- * form that works in an SSG build, a serverless function, or an email
- * pipeline, and the form whose output a test can assert on directly.
- */
-export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
-  const width = options.width ?? 640
-  const height = options.height ?? 320
-  const series = resolveMarks(options.data, options.marks)
-  const spec = {
-    width,
-    height,
-    series,
-    categories: resolveCategories(options.data, options.x),
-    theme: options.theme ?? defaultTheme,
-    showXAxis: options.showXAxis ?? true,
-    showYAxis: options.showYAxis ?? true,
-    showGrid: options.showGrid ?? true,
+/** The scale descriptors of the options, as spec fields. */
+function viewFields<T>(options: ChartToSvgOptions<T>): { yView: ScaleView | undefined; xView: ScaleView | undefined } {
+  return { yView: typeof options.yScale === 'object' ? options.yScale : undefined, xView: typeof options.xScale === 'object' ? options.xScale : undefined }
+}
+
+/** The options that ride onto the spec as they are (each one a plain forward, so the chart function itself stays simple). */
+function optionFields<T>(options: ChartToSvgOptions<T>, rows: readonly T[]): Partial<ChartSpec> {
+  return {
     // Assigned, not conditionally spread — see the note in `render.ts`: the
     // `...(cond ? { k } : {})` idiom emits an empty object literal, which PMTC
     // cannot lower.
@@ -102,11 +120,66 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     annotations: options.annotations,
     markers: options.markers,
     horizontal: options.horizontal === true,
+    barWidth: options.barWidth,
+    barGap: options.barGap,
+    barCategoryGap: options.barCategoryGap,
+    barSpan: options.barSpan,
+    yInverse: options.yInverse,
+    y2Inverse: options.y2Inverse,
+    xInverse: options.xInverse,
+    xTime: options.xTime,
+    yGrid: options.yGrid,
+    xGrid: options.xGrid,
+    yMinor: options.yMinor,
+    xMinor: options.xMinor,
+    yScale: typeof options.yScale === 'string' ? options.yScale : undefined,
+    ...viewFields(options),
+    xValues: options.xValue === undefined ? undefined : rows.map((d, i) => options.xValue!(d, i)),
+  }
+}
+
+/** The rows the engine lays out: in reverse when the x axis is reversed (the host does the same), categories following. */
+function viewRowsOf<T>(options: ChartToSvgOptions<T>): readonly T[] {
+  return options.xInverse === true ? [...options.data].reverse() : options.data
+}
+
+/** The per-datum colour descriptor a mark carries, if any (it adds its ramp legend; see `item-colors.ts`). */
+function paintOf<T>(marks: readonly Mark<T>[]): ItemFill<T> | undefined {
+  return marks.find((m) => m.options.fill !== undefined)?.options.fill as ItemFill<T> | undefined
+}
+
+/**
+ * Render a chart to a standalone `<svg>` string.
+ *
+ * Pure — no DOM, no canvas, no measurement context required — so this is the
+ * form that works in an SSG build, a serverless function, or an email
+ * pipeline, and the form whose output a test can assert on directly.
+ */
+export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
+  const width = options.width ?? 640
+  const height = options.height ?? 320
+  const theme = options.theme ?? defaultTheme
+  // A reversed x axis hands the engine its rows in reverse (the host does the same); categories follow.
+  const rows = viewRowsOf(options)
+  const series = resolveMarks(rows, options.marks, undefined, theme.ramp)
+  // A per-datum colour descriptor adds its ramp legend above the plot (see `item-colors.ts`).
+  const legend = paintOf(options.marks)?.legend?.(series, { x: 0, y: 0, w: width }, theme)
+  const spec = {
+    width,
+    height: height - (legend?.height ?? 0),
+    series,
+    categories: resolveCategories(rows, options.x),
+    theme,
+    showXAxis: options.showXAxis ?? true,
+    showYAxis: options.showYAxis ?? true,
+    showGrid: options.showGrid ?? true,
+    ...optionFields(options, rows),
   }
   const measure = options.measure ?? measureApprox()
   // Same seam as the canvas host's `present`: RTL is the mirror of the
   // finished list, so the static path and the live one cannot drift.
-  const drawn = renderChart(spec, measure)
+  const plotted = renderChart(spec, measure)
+  const drawn = legend === undefined ? plotted : [...legend.cmds, ...legend.shift(plotted)]
   const cmds = options.rtl === true ? mirrorCmds(drawn, width) : drawn
 
   const description =

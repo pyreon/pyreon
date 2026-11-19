@@ -863,6 +863,31 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "BandFrame",
+    "fields": [
+      {
+        "name": "frame",
+        "type": {
+          "kind": "typeRef",
+          "name": "PyreonChartRect",
+          "args": []
+        }
+      },
+      {
+        "name": "shifts",
+        "type": {
+          "kind": "array",
+          "element": {
+            "kind": "typeRef",
+            "name": "Double",
+            "args": []
+          }
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Slice",
     "fields": [
       {
@@ -2021,6 +2046,218 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "yViewTicks",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "function",
+              "params": [
+                {
+                  "name": "real",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Domain",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r0",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r1",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "count",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "format",
+                  "type": {
+                    "kind": "union",
+                    "branches": [
+                      {
+                        "kind": "function",
+                        "params": [
+                          {
+                            "name": "value",
+                            "type": {
+                              "kind": "typeRef",
+                              "name": "Double",
+                              "args": []
+                            }
+                          }
+                        ],
+                        "returnType": {
+                          "kind": "string"
+                        }
+                      },
+                      {
+                        "kind": "undefined"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "array",
+                "element": {
+                  "kind": "typeRef",
+                  "name": "Tick",
+                  "args": []
+                }
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yViewReal",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xViewTicks",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "function",
+              "params": [
+                {
+                  "name": "real",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Domain",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r0",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r1",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "count",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "format",
+                  "type": {
+                    "kind": "union",
+                    "branches": [
+                      {
+                        "kind": "function",
+                        "params": [
+                          {
+                            "name": "value",
+                            "type": {
+                              "kind": "typeRef",
+                              "name": "Double",
+                              "args": []
+                            }
+                          }
+                        ],
+                        "returnType": {
+                          "kind": "string"
+                        }
+                      },
+                      {
+                        "kind": "undefined"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "array",
+                "element": {
+                  "kind": "typeRef",
+                  "name": "Tick",
+                  "args": []
+                }
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xViewReal",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xNumeric",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "yTime",
         "type": {
           "kind": "union",
@@ -2848,6 +3085,144 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
     "external": true
   },
   {
+    "name": "ScaleView",
+    "fields": [
+      {
+        "name": "kind",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "param",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "apply",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "function",
+              "params": [
+                {
+                  "name": "spec",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "ChartSpec",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "axis",
+                  "type": {
+                    "kind": "string"
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "typeRef",
+                "name": "ChartSpec",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ticks",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "function",
+              "params": [
+                {
+                  "name": "real",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Domain",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r0",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r1",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "count",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "format",
+                  "type": {
+                    "kind": "union",
+                    "branches": [
+                      {
+                        "kind": "function",
+                        "params": [
+                          {
+                            "name": "value",
+                            "type": {
+                              "kind": "typeRef",
+                              "name": "Double",
+                              "args": []
+                            }
+                          }
+                        ],
+                        "returnType": {
+                          "kind": "string"
+                        }
+                      },
+                      {
+                        "kind": "undefined"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "array",
+                "element": {
+                  "kind": "typeRef",
+                  "name": "Tick",
+                  "args": []
+                }
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
     "name": "Series",
     "fields": [
       {
@@ -3139,6 +3514,20 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "connectNulls",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "seriesSelected",
         "type": {
           "kind": "union",
@@ -3225,6 +3614,42 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
       },
       {
         "name": "values2",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "typeRef",
+                "name": "Double",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "itemColors",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "array",
+              "element": {
+                "kind": "string"
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "shades",
         "type": {
           "kind": "union",
           "branches": [
@@ -4052,6 +4477,98 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
+        "name": "yView",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "ScaleView",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xView",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "ScaleView",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yReal",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xReal",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yViewApplied",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xViewApplied",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
         "name": "yTime",
         "type": {
           "kind": "union",
@@ -4128,6 +4645,172 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "branches": [
             {
               "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barWidth",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barGap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barCategoryGap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "barSpan",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yInverse",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "y2Inverse",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xInverse",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yGrid",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xGrid",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yMinor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xMinor",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Double",
+              "args": []
             },
             {
               "kind": "undefined"
@@ -13082,6 +13765,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "Annotation",
   "ArcConfig",
   "ArcGeometry",
+  "BandFrame",
   "Bin",
   "BoxplotFrame",
   "BoxplotOptions",
@@ -13225,6 +13909,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "SankeyLink",
   "SankeyNode",
   "SankeyOptions",
+  "ScaleView",
   "Series",
   "SeriesGradient",
   "Shifted",

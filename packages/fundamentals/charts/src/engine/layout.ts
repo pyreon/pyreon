@@ -1,6 +1,6 @@
 // Plot-area layout and per-mark geometry.
 
-import { isFiniteNumber, makeTicks, scaleLinear } from './scale'
+import { barThickness, isFiniteNumber, makeTicks, xPx, yPx } from './scale'
 import { logViewTicks, timeTicks } from './scale-extra'
 import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
@@ -110,6 +110,14 @@ export interface LayoutConfig {
   yLog?: boolean | undefined
   yLogMin?: Double | undefined
   yLogMax?: Double | undefined
+  /** A scale descriptor's tick builder for the y axis (with the REAL bounds the ticks are nice in), or undefined. */
+  yViewTicks?: ((real: Domain, r0: Double, r1: Double, count: Double, format: Formatter | undefined) => Tick[]) | undefined
+  yViewReal?: Domain | undefined
+  /** The same for a numeric x axis. */
+  xViewTicks?: ((real: Domain, r0: Double, r1: Double, count: Double, format: Formatter | undefined) => Tick[]) | undefined
+  xViewReal?: Domain | undefined
+  /** The x axis is NUMERIC (`xValues`): a horizontal chart then ticks it down the y axis instead of labelling categories. */
+  xNumeric?: boolean | undefined
   /** Label the y axis with calendar steps — the y twin of `xTime`. */
   yTime?: boolean | undefined
   /**
@@ -172,16 +180,28 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const yCount = cfg.yTickCount > 0.0 ? cfg.yTickCount : valueTickTarget(cfg.width, cfg.height, cfg.fontSize, cfg.horizontal === true)
   const titleH = cfg.fontSize + labelGap
   const isLog = cfg.yLog === true
+  const hasViewY = cfg.yViewTicks !== undefined
+  const hasViewX = cfg.xViewTicks !== undefined
   const logMin = cfg.yLogMin ?? 1.0
   const logMax = cfg.yLogMax ?? 10.0
+
+  // The numeric x ticks over a pixel range: view (log / sqrt / symlog), calendar steps, or the nice ladder.
+  const numericXTicks = (r0: Double, r1: Double, count: Double): Tick[] =>
+    hasViewX
+      ? (cfg.xViewTicks?.(cfg.xViewReal ?? cfg.xDomain, cfg.xDomain.inverse === true ? r1 : r0, cfg.xDomain.inverse === true ? r0 : r1, count, cfg.xFormat) ?? [])
+      : cfg.xTime === true
+        ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
+        : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
 
   // The y-side value ticks, over a pixel range. Three labellings share one
   // domain: the linear ladder, the calendar steps, and the log view's
   // decades — chosen once here so the provisional (gutter-sizing) pass and
   // the final pass cannot disagree.
   const valueTicksY = (r0: Double, r1: Double): Tick[] =>
-    isLog
-      ? logViewTicks(logMin, logMax, r0, r1, cfg.yFormat)
+    hasViewY
+      ? (cfg.yViewTicks?.(cfg.yViewReal ?? cfg.yDomain, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, yCount, cfg.yFormat) ?? [])
+      : isLog
+      ? logViewTicks(logMin, logMax, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, cfg.yFormat)
       : cfg.yTime === true
         ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat)
         : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat)
@@ -191,9 +211,12 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // the y axis, so it measures those instead — long category names are the
   // reason horizontal bars exist, and a gutter sized for numbers would clip
   // every one of them.
+  // A horizontal chart with a numeric x axis (and no categories) puts the numeric ticks down the y side.
+  const numericY = cfg.categories.length === 0 && cfg.xNumeric === true
+  const sideLabels = numericY ? numericXTicks(0.0, cfg.height, autoTickCount(cfg.height, Y_TICK_SPACING)).map((t) => t.label) : cfg.categories
   const provisionalLabels = cfg.horizontal === true
     ? cfg.showYAxis
-      ? cfg.categories
+      ? sideLabels
       : []
     : cfg.showYAxis
       ? valueTicksY(cfg.height, 0.0).map((t) => t.label)
@@ -237,9 +260,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   if (cfg.showXAxis && cfg.horizontal !== true) {
     const xLabels = cfg.categories.length > 0
       ? cfg.categories
-      : (cfg.xTime === true
-          ? timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
-          : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)).map((t) => t.label)
+      : numericXTicks(0.0, provisionalW, xCount).map((t) => t.label)
     const xSample = labelSample(xLabels, cfg.fontSize, labelGap, measure)
     const need = xSample.need
     const widestX = xSample.widest
@@ -272,9 +293,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   if (cfg.showXAxis && rotate === 0.0 && (cfg.horizontal === true || cfg.categories.length === 0)) {
     const edgeTicks = cfg.horizontal === true
       ? makeTicks(cfg.yDomain, 0.0, provisionalW, yCount, cfg.yFormat)
-      : cfg.xTime === true
-        ? timeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
-        : makeTicks(cfg.xDomain, 0.0, provisionalW, xCount, cfg.xFormat)
+      : numericXTicks(0.0, provisionalW, xCount)
     for (const tick of edgeTicks) {
       const half = measure(tick.label, cfg.fontSize) / 2.0
       const overLeft = half - tick.pos + labelGap
@@ -301,7 +320,9 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
     // runs along x. The value ticks reuse the y domain — that is where the
     // data lives — and the same formatter, so a chart flipped horizontal
     // keeps its "$3.2K" labels without re-wiring anything.
-    const yTicks = cfg.showYAxis ? bandTicksY(cfg.categories, plot) : []
+    // A numeric x axis (`xValues`, no categories) puts its own ticks down the y axis.
+    const bandY = numericY ? numericXTicks(plot.y, plot.y + plot.h, autoTickCount(plot.h, Y_TICK_SPACING)) : bandTicksY(cfg.categories, plot)
+    const yTicks = cfg.showYAxis ? bandY : []
     const xTicks = cfg.showXAxis
       ? makeTicks(cfg.yDomain, plot.x, plot.x + plot.w, yCount, cfg.yFormat)
       : []
@@ -323,9 +344,7 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const xTicks = cfg.showXAxis
     ? cfg.categories.length > 0
       ? bandTicks(cfg.categories, plot)
-      : cfg.xTime === true
-        ? timeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat)
-        : makeTicks(cfg.xDomain, plot.x, plot.x + plot.w, xCount, cfg.xFormat)
+      : numericXTicks(plot.x, plot.x + plot.w, xCount)
     : []
 
   const y2Ticks = hasY2
@@ -461,24 +480,25 @@ export function layoutBars(
   plot: Rect,
   yDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): Rect[] {
   const n = values.length
   const out: Rect[] = []
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const bw = band * (1.0 - ratio)
+  const bw = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   // Bars are measured from the axis zero line when the domain straddles zero,
   // so a negative value draws downward from it rather than up from the floor.
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
-  const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
+  const zeroY = yPx(yDomain, plot, zero)
   for (let i = 0; i < n; i++) {
     const raw = values[i]!
     // A gap is a zero-height bar at the zero line: it draws nothing and no
     // pointer can land in it, which is what "no measurement" should look like.
     // An infinity is a gap too — scaled it is an infinite rect.
     const v = isFiniteNumber(raw) ? raw : zero
-    const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
+    const vy = yPx(yDomain, plot, v)
     const top = vy < zeroY ? vy : zeroY
     const h = Math.abs(zeroY - vy)
     out.push({ x: plot.x + band * i + (band - bw) / 2.0, y: top, w: bw, h })
@@ -499,7 +519,7 @@ export function layoutSeriesPoints(values: Double[], plot: Rect, yDomain: Domain
   for (let i = 0; i < n; i++) {
     out.push({
       x: plot.x + band * i + band / 2.0,
-      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
+      y: yPx(yDomain, plot, values[i]!),
     })
   }
   return out
@@ -514,13 +534,13 @@ export function layoutSeriesPointsEdge(values: Double[], plot: Rect, yDomain: Do
   const out: Pt[] = []
   if (n === 0) return out
   if (n === 1) {
-    out.push({ x: plot.x + plot.w / 2.0, y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[0]!) })
+    out.push({ x: plot.x + plot.w / 2.0, y: yPx(yDomain, plot, values[0]!) })
     return out
   }
   for (let i = 0; i < n; i++) {
     out.push({
       x: plot.x + (i / (n - 1)) * plot.w,
-      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
+      y: yPx(yDomain, plot, values[i]!),
     })
   }
   return out
@@ -556,7 +576,7 @@ export function layoutSeriesPointsH(values: Double[], plot: Rect, vDomain: Domai
   const band = plot.h / n
   for (let i = 0; i < n; i++) {
     out.push({
-      x: scaleLinear(vDomain, plot.x, plot.x + plot.w, values[i]!),
+      x: xPx(vDomain, plot, values[i]!),
       y: plot.y + band * i + band / 2.0,
     })
   }
@@ -574,8 +594,8 @@ export function layoutSeriesPointsAt(
   const out: Pt[] = []
   for (let i = 0; i < n; i++) {
     out.push({
-      x: scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[i]!),
-      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, values[i]!),
+      x: xPx(xDomain, plot, xs[i]!),
+      y: yPx(yDomain, plot, values[i]!),
     })
   }
   return out
@@ -591,19 +611,20 @@ export function layoutBarsH(
   plot: Rect,
   vDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): Rect[] {
   const n = values.length
   const out: Rect[] = []
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / n
-  const bh = band * (1.0 - ratio)
+  const bh = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
-  const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+  const zeroX = xPx(vDomain, plot, zero)
   for (let i = 0; i < n; i++) {
     const raw = values[i]!
     const v = isFiniteNumber(raw) ? raw : zero
-    const vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+    const vx = xPx(vDomain, plot, v)
     const left = vx < zeroX ? vx : zeroX
     out.push({
       x: left,

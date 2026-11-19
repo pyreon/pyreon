@@ -4,7 +4,7 @@
 // a category axis and wrong for a scatter plot — there, x is a measured value
 // like y, and pretending otherwise silently redraws the data.
 
-import { isFiniteNumber, scaleLinear } from './scale'
+import { barThickness, isFiniteNumber, xPx, yPx } from './scale'
 import type { Domain, Double, Pt, Rect } from './types'
 
 /** One band's worth of stacked segments, bottom to top. */
@@ -92,14 +92,15 @@ export function stackLevelsExtent(levels: StackLevels): Domain {
 }
 
 /** Segments for stack levels, upright: band `i`, series `s`, from its base to its top. */
-export function layoutStackLevels(levels: StackLevels, values: Double[][], plot: Rect, yDomain: Domain, gapRatio: Double): StackSegment[] {
+// oxlint-disable-next-line max-params -- positional signature kept for its many call sites; barWidth / barGap are optional trailing bar geometry
+export function layoutStackLevels(levels: StackLevels, values: Double[][], plot: Rect, yDomain: Domain, gapRatio: Double, barWidth?: Double): StackSegment[] {
   const out: StackSegment[] = []
   let n = 0
   for (const row of levels.tops) if (row.length > n) n = row.length
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / countOf(n)
-  const bw = band * (1.0 - ratio)
+  const bw = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   let fi = 0.0
   for (let i = 0; i < n; i++) {
     for (let s = 0; s < levels.tops.length; s++) {
@@ -107,8 +108,8 @@ export function layoutStackLevels(levels: StackLevels, values: Double[][], plot:
       if (!isFiniteNumber(top)) continue
       const b = levels.bases[s]![i]!
       const base = isFiniteNumber(b) ? b : 0.0
-      const yTop = scaleLinear(yDomain, plot.y + plot.h, plot.y, top)
-      const yBot = scaleLinear(yDomain, plot.y + plot.h, plot.y, base)
+      const yTop = yPx(yDomain, plot, top)
+      const yBot = yPx(yDomain, plot, base)
       const own = values[s]!
       out.push({
         rect: { x: plot.x + band * fi + (band - bw) / 2.0, y: yTop < yBot ? yTop : yBot, w: bw, h: Math.abs(yBot - yTop) },
@@ -123,14 +124,15 @@ export function layoutStackLevels(levels: StackLevels, values: Double[][], plot:
 }
 
 /** `layoutStackLevels` on the flipped frame: bands run DOWN the y axis and each stack grows along x. */
-export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot: Rect, vDomain: Domain, gapRatio: Double): StackSegment[] {
+// oxlint-disable-next-line max-params -- positional signature kept for its many call sites; barWidth / barGap are optional trailing bar geometry
+export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot: Rect, vDomain: Domain, gapRatio: Double, barWidth?: Double): StackSegment[] {
   const out: StackSegment[] = []
   let n = 0
   for (const row of levels.tops) if (row.length > n) n = row.length
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / countOf(n)
-  const bh = band * (1.0 - ratio)
+  const bh = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   let fi = 0.0
   for (let i = 0; i < n; i++) {
     for (let s = 0; s < levels.tops.length; s++) {
@@ -138,8 +140,8 @@ export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot
       if (!isFiniteNumber(top)) continue
       const b = levels.bases[s]![i]!
       const base = isFiniteNumber(b) ? b : 0.0
-      const xEnd = scaleLinear(vDomain, plot.x, plot.x + plot.w, top)
-      const xStart = scaleLinear(vDomain, plot.x, plot.x + plot.w, base)
+      const xEnd = xPx(vDomain, plot, top)
+      const xStart = xPx(vDomain, plot, base)
       const own = values[s]!
       out.push({
         rect: { x: xStart < xEnd ? xStart : xEnd, y: plot.y + band * fi + (band - bh) / 2.0, w: Math.abs(xEnd - xStart), h: bh },
@@ -172,8 +174,9 @@ export function layoutStackedBars(
   plot: Rect,
   yDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): StackSegment[] {
-  return layoutStackLevels(stackLevels(seriesValues), seriesValues, plot, yDomain, gapRatio)
+  return layoutStackLevels(stackLevels(seriesValues), seriesValues, plot, yDomain, gapRatio, barWidth)
 }
 
 /** `layoutStackedBars` on the flipped frame: bands run DOWN the y axis and the stack grows along x. */
@@ -182,16 +185,20 @@ export function layoutStackedBarsH(
   plot: Rect,
   vDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): StackSegment[] {
-  return layoutStackLevelsH(stackLevels(seriesValues), seriesValues, plot, vDomain, gapRatio)
+  return layoutStackLevelsH(stackLevels(seriesValues), seriesValues, plot, vDomain, gapRatio, barWidth)
 }
 
 /** `layoutGroupedBars` on the flipped frame: one bar per series, stacked DOWN each band. */
+// oxlint-disable-next-line max-params -- positional signature kept for its many call sites; barWidth / barGap are optional trailing bar geometry
 export function layoutGroupedBarsH(
   seriesValues: Double[][],
   plot: Rect,
   vDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
+  barGap?: Double,
 ): StackSegment[] {
   const out: StackSegment[] = []
   const k = seriesValues.length
@@ -202,22 +209,23 @@ export function layoutGroupedBarsH(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.h / n
-  const groupH = band * (1.0 - ratio)
-  const barH = groupH / k
+  const gapH = Math.max(0.0, barGap ?? 0.0)
+  const barH = barThickness(band * (1.0 - ratio), countOf(k), gapH, barWidth)
+  const pitchH = barH * (1.0 + gapH)
   const zero = vDomain.min < 0.0 && vDomain.max > 0.0 ? 0.0 : vDomain.min
-  const zeroX = scaleLinear(vDomain, plot.x, plot.x + plot.w, zero)
+  const zeroX = xPx(vDomain, plot, zero)
 
   for (let i = 0; i < n; i++) {
-    const gy = plot.y + band * i + (band - groupH) / 2.0
+    const gy = plot.y + band * i + (band - (barH + pitchH * (countOf(k) - 1.0))) / 2.0
     for (let s = 0; s < k; s++) {
       const raw = seriesValues[s]![i] ?? 0.0
       // A gap draws a zero-width bar at the zero line — nothing to see, nothing to hit.
       const v = raw === raw ? raw : zero
-      const vx = scaleLinear(vDomain, plot.x, plot.x + plot.w, v)
+      const vx = xPx(vDomain, plot, v)
       out.push({
         rect: {
           x: vx < zeroX ? vx : zeroX,
-          y: gy + barH * s,
+          y: gy + pitchH * s,
           w: Math.abs(vx - zeroX),
           h: barH,
         },
@@ -242,11 +250,14 @@ export function stackedExtent(seriesValues: Double[][]): Domain {
 }
 
 /** Bars sitting side by side within each band, one per series. */
+// oxlint-disable-next-line max-params -- positional signature kept for its many call sites; barWidth / barGap are optional trailing bar geometry
 export function layoutGroupedBars(
   seriesValues: Double[][],
   plot: Rect,
   yDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
+  barGap?: Double,
 ): StackSegment[] {
   const out: StackSegment[] = []
   const k = seriesValues.length
@@ -257,21 +268,22 @@ export function layoutGroupedBars(
 
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const groupW = band * (1.0 - ratio)
-  const barW = groupW / k
+  const gapW = Math.max(0.0, barGap ?? 0.0)
+  const barW = barThickness(band * (1.0 - ratio), countOf(k), gapW, barWidth)
+  const pitchW = barW * (1.0 + gapW)
   const zero = yDomain.min < 0.0 && yDomain.max > 0.0 ? 0.0 : yDomain.min
-  const zeroY = scaleLinear(yDomain, plot.y + plot.h, plot.y, zero)
+  const zeroY = yPx(yDomain, plot, zero)
 
   for (let i = 0; i < n; i++) {
-    const gx = plot.x + band * i + (band - groupW) / 2.0
+    const gx = plot.x + band * i + (band - (barW + pitchW * (countOf(k) - 1.0))) / 2.0
     for (let s = 0; s < k; s++) {
       const raw = seriesValues[s]![i] ?? 0.0
       // A gap draws a zero-height bar at the zero line — nothing to see, nothing to hit.
       const v = isFiniteNumber(raw) ? raw : zero
-      const vy = scaleLinear(yDomain, plot.y + plot.h, plot.y, v)
+      const vy = yPx(yDomain, plot, v)
       out.push({
         rect: {
-          x: gx + barW * s,
+          x: gx + pitchW * s,
           y: vy < zeroY ? vy : zeroY,
           w: barW,
           h: Math.abs(zeroY - vy),
@@ -303,8 +315,8 @@ export function layoutScatter(
   const out: Pt[] = []
   for (let i = 0; i < n; i++) {
     out.push({
-      x: scaleLinear(xDomain, plot.x, plot.x + plot.w, xs[i]!),
-      y: scaleLinear(yDomain, plot.y + plot.h, plot.y, ys[i]!),
+      x: xPx(xDomain, plot, xs[i]!),
+      y: yPx(yDomain, plot, ys[i]!),
     })
   }
   return out
@@ -366,21 +378,22 @@ export function layoutWaterfall(
   plot: Rect,
   yDomain: Domain,
   gapRatio: Double,
+  barWidth?: Double,
 ): WaterfallStep[] {
   const out: WaterfallStep[] = []
   const n = values.length
   if (n === 0) return out
   const ratio = gapRatio < 0.0 ? 0.0 : gapRatio > 0.9 ? 0.9 : gapRatio
   const band = plot.w / n
-  const bw = band * (1.0 - ratio)
+  const bw = barThickness(band * (1.0 - ratio), 1.0, 0.0, barWidth)
   let acc = 0.0
   for (let i = 0; i < n; i++) {
     const v = values[i]!
     if (!isFiniteNumber(v)) continue
     const start = acc
     const end = acc + v
-    const y0 = scaleLinear(yDomain, plot.y + plot.h, plot.y, start)
-    const y1 = scaleLinear(yDomain, plot.y + plot.h, plot.y, end)
+    const y0 = yPx(yDomain, plot, start)
+    const y1 = yPx(yDomain, plot, end)
     out.push({
       rect: { x: plot.x + band * i + (band - bw) / 2.0, y: y0 < y1 ? y0 : y1, w: bw, h: Math.abs(y1 - y0) },
       datumIndex: i,

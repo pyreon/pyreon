@@ -30,6 +30,43 @@ list is reactive, so the switch repaints the same canvas.
 
 <Example file="./examples/charts/gallery-horizontal" title="Horizontal bars" />
 
+## A rank chart and a depth profile
+
+`<Axis y inverse>` reverses the value axis: here rank 1 sits at the top, and
+depth increases downward. The data and the table keep their order.
+
+<Example file="./examples/charts/gallery-rank-inverse" title="Rank and depth, inverted" />
+
+## Scaled axes
+
+`xScale` and `yScale` take `log`, `sqrt` and `symlog`: the picture reshapes, the tick
+labels, the tooltip and the table keep the real values.
+
+<Example file="./examples/charts/gallery-scales" title="Linear, sqrt, symlog and log x" />
+
+## Bar thickness
+
+`barWidth` caps one bar's thickness in px, `barGap` spaces the bars of a group and
+`barCategoryGap` the categories. Unset, bars keep their band-proportional width.
+
+<Example file="./examples/charts/gallery-bar-geometry" title="Bar width and gaps" />
+
+## Bars on a time axis
+
+`xValue` puts each bar at its own x: the slot is the smallest gap between two x values
+(`barSpan` sets it explicitly, in x units), bars are centred on their day and the axis is
+padded by half a slot, so a missing day is an empty stretch, not a squeezed bar.
+
+<Example file="./examples/charts/gallery-bars-time" title="Daily revenue with missing days" />
+
+## Colour a datum
+
+`fill={fillBy('status')}` reads a colour off each row; `fill={shadeBy('margin')}`
+maps a value through a ramp, and the tooltip and the accessible table print that
+value.
+
+<Example file="./examples/charts/gallery-bar-colors" title="Per-datum colour" />
+
 ## A donut
 
 An `<Arc>` with an inner radius, and a legend whose entries toggle their slices.

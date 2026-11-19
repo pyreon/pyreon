@@ -262,6 +262,10 @@ export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
         'Band',
         'smooth',
         'step',
+        // Scale descriptors: `<Axis scale={sqrt()}>` / `<Scale x={log()}>` desugar (hosts.ts `scaleAttr`) to the engine's `ScaleView`, built from the compile-time literal.
+        'sqrt',
+        'symlog',
+        'log',
         // Engine arithmetic that crosses verbatim (bin.ts is in ENGINE_FILES).
         'binValues',
         // Decimation, same shape (decimate-values.ts is in ENGINE_FILES). NOT
