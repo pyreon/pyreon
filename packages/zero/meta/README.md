@@ -1,5 +1,7 @@
 # @pyreon/meta
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 Single-import barrel — the full Pyreon fundamentals + UI-system ecosystem from one package.
 
 Re-exports 33 `@pyreon/*` packages so apps can write `import { signal, useQuery, useForm, styled, PyreonUI } from '@pyreon/meta'` instead of remembering subpackages. Tree-shake-safe by construction: meta itself and every re-exported package declare `"sideEffects": false`, so modern bundlers (Vite/Rolldown, Webpack/Next.js, esbuild, Rollup, Parcel, Bun) only pull the subgraphs you actually import. Heavy renderers stay lazy at the source — `@pyreon/document` lazy-loads PDF/DOCX/XLSX/PPTX chunks inside `render()`, and `@pyreon/charts` / `@pyreon/code` / `@pyreon/flow` lazy-load ECharts / CodeMirror grammars / elkjs inside their consumer hooks.
@@ -90,8 +92,6 @@ import {
 | `@pyreon/attrs` | `attrs` |
 | `@pyreon/rocketstyle` | `rocketstyle` |
 | `@pyreon/ui-core` | `PyreonUI`, `useMode` (consumer-app surface; framework-internal utilities omitted) |
-| `@pyreon/document-primitives` | `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`, `extractDocNode`, `DocumentPreview`, `documentTheme` |
-| `@pyreon/connector-document` | `extractDocumentTree`, `resolveStyles`, `DocumentMarker`, `ExtractOptions`, `ResolvedStyles` |
 
 ## Bundle hygiene
 
@@ -109,7 +109,7 @@ Heavy upstream deps stay lazy at the source-package level:
 - **No router / runtime in meta.** `@pyreon/router`, `@pyreon/core`, `@pyreon/runtime-dom`, `@pyreon/runtime-server`, `@pyreon/server`, `@pyreon/head` are NOT re-exported here. For routing + full-stack, install `@pyreon/zero` (which composes them with file-system routing + adapters).
 - **Reactivity primitives come via `@pyreon/store`.** `signal` / `computed` / `effect` / `batch` are re-exported from `@pyreon/store`, not `@pyreon/reactivity` directly. The runtime identity is the same — `@pyreon/store` itself re-exports them from `@pyreon/reactivity`.
 - **`rx` is a namespace, not individual operators.** Use `rx.filter(src, p)` / `rx.pipe(src, rx.filter(p), rx.map(f))`. The namespace avoids collisions with `@pyreon/hooks` / `@pyreon/dnd` operator-name twins (`throttle`, `debounce`, `merge`).
-- **Document JSX primitives come via `@pyreon/document-primitives`.** `@pyreon/document` ships generic-named JSX primitives (`Text`, `List`, `Row`, `Table`, `Image`) that would collide with `@pyreon/elements` / `@pyreon/coolgrid`; meta deliberately re-exports the `Doc*`-prefixed `@pyreon/document-primitives` instead. Import the builder primitives directly from `@pyreon/document` if you need them.
+- **No Experimental packages in meta.** `@pyreon/meta` is Stable, so it re-exports Stable packages only. `@pyreon/document-primitives` (the `Doc*` JSX primitives) and `@pyreon/connector-document` are Experimental: install and import them directly. `@pyreon/document`'s own generic-named JSX primitives (`Text`, `List`, `Row`, `Table`, `Image`) are not re-exported either, because they would collide with `@pyreon/elements` / `@pyreon/coolgrid`; import them from `@pyreon/document`.
 - **Pure builder/renderer API from `@pyreon/document`.** Only `createDocument`, `render`, `download`, `isDocNode`, `registerRenderer`, `unregisterRenderer` and types are re-exported — the format-renderer chunks stay lazy.
 - **`@pyreon/ui-core` surface is narrow.** Only `PyreonUI` and `useMode` are re-exported; framework-internal utilities (`init`, `compose`, `context`, `omit`, `pick`, `throttle`, `merge`) are NOT — they target ui-system authors, not app code.
 

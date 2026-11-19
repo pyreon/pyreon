@@ -1,6 +1,8 @@
 # @pyreon/native-compiler
 
-> **EXPERIMENTAL.** The Pyreon Multi-Target Compiler (PMTC) itself. Compiles Pyreon JSX/TSX source to native Swift (SwiftUI) and Kotlin (Jetpack Compose) source — no JS runtime, no bridge, no WebView by default. The output is idiomatic per-platform code driving each platform's own reactive primitives (`@State` / `mutableStateOf`) directly. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for where this fits among the other five packages behind PMTC.
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
+The Pyreon Multi-Target Compiler (PMTC) itself. Compiles Pyreon JSX/TSX source to native Swift (SwiftUI) and Kotlin (Jetpack Compose) source — no JS runtime, no bridge, no WebView by default. The output is idiomatic per-platform code driving each platform's own reactive primitives (`@State` / `mutableStateOf`) directly. Published to npm — see [Native Packages](https://pyreon.dev/docs/native-packages) for where this fits among the other five packages behind PMTC.
 
 This package is TypeScript-in, TypeScript-out plumbing: given a source string, it returns a source string. It doesn't walk a directory, write files, or know about Xcode/Gradle — that's [`@pyreon/native-cli`](../cli/), which wraps this package.
 
