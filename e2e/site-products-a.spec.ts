@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { replacedIslandRoots, trackIslandRoots, waitForIslands } from './site-islands'
+import { changedIslandClasses, replacedIslandRoots, trackIslandClasses, trackIslandRoots, waitForIslands } from './site-islands'
 import { SITE_WIDTHS } from './site-audit'
 
 /**
@@ -52,10 +52,14 @@ test.describe('build output', () => {
   }
 })
 
+// The core-group pages no group spec walks; their hydration is checked here too.
+const CORE = ['reactivity', 'form', 'a11y']
+
 test.describe('hydration', () => {
-  for (const id of IDS) {
+  for (const id of [...IDS, ...CORE]) {
     test(`/products/${id} hydrates in place and its demo hydrates with no errors`, async ({ page }) => {
       await trackIslandRoots(page)
+      await trackIslandClasses(page)
       const errors = collectErrors(page)
       await page.goto(`/products/${id}`)
       await waitForIslands(page)
@@ -64,6 +68,8 @@ test.describe('hydration', () => {
       expect(await replacedIslandRoots(page)).toEqual([])
       await page.locator('#demo').scrollIntoViewIfNeeded()
       await page.waitForTimeout(1500)
+      // ...and kept the classes the server sent: the server and the browser resolved the same styles.
+      expect(await changedIslandClasses(page)).toEqual([])
       expect(errors).toEqual([])
     })
   }

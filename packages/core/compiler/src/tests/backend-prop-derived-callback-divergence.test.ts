@@ -39,8 +39,8 @@ import { transformJSX, transformJSX_JS } from '../jsx'
 const js = (c: string): string => transformJSX_JS(c, 'c.tsx').code ?? ''
 const rust = (c: string): string => transformJSX(c, 'c.tsx').code ?? ''
 
-const CALLBACK_NESTED = `function C(props){ const cls = props.theme + '-btn'; return <ul>{props.items.map(i => <li class={cls}>{i}</li>)}</ul> }`
-const TRANSITIVE_CB = `function C(props){ const a = props.x; const b = a + 1; return <ul>{props.items.map(i => <li>{b}</li>)}</ul> }`
+const CALLBACK_NESTED = `function C(props){ const cls = props.theme + '-btn'; return <List>{props.items.map(i => <li class={cls}>{i}</li>)}</List> }`
+const TRANSITIVE_CB = `function C(props){ const a = props.x; const b = a + 1; return <List>{props.items.map(i => <li>{b}</li>)}</List> }`
 const SHADOW_PARAM = `function C(props){ const a = props.x; return <ul>{props.items.map(a => <li>{a}</li>)}</ul> }`
 const DIRECT = `function C(props){ const a = props.x; return <div>{a}</div> }`
 

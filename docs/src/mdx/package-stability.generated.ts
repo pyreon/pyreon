@@ -11,6 +11,7 @@ export const PACKAGE_STABILITY: Readonly<Record<string, PackageStability>> = {
   '@pyreon/charts': 'stable',
   '@pyreon/cli': 'stable',
   '@pyreon/code': 'stable',
+  '@pyreon/command': 'experimental',
   '@pyreon/compiler': 'stable',
   '@pyreon/config': 'stable',
   '@pyreon/connector-document': 'experimental',
