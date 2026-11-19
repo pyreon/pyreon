@@ -1,6 +1,7 @@
 import pyreon from '@pyreon/vite-plugin'
 import { defineNodeConfig } from '@pyreon/vitest-config'
 import channelGate from './vite-plugins/channel-gate'
+import derivedCounts from './vite-plugins/derived-counts'
 
 // Unit tests for the site's own code (the /open stats fetchers, the stable
 // link config, the showcase data). The page views are compiled with the real
@@ -9,6 +10,6 @@ import channelGate from './vite-plugins/channel-gate'
 // what ships.
 export default defineNodeConfig({
   overrides: {
-    plugins: [channelGate(), pyreon()],
+    plugins: [derivedCounts(), channelGate(), pyreon()],
   },
 })

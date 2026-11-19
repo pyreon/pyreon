@@ -127,10 +127,10 @@ export const checked = {
           },
           {
             "topic": "Library ecosystem",
-            "pyreon": "77 first-party packages (router, forms, query, charts, flow, table, i18n…); React libraries that use only public hooks can run through `@pyreon/react-compat`.",
+            "pyreon": "{{@packageCount}} first-party packages (router, forms, query, charts, flow, table, i18n…); React libraries that use only public hooks can run through `@pyreon/react-compat`.",
             "rival": "A far larger third-party catalog: component kits, React Flow, react-aria and thousands more, all running as-is.",
             "verdict": "rival",
-            "source": "AGENTS.md (77 packages); packages/tools/react-compat/README.md (third-party section)"
+            "source": "AGENTS.md ({{@packageCount}} packages); packages/tools/react-compat/README.md (third-party section)"
           },
           {
             "topic": "Production track record",

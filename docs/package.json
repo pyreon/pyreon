@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@pyreon/a11y": "workspace:*",
+    "@pyreon/ambient": "workspace:*",
     "@pyreon/attrs": "workspace:*",
     "@pyreon/auth": "workspace:*",
     "@pyreon/charts": "workspace:*",
@@ -30,6 +31,7 @@
     "@pyreon/feature": "workspace:*",
     "@pyreon/flow": "workspace:*",
     "@pyreon/form": "workspace:*",
+    "@pyreon/format": "workspace:*",
     "@pyreon/head": "workspace:*",
     "@pyreon/hooks": "workspace:*",
     "@pyreon/hotkeys": "workspace:*",
@@ -55,6 +57,7 @@
     "@pyreon/styler": "workspace:*",
     "@pyreon/sync": "workspace:*",
     "@pyreon/table": "workspace:*",
+    "@pyreon/time": "workspace:*",
     "@pyreon/toast": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/unistyle": "workspace:*",

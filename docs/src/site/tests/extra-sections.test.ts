@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs'
+import { derived, resolveDerived } from '../derived'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { EXTRA_SECTIONS_MORE } from '../content/extra-sections.more'
 
 const content = resolve(__dirname, '../content/products')
-const read = (id: string) => JSON.parse(readFileSync(resolve(content, `${id}.json`), 'utf8'))
+const read = (id: string) => JSON.parse(resolveDerived(readFileSync(resolve(content, `${id}.json`), 'utf8'), derived(), `${id}.json`))
 
 /** Visible text of the reference HTML: tags dropped, entities decoded, whitespace collapsed. */
 function htmlText(html: string): string {

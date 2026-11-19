@@ -20,6 +20,8 @@
   "storage",
   "feature",
   "i18n",
+  "format",
+  "time",
   "permissions",
   "urlstate",
   "hooks",
@@ -161,6 +163,18 @@
    "name": "i18n",
    "package": "@pyreon/i18n",
    "category": "fundamentals · translations"
+  },
+  {
+   "id": "format",
+   "name": "Format",
+   "package": "@pyreon/format",
+   "category": "fundamentals · formatting"
+  },
+  {
+   "id": "time",
+   "name": "Time",
+   "package": "@pyreon/time",
+   "category": "fundamentals · dates"
   },
   {
    "id": "permissions",

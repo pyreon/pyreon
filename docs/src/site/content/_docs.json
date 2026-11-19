@@ -2085,11 +2085,13 @@
     },
     {
      "title": "Format",
-     "href": "/docs/format"
+     "href": "/docs/format",
+     "productId": "format"
     },
     {
      "title": "Time",
-     "href": "/docs/time"
+     "href": "/docs/time",
+     "productId": "time"
     },
     {
      "title": "Money",
@@ -3430,6 +3432,48 @@
     "validation",
     "content",
     "a11y"
+   ]
+  },
+  {
+   "productId": "format",
+   "name": "Format",
+   "docsPage": null,
+   "docsHref": "/docs/format",
+   "gapNote": "The Format docs page (format.md) is a guide and carries none of the six selling slots yet; the product page's call to action links to it.",
+   "closestPage": "format.md",
+   "pitch": "content/format.json#hero",
+   "demo": "content/format.json#demo",
+   "bench": "content/format.json#benchmarks",
+   "benchNote": "No benchmark has been run for @pyreon/format (benchmarks written, not run): no figure may be added until a recorded result exists.",
+   "comingFrom": {
+    "lib": "Intl",
+    "ref": "content/format.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "i18n",
+    "time",
+    "table"
+   ]
+  },
+  {
+   "productId": "time",
+   "name": "Time",
+   "docsPage": null,
+   "docsHref": "/docs/time",
+   "gapNote": "The Time docs page (time.md) is a guide and carries none of the six selling slots yet; the product page's call to action links to it.",
+   "closestPage": "time.md",
+   "pitch": "content/time.json#hero",
+   "demo": "content/time.json#demo",
+   "bench": "content/time.json#benchmarks",
+   "benchNote": "Only a bundle-size row exists (BENCHMARKS.md, 2026-11-18): Pyreon 5.90 kB vs Day.js 5.42 kB gzip, a loss to Day.js that the page states plainly. No timing has been run: no speed figure may be added until a recorded result exists.",
+   "comingFrom": {
+    "lib": "date-fns",
+    "ref": "content/time.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "format",
+    "rx",
+    "table"
    ]
   },
   {

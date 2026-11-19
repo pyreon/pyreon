@@ -18,6 +18,7 @@ import publishLlmsTxt from './vite-plugins/publish-llms-txt'
 import staticPages from './vite-plugins/static-pages'
 import { blogBench, blogPlanned } from './vite-plugins/blog'
 import channelGate from './vite-plugins/channel-gate'
+import derivedCounts from './vite-plugins/derived-counts'
 
 // Pyreon-native docs site, powered by @pyreon/zero + @pyreon/zero-content.
 //
@@ -45,6 +46,8 @@ export default defineConfig({
   plugins: [
     // tokens.css → `@layer docs`, below the UI system's layers (see the plugin).
     legacyCssLayer(),
+    // `{{@key}}` placeholders in the content JSON → counts computed from this checkout (src/site/derived.ts).
+    derivedCounts(),
     // Content JSON → without links to a channel that is not open (Discord,
     // newsletter: src/site-links.ts), before the plugins below read the same
     // files; /discord and /newsletter as static redirects once they are open.
