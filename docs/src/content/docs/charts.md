@@ -361,23 +361,27 @@ iOS and Android as a literal.
   RTL plus an x-inverse reads left to right again. Works on category axes, numeric and
   time (`xValue`) axes, horizontal charts (the category rows run bottom to top), and
   lowers to iOS and Android as a literal.
-- **`sqrt` and `symlog` scales, and a scaled x axis** — `yScale="sqrt"` / `"symlog"`
-  (or `<Axis y scale="symlog">`, `<Scale y="sqrt">`) and, for a numeric `xValue` axis,
-  `xScale="log" | "sqrt" | "symlog"` (`<Axis x scale="log">`, `<Scale x="log">`) draw every
-  mark in a view of the data, the way the log y axis always has. The rules are fixed so a
+- **`sqrt` and `symlog` scales, and a scaled x axis** — import a scale **descriptor**:
+  `<Scale y={sqrt()} />`, `<Axis y scale={symlog()} />`, and for a numeric `xValue` axis
+  `<Scale x={log()} />` (`sqrt()`, `symlog({ constant })` and `log()` all work on either
+  axis; `yScale="log"` stays a plain string for the value axis). They are imported bindings
+  like `fillBy`, so a chart that never imports one bundles none of this code. Each draws
+  every mark in a view of the data, the way the log y axis always has. The rules are fixed so a
   value is never silently moved: **log** places only values above zero, **sqrt** only values
   from zero up (a value the scale cannot place is a gap, drawn as nothing, never a NaN pixel;
   on an x axis the whole datum becomes a gap), **symlog** places everything
-  (`sign(v) * log10(1 + |v|)`: it reads linearly near zero and logarithmically far from it; the
-  constant is 1 and is not configurable). Ticks are nice in the REAL values and labelled with
+  (`sign(v) * log10(1 + |v| / c)`: it reads linearly near zero and logarithmically far from it;
+  `c` is `symlog({ constant })`, 1 by default). Ticks are nice in the REAL values and labelled with
   them: decades with 1-2-5 minors when the span is short for log, the ordinary nice values
   (spaced by the square root, so denser near zero) for sqrt, zero and decades either side of
   it for symlog. Bars on a `sqrt` or `symlog` axis grow from the axis floor or from zero,
   zoom and the brush work in rows (so they are untouched by the scale), the tooltip, the
   table and the value labels keep the real values, hits and the crosshair find a datum where
   it was drawn, and the spoken description says which scale an axis is on. A time axis stays
-  linear (`xScale` is ignored with `xTime`). They lower to iOS and Android as literals; the
-  native description does not yet name the scale.
+  linear (the scale is ignored with `xTime`). On iOS and Android the compiler recognises the
+  imported descriptor with its literal `constant` (a non-literal one warns by name) and builds the
+  engine's own view, so the transform and the ticks are the same code; the native spoken
+  description names the scale too.
 - **Time y axis** — `yTime` (or `<Scale y="time">`), the twin of `xTime`.
 - **Axis titles** — `xTitle` / `yTitle` / `y2Title` (or `<Axis x title>`), each
   in a line of its own outside the tick labels, the y titles running along

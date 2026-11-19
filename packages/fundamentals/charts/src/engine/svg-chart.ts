@@ -11,7 +11,7 @@ import type { Mark } from './marks'
 import { resolveCategories, resolveMarks } from './marks'
 import { defaultTheme, renderChart } from './render'
 import { mirrorCmds } from './rtl'
-import type { Annotation, ChartTheme, PointMarker } from './render'
+import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView } from './render'
 import { measureApprox, renderSvg } from './svg'
 import type { Formatter } from './format'
 import type { SvgOptions } from './svg'
@@ -65,10 +65,10 @@ export interface ChartToSvgOptions<T> {
   /** Reverse the x axis direction — see `PlotChartProps.xInverse`. Accessors then see the REVERSED index. */
   xInverse?: boolean
   /** The value-axis scale — see `PlotChartProps.yScale`. */
-  yScale?: 'linear' | 'log' | 'sqrt' | 'symlog'
+  yScale?: 'linear' | 'log' | ScaleView
   /** A NUMERIC x channel (spacing follows the values); with it `xScale` applies — see `PlotChartProps.xScale`. */
   xValue?: (d: T, index: number) => number
-  xScale?: 'linear' | 'log' | 'sqrt' | 'symlog'
+  xScale?: 'linear' | ScaleView
   /**
    * Text measurement. Defaults to the approximation, which is what makes this
    * callable on a server — pass `canvasMeasure(ctx, font)` in a browser when
@@ -88,6 +88,36 @@ export interface ChartToSvgOptions<T> {
    */
   description?: string
   svg?: Omit<SvgOptions, 'title' | 'description'>
+}
+
+/** The scale descriptors of the options, as spec fields. */
+function viewFields<T>(options: ChartToSvgOptions<T>): { yView: ScaleView | undefined; xView: ScaleView | undefined } {
+  return { yView: typeof options.yScale === 'object' ? options.yScale : undefined, xView: typeof options.xScale === 'object' ? options.xScale : undefined }
+}
+
+/** The options that ride onto the spec as they are (each one a plain forward, so the chart function itself stays simple). */
+function optionFields<T>(options: ChartToSvgOptions<T>, rows: readonly T[]): Partial<ChartSpec> {
+  return {
+    // Assigned, not conditionally spread — see the note in `render.ts`: the
+    // `...(cond ? { k } : {})` idiom emits an empty object literal, which PMTC
+    // cannot lower.
+    yDomain: options.yDomain,
+    yFormat: options.format,
+    y2Domain: options.y2Domain,
+    y2Format: options.y2Format,
+    annotations: options.annotations,
+    markers: options.markers,
+    horizontal: options.horizontal === true,
+    barWidth: options.barWidth,
+    barGap: options.barGap,
+    barCategoryGap: options.barCategoryGap,
+    yInverse: options.yInverse,
+    y2Inverse: options.y2Inverse,
+    xInverse: options.xInverse,
+    yScale: typeof options.yScale === 'string' ? options.yScale : undefined,
+    ...viewFields(options),
+    xValues: options.xValue === undefined ? undefined : rows.map((d, i) => options.xValue!(d, i)),
+  }
 }
 
 /** The rows the engine lays out: in reverse when the x axis is reversed (the host does the same), categories following. */
@@ -125,25 +155,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     showXAxis: options.showXAxis ?? true,
     showYAxis: options.showYAxis ?? true,
     showGrid: options.showGrid ?? true,
-    // Assigned, not conditionally spread — see the note in `render.ts`: the
-    // `...(cond ? { k } : {})` idiom emits an empty object literal, which PMTC
-    // cannot lower.
-    yDomain: options.yDomain,
-    yFormat: options.format,
-    y2Domain: options.y2Domain,
-    y2Format: options.y2Format,
-    annotations: options.annotations,
-    markers: options.markers,
-    horizontal: options.horizontal === true,
-    barWidth: options.barWidth,
-    barGap: options.barGap,
-    barCategoryGap: options.barCategoryGap,
-    yInverse: options.yInverse,
-    y2Inverse: options.y2Inverse,
-    xInverse: options.xInverse,
-    yScale: options.yScale,
-    xScale: options.xScale,
-    xValues: options.xValue === undefined ? undefined : rows.map((d, i) => options.xValue!(d, i)),
+    ...optionFields(options, rows),
   }
   const measure = options.measure ?? measureApprox()
   // Same seam as the canvas host's `present`: RTL is the mirror of the

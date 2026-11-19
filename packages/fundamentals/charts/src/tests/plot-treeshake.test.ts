@@ -44,6 +44,7 @@ async function bundle(imports: readonly string[], from: string = PLOT): Promise<
       define: { 'process.env.NODE_ENV': '"production"' },
       write: false,
     })
+
     return out.outputFiles[0]!.text
   } finally {
     rmSync(entry, { force: true })
@@ -119,5 +120,19 @@ describe.skipIf(!hasBuiltLib(MAIN, "the main entry's feature tree-shaking"))('<C
     const fill = await bundle(['Chart', 'Bar', 'fillBy'], MAIN)
     expect(hasLiteral(fill, 'fill-by'), 'the fillBy marker is not load-bearing').toBe(true)
     expect(hasLiteral(fill, 'shade-by'), 'shadeBy came along with fillBy').toBe(false)
+  })
+
+  // Scale descriptors (`sqrt()`, `symlog()`, `log()`) carry the whole view (transform, pipeline,
+  // tick builders) on the spec; the engine core never imports it. `"symlog"` appears only in `scale-view.ts`.
+  it('<Chart> + <Line> + <Axis> bundles no scale view code', async () => {
+    const code = await bundle(['Chart', 'Line', 'Axis'], MAIN)
+    expect(hasLiteral(code, 'symlog'), 'a scale view reached a chart with no descriptor').toBe(false)
+  })
+
+  it('and the marker is real — importing sqrt, symlog or log brings the view in', async () => {
+    for (const d of ['sqrt', 'symlog', 'log']) {
+      const code = await bundle(['Chart', 'Line', d], MAIN)
+      expect(hasLiteral(code, 'symlog'), `importing ${d} did not bring the view in`).toBe(true)
+    }
   })
 })

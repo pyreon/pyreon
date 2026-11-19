@@ -1,4 +1,4 @@
-import { plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, PLOT_SPEC_LITERAL_PROPS, chartSpecFieldIndex, PLOT_INDICATOR_MARKS, chartStaticFlag, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, marksAreColumns } from './hosts'
+import { describeInput, scaleNote, scaleViewArg, scaleViewOf, plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, PLOT_SPEC_LITERAL_PROPS, chartSpecFieldIndex, PLOT_INDICATOR_MARKS, chartStaticFlag, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, marksAreColumns } from './hosts'
 import { swiftIdent, swiftStr, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { CHART_HANDLE_TYPE, CHARTS_PLUGIN_NAME, chartHandleSeriesKey } from './names'
 import { host } from './swift-facade'
@@ -501,6 +501,11 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     }
     late.push({ at: chartSpecFieldIndex(p.name), name: p.name, arg: `${p.name}: ${p.kind === 'string' ? swiftStr(raw) : p.kind === 'number' ? (Number.isInteger(raw) ? `${String(raw)}.0` : String(raw)) : String(raw)}` })
   }
+  // A scale descriptor (`sqrt()`, `symlog()`, `log()`) is a ScaleView built from its compile-time literal.
+  for (const axis of ['y', 'x'] as const) {
+    const sv = scaleViewOf(chartAttrExpr(e, `${axis}View`))
+    if (sv !== undefined) late.push({ at: chartSpecFieldIndex(`${axis}View`), name: `${axis}View`, arg: scaleViewArg('swift', axis, sv) })
+  }
   late.sort((a, b) => a.at - b.at)
   for (const l of late) specArgs.push(l.arg)
   // The struct's LAST field, so it goes last.
@@ -770,11 +775,11 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const a11ySeries = labels === undefined
     ? `${a11ySource}.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }`
     : `${a11ySource}.enumerated().map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }`
-  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}))`
+  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}))${scaleNote(host.staticAttr(e, 'yScale'), scaleViewOf(chartAttrExpr(e, 'yView')), scaleViewOf(chartAttrExpr(e, 'xView')))}`
   let dataViewOverlay = ''
   if (toolbox?.dataView === true) {
     // The data view: the accessible table's rows, visible, over the chart, with a close button.
-    const input = describe.slice('describeChart('.length, -1)
+    const input = describeInput(describe)
     // After the chart's accessibility label, not before it: a label applied
     // over the overlay merges the table and its close button into the chart's
     // one element, where VoiceOver and XCUITest cannot reach them.

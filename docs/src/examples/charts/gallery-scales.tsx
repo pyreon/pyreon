@@ -1,4 +1,5 @@
-import { Axis, Chart, Dot, Line, Tooltip } from '@pyreon/charts'
+import { Axis, Chart, Dot, Line, Tooltip, log, sqrt, symlog } from '@pyreon/charts'
+import type { ScaleView } from '@pyreon/charts'
 import { signal } from '@pyreon/reactivity'
 
 /**
@@ -21,10 +22,11 @@ const PLACES: Place[] = [
   { name: 'Metropolis', people: 9_000_000, score: 8 },
 ]
 
-type Scale = 'linear' | 'sqrt' | 'symlog' | 'log'
+type Pick = 'linear' | 'sqrt' | 'symlog' | 'log'
+const VIEWS: Record<Pick, 'linear' | ScaleView> = { linear: 'linear', sqrt: sqrt(), symlog: symlog(), log: log() }
 
 export default function GalleryScales() {
-  const scale = signal<Scale>('log')
+  const scale = signal<Pick>('log')
   return (
     <div class="example-col">
       <div class="example-row">
@@ -37,7 +39,7 @@ export default function GalleryScales() {
       <Chart<Place> data={PLACES} xValue="people" height={240} title="Score by population">
         <Line<Place> y="score" label="Score" />
         <Dot<Place> y="score" label="Score" />
-        <Axis x scale={scale()} title="Population" />
+        <Axis x scale={VIEWS[scale()]} title="Population" />
         <Tooltip />
       </Chart>
     </div>

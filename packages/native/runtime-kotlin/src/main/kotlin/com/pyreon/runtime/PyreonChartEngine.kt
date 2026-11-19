@@ -64,7 +64,7 @@ data class Gutters(var left: Double, var right: Double, var top: Double, var bot
 
 data class PlotLayout(var plot: PyreonChartRect, var xTicks: List<Tick>, var yTicks: List<Tick>, var y2Ticks: List<Tick>, var xDomainUsed: Domain, var xLabelRotate: Double, var xLabelEvery: Long, var yLabelEvery: Long, var gutters: Gutters)
 
-data class LayoutConfig(var width: Double, var height: Double, var xDomain: Domain, var yDomain: Domain, var categories: List<String>, var fontSize: Double, var xTickCount: Double, var yTickCount: Double, var showXAxis: Boolean, var showYAxis: Boolean, var rightReserve: Double? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xTime: Boolean? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var horizontal: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var yLog: Boolean? = null, var yLogMin: Double? = null, var yLogMax: Double? = null, var yViewKind: String? = null, var xViewKind: String? = null, var xViewMin: Double? = null, var xViewMax: Double? = null, var yTime: Boolean? = null, var xLabels: String? = null)
+data class LayoutConfig(var width: Double, var height: Double, var xDomain: Domain, var yDomain: Domain, var categories: List<String>, var fontSize: Double, var xTickCount: Double, var yTickCount: Double, var showXAxis: Boolean, var showYAxis: Boolean, var rightReserve: Double? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var xTime: Boolean? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var horizontal: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var yLog: Boolean? = null, var yLogMin: Double? = null, var yLogMax: Double? = null, var yViewTicks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> List<Tick>)? = null, var yViewReal: Domain? = null, var xViewTicks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> List<Tick>)? = null, var xViewReal: Domain? = null, var yTime: Boolean? = null, var xLabels: String? = null)
 
 data class LabelSample(var widest: Double, var need: Double)
 
@@ -88,6 +88,8 @@ data class DialSpec(var start: Double, var sweep: Double, var clockwise: Boolean
 
 data class Layered(var z: Double, var seq: Double, var cmd: PyreonDrawCmd)
 
+data class ScaleView(var kind: String, var param: Double, var apply: ((ChartSpec, String) -> ChartSpec)? = null, var ticks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> List<Tick>)? = null)
+
 data class Series(var kind: String, var values: List<Double>, var color: String, var width: Double, var radius: Double, var label: String, var curve: ((List<PyreonChartPt>) -> List<PyreonChartPt>)? = null, var areaOpacity: Double? = null, var showValues: Boolean? = null, var rValues: List<Double>? = null, var radii: List<Double>? = null, var axis: String? = null, var effect: Boolean? = null, var symbol: String? = null, var symbolRepeat: Boolean? = null, var corners: List<Double>? = null, var gradient: SeriesGradient? = null, var pattern: PyreonChartPattern? = null, var dash: List<Double>? = null, var negativeColor: String? = null, var connectNulls: Boolean? = null, var seriesSelected: Boolean? = null, var inBrush: List<Long>? = null, var brushOpacity: Double? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var values2: List<Double>? = null, var itemColors: List<String>? = null, var shades: List<Double>? = null)
 
 data class Annotation(var y: Double? = null, var x: Double? = null, var yFrom: Double? = null, var yTo: Double? = null, var xFrom: Double? = null, var xTo: Double? = null, var x1: Double? = null, var y1: Double? = null, var x2: Double? = null, var y2: Double? = null, var label: String? = null, var color: String? = null)
@@ -98,7 +100,7 @@ data class ChartTheme(var palette: List<String>, var background: String, var sur
 
 data class Emphasis(var highlight: Long, var selected: List<Long>)
 
-data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var xScale: String? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var barWidth: Double? = null, var barGap: Double? = null, var barCategoryGap: Double? = null, var yInverse: Boolean? = null, var y2Inverse: Boolean? = null, var xInverse: Boolean? = null, var rowKeys: List<String>? = null)
+data class ChartSpec(var width: Double, var height: Double, var m4Density: Double? = null, var series: List<Series>, var categories: List<String>, var theme: ChartTheme, var showXAxis: Boolean, var showYAxis: Boolean, var showGrid: Boolean, var endLabels: Boolean? = null, var xTicks: Double? = null, var yTicks: Double? = null, var yDomain: Domain? = null, var yFormat: ((Double) -> String)? = null, var xFormat: ((Double) -> String)? = null, var y2Domain: Domain? = null, var y2Format: ((Double) -> String)? = null, var xValues: List<Double>? = null, var xTime: Boolean? = null, var horizontal: Boolean? = null, var annotations: List<Annotation>? = null, var markers: List<PointMarker>? = null, var progress: Double? = null, var emphasis: Emphasis? = null, var yScale: String? = null, var yView: ScaleView? = null, var xView: ScaleView? = null, var yReal: Domain? = null, var xReal: Domain? = null, var yViewApplied: Boolean? = null, var xViewApplied: Boolean? = null, var yTime: Boolean? = null, var stackNormalize: Boolean? = null, var xTitle: String? = null, var yTitle: String? = null, var y2Title: String? = null, var xLabels: String? = null, var barWidth: Double? = null, var barGap: Double? = null, var barCategoryGap: Double? = null, var yInverse: Boolean? = null, var y2Inverse: Boolean? = null, var xInverse: Boolean? = null, var rowKeys: List<String>? = null)
 
 data class ExtentSpan(var seen: Boolean, var lo: Double, var hi: Double)
 
@@ -2196,6 +2198,13 @@ fun valueTickTarget(width: Double, height: Double, fontSize: Double, horizontal:
     return autoTickCount(height - 8.0 - (fontSize + 10.0), Y_TICK_SPACING)
   }
 
+fun callViewTicks(ticks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> List<Tick>)?, real: Domain?, r0: Double, r1: Double, count: Double, format: ((Double) -> String)?): List<Tick> {
+    val build = (ticks ?: ::noViewTicks)
+    return build((real ?: Domain(min = 0.0, max = 1.0)), r0, r1, count, format)
+  }
+
+fun noViewTicks(_real: Domain, _r0: Double, _r1: Double, _count: Double, _format: ((Double) -> String)?): List<Tick> = listOf()
+
 fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotLayout {
     val padTop = 8.0
     val padRight = 12.0
@@ -2204,9 +2213,11 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val yCount = if (cfg.yTickCount > 0.0) cfg.yTickCount else valueTickTarget(cfg.width, cfg.height, cfg.fontSize, cfg.horizontal == true)
     val titleH = cfg.fontSize + labelGap
     val isLog = cfg.yLog == true
+    val hasViewY = cfg.yViewTicks != null
+    val hasViewX = cfg.xViewTicks != null
     val logMin = (cfg.yLogMin ?: 1.0)
     val logMax = (cfg.yLogMax ?: 10.0)
-    val valueTicksY = { r0: Double, r1: Double -> if (isLog) viewTicks((cfg.yViewKind ?: "log"), Domain(min = logMin, max = logMax), if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, yCount, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
+    val valueTicksY = { r0: Double, r1: Double -> if (hasViewY) callViewTicks(cfg.yViewTicks, cfg.yViewReal, if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, yCount, cfg.yFormat) else if (isLog) logViewTicks(logMin, logMax, if (cfg.yDomain.inverse == true) r1 else r0, if (cfg.yDomain.inverse == true) r0 else r1, cfg.yFormat) else if (cfg.yTime == true) timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) else makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
     val provisionalLabels = if (cfg.horizontal == true) if (cfg.showYAxis) cfg.categories else listOf() else if (cfg.showYAxis) valueTicksY(cfg.height, 0.0).map({ t -> t.label }) else listOf()
     val yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
     val widest = yProvisional.widest
@@ -2228,7 +2239,7 @@ fun computeLayout(cfg: LayoutConfig, measure: (String, Double) -> Double): PlotL
     val left = yBand
     val right = (if (hasY2) widest2 + labelGap + tickLen else padRight) + y2TitleH + ((cfg.rightReserve ?: 0.0))
     val provisionalW = Math.max(0.0, cfg.width - left - right)
-    val numericXTicks = { r0: Double, r1: Double, count: Double -> if (((cfg.xViewKind ?: "")) != "") viewTicks((cfg.xViewKind ?: "log"), Domain(min = (cfg.xViewMin ?: 1.0), max = (cfg.xViewMax ?: 10.0)), if (cfg.xDomain.inverse == true) r1 else r0, if (cfg.xDomain.inverse == true) r0 else r1, count, cfg.xFormat) else if (cfg.xTime == true) timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) else makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) }
+    val numericXTicks = { r0: Double, r1: Double, count: Double -> if (hasViewX) callViewTicks(cfg.xViewTicks, cfg.xViewReal, if (cfg.xDomain.inverse == true) r1 else r0, if (cfg.xDomain.inverse == true) r0 else r1, count, cfg.xFormat) else if (cfg.xTime == true) timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) else makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) }
     val xCount = if (cfg.xTickCount > 0.0) cfg.xTickCount else autoTickCount(provisionalW, X_TICK_SPACING)
     val mode = (cfg.xLabels ?: "auto")
     var rotate = 0.0
@@ -3316,18 +3327,24 @@ fun logBounds(spec: ChartSpec): Domain {
     return Domain(min = floor, max = ceil)
   }
 
-fun geometrySpec(spec: ChartSpec): ChartSpec {
-    val yKind = viewKindOf(spec.yScale)
-    val xKind = if (((spec.xValues ?: listOf())).length > 0L && spec.xTime != true) viewKindOf(spec.xScale) else ""
+fun geometrySpec(spec: ChartSpec): ChartSpec = baseGeometry(applyScaleViews(spec))
+
+fun applyScaleViews(spec: ChartSpec): ChartSpec {
+    val keep = { s: ChartSpec, _axis: String -> s }
+    val runX = if (spec.xViewApplied == true) keep else (spec.xView?.apply ?: keep)
+    val x = runX(spec, "x")
+    val runY = if (x.yViewApplied == true) keep else (x.yView?.apply ?: keep)
+    return runY(x, "y")
+  }
+
+fun baseGeometry(spec: ChartSpec): ChartSpec {
+    val isLog = spec.yScale == "log"
     val norm = spec.stackNormalize == true
-    if (yKind == "" && xKind == "" && !norm) {
+    if (!isLog && !norm) {
       return spec
     }
-    val yReal = yRealBounds(spec, yKind)
-    val yLo = if (yKind == "log") yReal.min else 1.0
-    val xs = (spec.xValues ?: listOf())
-    val xReal = if (xKind == "") Domain(min = 1.0, max = 10.0) else xRealBounds(xKind, xs)
-    val xLo = if (xKind == "log") xReal.min else 1.0
+    val lb = if (isLog) logBounds(spec) else Domain(min = 1.0, max = 10.0)
+    val viewMax = if (isLog) Math.log10(((lb.max).toDouble() / (lb.min).toDouble()).toDouble()) else 1.0
     val stacked = if (norm) normalizeStack(spec.series.filter({ s -> s.kind == "stacked" }).map({ s -> s.values })) else listOf()
     var si = 0L
     val series: MutableList<Series> = mutableListOf()
@@ -3336,92 +3353,39 @@ fun geometrySpec(spec: ChartSpec): ChartSpec {
         series.add(s.copy(values = if (si < stacked.length) stacked[(si).toInt()] else s.values))
         si = pyreonAdd(si, 1L)
       } else {
-        if (yKind != "" && !seriesOnRightAxis(s, spec)) {
-          series.add(withYView(s, yKind, yLo, xKind, xs, xLo))
+        if (isLog && !seriesOnRightAxis(s, spec)) {
+          val values: MutableList<Double> = mutableListOf()
+          for (v in s.values) {
+            values.add(if (v > 0.0) Math.log10(((v).toDouble() / (lb.min).toDouble()).toDouble()) else ((0.0).toDouble() / (0.0).toDouble()))
+          }
+          val lows: MutableList<Double> = mutableListOf()
+          val highs: MutableList<Double> = mutableListOf()
+          for (v in (s.errLow ?: listOf())) {
+            lows.add(if (v > 0.0) Math.log10(((v).toDouble() / (lb.min).toDouble()).toDouble()) else ((0.0).toDouble() / (0.0).toDouble()))
+          }
+          for (v in (s.errHigh ?: listOf())) {
+            highs.add(if (v > 0.0) Math.log10(((v).toDouble() / (lb.min).toDouble()).toDouble()) else ((0.0).toDouble() / (0.0).toDouble()))
+          }
+          series.add(s.copy(values = values, errLow = if (s.errLow == null) null else lows, errHigh = if (s.errHigh == null) null else highs))
         } else {
-          series.add(if (xKind == "") s else withYView(s, "", 1.0, xKind, xs, xLo))
+          series.add(s)
         }
       }
     }
     val notes: MutableList<Annotation> = mutableListOf()
     for (a in (spec.annotations ?: listOf())) {
-      notes.add(if (yKind == "" && xKind == "") a else viewAnnotation(a, yKind, yLo, xKind, xLo))
-    }
-    val yDomain = if (yKind != "") viewDomain(yKind, yReal) else Domain(min = 0.0, max = 1.0)
-    val xView: MutableList<Double> = mutableListOf()
-    for (x in xs) {
-      xView.add(if (xKind == "") x else viewForward(xKind, x, xLo))
-    }
-    return spec.copy(series = series, yDomain = if (yKind == "" && !norm) spec.yDomain else yDomain, annotations = if (spec.annotations == null) null else notes, yScale = "linear", xScale = "linear", stackNormalize = false, xValues = if (xKind == "") spec.xValues else xView)
-  }
-
-fun yRealBounds(spec: ChartSpec, kind: String): Domain {
-    if (kind == "log") {
-      return logBounds(spec)
-    }
-    return if (kind == "") Domain(min = 1.0, max = 10.0) else viewReal(kind, (spec.yDomain ?: pinDomain(spec, leftAxisSeries(spec))))
-  }
-
-fun viewKindOf(scale: String?): String {
-    val k = (scale ?: "")
-    return if (k == "log" || k == "sqrt" || k == "symlog") k else ""
-  }
-
-fun viewReal(kind: String, d: Domain): Domain = if (kind == "sqrt" && d.min < 0.0) Domain(min = 0.0, max = d.max) else d
-
-fun xRealBounds(kind: String, xs: List<Double>): Domain {
-    var lo = 0.0
-    var hi = 0.0
-    var seen = 0L
-    for (x in xs) {
-      if (!isFiniteNumber(x) || (kind == "log" && !(x > 0.0)) || (kind == "sqrt" && x < 0.0)) {
+      if (!isLog) {
+        notes.add(a)
         continue
       }
-      if (seen == 0L) {
-        lo = x
-        hi = x
-      }
-      if (x < lo) {
-        lo = x
-      }
-      if (x > hi) {
-        hi = x
-      }
-      seen = pyreonAdd(seen, 1L)
+      val ay = (a.y ?: 0.0)
+      val yF = (a.yFrom ?: 0.0)
+      val yT = (a.yTo ?: 0.0)
+      notes.add(a.copy(y = if (a.y != null && ay > 0.0) Math.log10(((ay).toDouble() / (lb.min).toDouble()).toDouble()) else null, yFrom = if (a.yFrom != null && yF > 0.0) Math.log10(((yF).toDouble() / (lb.min).toDouble()).toDouble()) else null, yTo = if (a.yTo != null && yT > 0.0) Math.log10(((yT).toDouble() / (lb.min).toDouble()).toDouble()) else null))
     }
-    return if (seen == 0L) Domain(min = 1.0, max = 10.0) else Domain(min = lo, max = hi)
+    val yDomain = if (isLog) Domain(min = 0.0, max = viewMax) else Domain(min = 0.0, max = 1.0)
+    return spec.copy(series = series, yDomain = yDomain, annotations = if (spec.annotations == null) null else notes, yScale = "linear", stackNormalize = false)
   }
-
-fun withYView(s: Series, yKind: String, yLo: Double, xKind: String, xs: List<Double>, xLo: Double): Series {
-    val values: MutableList<Double> = mutableListOf()
-    var i = 0L
-    for (v in s.values) {
-      val placed = xKind == "" || i >= xs.length || isFiniteNumber(viewForward(xKind, xs[(i).toInt()], xLo))
-      val mapped = if (yKind == "") v else viewForward(yKind, v, yLo)
-      values.add(if (placed) mapped else (0.0).toDouble() / (0.0).toDouble())
-      i = pyreonAdd(i, 1L)
-    }
-    if (yKind == "") {
-      return s.copy(values = values)
-    }
-    val lows: MutableList<Double> = mutableListOf()
-    val highs: MutableList<Double> = mutableListOf()
-    for (v in (s.errLow ?: listOf())) {
-      lows.add(viewForward(yKind, v, yLo))
-    }
-    for (v in (s.errHigh ?: listOf())) {
-      highs.add(viewForward(yKind, v, yLo))
-    }
-    return s.copy(values = values, errLow = if (s.errLow == null) null else lows, errHigh = if (s.errHigh == null) null else highs)
-  }
-
-fun viewAnnotation(a: Annotation, yKind: String, yLo: Double, xKind: String, xLo: Double): Annotation {
-    val mapY = { v: Double? -> (if (v == null || yKind == "") v else keepFinite(viewForward(yKind, (v ?: 0.0), yLo))) }
-    val mapX = { v: Double? -> (if (v == null || xKind == "") v else keepFinite(viewForward(xKind, (v ?: 0.0), xLo))) }
-    return a.copy(y = mapY(a.y), yFrom = mapY(a.yFrom), yTo = mapY(a.yTo), x = mapX(a.x), xFrom = mapX(a.xFrom), xTo = mapX(a.xTo), y1 = mapY(a.y1), y2 = mapY(a.y2), x1 = mapX(a.x1), x2 = mapX(a.x2))
-  }
-
-fun keepFinite(v: Double): Double? = if (isFiniteNumber(v)) v else null
 
 fun seriesDomain(s: Series, spec: ChartSpec, yDomain: Domain, y2Domain: Domain): Domain = if (seriesOnRightAxis(s, spec)) y2Domain else yDomain
 
@@ -3557,11 +3521,9 @@ fun seriesMaxLength(series: List<Series>): Long {
 fun layoutChart(raw: ChartSpec, measure: (String, Double) -> Double): PlotLayout {
     val spec = geometrySpec(raw)
     val n = seriesMaxLength(spec.series)
-    val yKind = viewKindOf(raw.yScale)
-    val lb = yRealBounds(raw, yKind)
-    val xKind = if (((raw.xValues ?: listOf())).length > 0L && raw.xTime != true) viewKindOf(raw.xScale) else ""
-    val xBounds = if (xKind == "") Domain(min = 1.0, max = 10.0) else xRealBounds(xKind, (raw.xValues ?: listOf()))
-    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0L) invertIf(extent((spec.xValues ?: listOf())), spec.xInverse == true) else Domain(min = 0.0, max = if (n > 1L) (pyreonSub(n, 1L)).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = (spec.xTicks ?: 0.0), yTickCount = valueTicks(spec), showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, rightReserve = endLabelReserve(spec, measure), yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0L) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = yKind != "", yLogMin = lb.min, yLogMax = lb.max, yViewKind = yKind, xViewKind = xKind, xViewMin = xBounds.min, xViewMax = xBounds.max, yTime = spec.yTime == true, xLabels = spec.xLabels)
+    val isLog = raw.yScale == "log"
+    val lb = if (isLog) logBounds(raw) else Domain(min = 1.0, max = 10.0)
+    val cfg = LayoutConfig(width = spec.width, height = spec.height, xDomain = if (((spec.xValues ?: listOf())).length > 0L) invertIf(extent((spec.xValues ?: listOf())), spec.xInverse == true) else Domain(min = 0.0, max = if (n > 1L) (pyreonSub(n, 1L)).toDouble() else 1.0), yDomain = resolveYDomain(spec), categories = spec.categories, fontSize = spec.theme.fontSize, xTickCount = (spec.xTicks ?: 0.0), yTickCount = valueTicks(spec), showXAxis = spec.showXAxis, showYAxis = spec.showYAxis, rightReserve = endLabelReserve(spec, measure), yFormat = (spec.yFormat ?: (if (raw.stackNormalize == true) percent(0L) else null)), xFormat = spec.xFormat, xTime = spec.xTime == true, y2Domain = if (hasRightAxis(spec)) resolveY2Domain(spec) else null, y2Format = spec.y2Format, horizontal = spec.horizontal == true, xTitle = spec.xTitle, yTitle = spec.yTitle, y2Title = spec.y2Title, yLog = isLog, yLogMin = lb.min, yLogMax = lb.max, yViewTicks = spec.yView?.ticks, yViewReal = spec.yReal, xViewTicks = spec.xView?.ticks, xViewReal = spec.xReal, yTime = spec.yTime == true, xLabels = spec.xLabels)
     return computeLayout(cfg, measure)
   }
 
@@ -4885,22 +4847,23 @@ fun shadeColors(shades: List<Double>, stops: List<String>, min: Double, max: Dou
     return out
   }
 
-fun viewForward(kind: String, v: Double, lo: Double): Double {
+fun viewForward(kind: String, v: Double, param: Double): Double {
     if (kind == "log") {
-      return if (v > 0.0) Math.log10(((v).toDouble() / (lo).toDouble()).toDouble()) else (0.0).toDouble() / (0.0).toDouble()
+      return if (v > 0.0) Math.log10(((v).toDouble() / (param).toDouble()).toDouble()) else (0.0).toDouble() / (0.0).toDouble()
     }
     if (kind == "sqrt") {
       return if (v >= 0.0) Math.sqrt((v).toDouble()) else (0.0).toDouble() / (0.0).toDouble()
     }
-    return if (v >= 0.0) Math.log10((1.0 + v).toDouble()) else -Math.log10((1.0 - v).toDouble())
+    return if (v >= 0.0) Math.log10((1.0 + (v).toDouble() / (param).toDouble()).toDouble()) else -Math.log10((1.0 - (v).toDouble() / (param).toDouble()).toDouble())
   }
 
-fun viewDomain(kind: String, real: Domain): Domain {
+fun viewDomain(kind: String, real: Domain, param: Double): Domain {
     val lo = if (real.min > 0.0) real.min else 1.0
-    return if (kind == "log") Domain(min = 0.0, max = Math.log10(((real.max).toDouble() / (lo).toDouble()).toDouble())) else Domain(min = viewForward(kind, real.min, lo), max = viewForward(kind, real.max, lo))
+    return if (kind == "log") Domain(min = 0.0, max = Math.log10(((real.max).toDouble() / (lo).toDouble()).toDouble())) else Domain(min = viewForward(kind, real.min, param), max = viewForward(kind, real.max, param))
   }
 
-fun symlogTicks(real: Domain, view: Domain, r0: Double, r1: Double, fmt: (Double) -> String): List<Tick> {
+fun symlogTicks(real: Domain, r0: Double, r1: Double, param: Double, fmt: (Double) -> String): List<Tick> {
+    val view = viewDomain("symlog", real, param)
     val out: MutableList<Tick> = mutableListOf()
     val reach = Math.max(Math.abs(real.min), Math.abs(real.max))
     val decades = if (reach >= 1.0) Math.floor(Math.log10((reach).toDouble())) else 0.0
@@ -4918,26 +4881,107 @@ fun symlogTicks(real: Domain, view: Domain, r0: Double, r1: Double, fmt: (Double
     }
     for (v in cands) {
       if (v >= real.min - 1e-9 * reach && v <= real.max + 1e-9 * reach) {
-        out.add(Tick(value = v, pos = scaleLinear(view, r0, r1, viewForward("symlog", v, 1.0)), label = fmt(v)))
+        out.add(Tick(value = v, pos = scaleLinear(view, r0, r1, viewForward("symlog", v, param)), label = fmt(v)))
       }
     }
     return out
   }
 
-fun viewTicks(kind: String, real: Domain, r0: Double, r1: Double, count: Double, format: ((Double) -> String)? = null): List<Tick> {
-    val view = viewDomain(kind, real)
+fun viewTicks(kind: String, real: Domain, r0: Double, r1: Double, count: Double, format: ((Double) -> String)?, param: Double): List<Tick> {
     if (kind == "log") {
       return logViewTicks(real.min, real.max, r0, r1, format)
     }
     if (kind == "symlog") {
-      return symlogTicks(real, view, r0, r1, (format ?: ::groupThousands))
+      return symlogTicks(real, r0, r1, param, (format ?: ::groupThousands))
     }
     val out: MutableList<Tick> = mutableListOf()
+    val view = viewDomain(kind, real, param)
     for (t in makeTicks(real, 0.0, 1.0, count, format)) {
       out.add(Tick(value = t.value, pos = scaleLinear(view, r0, r1, viewForward("sqrt", t.value, 1.0)), label = t.label))
     }
     return out
   }
+
+fun xRealBounds(kind: String, xs: List<Double>): Domain {
+    val placed: MutableList<Double> = mutableListOf()
+    for (x in xs) {
+      if (isFiniteNumber(x) && (kind != "log" || x > 0.0) && (kind != "sqrt" || x >= 0.0)) {
+        placed.add(x)
+      }
+    }
+    return if (placed.length == 0L) Domain(min = 1.0, max = 10.0) else extent(placed)
+  }
+
+fun viewAnnotation(a: Annotation, kind: String, param: Double, onX: Boolean): Annotation {
+    val map = { v: Double? -> (if (v == null) v else keepFinite(viewForward(kind, (v ?: 0.0), param))) }
+    if (onX) {
+      return a.copy(x = map(a.x), xFrom = map(a.xFrom), xTo = map(a.xTo), x1 = map(a.x1), x2 = map(a.x2))
+    }
+    return a.copy(y = map(a.y), yFrom = map(a.yFrom), yTo = map(a.yTo), y1 = map(a.y1), y2 = map(a.y2))
+  }
+
+fun keepFinite(v: Double): Double? = if (isFiniteNumber(v)) v else null
+
+fun viewSeries(s: Series, kind: String, param: Double): Series {
+    val values: MutableList<Double> = mutableListOf()
+    for (v in s.values) {
+      values.add(viewForward(kind, v, param))
+    }
+    val lows: MutableList<Double> = mutableListOf()
+    val highs: MutableList<Double> = mutableListOf()
+    for (v in (s.errLow ?: listOf())) {
+      lows.add(viewForward(kind, v, param))
+    }
+    for (v in (s.errHigh ?: listOf())) {
+      highs.add(viewForward(kind, v, param))
+    }
+    return s.copy(values = values, errLow = if (s.errLow == null) null else lows, errHigh = if (s.errHigh == null) null else highs)
+  }
+
+fun applyY(spec: ChartSpec, kind: String, param: Double): ChartSpec {
+    val real = if (kind == "log") logBounds(spec) else (spec.yDomain ?: pinDomain(spec, leftAxisSeries(spec)))
+    val bounds = if (kind == "sqrt" && real.min < 0.0) Domain(min = 0.0, max = real.max) else real
+    val lo = if (kind == "log") bounds.min else param
+    val series: MutableList<Series> = mutableListOf()
+    for (s in spec.series) {
+      series.add(if (seriesOnRightAxis(s, spec)) s else viewSeries(s, kind, lo))
+    }
+    val notes: MutableList<Annotation> = mutableListOf()
+    for (a in (spec.annotations ?: listOf())) {
+      notes.add(viewAnnotation(a, kind, lo, false))
+    }
+    return spec.copy(series = series, annotations = if (spec.annotations == null) null else notes, yDomain = viewDomain(kind, bounds, lo), yReal = bounds, yViewApplied = true)
+  }
+
+fun applyX(spec: ChartSpec, kind: String, param: Double): ChartSpec {
+    val xs = (spec.xValues ?: listOf())
+    if (xs.length == 0L || spec.xTime == true) {
+      return spec.copy(xView = null)
+    }
+    val real = xRealBounds(kind, xs)
+    val lo = if (kind == "log") real.min else param
+    val xView: MutableList<Double> = mutableListOf()
+    for (x in xs) {
+      xView.add(viewForward(kind, x, lo))
+    }
+    val series: MutableList<Series> = mutableListOf()
+    for (s in spec.series) {
+      val values: MutableList<Double> = mutableListOf()
+      var i = 0L
+      for (v in s.values) {
+        values.add(if (i < xView.length && !isFiniteNumber(xView[(i).toInt()])) (0.0).toDouble() / (0.0).toDouble() else v)
+        i = i + 1L
+      }
+      series.add(s.copy(values = values))
+    }
+    val notes: MutableList<Annotation> = mutableListOf()
+    for (a in (spec.annotations ?: listOf())) {
+      notes.add(viewAnnotation(a, kind, lo, true))
+    }
+    return spec.copy(series = series, annotations = if (spec.annotations == null) null else notes, xValues = xView, xReal = real, xViewApplied = true)
+  }
+
+fun applyScaleView(spec: ChartSpec, axis: String, kind: String, param: Double): ChartSpec = if (axis == "x") applyX(spec, kind, param) else applyY(spec, kind, param)
 
 fun labelWidth(s: VisualStrip): Double = s.fontSize * 3.2
 

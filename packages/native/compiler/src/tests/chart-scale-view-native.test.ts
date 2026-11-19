@@ -13,7 +13,7 @@ const read = (p: string) => readFileSync(join(REPO, p), 'utf8')
 const CANVAS_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartCanvas.swift'
 const ENGINE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonChartEngine.swift'
 
-const SRC = `import { Axis, Bar, Chart, Line, Scale } from '@pyreon/charts'
+const SRC = `import { Axis, Bar, Chart, Line, Scale, log, sqrt, symlog } from '@pyreon/charts'
 interface Row { m: string; a: number }
 interface Pt { x: number; y: number }
 const ROWS: Row[] = [{ m: 'Jan', a: 3 }, { m: 'Feb', a: 40 }]
@@ -23,11 +23,11 @@ export function App() {
     <>
       <Chart<Row> data={ROWS} x="m" height={200}>
         <Bar<Row> y="a" />
-        <Axis y scale="sqrt" />
+        <Axis y scale={sqrt()} />
       </Chart>
       <Chart<Pt> data={PTS} xValue="x" height={200}>
         <Line<Pt> y="y" />
-        <Scale x="log" y="symlog" />
+        <Scale x={log()} y={symlog({ constant: 10 })} />
       </Chart>
     </>
   )
@@ -36,16 +36,26 @@ export function App() {
 
 describe.each(['swift', 'kotlin'] as const)('scale views on %s', (target) => {
   const eq = target === 'swift' ? ': ' : ' = '
-  it('yScale and xScale land on the ChartSpec as literals', () => {
+  it('a scale descriptor becomes the engine ScaleView built from its compile-time literal', () => {
     const r = transform(SRC, { target })
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain(`yScale${eq}"sqrt"`)
-    expect(r.code).toContain(`yScale${eq}"symlog"`)
-    expect(r.code).toContain(`xScale${eq}"log"`)
+    expect(r.code).toContain(`yView${eq}ScaleView(`)
+    expect(r.code).toContain('applyScaleView(s, a, "sqrt", 1.0)')
+    expect(r.code).toContain('applyScaleView(s, a, "symlog", 10.0)')
+    expect(r.code).toContain('viewTicks("log"')
   })
-  it('a linear chart emits neither (byte-stable)', () => {
-    const r = transform(SRC.replace('<Axis y scale="sqrt" />', '').replace('<Scale x="log" y="symlog" />', ''), { target })
-    expect(r.code).not.toMatch(/yScale|xScale/)
+  it('the spoken description names a non-linear scale, as on the web', () => {
+    const r = transform(SRC, { target })
+    expect(r.code).toContain('The value axis is on a sqrt scale.')
+    expect(r.code).toContain('The x axis is on a log scale.')
+  })
+  it('a linear chart emits none of it (byte-stable)', () => {
+    const r = transform(SRC.replace('<Axis y scale={sqrt()} />', '').replace('<Scale x={log()} y={symlog({ constant: 10 })} />', ''), { target })
+    expect(r.code).not.toMatch(/ScaleView|applyScaleView|scale\./)
+  })
+  it('a non-literal constant is named and the axis stays linear', () => {
+    const r = transform(SRC.replace('symlog({ constant: 10 })', 'symlog({ constant: ROWS.length })'), { target })
+    expect(r.warnings.some((w) => w.includes('needs a literal'))).toBe(true)
   })
 })
 

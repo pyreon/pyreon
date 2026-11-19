@@ -151,6 +151,17 @@ single seam every y position goes through): the data and the accessible table ke
 their order. Reversing the category axis is not supported yet. Lowers to iOS and
 Android as `yInverse` / `y2Inverse` literals.
 
+### Non-linear axes
+
+Import a scale descriptor, `sqrt()`, `symlog({ constant })` or `log()`, for either axis:
+`<Scale y={sqrt()} />`, `<Scale x={log()} />` (`yScale="log"` stays a string for the value
+axis). They are imported bindings, so a chart that never imports one bundles none of the
+code. Each is a view of the data (the geometry stays linear over transformed values), ticks
+are nice in the real values and labelled with them, and a value a scale cannot place (log:
+not above zero, sqrt: below zero) is a gap rather than a moved or NaN pixel; symlog places
+everything. The tooltip, the table and the labels keep the real values, the spoken
+description names the scale, and time axes stay linear. Lowers to iOS and Android.
+
 ### Entrance animation
 
 On by default: bars rise from the zero line, lines draw left to right, points

@@ -851,6 +851,86 @@ function substituteIdent(e: ExprIR, name: string, to: ExprIR): ExprIR {
 }
 
 const lit = (value: string | number | boolean): ExprIR => ({ kind: 'literal', value })
+
+/**
+ * A `scale` value as a plot attr: a plain string (`'log'`, `'linear'`) stays
+ * `yScale`; a scale DESCRIPTOR call (`sqrt()`, `symlog({ constant })`, `log()`)
+ * becomes `yView` / `xView`, an object literal `{ kind, param }` the emitters
+ * turn into the engine's `ScaleView`. A non-literal `constant` (or any other
+ * shape) is named and the axis stays linear.
+ */
+/** The `input` of a `describeChart(input)` expression, with any ` + "note"` suffix (`scaleNote`) left off. */
+export function describeInput(describe: string): string {
+  const end = describe.indexOf(' + "')
+
+  return describe.slice('describeChart('.length, (end < 0 ? describe.length : end) - 1)
+}
+
+/**
+ * The spoken description's note on a non-linear axis, as ` + "…"` (empty for a
+ * linear chart): the web's `scaleNote` — the picture's spacing is not the data's,
+ * and a listener should know. Read from the compile-time literals.
+ */
+export function scaleNote(yScale: unknown, yView: { kind: string } | undefined, xView: { kind: string } | undefined): string {
+  const y = yView !== undefined ? yView.kind : typeof yScale === 'string' && yScale !== 'linear' ? yScale : ''
+  const text = (y === '' ? '' : ` The value axis is on a ${y} scale.`) + (xView === undefined ? '' : ` The x axis is on a ${xView.kind} scale.`)
+
+  return text === '' ? '' : ` + "${text}"`
+}
+
+/** The `{ kind, param }` literal `scaleAttr` made, or undefined. */
+export function scaleViewOf(v: ExprIR | undefined): { kind: string; param: number } | undefined {
+  if (v === undefined || v.kind !== 'object') return undefined
+  const kind = v.fields.find((f) => f.name === 'kind')?.value
+  const param = v.fields.find((f) => f.name === 'param')?.value
+  if (kind?.kind !== 'literal' || typeof kind.value !== 'string' || param?.kind !== 'literal' || typeof param.value !== 'number') return undefined
+
+  return { kind: kind.value, param: param.value }
+}
+
+/** The engine's `ScaleView` for a scale descriptor, as the `ChartSpec` argument: the closures call the generated engine's own `applyScaleView` / `viewTicks`, which is what keeps native and web on the same axis. */
+export function scaleViewArg(target: 'swift' | 'kotlin', axis: 'x' | 'y', v: { kind: string; param: number }): string {
+  const p = chartDouble(v.param)
+  if (target === 'swift') {
+    return `${axis}View: ScaleView(kind: "${v.kind}", param: ${p}, apply: { s, a in applyScaleView(s, a, "${v.kind}", ${p}) }, ticks: { real, r0, r1, count, fmt in viewTicks("${v.kind}", real, r0, r1, count, fmt, ${p}) })`
+  }
+
+  return `${axis}View = ScaleView(kind = "${v.kind}", param = ${p}, apply = { s, a -> applyScaleView(s, a, "${v.kind}", ${p}) }, ticks = { real, r0, r1, count, fmt -> viewTicks("${v.kind}", real, r0, r1, count, fmt, ${p}) })`
+}
+
+function pushAttr(into: AttrIR[], a: AttrIR | undefined): void {
+  if (a !== undefined) into.push(a)
+}
+
+/** A descriptor call's constant: 1 when absent, the number when literal, null when it is neither (`symlog({ constant: n })`). */
+function descriptorParam(v: Extract<ExprIR, { kind: 'call' }>): number | null {
+  const opts = v.args[0]
+  if (opts === undefined) return 1
+  if (opts.kind !== 'object') return null
+  const constant = opts.fields.find((f) => f.name === 'constant')?.value
+  if (constant === undefined) return 1
+
+  return constant.kind === 'literal' && typeof constant.value === 'number' ? constant.value : null
+}
+
+function scaleAttr(axis: 'x' | 'y', v: ExprIR, warn: (m: string) => void): AttrIR | undefined {
+  const name = v.kind === 'call' && v.callee.kind === 'identifier' ? v.callee.name : ''
+  if (v.kind === 'call' && (name === 'sqrt' || name === 'symlog' || name === 'log')) {
+    const param = descriptorParam(v)
+    if (param === null) {
+      warn(`<Axis ${axis} scale>: \`${name}(...)\` needs a literal \`{ constant: number }\` on native; the axis stays linear.`)
+
+      return undefined
+    }
+
+    return { kind: 'attr', name: `${axis}View`, value: { kind: 'object', fields: [{ name: 'kind', value: lit(name) }, { name: 'param', value: lit(param) }] } }
+  }
+  if (axis === 'x' && v.kind === 'literal' && v.value !== 'linear') warn('<Axis x scale>: a numeric x axis takes a scale descriptor (`scale={log()}`); the string form is for the value axis. The axis stays linear.')
+
+  // The value axis keeps its plain strings ('linear' | 'log'); a numeric x axis has no string form.
+  return axis === 'y' ? { kind: 'attr', name: 'yScale', value: v } : undefined
+}
+
 const ident = (name: string): ExprIR => ({ kind: 'identifier', name })
 /** `"field"` → `(d) => d.field`; an accessor passes through. */
 function channelArrow(v: ExprIR): ExprIR {
@@ -1003,7 +1083,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (labels !== undefined) attrs.push({ kind: 'attr', name: 'xLabels', value: labels })
           if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'xInverse', value: lit(true) })
           const xScaleAttr = attrOf(child, 'scale')
-          if (xScaleAttr !== undefined) attrs.push({ kind: 'attr', name: 'xScale', value: xScaleAttr })
+          if (xScaleAttr !== undefined) pushAttr(attrs, scaleAttr('x', xScaleAttr, warn))
         } else if (flagOn(child, 'y2')) {
           if (format !== undefined) attrs.push({ kind: 'attr', name: 'y2Format', value: format })
           if (domain !== undefined) attrs.push({ kind: 'attr', name: 'y2Domain', value: domain })
@@ -1017,7 +1097,7 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
           if (title !== undefined) attrs.push({ kind: 'attr', name: 'yTitle', value: title })
           if (flagOn(child, 'time')) attrs.push({ kind: 'attr', name: 'yTime', value: lit(true) })
           const scale = attrOf(child, 'scale')
-          if (scale !== undefined) attrs.push({ kind: 'attr', name: 'yScale', value: scale })
+          if (scale !== undefined) pushAttr(attrs, scaleAttr('y', scale, warn))
           if (flagOn(child, 'inverse')) attrs.push({ kind: 'attr', name: 'yInverse', value: lit(true) })
         }
         break
@@ -1026,10 +1106,10 @@ export function desugarChartGrammar(e: Extract<ExprIR, { kind: 'jsx-element' }>,
         // `<Scale y="log" | "time" x="time" normalize>` — the same switches `<Axis>` carries, stated together.
         const y = attrOf(child, 'y')
         if (y !== undefined && y.kind === 'literal' && y.value === 'time') attrs.push({ kind: 'attr', name: 'yTime', value: lit(true) })
-        else if (y !== undefined) attrs.push({ kind: 'attr', name: 'yScale', value: y })
+        else if (y !== undefined) pushAttr(attrs, scaleAttr('y', y, warn))
         const x = attrOf(child, 'x')
         if (x !== undefined && x.kind === 'literal' && x.value === 'time') attrs.push({ kind: 'attr', name: 'xTime', value: lit(true) })
-        else if (x !== undefined && x.kind === 'literal' && x.value !== 'linear') attrs.push({ kind: 'attr', name: 'xScale', value: x })
+        else if (x !== undefined && !(x.kind === 'literal' && x.value === 'linear')) pushAttr(attrs, scaleAttr('x', x, warn))
         if (flagOn(child, 'normalize')) attrs.push({ kind: 'attr', name: 'stackNormalize', value: lit(true) })
         break
       }
@@ -2051,7 +2131,6 @@ export const PLOT_MARK_ACCESSOR_OPTIONS: readonly string[] = ['errorLow', 'error
  */
 export const PLOT_SPEC_LITERAL_PROPS: ReadonlyArray<{ name: string; kind: 'string' | 'boolean' | 'number' }> = [
   { name: 'yScale', kind: 'string' },
-  { name: 'xScale', kind: 'string' },
   { name: 'yTime', kind: 'boolean' },
   { name: 'stackNormalize', kind: 'boolean' },
   { name: 'xTitle', kind: 'string' },

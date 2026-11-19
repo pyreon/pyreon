@@ -2,9 +2,9 @@
   "package": "@pyreon/charts",
   "bundle": 97543,
   "imports": {
-    "chart-line": 41500,
+    "chart-line": 41100,
     "chart-pie": 26210,
-    "plot-minimal": 41800,
-    "plot-svg": 19200
+    "plot-minimal": 41350,
+    "plot-svg": 18750
   }
 }

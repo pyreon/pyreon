@@ -54,7 +54,8 @@ import type { Accessor, ErrorOptions, Mark, MarkOptions } from './marks'
 import { bollinger, ema, sma, trend } from './indicators'
 import type { ItemFill } from './item-colors'
 import { defaultTheme, logBounds, resolveYDomain } from './render'
-import type { Annotation, ChartSpec, ChartTheme, PointMarker } from './render'
+import { warnOnce } from './dev-warn'
+import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView } from './render'
 import type { LegendPosition } from './canvas-host'
 import type { Domain, Double } from './types'
 import type { ChartHandle, ChartLink } from './link'
@@ -155,7 +156,7 @@ export interface AxisProps {
   /** x only: what the labels do when they run out of room (`auto` rotates categories, thins numbers). */
   labels?: AxisLabelMode
   /** The scale type of a y axis, or of a NUMERIC x axis (`xValue`): `linear`, `log`, `sqrt`, `symlog`. `<Scale y="log">` is the same switch. */
-  scale?: 'linear' | 'log' | 'sqrt' | 'symlog'
+  scale?: 'linear' | 'log' | ScaleView
   /** Reverse the axis. y / y2: the high end at the bottom (the left, on a horizontal chart), bars hanging from the top. x: the DIRECTION of the x axis (first category at the right) — the y axis does not move. The data, callbacks and the accessible table keep their order. */
   inverse?: boolean
 }
@@ -165,8 +166,8 @@ export interface AxisProps {
  * per axis; this is the place to state them together.
  */
 export interface ScaleProps {
-  y?: 'linear' | 'log' | 'time' | 'sqrt' | 'symlog'
-  x?: 'linear' | 'time' | 'log' | 'sqrt' | 'symlog'
+  y?: 'linear' | 'log' | 'time' | ScaleView
+  x?: 'linear' | 'time' | ScaleView
   /** Draw the stacked bars as shares of each column. */
   normalize?: boolean
 }
@@ -679,7 +680,8 @@ export function resolveGrammar<T>(rows: readonly T[], chart: ChartProps<T>, chil
           if (a.time === true) props.xTime = true
           if (a.ticks !== undefined) props.xTicks = a.ticks
           if (a.hidden === true) props.showXAxis = false
-          if (a.scale !== undefined) props.xScale = a.scale
+          if (a.scale === 'log' && process.env.NODE_ENV !== 'production') warnOnce('axis:x-log', "<Axis x scale=\"log\">: a numeric x axis takes a scale DESCRIPTOR, `scale={log()}` (import { log } from '@pyreon/charts'); the string form is for the value axis.")
+          if (a.scale !== undefined && a.scale !== 'log') props.xScale = a.scale
           if (a.title !== undefined) props.xTitle = a.title
           if (a.labels !== undefined) props.xLabels = a.labels
           if (a.inverse === true) props.xInverse = true
@@ -702,8 +704,8 @@ export function resolveGrammar<T>(rows: readonly T[], chart: ChartProps<T>, chil
       }
       case 'Scale': {
         const sc = p as ScaleProps
-        if (sc.y === 'log' || sc.y === 'linear' || sc.y === 'sqrt' || sc.y === 'symlog') props.yScale = sc.y
-        if (sc.x === 'log' || sc.x === 'sqrt' || sc.x === 'symlog') props.xScale = sc.x
+        if (sc.y === 'log' || sc.y === 'linear' || (typeof sc.y === 'object' && sc.y !== null)) props.yScale = sc.y
+        if (typeof sc.x === 'object' && sc.x !== null) props.xScale = sc.x
         if (sc.y === 'time') props.yTime = true
         if (sc.x === 'time') props.xTime = true
         if (sc.normalize === true) props.stackNormalize = true
@@ -1024,9 +1026,13 @@ function facetGrid<T>(props: ChartProps<T>, readRows: () => readonly T[], base: 
     const spec: ChartSpec = {
       width: 1.0, height: 1.0, series: resolveMarks(rows, r.marks), categories: [], theme: defaultTheme,
       showXAxis: true, showYAxis: true, showGrid: false,
-      yScale: r.props.yScale,
+      yScale: typeof r.props.yScale === 'string' ? r.props.yScale : undefined,
+      yView: typeof r.props.yScale === 'object' ? r.props.yScale : undefined,
       stackNormalize: r.props.stackNormalize,
     }
+    // A scale descriptor derives its own domain per panel; there is no shared real domain to hand them.
+    if (spec.yView !== undefined) return undefined
+
     return spec.yScale === 'log' ? logBounds(spec) : resolveYDomain(spec)
   })
   const cols = props.facetColumns ?? 2

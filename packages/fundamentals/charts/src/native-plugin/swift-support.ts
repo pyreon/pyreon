@@ -1,4 +1,4 @@
-import { plotFillAccessor, plotFillSpec, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
+import { describeInput, plotFillAccessor, plotFillSpec, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
 import type { ChartHostTarget, ChartThemeText } from './hosts'
 import { substituteIdentifier, swiftIdent, swiftStr, type ExprIR, type TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './swift-facade'
@@ -203,7 +203,7 @@ export function swiftChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, desc
   // DATA: an AXChartDescriptor over the same A11yInput the description reads —
   // the Audio Graph and a per-point explorer, the native twin of the web
   // host's hidden table.
-  const descriptor = describe === undefined ? '' : `.accessibilityChartDescriptor(PyreonChartDescriptor(${describe.slice('describeChart('.length, -1)}))`
+  const descriptor = describe === undefined ? '' : `.accessibilityChartDescriptor(PyreonChartDescriptor(${describeInput(describe)}))`
   const explicit = host.stringAttr(e, 'accessibilityLabel', indent)
   if (explicit !== undefined) return `.accessibilityLabel(${explicit})${descriptor}`
   if (describe !== undefined) return `.accessibilityLabel(${describe})${descriptor}`

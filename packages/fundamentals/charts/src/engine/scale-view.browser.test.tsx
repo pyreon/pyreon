@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { query } from '@pyreon/test-utils'
 import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
 import { Axis, Bar, Chart, Dot, Scale, Tooltip } from './grammar'
+import { log, sqrt } from './scale-descriptors'
 
 interface Pt { x: number; y: number }
 const W = 400
@@ -14,7 +15,7 @@ const H = 220
 const PTS: Pt[] = [{ x: 2, y: 11 }, { x: 30, y: 22 }, { x: 400, y: 33 }, { x: 5000, y: 44 }]
 
 async function tipAt(scale: 'linear' | 'log', fx: number): Promise<string> {
-  const m = mountInBrowser(h(Chart<Pt>, { data: PTS, xValue: 'x', width: W, height: H, animate: false }, h(Dot<Pt>, { y: 'y', label: 'Y' }), h(Axis, { x: true, scale }), h(Tooltip, { crosshair: true })))
+  const m = mountInBrowser(h(Chart<Pt>, { data: PTS, xValue: 'x', width: W, height: H, animate: false }, h(Dot<Pt>, { y: 'y', label: 'Y' }), h(Axis, { x: true, scale: scale === 'log' ? log() : 'linear' }), h(Tooltip, { crosshair: true })))
   await flush()
   const c = query<HTMLCanvasElement>(m.container, 'canvas')
   const r = c.getBoundingClientRect()
@@ -34,7 +35,7 @@ describe('log x in real Chromium', () => {
     expect(await tipAt('linear', 0.4)).not.toContain('22')
   })
   it('the painted tick labels are real values (decades)', async () => {
-    const m = mountInBrowser(h(Chart<Pt>, { data: PTS, xValue: 'x', width: W, height: H, animate: false }, h(Dot<Pt>, { y: 'y' }), h(Scale, { x: 'log' })))
+    const m = mountInBrowser(h(Chart<Pt>, { data: PTS, xValue: 'x', width: W, height: H, animate: false }, h(Dot<Pt>, { y: 'y' }), h(Scale, { x: log() })))
     await flush()
     const table = [...m.container.querySelectorAll('table tbody th')].map((e) => e.textContent)
     expect(table.length).toBeGreaterThan(0)
@@ -46,7 +47,7 @@ describe('sqrt y in real Chromium', () => {
   it('a click on a bar lands where the sqrt axis drew it', async () => {
     const picked: number[] = []
     const data = [{ n: 'a', v: 4 }, { n: 'b', v: 100 }]
-    const m = mountInBrowser(h(Chart<{ n: string; v: number }>, { data, x: 'n', width: W, height: H, animate: false, onSelect: (i: number) => picked.push(i) }, h(Bar, { y: 'v' }), h(Axis, { y: true, scale: 'sqrt' })))
+    const m = mountInBrowser(h(Chart<{ n: string; v: number }>, { data, x: 'n', width: W, height: H, animate: false, onSelect: (i: number) => picked.push(i) }, h(Bar, { y: 'v' }), h(Axis, { y: true, scale: sqrt() })))
     await flush()
     const c = query<HTMLCanvasElement>(m.container, 'canvas')
     const r = c.getBoundingClientRect()

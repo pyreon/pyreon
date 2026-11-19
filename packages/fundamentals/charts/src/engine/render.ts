@@ -8,7 +8,6 @@ import type { StackLevels, StackSegment } from './stack'
 import type { Formatter } from './format'
 import type { LayoutConfig, PlotLayout } from './layout'
 import { extent, isFiniteNumber, niceDomain, xPx, yPx } from './scale'
-import { viewDomain, viewForward } from './scale-view'
 import { percent, plain } from './format'
 import { countToDouble } from './brush'
 import { polygonCmd, rectCmd } from './corners'
@@ -17,7 +16,23 @@ import type { SeriesGradient } from './gradient'
 import { withAlpha } from './radar'
 import { pictorialCommands } from './pictorial'
 import type { PictorialBar } from './pictorial'
-import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Double } from './types'
+import type { ChartPattern, DrawCmd, Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
+
+/**
+ * A non-linear scale as a VIEW (see `scale-view.ts`): `apply` returns the spec
+ * with values (and the x values, annotations, error bounds) in the view and the
+ * domain pinned to it; `ticks` places nice ticks in the REAL space, labelled
+ * with real values. Descriptors (`sqrt()`, `symlog()`, `log()`) build one, so
+ * the code is bundled only where one is imported; natively the emitter builds
+ * the same struct from the compile-time literal and the engine's functions.
+ */
+export interface ScaleView {
+  kind: string
+  /** The log floor (log) or the constant (symlog); unused by sqrt. */
+  param: Double
+  apply?: ((spec: ChartSpec, axis: string) => ChartSpec) | undefined
+  ticks?: ((real: Domain, r0: Double, r1: Double, count: Double, format: Formatter | undefined) => Tick[]) | undefined
+}
 
 /** One drawable series. */
 export interface Series {
@@ -341,9 +356,21 @@ export interface ChartSpec {
    * are decades labelled with the real values, non-positive values are gaps.
    * Bars grow from the axis floor (`lo`), the only place a log bar can start.
    */
-  yScale?: 'linear' | 'log' | 'sqrt' | 'symlog' | undefined
-  /** The scale of a NUMERIC x axis (`xValues`): `linear`, `log`, `sqrt` or `symlog`. A time axis stays linear. */
-  xScale?: 'linear' | 'log' | 'sqrt' | 'symlog' | undefined
+  yScale?: 'linear' | 'log' | undefined
+  /**
+   * A scale DESCRIPTOR for the value axis (`sqrt()`, `symlog()`, `log()`): the
+   * view lives on the descriptor, so a chart that never imports one carries none
+   * of it. Set instead of `yScale`.
+   */
+  yView?: ScaleView | undefined
+  /** The same for a NUMERIC x axis (`xValues`); a time axis stays linear. */
+  xView?: ScaleView | undefined
+  /** The REAL bounds a view's ticks are nice in: set by the view's `apply`, read by the layout. */
+  yReal?: Domain | undefined
+  xReal?: Domain | undefined
+  /** Set by a view's `apply`: the spec is already in the view, so a second pass must not apply it again. */
+  yViewApplied?: boolean | undefined
+  xViewApplied?: boolean | undefined
   /** Label the y axis with calendar steps — the y twin of `xTime`. */
   yTime?: boolean | undefined
   /**
@@ -584,16 +611,28 @@ export function logBounds(spec: ChartSpec): Domain {
  * read the ORIGINAL spec, which is how they keep showing real values.
  */
 export function geometrySpec(spec: ChartSpec): ChartSpec {
-  const yKind = viewKindOf(spec.yScale)
-  const xKind = (spec.xValues ?? []).length > 0 && spec.xTime !== true ? viewKindOf(spec.xScale) : ''
+  // A scale descriptor (`sqrt()`, `symlog()`, `log()`) carries its own view; a chart with none never reaches it.
+
+  return baseGeometry(applyScaleViews(spec))
+}
+
+/** The spec through each axis's scale descriptor, x then y; the same spec when there is none. */
+function applyScaleViews(spec: ChartSpec): ChartSpec {
+  // `?.apply ?? identity`: the optional is not narrowed through a guard on the native targets.
+  const keep = (s: ChartSpec, _axis: string): ChartSpec => s
+  const runX = spec.xViewApplied === true ? keep : spec.xView?.apply ?? keep
+  const x = runX(spec, 'x')
+  const runY = x.yViewApplied === true ? keep : x.yView?.apply ?? keep
+
+  return runY(x, 'y')
+}
+
+function baseGeometry(spec: ChartSpec): ChartSpec {
+  const isLog = spec.yScale === 'log'
   const norm = spec.stackNormalize === true
-  if (yKind === '' && xKind === '' && !norm) return spec
-  // The REAL bounds a view maps, and the log floor (the real value that maps to 0).
-  const yReal = yRealBounds(spec, yKind)
-  const yLo = yKind === 'log' ? yReal.min : 1.0
-  const xs: Double[] = spec.xValues ?? []
-  const xReal = xKind === '' ? { min: 1.0, max: 10.0 } : xRealBounds(xKind, xs)
-  const xLo = xKind === 'log' ? xReal.min : 1.0
+  if (!isLog && !norm) return spec
+  const lb = isLog ? logBounds(spec) : { min: 1.0, max: 10.0 }
+  const viewMax = isLog ? Math.log10(lb.max / lb.min) : 1.0
   // Initialised in one expression: a typed empty-array `let` lowers to a
   // `val` on Kotlin, so a later reassignment would not compile there.
   const stacked: Double[][] = norm ? normalizeStack(spec.series.filter((s) => s.kind === 'stacked').map((s) => s.values)) : []
@@ -603,107 +642,41 @@ export function geometrySpec(spec: ChartSpec): ChartSpec {
     if (norm && s.kind === 'stacked') {
       series.push({ ...s, values: si < stacked.length ? stacked[si]! : s.values })
       si = si + 1
-    } else if (yKind !== '' && !seriesOnRightAxis(s, spec)) {
-      series.push(withYView(s, yKind, yLo, xKind, xs, xLo))
+    } else if (isLog && !seriesOnRightAxis(s, spec)) {
+      const values: Double[] = []
+      for (const v of s.values) values.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
+      const lows: Double[] = []
+      const highs: Double[] = []
+      for (const v of s.errLow ?? []) lows.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
+      for (const v of s.errHigh ?? []) highs.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
+      series.push({ ...s, values, errLow: s.errLow === undefined ? undefined : lows, errHigh: s.errHigh === undefined ? undefined : highs })
     } else {
-      series.push(xKind === '' ? s : withYView(s, '', 1.0, xKind, xs, xLo))
+      series.push(s)
     }
   }
   const notes: Annotation[] = []
-  for (const a of spec.annotations ?? []) notes.push(yKind === '' && xKind === '' ? a : viewAnnotation(a, yKind, yLo, xKind, xLo))
-  // The pinned view domain: a normalized stack always spans 0..1; a view
-  // spans its transformed bounds; the two together stay a view of shares.
-  const yDomain: Domain = yKind !== '' ? viewDomain(yKind, yReal) : { min: 0.0, max: 1.0 }
-  const xView: Double[] = []
-  for (const x of xs) xView.push(xKind === '' ? x : viewForward(xKind, x, xLo))
-
-  return {
-    ...spec,
-    series,
-    yDomain: yKind === '' && !norm ? spec.yDomain : yDomain,
-    annotations: spec.annotations === undefined ? undefined : notes,
-    yScale: 'linear',
-    xScale: 'linear',
-    stackNormalize: false,
-    xValues: xKind === '' ? spec.xValues : xView,
-  }
-}
-
-/** The REAL y bounds a view maps (a log's decade floor and ceiling, a sqrt / symlog's nice domain); a placeholder for the linear axis. */
-export function yRealBounds(spec: ChartSpec, kind: string): Domain {
-  if (kind === 'log') return logBounds(spec)
-
-  return kind === '' ? { min: 1.0, max: 10.0 } : viewReal(kind, spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec)))
-}
-
-/** The view kind of a scale name: '' when it is the plain linear axis. */
-function viewKindOf(scale: string | undefined): string {
-  // Coalesced first (the Swift-narrowing idiom): the optional is not narrowed through the test.
-  const k = scale ?? ''
-
-  return k === 'log' || k === 'sqrt' || k === 'symlog' ? k : ''
-}
-
-/** The real domain a sqrt or symlog view maps: the nice domain, with a sqrt's floor held at zero (a negative is a gap). */
-function viewReal(kind: string, d: Domain): Domain {
-  return kind === 'sqrt' && d.min < 0.0 ? { min: 0.0, max: d.max } : d
-}
-
-/** The real x bounds of a view axis: the positive extent for log (so decades fit), the finite extent otherwise. */
-function xRealBounds(kind: string, xs: Double[]): Domain {
-  let lo = 0.0
-  let hi = 0.0
-  let seen = 0
-  for (const x of xs) {
-    if (!isFiniteNumber(x) || (kind === 'log' && !(x > 0.0)) || (kind === 'sqrt' && x < 0.0)) continue
-    if (seen === 0) {
-      lo = x
-      hi = x
+  for (const a of spec.annotations ?? []) {
+    if (!isLog) {
+      notes.push(a)
+      continue
     }
-    if (x < lo) lo = x
-    if (x > hi) hi = x
-    seen = seen + 1
+    // Coalesce-first (the Swift-narrowing idiom): each bound is read as a
+    // plain Double and its presence decided separately; a non-positive bound
+    // has no place on a log axis and is dropped like a gap.
+    const ay = a.y ?? 0.0
+    const yF = a.yFrom ?? 0.0
+    const yT = a.yTo ?? 0.0
+    notes.push({
+      ...a,
+      y: a.y !== undefined && ay > 0.0 ? Math.log10(ay / lb.min) : undefined,
+      yFrom: a.yFrom !== undefined && yF > 0.0 ? Math.log10(yF / lb.min) : undefined,
+      yTo: a.yTo !== undefined && yT > 0.0 ? Math.log10(yT / lb.min) : undefined,
+    })
   }
-
-  return seen === 0 ? { min: 1.0, max: 10.0 } : { min: lo, max: hi }
-}
-
-/**
- * A series in the view: its values, and its error bounds, through the y view;
- * and a datum whose x the x view cannot place becomes a gap (so no NaN pixel is
- * ever emitted for it).
- */
-// oxlint-disable-next-line max-params -- a positional engine helper: the y view and the x view travel together
-function withYView(s: Series, yKind: string, yLo: Double, xKind: string, xs: Double[], xLo: Double): Series {
-  const values: Double[] = []
-  let i = 0
-  for (const v of s.values) {
-    const placed = xKind === '' || i >= xs.length || isFiniteNumber(viewForward(xKind, xs[i]!, xLo))
-    const mapped = yKind === '' ? v : viewForward(yKind, v, yLo)
-    values.push(placed ? mapped : 0.0 / 0.0)
-    i = i + 1
-  }
-  if (yKind === '') return { ...s, values }
-  const lows: Double[] = []
-  const highs: Double[] = []
-  for (const v of s.errLow ?? []) lows.push(viewForward(yKind, v, yLo))
-  for (const v of s.errHigh ?? []) highs.push(viewForward(yKind, v, yLo))
-
-  return { ...s, values, errLow: s.errLow === undefined ? undefined : lows, errHigh: s.errHigh === undefined ? undefined : highs }
-}
-
-/** A reference rule or band in the view; a bound the scale cannot place is dropped like a gap. */
-function viewAnnotation(a: Annotation, yKind: string, yLo: Double, xKind: string, xLo: Double): Annotation {
-  // Coalesce-first (the Swift-narrowing idiom): each bound is read as a plain
-  // Double and its presence decided separately.
-  const mapY = (v: Double | undefined): Double | undefined => (v === undefined || yKind === '' ? v : keepFinite(viewForward(yKind, v ?? 0.0, yLo)))
-  const mapX = (v: Double | undefined): Double | undefined => (v === undefined || xKind === '' ? v : keepFinite(viewForward(xKind, v ?? 0.0, xLo)))
-
-  return { ...a, y: mapY(a.y), yFrom: mapY(a.yFrom), yTo: mapY(a.yTo), x: mapX(a.x), xFrom: mapX(a.xFrom), xTo: mapX(a.xTo), y1: mapY(a.y1), y2: mapY(a.y2), x1: mapX(a.x1), x2: mapX(a.x2) }
-}
-
-function keepFinite(v: Double): Double | undefined {
-  return isFiniteNumber(v) ? v : undefined
+  // The pinned view domain: a normalized stack always spans 0..1; a log
+  // view spans its decades; the two together stay a log view of shares.
+  const yDomain: Domain = isLog ? { min: 0.0, max: viewMax } : { min: 0.0, max: 1.0 }
+  return { ...spec, series, yDomain, annotations: spec.annotations === undefined ? undefined : notes, yScale: 'linear', stackNormalize: false }
 }
 
 
@@ -739,7 +712,7 @@ export function hasRightAxis(spec: ChartSpec): boolean {
   return false
 }
 
-function leftAxisSeries(spec: ChartSpec): Series[] {
+export function leftAxisSeries(spec: ChartSpec): Series[] {
   return spec.series.filter((s) => !seriesOnRightAxis(s, spec))
 }
 
@@ -751,7 +724,7 @@ function rightAxisSeries(spec: ChartSpec): Series[] {
  * The left axis' domain: its data extent (stack totals and all), any pinned
  * bound applied, niced.
  */
-function pinDomain(spec: ChartSpec, series: Series[]): Domain {
+export function pinDomain(spec: ChartSpec, series: Series[]): Domain {
   const raw = rawExtentOver(series)
   return niceDomain(raw, valueTicks(spec))
 }
@@ -869,10 +842,8 @@ export function seriesMaxLength(series: Series[]): number {
 export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
   const spec = geometrySpec(raw)
   const n = seriesMaxLength(spec.series)
-  const yKind = viewKindOf(raw.yScale)
-  const lb = yRealBounds(raw, yKind)
-  const xKind = (raw.xValues ?? []).length > 0 && raw.xTime !== true ? viewKindOf(raw.xScale) : ''
-  const xBounds = xKind === '' ? { min: 1.0, max: 10.0 } : xRealBounds(xKind, raw.xValues ?? [])
+  const isLog = raw.yScale === 'log'
+  const lb = isLog ? logBounds(raw) : { min: 1.0, max: 10.0 }
   const cfg: LayoutConfig = {
     width: spec.width,
     height: spec.height,
@@ -906,13 +877,13 @@ export function layoutChart(raw: ChartSpec, measure: MeasureText): PlotLayout {
     xTitle: spec.xTitle,
     yTitle: spec.yTitle,
     y2Title: spec.y2Title,
-    yLog: yKind !== '',
-    yViewKind: yKind,
+    yLog: isLog,
     yLogMin: lb.min,
     yLogMax: lb.max,
-    xViewKind: xKind,
-    xViewMin: xBounds.min,
-    xViewMax: xBounds.max,
+    yViewTicks: spec.yView?.ticks,
+    yViewReal: spec.yReal,
+    xViewTicks: spec.xView?.ticks,
+    xViewReal: spec.xReal,
     yTime: spec.yTime === true,
     xLabels: spec.xLabels,
     rightReserve: endLabelReserve(spec, measure),

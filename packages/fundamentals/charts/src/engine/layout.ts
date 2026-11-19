@@ -1,8 +1,7 @@
 // Plot-area layout and per-mark geometry.
 
 import { barThickness, isFiniteNumber, makeTicks, xPx, yPx } from './scale'
-import { timeTicks } from './scale-extra'
-import { viewTicks } from './scale-view'
+import { logViewTicks, timeTicks } from './scale-extra'
 import type { Formatter } from './format'
 import type { Domain, MeasureText, Pt, Rect, Tick, Double } from './types'
 
@@ -111,12 +110,12 @@ export interface LayoutConfig {
   yLog?: boolean | undefined
   yLogMin?: Double | undefined
   yLogMax?: Double | undefined
-  /** Which view the y domain is: 'log', 'sqrt' or 'symlog' (with `yLogMin` / `yLogMax` the REAL bounds the ticks are nice in). */
-  yViewKind?: string | undefined
-  /** The same for a numeric x axis: the view kind and the real bounds. */
-  xViewKind?: string | undefined
-  xViewMin?: Double | undefined
-  xViewMax?: Double | undefined
+  /** A scale descriptor's tick builder for the y axis (with the REAL bounds the ticks are nice in), or undefined. */
+  yViewTicks?: ((real: Domain, r0: Double, r1: Double, count: Double, format: Formatter | undefined) => Tick[]) | undefined
+  yViewReal?: Domain | undefined
+  /** The same for a numeric x axis. */
+  xViewTicks?: ((real: Domain, r0: Double, r1: Double, count: Double, format: Formatter | undefined) => Tick[]) | undefined
+  xViewReal?: Domain | undefined
   /** Label the y axis with calendar steps — the y twin of `xTime`. */
   yTime?: boolean | undefined
   /**
@@ -168,6 +167,25 @@ export function valueTickTarget(width: Double, height: Double, fontSize: Double,
   return autoTickCount(height - 8.0 - (fontSize + 10.0), Y_TICK_SPACING)
 }
 
+// oxlint-disable-next-line max-params -- positional like the tick builders it calls
+function callViewTicks(
+  ticks: ((real: Domain, r0: Double, r1: Double, count: Double, format: Formatter | undefined) => Tick[]) | undefined,
+  real: Domain | undefined,
+  r0: Double,
+  r1: Double,
+  count: Double,
+  format: Formatter | undefined,
+): Tick[] {
+  const build = ticks ?? noViewTicks
+
+  return build(real ?? { min: 0.0, max: 1.0 }, r0, r1, count, format)
+}
+
+/** The tick builder of an axis with no scale descriptor: no ticks (never reached, `viewTicks` is only called when one is set). */
+function noViewTicks(_real: Domain, _r0: Double, _r1: Double, _count: Double, _format: Formatter | undefined): Tick[] {
+  return []
+}
+
 export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayout {
   const padTop = 8.0
   const padRight = 12.0
@@ -179,6 +197,8 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const yCount = cfg.yTickCount > 0.0 ? cfg.yTickCount : valueTickTarget(cfg.width, cfg.height, cfg.fontSize, cfg.horizontal === true)
   const titleH = cfg.fontSize + labelGap
   const isLog = cfg.yLog === true
+  const hasViewY = cfg.yViewTicks !== undefined
+  const hasViewX = cfg.xViewTicks !== undefined
   const logMin = cfg.yLogMin ?? 1.0
   const logMax = cfg.yLogMax ?? 10.0
 
@@ -187,8 +207,10 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   // decades — chosen once here so the provisional (gutter-sizing) pass and
   // the final pass cannot disagree.
   const valueTicksY = (r0: Double, r1: Double): Tick[] =>
-    isLog
-      ? viewTicks(cfg.yViewKind ?? 'log', { min: logMin, max: logMax }, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, yCount, cfg.yFormat)
+    hasViewY
+      ? callViewTicks(cfg.yViewTicks, cfg.yViewReal, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, yCount, cfg.yFormat)
+      : isLog
+      ? logViewTicks(logMin, logMax, cfg.yDomain.inverse === true ? r1 : r0, cfg.yDomain.inverse === true ? r0 : r1, cfg.yFormat)
       : cfg.yTime === true
         ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat)
         : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat)
@@ -238,8 +260,8 @@ export function computeLayout(cfg: LayoutConfig, measure: MeasureText): PlotLayo
   const provisionalW = Math.max(0.0, cfg.width - left - right)
   // The numeric x ticks over a pixel range: view (log / sqrt / symlog), calendar steps, or the nice ladder.
   const numericXTicks = (r0: Double, r1: Double, count: Double): Tick[] =>
-    (cfg.xViewKind ?? '') !== ''
-      ? viewTicks(cfg.xViewKind ?? 'log', { min: cfg.xViewMin ?? 1.0, max: cfg.xViewMax ?? 10.0 }, cfg.xDomain.inverse === true ? r1 : r0, cfg.xDomain.inverse === true ? r0 : r1, count, cfg.xFormat)
+    hasViewX
+      ? callViewTicks(cfg.xViewTicks, cfg.xViewReal, cfg.xDomain.inverse === true ? r1 : r0, cfg.xDomain.inverse === true ? r0 : r1, count, cfg.xFormat)
       : cfg.xTime === true
         ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)
         : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat)

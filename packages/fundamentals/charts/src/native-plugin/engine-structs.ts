@@ -2021,12 +2021,81 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
-        "name": "yViewKind",
+        "name": "yViewTicks",
         "type": {
           "kind": "union",
           "branches": [
             {
-              "kind": "string"
+              "kind": "function",
+              "params": [
+                {
+                  "name": "real",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Domain",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r0",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r1",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "count",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "format",
+                  "type": {
+                    "kind": "union",
+                    "branches": [
+                      {
+                        "kind": "function",
+                        "params": [
+                          {
+                            "name": "value",
+                            "type": {
+                              "kind": "typeRef",
+                              "name": "Double",
+                              "args": []
+                            }
+                          }
+                        ],
+                        "returnType": {
+                          "kind": "string"
+                        }
+                      },
+                      {
+                        "kind": "undefined"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "array",
+                "element": {
+                  "kind": "typeRef",
+                  "name": "Tick",
+                  "args": []
+                }
+              }
             },
             {
               "kind": "undefined"
@@ -2035,27 +2104,13 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
-        "name": "xViewKind",
-        "type": {
-          "kind": "union",
-          "branches": [
-            {
-              "kind": "string"
-            },
-            {
-              "kind": "undefined"
-            }
-          ]
-        }
-      },
-      {
-        "name": "xViewMin",
+        "name": "yViewReal",
         "type": {
           "kind": "union",
           "branches": [
             {
               "kind": "typeRef",
-              "name": "Double",
+              "name": "Domain",
               "args": []
             },
             {
@@ -2065,13 +2120,96 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
-        "name": "xViewMax",
+        "name": "xViewTicks",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "function",
+              "params": [
+                {
+                  "name": "real",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Domain",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r0",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r1",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "count",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "format",
+                  "type": {
+                    "kind": "union",
+                    "branches": [
+                      {
+                        "kind": "function",
+                        "params": [
+                          {
+                            "name": "value",
+                            "type": {
+                              "kind": "typeRef",
+                              "name": "Double",
+                              "args": []
+                            }
+                          }
+                        ],
+                        "returnType": {
+                          "kind": "string"
+                        }
+                      },
+                      {
+                        "kind": "undefined"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "array",
+                "element": {
+                  "kind": "typeRef",
+                  "name": "Tick",
+                  "args": []
+                }
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xViewReal",
         "type": {
           "kind": "union",
           "branches": [
             {
               "kind": "typeRef",
-              "name": "Double",
+              "name": "Domain",
               "args": []
             },
             {
@@ -2902,6 +3040,144 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
           "kind": "typeRef",
           "name": "PyreonDrawCmd",
           "args": []
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "ScaleView",
+    "fields": [
+      {
+        "name": "kind",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "param",
+        "type": {
+          "kind": "typeRef",
+          "name": "Double",
+          "args": []
+        }
+      },
+      {
+        "name": "apply",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "function",
+              "params": [
+                {
+                  "name": "spec",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "ChartSpec",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "axis",
+                  "type": {
+                    "kind": "string"
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "typeRef",
+                "name": "ChartSpec",
+                "args": []
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "ticks",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "function",
+              "params": [
+                {
+                  "name": "real",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Domain",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r0",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "r1",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "count",
+                  "type": {
+                    "kind": "typeRef",
+                    "name": "Double",
+                    "args": []
+                  }
+                },
+                {
+                  "name": "format",
+                  "type": {
+                    "kind": "union",
+                    "branches": [
+                      {
+                        "kind": "function",
+                        "params": [
+                          {
+                            "name": "value",
+                            "type": {
+                              "kind": "typeRef",
+                              "name": "Double",
+                              "args": []
+                            }
+                          }
+                        ],
+                        "returnType": {
+                          "kind": "string"
+                        }
+                      },
+                      {
+                        "kind": "undefined"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "returnType": {
+                "kind": "array",
+                "element": {
+                  "kind": "typeRef",
+                  "name": "Tick",
+                  "args": []
+                }
+              }
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
         }
       }
     ],
@@ -4162,12 +4438,90 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
         }
       },
       {
-        "name": "xScale",
+        "name": "yView",
         "type": {
           "kind": "union",
           "branches": [
             {
-              "kind": "string"
+              "kind": "typeRef",
+              "name": "ScaleView",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xView",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "ScaleView",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yReal",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xReal",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "typeRef",
+              "name": "Domain",
+              "args": []
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "yViewApplied",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "xViewApplied",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "boolean"
             },
             {
               "kind": "undefined"
@@ -12854,6 +13208,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "SankeyLink",
   "SankeyNode",
   "SankeyOptions",
+  "ScaleView",
   "Series",
   "SeriesGradient",
   "Shifted",

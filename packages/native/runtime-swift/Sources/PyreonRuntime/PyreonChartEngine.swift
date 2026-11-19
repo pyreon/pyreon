@@ -373,13 +373,13 @@ public struct LayoutConfig {
   public var yLog: Bool? = nil
   public var yLogMin: Double? = nil
   public var yLogMax: Double? = nil
-  public var yViewKind: String? = nil
-  public var xViewKind: String? = nil
-  public var xViewMin: Double? = nil
-  public var xViewMax: Double? = nil
+  public var yViewTicks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> [Tick])? = nil
+  public var yViewReal: Domain? = nil
+  public var xViewTicks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> [Tick])? = nil
+  public var xViewReal: Domain? = nil
   public var yTime: Bool? = nil
   public var xLabels: String? = nil
-  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, rightReserve: Double? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yViewKind: String? = nil, xViewKind: String? = nil, xViewMin: Double? = nil, xViewMax: Double? = nil, yTime: Bool? = nil, xLabels: String? = nil) {
+  public init(width: Double, height: Double, xDomain: Domain, yDomain: Domain, categories: [String], fontSize: Double, xTickCount: Double, yTickCount: Double, showXAxis: Bool, showYAxis: Bool, rightReserve: Double? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, xTime: Bool? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, horizontal: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, yLog: Bool? = nil, yLogMin: Double? = nil, yLogMax: Double? = nil, yViewTicks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> [Tick])? = nil, yViewReal: Domain? = nil, xViewTicks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> [Tick])? = nil, xViewReal: Domain? = nil, yTime: Bool? = nil, xLabels: String? = nil) {
     self.width = width
     self.height = height
     self.xDomain = xDomain
@@ -403,10 +403,10 @@ public struct LayoutConfig {
     self.yLog = yLog
     self.yLogMin = yLogMin
     self.yLogMax = yLogMax
-    self.yViewKind = yViewKind
-    self.xViewKind = xViewKind
-    self.xViewMin = xViewMin
-    self.xViewMax = xViewMax
+    self.yViewTicks = yViewTicks
+    self.yViewReal = yViewReal
+    self.xViewTicks = xViewTicks
+    self.xViewReal = xViewReal
     self.yTime = yTime
     self.xLabels = xLabels
   }
@@ -667,6 +667,19 @@ public struct Layered: Codable {
   }
 }
 
+public struct ScaleView {
+  public var kind: String
+  public var param: Double
+  public var apply: ((ChartSpec, String) -> ChartSpec)? = nil
+  public var ticks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> [Tick])? = nil
+  public init(kind: String, param: Double, apply: ((ChartSpec, String) -> ChartSpec)? = nil, ticks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> [Tick])? = nil) {
+    self.kind = kind
+    self.param = param
+    self.apply = apply
+    self.ticks = ticks
+  }
+}
+
 public struct Series {
   public var kind: String
   public var values: [Double]
@@ -850,7 +863,12 @@ public struct ChartSpec {
   public var progress: Double? = nil
   public var emphasis: Emphasis? = nil
   public var yScale: String? = nil
-  public var xScale: String? = nil
+  public var yView: ScaleView? = nil
+  public var xView: ScaleView? = nil
+  public var yReal: Domain? = nil
+  public var xReal: Domain? = nil
+  public var yViewApplied: Bool? = nil
+  public var xViewApplied: Bool? = nil
   public var yTime: Bool? = nil
   public var stackNormalize: Bool? = nil
   public var xTitle: String? = nil
@@ -864,7 +882,7 @@ public struct ChartSpec {
   public var y2Inverse: Bool? = nil
   public var xInverse: Bool? = nil
   public var rowKeys: [String]? = nil
-  public init(width: Double, height: Double, m4Density: Double? = nil, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, xScale: String? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, barWidth: Double? = nil, barGap: Double? = nil, barCategoryGap: Double? = nil, yInverse: Bool? = nil, y2Inverse: Bool? = nil, xInverse: Bool? = nil, rowKeys: [String]? = nil) {
+  public init(width: Double, height: Double, m4Density: Double? = nil, series: [Series], categories: [String], theme: ChartTheme, showXAxis: Bool, showYAxis: Bool, showGrid: Bool, endLabels: Bool? = nil, xTicks: Double? = nil, yTicks: Double? = nil, yDomain: Domain? = nil, yFormat: ((Double) -> String)? = nil, xFormat: ((Double) -> String)? = nil, y2Domain: Domain? = nil, y2Format: ((Double) -> String)? = nil, xValues: [Double]? = nil, xTime: Bool? = nil, horizontal: Bool? = nil, annotations: [Annotation]? = nil, markers: [PointMarker]? = nil, progress: Double? = nil, emphasis: Emphasis? = nil, yScale: String? = nil, yView: ScaleView? = nil, xView: ScaleView? = nil, yReal: Domain? = nil, xReal: Domain? = nil, yViewApplied: Bool? = nil, xViewApplied: Bool? = nil, yTime: Bool? = nil, stackNormalize: Bool? = nil, xTitle: String? = nil, yTitle: String? = nil, y2Title: String? = nil, xLabels: String? = nil, barWidth: Double? = nil, barGap: Double? = nil, barCategoryGap: Double? = nil, yInverse: Bool? = nil, y2Inverse: Bool? = nil, xInverse: Bool? = nil, rowKeys: [String]? = nil) {
     self.width = width
     self.height = height
     self.m4Density = m4Density
@@ -890,7 +908,12 @@ public struct ChartSpec {
     self.progress = progress
     self.emphasis = emphasis
     self.yScale = yScale
-    self.xScale = xScale
+    self.yView = yView
+    self.xView = xView
+    self.yReal = yReal
+    self.xReal = xReal
+    self.yViewApplied = yViewApplied
+    self.xViewApplied = xViewApplied
     self.yTime = yTime
     self.stackNormalize = stackNormalize
     self.xTitle = xTitle
@@ -4860,6 +4883,13 @@ public func valueTickTarget(_ width: Double, _ height: Double, _ fontSize: Doubl
     return autoTickCount(height - 8.0 - (fontSize + 10.0), Y_TICK_SPACING)
   }
 
+public func callViewTicks(_ ticks: ((Domain, Double, Double, Double, ((Double) -> String)?) -> [Tick])?, _ real: Domain?, _ r0: Double, _ r1: Double, _ count: Double, _ format: ((Double) -> String)?) -> [Tick] {
+    let build = (ticks ?? noViewTicks)
+    return build((real ?? Domain(min: 0.0, max: 1.0)), r0, r1, count, format)
+  }
+
+public func noViewTicks(_ _real: Domain, _ _r0: Double, _ _r1: Double, _ _count: Double, _ _format: ((Double) -> String)?) -> [Tick] { [] }
+
 public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Double) -> PlotLayout {
     let padTop = 8.0
     let padRight = 12.0
@@ -4868,9 +4898,11 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let yCount = cfg.yTickCount > 0.0 ? cfg.yTickCount : valueTickTarget(cfg.width, cfg.height, cfg.fontSize, cfg.horizontal == true)
     let titleH = cfg.fontSize + labelGap
     let isLog = cfg.yLog == true
+    let hasViewY = cfg.yViewTicks != nil
+    let hasViewX = cfg.xViewTicks != nil
     let logMin = (cfg.yLogMin ?? 1.0)
     let logMax = (cfg.yLogMax ?? 10.0)
-    let valueTicksY = { (r0: Double, r1: Double) in isLog ? viewTicks((cfg.yViewKind ?? "log"), Domain(min: logMin, max: logMax), cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, yCount, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
+    let valueTicksY = { (r0: Double, r1: Double) in hasViewY ? callViewTicks(cfg.yViewTicks, cfg.yViewReal, cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, yCount, cfg.yFormat) : isLog ? logViewTicks(logMin, logMax, cfg.yDomain.inverse == true ? r1 : r0, cfg.yDomain.inverse == true ? r0 : r1, cfg.yFormat) : cfg.yTime == true ? timeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) : makeTicks(cfg.yDomain, r0, r1, yCount, cfg.yFormat) }
     let provisionalLabels = cfg.horizontal == true ? cfg.showYAxis ? cfg.categories : [] : cfg.showYAxis ? valueTicksY(cfg.height, 0.0).map({ t in t.label }) : []
     let yProvisional = labelSample(provisionalLabels, cfg.fontSize, 0.0, measure)
     let widest = yProvisional.widest
@@ -4892,7 +4924,7 @@ public func computeLayout(_ cfg: LayoutConfig, _ measure: (String, Double) -> Do
     let left = yBand
     let right = (hasY2 ? widest2 + labelGap + tickLen : padRight) + y2TitleH + ((cfg.rightReserve ?? 0.0))
     let provisionalW = max(0.0, cfg.width - left - right)
-    let numericXTicks = { (r0: Double, r1: Double, count: Double) in ((cfg.xViewKind ?? "")) != "" ? viewTicks((cfg.xViewKind ?? "log"), Domain(min: (cfg.xViewMin ?? 1.0), max: (cfg.xViewMax ?? 10.0)), cfg.xDomain.inverse == true ? r1 : r0, cfg.xDomain.inverse == true ? r0 : r1, count, cfg.xFormat) : cfg.xTime == true ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) }
+    let numericXTicks = { (r0: Double, r1: Double, count: Double) in hasViewX ? callViewTicks(cfg.xViewTicks, cfg.xViewReal, cfg.xDomain.inverse == true ? r1 : r0, cfg.xDomain.inverse == true ? r0 : r1, count, cfg.xFormat) : cfg.xTime == true ? timeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) : makeTicks(cfg.xDomain, r0, r1, count, cfg.xFormat) }
     let xCount = cfg.xTickCount > 0.0 ? cfg.xTickCount : autoTickCount(provisionalW, X_TICK_SPACING)
     let mode = (cfg.xLabels ?? "auto")
     var rotate = 0.0
@@ -5981,18 +6013,24 @@ public func logBounds(_ spec: ChartSpec) -> Domain {
     return Domain(min: floor, max: ceil)
   }
 
-public func geometrySpec(_ spec: ChartSpec) -> ChartSpec {
-    let yKind = viewKindOf(spec.yScale)
-    let xKind = ((spec.xValues ?? [])).count > 0 && spec.xTime != true ? viewKindOf(spec.xScale) : ""
+public func geometrySpec(_ spec: ChartSpec) -> ChartSpec { baseGeometry(applyScaleViews(spec)) }
+
+public func applyScaleViews(_ spec: ChartSpec) -> ChartSpec {
+    let keep = { (s: ChartSpec, _axis: String) in s }
+    let runX = spec.xViewApplied == true ? keep : (spec.xView?.apply ?? keep)
+    let x = runX(spec, "x")
+    let runY = x.yViewApplied == true ? keep : (x.yView?.apply ?? keep)
+    return runY(x, "y")
+  }
+
+public func baseGeometry(_ spec: ChartSpec) -> ChartSpec {
+    let isLog = spec.yScale == "log"
     let norm = spec.stackNormalize == true
-    if yKind == "" && xKind == "" && !norm {
+    if !isLog && !norm {
       return spec
     }
-    let yReal = yRealBounds(spec, yKind)
-    let yLo = yKind == "log" ? yReal.min : 1.0
-    let xs = (spec.xValues ?? [])
-    let xReal = xKind == "" ? Domain(min: 1.0, max: 10.0) : xRealBounds(xKind, xs)
-    let xLo = xKind == "log" ? xReal.min : 1.0
+    let lb = isLog ? logBounds(spec) : Domain(min: 1.0, max: 10.0)
+    let viewMax = isLog ? log10(Double(Double(lb.max) / Double(lb.min))) : 1.0
     let stacked = norm ? normalizeStack(spec.series.filter({ s in s.kind == "stacked" }).map({ s in s.values })) : []
     var si = 0
     var series: [Series] = []
@@ -6001,92 +6039,39 @@ public func geometrySpec(_ spec: ChartSpec) -> ChartSpec {
         series.append({ var c = s; c.values = si < stacked.count ? stacked[si] : s.values; return c }())
         si = pyreonAdd(si, 1)
       } else {
-        if yKind != "" && !seriesOnRightAxis(s, spec) {
-          series.append(withYView(s, yKind, yLo, xKind, xs, xLo))
+        if isLog && !seriesOnRightAxis(s, spec) {
+          var values: [Double] = []
+          for v in s.values {
+            values.append(v > 0.0 ? log10(Double(v / Double(lb.min))) : (0.0 / 0.0))
+          }
+          var lows: [Double] = []
+          var highs: [Double] = []
+          for v in (s.errLow ?? []) {
+            lows.append(v > 0.0 ? log10(Double(v / Double(lb.min))) : (0.0 / 0.0))
+          }
+          for v in (s.errHigh ?? []) {
+            highs.append(v > 0.0 ? log10(Double(v / Double(lb.min))) : (0.0 / 0.0))
+          }
+          series.append({ var c = s; c.values = values; c.errLow = s.errLow == nil ? nil : lows; c.errHigh = s.errHigh == nil ? nil : highs; return c }())
         } else {
-          series.append(xKind == "" ? s : withYView(s, "", 1.0, xKind, xs, xLo))
+          series.append(s)
         }
       }
     }
     var notes: [Annotation] = []
     for a in (spec.annotations ?? []) {
-      notes.append(yKind == "" && xKind == "" ? a : viewAnnotation(a, yKind, yLo, xKind, xLo))
-    }
-    let yDomain = yKind != "" ? viewDomain(yKind, yReal) : Domain(min: 0.0, max: 1.0)
-    var xView: [Double] = []
-    for x in xs {
-      xView.append(xKind == "" ? x : viewForward(xKind, x, xLo))
-    }
-    return { var c = spec; c.series = series; c.yDomain = yKind == "" && !norm ? spec.yDomain : yDomain; c.annotations = spec.annotations == nil ? nil : notes; c.yScale = "linear"; c.xScale = "linear"; c.stackNormalize = false; c.xValues = xKind == "" ? spec.xValues : xView; return c }()
-  }
-
-public func yRealBounds(_ spec: ChartSpec, _ kind: String) -> Domain {
-    if kind == "log" {
-      return logBounds(spec)
-    }
-    return kind == "" ? Domain(min: 1.0, max: 10.0) : viewReal(kind, (spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec))))
-  }
-
-public func viewKindOf(_ scale: String?) -> String {
-    let k = (scale ?? "")
-    return k == "log" || k == "sqrt" || k == "symlog" ? k : ""
-  }
-
-public func viewReal(_ kind: String, _ d: Domain) -> Domain { kind == "sqrt" && d.min < 0.0 ? Domain(min: 0.0, max: d.max) : d }
-
-public func xRealBounds(_ kind: String, _ xs: [Double]) -> Domain {
-    var lo = 0.0
-    var hi = 0.0
-    var seen = 0
-    for x in xs {
-      if !isFiniteNumber(x) || (kind == "log" && !(x > 0.0)) || (kind == "sqrt" && x < 0.0) {
+      if !isLog {
+        notes.append(a)
         continue
       }
-      if seen == 0 {
-        lo = x
-        hi = x
-      }
-      if x < lo {
-        lo = x
-      }
-      if x > hi {
-        hi = x
-      }
-      seen = pyreonAdd(seen, 1)
+      let ay = (a.y ?? 0.0)
+      let yF = (a.yFrom ?? 0.0)
+      let yT = (a.yTo ?? 0.0)
+      notes.append({ var c = a; c.y = a.y != nil && ay > 0.0 ? log10(Double(Double(ay) / Double(lb.min))) : nil; c.yFrom = a.yFrom != nil && yF > 0.0 ? log10(Double(Double(yF) / Double(lb.min))) : nil; c.yTo = a.yTo != nil && yT > 0.0 ? log10(Double(Double(yT) / Double(lb.min))) : nil; return c }())
     }
-    return seen == 0 ? Domain(min: 1.0, max: 10.0) : Domain(min: lo, max: hi)
+    let yDomain = isLog ? Domain(min: 0.0, max: viewMax) : Domain(min: 0.0, max: 1.0)
+    return { var c = spec; c.series = series; c.yDomain = yDomain; c.annotations = spec.annotations == nil ? nil : notes; c.yScale = "linear"; c.stackNormalize = false; return c }()
   }
-
-public func withYView(_ s: Series, _ yKind: String, _ yLo: Double, _ xKind: String, _ xs: [Double], _ xLo: Double) -> Series {
-    var values: [Double] = []
-    var i = 0
-    for v in s.values {
-      let placed = xKind == "" || i >= xs.count || isFiniteNumber(viewForward(xKind, xs[i], xLo))
-      let mapped = yKind == "" ? v : viewForward(yKind, v, yLo)
-      values.append(placed ? mapped : 0.0 / 0.0)
-      i = pyreonAdd(i, 1)
-    }
-    if yKind == "" {
-      return { var c = s; c.values = values; return c }()
-    }
-    var lows: [Double] = []
-    var highs: [Double] = []
-    for v in (s.errLow ?? []) {
-      lows.append(viewForward(yKind, v, yLo))
-    }
-    for v in (s.errHigh ?? []) {
-      highs.append(viewForward(yKind, v, yLo))
-    }
-    return { var c = s; c.values = values; c.errLow = s.errLow == nil ? nil : lows; c.errHigh = s.errHigh == nil ? nil : highs; return c }()
-  }
-
-public func viewAnnotation(_ a: Annotation, _ yKind: String, _ yLo: Double, _ xKind: String, _ xLo: Double) -> Annotation {
-    let mapY = { (v: Double?) in (v == nil || yKind == "" ? v : keepFinite(viewForward(yKind, (v ?? 0.0), yLo))) }
-    let mapX = { (v: Double?) in (v == nil || xKind == "" ? v : keepFinite(viewForward(xKind, (v ?? 0.0), xLo))) }
-    return { var c = a; c.y = mapY(a.y); c.yFrom = mapY(a.yFrom); c.yTo = mapY(a.yTo); c.x = mapX(a.x); c.xFrom = mapX(a.xFrom); c.xTo = mapX(a.xTo); c.y1 = mapY(a.y1); c.y2 = mapY(a.y2); c.x1 = mapX(a.x1); c.x2 = mapX(a.x2); return c }()
-  }
-
-public func keepFinite(_ v: Double) -> Double? { isFiniteNumber(v) ? v : nil }
 
 public func seriesDomain(_ s: Series, _ spec: ChartSpec, _ yDomain: Domain, _ y2Domain: Domain) -> Domain { seriesOnRightAxis(s, spec) ? y2Domain : yDomain }
 
@@ -6222,11 +6207,9 @@ public func seriesMaxLength(_ series: [Series]) -> Int {
 public func layoutChart(_ raw: ChartSpec, _ measure: (String, Double) -> Double) -> PlotLayout {
     let spec = geometrySpec(raw)
     let n = seriesMaxLength(spec.series)
-    let yKind = viewKindOf(raw.yScale)
-    let lb = yRealBounds(raw, yKind)
-    let xKind = ((raw.xValues ?? [])).count > 0 && raw.xTime != true ? viewKindOf(raw.xScale) : ""
-    let xBounds = xKind == "" ? Domain(min: 1.0, max: 10.0) : xRealBounds(xKind, (raw.xValues ?? []))
-    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertIf(extent((spec.xValues ?? [])), spec.xInverse == true) : Domain(min: 0.0, max: n > 1 ? Double(pyreonSub(n, 1)) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: (spec.xTicks ?? 0.0), yTickCount: valueTicks(spec), showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, rightReserve: endLabelReserve(spec, measure), yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: yKind != "", yLogMin: lb.min, yLogMax: lb.max, yViewKind: yKind, xViewKind: xKind, xViewMin: xBounds.min, xViewMax: xBounds.max, yTime: spec.yTime == true, xLabels: spec.xLabels)
+    let isLog = raw.yScale == "log"
+    let lb = isLog ? logBounds(raw) : Domain(min: 1.0, max: 10.0)
+    let cfg = LayoutConfig(width: spec.width, height: spec.height, xDomain: ((spec.xValues ?? [])).count > 0 ? invertIf(extent((spec.xValues ?? [])), spec.xInverse == true) : Domain(min: 0.0, max: n > 1 ? Double(pyreonSub(n, 1)) : 1.0), yDomain: resolveYDomain(spec), categories: spec.categories, fontSize: spec.theme.fontSize, xTickCount: (spec.xTicks ?? 0.0), yTickCount: valueTicks(spec), showXAxis: spec.showXAxis, showYAxis: spec.showYAxis, rightReserve: endLabelReserve(spec, measure), yFormat: (spec.yFormat ?? (raw.stackNormalize == true ? percent(0) : nil)), xFormat: spec.xFormat, xTime: spec.xTime == true, y2Domain: hasRightAxis(spec) ? resolveY2Domain(spec) : nil, y2Format: spec.y2Format, horizontal: spec.horizontal == true, xTitle: spec.xTitle, yTitle: spec.yTitle, y2Title: spec.y2Title, yLog: isLog, yLogMin: lb.min, yLogMax: lb.max, yViewTicks: spec.yView?.ticks, yViewReal: spec.yReal, xViewTicks: spec.xView?.ticks, xViewReal: spec.xReal, yTime: spec.yTime == true, xLabels: spec.xLabels)
     return computeLayout(cfg, measure)
   }
 
@@ -7545,22 +7528,23 @@ public func shadeColors(_ shades: [Double], _ stops: [String], _ min: Double, _ 
     return out
   }
 
-public func viewForward(_ kind: String, _ v: Double, _ lo: Double) -> Double {
+public func viewForward(_ kind: String, _ v: Double, _ param: Double) -> Double {
     if kind == "log" {
-      return v > 0.0 ? log10(Double(v / lo)) : 0.0 / 0.0
+      return v > 0.0 ? log10(Double(v / param)) : 0.0 / 0.0
     }
     if kind == "sqrt" {
       return v >= 0.0 ? sqrt(Double(v)) : 0.0 / 0.0
     }
-    return v >= 0.0 ? log10(Double(1.0 + v)) : -log10(Double(1.0 - v))
+    return v >= 0.0 ? log10(Double(1.0 + v / param)) : -log10(Double(1.0 - v / param))
   }
 
-public func viewDomain(_ kind: String, _ real: Domain) -> Domain {
+public func viewDomain(_ kind: String, _ real: Domain, _ param: Double) -> Domain {
     let lo = real.min > 0.0 ? real.min : 1.0
-    return kind == "log" ? Domain(min: 0.0, max: log10(Double(real.max / lo))) : Domain(min: viewForward(kind, real.min, lo), max: viewForward(kind, real.max, lo))
+    return kind == "log" ? Domain(min: 0.0, max: log10(Double(real.max / lo))) : Domain(min: viewForward(kind, real.min, param), max: viewForward(kind, real.max, param))
   }
 
-public func symlogTicks(_ real: Domain, _ view: Domain, _ r0: Double, _ r1: Double, _ fmt: (Double) -> String) -> [Tick] {
+public func symlogTicks(_ real: Domain, _ r0: Double, _ r1: Double, _ param: Double, _ fmt: (Double) -> String) -> [Tick] {
+    let view = viewDomain("symlog", real, param)
     var out: [Tick] = []
     let reach = max(abs(real.min), abs(real.max))
     let decades = Double(reach) >= 1.0 ? floor(Double(log10(Double(reach)))) : 0.0
@@ -7578,26 +7562,107 @@ public func symlogTicks(_ real: Domain, _ view: Domain, _ r0: Double, _ r1: Doub
     }
     for v in cands {
       if v >= real.min - 1e-9 * Double(reach) && v <= real.max + 1e-9 * Double(reach) {
-        out.append(Tick(value: v, pos: scaleLinear(view, r0, r1, viewForward("symlog", v, 1.0)), label: fmt(v)))
+        out.append(Tick(value: v, pos: scaleLinear(view, r0, r1, viewForward("symlog", v, param)), label: fmt(v)))
       }
     }
     return out
   }
 
-public func viewTicks(_ kind: String, _ real: Domain, _ r0: Double, _ r1: Double, _ count: Double, _ format: ((Double) -> String)? = nil) -> [Tick] {
-    let view = viewDomain(kind, real)
+public func viewTicks(_ kind: String, _ real: Domain, _ r0: Double, _ r1: Double, _ count: Double, _ format: ((Double) -> String)?, _ param: Double) -> [Tick] {
     if kind == "log" {
       return logViewTicks(real.min, real.max, r0, r1, format)
     }
     if kind == "symlog" {
-      return symlogTicks(real, view, r0, r1, (format ?? groupThousands))
+      return symlogTicks(real, r0, r1, param, (format ?? groupThousands))
     }
     var out: [Tick] = []
+    let view = viewDomain(kind, real, param)
     for t in makeTicks(real, 0.0, 1.0, count, format) {
       out.append(Tick(value: t.value, pos: scaleLinear(view, r0, r1, viewForward("sqrt", t.value, 1.0)), label: t.label))
     }
     return out
   }
+
+public func xRealBounds(_ kind: String, _ xs: [Double]) -> Domain {
+    var placed: [Double] = []
+    for x in xs {
+      if isFiniteNumber(x) && (kind != "log" || x > 0.0) && (kind != "sqrt" || x >= 0.0) {
+        placed.append(x)
+      }
+    }
+    return placed.count == 0 ? Domain(min: 1.0, max: 10.0) : extent(placed)
+  }
+
+public func viewAnnotation(_ a: Annotation, _ kind: String, _ param: Double, _ onX: Bool) -> Annotation {
+    let map = { (v: Double?) in (v == nil ? v : keepFinite(viewForward(kind, (v ?? 0.0), param))) }
+    if onX {
+      return { var c = a; c.x = map(a.x); c.xFrom = map(a.xFrom); c.xTo = map(a.xTo); c.x1 = map(a.x1); c.x2 = map(a.x2); return c }()
+    }
+    return { var c = a; c.y = map(a.y); c.yFrom = map(a.yFrom); c.yTo = map(a.yTo); c.y1 = map(a.y1); c.y2 = map(a.y2); return c }()
+  }
+
+public func keepFinite(_ v: Double) -> Double? { isFiniteNumber(v) ? v : nil }
+
+public func viewSeries(_ s: Series, _ kind: String, _ param: Double) -> Series {
+    var values: [Double] = []
+    for v in s.values {
+      values.append(viewForward(kind, v, param))
+    }
+    var lows: [Double] = []
+    var highs: [Double] = []
+    for v in (s.errLow ?? []) {
+      lows.append(viewForward(kind, v, param))
+    }
+    for v in (s.errHigh ?? []) {
+      highs.append(viewForward(kind, v, param))
+    }
+    return { var c = s; c.values = values; c.errLow = s.errLow == nil ? nil : lows; c.errHigh = s.errHigh == nil ? nil : highs; return c }()
+  }
+
+public func applyY(_ spec: ChartSpec, _ kind: String, _ param: Double) -> ChartSpec {
+    let real = kind == "log" ? logBounds(spec) : (spec.yDomain ?? pinDomain(spec, leftAxisSeries(spec)))
+    let bounds = kind == "sqrt" && real.min < 0.0 ? Domain(min: 0.0, max: real.max) : real
+    let lo = kind == "log" ? bounds.min : param
+    var series: [Series] = []
+    for s in spec.series {
+      series.append(seriesOnRightAxis(s, spec) ? s : viewSeries(s, kind, lo))
+    }
+    var notes: [Annotation] = []
+    for a in (spec.annotations ?? []) {
+      notes.append(viewAnnotation(a, kind, lo, false))
+    }
+    return { var c = spec; c.series = series; c.annotations = spec.annotations == nil ? nil : notes; c.yDomain = viewDomain(kind, bounds, lo); c.yReal = bounds; c.yViewApplied = true; return c }()
+  }
+
+public func applyX(_ spec: ChartSpec, _ kind: String, _ param: Double) -> ChartSpec {
+    let xs = (spec.xValues ?? [])
+    if xs.count == 0 || spec.xTime == true {
+      return { var c = spec; c.xView = nil; return c }()
+    }
+    let real = xRealBounds(kind, xs)
+    let lo = kind == "log" ? real.min : param
+    var xView: [Double] = []
+    for x in xs {
+      xView.append(viewForward(kind, x, lo))
+    }
+    var series: [Series] = []
+    for s in spec.series {
+      var values: [Double] = []
+      var i = 0
+      for v in s.values {
+        values.append(i < xView.count && !isFiniteNumber(xView[i]) ? 0.0 / 0.0 : v)
+        i = i + 1
+      }
+      series.append({ var c = s; c.values = values; return c }())
+    }
+    var notes: [Annotation] = []
+    for a in (spec.annotations ?? []) {
+      notes.append(viewAnnotation(a, kind, lo, true))
+    }
+    return { var c = spec; c.series = series; c.annotations = spec.annotations == nil ? nil : notes; c.xValues = xView; c.xReal = real; c.xViewApplied = true; return c }()
+  }
+
+public func applyScaleView(_ spec: ChartSpec, _ axis: String, _ kind: String, _ param: Double) -> ChartSpec { axis == "x" ? applyX(spec, kind, param) : applyY(spec, kind, param) }
 
 public func labelWidth(_ s: VisualStrip) -> Double { s.fontSize * 3.2 }
 

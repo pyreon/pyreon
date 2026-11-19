@@ -30,7 +30,7 @@ import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
 import { dateFormatter, numberFormatter } from './locale'
-import type { Annotation, ChartSpec, ChartTheme, PointMarker, Series } from './render'
+import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView, Series } from './render'
 import { xPx } from './scale'
 import { columnLength, isColumnMark, markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
@@ -389,9 +389,9 @@ export interface PlotChartProps<T> {
    * decades on the axis, non-positive values as gaps, bars growing from the
    * axis floor. The tooltip and the table keep the real values.
    */
-  yScale?: 'linear' | 'log' | 'sqrt' | 'symlog'
+  yScale?: 'linear' | 'log' | ScaleView
   /** The scale of a NUMERIC x axis (`xValue`): `linear`, `log`, `sqrt` or `symlog`. Values the scale cannot place (log: ≤ 0, sqrt: < 0) are gaps; a time axis stays linear. */
-  xScale?: 'linear' | 'log' | 'sqrt' | 'symlog'
+  xScale?: 'linear' | ScaleView
   /** Label the y axis with calendar steps — the y twin of `xTime` (values are epoch ms). */
   yTime?: boolean
   /**
@@ -483,6 +483,11 @@ export function PlotChart<T>(props: PlotChartProps<T>): VNode {
  * references only the features its children ask for. An absent feature
  * behaves exactly as the feature does when unused.
  */
+/** The spec's scale fields from the props: a string stays `yScale`, a descriptor becomes a view. */
+function scaleFields(y: 'linear' | 'log' | ScaleView | undefined, x: 'linear' | ScaleView | undefined): Pick<ChartSpec, 'yScale' | 'yView' | 'xView'> {
+  return { yScale: typeof y === 'string' ? y : undefined, yView: typeof y === 'object' ? y : undefined, xView: typeof x === 'object' ? x : undefined }
+}
+
 export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): VNode {
   // The x-range band is drawn by `<Zoom brush>` and by the toolbox's dataZoom tool alike.
   const band = (): BandFeature | undefined => features.zoom ?? features.toolbox
@@ -1016,8 +1021,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     yFormat: resolvedFormat(),
     xFormat: resolvedXFormat(),
     ...(props.xTime === true ? { xTime: true } : {}),
-    yScale: props.yScale,
-    xScale: props.xScale,
+    ...scaleFields(props.yScale, props.xScale),
     yTime: props.yTime === true,
     stackNormalize: props.stackNormalize === true,
     xTitle: props.xTitle,
@@ -1062,7 +1066,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
    * a set `yDomain` reads as an author-pinned range (`logBounds`).
    */
   const withFrameDomain = (spec: ChartSpec): ChartSpec =>
-    spec.yDomain === undefined && (spec.yScale ?? 'linear') !== 'log' ? { ...spec, yDomain: resolveYDomain(spec) } : spec
+    spec.yDomain === undefined && (spec.yScale ?? 'linear') !== 'log' && spec.yView === undefined ? { ...spec, yDomain: resolveYDomain(spec) } : spec
 
   const draw = (): void => {
     const el = canvas
@@ -1321,8 +1325,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
 
   /** The sentence that names a non-linear scale for the spoken description: the picture's spacing is not the data's, and a listener should know. */
   const scaleNote = (): string => {
-    const y = props.yScale === undefined || props.yScale === 'linear' ? '' : ` The value axis is on a ${props.yScale} scale.`
-    const x = props.xScale === undefined || props.xScale === 'linear' ? '' : ` The x axis is on a ${props.xScale} scale.`
+    const y = props.yScale === undefined || props.yScale === 'linear' ? '' : ` The value axis is on a ${typeof props.yScale === 'string' ? props.yScale : props.yScale.kind} scale.`
+    const x = props.xScale === undefined || props.xScale === 'linear' ? '' : ` The x axis is on a ${props.xScale.kind} scale.`
 
     return y + x
   }
