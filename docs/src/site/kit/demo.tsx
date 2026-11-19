@@ -90,7 +90,9 @@ function Meter(props: MeterItem) {
   })
   return (
     // The compiler wraps this read in _rp(), so the row re-styles on each change.
-    <MeterRow state={state()}>
+    // `data-live`: its class follows live state (a demo may count on mount), so the
+    // e2e check that hydration keeps the server's classes skips it.
+    <MeterRow state={state()} data-live="">
       <span>{props.label}</span>
       <MeterValue>{() => String(props.value())}</MeterValue>
     </MeterRow>

@@ -1750,6 +1750,13 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (method === 'fill' && expr.args.length === 1) {
           return { kind: 'array', element: inferType(expr.args[0]!, ctx) }
         }
+        // A date's `toJSON()` (no JavaScript number has one) is its ISO string; `valueOf()` is the receiver itself
+        // (the emitters' lowering of both). An untyped receiver is a date too (a signal seeded with `new Date(…)`),
+        // unless it is a plugin binding whose runtime defines its own `toJSON` (a flow's snapshot).
+        if (method === 'toJSON' && expr.args.length === 0 && (objType.kind === 'number' || (objType.kind === 'unknown' && !rootedAtExtDecl(expr.callee.object, ctx)))) {
+          return { kind: 'string' }
+        }
+        if (method === 'valueOf' && expr.args.length === 0 && objType.kind !== 'unknown') return objType
         if (objType.kind === 'array') {
           switch (method) {
             case 'at':
@@ -2539,4 +2546,11 @@ export function rewriteObjectValues(expr: ExprIR, ctx: InferenceCtx): ExprIR | n
     kind: 'array',
     elements: fields.map((f) => ({ kind: 'member', object: arg, property: f.name })),
   }
+}
+
+/** Whether `e` is a read rooted at a plugin declaration's binding (`flow`, `flow.nodes`, `flow()`). */
+export function rootedAtExtDecl(e: ExprIR, ctx: InferenceCtx): boolean {
+  let root: ExprIR = e
+  while (root.kind === 'member' || root.kind === 'call') root = root.kind === 'member' ? root.object : root.callee
+  return root.kind === 'identifier' && ctx.extDecls?.has(root.name) === true
 }

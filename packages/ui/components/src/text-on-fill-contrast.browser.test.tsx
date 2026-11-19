@@ -8,10 +8,18 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
+  CheckboxIndicator,
+  Chip,
+  Combobox,
+  FieldError,
   NavLink,
   PaginationItem,
+  Radio,
+  RadioGroup,
   Step,
   Stepper,
+  Switch,
   Tab,
   TabList,
   Tabs,
@@ -34,7 +42,10 @@ import {
  * Before the theme had `contrast` / `hover` / `textDark`, these components drew
  * white on the fill (3.68:1 on the default blue, 3.06:1 on the brand's ember,
  * 2.54:1 on the default green) and used the 70–80% opacity steps as text
- * (1.7–2.7:1 on their tints).
+ * (1.7–2.7:1 on their tints; the Combobox's selected option was `primary[700]`
+ * on `primary[50]`, 2.2–2.9:1). The form controls (Chip, FieldError) read the
+ * same `tintText` as the rest of the library, so a custom theme's `textDark`
+ * reaches them too.
  *
  * The file also runs in the package's happy-dom suite, which has no CSS
  * engine; there it is skipped.
@@ -107,6 +118,10 @@ interface Case {
   name: string
   /** The vnode to mount; the measured element carries `data-measure`. */
   render: () => VNodeChild
+  /** Drive the mounted tree into the state under test (e.g. open a listbox). */
+  prepare?: (root: Element) => void
+  /** The measured element when it cannot carry `data-measure` itself. */
+  measure?: string
 }
 
 const M = { 'data-measure': '' }
@@ -117,21 +132,26 @@ const CASES: Case[] = [
     { name: `Button state=${state}`, render: () => h(any(Button), { ...M, state }, 'Save') },
     { name: `Button state=${state} (hover)`, render: () => h(any(Button), { ...M, state, hover: true }, 'Save') },
   ]),
-  ...(['outline', 'subtle', 'ghost', 'link'] as const).flatMap((variant) => [
-    { name: `Button variant=${variant}`, render: () => h(any(Button), { ...M, state: 'primary', variant }, 'Save') },
-    {
-      name: `Button variant=${variant} (hover)`,
-      render: () => h(any(Button), { ...M, state: 'primary', variant, hover: true }, 'Save'),
-    },
-  ]),
+  // A variant draws in the state's tone (#4425), so every state x variant pair is measured.
+  ...(['primary', 'danger', 'success', 'secondary'] as const).flatMap((state) =>
+    (['outline', 'subtle', 'ghost', 'link'] as const).flatMap((variant) => [
+      { name: `Button state=${state} variant=${variant}`, render: () => h(any(Button), { ...M, state, variant }, 'Save') },
+      {
+        name: `Button state=${state} variant=${variant} (hover)`,
+        render: () => h(any(Button), { ...M, state, variant, hover: true }, 'Save'),
+      },
+    ]),
+  ),
   ...(['primary', 'danger'] as const).flatMap((state) => [
     { name: `ActionIcon state=${state}`, render: () => h(any(ActionIcon), { ...M, state }, '+') },
     { name: `ActionIcon state=${state} (hover)`, render: () => h(any(ActionIcon), { ...M, state, hover: true }, '+') },
   ]),
-  ...(['outline', 'subtle'] as const).map((variant) => ({
-    name: `ActionIcon variant=${variant}`,
-    render: () => h(any(ActionIcon), { ...M, state: 'primary', variant }, '+'),
-  })),
+  ...(['primary', 'danger', 'secondary'] as const).flatMap((state) =>
+    (['outline', 'subtle'] as const).map((variant) => ({
+      name: `ActionIcon state=${state} variant=${variant}`,
+      render: () => h(any(ActionIcon), { ...M, state, variant }, '+'),
+    })),
+  ),
   { name: 'PaginationItem state=active', render: () => h(any(PaginationItem), { ...M, state: 'active' }, '2') },
   {
     name: 'PaginationItem state=active (hover)',
@@ -155,7 +175,10 @@ const CASES: Case[] = [
     name: `Alert state=${state}`,
     render: () => h(any(Alert), { ...M, state }, 'Your changes are live.'),
   })),
-  { name: 'Alert variant=solid', render: () => h(any(Alert), { ...M, state: 'info', variant: 'solid' }, 'New version') },
+  ...(['info', 'success', 'warning', 'error'] as const).map((state) => ({
+    name: `Alert state=${state} variant=solid`,
+    render: () => h(any(Alert), { ...M, state, variant: 'solid' }, 'New version'),
+  })),
   ...(['primary', 'success', 'error', 'warning'] as const).map((state) => ({
     name: `Badge state=${state}`,
     render: () => h(any(Badge), { ...M, state }, 'New'),
@@ -174,6 +197,43 @@ const CASES: Case[] = [
   {
     name: 'TreeItem aria-selected',
     render: () => h(any(TreeItem), { ...M, 'aria-selected': 'true' }, 'src'),
+  },
+  ...(['primary', 'success', 'error'] as const).map((state) => ({
+    name: `Chip state=${state}`,
+    render: () => h(any(Chip), { ...M, state }, 'Filter'),
+  })),
+  { name: 'FieldError', render: () => h(any(FieldError), { ...M }, 'Required') },
+  // The open listbox's selected option ("b"; ArrowDown opens it with "a" highlighted).
+  {
+    name: 'Combobox selected option',
+    render: () =>
+      h(any(Combobox), {
+        value: 'b',
+        options: [
+          { value: 'a', label: 'Apple' },
+          { value: 'b', label: 'Banana' },
+        ],
+      }),
+    prepare: (root) => {
+      root.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    },
+    measure: '[role="option"][aria-selected="true"]',
+  },
+  // The same row while it is also the highlighted (active) option.
+  {
+    name: 'Combobox selected and highlighted option',
+    render: () =>
+      h(any(Combobox), {
+        value: 'a',
+        options: [
+          { value: 'a', label: 'Apple' },
+          { value: 'b', label: 'Banana' },
+        ],
+      }),
+    prepare: (root) => {
+      root.querySelector('input')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    },
+    measure: '[role="option"][aria-selected="true"][data-highlighted="true"]',
   },
 ]
 
@@ -196,7 +256,8 @@ describe.runIf(IS_BROWSER_RUNNER)('text on fills and tints reaches 4.5:1 (real C
         for (const c of CASES) {
           it(c.name, () => {
             const { container, unmount } = mount(t, mode, c.render())
-            const el = container.querySelector('[data-measure]')
+            c.prepare?.(container)
+            const el = container.querySelector(c.measure ?? '[data-measure]')
             expect(el, `${c.name} rendered no [data-measure] element`).not.toBeNull()
             const ratio = ratioOf(el!)
             expect(ratio, `${c.name}: ${getComputedStyle(el!).color} on ${getComputedStyle(el!).backgroundColor}`).toBeGreaterThanOrEqual(4.5)
@@ -243,5 +304,163 @@ describe.runIf(IS_BROWSER_RUNNER)('text on fills and tints reaches 4.5:1 (real C
     const dark = mount(brandTheme, 'dark', h(any(Button), { state: 'primary', variant: 'ghost', 'data-measure': '' }, 'More'))
     expect(getComputedStyle(dark.container.querySelector('[data-measure]')!).color).toBe('rgb(255, 138, 76)')
     dark.unmount()
+  })
+
+  it("form controls read the theme's textDark too: a brand Chip and FieldError are ember and red on the dark page", () => {
+    for (const [node, expected] of [
+      [h(any(Chip), { state: 'primary', 'data-measure': '' }, 'Filter'), 'rgb(255, 138, 76)'],
+      [h(any(FieldError), { 'data-measure': '' }, 'Required'), 'rgb(248, 113, 113)'],
+    ] as const) {
+      const { container, unmount } = mount(brandTheme, 'dark', node)
+      expect(getComputedStyle(container.querySelector('[data-measure]')!).color).toBe(expected)
+      unmount()
+    }
+  })
+})
+
+/**
+ * Glyphs on a checked control, measured against what they are drawn on —
+ * WCAG 1.4.11 (non-text contrast), 3:1. The check mark and indeterminate dash
+ * are drawn ON the `primary` fill, so they read `primary.contrast` like every
+ * other label or glyph on a fill. They used to be white: 3.68:1 on the default
+ * blue and 3.06:1 on the brand's ember (passing 3:1, narrowly), and about
+ * 1.5:1 on a pale primary, which is why the probe theme below exists. The
+ * Radio dot is drawn in the fill colour on the box surface, and the Switch
+ * thumb is a white knob on the off and on track.
+ */
+
+/** A theme whose primary is a pale fill with ink `contrast` (the brand's yellow). */
+const palePrimary: Theme = {
+  ...brandTheme,
+  color: {
+    ...brandTheme.color,
+    system: { ...brandTheme.color.system, primary: brandTheme.color.system.warning },
+  },
+}
+
+/** Any CSS colour, as Chromium computes it (`rgb(…)` / `rgba(…)`). */
+const resolve = (color: string): Rgba => {
+  const probe = document.createElement('span')
+  probe.style.color = color
+  document.body.append(probe)
+  const computed = getComputedStyle(probe).color
+  probe.remove()
+
+  return parse(computed)
+}
+
+const ratio = (a: Rgba, b: Rgba) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number]
+
+  return (hi + 0.05) / (lo + 0.05)
+}
+
+/** The stroke of the SVG mark a Checkbox draws as its `::before` background image. */
+const markStroke = (el: Element): string => {
+  const image = decodeURIComponent(getComputedStyle(el, '::before').backgroundImage)
+  const stroke = /stroke='([^']+)'/.exec(image)?.[1]
+  if (!stroke) throw new Error(`no SVG mark in ${image}`)
+
+  return stroke
+}
+
+interface Glyph {
+  name: string
+  render: () => VNodeChild
+  /** The glyph colour and the opaque colour it is drawn on. */
+  pair: (root: Element) => { glyph: Rgba; on: Rgba }
+  /** Whether the pale-primary probe theme applies (the glyph sits on the primary fill). */
+  onFill: boolean
+}
+
+const label = (root: Element) => root.querySelector('label[role="checkbox"]')!
+const switchEl = (root: Element) => root.querySelector('[role="switch"]')!
+const boxFill = (el: Element) => over(parse(getComputedStyle(el, '::before').backgroundColor), backdrop(el))
+
+const GLYPHS: Glyph[] = [
+  {
+    name: 'Checkbox check mark',
+    render: () => h(any(Checkbox), { checked: true }, 'Accept'),
+    pair: (root) => ({ glyph: resolve(markStroke(label(root))), on: boxFill(label(root)) }),
+    onFill: true,
+  },
+  {
+    name: 'Checkbox indeterminate dash',
+    render: () => h(any(Checkbox), { indeterminate: true }, 'Select all'),
+    pair: (root) => ({ glyph: resolve(markStroke(label(root))), on: boxFill(label(root)) }),
+    onFill: true,
+  },
+  {
+    name: 'CheckboxIndicator (checked) glyph',
+    render: () => h(any(CheckboxIndicator), { ...M, state: 'checked' }, '✓'),
+    pair: (root) => {
+      const el = root.querySelector('[data-measure]')!
+      const on = backdrop(el)
+      return { glyph: over(parse(getComputedStyle(el).color), on), on }
+    },
+    onFill: true,
+  },
+  {
+    name: 'Radio dot',
+    render: () => h(any(RadioGroup), { value: 'a' }, h(any(Radio), { value: 'a' }, 'Option A')),
+    pair: (root) => {
+      const el = root.querySelector('[role="radio"]')!
+      const image = getComputedStyle(el, '::before').backgroundImage
+      const dot = /radial-gradient\((?:circle, )?(rgba?\([^)]*\))/.exec(image)?.[1]
+      if (!dot) throw new Error(`no radio dot in ${image}`)
+      const on = boxFill(el)
+      return { glyph: over(parse(dot), on), on }
+    },
+    onFill: false,
+  },
+  ...([false, true] as const).map((checked) => ({
+    name: `Switch thumb (${checked ? 'on' : 'off'} track)`,
+    render: () => h(any(Switch), { checked }),
+    pair: (root: Element) => {
+      const el = switchEl(root)
+      const on = backdrop(el)
+      return { glyph: over(parse(getComputedStyle(el, '::after').backgroundColor), on), on }
+    },
+    onFill: false,
+  })),
+]
+
+describe.runIf(IS_BROWSER_RUNNER)('glyphs on checked controls reach 3:1 (real Chromium)', () => {
+  const themes: ReadonlyArray<readonly [string, Theme, boolean]> = [
+    ['default theme', theme, true],
+    ['brand theme', brandTheme, true],
+    ['pale-primary probe theme', palePrimary, false],
+  ]
+  for (const [themeLabel, t, shipped] of themes) {
+    for (const mode of ['light', 'dark'] as const) {
+      describe(`${themeLabel}, ${mode} mode`, () => {
+        for (const g of GLYPHS) {
+          if (!shipped && !g.onFill) continue
+          it(g.name, () => {
+            const { container, unmount } = mount(t, mode, g.render())
+            const { glyph, on } = g.pair(container)
+            const measured = ratio(glyph, on)
+            expect(measured, `${g.name}: rgb(${glyph.slice(0, 3).map(Math.round).join(', ')}) on rgb(${on.slice(0, 3).map(Math.round).join(', ')})`).toBeGreaterThanOrEqual(3)
+            unmount()
+          })
+        }
+      })
+    }
+  }
+
+  it('the check mark and dash are stroked in primary.contrast: slate-900 (default), ink (brand), in both modes', () => {
+    for (const [t, expected] of [
+      [theme, 'rgb(15, 23, 42)'],
+      [brandTheme, 'rgb(10, 10, 14)'],
+    ] as const) {
+      for (const mode of ['light', 'dark'] as const) {
+        for (const props of [{ checked: true }, { indeterminate: true }]) {
+          const { container, unmount } = mount(t, mode, h(any(Checkbox), props, 'Accept'))
+          const stroke = resolve(markStroke(label(container)))
+          expect(`rgb(${stroke.slice(0, 3).join(', ')})`, `${mode} ${JSON.stringify(props)}`).toBe(expected)
+          unmount()
+        }
+      }
+    }
   })
 })

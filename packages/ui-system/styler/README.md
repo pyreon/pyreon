@@ -1,5 +1,7 @@
 # @pyreon/styler
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Lightweight CSS-in-JS engine — `styled` / `css` / `keyframes` / theme, ~3.8KB gzipped.
 
 `@pyreon/styler` is the CSS-in-JS layer that powers `@pyreon/rocketstyle`, `@pyreon/elements`, and every other rocketstyle-derived component. Singleton `StyleSheet` with FNV-1a class hashing and dedup cache. **Static templates resolve once at module load** (zero per-render cost); dynamic interpolations re-resolve on theme/prop change with class-cache dedup. `ThemeContext` is a **reactive** Pyreon context — whole-theme swaps (user-preference theme switching) propagate through the resolver effect in `styled()` and re-resolve CSS + swap class names WITHOUT remounting the VNode. SSR-isolated via `createSheet()`. CSS Nesting passes through to the browser unchanged.
@@ -260,7 +262,7 @@ Templates with no function interpolations resolve **once at module evaluation**.
 
 ### Dynamic path
 
-Templates with function interpolations resolve on every render. A class-cache keyed by `($rocketstyle, $rocketstate)` (rocketstyle path) or by `$element` bundle identity (Element path) skips the resolver pipeline entirely on cache hits. Companion `injectRules(rules, key)` is the idempotent entry point the compile-time-collapse path uses to ship pre-resolved CSS without re-hashing.
+Templates with function interpolations resolve on every render. A class cache keyed by `($rocketstyle, $rocketstate)` (rocketstyle path) or by the theme and the `$element` / `$text` bundle (Element path) skips the resolver pipeline entirely on cache hits. Each key holds up to 16 variants, one per set of values of the OTHER props the styles read on the miss that filled it (recorded through a Proxy: primitives by value, objects by identity, functions by presence, an absent prop as absent), so a template that reads `onClick`, `href` or a custom prop gets its own class per value. Styles that enumerate the props (a rest spread, `Object.keys`) are never cached, so read props by name. A prop the styles read is not reactive after mount: a signal-driven value needs a rocketstyle `.multiple()` modifier or the reactive `css` prop instead. Companion `injectRules(rules, key)` is the idempotent entry point the compile-time-collapse path uses to ship pre-resolved CSS without re-hashing.
 
 ### Reactive theme swaps
 

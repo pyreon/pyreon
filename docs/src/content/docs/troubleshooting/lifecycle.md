@@ -59,6 +59,12 @@ The callback runs after the surrounding component's setup, when no scope is curr
 
 ---
 
+### [FIXED, 2026-11] A hydration walk that lets a subtree throw escape.
+
+`mountComponent` contains a throw from its subtree (stop the component's scope, restore the owner, route to the nearest error boundary or log, continue), but `hydrateComponent`'s `hydrateChild` call had no try/catch. A throw during hydration escaped `hydrateRoot`, so the caller got no cleanup and everything already hydrated (a sibling's effects) could never be disposed, and the context owner stayed pointing at the dead component, so the next mount chained to it. **Rule: the hydrate path contains a throw exactly where and how the mount path does, and every root entry restores the ambient walk state (flags AND context owner) in `finally`.** Reference: `runtime-dom/src/hydrate.ts` (`hydrateComponent`, `hydrateRoot`); locked by `hydrate-throw-disposes.test.ts` (bisect-verified).
+
+---
+
 ### Measuring layout in a `ref` inside `<For>`
 
 `<For>` mounts its initial rows into a fragment and moves them into the document afterwards, so a row's `ref` fires on a detached element and `getBoundingClientRect()` returns zeros. Recording that size breaks consumers (in `@pyreon/virtual`, TanStack compensated scroll for the 0 → 40px corrections and the window rendered from the wrong row). A layout read in a `ref` must check `el.isConnected` and defer (a microtask is enough for `<For>`). Reference: `packages/fundamentals/virtual/src/detached-measure.ts` + `tests/detached-measure.test.ts`.
@@ -101,6 +107,18 @@ The ISR memory store capped its cache at `maxEntries` but its tag index only gre
 
 ---
 
+### Keeping a block whose CONTENT changes under a stable identity in an append-only, content-keyed store
+
+`<PyreonUI>` under `cssVariables` injected each theme's `:root { --px-… }` block with `sheet.injectRules([css], css)`. The variable NAMES depend only on the theme path, so every block redefined the same names and the last INSERTED one won: theme A -&gt; B -&gt; A inserted nothing the third time (A's text was already "injected") and the page kept showing B, while the sheet (and, server side, the process-lifetime rule map) grew by one block per distinct theme. After `clearCache()`, SSR also stopped emitting the block (the dedup set survived, the rules did not). Rule: a block that represents CURRENT state ("the theme now") gets one owned, replaceable slot keyed by its role, not by its content: `sheet.setRootVariables(css)`. Reference: `packages/ui-system/styler/src/sheet.ts`, `packages/ui-system/ui-core/src/PyreonUI.tsx`; locked by `rocketstyle/src/__tests__/css-variables-theme-swap.browser.test.tsx` and `styler/src/__tests__/sheet-root-variables.test.ts`.
+
+---
+
+### A refcounted module cache whose async load writes back unconditionally (Class F)
+
+`@pyreon/zero-content` search released its MiniSearch when the last `<Search>` unmounted, but a load still in flight then assigned `_instance = ms`, re-pinning the whole index with zero subscribers; a rejected load stayed cached as `_loading`, so every later load of that URL failed until the last subscriber left; and a slow load for an older catalog URL overwrote the current one. Rule: a load writes into a shared cache only if the generation it started under is still current (bump on release-to-zero, reset and every new load), and both settle paths clear the promise cache. Reference: `packages/zero/zero-content/src/search/search-runtime.tsx` (`_generation`); locked by `src/tests/search-load-race.test.ts`.
+
+---
+
 ### Two sources suspending one timer through one shared flag
 
 `<Toaster>` paused auto-dismiss on hover and focus through a single `_paused` boolean, so `mouseleave` cleared a keyboard user's focus hold and the toast dismissed under them. Key holds by source identity (`'hover' | 'focus' | 'hidden'`), release individually, restart the clock only when the set is empty. Do not use a depth counter: removing a focused element need not fire `focusout`, so a count can stick above zero and freeze every later toast, while a stranded `'focus'` hold is cleared by the next `focusout`. Pause while the tab is hidden (`visibilitychange`), make the handler idempotent against its own last-known state, read `document.visibilityState` at setup, and release a held hold in `onCleanup`. `document.visibilityState` is read-only in a real browser, so the spec redefines it — read it back before asserting. Reference: `packages/fundamentals/toast/src/toast.ts` (`PauseSource`, `_pauseHolds`) + `toaster.tsx` (`syncVisibility`); `tests/pause-sources.test.ts` + `tests/toaster.browser.test.tsx`.
@@ -128,6 +146,7 @@ When a differential disagrees, check both sides against the specification. `@pyr
 ### Content mounted into a live parent with no explicit remover
 
 `mountChild` returns a no-op cleanup for element children when `_elementDepth > 0`, which is valid only when the parent is removed as a unit. A portal target such as `document.body` never is, so portaled modals and toasts stayed in the document after their owner unmounted. `<Portal>` brackets its content with `<!--portal-->…<!--/portal-->`, mounts before the end marker, and removes the whole range on dispose. Any code mounting into a parent it does not own must return a real remover. Reference: `packages/core/runtime-dom/src/mount.ts` (PortalSymbol branch); `tests/portal-dispose.test.tsx`.
+  - The same holds for anything a REACTIVE BOUNDARY mounts from its effect and later removes itself: the range of a `() => …` child or `<Show>` (`mountReactive`), the keyed `.map()` reconciler, the polymorphic text core's subtree, `TransitionGroup` items, `KeepAlive` children. A boundary's effect does not only run at top level: a component that writes a signal during its setup re-runs an earlier sibling boundary right then, inside the parent element's children loop, so the run inherited `_elementDepth > 0` and its content got no-op cleanups; a later run that rendered nothing left the old nodes in the document (fixed 2026-11, pre-existing). **Rule: every boundary mounts through `mountOwned` (`mount.ts`), which forces depth 0 — never pass bare `mountChild` to `mountReactive` / `mountKeyedList` or call it from an effect.** `<For>` removes its rows by range and uses the depth deliberately. Tests: `runtime-dom/src/tests/reactive-range-reentrant-render.test.tsx` (h() and compiled), `reactive-range-reentrant-render.browser.test.tsx` (TransitionGroup).
 
 ---
 
@@ -294,6 +313,18 @@ The file pickers (`useCamera`, `useFilePicker`, `useImagePicker`) append a hidde
 ### [FIXED, 2026-11] A client convenience fallback written and read on the server.
 
 `<RouterProvider>` also stored its router in a module-level fallback (`setActiveRouter`), and every router hook read `useContext(RouterContext) ?? _activeRouter`. On a server that slot held the LAST page request's router, so a server-island fragment (rendered with no provider) resolved `useRoute()` / `useParams()` / `useSearchParams()` to another user's path and query: a cross-request data exposure. **Rule: a module-level "current X" fallback is client-only; on the server, resolve through request-scoped context or fail.** All router reads go through one resolver (`resolveRouter` in `router/src/router.ts`), which ignores the slot when `isClient` is false, and `setActiveRouter` stores nothing on a server. Locked by `server/src/tests/server-island-router-bleed.test.ts` (node environment; bisect-verified).
+
+---
+
+### [FIXED, 2026-11] A wrapper `ReadableStream` that does not forward `cancel`.
+
+The streaming handler copied the app stream into the response body from `start()` with no `cancel`, so a client disconnect never reached the render: it ran until every Suspense boundary settled or timed out (forever with `suspenseTimeoutMs: Infinity`), and its next write into the cancelled body threw and was logged and reported to `onError` as a render failure. **Rule: a stream that pumps another must implement `cancel` by cancelling its source reader, stop writing once cancelled, and never report a consumer disconnect as an error.** Reference: `server/src/handler.ts:renderStreamResponse`; locked by `handler-stream-cancel.test.ts` (bisect-verified).
+
+---
+
+### [FIXED, 2026-11] `{ once: true }` on a CALLER's signal is not a cleanup (Class D).
+
+`renderToStream({ signal })` chained the caller's signal with `addEventListener('abort', …, { once: true })`, which removes the listener only if that signal fires. A caller sharing one long-lived signal across operations (a shutdown signal, a reused connection signal) gained one listener, and the stream it closed over, per render. **Rule: a listener on a signal or target you do not own comes off on every end of your operation (success, error, cancel), through an idempotent detach.** Reference: `runtime-server/src/index.ts:chainCallerSignal`; locked by `stream-abort-listener.test.ts` (bisect-verified).
 
 ---
 

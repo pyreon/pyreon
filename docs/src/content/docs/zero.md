@@ -9,7 +9,7 @@ description: Full-stack meta-framework for Pyreon applications.
 
 `@pyreon/zero` is a batteries-included meta-framework for Pyreon, similar to Next.js for React or Nuxt for Vue. It provides file-system routing, SSR/SSG/ISR/SPA rendering modes, optimized components, a theme system, SEO utilities, font/image optimization, and production deployment adapters — everything you need to ship a full-stack Pyreon application.
 
-<PackageBadge name="@pyreon/zero" href="/docs/zero" status="beta" />
+<PackageBadge name="@pyreon/zero" href="/docs/zero" />
 
 :::tip{title="Static Site Generation"}
 This page is a quick-start + feature overview. SSG has its own dedicated reference with the full `getStaticPaths`, redirects, i18n, ISR, and adapter story — see **[SSG](/docs/ssg)**.

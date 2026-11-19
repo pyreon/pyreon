@@ -4,7 +4,7 @@ description: Public Pyreon framework packages, with links to their guides or sou
 generated_by: docs/scripts/gen-package-catalog.ts
 ---
 
-76 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
+77 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
 
 The platform-specific compiler binaries under `packages/core/compiler/npm/` are optional dependencies of [@pyreon/compiler](/docs/compiler) and are not included in this framework package count.
 
@@ -25,13 +25,14 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/server](/docs/server) | SSR handler, SSG prerender, and island architecture for Pyreon |
 | [@pyreon/sized-map](/docs/sized-map) | Bounded `Map<K, V>` primitive — FIFO (default) or LRU-on-read mode. Used internally across Pyreon packages for sized cache eviction; safe to use directly. |
 
-## fundamentals (27)
+## fundamentals (28)
 
 | Package | Description |
 | --- | --- |
 | [@pyreon/a11y](/docs/a11y) | Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup |
 | [@pyreon/charts](/docs/charts) | Charts for Pyreon on the web, iOS and Android: &lt;Chart&gt; with mark children over a first-party engine (21 chart families, one flat draw list), canvas and SVG, tree-shakeable marks |
 | [@pyreon/code](/docs/code) | Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages |
+| [@pyreon/command](/docs/command) | A command palette for Pyreon: a fuzzy matcher, a registry of commands with shortcuts, recents and async sources |
 | [@pyreon/dnd](/docs/dnd) | Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop |
 | [@pyreon/document](/docs/document) | Universal document rendering for Pyreon — one template, every output format (HTML, PDF, DOCX, email, XLSX, Markdown, and more) |
 | [@pyreon/feature](/docs/feature) | Schema-driven feature primitives — define once, get CRUD hooks, forms, tables, and stores |
@@ -53,7 +54,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/table](/docs/table) | Pyreon adapter for TanStack Table |
 | [@pyreon/toast](/docs/toast) | Imperative toast notifications for Pyreon — no provider needed |
 | [@pyreon/url-state](/docs/url-state) | Reactive URL search-param state for Pyreon — signal-backed, type-coerced, SSR-safe |
-| [@pyreon/validate](/docs/validate) | Pyreon DX layer over Standard Schema — withField metadata, reactive parse, i18n-aware error formatting. Works with Zod, Valibot, ArkType, or any Standard Schema-compliant validator. |
+| [@pyreon/validate](/docs/validate) | Pyreon's own validator (the `s` schema runtime, with mini, JIT and JSON Schema subpaths) plus a Standard Schema DX layer — withField metadata, reactive parse, i18n-aware error formatting. The DX layer also works with Zod, Valibot, ArkType, or any Standard Schema-compliant validator. |
 | [@pyreon/validation](/docs/validation) | Schema validation adapters for Pyreon forms (Zod, Valibot, ArkType) |
 | [@pyreon/virtual](/docs/virtual) | Pyreon adapter for TanStack Virtual |
 

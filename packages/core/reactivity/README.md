@@ -1,5 +1,7 @@
 # @pyreon/reactivity
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Standalone fine-grained reactivity primitives — signals, computeds, effects, stores, resources, scopes.
 
 `@pyreon/reactivity` is the foundation layer every other Pyreon package builds on, but it has zero framework dependencies and works on its own in Node, Bun, edge workers, or any JavaScript environment without DOM or JSX. Subscribers are tracked via an inline `_d1` single-subscriber slot that promotes to a `Set<() => void>` on the second subscriber (the dominant per-`<For>`-row case pays no Set allocation); batches use a pointer swap for zero-allocation grouping. Two-tier batch flush (computed recompute → effect run) prevents stale reads in diamond-shaped dependency graphs.

@@ -928,12 +928,6 @@ function emitPadding(box: PadBox, target: Target): string | undefined {
   return `.padding(${args.join(', ')})`
 }
 
-/** A box that is a single, all-four-sides-equal value → that value, else null. */
-function boxAllSides(box: PadBox): SideValue | null {
-  const { top, right, bottom, left } = box
-  return top !== undefined && top === right && top === bottom && top === left ? top : null
-}
-
 function condExpr(target: Target, cond: string, a: string, b: string): string {
   return target === 'swift' ? `((${cond}) ? ${a} : ${b})` : `(if (${cond}) ${a} else ${b})`
 }
@@ -1116,49 +1110,98 @@ function foldTree(t: LoweredTree, target: Target, pick: (lo: LoweredObject) => s
   return a !== undefined && b !== undefined ? condExpr(target, t.cond, a, b) : undefined
 }
 
+/** The four sides of a {@link PadBox}, in a fixed order. */
+const PAD_SIDES = ['top', 'right', 'bottom', 'left'] as const
+
+/**
+ * {@link foldTree}, collapsed to the plain value when every leaf picks the same one: a property identical in both
+ * branches (`borderWidth: 1` on a light and a dark card) needs no conditional, and the padding emit compares sides by
+ * value to choose its shortest form.
+ */
+function foldSame(t: LoweredTree, target: Target, pick: (lo: LoweredObject) => string | undefined): string | undefined {
+  const values = treeLeaves(t).map(pick)
+  if (values[0] !== undefined && values.every((v) => v === values[0])) return values[0]
+
+  return foldTree(t, target, pick)
+}
+
+/** A composite slot's dynamic emit: its modifier (undefined when nothing renders), and whether it fell back to the first branch. */
+interface SlotFold {
+  modifier: string | undefined
+  asymmetric: boolean
+}
+
+/** The first branch's value, emitted statically: the fallback when a composite slot cannot fold. */
+const staticFold = (modifier: string | undefined): SlotFold => ({ modifier, asymmetric: true })
+
+/**
+ * A complete border in EVERY leaf folds piecewise: the width, the colour and the shape's corner radius each become
+ * one conditional value (`stroke(cond ? A : B, lineWidth: 1)` / `BorderStroke(1.dp, if (cond) A else B)`), so a
+ * light/dark card keeps its hairline (#4346). A border in only some leaves is an "apply-or-not" modifier, still a
+ * gap: the first branch's border is emitted statically and the property is warned.
+ */
+function foldBorder(tree: LoweredTree, leaves: LoweredObject[], target: Target): SlotFold | undefined {
+  const complete = (lo: LoweredObject) => lo.border.width !== undefined && lo.border.color !== undefined
+  if (!leaves.some(complete)) return undefined
+  const first = leaves[0]!
+  if (!leaves.every(complete)) return staticFold(emitBorder(first.border, first.radiusValue, target))
+  const width = foldSame(tree, target, (lo) => String(lo.border.width))!
+  const color = foldSame(tree, target, (lo) => lo.border.color)!
+  const radius = foldSame(tree, target, (lo) => String(lo.radiusValue))!
+
+  return { modifier: emitBorder({ width, color }, radius, target), asymmetric: false }
+}
+
+/** min/max constraints combine into one composite frame — a per-branch conditional isn't foldable in v1. */
+function foldFrame(_tree: LoweredTree, leaves: LoweredObject[], target: Target): SlotFold | undefined {
+  if (!leaves.some((lo) => Object.keys(lo.frame).length > 0)) return undefined
+
+  return staticFold(emitFrameConstraints(leaves[0]!.frame, target))
+}
+
+/**
+ * Every leaf sets the SAME sides → each side folds to one conditional value (a side equal in every leaf stays a plain
+ * value), and the folded box takes the static emit's shape: `.padding(v)` when all four sides agree, the axis or
+ * per-side form otherwise. Before, only an all-sides value folded, so a per-side box (`padding: '10px 14px'`) fell
+ * back to the first branch even when both branches were identical (#4346). A box whose sides differ across branches
+ * (one sets `padding`, another `paddingTop`) has no one conditional value per side, so it stays static and warned.
+ */
+function foldPadding(tree: LoweredTree, leaves: LoweredObject[], target: Target): SlotFold | undefined {
+  if (!leaves.some((lo) => Object.keys(lo.box).length > 0)) return undefined
+  const sidesOf = (lo: LoweredObject) => PAD_SIDES.filter((k) => lo.box[k] !== undefined)
+  const first = leaves[0]!
+  const shape = sidesOf(first).join(',')
+  if (!leaves.every((lo) => sidesOf(lo).join(',') === shape)) return staticFold(emitPadding(first.box, target))
+  const box: PadBox = {}
+  for (const k of sidesOf(first)) box[k] = foldSame(tree, target, (lo) => String(lo.box[k]))!
+
+  return { modifier: emitPadding(box, target), asymmetric: false }
+}
+
+/** The slots that are composite modifiers, each with the name its asymmetry warning uses. */
+const COMPOSITE_FOLDS: Record<
+  string,
+  { name: string; fold: (tree: LoweredTree, leaves: LoweredObject[], target: Target) => SlotFold | undefined }
+> = {
+  border: { name: 'border', fold: foldBorder },
+  frameConstraints: { name: 'minWidth/minHeight', fold: foldFrame },
+  padding: { name: 'padding', fold: foldPadding },
+}
+
 function emitDynamic(styleValue: ExprIR, target: Target, tag: string, emitCond: CondEmitter): StyleLowerResult {
   const tree = lowerTree(styleValue, target, emitCond)
   const leaves = treeLeaves(tree)
-  const first = leaves[0]!
   const warnings = leaves.flatMap((lo) => collectWarnings(lo, tag))
   const asymmetric: string[] = []
   const modifiers: string[] = []
 
   for (const slot of ORDER[target]) {
-    if (slot === 'border') {
-      if (!leaves.some((lo) => lo.border.width !== undefined && lo.border.color !== undefined)) continue
-      // A border is a COMPOSITE modifier (width+color+shape) — folding a
-      // per-branch conditional into it is a v1 gap. Emit the first branch's
-      // border statically + warn (mirrors asymmetric padding).
-      const stat = emitBorder(first.border, first.radiusValue, target)
-      if (stat !== undefined) modifiers.push(stat)
-      asymmetric.push('border')
-      continue
-    }
-    if (slot === 'frameConstraints') {
-      if (!leaves.some((lo) => Object.keys(lo.frame).length > 0)) continue
-      // min/max constraints combine into one composite frame — a per-branch
-      // conditional isn't foldable in v1. Emit the first branch + warn.
-      const stat = emitFrameConstraints(first.frame, target)
-      if (stat !== undefined) modifiers.push(stat)
-      asymmetric.push('minWidth/minHeight')
-      continue
-    }
-    if (slot === 'padding') {
-      if (!leaves.some((lo) => Object.keys(lo.box).length > 0)) continue
-      const v = foldTree(tree, target, (lo) => {
-        const all = boxAllSides(lo.box)
-        return all === null ? undefined : String(all)
-      })
-      if (v !== undefined) {
-        modifiers.push(target === 'swift' ? `.padding(${v})` : `.padding(${v}.dp)`)
-      } else {
-        // A per-side/axis padding differing across branches can't fold into one
-        // conditional value — emit the first branch statically and warn.
-        const stat = emitPadding(first.box, target)
-        if (stat !== undefined) modifiers.push(stat)
-        asymmetric.push('padding')
-      }
+    const composite = COMPOSITE_FOLDS[slot]
+    if (composite !== undefined) {
+      const r = composite.fold(tree, leaves, target)
+      if (r === undefined) continue
+      if (r.modifier !== undefined) modifiers.push(r.modifier)
+      if (r.asymmetric) asymmetric.push(composite.name)
       continue
     }
     const holder = leaves.find((lo) => lo.slots[slot] !== undefined)
