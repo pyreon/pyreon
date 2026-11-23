@@ -58,7 +58,7 @@ It reads the same declarations an install tool reads — root `workspaces` globs
 | `cycle` | error | a cycle in the **runtime** dependency graph between workspace packages, as declared in `package.json` (`dependencies` + `peerDependencies`) — dev edges are deliberately excluded, because monorepos legitimately share test utilities both ways |
 | `phantom-dep` | error (published) / warning (private) | shipping source imports a package the manifest never declares — hoisting luck that explodes under isolated stores |
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans on a devDependency consumers won't have |
-| `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major |
+| `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major. A bare (non-`workspace:`) peer range is already an `internal-range` error, which names the major mismatch, so that edge is reported once, as `internal-range` |
 | `unused-dep` | info | a declared dependency no source file imports — lexical evidence only; verify before removing |
 
 `loom scan` **exits non-zero on error findings** (`--strict` includes warnings) — wire it into CI and the fabric gates itself. `--json` prints the full report to stdout and *only* that — the write notice goes to stderr, so `loom scan . --json > report.json` is a valid JSON file; `--no-imports` skips the lexical detectors; `--no-write` skips the report file.

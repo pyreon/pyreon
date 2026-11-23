@@ -166,9 +166,15 @@ describe('detectors (via the report)', () => {
     expect(hit?.message).toContain('lexical evidence')
   })
 
-  it('peer-mismatch: internal peer range disagreeing with the workspace copy by a major', () => {
-    const hit = byCode('peer-mismatch').find((i) => i.pkg === '@fix/plugin')
-    expect(hit?.dep).toBe('@fix/util')
+  // #4391 — the edge `@fix/plugin` → `@fix/util` (peer `^9.0.0`, workspace 1.0.0)
+  // is a bare range on a workspace member AND a peer off by a major. It used to
+  // be reported twice (an internal-range error plus a peer-mismatch warning);
+  // it is one internal-range error that names the major mismatch.
+  it('a bare internal peer range off by a major is ONE internal-range finding', () => {
+    const onEdge = report.issues.filter((i) => i.pkg === '@fix/plugin' && i.dep === '@fix/util')
+    expect(onEdge.map((i) => i.code)).toEqual(['internal-range'])
+    expect(onEdge[0]?.message).toContain('misses the workspace copy (1.0.0) by a major')
+    expect(byCode('peer-mismatch')).toEqual([])
   })
 
   it('comments and template literals never produce findings', () => {

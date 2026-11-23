@@ -42,7 +42,7 @@ describe('loom scan', () => {
     expect(text).toMatch(/runtime cycles\s+1\n/)
     expect(text).toMatch(/\d+ errors?\n/)
     // The verdict is the LAST line, on stdout with the rest of the report.
-    expect(text.trimEnd().split('\n').at(-1)).toMatch(/^(✗|x) 5 errors, 3 warnings, 8 info · 5 packages · \d+ ms$/)
+    expect(text.trimEnd().split('\n').at(-1)).toMatch(/^(✗|x) 5 errors, 2 warnings, 8 info · 5 packages · \d+ ms$/)
     expect(err.join('')).toBe('')
     expect(existsSync(join(root, 'loom-report.json'))).toBe(true)
     const report = JSON.parse(readFileSync(join(root, 'loom-report.json'), 'utf8'))

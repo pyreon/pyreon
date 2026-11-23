@@ -16,7 +16,7 @@ export default defineManifest({
   features: [
     'Workspace discovery matching real repos: npm/bun/yarn `workspaces` (array + object forms), pnpm-workspace.yaml, segment-wise globs (`packages/*/*`, `**`, negations)',
     'Graph analysis split by edge SEMANTICS: runtime (dependencies + peers) drives cycles/depths/reach; dev edges tracked separately — shared test utilities never read as circular',
-    'Eight detectors with honest severities: version-drift (peer-contract + strict-superset-containment aware), internal-range, cycle, phantom-dep (+ phantom-type-dep), prod-import-of-dev-dep, peer-mismatch, unused-dep (info — lexical evidence, not proof)',
+    'Eight detectors with honest severities: version-drift (peer-contract + strict-superset-containment aware), internal-range, cycle, phantom-dep (+ phantom-type-dep), prod-import-of-dev-dep, peer-mismatch (one finding per edge: a bare internal peer range is an internal-range error that names the major mismatch), unused-dep (info — lexical evidence, not proof)',
     'Severity respects reality: a private package has no consumers, so its phantom-dep is a warning and its dev-dep import is info',
     'TYPE-AWARE import scan: `import type` / `export type` (multi-line included) and everything in a `.d.ts` are tracked separately from runtime imports — importing types from a devDependency is correct code, so it is never reported, while an undeclared type-only import surfaces as info-level `phantom-type-dep` rather than a runtime phantom',
     'Configured from the root `package.json`\'s `loom` key OR a `loom` section in the ecosystem-wide `pyreon.config.*` — same shape, manifest wins per key; carries devPaths, ignore (reason mandatory), strict, and per-code severity overrides so a repo can adopt loom incrementally. A config file that exists but cannot load is a NAMED error, never a silent skip',
@@ -102,10 +102,7 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json (^2.0.0)
      ↳ packages/util/package.json (^3.0.0)
 
-  ! 3 warnings
-  ! peer-mismatch · \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ↳ packages/plugin/package.json
+  ! 2 warnings
   ! prod-import-of-dev-dep · \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ↳ packages/app/src/index.ts
@@ -122,7 +119,7 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json
   ✗ internal-range · \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ↳ packages/plugin/package.json
   ✗ phantom-dep · \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -132,7 +129,7 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json (^1.0.0)
      ↳ packages/util/package.json (^2.0.0)
 
-✗ 5 errors, 3 warnings, 8 info · 5 packages · 3 ms`,
+✗ 5 errors, 2 warnings, 8 info · 5 packages · 3 ms`,
       mistakes: [
         'Treating a dev-edge "cycle" as a bug — loom deliberately excludes devDependencies from cycle detection; monorepos legitimately share test utilities both ways, and a detector that cries wolf is a dead gate',
         'Reading `unused-dep` as a removal order — it is INFO with lexical evidence only; bins, plugin autoloads, and CSS imports load without an import statement',

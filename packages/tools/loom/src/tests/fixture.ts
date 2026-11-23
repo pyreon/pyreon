@@ -12,7 +12,8 @@
  *  - phantom-dep: @fix/app imports `undeclared-pkg` in src
  *  - prod-import-of-dev-dep: @fix/app imports `dev-only-pkg` (devDependencies)
  *  - unused-dep: @fix/lib declares `never-imported` and imports nothing
- *  - peer-mismatch: @fix/plugin peers @fix/util@^9.0.0 (actual 1.0.0)
+ *  - internal-range (peer, off by a major — reported once, not also as
+ *    peer-mismatch): @fix/plugin peers @fix/util@^9.0.0 (actual 1.0.0)
  */
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

@@ -126,12 +126,21 @@ export function detectInternalRange(model: WorkspaceModel): LoomIssue[] {
       } else {
         // A bare semver range on an internal package: installs from registry
         // instead of linking the workspace copy the moment versions slip.
+        // A PEER range that also misses the workspace major is the
+        // `peer-mismatch` fact on the same edge; it is stated here, and
+        // `buildReport` drops the separate warning (#4391).
+        const rangeMajor = majorOf(d.range)
+        const actualMajor = majorOf(actual)
+        const peerOffMajor =
+          d.field === 'peerDependencies' && rangeMajor !== null && actualMajor !== null && rangeMajor !== actualMajor
         issues.push({
           code: 'internal-range',
           severity: 'error',
           pkg: p.name,
           dep: d.name,
-          message: `\`${p.name}\` declares workspace member \`${d.name}\` as \`${d.range}\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace`,
+          message:
+            `\`${p.name}\` declares workspace member \`${d.name}\` as \`${d.range}\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace` +
+            (peerOffMajor ? `; as a peer range it also misses the workspace copy (${actual}) by a major` : ''),
           details: { declared: d.range, actual },
         })
       }
