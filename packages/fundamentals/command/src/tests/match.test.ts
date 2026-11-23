@@ -328,6 +328,16 @@ describe('createRanker', () => {
     expect(first.length).toBeGreaterThan(0)
   })
 
+  // 960 full ranks of 800 items (60 sessions x 8 steps, each against a fresh
+  // rank): CPU-bound, so it must not sit on the shared 20 s default. Measured
+  // 2026-11-23: 3.4 s alone, 7.0 s under coverage alone, and over 20 s under
+  // Coverage (Full)'s 4-way package parallelism, where it timed out (PR #4752,
+  // run 45230905896). Derived, as in loom's strip-equivalence spec: 6x the
+  // 20 s it overran under load (17x the quiet coverage run), and a real hang
+  // still fails within two minutes. Not trimmed: the session count is what makes the
+  // differential cover backspace and clear after a narrowed query.
+  const DIFFERENTIAL_TIMEOUT_MS = 120_000
+
   it('gives exactly the same answer as a fresh rank, for every step of a typing session (differential)', () => {
     const r = rng(8)
     for (let session = 0; session < 60; session++) {
@@ -341,7 +351,7 @@ describe('createRanker', () => {
         expect(ranker.rank(query, items)).toEqual(rank(query, items, (t) => t))
       }
     }
-  })
+  }, DIFFERENTIAL_TIMEOUT_MS)
 
   it('does not narrow across a different list, different options, or after a reset', () => {
     const ranker = createRanker<string>((t) => t)
