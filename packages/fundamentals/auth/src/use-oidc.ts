@@ -1,4 +1,4 @@
-import { computed } from '@pyreon/reactivity'
+import { computed, getCurrentScope, onScopeDispose } from '@pyreon/reactivity'
 import { createAuth, memoryFlowStore } from './auth'
 import type { AuthStatus, FlowStore, SignOutOptions } from './auth'
 import { FLOW_TTL_MS } from './oidc'
@@ -219,6 +219,8 @@ export function useOidc(opts: UseOidcOptions): UseOidcResult {
       }),
     ...(opts.fetch === undefined ? {} : { fetch: opts.fetch }),
   })
+  // Release the redirect-URI claim with the component (a remount, a realm switch, HMR).
+  if (getCurrentScope()) onScopeDispose(() => auth.dispose())
   const errorCode = computed(() => auth.error()?.code ?? null)
 
   if (isBrowser() && isRedirectFor(location.href, opts.redirectUri)) {

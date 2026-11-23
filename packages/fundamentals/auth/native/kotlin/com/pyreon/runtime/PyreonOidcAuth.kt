@@ -80,6 +80,11 @@ public class PyreonOidcAuth(
     private val sessionKey get() = "pyreon.auth.session.$clientId|$issuer"
 
     // Declared before `init`: rehydration may start a refresh while the object is constructed.
+    // This instance's claim on its redirect target (see PyreonRedirectClaims); released by dispose().
+    private val redirectClaim: PyreonRedirectToken = PyreonRedirectClaims.claim(redirectUri, issuer)
+    // Bumped whenever the session itself changes (commit or clear): a refresh applies its result
+    // only to the session it started from.
+    @Volatile private var sessionGen = 0
     private val refreshLock = Any()
     private var refreshInFlight: java.util.concurrent.CountDownLatch? = null
 
@@ -99,6 +104,7 @@ public class PyreonOidcAuth(
         error.value = null
         try {
             val m = metadata()
+            if (!redirectClaim.advertise(m.issParameterSupported)) throw PyreonAuthError.RedirectShared
             val url = PyreonAuthCore(store).begin(
                 m.authorizationEndpoint, m.issuer, clientId, redirectUri, scope, authorizationParams = authorizationParams,
             )
@@ -122,7 +128,9 @@ public class PyreonOidcAuth(
 
     private fun complete(callback: String, my: Int) {
         val m = metadata()
-        val (code, flow) = PyreonAuthCore(store).complete(callback, m.issuer, m.issParameterSupported)
+        redirectClaim.advertise(m.issParameterSupported)
+        // On a redirect URI another provider also uses, only `iss` says who answered: require it.
+        val (code, flow) = PyreonAuthCore(store).complete(callback, m.issuer, m.issParameterSupported || redirectClaim.isShared)
         val t = PyreonOidcClient.exchangeCode(m, clientId, flow, code, transport)
         val verified = verify(m, t.idToken, flow.nonce)
         if (my != epoch.get()) return
@@ -155,6 +163,11 @@ public class PyreonOidcAuth(
     }
 
     private fun performRefresh(my: Int) {
+        // A refresh never bumps the epoch, so starting one cannot discard a sign-in in flight. It
+        // applies its result only while nothing else happened: no new attempt or sign-out (the
+        // epoch) and no other commit (the session generation).
+        val gen = sessionGen
+        fun stillCurrent() = my == epoch.get() && gen == sessionGen
         try {
             val current = refreshToken ?: throw PyreonAuthError("no_refresh_token", "no refresh token — sign in again")
             val m = metadata()
@@ -165,11 +178,11 @@ public class PyreonOidcAuth(
             if (verified != null && sub != null && verified["sub"] != sub) {
                 throw PyreonAuthError("subject_changed", "refreshed id_token is for a different user")
             }
-            if (my != epoch.get()) return
+            if (!stillCurrent()) return
             // Providers may rotate the refresh token; keep the old one when they do not.
             commit(t, t.refreshToken ?: current, verified ?: claims.value)
         } catch (e: Throwable) {
-            if (my == epoch.get()) fail(e)
+            if (stillCurrent()) fail(e)
         }
     }
 
@@ -177,6 +190,11 @@ public class PyreonOidcAuth(
      * Clear the session. With [endProviderSession], also end it AT THE PROVIDER (RP-initiated
      * logout) — otherwise the next sign-in completes without a prompt.
      */
+    /** Release this instance's claim on its redirect URI (an instance that is thrown away). */
+    public fun dispose() {
+        redirectClaim.release()
+    }
+
     public fun signOut(endProviderSession: Boolean = false) {
         epoch.incrementAndGet()
         val hint = idToken
@@ -210,6 +228,7 @@ public class PyreonOidcAuth(
     }
 
     private fun commit(t: PyreonTokenSet, refresh: String?, verified: Map<String, String>?) {
+        sessionGen++
         refreshToken = refresh
         // A refresh response may omit the ID token; the last one stays the logout hint.
         if (t.idToken != null) idToken = t.idToken else if (status.value != PyreonOidcStatus.SIGNED_IN) idToken = null
@@ -230,6 +249,7 @@ public class PyreonOidcAuth(
     }
 
     private fun clear() {
+        sessionGen++
         accessToken.value = null
         refreshToken = null
         idToken = null

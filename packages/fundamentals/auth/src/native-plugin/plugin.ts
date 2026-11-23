@@ -28,6 +28,7 @@ import {
   type SwiftEmitContext,
   type TypeIR,
 } from '@pyreon/native-compiler/plugin-api'
+import { redirectTarget } from '../oidc'
 import { authStubs } from './stubs'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
@@ -48,7 +49,7 @@ interface OidcPayload {
 /** Options whose meaning is web-only: the native runtime supplies its own store, browser and transport. */
 const WEB_ONLY_OPTIONS = new Set(['flows', 'redirect', 'fetch'])
 const STRING_OPTIONS = ['issuer', 'clientId', 'redirectUri', 'nativeRedirectUri', 'scope', 'postLogoutRedirectUri'] as const
-const RESERVED_PARAMS = new Set(['response_type', 'client_id', 'redirect_uri', 'scope', 'state', 'nonce', 'code_challenge', 'code_challenge_method'])
+const RESERVED_PARAMS = new Set(['response_type', 'response_mode', 'client_id', 'redirect_uri', 'scope', 'state', 'nonce', 'code_challenge', 'code_challenge_method'])
 
 const isLoopback = (host: string) => host === 'localhost' || host === '127.0.0.1' || host === '[::1]'
 
@@ -61,6 +62,7 @@ function issuerProblem(issuer: string): string | undefined {
     return 'is not a valid URL'
   }
   if (u.protocol === 'https:' || (u.protocol === 'http:' && isLoopback(u.hostname))) return undefined
+
   return `must be https (got ${u.protocol})`
 }
 
@@ -134,11 +136,28 @@ const recognizeOidc: CallRecognizer = (_call, ctx) => {
     ...(strings.postLogoutRedirectUri === undefined ? {} : { postLogoutRedirectUri: strings.postLogoutRedirectUri }),
     ...(params === undefined || Object.keys(params).length === 0 ? {} : { authorizationParams: params }),
   }
+  // RFC 9700 §4.4 (OAuth mix-up): two providers on ONE native redirect URI let a malicious or
+  // compromised provider receive the other's code and PKCE verifier when that one sends no `iss`.
+  // Native apps nearly always share one scheme, so refuse it here, where the literals are known;
+  // the runtime registry (PyreonRedirectClaims) covers what one file cannot see.
+  const claims = ctx.fileState('@pyreon/auth:redirect-claims', () => new Map<string, string>())
+  const target = redirectTarget(payload.redirectUri) ?? payload.redirectUri
+  const issuer = payload.issuer.replace(/\/$/, '')
+  const prev = claims.get(target)
+  if (prev !== undefined && prev !== issuer) {
+    ctx.report(
+      `${where}: \`${issuer}\` and \`${prev}\` share the native redirect URI ${payload.redirectUri}. Give each provider its own \`nativeRedirectUri\` (e.g. \`com.example.app:/oauth/google\`) and register it with that provider: a provider that sends no \`iss\` can otherwise be confused with another (OAuth mix-up, RFC 9700 §4.4). The native session container is not emitted.`,
+    )
+
+    return null
+  }
+  claims.set(target, issuer)
   if (strings.nativeRedirectUri === undefined && /^https?:/i.test(strings.redirectUri!)) {
     ctx.warn(
       `useOidc: no \`nativeRedirectUri\`, so the native apps use the web \`redirectUri\` (${strings.redirectUri}). An https redirect only returns to the app when it is a claimed universal link / App Link; otherwise set \`nativeRedirectUri\` to your app's scheme (\`com.example.app:/oauth\`) and register it with the provider.`,
     )
   }
+
   return { type: DECL_TYPE, payload: payload as unknown as Record<string, never> }
 }
 
@@ -154,6 +173,7 @@ const oidcDecl: DeclEmitter = {
       const entries = Object.entries(p.authorizationParams).map(([k, v]) => `${swiftStr(k)}: ${swiftStr(v)}`)
       args.push(`authorizationParams: [${entries.join(', ')}]`)
     }
+
     return `@State private var ${ctx.ident(d.name)} = PyreonOidcAuth(${args.join(', ')})`
   },
   kotlin(d, ctx) {
@@ -165,6 +185,7 @@ const oidcDecl: DeclEmitter = {
       const entries = Object.entries(p.authorizationParams).map(([k, v]) => `${kotlinStr(k)} to ${kotlinStr(v)}`)
       args.push(`authorizationParams = mapOf(${entries.join(', ')})`)
     }
+
     return `val ${ctx.ident(d.name)} = rememberPyreonOidcAuth(${args.join(', ')})`
   },
   typing: {
@@ -186,6 +207,7 @@ const FIELD_TYPES: Readonly<Record<string, TypeIR>> = {
   expiresAt: { kind: 'union', branches: [{ kind: 'number', float: true }, { kind: 'null' }] },
 }
 /** Of those, the ones that are Compose state on Android (`isAuthenticated` is a plain getter). */
+
 const KOTLIN_STATE = new Set(['status', 'subject', 'accessToken', 'error', 'expiresAt'])
 
 /** `auth.<field>()` (the web read) or `auth.<field>` (a native-style read) of a known field. */
@@ -220,10 +242,12 @@ function signOutCall(site: ReceiverSite, ctx: SwiftEmitContext | KotlinEmitConte
       ctx.warn(
         `${site.receiver.name}.signOut({ ${f.name} }): native sessions take \`postLogoutRedirectUri\` once, in the useOidc options — set it there.`,
       )
+
       return undefined
     }
   }
   if (end === undefined) return `${name}.signOut()`
+
   return swift ? `${name}.signOut(endProviderSession: ${end})` : `${name}.signOut(endProviderSession = ${end})`
 }
 
@@ -241,6 +265,7 @@ const oidcReceiver: ReceiverLowering = {
       if (field !== undefined) {
         return `${ctx.ident(site.receiver.name)}.${ctx.ident(field)}${KOTLIN_STATE.has(field) ? '.value' : ''}`
       }
+
       return signOutCall(site, ctx, false)
     },
   },

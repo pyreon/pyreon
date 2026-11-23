@@ -35,6 +35,7 @@ public struct PyreonAuthError: Error, Equatable, CustomStringConvertible {
     public static let issuerMissing = PyreonAuthError("issuer_missing", "provider advertises iss but callback omitted it")
     public static let missingCode = PyreonAuthError("missing_code", "callback has no code")
     public static let unknownFlow = PyreonAuthError("unknown_flow", "no pending authorization for this state")
+    public static let redirectShared = PyreonAuthError("redirect_shared", "another provider shares this redirect URI and this one does not send RFC 9207 iss — give each provider its own redirect URI")
     public static let redirectMismatch = PyreonAuthError("redirect_mismatch", "callback did not arrive at this sign-in's redirect URI (mix-up)")
 }
 

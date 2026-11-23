@@ -6,10 +6,14 @@
  * `tokens().id_token` for identity trusted a token whose signature and nonce were
  * never checked. These specs mint real ES256 tokens and drive the full flow.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createAuth, memoryFlowStore } from '../index'
 import { base64url } from '../pkce'
 import type { FetchLike, Jwk } from '../index'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 const issuer = 'https://idp.example'
 const enc = new TextEncoder()

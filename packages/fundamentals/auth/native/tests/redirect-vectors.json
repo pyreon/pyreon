@@ -1,0 +1,17 @@
+[
+  ["https://app.example/cb", "https app.example /cb"],
+  ["HTTPS://App.Example:443/cb?x=1#f", "https app.example /cb"],
+  ["https://app.example:8443/cb", "https app.example:8443 /cb"],
+  ["http://localhost:80/cb", "http localhost /cb"],
+  ["https://app.example", "https app.example /"],
+  ["com.example.app:/oauth", "com.example.app  /oauth"],
+  ["com.example.app:///oauth", "com.example.app  /oauth"],
+  ["Com.Example.App:/oauth?code=1&state=s", "com.example.app  /oauth"],
+  ["com.example.app:/oauth/google", "com.example.app  /oauth/google"],
+  ["app:cb", "app  cb"],
+  ["app://cb", "app cb "],
+  ["app://Host/x", "app host /x"],
+  ["https://app.example/a%2Fb", "https app.example /a%2Fb"],
+  ["https://app.example/a/b", "https app.example /a/b"],
+  ["custom://h:443/x", "custom h:443 /x"]
+]

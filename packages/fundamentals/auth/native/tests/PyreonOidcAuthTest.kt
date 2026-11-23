@@ -48,6 +48,7 @@ class FakeProvider : PyreonAuthTransport {
     var kid = "k1"
     var subject = "user-1"
     var nonceOverride: String? = null
+    var advertiseIss = false
     var rotateRefresh = false
     var refreshStatus = 200
     @Volatile var refreshDelayMs = 0L
@@ -66,8 +67,10 @@ class FakeProvider : PyreonAuthTransport {
         requests.add(request.url)
         val url = request.url
         if (url.endsWith("/.well-known/openid-configuration")) {
-            return ok(mapOf("issuer" to ISS, "authorization_endpoint" to "$ISS/auth", "token_endpoint" to "$ISS/token",
-                "jwks_uri" to "$ISS/jwks", "end_session_endpoint" to "$ISS/logout"))
+            val m = linkedMapOf<String, Any?>("issuer" to ISS, "authorization_endpoint" to "$ISS/auth", "token_endpoint" to "$ISS/token",
+                "jwks_uri" to "$ISS/jwks", "end_session_endpoint" to "$ISS/logout")
+            if (advertiseIss) m["authorization_response_iss_parameter_supported"] = true
+            return ok(m)
         }
         if (url.endsWith("/jwks")) {
             jwksFetches++
@@ -124,13 +127,16 @@ class FakeBrowser(private val provider: FakeProvider) : PyreonAuthBrowser {
     val opened = ArrayList<String>()
     var cancel = false
     var beforeReturn: (() -> Unit)? = null
+    /** Rewrite the callback (e.g. drop `iss`, as a provider that does not send it would). */
+    var rewrite: ((String) -> String)? = null
 
     override fun authorize(url: String, redirectUri: String): String {
         opened.add(url)
         if (cancel) throw PyreonAuthCancelled()
         beforeReturn?.invoke()
         if (URI(url).path == "/logout") return redirectUri
-        return provider.authorize(url)
+        val back = provider.authorize(url)
+        return rewrite?.invoke(back) ?: back
     }
 }
 
@@ -289,7 +295,56 @@ fun testSessionKeyedByIssuer() {
     )
     check(other.status.value == PyreonOidcStatus.SIGNED_OUT) { "another issuer's instance does not restore this session" }
     other.signOut()
+    other.dispose()
     check(store.entries["pyreon.auth.session.app|https://idp.example"] != null) { "another issuer's instance does not delete this session" }
+}
+
+fun testSharedRedirectUri() {
+    // N1 (mix-up on a shared native redirect URI): another provider on the same nativeRedirectUri,
+    // and this one does not send `iss` — its sign-in is refused before the browser opens.
+    PyreonRedirectClaims.reset()
+    val p = FakeProvider()
+    val b = FakeBrowser(p)
+    val other = PyreonOidcAuth(
+        issuer = "https://honest.example", clientId = "app", redirectUri = "com.example.app:/oauth",
+        store = MemStore(), browser = b, transport = p, executor = INLINE,
+    )
+    val sharer = make(p, MemStore(), b)
+    sharer.signIn()
+    check(sharer.error.value == "redirect_shared") { "a provider without iss on a shared native redirect URI is refused: ${sharer.error.value}" }
+    check(b.opened.isEmpty() && p.requests.none { it.endsWith("/token") }) { "no browser, no token request" }
+    other.dispose()
+    sharer.signIn()
+    check(sharer.status.value == PyreonOidcStatus.SIGNED_IN) { "after the other provider is disposed the URI is not shared: ${sharer.error.value}" }
+
+    // Providers that send `iss` may share one; a callback without `iss` is then refused.
+    PyreonRedirectClaims.reset()
+    val tp = FakeProvider()
+    tp.advertiseIss = true
+    val tb = FakeBrowser(tp)
+    val tenantTwo = PyreonOidcAuth(
+        issuer = "https://other.example", clientId = "app", redirectUri = "com.example.app:/oauth",
+        store = MemStore(), browser = tb, transport = tp, executor = INLINE,
+    )
+    val tenantOne = make(tp, MemStore(), tb)
+    tenantOne.signIn()
+    check(tenantOne.status.value == PyreonOidcStatus.SIGNED_IN) { "providers that send iss may share a redirect URI: ${tenantOne.error.value}" }
+    tb.rewrite = { it.replace(Regex("&iss=[^&]*"), "") }
+    tenantOne.signIn()
+    check(tenantOne.error.value == "issuer_missing") { "on a shared redirect URI a callback without iss is refused: ${tenantOne.error.value}" }
+    tenantTwo.dispose()
+    PyreonRedirectClaims.reset()
+}
+
+fun testRefreshDoesNotDiscardSignIn() {
+    val p = FakeProvider()
+    val b = FakeBrowser(p)
+    val auth = make(p, MemStore(), b)
+    auth.signIn()
+    b.beforeReturn = { auth.refresh() }
+    auth.signIn()
+    b.beforeReturn = null
+    check(auth.status.value == PyreonOidcStatus.SIGNED_IN && auth.accessToken.value == "at-0") { "a refresh does not discard a sign-in in flight: ${auth.accessToken.value}" }
 }
 
 fun testKeyRotation() {
@@ -366,5 +421,7 @@ fun main() {
     testKeyRotation()
     testConcurrentRefreshSharesOneRequest()
     testSessionKeyedByIssuer()
+    testSharedRedirectUri()
+    testRefreshDoesNotDiscardSignIn()
     println("[PyreonOidcAuthTest] all smoke tests passed")
 }

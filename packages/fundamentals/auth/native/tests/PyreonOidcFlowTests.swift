@@ -13,6 +13,7 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
     var kid = "k1"
     var subject = "user-1"
     var nonceOverride: String?
+    var advertiseIss = false
     var rotateRefresh = false
     var refreshStatus = 200
     var jwksFetches = 0
@@ -30,6 +31,7 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
             var m: [String: Any] = ["issuer": issuer, "authorization_endpoint": "\(issuer)/auth",
                                     "token_endpoint": "\(issuer)/token", "jwks_uri": "\(issuer)/jwks"]
             if endSession { m["end_session_endpoint"] = "\(issuer)/logout" }
+            if advertiseIss { m["authorization_response_iss_parameter_supported"] = true }
             return ok(m)
         }
         if r.url.hasSuffix("/jwks") {
@@ -85,6 +87,8 @@ final class FakeBrowser: PyreonAuthBrowser {
     var opened: [URL] = []
     var cancel = false
     var beforeReturn: (() -> Void)?
+    /// Rewrite the callback (e.g. drop `iss`, as a provider that does not send it would).
+    var rewrite: ((URL) -> URL)?
     init(_ provider: FakeProvider) { self.provider = provider }
 
     func authorize(url: URL, redirectUri: String) async throws -> URL {
@@ -92,7 +96,8 @@ final class FakeBrowser: PyreonAuthBrowser {
         if cancel { throw ASWebAuthenticationSessionError(.canceledLogin) }
         beforeReturn?()
         if url.path == "/logout" { return URL(string: redirectUri)! }
-        return provider.authorize(url)
+        let back = provider.authorize(url)
+        return rewrite?(back) ?? back
     }
 }
 
@@ -246,7 +251,52 @@ enum PyreonOidcFlowTests {
                                          store: keyStore, transport: keyP, browser: keyB)
         expect(otherIssuer.status == PyreonOidcStatus.signedOut, "another issuer's instance does not restore this session")
         otherIssuer.signOut()
+        otherIssuer.dispose()
         expect(keyStore.entries["pyreon.auth.session.app|https://idp.example"] != nil, "another issuer's instance does not delete this session")
+
+        // N1 (mix-up on a shared native redirect URI): a second provider on the same
+        // nativeRedirectUri, and this one does not send `iss` — its sign-in is refused before the
+        // browser opens, so no code can reach its token endpoint.
+        PyreonRedirectClaims.shared.reset()
+        let mixP = FakeProvider(), mixB = FakeBrowser(mixP)
+        let otherProvider = PyreonOidcAuth(issuer: "https://honest.example", clientId: "app", redirectUri: "com.example.app:/oauth",
+                                           store: CountingStore(), transport: mixP, browser: mixB)
+        let sharer = make(mixP, CountingStore(), mixB)
+        await sharer.signInNow()
+        expect(sharer.error == "redirect_shared", "a provider without iss on a shared native redirect URI is refused (\(sharer.error ?? "nil"))")
+        expect(mixB.opened.isEmpty && !mixP.requests.contains { $0.hasSuffix("/token") }, "no browser, no token request")
+        otherProvider.dispose()
+        await sharer.signInNow()
+        expect(sharer.status == PyreonOidcStatus.signedIn, "after the other provider is disposed the redirect URI is not shared (\(sharer.error ?? "nil"))")
+
+        // Providers that send `iss` may share one; a callback without `iss` is then refused.
+        PyreonRedirectClaims.shared.reset()
+        let tenP = FakeProvider(), tenB = FakeBrowser(tenP)
+        tenP.advertiseIss = true
+        let tenantTwo = PyreonOidcAuth(issuer: "https://other.example", clientId: "app", redirectUri: "com.example.app:/oauth",
+                                       store: CountingStore(), transport: tenP, browser: tenB)
+        let tenantOne = make(tenP, CountingStore(), tenB)
+        await tenantOne.signInNow()
+        expect(tenantOne.status == PyreonOidcStatus.signedIn, "providers that send iss may share a redirect URI (\(tenantOne.error ?? "nil"))")
+        tenB.rewrite = { u in
+            var c = URLComponents(url: u, resolvingAgainstBaseURL: false)!
+            c.queryItems = c.queryItems?.filter { $0.name != "iss" }
+            return c.url!
+        }
+        await tenantOne.signInNow()
+        expect(tenantOne.error == "issuer_missing", "on a shared redirect URI a callback without iss is refused (\(tenantOne.error ?? "nil"))")
+        tenantTwo.dispose()
+        PyreonRedirectClaims.shared.reset()
+
+        // A refresh that starts while a sign-in is in flight does not discard that sign-in.
+        let rfP = FakeProvider(), rfB = FakeBrowser(rfP)
+        let rfAuth = make(rfP, CountingStore(), rfB)
+        await rfAuth.signInNow()
+        rfB.beforeReturn = { _Concurrency.Task { await rfAuth.refreshNow() } }
+        await rfAuth.signInNow()
+        rfB.beforeReturn = nil
+        for _ in 0..<500 { await _Concurrency.Task.yield() }
+        expect(rfAuth.status == PyreonOidcStatus.signedIn && rfAuth.accessToken == "at-0", "a refresh does not discard a sign-in in flight (\(rfAuth.accessToken ?? "nil"))")
 
         // An expired session with no refresh token is dropped on relaunch, not restored.
         let es = CountingStore()

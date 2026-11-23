@@ -35,7 +35,88 @@ public open class PyreonAuthError(public val code: String, message: String) : Ex
     public object IssuerMissing : PyreonAuthError("issuer_missing", "provider advertises iss but callback omitted it")
     public object MissingCode : PyreonAuthError("missing_code", "callback has no code")
     public object UnknownFlow : PyreonAuthError("unknown_flow", "no pending authorization for this state")
+    public object RedirectShared : PyreonAuthError("redirect_shared", "another provider shares this redirect URI and this one does not send RFC 9207 iss — give each provider its own redirect URI")
     public object RedirectMismatch : PyreonAuthError("redirect_mismatch", "callback did not arrive at this sign-in's redirect URI (mix-up)")
+}
+
+/**
+ * What a redirect URI is matched on — the same rule as the web `redirectTarget`, held to the shared
+ * vectors in `native/tests/redirect-vectors.json`: `scheme host path`, scheme and host lowercased,
+ * default ports (80 http, 443 https) dropped, the path as written (not percent-decoded), `/` for an
+ * empty http(s) path, the scheme-specific part for an opaque URI; query and fragment ignored.
+ */
+public object PyreonRedirect {
+    public fun target(url: String): String? {
+        val u = try {
+            java.net.URI(url)
+        } catch (_: Exception) {
+            return null
+        }
+        val scheme = u.scheme?.lowercase() ?: return null
+        if (u.isOpaque) return "$scheme  ${u.rawSchemeSpecificPart.substringBefore('?')}"
+        val h = u.host
+        val host = if (h != null) {
+            val p = u.port
+            val defaultPort = (scheme == "http" && p == 80) || (scheme == "https" && p == 443)
+            h.lowercase() + if (p >= 0 && !defaultPort) ":$p" else ""
+        } else {
+            (u.rawAuthority ?: "").lowercase()
+        }
+        val raw = u.rawPath ?: ""
+        val path = if (raw.isEmpty() && (scheme == "http" || scheme == "https")) "/" else raw
+        return "$scheme $host $path"
+    }
+}
+
+/**
+ * Which issuers have a live `PyreonOidcAuth` on which redirect target — process-wide, the same rule
+ * as the web `claimRedirect` (RFC 9700 §4.4 mix-up). A target is SHARED while two or more issuers
+ * hold it; on a shared target a provider must send RFC 9207 `iss` (sign-in refuses one that does not
+ * advertise it, `redirect_shared`) and every callback must carry `iss` (`issuer_missing`). Native
+ * apps nearly always share one scheme, so give each provider its own path: `com.example.app:/oauth/google`.
+ */
+public object PyreonRedirectClaims {
+    private class Claim(var count: Int, var iss: Boolean?)
+    private val claims = HashMap<String, HashMap<String, Claim>>()
+
+    /** Register one instance; the returned token releases it (idempotent). */
+    public fun claim(redirectUri: String, issuer: String): PyreonRedirectToken {
+        val target = PyreonRedirect.target(redirectUri) ?: redirectUri
+        val name = issuer.removeSuffix("/")
+        synchronized(this) {
+            claims.getOrPut(target) { HashMap() }.getOrPut(name) { Claim(0, null) }.count++
+        }
+        return PyreonRedirectToken(target, name)
+    }
+
+    internal fun release(target: String, issuer: String): Unit = synchronized(this) {
+        val byIssuer = claims[target] ?: return
+        val c = byIssuer[issuer] ?: return
+        c.count--
+        if (c.count <= 0) byIssuer.remove(issuer)
+        if (byIssuer.isEmpty()) claims.remove(target)
+    }
+
+    internal fun isShared(target: String): Boolean = synchronized(this) { (claims[target]?.size ?: 0) > 1 }
+
+    /** Record whether the provider sends `iss`; false when that is not allowed (shared target, no `iss`). */
+    internal fun advertise(target: String, issuer: String, iss: Boolean): Boolean = synchronized(this) {
+        claims[target]?.get(issuer)?.iss = iss
+        iss || (claims[target]?.size ?: 0) < 2
+    }
+
+    /** Forget every claim (tests). */
+    public fun reset(): Unit = synchronized(this) { claims.clear() }
+}
+
+/** One instance's claim on its redirect target. */
+public class PyreonRedirectToken internal constructor(public val target: String, private val issuer: String) {
+    private val released = java.util.concurrent.atomic.AtomicBoolean(false)
+    public val isShared: Boolean get() = PyreonRedirectClaims.isShared(target)
+    public fun advertise(iss: Boolean): Boolean = PyreonRedirectClaims.advertise(target, issuer, iss)
+    public fun release() {
+        if (released.compareAndSet(false, true)) PyreonRedirectClaims.release(target, issuer)
+    }
 }
 
 /** The https rule every endpoint follows, shared with the web `assertHttps`. */
@@ -53,7 +134,7 @@ public object PyreonAuthUrl {
 
     /** Authorization-request parameters the flow owns; `authorizationParams` may not set them. */
     public val RESERVED_PARAMS: Set<String> = setOf(
-        "response_type", "client_id", "redirect_uri", "scope", "state", "nonce", "code_challenge", "code_challenge_method",
+        "response_type", "response_mode", "client_id", "redirect_uri", "scope", "state", "nonce", "code_challenge", "code_challenge_method",
     )
 }
 
@@ -123,15 +204,6 @@ public class PyreonAuthCore(private val backend: PyreonSecureBackend) {
 
     // A malformed query (a bad `%` escape) reads as empty — the callback then fails
     // as UnknownFlow, the same as Swift, where URLComponents returns nil.
-    /** scheme://host:port/path, lowercased scheme and host — query and fragment ignored; null if unparseable. */
-    internal fun redirectTarget(url: String): String? = try {
-        val u = java.net.URI(url)
-        val port = if (u.port >= 0) ":${u.port}" else ""
-        "${(u.scheme ?: "").lowercase()}://${(u.host ?: "").lowercase()}$port${u.path ?: ""}"
-    } catch (_: Exception) {
-        null
-    }
-
     private fun query(url: String): Map<String, String> = try {
         val raw = URI(url).rawQuery
         if (raw == null) emptyMap()
@@ -211,8 +283,8 @@ public class PyreonAuthCore(private val backend: PyreonSecureBackend) {
         // (OAuth mix-up), whether or not the callback carries RFC 9207 `iss`.
         if (flow.issuer != issuer) throw PyreonAuthError.IssuerMismatch
         // RFC 9700 §4.4: without `iss`, the redirect URI is what says which provider answered.
-        val target = redirectTarget(callbackUrl)
-        if (target == null || target != redirectTarget(flow.redirectUri)) throw PyreonAuthError.RedirectMismatch
+        val target = PyreonRedirect.target(callbackUrl)
+        if (target == null || target != PyreonRedirect.target(flow.redirectUri)) throw PyreonAuthError.RedirectMismatch
         q["error"]?.let { throw PyreonAuthError.ProviderError(it) }
         if (!PyreonPKCE.constantTimeEqual(state, flow.state)) throw PyreonAuthError.StateMismatch
         val iss = q["iss"]

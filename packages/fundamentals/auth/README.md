@@ -100,13 +100,19 @@ await createAuth({ ...config, binding: binding.value, redirect: (url) => (locati
 
 // GET /auth/callback
 const auth = createAuth({ ...config, binding: readFlowBinding(req.headers.get('cookie')), redirect: () => {} })
+// The request's PATH and query (Node's req.url), resolved against the configured redirect origin.
+// Behind a TLS-terminating proxy the absolute request URL is the internal one and is refused.
 await auth.handleCallback(req.url) // a callback opened in another browser fails with unbound_flow / unknown_flow
 ```
 
 **One redirect URI per provider.** Most providers send no `iss` on the redirect, so the redirect URI is what says which
 provider answered. With a shared one, a malicious or compromised provider you also offer could bounce the user to an
-honest one and receive its code and your PKCE verifier (the OAuth mix-up attack, RFC 9700 §4.4). `createAuth` throws
-when two providers share a redirect URI over one flow store; use `/auth/callback/github`, `/auth/callback/google`, ….
+honest one and receive its code and your PKCE verifier (the OAuth mix-up attack, RFC 9700 §4.4). Instances are
+registered process-wide by redirect URI: two providers may share one only if both send RFC 9207 `iss` — a provider known
+not to is refused at construction (explicit metadata) or at sign-in (`redirect_shared`), and every callback on a shared
+URI must carry `iss`. `auth.dispose()` releases a claim (`useOidc` does it on unmount). Use `/auth/callback/github`,
+`/auth/callback/google`, … — and on iOS / Android one `nativeRedirectUri` per provider (`com.example.app:/oauth/google`):
+the compiler and the native runtime apply the same rule.
 
 The lower-level steps are exported too (`discover`, `beginAuthorization`, `parseCallback`, `exchangeCode`,
 `refreshTokens`, `endSessionUrl`, `verifyIdToken`, `createJwksCache`) for server-side flows; `beginAuthorization` and
@@ -194,6 +200,10 @@ nothing is emitted.
 
 - **iOS** — nothing. Sign-in runs in `ASWebAuthenticationSession`, which hands the redirect straight back. Register
   `nativeRedirectUri` with the provider; an https redirect is matched as a universal link on iOS 17.4+.
+- **One `nativeRedirectUri` per provider** — `com.example.app:/oauth/google`, `com.example.app:/oauth/github`, not one
+  shared `com.example.app:/oauth`: the OAuth mix-up attack above works on native too. The compiler refuses two issuers on
+  one `nativeRedirectUri` in a file; the native runtime refuses to sign in on a shared one unless the provider sends
+  `iss`, and then requires it on the callback.
 - **Android** — declare the two activities in `AndroidManifest.xml` (sources are wired, not an AAR, so there is no
   library manifest to merge), with your redirect's scheme:
 
@@ -229,22 +239,18 @@ and pass it down.
 
 ## Security notes and known limits
 
-`@pyreon/auth` is **Experimental**: its API may change in a minor release. Read these before you ship:
+`@pyreon/auth` is **Experimental**: its API may change in a minor release. These are the limits to accept before you
+ship it:
 
-- **iOS Keychain backups (L1).** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not
-  `…ThisDeviceOnly`, so the refresh token can move to another device through an encrypted backup, and Keychain items
-  survive an uninstall.
-- **No verified identity without an ID token (L2).** A sign-in with an OAuth2-only provider (GitHub, Facebook) has no
-  verified identity: `claims()` stays `null` until a refresh supplies an ID token.
-- **Callback parsing (L3).** Duplicated callback parameters are read differently on Android (last value) than on the
-  web and iOS (first). On native, a flow started for another provider is refused but consumed, so that sign-in has to
-  be retried.
-- **Android custom schemes.** Another installed app can claim the same scheme and receive the redirect; PKCE is then
-  the only defence (the code is useless without the verifier). Prefer an App Link (a claimed https redirect). The
-  exported `PyreonAuthRedirectActivity` lets any app send a fake redirect, which cancels a sign-in in progress (it
-  cannot complete one).
-- **Sign-out does not revoke tokens.** `signOut({ endProviderSession: true })` ends the provider session; tokens
-  already issued stay valid until they expire (there is no RFC 7009 revocation call).
-- **Native sign-in is unverified on a device against a real provider** (see "Parity is tested, not assumed").
+- **L1 — iOS Keychain backups.** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not `…ThisDeviceOnly`: the refresh token can move to another device through an encrypted backup, and Keychain items survive an uninstall.
+- **L2 — no verified identity without an ID token.** A sign-in with an OAuth2-only provider (GitHub, Facebook) has no verified identity: `claims()` stays `null` until a refresh brings an ID token.
+- **L3 — callback parsing.** Duplicated callback parameters are read differently on Android (last value) than on the web and iOS (first). On native, a flow started for another provider is refused but consumed, so that sign-in has to be retried.
+- **Native sign-in is unverified on a device.** It has never completed against a real provider on a device (only the `network_error` path has run on a simulator and emulator), and the native redirect check has not been tested against real `ASWebAuthenticationSession` / Custom Tab callbacks.
+- **Android custom schemes.** Another installed app can claim the scheme and receive the redirect; PKCE is then the only defence (the code is useless without the verifier). The exported `PyreonAuthRedirectActivity` lets any app send a fake redirect, which cancels a sign-in in progress. Prefer an App Link.
+- **Sign-out does not revoke tokens.** `signOut({ endProviderSession: true })` ends the provider session; tokens already issued stay valid until they expire (no RFC 7009 revocation).
+- **The mix-up defence depends on configuration.** Enforced: instances are registered process-wide by redirect URI; two providers may share one only if both send RFC 9207 `iss` — a provider known not to is refused (at construction with explicit metadata, at sign-in after discovery, `redirect_shared`), every callback on a shared URI must carry `iss`, and the native compiler refuses two issuers on one `nativeRedirectUri` in a file. Not enforced: providers that are never constructed in the same process at the same time (a server that builds only the provider named in the request, separate workers). One redirect URI per provider is the complete defence.
+- **A leaked authorization request still allows login CSRF.** Someone who obtains the provider URL a victim's browser was sent to can sign in with it as themselves and send the resulting callback to that browser, whose binding matches. Pushed authorization requests (PAR) are not offered.
+- **Server sign-ins need the public callback URL and HTTPS.** Pass `handleCallback` the request's path and query (or the public URL), never a proxy's internal URL. The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported (the cross-site POST would drop the `SameSite=Lax` binding cookie).
+- **The first published version is published by hand, without provenance** (later versions go through CI with provenance).
 
 MIT

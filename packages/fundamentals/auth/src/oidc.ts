@@ -26,6 +26,8 @@ export interface ClientConfig {
 
 const RESERVED_PARAMS = new Set([
   'response_type',
+  // `form_post` would POST the code cross-site, which drops the SameSite=Lax binding cookie.
+  'response_mode',
   'client_id',
   'redirect_uri',
   'scope',
@@ -182,14 +184,26 @@ export async function beginAuthorization(
 /** How long a pending flow stays valid (and how long a flow store needs to keep it). */
 export const FLOW_TTL_MS = 10 * 60_000
 
-/** scheme://host/path of a URL — what a redirect URI is matched on (query and fragment ignored). */
+/**
+ * What a redirect URI is matched on — ONE rule on web, iOS and Android (shared vectors:
+ * `native/tests/redirect-vectors.json`). The key is `scheme host path`, space-separated:
+ *  - scheme and host lowercased; a default port (80 for http, 443 for https) dropped, any other kept;
+ *  - the path as written (percent-encoding NOT decoded), `/` for an empty http(s) path, and the
+ *    whole scheme-specific part for an opaque URI (`app:cb` → path `cb`, host empty);
+ *  - query and fragment ignored. `app:/cb` and `app:///cb` are the same target.
+ * Null when the URL cannot be parsed.
+ */
 export function redirectTarget(url: string | URL): string | null {
+  let u: URL
   try {
-    const u = new URL(url)
-    return `${u.protocol}//${u.host}${u.pathname}`
+    u = new URL(url)
   } catch {
     return null
   }
+  const scheme = u.protocol.slice(0, -1).toLowerCase()
+  const path = u.pathname === '' && (scheme === 'http' || scheme === 'https') ? '/' : u.pathname
+
+  return `${scheme} ${u.host.toLowerCase()} ${path}`
 }
 
 /**
@@ -205,7 +219,12 @@ export function parseCallback(
   binding: string,
   now: number = Date.now(),
 ): { code: string } {
-  const p = new URL(callback).searchParams
+  let p: URLSearchParams
+  try {
+    p = new URL(callback).searchParams
+  } catch {
+    throw new AuthError('invalid_callback', 'the callback must be an absolute URL — pass the public URL the provider redirected to, not a path')
+  }
   if (now - flow.createdAt > FLOW_TTL_MS) throw new AuthError('flow_expired', 'authorization attempt expired')
   // A flow started for another provider must never reach this provider's token endpoint.
   if (flow.issuer !== meta.issuer) {
@@ -219,7 +238,10 @@ export function parseCallback(
   // RFC 9700 §4.4 mix-up defence without `iss`: each provider has its own redirect URI, so a
   // callback that arrives anywhere but the flow's own redirect URI came from another provider.
   if (redirectTarget(callback) !== redirectTarget(flow.redirectUri)) {
-    throw new AuthError('redirect_mismatch', "callback did not arrive at this sign-in's redirect URI (mix-up)")
+    throw new AuthError(
+      'redirect_mismatch',
+      "callback did not arrive at this sign-in's redirect URI (OAuth mix-up, or a server behind a proxy passing its internal URL — pass the public URL, or only the path and query to createAuth().handleCallback)",
+    )
   }
   const err = p.get('error')
   if (err) throw new AuthError('provider_error', `provider returned "${err}"`)

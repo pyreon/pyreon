@@ -19,7 +19,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 
 - S256 PKCE only — `plain`, the implicit flow and the password grant are deliberately not offered
 - state + nonce on every callback; a pending flow completes only for the client, redirect URI and browser that started it (login CSRF, OAuth mix-up), plus the RFC 9207 `iss` check; flows expire after 10 minutes
-- Two providers may not share a redirect URI over one flow store — refused at configuration (RFC 9700 §4.4)
+- One redirect URI per provider (RFC 9700 §4.4), web and native: a shared one is allowed only between providers that send RFC 9207 `iss`, and a callback there must carry it
 - Discovery refuses a non-https issuer, a non-https endpoint, or an issuer that does not equal the fetched URL
 - Guard `returnTo` only round-trips same-origin relative paths
 - Refresh can never switch users; signOut can end the session at the provider
@@ -58,7 +58,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`withPreset`](#withpreset-function) | function | Merges a preset's default scope into your client configuration; a `scope` you set wins. |
 | [`facebook`](#facebook-function) | function | Facebook Login endpoints for a pinned Graph API version (plain OAuth2: no ID token). |
 | [`oauth2`](#oauth2-function) | function | Endpoints for any plain OAuth2 provider (no discovery, no ID token). |
-| [`totp`](#totp-function) | function | The current RFC 6238 code for a base32 secret, with the same `period` / `digits` options `verifyTotp` takes (defaults 30… |
+| [`totp`](#totp-function) | function | The current RFC 6238 code for a base32 secret, with the same `period` / `digits` / `allowShortSecret` options… |
 | [`generateTotpSecret`](#generatetotpsecret-function) | function | A fresh 160-bit TOTP secret, base32 — the setup key or QR payload an authenticator app scans. |
 | [`passkeyChallenge`](#passkeychallenge-function) | function | A fresh 32-byte random WebAuthn challenge (base64url). |
 | [`sessionCookie`](#sessioncookie-function) | function | A `Set-Cookie` header value with secure attributes: `__Host-` prefix, Path=/, HttpOnly, Secure, SameSite=Lax, Max-Age… |
@@ -93,6 +93,7 @@ const auth = useOidc({
 
 - Omitting `nativeRedirectUri` — a native app cannot receive a redirect to the web page unless it is a claimed universal link / App Link; register an app-scheme redirect with the provider
 - Calling useOidc in several components — each call is its own session object; create one at the root and pass it down
+- Giving two providers the same `nativeRedirectUri` (one app scheme) — the compiler refuses it in one file and the native runtime at sign-in; use one path per provider (`com.example.app:/oauth/google`)
 - Building the options at runtime (a prop, a fetch result) — native bakes them at compile time; the call is reported and not emitted
 - Reading `auth.status` without calling it — every member is a call on the web
 - Expecting a refresh token without `offline_access` in `scope` (and, for Google, `authorizationParams: { access_type: "offline", prompt: "consent" }`)
@@ -159,7 +160,7 @@ const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirect
 (callback: string | URL, flow: PendingFlow, meta: OidcMetadata, binding: string, now?: number) => { code: string }
 ```
 
-Validates the redirect back from the provider in a fixed order — expiry; the flow belongs to this issuer (`issuer_mismatch`); it was started in THIS browser (`unbound_flow`, the login-CSRF check); the callback arrived at the flow's own redirect URI (`redirect_mismatch`, the mix-up check that needs no `iss`); provider error; state; `iss` (RFC 9207); then the code — and throws an `AuthError` with a stable `code` on any failure.
+Validates the redirect back from the provider in a fixed order — expiry; the flow belongs to this issuer (`issuer_mismatch`); it was started in THIS browser (`unbound_flow`, the login-CSRF check); the callback arrived at the flow's own redirect URI (`redirect_mismatch` — with one redirect URI per provider, the mix-up check that needs no `iss`); provider error; state; `iss` (RFC 9207); then the code — and throws an `AuthError` with a stable `code` on any failure. `callback` must be the absolute PUBLIC URL the provider redirected to (`invalid_callback` for a path; behind a proxy rebuild it from your configured origin).
 
 **Example**
 
@@ -225,7 +226,7 @@ const meta = await discover('https://accounts.example')
 (opts: AuthOptions) => Auth
 ```
 
-Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens`, `claims`, `expiresAt` and `error` as signals plus `signIn`, `handleCallback`, `refresh` and `signOut`. Keys come from a cached JWKS that is re-fetched (throttled) when a token names an unknown `kid`, so provider key rotation needs no restart. `refresh()` keeps the old refresh token when the provider does not rotate it and refuses a refreshed ID token with a different `sub`. `signOut({ endProviderSession: true })` also redirects to the `end_session_endpoint` of the provider with an `id_token_hint`; plain `signOut()` clears local state only. When the provider returns an ID token, `handleCallback` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow's nonce) BEFORE reporting `signedIn`, and exposes the verified payload as `claims`; a provider that returns an ID token but publishes no `jwks_uri` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are stored under a key derived from the state, issuer, client id, redirect URI and browser `binding`, and read-and-deleted, so a callback URL cannot be replayed, another provider's or client's instance never reads the flow, and a callback from another browser finds nothing (login CSRF). Two providers on one redirect URI over one store are refused at construction (OAuth mix-up). Concurrent `refresh()` calls share one request, so a rotating refresh token is never presented twice. `memoryFlowStore` drops abandoned flows after the 10-minute flow lifetime.
+Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens`, `claims`, `expiresAt` and `error` as signals plus `signIn`, `handleCallback`, `refresh` and `signOut`. Keys come from a cached JWKS that is re-fetched (throttled) when a token names an unknown `kid`, so provider key rotation needs no restart. `refresh()` keeps the old refresh token when the provider does not rotate it and refuses a refreshed ID token with a different `sub`. `signOut({ endProviderSession: true })` also redirects to the `end_session_endpoint` of the provider with an `id_token_hint`; plain `signOut()` clears local state only. When the provider returns an ID token, `handleCallback` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow's nonce) BEFORE reporting `signedIn`, and exposes the verified payload as `claims`; a provider that returns an ID token but publishes no `jwks_uri` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are stored under a key derived from the state, issuer, client id, redirect URI and browser `binding`, and read-and-deleted, so a callback URL cannot be replayed, another provider's or client's instance never reads the flow, and a callback from another browser finds nothing (login CSRF). One redirect URI per provider (OAuth mix-up, RFC 9700 §4.4): instances are registered process-wide by redirect URI; two providers may share one only if both send RFC 9207 `iss` — a provider known not to is refused at construction (explicit metadata) or at sign-in (`redirect_shared`, after discovery), and every callback on a shared URI must carry `iss`. `dispose()` releases the claim (`useOidc` does it with its scope). `handleCallback` takes an absolute URL or the request path and query (resolved against the configured redirect origin — what a server behind a TLS-terminating proxy must pass). Concurrent `refresh()` calls share one request, and a refresh never discards a sign-in in flight nor overwrites a newer session. `memoryFlowStore` drops abandoned flows after the 10-minute flow lifetime.
 
 **Example**
 
@@ -242,7 +243,8 @@ await back.handleCallback(req.url)
 **Common mistakes**
 
 - Leaving out `binding` on a server — the flow is then not tied to the browser and an attacker can sign a victim in to the attacker's account (login CSRF); createAuth refuses to start without it unless the store is tab-scoped
-- Pointing two providers at one redirect URI — refused at construction: give each provider its own (e.g. /auth/callback/github)
+- Pointing two providers at one redirect URI — give each its own (e.g. /auth/callback/github); sharing works only between providers that all send RFC 9207 `iss`
+- Passing the server's internal absolute URL behind a proxy (`http://127.0.0.1:3000/…`) — it fails with `redirect_mismatch`; pass the path and query (`req.url` in Node) or the public URL
 - Backing the FlowStore with localStorage — it holds the PKCE verifier; use a server store or an HttpOnly cookie
 - Reading `auth.status` without calling it — it is a signal
 - Reading identity from `auth.tokens()?.id_token` — that is the raw token; use the verified `auth.claims()`
@@ -385,7 +387,7 @@ const claims = await verifyIdToken(tokens.id_token!, jwks, meta, { clientId: cli
 (strategy: PassportStrategyLike, input: PassportInput, options?: Record<string, unknown>) => Promise<PassportOutcome>
 ```
 
-Passport bridge (`@pyreon/auth/passport`, server only). Runs any Passport strategy — passport-local, passport-oauth2, Keycloak, SAML — without Express or the `passport` package: the strategy is cloned, its `success/fail/redirect/pass/error` hooks are bound to a promise, and the result is a discriminated outcome. Strategies that keep OAuth state in `req.session` write it into the `session` object you pass, so back that with the pending-flow store. Rejects only when the strategy calls `error()` or throws.
+Passport bridge (`@pyreon/auth/passport`, server only). Runs any Passport strategy — passport-local, passport-oauth2, Keycloak, SAML — without Express or the `passport` package: the strategy is cloned, its `success/fail/redirect/pass/error` hooks are bound to a promise, and the result is a discriminated outcome. Strategies that keep OAuth state in `req.session` (passport-oauth2: state and PKCE verifier) write it into the `session` object you pass and check it on the callback — that check is what ties the sign-in to the browser, so `session` must be the same browser's session on both requests: persist it server-side keyed by a cookie of that browser (`createFlowBinding` / `readFlowBinding`), never by the `state` from the callback URL (that reopens login CSRF). The bridge itself stores nothing. Rejects only when the strategy calls `error()` or throws.
 
 **Example**
 
@@ -397,7 +399,7 @@ if (out.type === 'success') startSession(out.user)
 
 **Common mistakes**
 
-- Passing a shared `session` object across users — create one per attempt, it carries OAuth state/verifier
+- Sharing one `session` object across browsers, or loading it by the callback's `state` — key it by a cookie of the browser (`readFlowBinding`), so only the browser that started the sign-in can finish it
 - Treating `fail` as an exception — it is a normal outcome (bad credentials); only `error` rejects
 
 **See also:** `createAuth` · `signSession`
@@ -407,10 +409,10 @@ if (out.type === 'success') startSession(out.user)
 ### `verifyTotp` `function`
 
 ```ts
-(secret: string, code: string, opts?: { period?: number; digits?: number; now?: number; window?: number; lastUsedStep?: number }) => Promise<{ ok: true; step: number } | { ok: false }>
+(secret: string, code: string, opts?: { period?: number; digits?: number; allowShortSecret?: boolean; now?: number; window?: number; lastUsedStep?: number }) => Promise<{ ok: true; step: number } | { ok: false }>
 ```
 
-RFC 6238 TOTP second factor (HMAC-SHA1, default 6 digits and 30 s, both configurable and shared with totp()) on Web Crypto, verified against the RFC test vectors and compatible with Google Authenticator. An empty secret throws (a setup error, not a wrong code). Accepts +/-1 step by default and returns the matched step so you can persist it and pass it back as lastUsedStep, which is what rejects replay of a code inside its window. generateTotpSecret() makes a 160-bit base32 setup key; totp() generates a code.
+RFC 6238 TOTP second factor (HMAC-SHA1, default 6 digits and 30 s, both configurable and shared with totp()) on Web Crypto, verified against the RFC test vectors and compatible with Google Authenticator. A secret under 128 bits throws (RFC 4226; `allowShortSecret: true` admits existing 80-bit secrets) — a setup error, not a wrong code. Accepts +/-1 step by default and returns the matched step so you can persist it and pass it back as lastUsedStep, which is what rejects replay of a code inside its window. generateTotpSecret() makes a 160-bit base32 setup key; totp() generates a code.
 
 **Example**
 
@@ -602,7 +604,7 @@ const auth = createAuth({ issuer, client, flows, binding: createFlowBinding(cook
 class AuthError extends Error { readonly code: string }
 ```
 
-Every failure of the sign-in flow and token checks is an `AuthError` with a stable `code` shared by web, iOS and Android (`unknown_flow`, `unbound_flow`, `redirect_mismatch`, `issuer_mismatch`, `state_mismatch`, `provider_error`, `network_error`, `bad_nonce`, `bad_aud`, `bad_azp`, `expired`, `not_yet_valid`, `too_old`, `no_key`, `bad_signature`, …). Messages never contain tokens, codes or verifiers. Branch on `code`, not on the message.
+Every failure of the sign-in flow and token checks is an `AuthError` with a stable `code` shared by web, iOS and Android (`unknown_flow`, `unbound_flow`, `redirect_mismatch`, `redirect_shared`, `invalid_callback`, `issuer_mismatch`, `state_mismatch`, `provider_error`, `network_error`, `bad_nonce`, `bad_aud`, `bad_azp`, `expired`, `not_yet_valid`, `too_old`, `no_key`, `bad_signature`, …). Messages never contain tokens, codes or verifiers. Branch on `code`, not on the message.
 
 **Example**
 
@@ -795,10 +797,10 @@ const meta = oauth2('https://git.example', 'https://git.example/oauth/authorize'
 ### `totp` `function`
 
 ```ts
-(secret: string, opts?: { period?: number; digits?: number; now?: number }) => Promise<string>
+(secret: string, opts?: { period?: number; digits?: number; allowShortSecret?: boolean; now?: number }) => Promise<string>
 ```
 
-The current RFC 6238 code for a base32 secret, with the same `period` / `digits` options `verifyTotp` takes (defaults 30 s, 6 digits). Throws on an empty secret.
+The current RFC 6238 code for a base32 secret, with the same `period` / `digits` / `allowShortSecret` options `verifyTotp` takes (defaults 30 s, 6 digits, at least 128-bit secrets).
 
 **Example**
 

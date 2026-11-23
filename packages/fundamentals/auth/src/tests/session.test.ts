@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createAuth, facebook, github, memoryFlowStore, sessionCookie, signSession, verifySession } from '../index'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 const A = 'a'.repeat(32)
 const B = 'b'.repeat(32)

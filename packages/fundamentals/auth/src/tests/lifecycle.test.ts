@@ -2,11 +2,15 @@
  * Session lifecycle after sign-in: the JWKS cache (key rotation), token refresh,
  * provider logout, session revocation and the attempt limiter. Real ES256 keys.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createAttemptLimiter, createAuth, createJwksCache, endSessionUrl, memoryFlowStore, refreshTokens, signSession, verifySession } from '../index'
 import { base64url } from '../pkce'
 import { tokenKid } from '../jwt'
 import type { FetchLike, Jwk, OidcMetadata } from '../index'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 const issuer = 'https://idp.example'
 const enc = new TextEncoder()

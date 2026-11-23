@@ -104,6 +104,7 @@ export function A(props: { issuer: string }) {
     ['an insecure issuer', `{ issuer: 'http://idp.example', clientId: 'a', redirectUri: 'x:/cb' }`, /`issuer` must be https/],
     ['a missing clientId', `{ issuer: 'https://idp.example', redirectUri: 'x:/cb' }`, /`clientId` is required/],
     ['a reserved parameter', `{ issuer: 'https://idp.example', clientId: 'a', redirectUri: 'x:/cb', authorizationParams: { state: 'x' } }`, /cannot set "state"/],
+    ['response_mode (form_post would drop the binding cookie)', `{ issuer: 'https://idp.example', clientId: 'a', redirectUri: 'x:/cb', authorizationParams: { response_mode: 'form_post' } }`, /cannot set "response_mode"/],
     ['a non-literal options object', `makeOptions()`, /must be an object literal/],
     ['an unknown option', `{ issuer: 'https://idp.example', clientId: 'a', redirectUri: 'x:/cb', clientSecret: 's' }`, /`clientSecret` is not a useOidc option/],
   ]
@@ -116,6 +117,23 @@ export function A(props: { issuer: string }) {
       }
     })
   }
+
+  it('refuses two providers on one native redirect URI (OAuth mix-up), and allows one per provider', () => {
+    const two = (a: string, b: string) => `import { useOidc } from '@pyreon/auth'
+import { Text } from '@pyreon/primitives'
+export function A() {
+  const google = useOidc({ issuer: 'https://accounts.google.com', clientId: 'g', redirectUri: 'https://app.example/cb/google', nativeRedirectUri: '${a}' })
+  const evil = useOidc({ issuer: 'https://evil.example', clientId: 'e', redirectUri: 'https://app.example/cb/evil', nativeRedirectUri: '${b}' })
+  return <Text>{google.status() + evil.status()}</Text>
+}
+`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const shared = transform(two('com.example.app:/oauth', 'Com.Example.App:///oauth'), { target })
+      expect(shared.warnings.join('\n'), target).toMatch(/share the native redirect URI Com\.Example\.App:\/\/\/oauth.*own `nativeRedirectUri`/)
+      const own = transform(two('com.example.app:/oauth/google', 'com.example.app:/oauth/evil'), { target })
+      expect(own.warnings, target).toEqual([])
+    }
+  })
 
   it('loopback http is accepted (local development provider)', () => {
     const r = transform(screen(`{ issuer: 'http://localhost:8080/realms/dev', clientId: 'a', redirectUri: 'x:/cb' }`), { target: 'swift' })

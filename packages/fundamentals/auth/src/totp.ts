@@ -47,10 +47,23 @@ export function generateTotpSecret(): string {
   return base32Encode(crypto.getRandomValues(new Uint8Array(20)))
 }
 
-function hotpKey(secret: string): Promise<CryptoKey> {
+/** RFC 4226 §4 R6: the shared secret is at least 128 bits. */
+const MIN_SECRET_BYTES = 16
+/** The 80-bit secrets some older enrolments issued (`allowShortSecret`). */
+const LEGACY_MIN_SECRET_BYTES = 10
+
+function hotpKey(secret: string, allowShort: boolean | undefined): Promise<CryptoKey> {
   const raw = base32Decode(secret)
-  // An empty secret makes every code predictable: a setup error, not a wrong code.
+  // A short secret makes codes guessable offline: a setup error, not a wrong code.
   if (raw.length === 0) throw new Error('[Pyreon] auth: TOTP secret is empty — store the generateTotpSecret() value')
+  const min = allowShort ? LEGACY_MIN_SECRET_BYTES : MIN_SECRET_BYTES
+  if (raw.length < min) {
+    throw new Error(
+      `[Pyreon] auth: TOTP secret is ${raw.length * 8} bits; at least ${min * 8} are required (RFC 4226). ` +
+        (allowShort ? '' : 'Re-enrol with generateTotpSecret(), or pass { allowShortSecret: true } for existing 80-bit secrets.'),
+    )
+  }
+
   return crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'])
 }
 
@@ -60,6 +73,11 @@ export interface TotpOptions {
   period?: number | undefined
   /** Code length, 6 to 8. Default 6. */
   digits?: number | undefined
+  /**
+   * Accept a secret of 80 to 127 bits (some older enrolments issued 80-bit secrets). Default
+   * false: a secret must be at least 128 bits (RFC 4226 §4); `generateTotpSecret()` makes 160.
+   */
+  allowShortSecret?: boolean | undefined
 }
 
 function params(opts: TotpOptions): { period: number; digits: number } {
@@ -84,7 +102,7 @@ async function hotp(key: CryptoKey, counter: number, digits: number): Promise<st
 /** The current code for `secret` (base32). Throws on an empty secret or invalid parameters. */
 export async function totp(secret: string, opts: TotpOptions & { now?: number | undefined } = {}): Promise<string> {
   const { period, digits } = params(opts)
-  return hotp(await hotpKey(secret), Math.floor((opts.now ?? Date.now()) / 1000 / period), digits)
+  return hotp(await hotpKey(secret, opts.allowShortSecret), Math.floor((opts.now ?? Date.now()) / 1000 / period), digits)
 }
 
 /**
@@ -98,7 +116,7 @@ export async function verifyTotp(
 ): Promise<{ ok: true; step: number } | { ok: false }> {
   const { period, digits } = params(opts)
   // The key first: an empty secret throws instead of reading as a wrong code.
-  const key = await hotpKey(secret)
+  const key = await hotpKey(secret, opts.allowShortSecret)
   if (code.length !== digits || !/^\d+$/.test(code)) return { ok: false }
   const now = opts.now ?? Date.now()
   const base = Math.floor(now / 1000 / period)

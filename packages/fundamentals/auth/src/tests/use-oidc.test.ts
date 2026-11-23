@@ -7,6 +7,10 @@ import { sessionStorageFlowStore, useOidc } from '../index'
 import { base64url } from '../pkce'
 import { isRedirectFor } from '../use-oidc'
 import type { FetchLike, Jwk, PendingFlow } from '../index'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 const issuer = 'https://idp.example'
 const enc = new TextEncoder()

@@ -1,12 +1,16 @@
 // Fixes from the PR #4773 security review: return-to paths, DER signatures, ID-token claims and
 // keys, TOTP parameters, cookie attributes, the flow binding cookie, and the export surface.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import * as api from '../index'
 import { createFlowBinding, createJwksCache, readFlowBinding, safeReturnTo, sessionCookie, totp, verifyIdToken, verifyTotp } from '../index'
 import type { FetchLike, Jwk, OidcMetadata } from '../index'
 import manifest from '../manifest'
 import { derToRaw } from '../passkey'
 import { base64url } from '../pkce'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 describe('safeReturnTo — resolved and decoded paths', () => {
   it('refuses paths that resolve, or decode, to a protocol-relative //host', () => {
@@ -118,7 +122,7 @@ describe('verifyIdToken — azp, iat, key_ops, key size, kid-less rotation', () 
 })
 
 describe('TOTP options', () => {
-  const SECRET = 'JBSWY3DPEHPK3PXP'
+  const SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' // 160 bits
   it('verifyTotp takes the same period and digits as totp()', async () => {
     const now = 1_700_000_000_000
     const code = await totp(SECRET, { now, period: 60, digits: 8 })

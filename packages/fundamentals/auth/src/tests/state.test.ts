@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { beginAuthorization, createAuth, google, keycloak, memoryFlowStore, parseCallback, withPreset } from '../index'
 import type { FetchLike } from '../index'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 const issuer = 'https://idp.example'
 const meta = { issuer, authorization_endpoint: `${issuer}/auth`, token_endpoint: `${issuer}/token` }
@@ -187,7 +191,7 @@ describe('createAuth — flows are bound to their client, redirect URI and brows
     // The same provider again (another request, a remount) is fine.
     createAuth({ metadata: metaFor('https://github.com'), client, flows, binding: 'b1', redirect: () => {} })
     expect(() => createAuth({ metadata: metaFor('https://attacker.example'), client, flows, binding: 'b1', redirect: () => {} })).toThrow(
-      /share the redirect URI https:\/\/app\.example\/cb.*its own redirectUri/,
+      /share the redirect URI https:\/\/app\.example\/cb.*its own redirect URI/,
     )
   })
 

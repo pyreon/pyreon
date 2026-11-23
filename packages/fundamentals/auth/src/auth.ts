@@ -9,11 +9,11 @@ import {
   exchangeCode,
   flowKey,
   parseCallback,
-  redirectTarget,
   refreshTokens,
 } from './oidc'
 import type { ClientConfig, FetchLike, OidcMetadata, PendingFlow, TokenResponse } from './oidc'
 import { createJwksCache, verifyIdToken } from './jwt'
+import { claimRedirect } from './redirects'
 import type { IdTokenClaims, JwksCache, JwksCacheOptions } from './jwt'
 
 export type AuthStatus = 'signedOut' | 'signingIn' | 'signedIn' | 'error'
@@ -86,6 +86,11 @@ export interface Auth {
   expiresAt: Signal<number | null>
   error: Signal<AuthError | null>
   signIn(): Promise<void>
+  /**
+   * Complete a sign-in from the callback: an absolute URL, or the request's path and query
+   * (`/auth/callback?code=…`), which is resolved against the configured redirect URI's origin.
+   * Behind a TLS-terminating proxy pass the path, never the server's internal absolute URL.
+   */
   handleCallback(url: string): Promise<void>
   /**
    * Exchange the refresh token for fresh tokens. A new ID token must verify and
@@ -95,34 +100,12 @@ export interface Auth {
    */
   refresh(): Promise<void>
   signOut(opts?: SignOutOptions): void
-}
-
-// Which issuer claimed which redirect URI, per flow store (the instances that share a store
-// are the ones whose callbacks can be confused). Weak on the store; the inner map is bounded by
-// the redirect URIs an app configures.
-const redirectClaims = new WeakMap<FlowStore, Map<string, string>>()
-
-/**
- * RFC 9700 §4.4: with no `iss` on the callback (GitHub, Facebook and many others send none), the
- * redirect URI is the only thing that says which provider a callback came from. Two providers on
- * one redirect URI over one flow store could have a malicious or compromised provider's flow
- * completed with the honest provider's code, so the configuration is refused up front.
- */
-function claimRedirect(flows: FlowStore, redirectUri: string, issuer: string): void {
-  const target = redirectTarget(redirectUri) ?? redirectUri
-  let claims = redirectClaims.get(flows)
-  if (claims === undefined) {
-    claims = new Map()
-    redirectClaims.set(flows, claims)
-  }
-  const prev = claims.get(target)
-  if (prev !== undefined && prev !== issuer) {
-    throw new Error(
-      `[Pyreon] auth: ${issuer} and ${prev} share the redirect URI ${target}. Give each provider its own redirectUri ` +
-        '(e.g. /auth/callback/github): a provider that sends no `iss` on the callback can otherwise be confused with another (OAuth mix-up, RFC 9700 §4.4).',
-    )
-  }
-  claims.set(target, issuer)
+  /**
+   * Release this instance's claim on its redirect URI (see "one redirect URI per provider").
+   * `useOidc` calls it when its scope is disposed; call it yourself for a `createAuth` you
+   * create and throw away (a per-request server instance).
+   */
+  dispose(): void
 }
 
 /** Reactive auth state machine over the OIDC primitives. */
@@ -135,7 +118,12 @@ export function createAuth(opts: AuthOptions): Auth {
         'in a browser use sessionStorageFlowStore() or useOidc.',
     )
   }
-  claimRedirect(opts.flows, opts.client.redirectUri, issuerName)
+  // Explicit metadata says up front whether the provider sends RFC 9207 `iss`; discovery says so at sign-in.
+  const claim = claimRedirect(
+    opts.client.redirectUri,
+    issuerName,
+    opts.metadata ? opts.metadata.authorization_response_iss_parameter_supported === true : undefined,
+  )
   // A tab-scoped store binds flows to the browser by itself. `null` (no binding cookie on this
   // request) is a runtime condition, not a configuration error: the callback fails `unbound_flow`.
   const binding = opts.binding ?? (opts.flows.tabScoped ? 'tab' : '')
@@ -175,7 +163,11 @@ export function createAuth(opts: AuthOptions): Auth {
     return verifyIdToken(idToken, jwks, m, { clientId: opts.client.clientId, ...(nonce === undefined ? {} : { nonce }) })
   }
 
+  // Bumped whenever the session itself changes (commit or clear). A refresh only applies its
+  // result to the session it started from — see doRefresh.
+  let sessionGen = 0
   const commit = (t: TokenResponse, verified: IdTokenClaims | null) => {
+    sessionGen++
     batch(() => {
       tokens.set(t)
       claims.set(verified)
@@ -186,6 +178,7 @@ export function createAuth(opts: AuthOptions): Auth {
   }
 
   const clear = () => {
+    sessionGen++
     batch(() => {
       tokens.set(null)
       claims.set(null)
@@ -203,7 +196,12 @@ export function createAuth(opts: AuthOptions): Auth {
 
   let refreshing: Promise<void> | undefined
   const doRefresh = async (): Promise<void> => {
-    const my = ++epoch
+    // A refresh never bumps the epoch: starting one must not discard a sign-in or callback in
+    // flight. It applies its result only while nothing else happened — no new attempt or sign-out
+    // (the epoch) and no other commit (the session generation).
+    const my = epoch
+    const gen = sessionGen
+    const current_ = () => my === epoch && gen === sessionGen
     try {
       const current = tokens.peek()
       if (!current?.refresh_token) throw new AuthError('no_refresh_token', 'no refresh token — sign in again')
@@ -221,10 +219,10 @@ export function createAuth(opts: AuthOptions): Auth {
         }
         verified = c
       }
-      if (my !== epoch) return
+      if (!current_()) return
       commit(next, verified)
     } catch (e) {
-      if (my === epoch) fail(e)
+      if (current_()) fail(e)
     }
   }
 
@@ -240,6 +238,12 @@ export function createAuth(opts: AuthOptions): Auth {
       error.set(null)
       try {
         const m = await meta()
+        if (!claim.advertise(m.authorization_response_iss_parameter_supported === true)) {
+          throw new AuthError(
+            'redirect_shared',
+            `another provider shares the redirect URI ${opts.client.redirectUri} and ${m.issuer} does not send RFC 9207 \`iss\` — give each provider its own redirect URI`,
+          )
+        }
         const { url, flow } = await beginAuthorization(m, opts.client, binding)
         await opts.flows.save(await flowKey(flow.state, owner(m)), flow)
         if (my === epoch) opts.redirect(url)
@@ -252,7 +256,9 @@ export function createAuth(opts: AuthOptions): Auth {
       status.set('signingIn')
       try {
         const m = await meta()
-        const params = new URL(url).searchParams
+        const href = callbackHref(url, opts.client.redirectUri)
+        const params = new URL(href).searchParams
+        claim.advertise(m.authorization_response_iss_parameter_supported === true)
         if (!binding) throw new AuthError('unbound_flow', 'no flow binding on this request — the sign-in was started in another browser, or its cookie expired')
         // The key includes this instance's issuer, client, redirect URI and browser binding, so
         // only the flow THIS client started in THIS browser can come back; another instance's
@@ -265,7 +271,8 @@ export function createAuth(opts: AuthOptions): Auth {
           if (providerError) throw new AuthError('provider_error', `provider returned "${providerError}"`)
           throw new AuthError('unknown_flow', 'no pending authorization for this state in this browser')
         }
-        const { code } = parseCallback(url, flow, m, binding)
+        // On a redirect URI another provider also uses, only `iss` says who answered: require it.
+        const { code } = parseCallback(href, flow, claim.shared() ? { ...m, authorization_response_iss_parameter_supported: true } : m, binding)
         const t = await exchangeCode(m, opts.client, flow, code, opts.fetch)
         // An ID token is identity, so it must verify before the session counts:
         // signature, iss / aud / expiry, and THIS flow's nonce (which binds the
@@ -285,6 +292,9 @@ export function createAuth(opts: AuthOptions): Auth {
         refreshing = undefined
       }))
     },
+    dispose() {
+      claim.release()
+    },
     signOut(o) {
       epoch++
       const idToken = tokens.peek()?.id_token
@@ -302,6 +312,21 @@ export function createAuth(opts: AuthOptions): Auth {
         if (url) opts.redirect(url)
       }
     },
+  }
+}
+
+/**
+ * The callback as an absolute URL. A path (`/auth/callback?code=…`, what Node's `req.url` holds)
+ * is resolved against the configured redirect URI's origin: behind a TLS-terminating proxy the
+ * server's own request URL says `http://127.0.0.1:3000/…`, which is not the public URL the
+ * provider redirected to. Forwarded headers are never consulted.
+ */
+function callbackHref(url: string, redirectUri: string): string {
+  if (url.startsWith('/') && !url.startsWith('//')) return new URL(url, redirectUri).href
+  try {
+    return new URL(url).href
+  } catch {
+    throw new AuthError('invalid_callback', 'the callback must be an absolute URL, or the path and query of the request (e.g. Node\'s req.url)')
   }
 }
 

@@ -36,8 +36,16 @@ function decodeFully(path: string): string | null {
     cur = next
   }
 
-  return cur
+  // Still changing after three rounds: more layers of encoding than any honest link carries.
+  try {
+    return decodeURIComponent(cur) === cur ? cur : null
+  } catch {
+    return null
+  }
 }
+
+/** The path as a server that strips `;` path parameters (Tomcat, Jetty) routes it. */
+const withoutPathParams = (path: string): string => path.replace(/;[^/]*/g, '')
 
 /**
  * Only same-origin relative paths may round-trip as `returnTo` (open-redirect guard).
@@ -56,18 +64,28 @@ export function safeReturnTo(value: string | null | undefined, fallback = '/'): 
   } catch {
     return fallback
   }
-  if (u.origin !== ORIGIN_PROBE || u.pathname.startsWith('//')) return fallback
+  if (offSite(u.pathname)) return fallback
   const decoded = decodeFully(u.pathname)
   if (decoded === null || decoded.startsWith('//') || hasUnsafeReturnChar(decoded)) return fallback
-  // The decoded path may resolve dot segments differently (`/%2e%2e/%2fevil`): resolve it too.
-  try {
-    const again = new URL(decoded, ORIGIN_PROBE)
-    if (again.origin !== ORIGIN_PROBE || again.pathname.startsWith('//')) return fallback
-  } catch {
-    return fallback
+  // Every way a hop on the way may read the path: decoded (`/%2e%2e/%2fevil`), and with `;` path
+  // parameters stripped (`/a/..;/..;//evil` is `/a/../..//evil` to Tomcat), each with dot
+  // segments resolved again.
+  for (const p of [decoded, withoutPathParams(u.pathname), withoutPathParams(decoded)]) {
+    if (p.startsWith('//') || offSite(p)) return fallback
   }
 
   return u.pathname + u.search + u.hash
+}
+
+/** True when `path` resolves off this origin or to a protocol-relative `//host` path. */
+function offSite(path: string): boolean {
+  try {
+    const r = new URL(path, ORIGIN_PROBE)
+
+    return r.origin !== ORIGIN_PROBE || r.pathname.startsWith('//')
+  } catch {
+    return true
+  }
 }
 
 /** Framework-neutral guard: returns `true` or a redirect target carrying a safe `returnTo`. */

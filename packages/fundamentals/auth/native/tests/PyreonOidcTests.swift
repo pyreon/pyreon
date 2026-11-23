@@ -12,6 +12,11 @@ struct PyreonOidcTests {
         }
     }
 
+    // The shared redirect-matching vectors (native/tests/redirect-vectors.json); vectors.test.ts checks this copy.
+    // <redirect-vectors:begin>
+    static let redirectVectors = #"[["https://app.example/cb","https app.example /cb"],["HTTPS://App.Example:443/cb?x=1#f","https app.example /cb"],["https://app.example:8443/cb","https app.example:8443 /cb"],["http://localhost:80/cb","http localhost /cb"],["https://app.example","https app.example /"],["com.example.app:/oauth","com.example.app  /oauth"],["com.example.app:///oauth","com.example.app  /oauth"],["Com.Example.App:/oauth?code=1&state=s","com.example.app  /oauth"],["com.example.app:/oauth/google","com.example.app  /oauth/google"],["app:cb","app  cb"],["app://cb","app cb "],["app://Host/x","app host /x"],["https://app.example/a%2Fb","https app.example /a%2Fb"],["https://app.example/a/b","https app.example /a/b"],["custom://h:443/x","custom h:443 /x"]]"#
+    // <redirect-vectors:end>
+
     static let iss = "https://idp.example"
     static let ep = "https://idp.example/auth"
 
@@ -47,6 +52,12 @@ struct PyreonOidcTests {
         raises("callback at another redirect URI", .redirectMismatch) {
             let s = URLComponents(url: try begin(core), resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "state" }!.value!
             _ = try core.complete(callback: URL(string: "https://app.example/other?state=\(s)&code=a")!, issuer: iss)
+        }
+        // One redirect-matching rule on web, iOS and Android.
+        let vectors = try JSONSerialization.jsonObject(with: Data(redirectVectors.utf8)) as! [[String]]
+        for v in vectors { expect(PyreonRedirect.target(v[0]) == v[1], "redirect target of \(v[0]): got \(PyreonRedirect.target(v[0]) ?? "nil"), want \(v[1])") }
+        raises("response_mode is reserved", PyreonAuthError("reserved_param", "authorizationParams cannot set \"response_mode\" — it is managed by the flow")) {
+            _ = try core.begin(authorizationEndpoint: ep, issuer: iss, clientId: "a", redirectUri: "r", authorizationParams: ["response_mode": "form_post"])
         }
         raises("iss missing", .issuerMissing) { _ = try core.complete(callback: cb(try begin(core), "&code=a"), issuer: iss, issuerParamSupported: true) }
         raises("expired", .flowExpired) { _ = try core.complete(callback: cb(try begin(core, now: Date(timeIntervalSinceNow: -700)), "&code=a"), issuer: iss) }

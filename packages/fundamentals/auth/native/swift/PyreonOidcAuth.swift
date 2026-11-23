@@ -74,6 +74,12 @@ public final class PyreonOidcAuth {
     /// Per client AND issuer: another instance with the same client id at another provider must
     /// not read, overwrite or delete this one's stored session.
     private var sessionKey: String { "pyreon.auth.session.\(clientId)|\(issuer)" }
+    /// This instance's claim on its redirect target (see `PyreonRedirectClaims`); released on
+    /// `dispose()` or deinit.
+    @ObservationIgnored private let redirectClaim: PyreonRedirectToken
+    /// Bumped whenever the session itself changes (commit or clear): a refresh applies its result
+    /// only to the session it started from.
+    @ObservationIgnored private var sessionGen = 0
     /// The refresh in flight, shared by every caller (see refreshNow).
     @ObservationIgnored private var refreshTask: _Concurrency.Task<Void, Never>?
 
@@ -99,6 +105,7 @@ public final class PyreonOidcAuth {
         self.transport = transport
         self.browser = browser ?? PyreonWebAuthBrowser.makeDefault()
         self.clock = clock
+        self.redirectClaim = PyreonRedirectClaims.shared.claim(redirectUri: redirectUri, issuer: issuer)
         rehydrate()
     }
 
@@ -114,6 +121,7 @@ public final class PyreonOidcAuth {
         error = nil
         do {
             let m = try await metadata()
+            guard redirectClaim.advertise(iss: m.issParameterSupported) else { throw PyreonAuthError.redirectShared }
             let core = PyreonAuthCore(backend: store)
             let url = try core.begin(authorizationEndpoint: m.authorizationEndpoint, issuer: m.issuer, clientId: clientId,
                                      redirectUri: redirectUri, scope: scope, authorizationParams: authorizationParams)
@@ -142,7 +150,10 @@ public final class PyreonOidcAuth {
     private func complete(_ callback: URL, my: Int) async throws {
         let m = try await metadata()
         let core = PyreonAuthCore(backend: store)
-        let (code, flow) = try core.complete(callback: callback, issuer: m.issuer, issuerParamSupported: m.issParameterSupported)
+        _ = redirectClaim.advertise(iss: m.issParameterSupported)
+        // On a redirect URI another provider also uses, only `iss` says who answered: require it.
+        let (code, flow) = try core.complete(callback: callback, issuer: m.issuer,
+                                             issuerParamSupported: m.issParameterSupported || redirectClaim.isShared)
         let t = try await PyreonOidcClient.exchangeCode(m, clientId: clientId, flow: flow, code: code, transport: transport)
         let verified = try await verify(m, t.idToken, nonce: flow.nonce)
         guard my == epoch else { return }
@@ -164,8 +175,12 @@ public final class PyreonOidcAuth {
     }
 
     private func performRefresh() async {
-        epoch += 1
+        // A refresh never bumps the epoch, so starting one cannot discard a sign-in in flight. It
+        // applies its result only while nothing else happened: no new attempt or sign-out (the
+        // epoch) and no other commit (the session generation).
         let my = epoch
+        let gen = sessionGen
+        func stillCurrent() -> Bool { my == epoch && gen == sessionGen }
         do {
             guard let current = refreshToken else { throw PyreonAuthError("no_refresh_token", "no refresh token — sign in again") }
             let m = try await metadata()
@@ -175,16 +190,21 @@ public final class PyreonOidcAuth {
             if let verified, let subject, verified["sub"] != subject {
                 throw PyreonAuthError("subject_changed", "refreshed id_token is for a different user")
             }
-            guard my == epoch else { return }
+            guard stillCurrent() else { return }
             // Providers may rotate the refresh token; keep the old one when they do not.
             commit(t, refreshToken: t.refreshToken ?? current, claims: verified ?? claims)
         } catch {
-            if my == epoch { fail(error) }
+            if stillCurrent() { fail(error) }
         }
     }
 
     /// Clear the session. With `endProviderSession`, also end it AT THE PROVIDER (RP-initiated
     /// logout) — otherwise the next sign-in completes without a prompt.
+    /// Release this instance's claim on its redirect URI. Also done on deinit.
+    public func dispose() { redirectClaim.release() }
+
+    deinit { redirectClaim.release() }
+
     public func signOut(endProviderSession: Bool = false) {
         epoch += 1
         let hint = idToken
@@ -227,6 +247,7 @@ public final class PyreonOidcAuth {
     }
 
     private func commit(_ t: PyreonTokenSet, refreshToken: String?, claims: [String: String]?) {
+        sessionGen += 1
         accessToken = t.accessToken
         self.refreshToken = refreshToken
         // A refresh response may omit the ID token; the last one stays the logout hint.
@@ -246,6 +267,7 @@ public final class PyreonOidcAuth {
     }
 
     private func clear() {
+        sessionGen += 1
         accessToken = nil
         refreshToken = nil
         idToken = nil
