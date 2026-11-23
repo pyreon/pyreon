@@ -39,9 +39,9 @@ export function checkLlmsTxtShape(contents: string): string[] {
 
       return
     }
-    for (const m of line.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+    for (const target of markdownLinkTargets(line)) {
       links++
-      if (!m[1]!.startsWith('https://')) problems.push(`${at}: link target "${m[1]}" must be an absolute https URL`)
+      if (!target.startsWith('https://')) problems.push(`${at}: link target "${target}" must be an absolute https URL`)
     }
     if (section !== null && line.trim() !== '' && !/^- \[[^\]]+\]\([^)]+\)(: .+)?$/.test(line)) {
       problems.push(`${at}: "## ${section}" may only hold \`- [title](url): notes\` entries (found "${line.slice(0, 60)}")`)
@@ -53,7 +53,54 @@ export function checkLlmsTxtShape(contents: string): string[] {
 }
 
 /**
- * The checks of Lighthouse 13.6's `llms-txt` audit, verbatim
+ * The `(url)` part of every `[text](url)` in `line`, left to right: what
+ * `/\[[^\]]+\]\(([^)]+)\)/g` matches. A scan with two forward-only cursors,
+ * not that regex, which retries from every `[` and is quadratic on a line of
+ * many `[` (CodeQL js/polynomial-redos).
+ */
+function markdownLinkTargets(line: string): string[] {
+  const targets: string[] = []
+  let close = -1
+  let i = line.indexOf('[')
+  while (i !== -1) {
+    if (close <= i) close = line.indexOf(']', i + 1)
+    if (close === -1) break
+    // `[^\]]+` needs one character before the first `]`; `\(([^)]+)\)` needs
+    // `(`, one character that is not `)`, then the first `)`.
+    if (close > i + 1 && line[close + 1] === '(') {
+      const end = line.indexOf(')', close + 2)
+      if (end === -1) break
+      if (end > close + 2) {
+        targets.push(line.slice(close + 2, end))
+        i = line.indexOf('[', end + 1)
+        continue
+      }
+    }
+    i = line.indexOf('[', i + 1)
+  }
+
+  return targets
+}
+
+/**
+ * Whether one line matches Lighthouse's `/\[.+\]\(.+\)/` (`.` stops at a
+ * newline, so the audit's test is per line): a `[`, at least one character,
+ * `](`, at least one character, `)`. The earliest `[`, then the earliest `](`
+ * after it, leave the most room for the rest, so three `indexOf` calls decide
+ * it in linear time.
+ */
+function hasLinkLike(line: string): boolean {
+  const open = line.indexOf('[')
+  if (open === -1) return false
+  const mid = line.indexOf('](', open + 2)
+  if (mid === -1) return false
+
+  return line.indexOf(')', mid + 3) !== -1
+}
+
+/**
+ * The checks of Lighthouse 13.6's `llms-txt` audit, in the same order and with
+ * the same results as the audit's own expressions
  * (`core/audits/agentic/llms-txt.js` in the lighthouse package: an H1 line, a
  * `[text](url)` link, at least 50 characters), so a test can tell whether a
  * file passes the audit without installing Lighthouse. Returns the audit's
@@ -63,7 +110,7 @@ export function checkLlmsTxtShape(contents: string): string[] {
 export function lighthouseLlmsTxtFailures(content: string): string[] {
   const errors: string[] = []
   if (!/^\s*#\s+.+/m.test(content)) errors.push('File is missing a required H1 header (e.g., "# Title").')
-  if (!/\[.+\]\(.+\)/.test(content)) errors.push('File does not appear to contain any links.')
+  if (!content.split('\n').some(hasLinkLike)) errors.push('File does not appear to contain any links.')
   if (content.length < 50) errors.push('File is suspiciously short.')
 
   return errors
