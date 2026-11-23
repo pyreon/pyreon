@@ -57,7 +57,7 @@ describe('the Swift warning gate', () => {
   const known = "x.swift:1:1: warning: variable 'a' was never mutated; consider changing to 'let' constant"
   const unknown = "x.swift:2:1: warning: some diagnostic a future swiftc adds"
   it('fails on EVERY warning on the validated toolchain', () => {
-    expect(classifySwiftWarnings([known, unknown], VALIDATED_SWIFTC, false).hard).toEqual([known, unknown])
+    expect(classifySwiftWarnings([known, unknown], VALIDATED_SWIFTC[0], false).hard).toEqual([known, unknown])
   })
   it('fails on the known classes and reports the rest on another toolchain', () => {
     const r = classifySwiftWarnings([known, unknown], 'Apple Swift version 9.9 (test)', false)
