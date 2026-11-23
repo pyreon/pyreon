@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test'
  * A server island under a base path, end to end (#4269 follow-up, #4768).
  *
  * `examples/fixtures/ssr-showcase` built with `vite.config.ssr-base.ts`
- * (`base: '/sub/'`, SSR, node adapter) and run on 5204 — see
+ * (`base: '/sub/'`, SSR, node adapter) and run on 5237 — see
  * `e2e-configs/ssr-node.config.ts`. What must hold under the base:
  *
  * - the server render signs the marker for the BASED page path
