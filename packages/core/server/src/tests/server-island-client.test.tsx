@@ -27,6 +27,7 @@
  */
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import { createRouter, RouterProvider, setActiveRouter } from '@pyreon/router'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { activateServerIslands } from '../client'
@@ -41,10 +42,12 @@ function stubFetch(impl: (url: string) => Promise<Response> | Response): string[
     urls.push(url)
     return Promise.resolve(impl(url))
   })
+
   return urls
 }
 
 const ok = (html: string): Response => ({ ok: true, status: 200, text: async () => html }) as Response
+
 const httpError = (status: number): Response =>
   ({ ok: false, status, text: async () => '' }) as Response
 
@@ -71,6 +74,7 @@ function serverMarkup(attrs: Record<string, string>, fallback = '<span>fallback<
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v)
   el.innerHTML = fallback
   container.appendChild(el)
+
   return el
 }
 
@@ -183,6 +187,23 @@ describe('activation is idempotent across BOTH paths', () => {
     activateServerIslands('/app')
     await settle()
     expect(urls[0]).toBe('/app/_pyreon/fragment/Prefixed')
+  })
+
+  it('a self-activating marker under a router base fetches under that base', async () => {
+    // zero's `startClient` never calls the document scan; each marker
+    // activates itself on mount. It used to pass no base, so under
+    // `base: '/sub/'` it fetched `/_pyreon/fragment/…` at the host root.
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    const router = createRouter({ routes: [{ path: '/', component: () => null }], mode: 'history', base: '/sub/', url: '/' })
+    const Island = serverIsland(async () => Badge, { name: 'UnderBase' })
+    const unmount = mount(h(RouterProvider, { router }, h(Island, {} as never)), container)
+    try {
+      await settle()
+      expect(urls[0]).toBe('/sub/_pyreon/fragment/UnderBase')
+    } finally {
+      unmount()
+      setActiveRouter(null)
+    }
   })
 
   it('a marker with NO name is stamped and never fetched', async () => {

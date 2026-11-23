@@ -77,6 +77,7 @@
 
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { h, isClient } from '@pyreon/core'
+import { getActiveRouter } from '@pyreon/router'
 import { encodeIslandProps } from './island-codec'
 import { useRequestLocals } from './middleware'
 
@@ -133,6 +134,7 @@ export interface RegisteredServerIsland {
  * pattern as `__PYREON_STYLER_FLUSH__` / `__PYREON_SSR_TEMPLATE__`.
  */
 const _g = globalThis as { __PYREON_SERVER_ISLANDS__?: Map<string, RegisteredServerIsland> }
+
 const registry: Map<string, RegisteredServerIsland> = (_g.__PYREON_SERVER_ISLANDS__ ??=
   new Map<string, RegisteredServerIsland>())
 
@@ -206,7 +208,7 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
         ...(isClient
           ? {
               ref: (el: HTMLElement | null) => {
-                if (el) activateServerIslandElement(el)
+                if (el) activateServerIslandElement(el, activeRouterBase())
               },
             }
           : {}),
@@ -221,8 +223,10 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
         return (mint as ServerIslandMint)(options.name, propsAttr).then(marker) as never
       }
     }
+
     return marker(null)
   }
+
   return ServerIslandMarker
 }
 
@@ -273,6 +277,16 @@ export function activateServerIslandElement(el: HTMLElement, base = ''): void {
     })
 }
 
+/**
+ * The active router's base (`/sub`, or `''`). A self-activating marker has no
+ * other way to learn the app's sub-path, and without it the fragment request
+ * went to `/_pyreon/fragment/…` at the host root — a 404 behind a proxy that
+ * forwards only `/sub/*` (the router's own data endpoint already carries it).
+ */
+function activeRouterBase(): string {
+  return getActiveRouter()?._base ?? ''
+}
+
 function fragmentUrl(
   base: string,
   name: string,
@@ -284,6 +298,7 @@ function fragmentUrl(
   if (signed) {
     params.push(`page=${encodeURIComponent(signed.page)}`, `sig=${encodeURIComponent(signed.sig)}`)
   }
+
   return `${base}/_pyreon/fragment/${encodeURIComponent(name)}${params.length ? `?${params.join('&')}` : ''}`
 }
 
@@ -316,5 +331,6 @@ async function signedMarkerFromPage(
     const sig = m.getAttribute('data-sig')
     if (page && sig) return { page, sig }
   }
+
   return null
 }
