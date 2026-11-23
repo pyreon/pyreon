@@ -27,12 +27,10 @@ export function createSyncStoragePersister(options: SyncOptions): Persister {
   const key = options.key ?? DEFAULT_KEY
   const serialize = options.serialize ?? JSON.stringify
 
+  // A full storage throws here: the caller warns, and the throttled write right
+  // behind this one applies `retry`.
   return withFlush(persister, (client: PersistedClient) => {
-    try {
-      storage.setItem(key, serialize(client))
-    } catch {
-      // A full storage: the throttled write right behind this one applies `retry`.
-    }
+    storage.setItem(key, serialize(client))
   })
 }
 
@@ -40,7 +38,7 @@ export function createSyncStoragePersister(options: SyncOptions): Persister {
  * TanStack's `createAsyncStoragePersister` (IndexedDB, React Native
  * AsyncStorage, any Promise-returning store), with the same immediate write.
  * It starts at once and completes asynchronously; locks are released only
- * after it has landed, but a page torn down in the same moment may not finish it.
+ * after it has settled, but a page torn down in the same moment may not finish it.
  */
 export function createAsyncStoragePersister(options: AsyncOptions): Persister {
   const persister = tanstackAsync(options)
@@ -49,14 +47,9 @@ export function createAsyncStoragePersister(options: AsyncOptions): Persister {
   const key = options.key ?? DEFAULT_KEY
   const serialize = options.serialize ?? JSON.stringify
 
-  // Returns the write: lock releases wait for it to land (see persist-mutations.ts).
-  return withFlush(persister, (client: PersistedClient) =>
-    Promise.resolve()
-      .then(() => serialize(client))
-      .then((text) => storage.setItem(key, text))
-      .then(
-        () => undefined,
-        () => undefined,
-      ),
-  )
+  // Returns the write: lock releases wait for it to settle, and a failure is
+  // reported by the caller (see persist-mutations.ts).
+  return withFlush(persister, async (client: PersistedClient) => {
+    await storage.setItem(key, await serialize(client))
+  })
 }

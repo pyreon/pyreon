@@ -756,7 +756,8 @@ describe('entry points and the provider', () => {
     ).toBeUndefined()
   })
 
-  it('a full storage on the immediate write leaves the throttled write to retry', async () => {
+  it('a full storage on the immediate write warns, and leaves the throttled write to retry', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const locks = new FakeLocks()
     useLocks(locks.tab('a'))
     const client = new QueryClient()
@@ -777,6 +778,10 @@ describe('entry points and the provider', () => {
     })
     void start(client, ['add'], { id: 1 })
     await tick()
+    expect(String(warn.mock.calls[0]![0])).toContain(
+      'could not write to storage (Error: QuotaExceededError)',
+    )
+    expect(String(warn.mock.calls[0]![0])).toContain('a later page will send it again')
     fail = false
     await tick(30)
     expect(map.get('REACT_QUERY_OFFLINE_CACHE')).toContain('"id":1')
@@ -964,7 +969,8 @@ describe('edges of the contract', () => {
     second()
   })
 
-  it('an async storage that rejects the immediate write does not throw', async () => {
+  it('an async storage that rejects the immediate write warns instead of throwing', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     useLocks(new FakeLocks().tab('a'))
     const storage = {
       getItem: async () => null,
@@ -979,6 +985,9 @@ describe('edges of the contract', () => {
     })
     void start(client, ['add'], { id: 1 })
     await tick(5)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('could not write to storage (Error: quota)'),
+    )
     unsubscribe()
   })
 })

@@ -510,10 +510,21 @@ function onMutationEvent(session: Session, event: MutationCacheNotifyEvent): voi
 
     return
   }
-  // THE INVARIANT: a mutation lock is never released while storage may still
-  // hold that mutation as pending. The write that drops it has LANDED (an async
-  // persister's included) before `release` runs, so a page that takes the lock
-  // next does not find it and send it again.
+  // THE INVARIANT: the lock is released only after the write that drops the
+  // mutation has SETTLED (landed or failed; an async persister's included), so
+  // a page that takes the lock next does not find it and send it again.
+  // - A FAILED write (a full storage) leaves the mutation stored as pending: the
+  //   lock still goes, with a dev warning, and once this page is gone the next
+  //   page sends it again (at-least-once).
+  // - A write that NEVER settles keeps this lock, and the page's owner lock, for
+  //   the page's lifetime. That fails safe while the page lives (another tab
+  //   sees a live owner); once it is gone, the mutation is still stored as
+  //   pending and the next page sends it again (at-least-once).
+  // - A persister without the immediate write (`FLUSH`), such as TanStack's own
+  //   createSyncStoragePersister imported directly, resolves before its
+  //   throttled write lands: only the owner check protects it, and a page that
+  //   dies inside the throttle window leaves the mutation to be sent again.
+  //   Use the `/persist` persisters.
   writeNow(session, release, { remove: owned.name })
 }
 
@@ -609,13 +620,25 @@ function snapshot(session: Session, target: SaveTarget): PersistedClient {
 
 /** Write to a persister now, skipping its throttle when it can, and through the throttle too; resolves once it has landed. */
 async function writeThrough(persister: FlushablePersister, client: PersistedClient): Promise<void> {
-  const landed = persister[FLUSH]?.(client)
-  // Also hand it to the throttled path: its pending write must not be an OLDER
-  // snapshot that lands after this one and undoes it.
+  // Hand it to the throttled path first: its pending write must not be an OLDER
+  // snapshot that lands after this one and undoes it, and if the immediate
+  // write fails, that throttled write (with the persister's `retry`) is the one
+  // that can still land.
   const throttled = persister.persistClient(client)
-  // Done when the immediate write has landed; a persister without one (a
-  // custom one) is done when its own write resolves.
-  await (persister[FLUSH] ? landed : throttled)
+  const direct = persister[FLUSH]
+  try {
+    // A persister without the immediate write is done when its own write resolves.
+    await (direct ? direct(client) : throttled)
+  } catch (error) {
+    // Settled, failed: the caller still releases (see THE INVARIANT).
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[Pyreon] @pyreon/query/persist could not write to storage (${String(error)}). A mutation that settled ` +
+          `may stay stored as pending, and a later page will send it again. Free up storage space, or keep ` +
+          `less in the persisted cache (for example with dehydrateOptions.shouldDehydrateQuery).`,
+      )
+    }
+  }
 }
 
 /** What a page that is not subscribed changes in storage: only entries it owns. */
