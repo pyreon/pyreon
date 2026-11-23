@@ -384,26 +384,37 @@ describe('a crafted marker cannot steer the fragment request', () => {
     ['data-base /a/../b', { 'data-name': 'X', 'data-base': '/a/../b' }],
     ['data-name with a slash', { 'data-name': '../../evil' }],
     ['data-name ..', { 'data-name': '..' }],
+    ['data-name .', { 'data-name': '.' }],
     ['data-name with ?', { 'data-name': 'x?y=1' }],
     ['data-name with #', { 'data-name': 'x#y' }],
     ['data-name //evil', { 'data-name': '//evil.example/x' }],
   ]
   for (const [label, attrs] of crafted) {
-    it(`${label}: no cross-origin request, and nothing inserted from elsewhere`, async () => {
+    it(`${label}: no cross-origin request, one encoded path segment, nothing from elsewhere`, async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
       const urls = stubFetch(() => ok('<img src=x onerror="window.__pwned = 1">'))
       const el = serverMarkup(attrs)
       activateServerIslands()
       await settle()
-      for (const u of urls) {
-        expect(new URL(u, location.origin).origin, u).toBe(location.origin)
-        expect(new URL(u, location.origin).pathname, u).toMatch(/^\/_pyreon\/fragment\/[\w$.-]+$/)
-      }
-      if (attrs['data-name'] !== 'X') {
-        // A name that is not a plain island name is refused before any fetch.
+      const name = attrs['data-name']!
+      if (name === '..' || name === '.') {
+        // A dot segment the URL parser would resolve: refused before any fetch.
         expect(urls).toEqual([])
         expect(el.getAttribute('data-island-error')).toBe('fragment-refused')
         expect(el.innerHTML).toBe('<span>fallback</span>')
+
+        return
       }
+      expect(urls).toHaveLength(1)
+      const url = new URL(urls[0]!, location.origin)
+      expect(url.origin).toBe(location.origin)
+      // The name is ONE encoded segment: it cannot add a segment, a query or a fragment.
+      const segments = url.pathname.split('/')
+      expect(segments.slice(0, 3)).toEqual(['', '_pyreon', 'fragment'])
+      expect(segments).toHaveLength(4)
+      expect(decodeURIComponent(segments[3]!)).toBe(name)
+      expect(url.search).toBe('')
+      expect(url.hash).toBe('')
     })
   }
 
@@ -425,5 +436,13 @@ describe('a crafted marker cannot steer the fragment request', () => {
     await settle()
     expect(urls).toEqual(['/_pyreon/fragment/X'])
   })
-})
 
+  it('a refused marker says why in dev', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubFetch(() => ok('<b>x</b>'))
+    serverMarkup({ 'data-name': '..' })
+    activateServerIslands()
+    await settle()
+    expect(String(warn.mock.calls[0]?.[0])).toMatch(/\[Pyreon\] server island "\.\.": not a valid island name/)
+  })
+})

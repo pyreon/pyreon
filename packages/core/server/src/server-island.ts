@@ -80,6 +80,7 @@ import { h, isClient } from '@pyreon/core'
 import { getActiveRouter } from '@pyreon/router'
 import { encodeIslandProps } from './island-codec'
 import { useRequestLocals } from './middleware'
+import { isIslandName } from './island-name'
 import { isRoutePath } from './route-path'
 
 /**
@@ -134,13 +135,31 @@ export interface RegisteredServerIsland {
  * can't see it — vitest never duplicates the module). Same cross-instance
  * pattern as `__PYREON_STYLER_FLUSH__` / `__PYREON_SSR_TEMPLATE__`.
  */
-const _g = globalThis as {
-  __PYREON_SERVER_ISLANDS__?: Map<string, RegisteredServerIsland>
-  __PYREON_SERVER_ISLAND_BASE__?: string
+const _g = globalThis as { __PYREON_SERVER_ISLANDS__?: unknown }
+
+/**
+ * The shared registry, or a fresh one. Only a real `Map` is accepted: in a
+ * browser, markup with `id="__PYREON_SERVER_ISLANDS__"` makes that global
+ * name resolve to the ELEMENT (named access on Window), and `??=` would have
+ * kept the element and broken every `serverIsland()` call.
+ */
+function sharedRegistry(): Map<string, RegisteredServerIsland> {
+  const existing = _g.__PYREON_SERVER_ISLANDS__
+  if (existing instanceof Map) return existing as Map<string, RegisteredServerIsland>
+  const created = new Map<string, RegisteredServerIsland>()
+  _g.__PYREON_SERVER_ISLANDS__ = created
+
+  return created
 }
 
-const registry: Map<string, RegisteredServerIsland> = (_g.__PYREON_SERVER_ISLANDS__ ??=
-  new Map<string, RegisteredServerIsland>())
+const registry: Map<string, RegisteredServerIsland> = sharedRegistry()
+
+/**
+ * The base set with `setServerIslandBase`. Module scope, not `globalThis`:
+ * trusted configuration must not live where injected markup can shadow it
+ * (`<a id="…">` on Window), and only the browser bundle — one instance — reads it.
+ */
+let configuredBase = ''
 
 /** @internal Fragment endpoint allowlist lookup. */
 export function getRegisteredServerIslands(): Map<string, RegisteredServerIsland> {
@@ -150,7 +169,7 @@ export function getRegisteredServerIslands(): Map<string, RegisteredServerIsland
 /** @internal Test isolation. */
 export function _resetServerIslands(): void {
   registry.clear()
-  _g.__PYREON_SERVER_ISLAND_BASE__ = ''
+  configuredBase = ''
 }
 
 /**
@@ -162,7 +181,7 @@ export function _resetServerIslands(): void {
  */
 export function setServerIslandBase(base: string): void {
   if (base === '' || base === '/' || isRoutePath(base)) {
-    _g.__PYREON_SERVER_ISLAND_BASE__ = base
+    configuredBase = base
     return
   }
   if (process.env.NODE_ENV !== 'production') {
@@ -172,7 +191,7 @@ export function setServerIslandBase(base: string): void {
 }
 
 function configuredServerIslandBase(): string {
-  return _g.__PYREON_SERVER_ISLAND_BASE__ ?? ''
+  return configuredBase
 }
 
 /**
@@ -184,6 +203,11 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
   loader: () => Promise<{ default: ComponentFn } | ComponentFn>,
   options: ServerIslandOptions,
 ): ComponentFn<P> {
+  if (!isIslandName(options.name)) {
+    throw new Error(
+      `[Pyreon] serverIsland: invalid name ${JSON.stringify(options.name)}. A server-island name is one path segment of its fragment URL: any non-empty string except "." and ".." (every character is percent-encoded). Rename it.`,
+    )
+  }
   if (registry.has(options.name) && process.env.NODE_ENV !== 'production') {
     // oxlint-disable-next-line no-console
     console.warn(
@@ -282,8 +306,10 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
  * - the base comes from code — the `base` argument (the marker's router, or
  *   the caller) or the app's `setServerIslandBase` — never from a DOM
  *   attribute, and is accepted only as a root-relative path (`isRoutePath`);
- * - `data-name` must be a plain island name (`isIslandName`): it becomes a
- *   path segment, and `..` there would walk out of the endpoint;
+ * - `data-name` is percent-encoded into ONE path segment, so it cannot add
+ *   a segment, a query or a fragment; only `.` and `..` (a dot segment the
+ *   URL parser resolves) are refused (`isIslandName`, the same rule
+ *   `serverIsland()` enforces at registration);
  * - the URL is resolved against `location.origin` and refused unless it is
  *   still same-origin;
  * - `data-props` / `data-page` / `data-sig` only ever become encoded query
@@ -298,6 +324,15 @@ export function activateServerIslandElement(el: HTMLElement, base?: string): voi
   const fragmentBase = trustedBase(base ?? configuredServerIslandBase())
   if (fragmentBase === null || !isIslandName(name)) {
     el.setAttribute('data-island-error', 'fragment-refused')
+    if (process.env.NODE_ENV !== 'production') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        fragmentBase === null
+          ? `[Pyreon] server island "${name}": base ${JSON.stringify(base)} is not a root-relative path such as "/sub/"; the fragment was not fetched.`
+          : `[Pyreon] server island ${JSON.stringify(name)}: not a valid island name (empty, "." or ".."); the fragment was not fetched.`,
+      )
+    }
+
     return
   }
   const props = el.getAttribute('data-props') ?? ''
@@ -354,10 +389,6 @@ function trustedBase(base: string): string | null {
   return isRoutePath(base) ? base.replace(/\/+$/, '') : null
 }
 
-/** A plain island name: what `serverIsland({ name })` takes, safe as one path segment. */
-function isIslandName(name: string): boolean {
-  return /^[\w$-][\w$.-]*$/.test(name) && name !== '.' && name !== '..'
-}
 
 /**
  * `path` resolved against this page's origin — refused (throws, so the marker
