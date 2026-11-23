@@ -1463,7 +1463,7 @@
     },
     "packages/fundamentals/auth": {
       "name": "@pyreon/auth",
-      "version": "0.52.0",
+      "version": "0.53.0",
       "dependencies": {
         "@pyreon/storage": "workspace:*",
       },

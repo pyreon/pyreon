@@ -28,7 +28,10 @@ const json = (b: unknown, status = 200) => Promise.resolve(new Response(JSON.str
 const startUrl = location.href
 const redirectUri = `${location.origin}${location.pathname}`
 
-beforeEach(() => sessionStorage.clear())
+beforeEach(() => {
+  sessionStorage.clear()
+  localStorage.clear()
+})
 afterEach(() => {
   sessionStorage.clear()
   history.replaceState(null, '', startUrl)
@@ -113,6 +116,9 @@ describe('useOidc on a real page', () => {
     expect(auth.claim('email')).toBe('a@example.com')
     expect(auth.accessToken()).toBe('at')
     expect(sessionStorage.length).toBe(0) // the flow was consumed
+    // Tokens live in memory only: nothing reaches web storage, so a reload starts signed out.
+    expect(localStorage.length).toBe(0)
+    expect(useOidc(opts).status()).toBe('signedOut')
   })
 
   it('rejects an id_token whose nonce is not this sign-in, as the cross-target code', async () => {

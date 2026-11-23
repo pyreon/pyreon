@@ -40,6 +40,7 @@ fun testOidcHappyPathAndReplay() {
 fun testOidcRejections() {
     val core = PyreonAuthCore(CountingStore())
     raises<PyreonAuthError.IssuerMismatch>("mix-up") { core.complete(cb(begin(core), "&code=a&iss=https://evil.example"), ISS) }
+    raises<PyreonAuthError.IssuerMismatch>("flow of another issuer") { core.complete(cb(begin(core), "&code=a"), "https://other.example") }
     raises<PyreonAuthError.IssuerMissing>("iss missing") { core.complete(cb(begin(core), "&code=a"), ISS, issuerParamSupported = true) }
     raises<PyreonAuthError.FlowExpired>("expired") { core.complete(cb(begin(core, System.currentTimeMillis() - 700_000), "&code=a"), ISS) }
     raises<PyreonAuthError.InsecureUrl>("http") { core.begin("http://idp.example/auth", ISS, "a", "r") }

@@ -580,6 +580,12 @@ In `@pyreon/router`'s default `mode: 'hash'`, the route and its query live in th
 
 ---
 
+### A pending OAuth flow looked up by `state` alone, in a store shared by several sign-in instances (OAuth mix-up)
+
+Every `useOidc`/`createAuth` on the redirect page sees the callback, and whichever takes the flow first posts the code and PKCE verifier to ITS OWN token endpoint. The RFC 9207 `iss` check does not save it, because most providers (GitHub, Facebook, many others) send no `iss`. The flow must record the issuer and redirect URI that started it, and the completing instance must refuse a flow that is not its own before any network call (`ownsFlow` in `packages/fundamentals/auth/src/auth.ts` hands it back to the store untouched; `parseCallback` and the Swift/Kotlin `PyreonAuthCore.complete` throw `issuer_mismatch`). Test with two instances on one redirect URI and a callback without `iss` (`state.test.ts`, "two providers on one redirect page").
+
+---
+
 ### An unsafe dev-only default documented only in a comment
 
 `createSyncServer({ port })` without `authorize` accepts every connection. It warns once per instance, in production too, because this is a live misconfiguration an operator must see. When a strict test assertion (`expect(warnSpy).not.toHaveBeenCalled()`) breaks on an unrelated warning, give the test a production config rather than weakening the assertion. Reference: `packages/fundamentals/sync/src/server.ts`; test `server-open-relay-warning.test.ts`.

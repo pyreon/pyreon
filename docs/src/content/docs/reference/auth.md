@@ -30,7 +30,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`useOidc`](#useoidc-hook) | hook | A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. |
 | [`sessionStorageFlowStore`](#sessionstorageflowstore-function) | function | The browser flow store `useOidc` uses by default: pending sign-ins (state, nonce, PKCE verifier) in `sessionStorage`,… |
 | [`beginAuthorization`](#beginauthorization-function) | function | Builds the authorization redirect (code flow, S256 PKCE, state, nonce) and returns the `PendingFlow` that must survive… |
-| [`parseCallback`](#parsecallback-function) | function | Validates the redirect back from the provider in a fixed order — expiry, provider error, state, `iss` (RFC 9207), then… |
+| [`parseCallback`](#parsecallback-function) | function | Validates the redirect back from the provider in a fixed order — expiry, that the flow was started for this issuer (the… |
 | [`exchangeCode`](#exchangecode-function) | function | Exchanges the authorization code using the PKCE verifier (public client, no secret) and rejects anything that is not a… |
 | [`discover`](#discover-function) | function | Fetches OIDC discovery and validates it: https-only (loopback http allowed for dev), the document issuer must equal the… |
 | [`createAuth`](#createauth-function) | function | Reactive auth state machine over the OIDC primitives. |
@@ -137,7 +137,7 @@ const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirect
 (callback: string | URL, flow: PendingFlow, meta: OidcMetadata, now?: number) => { code: string }
 ```
 
-Validates the redirect back from the provider in a fixed order — expiry, provider error, state, `iss` (RFC 9207), then the code — and throws an `AuthError` with a stable `code` on any failure.
+Validates the redirect back from the provider in a fixed order — expiry, that the flow was started for this issuer (the mix-up check that needs no `iss`), provider error, state, `iss` (RFC 9207), then the code — and throws an `AuthError` with a stable `code` on any failure.
 
 **Example**
 
@@ -203,7 +203,7 @@ const meta = await discover('https://accounts.example')
 (opts: AuthOptions) => Auth
 ```
 
-Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens`, `claims`, `expiresAt` and `error` as signals plus `signIn`, `handleCallback`, `refresh` and `signOut`. Keys come from a cached JWKS that is re-fetched (throttled) when a token names an unknown `kid`, so provider key rotation needs no restart. `refresh()` keeps the old refresh token when the provider does not rotate it and refuses a refreshed ID token with a different `sub`. `signOut({ endProviderSession: true })` also redirects to the `end_session_endpoint` of the provider with an `id_token_hint`; plain `signOut()` clears local state only. When the provider returns an ID token, `handleCallback` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow's nonce) BEFORE reporting `signedIn`, and exposes the verified payload as `claims`; a provider that returns an ID token but publishes no `jwks_uri` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are read-and-deleted from the `FlowStore` so a callback URL cannot be replayed, and `memoryFlowStore` drops abandoned flows after the 10-minute flow lifetime.
+Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens`, `claims`, `expiresAt` and `error` as signals plus `signIn`, `handleCallback`, `refresh` and `signOut`. Keys come from a cached JWKS that is re-fetched (throttled) when a token names an unknown `kid`, so provider key rotation needs no restart. `refresh()` keeps the old refresh token when the provider does not rotate it and refuses a refreshed ID token with a different `sub`. `signOut({ endProviderSession: true })` also redirects to the `end_session_endpoint` of the provider with an `id_token_hint`; plain `signOut()` clears local state only. When the provider returns an ID token, `handleCallback` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow's nonce) BEFORE reporting `signedIn`, and exposes the verified payload as `claims`; a provider that returns an ID token but publishes no `jwks_uri` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are read-and-deleted from the `FlowStore` so a callback URL cannot be replayed, a flow started by another instance (another issuer or redirect URI, e.g. a second provider on the same redirect page) is handed back untouched instead of being completed against the wrong provider, and `memoryFlowStore` drops abandoned flows after the 10-minute flow lifetime.
 
 **Example**
 

@@ -16,7 +16,7 @@ Everything is secure by default — S256 PKCE, `state` and `nonce`, the RFC 9207
 ## Installation
 
 :::warning
-`@pyreon/auth` is **not on npm yet**, and it is not part of the 1.0 release: it stays in the repository (`packages/fundamentals/auth`) as an unpublished package until a later release. The commands below will fail until then; to try it now, build Pyreon from source.
+`@pyreon/auth` is first published to npm with Pyreon **0.54.0**, and it is **Experimental**: its API may change in a minor release (see the [stability policy](/docs/stability-and-direction)). If `npm install` reports that the package does not exist, 0.54.0 has not reached npm yet.
 :::
 
 :::code-group
@@ -83,11 +83,11 @@ Understanding the round trip makes every option and error below obvious.
 1. **Discovery.** The first call fetches `<issuer>/.well-known/openid-configuration` and checks that the document names the same issuer and that every endpoint in it is https.
 2. **The authorization request.** `signIn()` generates three single-use secrets — `state` (ties the redirect to this tab), `nonce` (ties the ID token to this sign-in) and a PKCE `code_verifier` (proves the app that started the flow is the one finishing it) — stores them as a *pending flow*, and navigates to the provider with the S256 challenge of the verifier.
 3. **The user signs in at the provider**, which never shares the password with your app.
-4. **The redirect.** The provider sends the browser back to `redirectUri` with a short-lived `code`, the `state` and (RFC 9207) its `iss`. `useOidc` scrubs these from the URL first, then checks `state` in constant time and `iss` against the issuer — the defence against the IdP mix-up attack.
+4. **The redirect.** The provider sends the browser back to `redirectUri` with a short-lived `code`, the `state` and (RFC 9207) its `iss`. `useOidc` scrubs these from the URL first, then looks up the pending flow by `state` (an unknown or reused `state` fails), and checks that the flow was started for this issuer and redirect URI and that `iss` matches the issuer. Those two checks are the defence against the IdP mix-up attack; the first holds even for providers that send no `iss`, so several providers can share one redirect page.
 5. **The code exchange.** The app posts the `code` with the PKCE verifier to the token endpoint and receives an access token, an ID token and (if you asked for `offline_access`) a refresh token.
 6. **ID-token verification.** Before anything reads as signed in, the ID token's signature is verified against the keys the provider publishes, and `iss`, `aud`, `azp`, `exp`, `nbf`, `sub` and **this flow's `nonce`** are checked. Only then does `status()` become `signedIn`.
 
-The pending flow is single-use and expires after ten minutes. On the web it lives in `sessionStorage`, which is per-tab and survives the full-page round trip to the provider; native apps keep it in memory, because the system browser hands the redirect straight back to the running app.
+The pending flow is single-use and expires after ten minutes. On the web it lives in `sessionStorage`, which is per-tab and survives the full-page round trip to the provider; native apps keep it in the Keychain (iOS) or an Android Keystore-encrypted store, so a sign-in survives the app being killed while the system browser is open.
 
 PKCE in one picture — the verifier never leaves the app, only its hash goes to the provider:
 
@@ -678,11 +678,11 @@ The live demo at the top of this page is built exactly this way — its provider
 **On by default, and not configurable down:**
 
 - Authorization code flow with **S256 PKCE**, `state` and `nonce`. The implicit flow, the password grant and PKCE `plain` are not offered.
-- **RFC 9207** issuer check on the redirect, and issuer equality on discovery — the IdP mix-up defence.
+- The IdP mix-up defence: a pending flow is completed only by the instance whose issuer and redirect URI started it, the **RFC 9207** `iss` on the redirect is checked when present, and discovery must name the same issuer.
 - **https only** for the issuer and every endpoint it advertises (loopback http allowed for local development), and no following of redirects on provider calls.
 - **Single-use pending flows** that expire after ten minutes; the authorization code is scrubbed from the URL and history before anything awaits.
 - ID tokens: **RS256 and ES256 only** (no `none`, no HMAC algorithm confusion), `crit` headers refused, strict canonical base64url, `iss` / `aud` / `azp` / `exp` / `nbf` / `sub` / `nonce` all checked.
-- Sessions: HMAC-SHA-256 compared in constant time, ≥ 32-character secrets, `__Host-` + `HttpOnly` + `Secure` + `SameSite=Lax` cookies.
+- Sessions: HMAC-SHA-256 compared without an early exit (only the fixed signature length can leak), ≥ 32-character secrets, `__Host-` + `HttpOnly` + `Secure` + `SameSite=Lax` cookies.
 - `returnTo` validated with the URL parser browsers use.
 
 **Your production checklist** — these need storage or policy only your app has:

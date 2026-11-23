@@ -239,6 +239,16 @@ fun testLateResultAndLogout() {
     check((q["id_token_hint"] ?: "").split(".").size == 3) { "id_token_hint sent" }
     check(q["post_logout_redirect_uri"] == "com.example.app:/bye" && q["client_id"] == "app") { "logout params" }
     check(o.status.value == PyreonOidcStatus.SIGNED_OUT && o.accessToken.value == null) { "signed out locally" }
+
+    // After a relaunch the session is restored without discovery; provider logout still happens.
+    val rp = FakeProvider()
+    val rb = FakeBrowser(rp)
+    val rs = MemStore()
+    make(rp, rs, rb).signIn()
+    val restored = make(rp, rs, rb)
+    val openedBefore = rb.opened.size
+    restored.signOut(endProviderSession = true)
+    check(rb.opened.size == openedBefore + 1 && URI(rb.opened.last()).path == "/logout") { "provider logout opened after a relaunch" }
 }
 
 fun testRehydrationGuards() {

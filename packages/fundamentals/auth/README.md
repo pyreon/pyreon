@@ -1,12 +1,12 @@
 # @pyreon/auth
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Authentication primitives for Pyreon on Web Crypto + `fetch`, so the same code runs in the browser, Node, Bun and
 workerd: OIDC / OAuth2 sign-in, ID-token verification, signed cookie sessions, TOTP and passkeys.
 
 Tested against [`oidc-provider`](https://github.com/panva/node-oidc-provider), a certified OpenID Provider, run
 in-process: discovery, PKCE + nonce, code exchange, ID-token verification, refresh and RP-initiated logout.
-
-> **Not published to npm.** This package is marked `private` in its `package.json` and is not part of the 1.0 release. It lives in the repository and is tested in CI; to try it, build Pyreon from source. Publishing it later is a maintainer decision (remove `"private": true`, bootstrap the first publish by hand, add a Trusted Publisher).
 
 **Guide, with live demos you can break on purpose:** [pyreon.dev/docs/auth](https://pyreon.dev/docs/auth).
 
@@ -79,7 +79,7 @@ The lower-level steps are exported too (`discover`, `beginAuthorization`, `parse
 
 ## Secure defaults
 
-S256-only PKCE, `state` + `nonce`, RFC 9207 `iss` check, https-only discovery with issuer equality and https on every
+S256-only PKCE, `state` + `nonce`, the mix-up check (a flow completes only against the issuer that started it, plus the RFC 9207 `iss` check), https-only discovery with issuer equality and https on every
 advertised endpoint (loopback http is allowed for local development), single-use flows that expire after 10 minutes,
 ID tokens limited to RS256 / ES256 with `crit` headers refused, cookies `__Host-` + HttpOnly + Secure + SameSite=Lax,
 passkey ceremonies from a cross-origin iframe refused unless `allowCrossOrigin`, and a guard whose `returnTo` only

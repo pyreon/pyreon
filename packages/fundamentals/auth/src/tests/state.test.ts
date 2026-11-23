@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createAuth, google, keycloak, memoryFlowStore, withPreset } from '../index'
+import { createAuth, google, keycloak, memoryFlowStore, parseCallback, withPreset } from '../index'
 import type { FetchLike } from '../index'
 
 const issuer = 'https://idp.example'
@@ -134,5 +134,51 @@ describe('createAuth — provider errors', () => {
     expect(auth.status()).toBe('error')
     expect(auth.error()?.code).toBe('provider_error')
     expect(auth.error()?.message).toContain('access_denied')
+  })
+})
+
+// Two sign-in instances share one redirect page and one flow store (a "Sign in with A / with B"
+// page). Every instance whose redirectUri matches sees the callback, so the one that does NOT own
+// the pending flow must leave it alone: completing it would post the other provider's code and
+// PKCE verifier to its own token endpoint (the OAuth mix-up attack), and most providers send no
+// RFC 9207 `iss` that would catch it.
+describe('createAuth — two providers on one redirect page (mix-up)', () => {
+  const redirectUri = 'https://app.example/cb'
+  const metaFor = (iss: string) => ({ issuer: iss, authorization_endpoint: `${iss}/auth`, token_endpoint: `${iss}/token` })
+
+  function twoProviders() {
+    const flows = memoryFlowStore()
+    const redirects: string[] = []
+    const tokenPosts: string[] = []
+    const f: FetchLike = async (u) => {
+      tokenPosts.push(u)
+
+      return res({ access_token: `at-from-${new URL(u).host}`, token_type: 'Bearer' })
+    }
+    const make = (iss: string) =>
+      createAuth({ metadata: metaFor(iss), client: { clientId: 'app', redirectUri }, flows, redirect: (u) => redirects.push(u), fetch: f })
+
+    return { other: make('https://other-idp.example'), honest: make('https://honest-idp.example'), redirects, tokenPosts }
+  }
+
+  it("an instance never completes another provider's flow, and the owner still can", async () => {
+    const { other, honest, redirects, tokenPosts } = twoProviders()
+    await honest.signIn()
+    const callback = cbFor(redirects[0]!) // no `iss`, as most providers send it
+    // The non-owning instance handles the callback first.
+    await other.handleCallback(callback)
+    expect(tokenPosts).toEqual([])
+    expect(other.status()).toBe('signedOut')
+    expect(other.tokens()).toBeNull()
+    await honest.handleCallback(callback)
+    expect(honest.status()).toBe('signedIn')
+    expect(tokenPosts).toEqual(['https://honest-idp.example/token'])
+  })
+
+  it('parseCallback refuses a flow started for another issuer', () => {
+    const flow = { state: 's', nonce: 'n', codeVerifier: 'v', redirectUri, issuer: 'https://honest-idp.example', createdAt: Date.now() }
+    expect(() => parseCallback(`${redirectUri}?code=c&state=s`, flow, metaFor('https://other-idp.example'))).toThrow(
+      expect.objectContaining({ code: 'issuer_mismatch' }),
+    )
   })
 })

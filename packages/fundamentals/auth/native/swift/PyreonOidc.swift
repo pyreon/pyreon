@@ -143,6 +143,9 @@ public final class PyreonAuthCore {
             throw PyreonAuthError.unknownFlow
         }
         if now.timeIntervalSince1970 - flow.createdAt > Self.flowTtl { throw PyreonAuthError.flowExpired }
+        // A flow started for another provider must never reach this provider's token endpoint
+        // (OAuth mix-up), whether or not the callback carries RFC 9207 `iss`.
+        guard flow.issuer == issuer else { throw PyreonAuthError.issuerMismatch }
         if let e = q("error") { throw PyreonAuthError.providerError(e) }
         guard PyreonPKCE.constantTimeEqual(state, flow.state) else { throw PyreonAuthError.stateMismatch }
         if let iss = q("iss") { guard iss == issuer else { throw PyreonAuthError.issuerMismatch } }

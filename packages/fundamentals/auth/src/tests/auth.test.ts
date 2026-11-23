@@ -7,6 +7,7 @@ import {
   createGuard,
   discover,
   exchangeCode,
+  fetchJwks,
   generateCodeVerifier,
   oauth2,
   parseCallback,
@@ -78,6 +79,30 @@ describe('discover', () => {
     await expect(discover('https://idp.example', down)).rejects.toMatchObject({ code: 'network_error' })
     const { flow } = await beginAuthorization(meta, client)
     await expect(exchangeCode(meta, client, flow, 'c', down)).rejects.toMatchObject({ code: 'network_error' })
+  })
+  it('never follows a redirect on a provider call (discovery, token, refresh, JWKS)', async () => {
+    // A redirect would let whoever controls a provider URL bounce the request (with the code,
+    // verifier or refresh token in the body) somewhere else, or swap the signing keys.
+    const seen: { url: string; redirect: RequestRedirect | undefined }[] = []
+    const record = (url: string, init?: RequestInit) => {
+      seen.push({ url, redirect: init?.redirect })
+      if (url.endsWith('openid-configuration')) return json({ ...meta, jwks_uri: 'https://idp.example/jwks' })
+      if (url.endsWith('/jwks')) return json({ keys: [] })
+
+      return json({ access_token: 'at', token_type: 'Bearer' })
+    }
+    const m = await discover('https://idp.example', record)
+    const { flow } = await beginAuthorization(m, client)
+    await exchangeCode(m, client, flow, 'c', record)
+    await refreshTokens(m, client, 'rt', record)
+    await fetchJwks(m, record)
+    expect(seen.map((s) => s.url)).toEqual([
+      'https://idp.example/.well-known/openid-configuration',
+      'https://idp.example/token',
+      'https://idp.example/token',
+      'https://idp.example/jwks',
+    ])
+    for (const s of seen) expect(s.redirect, s.url).toBe('error')
   })
   it('fails with an AuthError, not a TypeError, on a malformed document', async () => {
     for (const body of [null, [], 'str', 42, { issuer: 'https://idp.example' }]) {

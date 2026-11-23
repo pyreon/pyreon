@@ -197,6 +197,9 @@ public class PyreonAuthCore(private val backend: PyreonSecureBackend) {
         if (index.remove(state) != null) writeIndex(index)
         val flow = deserialize(raw) ?: throw PyreonAuthError.UnknownFlow
         if (nowMs - flow.createdAtMs > FLOW_TTL_MS) throw PyreonAuthError.FlowExpired
+        // A flow started for another provider must never reach this provider's token endpoint
+        // (OAuth mix-up), whether or not the callback carries RFC 9207 `iss`.
+        if (flow.issuer != issuer) throw PyreonAuthError.IssuerMismatch
         q["error"]?.let { throw PyreonAuthError.ProviderError(it) }
         if (!PyreonPKCE.constantTimeEqual(state, flow.state)) throw PyreonAuthError.StateMismatch
         val iss = q["iss"]

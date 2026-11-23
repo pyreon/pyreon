@@ -150,15 +150,16 @@ public class PyreonOidcAuth(
         clear()
         error.value = null
         status.value = PyreonOidcStatus.SIGNED_OUT
-        val m = meta ?: return
-        val b = browser ?: return
         if (!endProviderSession) return
-        val url = try {
-            PyreonOidcClient.endSessionUrl(m, hint, clientId, postLogoutRedirectUri)
-        } catch (_: PyreonAuthError) {
-            null
-        } ?: return
-        executor.execute { try { b.authorize(url, postLogoutRedirectUri ?: redirectUri) } catch (_: Throwable) {} }
+        val b = browser ?: return
+        executor.execute {
+            try {
+                // A session restored on relaunch was never discovered, so look the provider up
+                // now: skipping the logout there would leave the provider session alive.
+                val url = PyreonOidcClient.endSessionUrl(metadata(), hint, clientId, postLogoutRedirectUri) ?: return@execute
+                b.authorize(url, postLogoutRedirectUri ?: redirectUri)
+            } catch (_: Throwable) {}
+        }
     }
 
     // ---- internals ----

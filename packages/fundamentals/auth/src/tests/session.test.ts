@@ -24,6 +24,10 @@ describe('session', () => {
   })
   it('enforces secret length and the cookie size cap', async () => {
     await expect(signSession({ sub: 'u' }, { secrets: ['short'] })).rejects.toThrow(/32 characters/)
+    // Verifying throws too, rather than quietly returning null: a short secret is a setup error.
+    const v = await signSession({ sub: 'u' }, { secrets: [A] })
+    await expect(verifySession(v, { secrets: ['short'] })).rejects.toThrow(/32 characters/)
+    await expect(verifySession(v, { secrets: [A, 'short'] })).rejects.toThrow(/32 characters/)
     await expect(signSession({ sub: 'u', big: 'x'.repeat(5000) }, { secrets: [A] })).rejects.toThrow(/4096/)
   })
   it('a token without sub or exp is rejected even if validly signed', async () => {

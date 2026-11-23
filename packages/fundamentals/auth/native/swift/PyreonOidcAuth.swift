@@ -173,12 +173,17 @@ public final class PyreonOidcAuth {
         clear()
         status = PyreonOidcStatus.signedOut
         error = nil
-        guard endProviderSession, let meta, let browser,
-              let url = try? PyreonOidcClient.endSessionURL(meta, idTokenHint: hint, clientId: clientId,
-                                                           postLogoutRedirectUri: postLogoutRedirectUri)
-        else { return }
+        guard endProviderSession, let browser else { return }
         let back = postLogoutRedirectUri ?? redirectUri
-        _Concurrency.Task { _ = try? await browser.authorize(url: url, redirectUri: back) }
+        _Concurrency.Task {
+            // A session restored on relaunch was never discovered, so look the provider up now:
+            // skipping the logout there would leave the provider session alive.
+            guard let m = try? await self.metadata(),
+                  let url = try? PyreonOidcClient.endSessionURL(m, idTokenHint: hint, clientId: self.clientId,
+                                                               postLogoutRedirectUri: self.postLogoutRedirectUri)
+            else { return }
+            _ = try? await browser.authorize(url: url, redirectUri: back)
+        }
     }
 
     // MARK: - internals

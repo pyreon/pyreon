@@ -160,11 +160,22 @@ export function createAuth(opts: AuthOptions): Auth {
     },
     async handleCallback(url) {
       const my = ++epoch
+      const before = status.peek()
       status.set('signingIn')
       try {
         const m = await meta()
         const params = new URL(url).searchParams
         const flow = await opts.flows.take(params.get('state') ?? '')
+        if (flow && !ownsFlow(flow, m, opts.client)) {
+          // Another instance (another provider, or another redirect) started this sign-in,
+          // and every instance on the redirect page sees the callback. Completing it here
+          // would post that provider's code and PKCE verifier to THIS provider's token
+          // endpoint (the OAuth mix-up attack), so hand the flow back untouched for its
+          // owner and leave this instance as it was.
+          await opts.flows.save(flow)
+          if (my === epoch) status.set(before)
+          return
+        }
         if (!flow) {
           // A provider error (e.g. the user cancelled) may come back without the
           // state; say what the provider said instead of "unknown flow".
@@ -227,6 +238,11 @@ export function createAuth(opts: AuthOptions): Auth {
       }
     },
   }
+}
+
+/** True when `flow` was started by an instance with this issuer and redirect URI. */
+function ownsFlow(flow: PendingFlow, m: OidcMetadata, client: ClientConfig): boolean {
+  return flow.issuer === m.issuer && flow.redirectUri === client.redirectUri
 }
 
 /** Upper bound on pending flows a `memoryFlowStore` holds at once. */

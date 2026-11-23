@@ -216,6 +216,15 @@ enum PyreonOidcFlowTests {
         expect(items["post_logout_redirect_uri"] == "com.example.app:/bye" && items["client_id"] == "app", "logout params")
         expect(o.status == PyreonOidcStatus.signedOut && o.accessToken == nil, "signed out locally")
 
+        // After a relaunch the session is restored without discovery; provider logout still happens.
+        let lop = FakeProvider(), lob = FakeBrowser(lop), los = CountingStore()
+        await make(lop, los, lob).signInNow()
+        let restored = make(lop, los, lob)
+        let openedBefore = lob.opened.count
+        restored.signOut(endProviderSession: true)
+        for _ in 0..<500 where lob.opened.count == openedBefore { await _Concurrency.Task.yield() }
+        expect(lob.opened.count == openedBefore + 1 && lob.opened.last?.path == "/logout", "provider logout opened after a relaunch")
+
         // An expired session with no refresh token is dropped on relaunch, not restored.
         let es = CountingStore()
         es.entries["pyreon.auth.session.app"] = #"{"issuer":"https://idp.example","accessToken":"x","expiresAt":1,"claims":{"sub":"u"}}"#

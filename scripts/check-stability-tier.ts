@@ -31,8 +31,8 @@
  *      in `DEPRECATED_ALLOWLIST` with a reason (stale allowlist entries fail);
  *   6. a docs page passes a hand-written `status=` to `<PackageBadge>` (the
  *      badge reads the tier generated from this field);
- *   7. a PRIVATE package (`"private": true`, e.g. `@pyreon/auth` until it is
- *      published) declares a tier or carries a README status line. An
+ *   7. a PRIVATE package (`"private": true`, e.g. `@pyreon/test-utils`)
+ *      declares a tier or carries a README status line. An
  *      unpublished package makes no semver promise, the generated table and
  *      badge leave it out ("unpublished"), and rules 1-2 never check it, so a
  *      tier left on it would drift unchecked. Publishing it (dropping

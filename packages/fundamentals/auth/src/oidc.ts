@@ -172,6 +172,12 @@ export function parseCallback(
 ): { code: string } {
   const p = new URL(callback).searchParams
   if (now - flow.createdAt > FLOW_TTL_MS) throw new AuthError('flow_expired', 'authorization attempt expired')
+  // The flow must belong to the provider this callback is completed against: a flow
+  // started for another issuer would send its code and PKCE verifier to the wrong token
+  // endpoint (OAuth mix-up), whether or not the provider sends RFC 9207 `iss`.
+  if (flow.issuer !== meta.issuer) {
+    throw new AuthError('issuer_mismatch', 'pending authorization was started for another issuer (mix-up)')
+  }
   const err = p.get('error')
   if (err) throw new AuthError('provider_error', `provider returned "${err}"`)
   if (!timingSafeEqual(p.get('state') ?? '', flow.state)) throw new AuthError('state_mismatch', 'state mismatch')
