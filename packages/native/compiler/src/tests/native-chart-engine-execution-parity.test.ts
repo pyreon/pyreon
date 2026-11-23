@@ -29,7 +29,7 @@ describe('chart engine — the changed functions run the same on the web, Swift 
   const web = runWeb(CORPUS)
 
   it('the web results are real answers (no case threw)', () => {
-    expect(names.length).toBe(19)
+    expect(names.length).toBe(27)
     for (const [i, w] of web.entries()) expect(w, names[i]).not.toMatch(/^<THROW/)
     expect(web[names.indexOf('c_count_to_double')]).toBe('-3,0,5')
     expect(web[names.indexOf('c_count_of')]).toBe('0,0,3')

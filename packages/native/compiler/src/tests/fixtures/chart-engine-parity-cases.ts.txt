@@ -131,3 +131,78 @@ export function c_render_candles(): string {
   ]
   return String(renderCandles(candles, { x: 0.0, y: 0.0, w: 100.0, h: 50.0 }, { min: 0.0, max: 4.0 }).length)
 }
+
+// ── The other functions whose source changed (NaN gaps, removed narrowing workarounds) ──────────────────────────
+
+function measureText(t: string, s: Double): Double {
+  return Number(t.length) * s * 0.55
+}
+
+function lineSpec(values: Double[], yScale: string, normalize: boolean, kind: string): ChartSpec {
+  const series: Series[] = [
+    { kind: kind === 'stacked' ? 'stacked' : 'line', values: values, color: '#3366cc', width: 2.0, radius: 3.0, label: 'a' },
+    { kind: kind === 'stacked' ? 'stacked' : 'line', values: [2.0, 1.0, 3.0, 2.0], color: '#cc3366', width: 2.0, radius: 3.0, label: 'b' },
+  ]
+  return {
+    width: 320.0,
+    height: 200.0,
+    series: series,
+    categories: ['q1', 'q2', 'q3', 'q4'],
+    theme: defaultTheme,
+    showXAxis: true,
+    showYAxis: true,
+    showGrid: true,
+    yScale: yScale,
+    stackNormalize: normalize,
+  }
+}
+
+export function c_render_log_with_gaps(): string {
+  // log scale: a non-positive value is a NaN gap (render.ts), not a point.
+  return String(renderChart(lineSpec([1.0, 10.0, 0.0, 100.0], 'log', false, 'line'), measureText).length)
+}
+
+export function c_render_stack_normalize(): string {
+  return String(renderChart(lineSpec([1.0, 2.0, 0.0, 4.0], 'linear', true, 'stacked'), measureText).length)
+}
+
+export function c_stack_levels(): string {
+  const l = stackLevels([[1.0, 2.0, -1.0], [3.0, NaN, 2.0]])
+  return l.tops.map((row) => row.map((x) => (isFiniteNumber(x) ? r3(x) : 'gap')).join(' ')).join('|')
+}
+
+export function c_tooltip_lines(): string {
+  const rows: TooltipRow[] = [{ label: 'a', value: 2.0, color: '#111' }, { label: 'b', value: 0.5, color: '#222' }]
+  return tooltipLines({ title: 'Q1', rows: rows }).join('|')
+}
+
+export function c_tooltip_at(): string {
+  const series: TooltipSeries[] = [
+    { label: 'a', values: [1.0, NaN, 3.0], color: '#111' },
+    { label: 'b', values: [2.0], color: '#222' },
+  ]
+  return [0, 1, 2, 5].map((i) => {
+    const t = tooltipAt(i, ['x', 'y', 'z'], series)
+    return t.title + ':' + String(t.rows.length)
+  }).join(',')
+}
+
+export function c_heat_render_and_hit(): string {
+  const grid = buildHeatGrid(['a', 'b'], ['x', 'y'], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0], [1.0, 5.0, 3.0])
+  const plot: Rect = { x: 0.0, y: 0.0, w: 100.0, h: 60.0 }
+  const cmds = renderHeat({ grid: grid, plot: plot })
+  const hits = [hitHeatCell(grid, plot, 0.0, 10.0, 10.0), hitHeatCell(grid, plot, 0.0, 75.0, 45.0), hitHeatCell(grid, plot, 0.0, -5.0, 10.0)]
+  return String(cmds.length) + '|' + hits.map((h) => String(h)).join(',')
+}
+
+export function c_view_annotation(): string {
+  const a = viewAnnotation({ x: 10.0, y: 100.0, xFrom: 1.0, xTo: -1.0 }, 'log', 1.0, true)
+  const show = (v: Double | undefined): string => (v === undefined ? 'u' : isFiniteNumber(v) ? r3(v) : 'gap')
+  return [a.x, a.xFrom, a.xTo, a.y].map((v) => show(v)).join(',')
+}
+
+export function c_geo_value_of(): string {
+  const values: GeoValue[] = [{ region: 'a', value: 2.0 }]
+  const missing = geoValueOf(values, 'b')
+  return r3(geoValueOf(values, 'a')) + ',' + (isFiniteNumber(missing) ? 'num' : 'gap')
+}

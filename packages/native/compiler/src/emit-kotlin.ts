@@ -272,7 +272,7 @@ function kotlinTemplatePart(expr: ExprIR, indent: number): string {
   // An optional interpoland prints `null` under Kotlin interpolation where the web prints `undefined`.
   const spelling = interpolandAbsentSpelling(expr, (x) => inferType(x, _kotlinExprInferCtx))
   if (spelling !== null) return optionalTextCall(emitted, spelling)
-  const t = inferType(expr, _kotlinExprInferCtx)
+  const t = normalizeNumericAlias(inferType(expr, _kotlinExprInferCtx))
 
   return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
 }
@@ -854,6 +854,11 @@ export function _pushKotlinEmitWarning(msg: string): void {
 
 /** Convert integer arguments when a known signature requires fractional number storage. */
 function kotlinTypedArgument(arg: ExprIR, expected: TypeIR | undefined, indent: number): string {
+  // A top-level helper passed as a VALUE (`renderChart(spec, measureText)`) is a function reference in Kotlin:
+  // the bare name is "function invocation expected". Swift takes the bare name.
+  if (arg.kind === 'identifier' && _helperFnNames.has(arg.name) && !_kotlinExprInferCtx.locals.has(arg.name)) {
+    return `::${kotlinIdent(arg.name)}`
+  }
   const text = emitKotlinExpr(arg, indent)
   if (expected === undefined) return text
   const actual = inferType(arg, _kotlinExprInferCtx)
@@ -2840,8 +2845,16 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         const els = s.expr.elements.map((el2) => emitKotlinExpr(el2, indent)).join(', ')
         return `val ${kotlinIdent(s.name)} = mutableListOf(${els})`
       }
+      // A declared OPTIONAL type over a non-optional value (`const m: string | null = n ?? null`, which emits `n`)
+      // keeps its annotation: without it the local is a non-null `String`, and a later `m === null ? … : m` is
+      // kotlinc's "elvis operator always returns the left operand".
+      const keepsOptional =
+        s.declaredType !== undefined &&
+        typeIsOptional(s.declaredType) &&
+        ((s.expr.kind === 'logical' && s.expr.op === '??' && s.expr.right.kind === 'literal' && s.expr.right.value === null) ||
+          !typeIsOptional(inferType(s.expr, _kotlinExprInferCtx)))
       const ann =
-        emptyLiteral && s.declaredType !== undefined ? `: ${kotlinType(s.declaredType)}` : ''
+        (emptyLiteral || keepsOptional) && s.declaredType !== undefined ? `: ${kotlinType(s.declaredType)}` : ''
       const prevTyped = _typedLambdaLet
       if (s.expr.kind === 'arrow') _typedLambdaLet = true
       // The annotation steers an object/array literal to its named struct —
@@ -5254,7 +5267,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           // An OPTIONAL operand: `"n=" + u.nick` printed `n=null` where the web prints `n=undefined`.
           const spelling = interpolandAbsentSpelling(sub, (x) => inferType(x, _kotlinExprInferCtx))
           if (spelling !== null) return optionalTextCall(emitted, spelling)
-          const t = inferType(sub, _kotlinExprInferCtx)
+          const t = normalizeNumericAlias(inferType(sub, _kotlinExprInferCtx))
           // A DOUBLE operand takes the JS-faithful formatter (`250.0` →
           // `"250"`, as JS prints it) — see the Swift twin.
           if (t.kind === 'number' && t.float === true) {
@@ -6462,7 +6475,7 @@ function kotlinInterpSegment(e: ExprIR, indent: number): string {
   // inferType also fixes optional inference (an arrow's type is never optional).
   const expr = resolveAccessorChild(e)
   const emitted = emitKotlinExpr(expr, indent)
-  const t = inferType(expr, _kotlinExprInferCtx)
+  const t = normalizeNumericAlias(inferType(expr, _kotlinExprInferCtx))
   // An absent JSX text child renders nothing on the web; a present Double prints `7`, not `7.0` (the old `?: ""`
   // printed `7.0`). An optional — an optional chain, or a read the inference cannot type (a plugin's `q.data`) —
   // goes through `pyreonOptionalText`; a bare `${q.data}` printed `null` (optional-text.ts).

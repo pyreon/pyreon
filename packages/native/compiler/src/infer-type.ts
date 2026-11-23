@@ -1313,6 +1313,36 @@ export function inferArrayStaticCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | 
  * annotated `: Double`). Missing the alias typed `Math.abs(v)` / `Math.max(a, b)` over Double parameters as integers,
  * so the Kotlin emit converted their (Double) results again — kotlinc's "redundant call of conversion method".
  */
+/**
+ * The local a ternary condition narrows (`v === undefined`, `v != null`, `v`, `!v`) when that local is optional: its
+ * name, the unwrapped type, and whether the condition being TRUE means present. The expression-level twin of
+ * `optional-narrowing.ts` (which needs the inference, so it cannot be used from here).
+ */
+function ternaryNarrowing(
+  cond: ExprIR,
+  ctx: InferenceCtx,
+): { name: string; unwrapped: TypeIR; presentWhenTrue: boolean } | null {
+  let c = cond
+  while (c.kind === 'paren') c = c.inner
+  let subject: ExprIR | undefined
+  let presentWhenTrue = true
+  if (c.kind === 'comparison' && (c.op === '==' || c.op === '!=')) {
+    const isNull = (y: ExprIR): boolean => y.kind === 'literal' && y.value === null
+    subject = isNull(c.right) ? c.left : isNull(c.left) ? c.right : undefined
+    presentWhenTrue = c.op === '!='
+  } else if (c.kind === 'unary' && c.op === '!') {
+    subject = c.argument
+    presentWhenTrue = false
+  } else {
+    subject = c
+  }
+  if (subject === undefined || subject.kind !== 'identifier' || !ctx.locals.has(subject.name)) return null
+  const t = ctx.locals.get(subject.name)!
+  if (!typeIsOptional(t)) return null
+
+  return { name: subject.name, unwrapped: unwrapOptionalType(t), presentWhenTrue }
+}
+
 function isDoubleType(t: TypeIR): boolean {
   return (t.kind === 'number' && t.float === true) || (t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float'))
 }
@@ -1607,16 +1637,21 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // `Any` instead of the precise number type, losing it for downstream
       // arithmetic / typed positions). `Number` coerces to a float-capable
       // number, so it maps to the Double (float) shape like parseFloat.
+      // A call through a FUNCTION-typed binding — a parameter (`measure: MeasureText`, the alias substituted at
+      // parse) or a local arrow with a declared return type (`const f = (): Double => …; String(f())`) — returns
+      // that type, whatever its arity.
+      if (expr.callee.kind === 'identifier') {
+        const calleeT = ctx.locals.get(expr.callee.name)
+        // A Promise result is left untyped, as before: an async helper's result has no native value to type.
+        const ret = calleeT?.kind === 'function' ? calleeT.returnType : undefined
+        if (ret !== undefined && !(ret.kind === 'typeRef' && ret.name === 'Promise')) return normalizeNumericAlias(ret)
+      }
       if (expr.callee.kind === 'identifier' && expr.args.length >= 1) {
         // A call to a file-scope pure-logic HELPER (`dbl(21)`) infers the
         // helper's declared return type — so a Swift computed over it gets a
         // precise annotation instead of `Any` (`String(dbl(21))` typechecks).
         const helperRet = ctx.helperReturns?.get(expr.callee.name)
         if (helperRet) return helperRet
-        // A call through a FUNCTION-typed binding — a parameter (`measure: MeasureText`, the alias substituted at
-        // parse) or a local arrow with a declared return type — returns that type.
-        const calleeT = ctx.locals.get(expr.callee.name)
-        if (calleeT?.kind === 'function') return calleeT.returnType
         if (expr.callee.name === 'parseInt') return { kind: 'number' }
         if (expr.callee.name === 'parseFloat' || expr.callee.name === 'Number') {
           return { kind: 'number', float: true }
@@ -2276,8 +2311,17 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // Normalize the Double/Float alias FIRST: `cond ? 1.0 : someDouble` mixes
       // a `number` with a `typeRef`, which the kind comparison below reads as
       // two unrelated types and degrades to `unknown`.
-      const t = normalizeNumericAlias(inferType(expr.then, ctx))
-      const o = normalizeNumericAlias(inferType(expr.otherwise, ctx))
+      // The branch the condition proves PRESENT reads a tested local unwrapped, as TypeScript narrows it and as both
+      // emitters bind it (`v.map { v in … } ?? d` / smart cast). Without it `v === undefined ? 0.0 : v` joined
+      // `Double` with `Double?` into `unknown`, and `String(…)` / a template fell back to native number formatting
+      // (`2.0` where the web prints `2`).
+      const narrowed = ternaryNarrowing(expr.cond, ctx)
+      const branchCtx = (present: boolean): InferenceCtx => {
+        if (narrowed === null || narrowed.presentWhenTrue !== present) return ctx
+        return { ...ctx, locals: new Map(ctx.locals).set(narrowed.name, narrowed.unwrapped) }
+      }
+      const t = normalizeNumericAlias(inferType(expr.then, branchCtx(true)))
+      const o = normalizeNumericAlias(inferType(expr.otherwise, branchCtx(false)))
       if (t.kind === o.kind) {
         // Mixed Int/Double numeric branches — `cond ? 1 : 2.5` unifies to
         // Double in JS (and Swift, which types both integer + float LITERAL

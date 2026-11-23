@@ -154,7 +154,10 @@ export function applyDestructureAbsence(root: unknown): void {
  * `v ?? d`) keeps the binding a plain subscript — exactly what it compiled to before — and `warn` names it, since
  * natively that read still traps out of range where the web yields `undefined`.
  */
-export function applyDestructureAbsenceToLets(stmts: readonly StatementIR[], warn?: (message: string) => void): void {
+export function applyDestructureAbsenceToLets(
+  stmts: readonly StatementIR[],
+  warn?: (binding: StatementIR, message: string) => void,
+): void {
   for (let i = 0; i < stmts.length; i++) {
     const s = stmts[i]!
     if (s.kind !== 'let') continue
@@ -169,8 +172,8 @@ export function applyDestructureAbsenceToLets(stmts: readonly StatementIR[], war
       continue
     }
     const message =
-      `\`${name}\` holds an indexed read and is tested for undefined, but is also used where neither target can narrow it (outside an early \`if (${name} === undefined) return …\` guard, in a closure, or after a reassignment). Natively it stays a plain subscript, which TRAPS out of range where the web yields undefined. Guard every use with an early exit, or default it at the read: \`const ${name} = xs[i] ?? fallback\`.`
-    warn?.(message)
+      `\`${name}\` holds an indexed read and is tested for undefined, but is also used where neither target can narrow it (outside an early \`if (${name} === undefined) return …\` guard, an \`if (${name} !== undefined)\` body or a ternary branch: inside \`&&\` / \`||\`, in a closure, or after a reassignment). Natively it stays a plain subscript, which TRAPS out of range where the web yields undefined. Guard every use with an early exit, or default it at the read: \`const ${name} = xs[i] ?? fallback\`.`
+    warn?.(s, message)
   }
   applyDestructureAbsence(stmts)
 }
@@ -190,9 +193,22 @@ export function foldAbsenceDefaults(stmts: StatementIR[]): void {
     const fill = next.then[0]!
     if (fill.kind !== 'assign' || fill.op !== '=' || fill.target.kind !== 'identifier' || fill.target.name !== s.name) continue
     if (nilTestOf(next.cond, s.name) !== 'absent') continue
+    // `v = g(v)` reads the binding it fills: folded, it would read `v` inside its own initializer.
+    if (mentions(fill.value, s.name)) continue
     s.expr = { kind: 'logical', op: '??', left: s.expr, right: fill.value }
     stmts.splice(i + 1, 1)
   }
+}
+
+/** Whether `e` reads the binding `name` (a closure parameter of the same name is another binding). */
+function mentions(e: unknown, name: string): boolean {
+  if (Array.isArray(e)) return e.some((x) => mentions(x, name))
+  if (e === null || typeof e !== 'object') return false
+  const n = e as ExprIR
+  if (n.kind === 'identifier') return n.name === name
+  if (n.kind === 'arrow' && n.params.includes(name)) return false
+
+  return Object.entries(n).some(([k, v]) => k !== 'kind' && mentions(v, name))
 }
 
 interface BindingUse {
@@ -280,6 +296,8 @@ class BindingUseWalker {
       case 'paren':
         return [[n.inner, tested, guarded]]
       case 'logical':
+        // `v !== undefined && use(v)` is NOT a narrowed position: the Swift emit does not narrow inside `&&` / `||`
+        // (only statements and ternaries), so such a binding keeps the plain read and is named.
         return [
           [n.left, n.op === '??' || this.truthiness, guarded],
           [n.right, false, guarded],

@@ -1147,7 +1147,7 @@ fun formatTickStep(v: Double, step: Double): String {
     if (mag < 0.0001) {
       return plain(snapped)
     }
-    return "${snapped}"
+    return "${pyreonNumberString(snapped)}"
   }
 
 fun extent(values: List<Double>): Domain {
@@ -2251,10 +2251,10 @@ fun withAlpha(color: String, alpha: Double): String {
     val pair = { at: Double -> code(hex[(at).toInt()].code.toDouble()) * 16.0 + code(hex[(at + 1L).toInt()].code.toDouble()) }
     val single = { at: Double -> code(hex[(at).toInt()].code.toDouble()) * 17.0 }
     if (hex.length.toLong() == 3L) {
-      return "rgba(${single(0.0)}, ${single(1.0)}, ${single(2.0)}, ${pyreonNumberString(a)})"
+      return "rgba(${pyreonNumberString(single(0.0))}, ${pyreonNumberString(single(1.0))}, ${pyreonNumberString(single(2.0))}, ${pyreonNumberString(a)})"
     }
     if (hex.length.toLong() == 6L) {
-      return "rgba(${pair(0.0)}, ${pair(2.0)}, ${pair(4.0)}, ${pyreonNumberString(a)})"
+      return "rgba(${pyreonNumberString(pair(0.0))}, ${pyreonNumberString(pair(2.0))}, ${pyreonNumberString(pair(4.0))}, ${pyreonNumberString(a)})"
     }
     return color
   }
@@ -6858,7 +6858,7 @@ fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect
     }
     val ticks: MutableList<PolarTick> = mutableListOf()
     for (v in polarTicks(domainLo, domainHi)) {
-      ticks.add(PolarTick(value = v, label = "${v}"))
+      ticks.add(PolarTick(value = v, label = "${pyreonNumberString(v)}"))
     }
     return PolarLayout(center = center, innerR = innerR, outerR = outerR, domain = Domain(min = domainLo, max = domainHi), categoryOn = categoryOn, sectors = sectors, lines = lines, categoryLabels = categoryLabels, ticks = ticks)
   }
@@ -6999,7 +6999,7 @@ fun sankeyRgba(hex: String, alpha: Double): String {
     val r = hexDigit(hex[(1L).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(2L).toInt()].code.toDouble())
     val g = hexDigit(hex[(3L).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(4L).toInt()].code.toDouble())
     val b = hexDigit(hex[(5L).toInt()].code.toDouble()) * 16.0 + hexDigit(hex[(6L).toInt()].code.toDouble())
-    return "rgba(${pyreonNumberString(pyreonRound(r))}, ${pyreonNumberString(pyreonRound(g))}, ${pyreonNumberString(pyreonRound(b))}, ${alpha})"
+    return "rgba(${pyreonNumberString(pyreonRound(r))}, ${pyreonNumberString(pyreonRound(g))}, ${pyreonNumberString(pyreonRound(b))}, ${pyreonNumberString(alpha)})"
   }
 
 fun sankeyIndexOf(nodes: List<SankeyNode>, name: String): Long {
@@ -8173,7 +8173,7 @@ fun renderGeoAligned(layout: GeoLayout, aligned: List<Double>, options: GeoOptio
       val t = if (!has) 0.0 else if (span <= 0.0) 1.0 else ((v - lo) / span) * progress
       val hatched = !has && anyValue && ((options?.hatchColor ?: "")) != ""
       val fill = if (!has) emptyColor else if (visualOutside(v, options?.inRange, options?.outBands)) (options?.outColor ?: "#cccccc") else rampColor(stops, if (t < 0.0) 0.0 else if (t > 1.0) 1.0 else t)
-      val hatch = if (hatched) PyreonChartPattern(kind = "diagonal", color = (options?.hatchColor ?: "#64748b"), spacing = 5.0, width = 1.0) else null
+      val hatch: PyreonChartPattern? = if (hatched) PyreonChartPattern(kind = "diagonal", color = (options?.hatchColor ?: "#64748b"), spacing = 5.0, width = 1.0) else null
       for (ring in r.fills) {
         out.add(PyreonDrawCmd(kind = "polygon", fill = fill, pattern = hatch, points = ring))
       }

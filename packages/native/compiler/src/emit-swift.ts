@@ -2731,7 +2731,7 @@ function swiftTemplatePart(expr: ExprIR, indent: number): string {
   // An optional interpoland prints `Optional(3)` / `nil` under Swift interpolation (optional-text.ts).
   const spelling = interpolandAbsentSpelling(expr, (x) => inferType(x, _activeInferCtx))
   if (spelling !== null) return optionalTextCall(emitted, spelling)
-  const t = inferType(expr, _activeInferCtx)
+  const t = normalizeNumericAlias(inferType(expr, _activeInferCtx))
 
   return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
 }
@@ -3165,7 +3165,16 @@ function emitSwiftNarrowedTernary(
     innerOptional: typeIsOptional(inferType(rewritten, _exprInferCtx)),
   }))
 
-  return `(${emitSwiftExpr(n.subject, indent)}${filter}.${innerOptional ? 'flatMap' : 'map'} { ${b} in ${inner} } ?? ${emitSwiftExpr(other, indent)})`
+  // An OPTIONAL present branch (`v === undefined ? v : keepFinite(v)`) must not be flattened: `flatMap { … } ?? other`
+  // turned the branch's own nil into `other` (the web keeps `undefined`). `.map` yields `T??`, whose outer nil is
+  // exactly "subject absent", so `?? other` fires only then; a non-optional `other` is lifted with `.some(…)`.
+  if (innerOptional) {
+    const otherOptional = typeIsOptional(inferType(other, _exprInferCtx)) || (other.kind === 'literal' && other.value === null)
+    const fallback = otherOptional ? emitSwiftExpr(other, indent) : `.some(${emitSwiftExpr(other, indent)})`
+    return `(${emitSwiftExpr(n.subject, indent)}${filter}.map { ${b} in ${inner} } ?? ${fallback})`
+  }
+
+  return `(${emitSwiftExpr(n.subject, indent)}${filter}.map { ${b} in ${inner} } ?? ${emitSwiftExpr(other, indent)})`
 }
 
 /**
@@ -4095,7 +4104,12 @@ function emitSwiftTry(s: Extract<StatementIR, { kind: 'try' }>, indent: number):
     emitSwiftStmtLines(s.body, caught ? inner + 2 : inner).join('\n'),
   )
   let core: string
-  if (caught) {
+  // A `do` body that cannot throw (no `try` / `throw` in its emit) never reaches its catch — swiftc: "'catch' block is
+  // unreachable because no errors are thrown in 'do' block". Natively nothing in it can raise what a JS `catch`
+  // catches, so the catch is dropped and the body keeps its own scope.
+  if (caught && !/(?<![\w$])(?:try|throw)(?![\w$])/.test(bodyLines)) {
+    core = `${ipad}do {\n${bodyLines}\n${ipad}}`
+  } else if (caught) {
     // A source `catch { … }` with no binding becomes `catch _`, never a bare `catch`: Swift binds a bare catch's error
     // to an implicit `error`, which shadowed any user identifier named `error` in the body (a signal assigned there
     // failed `swiftc` with "cannot assign to value: 'error' is immutable"). `_` binds nothing.
@@ -6532,7 +6546,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // An OPTIONAL operand: `"n=" + u.nick` did not compile on Swift, and prints `n=null` on Kotlin.
           const spelling = interpolandAbsentSpelling(sub, (x) => inferType(x, _activeInferCtx))
           if (spelling !== null) return optionalTextCall(emitted, spelling)
-          const t = inferType(sub, _activeInferCtx)
+          const t = normalizeNumericAlias(inferType(sub, _activeInferCtx))
           // A DOUBLE operand takes the JS-faithful formatter: `String(250.0)`
           // is `"250.0"` in Swift but `"250"` in JS, and the int-division →
           // Double coercion makes almost every computed number a Double — so
@@ -7731,7 +7745,7 @@ function swiftInterpSegment(e: ExprIR, indent: number): string {
   // would never fire for an arrow-wrapped optional.
   const expr = resolveAccessorChild(e)
   const emitted = emitSwiftExpr(expr, indent)
-  const t = inferType(expr, _activeInferCtx)
+  const t = normalizeNumericAlias(inferType(expr, _activeInferCtx))
   // An absent JSX text child renders nothing on the web. An OPTIONAL — an optional chain, or a read the inference
   // cannot type (a plugin's `q.data`, which is optional until the query resolves) — goes through
   // `pyreonOptionalText`, which also prints a present Double as the web does; the old `.map { "\\($0)" }` printed

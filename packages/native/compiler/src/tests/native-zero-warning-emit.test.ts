@@ -201,9 +201,7 @@ describe('the emitted corpus compiles with zero warnings', () => {
         encoding: 'utf8',
       })
       expect(r.status, r.stderr).toBe(0)
-      const { hard, advisory } = classifySwiftWarnings(warningsIn(r.stderr, 'Emit.swift'))
-      if (advisory.length > 0) console.warn(`[zero-warnings] new swiftc diagnostics (advisory):\n${advisory.join('\n')}`)
-      expect(hard).toEqual([])
+      expect(classifySwiftWarnings(warningsIn(r.stderr, 'Emit.swift')).hard).toEqual([])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -320,7 +318,9 @@ describe('user code: shadowing, closures, default fill, optional elements, numbe
 
   it('an unguarded use keeps the plain read and is NAMED; a shadowed same-named binding is not touched', () => {
     const r = transform(USER, { target: 'swift' })
-    expect(r.warnings.some((w) => w.startsWith('`v` holds an indexed read and is tested for undefined'))).toBe(true)
+    // One warning per affected binding, naming the file and line (mixed: line 24, closure: line 29).
+    const named = r.warnings.filter((w) => w.includes('`v` holds an indexed read and is tested for undefined'))
+    expect(named.map((w) => w.slice(0, w.indexOf(' ')))).toEqual(['input.tsx:24:', 'input.tsx:29:'])
     // mixed / closure: the plain read they compiled to before.
     expect(r.code).toContain('let v = names[i]\n    let label = (v ?? "none")')
     expect(r.code).toContain('let v = names[i]\n    let f = ')

@@ -40,7 +40,7 @@ import { describe, expect, it } from 'vitest'
 import { buildChartEngine, buildChartEngineStructs } from '../../../../fundamentals/charts/scripts/gen-native-engine'
 import { validateKotlin } from './charts-plugin'
 import { isKotlincAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
-import { KNOWN_SWIFT_WARNINGS } from './swift-warning-classes'
+import { classifySwiftWarnings } from './swift-warning-classes'
 import { kotlinCanvasDataClasses } from '../../../../fundamentals/charts/src/native-plugin/stubs'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '../../../../..')
@@ -105,12 +105,9 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
         const out = `${r.stdout ?? ''}${r.stderr ?? ''}`.replace(ANSI_ESCAPE, '')
         expect(r.status, `${pkg}: swift build failed\n${out.slice(-4000)}`).toBe(0)
         const own = [...new Set(out.split('\n').filter((l) => l.startsWith(`${dir}/`) && /: warning: /.test(l)))]
-        // The macOS runner's Xcode is not pinned, so a new compiler can add a diagnostic overnight. The classes this
-        // gate was built to keep out fail hard; anything else is REPORTED (stderr) without failing an unrelated PR —
-        // fix it, then add its class here.
-        const hard = own.filter((l) => KNOWN_SWIFT_WARNINGS.some((re) => re.test(l)))
-        const advisory = own.filter((l) => !hard.includes(l))
-        if (advisory.length > 0) console.warn(`[zero-warnings] ${pkg}: new swiftc diagnostics (advisory):\n${advisory.join('\n')}`)
+        // On the validated swiftc every warning fails; on another (the runner's Xcode is not pinned) the known classes
+        // fail and anything new is reported as an annotation (swift-warning-classes.ts).
+        const { hard } = classifySwiftWarnings(own)
         expect(hard, `${pkg}: swift build printed warnings of a class the emitters must not produce`).toEqual([])
       } finally {
         rmSync(scratch, { recursive: true, force: true })

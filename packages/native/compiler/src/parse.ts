@@ -106,6 +106,8 @@ type AnyNode = any
 interface ParseCtx {
   warnings: string[]
   source: string
+  /** The file being parsed, for diagnostics that name a location. */
+  filename?: string
   /** Component-local immutable literal bindings available to structural recognizers. */
   staticExprs?: Map<string, AnyNode>
   /** Module-scope immutable literal bindings, collected before components. */
@@ -336,6 +338,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const ctx: ParseCtx = {
     warnings: [],
     source,
+    filename,
     objectTypeAliases: new Map(),
     liftedPropsStructs: new Map(),
     enumTypeNames: new Set(),
@@ -5877,17 +5880,49 @@ function parseStatementBlockBody(block: AnyNode, ctx: ParseCtx): StatementIR[] {
       continue
     }
     const parsed = parseStatement(stmt, ctx)
-    if (parsed) out.push(parsed)
+    if (parsed) {
+      out.push(parsed)
+      if (parsed.kind === 'let' && typeof stmt.start === 'number') statementLines.set(parsed, lineOfOffset(ctx.source, stmt.start as number))
+    }
   }
   splitAbsenceGuards(out)
   foldAbsenceDefaults(out)
   markReassignedLocalsMutable(out)
   markMethodMutatedLocals(out)
-  applyDestructureAbsenceToLets(out, (m) => {
-    if (!ctx.warnings.includes(m)) ctx.warnings.push(m)
+  applyDestructureAbsenceToLets(out, (s, m) => {
+    const line = statementLines.get(s)
+    const where = line === undefined ? '' : `${ctx.filename ?? 'input.tsx'}:${line}: `
+    const message = `${where}${m}`
+    if (!ctx.warnings.includes(message)) ctx.warnings.push(message)
   })
 
   return out
+}
+
+/** The source line of each parsed `let`, for warnings that name where a binding is declared. */
+const statementLines = new WeakMap<StatementIR, number>()
+
+/** Line starts per source text (computed once per text), for offset → 1-based line. */
+const lineStartCache = new Map<string, number[]>()
+
+function lineOfOffset(source: string, offset: number): number {
+  let starts = lineStartCache.get(source)
+  if (starts === undefined) {
+    starts = [0]
+    for (let i = 0; i < source.length; i++) if (source.charCodeAt(i) === 10) starts.push(i + 1)
+    // One entry is enough: parses are sequential, and the text of the previous file is not needed again.
+    lineStartCache.clear()
+    lineStartCache.set(source, starts)
+  }
+  let lo = 0
+  let hi = starts.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (starts[mid]! <= offset) lo = mid
+    else hi = mid - 1
+  }
+
+  return lo + 1
 }
 
 /**

@@ -3945,7 +3945,7 @@ public func formatTickStep(_ v: Double, _ step: Double) -> String {
     if mag < 0.0001 {
       return plain(snapped)
     }
-    return "\(snapped)"
+    return "\(pyreonNumberString(snapped))"
   }
 
 public func extent(_ values: [Double]) -> Domain {
@@ -5049,10 +5049,10 @@ public func withAlpha(_ color: String, _ alpha: Double) -> String {
     let pair = { (at: Double) in code(Double(Array(hex.utf16)[Int(at)])) * 16.0 + code(Double(Array(hex.utf16)[Int(at + Double(1))])) }
     let single = { (at: Double) in code(Double(Array(hex.utf16)[Int(at)])) * 17.0 }
     if hex.utf16.count == 3 {
-      return "rgba(\(single(0.0)), \(single(1.0)), \(single(2.0)), \(pyreonNumberString(a)))"
+      return "rgba(\(pyreonNumberString(single(0.0))), \(pyreonNumberString(single(1.0))), \(pyreonNumberString(single(2.0))), \(pyreonNumberString(a)))"
     }
     if hex.utf16.count == 6 {
-      return "rgba(\(pair(0.0)), \(pair(2.0)), \(pair(4.0)), \(pyreonNumberString(a)))"
+      return "rgba(\(pyreonNumberString(pair(0.0))), \(pyreonNumberString(pair(2.0))), \(pyreonNumberString(pair(4.0))), \(pyreonNumberString(a)))"
     }
     return color
   }
@@ -7824,7 +7824,7 @@ public func xRealBounds(_ kind: String, _ xs: [Double]) -> Domain {
   }
 
 public func viewAnnotation(_ a: Annotation, _ kind: String, _ param: Double, _ onX: Bool) -> Annotation {
-    let map = { (v: Double?) in ((v.flatMap { v in keepFinite(viewForward(kind, v, param)) } ?? v)) }
+    let map = { (v: Double?) in ((v.map { v in keepFinite(viewForward(kind, v, param)) } ?? v)) }
     if onX {
       return { var c = a; c.x = map(a.x); c.xFrom = map(a.xFrom); c.xTo = map(a.xTo); c.x1 = map(a.x1); c.x2 = map(a.x2); return c }()
     }
@@ -9649,7 +9649,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
     }
     var ticks: [PolarTick] = []
     for v in polarTicks(domainLo, domainHi) {
-      ticks.append(PolarTick(value: v, label: "\(v)"))
+      ticks.append(PolarTick(value: v, label: "\(pyreonNumberString(v))"))
     }
     return PolarLayout(center: center, innerR: innerR, outerR: outerR, domain: Domain(min: domainLo, max: domainHi), categoryOn: categoryOn, sectors: sectors, lines: lines, categoryLabels: categoryLabels, ticks: ticks)
   }
@@ -9790,7 +9790,7 @@ public func sankeyRgba(_ hex: String, _ alpha: Double) -> String {
     let r = hexDigit(Double(Array(hex.utf16)[Int(1)])) * 16.0 + hexDigit(Double(Array(hex.utf16)[Int(2)]))
     let g = hexDigit(Double(Array(hex.utf16)[Int(3)])) * 16.0 + hexDigit(Double(Array(hex.utf16)[Int(4)]))
     let b = hexDigit(Double(Array(hex.utf16)[Int(5)])) * 16.0 + hexDigit(Double(Array(hex.utf16)[Int(6)]))
-    return "rgba(\(pyreonNumberString(pyreonRound(Double(r)))), \(pyreonNumberString(pyreonRound(Double(g)))), \(pyreonNumberString(pyreonRound(Double(b)))), \(alpha))"
+    return "rgba(\(pyreonNumberString(pyreonRound(Double(r)))), \(pyreonNumberString(pyreonRound(Double(g)))), \(pyreonNumberString(pyreonRound(Double(b)))), \(pyreonNumberString(alpha)))"
   }
 
 public func sankeyIndexOf(_ nodes: [SankeyNode], _ name: String) -> Int {
