@@ -1,7 +1,7 @@
 # Build with Bun (the project's package manager: bun.lock, `bun run build`)
 # from the official image. Do not swap this for `corepack prepare bun`:
 # corepack never supported Bun, and Node 25+ no longer ships corepack.
-FROM oven/bun:1@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS build
+FROM oven/bun:1@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 AS build
 WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile
@@ -12,13 +12,13 @@ RUN bun run build
 # packages (@pyreon/*, and whatever else the routes use) from node_modules
 # at runtime. Installed on Alpine (musl), like the runtime image, so a
 # native addon gets the matching binary.
-FROM oven/bun:1-alpine@sha256:4cf82f5686b196504fe119db3fcd9185b191f82ece82c40680e597228ec6070a AS deps
+FROM oven/bun:1-alpine@sha256:da816670775f4c2b4e990b6b1847cf5540dcdc721a42033dd331ce7a88ba6a3b AS deps
 WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
 # Run on Node: the node adapter emits a node:http runner.
-FROM node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94
+FROM node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5
 WORKDIR /app
 # dist/index.js (the emitted node:http runner) + dist/server/ (SSR bundle)
 # + dist/client/ (static assets); dist/package.json marks it ESM. The SSR
