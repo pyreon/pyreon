@@ -50,8 +50,9 @@ export function loadArms(ids: readonly string[] = []): Arm[] {
     .map((d) => {
       const dir = join(ARMS, d.name)
       const m = JSON.parse(readFileSync(join(dir, 'arm.json'), 'utf8')) as ArmManifest
-      if (m.id !== d.name)
+      if (m.id !== d.name) {
         throw new Error(`[real-bench/app] arms/${d.name}/arm.json has id "${m.id}"`)
+      }
       return { dir, m }
     })
     .sort((a, b) => a.m.id.localeCompare(b.m.id))

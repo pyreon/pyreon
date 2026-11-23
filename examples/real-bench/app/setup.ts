@@ -69,10 +69,11 @@ function setUp(arm: Arm): void {
     // An install in the arm would shadow the workspace packages.
     rmSync(join(dir, 'node_modules'), { recursive: true, force: true })
     const vite = join(REPO_ROOT, 'node_modules', '.bin', 'vite')
-    if (!existsSync(vite))
+    if (!existsSync(vite)) {
       throw new Error(
         '[real-bench/app] --pyreon=workspace needs `bun install` at the repo root first',
       )
+    }
     sh(dir, [vite, 'build'])
     return
   }

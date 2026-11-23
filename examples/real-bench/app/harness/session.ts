@@ -1,3 +1,4 @@
+/* oxlint-disable max-lines-per-function -- buildSession is one declarative table of the session's steps, read top to bottom as the user's script; splitting it would scatter the expected state across helpers. */
 /**
  * The scripted user session, shared by the correctness gate and the memory
  * pass so the two cannot drift.
@@ -153,8 +154,9 @@ export function buildSession(k: number): Step[] {
   const listQ = selectProducts(products, q)
   const listQc = selectProducts(products, qc)
   const listQcs = selectProducts(products, qcs)
-  if (pageCount(listQcs.length) < 2)
+  if (pageCount(listQcs.length) < 2) {
     throw new Error('[real-bench/app] session filters must leave at least two pages')
+  }
   const target = pageSlice(listQcs, 2)[0] as Product
   const draft = sessionDraft(k)
   const added = draftToProduct(draft, nextProductId(products))

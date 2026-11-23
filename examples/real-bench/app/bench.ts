@@ -20,7 +20,7 @@
  *     CONDITIONS MET or NOT PUBLISHABLE with every failed condition.
  */
 import { readFileSync } from 'node:fs'
-import { chromium } from 'playwright'
+import { type Browser, chromium } from 'playwright'
 import {
   LoadRecorder,
   loadAvg1,
@@ -173,14 +173,18 @@ function printReport(manifest: RunManifest, arms: ArmResult[]): boolean {
 
 // ─── measure ────────────────────────────────────────────────────────────────
 
-async function measure(): Promise<void> {
+function parseOptions(): {
+  arms: Arm[]
+  knobs: Knobs
+  throttle: Throttle
+  waitQuiet: number | null
+} {
   const valueFlags = new Set(['--loads', '--memory-loads', '--sessions', '--throttle'])
   const ids = argv.filter((a, i) => {
     const prev = argv[i - 1] ?? ''
     if (a.startsWith('--') || valueFlags.has(prev)) return false
     return !(prev === '--wait-quiet' && Number.isFinite(Number(a)))
   })
-  const arms = loadArms(ids)
   const knobs: Knobs = {
     loads: argNum('--loads', DEFAULT_KNOBS.loads),
     memoryLoads: argNum('--memory-loads', DEFAULT_KNOBS.memoryLoads),
@@ -189,29 +193,43 @@ async function measure(): Promise<void> {
   const throttleName = flagValue('--throttle') ?? DEFAULT_THROTTLE.name
   const throttle: Throttle | undefined =
     THROTTLE_PROFILES[throttleName as keyof typeof THROTTLE_PROFILES]
-  if (!throttle)
+  if (!throttle) {
     throw new Error(
       `[real-bench/app] --throttle ${throttleName}: expected ${Object.keys(THROTTLE_PROFILES).join(' or ')}`,
     )
-  const waitQuiet = parseWaitQuiet(argv)
+  }
+  return { arms: loadArms(ids), knobs, throttle, waitQuiet: parseWaitQuiet(argv) }
+}
+
+/** Serves every arm and runs the correctness gate on it; throws on the first arm that fails. */
+async function serveAndGate(
+  arms: Arm[],
+  browser: Browser,
+  servers: Map<string, RunningStatic>,
+): Promise<void> {
+  for (const arm of arms) {
+    assertSharedIdentical(arm)
+    const srv = await serveStatic(outDir(arm), arm.m.fallback)
+    servers.set(arm.m.id, srv)
+    const failures = await gateArm(browser, srv.base)
+    if (failures.length > 0) {
+      throw new Error(
+        `[real-bench/app] ${arm.m.id} fails the correctness gate; nothing is measured:\n  ${failures.slice(0, 5).join('\n  ')}`,
+      )
+    }
+    console.log(`[real-bench/app] ✓ ${arm.m.id} passes the correctness gate`)
+  }
+}
+
+async function measure(): Promise<void> {
+  const { arms, knobs, throttle, waitQuiet } = parseOptions()
   const load = new LoadRecorder('real-bench/app', waitQuiet)
 
   const servers = new Map<string, RunningStatic>()
   const browser = await chromium.launch()
   try {
     // 1. build output, shared files, correctness gate
-    for (const arm of arms) {
-      assertSharedIdentical(arm)
-      const srv = await serveStatic(outDir(arm), arm.m.fallback)
-      servers.set(arm.m.id, srv)
-      const failures = await gateArm(browser, srv.base)
-      if (failures.length > 0) {
-        throw new Error(
-          `[real-bench/app] ${arm.m.id} fails the correctness gate; nothing is measured:\n  ${failures.slice(0, 5).join('\n  ')}`,
-        )
-      }
-      console.log(`[real-bench/app] ✓ ${arm.m.id} passes the correctness gate`)
-    }
+    await serveAndGate(arms, browser, servers)
     const base = (arm: Arm) => (servers.get(arm.m.id) as RunningStatic).base
 
     // 2. timer: refuse a coarse clock
@@ -242,8 +260,9 @@ async function measure(): Promise<void> {
     })
     console.log(`[real-bench/app] run ${manifest.runId} → results/${manifest.runId}/`)
     const stamp = async (label: string) => {
-      if (waitQuiet !== null && loadAvg1() > waitQuiet)
+      if (waitQuiet !== null && loadAvg1() > waitQuiet) {
         await waitForQuietMachine('real-bench/app', waitQuiet)
+      }
       manifest.loadStamps.push(load.stamp(label))
     }
 

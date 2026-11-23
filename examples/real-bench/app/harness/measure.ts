@@ -113,8 +113,9 @@ export async function inventory(browser: Browser, base: string, arm: Arm): Promi
     firstLoad.push({ path, kind: kindOf(path), ...sized(body) })
   }
   const firstLoadTotals = { js: zero(), css: zero(), html: zero() }
-  for (const r of firstLoad)
+  for (const r of firstLoad) {
     if (r.kind !== 'other') firstLoadTotals[r.kind] = add(firstLoadTotals[r.kind], r)
+  }
 
   const root = outDir(arm)
   const build = { js: { ...zero(), files: 0 }, css: { ...zero(), files: 0 } }

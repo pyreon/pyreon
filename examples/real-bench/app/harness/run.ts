@@ -159,8 +159,9 @@ export function latestRunId(): string | null {
 
 export function readRun(runId: string): { manifest: RunManifest; arms: ArmResult[] } {
   const file = join(runDir(runId), 'run.json')
-  if (!existsSync(file))
+  if (!existsSync(file)) {
     throw new Error(`[real-bench/app] ${file} does not exist; run \`bun bench.ts\` first`)
+  }
   const manifest = JSON.parse(readFileSync(file, 'utf8')) as RunManifest
   if (manifest.schema !== RESULT_SCHEMA) {
     throw new Error(
