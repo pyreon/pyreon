@@ -231,6 +231,19 @@ export function reportFirstText(node: Text, value: unknown, next: string, leaf: 
   }
 }
 
+/** A compiled write removed the server element `serverEl` under `parent`
+ *  without changing the text: the structure still changed, so it is reported
+ *  as a tag. `expected` is what the client rendered there instead (`'#text'`,
+ *  or `''` for nothing). */
+export function reportServerElementRewrite(
+  parent: Node,
+  serverEl: Element,
+  expected: string,
+  leaf: 'text' | 'reactive',
+): void {
+  warnHydrationMismatch('tag', expected, serverEl.localName, compiledMismatchPath(parent, leaf))
+}
+
 /** A static write already made: report it if it changed the server's text
  *  (`before`, read just ahead of the write). `node` is the written text node,
  *  or the element whose text content was set. */

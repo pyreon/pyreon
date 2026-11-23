@@ -302,7 +302,7 @@ Warnings are enabled automatically in development (`NODE_ENV !== "production"`).
 Example warning output:
 
 ```
-[pyreon] Hydration mismatch (tag) at <root > div > span>: expected "h1", got "h2"
+[Pyreon] Hydration mismatch (tag): expected h1, got h2 at root > div > span
 ```
 
 #### Debugging Hydration Issues
@@ -342,6 +342,8 @@ The hook fires on every hydration mismatch (in addition to the dev-mode console 
 #### Compiled JSX (`_tpl`) reports in development
 
 Most JSX compiles to `_tpl` templates that adopt the server's DOM in place. In development, a compiled template reports what it corrects with the same message and handler payload as `h()` content: text it rewrites (`root > p > text` for a static child, `> reactive` for a bound one), and an element it cannot adopt because the server rendered a different tag or text there (the first difference, as `tag` or `text`). The rule is that a mismatch is reported exactly when hydration changes what the server rendered. A value the server already rendered is never reported, and any rewrite is, whitespace-only included, as on the `h()` path. Attribute differences are not reported on either path.
+
+A compiled element whose only content is a fixed value (`<span>{cell}</span>`, or a static mix the compiler fuses, `<span>a{cell}b</span>`) is empty in its template and filled by the bind. When that value is structure (an element, an array, a fragment, a component), the server's nodes for it are adopted like everything else, so hydration keeps them instead of re-creating the element. If the client renders something else there, the difference is reported (a `tag` report when an element became text with the same characters, for example), and server content the client does not render at all is removed and reported.
 
 These compiled-path reports are development-only, so they cost production bundles nothing. In production, `onHydrationMismatch` still receives `h()`-path mismatches but not compiled-template ones.
 

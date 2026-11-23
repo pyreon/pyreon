@@ -31,7 +31,7 @@ function App() {
 
 const unmount = mount(<App />, document.getElementById('app')!)
 // Or hydrate SSR-rendered markup:
-hydrateRoot(<App />, document.getElementById('app')!)
+hydrateRoot(document.getElementById('app')!, <App />)   // container FIRST
 ```
 
 ## mount / unmount
@@ -50,16 +50,16 @@ import {
   hydrateRoot, enableHydrationWarnings, disableHydrationWarnings, onHydrationMismatch,
 } from '@pyreon/runtime-dom'
 
-hydrateRoot(<App />, container)
+hydrateRoot(container, <App />)            // container first, unlike mount()
 
 enableHydrationWarnings()                  // dev console warnings on mismatch
 onHydrationMismatch((ctx) => {
-  // ctx: { type, node, expected, received, path }
+  // ctx: { type: 'tag' | 'text' | 'missing', expected, actual, path, timestamp }
   reportToTelemetry(ctx)
 })
 ```
 
-The `_tpl` hydration path uses a framework-wide correctness-first SWAP: when the SSR DOM doesn't match the freshly-built template, the SSR subtree is replaced with the rebuilt one (same final DOM byte-for-byte for matched cases; correct DOM for mismatches without a crash). Reactivity survives across the swap.
+Compiled `_tpl` templates ADOPT the server's DOM when its static skeleton (tags, static attributes, static text) matches the template; the bind then runs against the server's nodes, and dynamic content (text, slots, a sole fixed child such as `<td>{row.cell}</td>` even when it holds elements) is adopted through the same walk as `h()` content. Only a skeleton mismatch swaps in a freshly built clone, and the first real difference is reported. In development, every place hydration changes what the server rendered is reported through `onHydrationMismatch` and the console warning.
 
 ## applyProp / applyProps
 

@@ -602,9 +602,11 @@ interface TplSig {
    * one, where `k` real elements are matched first and the hole is what remains
    * up to the closing tag.
    *
-   * Declared, not inferred: `_setChild` and a spread `innerHTML` also fill an
-   * empty template element and do NOT hydrate, so a blanket "an empty element
-   * may have extra children" rule would duplicate or discard their content.
+   * Declared, not inferred: an empty template element is also filled by
+   * `_setChild` (which hydrates its own content, claiming it through a parked
+   * placeholder — see `emptyEls`) and by a spread `innerHTML` (which replaces
+   * it), so a hole's range must be handed to `_mountChild` by declaration and
+   * never by an "an empty element may have extra children" guess.
    */
   holes: Int32Array | null
   /** Number of declared holes — 0 lets every hole-aware branch short-circuit. */
@@ -645,6 +647,19 @@ interface TplSig {
   htmlEls: boolean[] | null
   /** Number of declared innerHTML elements — 0 short-circuits the branch. */
   htmlCount: number
+  /**
+   * Per element (tree order): the template leaves it with NO child nodes and
+   * it is neither a declared hole nor a declared innerHTML element. This is
+   * the `_setChild` target (#4599): a sole fixed child (`<span>{vNode}</span>`)
+   * or a fused static mix (`a{vNode}b`) is set by the bind into an empty
+   * element, and the server rendered the value there marker-less. When the
+   * server's child list holds anything but text, the match PARKS it (see
+   * `AdoptMatch.soleTextParks`): `_setChild` claims the placeholder and hands
+   * the content to the slot hydrator, and a build whose bind never claims it
+   * sweeps the server content and reports it. The claim is the declaration;
+   * nothing is inferred and kept unclaimed.
+   */
+  emptyEls: boolean[]
 }
 
 const _tplSignature = new WeakMap<HTMLTemplateElement, TplSig | null>()
@@ -670,6 +685,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
   const soleTextList: boolean[] = []
   const midSlotList: (number[] | null)[] = []
   let midSlotCount = 0
+  const emptyList: boolean[] = []
   // MOUNT-SLOT ALIGNMENT GATE. A `<!>` placeholder is one node in the clone but
   // an arbitrary run of nodes in the SSR DOM, so every compiled ref walk that
   // would have to step PAST it (`__p1 = __root.firstChild.nextSibling` for a
@@ -782,6 +798,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     const isHtml = _isTplHtmlEl(el) && el.firstChild === null && !isHole
     htmlFlags.push(isHtml)
     if (isHtml) htmlCount++
+    emptyList.push(isEmptySetTarget(el, isHole, isHtml))
     for (let c = el.firstElementChild; c && !bail; c = c.nextElementSibling) walk(c)
   }
   walk(root)
@@ -803,6 +820,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     htmlCount,
     midSlots: midSlotCount > 0 ? midSlotList : null,
     midSlotCount,
+    emptyEls: emptyList,
   }
   _tplSignature.set(tpl, sig)
 
@@ -851,10 +869,15 @@ interface AdoptMatch {
    */
   soles: Element[] | null
   /**
-   * Elements whose sole dynamic-text slot holds server ELEMENT content
-   * (#4385). The caller inserts a parked placeholder text as each one's first
-   * child, so the compiled `firstChild` ref resolves to it and the binding
-   * adopts the content through the slot hydrator (`parked-text.ts`).
+   * Elements whose whole server child list belongs to ONE later claimer, which
+   * adopts it through the slot hydrator (`parked-text.ts`):
+   *   - a sole dynamic-text slot holding server ELEMENT content (#4385): the
+   *     compiled `firstChild` ref resolves to the placeholder and the text
+   *     binding claims it;
+   *   - an EMPTY template element whose server content is not plain text
+   *     (#4599): `_setChild` claims the placeholder before it hydrates.
+   * The caller inserts a parked placeholder text as each one's first child;
+   * one left unclaimed after the bind is swept with its server content.
    */
   soleTextParks: Element[] | null
   /**
@@ -1029,6 +1052,19 @@ function isSoleSpacePlaceholder(el: Element): boolean {
   return only !== null && only === el.lastChild && only.nodeType === 3 && (only as Text).data === ' '
 }
 
+/** A template element left with no child nodes that no declared relaxation
+ *  (a hole, an innerHTML element) owns — see `TplSig.emptyEls`. */
+function isEmptySetTarget(el: Element, isHole: boolean, isHtml: boolean): boolean {
+  return !isHole && !isHtml && el.firstChild === null
+}
+
+/** The element has a child that is not a text node (an element or a comment). */
+function hasNonTextChild(el: Element): boolean {
+  for (let n = el.firstChild; n !== null; n = n.nextSibling) if (n.nodeType !== 3) return true
+
+  return false
+}
+
 /** The element's whole child list is ONE marked `<!--$-->…<!--/$-->` range. */
 function isOneMarkedRange(el: Element): boolean {
   const f = el.firstChild
@@ -1176,6 +1212,19 @@ function matchDomAgainstTemplate(
     // the slot's content, exactly as for a sole `<!>` slot above; the binding
     // adopts it through the slot hydrator. A marked range falls through.
     if (expected.soleTexts[at] === true && el.firstElementChild !== null && !isOneMarkedRange(el)) {
+      ;(soleTextParks ??= []).push(el)
+
+      return true
+    }
+    // EMPTY TEMPLATE ELEMENT HOLDING SERVER STRUCTURE (#4599). The bind fills
+    // it with `_setChild` (a sole fixed child, or a fused static mix), and the
+    // server rendered that value marker-less: its elements, ranges and texts
+    // are the element's whole child list. Parked like the sole text above:
+    // `_setChild` claims the placeholder and adopts the content through the
+    // slot hydrator, which reports a real divergence; a bind that never claims
+    // it gets the server content swept and reported. Plain text keeps the
+    // text path below (sole text adopted in place, a run removed).
+    if (expected.emptyEls[at] === true && hasNonTextChild(el)) {
       ;(soleTextParks ??= []).push(el)
 
       return true
@@ -1538,7 +1587,8 @@ export function tplAdoptVerify(
   const sig = templateSignature(tpl)
   const match = sig !== null ? matchDomAgainstTemplate(target, sig, rootDecorated) : null
   if (match === null) return false
-  // A row matched through the sole-text relaxation records no plan: the plan's
+  // A row matched through a parked relaxation (sole text, empty `_setChild`
+  // element) records no plan: the plan's
   // spot checks are a text-node invariant this row does not satisfy; a later
   // plain row records it, and replay sends rows like this one to the full verify.
   if (allowPlanReplay && plan === undefined && match.soleTextParks === null) {

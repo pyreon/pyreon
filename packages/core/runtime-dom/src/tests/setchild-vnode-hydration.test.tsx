@@ -15,9 +15,9 @@
  * The element is adopted with VNode content in it through `<For>` plan replay:
  * row 1's cell holds a string (the adopt verifier admits a sole text there and
  * records a plan), and rows 2..N are admitted at row 1's spots only. A sole
- * VNode child OUTSIDE such a replay is refused by the full verifier (the empty
- * template element does not match server element children), so that shape
- * re-renders rather than duplicating; it is covered below as a guard.
+ * VNode child OUTSIDE such a replay is admitted by the full verifier too since
+ * #4599 (it parks a placeholder that `_setChild` claims); it is covered below
+ * and in `setchild-empty-element-adoption.test.tsx`.
  *
  * Everything here is compiled through the REAL `transformJSX` — vitest's own
  * JSX transform never emits `_tpl`/`_setChild`, so it cannot reproduce this.
@@ -187,11 +187,13 @@ describe('#4370 — static VNode child through _setChild: SSR → hydrate', () =
     expect(td.firstChild).toBe(serverCellKids[1]?.[0])
   })
 
-  it('a sole VNode child outside <For> hydrates to exactly one copy', async () => {
+  it('a sole VNode child outside <For> hydrates to exactly one copy, the server one', async () => {
     const content = h('b', { class: 'v' }, 'cell')
     const { el, html } = await ssrThenHydrate(SOLE, { content })
+    const serverB = el.querySelector('b')
     hydrateRoot(el, h(build(SOLE, { content }) as never, null))
     expect(el.querySelectorAll('b')).toHaveLength(1)
+    expect(el.querySelector('b')).toBe(serverB)
     expect(el.innerHTML).toBe(html)
   })
 })

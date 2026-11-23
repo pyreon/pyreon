@@ -1416,10 +1416,16 @@ function hydrateMountSlot(
     }
     // A literal (non-accessor) value installs no reactive boundary, so it is
     // walked against the region directly — there is no later render whose
-    // cleanup would have to remove these nodes.
+    // cleanup would have to remove these nodes. The region is the element's
+    // whole child list, so what the walk leaves unclaimed (a tag mismatch
+    // mounts the client's node AT the cursor and offers the server's on) is
+    // swept to the closing tag, as `hydrateElement` does: otherwise a
+    // divergent `_setChild` value kept the server's copy beside the client's.
     const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
+    const [cleanup, residual] = hydrateChild(children, cursor, parent, null, slotPath)
+    sweepUnclaimed(parent, residual)
 
-    return hydrateChild(children, cursor, parent, null, slotPath)[0]
+    return cleanup
   }
   // A PARKED mid range (see `PARKED_RANGE` in template.ts): the verifier moved
   // this slot's server content out so the compiled refs after it resolved

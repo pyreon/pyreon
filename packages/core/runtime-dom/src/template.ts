@@ -27,6 +27,7 @@ import {
   _markServerText,
   rangeText,
   reportFirstText,
+  reportServerElementRewrite,
   reportTextWrite,
 } from './hydration-debug'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
@@ -143,6 +144,13 @@ export function _setChild(node: Element, value: unknown): void {
   // strength of a row whose cell held a string. Both kinds go to the
   // marker-less slot hydrator, which walks the value against the server's
   // child list and adopts it.
+  //
+  // CLAIM (#4599): the verifier admits an EMPTY template element whose server
+  // content is structure only by parking a placeholder as its first child, and
+  // this call is what claims it. Taken before either branch, so a text value
+  // over server elements is written (and reported) like any other rewrite.
+  // Outside hydration `_parkedPending` is 0: one integer compare.
+  if (_parkedPending > 0 && !_freshBind) claimParkedSole(node)
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
       ownByScope(_slotHydrator(value as never, node, null))
@@ -172,12 +180,16 @@ export function _setChild(node: Element, value: unknown): void {
     // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = node.textContent ?? ''
+      // A server ELEMENT the text replaces is a rewrite even when its text
+      // equals the value (`<b>n</b>` → `n`), so it is reported as a tag.
+      const serverEl = node.firstElementChild
       if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
         ;(fc as Text).data = text
       } else {
         node.textContent = text
       }
-      reportTextWrite(node, before, 'text')
+      if (serverEl !== null && before === text) reportServerElementRewrite(node, serverEl, '#text', 'text')
+      else reportTextWrite(node, before, 'text')
 
       return
     }
@@ -187,6 +199,12 @@ export function _setChild(node: Element, value: unknown): void {
       node.textContent = text
     }
   }
+}
+
+/** Remove `node`'s parked sole placeholder, if it has one (see `_setChild`). */
+function claimParkedSole(node: Element): void {
+  const fc = node.firstChild
+  if (fc !== null && fc.nodeType === 3 && _takeParkedText(fc as Text) !== undefined) fc.remove()
 }
 
 /**
@@ -1764,10 +1782,20 @@ function sweepParkedTexts(prev: Text[] | null): void {
     if (open === null) {
       // Sole slot: every other child of the element is server content.
       const el = text.parentNode as Element
+      let serverEl: Element | null = null
       if (process.env.NODE_ENV !== 'production') {
-        for (const n of el.childNodes) if (n !== text) server += (n as Element | CharacterData).textContent
+        // Marker comments are not content (`Comment.textContent` is its data).
+        for (const n of el.childNodes) if (n !== text && n.nodeType !== 8) server += n.textContent
+        serverEl = el.firstElementChild
       }
       el.replaceChildren(text)
+      // Nothing claimed an EMPTY `_setChild` element's server structure
+      // (#4599), or a text binding wrote over a sole slot's: an element went
+      // even when no text changed.
+      if (process.env.NODE_ENV !== 'production' && serverEl !== null && server === text.data) {
+        reportServerElementRewrite(el, serverEl, text.data === '' ? '' : '#text', 'reactive')
+        continue
+      }
     } else {
       if (process.env.NODE_ENV !== 'production') server = _serverTextOfRange(open)
       clearSlotRange(open)
