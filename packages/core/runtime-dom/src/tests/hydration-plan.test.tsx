@@ -12,12 +12,18 @@
  * one, and the failure surfaces far from here. Each bail below names the shape
  * it is protecting against.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { For, Fragment, h, Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { buildRowPlan, replayRowPlan, tplAdoptVerify } from '../hydration-plan'
+import { buildRowPlan, replayRowPlan, tplAdoptVerify, _adoptFrameDepth, finishTplAdopt } from '../hydration-plan'
 import { hydrateRoot } from '../hydrate'
 import { _setTplAdoptTarget, _tpl, _tplAdoptDidConsume } from '../template'
+
+// These specs call the verifier directly; close the adopt frame each one
+// opened (a real `_tpl` build does that in `finishTplAdopt`).
+afterEach(() => {
+  while (_adoptFrameDepth() > 0) finishTplAdopt(null, null, false)
+})
 
 /** A row shape the plan supports: element root, element + text children. */
 const supportedRow = () =>

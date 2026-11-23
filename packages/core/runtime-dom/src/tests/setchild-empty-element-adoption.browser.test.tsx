@@ -99,12 +99,13 @@ describe('an empty `_setChild` element adopts the server structure in Chromium (
     it(c.name, () => {
       const r = hydrate(c, c.server)
       // A clearing ref or an innerHTML spread replaces the server's nodes
-      // itself; a component-local JSX const is built before hydration starts,
-      // so its element replaces the server's; and a `_setChild` value after a
-      // ref that appended is mounted after the ref's node, as a fresh render
-      // appends it, so the server's (now not trailing) nodes are replaced.
-      if (!/clear|dangerouslySetInnerHTML|_mountSlot|plan-replayed/.test(c.name)) expect(r.replaced).toEqual([])
-      expect(r.reports).toEqual([])
+      // itself, and a component-local JSX const is built before hydration
+      // starts, so its element replaces the server's.
+      if (!/clear|dangerouslySetInnerHTML|_mountSlot/.test(c.name)) expect(r.replaced).toEqual([])
+      // SSR renders `__html` and drops the children, a client render appends
+      // the cell after `innerHTML`: a real difference, reported.
+      if (/dangerouslySetInnerHTML/.test(c.name)) expect(r.reports[0]).toMatch(/^tag: b vs i/)
+      else expect(r.reports).toEqual([])
       expect(r.html).toBe(r.freshHtml)
     })
   }

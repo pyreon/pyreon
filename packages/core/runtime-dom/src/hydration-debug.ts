@@ -259,12 +259,12 @@ export function reportParkedSweep(
   else if (serverEl !== null) reportServerElementRewrite(owner as Node, serverEl, expected === '' ? '' : '#text', leaf)
 }
 
-/** A record's server text (marker comments are not content) and first
- *  element, read BEFORE a write that may reuse its text node. */
-export function recordedContent(record: ChildNode[]): [string, Element | null] {
+/** The server text (marker comments are not content) and first element of the
+ *  sibling run starting at `first`, read BEFORE a write that may reuse a node. */
+export function serverContent(first: ChildNode | null): [string, Element | null] {
   let text = ''
   let el: Element | null = null
-  for (const n of record) {
+  for (let n = first; n !== null; n = n.nextSibling) {
     if (n.nodeType !== 8) text += n.textContent
     if (el === null && n.nodeType === 1) el = n as Element
   }

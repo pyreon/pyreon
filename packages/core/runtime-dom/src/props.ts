@@ -3,6 +3,7 @@ import { cx, isElementEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normali
 
 import { _rdLabelBinding, _rdNoteTarget, _renderBind, batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
+import { _userCodeHook } from './parked-text'
 
 type Cleanup = () => void
 
@@ -152,6 +153,9 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
  * so `<div {...props}>` is fully torn down on unmount.
  */
 export function applyPropsWithRef(el: Element, props: Props): Cleanup {
+  // User code (the spread's own ref, an `innerHTML`) is about to reach the
+  // element: an adopting build snapshots its regions first (`_userCodeHook`).
+  if (_userCodeHook !== null) _userCodeHook()
   // A nullish spread source is legal JSX (`{...(cond ? obj : null)}`,
   // `{...(x ?? undefined)}`) — `applyProps(el, null)` is itself a no-op
   // (`for…in null`), but the `.ref` read below would throw. Bail early.

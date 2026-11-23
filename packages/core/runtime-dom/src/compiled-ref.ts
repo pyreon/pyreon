@@ -1,4 +1,5 @@
 import { _noopDispose } from '@pyreon/reactivity'
+import { _userCodeHook } from './parked-text'
 
 /**
  * Compiler-emitted `ref` application for a template element: the h() path's
@@ -17,6 +18,9 @@ import { _noopDispose } from '@pyreon/reactivity'
  * `null`.
  */
 export function _ref(el: Element, ref: unknown): () => void {
+  // User code is about to reach the element: an adopting build snapshots its
+  // claimable regions first (`_userCodeHook`, null outside hydration).
+  if (_userCodeHook !== null) _userCodeHook()
   if (typeof ref === 'function') {
     ;(ref as (el: Element | null) => void)(el)
     return () => (ref as (el: Element | null) => void)(null)

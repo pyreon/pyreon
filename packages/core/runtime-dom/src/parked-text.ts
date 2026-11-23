@@ -2,108 +2,142 @@ import type { VNodeChild } from '@pyreon/core'
 
 /**
  * PARKED server content: an adoption build found server nodes that ONE later
- * bind line will claim, and the verifier could not hand them over by position.
+ * bind line will claim, and the verifier cannot hand them over by position.
  *
  * - A compiled TEXT slot whose server content is not one text node (#4385). A
  *   text binding (`bindPolymorphicText`, `_bindText`, `_bindProp`) is
  *   polymorphic: `{parts(row)}` can render `['a ', <Code/>, ' b']`, which the
  *   server renders as elements. The compiled bind still resolves its slot to
  *   ONE text node, so that node is a PLACEHOLDER: inserted by the verifier for
- *   a sole slot, by `_textSlot` for a trailing or mid range.
- * - An EMPTY template element that `_setChild` fills (#4599): a sole fixed
- *   child (`<span>{cell}</span>`) or a fused static mix (`a{cell}b`) whose
- *   structural value SSR rendered marker-less. Nothing compiled refers into an
- *   empty element, so the ELEMENT itself carries the mark.
+ *   a sole slot (`null`: the element's other children are the content), by
+ *   `_textSlot` for a trailing or mid range (its open `<!--$-->`).
+ * - An EMPTY template element that `_setChild` fills (#4599) whose server
+ *   content is structure: the ELEMENT is parked (`null`), so the build can
+ *   sweep that content when no bind line claims it.
  *
- * ONE mark for both. Its value says where the server content is: the open
- * `<!--$-->` of a range, or the server's child nodes RECORDED at verify time
- * (a sole slot, an empty element). The claimer (`_adoptParkedText`, `_setChild`)
- * takes the mark by identity and hands that value to the slot hydrator, which
- * adopts only recorded nodes that are still attached: bind lines that run
- * earlier (`_ref`, a spread) may have cleared, filled or prepended to the
- * element, and nothing the client inserted is adopted or removed.
- *
- * Carried on the node (leak class C: never a registry). `_parkedPending` counts
- * marks not yet consumed, so every binding outside hydration pays one integer
- * compare and nothing else.
+ * Kept in the build's BATCH, never on the node: flat `[node, server, …]`, found
+ * by identity (a build parks a few nodes). `_parkedPending` counts marks not
+ * yet consumed, so every binding outside hydration pays one integer compare.
  */
-const PARKED: unique symbol = Symbol('pyreon.parked')
-
-/** Where a parked node's server content is: a range's open marker, or the
- *  server child nodes recorded by the verifier. */
-export type ParkedServer = Comment | ChildNode[]
-type Parked = Node & { [PARKED]?: ParkedServer | undefined }
-
 export let _parkedPending = 0
 
+/** `null`: the node's element's whole child list; a comment: that range. */
+export type ParkedServer = Comment | null
+
 export function _park(node: Text | Element, server: ParkedServer): void {
-  ;(node as Parked)[PARKED] = server
   _parkedPending++
-  ;(_batch ??= []).push(node)
+  ;(_batch ??= []).push(node, server)
 }
 
 /** Consume `node`'s mark; `undefined` when it has none (or no longer). */
 export function _takeParked(node: Node): ParkedServer | undefined {
-  const server = (node as Parked)[PARKED]
-  if (server !== undefined) {
-    ;(node as Parked)[PARKED] = undefined
-    _parkedPending--
-  }
-
-  return server
-}
-
-/**
- * Remove the recorded nodes still attached to `owner` (the element they were
- * recorded in): an unclaimed record's sweep. Nothing a bind line inserted is
- * in the record, so nothing of the client's is touched. Returns, in dev, the
- * removed text (marker comments are not content) and first element, for the
- * report.
- */
-export function _sweepRecord(owner: Node, server: ChildNode[]): [string, Element | null] {
-  let text = ''
-  let el: Element | null = null
-  // A text-only record is left alone, as before #4599: server text under an
-  // element nobody claims (a `<textarea>` the client drives through `.value`)
-  // is not a divergence worth removing.
-  if (server.every((n) => n.nodeType === 3)) return [text, el]
-  for (const n of server) {
-    if (n.parentNode !== owner) continue
-    if (process.env.NODE_ENV !== 'production') {
-      if (n.nodeType !== 8) text += n.textContent
-      if (el === null && n.nodeType === 1) el = n as Element
+  const b = _batch
+  if (b !== null) {
+    for (let i = 0; i < b.length; i += 2) {
+      if (b[i] === node) {
+        b[i] = null
+        _parkedPending--
+        return b[i + 1] as ParkedServer
+      }
     }
-    n.remove()
   }
 
-  return [text, el]
+  return undefined
 }
 
 /**
- * The nodes marked during ONE adoption build. A binding that writes `.data`
- * directly (the selector-ternary and signal-method emits) never consumes a
- * placeholder's mark, and a bind with no `_setChild` never consumes an
- * element's. So the build that marked them sweeps any left unconsumed after its
- * bind (`sweepParked` in `template.ts`): the recorded server content that is
- * still attached goes, and the rewrite is reported. Frames nest (a bind
- * hydrates holes whose components build their own templates): save/restore,
- * never reset.
+ * The marks of ONE adoption build, as `[node, server, …]` (a consumed one has
+ * `null` in place of its node). A binding that writes `.data` directly (the
+ * selector-ternary and signal-method emits) never consumes a placeholder's
+ * mark, and a bind with no `_setChild` never consumes an element's, so the
+ * build sweeps what is left after its bind (`finishTplAdopt`). Frames nest (a
+ * bind hydrates holes whose components build their own templates):
+ * save/restore, never reset.
  */
-let _batch: Node[] | null = null
+let _batch: (Node | ParkedServer)[] | null = null
 
-export function _beginParkBatch(): Node[] | null {
+export function _beginParkBatch(): (Node | ParkedServer)[] | null {
   const prev = _batch
   _batch = null
 
   return prev
 }
 
-/** Close the batch opened by `_beginParkBatch`; returns what it marked. */
-export function _endParkBatch(prev: Node[] | null): Node[] | null {
+/** Close the batch opened by `_beginParkBatch`: every mark still in it is
+ *  released (`_parkedPending`); returns the batch for the build's sweep. */
+export function _endParkBatch(prev: (Node | ParkedServer)[] | null): (Node | ParkedServer)[] | null {
   const mine = _batch
   _batch = prev
+  if (mine !== null) for (let i = 0; i < mine.length; i += 2) if (mine[i] !== null) _parkedPending--
 
   return mine
+}
+
+/**
+ * USER CODE inside an adopting bind. A compiled bind runs its attribute lines
+ * before its content lines, and two of those can run user code that reaches
+ * the element: a `ref` (`_ref`) and a spread (`applyPropsWithRef`, which also
+ * applies `innerHTML`). Before the first of them in a build, hydration HIDES
+ * the server content of the build's claimable regions (an empty `_setChild`
+ * element, a sole `<!>` slot, a #4385 sole text slot): it moves into a
+ * fragment, so the user code sees the element exactly as a fresh render's
+ * clone would (empty, or holding only its placeholder). The region's claimer
+ * puts the content back where a fresh render mounts the value and hydrates
+ * it; content nobody claims is dropped, or restored when the bind throws.
+ * Nothing the user code did is ever adopted or removed. A build where no user
+ * code ran hides nothing (`_userCodeHook`, registered by `hydrateRoot`; `null`
+ * in a client-only app).
+ */
+export let _userCodeHook: (() => void) | null = null
+
+export function _setUserCodeHook(h: () => void): void {
+  _userCodeHook = h
+}
+
+/**
+ * The current build's hidden content, `[element, fragment, anchor, …]`, or
+ * `null` when no user code ran. `anchor` is where the content goes back: `null`
+ * the end, a placeholder TEXT right after it, a stand-in COMMENT (a sole
+ * slot's `<!>`) right before it.
+ */
+let _hidden: (Node | null)[] | null = null
+
+export function _setHidden(h: (Node | null)[] | null): void {
+  _hidden = h
+}
+
+/** The node after the content `_claimHidden` put back. */
+export let _hiddenAfter: Node | null = null
+
+/**
+ * Claim `el`'s hidden server content: `undefined` when none was hidden (no
+ * user code ran in this build; the element is as the verifier saw it).
+ * Otherwise it goes back where a fresh render mounts the value (`reinsert`),
+ * or is dropped (a text write replaces it), and its first node is returned
+ * (`null`: the server rendered nothing there), with `_hiddenAfter` set.
+ */
+export function _claimHidden(el: Node, reinsert: boolean): ChildNode | null | undefined {
+  const h = _hidden
+  if (h === null) return undefined
+  for (let i = 0; i < h.length; i += 3) {
+    if (h[i] !== el) continue
+    h[i] = null
+    const frag = h[i + 1] as DocumentFragment
+    const anchor = h[i + 2] as Node | null
+    const first = frag.firstChild
+    if (!reinsert) return first
+    let before: Node | null = anchor === null ? null : anchor.nodeType === 3 ? anchor.nextSibling : anchor
+    el.insertBefore(frag, before)
+    if (anchor !== null && anchor.nodeType === 8) {
+      before = anchor.nextSibling
+      ;(anchor as ChildNode).remove()
+    }
+    _hiddenAfter = before
+
+    return first
+  }
+
+  return undefined
 }
 
 /**
@@ -113,14 +147,10 @@ export function _endParkBatch(prev: Node[] | null): Node[] | null {
  * parked text placeholder (below). It lives here because `mount.ts`
  * (`bindPolymorphicText`) must reach it without importing `template.ts`.
  *
- * `server` is a range's open marker, the server nodes RECORDED at verify time
- * (an empty array: the server rendered nothing there), or `null`: the record
- * the verifier left on `parent` itself (an empty `_setChild` element, a sole
- * slot), which the hydrator takes. For a record,
- * `at` says where a fresh render puts the value: `null` at the end of
- * `parent` (`_setChild` appends), a node to insert before (a #4385
- * placeholder), or `undefined` where the server's run is (a sole slot).
- * Only recorded nodes are adopted or removed.
+ * `server` is a range's open marker, or `null`: `parent`'s whole child list
+ * (after `at` when that is a placeholder). `at` says where a fresh render puts
+ * the value: `null` at the end of `parent` (`_setChild` appends), a #4385
+ * placeholder, or `undefined` wherever the server's run is (a sole slot).
  */
 export type SlotHydrator = (
   children: VNodeChild | VNodeChild[],
@@ -149,12 +179,13 @@ export function _adoptParkedText(text: Text, child: () => VNodeChild): (() => vo
   if (parent === null) return null
   // The binding's accessor IS a reactive child: the hydrator primes it once.
   // A placeholder is only ever parked by an adoption build, and adoption runs
-  // under `hydrateRoot`, which registered the hydrator first. A record is
-  // hydrated AT the placeholder (a fresh render mounts there, S1); a range
-  // stands where the placeholder's `<!>` was.
+  // under `hydrateRoot`, which registered the hydrator first. A sole slot's
+  // content is the placeholder's element's other children, hydrated AT the
+  // placeholder (a fresh render mounts there); a range stands where the
+  // placeholder's `<!>` was.
   const hydrate = _slotHydrator as SlotHydrator
-  if (Array.isArray(server)) {
-    const cleanup = hydrate(child as unknown as VNodeChild, parent, server, text)
+  if (server === null) {
+    const cleanup = hydrate(child as unknown as VNodeChild, parent, null, text)
     text.remove()
 
     return cleanup

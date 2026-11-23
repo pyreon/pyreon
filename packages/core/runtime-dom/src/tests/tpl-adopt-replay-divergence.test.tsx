@@ -23,9 +23,15 @@
  * because a verifier that refuses everything is a verifier nobody can afford
  * to leave switched on.
  */
-import { beforeEach, describe, expect, it } from 'vitest'
-import { tplAdoptVerify } from '../hydration-plan'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { tplAdoptVerify, _adoptFrameDepth, finishTplAdopt } from '../hydration-plan'
 import { _beginParkBatch, _endParkBatch, _takeParked } from '../parked-text'
+
+// These specs call the verifier directly; close the adopt frame each one
+// opened (a real `_tpl` build does that in `finishTplAdopt`).
+afterEach(() => {
+  while (_adoptFrameDepth() > 0) finishTplAdopt(null, null, false)
+})
 
 type CountSink = { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }
 
@@ -614,19 +620,21 @@ describe('a bind-managed element has its stray server texts removed', () => {
     expect(tplAdoptVerify(tplOf(EMPTY_EL), EMPTY_EL, targetOf('<p></p>'))).toBe(true)
   })
 
-  it('RECORDS server ELEMENTS in a bind-managed slot for `_setChild` to claim (#4599)', () => {
+  it('PARKS server ELEMENTS in a bind-managed slot for `_setChild` to claim (#4599)', () => {
     // A structural `_setChild` value (a VNode, an array, a fused mix) renders
-    // as elements marker-less. The verify leaves the DOM as it is and records
-    // the server children on the element; `_setChild` claims them, and a build
-    // whose bind never claims them removes them (`setchild-empty-element-adoption`).
+    // as elements marker-less. The verify leaves the DOM as it is and parks the
+    // element (in the build's batch, not on the node); `_setChild` claims it,
+    // and a build whose bind never claims it removes the content
+    // (`setchild-empty-element-adoption`). Nothing is recorded: no user code
+    // ran.
     const el = targetOf('<p><b>x</b></p>')
     const b = el.firstChild
     const prev = _beginParkBatch()
     expect(tplAdoptVerify(tplOf(EMPTY_EL), EMPTY_EL, el)).toBe(true)
-    expect(_endParkBatch(prev)).toEqual([el])
+    expect(_takeParked(el)).toBe(null)
+    expect(_endParkBatch(prev)).toEqual([null, null])
     expect([...el.childNodes]).toEqual([b])
-    // Unclaimed here (no bind ran): release the record for the next spec.
-    expect(_takeParked(el)).toEqual([b])
   })
+
 
 })

@@ -69,10 +69,9 @@ import {
   bindPolymorphicText,
   componentProps,
   mountChild,
-  mountChildAsUnit,
   mountOwned,
 } from './mount'
-import { buildRowPlan, finishTplAdopt, replayRowPlan, tplAdoptVerify } from './hydration-plan'
+import { buildRowPlan, finishTplAdopt, hideFrame, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
@@ -86,8 +85,8 @@ import {
   _tplAdoptDidConsume,
 } from './template'
 import type { DeferredNativeItem } from './template'
-import { _parkedPending, _takeParked, type ParkedServer } from './parked-text'
-import { _recordServer, _takeServerRecord, hasParkedRange, rangeClose } from './slot-brands'
+import { _claimHidden, _hiddenAfter, _setUserCodeHook, type ParkedServer } from './parked-text'
+import { rangeClose } from './slot-brands'
 import { _markAdoptedHtmlEl, applyProps, applySelectValueProp } from './props'
 
 type Cleanup = () => void
@@ -1218,6 +1217,7 @@ function hydrateVNode(
             // Register the compiled-template verifier (idempotent; also set by
             // hydrateRoot — kept here for direct-adoption robustness).
             _setTplAdoptVerifier(tplAdoptVerify, finishTplAdopt)
+  _setUserCodeHook(hideFrame)
   _setTplHoleHydrator(hydrateMountHole)
             for (let i = 0; i < rowCount; i++) {
               const rowMarker = rowMarkers[i] as ChildNode
@@ -1312,12 +1312,8 @@ function hydrateVNode(
     // keyed branch documents).
     const stale: ChildNode[] = []
     for (let n: ChildNode | null = domNode; n; n = n.nextSibling) stale.push(n)
-    // The marker is only the insertion point: the mounted list brings its own
-    // boundaries, so it goes once the list is in. Left in place it was a
-    // stray `<!--pyreon-for-->` a fresh render does not have.
     const marker = insertMarker(parent, domNode, 'pyreon-for')
     const cleanup = mountChild(vnode, parent, marker)
-    marker.remove()
     for (const n of stale) {
       if (n.parentNode === parent) n.remove()
     }
@@ -1357,25 +1353,7 @@ function hydrateMountHole(
   child: VNodeChild | VNodeChild[],
   parent: Node,
   cursor: ChildNode | null,
-  first: boolean,
-): [Cleanup, ChildNode | null | undefined] {
-  // The FIRST child checks the hole's server range RECORDED at verify time
-  // against what earlier bind lines (a `ref`) left. A fresh render APPENDS the
-  // components after them, so the range is adoptable only while its recorded
-  // nodes still attached are the element's trailing run; otherwise they go and
-  // the hole mounts plainly from here on (`undefined`). The checked record is
-  // put back for the hole sweep.
-  if (first) {
-    const recorded = _takeServerRecord(parent) ?? []
-    const kept = recorded.filter((n) => n.parentNode === parent)
-    if (kept.length > 0 && isRunAt(parent, kept, null)) {
-      _recordServer(parent, kept)
-      cursor = kept[0] as ChildNode
-    } else if (recorded.length > 0) {
-      for (const n of kept) n.remove()
-      return [typeof child === 'function' ? mountChild(child, parent, null) : mountChildAsUnit(child, parent, null), undefined]
-    }
-  }
+): [Cleanup, ChildNode | null] {
   const start = cursor !== null && cursor.nodeType === 1 ? cursor : firstReal(cursor)
   // The cursor doubles as the ANCHOR. Every recovery path in `hydrateChild`
   // (tag mismatch, text mismatch, a NativeItem with no counterpart) inserts at
@@ -1414,29 +1392,21 @@ function hydrateMountSlot(
   // element (`root > div > reactive > b`), as the h() walk spells them; in
   // production they keep the bare `slot` prefix.
   const slotPath = process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot'
-  // A RECORD: the server nodes the verifier found, before any bind line ran
-  // (a sole slot, an empty `_setChild` element, a #4385 sole text slot).
-  if (server === null) server = parentRecord(parent)
-  if (Array.isArray(server)) return hydrateRecord(children, parent, server, at, slotPath)
-  const open = server
-  // A trailing marked range, recorded at verify: its markers go (direct
-  // references, not a depth search past client nodes) and the recorded nodes
-  // are claimed in place; `pos` keeps the range's position for a fresh mount.
-  const parkedRange = hasParkedRange(open)
-  const recorded = parkedRange ? undefined : _takeServerRecord(open)
-  const closeMarker = parkedRange ? null : rangeClose(open)
-  if (recorded !== undefined) {
-    const pos = document.createComment('')
-    parent.insertBefore(pos, open)
-    open.remove()
-    closeMarker?.remove()
-    // Placed where the range stood: the recorded run is claimed when it still
-    // starts there, else the value mounts there.
-    const cleanup = hydrateRecord(children, parent, recorded, pos, slotPath)
-    pos.remove()
-
-    return cleanup
+  // `parent`'s child list (after `at` when that is a #4385 placeholder): a
+  // sole slot, an empty `_setChild` element. When user code ran in this build
+  // the snapshot holds what it was (an element absent from it held nothing);
+  // otherwise it is still what the verifier saw, and is walked directly.
+  if (server === null) {
+    // When user code ran in this build the server content was hidden; it
+    // goes back where a fresh render mounts the value, and only it is walked.
+    const first = _claimHidden(parent, true)
+    if (first === undefined) return hydrateTrailing(children, parent, at != null ? at.nextSibling : parent.firstChild, null, slotPath)
+    return hydrateTrailing(children, parent, first, _hiddenAfter, slotPath)
   }
+  const open = server
+  // A sole slot whose server list was one marked range: hidden from user code
+  // with the rest of the element's content (see `hideFrame`); put it back first.
+  if (open.parentNode !== parent) _claimHidden(parent, true)
   // A PARKED mid range (see `PARKED_RANGE` in template.ts): the verifier moved
   // this slot's server content out so the compiled refs after it resolved
   // against the clone's one-node shape. Put it back — exactly where it was,
@@ -1455,125 +1425,70 @@ function hydrateMountSlot(
     return cleanup
   }
   const first = open.nextSibling
-  // The range's own nodes, before the walk: the residual sweep removes only
-  // these, so a cursor that ended anywhere else cannot reach past the range.
-  const range: ChildNode[] = []
-  for (let n = first; n !== null && n !== close; n = n.nextSibling) range.push(n)
   const cursor = first === close ? null : first!.nodeType === 1 ? first : firstReal(first)
-  const [cleanup, residual] = hydrateChild(children, cursor, parent, close, slotPath)
-  sweepResidual(parent, range, open.nextSibling, residual)
+  const [cleanup] = hydrateChild(children, cursor, parent, close, slotPath)
   open.remove()
   close.remove()
 
   return cleanup
 }
 
-/** No server content recorded: the server rendered nothing there. Shared and
- *  never mutated. */
-const NO_SERVER: ChildNode[] = []
 
 /**
- * The record the verifier left on an adopted element whose whole child list
- * one slot claims: parked (an empty `_setChild` element, a marker-less sole
- * slot), or kept on the element (a sole slot whose server list was ONE marked
- * range: its value starts with its own range, e.g. a `<Show>`). `NO_SERVER`
- * when there is none: the server rendered nothing.
+ * A region that runs from `first` up to `after` (`null`: the end of `parent`)
+ * and holds only server content. An accessor adopts it through the shared
+ * range core with a synthesized close; a literal is walked directly and what
+ * the walk leaves unclaimed is swept up to `after`.
  */
-function parentRecord(parent: Node): ChildNode[] {
-  const parked = _parkedPending > 0 ? _takeParked(parent) : undefined
-  if (Array.isArray(parked)) return parked
-
-  return _takeServerRecord(parent) ?? NO_SERVER
-}
-
-
-/**
- * Claim a RECORD: adopt the recorded nodes still attached when they stand where
- * a fresh render puts the value (`at`: `null` = the end of `parent`, a node =
- * right after it, `undefined` = wherever the server's run is). Otherwise a bind
- * line moved things, so the value mounts where a fresh render would (`at`, else
- * the first recorded node, else the end) and the recorded nodes go. Nodes
- * outside the record are never adopted or removed.
- */
-function hydrateRecord(
+function hydrateTrailing(
   children: VNodeChild | VNodeChild[],
   parent: Node,
-  record: ChildNode[],
-  at: Node | null | undefined,
+  first: ChildNode | null,
+  after: Node | null,
   slotPath: string,
 ): Cleanup {
-  if (record.length === 0) {
-    // The server rendered nothing here: install what a cold mount would, and
-    // report what it inserted (`mountOverEmpty`, the walk's own mismatch).
-    const pos = at ?? null
-    return typeof children === 'function'
-      ? mountOverEmpty(children as () => VNodeChild, parent, pos, slotPath)
-      : hydrateChild(children, null, parent, pos, slotPath)[0]
-  }
-  const kept = record.filter((n) => n.parentNode === parent)
-  if (kept.length > 0 && isRunAt(parent, kept, at)) return hydrateRegion(children, parent, kept, slotPath)
-  const cleanup = mountChild(children, parent, at !== undefined ? at : (kept[0] ?? null))
-  for (const n of kept) n.remove()
-
-  return cleanup
-}
-
-/** `kept` (in order, all children of `parent`) is one contiguous run standing
- *  where `at` says (see `hydrateRecord`). */
-function isRunAt(parent: Node, kept: ChildNode[], at: Node | null | undefined): boolean {
-  for (let i = 1; i < kept.length; i++) if ((kept[i - 1] as ChildNode).nextSibling !== kept[i]) return false
-  if (at === undefined) return true
-  if (at === null) return (kept[kept.length - 1] as ChildNode).nextSibling === null
-
-  return (kept[0] as ChildNode).previousSibling === at
-}
-
-/**
- * Hydrate a contiguous run of recorded server nodes. A STOP comment right after
- * the run (a direct reference, removed after) bounds the walk: client nodes
- * after it are never adopted. An accessor adopts the run through the shared
- * range core; a literal is walked directly and the recorded nodes it leaves
- * unclaimed are swept.
- */
-function hydrateRegion(children: VNodeChild | VNodeChild[], parent: Node, kept: ChildNode[], slotPath: string): Cleanup {
-  const first = kept[0] as ChildNode
-  const after = (kept[kept.length - 1] as ChildNode).nextSibling
   if (typeof children === 'function') {
-    const stop = document.createComment('pyreon')
-    parent.insertBefore(stop, after)
+    // SSR rendered nothing into the slot, so there is no region to adopt —
+    // install the boundary a cold mount would have built.
+    if (first === null) return mountOverEmpty(children as () => VNodeChild, parent, after, slotPath)
+    // Synthesize the close SSR elided so the shared adoption core runs on
+    // exactly the shape it gets for a marked range — including the removal
+    // contract, which a direct `hydrateChild` call does NOT carry.
+    const end = document.createComment('pyreon')
+    parent.insertBefore(end, after)
     const primed = primeAccessor(children as () => VNodeChild)
-    const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, stop, slotPath)
-    stop.remove()
+    const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, end, slotPath)
+    end.remove()
 
     return cleanup
   }
-  // `/$` is a structural marker to `firstReal`, so the walk stops on it.
+  // A literal installs no reactive boundary, so it is walked directly. What
+  // the walk leaves unclaimed (a tag mismatch mounts the client's node AT the
+  // cursor and offers the server's on) is swept, as `hydrateElement` does at
+  // its closing tag: otherwise a divergent value kept the server's copy beside
+  // the client's. Before `after`, a `/$` stop (structural to `firstReal`)
+  // keeps the walk from reaching the nodes there.
+  const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
+  if (after === null) {
+    const [cleanup, residual] = hydrateChild(children, cursor, parent, null, slotPath)
+    sweepUnclaimed(parent, residual)
+
+    return cleanup
+  }
   const stop = document.createComment('/$')
   parent.insertBefore(stop, after)
-  const before = first.previousSibling
-  const cursor = first.nodeType === 1 ? first : firstReal(first)
+  const before = first === null ? null : first.previousSibling
   const [cleanup, residual] = hydrateChild(children, cursor, parent, stop, slotPath)
+  if (residual !== null && firstReal(before === null ? parent.firstChild : before.nextSibling) !== residual) {
+    for (let n: ChildNode | null = residual; n !== null && n !== stop; ) {
+      const nx: ChildNode | null = n.nextSibling
+      n.remove()
+      n = nx
+    }
+  }
   stop.remove()
-  sweepResidual(parent, kept, before === null ? parent.firstChild : before.nextSibling, residual)
 
   return cleanup
-}
-
-/**
- * Remove what a literal walk left unclaimed: the nodes of `region` (recorded
- * before the walk) from `residual` on, still attached. Not when nothing
- * precedes the residual in the region (`start` is the region's first node
- * after the walk): the same "degrade, don't destroy" rule as `sweepUnclaimed`
- * (a component that threw or rendered nothing keeps the server's markup).
- */
-function sweepResidual(parent: Node, region: ChildNode[], start: ChildNode | null, residual: ChildNode | null): void {
-  if (residual === null || firstReal(start) === residual) return
-  const at = region.indexOf(residual)
-  if (at === -1) return
-  for (let i = at; i < region.length; i++) {
-    const n = region[i] as ChildNode
-    if (n.parentNode === parent) n.remove()
-  }
 }
 
 function hydrateChild(
@@ -2545,6 +2460,7 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // (idempotent, CALL-time — a module-load call would pin the verify/plan
   // machinery into CSR bundles that tree-shake hydrateRoot).
   _setTplAdoptVerifier(tplAdoptVerify, finishTplAdopt)
+  _setUserCodeHook(hideFrame)
   // Dev: slot and hole content hydrates through THIS walk, which reports its
   // own mismatches — so the compiled binders' adoption-report window is closed
   // for the duration (it would otherwise see h()-path text as compiled).

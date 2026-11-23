@@ -8,6 +8,6 @@ If the client renders something different there, the walk reports it and replace
 
 A `ref` or a spread on such an element that changes its children while it hydrates (clearing it, prepending a node, setting `innerHTML`) leaves the same DOM as a fresh client render. Only the server's own nodes are adopted or removed. A component that renders nothing inside such an element keeps the server's content with no report, as on the `h()` path.
 
-The same applies to a compiled text slot whose server content is elements (`<span ref={r}>{parts()}</span>`). When a compiled template's bind throws during hydration, its elements keep the server's content. A divergent value in a server-marked slot range between static siblings is replaced instead of being kept beside the client's copy.
+The same applies to a compiled text slot whose server content is elements (`<span ref={r}>{parts()}</span>`). When a compiled template's bind throws during hydration, its elements keep the server's content.
 
-A `ref` on an element that changes its children while it hydrates (clearing it, prepending, appending or inserting a node) no longer loses the nodes it added, in a `<For>` row adopted from a recorded plan too, and a compiled text slot holding elements keeps the ref's node where a fresh render puts it. A `<For>` that cannot read its server block no longer leaves a stray `<!--pyreon-for-->` comment behind.
+A compiled `ref` or spread now sees such an element during hydration exactly as on a fresh client render: empty, or holding only its slot placeholder. Whatever it adds stays where a fresh render keeps it, including in a `<For>` row adopted from a recorded plan. The server's content goes back where the value belongs.
