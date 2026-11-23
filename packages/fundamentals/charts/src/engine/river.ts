@@ -88,8 +88,7 @@ export function layoutRiver(series: readonly RiverSeries[], box: Rect, options?:
   const cats = options?.categories ?? []
   if (cats.length > n) n = cats.length
   // nF mirrors the category count as a Double for the x spacing.
-  let nF = 0.0
-  for (let i = 0; i < n; i++) nF = nF + 1.0
+  const nF: Double = Number(n)
   const xs: Double[] = []
   let iF = 0.0
   for (let i = 0; i < n; i++) {
@@ -187,8 +186,7 @@ export function smoothPoints(pts: Pt[]): Pt[] {
 /** The closed outline of a layer (top edge forward, bottom edge back). */
 export function layerPolygon(layer: RiverLayer, curve: 'smooth' | 'linear', progress: Double): Pt[] {
   // countF = progress >= 1 ? n : max(2, floor(n * progress)), as a Double scan.
-  let lenF = 0.0
-  for (let i = 0; i < layer.top.length; i++) lenF = lenF + 1.0
+  const lenF: Double = Number(layer.top.length)
   let countF = 0.0
   if (progress >= 1.0) countF = lenF
   else {

@@ -671,6 +671,12 @@ export type ExprIR =
       optional?: boolean
       /** An array-destructured element (`const [a] = xs`) — see `destructure-absence.ts`. */
       destructured?: boolean
+      /**
+       * The source tests this read for absence (`xs[i] ?? d`, `xs[i] === undefined`, or a `const v = xs[i]` whose
+       * later uses do): on an ARRAY receiver it lowers like `optional` — see `indexReadsOptionally` in
+       * `destructure-absence.ts`.
+       */
+      absenceTested?: boolean
     }
   /**
    * `new Map<K, V>()` / `new Set<T>()` / `new Set(seedArray)` — the two

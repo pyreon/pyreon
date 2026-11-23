@@ -66,8 +66,7 @@ export function renderCandles(
   const out: DrawCmd[] = []
   const n = candles.length
   if (n === 0) return out
-  let nF = 0.0
-  for (let i = 0; i < n; i++) nF = nF + 1.0
+  const nF: Double = Number(n)
   const band = plot.w / nF
   const bw = band * ratio
   const y0 = plot.y + plot.h

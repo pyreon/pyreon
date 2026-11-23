@@ -11,6 +11,14 @@
 
 package com.pyreon.runtime
 
+/**
+ * JavaScript's `xs[i]` with a NUMBER index, where the code tests the result for `undefined`: only a whole, in-range
+ * index names an element — `xs[0.5]`, `xs[NaN]` and `xs[Infinity]` are `undefined` on the web, so they are `null`
+ * here (never truncated by `toInt()`).
+ */
+public fun <T> pyreonAt(xs: List<T>, i: Double): T? =
+    if (i >= 0.0 && i < xs.size.toDouble() && Math.floor(i) == i) xs[i.toInt()] else null
+
 public fun <T> pyreonSlice(a: List<T>, start: Long, end: Long? = null): List<T> {
     val (lo, hi) = pyreonSliceBounds(a.size, start, end)
     return if (lo < hi) a.subList(lo, hi).toList() else emptyList()

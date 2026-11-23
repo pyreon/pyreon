@@ -655,11 +655,11 @@ function baseGeometry(spec: ChartSpec): ChartSpec {
       si = si + 1
     } else if (isLog && !seriesOnRightAxis(s, spec)) {
       const values: Double[] = []
-      for (const v of s.values) values.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
+      for (const v of s.values) values.push(v > 0.0 ? Math.log10(v / lb.min) : NaN)
       const lows: Double[] = []
       const highs: Double[] = []
-      for (const v of s.errLow ?? []) lows.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
-      for (const v of s.errHigh ?? []) highs.push(v > 0.0 ? Math.log10(v / lb.min) : (0.0 / 0.0))
+      for (const v of s.errLow ?? []) lows.push(v > 0.0 ? Math.log10(v / lb.min) : NaN)
+      for (const v of s.errHigh ?? []) highs.push(v > 0.0 ? Math.log10(v / lb.min) : NaN)
       series.push({ ...s, values, errLow: s.errLow === undefined ? undefined : lows, errHigh: s.errHigh === undefined ? undefined : highs })
     } else {
       series.push(s)
@@ -1398,7 +1398,7 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
         if (sA.showValues === true && progress >= 1.0) {
           const fmtA = spec.yFormat ?? plain
           for (let i = 0; i < upper.length; i++) {
-            const v = i < sA.values.length ? sA.values[i]! : 0.0 / 0.0
+            const v = i < sA.values.length ? sA.values[i]! : NaN
             if (!isFiniteValue(v)) continue
             const labA = valueLabel(fmtA(v), { x: upper[i]!.x, y: (upper[i]!.y + lower[i]!.y) / 2.0 }, 'middle', 'middle', t)
             out.push(i < rowKeys.length ? keyedLabel(rowKeys[i]!, labA) : labA)
@@ -1592,10 +1592,10 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       const paired: Double[] = []
       const loRun: Double[] = []
       for (let i = 0; i < s.values.length; i++) {
-        const lo = i < lows.length ? lows[i]! : 0.0 / 0.0
+        const lo = i < lows.length ? lows[i]! : NaN
         const valid = isFiniteValue(s.values[i]!) && isFiniteValue(lo)
-        paired.push(valid ? s.values[i]! : 0.0 / 0.0)
-        loRun.push(valid ? lo : 0.0 / 0.0)
+        paired.push(valid ? s.values[i]! : NaN)
+        loRun.push(valid ? lo : NaN)
       }
       // Both boundaries have the SAME gap mask, so their runs correspond by
       // index, including singletons. Resolve them once: scanning the whole
@@ -1728,8 +1728,8 @@ export function renderChartIn(raw: ChartSpec, measure: MeasureText, l: PlotLayou
       for (let i = 0; i < centres.length; i++) {
         // Bounds-checked rather than coalesced: a Swift array subscript is
         // never optional, so `?? ` there is a warning and a dead branch.
-        const lo = i < eLow.length ? eLow[i]! : 0.0 / 0.0
-        const hi = i < eHigh.length ? eHigh[i]! : 0.0 / 0.0
+        const lo = i < eLow.length ? eLow[i]! : NaN
+        const hi = i < eHigh.length ? eHigh[i]! : NaN
         if (!isFiniteValue(lo) || !isFiniteValue(hi)) continue
         const cx = centres[i]!
         const yLo = yPx(sDomain, plot, lo)
