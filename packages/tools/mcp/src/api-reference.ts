@@ -63,7 +63,7 @@ const initial = isClient ? navigator.onLine : true`,
   },
 
   'reactivity/computed': {
-    signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>',
+    signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean; name?: string }) => Computed<T>',
     example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
 doubled()  // 0
@@ -6191,7 +6191,7 @@ useFocusReturn(() => isOpen())   // returns focus to the opener on close
 
 // Or the single-arg form: inert while getEl() is null, no focus move.
 useFocusTrap(() => modalRef())`,
-    notes: 'Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmatic `.focus()` or mouse click that lands focus outside the container is recaptured back in; Tab-only trapping misses those escapes). Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every event, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally and it turns on/off with it. Concurrent traps form a scope STACK: only the most recently ACTIVATED trap whose container exists handles events, and deactivating/unmounting it reactivates the one beneath (stacked modals no longer fight over the same Tab) — arm each trap with `active` tied to its open state so the stack tracks OPEN order, not mount order. The optional 2nd argument arms the trap reactively WITHOUT unmounting (`active: () => isOpen()`, or the positional shorthand `useFocusTrap(getEl, () => isOpen())`) and moves focus INTO the container on activation (`initialFocus: true` focuses the `[data-autofocus]` descendant when present, else the first tabbable; or a selector / element / getter; default is no focus move, backward-compatible). Initial focus is placed one microtask after activation, so content revealed by the same write (`hidden={!open()}`, a `<Show>`) is focusable by then. The focusable query is spec-grade — it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `checkVisibility` in real browsers); and orders positive-`tabindex` first. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`; making the background actually inert is `useInertOthers`. See also: useFocusReturn, useInertOthers, useScrollLock, useDialog, useClickOutside.',
+    notes: 'Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmatic `.focus()` or mouse click that lands focus outside the container is recaptured back in; Tab-only trapping misses those escapes). Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every event, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally and it turns on/off with it. Concurrent traps form a scope STACK: only the most recently ACTIVATED trap whose container exists handles events, and deactivating/unmounting it reactivates the one beneath (stacked modals no longer fight over the same Tab) — arm each trap with `active` tied to its open state so the stack tracks OPEN order, not mount order. The optional 2nd argument arms the trap reactively WITHOUT unmounting (`active: () => isOpen()`, or the positional shorthand `useFocusTrap(getEl, () => isOpen())`) and moves focus INTO the container on activation (`initialFocus: true` focuses the `[data-autofocus]` descendant when present, else the first tabbable; or a selector / element / getter; default is no focus move, backward-compatible). Initial focus is placed one microtask after activation, so content revealed by the same write (`hidden={!open()}`, a `<Show>`) is focusable by then. `true` is skipped when focus is already inside the container; a named target is skipped only when focus is already inside that target, so a toggle button inside the trapped container does not block it. The focusable query is spec-grade — it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `checkVisibility` in real browsers); and orders positive-`tabindex` first. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`; making the background actually inert is `useInertOthers`. See also: useFocusReturn, useInertOthers, useScrollLock, useDialog, useClickOutside.',
     mistakes: `- Keeping the element permanently mounted (e.g. \`display: none\`) and expecting the trap to disable when hidden — either unmount it (so \`getEl()\` returns null) or pass \`active: () => isOpen()\` to disarm without unmounting; visibility alone does not gate it
 - Expecting the trap to MOVE focus into the container on open — by default it only contains focus. Pass \`initialFocus: true\` (or a selector / element / getter) to place focus on activation, and pair with \`useFocusReturn\` to restore it on close
 - Expecting it to also RETURN focus to the trigger on close — that is useFocusReturn; useFocusTrap only contains focus within the container
@@ -12656,7 +12656,7 @@ plugins: [pyreon(), zero({
 // Subpath deploy (e.g. served at /blog/)
 plugins: [pyreon(), zero({ base: '/blog/', mode: 'ssg' })]`,
     notes: `Top-level Vite plugin chain for @pyreon/zero. Single config object selects rendering mode (\`'ssr' | 'ssg' | 'isr' | 'spa'\`), subpath base (\`base: '/blog/'\`), SSG settings (paths, concurrency, workers — opt-in worker-thread prerender, onProgress, emit404, emitRedirects), i18n config (locales / defaultLocale / strategy), and deployment adapter. Returns \`Plugin[]\` because the SSG mode adds a companion \`ssgPlugin()\` automatically — Vite's plugins array natively flattens nested arrays so \`plugins: [pyreon(), zero()]\` works without spread. See also: I18nRoutingConfig, GetStaticPaths, Adapter, createISRHandler.`,
-    mistakes: `- Setting \`base\` in BOTH \`vite.config.base\` AND \`zero({ base })\` and expecting them to merge — user's explicit \`vite.config.base\` overrides the plugin-returned base. Set base ONCE via \`zero({ base })\`; let it propagate to Vite + router automatically
+    mistakes: `- Setting \`base\` in BOTH \`vite.config.base\` (or \`vite build --base\`) AND \`zero({ base })\` and expecting them to merge — an explicit \`zero({ base })\` wins; without it Vite's resolved base (CLI flag, inline \`build({ base })\`, \`vite.config.base\`) is used for assets, router links, SSG preloads, font URLs and the server config. Set base ONCE, in either place
 - Passing \`layout\` to \`createApp\` / \`startClient\` when fs-router already emits \`_layout.tsx\` as a parent route — double-mounts the layout. Drop the explicit option; \`_layout.tsx\` is the canonical layout registration
 - Mixing \`mode: 'ssg'\` with a runtime adapter that has no SSG branch (e.g. expecting \`nodeAdapter\` to write platform routing config under SSG) — node/bun/static adapters no-op for SSG; use vercel/cloudflare/netlify if you need platform routing emission
 - Configuring \`ssg.paths\` AND per-route \`getStaticPaths\` together for the same dynamic route — both produce the same path list and the SSG plugin renders each path TWICE (the second pass overwrites). Pick one: \`ssg.paths\` for top-down explicit lists, \`getStaticPaths\` for per-route enumerators
@@ -15963,10 +15963,7 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json (^2.0.0)
      ↳ packages/util/package.json (^3.0.0)
 
-  ! 3 warnings
-  ! peer-mismatch · \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ↳ packages/plugin/package.json
+  ! 2 warnings
   ! prod-import-of-dev-dep · \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ↳ packages/app/src/index.ts
@@ -15983,7 +15980,7 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json
   ✗ internal-range · \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ↳ packages/plugin/package.json
   ✗ phantom-dep · \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -15993,8 +15990,8 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json (^1.0.0)
      ↳ packages/util/package.json (^2.0.0)
 
-✗ 5 errors, 3 warnings, 8 info · 5 packages · 3 ms`,
-    notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); eight detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
+✗ 5 errors, 2 warnings, 8 info · 5 packages · 3 ms`,
+    notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); the detectors emit findings under seven codes with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
     mistakes: `- Treating a dev-edge "cycle" as a bug — loom deliberately excludes devDependencies from cycle detection; monorepos legitimately share test utilities both ways, and a detector that cries wolf is a dead gate
 - Reading \`unused-dep\` as a removal order — it is INFO with lexical evidence only; bins, plugin autoloads, and CSS imports load without an import statement
 - Expecting outdated-vs-latest or duplicate-install findings — loom reads DECLARED truth; lockfile + registry layers are documented future work, not silently half-done

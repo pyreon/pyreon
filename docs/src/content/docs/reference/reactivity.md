@@ -235,7 +235,7 @@ const initial = isClient ? navigator.onLine : true
 ### `computed` `function`
 
 ```ts
-<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>
+<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean; name?: string }) => Computed<T>
 ```
 
 Create a derived value that caches its result and recomputes lazily. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). This is the one place Pyreon diverges from Solid `createMemo` / Vue + Preact `computed`, which all gate on equality by default; if you are porting from those, an unchanged result does NOT stop propagation here. Pass `equals` to gate on value, which is what stops an effect re-running on an identical result.
@@ -245,7 +245,7 @@ Create a derived value that caches its result and recomputes lazily. Dependencie
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `fn` | `() => T` | Derivation — reads other signals/computeds; dependencies are auto-tracked on each run. |
-| `options?` | `{ equals?: (a: T, b: T) => boolean }` | Custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke. |
+| `options?` | `{ equals?: (a: T, b: T) => boolean; name?: string }` | `name` is a dev-only debug name shown in devtools (`@pyreon/vite-plugin` injects it for `const x = computed(…)`). `equals`: custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke. |
 
 **Returns** `Computed<T>` — A read-only callable — call to read the cached value; recomputes lazily only when a dependency changes. Caching is about RECOMPUTATION, not propagation: without `equals` it still notifies downstream even when the recomputed value is identical.
 
