@@ -194,8 +194,11 @@ export function getFocusable(container: HTMLElement): HTMLElement[] {
 function activatedByFocusedElement(): boolean {
   // Called only from the activation watcher, which runs after mount — in a
   // browser — so `window` and `document` exist here.
+  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- client-only: reached from the post-mount activation watcher
   const ev = (window as { event?: Event }).event
+  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- client-only: reached from the post-mount activation watcher
   const focused = document.activeElement
+  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- client-only: reached from the post-mount activation watcher
   if (!ev || !focused || focused === document.body) return false
   const t = ev.target
 
