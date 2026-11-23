@@ -19,6 +19,18 @@ android {
         versionCode = 1
         versionName = "0.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Every instrumented test starts from a fresh-install app state: the
+        // orchestrator (testOptions below) runs each test in its own process and
+        // `pm clear`s the app first. The instrumentation shares the app's
+        // process, so wiping files from a @Before would not be enough: a store
+        // or reporter object built by an earlier test is still in memory. The
+        // same guarantee as `launchFresh()` in the iOS suite (#4745), where a
+        // crash report left by a failed first attempt broke the retry.
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
+    }
+
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 
     buildFeatures {
@@ -118,6 +130,10 @@ dependencies {
     // The hosted editors live INSIDE a WebView, whose content is not in Compose semantics. UiAutomator reads it
     // through the accessibility tree and types into it with real key events, which is what a user does.
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.1")
+    // One process per test + `pm clear` before each (clearPackageData above).
+    // test-services is what runs the `pm clear` on the device.
+    androidTestUtil("androidx.test:orchestrator:1.6.1")
+    androidTestUtil("androidx.test.services:test-services:1.6.0")
 }
 
 tasks.register<Exec>("pyreonCompile") {

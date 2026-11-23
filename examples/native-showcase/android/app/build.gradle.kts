@@ -15,6 +15,14 @@ android {
         versionCode = 1
         versionName = "0.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Every instrumented test starts from a fresh-install app state: the
+        // orchestrator (testOptions below) runs each test in its own process and
+        // `pm clear`s the app first. See native-tasks/android/app/build.gradle.kts.
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
+    }
+
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 
     buildFeatures {
@@ -57,6 +65,9 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    // One process per test + `pm clear` before each (clearPackageData above).
+    androidTestUtil("androidx.test:orchestrator:1.6.1")
+    androidTestUtil("androidx.test.services:test-services:1.6.0")
 }
 
 // Compile ../../src/TodayApp.tsx → app/src/main/kotlin/com/pyreon/generated/

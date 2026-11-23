@@ -59,7 +59,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
     func test_appLaunchesOnHomeRoute() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // PMTC emits `<Stack data-testid="home-page">` →
         // `.accessibilityIdentifier("home-page")` via the canonical
@@ -75,7 +75,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
     func test_navigatesHomeToAbout() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // Wait for home, then tap the "Go to About" button.
         let homePage = app.otherElements["home-page"].firstMatch
@@ -121,7 +121,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
         // exercises the `:id` dynamic route segment + useParams()
         // emit path.
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let homePage = app.otherElements["home-page"].firstMatch
         XCTAssertTrue(
@@ -167,7 +167,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // the identifier reaching the emit AND the navigation behaving.
     func test_linkNavigatesToAbout() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -218,7 +218,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // Heading that mis-emitted as plain body text collapses the difference.
     func test_headingRendersLargerThanBodyText() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let heading = app.staticTexts["core-heading"]
         XCTAssertTrue(
@@ -243,7 +243,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // left-to-right gap IS the assertion.
     func test_spacerPushesInlineSiblingsApart() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let left = app.staticTexts["spacer-left"]
         let right = app.staticTexts["spacer-right"]
@@ -266,7 +266,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // out disjoint — frame intersection is the discriminator.
     func test_layerChildrenOverlapOnZAxis() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let under = app.staticTexts["layer-under"]
         let over = app.staticTexts["layer-over"]
@@ -293,7 +293,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // platforms (survivor keys asserted directly).
     func test_fieldArrayAddAndRemoveFirstKeepSurvivorRow() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -342,7 +342,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // config emit is locked by emit specs + the real-SDK typecheck gate.
     func test_transitionConfigAnimatesShowHide() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -377,7 +377,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // build and gate the views on a device.
     func test_slideAndScalePresetsShowAndHideAndReducedMotionReads() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30), "Home page did not render")
         app.buttons["View presets"].tap()
         XCTAssertTrue(app.otherElements["presets-page"].firstMatch.waitToExist(timeout: 15), "Presets page did not render")
@@ -401,7 +401,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // size-class READ on iPad is already device-proven (M2.2).
     func test_adaptivePropsResolveCompactOnPhone() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -435,7 +435,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // VStacks center, which is why the iOS shape is vertical.)
     func test_themeTokenPaddingDrivesLayout() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -481,7 +481,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // (CI starts it in the workflow step; locally the device-test recipe does).
     func test_webSocketEchoRoundTripsOnDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -523,7 +523,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // Requires the fixture: `bun examples/native-router-demo/scripts/ws-echo-server.ts`
     func test_httpVerbAndBodyReachTheWire() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -589,7 +589,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // only post-tap and post-relaunch.
     func test_secureStorageWriteSurvivesRelaunch() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["secure-value"].waitToExist(timeout: 30),
@@ -607,8 +607,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
             )
         }
 
-        app.terminate()
-        app.launch()
+        app.relaunchKeepingState()
 
         XCTAssertTrue(
             app.staticTexts["secure-value"].waitToExist(timeout: 30),
@@ -631,7 +630,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // must still read 'tap' — the drag recognizer must not swallow taps.
     func test_swipeGesturesFireDirectionalHandlers() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -676,7 +675,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // positive cumulative dx past 40pt, 'in' a cumulative scale above 1.2.
     func test_continuousGesturesReportPanAndPinch() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -719,7 +718,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // disclosed, not implied).
     func test_tenThousandRowListIsLazyAndScrolls() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -761,7 +760,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // Compose semantics tree exposes them directly).
     func test_a11yButtonTraitSurfacesInAccessibilityTree() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -803,7 +802,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // Network.framework, which ATS does not cover).
     func test_remoteImageRendersFetchedPixels() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -865,7 +864,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // unmounts correctly, which a broken transition modifier would not.
     func test_asymmetricTransitionShowsAndHides() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -936,7 +935,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // joined SERVICE_METHOD_RETURNS.
     func test_offlineWritesSurviveProcessDeath() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -961,8 +960,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
             "The write did not land in the database"
         )
 
-        app.terminate()
-        app.launch()
+        app.relaunchKeepingState()
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render after relaunch"
@@ -1006,7 +1004,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
 
         // Install/launch once, then terminate so the URL exercises a cold start.
         // XCTest delivers through the OS without depending on Safari UI.
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
@@ -1044,7 +1042,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // column's text, which a collapsed grid would not do.
     func test_coolgridColumnsSplitTheRowByTheirSpans() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -1098,7 +1096,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // the marker above: the 12pt stack gap plus 16pt of padding.
     func test_elementPaddingConsumesRealVerticalSpace() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -1136,7 +1134,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // and websocket tests — one server, all fixtures).
     func test_videoPlaybackStateReachesUI() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -1163,7 +1161,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // counter on the success AND the failure path, so it reads 1, 2, 3.
     func test_throwTryCatchFinallyRunOnDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -1246,7 +1244,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // emit ever called it, so useAppState() reported "active" forever.
     func test_appLifecycleBackgroundingSetsStickyFlag() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -1307,7 +1305,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // hug glyphs, so the gap between two sibling text frames is real layout.
     func test_attrsDefaultPropsReachLayout() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -1347,7 +1345,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // via captureToImage; an iOS screenshot-diff instrument stays tracked).
     func test_typographyTokensScaleGlyphGeometry() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -1400,7 +1398,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     //     SwiftUI re-render, the full chain.
     func test_pushReceiptRendersInjectedPayload() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
@@ -1464,7 +1462,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     /// compile, and a destructure was not lowered at all.
     func test_routeLoaderDataIsDestructuredAndReadyBeforeMount() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(
             app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30),
             "Home page did not render"
@@ -1495,7 +1493,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     // are queried by their label (documented on TabProps).
     func test_tabsKeepEachTabsStateAndSplitPushesDetail() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30))
         app.buttons["home-to-navigation"].tap()
 
@@ -1576,7 +1574,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     func test_splitShowsTwoPanesAndTabsMoveToTheTopOnPad() throws {
         try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad lane only")
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30))
         app.buttons["home-to-navigation"].tap()
         XCTAssertTrue(app.staticTexts["nav-feed-title"].waitToExist(timeout: 15), "Feed tab did not render")
@@ -1616,7 +1614,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     func test_tabRouterKeepsAStackPerTabAndTheTabBarOnPush() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-pyreonTabsDemo"]
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(
             app.staticTexts["tabs-feed-title"].waitToExist(timeout: 30),
             "TabsApp did not open on the Feed tab's root"
@@ -1663,7 +1661,7 @@ final class PyreonRouterDemoUITests: XCTestCase {
     /// native router. Before, an inline guard was dropped with a warning, so this route was reachable on iOS.
     func test_inlineBeforeEachGuardBlocksNavigation() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30), "Home page did not render")
         app.buttons["Go to About"].tap()
         XCTAssertTrue(app.otherElements["about-page"].firstMatch.waitToExist(timeout: 15), "About page did not render")
