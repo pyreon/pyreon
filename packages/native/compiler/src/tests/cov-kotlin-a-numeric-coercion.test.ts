@@ -40,9 +40,9 @@ describe('Kotlin expr: Math lowerings', () => {
     const out = kt(`  const a = computed(() => Math.sign(dn()))
   const b = computed(() => Math.trunc(dn()))
   const c = computed(() => Math.log2(dn()))`).code
-    expect(out).toContain('kotlin.math.sign((dn).toDouble())')
-    expect(out).toContain('kotlin.math.truncate((dn).toDouble())')
-    expect(out).toContain('kotlin.math.log2((dn).toDouble())')
+    expect(out).toContain('kotlin.math.sign(dn)')
+    expect(out).toContain('kotlin.math.truncate(dn)')
+    expect(out).toContain('kotlin.math.log2(dn)')
   })
 
   it('max/min with MIXED Int+Double coerces the Int side; a same-kind pair is left alone', () => {

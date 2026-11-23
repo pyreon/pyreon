@@ -18,6 +18,7 @@
 // that would require a real type checker. It covers the shapes the
 // emitter actually emits, which is a fixed-and-growing surface.
 
+import { indexReadsOptionally } from './destructure-absence'
 import { isDoubleLiteralValue } from './number-literal'
 import { DATE_RUNTIME_RESULTS } from './date-lowering'
 import { exprHasOptionalLink, exprReferencesIdent, isReReadableExpr } from './expr-utils'
@@ -25,6 +26,7 @@ import { childStatementLists } from './throw-lowering'
 import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ExtModuleItem, ModuleDeclIR, StatementIR, StructIR, TypeIR } from './types'
 import { rootReceiverName } from './expr-lowering'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
+import { isNumberGlobal, isNumberStatic } from './number-constants'
 import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginValueType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType, pluginResultTypeMember } from './registry-lookup'
 
 export interface InferenceCtx {
@@ -1047,6 +1049,9 @@ export function seedHandlerLocals(
       // `const out: Double[] = []` seeded unknown from the empty literal.
       ctx.locals.set(s.name, t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t)
     }
+    // `let lo: Double` (assigned later, per branch): the annotation is its only type. Unseeded, `hi - lo` after it
+    // inferred unknown and every numeric use converted it again.
+    if (s.kind === 'declare') ctx.locals.set(s.name, s.declaredType)
   }
 
   return saved
@@ -1303,6 +1308,15 @@ export function inferArrayStaticCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | 
  * Kotlin's `derivedStateOf` infers on its own (and allows Int↔Double comparison),
  * so this only feeds Swift's annotation — but it's target-neutral inference.
  */
+/**
+ * A Double: a float `number`, or the `Double` / `Float` ALIAS, which arrives as an unresolved typeRef (a parameter
+ * annotated `: Double`). Missing the alias typed `Math.abs(v)` / `Math.max(a, b)` over Double parameters as integers,
+ * so the Kotlin emit converted their (Double) results again — kotlinc's "redundant call of conversion method".
+ */
+function isDoubleType(t: TypeIR): boolean {
+  return (t.kind === 'number' && t.float === true) || (t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float'))
+}
+
 function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
   if (
     expr.kind !== 'call' ||
@@ -1333,18 +1347,13 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
     const a =
       expr.args[0] !== undefined ? inferType(expr.args[0], ctx) : { kind: 'unknown' as const }
 
-    return a.kind === 'number' && a.float === true
-      ? { kind: 'number', float: true }
-      : { kind: 'number' }
+    return isDoubleType(a) ? { kind: 'number', float: true } : { kind: 'number' }
   }
   if (fn === 'min' || fn === 'max') {
     // `Math.max()` and `Math.max(...xs)` are -Infinity when there is nothing to compare, so they are Doubles natively
     // (`pyreonMax`); an Int could not hold the answer for an empty list.
     if (expr.args.length === 0 || expr.args.some((a) => a.kind === 'spread')) return { kind: 'number', float: true }
-    const anyFloat = expr.args.some((a) => {
-      const t = inferType(a, ctx)
-      return t.kind === 'number' && t.float === true
-    })
+    const anyFloat = expr.args.some((a) => isDoubleType(inferType(a, ctx)))
 
     return anyFloat ? { kind: 'number', float: true } : { kind: 'number' }
   }
@@ -1500,6 +1509,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // parameters (`(item) => ...` in a For child) which need
       // dataflow into the For source we don't yet have.
       const loc = ctx.locals.get(expr.name)
+      if (loc === undefined && isNumberGlobal(expr.name)) return { kind: 'number', float: true }
       if (loc) return loc
       const sig = ctx.signals.get(expr.name)
       if (sig) return sig
@@ -1603,6 +1613,10 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // precise annotation instead of `Any` (`String(dbl(21))` typechecks).
         const helperRet = ctx.helperReturns?.get(expr.callee.name)
         if (helperRet) return helperRet
+        // A call through a FUNCTION-typed binding — a parameter (`measure: MeasureText`, the alias substituted at
+        // parse) or a local arrow with a declared return type — returns that type.
+        const calleeT = ctx.locals.get(expr.callee.name)
+        if (calleeT?.kind === 'function') return calleeT.returnType
         if (expr.callee.name === 'parseInt') return { kind: 'number' }
         if (expr.callee.name === 'parseFloat' || expr.callee.name === 'Number') {
           return { kind: 'number', float: true }
@@ -1938,7 +1952,7 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // a chained `?? fallback` collapses to the non-optional type (#1957).
       const idxObj = inferType(expr.object, ctx)
       if (idxObj.kind === 'array') {
-        if (expr.optional === true) {
+        if (indexReadsOptionally(expr, idxObj)) {
           return { kind: 'union', branches: [idxObj.element, { kind: 'undefined' }] }
         }
 
@@ -1956,6 +1970,9 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // EVERY Math constant is a Double on both targets (`PI` was the only
       // one inferred before `math-lowering.ts` taught the emitters the rest;
       // the others bound as `Any`/`let x: Any`).
+      if (expr.object.kind === 'identifier' && expr.object.name === 'Number' && isNumberStatic(expr.property)) {
+        return { kind: 'number', float: true }
+      }
       if (
         expr.object.kind === 'identifier' &&
         expr.object.name === 'Math' &&
@@ -2216,6 +2233,10 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // When the left resolves to a concrete non-optional type, that's the
         // result. Otherwise the fallback (right) carries the type — the more
         // literal side (`quotes.data() ?? []` → the `[]` array type).
+        // `a ?? null` (the web's undefined → null) is still optional: the fallback IS the absence.
+        if (expr.right.kind === 'literal' && expr.right.value === null && unwrapped.kind !== 'unknown') {
+          return { kind: 'union', branches: [unwrapped, { kind: 'null' }] }
+        }
         if (unwrapped.kind !== 'unknown' && !typeIsOptional(unwrapped)) return unwrapped
         return inferType(expr.right, ctx)
       }
@@ -2286,6 +2307,17 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         x.kind === 'array' && x.elements.length === 0 && x.elementType === undefined
       if (t.kind === 'array' && isEmptyArrayLit(expr.otherwise)) return t
       if (o.kind === 'array' && isEmptyArrayLit(expr.then)) return o
+      // A declared struct against an object LITERAL that names a subset of its fields (`isLog ? logBounds(s) : { min:
+      // 1.0, max: 10.0 }`, where `Domain` also has optional fields the literal omits): the literal is constructed as
+      // that struct in the branch, so the ternary is the struct. Without it `lb.min` inferred unknown.
+      const literalFitsStruct = (st: TypeIR, x: ExprIR): boolean => {
+        const lit = x.kind === 'paren' ? x.inner : x
+        if (st.kind !== 'typeRef' || lit.kind !== 'object' || (lit.spreads?.length ?? 0) > 0) return false
+        const fields = ctx.structs.get(st.name)
+        return fields !== undefined && lit.fields.length > 0 && lit.fields.every((f) => fields.has(f.name))
+      }
+      if (literalFitsStruct(t, expr.otherwise)) return t
+      if (literalFitsStruct(o, expr.then)) return o
 
       return { kind: 'unknown' }
     }
@@ -2298,6 +2330,20 @@ export function inferTypeValue(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // handles the common path.
       return { kind: 'unknown' }
     case 'arrow':
+      // An arrow whose parameters and return are all annotated is a value of a known function type, so a local bound
+      // to it (`const grow = (d: Domain): Domain => …`) types the calls made through it.
+      if (
+        expr.returnAnnot !== undefined &&
+        expr.params.length === (expr.paramTypes?.length ?? 0) &&
+        (expr.paramTypes ?? []).every((t) => t !== undefined)
+      ) {
+        return {
+          kind: 'function',
+          params: expr.params.map((name, i) => ({ name, type: expr.paramTypes![i]! })),
+          returnType: expr.returnAnnot,
+        }
+      }
+      return { kind: 'unknown' }
     case 'jsx-element':
     case 'jsx-fragment':
       // Not a value-typed expression in this context — degrade. (Kept

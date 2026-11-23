@@ -149,6 +149,10 @@ const warnUnsupported = (member: string, why: string): MathLowering => ({
 export function lowerMathCall(input: MathCallInput): MathLowering {
   const { target, member, args } = input
   const swift = target === 'swift'
+  // Argument `i` as a Double. Kotlin skips the conversion for a provably-Double argument (kotlinc flags
+  // `Double.toDouble()` as a redundant call); Swift's `Double(x)` over a Double is warning-free and stays as it was.
+  const dblAt = (i: number): string =>
+    !swift && input.argIsFloat[i] === true ? args[i]! : dbl(target, args[i]!)
   const n = args.length
 
   // ── Variadic in ECMAScript, fixed-arity on both platforms ──────────────
@@ -172,7 +176,7 @@ export function lowerMathCall(input: MathCallInput): MathLowering {
       }
     }
     const anyFloat = input.argIsFloat.some((f) => f)
-    const parts = args.map((a) => (anyFloat ? dbl(target, a) : a))
+    const parts = args.map((a, i) => (anyFloat ? dblAt(i) : a))
     const fn = swift ? member : `Math.${member}`
     let acc = parts[parts.length - 1]!
     for (let i = parts.length - 2; i >= 0; i--) acc = `${fn}(${parts[i]!}, ${acc})`
@@ -184,13 +188,13 @@ export function lowerMathCall(input: MathCallInput): MathLowering {
     if (n === 0) return { code: '0.0' }
     if (n === 1)
       return {
-        code: swift ? `abs(${dbl(target, args[0]!)})` : `Math.abs(${dbl(target, args[0]!)})`,
+        code: swift ? `abs(${dbl(target, args[0]!)})` : `Math.abs(${dblAt(0)})`,
       }
     // sqrt(Σ xᵢ²) via pow so each argument expression is evaluated ONCE
     // (`x * x` would emit the argument twice — wrong for any call with a
     // side effect, and a silent double-fetch for a signal read).
     const sq = args
-      .map((a) => (swift ? `pow(${dbl(target, a)}, 2)` : `Math.pow(${dbl(target, a)}, 2.0)`))
+      .map((a, i) => (swift ? `pow(${dbl(target, a)}, 2)` : `Math.pow(${dblAt(i)}, 2.0)`))
       .join(' + ')
     return { code: swift ? `sqrt(${sq})` : `Math.sqrt(${sq})` }
   }
@@ -235,20 +239,20 @@ export function lowerMathCall(input: MathCallInput): MathLowering {
     // Both exist on Foundation AND java.lang.Math — the Swift emit was
     // missing them entirely, and the Kotlin one reached them without the
     // Int→Double coercion java demands.
-    return { code: swift ? `${member}(${dbl(target, a)})` : `Math.${member}(${dbl(target, a)})` }
+    return { code: swift ? `${member}(${dbl(target, a)})` : `Math.${member}(${dblAt(0)})` }
   }
 
   if (member === 'asinh' || member === 'acosh' || member === 'atanh') {
     // Foundation free functions on Swift; `kotlin.math` on Kotlin (they are
     // NOT on java.lang.Math, which is why the passthrough was unresolved).
     return {
-      code: swift ? `${member}(${dbl(target, a)})` : `kotlin.math.${member}(${dbl(target, a)})`,
+      code: swift ? `${member}(${dbl(target, a)})` : `kotlin.math.${member}(${dblAt(0)})`,
     }
   }
 
   if (member === 'fround') {
     return {
-      code: swift ? `Double(Float(${dbl(target, a)}))` : `(${dbl(target, a)}).toFloat().toDouble()`,
+      code: swift ? `Double(Float(${dbl(target, a)}))` : `(${dblAt(0)}).toFloat().toDouble()`,
     }
   }
 

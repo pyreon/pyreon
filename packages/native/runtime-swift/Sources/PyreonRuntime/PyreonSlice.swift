@@ -55,6 +55,13 @@ public func pyreonSubstring(_ s: String, _ start: Int, _ end: Int? = nil) -> Str
     return String(decoding: units[min(a, b)..<max(a, b)], as: UTF16.self)
 }
 
+/// JavaScript's `xs[i]` where the code tests the result for `undefined`: the element, or `nil` out of range (a
+/// negative index included) instead of a trap. The single-evaluation form of `xs.indices.contains(i) ? xs[i] : nil`,
+/// for a receiver or index the emit cannot name twice.
+public func pyreonAt<T>(_ xs: [T], _ i: Int) -> T? {
+    return i >= 0 && i < xs.count ? xs[i] : nil
+}
+
 /// JavaScript's `str.charAt(i)`: the UTF-16 unit at `i` as a one-unit string, or `""` out of range.
 public func pyreonCharAt(_ s: String, _ i: Int) -> String {
     let units = Array(s.utf16)

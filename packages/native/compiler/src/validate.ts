@@ -428,6 +428,8 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'pyreonSliceIndex', file: 'PyreonSlice.swift' },
   { name: 'pyreonSubstring', file: 'PyreonSlice.swift' },
   { name: 'pyreonCharAt', file: 'PyreonSlice.swift' },
+  // A bounds-checked indexed read whose receiver or index cannot be named twice (destructure-absence.ts).
+  { name: 'pyreonAt', file: 'PyreonSlice.swift' },
   { name: 'pyreonIndexOf', file: 'PyreonSlice.swift' },
   { name: 'pyreonStartsWith', file: 'PyreonSlice.swift' },
   { name: 'pyreonEndsWith', file: 'PyreonSlice.swift' },

@@ -143,6 +143,30 @@ function deleteAt(index: number) { items.value.splice(index, 1) }
 | Default parameters (`function fn(a = 1)`) | ✅ Full | Emitted as a native default argument |
 | Rest parameters (`function fn(...args)`) | ⚠️ Warns | Take an array parameter instead |
 
+### ✅ Numbers and indexed reads
+
+```ts
+type Double = number
+
+function spread(values: Double[], n: number, i: number): Double {
+  const nF: Double = Number(n)            // int → double: Double(n) / (n).toDouble()
+  const v = values[i]
+  if (v === undefined || !Number.isFinite(v)) return NaN
+  return v / nF
+}
+```
+
+| Shape | Status | Notes |
+|---|---|---|
+| `Number(n)` over a number | ✅ Full | **The int→double conversion.** A bare `number` is an integer natively unless the compiler sees float evidence; `Number(n)` lowers to `Double(n)` / `(n).toDouble()` over an integer and is the identity over a `Double`. Never convert by counting (`let f = 0.0; for (…) f = f + 1.0`) |
+| `NaN`, `Infinity`, `Number.NaN` / `POSITIVE_INFINITY` / `NEGATIVE_INFINITY` / `MAX_VALUE` / `MIN_VALUE` / `EPSILON` | ✅ Full | The Double constants on both targets; do not spell NaN `0.0 / 0.0` |
+| `xs[i]` used as a present value | ✅ Full | The native subscript: out of range it traps, as dereferencing `undefined` fails on the web |
+| `xs[i] ?? d`, `xs[i] === undefined`, `xs[i]?.x`, or `const v = xs[i]` tested that way later | ✅ Full | A **bounds-checked optional read** (`xs.indices.contains(i) ? xs[i] : nil` or `pyreonAt(xs, i)` / `xs.getOrNull(i)`): the guard runs natively as on the web. Arrays only; a `Record` read is already optional |
+| `if (v === undefined \|\| !ok(v)) return …` | ✅ Full | Narrows `v` for the rest of the block (the guard is split per absence test) |
+| `if (!xs[i])` on a plain indexed read | ⚠️ Subscript | A truthiness test is not read as an absence test (it cannot be told from a `boolean[]` element) — write `xs[i] === undefined` |
+
+The emitted Swift and Kotlin compile without warnings; see [Multi-Platform (PMTC)](/docs/multiplatform) for the full per-construct table.
+
 ### ✅ Collections (`Map` / `Set`)
 
 ```ts

@@ -87,12 +87,9 @@ export function limitZoomWindow(limits: ZoomLimits, prev: ZoomWindow, next: Zoom
 /** The window covering rows `first`…`last` (inclusive) of `n` — what a box-select zoom sets. */
 export function windowOfRows(first: number, last: number, n: number): ZoomWindow {
   if (n <= 0) return { start: 0.0, end: 1.0 }
-  let nF = 0.0
-  for (let i = 0; i < n; i++) nF = nF + 1.0
-  let a = 0.0
-  for (let i = 0; i < first; i++) a = a + 1.0
-  let b = 0.0
-  for (let i = 0; i <= last; i++) b = b + 1.0
+  const nF: Double = Number(n)
+  const a: Double = first > 0 ? Number(first) : 0.0
+  const b: Double = last >= 0 ? Number(last + 1) : 0.0
   return clampWindow({ start: a / nF, end: b / nF })
 }
 
@@ -108,8 +105,7 @@ export function isFullWindow(win: ZoomWindow): boolean {
  */
 export function sliceRange(win: ZoomWindow, n: number): SliceRange {
   if (n <= 0) return { from: 0, to: 0 }
-  let nF = 0.0
-  for (let i = 0; i < n; i++) nF = nF + 1.0
+  const nF: Double = Number(n)
   const startAt = win.start * nF
   const endAt = win.end * nF
   let from = 0

@@ -6,6 +6,9 @@
 
 import { unloweredSignalMethodWarning } from './signal-object-methods'
 import { bitwiseHelper, integerOpHelper, isNumericConstant, numericKind } from './integer-arithmetic'
+import { numberConversion } from './int-to-double'
+import { lowerNumberGlobal, lowerNumberStatic } from './number-constants'
+import { indexReadsOptionally } from './destructure-absence'
 import { dateFieldWarning, kotlinDateSerializer } from './date-json'
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { hasOptionalChain, interpolandAbsentSpelling, isUntypedTextChild, optionalTextCall } from './optional-text'
@@ -576,6 +579,24 @@ function asFloatLiteral(v: ExprIR, t: TypeIR | undefined): ExprIR {
     return v
 
   return { ...v, float: true }
+}
+
+/** Whether `e` is provably a Double, provably an integer, or neither — the Kotlin twin of the Swift `numericFloatness`. */
+function kotlinFloatness(e: ExprIR): 'double' | 'int' | 'other' {
+  return numericKind(inferType(e, _kotlinExprInferCtx))
+}
+
+/**
+ * `emitted` (the emit of `e`) as a Kotlin Double: unchanged when `e` is provably a Double, `(…).toDouble()` otherwise.
+ * An Int or UNKNOWN operand keeps the conversion, so a mis-inference can only ever cost a redundant call.
+ */
+function kotlinAsDouble(e: ExprIR, emitted: string): string {
+  return kotlinFloatness(e) === 'double' ? emitted : `(${emitted}).toDouble()`
+}
+
+/** `emitted` as a Kotlin Long: unchanged when `e` is provably an integer (a `Long.toLong()` is a redundant call), `(…).toLong()` otherwise. */
+function kotlinAsLong(e: ExprIR, emitted: string): string {
+  return kotlinFloatness(e) === 'int' ? emitted : `(${emitted}).toLong()`
 }
 
 function typeWantsFloat(t: TypeIR): boolean {
@@ -2294,6 +2315,19 @@ function emitKotlinStmtLinesScoped(
 
       return out
     }
+    // A guard on a stable LOCAL (`if (v === undefined) return …`): Kotlin smart-casts `v` itself for the rest of the
+    // block, so the guard emits as written — but the INFERENCE must see the narrowed type too, or every type-gated
+    // lowering after it (`Number.isFinite(v)`, `String(v)`) still treats `v` as optional and declines or prints
+    // `pyreonOptionalText`.
+    if (g !== null && g.narrowing.subject.kind === 'identifier') {
+      const name = g.narrowing.subject.name
+      out.push(`${pad}${emitKotlinStatement(s, indent, ctx)}`)
+      out.push(
+        ...withKotlinLocals([[name, g.narrowing.unwrapped]], () => emitKotlinStmtLinesScoped(stmts.slice(i + 1), indent, ctx)),
+      )
+
+      return out
+    }
     out.push(`${pad}${emitKotlinStatement(s, indent, ctx)}`)
     if (s.kind === 'let' && !_kotlinExprInferCtx.locals.has(s.name)) {
       const t = inferType(s.expr, _kotlinExprInferCtx)
@@ -3783,6 +3817,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'identifier': {
       const constant = lowerPluginIdentifier(e.name, 'kotlin', () => kotlinEmitContext(0))
       if (constant !== undefined) return constant
+      const numberGlobal = _kotlinExprInferCtx.locals.has(e.name) ? undefined : lowerNumberGlobal(e.name, 'kotlin')
+      if (numberGlobal !== undefined) return numberGlobal
       if (isModuleStateReadKt(e.name)) return `${moduleStateClassName()}.${kotlinIdent(e.name)}`
 
       return kotlinIdent(e.name)
@@ -4075,7 +4111,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           log2: 'kotlin.math.log2',
         }
         if (JAVA_MATH_DOUBLE.has(fn) || KOTLIN_MATH_REMAP[fn] !== undefined) {
-          const args = e.args.map((a) => `(${emitKotlinExpr(a, indent)}).toDouble()`).join(', ')
+          const args = e.args.map((a) => kotlinAsDouble(a, emitKotlinExpr(a, indent))).join(', ')
           const callee = KOTLIN_MATH_REMAP[fn] ?? `Math.${fn}`
           return `${callee}(${args})`
         }
@@ -4290,6 +4326,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           }
 
           return `((${arg}).toLongOrNull() ?: 0L)`
+        }
+        if (e.callee.name === 'Number') {
+          // `Number(n)` over a NUMBER: the int→double conversion (`int-to-double.ts`). `toDoubleOrNull` exists only
+          // on String, so the generic emit below did not compile for one.
+          const conv = numberConversion(e.args[0]!, kotlinFloatness)
+          if (conv === 'identity') return arg
+          if (conv === 'widen') return `(${arg}).toDouble()`
+          // `Number(true)` is 1 on the web; Kotlin has no Boolean→Double conversion (Swift's twin emits `b ? 1 : 0`).
+          if (inferType(e.args[0]!, _kotlinExprInferCtx).kind === 'boolean') return `(if (${arg}) 1.0 else 0.0)`
         }
 
         return `((${arg}).toDoubleOrNull() ?: 0.0)`
@@ -4796,7 +4841,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
                 ? (sliceObjType.branches.find((b) => b.kind !== 'undefined' && b.kind !== 'null') ?? sliceObjType)
                 : sliceObjType
               if (inner.kind === 'string' || inner.kind === 'array') {
-                const rest = argExprs.map((a) => `(${a}).toLong()`).join(', ')
+                const rest = argExprs.map((a, i) => kotlinAsLong(e.args[i]!, a)).join(', ')
                 return objDot === '?.'
                   ? `${obj}?.let { pyreonSlice(it, ${rest}) }`
                   : `pyreonSlice(${obj}, ${rest})`
@@ -5002,7 +5047,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // where JavaScript clamps and swaps — `title.substring(0, 10)` on a shorter title crashed the app.
             // The runtime's `pyreonSubstring` has JavaScript's semantics; a Double bound truncates via `toLong()`.
             if (e.args.length === 1 || e.args.length === 2) {
-              const rest = e.args.map((a) => `(${emitKotlinExpr(a, indent)}).toLong()`).join(', ')
+              const rest = e.args.map((a) => kotlinAsLong(a, emitKotlinExpr(a, indent))).join(', ')
               return objDot === '?.'
                 ? `${obj}?.let { pyreonSubstring(it, ${rest}) }`
                 : `pyreonSubstring(${obj}, ${rest})`
@@ -5048,10 +5093,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `${callee}(${args})`
     }
     case 'index': {
-      // `xs[i]` — Kotlin lists share the subscript syntax verbatim. The
-      // OPTIONAL form `xs?.[i]` → `getOrNull(i)` (stdlib, single-eval — no
-      // re-readability guard needed, unlike the Swift idiom).
-      if (e.optional === true) {
+      // `xs[i]` — Kotlin lists share the subscript syntax verbatim. An
+      // OPTIONAL read — the source's `xs?.[i]`, or a read it tests for
+      // absence (`xs[i] ?? d`, `xs[i] === undefined`; destructure-absence.ts)
+      // → `getOrNull(i)` (stdlib, single-eval — no re-readability guard
+      // needed, unlike the Swift idiom).
+      if (indexReadsOptionally(e, inferType(e.object, _kotlinExprInferCtx))) {
         // An optional-typed object (an upstream `?.` chain — `sel?.tags` is
         // `List<String>?`) needs the SAFE call: `?.getOrNull`. Kotlin handles
         // the optional-receiver case fully (nil-propagating + OOB-safe);
@@ -5083,6 +5130,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // `Math.PI` member READ — java.lang.Math.PI is valid on the JVM, but
       // emit the fully-qualified stdlib constant so no import is needed and
       // the kotlinc stub gate sees a real symbol.
+      // `Number.NaN` / `Number.POSITIVE_INFINITY` / `Number.EPSILON` / … (number-constants.ts).
+      if (e.object.kind === 'identifier' && e.object.name === 'Number' && !_kotlinExprInferCtx.locals.has('Number')) {
+        const k = lowerNumberStatic(e.property, 'kotlin')
+        if (k !== undefined) return k
+      }
       if (e.object.kind === 'identifier' && e.object.name === 'Math' && e.property === 'PI') {
         return 'kotlin.math.PI'
       }
@@ -5165,15 +5217,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // coerce both operands with `.toDouble()` to match JS semantics. `/`
       // is only valid on numbers, so this is always sound. Other ops
       // (`+ - * %`) match JS for integers and are emitted verbatim.
+      //
+      // A PROVABLY-Double operand takes no conversion — kotlinc flags each `Double.toDouble()` as a "redundant call
+      // of conversion method", and the Swift twin already skips its `Double(…)` wrap on the same inference.
       if (e.op === '/') {
-        return `(${bl}).toDouble() / (${br}).toDouble()`
+        return `${kotlinAsDouble(e.left, bl)} / ${kotlinAsDouble(e.right, br)}`
       }
       // Exponent (`a ** b`) — Kotlin has no `**` operator; `Math.pow`
       // (java.lang.Math, always on the classpath) is Double-domain. Coerce
       // both operands so an Int base/exponent works; the result is Double
       // (matches JS, where `**` yields a Number).
       if (e.op === '**') {
-        return `Math.pow((${bl}).toDouble(), (${br}).toDouble())`
+        return `Math.pow(${kotlinAsDouble(e.left, bl)}, ${kotlinAsDouble(e.right, br)})`
       }
       // JS `+` where EITHER operand is a string is string CONCATENATION.
       // Kotlin's `String.plus(Any?)` coerces a RIGHT-hand non-string
@@ -5319,6 +5374,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // because Elvis binds LOOSER than comparisons (`a ?: b > 0`
       // parses as `a ?: (b > 0)`).
       if (e.op === '??') {
+        // `x ?? null` (the web's undefined → null) is just `x` natively: one nullable stands for both, and kotlinc
+        // flags `x ?: null` ("right operand of elvis operator is useless if it is null").
+        if (e.right.kind === 'literal' && e.right.value === null) return emitKotlinExpr(e.left, indent)
         const fnRef = (x: typeof e.left): string => {
           const raw = emitKotlinExpr(x, indent)
           // A top-level fn used as a VALUE needs the reference operator —
@@ -5439,99 +5497,23 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       return `${emitKotlinExpr(e.argument, indent)}${e.op}`
     case 'arrow': {
-      return _pluginScope.withBindings(
-        e.params.map((name) => ({ name })),
-        () => {
-          // Typed per-param when annotations survive parse — Kotlin allows
-          // `{ r: Rect -> … }` per param, and a standalone lambda cannot infer.
-          const standaloneLambda = _typedLambdaLet
-          _typedLambdaLet = false
-          const ktLambdaParams = (): string => {
-            const types = e.paramTypes
-            if (
-              standaloneLambda &&
-              types !== undefined &&
-              types.length === e.params.length &&
-              types.every((t) => t !== undefined && t.kind !== 'unknown')
-            ) {
-              return e.params
-                .map((n, i2) => `${kotlinIdent(n)}: ${kotlinType(types[i2]!, undefined, n)}`)
-                .join(', ')
-            }
-
-            return e.params.map((n) => kotlinIdent(n)).join(', ')
-          }
-          // A BLOCK body carries `stmts` — mirror of the Swift plain-path fix
-          // (the sentinel `""` silently dropped multi-statement 1-param
-          // callbacks). Kotlin lambdas return the LAST expression; explicit
-          // `return` inside a lambda needs a label — emitKotlinStatement's
-          // return handling covers the shapes the statement parser produces.
-          if (e.stmts !== undefined && e.stmts.length > 0) {
-            // A body containing RETURN statements needs Kotlin's labeled-return
-            // form (`return@filter`), and the generic arrow emit can't know its
-            // enclosing method label (only call sites can — the indexed path
-            // threads it via emitKotlinIndexedBody). Return-free bodies are
-            // safe: a Kotlin lambda yields its LAST expression. Return-bearing
-            // bodies get a NAMED warning (previously a SILENT sentinel drop) —
-            // the labeled-callback call-site wiring is the tracked follow-up.
-            const hasReturn = JSON.stringify(e.stmts).includes('"kind":"return"')
-            if (hasReturn) {
-              // An ANONYMOUS FUNCTION allows plain `return` (a lambda needs a
-              // call-site label). When every param carries an annotation and the
-              // return type is declared, emit `fun(p: T): R { ... }` — the
-              // returned-formatter factory shape the charts engine ships.
-              const types = e.paramTypes
-              const allTyped =
-                types !== undefined &&
-                types.length === e.params.length &&
-                types.every((t) => t !== undefined && t.kind !== 'unknown')
-              if (allTyped && e.returnAnnot !== undefined && e.returnAnnot.kind !== 'unknown') {
-                const savedAF = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
-                const pbind: Array<[string, boolean, TypeIR | undefined]> = []
-                e.params.forEach((pn, pi) => {
-                  const pt = types![pi]!
-                  pbind.push([
-                    pn,
-                    _kotlinExprInferCtx.locals.has(pn),
-                    _kotlinExprInferCtx.locals.get(pn),
-                  ])
-                  _kotlinExprInferCtx.locals.set(pn, pt)
-                })
-                const fnCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
-                const lines = emitKotlinStmtLines(e.stmts, indent + 2, fnCtx).join('\n')
-                for (const [pn, had, prev] of pbind.reverse()) {
-                  if (had) _kotlinExprInferCtx.locals.set(pn, prev!)
-                  else _kotlinExprInferCtx.locals.delete(pn)
-                }
-                _kotlinExprInferCtx.locals = savedAF
-                const sig = e.params
-                  .map((pn, pi) => `${kotlinIdent(pn)}: ${kotlinType(types![pi]!, undefined, pn)}`)
-                  .join(', ')
-
-                return `fun(${sig}): ${kotlinType(e.returnAnnot)} {\n${lines}\n${' '.repeat(indent)}}`
-              }
-              _emitWarnings.push(
-                `a multi-statement callback with early returns is not lowered on Kotlin at this call site yet (labeled-return wiring) — the body was DROPPED; annotate every param AND the return type for the anonymous-function form, or restructure as an expression body.`,
-              )
-
-              return `{ ${ktLambdaParams()} -> Unit }`
-            }
-            const saved = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
-            const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
-            const lines = emitKotlinStmtLines(e.stmts, indent + 2, stmtCtx).join('\n')
-            _kotlinExprInferCtx.locals = saved
-            const params = e.params.length > 0 ? `${ktLambdaParams()} ->` : ''
-
-            return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
-          }
-          if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
-          // ktLambdaParams, not the raw names — the single-EXPRESSION branch
-          // bypassed the typed standalone form entirely (a let-bound
-          // `(n: Double) => expr` emitted `{ n -> }`, which kotlinc rejects
-          // with "an explicit type is required on a value parameter").
-          return `{ ${ktLambdaParams()} -> ${emitKotlinExpr(e.body, indent)} }`
-        },
+      // An ANNOTATED parameter's type is in scope for the body's inference (`(n: Double) => Math.trunc(n)`): unseeded,
+      // `n` inferred unknown and every numeric use converted it again (`n.toDouble()` on a Double — kotlinc's
+      // "redundant call of conversion method").
+      const seeded = (e.paramTypes ?? []).flatMap((t, i) =>
+        t !== undefined && t.kind !== 'unknown' && e.params[i] !== undefined ? [[e.params[i]!, t] as const] : [],
       )
+      const prevParams = seeded.map(([n]) => [n, _kotlinExprInferCtx.locals.has(n), _kotlinExprInferCtx.locals.get(n)] as const)
+      const paramCtx = _kotlinExprInferCtx
+      for (const [n, t] of seeded) paramCtx.locals.set(n, t)
+      try {
+        return emitKotlinArrow(e, indent)
+      } finally {
+        for (const [n, had, prev] of prevParams.reverse()) {
+          if (had) paramCtx.locals.set(n, prev!)
+          else paramCtx.locals.delete(n)
+        }
+      }
     }
     case 'new-collection': {
       // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
@@ -10482,4 +10464,101 @@ function kotlinSpreadResolver(indent: number): SpreadResolver {
 /** `int` / `double` / `other` for an operand, through the Kotlin inference context (`integer-arithmetic.ts`). */
 function kotlinNumericKind(e: ExprIR): 'int' | 'double' | 'other' {
   return numericKind(inferType(e, _kotlinExprInferCtx))
+}
+
+/** The lambda / anonymous-function emit of an arrow (its parameter types already seeded by the caller). */
+function emitKotlinArrow(e: Extract<ExprIR, { kind: 'arrow' }>, indent: number): string {
+  return _pluginScope.withBindings(
+    e.params.map((name) => ({ name })),
+    () => {
+      // Typed per-param when annotations survive parse — Kotlin allows
+      // `{ r: Rect -> … }` per param, and a standalone lambda cannot infer.
+      const standaloneLambda = _typedLambdaLet
+      _typedLambdaLet = false
+      const ktLambdaParams = (): string => {
+        const types = e.paramTypes
+        if (
+          standaloneLambda &&
+          types !== undefined &&
+          types.length === e.params.length &&
+          types.every((t) => t !== undefined && t.kind !== 'unknown')
+        ) {
+          return e.params
+            .map((n, i2) => `${kotlinIdent(n)}: ${kotlinType(types[i2]!, undefined, n)}`)
+            .join(', ')
+        }
+
+        return e.params.map((n) => kotlinIdent(n)).join(', ')
+      }
+      // A BLOCK body carries `stmts` — mirror of the Swift plain-path fix
+      // (the sentinel `""` silently dropped multi-statement 1-param
+      // callbacks). Kotlin lambdas return the LAST expression; explicit
+      // `return` inside a lambda needs a label — emitKotlinStatement's
+      // return handling covers the shapes the statement parser produces.
+      if (e.stmts !== undefined && e.stmts.length > 0) {
+        // A body containing RETURN statements needs Kotlin's labeled-return
+        // form (`return@filter`), and the generic arrow emit can't know its
+        // enclosing method label (only call sites can — the indexed path
+        // threads it via emitKotlinIndexedBody). Return-free bodies are
+        // safe: a Kotlin lambda yields its LAST expression. Return-bearing
+        // bodies get a NAMED warning (previously a SILENT sentinel drop) —
+        // the labeled-callback call-site wiring is the tracked follow-up.
+        const hasReturn = JSON.stringify(e.stmts).includes('"kind":"return"')
+        if (hasReturn) {
+          // An ANONYMOUS FUNCTION allows plain `return` (a lambda needs a
+          // call-site label). When every param carries an annotation and the
+          // return type is declared, emit `fun(p: T): R { ... }` — the
+          // returned-formatter factory shape the charts engine ships.
+          const types = e.paramTypes
+          const allTyped =
+            types !== undefined &&
+            types.length === e.params.length &&
+            types.every((t) => t !== undefined && t.kind !== 'unknown')
+          if (allTyped && e.returnAnnot !== undefined && e.returnAnnot.kind !== 'unknown') {
+            const savedAF = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
+            const pbind: Array<[string, boolean, TypeIR | undefined]> = []
+            e.params.forEach((pn, pi) => {
+              const pt = types![pi]!
+              pbind.push([
+                pn,
+                _kotlinExprInferCtx.locals.has(pn),
+                _kotlinExprInferCtx.locals.get(pn),
+              ])
+              _kotlinExprInferCtx.locals.set(pn, pt)
+            })
+            const fnCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+            const lines = emitKotlinStmtLines(e.stmts, indent + 2, fnCtx).join('\n')
+            for (const [pn, had, prev] of pbind.reverse()) {
+              if (had) _kotlinExprInferCtx.locals.set(pn, prev!)
+              else _kotlinExprInferCtx.locals.delete(pn)
+            }
+            _kotlinExprInferCtx.locals = savedAF
+            const sig = e.params
+              .map((pn, pi) => `${kotlinIdent(pn)}: ${kotlinType(types![pi]!, undefined, pn)}`)
+              .join(', ')
+
+            return `fun(${sig}): ${kotlinType(e.returnAnnot)} {\n${lines}\n${' '.repeat(indent)}}`
+          }
+          _emitWarnings.push(
+            `a multi-statement callback with early returns is not lowered on Kotlin at this call site yet (labeled-return wiring) — the body was DROPPED; annotate every param AND the return type for the anonymous-function form, or restructure as an expression body.`,
+          )
+
+          return `{ ${ktLambdaParams()} -> Unit }`
+        }
+        const saved = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
+        const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+        const lines = emitKotlinStmtLines(e.stmts, indent + 2, stmtCtx).join('\n')
+        _kotlinExprInferCtx.locals = saved
+        const params = e.params.length > 0 ? `${ktLambdaParams()} ->` : ''
+
+        return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
+      }
+      if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
+      // ktLambdaParams, not the raw names — the single-EXPRESSION branch
+      // bypassed the typed standalone form entirely (a let-bound
+      // `(n: Double) => expr` emitted `{ n -> }`, which kotlinc rejects
+      // with "an explicit type is required on a value parameter").
+      return `{ ${ktLambdaParams()} -> ${emitKotlinExpr(e.body, indent)} }`
+    },
+  )
 }

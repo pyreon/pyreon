@@ -12,7 +12,7 @@
 //   Math.sqrt(16)   → Math.sqrt((16).toDouble())
 //   Math.pow(2, 3)  → Math.pow((2).toDouble(), (3).toDouble())
 //   Math.sign(-3)   → kotlin.math.sign((-3).toDouble())
-//   Math.trunc(3.7) → kotlin.math.truncate((3.7).toDouble())
+//   Math.trunc(3.7) → kotlin.math.truncate(3.7) (a Double argument is not converted again)
 //
 // Int-friendly fns (abs/max/min) + floor/ceil/round + constants stay on the
 // generic passthrough (they already validate). Swift parses its Math fine
@@ -43,7 +43,7 @@ describe('Kotlin Math.* Double-domain coercion', () => {
 
   it('remaps non-java fns to kotlin.math (sign / trunc / log2)', () => {
     expect(kt('Math.sign(-3)')).toContain('kotlin.math.sign((-3L).toDouble())')
-    expect(kt('Math.trunc(3.7)')).toContain('kotlin.math.truncate((3.7).toDouble())')
+    expect(kt('Math.trunc(3.7)')).toContain('kotlin.math.truncate(3.7)')
     expect(kt('Math.log2(8)')).toContain('kotlin.math.log2((8L).toDouble())')
   })
 

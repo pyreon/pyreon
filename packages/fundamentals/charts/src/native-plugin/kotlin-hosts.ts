@@ -337,7 +337,7 @@ function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     host.warn('<GaugeChart>: needs a `value` attribute on native; emitting an empty Box().')
     return 'Box {}'
   }
-  const value = `(${host.expr(valueV, indent)}).toDouble()`
+  const value = host.kotlinDouble(valueV, indent)
   const H = kotlinChartDouble(e, 'height', 140, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 240, indent) : 'pyreonW'

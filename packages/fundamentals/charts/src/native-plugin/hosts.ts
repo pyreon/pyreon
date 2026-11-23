@@ -295,11 +295,9 @@ const objectField = (e: ExprIR, name: string): ExprIR | undefined =>
     ? e.fields.find((f) => f.name === name)?.value
     : undefined
 
-/** A Double literal; NaN is `0.0 / 0.0` — the engine's own gap idiom, valid in Swift and Kotlin alike. */
+/** A Double literal; NaN is the `NaN` global, which the compiler lowers to `Double.nan` / `Double.NaN`. */
 const doubleLiteralIr = (value: number): ExprIR =>
-  Number.isNaN(value)
-    ? { kind: 'binary', op: '/', left: { kind: 'literal', value: 0, float: true }, right: { kind: 'literal', value: 0, float: true } }
-    : { kind: 'literal', value, float: true }
+  Number.isNaN(value) ? { kind: 'identifier', name: 'NaN' } : { kind: 'literal', value, float: true }
 
 /** The literal behind a prop: the expression itself, or a module const's initializer. */
 function literalOf(e: ExprIR | undefined, resolve: (name: string) => ExprIR | undefined): ExprIR | undefined {

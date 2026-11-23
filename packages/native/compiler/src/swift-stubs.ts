@@ -1800,6 +1800,7 @@ public func pyreonSlice(_ s: String, _ start: Int, _ end: Int? = nil) -> String 
 public func pyreonSliceIndex(_ d: Double) -> Int { 0 }
 public func pyreonSubstring(_ s: String, _ start: Int, _ end: Int? = nil) -> String { s }
 public func pyreonCharAt(_ s: String, _ i: Int) -> String { s }
+public func pyreonAt<T>(_ xs: [T], _ i: Int) -> T? { nil }
 public func pyreonIndexOf(_ s: String, _ search: String, _ from: Int = 0) -> Int { 0 }
 public func pyreonStartsWith(_ s: String, _ search: String, _ position: Int) -> Bool { false }
 public func pyreonEndsWith(_ s: String, _ search: String, _ endPosition: Int) -> Bool { false }

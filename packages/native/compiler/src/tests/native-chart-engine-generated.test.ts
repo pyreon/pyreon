@@ -15,12 +15,25 @@
 //   3. Android: the generated engine compiles with the canvas-owned data
 //      classes extracted VERBATIM from PyreonChartCanvas.kt (never re-typed
 //      — a re-typed shim drifts; see the stub-fidelity rule).
+//   4. ZERO WARNINGS: both Swift runtime packages (`swift build
+//      --build-tests`) and the generated Kotlin engine (kotlinc WITHOUT
+//      `-nowarn`) compile with no warning in Pyreon's own files. Every app
+//      that links the runtime compiles the engine, so an emitter that leaves
+//      a dead guard or a redundant conversion puts the warning in every
+//      user's build log. The warnings are read from the output and filtered
+//      to the packages' own paths — no `-warnings-as-errors`, which would
+//      reach dependencies (and `unsafeFlags` in Package.swift would break
+//      SwiftPM consumers).
 //
 // Bisect-load-bearing: hand-edit a byte of either committed file → spec 1
 // fails; revert the canvas full init → spec 2 fails with "extra argument in
-// call"; narrow an extracted data class → spec 3 fails.
+// call"; narrow an extracted data class → spec 3 fails; put back the
+// one-parameter `onChange(of:)` in PyreonChartCanvas.swift or any emitter
+// fix of the zero-warning PR (and regenerate) → spec 4 fails naming the line.
 
-import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -42,6 +55,8 @@ const NUMBER_KT = 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/run
 // ...and slices with a runtime bound through its JS-faithful `pyreonSlice`.
 const SLICE_SWIFT = 'packages/native/runtime-swift/Sources/PyreonRuntime/PyreonSlice.swift'
 const SLICE_KT = 'packages/native/runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonSlice.kt'
+/** An ANSI colour sequence (swift build colours its diagnostics). Built from the code point: a literal ESC in a regex trips no-control-regex. */
+const ANSI_ESCAPE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
 const withoutPackage = (code: string): string =>
   code
     .split('\n')
@@ -79,6 +94,41 @@ describe('native chart engine — generated, drift-locked, compile-proven', () =
     const r = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(NUMBER_SWIFT) + '\n' + read(SLICE_SWIFT) + '\n' + read(SWIFT_OUT))
     expect(r.ok, r.error ?? '').toBe(true)
   }, 30_000)
+
+  it.skipIf(!isSwiftUIAvailable())('iOS: both Swift runtime packages build with ZERO warnings', () => {
+    for (const pkg of ['runtime-swift', 'router-swift']) {
+      const dir = join(REPO, 'packages/native', pkg)
+      const scratch = mkdtempSync(join(tmpdir(), `pyreon-${pkg}-warnings-`))
+      try {
+        const r = spawnSync('swift', ['build', '--build-tests', '--scratch-path', scratch], { cwd: dir, encoding: 'utf8' })
+        const out = `${r.stdout ?? ''}${r.stderr ?? ''}`.replace(ANSI_ESCAPE, '')
+        expect(r.status, `${pkg}: swift build failed\n${out.slice(-4000)}`).toBe(0)
+        const own = [...new Set(out.split('\n').filter((l) => l.startsWith(`${dir}/`) && /: warning: /.test(l)))]
+        expect(own, `${pkg}: swift build printed warnings in the package's own files`).toEqual([])
+      } finally {
+        rmSync(scratch, { recursive: true, force: true })
+      }
+    }
+  }, 900_000)
+
+  it.skipIf(!isKotlincAvailable())('Android: the generated engine compiles with ZERO kotlinc warnings', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-engine-kt-warnings-'))
+    try {
+      const support = join(dir, 'Support.kt')
+      const engine = join(dir, 'PyreonChartEngine.kt')
+      writeFileSync(
+        support,
+        kotlinCanvasDataClasses(read(CANVAS_KT)).join('\n') + '\n' + withoutPackage(read(NUMBER_KT)) + '\n' + withoutPackage(read(SLICE_KT)),
+      )
+      writeFileSync(engine, withoutPackage(read(KOTLIN_OUT)))
+      const r = spawnSync('kotlinc', ['-d', join(dir, 'out'), support, engine], { encoding: 'utf8' })
+      expect(r.status, r.stderr).toBe(0)
+      const warnings = (r.stderr ?? '').split('\n').filter((l) => /: warning: /.test(l))
+      expect(warnings, 'kotlinc warnings in the generated engine or the runtime files it compiles with').toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 300_000)
 
   it.skipIf(!isKotlincAvailable())('Android: engine compiles with the canvas-owned types (verbatim)', () => {
     const canvas = read(CANVAS_KT)

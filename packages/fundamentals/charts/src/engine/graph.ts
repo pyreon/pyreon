@@ -126,8 +126,7 @@ export function layoutGraph(nodes: readonly GraphNode[], links: readonly GraphLi
     outLinks.push({ source: s, target: t, value: l.value, index: outLinks.length })
   }
   const n = nodes.length
-  let nF = 0.0
-  for (let i = 0; i < n; i++) nF = nF + 1.0
+  const nF: Double = Number(n)
   let maxValue = 0.0
   for (const nd of nodes) {
     const v = nd.value ?? -1.0

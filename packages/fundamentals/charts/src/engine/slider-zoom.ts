@@ -116,8 +116,7 @@ export function renderSliderZoom(values: Double[], win: ZoomWindow, strip: Rect,
     const n = values.length
     // The step accumulates rather than multiplying by the index, so the native
     // ports (which cannot mix a Double and an Int) read it the same way.
-    let gaps = 0.0
-    for (let i = 1; i < n; i++) gaps = gaps + 1.0
+    const gaps: Double = n > 1 ? Number(n - 1) : 0.0
     const step = strip.w / gaps
     let px = strip.x
     for (let i = 0; i < n; i++) {

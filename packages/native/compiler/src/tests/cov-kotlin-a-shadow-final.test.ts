@@ -205,7 +205,7 @@ export function App() {
     expect(out).toContain('val inner = fun(w: String): Long {')
     expect(out).toContain('val q = w.length')
     // the outer Int `w` still adds as an Int after the String param unwinds
-    expect(out).toContain('n = inner("abc") + w')
+    expect(out).toContain('n = pyreonAdd(inner("abc"), w)')
   })
 })
 
