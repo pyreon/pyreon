@@ -147,12 +147,17 @@ const add = useMutation({ mutationKey: ['add-item'] }) // note: an options objec
 add.mutate('milk')
 ```
 
-`<PersistQueryClientProvider>` persists paused mutations with the cache, and resumes them when restoration settles, including on a page that loads online (when no offline-to-online event will ever fire).
+`<PersistQueryClientProvider>` persists a paused mutation (as TanStack does) and, while its request is in flight, a mutation whose `mutationKey` has a function registered with `setMutationDefaults` (as above), until it settles. It resumes them when restoration settles, including on a page that loads online (when no offline-to-online event will ever fire). A mutation marked `meta: { persist: false }`, or whose variables do not survive JSON, is never persisted. The full rule is on the [query page](/docs/query).
 
 What is promised, and what is not:
 
 - Paused mutations are STARTED in creation order when the connection returns, but run concurrently. Give related mutations the same `scope: { id: 'items' }` to run them one after another.
-- A mutation is persisted only while paused. Once it resumes it is no longer persisted, so a tab that dies mid-request loses it: delivery is at-most-once from the client. Make the endpoint idempotent and add your own id if that matters.
+- Delivery is at-least-once. A tab that closes mid-request keeps the mutation persisted, so the next page sends it again, even if the server had already received it. Make the endpoint idempotent: send a client-generated id in the variables and ignore repeats.
+- Two open tabs never both send one mutation: a tab takes over another tab's mutation only after that tab has closed (Web Locks). Without Web Locks, an in-flight mutation is not persisted at all. A page that never persisted a mutation holds no Web Lock, so it stays eligible for the back/forward cache.
+- A reload aborts an in-flight request; the mutation stays stored and the reloaded page sends it.
+- Mark a mutation `meta: { persist: false }` when its variables are secrets (a sign-in), so they are never written to `localStorage`, not even while it is paused offline.
+- A `File` or `Blob` is not persisted (it would come back as `{}`): upload it first and send its id.
+- A mutation that fails (the server rejects it, or `retry` is used up) has settled and leaves storage; the error reaches `onError` and the mutation's `error` state. Use `retry` for transient failures.
 - No retry queue or backoff beyond TanStack's `retry` option (`0` for mutations by default).
 - No conflict handling. Two devices writing the same record is last write wins at your API. For real merge semantics use a local-first store: [`@pyreon/sync`](/docs/sync) (CRDT, `persistViaIndexedDB`) replaces this whole section instead of layering on it.
 - `networkMode: 'always'` skips pausing and sends immediately (use it for requests that work without internet, such as a local API).
