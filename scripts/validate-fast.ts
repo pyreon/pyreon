@@ -33,6 +33,7 @@
  *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
  *   - check-counter-catalog (a dev counter emitted with no COUNTERS.md row, or a stale row)
  *   - check-script-imports  (a script in scripts/ imports a module or export that no longer exists)
+ *   - check-e2e-webservers  (an e2e webServer waits for a port it does not open itself)
  *   - check-zero-feature-coverage (a documented zero feature has no real-build test)
  *   - check-breaking-changeset-codemod (a zero minor changeset lacks an `Upgrade:` line)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
@@ -141,6 +142,10 @@ const GATES: Gate[] = [
   // it (bench:loom on the retired detectPeerMismatch). Fails on the import
   // class of tsc diagnostics in scripts/ only. ~15s, the slowest gate here.
   { name: 'check-script-imports', cmd: 'bun scripts/check-script-imports.ts' },
+  // Every e2e webServer owns its port: no placeholder entry waiting for a port
+  // another entry's command opened (CI refuses a taken port; locally
+  // reuseExistingServer hid it, #4751), no two entries on one port.
+  { name: 'check-e2e-webservers', cmd: 'bun scripts/check-e2e-webservers.ts' },
   // IP: every workspace carries the root LICENSE byte-for-byte and declares
   // "license": "MIT". A published package without either ships with no stated
   // terms; an example without either is code people copy with none.

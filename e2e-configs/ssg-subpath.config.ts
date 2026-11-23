@@ -18,18 +18,25 @@ export default definePlaywrightConfig({
   projects: [
     { name: 'ssg-subpath', testMatch: /ssg-subpath\.spec\.ts$/, port: 5198 },
     // A full-URL (CDN) asset base with the route base at `/` (#4269).
-    { name: 'ssg-cdn-base', testMatch: /ssg-cdn-base\.spec\.ts$/, port: 5199 },
+    { name: 'ssg-cdn-base', testMatch: /ssg-cdn-base\.spec\.ts$/, port: 5236 },
   ],
-  // ONE command builds both variants in sequence (two SSG builds of one
-  // fixture at once would share its synthetic entry file) and then serves
-  // both; the second entry only waits for its port.
+  // One webServer per port, each starting the server it waits for (a
+  // placeholder entry waiting on another entry's port fails in CI, where
+  // Playwright refuses a port that is already taken). Playwright starts them
+  // one after another, so the two SSG builds of the same fixture never run at
+  // once (they would share its synthetic entry file).
   webServer: [
     {
       command:
-        'bun run --filter=@pyreon/example-ssr-showcase build:subpath && bun run --filter=@pyreon/example-ssr-showcase build:cdn && (bun run --filter=@pyreon/example-ssr-showcase preview:subpath -- --port 5198 --strictPort & bun run --filter=@pyreon/example-ssr-showcase preview:cdn -- --port 5199 --strictPort & wait)',
+        'bun run --filter=@pyreon/example-ssr-showcase build:subpath && bun run --filter=@pyreon/example-ssr-showcase preview:subpath -- --port 5198 --strictPort',
       port: 5198,
-      timeout: 240_000,
+      timeout: 180_000,
     },
-    { command: 'tail -f /dev/null', port: 5199, timeout: 240_000 },
+    {
+      command:
+        'bun run --filter=@pyreon/example-ssr-showcase build:cdn && bun run --filter=@pyreon/example-ssr-showcase preview:cdn -- --port 5236 --strictPort',
+      port: 5236,
+      timeout: 180_000,
+    },
   ],
 })

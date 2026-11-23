@@ -185,7 +185,6 @@ export function getFocusable(container: HTMLElement): HTMLElement[] {
   return [...positive, ...natural]
 }
 
-/** Resolve an {@link InitialFocusTarget} against the container. */
 /**
  * Whether the current synchronous code runs inside a user event (click, key)
  * whose target is the focused element or inside it — i.e. the focused element
@@ -193,7 +192,8 @@ export function getFocusable(container: HTMLElement): HTMLElement[] {
  * right now (undefined outside a dispatch, e.g. after an `await`).
  */
 function activatedByFocusedElement(): boolean {
-  if (isServer) return false
+  // Called only from the activation watcher, which runs after mount — in a
+  // browser — so `window` and `document` exist here.
   const ev = (window as { event?: Event }).event
   const focused = document.activeElement
   if (!ev || !focused || focused === document.body) return false
@@ -202,6 +202,7 @@ function activatedByFocusedElement(): boolean {
   return t instanceof Node && focused.contains(t)
 }
 
+/** Resolve an {@link InitialFocusTarget} against the container. */
 function resolveInitialFocus(
   container: HTMLElement,
   target: InitialFocusTarget | undefined,
