@@ -1090,7 +1090,9 @@
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/store": "workspace:*",
         "react": "^19.3.1",
         "react-dom": "^19.3.1",
       },

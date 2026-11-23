@@ -1,0 +1,23 @@
+{
+  "id": "preact",
+  "label": "Preact + preact-iso + @preact/signals",
+  "docs": [
+    "https://preactjs.com/guide/v10/signals/#managing-global-state",
+    "https://preactjs.com/guide/v10/signals/#local-state-with-signals",
+    "https://github.com/preactjs/preact-iso#routing",
+    "https://preactjs.com/guide/v10/getting-started"
+  ],
+  "packages": ["preact", "preact-iso", "@preact/signals", "@preact/preset-vite", "vite"],
+  "router": "preact-iso: LocationProvider + Router/Route, plain <a href> (intercepted by LocationProvider), useRoute, useLocation().route",
+  "state": "@preact/signals: a createAppState() factory of signal + computed shared through context (the docs' global-state shape); useSignal/useComputed for the form",
+  "codeSplitting": "none",
+  "build": ["npm", "run", "build"],
+  "outDir": "dist",
+  "fallback": "index.html",
+  "dataFile": "src/data.ts",
+  "cssFile": "src/app.css",
+  "notes": [
+    "Routes are imported synchronously (preact-iso's docs also show lazy(); the contract keeps every arm in one entry chunk unless the framework splits by itself).",
+    "npm installs preact-iso's peer preact-render-to-string; it is not imported by the client bundle."
+  ]
+}
