@@ -1191,6 +1191,12 @@ export function ChartHost() {
   WebKit cannot switch Web Storage off). Storage is per origin; every page
   loaded with inline `html` shares the app's `file:///android_asset/` origin on
   Android, so give a page that needs isolated storage a `src`.
+- **Renderer loss (Android)**: the page runs in a separate renderer process.
+  If the system kills it to reclaim memory, or the page crashes it, the host
+  replaces the dead view with a new one and loads the page again, instead of
+  letting WebView end the whole app. A page that keeps crashing its renderer
+  is reloaded twice, then the view stays empty and a `[Pyreon]` warning is
+  logged.
 - **Sizing**: without `grow` a web view is what an `<iframe>` with no CSS is,
   on every target: as wide as its parent and **150 high**. With `grow` it takes
   the free space of its parent `<Stack>` (height) or `<Inline>` (width) after

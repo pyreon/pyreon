@@ -227,6 +227,27 @@ fun pyreonWebViewAssetPath(src: String): String? {
 private fun pyreonWebViewParserRewrites(s: String): Boolean =
     s.any { it < ' ' || it == '\u007f' } || s.first() == ' ' || s.last() == ' '
 
+/**
+ * How many times one page (the same `html` / `src`) is reloaded after it
+ * CRASHED its renderer, before the host stops and stays empty.
+ */
+const val PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS = 2
+
+/**
+ * Whether a host whose renderer process is gone loads its page again in a new
+ * WebView. The old view is dropped either way: WebView kills the WHOLE app
+ * process when `onRenderProcessGone` is not handled, and a handled view can
+ * never be used again.
+ *
+ * - Killed by the system (`didCrash == false`, it reclaimed memory): always,
+ *   as a browser reloads a tab the system discarded.
+ * - Crashed (`didCrash == true`): while this page has crashed it fewer than
+ *   [PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS] times, so a page that crashes
+ *   its renderer every time cannot loop forever.
+ */
+fun pyreonWebViewReloadAfterRendererGone(didCrash: Boolean, earlierCrashes: Int): Boolean =
+    !didCrash || earlierCrashes < PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS
+
 /** A `src` that names a remote page: `http(s)` with a host. */
 fun pyreonWebViewIsRemoteSrc(src: String): Boolean {
     val uri = try { java.net.URI(src) } catch (_: Exception) { return false }

@@ -169,7 +169,18 @@ private fun originScope() {
     }
 }
 
+private fun rendererGone() {
+    // A renderer the system killed is always reloaded, however often.
+    for (n in 0..10) expect(pyreonWebViewReloadAfterRendererGone(didCrash = false, earlierCrashes = n), "system kill #$n reloads")
+    // A crashing page gets PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS reloads, then the host stays empty.
+    expect(PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS == 2, "two reloads after a crash")
+    expect(pyreonWebViewReloadAfterRendererGone(didCrash = true, earlierCrashes = 0), "first crash reloads")
+    expect(pyreonWebViewReloadAfterRendererGone(didCrash = true, earlierCrashes = 1), "second crash reloads")
+    expect(!pyreonWebViewReloadAfterRendererGone(didCrash = true, earlierCrashes = 2), "third crash stops reloading")
+}
+
 public fun main() {
+    rendererGone()
     originScope()
     fileChooserPlans()
     mediaPermissions()

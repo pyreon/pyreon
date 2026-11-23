@@ -114,9 +114,12 @@ package com.pyreon.runtime
 import android.os.Handler
 import android.os.Looper
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
@@ -178,159 +181,198 @@ fun PyreonWebView(
     val state = remember { PyreonWebViewState() }
     // File chooser / permission launchers must be registered at composition.
     val chrome = rememberPyreonWebChrome()
-    AndroidView(
-        // An unsized WebView measures to its content, which is ~18dp for a page
-        // whose body is `height: 100%` — so a hosted chart or flow gets no room
-        // to lay out and a tap at its centre lands on nothing. The web
-        // `<iframe>` falls back to the CSS replaced-element default of 150px in
-        // the same spot, so that is the default here.
-        //
-        // It has to be an EXACT height, not a minimum: AndroidView measures the
-        // View `EXACTLY` only when min == max, and otherwise lets it wrap. A
-        // `defaultMinSize` widened the Compose slot while the WebView inside it
-        // stayed 18dp. An explicit height (or `fillMaxHeight`) arrives with a
-        // non-zero minimum and passes through untouched.
-        modifier = modifier.pyreonWebViewDefaultHeight(),
-        onRelease = {
-            PyreonWebViewGroups.leave(state)
-            state.webView = null
-            // A pending file chooser / permission / dialog must still be answered.
-            chrome.release()
-        },
-        factory = { context ->
-            WebView(context).apply {
-                // AndroidView hands the View WRAP_CONTENT params, and a WebView
-                // in that mode sizes its viewport to its CONTENT: the page's
-                // `height: 100%` then resolves to 0 (measured clientHeight 0 in
-                // a 150dp host), so a hosted flow fit its graph into nothing.
-                // MATCH_PARENT makes the viewport the size Compose gave it.
-                layoutParams = android.view.ViewGroup.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                )
-                state.webView = WeakReference(this)
-                if (PyreonWebViewRendering.softwareLayer) {
-                    setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
-                }
-                @Suppress("SetJavaScriptEnabled")
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = domStorage
-                // No file:// reach beyond the bundled assets (file:///android_asset
-                // is exempt from allowFileAccess), and no file page may read
-                // another file or any origin. Explicit, not the API-level default.
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                @Suppress("DEPRECATION")
-                settings.allowFileAccessFromFileURLs = false
-                @Suppress("DEPRECATION")
-                settings.allowUniversalAccessFromFileURLs = false
-                // `target="_blank"` / `window.open` reach onCreateWindow (and are
-                // handed to the system) instead of replacing this page in place.
-                settings.setSupportMultipleWindows(true)
-                settings.setGeolocationEnabled(true)
-                webChromeClient = PyreonWebChromeClient(chrome)
-                // Reverse bridge — the page's `window.pyreonPostMessage(s)`
-                // routes through `window.__pyreonNative.postMessage(s)`
-                // (this JS interface) to the native `onMessage` callback.
-                addJavascriptInterface(PyreonJsBridge(state), "__pyreonNative")
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(
-                        view: WebView,
-                        request: android.webkit.WebResourceRequest,
-                    ): Boolean {
-                        val url = request.url?.toString()
-                        return when (
-                            pyreonWebViewNavigationDecision(
-                                isMainFrame = request.isForMainFrame,
-                                initialLoadPending = state.initialLoadPending,
-                                url = url,
-                                allowedOrigin = state.allowedOrigin,
-                                userActivated = request.hasGesture(),
-                            )
-                        ) {
-                            PyreonWebViewNavigation.ALLOW -> false
-                            PyreonWebViewNavigation.CANCEL -> true
-                            PyreonWebViewNavigation.OPEN_EXTERNALLY -> {
-                                if (url != null) chrome.openExternally(url)
-                                true
+    // A new WebView after the renderer process is gone (see `onRenderProcessGone`).
+    key(state.generation.intValue) {
+        AndroidView(
+            // An unsized WebView measures to its content, which is ~18dp for a page
+            // whose body is `height: 100%` — so a hosted chart or flow gets no room
+            // to lay out and a tap at its centre lands on nothing. The web
+            // `<iframe>` falls back to the CSS replaced-element default of 150px in
+            // the same spot, so that is the default here.
+            //
+            // It has to be an EXACT height, not a minimum: AndroidView measures the
+            // View `EXACTLY` only when min == max, and otherwise lets it wrap. A
+            // `defaultMinSize` widened the Compose slot while the WebView inside it
+            // stayed 18dp. An explicit height (or `fillMaxHeight`) arrives with a
+            // non-zero minimum and passes through untouched.
+            modifier = modifier.pyreonWebViewDefaultHeight(),
+            onRelease = { view ->
+                PyreonWebViewGroups.leave(state)
+                // After a renderer loss the replacement may already be in `state`.
+                if (state.webView?.get() === view) state.webView = null
+                // A pending file chooser / permission / dialog must still be answered.
+                chrome.release()
+            },
+            factory = { context ->
+                WebView(context).apply {
+                    // AndroidView hands the View WRAP_CONTENT params, and a WebView
+                    // in that mode sizes its viewport to its CONTENT: the page's
+                    // `height: 100%` then resolves to 0 (measured clientHeight 0 in
+                    // a 150dp host), so a hosted flow fit its graph into nothing.
+                    // MATCH_PARENT makes the viewport the size Compose gave it.
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
+                    state.webView = WeakReference(this)
+                    if (PyreonWebViewRendering.softwareLayer) {
+                        setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+                    }
+                    @Suppress("SetJavaScriptEnabled")
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = domStorage
+                    // No file:// reach beyond the bundled assets (file:///android_asset
+                    // is exempt from allowFileAccess), and no file page may read
+                    // another file or any origin. Explicit, not the API-level default.
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
+                    @Suppress("DEPRECATION")
+                    settings.allowFileAccessFromFileURLs = false
+                    @Suppress("DEPRECATION")
+                    settings.allowUniversalAccessFromFileURLs = false
+                    // `target="_blank"` / `window.open` reach onCreateWindow (and are
+                    // handed to the system) instead of replacing this page in place.
+                    settings.setSupportMultipleWindows(true)
+                    settings.setGeolocationEnabled(true)
+                    webChromeClient = PyreonWebChromeClient(chrome)
+                    // Reverse bridge — the page's `window.pyreonPostMessage(s)`
+                    // routes through `window.__pyreonNative.postMessage(s)`
+                    // (this JS interface) to the native `onMessage` callback.
+                    addJavascriptInterface(PyreonJsBridge(state), "__pyreonNative")
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView,
+                            request: android.webkit.WebResourceRequest,
+                        ): Boolean {
+                            val url = request.url?.toString()
+                            return when (
+                                pyreonWebViewNavigationDecision(
+                                    isMainFrame = request.isForMainFrame,
+                                    initialLoadPending = state.initialLoadPending,
+                                    url = url,
+                                    allowedOrigin = state.allowedOrigin,
+                                    userActivated = request.hasGesture(),
+                                )
+                            ) {
+                                PyreonWebViewNavigation.ALLOW -> false
+                                PyreonWebViewNavigation.CANCEL -> true
+                                PyreonWebViewNavigation.OPEN_EXTERNALLY -> {
+                                    if (url != null) chrome.openExternally(url)
+                                    true
+                                }
                             }
                         }
-                    }
 
-                    // `shouldOverrideUrlLoading` is never called for a POST, so a
-                    // form posted to another origin would load in place (seen on an
-                    // API 33 emulator). Every main-frame REQUEST passes here, however
-                    // it was started, so the same origin policy is applied to it:
-                    // an off-origin one gets an empty 204, which a navigation treats
-                    // as "nothing to show" and stays on the current page. Only
-                    // http(s) requests: a POST is a network request, and a `data:`
-                    // document (`loadDataWithBaseURL`) also passes through here.
-                    // Runs on a background thread, hence the @Volatile state.
-                    override fun shouldInterceptRequest(
-                        view: WebView,
-                        request: android.webkit.WebResourceRequest,
-                    ): android.webkit.WebResourceResponse? {
-                        val scheme = request.url?.scheme?.lowercase()
-                        if (scheme != "http" && scheme != "https") return null
-                        val decision = pyreonWebViewNavigationDecision(
-                            isMainFrame = request.isForMainFrame,
-                            initialLoadPending = state.initialLoadPending,
-                            url = request.url?.toString(),
-                            allowedOrigin = state.allowedOrigin,
-                            userActivated = false,
-                        )
-                        if (decision == PyreonWebViewNavigation.ALLOW) return null
-                        return android.webkit.WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(), null)
-                    }
-
-                    override fun onPageStarted(
-                        view: WebView,
-                        url: String?,
-                        favicon: android.graphics.Bitmap?,
-                    ) {
-                        // The host's own load (after its redirects) pins the origin.
-                        if (state.initialLoadPending) {
-                            state.initialLoadPending = false
-                            state.allowedOrigin = pyreonWebViewOrigin(url)
+                        // `shouldOverrideUrlLoading` is never called for a POST, so a
+                        // form posted to another origin would load in place (seen on an
+                        // API 33 emulator). Every main-frame REQUEST passes here, however
+                        // it was started, so the same origin policy is applied to it:
+                        // an off-origin one gets an empty 204, which a navigation treats
+                        // as "nothing to show" and stays on the current page. Only
+                        // http(s) requests: a POST is a network request, and a `data:`
+                        // document (`loadDataWithBaseURL`) also passes through here.
+                        // Runs on a background thread, hence the @Volatile state.
+                        override fun shouldInterceptRequest(
+                            view: WebView,
+                            request: android.webkit.WebResourceRequest,
+                        ): android.webkit.WebResourceResponse? {
+                            val scheme = request.url?.scheme?.lowercase()
+                            if (scheme != "http" && scheme != "https") return null
+                            val decision = pyreonWebViewNavigationDecision(
+                                isMainFrame = request.isForMainFrame,
+                                initialLoadPending = state.initialLoadPending,
+                                url = request.url?.toString(),
+                                allowedOrigin = state.allowedOrigin,
+                                userActivated = false,
+                            )
+                            if (decision == PyreonWebViewNavigation.ALLOW) return null
+                            return android.webkit.WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(), null)
                         }
-                        // Define the unified reverse-bridge API early so page
-                        // scripts can call it — only on the allowed origin.
-                        if (pyreonWebViewMayDeliver(url, state.allowedOrigin)) {
+
+                        override fun onPageStarted(
+                            view: WebView,
+                            url: String?,
+                            favicon: android.graphics.Bitmap?,
+                        ) {
+                            // The host's own load (after its redirects) pins the origin.
+                            if (state.initialLoadPending) {
+                                state.initialLoadPending = false
+                                state.allowedOrigin = pyreonWebViewOrigin(url)
+                            }
+                            // Define the unified reverse-bridge API early so page
+                            // scripts can call it — only on the allowed origin.
+                            if (pyreonWebViewMayDeliver(url, state.allowedOrigin)) {
+                                view.evaluateJavascript(state.bridgeShim(), null)
+                            }
+                        }
+
+                        override fun onPageFinished(view: WebView, url: String?) {
+                            state.loaded = true
+                            if (!pyreonWebViewMayDeliver(view.url, state.allowedOrigin)) return
                             view.evaluateJavascript(state.bridgeShim(), null)
+                            pushPyreonData(view, state.latestData)
                         }
-                    }
 
-                    override fun onPageFinished(view: WebView, url: String?) {
-                        state.loaded = true
-                        if (!pyreonWebViewMayDeliver(view.url, state.allowedOrigin)) return
-                        view.evaluateJavascript(state.bridgeShim(), null)
-                        pushPyreonData(view, state.latestData)
+                        // Unhandled (the default `false`), a renderer that crashed or
+                        // that the system killed to reclaim memory takes the WHOLE app
+                        // process down with it. Handled, this view can never be used
+                        // again: drop it and compose a new one, which loads the page
+                        // again unless the page keeps crashing its renderer.
+                        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                            val key = state.loadedKey
+                            if (state.crashKey != key) {
+                                state.crashKey = key
+                                state.rendererCrashes = 0
+                            }
+                            val reload = pyreonWebViewReloadAfterRendererGone(detail.didCrash(), state.rendererCrashes)
+                            if (detail.didCrash()) state.rendererCrashes++
+                            android.util.Log.w(
+                                "PyreonWebView",
+                                "[Pyreon] <WebView>: the renderer process " +
+                                    (if (detail.didCrash()) "crashed" else "was killed by the system (priority at exit ${detail.rendererPriorityAtExit()})") +
+                                    if (reload) {
+                                        "; recreating the WebView and loading the page again."
+                                    } else {
+                                        "; the page crashed it ${state.rendererCrashes} times, so the WebView stays empty. Fix the page, or give the host a different html / src."
+                                    },
+                            )
+                            if (state.webView?.get() === view) state.webView = null
+                            state.loaded = false
+                            state.allowedOrigin = null
+                            state.initialLoadPending = false
+                            // null → the new view's `update` loads; unchanged → it does not.
+                            if (reload) state.loadedKey = null
+                            (view.parent as? android.view.ViewGroup)?.removeView(view)
+                            view.destroy()
+                            state.generation.intValue++
+                            return true
+                        }
                     }
                 }
-            }
-        },
-        update = { webView ->
-            // Applies to documents loaded after the change (a setting, not a reload).
-            webView.settings.domStorageEnabled = domStorage
-            state.latestData = data
-            state.onMessage = onMessage
-            val key = (html ?: "") + "" + (src ?: "")
-            if (state.loadedKey != key) {
-                // html/src changed → (re)load; onPageFinished pushes data. The
-                // new load decides the origin; until it starts nothing is allowed.
-                state.loadedKey = key
-                state.loaded = false
-                state.allowedOrigin = null
-                // Pending BEFORE the load starts: its first request can reach
-                // shouldInterceptRequest (another thread) before load returns.
-                state.initialLoadPending = true
-                if (!loadPyreonWebView(webView, html, src)) state.initialLoadPending = false
-            } else if (state.loaded && pyreonWebViewMayDeliver(webView.url, state.allowedOrigin)) {
-                // data-only change → push without reloading.
-                pushPyreonData(webView, data)
-            }
-        },
-    )
+            },
+            update = { webView ->
+                // Applies to documents loaded after the change (a setting, not a reload).
+                webView.settings.domStorageEnabled = domStorage
+                state.latestData = data
+                state.onMessage = onMessage
+                val key = (html ?: "") + "" + (src ?: "")
+                if (state.loadedKey != key) {
+                    // html/src changed → (re)load; onPageFinished pushes data. The
+                    // new load decides the origin; until it starts nothing is allowed.
+                    state.loadedKey = key
+                    state.loaded = false
+                    state.allowedOrigin = null
+                    // Pending BEFORE the load starts: its first request can reach
+                    // shouldInterceptRequest (another thread) before load returns.
+                    state.initialLoadPending = true
+                    if (!loadPyreonWebView(webView, html, src)) state.initialLoadPending = false
+                } else if (state.loaded && pyreonWebViewMayDeliver(webView.url, state.allowedOrigin)) {
+                    // data-only change → push without reloading.
+                    pushPyreonData(webView, data)
+                }
+            },
+        )
+    }
 }
 
 /** The CSS replaced-element default height the web `<iframe>` falls back to. */
@@ -362,6 +404,11 @@ private class PyreonWebViewState {
     /** True from the host starting a load until that load's page starts. */
     @Volatile
     var initialLoadPending: Boolean = false
+    /** Bumped when the renderer process is gone: the host composes a new WebView. */
+    val generation = mutableIntStateOf(0)
+    /** Renderer crashes of the page [crashKey] names (see [pyreonWebViewReloadAfterRendererGone]). */
+    var rendererCrashes: Int = 0
+    var crashKey: String? = null
     /** Per-view secret the main-frame shim passes with every message: the JS
      *  interface object is visible to every frame, the shim's closure is not. */
     val bridgeToken: String = java.util.UUID.randomUUID().toString()

@@ -1280,7 +1280,10 @@ jobs:
             # logcat FATAL and from the app's window never appearing, neither of
             # which depends on a dialog being drawn.
             adb shell settings put global hide_error_dialogs 1 || true
-            gradle connectedCheck --stacktrace
+            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/todomvc.txt 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/todomvc-media || true; exit 1; }
             bash ../scripts/ensure-release-keystore.sh
             # Debug→release signature transition: installing the
             # release-signed APK over the debug-signed one fails with
@@ -1345,7 +1348,10 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
-            gradle connectedCheck --stacktrace
+            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/finance.txt 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/finance-media || true; exit 1; }
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
       # ── Gap 5 Android Espresso parity beyond TodoMVC ──
@@ -1396,7 +1402,10 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
-            gradle connectedCheck --stacktrace
+            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/counter.txt 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/counter-media || true; exit 1; }
             # useBiometrics through a real BiometricPrompt: enrols a fingerprint, unlocks with it, rejects another, un-enrols.
             bash ../scripts/biometric-device-test.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
@@ -1464,7 +1473,10 @@ jobs:
             adb shell settings put global hide_error_dialogs 1 || true
             nohup bun ../scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
             adb reverse tcp:8790 tcp:8790
-            gradle connectedCheck --stacktrace
+            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/router-demo.txt 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/router-demo-media || true; exit 1; }
             bash ../scripts/process-death-android.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
@@ -1563,7 +1575,10 @@ jobs:
             adb reverse tcp:8791 tcp:8791
             # /webhost geolocation proof: give the emulator a fix (the test also accepts an answered-but-unavailable position).
             adb emu geo fix -122.0090 37.3349 || true
-            gradle connectedCheck --stacktrace
+            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/tasks.txt 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/tasks-media || true; exit 1; }
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
       # Saved only when the EXACT key missed. The key used to end in
@@ -1607,6 +1622,8 @@ jobs:
           path: |
             examples/native-*-android/app/build/reports/androidTests/
             examples/native-*/android/app/build/reports/androidTests/
+            examples/native-*/android/app/build/outputs/androidTest-results/
+            /tmp/android-logcat/
             /tmp/fixture-server.log
             /tmp/stream-server.log
           retention-days: 14
