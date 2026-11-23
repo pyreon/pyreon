@@ -191,11 +191,19 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
       }
     }
     const propsAttr = serialized !== '{}' ? serialized : ''
+    // The ROUTE base the fragment endpoint lives under (`/sub`, or ''), read
+    // HERE in the component body so it is this tree's router (context first),
+    // not whichever router is globally active when the ref later fires. The
+    // server stamps it on the marker (`data-base`), so a marker activated where
+    // no router runs — inside a client island on an islands-only page, or by
+    // the document scan — still fetches under the base.
+    const routeBase = activeRouterBase()
     const marker = (signed: { page: string; sig: string } | null) => h(
       'pyreon-server-island' as never,
       {
         'data-name': options.name,
         ...(propsAttr ? { 'data-props': propsAttr } : {}),
+        ...(routeBase ? { 'data-base': routeBase } : {}),
         ...(signed ? { 'data-page': signed.page, 'data-sig': signed.sig } : {}),
         // SELF-ACTIVATION (client islands' self-hydration precedent): the
         // marker fetches its own fragment when IT mounts — robust whether
@@ -208,7 +216,9 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
         ...(isClient
           ? {
               ref: (el: HTMLElement | null) => {
-                if (el) activateServerIslandElement(el, activeRouterBase())
+                // A marker rendered without a router (a client island's
+                // re-render) passes nothing: the server's `data-base` stands.
+                if (el) activateServerIslandElement(el, routeBase || undefined)
               },
             }
           : {}),
@@ -239,8 +249,10 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
  * self-activation ref and the document-level `activateServerIslands` scan
  * (static pages without a full hydrate).
  */
-export function activateServerIslandElement(el: HTMLElement, base = ''): void {
+export function activateServerIslandElement(el: HTMLElement, base?: string): void {
   if (el.hasAttribute('data-pyreon-si')) return
+  // An explicit base wins; otherwise the one the server stamped on the marker.
+  const fragmentBase = base ?? el.getAttribute('data-base') ?? ''
   el.setAttribute('data-pyreon-si', '1')
   const name = el.getAttribute('data-name')
   if (!name) return
@@ -248,7 +260,7 @@ export function activateServerIslandElement(el: HTMLElement, base = ''): void {
   const page = el.getAttribute('data-page')
   const sig = el.getAttribute('data-sig')
   const get = (signed: { page: string; sig: string } | null) =>
-    fetch(fragmentUrl(base, name, props, signed), { headers: { Accept: 'text/html' } })
+    fetch(fragmentUrl(fragmentBase, name, props, signed), { headers: { Accept: 'text/html' } })
   get(page && sig ? { page, sig } : null)
     .then(async (res) => {
       // 403: the server signs fragments and this marker's signature is

@@ -990,11 +990,13 @@ import { activateServerIslandElement } from './server-island'
  * failures leave the fallback content in place and flag the marker
  * (`data-island-error="fragment-failed"`) — a personalized hole degrading
  * to its structural fallback is the designed failure mode, never a broken
- * page. In-flight fetches are not aborted on teardown — a swap to a
+ * page. `base` (`/sub`) overrides the sub-path the fragment endpoint lives
+ * under; without it each marker uses the base the server stamped on it
+ * (`data-base`). In-flight fetches are not aborted on teardown — a swap to a
  * detached node is skipped via the `el.isConnected` guard in
  * `activateServerIslandElement`.
  */
-export function activateServerIslands(base = ''): () => void {
+export function activateServerIslands(base?: string): () => void {
   if (isServer) return () => {}
   const markers = document.querySelectorAll<HTMLElement>(
     'pyreon-server-island[data-name]:not([data-pyreon-si])',

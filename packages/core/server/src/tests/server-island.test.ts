@@ -6,6 +6,7 @@
  */
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import { createRouter, RouterProvider } from '@pyreon/router'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { provideRequestLocals, RequestLocalsCtx, useRequestLocals } from '../middleware'
@@ -37,6 +38,19 @@ describe('serverIsland — marker component', () => {
     // The island's CONTENT must NOT be in the page — that's the whole
     // cacheability contract.
     expect(html).not.toContain('class="badge"')
+  })
+
+  it('stamps the route base on the marker when a router with a base renders it (#4269 follow-up)', async () => {
+    // The server knows the base; a marker activated where no router runs
+    // (inside a client island on an islands-only page, or by the document
+    // scan) reads it from `data-base`.
+    const Island = serverIsland(async () => Badge, { name: 'Based' })
+    const router = createRouter({ routes: [{ path: '/', component: () => null }], mode: 'history', base: '/sub/', url: '/' })
+    const html = await renderToString(h(RouterProvider, { router }, h(Island, {} as never)))
+    expect(html).toContain('data-base="/sub"')
+    // No base, no attribute.
+    const plain = await renderToString(h(Island, {} as never))
+    expect(plain).not.toContain('data-base')
   })
 
   it('renders the fallback inside the marker (no-JS / pre-swap content)', async () => {

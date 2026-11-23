@@ -206,6 +206,46 @@ describe('activation is idempotent across BOTH paths', () => {
     }
   })
 
+  it('reads the base from ITS router, not whichever router is globally active', async () => {
+    // Two routers: the island's own (`/a/`) and a later one (`/b/`) that is
+    // the global active router by the time the ref fires. The base is read in
+    // the component body (context first), so the island uses `/a`.
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    const routerA = createRouter({ routes: [{ path: '/', component: () => null }], mode: 'history', base: '/a/', url: '/' })
+    const routerB = createRouter({ routes: [{ path: '/', component: () => null }], mode: 'history', base: '/b/', url: '/' })
+    const Island = serverIsland(async () => Badge, { name: 'OwnRouter' })
+    const other = document.createElement('div')
+    document.body.appendChild(other)
+    const Late: ComponentFn = () => {
+      setActiveRouter(routerB as never)
+      return null
+    }
+    const unmount = mount(h(RouterProvider, { router: routerA }, h(Late, {}), h(Island, {} as never)), container)
+    try {
+      await settle()
+      expect(urls[0]).toBe('/a/_pyreon/fragment/OwnRouter')
+    } finally {
+      unmount()
+      setActiveRouter(null)
+    }
+  })
+
+  it('a marker the server stamped with data-base fetches under it with no router (islands-only page, document scan)', async () => {
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    serverMarkup({ 'data-name': 'Stamped', 'data-base': '/sub' })
+    activateServerIslands()
+    await settle()
+    expect(urls[0]).toBe('/sub/_pyreon/fragment/Stamped')
+  })
+
+  it('an explicit base still overrides the stamped one', async () => {
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    serverMarkup({ 'data-name': 'Override', 'data-base': '/sub' })
+    activateServerIslands('/other')
+    await settle()
+    expect(urls[0]).toBe('/other/_pyreon/fragment/Override')
+  })
+
   it('a marker with NO name is stamped and never fetched', async () => {
     // Malformed markup must not produce a request to
     // `/_pyreon/fragment/null`, which the allowlist would reject anyway.
