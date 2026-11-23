@@ -16,6 +16,10 @@ import { dirname, join } from 'node:path'
 import ts from 'typescript'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 import { transform } from './first-party-plugins'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const NATIVE = join(__dirname, '../../..')
 
@@ -63,8 +67,8 @@ export function jvmPath(): string | undefined {
     if (existsSync(c)) return c
   }
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     return undefined
   }

@@ -6,6 +6,10 @@ import { describe, expect, it } from 'vitest'
 import { transform } from './first-party-plugins'
 import { KOTLIN_COMPOSE_STUBS } from '../kotlin-stubs'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * EXECUTE the emitted store/model — every other native check only TYPECHECKS.
@@ -128,14 +132,14 @@ function runKotlin(body: string, decl: string, runtime: string): string {
   const jar = join(dir, 'p.jar')
   writeFileSync(file, `${stubsWithoutMarkers()}\n\n${runtime}\n\n${decl}\n\nfun main() {\n${body}\n}\n`)
   execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
-  return execFileSync('java', ['-jar', jar], { encoding: 'utf8' }).trim()
+  return execFileSync(JAVA, ['-jar', jar], { encoding: 'utf8' }).trim()
 }
 
 const swiftOk = isSwiftcAvailable()
 const kotlincOk = isKotlincAvailable()
 function javaOk(): boolean {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
     return true
   } catch {
     return false

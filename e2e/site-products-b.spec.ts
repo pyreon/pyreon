@@ -17,7 +17,7 @@ const APP = ['feature', 'i18n', 'format', 'time', 'permissions', 'urlstate', 'ho
 const TOOLS = ['charts', 'editor', 'flow', 'document', 'atlas', 'lathe', 'loom', 'tooling', 'ai', 'migrate']
 const IDS = [...APP, ...TOOLS]
 const WIDTHS = SITE_WIDTHS
-/** Chunks of a heavy package, matched in a script URL. */
+/** Chunks of a heavy package, matched in a chunk's name (see `chunkName`). */
 const HEAVY: Record<string, RegExp> = {
   charts: /charts/i,
   flow: /flow/i,
@@ -25,6 +25,24 @@ const HEAVY: Record<string, RegExp> = {
   document: /document|pdf/i,
   table: /table/i,
   virtual: /virtual/i,
+}
+
+/**
+ * The name part of a built chunk's URL, without the directory and the content
+ * hash: `/assets/DemoI18n-Df3PdFBS.js` → `DemoI18n`. The hash is random letters,
+ * so matching the whole URL let a hash that spells a package (`Df3PdFBS` holds
+ * `pdf`) count as that package, and any unrelated change that moved the hash
+ * could fail this spec.
+ */
+function chunkName(url: string): string {
+  const file = new URL(url).pathname.split('/').pop() ?? ''
+  return file.replace(/-[\w-]{8}\.m?js$/, '')
+}
+
+/** The heavy-package chunks among `scripts`, matched by chunk name only. */
+function heavyScripts(scripts: string[], heavy: RegExp | RegExp[]): string[] {
+  const res = Array.isArray(heavy) ? heavy : [heavy]
+  return scripts.filter((u) => res.some((re) => re.test(chunkName(u))))
 }
 
 async function trackRemovals(page: Page): Promise<void> {
@@ -92,7 +110,7 @@ test.describe('hydration and the demo island', () => {
       // Before the demo is near, only the shell's islands have run: nothing of the page was replaced.
       expect(await page.evaluate(() => (window as unknown as { __removed: number }).__removed)).toBe(0)
       const heavy = HEAVY[id]
-      if (heavy) expect(scripts.filter((u) => heavy.test(u)), 'heavy package before the demo is near').toEqual([])
+      if (heavy) expect(heavyScripts(scripts, heavy), 'heavy package before the demo is near').toEqual([])
       const island = page.locator('#demo pyreon-island')
       await hydrateIsland(page, '#demo pyreon-island')
       // The demo adopted its server HTML: its root elements are the ones the server sent.
@@ -101,7 +119,7 @@ test.describe('hydration and the demo island', () => {
       expect(await changedIslandClasses(page)).toEqual([])
       await expect(island.locator('button, input, [tabindex="0"], select, iframe, canvas').first()).toBeVisible()
       await page.waitForLoadState('networkidle')
-      if (heavy) expect(scripts.some((u) => heavy.test(u)), 'heavy package loads with its demo').toBe(true)
+      if (heavy) expect(heavyScripts(scripts, heavy).length > 0, 'heavy package loads with its demo').toBe(true)
       expect(errors).toEqual([])
     })
   }
@@ -122,8 +140,7 @@ test.describe('hydration and the demo island', () => {
       })
       await page.waitForLoadState('networkidle')
     }
-    const all = Object.values(HEAVY)
-    expect(scripts.filter((u) => all.some((re) => re.test(u)))).toEqual([])
+    expect(heavyScripts(scripts, Object.values(HEAVY))).toEqual([])
   })
 })
 
