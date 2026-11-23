@@ -25,7 +25,13 @@
  * back, and assert on the RATIO. This reduces sensitivity to machine speed,
  * but unequal scheduling, JIT and GC costs can still skew a sample. Tests of
  * this helper's sampling policy use a deterministic clock; measurements of
- * real operations keep the default performance clock.
+ * real operations use {@link cpuClock}, this process's CPU time, so time spent
+ * WAITING for a core (the dominant cost of `Coverage (Full)`'s 4-way pool and
+ * of a saturated Test cell) is not counted at all.
+ *
+ * Prefer not timing at all where the claim allows it: a linear-scan or
+ * no-backtracking claim is usually provable by COUNTING with
+ * {@link countStringOps} (`./string-ops`), which no load can flip.
  *
  * For a scale factor k:  linear ⇒ ratio ≈ k · quadratic ⇒ ratio ≈ k².
  * The default bound sits between them, nearer the quadratic end so that ordinary
@@ -57,10 +63,30 @@ export interface ComplexityOptions {
    * Default 1.
    */
   minMs?: number
-  /** Monotonic millisecond clock. Defaults to `performance.now`; injectable for deterministic policy tests. */
+  /** Monotonic millisecond clock. Defaults to {@link cpuClock}; injectable for deterministic policy tests. */
   clock?: () => number
   /** Shown in the failure message. */
   label?: string
+}
+
+/**
+ * Milliseconds of CPU time this process has used (user + system), or
+ * `performance.now()` where `process.cpuUsage` does not exist (a browser).
+ *
+ * A wall clock also counts the time a loaded machine spends running OTHER
+ * processes, which is not proportional to input size and is exactly what
+ * flipped wall-clock complexity checks under parallel load. CPU time still
+ * includes this process's own GC and JIT, which are part of the real cost.
+ */
+export function cpuClock(): number {
+  // Read through globalThis: some consumers type-check without node types.
+  const proc = (globalThis as { process?: { cpuUsage?: () => { user: number; system: number } } })
+    .process
+  if (typeof proc?.cpuUsage === 'function') {
+    const { user, system } = proc.cpuUsage()
+    return (user + system) / 1000
+  }
+  return performance.now()
 }
 
 function timeBest(
@@ -113,7 +139,7 @@ export function measureComplexity(
   const maxRatio = options.maxRatio ?? scale * 3
   const samples = options.samples ?? 5
   const minMs = options.minMs ?? 1
-  const clock = options.clock ?? (() => performance.now())
+  const clock = options.clock ?? cpuClock
 
   // Grow the base until the small run is above timer granularity, or we give up.
   // Without this a sub-microsecond op yields ratio = 0/0 and the test asserts
@@ -204,8 +230,10 @@ export function measureComplexity(
 /**
  * Assert that `run` does not grow quadratically with its input.
  *
- * Both measurements happen back to back in the same process to reduce
- * sensitivity to machine speed. Unequal contention can still skew the ratio.
+ * Both measurements happen back to back in the same process, on CPU time, to
+ * reduce sensitivity to machine speed and to load. Cache and memory-bandwidth
+ * contention can still skew the ratio, so keep the inputs small enough that
+ * the run is not allocation-bound (tens of MB per sample is too much).
  *
  * ```ts
  * expectSubQuadratic((n) => isMarkdownId('#'.repeat(n) + 'foo'), 10_000, {
