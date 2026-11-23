@@ -31,8 +31,18 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 import { _rdLabelBinding, _renderBind } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
-import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
-import { _park } from './parked-text'
+import { _recordServer, _takeServerRecord, rangeClose } from './slot-brands'
+import {
+  _clearSlotRange,
+  _isTplHoleEl,
+  _isTplHtmlEl,
+  _markMidSlotText,
+  _parkSlotRange,
+  _serverTextOfRange,
+  _setTplHoleCursors,
+} from './template'
+import { _endParkBatch, _park, _sweepRecord, _takeParked, type ParkedServer } from './parked-text'
+import { reportParkedSweep } from './hydration-debug'
 
 type Cleanup = () => void
 
@@ -654,7 +664,7 @@ interface TplSig {
    * or a fused static mix (`a{vNode}b`) is set by the bind into an empty
    * element, and the server rendered the value there marker-less. When the
    * server's child list holds anything but text, the match records it (see
-   * `AdoptMatch.setChildEls`): the element carries its server child nodes,
+   * `AdoptMatch.recordEls`): the element carries its server child nodes,
    * `_setChild` claims them by element identity and adopts those still
    * attached, and a build whose bind never claims them removes and reports
    * them. The claim is the declaration; nothing is inferred and kept
@@ -877,12 +887,26 @@ interface AdoptMatch {
    */
   soleTextParks: Element[] | null
   /**
-   * EMPTY template elements whose server content is not plain text (#4599;
-   * see `TplSig.emptyEls`). No node is inserted (nothing refers into an empty
-   * element): the caller records each one's server child nodes on it
-   * (`_park`) for `_setChild` to claim.
+   * Elements whose whole server child list one later bind line claims: an
+   * EMPTY template element (#4599, `TplSig.emptyEls`: `_setChild`'s target),
+   * or a marker-less SOLE slot (`_mountSlot` / `_setChildAt`). No node is
+   * inserted: the caller parks each with its server child nodes (`_park`),
+   * recorded after the verify's own removals and before any bind line runs.
    */
-  setChildEls: Element[] | null
+  recordEls: Element[] | null
+  /**
+   * Trailing marked slot ranges (`<!--$-->` open markers). Each gets its
+   * server content recorded (`_recordServer`) for the claimer.
+   */
+  recordRanges: Comment[] | null
+  /**
+   * Sole `<!>` slots whose server child list is ONE marked range. Only the
+   * compiler's `sole` verdict at the claimer tells a sole slot whose value
+   * starts with its own range from a marked one, so the whole list is kept on
+   * the element (`_recordServer`, not parked: a text slot claims the range
+   * instead and leaves this record unread).
+   */
+  recordWhole: Element[] | null
   /**
    * Elements whose ELIDED sole-child slot rendered EMPTY, so SSR emitted no
    * node at all where the template baked its ' ' placeholder. The compiled
@@ -934,6 +958,10 @@ interface AdoptPlan {
   soleTextSpots: number[][]
   /** domPaths of elements whose EXTRA bare texts get removed (template 0, >1 texts). */
   removalSpots: number[][]
+  /** Paths of every template-EMPTY element (`TplSig.emptyEls`): a replayed
+   *  row parks each one holding server content, exactly as the full verify
+   *  does, so its `_setChild` claims recorded nodes only (#4599). */
+  recordSpots: number[][]
 }
 
 const _tplAdoptPlan = new WeakMap<HTMLTemplateElement, AdoptPlan | null>()
@@ -979,8 +1007,21 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
   }
   const soleTextSpots: number[][] = []
   if (match.soles) for (const el of match.soles) soleTextSpots.push(pathOf(el))
+  // Every template-empty element, by the signature's tree order. Neither it
+  // nor a declared innerHTML element is descended into: the server content
+  // under them has no template counterpart.
+  const recordSpots: number[][] = []
+  let at = 0
+  const walk = (el: Element): void => {
+    const i = at++
+    if (sig.emptyEls[i] === true) recordSpots.push(pathOf(el))
+    else if (sig.htmlEls === null || sig.htmlEls[i] !== true) {
+      for (let c = el.firstElementChild; c !== null; c = c.nextElementSibling) walk(c)
+    }
+  }
+  walk(root)
 
-  return { sig, tripletSpots, soleTextSpots, removalSpots }
+  return { sig, tripletSpots, soleTextSpots, removalSpots, recordSpots }
 }
 
 /**
@@ -1045,6 +1086,12 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
     }
   }
 
+  const records = plan.recordSpots
+  for (let s = 0; s < records.length; s++) {
+    const spot = records[s] as number[]
+    const el = elByPath(root, spot, spot.length)
+    if (el !== null && el.firstChild !== null) _park(el, Array.from(el.childNodes))
+  }
   return true
 }
 
@@ -1108,7 +1155,9 @@ function matchDomAgainstTemplate(
   const midFlags = expected.midSlots
   let soles: Element[] | null = null
   let soleTextParks: Element[] | null = null
-  let setChildEls: Element[] | null = null
+  let recordEls: Element[] | null = null
+  let recordRanges: Comment[] | null = null
+  let recordWhole: Element[] | null = null
   let emptySlots: Element[] | null = null
   let holes: Map<Element, ChildNode | null> | null = null
   let htmlEls: Element[] | null = null
@@ -1208,7 +1257,19 @@ function matchDomAgainstTemplate(
     // actually elided — a sole slot whose vnode child was an ARRAY rather than an
     // accessor still gets its markers — so fall through to the marked path when
     // the range really is there.
-    if (expected.soleSlots[at] === true && !isOneMarkedRange(el)) return true
+    // A sole `<!>` slot's whole server child list is recorded for its claimer
+    // (`_mountSlot` / `_setChildAt`): it adopts and removes only these nodes,
+    // whatever an earlier bind line (a `ref`) added to the element. A MARKED
+    // child list goes on as a trailing range (recorded on its open marker),
+    // and `_mountSlot` rebuilds the whole list from that record when the
+    // compiler's verdict says the slot is sole after all.
+    if (expected.soleSlots[at] === true) {
+      if (!isOneMarkedRange(el)) {
+        if (el.firstChild !== null) (recordEls ??= []).push(el)
+        return true
+      }
+      ;(recordWhole ??= []).push(el)
+    }
     // SOLE DYNAMIC TEXT HOLDING ELEMENTS (#4385). A polymorphic text binding
     // (`{parts(row)}` rendering `['a ', <Code/>, ' b']`) is a single `' '`
     // placeholder in the template, and SSR renders the value's elements
@@ -1229,7 +1290,7 @@ function matchDomAgainstTemplate(
     // has them removed and reported. Plain text keeps the text path below
     // (sole text adopted in place, a run removed).
     if (expected.emptyEls[at] === true && hasNonTextChild(el)) {
-      ;(setChildEls ??= []).push(el)
+      ;(recordEls ??= []).push(el)
 
       return true
     }
@@ -1281,6 +1342,7 @@ function matchDomAgainstTemplate(
             // rather than rebuilding. Refusing here would give the correctness
             // back but cost the adoption, which is the thing hydration is for.
             slotOpen = n as Comment
+            ;(recordRanges ??= []).push(slotOpen)
             break
           }
           // MID SLOT. The template has a `<!>` at this clone index with static
@@ -1307,7 +1369,7 @@ function matchDomAgainstTemplate(
             if (close !== null && close.nodeType === 8 && (close as Comment).data === '/$') {
               ;(midSlots ??= []).push({ open: n as Comment, text, close: close as Comment })
             } else {
-              const end = findMatchingClose(n as Comment)
+              const end = rangeClose(n as Comment)
               if (end === null) return false
               const park = { open: n as Comment, close: end }
               ;(parks ??= []).push(park)
@@ -1411,6 +1473,10 @@ function matchDomAgainstTemplate(
         }
       }
     }
+    // A template-empty element holding server TEXT: recorded too (after any
+    // removals below), so a structural `_setChild` value adopts exactly these
+    // nodes. An unclaimed text-only record is left alone by the sweep.
+    if (expected.emptyEls[at] === true && el.firstChild !== null) (recordEls ??= []).push(el)
     // Descend into STATIC element children only. With a slot present, those are
     // exactly the elements before its open marker — anything after is rendered
     // slot content, which this template's signature says nothing about.
@@ -1436,7 +1502,7 @@ function matchDomAgainstTemplate(
   if (!walk(root)) return null
   if (idx !== total) return null
 
-  return { removals, triplets, midSlots, parks, soles, soleTextParks, setChildEls, emptySlots, holes, htmlEls }
+  return { removals, triplets, midSlots, parks, soles, soleTextParks, recordEls, recordRanges, recordWhole, emptySlots, holes, htmlEls }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
@@ -1463,20 +1529,13 @@ function collapseMidSlots(
   }
 }
 
-/** The `/$` closing `open`'s range at depth 0, or `null` (accessor ranges nest). */
-function findMatchingClose(open: Comment): Comment | null {
-  let depth = 0
-  for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
-    if (n.nodeType !== 8) continue
-    const d = (n as Comment).data
-    if (d === '$') depth++
-    else if (d === '/$') {
-      if (depth === 0) return n as Comment
-      depth--
-    }
-  }
+/** The nodes strictly between `open` and its matching close. */
+function rangeNodes(open: Comment): ChildNode[] {
+  const close = rangeClose(open)
+  const nodes: ChildNode[] = []
+  for (let n = open.nextSibling; n !== null && n !== close; n = n.nextSibling) nodes.push(n)
 
-  return null
+  return nodes
 }
 
 /**
@@ -1595,7 +1654,7 @@ export function tplAdoptVerify(
   // element) records no plan: the plan's
   // spot checks are a text-node invariant this row does not satisfy; a later
   // plain row records it, and replay sends rows like this one to the full verify.
-  if (allowPlanReplay && plan === undefined && match.soleTextParks === null && match.setChildEls === null) {
+  if (allowPlanReplay && plan === undefined && match.soleTextParks === null) {
     // TWO restrictions compose here. #2925 gates replay behind
     // `allowPlanReplay`; separately, a slot-bearing template is a CONTAINER —
     // one per hydration, not one per row — so the replay plan buys nothing,
@@ -1617,8 +1676,14 @@ export function tplAdoptVerify(
   if (match.triplets) normalizeDollarTriplets(match.triplets)
   if (match.midSlots) collapseMidSlots(match.midSlots)
   if (match.parks) parkMidRanges(match.parks)
-  if (match.setChildEls !== null) {
-    for (const el of match.setChildEls) _park(el, Array.from(el.childNodes))
+  if (match.recordEls !== null) {
+    for (const el of match.recordEls) if (el.firstChild !== null) _park(el, Array.from(el.childNodes))
+  }
+  if (match.recordWhole !== null) {
+    for (const el of match.recordWhole) _recordServer(el, Array.from(el.childNodes))
+  }
+  if (match.recordRanges !== null) {
+    for (const open of match.recordRanges) _recordServer(open, rangeNodes(open))
   }
   if (match.soleTextParks) {
     for (const el of match.soleTextParks) {
@@ -1639,7 +1704,90 @@ export function tplAdoptVerify(
   }
   // Hand the verified holes to `_tpl` (one-shot; it clears the slot before
   // every verify, so a bail can never leave a stale map behind).
-  if (match.holes !== null) _setTplHoleCursors(match.holes)
+  if (match.holes !== null) {
+    // Each hole's server range from its start cursor, recorded before the bind.
+    for (const [el, cursor] of match.holes) {
+      const nodes: ChildNode[] = []
+      for (let n = cursor; n !== null; n = n.nextSibling) nodes.push(n)
+      _recordServer(el, nodes)
+    }
+    _setTplHoleCursors(match.holes)
+  }
 
   return true
+}
+
+// ─── After an adopting bind ─────────────────────────────────────────────────
+//
+// THE INVARIANT: hydration never removes a node it did not record as server
+// content at verify time, and never adopts or positions by an assumption
+// about where client-inserted nodes are. Bind lines that run before a
+// region's claimer (`_ref`, a spread: the compiler emits attribute lines
+// first) may add, move or remove nodes; everything below acts only on
+// RECORDED nodes that are still attached where they were recorded.
+
+/** The `TplAdoptFinish` registered with `tplAdoptVerify` (see template.ts). */
+export function finishTplAdopt(
+  prevPark: Node[] | null,
+  holes: Map<Element, ChildNode | null> | null,
+  completed: boolean,
+): void {
+  const mine = _endParkBatch(prevPark)
+  // Release every mark BEFORE touching the DOM, so no entry's cleanup can
+  // leave a later entry's mark (or `_parkedPending`) behind.
+  const servers: (ParkedServer | undefined)[] = []
+  if (mine !== null) for (const n of mine) servers.push(_takeParked(n))
+  // A bind that threw keeps the server markup ("degrade, don't destroy", as
+  // `hydrateComponent` does for the component).
+  if (!completed) return
+  if (holes !== null) sweepHoles(holes)
+  if (mine === null) return
+  for (let i = 0; i < mine.length; i++) {
+    const server = servers[i]
+    if (server !== undefined) sweepOne(mine[i] as Text | Element, server)
+  }
+}
+
+/**
+ * A hole's leftovers: only nodes RECORDED as its server range at verify time,
+ * from the final cursor on. A hole the bind never claimed still holds its
+ * start cursor, so its whole recorded range goes, which is the clone's result
+ * (the template element is empty there); a node a `ref` appended is not in it.
+ */
+function sweepHoles(holes: Map<Element, ChildNode | null>): void {
+  for (const [el, cursor] of holes) {
+    const recorded = _takeServerRecord(el)
+    if (cursor === null || recorded === undefined) continue
+    const from = recorded.indexOf(cursor)
+    if (from === -1) continue
+    for (let i = from; i < recorded.length; i++) {
+      const n = recorded[i] as ChildNode
+      if (n.parentNode === el) n.remove()
+    }
+  }
+}
+
+/**
+ * Remove one unclaimed mark's server content. A range (`_textSlot`) is cleared
+ * through its record; a RECORD loses only its nodes still attached to the
+ * element they were recorded in (`_sweepRecord`, which leaves text-only
+ * records alone). A placeholder a bind line detached took that content with
+ * it. In dev the rewrite is reported.
+ */
+function sweepOne(node: Text | Element, server: ParkedServer): void {
+  const isText = node.nodeType === 3
+  const expected = isText ? (node as Text).data : ''
+  if (!Array.isArray(server)) {
+    const text = process.env.NODE_ENV !== 'production' ? _serverTextOfRange(server) : ''
+    const owner = node.parentNode
+    _clearSlotRange(server)
+    if (process.env.NODE_ENV !== 'production') reportParkedSweep(owner, expected, text, null, 'reactive')
+    return
+  }
+  const owner = isText ? node.parentNode : node
+  if (owner === null) return
+  const [removed, serverEl] = _sweepRecord(owner, server)
+  if (process.env.NODE_ENV !== 'production') {
+    reportParkedSweep(owner, expected, removed, serverEl, isText ? 'reactive' : 'text')
+  }
 }

@@ -9,7 +9,19 @@
  */
 import { _fuse, For, Fragment, h } from '@pyreon/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { _applyProps, _bindText, _dispose2, _mountChild, _ref, _setChild, _tpl, hydrateRoot, mount, onHydrationMismatch } from '../index'
+import {
+  _applyProps,
+  _bindText,
+  _dispose2,
+  _mountChild,
+  _mountSlot,
+  _ref,
+  _setChild,
+  _tpl,
+  hydrateRoot,
+  mount,
+  onHydrationMismatch,
+} from '../index'
 import { SETCHILD_EMPTY_CASES, type SetChildEmptyCase } from './_setchild-empty-cases'
 
 const SCOPE = {
@@ -27,9 +39,17 @@ const SCOPE = {
   },
   hp: { dangerouslySetInnerHTML: { __html: '<i>h</i>' } },
   parts: () => ['a ', h('code', null, 'x')],
+  append: (el: Element | null) => {
+    if (el !== null) el.append(document.createElement('i'))
+  },
+  rowsMix: [
+    { id: 1, cell: 's' },
+    { id: 2, cell: h('b', null, 'two') },
+    { id: 3, cell: h('b', null, 'three') },
+  ],
 }
 
-const DEPS = { _applyProps, _bindText, _dispose2, _fuse, _mountChild, _ref, _setChild, _tpl, For, Fragment, h, ...SCOPE }
+const DEPS = { _applyProps, _bindText, _dispose2, _fuse, _mountChild, _mountSlot, _ref, _setChild, _tpl, For, Fragment, h, ...SCOPE }
 
 function compiledApp(code: string): () => unknown {
   return new Function(...Object.keys(DEPS), `${code}\nreturn App`)(...Object.values(DEPS)) as () => unknown
@@ -78,8 +98,12 @@ describe('an empty `_setChild` element adopts the server structure in Chromium (
   for (const c of SETCHILD_EMPTY_CASES) {
     it(c.name, () => {
       const r = hydrate(c, c.server)
-      // A clearing ref or an innerHTML spread replaces the server's nodes itself.
-      if (!/clear|dangerouslySetInnerHTML/.test(c.name)) expect(r.replaced).toEqual([])
+      // A clearing ref or an innerHTML spread replaces the server's nodes
+      // itself; a component-local JSX const is built before hydration starts,
+      // so its element replaces the server's; and a `_setChild` value after a
+      // ref that appended is mounted after the ref's node, as a fresh render
+      // appends it, so the server's (now not trailing) nodes are replaced.
+      if (!/clear|dangerouslySetInnerHTML|_mountSlot|plan-replayed/.test(c.name)) expect(r.replaced).toEqual([])
       expect(r.reports).toEqual([])
       expect(r.html).toBe(r.freshHtml)
     })

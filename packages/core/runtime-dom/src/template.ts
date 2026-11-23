@@ -11,16 +11,21 @@ import {
   _renderBind,
 } from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
-import { _takeParkedRange, hasParkedRange, isMidSlotText, peekParkedRange } from './slot-brands'
+import {
+  _takeParkedRange,
+  _takeServerRecord,
+  hasParkedRange,
+  isMidSlotText,
+  peekParkedRange,
+  rangeClose,
+} from './slot-brands'
 import {
   _adoptParkedText,
   _beginParkBatch,
   _endParkBatch,
   _park,
   _parkedPending,
-  type ParkedServer,
   _slotHydrator,
-  _sweepRecord,
   _takeParked,
 } from './parked-text'
 import {
@@ -29,7 +34,7 @@ import {
   _markServerText,
   rangeText,
   reportFirstText,
-  reportParkedSweep,
+  recordedContent,
   reportStaticTextWrite,
   reportTextWrite,
 } from './hydration-debug'
@@ -158,8 +163,8 @@ export function _setChild(node: Element, value: unknown): void {
   // Outside hydration `_parkedPending` is 0: one integer compare.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
-      const server = _parkedPending > 0 ? _takeParked(node) : undefined
-      ownByScope(_slotHydrator(value as never, node, server ?? null))
+      // A fresh render APPENDS the value (`at` = null).
+      ownByScope(_slotHydrator(value as never, node, null, null))
       return
     }
     // The element leaves as a unit with its template, so the mount needs only
@@ -185,15 +190,17 @@ export function _setChild(node: Element, value: unknown): void {
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
-      const before = node.textContent ?? ''
-      // A replaced server ELEMENT is reported even when the text agrees.
-      const serverEl = node.firstElementChild
+      // Compared with what the SERVER rendered (the verifier's record), not
+      // with the element now: an earlier bind line (a `ref`) may have changed
+      // it, and that is not hydration rewriting server content.
+      const rec = _parkedPending > 0 ? _takeParked(node) : undefined
+      const server = recordedContent(Array.isArray(rec) ? rec : [])
       if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
         ;(fc as Text).data = text
       } else {
         node.textContent = text
       }
-      reportStaticTextWrite(node, before, serverEl)
+      reportStaticTextWrite(node, server, text)
 
       return
     }
@@ -742,8 +749,25 @@ export type TplAdoptVerifier = (
 
 let _tplAdoptVerifier: TplAdoptVerifier | null = null
 
-export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
+/**
+ * The verifier's companion, run once an adopting bind is over: it closes the
+ * build's park batch (`prevPark` is the enclosing one) and, only when the bind
+ * COMPLETED, sweeps the server content nothing claimed (the holes' leftovers,
+ * then every unclaimed park). A bind that threw has its marks released with
+ * the DOM untouched. Registered with the verifier (`hydration-plan.ts`), so
+ * CSR bundles carry none of it.
+ */
+export type TplAdoptFinish = (
+  prevPark: Node[] | null,
+  holes: Map<Element, ChildNode | null> | null,
+  completed: boolean,
+) => void
+
+let _tplAdoptFinish: TplAdoptFinish | null = null
+
+export function _setTplAdoptVerifier(v: TplAdoptVerifier, finish: TplAdoptFinish): void {
   _tplAdoptVerifier = v
+  _tplAdoptFinish = finish
 }
 
 /**
@@ -913,6 +937,8 @@ export function _isTplHtmlEl(el: Element): boolean {
  * server's.
  */
 let _tplHoleCursors: Map<Element, ChildNode | null> | null = null
+/** The holes of the current build whose record `_mountChild` checked. */
+let _tplHolesChecked: Set<Element> | null = null
 
 /** Verifier → `_tpl` handoff for the match it just approved (one-shot). */
 let _tplPendingHoles: Map<Element, ChildNode | null> | null = null
@@ -930,7 +956,8 @@ export type TplHoleHydrator = (
   child: VNodeChild | VNodeChild[],
   parent: Node,
   cursor: ChildNode | null,
-) => [() => void, ChildNode | null]
+  first: boolean,
+) => [() => void, ChildNode | null | undefined]
 
 let _tplHoleHydrator: TplHoleHydrator | null = null
 
@@ -956,35 +983,20 @@ export function _mountChild(
     const holes = _tplHoleCursors
     const el = parent as Element
     if (holes.has(el)) {
-      const [cleanup, next] = _tplHoleHydrator(child, parent, holes.get(el) as ChildNode | null)
-      holes.set(el, next)
+      // The FIRST child into a hole checks its recorded server range against
+      // what earlier bind lines left; `undefined` back means the range was not
+      // adoptable and the hole now mounts plainly (see `hydrateMountHole`).
+      const first = _tplHolesChecked !== null && !_tplHolesChecked.has(el)
+      if (first) (_tplHolesChecked as Set<Element>).add(el)
+      const [cleanup, next] = _tplHoleHydrator(child, parent, holes.get(el) as ChildNode | null, first)
+      if (next === undefined) holes.delete(el)
+      else holes.set(el, next)
       return cleanup
     }
   }
   // An absorbed component child appended into the clone — its DOM leaves with
   // the clone, so it needs effect-only cleanups (see `mountChildAsUnit`).
   return typeof child === 'function' ? mountChild(child, parent, anchor) : mountChildAsUnit(child, parent, anchor)
-}
-
-/**
- * Drop whatever the server sent that this render did not claim.
- *
- * A hole whose bind consumed every node leaves the cursor at `null` and this
- * removes nothing. A hole the bind never touched still holds its start cursor,
- * so the whole range goes — which is not a repair but the CORRECT result: the
- * template element is empty, so an element with no children is precisely what
- * the clone-and-swap path would have produced. That is what keeps a
- * mis-declared hole costing an adoption rather than correctness.
- */
-function sweepHoles(holes: Map<Element, ChildNode | null>): void {
-  for (const cursor of holes.values()) {
-    let n: ChildNode | null = cursor
-    while (n !== null) {
-      const nx: ChildNode | null = n.nextSibling
-      n.remove()
-      n = nx
-    }
-  }
 }
 
 /**
@@ -1212,7 +1224,9 @@ function buildTpl(
         // holes), and an exit that cleared this would strand the outer frame's
         // remaining holes on the plain mount path.
         const prevHoles = _tplHoleCursors
+        const prevChecked = _tplHolesChecked
         _tplHoleCursors = holes
+        _tplHolesChecked = holes === null ? null : new Set()
         const prevFresh = _freshBind
         _freshBind = false // an ADOPTED node holds server content — keep every read
         let cleanup: (() => void) | null
@@ -1223,12 +1237,12 @@ function buildTpl(
             process.env.NODE_ENV !== 'production'
               ? _bindWithAdoption(true, bind, target as HTMLElement)
               : bind(target as HTMLElement)
-          if (holes !== null) sweepHoles(holes)
           completed = true
         } finally {
           _tplHoleCursors = prevHoles
+          _tplHolesChecked = prevChecked
           _freshBind = prevFresh
-          sweepParked(prevPark, completed)
+          ;(_tplAdoptFinish as TplAdoptFinish)(prevPark, holes, completed)
         }
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
@@ -1238,7 +1252,7 @@ function buildTpl(
       }
     }
     // Not adopted: close this build's park batch (a failed verify parks nothing).
-    sweepParked(prevPark, false)
+    _endParkBatch(prevPark)
   }
   // (adoption falls through to a normal clone on any verification bail)
   const root = (tpl as CachedTemplate)._root
@@ -1733,7 +1747,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     // of re-mounting them; a binding that cannot is swept after the bind.
     if (parked || (first !== null && !isRangeClose(first))) _park(fresh, placeholder as Comment)
     // EMPTY range (the accessor rendered ''): nothing to adopt, clear it.
-    else clearSlotRange(placeholder as Comment)
+    else _clearSlotRange(placeholder as Comment)
 
 
     return fresh
@@ -1749,7 +1763,19 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
  * marked `<!--$-->…<!--/$-->` run. Depth-counted, so a nested range cannot end
  * the walk early.
  */
-function clearSlotRange(open: Comment): void {
+
+export function _clearSlotRange(open: Comment): void {
+  const recorded = _takeServerRecord(open)
+  if (recorded !== undefined) {
+    // The verifier recorded this range's server nodes: remove those still in
+    // it and the two markers, never a node a bind line inserted.
+    const close = rangeClose(open)
+    for (const n of recorded) if (n.parentNode === open.parentNode) n.remove()
+    open.remove()
+    close?.remove()
+
+    return
+  }
   if (_takeParkedRange(open) !== null) {
     // The content and the close marker are in the fragment: only `open` is live.
     open.remove()
@@ -1767,56 +1793,11 @@ function clearSlotRange(open: Comment): void {
   }
 }
 
-/**
- * Close a build's park batch (see `_beginParkBatch`). Every mark is released
- * first, so no entry's cleanup can leave a later entry's mark (or
- * `_parkedPending`) behind. Only a bind that COMPLETED then sweeps: the server
- * content of each mark nobody claimed is removed, and in dev the rewrite is
- * reported. A bind that threw leaves the DOM alone ("degrade, don't destroy":
- * `hydrateComponent` keeps the component's server markup, and so does every
- * parked element in it).
- */
-function sweepParked(prev: Node[] | null, completed: boolean): void {
-  const mine = _endParkBatch(prev)
-  if (mine === null) return
-  const servers: (ParkedServer | undefined)[] = []
-  for (const n of mine) servers.push(_takeParked(n))
-  if (!completed) return
-  for (let i = 0; i < mine.length; i++) {
-    const server = servers[i]
-    if (server !== undefined) sweepOne(mine[i] as Text | Element, server)
-  }
-}
-
-/**
- * Remove one unclaimed mark's server content. A range (`_textSlot`) is cleared
- * between its markers; a RECORD loses only its nodes that are still attached
- * to the element they were recorded in, never anything a bind line inserted.
- * A placeholder a bind line detached took that content with it.
- */
-function sweepOne(node: Text | Element, server: ParkedServer): void {
-  const isText = node.nodeType === 3
-  const expected = isText ? (node as Text).data : ''
-  let text = ''
-  if (!Array.isArray(server)) {
-    if (process.env.NODE_ENV !== 'production') text = _serverTextOfRange(server)
-    clearSlotRange(server)
-    if (process.env.NODE_ENV !== 'production') reportParkedSweep(node.parentNode, expected, text, null, 'reactive')
-    return
-  }
-  const owner = isText ? node.parentNode : node
-  if (owner === null) return
-  const [removed, serverEl] = _sweepRecord(owner, server)
-  if (process.env.NODE_ENV !== 'production') {
-    reportParkedSweep(owner, expected, removed, serverEl, isText ? 'reactive' : 'text')
-  }
-}
-
 // Dev: the server text of the range `_textSlot` is resolving (set and read
 // within one synchronous call).
 let _rangeServerText = ''
 
-function _serverTextOfRange(open: Comment): string {
+export function _serverTextOfRange(open: Comment): string {
   const parked = peekParkedRange(open)
   return parked !== undefined ? parked.textContent : rangeText(open)
 }

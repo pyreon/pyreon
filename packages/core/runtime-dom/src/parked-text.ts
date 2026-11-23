@@ -63,6 +63,10 @@ export function _takeParked(node: Node): ParkedServer | undefined {
 export function _sweepRecord(owner: Node, server: ChildNode[]): [string, Element | null] {
   let text = ''
   let el: Element | null = null
+  // A text-only record is left alone, as before #4599: server text under an
+  // element nobody claims (a `<textarea>` the client drives through `.value`)
+  // is not a divergence worth removing.
+  if (server.every((n) => n.nodeType === 3)) return [text, el]
   for (const n of server) {
     if (n.parentNode !== owner) continue
     if (process.env.NODE_ENV !== 'production') {
@@ -109,14 +113,20 @@ export function _endParkBatch(prev: Node[] | null): Node[] | null {
  * parked text placeholder (below). It lives here because `mount.ts`
  * (`bindPolymorphicText`) must reach it without importing `template.ts`.
  *
- * `server`: `null` is a MARKER-LESS range whose extent is the parent's whole
- * child list (a sole slot: SSR elided the `<!--$-->` pair; see `_mountSlot`);
- * a comment is a range's open marker; an array is a parked record (above).
+ * `server` is a range's open marker, the server nodes RECORDED at verify time
+ * (an empty array: the server rendered nothing there), or `null`: the record
+ * the verifier left on `parent` itself (an empty `_setChild` element, a sole
+ * slot), which the hydrator takes. For a record,
+ * `at` says where a fresh render puts the value: `null` at the end of
+ * `parent` (`_setChild` appends), a node to insert before (a #4385
+ * placeholder), or `undefined` where the server's run is (a sole slot).
+ * Only recorded nodes are adopted or removed.
  */
 export type SlotHydrator = (
   children: VNodeChild | VNodeChild[],
   parent: Node,
   server: ParkedServer | null,
+  at?: Node | null,
 ) => () => void
 
 export let _slotHydrator: SlotHydrator | null = null
@@ -137,10 +147,19 @@ export function _adoptParkedText(text: Text, child: () => VNodeChild): (() => vo
   // element's children. A fresh render writes into the same detached node, so
   // the binding proceeds as an ordinary text binding.
   if (parent === null) return null
-  parent.removeChild(text)
-
   // The binding's accessor IS a reactive child: the hydrator primes it once.
   // A placeholder is only ever parked by an adoption build, and adoption runs
-  // under `hydrateRoot`, which registered the hydrator first.
-  return (_slotHydrator as SlotHydrator)(child as unknown as VNodeChild, parent, server)
+  // under `hydrateRoot`, which registered the hydrator first. A record is
+  // hydrated AT the placeholder (a fresh render mounts there, S1); a range
+  // stands where the placeholder's `<!>` was.
+  const hydrate = _slotHydrator as SlotHydrator
+  if (Array.isArray(server)) {
+    const cleanup = hydrate(child as unknown as VNodeChild, parent, server, text)
+    text.remove()
+
+    return cleanup
+  }
+  parent.removeChild(text)
+
+  return hydrate(child as unknown as VNodeChild, parent, server)
 }

@@ -70,3 +70,41 @@ export function _markMidSlotText(t: Text): void {
 // parity fuzz (seeds 76 + 112) the day after #3307 shipped it.
 export const isMidSlotText = (n: Node | null): boolean =>
   n !== null && n.nodeType === 3 && (n as MidSlotText)[MID_SLOT_TEXT] === true
+
+/**
+ * The server nodes a region held at VERIFY time, before any bind line ran:
+ * a trailing marked slot range (on its open marker) or a mount hole (on its
+ * element). Bind lines that run earlier than the region's claimer (`_ref`, a
+ * spread) may add nodes; hydration adopts and removes only recorded nodes.
+ * Not counted or batched: every such region has a claimer (`_mountSlot`,
+ * `_setChildAt`, `_textSlot`, the hole sweep). Carried on the node (leak
+ * class C).
+ */
+const SERVER_RECORD: unique symbol = Symbol('pyreon.serverRecord')
+type Recorded = Node & { [SERVER_RECORD]?: ChildNode[] | undefined }
+
+export function _recordServer(node: Node, nodes: ChildNode[]): void {
+  ;(node as Recorded)[SERVER_RECORD] = nodes
+}
+
+/** Take (and clear) `node`'s record, or `undefined`. */
+export function _takeServerRecord(node: Node): ChildNode[] | undefined {
+  const r = (node as Recorded)[SERVER_RECORD]
+  if (r !== undefined) (node as Recorded)[SERVER_RECORD] = undefined
+
+  return r
+}
+
+/** The `<!--/$-->` closing `open`'s range at depth 0, or `null` (accessor
+ *  ranges nest). Shared by every consumer of a marked range. */
+export function rangeClose(open: Comment): Comment | null {
+  let depth = 0
+  for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
+    if (n.nodeType !== 8) continue
+    const d = (n as Comment).data
+    if (d === '$') depth++
+    else if (d === '/$' && depth-- === 0) return n as Comment
+  }
+
+  return null
+}

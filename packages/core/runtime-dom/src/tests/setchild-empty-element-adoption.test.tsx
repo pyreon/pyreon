@@ -108,7 +108,7 @@ async function roundTrip(serverApp: () => unknown, clientApp: () => unknown, opt
   }
   // A throwing client bind is the one case expected to log (`opts.throws`).
   if (opts.throws === true) expect(errors.length).toBeGreaterThan(0)
-  else expect(errors).toEqual([])
+  else expect(errors.join("\n").slice(0, 600)).toBe("")
   // Every record and placeholder a build made was claimed, swept or released.
   expect(parked._parkedPending).toBe(0)
   const fresh = document.createElement('div')
@@ -142,6 +142,10 @@ function scope(): Record<string, unknown> {
     fnNode: () => h('b', null, 'f'),
     fnArr: () => ['t', h('b', null, 'f')],
     obj: { cell: h('u', null, 'o') },
+    // Structural values the server renders as TEXT only.
+    vFragText: h(Fragment, null, 'a', 'b'),
+    vCompText: h(() => 'ct', null),
+    fnText: () => 'ft',
     rows: [
       { id: 1, cell: h('b', null, 'one') },
       { id: 2, cell: ['t', h('i', null, 'two')] },
@@ -163,6 +167,9 @@ const SHAPES: [string, string][] = [
   ['function value returning an array', 'const App = () => <div><span>{fnArr}</span></div>'],
   ['conditional over values (VNode)', 'const App = () => <div><span>{vStr ? vNode : null}</span></div>'],
   ['conditional over values (array)', 'const App = () => <div><span>{vStr ? vArr : vNode}</span></div>'],
+  ['fragment of strings (server text only)', 'const App = () => <div><span>{vFragText}</span></div>'],
+  ['component returning text (server text only)', 'const App = () => <div><span>{vCompText}</span></div>'],
+  ['function returning text (server text only)', 'const App = () => <div><span>{fnText}</span></div>'],
   ['member expression', 'const App = () => <div><span>{obj.cell}</span></div>'],
   ['fused static mix', 'const App = () => <div><span>a{vNode}b</span></div>'],
   ['fused mix with an array', 'const App = () => <div><span>a{vArr}b</span></div>'],
@@ -186,6 +193,7 @@ const SIBLINGS: [string, string, string][] = [
   ['sole component', 'const App = () => <div><span><Comp /></span></div>', '_mountChild('],
   ['sole <Show>', 'const App = () => <div><span><Show when={() => true}>{vNode}</Show></span></div>', '_mountChild('],
   ['sole fragment-wrapped value', 'const App = () => <div><span><>{vNode}</></span></div>', '_setChildAt('],
+  ['dropped null sibling', 'const App = () => <div><span>{null}{vNode}</span></div>', '_setChildAt('],
 ]
 
 describe('#4599: an empty `_setChild` element adopts the server structure', () => {
@@ -487,13 +495,13 @@ describe('#4599: adopted content stays live', () => {
 })
 
 /**
- * A row matched through this relaxation records no replay plan, so `<For>`
- * rows whose cells all hold structure take the full verify each. Before #4599
- * those rows were not adopted at all (clone, bind, swap); the full verify
- * walks only the row's own skeleton.
+ * A row whose cells hold structure records a replay plan like any other: the
+ * plan carries the paths of the template-empty elements, and each replayed
+ * row parks them with its own server nodes, so `_setChild` on rows 2..N claims
+ * recorded nodes exactly as row 1 does.
  */
 describe('#4599: <For> rows with a structural cell', () => {
-  it('every row adopts through the full verify (no plan replay)', async () => {
+  it('rows 2..N replay the plan and still adopt through their own records', async () => {
     const counts = new Map<string, number>()
     const sink = globalThis as { __pyreon_count__?: ((n: string, k?: number) => void) | undefined }
     const prev = sink.__pyreon_count__
@@ -510,8 +518,8 @@ describe('#4599: <For> rows with a structural cell', () => {
       sink.__pyreon_count__ = prev
     }
     expect(r.replaced).toEqual([])
-    expect(counts.get('runtime.tpl.adoptPlanReplay') ?? 0).toBe(0)
-    // 4 rows adopted (plus the container template); the fresh mount adopts none.
+    expect(counts.get('runtime.tpl.adoptPlanReplay')).toBe(3)
+    // 4 rows adopted (plus the container template), rows 2..4 by replay.
     expect(counts.get('runtime.tpl.adopt')).toBe(5)
   })
 })
@@ -625,6 +633,98 @@ describe('a divergent value in a marked range with neighbours', () => {
   })
 })
 
+/**
+ * THE INVARIANT, as a matrix: hydration never removes a node it did not record
+ * as server content at verify time, and never adopts or positions by an
+ * assumption about where client-inserted nodes are. Every census and sibling
+ * shape gets a ref on its target element that clears it, prepends, appends or
+ * inserts in the middle, and a ref that throws; each runs on the full verify
+ * (both SSR emits), on `<For>` plan replay (including a plan recorded by a
+ * DIFFERENT list with the same row template), and on the `h()` path. A same-
+ * source round trip must equal a fresh client render with no report and no
+ * logged error; a throwing ref must keep the server markup.
+ */
+const REFS: Record<string, (el: Element | null) => void> = {
+  clear: (el) => {
+    if (el !== null) el.textContent = ''
+  },
+  prepend: (el) => {
+    if (el !== null) el.prepend(document.createElement('i'))
+  },
+  append: (el) => {
+    if (el !== null) el.append(document.createElement('i'))
+  },
+  middle: (el) => {
+    if (el !== null) el.insertBefore(document.createElement('i'), el.childNodes[Math.ceil(el.childNodes.length / 2)] ?? null)
+  },
+}
+
+const boom = (el: Element | null) => {
+  if (el !== null) throw new Error('boom')
+}
+
+/** Put `ref={R}` on the shape's target: its first `<span` or `<li`. */
+const withRef = (src: string) => src.replace(/<(span|li)(?=[ >])/, '<$1 ref={R}')
+
+/** The `h()` path: the client is lowered by esbuild alone (no `_tpl`). */
+function compileH(src: string, s: Record<string, unknown>): () => unknown {
+  const deps = { ...DEPS, ...s }
+  return new Function(...Object.keys(deps), `${lower(src)}\nreturn App`)(...Object.values(deps)) as () => unknown
+}
+
+/**
+ * A ref that CLEARS an element whose template carries a slot placeholder
+ * (`<!>`, or the `' '` of a text slot) detaches the node the compiled bind
+ * mounts at, and the fresh client render itself throws (`insertBefore` on a
+ * node that is not a child). There is no fresh result to match, so `clear` is
+ * skipped for those templates; it runs on every empty-element shape.
+ */
+const hasPlaceholder = (code: string) => /_tpl\((?:"|')[^"']*(?:<!>|> <)/.test(code)
+
+async function refRow(src: string, s: Record<string, unknown>, client: 'compiled' | 'h') {
+  const placeholder = hasPlaceholder(compile(src, { ...s, R: () => {} }, 'client').code)
+  for (const [refName, R] of Object.entries(REFS)) {
+    if (refName === 'clear' && placeholder) continue
+    const sc = { ...s, R }
+    const clientApp = client === 'h' ? compileH(src, sc) : compile(src, sc, 'client').App
+    for (const side of ['h', 'ssr'] as const) {
+      const r = await roundTrip(compile(src, sc, side).App, clientApp)
+      expect(`${refName} | ${side} | ${r.html} | ${r.reports.join('; ')}`).toBe(`${refName} | ${side} | ${r.freshHtml} | `)
+    }
+  }
+  const sc = { ...s, R: boom }
+  const r = await roundTrip(compile(src, { ...s, R: () => {} }, 'h').App, client === 'h' ? compileH(src, sc) : compile(src, sc, 'client').App, {
+    throws: true,
+  })
+  expect(`throws | ${r.html} | ${r.reports.join('; ')}`).toBe(`throws | ${r.serverHtml.replace(/<!--[^>]*-->/g, '')} | `)
+}
+
+describe('the invariant: bind-time refs on every shape, every path', () => {
+  for (const [name, src] of [...SHAPES, ...SIBLINGS.map(([n, s]) => [n, s] as [string, string])]) {
+    it(`full verify | ${name}`, async () => refRow(withRef(src), scope(), 'compiled'))
+  }
+  for (const [name, src] of [...SHAPES.slice(0, 4), ...SIBLINGS.slice(0, 1)]) {
+    it(`h() path | ${name}`, async () => refRow(withRef(src), scope(), 'h'))
+  }
+  const VALUES = ['vNode', 'vArr', 'vFrag', 'vComp', 'vNested', 'vLive', 'vArrLive', 'fnNode', 'fnArr', 'vFragText', 'vCompText', 'fnText']
+  for (const v of VALUES) {
+    it(`plan replay | a row cell holding ${v} after a string row`, async () => {
+      const s = scope()
+      const rowsR = [{ id: 1, cell: 'str' }, { id: 2, cell: s[v] }, { id: 3, cell: s[v] }]
+      const src = 'const App = () => <ul><For each={rowsR} by={(r) => r.id}>{(r) => <li ref={R} class="rr">{r.cell}</li>}</For></ul>'
+      await refRow(src, { ...s, rowsR }, 'compiled')
+    })
+    it(`plan replay | a plan recorded by a different list, then ${v}`, async () => {
+      const s = scope()
+      const plain = [{ id: 1, cell: 'p' }, { id: 2, cell: 'q' }]
+      const rowsR = [{ id: 3, cell: s[v] }, { id: 4, cell: s[v] }]
+      const row = '{(r) => <li ref={R} class="xl">{r.cell}</li>}'
+      const src = `const App = () => <div><ul><For each={plain} by={(r) => r.id}>${row}</For></ul><ul><For each={rowsR} by={(r) => r.id}>${row}</For></ul></div>`
+      await refRow(src, { ...s, plain, rowsR }, 'compiled')
+    })
+  }
+})
+
 describe('recorded Chromium cases match the real toolchain', () => {
   for (const c of SETCHILD_EMPTY_CASES) {
     it(c.name, async () => {
@@ -635,6 +735,12 @@ describe('recorded Chromium cases match the real toolchain', () => {
         prepend: () => {},
         hp: { dangerouslySetInnerHTML: { __html: '<i>h</i>' } },
         parts: () => ['a ', h('code', null, 'x')],
+        append: () => {},
+        rowsMix: [
+          { id: 1, cell: 's' },
+          { id: 2, cell: h('b', null, 'two') },
+          { id: 3, cell: h('b', null, 'three') },
+        ],
       }
       const ssr = compile(c.source, recordedScope, 'h').App
       expect(await renderToString(h(ssr as never, null) as never)).toBe(c.server)

@@ -1,6 +1,6 @@
 {
   "package": "@pyreon/runtime-dom",
-  "bundle": 25915,
+  "bundle": 26625,
   "imports": {
     "mount": 9750,
     "mount+hydrate": 19715

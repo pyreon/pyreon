@@ -70,6 +70,7 @@ import {
 } from '../index'
 import { bindPolymorphicText } from '../mount'
 import { _setTplAdoptTarget, _setTplAdoptVerifier } from '../template'
+import { finishTplAdopt } from '../hydration-plan'
 import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 
 // ─── Counter sink ────────────────────────────────────────────────────────────
@@ -623,7 +624,7 @@ const App = () => <div class="a"><section class="h"><Mid /></section>{() => [1, 
       // one installed here would leak into every later `_tpl` in this worker.
       // `hydrateRoot` re-registers the genuine verifier on each call, so the
       // restore below is a real restore rather than a hope.
-      _setTplAdoptVerifier(() => true)
+      _setTplAdoptVerifier(() => true, finishTplAdopt)
       _setTplAdoptTarget(target)
       item = _tpl('<div class="app"><main class="m"></main></div>', (root) => {
         const main = root.firstElementChild as HTMLElement

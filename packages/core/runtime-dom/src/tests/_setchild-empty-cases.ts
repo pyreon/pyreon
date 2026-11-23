@@ -11,7 +11,8 @@
  * `rows = [{ id: 1, cell: <b>one</b> }, { id: 2, cell: ['t', <i>two</i>] }]`,
  * `clear` / `prepend` refs (the server never runs a ref) and
  * `hp = { dangerouslySetInnerHTML: { __html: '<i>h</i>' } }`,
- * `parts = () => ['a ', <code>x</code>]`.
+ * `parts = () => ['a ', <code>x</code>]`, an `append` ref, and
+ * `rowsMix = [{ id: 1, cell: 's' }, { id: 2, cell: <b>two</b> }, { id: 3, cell: <b>three</b> }]`.
  */
 export interface SetChildEmptyCase {
   name: string
@@ -79,6 +80,24 @@ export const SETCHILD_EMPTY_CASES: SetChildEmptyCase[] = [
     name: "a ref that prepends before a sole text slot holding elements (#4385)",
     source: "export const App = () => <div><span ref={prepend}>{parts()}</span></div>",
     compiled: "const App = () => _tpl(\"<div><span> </span></div>\", (__root) => {\n  const __e0 = __root.firstElementChild;\n  const __t1 = __e0.firstChild;\n  const __d0 = _ref(__e0, prepend);\n  const __d1 = _bindText(parts, __t1);\n  return _dispose2(__d0, __d1);\n});\n",
+    server: "<div><span>a <code>x</code></span></div>",
+  },
+  {
+    name: "a ref that appends to a sole `_mountSlot`",
+    source: "export const App = () => { const v = <b>n</b>; return <div><span ref={append}>{v}</span></div> }",
+    compiled: "const App = () => {\n  const v = _tpl(\"<b>n</b>\", () => null);\n  return _tpl(\"<div><span><!></span></div>\", (__root) => {\n    const __e0 = __root.firstElementChild;\n    const __p0 = __e0.firstChild;\n    const __d0 = _ref(__e0, append);\n    const __d1 = _mountSlot(v, __e0, __p0, true);\n    return _dispose2(__d0, __d1);\n  });\n};\n",
+    server: "<div><span><b>n</b></span></div>",
+  },
+  {
+    name: "plan-replayed <For> rows whose cells hold elements, with a ref that appends",
+    source: "export const App = () => <ul><For each={rowsMix} by={(r) => r.id}>{(r) => <li ref={append}>{r.cell}</li>}</For></ul>",
+    compiled: "const App = () => _tpl(\"<ul data-pyreon-hole></ul>\", (__root) => {\n  const __d0 = _mountChild(/* @__PURE__ */ h(For, { each: rowsMix, by: (r) => r.id }, (r) => _tpl(\"<li></li>\", (__root2) => {\n    const __d02 = _ref(__root2, append);\n    _setChild(__root2, r.cell);\n    return __d02;\n  })), __root, null);\n  return __d0;\n});\n",
+    server: "<ul><!--pyreon-for--><li>s</li><li><b>two</b></li><li><b>three</b></li><!--/pyreon-for:1 2 3--></ul>",
+  },
+  {
+    name: "a ref that appends before a sole text slot holding elements (#4385)",
+    source: "export const App = () => <div><span ref={append}>{parts()}</span></div>",
+    compiled: "const App = () => _tpl(\"<div><span> </span></div>\", (__root) => {\n  const __e0 = __root.firstElementChild;\n  const __t1 = __e0.firstChild;\n  const __d0 = _ref(__e0, append);\n  const __d1 = _bindText(parts, __t1);\n  return _dispose2(__d0, __d1);\n});\n",
     server: "<div><span>a <code>x</code></span></div>",
   },
 ]

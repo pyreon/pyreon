@@ -61,7 +61,7 @@ import {
   _setTplAdoptVerifier,
   type DeferredNativeItem,
 } from '../template'
-import { tplAdoptVerify } from '../hydration-plan'
+import { finishTplAdopt, tplAdoptVerify } from '../hydration-plan'
 
 // ─── Counter sink ────────────────────────────────────────────────────────────
 const g = globalThis as { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }
@@ -321,7 +321,7 @@ const App = () => <div class={dyn()}><Header /><p class="r">{() => label()}</p><
     server.className = 'd'
     server.textContent = 'x'
     document.body.appendChild(server)
-    _setTplAdoptVerifier(tplAdoptVerify)
+    _setTplAdoptVerifier(tplAdoptVerify, finishTplAdopt)
     const prevActive = _setHydrationActive(true)
     _setTplAdoptTarget(server)
     try {
@@ -381,7 +381,7 @@ const App = () => <div class={dyn()}><Header /><p class="r">{() => label()}</p><
     const server = document.createElement('i')
     server.textContent = 'a'
     document.body.appendChild(server)
-    _setTplAdoptVerifier(tplAdoptVerify)
+    _setTplAdoptVerifier(tplAdoptVerify, finishTplAdopt)
     const prevActive = _setHydrationActive(true)
     try {
       const item = _tpl(`<i class="mr">a</i><i class="mr">b</i>`, () => null) as unknown as DeferredNativeItem

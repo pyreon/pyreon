@@ -259,12 +259,25 @@ export function reportParkedSweep(
   else if (serverEl !== null) reportServerElementRewrite(owner as Node, serverEl, expected === '' ? '' : '#text', leaf)
 }
 
-/** `_setChild`'s static text write over adopted content: a server ELEMENT it
- *  replaced is a rewrite even when the text agrees (`<b>n</b>` → `n`), so it
- *  is reported as a tag; otherwise as a text write. */
-export function reportStaticTextWrite(node: Element, before: string, serverEl: Element | null): void {
-  if (serverEl !== null && before === (node.textContent ?? '')) reportServerElementRewrite(node, serverEl, '#text', 'text')
-  else reportTextWrite(node, before, 'text')
+/** A record's server text (marker comments are not content) and first
+ *  element, read BEFORE a write that may reuse its text node. */
+export function recordedContent(record: ChildNode[]): [string, Element | null] {
+  let text = ''
+  let el: Element | null = null
+  for (const n of record) {
+    if (n.nodeType !== 8) text += n.textContent
+    if (el === null && n.nodeType === 1) el = n as Element
+  }
+
+  return [text, el]
+}
+
+/** `_setChild`'s static text write over adopted content, compared with the
+ *  server's recorded content. A server ELEMENT it replaced is a rewrite even
+ *  when the text agrees (`<b>n</b>` → `n`), so it is reported as a tag. */
+export function reportStaticTextWrite(node: Element, server: [string, Element | null], written: string): void {
+  if (server[0] !== written) warnHydrationMismatch('text', written, server[0], compiledMismatchPath(node, 'text'))
+  else if (server[1] !== null) reportServerElementRewrite(node, server[1], '#text', 'text')
 }
 
 /** A static write already made: report it if it changed the server's text
