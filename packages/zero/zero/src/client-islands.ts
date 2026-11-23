@@ -8,7 +8,8 @@
  * (or has no islands) never downloads it. Imports nothing from the app side.
  */
 import type { ComponentFn } from '@pyreon/core'
-import { activateServerIslandElement, hydrateIslandsAuto } from '@pyreon/server/client'
+import { hydrateIslandsAuto } from '@pyreon/server/client'
+import { startServerIslands } from './client-server-islands'
 import type { IslandRootLoader, IslandsRegistry } from './client-marker'
 
 /**
@@ -32,7 +33,7 @@ export function startIslands(
     hydrateStores(storeState as Record<string, Record<string, unknown>>)
   }
 
-  activateTopLevelServerIslands()
+  startServerIslands()
   if (!islands) return () => {}
 
   return hydrateIslandsAuto(
@@ -43,19 +44,3 @@ export function startIslands(
   )
 }
 
-/**
- * Activate the server islands that sit OUTSIDE every client island. Nothing
- * else would: no router or app mounts on an islands-only page, and a marker's
- * self-activation runs only when a component mounts it. Each fetches under
- * the base the server stamped on it (`data-base`). A marker INSIDE a client
- * island is left to that island: it activates itself when the island
- * hydrates, and swapping its fragment in first would change the DOM the
- * island hydrates against.
- */
-function activateTopLevelServerIslands(): void {
-  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr, pyreon/no-dom-in-setup -- client-only: startIslands runs only after startIslandsOnlyPage found a document
-  const markers = document.querySelectorAll<HTMLElement>('pyreon-server-island[data-name]:not([data-pyreon-si])')
-  for (const el of markers) {
-    if (el.closest('pyreon-island') === null) activateServerIslandElement(el)
-  }
-}

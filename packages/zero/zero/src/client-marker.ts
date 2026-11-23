@@ -111,6 +111,18 @@ export function startIslandsOnlyPage(options: IslandsOnlyOptions): () => void {
 
     if (!hasServerIslands) return () => {}
   }
+  if (!hasIslands) {
+    // Server islands only: the small activator, not the client-island runtime.
+    import('./client-server-islands').then(
+      (m) => m.startServerIslands(),
+      (err: unknown) => {
+        // oxlint-disable-next-line no-console
+        console.error('[Pyreon] Could not load the server-islands runtime for this page:', err)
+      },
+    )
+
+    return () => {}
+  }
   let disposed = false
   let stop: (() => void) | null = null
   import('./client-islands').then(

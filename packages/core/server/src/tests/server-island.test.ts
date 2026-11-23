@@ -40,17 +40,15 @@ describe('serverIsland — marker component', () => {
     expect(html).not.toContain('class="badge"')
   })
 
-  it('stamps the route base on the marker when a router with a base renders it (#4269 follow-up)', async () => {
-    // The server knows the base; a marker activated where no router runs
-    // (inside a client island on an islands-only page, or by the document
-    // scan) reads it from `data-base`.
+  it('never writes the base into the marker: the client takes it from code, not the page', async () => {
+    // A base read from the DOM would let injected markup choose where the
+    // fragment (inserted as HTML) is fetched from. See the threat model on
+    // `activateServerIslandElement`.
     const Island = serverIsland(async () => Badge, { name: 'Based' })
     const router = createRouter({ routes: [{ path: '/', component: () => null }], mode: 'history', base: '/sub/', url: '/' })
     const html = await renderToString(h(RouterProvider, { router }, h(Island, {} as never)))
-    expect(html).toContain('data-base="/sub"')
-    // No base, no attribute.
-    const plain = await renderToString(h(Island, {} as never))
-    expect(plain).not.toContain('data-base')
+    expect(html).toContain('data-name="Based"')
+    expect(html).not.toContain('data-base')
   })
 
   it('renders the fallback inside the marker (no-JS / pre-swap content)', async () => {

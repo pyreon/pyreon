@@ -7,8 +7,9 @@ import { expect, test } from '@playwright/test'
  * (`base: '/sub/'`, SSR, node adapter) and run on 5204 — see
  * `e2e-configs/ssr-node.config.ts`. What must hold under the base:
  *
- * - the server render stamps the marker with the route base and signs it
- *   for the BASED page path (`data-page="/sub/server-island-demo"`);
+ * - the server render signs the marker for the BASED page path
+ *   (`data-page="/sub/server-island-demo"`) and never writes the base into
+ *   the DOM (the client takes it from code: the fragment is inserted as HTML);
  * - the browser fetches the fragment under the base, and the server
  *   verifies the signature over that same page value (200, not 403);
  * - a marker rendered only on the client has no signature: its first
@@ -16,16 +17,16 @@ import { expect, test } from '@playwright/test'
  *   the page's server render — all under `/sub/`;
  * - nothing is requested from `/_pyreon/fragment/…` at the host root.
  *
- * Bisect: drop the `data-base` stamp / router base in `serverIsland` →
- * the fragment goes to the root and the "under the base" assertions fail.
+ * Bisect: drop the router base in `serverIsland`'s component body → the
+ * fragment goes to the root and the "under the base" assertions fail.
  */
 const FRAGMENT = /\/_pyreon\/fragment\/ServerStamp/
 
 test.describe('server island under /sub/', () => {
-  test('the server stamps the base and signs the based page path', async ({ page }) => {
+  test('the server signs the based page path and keeps the base out of the DOM', async ({ page }) => {
     const raw = await (await page.request.get('/sub/server-island-demo')).text()
     expect(raw).toContain('<pyreon-server-island')
-    expect(raw).toContain('data-base="/sub"')
+    expect(raw).not.toContain('data-base')
     expect(raw).toContain('data-page="/sub/server-island-demo"')
     expect(raw).toMatch(/data-sig="[^"]+"/)
   })

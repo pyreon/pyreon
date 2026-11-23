@@ -205,24 +205,33 @@ describe('startClientLazy on an islands-only page', () => {
   // islands-only page (no router, no app), so it stayed on its fallback
   // forever. The islands runtime now activates it, under the base the server
   // stamped on it. One inside a client island is left to that island.
-  it('activates a top-level server island under its stamped base, even with no client island or registry', async () => {
+  it('activates a top-level server island under the build base, even with no client island or registry', async () => {
     const urls: string[] = []
     vi.stubGlobal('fetch', (url: string) => {
       urls.push(url)
       return Promise.resolve({ ok: true, status: 200, text: async () => '<b>live</b>' } as Response)
     })
     serverPage(
-      '<pyreon-server-island data-name="Stamp" data-base="/sub" data-page="/sub/" data-sig="s"><i>fallback</i></pyreon-server-island>',
+      // A `data-base` on the marker is ignored: the base comes from the build.
+      '<pyreon-server-island data-name="Stamp" data-base="//evil.example" data-page="/sub/" data-sig="s"><i>fallback</i></pyreon-server-island>',
     )
+    ;(globalThis as Record<string, unknown>).__ZERO_BASE__ = '/sub/'
+    // The client-island runtime seeds stores first thing; never called means
+    // only the small server-islands activator loaded.
+    const hydrateStores = vi.fn()
+    g.__PYREON_HYDRATE_STORES__ = hydrateStores
+    g.__PYREON_STORE_STATE__ = { cart: {} }
     const cleanup = startClientLazy({ routes: routesLoader() })
     try {
       const marker = document.querySelector('pyreon-server-island')!
       await vi.waitFor(() => expect(marker.innerHTML).toBe('<b>live</b>'))
       expect(urls).toEqual(['/sub/_pyreon/fragment/Stamp?page=%2Fsub%2F&sig=s'])
       expect(startClientMock).not.toHaveBeenCalled()
+      expect(hydrateStores).not.toHaveBeenCalled()
     } finally {
       cleanup()
       vi.unstubAllGlobals()
+      delete (globalThis as Record<string, unknown>).__ZERO_BASE__
     }
   })
 

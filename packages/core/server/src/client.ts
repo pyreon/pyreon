@@ -285,6 +285,16 @@ function withRoot(loader: IslandLoader, loadRoot: () => Promise<ComponentFn>): I
  *   // in the HTML — registering one would defeat the strategy.
  * })
  */
+/**
+ * The loader registered under `id`, own keys only. `data-component` comes
+ * from the page, and an inherited name (`constructor`, `toString`,
+ * `__proto__`) must not resolve to a prototype function and be called as a
+ * loader (anti-pattern: a DOM attribute never chooses code).
+ */
+function ownLoader<T>(registry: Record<string, T>, id: string): T | undefined {
+  return Object.hasOwn(registry, id) ? registry[id] : undefined
+}
+
 export function hydrateIslands(
   registry: Record<string, IslandLoader>,
   options?: HydrateIslandsOptions,
@@ -358,7 +368,7 @@ export function hydrateIslands(
       continue
     }
 
-    const registered = registry[componentId]
+    const registered = ownLoader(registry, componentId)
     if (!registered) {
       console.warn(`No loader registered for island "${componentId}"`)
       el.setAttribute('data-island-error', 'no-loader')
@@ -990,9 +1000,9 @@ import { activateServerIslandElement } from './server-island'
  * failures leave the fallback content in place and flag the marker
  * (`data-island-error="fragment-failed"`) — a personalized hole degrading
  * to its structural fallback is the designed failure mode, never a broken
- * page. `base` (`/sub`) overrides the sub-path the fragment endpoint lives
- * under; without it each marker uses the base the server stamped on it
- * (`data-base`). In-flight fetches are not aborted on teardown — a swap to a
+ * page. `base` (`/sub`) is the sub-path the fragment endpoint lives under;
+ * without it the base set with `setServerIslandBase` applies. It is never
+ * read from the page (see `activateServerIslandElement`). In-flight fetches are not aborted on teardown — a swap to a
  * detached node is skipped via the `el.isConnected` guard in
  * `activateServerIslandElement`.
  */
@@ -1007,5 +1017,6 @@ export function activateServerIslands(base?: string): () => void {
   return () => {}
 }
 
-export { activateServerIslandElement, serverIsland } from './server-island'
+export { activateServerIslandElement, serverIsland, setServerIslandBase } from './server-island'
+export { isRoutePath } from './route-path'
 export type { ServerIslandOptions } from './server-island'

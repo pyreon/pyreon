@@ -80,6 +80,7 @@ import { h, isClient } from '@pyreon/core'
 import { getActiveRouter } from '@pyreon/router'
 import { encodeIslandProps } from './island-codec'
 import { useRequestLocals } from './middleware'
+import { isRoutePath } from './route-path'
 
 /**
  * `ctx.locals` key of the request's server-island MINT — a function that
@@ -133,7 +134,10 @@ export interface RegisteredServerIsland {
  * can't see it — vitest never duplicates the module). Same cross-instance
  * pattern as `__PYREON_STYLER_FLUSH__` / `__PYREON_SSR_TEMPLATE__`.
  */
-const _g = globalThis as { __PYREON_SERVER_ISLANDS__?: Map<string, RegisteredServerIsland> }
+const _g = globalThis as {
+  __PYREON_SERVER_ISLANDS__?: Map<string, RegisteredServerIsland>
+  __PYREON_SERVER_ISLAND_BASE__?: string
+}
 
 const registry: Map<string, RegisteredServerIsland> = (_g.__PYREON_SERVER_ISLANDS__ ??=
   new Map<string, RegisteredServerIsland>())
@@ -146,6 +150,29 @@ export function getRegisteredServerIslands(): Map<string, RegisteredServerIsland
 /** @internal Test isolation. */
 export function _resetServerIslands(): void {
   registry.clear()
+  _g.__PYREON_SERVER_ISLAND_BASE__ = ''
+}
+
+/**
+ * Set the route base server-island markers fetch their fragments under when
+ * no router is around them — an islands-only page starts none. `@pyreon/zero`
+ * calls it with its build-time base. Must be a root-relative path (`/sub/`);
+ * anything else is refused (dev warning) and leaves the base unset. Same
+ * `globalThis` slot reasoning as the registry above.
+ */
+export function setServerIslandBase(base: string): void {
+  if (base === '' || base === '/' || isRoutePath(base)) {
+    _g.__PYREON_SERVER_ISLAND_BASE__ = base
+    return
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    // oxlint-disable-next-line no-console
+    console.warn(`[Pyreon] setServerIslandBase: "${base}" is not a root-relative path such as "/sub/"; ignored.`)
+  }
+}
+
+function configuredServerIslandBase(): string {
+  return _g.__PYREON_SERVER_ISLAND_BASE__ ?? ''
 }
 
 /**
@@ -193,17 +220,15 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
     const propsAttr = serialized !== '{}' ? serialized : ''
     // The ROUTE base the fragment endpoint lives under (`/sub`, or ''), read
     // HERE in the component body so it is this tree's router (context first),
-    // not whichever router is globally active when the ref later fires. The
-    // server stamps it on the marker (`data-base`), so a marker activated where
-    // no router runs — inside a client island on an islands-only page, or by
-    // the document scan — still fetches under the base.
+    // not whichever router is globally active when the ref later fires. Never
+    // written to the DOM: the base must come from code, not from the page
+    // (see `activateServerIslandElement`).
     const routeBase = activeRouterBase()
     const marker = (signed: { page: string; sig: string } | null) => h(
       'pyreon-server-island' as never,
       {
         'data-name': options.name,
         ...(propsAttr ? { 'data-props': propsAttr } : {}),
-        ...(routeBase ? { 'data-base': routeBase } : {}),
         ...(signed ? { 'data-page': signed.page, 'data-sig': signed.sig } : {}),
         // SELF-ACTIVATION (client islands' self-hydration precedent): the
         // marker fetches its own fragment when IT mounts — robust whether
@@ -216,8 +241,9 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
         ...(isClient
           ? {
               ref: (el: HTMLElement | null) => {
-                // A marker rendered without a router (a client island's
-                // re-render) passes nothing: the server's `data-base` stands.
+                // A marker rendered without a router (inside a client island
+                // on an islands-only page) passes nothing and takes the base
+                // the app configured (`setServerIslandBase`).
                 if (el) activateServerIslandElement(el, routeBase || undefined)
               },
             }
@@ -248,19 +274,38 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
  * failure mode, never a broken page. Shared by the marker's
  * self-activation ref and the document-level `activateServerIslands` scan
  * (static pages without a full hydrate).
+ *
+ * **Threat model.** The fragment response is inserted as HTML
+ * (`el.innerHTML`), so the ORIGIN and PATH it is fetched from must never be
+ * attacker-controllable. Markup injected into a page (anything that survives
+ * a sanitizer allowing custom elements and `data-*`) can plant a marker, so:
+ * - the base comes from code — the `base` argument (the marker's router, or
+ *   the caller) or the app's `setServerIslandBase` — never from a DOM
+ *   attribute, and is accepted only as a root-relative path (`isRoutePath`);
+ * - `data-name` must be a plain island name (`isIslandName`): it becomes a
+ *   path segment, and `..` there would walk out of the endpoint;
+ * - the URL is resolved against `location.origin` and refused unless it is
+ *   still same-origin;
+ * - `data-props` / `data-page` / `data-sig` only ever become encoded query
+ *   values, which the same-origin endpoint verifies (an unsigned or forged
+ *   marker gets 403 for a name outside its allowlist).
  */
 export function activateServerIslandElement(el: HTMLElement, base?: string): void {
   if (el.hasAttribute('data-pyreon-si')) return
-  // An explicit base wins; otherwise the one the server stamped on the marker.
-  const fragmentBase = base ?? el.getAttribute('data-base') ?? ''
   el.setAttribute('data-pyreon-si', '1')
   const name = el.getAttribute('data-name')
   if (!name) return
+  const fragmentBase = trustedBase(base ?? configuredServerIslandBase())
+  if (fragmentBase === null || !isIslandName(name)) {
+    el.setAttribute('data-island-error', 'fragment-refused')
+    return
+  }
   const props = el.getAttribute('data-props') ?? ''
   const page = el.getAttribute('data-page')
   const sig = el.getAttribute('data-sig')
-  const get = (signed: { page: string; sig: string } | null) =>
-    fetch(fragmentUrl(fragmentBase, name, props, signed), { headers: { Accept: 'text/html' } })
+  // async: a URL refused by `sameOriginPath` rejects into the `.catch` below.
+  const get = async (signed: { page: string; sig: string } | null) =>
+    fetch(sameOriginPath(fragmentUrl(fragmentBase, name, props, signed)), { headers: { Accept: 'text/html' } })
   get(page && sig ? { page, sig } : null)
     .then(async (res) => {
       // 403: the server signs fragments and this marker's signature is
@@ -297,6 +342,38 @@ export function activateServerIslandElement(el: HTMLElement, base?: string): voi
  */
 function activeRouterBase(): string {
   return getActiveRouter()?._base ?? ''
+}
+
+/**
+ * The base a caller or the app configured, as a fragment-URL prefix: `''` for
+ * none or `/`, `/sub` for `/sub/`; `null` when it is not a root-relative path
+ * (a `//host`, `/\host`, `https://…` or `..` base is refused, not "fixed").
+ */
+function trustedBase(base: string): string | null {
+  if (base === '' || base === '/') return ''
+  return isRoutePath(base) ? base.replace(/\/+$/, '') : null
+}
+
+/** A plain island name: what `serverIsland({ name })` takes, safe as one path segment. */
+function isIslandName(name: string): boolean {
+  return /^[\w$-][\w$.-]*$/.test(name) && name !== '.' && name !== '..'
+}
+
+/**
+ * `path` resolved against this page's origin — refused (throws, so the marker
+ * keeps its fallback) unless it stays same-origin. Returns the path + query,
+ * so the request is relative like every other same-origin fetch here.
+ */
+function sameOriginPath(path: string): string {
+  // No `location` (a non-browser host): there is no page origin to leave, and
+  // the base and name were already validated above.
+  if (typeof location === 'undefined') return path
+  const url = new URL(path, location.origin)
+  if (url.origin !== location.origin) {
+    throw new Error(`[Pyreon] server island fragment URL left the page's origin: ${path}`)
+  }
+
+  return url.pathname + url.search
 }
 
 function fragmentUrl(
