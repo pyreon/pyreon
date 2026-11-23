@@ -1,5 +1,5 @@
 ---
-'@pyreon/loom': patch
+'@pyreon/loom': minor
 ---
 
-A bare (non-`workspace:`) peer range on a workspace member that also misses the workspace copy's major is reported once, as an `internal-range` error whose message names the major mismatch, instead of an `internal-range` error plus a `peer-mismatch` warning for the same edge.
+`internal-range` owns every edge to a workspace member, peers included, so an internal peer edge is reported once. A bare peer range that also misses the workspace copy's major is one `internal-range` error whose message names the mismatch. The `peer-mismatch` code is retired: it could only ever fire on an edge `internal-range` had already reported. `detectPeerMismatch` is removed from `@pyreon/loom`'s core exports, and a `loom.severity` override naming `peer-mismatch` is now rejected as an unknown code.

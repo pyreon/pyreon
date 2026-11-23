@@ -97,7 +97,6 @@ export type IssueCode =
   | 'phantom-type-dep'
   | 'prod-import-of-dev-dep'
   | 'unused-dep'
-  | 'peer-mismatch'
 
 export interface LoomIssue {
   code: IssueCode

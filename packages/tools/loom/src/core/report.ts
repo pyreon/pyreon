@@ -7,7 +7,6 @@ import { analyzeGraph, externalUsage } from './graph'
 import {
   detectCycles,
   detectInternalRange,
-  detectPeerMismatch,
   detectPhantoms,
   detectUnused,
   detectVersionDrift,
@@ -36,18 +35,10 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
   const graph = analyzeGraph(model)
   const external = externalUsage(model)
 
-  const internalRange = detectInternalRange(model)
-  // One finding per edge: a non-`workspace:` peer range on a workspace member
-  // is already an `internal-range` error, whose message names the major
-  // mismatch, so the `peer-mismatch` warning for the same edge is dropped
-  // (#4391). Every non-`workspace:` internal edge is an `internal-range` today,
-  // so `peer-mismatch` only reaches the report if that rule ever narrows.
-  const rangeEdges = new Set(internalRange.map((i) => `${i.pkg}\u0000${i.dep}`))
   const issues: LoomIssue[] = [
     ...detectVersionDrift(external, model.root.overrides),
-    ...internalRange,
+    ...detectInternalRange(model),
     ...detectCycles(graph),
-    ...detectPeerMismatch(model).filter((i) => !rangeEdges.has(`${i.pkg}\u0000${i.dep}`)),
   ]
   if (!options.noImports) {
     const devPaths = options.settings?.devPaths ?? model.root.devPaths

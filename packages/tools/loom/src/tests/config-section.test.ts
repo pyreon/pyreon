@@ -109,6 +109,13 @@ describe('validateLoomSection — one validator for both homes', () => {
     for (const code of ISSUE_CODES) expect(message).toContain(code)
   })
 
+  it('rejects the retired `peer-mismatch` code (#4391: internal-range owns that edge)', () => {
+    expect(ISSUE_CODES).not.toContain('peer-mismatch')
+    expect(() => validateLoomSection({ severity: { 'peer-mismatch': 'warning' } }, 'test')).toThrow(
+      /unknown code `peer-mismatch`/,
+    )
+  })
+
   it('rejects a severity level that is not error | warning | info', () => {
     expect(() => validateLoomSection({ severity: { 'unused-dep': 'off' } }, 'test')).toThrow(
       /must be one of error \| warning \| info/,
