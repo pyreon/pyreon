@@ -30,12 +30,14 @@ export interface PersistQueryClientProviderProps {
  * completes (no redundant network request for data the cache is about to
  * restore). Gate UI on `useIsRestoring()` during the async restore window.
  *
- * Every mutation that has not settled (paused offline, or in flight) stays
- * persisted until it succeeds or fails, and is resumed once restoration
- * settles, provided its `mutationFn` is registered with
- * `client.setMutationDefaults(mutationKey, { mutationFn })` — a function cannot
- * be serialised, so a restored mutation finds its function by `mutationKey`.
- * Delivery is at-least-once: make the endpoint idempotent.
+ * A RESUMABLE mutation (a `mutationKey` whose function is registered with
+ * `client.setMutationDefaults(mutationKey, { mutationFn })`, JSON-safe
+ * variables, not `meta: { persist: false }`) stays persisted from start until
+ * it settles, paused or in flight, and is resumed once restoration settles.
+ * Another tab takes it over only once the tab that owns it has closed. A
+ * function cannot be serialised, so a restored mutation finds its function by
+ * `mutationKey`. Delivery is at-least-once: make the endpoint idempotent. See
+ * `shouldPersistMutation`.
  *
  * Import from `@pyreon/query/persist`.
  *
@@ -63,8 +65,8 @@ function PersistQueryClientProvider(props: PersistQueryClientProviderProps): VNo
       queryClient: props.client,
     })
 
-    // An unsettled mutation is persisted until it settles and restored as
-    // paused (persist-mutations.ts). Nothing resumes it by itself: query-core
+    // A persisted mutation whose owner page is gone is restored as paused
+    // (persist-mutations.ts). Nothing resumes it by itself: query-core
     // only resumes on an offline -> online transition or a focus event, and a
     // page that loads while already online and focused sees neither. So resume
     // once restoration settles (the same step TanStack's own persist providers
@@ -101,6 +103,7 @@ function PersistQueryClientProvider(props: PersistQueryClientProviderProps): VNo
   })
 
   const ch = props.children
+
   return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNodeChild
 }
 

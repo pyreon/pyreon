@@ -73,7 +73,7 @@ Honest read: react-query is **not** naive — its tracked-props make it field-aw
 | `defineQueries` (named parallel queries → typed object) | ✅ Pyreon extra |
 | `useSubscription` (WebSocket) + `useSSE` (Server-Sent Events) | ✅ Pyreon extra |
 
-Persistence keeps a mutation in storage until it settles (paused offline or in flight), and restores it as paused so the next page sends it: delivery is at-least-once, so make mutation endpoints idempotent. TanStack's default persists only paused mutations; `@pyreon/query/persist` applies this contract in `<PersistQueryClientProvider>` and in `persistQueryClient` / `…Restore` / `…Save` / `…Subscribe` (override with `dehydrateOptions.shouldDehydrateMutation`).
+Persistence (`@pyreon/query/persist`) keeps a mutation in storage from the moment it starts until it settles, paused offline or in flight, when a later page could send exactly the same request: it has a `mutationKey` whose function is registered with `setMutationDefaults`, its variables survive JSON, and it is not marked `meta: { persist: false }` (do that for secrets). A tab takes over another tab's mutation only once that tab has closed (Web Locks), and delivery is at-least-once, so make mutation endpoints idempotent. TanStack persists only paused mutations. Override with `dehydrateOptions.shouldDehydrateMutation`; the rule is `shouldPersistMutation(mutation, client)`.
 
 Deliberate scope: `useSSE`'s `Last-Event-ID` cannot be set on the FIRST `EventSource` connection (a platform limitation) — pair with `useStorage` + the `initialLastEventId` option to resume across remounts (see the SSE section).
 

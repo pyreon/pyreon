@@ -11,8 +11,7 @@ export {
   removeOldestQuery,
 } from '@tanstack/query-persist-client-core'
 // … except the four client-persistence entry points, which carry Pyreon's
-// mutation contract: an unsettled mutation stays persisted until it settles
-// (see persist-mutations.ts). Same signatures as TanStack's.
+// mutation contract (see persist-mutations.ts). Same signatures as TanStack's.
 export {
   persistQueryClient,
   persistQueryClientRestore,
@@ -20,6 +19,7 @@ export {
   persistQueryClientSubscribe,
   shouldPersistMutation,
 } from './persist-mutations'
+export type { MutationView } from './persist-mutations'
 export type {
   MaybePromise,
   PersistedClient,
@@ -30,11 +30,11 @@ export type {
   Promisable,
 } from '@tanstack/query-persist-client-core'
 
-// Storage persisters (identity re-export). createSyncStoragePersister is the
+// Storage persisters: TanStack's, with the immediate write the mutation
+// contract uses (persisters.ts). createSyncStoragePersister is the
 // localStorage/sessionStorage one (the common case); the async variant backs
 // IndexedDB / RN AsyncStorage / any Promise-returning store.
-export { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister'
-export { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister'
+export { createAsyncStoragePersister, createSyncStoragePersister } from './persisters'
 
 // Pyreon-reactive provider + the isRestoring surface.
 export type { PersistQueryClientProviderProps } from './persist-provider'

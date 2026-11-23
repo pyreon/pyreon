@@ -1425,14 +1425,19 @@ Type re-exports include `QueryKey`, `QueryFilters`, `MutationFilters`, `Dehydrat
 - **`@pyreon/query/devtools`** — `<QueryDevtools client? initialIsOpen? buttonPosition? position? errorTypes? shadowDOMTarget?>`, the TanStack Query devtools panel.
 - **`@pyreon/query/persist`** — `<PersistQueryClientProvider client persistOptions onSuccess? onError?>` (a `QueryClientProvider` that restores the cache on mount and keeps it persisted), `createSyncStoragePersister` / `createAsyncStoragePersister`, the persist engine (`persistQueryClient`, `persistQueryClientRestore`, `persistQueryClientSave`, `persistQueryClientSubscribe`, `experimental_createQueryPersister`, `removeOldestQuery`), and `shouldPersistMutation`.
 
-  **Persisted mutations stay persisted until they settle.** The provider and the four `persistQueryClient*` functions (same signatures as TanStack's) persist every mutation that has not settled yet, whether it is paused offline or in flight, and restore it as paused so it is resumed once restoration settles. TanStack's own default persists only paused mutations, so a tab closed while a request was in flight lost the mutation. Consequences:
+  **Which mutations are persisted.** TanStack persists a mutation only while it is paused, so a tab that closed while a request was in flight lost it. The provider and the four `persistQueryClient*` functions (same signatures as TanStack's) persist a mutation from the moment it starts until it settles, paused or in flight, when a later page could send exactly the same request (`shouldPersistMutation(mutation, client)`):
 
-  - Delivery is **at-least-once**: a request the server received but whose response never reached the closing tab is sent again by the next page. Make mutation endpoints idempotent (send a client-generated id in the variables).
-  - A restored mutation finds its function by `mutationKey`: register `client.setMutationDefaults(key, { mutationFn })` at module load.
-  - A mutation that fails has settled and leaves storage; use `retry` for transient failures.
-  - Pass `persistOptions.dehydrateOptions.shouldDehydrateMutation` to choose differently.
+  - it is resumable: its `mutationKey` resolves, through `client.setMutationDefaults(key, { mutationFn })`, to the very function it runs. A keyless `useMutation({ mutationFn })`, or an inline `mutationFn` that overrides the registered one, is never written to storage;
+  - it is not opted out with `meta: { persist: false }`. Opt out any mutation whose variables are secrets (a sign-in), even a registered one;
+  - its variables survive JSON: no `File`, `Blob`, `Date`, `Map`, class instance, BigInt, `NaN` or cycle. Such a mutation is left out (with a dev warning naming the field), so a later page never sends a corrupted body and the rest of the cache is still written.
 
-  See [Offline and installable apps](/docs/patterns/offline-and-installable-apps) for the full offline flow.
+  Precedence is TanStack's: an explicit `persistOptions.dehydrateOptions.shouldDehydrateMutation`, then the client's `defaultOptions.dehydrate.shouldDehydrateMutation`, then this default. Resumable mutations are persisted by default (no opt-in) because registering the function with `setMutationDefaults` is already the step that makes a mutation resumable after a reload.
+
+  **Several tabs.** Each persisted mutation holds a [Web Lock](https://developer.mozilla.org/docs/Web/API/Web_Locks_API) while it is pending, and each page holds one for its lifetime. A page that restores a mutation another live tab is still sending leaves it alone and keeps it in storage; if that tab closes before the request settles, a remaining tab takes it over and sends it, once. Without Web Locks (an insecure context, React Native) an in-flight mutation is not persisted at all, as in TanStack, and paused ones are persisted as TanStack does.
+
+  **Delivery is at-least-once.** A request the server received but whose response never reached the closing tab is sent again by the next page. Make mutation endpoints idempotent (send a client-generated id in the variables). The storage write lands when a mutation starts being persisted, when it settles and when the page is hidden, not after the persister's throttle, through the `/persist` storage persisters (the async one starts its write at once but cannot finish it if the page is torn down in the same moment). A mutation that fails has settled and leaves storage; use `retry` for transient failures. A provider that unmounts while a mutation is in flight stops writing, so if the page then reloads, the next page sends that mutation again.
+
+  See [Offline and installable apps](/docs/patterns/offline-and-installable-apps) for the whole offline flow.
 
 ### Multiplatform
 

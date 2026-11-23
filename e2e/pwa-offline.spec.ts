@@ -58,6 +58,7 @@ test.beforeAll(async ({ browser }) => {
       posts.push(name)
       items = [...items, name]
       await route.fulfill({ json: { name } })
+
       return
     }
     await route.fulfill({ json: items })
@@ -157,6 +158,7 @@ async function persistedMutations(): Promise<Array<{ state: { variables: unknown
   const state = await context.storageState()
   const raw = state.origins.flatMap((o) => o.localStorage).find((e) => e.name === 'REACT_QUERY_OFFLINE_CACHE')
   if (!raw) return []
+
   return (JSON.parse(raw.value) as { clientState: { mutations: Array<{ state: { variables: unknown; isPaused: boolean } }> } })
     .clientState.mutations
 }
@@ -202,6 +204,54 @@ test('a mutation in flight when the tab closes is sent again by the next tab (at
   await open('/')
   await expect.poll(() => posts).toEqual(['jam'])
   await expect.poll(async () => (await persistedMutations()).length).toBe(0)
+})
+
+test('a second tab does not resend a LIVE tab\'s in-flight request, and takes it over once that tab closes', async () => {
+  posts.length = 0
+  heldPosts.length = 0
+  await open('/')
+  holdPosts = true
+  await page.locator('#name').fill('tea')
+  await page.locator('#add').click()
+  await expect.poll(() => heldPosts).toEqual(['tea'])
+
+  // Tab B loads while A is still waiting for the response. B must not send it
+  // (TanStack would not persist it at all; a naive "persist every pending
+  // mutation" sends it twice).
+  const pageB = await context.newPage()
+  await pageB.goto('/')
+  await expect(pageB.locator('#page')).toBeVisible()
+  await pageB.waitForTimeout(500)
+  expect(heldPosts).toEqual(['tea'])
+  expect(posts).toEqual([])
+  expect((await persistedMutations()).map((m) => m.state.variables)).toEqual(['tea'])
+
+  // A closes with the request still unanswered: B, the live tab, sends it, once.
+  holdPosts = false
+  await page.close({ runBeforeUnload: true })
+  await expect.poll(() => posts).toEqual(['tea'])
+  await pageB.waitForTimeout(500)
+  expect(posts).toEqual(['tea'])
+  await expect.poll(async () => (await persistedMutations()).length).toBe(0)
+  page = pageB
+})
+
+test('a second tab sends nothing when the live tab\'s request succeeds', async () => {
+  posts.length = 0
+  await open('/')
+  const pageB = await context.newPage()
+  await pageB.goto('/')
+  await expect(pageB.locator('#page')).toBeVisible()
+  await page.locator('#name').fill('honey')
+  await page.locator('#add').click()
+  await expect.poll(() => posts).toEqual(['honey'])
+  await expect.poll(async () => (await persistedMutations()).length).toBe(0)
+  await page.close({ runBeforeUnload: true })
+  await pageB.reload()
+  await expect(pageB.locator('#page')).toBeVisible()
+  await pageB.waitForTimeout(500)
+  expect(posts).toEqual(['honey'])
+  page = pageB
 })
 
 test('useInstallPrompt reflects a beforeinstallprompt event', async () => {
