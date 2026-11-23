@@ -1,5 +1,23 @@
 # @pyreon/connector-document
 
+## 0.54.0
+
+### Patch Changes
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `extractDocumentTree` (and so `extractDocNode` / `useDocumentExport`) no longer drops every child from a template written in JSX. The automatic JSX runtime puts a component's children in `props.children` and leaves `vnode.children` empty; the extractor now reads children by the runtime's rule (`props.children` when set, else `vnode.children`). Components and `.attrs()` callbacks also receive compiler reactive-prop thunks as values (getters), as the runtime gives them, so a prop such as `level={props.level}` or `ordered={props.ordered}` exports its value instead of a function.
+
+- [#4563](https://github.com/pyreon/pyreon/pull/4563) [`327771b`](https://github.com/pyreon/pyreon/commit/327771b3abd8513416f324aa7b202bcca800463c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package now declares its tier in `package.json`: `"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`. From 1.0 the semver promise covers Stable packages only; Experimental packages, and the experimental subpaths of Stable packages (every `./native-plugin`, `@pyreon/core/plain`, `@pyreon/compiler/audits` and `/plain`, `@pyreon/charts/engine`, and the `./webview` subpaths of code, flow and rich-text), may break in a minor release. Each README opens with a status line generated from the field. The policy, including the compiler-helper ABI rule and deprecations, is at https://pyreon.dev/docs/stability-and-direction.
+
+  The `@pyreon/http` and `@pyreon/loom` READMEs no longer claim the packages are unpublished.
+
+  **Breaking (`@pyreon/meta`):** the barrel no longer re-exports `@pyreon/document-primitives` (the `Doc*` components, `createDocumentExport`, `documentTheme`, `extractDocNode`, `DocumentPreview`) or `@pyreon/connector-document` (`extractDocumentTree`, `resolveStyles`), because both are Experimental and meta is Stable. Upgrade: install those packages and import from them directly.
+
+  The ui-core, unistyle, rocketstyle, coolgrid and elements manifests no longer claim that the low-level `Provider` logs a dev warning; it has not warned for some time.
+
+- Updated dependencies [[`a4a2ebc`](https://github.com/pyreon/pyreon/commit/a4a2ebc7f014a7f93fc34431aef232f6e28b83ab), [`8d3ca8a`](https://github.com/pyreon/pyreon/commit/8d3ca8ad3216e33216bbc28ebbc750ecc052d6fa), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`34990d5`](https://github.com/pyreon/pyreon/commit/34990d5155b03fa6c9eefaed4388b901e6adc111), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`cfd192d`](https://github.com/pyreon/pyreon/commit/cfd192d363b5a4c0860ee31280c1a6d3a743d38a), [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9), [`d321f13`](https://github.com/pyreon/pyreon/commit/d321f138f0c36f99434a9b5d83160d2b13a89680), [`606d713`](https://github.com/pyreon/pyreon/commit/606d713f5265a250b078fb7481fec9c6262cca40), [`c640088`](https://github.com/pyreon/pyreon/commit/c640088b7eaaa7f5ad24999fd8884e557ce22fe0), [`a1114db`](https://github.com/pyreon/pyreon/commit/a1114db6c3050235333bb5b13666f53ea3b2c8de), [`1fa0bf7`](https://github.com/pyreon/pyreon/commit/1fa0bf75529fa5c011a97314f9b59899b0f0d485), [`34990d5`](https://github.com/pyreon/pyreon/commit/34990d5155b03fa6c9eefaed4388b901e6adc111), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`6b7085a`](https://github.com/pyreon/pyreon/commit/6b7085a6bad6e48c7a764d0f502e755ed54aaf8e), [`26815df`](https://github.com/pyreon/pyreon/commit/26815dfed810d848b28e09395d6ee171f3c10db4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a), [`5f64d7e`](https://github.com/pyreon/pyreon/commit/5f64d7e1821eb6b7fed029a33d926a6315dcda09), [`511dd4a`](https://github.com/pyreon/pyreon/commit/511dd4acac8c673cafcc26dc9d4af88311300f98), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781), [`cc39f71`](https://github.com/pyreon/pyreon/commit/cc39f7107e4c0283687f5ce2e10cd66d77468b18), [`327771b`](https://github.com/pyreon/pyreon/commit/327771b3abd8513416f324aa7b202bcca800463c), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`5fa21a9`](https://github.com/pyreon/pyreon/commit/5fa21a95219b8714ed9648a1790a619f6cfa8092), [`2655fa3`](https://github.com/pyreon/pyreon/commit/2655fa3b4a29943b5c3f83dd6516eeeb3f26ec67), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`c1f21cc`](https://github.com/pyreon/pyreon/commit/c1f21cca9d17b2563fa847907e0019fc4e6425d2), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3)]:
+  - @pyreon/core@0.54.0
+  - @pyreon/document@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes
@@ -618,7 +636,7 @@
     the component body throws, so any regression that causes the
     extractor to invoke it fails immediately with a real error.
     Additionally, gating Path B (`else if (false && typeof type ===
-'function')`) → Path B + reactive accessor tests fail, 2/5.
+    'function')`) → Path B + reactive accessor tests fail, 2/5.
     Restored, 5/5 pass.
 
   Also removes the three packages from `PHASE_5_PENDING_PACKAGES` in

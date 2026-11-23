@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/format",
-  "version": "0.53.0",
+  "version": "0.54.0",
   "description": "Locale-aware formatting and parsing for Pyreon: numbers, currency, bytes, durations, lists, dates, relative time. Plain functions over Intl, reactive to the active locale and time zone, SSR-safe, bounded caches",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/format#readme",
