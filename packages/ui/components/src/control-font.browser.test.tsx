@@ -30,6 +30,7 @@ describe.skipIf(!IS_BROWSER_RUNNER)('form-control components use the page font (
     const host = container.querySelector<HTMLElement>('[data-host]')!
     const el = host.querySelector<HTMLElement>(selector)!
     expect(el, selector).toBeTruthy()
+
     return { own: getComputedStyle(el).fontFamily, parent: getComputedStyle(host).fontFamily }
   }
 

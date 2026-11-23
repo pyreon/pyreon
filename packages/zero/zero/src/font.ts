@@ -668,9 +668,9 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
 
   let isBuild = false
   let root = ''
-  // Vite's resolved `base` (CLI `--base`, vite.config, or `zero({ base })`).
-  // Self-hosted font URLs are written root-relative (`/assets/fonts/…`) and
-  // cached that way; they get the base when they are put into the HTML.
+  // Vite's resolved base (CLI `--base`, vite.config, or `zero({ base })`).
+  // Self-hosted font URLs stay root-relative in the download cache and get the
+  // base from `withFontBase` when they are written into the HTML.
   let base = '/'
   let selfHostedCSS = ''
   let selfHostedFontFiles: Array<{ name: string; content: Buffer }> = []
@@ -776,20 +776,7 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
         base,
       })
       collectLocalFontTags(tags, config, shouldPreload, display)
-
-      // Auto size-adjusted fallback @font-face blocks + the
-      // `--pyreon-font-<slug>` vars that put the fallback INTO the cascade
-      // (the load-bearing half — without the var, the @font-face is inert),
-      // plus the optional `applyTo` binding that wires the var to a
-      // selector so the plain-CSS path is zero-touch.
-      if (autoFallbacks.length > 0) {
-        const applyRule = renderApplyFontFamily(autoFallbacks, applyToSelector)
-        tags.push(
-          `<style>${renderAutoFallbackFaces(autoFallbacks)}\n${renderFontFamilyVars(autoFallbacks)}${
-            applyRule ? `\n${applyRule}` : ''
-          }</style>`,
-        )
-      }
+      collectAutoFallbackTags(tags, autoFallbacks, applyToSelector)
 
       if (tags.length === 0) return html
       return html.replace('</head>', `${tags.join('\n')}\n</head>`)
@@ -829,6 +816,26 @@ function collectGoogleFontTags(
     tags.push(`<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`)
     tags.push(`<link rel="stylesheet" href="${cssUrl}">`)
   }
+}
+
+/**
+ * Auto size-adjusted fallback @font-face blocks + the `--pyreon-font-<slug>`
+ * vars that put the fallback INTO the cascade (the load-bearing half — without
+ * the var, the @font-face is inert), plus the optional `applyTo` binding that
+ * wires the var to a selector so the plain-CSS path is zero-touch.
+ */
+function collectAutoFallbackTags(
+  tags: string[],
+  autoFallbacks: Parameters<typeof renderAutoFallbackFaces>[0],
+  applyToSelector: Parameters<typeof renderApplyFontFamily>[1],
+) {
+  if (autoFallbacks.length === 0) return
+  const applyRule = renderApplyFontFamily(autoFallbacks, applyToSelector)
+  tags.push(
+    `<style>${renderAutoFallbackFaces(autoFallbacks)}\n${renderFontFamilyVars(autoFallbacks)}${
+      applyRule ? `\n${applyRule}` : ''
+    }</style>`,
+  )
 }
 
 function collectLocalFontTags(

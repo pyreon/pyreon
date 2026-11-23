@@ -514,6 +514,7 @@ describe('fontPlugin — self-hosted fonts under a base', () => {
       const plugin = fontPlugin({ google: ['Inter:wght@400'], fallbackAdjust: false }) as any
       plugin.configResolved({ command: 'build', root, base })
       await plugin.buildStart()
+
       return plugin.transformIndexHtml('<html><head></head><body></body></html>') as string
     } finally {
       await rm(root, { recursive: true, force: true })

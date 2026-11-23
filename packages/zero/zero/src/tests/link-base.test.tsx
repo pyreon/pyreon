@@ -20,10 +20,12 @@ const routes = [
 ]
 
 let host: HTMLElement
+
 beforeEach(() => {
   host = document.createElement('div')
   document.body.appendChild(host)
 })
+
 afterEach(() => {
   host.remove()
 })
