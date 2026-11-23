@@ -113,7 +113,7 @@ The file-scanning gates (`react-patterns`, `pyreon-patterns`, `lint`, `audit-tes
 | `pyreon-patterns` | correctness | fast | `<For>` missing `by`, destructured props, signal-write-as-call, and more — codes a `@pyreon/lint` rule fully owns are deferred to the `lint` gate |
 | `lint` | per-rule | fast | Every configured `@pyreon/lint` rule across first-party source (reads `.pyreonlintrc.json`) |
 | `distribution` | architecture | fast | `sideEffects` declared, source maps shipped (not excluded) — includes a live `npm pack --dry-run` probe |
-| `doc-claims` | documentation | fast | Hand-quoted numeric claims agree with source of truth |
+| `doc-claims` | documentation | fast | Hand-quoted numeric claims agree with source of truth; no unscoped `npx <our-bin>` in docs, READMEs or user-facing source strings |
 | `islands-audit` | architecture | fast | Cross-file island foot-guns (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`) |
 | `dependency-fabric` | architecture | fast | The workspace's dependency fabric via the project's OWN installed `@pyreon/loom` — phantom deps, version drift, runtime cycles, prod-imports-of-dev-deps, peer mismatches. Skips (never installs) when loom isn't present |
 | `ssg-audit` | architecture | fast | `_404.tsx` placement, dynamic routes missing `getStaticPaths` (warn — legit under `mode: 'ssr'`/`'isr'`), non-literal `revalidate` exports |
