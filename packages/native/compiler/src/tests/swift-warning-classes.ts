@@ -42,11 +42,15 @@ export function runningSwiftc(): string {
  * Split warning lines into the ones that fail and the advisory rest (see {@link VALIDATED_SWIFTC}), reporting the
  * advisory ones as `::warning::` annotations and in `$GITHUB_STEP_SUMMARY` so a new class cannot pass unseen.
  */
-export function classifySwiftWarnings(lines: readonly string[], toolchain = runningSwiftc()): { hard: string[]; advisory: string[] } {
+export function classifySwiftWarnings(
+  lines: readonly string[],
+  toolchain = runningSwiftc(),
+  report = true,
+): { hard: string[]; advisory: string[] } {
   if (toolchain === VALIDATED_SWIFTC) return { hard: [...lines], advisory: [] }
   const hard = lines.filter((l) => KNOWN_SWIFT_WARNINGS.some((re) => re.test(l)))
   const advisory = lines.filter((l) => !hard.includes(l))
-  if (advisory.length > 0) reportAdvisory(advisory, toolchain)
+  if (report && advisory.length > 0) reportAdvisory(advisory, toolchain)
 
   return { hard, advisory }
 }
