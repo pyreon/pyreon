@@ -37,9 +37,12 @@
             "recommended",
             "strict",
             "app",
-            "lib"
+            "lib",
+            "best-practices",
+            "readable",
+            "readable-strict"
           ],
-          "description": "Lint preset to use"
+          "description": "Lint preset for files with no .pyreonlintrc.json above them (a project's own config always wins). Restart the extension after changing it."
         }
       }
     }

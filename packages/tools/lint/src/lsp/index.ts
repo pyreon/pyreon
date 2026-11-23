@@ -42,13 +42,20 @@ import { locateConfig } from '../config/loader'
 import { resolveLintConfig } from '../lint'
 import { allRules } from '../rules/index'
 import { _resetConfigDiagnosticsCache, fixEdits, lintFile, selectFixEdits } from '../runner'
-import type { Diagnostic, Fix, LintConfig } from '../types'
+import type { Diagnostic, Fix, LintConfig, PresetName } from '../types'
 import { LineIndex } from '../utils/source'
 
 const cache = new AstCache()
 
 /** Set by `_reloadConfig` — wins over the per-document config lookup. */
 let configOverride: LintConfig | undefined
+
+/**
+ * The editor's `pyreonLint.preset` setting, sent as `initializationOptions.preset`.
+ * Used only for a document with no `.pyreonlintrc.json` above it — a project's
+ * own config always wins, so the editor and the CLI agree wherever one exists.
+ */
+let editorPreset: PresetName | readonly PresetName[] | undefined
 
 /**
  * Per-directory resolved config. The editor lints a document with the config
@@ -87,7 +94,7 @@ export function _configFor(filePath: string): LintConfig {
   }
   let config: LintConfig
   try {
-    config = resolveLintConfig(located?.config ?? null)
+    config = resolveLintConfig(located?.config ?? (editorPreset ? { preset: editorPreset } : null))
   } catch {
     // An invalid preset name: lint with the default rather than not at all.
     config = resolveLintConfig(null)
@@ -773,6 +780,9 @@ export function _handleMessage(
   msg: JsonRpcMessage,
 ): JsonRpcMessage | null | Promise<JsonRpcMessage | null> {
   if (msg.method === 'initialize') {
+    const preset = msg.params?.initializationOptions?.preset
+    editorPreset = typeof preset === 'string' || Array.isArray(preset) ? preset : undefined
+    configByDir.clear()
     return {
       jsonrpc: '2.0',
       id: msg.id,
