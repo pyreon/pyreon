@@ -120,3 +120,9 @@ An `island()` in a file nothing imports never renders. Route it or delete it. Au
 A manual `hydrateIslands({ X })` key with no matching `island()` `name` (keys are case-sensitive). Use `hydrateIslandsAuto()` with `pyreon({ islands: true })` to avoid manual sync. `pyreon doctor --only islands-audit` reports `registry-mismatch`.
 
 ---
+
+### `content-visibility: auto` on page sections of varying height.
+
+It skips style, layout and paint of a section until it nears the viewport, using `contain-intrinsic-size` as a placeholder height. On pyreon.dev (sections 446–2,463 px against a 900 px placeholder) it broke two things real visitors rely on: a scroll to an element in a later section (`scrollIntoView`, an in-page link) landed where the placeholders put it, then the sections in between rendered at their real height and pushed the target out of view, so a `hydrate: 'visible'` island there never hydrated; and `innerText` of a skipped section is empty (copy, reading tools). Tried for Lighthouse TBT in #4766 and removed: use it only for a long list of items of known, uniform height.
+
+---
