@@ -386,7 +386,12 @@ function activeRouterBase(): string {
  */
 function trustedBase(base: string): string | null {
   if (base === '' || base === '/') return ''
-  return isRoutePath(base) ? base.replace(/\/+$/, '') : null
+  if (!isRoutePath(base)) return null
+  // A scan, not `/\/+$/`: that regex backtracks quadratically on a long run
+  // of `/` that does not end the string.
+  let end = base.length
+  while (end > 0 && base.charCodeAt(end - 1) === 47) end--
+  return base.slice(0, end)
 }
 
 
