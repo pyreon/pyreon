@@ -86,6 +86,7 @@ export function cpuClock(): number {
     const { user, system } = proc.cpuUsage()
     return (user + system) / 1000
   }
+
   return performance.now()
 }
 
@@ -102,6 +103,7 @@ function timeBest(
     const dt = clock() - t0
     if (dt < best) best = dt
   }
+
   return best
 }
 
@@ -253,5 +255,6 @@ export function expectSubQuadratic(
   if (!result.ok) {
     throw new Error(`[Pyreon] expected sub-quadratic growth but measured ${result.detail}`)
   }
+
   return result
 }

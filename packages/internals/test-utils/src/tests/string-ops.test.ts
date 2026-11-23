@@ -7,6 +7,7 @@ describe('countStringOps', () => {
       ;/\.md$/i.test('x.md')
       'a,b'.split(/,/)
       'abc'.search(/b/)
+
       return [...'aa'.matchAll(/a/g)].length
     })
     expect(t.result).toBe(2)

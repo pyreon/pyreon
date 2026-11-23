@@ -71,8 +71,9 @@ export function countStringOps<T>(fn: () => T): StringOpsTrace<T> {
     return [m, original] as const
   })
   const originalExec = rxProto.exec
-  if (typeof originalExec !== 'function')
+  if (typeof originalExec !== 'function') {
     throw new Error('[Pyreon] RegExp.prototype.exec is missing')
+  }
   // Patch everything first, count only while `fn` runs: the patched methods
   // must not count the bookkeeping below.
   let counting = false
@@ -91,6 +92,7 @@ export function countStringOps<T>(fn: () => T): StringOpsTrace<T> {
     counting = true
     const result = fn()
     counting = false
+
     return { result, regexSources, stringCalls }
   } finally {
     counting = false
