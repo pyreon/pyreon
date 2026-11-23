@@ -71,7 +71,11 @@ public final class PyreonOidcAuth {
     /// Bumped by every new attempt and by signOut, so a late result never resurrects a session.
     @ObservationIgnored private var epoch = 0
 
-    private var sessionKey: String { "pyreon.auth.session.\(clientId)" }
+    /// Per client AND issuer: another instance with the same client id at another provider must
+    /// not read, overwrite or delete this one's stored session.
+    private var sessionKey: String { "pyreon.auth.session.\(clientId)|\(issuer)" }
+    /// The refresh in flight, shared by every caller (see refreshNow).
+    @ObservationIgnored private var refreshTask: _Concurrency.Task<Void, Never>?
 
     public init(
         issuer: String,
@@ -145,7 +149,21 @@ public final class PyreonOidcAuth {
         commit(t, refreshToken: t.refreshToken, claims: verified)
     }
 
+    /// One refresh in flight per instance: with rotating refresh tokens and reuse detection, a
+    /// second concurrent refresh would present the already-rotated token and the provider would
+    /// revoke the whole token family. Concurrent callers await the same request.
     public func refreshNow() async {
+        if let running = refreshTask {
+            await running.value
+            return
+        }
+        let task = _Concurrency.Task { await self.performRefresh() }
+        refreshTask = task
+        await task.value
+        refreshTask = nil
+    }
+
+    private func performRefresh() async {
         epoch += 1
         let my = epoch
         do {

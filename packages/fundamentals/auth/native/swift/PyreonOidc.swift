@@ -128,6 +128,16 @@ public final class PyreonAuthCore {
         return url
     }
 
+    /// scheme://host:port/path, lowercased scheme and host — what a redirect URI is matched on
+    /// (query and fragment ignored; `app:/cb` and `app:///cb` are the same target).
+    static func redirectTarget(_ url: URL) -> String {
+        let c = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let scheme = (c?.scheme ?? "").lowercased()
+        let host = (c?.host ?? "").lowercased()
+        let port = c?.port.map { ":\($0)" } ?? ""
+        return "\(scheme)://\(host)\(port)\(c?.path ?? "")"
+    }
+
     /// Validate the redirect. The flow is read-and-deleted: a callback URL can never be replayed.
     public func complete(callback: URL, issuer: String, issuerParamSupported: Bool = false,
                          now: Date = Date()) throws -> (code: String, flow: PyreonAuthFlow) {
@@ -146,6 +156,10 @@ public final class PyreonAuthCore {
         // A flow started for another provider must never reach this provider's token endpoint
         // (OAuth mix-up), whether or not the callback carries RFC 9207 `iss`.
         guard flow.issuer == issuer else { throw PyreonAuthError.issuerMismatch }
+        // RFC 9700 §4.4: without `iss`, the redirect URI is what says which provider answered.
+        guard let expected = URL(string: flow.redirectUri),
+              Self.redirectTarget(callback) == Self.redirectTarget(expected)
+        else { throw PyreonAuthError.redirectMismatch }
         if let e = q("error") { throw PyreonAuthError.providerError(e) }
         guard PyreonPKCE.constantTimeEqual(state, flow.state) else { throw PyreonAuthError.stateMismatch }
         if let iss = q("iss") { guard iss == issuer else { throw PyreonAuthError.issuerMismatch } }

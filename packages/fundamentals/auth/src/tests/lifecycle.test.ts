@@ -3,18 +3,9 @@
  * provider logout, session revocation and the attempt limiter. Real ES256 keys.
  */
 import { describe, expect, it } from 'vitest'
-import {
-  base64url,
-  createAttemptLimiter,
-  createAuth,
-  createJwksCache,
-  endSessionUrl,
-  memoryFlowStore,
-  refreshTokens,
-  signSession,
-  tokenKid,
-  verifySession,
-} from '../index'
+import { createAttemptLimiter, createAuth, createJwksCache, endSessionUrl, memoryFlowStore, refreshTokens, signSession, verifySession } from '../index'
+import { base64url } from '../pkce'
+import { tokenKid } from '../jwt'
 import type { FetchLike, Jwk, OidcMetadata } from '../index'
 
 const issuer = 'https://idp.example'
@@ -185,6 +176,7 @@ async function provider(
     issuer,
     client: { clientId: 'app', redirectUri: 'https://app.example/cb' },
     flows: memoryFlowStore(),
+    binding: 'b1',
     redirect: (u) => redirects.push(u),
     fetch: f,
     ...(opts.minRefreshMs === undefined ? {} : { jwks: { minRefreshMs: opts.minRefreshMs } }),

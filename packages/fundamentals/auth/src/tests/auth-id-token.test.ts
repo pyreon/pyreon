@@ -7,7 +7,8 @@
  * never checked. These specs mint real ES256 tokens and drive the full flow.
  */
 import { describe, expect, it } from 'vitest'
-import { base64url, createAuth, memoryFlowStore } from '../index'
+import { createAuth, memoryFlowStore } from '../index'
+import { base64url } from '../pkce'
 import type { FetchLike, Jwk } from '../index'
 
 const issuer = 'https://idp.example'
@@ -96,6 +97,7 @@ async function runWith(kp: { priv: CryptoKey; jwk: Jwk }, s: Scenario) {
     issuer,
     client: { clientId: 'app', redirectUri: 'https://app.example/cb' },
     flows: memoryFlowStore(),
+    binding: 'b1',
     redirect: (u) => redirects.push(u),
     fetch: f,
   })

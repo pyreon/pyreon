@@ -50,6 +50,7 @@ class FakeProvider : PyreonAuthTransport {
     var nonceOverride: String? = null
     var rotateRefresh = false
     var refreshStatus = 200
+    @Volatile var refreshDelayMs = 0L
     var jwksFetches = 0
     val requests = ArrayList<String>()
     private val codes = HashMap<String, Pair<String, String>>()
@@ -85,6 +86,7 @@ class FakeProvider : PyreonAuthTransport {
         }
         if (form["grant_type"] == "refresh_token") {
             if (refreshStatus != 200) return PyreonAuthResponse(refreshStatus)
+            if (refreshDelayMs > 0) Thread.sleep(refreshDelayMs)
             refreshCount++
             val t = linkedMapOf<String, Any?>("access_token" to "at-$refreshCount", "token_type" to "Bearer", "expires_in" to 3600.0,
                 "id_token" to idToken(null))
@@ -159,7 +161,7 @@ fun testSignInRehydrateRefresh() {
     check(auth.accessToken.value == "at-0") { "access token" }
     check((auth.expiresAt.value ?: 0.0) > System.currentTimeMillis()) { "expiresAt in ms" }
     check(auth.status.value.toString() == "signedIn") { "status renders camelCase" }
-    check(store.entries["pyreon.auth.session.app"] != null) { "session persisted" }
+    check(store.entries["pyreon.auth.session.app|https://idp.example"] != null) { "session persisted" }
     check(store.entries.keys.none { it.startsWith("pyreon.auth.flow.") }) { "pending flow consumed" }
 
     // Rehydrate: a relaunch is signed in from the store, with no network at all.
@@ -180,7 +182,7 @@ fun testSignInRehydrateRefresh() {
     auth.refresh()
     check(auth.status.value == PyreonOidcStatus.ERROR && auth.error.value == "subject_changed") { "subject_changed: ${auth.error.value}" }
     check(auth.accessToken.value == null && auth.subject.value == null) { "session cleared" }
-    check(store.entries["pyreon.auth.session.app"] == null) { "persisted session removed" }
+    check(store.entries["pyreon.auth.session.app|https://idp.example"] == null) { "persisted session removed" }
 }
 
 fun testFailures() {
@@ -200,7 +202,7 @@ fun testFailures() {
     val w = make(wrong, ws, FakeBrowser(wrong))
     w.signIn()
     check(w.status.value == PyreonOidcStatus.ERROR && w.error.value == "bad_nonce") { "bad_nonce: ${w.error.value}" }
-    check(ws.entries["pyreon.auth.session.app"] == null && w.accessToken.value == null) { "nothing stored on failure" }
+    check(ws.entries["pyreon.auth.session.app|https://idp.example"] == null && w.accessToken.value == null) { "nothing stored on failure" }
 
     // A transport failure is network_error — the code the web and iOS report too.
     val down = PyreonOidcAuth(
@@ -225,7 +227,7 @@ fun testLateResultAndLogout() {
     lb.beforeReturn = { late.signOut() }
     late.signIn()
     check(late.status.value == PyreonOidcStatus.SIGNED_OUT && late.accessToken.value == null) { "late result discarded: ${late.status.value}" }
-    check(ls.entries["pyreon.auth.session.app"] == null) { "late result not persisted" }
+    check(ls.entries["pyreon.auth.session.app|https://idp.example"] == null) { "late result not persisted" }
     check(lp.requests.none { it.endsWith("/token") }) { "no token exchange after signOut" }
 
     val op = FakeProvider()
@@ -254,12 +256,40 @@ fun testLateResultAndLogout() {
 fun testRehydrationGuards() {
     val b = FakeBrowser(FakeProvider())
     val es = MemStore()
-    es.entries["pyreon.auth.session.app"] = """{"issuer":"https://idp.example","accessToken":"x","expiresAt":1,"claims":{"sub":"u"}}"""
+    es.entries["pyreon.auth.session.app|https://idp.example"] = """{"issuer":"https://idp.example","accessToken":"x","expiresAt":1,"claims":{"sub":"u"}}"""
     val expired = make(FakeProvider(), es, b)
     check(expired.status.value == PyreonOidcStatus.SIGNED_OUT && es.entries.isEmpty()) { "expired session dropped" }
-    es.entries["pyreon.auth.session.app"] = """{"issuer":"https://evil.example","accessToken":"x","claims":{"sub":"u"}}"""
+    es.entries["pyreon.auth.session.app|https://idp.example"] = """{"issuer":"https://evil.example","accessToken":"x","claims":{"sub":"u"}}"""
     val foreign = make(FakeProvider(), es, b)
     check(foreign.status.value == PyreonOidcStatus.SIGNED_OUT && es.entries.isEmpty()) { "foreign-issuer session dropped" }
+}
+
+fun testConcurrentRefreshSharesOneRequest() {
+    val p = FakeProvider()
+    p.rotateRefresh = true
+    p.refreshDelayMs = 300
+    val auth = make(p, MemStore(), FakeBrowser(p))
+    auth.signIn()
+    val before = p.requests.count { it.endsWith("/token") }
+    val threads = List(3) { Thread { auth.refreshNow() } }
+    threads.forEach { it.start() }
+    threads.forEach { it.join() }
+    check(p.requests.count { it.endsWith("/token") } == before + 1) { "concurrent refreshes share one request" }
+    check(auth.status.value == PyreonOidcStatus.SIGNED_IN && auth.accessToken.value == "at-1") { "refreshed once: ${auth.error.value}" }
+}
+
+fun testSessionKeyedByIssuer() {
+    val p = FakeProvider()
+    val store = MemStore()
+    val b = FakeBrowser(p)
+    make(p, store, b).signIn()
+    val other = PyreonOidcAuth(
+        issuer = "https://other.example", clientId = "app", redirectUri = "com.example.app:/oauth",
+        store = store, browser = b, transport = p, executor = INLINE,
+    )
+    check(other.status.value == PyreonOidcStatus.SIGNED_OUT) { "another issuer's instance does not restore this session" }
+    other.signOut()
+    check(store.entries["pyreon.auth.session.app|https://idp.example"] != null) { "another issuer's instance does not delete this session" }
 }
 
 fun testKeyRotation() {
@@ -334,5 +364,7 @@ fun main() {
     testLateResultAndLogout()
     testRehydrationGuards()
     testKeyRotation()
+    testConcurrentRefreshSharesOneRequest()
+    testSessionKeyedByIssuer()
     println("[PyreonOidcAuthTest] all smoke tests passed")
 }

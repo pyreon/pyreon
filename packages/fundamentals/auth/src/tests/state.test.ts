@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createAuth, google, keycloak, memoryFlowStore, parseCallback, withPreset } from '../index'
+import { beginAuthorization, createAuth, google, keycloak, memoryFlowStore, parseCallback, withPreset } from '../index'
 import type { FetchLike } from '../index'
 
 const issuer = 'https://idp.example'
@@ -17,6 +17,7 @@ function setup(tokenDelay?: Promise<void>) {
     issuer,
     client: { clientId: 'app', redirectUri: 'https://app.example/cb' },
     flows: memoryFlowStore(),
+    binding: 'b1',
     redirect: (u) => redirects.push(u),
     fetch: f,
   })
@@ -75,6 +76,7 @@ describe('createAuth', () => {
       issuer,
       client: { clientId: 'a', redirectUri: 'https://app.example/cb' },
       flows: memoryFlowStore(),
+      binding: 'b1',
       redirect: () => {},
       fetch: () => (n++ === 0 ? res({}, 500) : res(meta)),
     })
@@ -99,8 +101,10 @@ describe('memoryFlowStore', () => {
     state,
     nonce: 'n',
     codeVerifier: 'v',
-    redirectUri: 'https://app.example/cb',
     issuer: 'https://idp.example',
+    clientId: 'app',
+    redirectUri: 'https://app.example/cb',
+    binding: 'b1',
     createdAt,
   })
 
@@ -109,8 +113,8 @@ describe('memoryFlowStore', () => {
     // at the provider) used to stay in the map forever — an unbounded cache.
     const store = memoryFlowStore()
     const t0 = Date.now() - 11 * 60_000 // older than the 10-minute flow lifetime
-    for (let i = 0; i < 50; i++) await store.save(flow(`old${i}`, t0))
-    await store.save(flow('fresh', Date.now()))
+    for (let i = 0; i < 50; i++) await store.save(`old${i}`, flow(`old${i}`, t0))
+    await store.save('fresh', flow('fresh', Date.now()))
     expect(await store.take('old0')).toBeNull()
     expect(await store.take('old49')).toBeNull()
     expect((await store.take('fresh'))?.state).toBe('fresh')
@@ -119,7 +123,7 @@ describe('memoryFlowStore', () => {
   it('caps the live entries, evicting the oldest first', async () => {
     const store = memoryFlowStore()
     const now = Date.now()
-    for (let i = 0; i < 1100; i++) await store.save(flow(`s${i}`, now))
+    for (let i = 0; i < 1100; i++) await store.save(`s${i}`, flow(`s${i}`, now))
     expect(await store.take('s0')).toBeNull()
     expect((await store.take('s1099'))?.state).toBe('s1099')
   })
@@ -137,48 +141,141 @@ describe('createAuth — provider errors', () => {
   })
 })
 
-// Two sign-in instances share one redirect page and one flow store (a "Sign in with A / with B"
-// page). Every instance whose redirectUri matches sees the callback, so the one that does NOT own
-// the pending flow must leave it alone: completing it would post the other provider's code and
-// PKCE verifier to its own token endpoint (the OAuth mix-up attack), and most providers send no
-// RFC 9207 `iss` that would catch it.
-describe('createAuth — two providers on one redirect page (mix-up)', () => {
-  const redirectUri = 'https://app.example/cb'
-  const metaFor = (iss: string) => ({ issuer: iss, authorization_endpoint: `${iss}/auth`, token_endpoint: `${iss}/token` })
-
-  function twoProviders() {
-    const flows = memoryFlowStore()
-    const redirects: string[] = []
-    const tokenPosts: string[] = []
-    const f: FetchLike = async (u) => {
-      tokenPosts.push(u)
+// The three probes of the PR #4773 review, as tests.
+describe('createAuth — flows are bound to their client, redirect URI and browser', () => {
+  const metaFor = (iss: string, token = `${iss}/token`) => ({ issuer: iss, authorization_endpoint: `${iss}/auth`, token_endpoint: token })
+  const tokenServer = (posts: { url: string; body: string }[]) => {
+    const f: FetchLike = async (u, init) => {
+      posts.push({ url: u, body: String(init?.body) })
 
       return res({ access_token: `at-from-${new URL(u).host}`, token_type: 'Bearer' })
     }
-    const make = (iss: string) =>
-      createAuth({ metadata: metaFor(iss), client: { clientId: 'app', redirectUri }, flows, redirect: (u) => redirects.push(u), fetch: f })
 
-    return { other: make('https://other-idp.example'), honest: make('https://honest-idp.example'), redirects, tokenPosts }
+    return f
   }
 
-  it("an instance never completes another provider's flow, and the owner still can", async () => {
-    const { other, honest, redirects, tokenPosts } = twoProviders()
-    await honest.signIn()
-    const callback = cbFor(redirects[0]!) // no `iss`, as most providers send it
-    // The non-owning instance handles the callback first.
-    await other.handleCallback(callback)
-    expect(tokenPosts).toEqual([])
-    expect(other.status()).toBe('signedOut')
-    expect(other.tokens()).toBeNull()
-    await honest.handleCallback(callback)
-    expect(honest.status()).toBe('signedIn')
-    expect(tokenPosts).toEqual(['https://honest-idp.example/token'])
+  it('login CSRF: a callback started in another browser is refused before any token request', async () => {
+    // The documented BFF: one shared store, one createAuth per request.
+    const flows = memoryFlowStore()
+    const posts: { url: string; body: string }[] = []
+    const client = { clientId: 'bff', redirectUri: 'https://app.example.com/auth/callback' }
+    let location = ''
+    const attacker = createAuth({ metadata: metaFor('https://idp.example'), client, flows, binding: 'attacker-browser', redirect: (l) => (location = l), fetch: tokenServer(posts) })
+    await attacker.signIn()
+    const state = new URL(location).searchParams.get('state')
+    // The attacker signs in at the provider as THEMSELVES and sends the callback to the victim.
+    const victim = createAuth({ metadata: metaFor('https://idp.example'), client, flows, binding: 'victim-browser', redirect: () => {}, fetch: tokenServer(posts) })
+    await victim.handleCallback(`https://app.example.com/auth/callback?code=ATTACKER_CODE&state=${state}`)
+    expect(victim.status()).toBe('error')
+    expect(victim.error()?.code).toBe('unknown_flow')
+    expect(posts).toEqual([])
+    // A callback request with no binding cookie at all is refused the same way.
+    const noCookie = createAuth({ metadata: metaFor('https://idp.example'), client, flows, binding: null, redirect: () => {}, fetch: tokenServer(posts) })
+    await noCookie.handleCallback(`https://app.example.com/auth/callback?code=ATTACKER_CODE&state=${state}`)
+    expect(noCookie.error()?.code).toBe('unbound_flow')
+    expect(posts).toEqual([])
+    // The attacker's own browser can still complete it: the binding is the only difference.
+    const attackerBack = createAuth({ metadata: metaFor('https://idp.example'), client, flows, binding: 'attacker-browser', redirect: () => {}, fetch: tokenServer(posts) })
+    await attackerBack.handleCallback(`https://app.example.com/auth/callback?code=ATTACKER_CODE&state=${state}`)
+    expect(attackerBack.status()).toBe('signedIn')
   })
 
-  it('parseCallback refuses a flow started for another issuer', () => {
-    const flow = { state: 's', nonce: 'n', codeVerifier: 'v', redirectUri, issuer: 'https://honest-idp.example', createdAt: Date.now() }
-    expect(() => parseCallback(`${redirectUri}?code=c&state=s`, flow, metaFor('https://other-idp.example'))).toThrow(
+  it('refuses two providers on one redirect URI over one store (RFC 9700 mix-up), at configuration', () => {
+    const flows = memoryFlowStore()
+    const client = { clientId: 'app', redirectUri: 'https://app.example/cb' }
+    createAuth({ metadata: metaFor('https://github.com'), client, flows, binding: 'b1', redirect: () => {} })
+    // The same provider again (another request, a remount) is fine.
+    createAuth({ metadata: metaFor('https://github.com'), client, flows, binding: 'b1', redirect: () => {} })
+    expect(() => createAuth({ metadata: metaFor('https://attacker.example'), client, flows, binding: 'b1', redirect: () => {} })).toThrow(
+      /share the redirect URI https:\/\/app\.example\/cb.*its own redirectUri/,
+    )
+  })
+
+  it('classic mix-up: the honest provider\'s code (no iss) never reaches a malicious provider\'s token endpoint', async () => {
+    const flows = memoryFlowStore()
+    const posts: { url: string; body: string }[] = []
+    let last = ''
+    const mk = (iss: string, redirectUri: string) =>
+      createAuth({ metadata: metaFor(iss), client: { clientId: 'app', redirectUri }, flows, binding: 'b1', redirect: (u) => (last = u), fetch: tokenServer(posts) })
+    const attacker = mk('https://attacker.example', 'https://app.example/cb/attacker')
+    const honest = mk('https://github.com', 'https://app.example/cb/github')
+    await attacker.signIn() // the user picks the attacker's (or a compromised) provider
+    const state = new URL(last).searchParams.get('state')
+    // The attacker bounces the user to the honest provider with the same state; the honest
+    // provider redirects to ITS registered redirect URI with its code and no iss.
+    const cb = `https://app.example/cb/github?code=HONEST_CODE&state=${state}`
+    await honest.handleCallback(cb)
+    await attacker.handleCallback(cb)
+    expect(posts).toEqual([])
+    expect(honest.status()).toBe('error')
+    expect(attacker.status()).toBe('error')
+  })
+
+  it('parseCallback refuses a callback that did not arrive at the flow\'s redirect URI, a foreign issuer and a foreign binding', async () => {
+    const m = metaFor('https://a.example')
+    const { flow } = await beginAuthorization(m, { clientId: 'c', redirectUri: 'https://app.example/cb/a' }, 'b1')
+    const at = (url: string) => `${url}?code=c&state=${flow.state}`
+    expect(() => parseCallback(at('https://other.example/cb/h'), flow, m, 'b1')).toThrow(expect.objectContaining({ code: 'redirect_mismatch' }))
+    expect(() => parseCallback(at('https://app.example/cb/h'), flow, m, 'b1')).toThrow(expect.objectContaining({ code: 'redirect_mismatch' }))
+    expect(() => parseCallback(at('https://app.example/cb/a'), flow, metaFor('https://b.example'), 'b1')).toThrow(
       expect.objectContaining({ code: 'issuer_mismatch' }),
     )
+    expect(() => parseCallback(at('https://app.example/cb/a'), flow, m, 'b2')).toThrow(expect.objectContaining({ code: 'unbound_flow' }))
+    expect(parseCallback(at('https://app.example/cb/a'), flow, m, 'b1')).toEqual({ code: 'c' })
+  })
+
+  it("concurrent callbacks: another client's instance never consumes the owner's flow", async () => {
+    // Two clients at one issuer on one redirect URI, both completing the same callback at once
+    // (as two useOidc on a redirect page do). Taking is keyed by the client, so the owner wins
+    // whichever runs first.
+    for (const ownerFirst of [true, false]) {
+      const flows = memoryFlowStore()
+      const posts: { url: string; body: string }[] = []
+      const redirects: string[] = []
+      const mk = (clientId: string) =>
+        createAuth({ metadata: metaFor('https://idp.example'), client: { clientId, redirectUri: 'https://app.example/cb' }, flows, binding: 'b1', redirect: (u) => redirects.push(u), fetch: tokenServer(posts) })
+      await mk('web').signIn()
+      const cb = cbFor(redirects[0]!)
+      const owner = mk('web')
+      const other = mk('admin')
+      await Promise.all((ownerFirst ? [owner, other] : [other, owner]).map((a) => a.handleCallback(cb)))
+      expect(owner.status(), `ownerFirst=${ownerFirst}`).toBe('signedIn')
+      expect(other.error()?.code).toBe('unknown_flow')
+      expect(posts.map((p) => new URLSearchParams(p.body).get('client_id'))).toEqual(['web'])
+    }
+  })
+})
+
+describe('createAuth — refresh', () => {
+  it('concurrent refresh() calls share one request, so a rotating refresh token is never reused', async () => {
+    const valid = new Set(['rt0'])
+    let n = 0
+    let familyRevoked = false
+    const f: FetchLike = async (_u, init) => {
+      const body = new URLSearchParams(String(init?.body))
+      if (body.get('grant_type') === 'authorization_code') return res({ access_token: 'at0', token_type: 'Bearer', refresh_token: 'rt0' })
+      const rt = body.get('refresh_token')!
+      await new Promise((r) => setTimeout(r, 5))
+      if (familyRevoked || !valid.has(rt)) {
+        familyRevoked = true // reuse detection: the provider revokes the whole family
+
+        return res({ error: 'invalid_grant' }, 400)
+      }
+      valid.delete(rt)
+      const next = `rt${++n}`
+      valid.add(next)
+
+      return res({ access_token: `at${n}`, token_type: 'Bearer', refresh_token: next })
+    }
+    const redirects: string[] = []
+    const auth = createAuth({ metadata: meta, client: { clientId: 'app', redirectUri: 'https://app.example/cb' }, flows: memoryFlowStore(), binding: 'b1', redirect: (u) => redirects.push(u), fetch: f })
+    await auth.signIn()
+    await auth.handleCallback(cbFor(redirects[0]!))
+    await Promise.all([auth.refresh(), auth.refresh(), auth.refresh()])
+    expect(familyRevoked).toBe(false)
+    expect(auth.status()).toBe('signedIn')
+    expect(auth.tokens()?.refresh_token).toBe('rt1')
+    await auth.refresh() // a later refresh is a new request
+    expect(auth.tokens()?.refresh_token).toBe('rt2')
   })
 })

@@ -93,6 +93,7 @@ function client() {
       authorizationParams: { prompt: 'consent' },
     },
     flows: memoryFlowStore(),
+    binding: 'b1',
     redirect: (u) => redirects.push(u),
   })
   return { auth, redirects }

@@ -35,6 +35,7 @@ public open class PyreonAuthError(public val code: String, message: String) : Ex
     public object IssuerMissing : PyreonAuthError("issuer_missing", "provider advertises iss but callback omitted it")
     public object MissingCode : PyreonAuthError("missing_code", "callback has no code")
     public object UnknownFlow : PyreonAuthError("unknown_flow", "no pending authorization for this state")
+    public object RedirectMismatch : PyreonAuthError("redirect_mismatch", "callback did not arrive at this sign-in's redirect URI (mix-up)")
 }
 
 /** The https rule every endpoint follows, shared with the web `assertHttps`. */
@@ -122,6 +123,15 @@ public class PyreonAuthCore(private val backend: PyreonSecureBackend) {
 
     // A malformed query (a bad `%` escape) reads as empty — the callback then fails
     // as UnknownFlow, the same as Swift, where URLComponents returns nil.
+    /** scheme://host:port/path, lowercased scheme and host — query and fragment ignored; null if unparseable. */
+    internal fun redirectTarget(url: String): String? = try {
+        val u = java.net.URI(url)
+        val port = if (u.port >= 0) ":${u.port}" else ""
+        "${(u.scheme ?: "").lowercase()}://${(u.host ?: "").lowercase()}$port${u.path ?: ""}"
+    } catch (_: Exception) {
+        null
+    }
+
     private fun query(url: String): Map<String, String> = try {
         val raw = URI(url).rawQuery
         if (raw == null) emptyMap()
@@ -200,6 +210,9 @@ public class PyreonAuthCore(private val backend: PyreonSecureBackend) {
         // A flow started for another provider must never reach this provider's token endpoint
         // (OAuth mix-up), whether or not the callback carries RFC 9207 `iss`.
         if (flow.issuer != issuer) throw PyreonAuthError.IssuerMismatch
+        // RFC 9700 §4.4: without `iss`, the redirect URI is what says which provider answered.
+        val target = redirectTarget(callbackUrl)
+        if (target == null || target != redirectTarget(flow.redirectUri)) throw PyreonAuthError.RedirectMismatch
         q["error"]?.let { throw PyreonAuthError.ProviderError(it) }
         if (!PyreonPKCE.constantTimeEqual(state, flow.state)) throw PyreonAuthError.StateMismatch
         val iss = q["iss"]

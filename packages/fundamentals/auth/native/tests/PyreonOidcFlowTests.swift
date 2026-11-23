@@ -115,7 +115,7 @@ enum PyreonOidcFlowTests {
         expect(auth.accessToken == "at-0", "access token")
         expect((auth.expiresAt ?? 0) > Date().timeIntervalSince1970 * 1000, "expiresAt in ms")
         expect("\(auth.status)" == "signedIn", "status renders camelCase")
-        expect(store.entries["pyreon.auth.session.app"] != nil, "session persisted")
+        expect(store.entries["pyreon.auth.session.app|https://idp.example"] != nil, "session persisted")
         expect(!store.entries.keys.contains { $0.hasPrefix("pyreon.auth.flow.") }, "pending flow consumed")
 
         // Rehydrate: a relaunch is signed in from the store, with no network at all.
@@ -138,7 +138,7 @@ enum PyreonOidcFlowTests {
         await auth.refreshNow()
         expect(auth.status == PyreonOidcStatus.error && auth.error == "subject_changed", "subject_changed (\(auth.error ?? ""))")
         expect(auth.accessToken == nil && auth.subject == nil, "session cleared")
-        expect(store.entries["pyreon.auth.session.app"] == nil, "persisted session removed")
+        expect(store.entries["pyreon.auth.session.app|https://idp.example"] == nil, "persisted session removed")
         p.subject = "user-1"
 
         // No refresh token / provider refusal.
@@ -158,7 +158,7 @@ enum PyreonOidcFlowTests {
         let w = make(wrong, ws, FakeBrowser(wrong))
         await w.signInNow()
         expect(w.status == PyreonOidcStatus.error && w.error == "bad_nonce", "bad_nonce (\(w.error ?? ""))")
-        expect(ws.entries["pyreon.auth.session.app"] == nil && w.accessToken == nil, "nothing stored on failure")
+        expect(ws.entries["pyreon.auth.session.app|https://idp.example"] == nil && w.accessToken == nil, "nothing stored on failure")
 
         // A transport failure is network_error — the code the web and Android report too.
         let down = make(DownTransport(), CountingStore(), FakeBrowser(FakeProvider()))
@@ -199,7 +199,7 @@ enum PyreonOidcFlowTests {
         lb.beforeReturn = { late.signOut() }
         await late.signInNow()
         expect(late.status == PyreonOidcStatus.signedOut && late.accessToken == nil, "late result discarded (\(late.status))")
-        expect(ls.entries["pyreon.auth.session.app"] == nil, "late result not persisted")
+        expect(ls.entries["pyreon.auth.session.app|https://idp.example"] == nil, "late result not persisted")
         // …and the code is never even exchanged once the attempt is stale.
         expect(!lp.requests.contains { $0.hasSuffix("/token") }, "no token exchange after signOut")
 
@@ -225,13 +225,36 @@ enum PyreonOidcFlowTests {
         for _ in 0..<500 where lob.opened.count == openedBefore { await _Concurrency.Task.yield() }
         expect(lob.opened.count == openedBefore + 1 && lob.opened.last?.path == "/logout", "provider logout opened after a relaunch")
 
+        // Concurrent refreshes share one request (rotating refresh tokens + reuse detection).
+        let concP = FakeProvider(), concB = FakeBrowser(concP)
+        concP.rotateRefresh = true
+        let conc = make(concP, CountingStore(), concB)
+        await conc.signInNow()
+        let tokenPostsBefore = concP.requests.filter { $0.hasSuffix("/token") }.count
+        async let r1: Void = conc.refreshNow()
+        async let r2: Void = conc.refreshNow()
+        async let r3: Void = conc.refreshNow()
+        _ = await (r1, r2, r3)
+        expect(concP.requests.filter { $0.hasSuffix("/token") }.count == tokenPostsBefore + 1, "concurrent refreshes share one request")
+        expect(conc.accessToken == "at-1" && conc.error == nil, "refreshed once (\(conc.error ?? ""))")
+
+        // The stored session is keyed by client AND issuer: an instance with the same client id at
+        // another provider neither sees nor deletes it.
+        let keyP = FakeProvider(), keyB = FakeBrowser(keyP), keyStore = CountingStore()
+        await make(keyP, keyStore, keyB).signInNow()
+        let otherIssuer = PyreonOidcAuth(issuer: "https://other.example", clientId: "app", redirectUri: "com.example.app:/oauth",
+                                         store: keyStore, transport: keyP, browser: keyB)
+        expect(otherIssuer.status == PyreonOidcStatus.signedOut, "another issuer's instance does not restore this session")
+        otherIssuer.signOut()
+        expect(keyStore.entries["pyreon.auth.session.app|https://idp.example"] != nil, "another issuer's instance does not delete this session")
+
         // An expired session with no refresh token is dropped on relaunch, not restored.
         let es = CountingStore()
-        es.entries["pyreon.auth.session.app"] = #"{"issuer":"https://idp.example","accessToken":"x","expiresAt":1,"claims":{"sub":"u"}}"#
+        es.entries["pyreon.auth.session.app|https://idp.example"] = #"{"issuer":"https://idp.example","accessToken":"x","expiresAt":1,"claims":{"sub":"u"}}"#
         let expired = make(FakeProvider(), es, b)
         expect(expired.status == PyreonOidcStatus.signedOut && es.entries.isEmpty, "expired session dropped")
         // …and a session for another issuer is never trusted.
-        es.entries["pyreon.auth.session.app"] = #"{"issuer":"https://evil.example","accessToken":"x","claims":{"sub":"u"}}"#
+        es.entries["pyreon.auth.session.app|https://idp.example"] = #"{"issuer":"https://evil.example","accessToken":"x","claims":{"sub":"u"}}"#
         let foreign = make(FakeProvider(), es, b)
         expect(foreign.status == PyreonOidcStatus.signedOut && es.entries.isEmpty, "foreign-issuer session dropped")
 

@@ -13,12 +13,8 @@
  * `location.assign`, and the return trip is staged with `history.replaceState`.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  base64url,
-  codeChallengeS256,
-  sessionStorageFlowStore,
-  useOidc,
-} from '../index'
+import { codeChallengeS256, sessionStorageFlowStore, useOidc } from '../index'
+import { base64url } from '../pkce'
 import type { FetchLike, Jwk } from '../index'
 
 const issuer = 'https://idp.example'
@@ -78,7 +74,7 @@ describe('sessionStorageFlowStore on the real sessionStorage', () => {
   it('round-trips a pending flow once, then it is gone', () => {
     const store = sessionStorageFlowStore()
     const flow = { state: 's1', nonce: 'n', verifier: 'v', redirectUri, createdAt: Date.now() } as never
-    store.save(flow)
+    store.save('s1', flow)
     expect(sessionStorage.length).toBe(1)
     expect(store.take('s1')).toMatchObject({ state: 's1', verifier: 'v' })
     expect(sessionStorage.length).toBe(0)

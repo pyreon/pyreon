@@ -1,4 +1,4 @@
-import { codeChallengeS256, generateCodeVerifier, randomToken } from './pkce'
+import { base64url, codeChallengeS256, generateCodeVerifier, randomToken } from './pkce'
 
 export interface OidcMetadata {
   issuer: string
@@ -35,13 +35,26 @@ const RESERVED_PARAMS = new Set([
   'code_challenge_method',
 ])
 
-/** State that must survive the redirect round trip. Persist server-side or in a short-lived HttpOnly cookie. */
+/**
+ * State that must survive the redirect round trip. It records WHO started the sign-in (issuer,
+ * client, redirect URI) and in WHICH browser (`binding`), and the callback is checked against all
+ * of them: a flow can only be completed by the same client, at the same redirect URI, in the same
+ * browser. Persist it server-side (see `FlowStore`), never in `localStorage`.
+ */
 export interface PendingFlow {
   state: string
   nonce: string
   codeVerifier: string
-  redirectUri: string
   issuer: string
+  clientId: string
+  redirectUri: string
+  /**
+   * The browser binding the flow was started with: the value of the `createFlowBinding` cookie on
+   * a server, or the tab's own value in a browser. A callback presented by another browser carries
+   * another binding and is refused, which is what stops login CSRF (an attacker's own callback URL
+   * completed in the victim's browser).
+   */
+  binding: string
   createdAt: number
 }
 
@@ -83,6 +96,7 @@ export function assertHttps(url: string, what: string): URL {
   if (u.protocol !== 'https:' && !(u.protocol === 'http:' && isLoopback(u))) {
     throw new AuthError('insecure_url', `${what} must be https (got ${u.protocol})`)
   }
+
   return u
 }
 
@@ -119,6 +133,7 @@ export async function discover(issuer: string, fetchImpl: FetchLike = (i, o) => 
     const v = meta[k]
     if (v !== undefined) assertHttps(String(v), k)
   }
+
   return meta
 }
 
@@ -126,14 +141,20 @@ export async function discover(issuer: string, fetchImpl: FetchLike = (i, o) => 
 export async function beginAuthorization(
   meta: OidcMetadata,
   client: ClientConfig,
+  binding: string,
   now: number = Date.now(),
 ): Promise<{ url: string; flow: PendingFlow }> {
+  if (!binding) {
+    throw new AuthError('no_binding', 'a sign-in needs a browser binding — pass createFlowBinding(cookieHeader).value (server) or use useOidc')
+  }
   const flow: PendingFlow = {
     state: randomToken(),
     nonce: randomToken(),
     codeVerifier: generateCodeVerifier(),
-    redirectUri: client.redirectUri,
     issuer: meta.issuer,
+    clientId: client.clientId,
+    redirectUri: client.redirectUri,
+    binding,
     createdAt: now,
   }
   // Checked at USE, not only in `discover`: metadata passed explicitly (`oauth2(…)`,
@@ -154,29 +175,51 @@ export async function beginAuthorization(
     }
     u.searchParams.set(k, v)
   }
+
   return { url: u.toString(), flow }
 }
 
 /** How long a pending flow stays valid (and how long a flow store needs to keep it). */
 export const FLOW_TTL_MS = 10 * 60_000
 
+/** scheme://host/path of a URL — what a redirect URI is matched on (query and fragment ignored). */
+export function redirectTarget(url: string | URL): string | null {
+  try {
+    const u = new URL(url)
+    return `${u.protocol}//${u.host}${u.pathname}`
+  } catch {
+    return null
+  }
+}
+
 /**
- * Validate the redirect back. Order matters: error → state (constant-time) → iss (RFC 9207) → code.
- * Returns the authorization code; the flow is single-use, so the caller must delete it either way.
+ * Validate the redirect back. Returns the authorization code; the flow is single-use, so the
+ * caller must delete it either way. Checked in this order: expiry, that the flow belongs to this
+ * issuer and was started in this browser (`binding`), that the callback arrived at the flow's own
+ * redirect URI, the provider's error, `state`, `iss` (RFC 9207), then the code.
  */
 export function parseCallback(
   callback: string | URL,
   flow: PendingFlow,
   meta: OidcMetadata,
+  binding: string,
   now: number = Date.now(),
 ): { code: string } {
   const p = new URL(callback).searchParams
   if (now - flow.createdAt > FLOW_TTL_MS) throw new AuthError('flow_expired', 'authorization attempt expired')
-  // The flow must belong to the provider this callback is completed against: a flow
-  // started for another issuer would send its code and PKCE verifier to the wrong token
-  // endpoint (OAuth mix-up), whether or not the provider sends RFC 9207 `iss`.
+  // A flow started for another provider must never reach this provider's token endpoint.
   if (flow.issuer !== meta.issuer) {
     throw new AuthError('issuer_mismatch', 'pending authorization was started for another issuer (mix-up)')
+  }
+  // Login CSRF: an attacker's own callback URL, completed in the victim's browser, finds the
+  // attacker's flow — but that flow carries the attacker's binding, not this browser's.
+  if (!binding || flow.binding !== binding) {
+    throw new AuthError('unbound_flow', 'this sign-in was started in another browser (or the flow binding cookie is missing)')
+  }
+  // RFC 9700 §4.4 mix-up defence without `iss`: each provider has its own redirect URI, so a
+  // callback that arrives anywhere but the flow's own redirect URI came from another provider.
+  if (redirectTarget(callback) !== redirectTarget(flow.redirectUri)) {
+    throw new AuthError('redirect_mismatch', "callback did not arrive at this sign-in's redirect URI (mix-up)")
   }
   const err = p.get('error')
   if (err) throw new AuthError('provider_error', `provider returned "${err}"`)
@@ -188,14 +231,30 @@ export function parseCallback(
   }
   const code = p.get('code')
   if (!code) throw new AuthError('missing_code', 'callback has no code')
+
   return { code }
 }
 
-/** Length-leaking-only comparison; both inputs are non-secret-length tokens we generated. */
+/**
+ * The opaque key a `FlowStore` holds a flow under: a digest of the state AND of who started it
+ * (issuer, client, redirect URI) AND in which browser (`binding`). Another provider's instance, or
+ * another browser presenting the same `state`, computes another key and never even reads the
+ * flow, so taking and checking it are one atomic step in any key-value store.
+ */
+export async function flowKey(
+  state: string,
+  owner: { issuer: string; clientId: string; redirectUri: string; binding: string },
+): Promise<string> {
+  const material = JSON.stringify(['pyreon.auth.flow.v1', state, owner.issuer, owner.clientId, owner.redirectUri, owner.binding])
+  return base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material))))
+}
+
+/** Length-leaking-only comparison; both inputs are non-secret-length tokens we generated. Internal: not exported from the package. */
 export function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false
   let d = 0
   for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i)
+
   return d === 0
 }
 
@@ -240,6 +299,7 @@ async function postToken(
   if (typeof tokens.access_token !== 'string' || !tokens.access_token || String(tokens.token_type).toLowerCase() !== 'bearer') {
     throw new AuthError('bad_token_response', 'token response missing a bearer access_token')
   }
+
   return tokens
 }
 
@@ -251,6 +311,10 @@ export function exchangeCode(
   code: string,
   fetchImpl: FetchLike = (i, o) => fetch(i, o),
 ): Promise<TokenResponse> {
+  if (flow.clientId !== client.clientId || flow.issuer !== meta.issuer) {
+    return Promise.reject(new AuthError('issuer_mismatch', 'this pending authorization belongs to another client or issuer'))
+  }
+
   return postToken(
     meta,
     {
@@ -293,5 +357,6 @@ export function endSessionUrl(
   if (opts.clientId) u.searchParams.set('client_id', opts.clientId)
   if (opts.postLogoutRedirectUri) u.searchParams.set('post_logout_redirect_uri', opts.postLogoutRedirectUri)
   if (opts.state) u.searchParams.set('state', opts.state)
+
   return u.toString()
 }

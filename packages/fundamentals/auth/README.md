@@ -41,7 +41,8 @@ into a stolen long-lived session; there is deliberately no option for it. To sta
 - call `auth.signIn()` when the app loads signed out — while the provider still has its own session, the round trip
   completes without a prompt; or
 - keep the session on your server (a backend-for-frontend): complete the code exchange there and hand the browser a
-  signed, `HttpOnly` cookie with `signSession` / `sessionCookie`, which page scripts cannot read.
+  signed, `HttpOnly` cookie with `signSession` / `sessionCookie`, which page scripts cannot read. Bind each sign-in to
+  the browser that started it — see "On a server" below.
 
 Underneath is `createAuth`, which you can use directly — on a server, or to choose the flow store and navigation
 yourself:
@@ -74,14 +75,51 @@ flow's security (`state`, `nonce`, PKCE, `redirect_uri`, …) cannot be overridd
 completes without a prompt. `auth.signOut({ endProviderSession: true, postLogoutRedirectUri })` also sends the user to
 the provider's `end_session_endpoint` with an `id_token_hint`.
 
+**On a server (backend-for-frontend)**, two things are yours to supply: a `FlowStore` all instances share, and a
+**browser binding**. The `state` travels in the callback URL, so on its own it cannot say which browser started the
+sign-in: an attacker could start one, finish it at the provider as themselves and send the callback URL to a victim,
+who would then be signed in to the attacker's account (login CSRF; PKCE does not help, the verifier is on your server).
+`createFlowBinding(cookieHeader)` returns a random value and the `Set-Cookie` header (`__Host-`, HttpOnly, 10 minutes)
+to send with the redirect; on the callback, `readFlowBinding(cookieHeader)` reads it back. `createAuth` refuses to start
+without a binding unless the store is tab-scoped (`sessionStorageFlowStore`), and `useOidc` supplies one itself.
+
+```ts
+import { createAuth, createFlowBinding, memoryFlowStore, readFlowBinding } from '@pyreon/auth'
+
+const config = {
+  issuer: 'https://accounts.example.com',
+  client: { clientId: 'bff', redirectUri: 'https://app.example.com/auth/callback' },
+  flows: memoryFlowStore(), // a shared store (Redis GETDEL) with several instances
+}
+
+// GET /login
+const binding = createFlowBinding(req.headers.get('cookie'))
+let location = '/'
+await createAuth({ ...config, binding: binding.value, redirect: (url) => (location = url) }).signIn()
+// → 302 to `location`, with Set-Cookie: binding.setCookie
+
+// GET /auth/callback
+const auth = createAuth({ ...config, binding: readFlowBinding(req.headers.get('cookie')), redirect: () => {} })
+await auth.handleCallback(req.url) // a callback opened in another browser fails with unbound_flow / unknown_flow
+```
+
+**One redirect URI per provider.** Most providers send no `iss` on the redirect, so the redirect URI is what says which
+provider answered. With a shared one, a malicious or compromised provider you also offer could bounce the user to an
+honest one and receive its code and your PKCE verifier (the OAuth mix-up attack, RFC 9700 §4.4). `createAuth` throws
+when two providers share a redirect URI over one flow store; use `/auth/callback/github`, `/auth/callback/google`, ….
+
 The lower-level steps are exported too (`discover`, `beginAuthorization`, `parseCallback`, `exchangeCode`,
-`refreshTokens`, `endSessionUrl`, `verifyIdToken`, `createJwksCache`) for server-side flows.
+`refreshTokens`, `endSessionUrl`, `verifyIdToken`, `createJwksCache`) for server-side flows; `beginAuthorization` and
+`parseCallback` take the browser binding.
 
 ## Secure defaults
 
-S256-only PKCE, `state` + `nonce`, the mix-up check (a flow completes only against the issuer that started it, plus the RFC 9207 `iss` check), https-only discovery with issuer equality and https on every
+S256-only PKCE, `state` + `nonce`, pending flows bound to the client, redirect URI and browser that started them
+(login CSRF), one redirect URI per provider and the callback checked against it plus the RFC 9207 `iss` check (OAuth
+mix-up), https-only discovery with issuer equality and https on every
 advertised endpoint (loopback http is allowed for local development), single-use flows that expire after 10 minutes,
-ID tokens limited to RS256 / ES256 with `crit` headers refused, cookies `__Host-` + HttpOnly + Secure + SameSite=Lax,
+ID tokens limited to RS256 / ES256 with `crit` headers refused, `azp` and `iat` checked, `key_ops` honoured and RSA keys
+under 2048 bits ignored, one refresh in flight per session, cookies `__Host-` + HttpOnly + Secure + SameSite=Lax,
 passkey ceremonies from a cross-origin iframe refused unless `allowCrossOrigin`, and a guard whose `returnTo` only
 accepts paths that stay on the same origin under the URL parser. Not offered, on purpose: the implicit flow, the
 password grant, PKCE `plain`.
@@ -111,9 +149,10 @@ These are not defaults because they need storage or policy only the app has.
   window. With several instances, keep the same counters in a shared store.
 - **Make sessions revocable.** A signed cookie is valid until it expires. Every session carries a `jti`; pass
   `isRevoked` to `verifySession` and keep revoked ids (logout everywhere, a stolen device) until their `exp`.
+- **Bind server-side sign-ins to the browser** with `createFlowBinding` / `readFlowBinding` (see "On a server").
 - **Running more than one instance.** `memoryFlowStore` holds pending sign-ins in one process, so a callback that
   lands on a different instance fails with `unknown_flow`. Implement `FlowStore` over a shared store; `take` must
-  read and delete atomically, and entries can expire after `FLOW_TTL_MS`.
+  read and delete atomically, and entries can expire after 10 minutes (the flow lifetime).
 - **Keep the passkey `signCount`.** Store the `signCount` `verifyAssertion` returns and pass it back next time; a
   counter that does not increase signals a cloned authenticator.
 
@@ -177,10 +216,35 @@ nothing is emitted.
 **Parity is tested, not assumed.** `native/tests/vectors.json` is one answer sheet of signed ID tokens — valid ones and
 every rejection the verifier makes — that the web, Swift and Kotlin verifiers must all agree on, error code for error
 code. The native containers run end to end in the smoke tests against an in-process provider that enforces PKCE and
-the nonce, and the `native-tasks` example's sign-in panel is asserted on a real simulator and emulator.
+the nonce.
+
+**Native sign-in is unverified on a device against a real provider.** On a real simulator and emulator, the
+`native-tasks` example's sign-in panel has been driven only to the `network_error` path (an unreachable issuer). A
+complete sign-in through the system browser, a real provider and the redirect back into the app has not been run on a
+device. Test your provider on your devices before you rely on it.
 
 **What stays web/server.** The lower-level API — `createAuth`, `discover`, `exchangeCode`, sessions, TOTP, passkeys,
 the route guard — is web or server code. Native apps hold one session per `useOidc` call: create it once at the root
 and pass it down.
+
+## Security notes and known limits
+
+`@pyreon/auth` is **Experimental**: its API may change in a minor release. Read these before you ship:
+
+- **iOS Keychain backups (L1).** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not
+  `…ThisDeviceOnly`, so the refresh token can move to another device through an encrypted backup, and Keychain items
+  survive an uninstall.
+- **No verified identity without an ID token (L2).** A sign-in with an OAuth2-only provider (GitHub, Facebook) has no
+  verified identity: `claims()` stays `null` until a refresh supplies an ID token.
+- **Callback parsing (L3).** Duplicated callback parameters are read differently on Android (last value) than on the
+  web and iOS (first). On native, a flow started for another provider is refused but consumed, so that sign-in has to
+  be retried.
+- **Android custom schemes.** Another installed app can claim the same scheme and receive the redirect; PKCE is then
+  the only defence (the code is useless without the verifier). Prefer an App Link (a claimed https redirect). The
+  exported `PyreonAuthRedirectActivity` lets any app send a fake redirect, which cancels a sign-in in progress (it
+  cannot complete one).
+- **Sign-out does not revoke tokens.** `signOut({ endProviderSession: true })` ends the provider session; tokens
+  already issued stay valid until they expire (there is no RFC 7009 revocation call).
+- **Native sign-in is unverified on a device against a real provider** (see "Parity is tested, not assumed").
 
 MIT

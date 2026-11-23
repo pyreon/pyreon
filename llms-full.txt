@@ -1910,7 +1910,7 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 
 ## @pyreon/auth — Authentication
 
-Authentication primitives for Pyreon on Web Crypto + fetch (browsers, Node, Bun, workerd): OIDC/OAuth2 authorization code with S256 PKCE, state, nonce and the RFC 9207 `iss` check; ID-token verification against a cached, rotation-aware JWKS; a reactive `createAuth` state machine with refresh and RP-initiated logout; HMAC cookie sessions with revocation; TOTP; ES256 and RS256 passkeys; an attempt limiter; and an open-redirect-safe route guard. Interop-tested against oidc-provider, a certified OpenID Provider.
+Authentication primitives for Pyreon on Web Crypto + fetch (browsers, Node, Bun, workerd): OIDC/OAuth2 authorization code with S256 PKCE, state and nonce, pending flows bound to their client, redirect URI and browser (login-CSRF and mix-up defence), and the RFC 9207 `iss` check; ID-token verification against a cached, rotation-aware JWKS; a reactive `createAuth` state machine with refresh and RP-initiated logout; HMAC cookie sessions with revocation; TOTP; ES256 and RS256 passkeys; an attempt limiter; and an open-redirect-safe route guard. Interop-tested against oidc-provider, a certified OpenID Provider.
 
 ```typescript
 const auth = useOidc({
@@ -1926,19 +1926,23 @@ const auth = useOidc({
 const auth = createAuth({ issuer, client, flows: sessionStorageFlowStore(), redirect: (u) => location.assign(u) })
 
 const meta = await discover('https://accounts.example')
-const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirectUri: 'https://app.example/cb' })
-// store `flow`, then redirect the user to `url`
+const binding = createFlowBinding(req.headers.get('cookie'))
+const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirectUri: 'https://app.example/cb' }, binding.value)
+// store `flow` under its state, then redirect to `url` with Set-Cookie: binding.setCookie
 
-const { code } = parseCallback(req.url, flow, meta)
+const { code } = parseCallback(req.url, flow, meta, readFlowBinding(req.headers.get('cookie')) ?? '')
 
 const tokens = await exchangeCode(meta, client, flow, code)
 
 const meta = await discover('https://accounts.example')
 
-const auth = createAuth({ issuer: google.issuer, client, flows, redirect: (u) => location.assign(u) })
+// a server (backend-for-frontend): one shared store, one createAuth per request
+const binding = createFlowBinding(req.headers.get('cookie')) // send binding.setCookie with the redirect
+const auth = createAuth({ issuer: google.issuer, client, flows, binding: binding.value, redirect: (u) => respond(u) })
 await auth.signIn()
 // on the callback route:
-await auth.handleCallback(location.href)
+const back = createAuth({ issuer: google.issuer, client, flows, binding: readFlowBinding(req.headers.get('cookie')), redirect: respond })
+await back.handleCallback(req.url)
 
 const cookie = sessionCookie('session', await signSession({ sub: user.id }, { secrets: [process.env.SESSION_SECRET!] }))
 const session = await verifySession(value, { secrets: [process.env.SESSION_SECRET!] })
@@ -1956,8 +1960,8 @@ if (r.ok) limiter.reset(userId)
 
 const auth = createAuth({ metadata: github, client, flows, redirect })
 
-const keys = await fetchJwks(meta)
-const claims = await verifyIdToken(tokens.id_token!, keys, meta, { clientId: client.clientId, nonce: flow.nonce })
+const jwks = createJwksCache(meta)
+const claims = await verifyIdToken(tokens.id_token!, jwks, meta, { clientId: client.clientId, nonce: flow.nonce })
 
 import { runStrategy } from '@pyreon/auth/passport'
 const out = await runStrategy(new LocalStrategy(verify), { method: 'POST', url: '/login', body })
@@ -1975,6 +1979,68 @@ if (r.ok) await db.credentials.insert({ id: r.credentialId, jwk: r.publicKey, si
 
 const guard = createGuard({ session: () => user(), loginPath: '/login' })
 guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }
+
+const to = safeReturnTo(new URL(req.url).searchParams.get('returnTo'))
+return Response.redirect(new URL(to, req.url), 303)
+
+const binding = createFlowBinding(req.headers.get('cookie'))
+const auth = createAuth({ issuer, client, flows, binding: binding.value, redirect: (url) => (location = url) })
+await auth.signIn()
+return new Response(null, { status: 302, headers: { location, 'set-cookie': binding.setCookie } })
+
+const auth = createAuth({ issuer, client, flows, binding: readFlowBinding(req.headers.get('cookie')), redirect: () => {} })
+await auth.handleCallback(req.url)
+
+const flows = memoryFlowStore()
+const auth = createAuth({ issuer, client, flows, binding: createFlowBinding(cookie).value, redirect })
+
+try {
+  parseCallback(req.url, flow, meta, binding)
+} catch (e) {
+  if (e instanceof AuthError && e.code === 'provider_error') showCancelled()
+  else throw e
+}
+
+const t = await refreshTokens(meta, client, session.refreshToken)
+session.refreshToken = t.refresh_token ?? session.refreshToken
+
+const url = endSessionUrl(meta, { idTokenHint: tokens.id_token, postLogoutRedirectUri: 'https://app.example/' })
+if (url) location.assign(url)
+
+const jwks = createJwksCache(meta)
+const claims = await verifyIdToken(idToken, jwks, meta, { clientId: 'bff', nonce })
+
+const auth = createAuth({
+  issuer: google.issuer,
+  client: withPreset(google, { clientId: 'app', redirectUri: 'https://app.example/auth/callback/google' }),
+  flows: sessionStorageFlowStore(),
+  redirect: (u) => location.assign(u),
+})
+
+const kc = keycloak('https://sso.example.com', 'staff')
+const auth = createAuth({ issuer: kc.issuer, client: withPreset(kc, client), flows, binding, redirect })
+
+const client = withPreset(google, { clientId: 'app', redirectUri: 'https://app.example/auth/callback/google' })
+
+const auth = createAuth({ metadata: facebook('v20.0'), client, flows, binding, redirect })
+
+const meta = oauth2('https://git.example', 'https://git.example/oauth/authorize', 'https://git.example/oauth/token')
+
+const code = await totp(secret)
+
+const secret = generateTotpSecret()
+const otpauth = `otpauth://totp/App:${email}?secret=${secret}&issuer=App`
+
+const challenge = passkeyChallenge()
+await store.set(userId, challenge)
+
+const value = await signSession({ sub: user.id }, opts)
+headers.set('set-cookie', sessionCookie('session', value))
+
+const verifier = generateCodeVerifier()
+const challenge = await codeChallengeS256(verifier)
+
+const challenge = await codeChallengeS256(generateCodeVerifier())
 ```
 
 ## @pyreon/storage — Reactive Storage

@@ -75,7 +75,13 @@ public class PyreonOidcAuth(
 
     /** Bumped by every new attempt and by signOut, so a late result never resurrects a session. */
     private val epoch = AtomicInteger(0)
-    private val sessionKey get() = "pyreon.auth.session.$clientId"
+    // Per client AND issuer: another instance with the same client id at another provider must
+    // not read, overwrite or delete this one's stored session.
+    private val sessionKey get() = "pyreon.auth.session.$clientId|$issuer"
+
+    // Declared before `init`: rehydration may start a refresh while the object is constructed.
+    private val refreshLock = Any()
+    private var refreshInFlight: java.util.concurrent.CountDownLatch? = null
 
     init {
         rehydrate()
@@ -84,7 +90,9 @@ public class PyreonOidcAuth(
     // ---- actions (fire-and-forget for UI; the *Now forms block, for tests) ----
 
     public fun signIn() { val my = epoch.incrementAndGet(); status.value = PyreonOidcStatus.SIGNING_IN; error.value = null; executor.execute { signInNow(my) } }
-    public fun refresh() { val my = epoch.incrementAndGet(); executor.execute { refreshNow(my) } }
+    // A refresh does not bump the epoch: two refreshes must not invalidate each other (only
+    // sign-in and sign-out do), and they share one request — see refreshNow.
+    public fun refresh() { val my = epoch.get(); executor.execute { refreshNow(my) } }
 
     public fun signInNow(my: Int = epoch.incrementAndGet()) {
         status.value = PyreonOidcStatus.SIGNING_IN
@@ -121,7 +129,32 @@ public class PyreonOidcAuth(
         commit(t, t.refreshToken, verified)
     }
 
-    public fun refreshNow(my: Int = epoch.incrementAndGet()) {
+    /**
+     * One refresh in flight per instance: with rotating refresh tokens and reuse detection, a
+     * second concurrent refresh would present the already-rotated token and the provider would
+     * revoke the whole token family. A caller that finds one running waits for it instead.
+     */
+    public fun refreshNow(my: Int = epoch.get()) {
+        var owner = false
+        val latch = synchronized(refreshLock) {
+            refreshInFlight ?: java.util.concurrent.CountDownLatch(1).also {
+                refreshInFlight = it
+                owner = true
+            }
+        }
+        if (!owner) {
+            latch.await()
+            return
+        }
+        try {
+            performRefresh(my)
+        } finally {
+            synchronized(refreshLock) { refreshInFlight = null }
+            latch.countDown()
+        }
+    }
+
+    private fun performRefresh(my: Int) {
         try {
             val current = refreshToken ?: throw PyreonAuthError("no_refresh_token", "no refresh token — sign in again")
             val m = metadata()

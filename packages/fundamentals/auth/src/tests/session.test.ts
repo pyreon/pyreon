@@ -52,6 +52,7 @@ describe('non-OIDC providers', () => {
       metadata: github,
       client: { clientId: 'x', redirectUri: 'https://app.example/cb' },
       flows: memoryFlowStore(),
+      binding: 'b1',
       redirect: (u) => out.push(u),
       fetch: () => Promise.reject(new Error('discovery must not run')),
     })

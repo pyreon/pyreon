@@ -44,6 +44,10 @@ struct PyreonOidcTests {
 
         raises("mix-up", .issuerMismatch) { _ = try core.complete(callback: cb(try begin(core), "&code=a&iss=https://evil.example"), issuer: iss) }
         raises("flow of another issuer", .issuerMismatch) { _ = try core.complete(callback: cb(try begin(core), "&code=a"), issuer: "https://other.example") }
+        raises("callback at another redirect URI", .redirectMismatch) {
+            let s = URLComponents(url: try begin(core), resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "state" }!.value!
+            _ = try core.complete(callback: URL(string: "https://app.example/other?state=\(s)&code=a")!, issuer: iss)
+        }
         raises("iss missing", .issuerMissing) { _ = try core.complete(callback: cb(try begin(core), "&code=a"), issuer: iss, issuerParamSupported: true) }
         raises("expired", .flowExpired) { _ = try core.complete(callback: cb(try begin(core, now: Date(timeIntervalSinceNow: -700)), "&code=a"), issuer: iss) }
         raises("http", .insecureUrl) { _ = try core.begin(authorizationEndpoint: "http://idp.example/auth", issuer: iss, clientId: "a", redirectUri: "r") }
