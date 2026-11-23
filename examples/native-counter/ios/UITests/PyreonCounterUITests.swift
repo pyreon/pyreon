@@ -195,7 +195,7 @@ final class PyreonCounterUITests: XCTestCase {
 
     func test_directNativeFlowRendersNodes() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // The native host intentionally exposes each node as one accessible
         // canvas element, so query all element types instead of relying on the
@@ -556,7 +556,7 @@ final class PyreonCounterUITests: XCTestCase {
         )
 
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let label = app.staticTexts["geo-lat"]
         XCTAssertTrue(
@@ -592,7 +592,7 @@ final class PyreonCounterUITests: XCTestCase {
 
     func test_appLaunchesAndIncrementsCounter() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // Phase 1: assert initial render.
         // The PMTC emit produces a SwiftUI `Text("Count: \(count)")`
@@ -633,7 +633,7 @@ final class PyreonCounterUITests: XCTestCase {
     // `onLongPress` was silently dropped from the native emit.
     func test_longPressResetsCounter() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let incrementButton = app.buttons["Increment"]
         XCTAssertTrue(
@@ -673,7 +673,7 @@ final class PyreonCounterUITests: XCTestCase {
     // "Copy" is a reliable activity for a URL share; assert either appears.
     func test_shareButtonPresentsShareSheet() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let shareButton = app.buttons["Share"]
         XCTAssertTrue(
@@ -721,7 +721,7 @@ final class PyreonCounterUITests: XCTestCase {
     // R4, not just "does not crash".
     func test_openButtonOpensExternalUrl() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let openButton = app.buttons["Open"]
         XCTAssertTrue(
@@ -773,7 +773,7 @@ final class PyreonCounterUITests: XCTestCase {
     // not crash.
     func test_notifyButtonDoesNotCrash() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let notifyButton = app.buttons["Notify"]
         XCTAssertTrue(
@@ -818,7 +818,7 @@ final class PyreonCounterUITests: XCTestCase {
     // committed assertion is the iPhone/compact side.
     func test_sizeClassReadsCompactOnPhone() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["Size: compact"].waitToExist(timeout: 30),
@@ -841,7 +841,7 @@ final class PyreonCounterUITests: XCTestCase {
     // dismiss reliably.
     func test_platformProbeHooksDriveTheLiveDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["Info: ios-touch"].waitToExist(timeout: 30),
@@ -930,7 +930,7 @@ final class PyreonCounterUITests: XCTestCase {
     // instead of fixed.
     func test_databaseRecordSurvivesRelaunch() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // The label is `Notes: <n>`; read n by prefix rather than assuming a
         // value, since prior runs may have left records behind.
@@ -958,8 +958,7 @@ final class PyreonCounterUITests: XCTestCase {
         )
 
         // Phase 2 — the record OUTLIVES the process.
-        app.terminate()
-        app.launch()
+        app.relaunchKeepingState()
 
         guard let afterRelaunch = currentNoteCount() else {
             XCTFail("No \"Notes: <n>\" text after relaunch")
@@ -979,7 +978,7 @@ final class PyreonCounterUITests: XCTestCase {
     // Run CRUD clears its collection first, so the expected line is absolute.
     func test_databaseGetFindUpdateDeleteRunOnDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(app.staticTexts["Count: 0"].waitToExist(timeout: 30), "App did not render")
 
         let run = app.buttons["Run CRUD"]
@@ -998,7 +997,7 @@ final class PyreonCounterUITests: XCTestCase {
 
     func test_accessibilityLabelReachesTree() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["Count: 0"].waitToExist(timeout: 30),
@@ -1033,7 +1032,7 @@ final class PyreonCounterUITests: XCTestCase {
     // (`.regular` picks the HStack branch, `.compact` the VStack branch).
     func test_adaptiveLayoutRendersCompactBranch() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["Layout: narrow"].waitToExist(timeout: 30),
@@ -1057,7 +1056,7 @@ final class PyreonCounterUITests: XCTestCase {
     func test_sizeClassReadsRegularOnPad() throws {
         try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad lane only")
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(
             app.staticTexts["Size: regular"].waitToExist(timeout: 30),
             "Expected \"Size: regular\" on an iPad — useSizeClass did not read the regular horizontal size class"
@@ -1070,7 +1069,7 @@ final class PyreonCounterUITests: XCTestCase {
     func test_adaptiveLayoutRendersRegularBranchOnPad() throws {
         try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad lane only")
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(
             app.staticTexts["Layout: wide"].waitToExist(timeout: 30),
             "Adaptive Stack↔Inline did not render the regular branch on an iPad"
@@ -1097,7 +1096,7 @@ final class PyreonCounterUITests: XCTestCase {
     //       locale (or the fallback) was used.
     func test_i18nTranslatedStringRendersConfiguredLocale() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["Count: 0"].waitToExist(timeout: 30),
@@ -1159,7 +1158,7 @@ final class PyreonCounterUITests: XCTestCase {
         // second half; a launch-time-only read that never updates fails it
         // too).
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         addTeardownBlock { XCUIDevice.shared.appearance = .light }
 
         XCUIDevice.shared.appearance = .light
@@ -1250,7 +1249,7 @@ final class PyreonCounterUITests: XCTestCase {
     // capability the framework did not ship had no path at all.
     func test_userDefinedNativeModuleRunsOnDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["Device: iOS"].waitToExist(timeout: 30),
@@ -1314,7 +1313,7 @@ final class PyreonCounterUITests: XCTestCase {
     // background leaves no band at all.
     func test_rocketstyleSizeDimensionMeasuredFromScreenshotBand() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(app.staticTexts["Count: 0"].waitToExist(timeout: 30), "App did not render")
 
         for (id, expected) in [("sized-narrow", 120.0), ("sized-wide", 240.0)] {
@@ -1340,7 +1339,7 @@ final class PyreonCounterUITests: XCTestCase {
     // of these match.
     func test_rocketstyleRenderedColourOnDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let ok = app.staticTexts["Badge: ok"]
         XCTAssertTrue(ok.waitToExist(timeout: 30), "badge did not render")
         bringFullyOnScreen(ok, in: app)
@@ -1375,7 +1374,7 @@ final class PyreonCounterUITests: XCTestCase {
     // REPLACES the button's own, and the tap must still reach the action.
     func test_rocketstylePressedStyleButtonStillFiresItsTap() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let chip = app.buttons["press-chip"]
         XCTAssertTrue(
@@ -1402,7 +1401,7 @@ final class PyreonCounterUITests: XCTestCase {
 
     func test_rocketstyleComponentRendersAndFlipsOnDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["Badge: ok"].waitToExist(timeout: 30),
@@ -1446,7 +1445,7 @@ final class PyreonCounterUITests: XCTestCase {
     // on "Power: off".
     func test_stateMachineTransitionsOnTap() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // (1) Initial state.
         XCTAssertTrue(
@@ -1494,7 +1493,7 @@ final class PyreonCounterUITests: XCTestCase {
     //   (3) tap Toggle Box again — it animates back in.
     func test_transitionAnimatesShowHide() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let box = app.staticTexts["Animated Box"]
         // (1) Visible on launch.
@@ -1566,7 +1565,7 @@ final class PyreonCounterUITests: XCTestCase {
     /// the post-await signal flip re-rendered.
     func test_filePickerPresentsAndCancelFlowsBackOnDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // (1) Initial state — the async handler has not run yet.
         XCTAssertTrue(
@@ -1621,7 +1620,7 @@ final class PyreonCounterUITests: XCTestCase {
 
     func test_imagePickerPresentsAndCancelFlowsBackOnDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // (1) Initial state — the async handler has not run yet.
         XCTAssertTrue(
@@ -1674,7 +1673,7 @@ final class PyreonCounterUITests: XCTestCase {
 
     func test_biometricAsyncGateRunsOnDevice() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // (1) Initial state — the async handler has not run yet.
         XCTAssertTrue(
@@ -1742,7 +1741,7 @@ final class PyreonCounterUITests: XCTestCase {
     // count signal via Increment).
     func test_i18nInterpolationAndPluralsFollowCount() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["Hallo Vit!"].waitToExist(timeout: 30),
@@ -1771,7 +1770,7 @@ final class PyreonCounterUITests: XCTestCase {
     // one, and the locale label itself.
     func test_i18nLocaleSwitchRetranslatesInPlace() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["Greeting: Hallo!"].waitToExist(timeout: 30),
@@ -1792,7 +1791,7 @@ final class PyreonCounterUITests: XCTestCase {
 
     func test_toggleFlipsObservableState() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         XCTAssertTrue(
             app.staticTexts["core-toggle-state"].waitToExist(timeout: 30),
@@ -1839,7 +1838,7 @@ final class PyreonCounterUITests: XCTestCase {
 
     func test_modalPresentsAndDismisses() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let open = app.buttons["core-modal-open"]
         XCTAssertTrue(open.waitToExist(timeout: 30), "core-modal-open button missing")
@@ -1869,7 +1868,7 @@ final class PyreonCounterUITests: XCTestCase {
 
     func test_scrollContainerIsQueryableAndHoldsItsChild() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // The load-bearing half: SwiftUI FLATTENS a plain ScrollView out of the
         // accessibility tree, so the container is only reachable because the
@@ -1903,7 +1902,7 @@ final class PyreonCounterUITests: XCTestCase {
     // flips when `count` crosses 2.
     func test_renderPropsRenderAndTrackState() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let block = app.staticTexts["rp-block"]
         XCTAssertTrue(block.waitToExist(timeout: 30), "The block-bodied render callback rendered nothing")
@@ -1929,7 +1928,7 @@ final class PyreonCounterUITests: XCTestCase {
     // the app did not compile.
     func test_setTimeoutFiresOnTheMainThread() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let arm = app.buttons["timer-arm"]
         XCTAssertTrue(arm.waitToExist(timeout: 30))
@@ -1947,7 +1946,7 @@ final class PyreonCounterUITests: XCTestCase {
     // Before the lowering existed the effect was DROPPED, and the label stayed `echo 0 / cleanups 0`.
     func test_effectReRunsOnPropChangeAndCleansUpFirst() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let echo = app.staticTexts["effect-echo"]
         XCTAssertTrue(echo.waitToExist(timeout: 30), "The effect() row did not render")

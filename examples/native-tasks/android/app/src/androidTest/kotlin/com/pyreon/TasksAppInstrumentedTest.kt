@@ -1983,7 +1983,10 @@ class TasksAppInstrumentedTest {
             .assertTextEquals("survived")
         // FIRED: the report reached disk, with our message in it. Walking the
         // directory rather than naming a file keeps this robust to the
-        // backend's filename choice.
+        // backend's filename choice. The directory was empty when this test
+        // started (the orchestrator `pm clear`s the app before every test, see
+        // build.gradle.kts), so a report found here was written by THIS run, not
+        // left behind by an earlier test or attempt.
         val crashDir = java.io.File(
             InstrumentationRegistry.getInstrumentation().targetContext.filesDir,
             "pyreon-crash",
