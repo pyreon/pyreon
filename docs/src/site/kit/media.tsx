@@ -19,28 +19,45 @@ import type { LoopSources } from './LoopPlayer'
  * posters, 33 KB on a phone where the hero visual is not even displayed). An
  * eager pair is made discoverable early by `preloadThemePair` instead.
  */
+/** One theme's preload, as the inline script below inserts it. */
+interface PosterPreload {
+  readonly href: string
+  readonly srcset?: string | undefined
+  readonly type?: string | undefined
+}
+
+const posterPreload = (d: PictureData): PosterPreload => {
+  const best = d.sources[0]
+  return best ? { href: d.src, srcset: best.srcset, type: best.type } : { href: d.src }
+}
+
 /**
- * The preload for an eager theme pair: one `<link rel="preload">` per theme,
- * each limited by `media` to the color scheme it is shown in (and to
- * `visibleMedia`, where the picture is displayed at all), so the preload
- * scanner fetches exactly the file the first paint needs. The pair itself
- * stays lazy (see `PictureTag`). A visitor whose stored theme differs from the
- * OS one gets the right file from the lazy `<img>` at first layout.
+ * The inline script that preloads an eager theme pair: ONE `<link
+ * rel="preload">`, for the theme the visitor will see. It runs in `<head>`
+ * after the pre-paint script (`color-mode.ts`), which has already written
+ * `data-theme` from the stored choice (`pyreon-theme`) or the OS preference,
+ * so it picks the same file CSS will show. A declarative preload per
+ * `prefers-color-scheme` got it wrong whenever the stored theme differs from
+ * the OS: the hidden poster at high priority, the shown one late. `media`
+ * limits it to where the visual is displayed (none on phones). Exported for
+ * the unit test.
  */
+export function posterPreloadScript(dark: PictureData, light: PictureData, sizes: string, visibleMedia: string | undefined): string {
+  const data = JSON.stringify({ dark: posterPreload(dark), light: posterPreload(light), sizes, media: visibleMedia ?? '' }).replace(
+    /</g,
+    '\\u003c',
+  )
+
+  return (
+    `(function(){var c=${data},d=document,p=c[d.documentElement.getAttribute("data-theme")==="light"?"light":"dark"],` +
+    `l=d.createElement("link");l.rel="preload";l.as="image";l.href=p.href;` +
+    `if(p.srcset){l.setAttribute("imagesrcset",p.srcset);l.setAttribute("imagesizes",c.sizes);l.type=p.type}` +
+    `if(c.media)l.media=c.media;l.setAttribute("fetchpriority","high");d.head.appendChild(l)})()`
+  )
+}
+
 function preloadThemePair(dark: PictureData, light: PictureData, sizes: string, visibleMedia: string | undefined): void {
-  const link = (d: PictureData, scheme: 'dark' | 'light') => {
-    const best = d.sources[0]
-    const media = `${visibleMedia ? `${visibleMedia} and ` : ''}(prefers-color-scheme: ${scheme})`
-    return {
-      rel: 'preload',
-      as: 'image',
-      href: d.src,
-      ...(best ? { imagesrcset: best.srcset, imagesizes: sizes, type: best.type } : {}),
-      media,
-      fetchpriority: 'high' as const,
-    }
-  }
-  useHead({ link: [link(dark, 'dark'), link(light, 'light')] })
+  useHead({ script: [{ children: posterPreloadScript(dark, light, sizes, visibleMedia) }] })
 }
 
 function PictureTag(props: {

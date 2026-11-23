@@ -148,17 +148,22 @@ describe("hydrate: 'visible' — hosts whose element is not their box (#4435)", 
       },
     ],
   ] as const) {
-    it(`island (boxed and contents) inside a content-visibility: auto section, ${how}`, async () => {
-      const { stage: st, island } = stage(
-        '<section style="content-visibility:auto;contain-intrinsic-size:auto 600px"><h2 id="cv-anchor">x</h2><pyreon-island style="display:contents"><p>y</p></pyreon-island></section>',
-      )
-      start()
-      await settle()
-      expect(hydrated(island)).toBe(false)
-      await go(st)
-      expect(await waitHydrated(island)).toBe(true)
-      location.hash = ''
-    })
+    for (const [kind, host] of [
+      ['boxed', '<pyreon-island><p>y</p></pyreon-island>'],
+      ['contents', '<pyreon-island style="display:contents"><p>y</p></pyreon-island>'],
+    ] as const) {
+      it(`${kind} island inside a content-visibility: auto section, ${how}`, async () => {
+        const { stage: st, island } = stage(
+          `<section style="content-visibility:auto;contain-intrinsic-size:auto 600px"><h2 id="cv-anchor">x</h2>${host}</section>`,
+        )
+        start()
+        await settle()
+        expect(hydrated(island)).toBe(false)
+        await go(st)
+        expect(await waitHydrated(island)).toBe(true)
+        location.hash = ''
+      })
+    }
   }
 
   it('contents host holding only text: observes the nearest boxed ancestor and warns once in dev', async () => {

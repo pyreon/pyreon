@@ -3,9 +3,10 @@
  *
  * Serves `docs/dist` the way GitHub Pages serves it (gzip, `max-age=600`,
  * `/dir/` → `dir/index.html`, `404.html` for a miss) and runs the pinned
- * Lighthouse CLI (`npx lighthouse@LIGHTHOUSE_VERSION`, kept out of the
- * workspace install) with its default MOBILE config several times per page,
- * a fresh Chrome per run.
+ * Lighthouse CLI with its default MOBILE config several times per page, a
+ * fresh Chrome per run. Lighthouse stays out of the bun workspace: CI installs
+ * it from `scripts/lighthouse-tools/package-lock.json` (`PYREON_LIGHTHOUSE_BIN`),
+ * a local run falls back to `npx lighthouse@LIGHTHOUSE_VERSION`.
  *
  * HARD (fails the run, deterministic):
  * - any run scoring below 1.0 in Accessibility, Best Practices, SEO or Agentic
@@ -38,7 +39,11 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { resolvePagesPath, serveStatic } from './lighthouse-server'
 
-/** Pinned exactly: a new Lighthouse can add audits. Bump on purpose. */
+/**
+ * Pinned exactly: a new Lighthouse can add audits. Bump on purpose, together
+ * with `scripts/lighthouse-tools/package.json` + its lock (a test keeps them
+ * equal) and `lighthouseLlmsTxtFailures` in `@pyreon/test-utils/llms-txt`.
+ */
 export const LIGHTHOUSE_VERSION = '13.6.0'
 
 /** Home page, one docs page, one marketing page. */
@@ -227,22 +232,23 @@ async function runLighthouseOnce(url: string, extra: string[]): Promise<Report> 
   const dir = mkdtempSync(join(tmpdir(), 'pyreon-lh-'))
   const out = join(dir, 'report.json')
   try {
-    // Outside the workspace: npx inside it reads the root package.json's
-    // overrides and refuses to install (EOVERRIDE).
-    const result = await exec(
-      'npx',
-      [
-        '-y',
-        `lighthouse@${LIGHTHOUSE_VERSION}`,
-        url,
-        '--quiet',
-        '--output=json',
-        `--output-path=${out}`,
-        '--chrome-flags=--headless=new --no-sandbox --disable-gpu',
-        ...extra,
-      ],
-      dir,
-    )
+    const args = [
+      url,
+      '--quiet',
+      '--output=json',
+      `--output-path=${out}`,
+      '--chrome-flags=--headless=new --no-sandbox --disable-gpu',
+      ...extra,
+    ]
+    // CI installs Lighthouse from the integrity-pinned lock in
+    // scripts/lighthouse-tools (npm ci --ignore-scripts) and points
+    // PYREON_LIGHTHOUSE_BIN at it. Locally, without it, npx fetches the same
+    // version, run outside the workspace: npx inside it reads the root
+    // package.json's overrides and refuses to install (EOVERRIDE).
+    const bin = process.env.PYREON_LIGHTHOUSE_BIN
+    const result = bin
+      ? await exec(bin, args, dir)
+      : await exec('npx', ['-y', `lighthouse@${LIGHTHOUSE_VERSION}`, ...args], dir)
     if (result.status !== 0) {
       throw new Error(`[Pyreon] Lighthouse exited ${result.status} for ${url}: ${result.stderr.slice(-2000)}`)
     }
@@ -267,8 +273,10 @@ export function pageProxies(html: string): { emptyRules: number; inlineCssBytes:
   let emptyRules = 0
   let inlineCssBytes = 0
   for (const m of html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) {
-    const css = m[1]!
-    inlineCssBytes += css.length
+    const raw = m[1]!
+    inlineCssBytes += raw.length
+    // Strings may hold braces (`content: "{}"`); they are not rule blocks.
+    const css = raw.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '""')
     // A selector (not an at-rule prelude) followed by an empty block.
     for (const r of css.matchAll(/(^|[;{}])\s*([^;{}@]+?)\s*\{\s*\}/g)) if (r[2]!.trim() !== '') emptyRules++
   }
@@ -337,6 +345,7 @@ function checkPageProxies(dist: string, pages: string[], report: Record<string, 
     if (proxies.emptyRules > 0) failures.push(`${page}: ${proxies.emptyRules} empty CSS rule block(s) in the inline styles`)
     report[page] = { proxies }
   }
+
   return failures
 }
 
@@ -346,6 +355,7 @@ async function cpuMultiplier(cpu: string, firstUrl: string): Promise<number> {
   if (!index) throw new Error('[Pyreon] Lighthouse reported no benchmarkIndex; pass --cpu <multiplier>.')
   const multiplier = calibratedCpu(index)
   log(`benchmarkIndex ${Math.round(index)} → cpuSlowdownMultiplier ${multiplier} (calibrated to ${CALIBRATION_BENCHMARK_INDEX} at 4×)`)
+
   return multiplier
 }
 
@@ -364,6 +374,7 @@ async function measurePage(page: string, origin: string, cpu: number, opts: Opti
   }
   const medians = performanceMedians(lhrs)
   log(`${page} MEDIAN: performance=${medians.score} | ${Object.entries(medians.metrics).map(([id, v]) => `${id}=${round(v)}`).join(' ')}`)
+
   return { page, medians, perRun: lhrs.map((l) => l.categories.performance?.score), problems: performanceProblems(medians) }
 }
 

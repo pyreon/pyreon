@@ -2,12 +2,13 @@
  * The assertion logic of `docs/scripts/lighthouse.ts` (the CI Lighthouse gate)
  * and the GitHub-Pages-shaped static server it measures through.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   CALIBRATION_BENCHMARK_INDEX,
+  LIGHTHOUSE_VERSION,
   calibratedCpu,
   failingScoredAudits,
   type Lhr,
@@ -59,6 +60,7 @@ function lhr(overrides: { categories?: Partial<Lhr['categories']>; audits?: Part
     ),
     ...(overrides.categories as Lhr['categories']),
   }
+
   return { finalDisplayedUrl: 'http://x/', categories, audits }
 }
 
@@ -109,6 +111,7 @@ describe('lighthouse gate — performance on per-value medians', () => {
     const r = lhr()
     r.categories.performance = { id: 'performance', score, auditRefs: [] }
     r.audits['total-blocking-time'] = { id: 'total-blocking-time', title: 't', score: 1, scoreDisplayMode: 'numeric', numericValue: tbt }
+
     return r
   }
 
@@ -198,7 +201,22 @@ describe('lighthouse check — deterministic page proxies', () => {
     expect(p.inlineCssBytes).toBeGreaterThan(0)
   })
 
+  it('braces inside CSS strings are not rule blocks', () => {
+    expect(pageProxies(`<style>.a::before{content:"{}"}.b::after{content:'x{ }'}</style>`).emptyRules).toBe(0)
+  })
+
   it('a page without empty rules passes', () => {
     expect(pageProxies('<style>.a{color:red}@media (x){.b{color:blue}}</style>').emptyRules).toBe(0)
+  })
+})
+
+describe('lighthouse check — one pinned version', () => {
+  it('the CI lock, its package.json and LIGHTHOUSE_VERSION agree, and the lock pins integrity', () => {
+    const dir = join(__dirname, '../../../scripts/lighthouse-tools')
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+    const lock = JSON.parse(readFileSync(join(dir, 'package-lock.json'), 'utf-8'))
+    expect(pkg.dependencies.lighthouse).toBe(LIGHTHOUSE_VERSION)
+    expect(lock.packages['node_modules/lighthouse'].version).toBe(LIGHTHOUSE_VERSION)
+    expect(lock.packages['node_modules/lighthouse'].integrity).toMatch(/^sha512-/)
   })
 })

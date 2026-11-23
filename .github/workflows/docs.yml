@@ -308,8 +308,8 @@ jobs:
     # score and metric medians go to the job summary and the uploaded
     # `lighthouse-*` artifact (medians.json), the trend to watch. Why timing is
     # not a hard gate: .agents/guides/ci/README.md, "Lighthouse check".
-    # Lighthouse 13.6.0 runs through npx (LIGHTHOUSE_VERSION in
-    # docs/scripts/lighthouse.ts), outside the workspace install.
+    # Lighthouse 13.6.0 (LIGHTHOUSE_VERSION in docs/scripts/lighthouse.ts) is
+    # installed from scripts/lighthouse-tools' npm lock, outside the workspace.
     # Local: cd docs && bunx vite build && bun run lighthouse
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -324,13 +324,23 @@ jobs:
         with:
           name: docs-site-${{ github.run_attempt }}
           path: docs/dist
+      - name: Install Lighthouse (integrity-pinned lock)
+        # Outside the bun workspace (bun.lock never lists it): every
+        # transitive package is pinned by integrity in
+        # scripts/lighthouse-tools/package-lock.json; no install scripts run.
+        timeout-minutes: 3
+        run: |
+          mkdir -p "$RUNNER_TEMP/lighthouse"
+          cp scripts/lighthouse-tools/package{,-lock}.json "$RUNNER_TEMP/lighthouse/"
+          npm ci --prefix "$RUNNER_TEMP/lighthouse" --ignore-scripts --no-audit --no-fund
       - name: Lighthouse
         shell: bash
         timeout-minutes: 12
         run: |
           mkdir -p .cache/lighthouse
           cd docs
-          bash ../scripts/gnu-timeout.sh --verbose --signal=KILL 11m bun scripts/lighthouse.ts --out ../.cache/lighthouse 2>&1 | tee ../.cache/lighthouse/lighthouse.log
+          PYREON_LIGHTHOUSE_BIN="$RUNNER_TEMP/lighthouse/node_modules/.bin/lighthouse" \
+            bash ../scripts/gnu-timeout.sh --verbose --signal=KILL 11m bun scripts/lighthouse.ts --out ../.cache/lighthouse 2>&1 | tee ../.cache/lighthouse/lighthouse.log
       - name: Keep the reports
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
