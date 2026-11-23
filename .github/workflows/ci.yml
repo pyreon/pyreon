@@ -60,20 +60,20 @@ permissions:
 # by every in-flight PR. Runner-minutes are unmetered (public repo); SLOTS
 # and DAG LEVELS are the whole constraint — measured 2026-09-01 an ordinary
 # code PR spent 641 min queued for 24 min of work. So the shape is: as few
-# jobs as the isolation genuinely needs, three stages deep, and a gate that
-# takes seconds is a STEP, never a job.
+# jobs as the isolation genuinely needs, as few stages deep as the preflight
+# allows, and a gate that takes seconds is a STEP, never a job.
 #
 #   level 1   Install            install + decide + lib/ (one job, one failure semantics)
-#   level 2   Fast Gates         every cheap/lib-free gate (lint, docs, policy, secrets)
-#   level 3   Build              every lib-needing gate (examples, modes, budgets, coverage, rust)
+#             Fast Gates         every cheap/lib-free gate (lint, docs, policy, secrets), beside Install
+#   level 2   Build              every lib-needing gate (examples, modes, budgets, coverage, rust)
 #             typecheck / test / e2e / scaffold cells   dynamic, batched by ci-batch.ts
 #             Test (browser)     vitest --browser (Playwright)
 #             Release Build      the literal next-release build + pack rehearsal
 #             bootstrap-exit-codes                      only when bootstrap.ts changed
-#             Test               final verdict for preflight + all four matrices
+#   level 3   Test               final verdict for preflight + all four matrices
 #
 # Fail-fast is intentionally TWO-LAYERED:
-#   1. Fast Gates finishes before any expensive level-3 runner is eligible.
+#   1. Fast Gates finishes before any expensive level-2 runner is eligible.
 #      A lint/docs/policy failure therefore spends one cheap runner, not the
 #      full matrix plus browser/release/scaffold capacity.
 #   2. Each expensive matrix uses fail-fast:true. Once a real cell fails,
@@ -629,8 +629,15 @@ jobs:
   # outage reds this ONE step and the other gates still report.
   fast-gates:
     name: Fast Gates
-    needs: install
-    if: ${{ !cancelled() && needs.install.result == 'success' }}
+    # Level 1, beside Install, not after it. Under load every DAG level costs
+    # a full queue round (a job is created when its `needs` finish and then
+    # waits for a runner): measured 2026-11-18 → 11-23, Fast Gates waited a
+    # median 35 min (p90 115) AFTER Install's own wait, on every run. It reads
+    # nothing from Install: its gates are lib-free, and setup-pyreon restores
+    # node_modules by the lockfile key (a lockfile-changing PR installs in its
+    # fallback, about a minute). Expensive jobs still need BOTH, so they stay
+    # idle until the cheap gates pass (check-ci-fail-fast). The cost: when
+    # Install fails, this job runs anyway (0 of 296 Install runs failed).
     runs-on: ubuntu-latest
     # Derived: ~90s of prior gates + lint 20s + doc examples 45s + secrets
     # scan 30s (+ up to 100s of pre-pull backoff) + audit/readiness/guard

@@ -6,6 +6,7 @@ import { checkAll, checkWorkflow } from '../../../../../scripts/check-workflow-t
 
 const pr = (on: string, extra = '') =>
   `name: X\non:\n${on}\n${extra}jobs:\n  a:\n    runs-on: ubuntu-latest\n    steps: []\n`
+
 const cancelling = 'concurrency:\n  group: x-${{ github.event.pull_request.number || github.ref }}\n  cancel-in-progress: true\n'
 
 describe('check-workflow-triggers — the repository', () => {

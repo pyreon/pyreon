@@ -4,17 +4,63 @@ Read before adding or changing a workflow, job, required check, or cache key.
 
 ## Constraint: runner slots, not minutes
 
-- The org is on GitHub's free plan: 20 concurrent jobs org-wide, 5 of them macOS, shared by every open PR. Runner minutes are unmetered on a public repo.
-- PR wall-clock is dominated by queue wait. The levers are job count and DAG depth, not per-job speed.
-- A cell's fixed setup (queue + checkout + `setup-pyreon`, plus Playwright for e2e) is about a minute. Splitting work into more jobs only helps while runners are idle.
+- The org is on GitHub's free plan (`gh api orgs/pyreon --jq .plan.name` → `free`): 20 concurrent jobs org-wide, 5 of them macOS, shared by every open PR. Runner minutes are unmetered on a public repo. Measured peaks agree within timestamp resolution (to the second, so a job finishing and the next starting overlap, and housekeeping jobs last about 6 seconds): 24 Linux and 6 macOS jobs at one instant, 2026-11-16 → 11-23.
+- PR wall-clock is dominated by queue wait. The levers are job count, DAG depth and total demand, not per-job speed.
+- A cell's fixed setup (checkout + `setup-pyreon`, plus Playwright for e2e) is about a minute. Splitting work into more jobs only helps while runners are idle.
+
+## Throughput, measured
+
+`bun scripts/ci-throughput.ts` regenerates every number here (see "Diagnosing slow CI"). Baseline: 2026-11-16 20:00 → 11-23 20:00 UTC (13,310 runs; 11-20 → 11-22 were idle), job-level figures over 2026-11-18 12:00 → 11-23 20:00, where every non-housekeeping run's jobs were fetched (4,112 runs).
+
+| Measure | Value |
+| --- | --- |
+| Time-to-green of a PR commit (first run created → last required workflow green, commits where all five went green) | median 159 min, p90 414 over the week (n = 194); median 248, p90 466 on the busy days of the job-level window (n = 88) |
+| Runner minutes per PR push (every `pull_request` run of the commit) | median 52, p90 238 (macOS p90 75) |
+| A full `ci.yml` run on `main` (green) | 18 jobs, 85 runner-minutes, 23 min of pure-work critical path (max 31), 75 min wall at the median under load |
+| Linux busy share in working hours (fetched jobs only) | 75–85% of 20 slots, hour after hour on 11-18 and 11-19; macOS 60–110% of 5 |
+| Runner minutes in the window | Linux 32,625, macOS 7,646; `pull_request` 33,000 of them, push 3,200, Code Quality 2,400, schedules 1,700 |
+
+Where a green PR commit's time goes. A job is created when its `needs` finish, then waits for a runner (verified on job timestamps), so every DAG level pays a full queue round. Median runner wait per job on PR runs: `Install` 40 min, `Fast Gates` 35, typecheck/test/e2e cells 68–74, `Build` 69, `Test (browser)` 62, `Release Build` 63; the `Test` aggregator, last to finish on 73 of 88 green commits, waited a median 51 minutes for a runner to do 6 seconds of work. Pure work on the same path is about 23 minutes. The other critical-path ends: `iOS — xcodebuild` on 9 commits (59 min of work), the macOS typecheck on 4 (queue median 54–57 min), Android on 2.
+
+Top Linux consumers on PRs (runner-minutes in the window): e2e cells 4,361; Android device lane 3,596; Linux native validate 3,524; test cells 3,035; Code Quality (dynamic) 2,431; `Build` 1,391; bundle-size diff 1,305; typecheck cells 1,179; docs build 1,121; CodeQL 1,099; `Test (browser)` 1,069; `Install` 1,044; `Fast Gates` 864. macOS: iOS 4,986, macOS typecheck 1,735.
+
+Duplicated work: GitHub's Code Quality feature (a repository setting, runs named `Code Quality: PR #N`) analyses every PR push with CodeQL a second time, 7–9 minutes each, 7.5% of all Linux minutes, under the same check name as the required `Analyze (javascript-typescript)`. `ci.yml` builds `lib/` once per run and shares it by cache; the other workflows that need it (native validate, the device lanes, bundle-size diff twice, docs, lathe) each install and rebuild incrementally from the source-hashed cache, because a cache saved by a parallel workflow is not there yet when they start.
+
+Housekeeping (`workflow_run`) runs, before the 2026-11-23 trigger fixes: 5,944 of 13,310 runs (45%). `Default Branch Status` 2,809 (774 ran a job, 1,226 were coalesced while pending, 808 skipped), `Required Check Autoheal` 1,578 (509 ran a job; 81 native re-runs happened in the week), `Size Ceiling Status` 831 (660 skipped), `Native Device Nightly Status` 726 (719 skipped). A `workflow_run` run always reports `head_branch: main`, so each skipped follower run started a `Default Branch Status` run too. The jobs that ran cost almost no runner time (138 runner-minutes in the week: 683 `Default Branch Status` jobs 89, 412 autoheal jobs 37, size ceiling 11, nightly 1, about 6 seconds each); the costs are run volume, API calls, and latency: an autoheal job waited a median 82 minutes (p90 212) for a runner before it could re-run anything.
+
+Cancellations: no superseded PR run of any workflow ran to completion (every PR workflow cancels by concurrency). Jobs cancelled before a runner took them are mostly superseded pushes; the macOS "not acquired by Runner" class is what autoheal re-runs.
+
+Failure rates on PR runs (a job that ran steps and failed; none of these was green on a re-run of the same run unless stated): `Build` 24% (coverage steps, size budgets, the Rust-binary compiler suite), Android 9.9% (2 green on re-run), `Test` aggregator 5.4% (follows its members), `Test (browser)` 4.3%, `Fast Gates` 2.7%, test cells 2.0%, iOS 1.9% (1 green on re-run), e2e cells 0.4%, typecheck cells 0.4%; Scaffold, Release Build and the Linux native validate 0. On `main`: `Coverage (Full)` 9 of 33 runs red. Two jobs reached their own timeout in the window (e2e 1, Linux native validate 2): timeouts are not where runner time is lost.
+
+## Throughput levers, ranked
+
+By runner time or wall clock saved against risk, from the measurements above. "Landed" items need no setting; the others are the maintainer's switches (runbook under "Merge queue").
+
+| # | Lever | Saves | Risk | What still covers what it stops doing | State |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `Fast Gates` beside `Install` instead of after it | one queue round on every `ci.yml` run: `Fast Gates`' median wait 35 min (p90 115) leaves the critical path | low: a failed Install leaves one cheap job running (0 of 296 failed) | every expensive job still needs both (`check-ci-fail-fast`) | landed 2026-11-23 |
+| 2 | Merge queue, then light PR CI | about 32% of Linux minutes leave the PR (e2e, scaffold, `Test (browser)`, `Release Build`, Linux native validate); the queue adds back about 92 runner-minutes per group: net 2,000–6,000 of 32,600 minutes in the window. Shorter PR critical path; the merge result is tested (the "two green PRs broke `main`" class) | medium: the 2026-11-11 attempt starved; group ejections on heavy-job failures (`Test (browser)` 4.3%) | the queue runs everything the PR skips, on the merged tree; `Build` stays on the PR | maintainer, after the 0.54.0 release |
+| 3 | Turn off GitHub Code Quality | 7.5% of Linux minutes (463 runs × 7–9 min in the window) and one queue entry per PR push; removes the second check named `Analyze (javascript-typescript)` | none for security coverage | `codeql.yml` (security-extended queries) on every PR, push and group | maintainer setting |
+| 4 | `workflow_run` followers filtered to `main`; autoheal decides "superseded" without a runner | run volume, not runner time: about 1,400 follower runs a week and the `Default Branch Status` runs they started, about 330 of 412 autoheal jobs (all of them together used 138 runner-minutes) | low | autoheal's script still checks current head and newest run; the alarm still sees every default-branch run | landed 2026-11-23 |
+| 5 | The `Test` aggregator round | it ends the critical path on 73 of 88 green commits after a median 51-minute wait for 6 seconds of work | high: removing it means requiring fixed-name matrix slots instead (13 required contexts), a protection change and a new failure surface | — | plan only; light PR CI shrinks the wait first |
+| 6 | Build restores the compiler's native binary by source hash | 37–47 s of cargo build plus the toolchain install on every `Build` without a Rust change (184 runs in the window) | low | a miss builds exactly as before; `Assert native binary present` is unchanged | landed 2026-11-23 |
+| 7 | `Bundle size diff` from `Build`'s size data | 1,305 PR minutes (4%): `Build` already measures the PR and its base | medium: a new comment-posting path in a required job (must stay advisory) | — | plan |
+| 8 | `Deploy Docs` PR build only where the e2e `docs` suite does not already build the site | part of 1,121 PR minutes (3%) | medium: the two selectors cover different paths (Atlas, `packages/ui`) | — | plan |
+| 9 | `Default Branch Status` as one sweep over all watched workflows | the remaining executed runs (after #4) | medium: a 22-workflow sweep per event approaches the job token's 1,000 calls an hour; it must read one repository-wide run listing, not one per workflow | — | plan, low value after #4 |
+| — | Lower job timeouts | nothing measurable: 2 timeouts in a week | — | — | no change |
+| — | Skip heavy jobs on drafts | 3 of 20 open PRs were drafts | — | — | no change |
 
 ## Design rules
 
 - A gate that takes seconds is a step, not a job. A new job needs a written reason it cannot be a step.
-- Keep the graph shallow: Install, then Fast Gates, then expensive fan-out
-  (plus the one aggregator). The extra preflight edge is intentional: it keeps
+- Keep the graph shallow: Install and Fast Gates side by side, then expensive
+  fan-out (plus the one aggregator). Every expensive job needs BOTH: that keeps
   expensive runners idle until cheap deterministic checks prove the commit is
-  worth testing.
+  worth testing. Fast Gates does not wait for Install: a job is created when
+  its `needs` finish and then waits for a runner, so every DAG level costs a
+  full queue round under load (Fast Gates waited a median 35 min, p90 115,
+  after Install's own wait, 2026-11-18 → 11-23). `check-ci-fail-fast` pins
+  both halves.
 - Every gate step inside `Fast Gates` / `Build` runs with `if: ${{ !cancelled() }}`, so one push reports every red gate.
 - Job-level preflight and aggregate verdicts must also respect cancellation.
   `Test` uses `!cancelled()` so failed prerequisites still produce a verdict,
@@ -47,10 +93,10 @@ Read before adding or changing a workflow, job, required check, or cache key.
 | Level | Job | Contents |
 | --- | --- | --- |
 | 1 | `Install` | install → decide → build `lib/`. Outputs `code`, `affected`, and the batched `typecheck-` / `test-` / `e2e-` / `scaffold-matrix` lists. |
-| 2 | `Fast Gates` | Every lib-free gate: lint, ratchets, docs sync, manifests, export entries, release readiness, doc examples, dependency audit, secrets scan, PR-targets-main. Cheap gates collect all diagnostics. |
-| 3 | `Build` | Every lib-needing gate: examples build, verify-modes, bundle + import budgets, distribution, bin liveness, coverage floor + changed packages, the Rust-binary equivalence run. |
-| 3 | `typecheck (…)`, `test (…)`, `e2e (…)`, `Scaffold Smoke (…)` | Dynamic cells, packed by `scripts/ci-batch.ts` (LPT by measured weight). Sibling cells cancel after the first failure. |
-| 3 | `Test (browser)`, `Release Build`, `bootstrap-exit-codes` | |
+| 1 | `Fast Gates` | Every lib-free gate: lint, ratchets, docs sync, manifests, export entries, release readiness, doc examples, dependency audit, secrets scan, PR-targets-main. Cheap gates collect all diagnostics. |
+| 2 | `Build` | Every lib-needing gate: examples build, verify-modes, bundle + import budgets, distribution, bin liveness, coverage floor + changed packages, the Rust-binary equivalence run. |
+| 2 | `typecheck (…)`, `test (…)`, `e2e (…)`, `Scaffold Smoke (…)` | Dynamic cells, packed by `scripts/ci-batch.ts` (LPT by measured weight). Sibling cells cancel after the first failure. |
+| 2 | `Test (browser)`, `Release Build`, `bootstrap-exit-codes` | |
 | aggregate | `Test` | The single fail-closed aggregator over Install, Fast Gates, and all four matrices (`scripts/ci-aggregate.ts`). It depends on every member so it consumes a runner only for the final verdict. |
 
 - Lib-free vs lib-needing: typecheck, lint and vitest resolve `@pyreon/*` to `src` through the `bun` condition and do not need `lib/`. Exceptions are tests that assert on `lib/` bytes or boot a nested Vite SSR build. A new lib-needing gate goes in `Build`; a lib-free one in `Fast Gates`.

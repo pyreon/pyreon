@@ -34,8 +34,13 @@
  *   over the runs of the workflows that own required contexts, counted only
  *   when every one of those runs concluded success (attempt 1 or later).
  */
+import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
+const sleep = (msec: number) => new Promise((done) => setTimeout(done, msec))
 
 const REPO = 'pyreon/pyreon'
 
@@ -63,8 +68,8 @@ export interface Step {
   status: string
   conclusion: string | null
   number: number
-  started_at?: string | null
-  completed_at?: string | null
+  started_at?: string | null | undefined
+  completed_at?: string | null | undefined
 }
 
 export interface Job {
@@ -286,54 +291,70 @@ export function perPrSha(runs: Run[], jobsByRun: Map<number, Job[]>): ShaVerdict
   }
   const out: ShaVerdict[] = []
   for (const [sha, list] of bySha) {
-    const newest = new Map<string, Run>()
-    for (const r of list) {
-      if (!REQUIRED_WORKFLOWS.includes(r.path)) continue
-      const cur = newest.get(r.path)
-      if (!cur || ms(r.created_at)! > ms(cur.created_at)!) newest.set(r.path, r)
-    }
-    const req = [...newest.values()]
-    let minutesToGreen: number | null = null
-    let critical: ShaVerdict['critical'] = null
-    if (
-      req.length === REQUIRED_WORKFLOWS.length &&
-      req.every((r) => r.status === 'completed' && r.conclusion === 'success')
-    ) {
-      const start = Math.min(...req.map((r) => ms(r.created_at)!))
-      const end = Math.max(...req.map((r) => ms(r.updated_at)!))
-      minutesToGreen = (end - start) / 60000
-      let last: Job | null = null
-      for (const r of req) {
-        for (const job of jobsByRun.get(r.id) ?? []) {
-          if (job.run_attempt !== r.run_attempt || !timing(job)) continue
-          if (!last || ms(job.completed_at)! > ms(last.completed_at)!) last = job
-        }
-      }
-      if (last) critical = { job: jobFamily(last.name), ...timing(last)! }
-    }
-    let linux = 0
-    let macos = 0
-    for (const run of list) {
-      for (const job of jobsByRun.get(run.id) ?? []) {
-        const t = timing(job)
-        if (!t) continue
-        if (os(job) === 'macos') macos += t.work
-        else linux += t.work
-      }
-    }
+    const { linux, macos } = minutesOf(list, jobsByRun)
     out.push({
       sha,
       pr: String(list[0]?.pull_requests?.[0]?.number ?? list[0]?.head_branch ?? ''),
-      minutesToGreen,
+      ...greenVerdict(newestRequired(list), jobsByRun),
       runnerMinutes: linux + macos,
       linuxMinutes: linux,
       macosMinutes: macos,
       workflows: new Set(list.map((r) => r.path)).size,
-      critical,
     })
   }
   return out
 }
+
+/** The newest run of each required workflow among one SHA's runs. */
+function newestRequired(list: Run[]): Run[] {
+  const newest = new Map<string, Run>()
+  for (const r of list) {
+    if (!REQUIRED_WORKFLOWS.includes(r.path)) continue
+    const cur = newest.get(r.path)
+    if (!cur || ms(r.created_at)! > ms(cur.created_at)!) newest.set(r.path, r)
+  }
+  return [...newest.values()]
+}
+
+/** Time-to-green and the last-finishing job, when every required workflow is green. */
+function greenVerdict(
+  req: Run[],
+  jobsByRun: Map<number, Job[]>,
+): Pick<ShaVerdict, 'minutesToGreen' | 'critical'> {
+  const green =
+    req.length === REQUIRED_WORKFLOWS.length &&
+    req.every((r) => r.status === 'completed' && r.conclusion === 'success')
+  if (!green) return { minutesToGreen: null, critical: null }
+  const start = Math.min(...req.map((r) => ms(r.created_at)!))
+  const end = Math.max(...req.map((r) => ms(r.updated_at)!))
+  let last: Job | null = null
+  for (const r of req) {
+    for (const job of jobsByRun.get(r.id) ?? []) {
+      if (job.run_attempt !== r.run_attempt || !timing(job)) continue
+      if (!last || ms(job.completed_at)! > ms(last.completed_at)!) last = job
+    }
+  }
+  return {
+    minutesToGreen: (end - start) / 60000,
+    critical: last ? { job: jobFamily(last.name), ...timing(last)! } : null,
+  }
+}
+
+/** Runner minutes of every job of these runs, split by OS. */
+function minutesOf(list: Run[], jobsByRun: Map<number, Job[]>): { linux: number; macos: number } {
+  let linux = 0
+  let macos = 0
+  for (const run of list) {
+    for (const job of jobsByRun.get(run.id) ?? []) {
+      const t = timing(job)
+      if (!t) continue
+      if (os(job) === 'macos') macos += t.work
+      else linux += t.work
+    }
+  }
+  return { linux, macos }
+}
+
 
 /**
  * Pull-request runs that were superseded (a newer run of the same workflow
@@ -403,18 +424,15 @@ function parseArgs(argv: string[]): Options {
 
 async function gh<T>(path: string): Promise<T> {
   for (let attempt = 1; ; attempt++) {
-    const proc = Bun.spawn(['gh', 'api', '-H', 'Accept: application/vnd.github+json', path], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const [out, err, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ])
-    if (code === 0) return JSON.parse(out) as T
-    if (attempt >= 3) throw new Error(`[ci-throughput] gh api ${path} failed: ${err.trim()}`)
-    await Bun.sleep(2000 * attempt)
+    try {
+      const { stdout } = await execFileAsync('gh', ['api', '-H', 'Accept: application/vnd.github+json', path], {
+        maxBuffer: 64 * 1024 * 1024,
+      })
+      return JSON.parse(stdout) as T
+    } catch (error) {
+      if (attempt >= 3) throw new Error(`[ci-throughput] gh api ${path} failed: ${(error as Error).message}`)
+      await sleep(2000 * attempt)
+    }
   }
 }
 

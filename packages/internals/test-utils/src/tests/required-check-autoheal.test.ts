@@ -191,6 +191,7 @@ function jobIf(): (wr: Record<string, unknown>) => boolean {
     .replaceAll('[0].head.sha', '?.[0]?.head?.sha')
     .replaceAll(' == ', ' === ')
     .replaceAll(' != ', ' !== ')
+
   return new Function('wr', `return Boolean(${js})`) as (wr: Record<string, unknown>) => boolean
 }
 
