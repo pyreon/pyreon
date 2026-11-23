@@ -147,6 +147,7 @@ A new tool or command that reports "clean" for source text must do the same.
 
 ## `pyreon doctor`
 
+- `doc-claims/unscoped-runner-command` scans docs pages, every README, and the string/template-literal text (`stringLiteralText`: comments and code blanked) of `packages/*/*/src` outside tests/fixtures/`.d.ts`. A command that is right as written (it only runs inside a project that installs the package) goes in `RUNNER_COMMAND_ALLOWANCES` as file → bins + reason — never a blanket skip.
 - 15 gates: react-patterns, pyreon-patterns, lint, distribution, doc-claims, islands-audit, ssg-audit, content-audit, native-audit (needs the optional peer `@pyreon/native-compiler`; skips with an install hint when absent), audit-tests, check-dedup, audit-leak-classes, dependency-fabric, plus the slow audit-types and bundle-budgets. Sources: `packages/tools/cli/src/doctor/gates/`.
 - `doctor --only islands-audit` audits the nearest package manifest, including flat apps and author `src/lib`; pass the workspace root explicitly to compare packages and examples across the repo.
 - Flags: `--full`, `--fix`, `--json`, `--gha`, `--ci`, `--only`, `--skip`, `--roots`, `--format`, `--audit-min-risk`. Anything else is a usage error (an ignored selector would widen the run to every gate).

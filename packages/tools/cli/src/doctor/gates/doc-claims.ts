@@ -773,8 +773,140 @@ function commandDocFiles(repoRoot: string): string[] {
 }
 
 /**
- * A docs page that tells the reader to run `npx atlas …` / `bunx lathe …` with
- * the UNSCOPED name of one of our binaries. Without a local install, the
+ * The published source a user reads commands from WITHOUT opening a docs page:
+ * CLI output, error and diagnostic `fix` text, generated READMEs and scripts.
+ * Only string and template-literal text is checked (see `stringLiteralText`);
+ * tests, fixtures, type declarations and build output are not shipped prose.
+ */
+function commandSourceFiles(repoRoot: string): string[] {
+  const out: string[] = []
+  const SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', 'tests', '__tests__', 'test', 'fixtures', '__fixtures__'])
+  const walk = (dir: string): void => {
+    if (!existsSync(dir)) return
+    for (const entry of readdirSync(dir)) {
+      if (SKIP_DIRS.has(entry) || entry.startsWith('.')) continue
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) walk(full)
+      else if (/\.[cm]?[jt]sx?$/.test(entry) && !/\.(test|spec)\.|\.d\.ts$/.test(entry)) out.push(full)
+    }
+  }
+  const packagesDir = join(repoRoot, 'packages')
+  if (!existsSync(packagesDir)) return out
+  for (const group of readdirSync(packagesDir)) {
+    const groupDir = join(packagesDir, group)
+    if (!statSync(groupDir).isDirectory()) continue
+    for (const pkg of readdirSync(groupDir)) walk(join(groupDir, pkg, 'src'))
+  }
+  return out
+}
+
+/**
+ * `source` with everything that is NOT the text of a string or template
+ * literal blanked to spaces (newlines kept, so offsets and line numbers stay
+ * true). Comments and code vanish; `${…}` holes in a template are code too.
+ * A small scanner rather than a parser: it only has to tell strings from
+ * comments, and a regex literal containing a quote is the one shape it can
+ * misread — the cost of that is a missed or extra match in that file, never a
+ * crash.
+ *
+ * @internal — exported for tests.
+ */
+export function stringLiteralText(source: string): string {
+  const out = source.replace(/[^\n]/g, ' ').split('')
+  const keep = (i: number): void => {
+    out[i] = source[i] as string
+  }
+  // Stack of open template literals; each entry is the `${` brace depth inside it.
+  const templates: number[] = []
+  let i = 0
+  const n = source.length
+  const readQuoted = (quote: string): void => {
+    i++
+    while (i < n && source[i] !== quote && source[i] !== '\n') {
+      if (source[i] === '\\') {
+        keep(i)
+        i++
+      }
+      keep(i)
+      i++
+    }
+    i++
+  }
+  // Reads template text from `i` until the closing backtick or a `${`.
+  const readTemplateText = (): void => {
+    while (i < n) {
+      const c = source[i]
+      if (c === '`') {
+        templates.pop()
+        i++
+        return
+      }
+      if (c === '$' && source[i + 1] === '{') {
+        templates[templates.length - 1] = 1
+        i += 2
+        return
+      }
+      if (c === '\\') {
+        keep(i)
+        i++
+      }
+      keep(i)
+      i++
+    }
+  }
+  while (i < n) {
+    const c = source[i]
+    const depth = templates.length > 0 ? (templates[templates.length - 1] as number) : -1
+    if (depth === 0) {
+      readTemplateText()
+      continue
+    }
+    if (c === '/' && source[i + 1] === '/') {
+      while (i < n && source[i] !== '\n') i++
+      continue
+    }
+    if (c === '/' && source[i + 1] === '*') {
+      const end = source.indexOf('*/', i + 2)
+      i = end === -1 ? n : end + 2
+      continue
+    }
+    if (c === "'" || c === '"') {
+      readQuoted(c)
+      continue
+    }
+    if (c === '`') {
+      templates.push(0)
+      i++
+      continue
+    }
+    if (depth > 0 && c === '{') templates[templates.length - 1] = depth + 1
+    else if (depth > 0 && c === '}') templates[templates.length - 1] = depth - 1
+    i++
+  }
+  return out.join('')
+}
+
+/**
+ * Unscoped runner commands that are RIGHT as written, each with the reason.
+ * Keyed `<repo-relative file>` → bins allowed in that file's strings. Keep it
+ * narrow: an entry is a file whose text only ever runs inside a project that
+ * already installs the package, so the runner resolves the local bin.
+ */
+export const RUNNER_COMMAND_ALLOWANCES: ReadonlyMap<string, { bins: readonly string[]; reason: string }> = new Map([
+  [
+    'packages/zero/create-multiplatform/src/scaffold.ts',
+    {
+      bins: ['pyreon-native'],
+      reason:
+        'the Xcode/Gradle build phases and the README it writes run inside the scaffolded app, whose package.json declares @pyreon/native-cli, so `npx pyreon-native` resolves that local bin',
+    },
+  ],
+])
+
+/**
+ * A docs page — or a user-facing string in published source (CLI output, a
+ * diagnostic's fix text, a generated README) — that tells the reader to run
+ * `npx atlas …` / `bunx lathe …` with the UNSCOPED name of one of our binaries. Without a local install, the
  * package runner fetches the npm package of that name, which for `atlas`,
  * `lathe`, `loom`, `zero` and others is someone else's project (`npx lathe
  * init` ran a solid modeller). The scoped form (`npx @pyreon/lathe init`)
@@ -789,12 +921,19 @@ export function findUnscopedRunnerCommands(repoRoot: string): Finding[] {
     'gm',
   )
   const findings: Finding[] = []
-  for (const filePath of commandDocFiles(repoRoot)) {
-    const content = readFileSync(filePath, 'utf8')
+  const sources: Array<[string, boolean]> = [
+    ...commandDocFiles(repoRoot).map((f): [string, boolean] => [f, false]),
+    ...commandSourceFiles(repoRoot).map((f): [string, boolean] => [f, true]),
+  ]
+  for (const [filePath, isSource] of sources) {
+    const raw = readFileSync(filePath, 'utf8')
+    const content = isSource ? stringLiteralText(raw) : raw
     const relPath = relative(repoRoot, filePath)
+    const allowed = RUNNER_COMMAND_ALLOWANCES.get(relPath.split('\\').join('/'))
     for (const m of content.matchAll(re)) {
       const runner = m[1] ?? 'npx'
       const bin = m[2] ?? ''
+      if (allowed?.bins.includes(bin)) continue
       const pkg = bins.get(bin) ?? `@pyreon/${bin}`
       // A line that also names the package (`… use \`bunx @pyreon/mcp\`; an
       // unscoped \`npx pyreon-mcp\` resolves another package`) is contrasting

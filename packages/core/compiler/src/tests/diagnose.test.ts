@@ -144,7 +144,7 @@ describe('diagnoseError (browser-safe error catalog)', () => {
       "Markdown file `src/content/blog/hello.md` lives under `src/content/` but is not under any declared collection's `path`. The runtime ignores it.",
     )
     expect(r?.cause).toContain('blogCollection()')
-    expect(r?.fix).toContain('pyreon upgrade')
+    expect(r?.fix).toContain('npx @pyreon/cli upgrade')
     expect(diagnoseError('content audit: orphaned-md-file in src/content/x.md')?.cause).toContain('no declared collection')
   })
 
