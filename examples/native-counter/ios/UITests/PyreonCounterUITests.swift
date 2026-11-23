@@ -680,15 +680,35 @@ final class PyreonCounterUITests: XCTestCase {
             shareButton.waitToExist(timeout: 30),
             "Share button (useShare) did not appear"
         )
-        shareButton.tap()
-
         // The presented UIActivityViewController is a system sheet. Check
-        // multiple robust indicators (identifiers vary by iOS version).
+        // multiple robust indicators (identifiers vary by iOS version), and
+        // check them TOGETHER: waiting on one and then the other gave the
+        // indicator that actually appears only half the time.
+        //
+        // A tap that lands before the freshly launched app answers is dropped
+        // (the multiplatform guide's XCUITest notes), and this assertion failed
+        // on its first attempt in 3 of 10 runs (main 2026-11-21 among them),
+        // passing on the retry each time. So the tap is repeated inside one
+        // deadline while the Share button is still on top, which is exactly
+        // "the sheet has not presented": a presented sheet covers the button.
         let activityView = app.otherElements["ActivityListView"]
         let copyButton = app.buttons["Copy"]
-        let appeared =
-            activityView.waitToExist(timeout: 5)
-            || copyButton.waitToExist(timeout: 5)
+        var appeared = false
+        var taps = 0
+        let deadline = Date().addingTimeInterval(20)
+        var nextTap = Date()
+        while Date() < deadline {
+            if activityView.exists || copyButton.exists {
+                appeared = true
+                break
+            }
+            if Date() >= nextTap && taps < 4 && shareButton.isHittable {
+                shareButton.tap()
+                taps += 1
+                nextTap = Date().addingTimeInterval(4)
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
         XCTAssertTrue(
             appeared,
             "Tapping Share did not present the system share sheet — "
