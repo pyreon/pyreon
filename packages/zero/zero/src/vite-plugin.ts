@@ -12,7 +12,7 @@ import type { ConfigEnv, Plugin, ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApiRouteEntry } from './api-routes'
 import { generateApiRouteModule } from './api-routes'
-import { resolveConfig } from './config'
+import { adoptResolvedBase, resolveConfig } from './config'
 import { assertPublicEnv, loadPublicEnvVars } from './public-env'
 // Used in the dev-mode SSR catch handler to convert loader-thrown
 // `redirect()` errors into real HTTP redirects (302/307/308).
@@ -418,13 +418,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// Vite's resolved base is the single answer to the precedence
 			// question (zero({ base }) > Vite's base > '/', settled in
 			// `config()` above); everything zero emits follows it.
-			// A relative base (`./`) only means something for asset URLs, not
-			// for server routing, so it leaves `config.base` alone.
-			if (
-				resolvedConfig.base?.startsWith("/") &&
-				resolvedConfig.base !== config.base
-			) {
-				config.base = resolvedConfig.base;
+			if (adoptResolvedBase(config, resolvedConfig.base)) {
 				if (resolvedConfig.define) {
 					resolvedConfig.define.__ZERO_SERVER_CONFIG__ = JSON.stringify(
 						serializeServerConfig(config).value,

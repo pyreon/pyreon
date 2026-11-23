@@ -58,6 +58,27 @@ function defaultAdapter(): NonNullable<ZeroConfig['adapter']> {
   return detected
 }
 
+/**
+ * Make `config.base` Vite's RESOLVED base — the single base every zero plugin
+ * reads for the URLs it writes (SSG preloads, CSS assets, OG images, redirect
+ * canonicals, the PWA worker, the server config). Each zero plugin calls this
+ * from its own `configResolved`, so no call site can read a base that differs
+ * from the one Vite applied to the assets.
+ *
+ * Precedence is settled before this runs: `zero({ base })` is returned from
+ * zero's `config()` hook (so it IS the resolved base when set); without it
+ * Vite's own base (CLI `--base`, inline `build({ base })`, `vite.config.base`)
+ * stands; with neither it is `/`. A relative base (`./`) only describes asset
+ * URLs, not routes, so it leaves `config.base` as it was.
+ *
+ * @returns whether `config.base` changed.
+ */
+export function adoptResolvedBase(config: { base: string }, resolvedBase: string | undefined): boolean {
+  if (resolvedBase === undefined || !resolvedBase.startsWith('/') || resolvedBase === config.base) return false
+  config.base = resolvedBase
+  return true
+}
+
 /** Merge user config with defaults. */
 export function resolveConfig(
   userConfig: ZeroConfig = {},

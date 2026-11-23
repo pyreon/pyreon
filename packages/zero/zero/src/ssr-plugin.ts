@@ -75,7 +75,7 @@ import {
   innerBuildActiveInProcess,
   innerBuildFlagSet,
 } from './build-flags'
-import { resolveConfig } from './config'
+import { adoptResolvedBase, resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
 import { writeServiceWorker } from './pwa'
@@ -138,7 +138,10 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   // See `buildInnerBuildOptions` / `ssg-plugin.ts`.
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
-  let resolvedBase: string = '/'
+  // Vite's resolved base verbatim (a relative `./` included), handed to the
+  // inner SSR sub-build so it emits asset URLs exactly as the outer build did.
+  // Every URL zero itself writes reads `config.base` (see adoptResolvedBase).
+  let innerBuildBase = '/'
   // Replaced in configResolved with Vite's logger (honours `logLevel`).
   // oxlint-disable-next-line no-console
   let logInfo: (msg: string) => void = (msg) => console.log(msg)
@@ -207,7 +210,9 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       logInfo = (msg) => resolved.logger.info(msg)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
-      resolvedBase = resolved.base
+      // From here on `config.base` IS Vite's resolved base (see adoptResolvedBase).
+      adoptResolvedBase(config, resolved.base)
+      innerBuildBase = resolved.base
       userPlugins = resolved.plugins as readonly Plugin[]
       manifestOption = resolved.build.manifest
     },
@@ -334,7 +339,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // per page. Empty when the entry is not lazy.
       const clientPreload =
         clientManifest && builtTemplate
-          ? computeClientStartPreload(clientManifest, builtTemplate, resolvedBase)
+          ? computeClientStartPreload(clientManifest, builtTemplate, config.base)
           : undefined
       const define =
         clientPreload && (clientPreload.app.length > 0 || clientPreload.islands.length > 0)
@@ -353,7 +358,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
             assetsInlineLimit,
             assetsDir,
             userPlugins,
-            base: resolvedBase,
+            base: innerBuildBase,
             edge: true,
             ...(define ? { define } : {}),
           })
@@ -368,7 +373,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           assetsInlineLimit,
           assetsDir,
           userPlugins,
-          base: resolvedBase,
+          base: innerBuildBase,
           ...(define ? { define } : {}),
         })
       } catch (buildError) {
@@ -445,7 +450,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // assets are precached (navigations are network-first at runtime).
       if (config.pwa) {
         await writeServiceWorker(clientOutDir, config.pwa, {
-          base: resolvedBase,
+          base: config.base,
           assetsDir: assetsDir ?? 'assets',
           includeHtml: false,
         })

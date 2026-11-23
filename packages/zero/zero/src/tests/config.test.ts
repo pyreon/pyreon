@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defineConfig, detectPlatformAdapter, resolveConfig } from '../config'
+import { adoptResolvedBase, defineConfig, detectPlatformAdapter, resolveConfig } from '../config'
 
 describe('defineConfig', () => {
   it('returns the config as-is', () => {
@@ -87,5 +87,21 @@ describe('resolveConfig adapter auto-detection', () => {
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+})
+
+describe('adoptResolvedBase — one base for every URL zero writes (#4269)', () => {
+  it('takes an absolute resolved base, so a CLI / vite.config / inline base reaches config.base', () => {
+    const config = { base: '/' }
+    expect(adoptResolvedBase(config, '/showcase/hn-clone/')).toBe(true)
+    expect(config.base).toBe('/showcase/hn-clone/')
+  })
+
+  it('leaves config.base alone for a relative or missing base, and reports no change', () => {
+    const config = { base: '/docs/' }
+    expect(adoptResolvedBase(config, './')).toBe(false)
+    expect(adoptResolvedBase(config, undefined)).toBe(false)
+    expect(adoptResolvedBase(config, '/docs/')).toBe(false)
+    expect(config.base).toBe('/docs/')
   })
 })

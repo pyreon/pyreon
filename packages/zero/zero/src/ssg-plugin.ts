@@ -36,7 +36,7 @@ import {
   SSR_BUILD_FLAG,
   innerBuildActiveInProcess,
 } from './build-flags'
-import { resolveConfig } from './config'
+import { adoptResolvedBase, resolveConfig } from './config'
 import { isApiRoute } from './api-routes'
 import { collectFileRouteModes, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports, type FileRouteModeEntry } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
@@ -1383,7 +1383,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   // client build emits hashed files. See `buildInnerBuildOptions`.
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
-  let resolvedBase: string = '/'
+  // Vite's resolved base verbatim (a relative `./` included), handed to the
+  // inner SSR sub-build so it emits asset URLs exactly as the outer build did.
+  // Every URL zero itself writes reads `config.base` (see adoptResolvedBase).
+  let innerBuildBase = '/'
   // Replaced in configResolved with Vite's logger (honours `logLevel`).
   // oxlint-disable-next-line no-console
   let logInfo: (msg: string) => void = (msg) => console.log(msg)
@@ -1471,7 +1474,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       isSsrTargetBuild = Boolean(resolved.build.ssr)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
-      resolvedBase = resolved.base
+      // From here on `config.base` IS Vite's resolved base (see adoptResolvedBase).
+      adoptResolvedBase(config, resolved.base)
+      innerBuildBase = resolved.base
       // Informational build output goes through Vite's logger so it honours
       // `logLevel` — a caller running `vite build --logLevel warn`, or a tool
       // driving zero programmatically, must not get the progress narration.
@@ -1581,7 +1586,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           assetsInlineLimit,
           assetsDir,
           userPlugins,
-          base: resolvedBase,
+          base: innerBuildBase,
         })
       } finally {
         // Remove the synthetic entry file so it never lands in user's
@@ -1700,7 +1705,6 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // malformed manifest just disables the feature for this build.
       // `modulepreload` is a non-load-bearing hint, never a correctness dep.
       const modulePreloadEnabled = config.ssg?.modulePreload !== false
-      const preloadBase = resolvedBase
       let preloadManifest: ViteManifest | null = null
       let entryPreloadedHrefs: Set<string> = new Set()
       let clientStartKeys: { app: string[]; islands: string[] } = { app: [], islands: [] }
@@ -1711,7 +1715,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           // The entry's static graph + Vite's own modulepreloads are already
           // in the template — subtract them so each route emits only its delta.
           entryPreloadedHrefs = new Set([
-            ...computeEntryHrefs(preloadManifest, preloadBase),
+            ...computeEntryHrefs(preloadManifest, config.base),
             ...parseExistingModulePreloads(template),
           ])
           clientStartKeys = computeClientStartKeys(preloadManifest)
@@ -1845,7 +1849,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                     const assetFile = join(distDir, dir, name)
                     await mkdirOnce(dirname(assetFile))
                     await writeFileAtomic(assetFile, css)
-                    const baseUrl = resolvedBase.replace(/\/$/, '')
+                    const baseUrl = config.base.replace(/\/$/, '')
 
                     return `${baseUrl}/${dir}/${name}`
                     })()
@@ -1874,7 +1878,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         const file = join(distDir, rel)
         await mkdirOnce(dirname(file))
         await writeFileAtomic(file, png)
-        const baseUrl = resolvedBase.replace(/\/$/, '')
+        const baseUrl = config.base.replace(/\/$/, '')
 
         return ogMetaTags(absoluteOgUrl(`${baseUrl}/${rel}`, config.routeOg?.siteUrl), ogWidth, ogHeight)
       }
@@ -1938,7 +1942,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                   manifest: preloadManifest,
                   routeModules: result.routeModules,
                   root,
-                  base: preloadBase,
+                  base: config.base,
                   alreadyPreloaded: entryPreloadedHrefs,
                   relativeFn: relative,
                 })
@@ -1948,7 +1952,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             // islands-only page that has an island to hydrate. An islands-only
             // page has no `routeModules` (renderPage leaves them out).
             const startKeys = pageStartKeys(result.hydrate, result.appHtml, clientStartKeys)
-            const startHrefs = computeKeysPreloadHrefs(preloadManifest, startKeys, preloadBase, entryPreloadedHrefs)
+            const startHrefs = computeKeysPreloadHrefs(preloadManifest, startKeys, config.base, entryPreloadedHrefs)
             const hrefs = startHrefs.length === 0
               ? routeHrefs
               : [...new Set([...routeHrefs, ...startHrefs])].sort()
@@ -1990,7 +1994,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           // Write the directory and/or file form per `ssg.format`. The
           // helper path-traversal-guards every target (same `isInsideDist`
           // check as before) and records + bails on any escape.
-          if (!(await writeRouteOutputs(distDir, p, html, ssgFormat, errors, resolvedBase))) {
+          if (!(await writeRouteOutputs(distDir, p, html, ssgFormat, errors, config.base))) {
             return
           }
           pages++
@@ -2014,7 +2018,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             try {
               const fallbackHtml = await config.ssg.onPathError(p, error)
               if (typeof fallbackHtml === 'string') {
-                if (await writeRouteOutputs(distDir, p, fallbackHtml, ssgFormat, errors, resolvedBase)) {
+                if (await writeRouteOutputs(distDir, p, fallbackHtml, ssgFormat, errors, config.base)) {
                   pages++
                 }
               }
@@ -2421,7 +2425,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // BEFORE adapter.build so staging adapters copy the worker along.
       if (config.pwa && config.mode === 'ssg') {
         await writeServiceWorker(distDir, config.pwa, {
-          base: resolvedBase,
+          base: config.base,
           assetsDir: assetsDir ?? 'assets',
           includeHtml: true,
         })
