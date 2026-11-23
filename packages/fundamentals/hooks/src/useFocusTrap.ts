@@ -28,7 +28,10 @@ export interface UseFocusTrapOptions {
    * Move focus INTO the container when the trap activates. Defaults to `false`
    * (no focus move — byte-identical to the pre-0.x single-arg behavior). Set
    * `true` for the first tabbable, or a selector / element / getter to target a
-   * specific node. Skipped when focus is already inside the container.
+   * specific node. `true` is skipped when focus is already inside the
+   * container; a named target is skipped only when focus is already inside
+   * that target, so a toggle button that sits inside the trapped container
+   * does not block it.
    */
   initialFocus?: InitialFocusTarget
 }
@@ -458,15 +461,24 @@ export function useFocusTrap(
     // second, so a synchronous `focus()` would hit a still-hidden target and be
     // a no-op. A microtask runs after the whole synchronous flush. `focusRun`
     // drops a pending focus when the trap deactivates or unmounts first.
+    //
+    // Focus already inside the container is left alone only for the generic
+    // `initialFocus: true` ("somewhere sensible"). A NAMED target (selector,
+    // element, getter) is what the author asked for, so it wins unless focus is
+    // already inside it: a menu button inside the header it traps (pyreon.dev's
+    // nav) is focused by its own click, and the container check meant the
+    // named target was never focused there.
     const applyInitialFocus = () => {
       const run = ++focusRun
       queueMicrotask(() => {
         if (run !== focusRun || !pushed) return
         const el = getEl()
         if (!el) return
-        // Don't steal focus that's already inside the container.
-        if (el.contains(document.activeElement)) return
-        resolveInitialFocus(el, opts.initialFocus)?.focus?.()
+        const current = document.activeElement
+        if (opts.initialFocus === true && el.contains(current)) return
+        const target = resolveInitialFocus(el, opts.initialFocus)
+        if (!target || target.contains(current)) return
+        target.focus?.()
       })
     }
 

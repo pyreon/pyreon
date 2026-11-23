@@ -430,6 +430,78 @@ describe('useFocusTrap (real Chromium) — content revealed by the activating up
     expect(document.activeElement).toBe(root().querySelector('a'))
   })
 
+  // pyreon.dev's nav: the menu button lives INSIDE the trapped header, so when
+  // the click activates the trap, focus is already inside the container — on
+  // the trigger. "Don't steal focus that is already inside" must not count
+  // the element that activated the trap, or `initialFocus` never runs there.
+  it('moves focus off a trigger that sits inside the trap container', async () => {
+    const open = signal(false)
+    let rootEl: HTMLElement | null = null
+    let triggerEl: HTMLButtonElement | null = null
+    const { unmount } = mountInBrowser(
+      h(() => {
+        useFocusTrap(() => rootEl, {
+          active: () => open(),
+          initialFocus: () => rootEl?.querySelector<HTMLElement>('nav a') ?? null,
+        })
+        return h(
+          'header',
+          { ref: (el: HTMLElement | null) => (rootEl = el) },
+          h(
+            'button',
+            { ref: (el: HTMLButtonElement | null) => (triggerEl = el), onClick: () => open.set(true) },
+            'Menu',
+          ),
+          h(Show, { when: () => open() }, h('nav', {}, h('a', { href: '#home' }, 'Home'))),
+        )
+      }, {}),
+    )
+    disposers.push(unmount)
+    await flush()
+    triggerEl!.focus()
+    triggerEl!.click()
+    await flush()
+    expect(document.activeElement).toBe(rootEl!.querySelector('nav a'))
+  })
+
+  it('still leaves focus alone when it moved inside the container during activation', async () => {
+    const open = signal(false)
+    let rootEl: HTMLElement | null = null
+    let triggerEl: HTMLButtonElement | null = null
+    const { unmount } = mountInBrowser(
+      h(() => {
+        useFocusTrap(() => rootEl, { active: () => open(), initialFocus: true })
+        return h(
+          'div',
+          {},
+          h(
+            'button',
+            {
+              ref: (el: HTMLButtonElement | null) => (triggerEl = el),
+              onClick: () => {
+                open.set(true)
+                rootEl?.querySelector<HTMLInputElement>('input')?.focus()
+              },
+            },
+            'Edit',
+          ),
+          h(
+            'section',
+            { ref: (el: HTMLElement | null) => (rootEl = el) },
+            h('a', { href: '#first' }, 'First'),
+            h('input', { 'aria-label': 'name' }),
+          ),
+        )
+      }, {}),
+    )
+    disposers.push(unmount)
+    await flush()
+    triggerEl!.focus()
+    triggerEl!.click()
+    await flush()
+    expect(document.activeElement).toBe(rootEl!.querySelector('input'))
+  })
+
   it('leaves focus alone when the trap deactivates in the same tick', async () => {
     const { open, trigger } = mountRevealing(sheet)
     await flush()
