@@ -27,6 +27,12 @@ export interface Effect {
 
 export interface EffectOptions {
   /**
+   * Debug name — shows up in devtools (the reactive graph and inspector).
+   * `@pyreon/vite-plugin` injects it for `const x = effect(…)`; dev-only, it is
+   * never read in a production build.
+   */
+  name?: string
+  /**
    * @internal Source location injected by `@pyreon/vite-plugin` at build time.
    * When present the runtime skips the `new Error().stack` capture in
    * `_rdRegister` — saves ~2.2us per effect creation when devtools is active.
@@ -355,7 +361,7 @@ export function effect(
       'effect',
       null,
       run,
-      undefined,
+      options?.name,
       options?.__sourceLocation ?? _captureCallerLocation(1),
     )
 

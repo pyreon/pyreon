@@ -58,6 +58,12 @@ export interface ComputedOptions<T> {
    */
   equals?: (prev: T, next: T) => boolean
   /**
+   * Debug name — shows up in devtools (the reactive graph and inspector).
+   * `@pyreon/vite-plugin` injects it for `const x = computed(…)`, as it does for
+   * signals; dev-only, it is never read in a production build.
+   */
+  name?: string
+  /**
    * @internal Source location injected by `@pyreon/vite-plugin` at build time.
    * When present the runtime skips the `new Error().stack` capture in
    * `_rdRegister` — saves ~2.2us per computed creation when devtools is active.
@@ -395,7 +401,13 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
   // rebuilds a fresh object and so could never gate on its own. Honour that by
   // keeping the eager variant, which refreshes on every notification. The DEFAULT
   // gate has no such placement intent, so it stays lazy until a runner appears.
-  return createComputed(fn, options?.equals ?? Object.is, options?.equals !== undefined, loc)
+  return createComputed(
+    fn,
+    options?.equals ?? Object.is,
+    options?.equals !== undefined,
+    loc,
+    process.env.NODE_ENV !== 'production' ? options?.name : undefined,
+  )
 }
 
 /**
@@ -457,6 +469,7 @@ function createComputed<T>(
   equals: (prev: T, next: T) => boolean,
   eager: boolean,
   injectedLoc?: { file: string; line: number; col: number },
+  name?: string,
 ): Computed<T> {
   // `initialized` is touched only by the per-instance `read` / `recompute` /
   // `dispose` closures, so it stays closure-captured. `recompute` is
@@ -600,7 +613,7 @@ function createComputed<T>(
       'derived',
       read as unknown as SubscriberHost,
       recompute,
-      undefined,
+      name,
       injectedLoc ?? _captureCallerLocation(2),
     )
 
