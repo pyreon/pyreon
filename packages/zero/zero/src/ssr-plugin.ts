@@ -445,7 +445,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // assets are precached (navigations are network-first at runtime).
       if (config.pwa) {
         await writeServiceWorker(clientOutDir, config.pwa, {
-          base: config.base ?? '/',
+          base: resolvedBase,
           assetsDir: assetsDir ?? 'assets',
           includeHtml: false,
         })

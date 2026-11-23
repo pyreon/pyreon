@@ -1689,13 +1689,14 @@ For a static build (`ssg` / `spa`) `zero preview` serves `dist/`. For an `ssr` /
 
 ## Base Path
 
-`zero({ base: '/blog/' })` is the **single source of truth** for subpath deploys. It propagates to:
+Set the base once, either as `zero({ base: '/blog/' })` or the Vite way (`vite build --base /blog/`, `base` in `vite.config.ts`, or `build({ base })` from code). Precedence: an explicit `zero({ base })` wins; without it Vite's base applies; with neither it is `/`. Whichever wins, Vite's resolved base reaches:
 
 1. **Vite's `base`** — asset URLs in built HTML/JS get the prefix (`<script src="/blog/assets/...">`).
-2. **`createRouter({ base })`** — RouterLink hrefs render prefixed (`<a href="/blog/about">`), incoming URLs are `stripBase`d.
+2. **`createRouter({ base })`** — `<RouterLink>` and zero's `<Link>` hrefs render prefixed (`<a href="/blog/about">`), incoming URLs are `stripBase`d.
 3. **SSG render + `startClient`** — the SSR sub-build and client both read `__ZERO_BASE__` so hydration matches.
+4. **Everything zero writes into the HTML** — SSG route modulepreloads, `ssg.cssMode: 'asset'` stylesheets, per-route OG images, self-hosted font CSS and preloads, the PWA worker scope — and the production server's routing (`__ZERO_SERVER_CONFIG__`).
 
-A user's explicit `vite.config.base` still wins (Vite merge semantics: plugin config is the base). The on-disk `dist/` layout stays **unprefixed** (`dist/about/index.html`) — the host serves `dist/` mounted at `/blog/`.
+The on-disk `dist/` layout stays **unprefixed** (`dist/about/index.html`) — the host serves `dist/` mounted at `/blog/`.
 
 ## Deployment Adapters
 

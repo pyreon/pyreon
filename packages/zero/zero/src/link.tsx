@@ -9,6 +9,11 @@ function linkConfigOf(router: unknown): LinkConfig | undefined {
   return (router as { _linkConfig?: LinkConfig } | null)?._linkConfig
 }
 
+/** The router's normalized base (`/docs`, or `''` when none), as `<RouterLink>` reads it. */
+function routerBaseOf(router: unknown): string {
+  return (router as { _base?: string } | null)?._base ?? ''
+}
+
 // ─── Link component with prefetching ────────────────────────────────────────
 //
 // Provides client-side navigation, prefetching, and active state tracking.
@@ -77,6 +82,12 @@ export interface LinkRenderProps {
 
 /** Return type of useLink. */
 export interface UseLinkReturn {
+  /**
+   * The `href` to render: an internal root-relative path gets the router's
+   * `base` (`/about` → `/docs/about` under `base: '/docs/'`), everything else is
+   * returned as written. Navigation itself goes through the router either way.
+   */
+  href: () => string
   /** Ref object — attach to the root element for viewport-based prefetch. */
   ref: import('@pyreon/core').Ref<HTMLAnchorElement>
   /** Click handler — performs client-side navigation. */
@@ -128,7 +139,8 @@ function doPrefetch(href: string, router: ReturnType<typeof useRouter> | null) {
   // navigable route path.
   const docLink = document.createElement('link')
   docLink.rel = 'prefetch'
-  docLink.href = href
+  // `href` is a ROUTER path; the document URL carries the router's base.
+  docLink.href = href[0] === '/' && href[1] !== '/' ? `${routerBaseOf(router)}${href}` : href
   docLink.as = 'document'
   document.head.appendChild(docLink)
   injected.push(docLink)
@@ -222,6 +234,16 @@ export function useLink<const T extends string = string>(props: LinkProps<T>): U
   // The path client navigation actually pushes (absolute same-origin URLs are
   // stripped to `/path?q#h`; bare paths pass through).
   const routerPath = (): string => toRouterPath(hrefOf())
+  // What the anchor renders. The router pushes `routerPath()` and adds its own
+  // base, but the `href` attribute is what a crawler, "open in new tab", a
+  // no-JS click and the SSG HTML use — so an internal root-relative path
+  // carries the base exactly like `<RouterLink>`'s href. Without it every
+  // `<Link>` on a subpath deploy pointed at the host root.
+  const href = (): string => {
+    const raw = hrefOf()
+    if (!raw || raw[0] !== '/' || raw[1] === '/' || !isInternal()) return raw
+    return `${routerBaseOf(router)}${raw}`
+  }
 
   function handleClick(e: MouseEvent) {
     // Call user's onClick first — they may call e.preventDefault()
@@ -300,6 +322,7 @@ export function useLink<const T extends string = string>(props: LinkProps<T>): U
   }
 
   return {
+    href,
     ref: elementRef,
     handleClick,
     handleMouseEnter,
@@ -360,7 +383,7 @@ export function createLink(
 
     return (
       <Component
-        href={props.href}
+        href={link.href()}
         ref={link.ref}
         onClick={link.handleClick}
         onMouseEnter={link.handleMouseEnter}
@@ -404,7 +427,7 @@ export const Link = function Link(props: LinkProps) {
   return (
     <a
       ref={link.ref}
-      href={props.href}
+      href={link.href()}
       // A CALL, so the compiled sinks track it (active classes follow
       // navigation); a bare function value is not an accessor on `_setClass`.
       class={link.classes()}

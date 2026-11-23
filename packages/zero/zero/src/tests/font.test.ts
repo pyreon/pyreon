@@ -485,3 +485,51 @@ describe('selfHostedFontName', () => {
     expect(selfHostedFontName(url, new Uint8Array([0, 1, 0, 0]))).toMatch(/\.ttf$/)
   })
 })
+
+// #4269 — self-hosted Google Fonts are emitted under `assets/fonts/` and their
+// CSS + preloads were written root-relative, so a subpath deploy (`--base
+// /docs/` or `zero({ base })`) requested every font from the host root and
+// 404'd. The plugin now prefixes them with Vite's resolved base when it puts
+// them into the HTML. Driven through the real hooks, from a seeded download
+// cache, so no network is involved.
+describe('fontPlugin — self-hosted fonts under a base', () => {
+  async function renderHead(base: string): Promise<string> {
+    const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { fontPlugin } = await import('../font')
+    const root = await mkdtemp(join(tmpdir(), 'pyreon-font-base-'))
+    try {
+      const families = [resolveGoogleFont('Inter:wght@400')]
+      const key = fontCacheKey(googleFontsUrl(families, 'swap'))
+      const cacheDir = join(root, 'node_modules', '.cache', 'zero-fonts')
+      await mkdir(cacheDir, { recursive: true })
+      await writeFile(
+        join(cacheDir, `${key}.json`),
+        JSON.stringify({
+          css: "/* latin */\n@font-face { font-family: 'Inter'; src: url(/assets/fonts/inter-abc.woff2) format('woff2'); }",
+          fontFiles: [{ name: 'inter-abc.woff2', content: Buffer.from('x').toString('base64') }],
+        }),
+      )
+      const plugin = fontPlugin({ google: ['Inter:wght@400'], fallbackAdjust: false }) as any
+      plugin.configResolved({ command: 'build', root, base })
+      await plugin.buildStart()
+      return plugin.transformIndexHtml('<html><head></head><body></body></html>') as string
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+
+  it('prefixes the @font-face url() and the preload href with the base', async () => {
+    const html = await renderHead('/docs/')
+    expect(html).toContain('url(/docs/assets/fonts/inter-abc.woff2)')
+    expect(html).toContain('<link rel="preload" href="/docs/assets/fonts/inter-abc.woff2"')
+    expect(html).not.toMatch(/["(]\/assets\/fonts\//)
+  })
+
+  it('leaves root-relative URLs alone for the default base', async () => {
+    const html = await renderHead('/')
+    expect(html).toContain('url(/assets/fonts/inter-abc.woff2)')
+    expect(html).toContain('href="/assets/fonts/inter-abc.woff2"')
+  })
+})

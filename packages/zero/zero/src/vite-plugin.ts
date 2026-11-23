@@ -182,34 +182,6 @@ export function argvHasPortFlag(argv: readonly string[] = process.argv): boolean
 }
 
 /**
- * Detects `--base` / `--base=PATH` in `process.argv`. Same shape as
- * `argvHasPortFlag` — the plugin's `config()` hook returns `base:
- * config.base` (default `/`) which empirically beats Vite's `--base`
- * CLI flag in the merge order, silently swallowing it. When the CLI
- * was invoked with `--base=X`, the plugin must skip its default so
- * the CLI flag wins (see the comment at the base-handling block in
- * `zeroPlugin()` for the full precedence model).
- *
- * The same bug class was already fixed for `--port`; this is the
- * `base` counterpart. Bisect-verified: removing the
- * `argvHasBaseFlag() && !zeroBaseExplicit` guard at the call site
- * causes `vite build --base=/sub/` to emit assets at root paths
- * instead of `/sub/assets/…`.
- *
- * Exported for testing only (the plugin uses it internally).
- *
- * @internal
- */
-export function argvHasBaseFlag(argv: readonly string[] = process.argv): boolean {
-	for (let i = 0; i < argv.length; i++) {
-		const a = argv[i];
-		if (a === "--base") return true;
-		if (a !== undefined && a.startsWith("--base=")) return true;
-	}
-	return false;
-}
-
-/**
  * PZ-11 — does `url` fall under one of the configured `server.proxy`
  * context keys? Mirrors Vite's own `doesProxyContextMatchUrl` semantics
  * exactly (vite/src/node/server/middlewares/proxy.ts): a context starting
@@ -426,8 +398,8 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			proxyContexts = Object.keys(resolvedConfig.server?.proxy ?? {});
 			// Sync `__ZERO_BASE__` to the FINAL resolved base. The config()
 			// hook above seeds it with `config.base` (the zero({base})
-			// value), but when `vite --base=/X/` wins precedence (because
-			// argvHasBaseFlag fires and userConfig.base was undefined), the
+			// value), but when zero was given no base, Vite's own base (CLI
+			// `--base`, inline `build({ base })`, vite.config) applies and the
 			// resolved base differs. Without this sync, `startClient` and
 			// the SSG entry would set the router base to '/' while Vite
 			// serves assets at /X/ — RouterLink hrefs would resolve to the
@@ -438,6 +410,26 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				resolvedConfig.define.__ZERO_BASE__ = JSON.stringify(
 					resolvedConfig.base,
 				);
+			}
+			// The production server reads its base from `__ZERO_SERVER_CONFIG__`
+			// (and dev from `serializeServerConfig(config)`), so the resolved
+			// base has to reach `config` too — otherwise `vite build --base /x/`
+			// prefixes the assets while the server still routes and strips `/`.
+			// Vite's resolved base is the single answer to the precedence
+			// question (zero({ base }) > Vite's base > '/', settled in
+			// `config()` above); everything zero emits follows it.
+			// A relative base (`./`) only means something for asset URLs, not
+			// for server routing, so it leaves `config.base` alone.
+			if (
+				resolvedConfig.base?.startsWith("/") &&
+				resolvedConfig.base !== config.base
+			) {
+				config.base = resolvedConfig.base;
+				if (resolvedConfig.define) {
+					resolvedConfig.define.__ZERO_SERVER_CONFIG__ = JSON.stringify(
+						serializeServerConfig(config).value,
+					);
+				}
 			}
 		},
 
@@ -1029,39 +1021,23 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				...(userConfig.port === undefined && argvHasPortFlag()
 					? {}
 					: { server: { port: config.port } }),
-				// Propagate `zero({ base })` to Vite's `base` config — that's
+				// Propagate an EXPLICIT `zero({ base })` to Vite's `base` — that's
 				// what controls asset URL rewriting in the built HTML/JS
 				// (`<script src="/blog/assets/…">`).
 				//
-				// Precedence (CLI > user vite.config > zero({base}) > '/'):
-				//   1. `vite --base=/X/` → argvHasBaseFlag() === true AND
-				//      userConfig.base undefined → plugin omits `base`
-				//      entirely → CLI value wins.
-				//   2. `vite.config.ts { base: '/X/' }` → user config beats
-				//      plugin in Vite's merge order automatically — no
-				//      special handling needed.
-				//   3. `zero({ base: '/X/' })` → resolved into `config.base`
-				//      → returned here.
-				//   4. Default `/` — when no other source set a base.
-				//
-				// Pre-fix this was unconditional `base: config.base`, which
-				// silently swallowed the CLI `--base` flag (plugin BASE
-				// returns of the default `/` won the merge against CLI in
-				// every empirically tested case — the same bug class already
-				// fixed for `--port` via argvHasPortFlag). Symptom: `vite
-				// build --base=/sub/` emitted `<script src="/assets/…">`
-				// instead of `/sub/assets/…`, so every asset 404'd on a
-				// subpath deploy. Discovered when the docs site preview
-				// deploy at /pyreon/ shipped a white screen.
-				//
-				// `__ZERO_BASE__` define ALWAYS reflects config.base here
-				// because that's what `startClient` / `createApp` read for
-				// router base prefix matching. When the CLI flag is what's
-				// actually applied (case 1), `configResolved` overrides
-				// this define with the FINAL resolved value.
-				...(userConfig.base === undefined && argvHasBaseFlag()
-					? {}
-					: { base: config.base }),
+				// Precedence: `zero({ base })` > Vite's own base (the CLI
+				// `--base`, an inline `build({ base })`, or `vite.config.base`,
+				// ordered by Vite) > '/'. A plugin's `config()` return is
+				// merged OVER the user config, so returning the DEFAULT `/`
+				// here silently swallowed every Vite-level base — the CLI flag
+				// (once patched with an argv sniff, PR #1395), a programmatic
+				// `build({ base })` (loom's static site, #4391) and
+				// `vite.config.base` alike. Return a base only when zero was
+				// given one; otherwise Vite's resolved base stands, and
+				// `configResolved` makes every zero consumer (`__ZERO_BASE__`,
+				// the server config, SSG preloads, CSS/OG URLs, fonts) follow
+				// that FINAL value.
+				...(userConfig.base !== undefined ? { base: config.base } : {}),
 				define: {
 					__ZERO_MODE__: JSON.stringify(config.mode),
 					__ZERO_BASE__: JSON.stringify(config.base),

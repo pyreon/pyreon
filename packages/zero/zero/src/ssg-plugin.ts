@@ -1700,7 +1700,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // malformed manifest just disables the feature for this build.
       // `modulepreload` is a non-load-bearing hint, never a correctness dep.
       const modulePreloadEnabled = config.ssg?.modulePreload !== false
-      const preloadBase = config.base ?? '/'
+      const preloadBase = resolvedBase
       let preloadManifest: ViteManifest | null = null
       let entryPreloadedHrefs: Set<string> = new Set()
       let clientStartKeys: { app: string[]; islands: string[] } = { app: [], islands: [] }
@@ -1845,7 +1845,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                     const assetFile = join(distDir, dir, name)
                     await mkdirOnce(dirname(assetFile))
                     await writeFileAtomic(assetFile, css)
-                    const baseUrl = (config.base ?? '/').replace(/\/$/, '')
+                    const baseUrl = resolvedBase.replace(/\/$/, '')
 
                     return `${baseUrl}/${dir}/${name}`
                     })()
@@ -1874,7 +1874,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         const file = join(distDir, rel)
         await mkdirOnce(dirname(file))
         await writeFileAtomic(file, png)
-        const baseUrl = (config.base ?? '/').replace(/\/$/, '')
+        const baseUrl = resolvedBase.replace(/\/$/, '')
 
         return ogMetaTags(absoluteOgUrl(`${baseUrl}/${rel}`, config.routeOg?.siteUrl), ogWidth, ogHeight)
       }
@@ -1990,7 +1990,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           // Write the directory and/or file form per `ssg.format`. The
           // helper path-traversal-guards every target (same `isInsideDist`
           // check as before) and records + bails on any escape.
-          if (!(await writeRouteOutputs(distDir, p, html, ssgFormat, errors, config.base ?? '/'))) {
+          if (!(await writeRouteOutputs(distDir, p, html, ssgFormat, errors, resolvedBase))) {
             return
           }
           pages++
@@ -2014,7 +2014,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             try {
               const fallbackHtml = await config.ssg.onPathError(p, error)
               if (typeof fallbackHtml === 'string') {
-                if (await writeRouteOutputs(distDir, p, fallbackHtml, ssgFormat, errors, config.base ?? '/')) {
+                if (await writeRouteOutputs(distDir, p, fallbackHtml, ssgFormat, errors, resolvedBase)) {
                   pages++
                 }
               }
@@ -2421,7 +2421,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // BEFORE adapter.build so staging adapters copy the worker along.
       if (config.pwa && config.mode === 'ssg') {
         await writeServiceWorker(distDir, config.pwa, {
-          base: config.base ?? '/',
+          base: resolvedBase,
           assetsDir: assetsDir ?? 'assets',
           includeHtml: true,
         })

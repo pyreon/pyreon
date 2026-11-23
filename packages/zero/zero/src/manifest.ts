@@ -112,7 +112,7 @@ plugins: [pyreon(), zero({
 // Subpath deploy (e.g. served at /blog/)
 plugins: [pyreon(), zero({ base: '/blog/', mode: 'ssg' })]`,
       mistakes: [
-        "Setting `base` in BOTH `vite.config.base` AND `zero({ base })` and expecting them to merge — user's explicit `vite.config.base` overrides the plugin-returned base. Set base ONCE via `zero({ base })`; let it propagate to Vite + router automatically",
+        "Setting `base` in BOTH `vite.config.base` (or `vite build --base`) AND `zero({ base })` and expecting them to merge — an explicit `zero({ base })` wins; without it Vite's resolved base (CLI flag, inline `build({ base })`, `vite.config.base`) is used for assets, router links, SSG preloads, font URLs and the server config. Set base ONCE, in either place",
         "Passing `layout` to `createApp` / `startClient` when fs-router already emits `_layout.tsx` as a parent route — double-mounts the layout. Drop the explicit option; `_layout.tsx` is the canonical layout registration",
         "Mixing `mode: 'ssg'` with a runtime adapter that has no SSG branch (e.g. expecting `nodeAdapter` to write platform routing config under SSG) — node/bun/static adapters no-op for SSG; use vercel/cloudflare/netlify if you need platform routing emission",
         "Configuring `ssg.paths` AND per-route `getStaticPaths` together for the same dynamic route — both produce the same path list and the SSG plugin renders each path TWICE (the second pass overwrites). Pick one: `ssg.paths` for top-down explicit lists, `getStaticPaths` for per-route enumerators",
