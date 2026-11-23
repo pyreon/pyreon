@@ -32,6 +32,7 @@ export function detectPlatformAdapter(
   if (env.VERCEL) return 'vercel'
   if (env.NETLIFY) return 'netlify'
   if (env.CF_PAGES) return 'cloudflare'
+
   return null
 }
 
@@ -55,6 +56,7 @@ function defaultAdapter(): NonNullable<ZeroConfig['adapter']> {
       `[Pyreon] Detected ${detected} build environment — using the "${detected}" adapter (set zero({ adapter }) to override).`,
     )
   }
+
   return detected
 }
 
@@ -100,6 +102,7 @@ export function adoptRouteBase(
   const route = routeBaseOf(zeroBase, assetBase)
   if (route === config.base) return false
   config.base = route
+
   return true
 }
 

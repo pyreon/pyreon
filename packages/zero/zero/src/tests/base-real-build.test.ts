@@ -11,7 +11,7 @@
  * Client navigation, `vite preview` and hydration under a base are covered in
  * real Chromium by `e2e/ssg-subpath.spec.ts` and `e2e/ssg-cdn-base.spec.ts`.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -25,6 +25,7 @@ import { zeroPlugin } from '../vite-plugin'
 const SHOWCASE = resolve(import.meta.dirname, '../../../../../examples/fixtures/ssr-showcase')
 const CDN = 'https://cdn.example.com/x/'
 const outDirs: string[] = []
+
 afterAll(() => {
   for (const d of outDirs) rmSync(d, { recursive: true, force: true })
 })
@@ -40,6 +41,7 @@ async function buildShowcase(viteBase: string | undefined, zero: ZeroConfig): Pr
     plugins: [pyreon(), zeroPlugin({ ssg: { paths: ['/', '/about'] }, ...zero })],
     build: { outDir, emptyOutDir: true },
   })
+
   return outDir
 }
 
@@ -54,17 +56,21 @@ function renderBuilt(dist: string, url: string): { status: number; html: string 
 const r = await h(new Request(${JSON.stringify(url)}))
 process.stdout.write(JSON.stringify({ status: r.status, html: await r.text() }))`
   const out = execFileSync('node', ['--input-type=module', '-e', script], { encoding: 'utf8', cwd: dist })
+
   return JSON.parse(out) as { status: number; html: string }
 }
 
 const attrs = (html: string, name: 'href' | 'src'): string[] =>
   [...html.matchAll(new RegExp(`${name}="([^"]*)"`, 'g'))].map((m) => m[1] as string)
+
 const anchorHrefs = (html: string): string[] =>
   [...html.matchAll(/<a\b[^>]*\bhref="([^"]*)"/g)].map((m) => m[1] as string)
+
 const assetUrls = (html: string): string[] =>
   [...attrs(html, 'href'), ...attrs(html, 'src')].filter((u) => /\/assets\//.test(u))
 
-describe.skipIf(!existsSync(SHOWCASE))('zero base — real builds (#4269)', () => {
+// No skip: the fixture is part of the repo, so a missing one is a failure.
+describe('zero base — real builds (#4269)', () => {
   it('SSG with only a Vite path base (CLI --base / inline build({ base })): routes AND assets under it', async () => {
     const dist = await buildShowcase('/sub/', { mode: 'ssg' })
     const about = readFileSync(join(dist, 'about', 'index.html'), 'utf8')

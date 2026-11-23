@@ -71,6 +71,7 @@ function orderTabIndex(el: HTMLElement): number {
     const n = Number.parseInt(attr, 10)
     if (!Number.isNaN(n)) return n
   }
+
   return 0
 }
 
@@ -81,6 +82,7 @@ function isTabbable(el: HTMLElement): boolean {
     const n = Number.parseInt(attr, 10)
     if (!Number.isNaN(n) && n < 0) return false
   }
+
   return true
 }
 
@@ -95,6 +97,7 @@ function isDisabled(el: HTMLElement): boolean {
     const legend = fieldset.querySelector(':scope > legend')
     if (!legend || !legend.contains(el)) return true
   }
+
   return false
 }
 
@@ -146,6 +149,7 @@ function isHidden(el: HTMLElement): boolean {
   const view = el.ownerDocument.defaultView
   if (!view) return false
   const style = view.getComputedStyle(el)
+
   return (
     style.display === 'none' ||
     style.visibility === 'hidden' ||
@@ -177,6 +181,7 @@ export function getFocusable(container: HTMLElement): HTMLElement[] {
   // V8's sort is stable, and `nodes` is already in document order, so equal
   // tabindex values keep their document order.
   positive.sort((a, b) => orderTabIndex(a) - orderTabIndex(b))
+
   return [...positive, ...natural]
 }
 
@@ -188,11 +193,12 @@ export function getFocusable(container: HTMLElement): HTMLElement[] {
  * right now (undefined outside a dispatch, e.g. after an `await`).
  */
 function activatedByFocusedElement(): boolean {
-  if (typeof window === 'undefined') return false
+  if (isServer) return false
   const ev = (window as { event?: Event }).event
   const focused = document.activeElement
   if (!ev || !focused || focused === document.body) return false
   const t = ev.target
+
   return t instanceof Node && focused.contains(t)
 }
 
@@ -215,6 +221,7 @@ function resolveInitialFocus(
     return container.querySelector<HTMLElement>(target)
   }
   if (typeof target === 'function') return target()
+
   return target
 }
 
@@ -262,6 +269,7 @@ function topTrap(): { frame: TrapFrame; el: HTMLElement } | null {
     const el = frame.getEl()
     if (el) return { frame, el }
   }
+
   return null
 }
 

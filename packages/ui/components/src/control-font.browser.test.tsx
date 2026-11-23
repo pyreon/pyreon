@@ -73,6 +73,7 @@ describe.skipIf(!IS_BROWSER_RUNNER)('form-control components use the page font (
     style.textContent = '@layer utilities { .u-serif { font-family: Georgia, serif } }'
     if (position === 'after-pyreon') document.head.appendChild(style)
     else document.head.insertBefore(style, document.head.firstChild)
+
     return () => style.remove()
   }
 
