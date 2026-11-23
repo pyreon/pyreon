@@ -15,7 +15,8 @@ name: Real Bench App Smoke
 #   2. The pyreon arm from the WORKSPACE (`--pyreon=workspace`, the monorepo's
 #      built lib/). Its npm source (the published packages arms/pyreon's
 #      lockfile pins) is not built here: the pinned 0.53.0 fails the gate
-#      (every RouterLink click is a full page load), which `main` fixes. Add the
+#      (its header RouterLinks mount before RouterProvider runs and do full
+#      page loads), which #4174 fixed on `main`. Add the
 #      npm build back when the pin moves to a release that passes.
 #   3. `bun gate.ts`: the correctness gate (harness/gate.ts) on every arm,
 #      served by the harness's static server: deep links, not-found, and two

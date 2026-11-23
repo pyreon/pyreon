@@ -12,8 +12,9 @@ shims). Two parts:
 2. **The render scenarios** (`src/`, below): a TodoMVC-shape list in Pyreon vs
    React 19, timing three render operations.
 
-**No result of either part is published here.** Read "Run conditions" before
-running anything you intend to quote.
+**The catalogue app has no published result.** The render scenarios' current
+record is `BENCHMARKS.md` §6. Read "Run conditions" before running anything you
+intend to quote.
 
 ## The catalogue app (`app/`)
 
@@ -29,10 +30,16 @@ bun bench.ts --report [runId]     # re-print a run and its publishability
 (`bun run app:setup`, `app:gate` and `app:bench` from `examples/real-bench` do the same.)
 
 **State of the arms.** All six pass the gate. The pyreon arm passes it only when
-built from the workspace: the published `@pyreon/*@0.53.0` its lockfile pins
-turns every `RouterLink` click in this app into a full page load (the link
-resolves no router and does not `preventDefault`), which the gate reports as
-"the session replaced the document". `main` does not have the bug. Until the
+built from the workspace. With the published `@pyreon/*@0.53.0` its lockfile
+pins, the two header `RouterLink`s find no router and fall back to plain anchors,
+so a click is a full page load, which the gate reports as "the session replaced
+the document". The cause is in 0.53.0's runtime: the compiler templates the
+header `<nav>` (a component child of `RouterProvider`), and 0.53.0 built that
+template, mounting the links, while `App` evaluated `RouterProvider`'s children,
+before the provider had run. #4174 (after 0.53.0) builds such templates on
+mount, inside the provider, with a regression test
+(`packages/core/runtime-dom/src/tests/remountable-tpl-owner.test.ts`). The arm
+is not changed to work around it. Until the
 pin moves to a release that passes, no run can meet the "pyreon from npm"
 publishing condition.
 
@@ -186,18 +193,20 @@ runtime wearing a React/Solid/Vue API, **not** the real framework — so they
 cannot be a fair real-app comparison. `real-bench` closes that: the same app,
 each framework's **real runtime**, measured under the same discipline.
 
-### Results — none published
+### Results
 
-The table that used to sit here (Pyreon ~16× / ~5.7× / ~6.5× ahead) is
-**withdrawn**: it was measured with React's commit barrier
-(`requestAnimationFrame → setTimeout(0)`) INSIDE React's timed window, so the
-React column included up to a frame of idle per sample, while Pyreon's
-`commit()` was a resolved promise. On the same machine with React committed via
-`flushSync` (what `examples/benchmark` uses), `add-100` comes out roughly even —
-the "16×" was the scheduler wait. It was also taken on a 100µs clock (the page
-was not cross-origin isolated), which quantized Pyreon's sub-ms cells to a few
-ticks. Re-run `bun bench --repeat 3 --wait-quiet` on a quiet machine before
-quoting any number; the harness now refuses to run on a coarse clock.
+The current record of these scenarios is `BENCHMARKS.md` §6 ("Real-app
+shapes"): one overnight run with the harness below, React committed through
+`flushSync` on the isolated clock. Quote it from there, with its caveat that
+`add-100` moves from day to day.
+
+An earlier table that sat here is **withdrawn**: it was measured with React's
+commit barrier (`requestAnimationFrame → setTimeout(0)`) inside React's timed
+window, so the React column included up to a frame of idle per sample, and on
+a 100 µs clock (the page was not cross-origin isolated). The harness now
+commits React with `flushSync` and refuses to run on a coarse clock. Re-run
+`bun bench --repeat 4 --wait-quiet 4` on a quiet machine before quoting a new
+number.
 
 ### Methodology (inherited from `bench:fair`)
 

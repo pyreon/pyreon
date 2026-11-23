@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 249,
+  "pageCount": 250,
   "pages": [
    {
     "path": "a11y.md",
@@ -46,6 +46,11 @@
     "path": "benchmarks-full-stack.md",
     "title": "Full-stack benchmark method",
     "href": "/docs/benchmarks-full-stack"
+   },
+   {
+    "path": "benchmarks-real-app.md",
+    "title": "Real-app benchmark method",
+    "href": "/docs/benchmarks-real-app"
    },
    {
     "path": "benchmarks.md",
@@ -1727,6 +1732,10 @@
     {
      "title": "Full-stack benchmark method",
      "href": "/docs/benchmarks-full-stack"
+    },
+    {
+     "title": "Real-app benchmark method",
+     "href": "/docs/benchmarks-real-app"
     }
    ]
   },

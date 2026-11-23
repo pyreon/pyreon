@@ -57,7 +57,7 @@ These come from the repository's measurement protocol (`.agents/guides/benchmark
 4. **The default throttle** (`mobile`: CPU 4×, 150 ms round trip, 1.6 Mbit/s down, 0.75 Mbit/s up).
 5. **A cross-origin isolated timer** with a quantum at or under 20 µs.
 6. **A committed tree** with no uncommitted changes, so the measured code can be checked out.
-7. **The pyreon arm from npm** (`bun setup.ts`, the default). A `--pyreon=workspace` run measures unreleased code and is a development measurement. The pinned 0.53.0 does not pass the gate yet (see `../../README.md`), so no run can meet this condition until the pin moves to a release that does.
+7. **The pyreon arm from npm** (`bun setup.ts`, the default). A `--pyreon=workspace` run measures unreleased code and is a development measurement. The pinned 0.53.0 does not pass the gate (see `../../README.md`; fixed by #4174, unreleased), so no run can meet this condition until the pin moves to a release that does.
 8. **No retried probe.** Every time-to-interactive load's first input was handled.
 9. **Two runs.** At least two complete runs that each meet 1 to 8. A cell is a win or a loss only when the confidence intervals are disjoint in every run; overlapping intervals are a tie; a cell where the runs disagree is reported with both.
 10. **Hardware and versions stated.** The published text names the machine, operating system, bun and Chromium versions and the version of every framework package, all taken from the run files.
