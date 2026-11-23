@@ -15,7 +15,9 @@
  * segment even after decoding:
  *
  * - no `/`, `\` or `%` (nothing that decodes, or is, a separator);
- * - no control character (NUL, CR, LF, …);
+ * - no control character (C0, DEL, C1), no U+2028/U+2029, no format
+ *   character (`\p{Cf}`: bidi overrides, zero-width characters);
+ * - the same after NFKC normalisation (`．．／` is `../`);
  * - not empty, and not made only of dots (`.`, `..`, `...` are dot segments
  *   or suspicious to every normaliser).
  *
@@ -23,6 +25,19 @@
  * normaliser turns them into a separator.
  */
 export function isIslandName(name: string): boolean {
-  // oxlint-disable-next-line no-control-regex -- control characters are exactly what is refused
-  return name !== '' && !/^\.+$/.test(name) && !/[/\\%\u0000-\u001f\u007f]/.test(name)
+  // The same rule on the NFKC form too: look-alikes such as `．`/`／` (U+FF0E,
+  // U+FF0F), `․` (U+2024), `﹒` (U+FE52) and `％` (U+FF05) normalise to `.`,
+  // `/` and `%`, and an intermediary that normalises would see those.
+  return passes(name) && passes(name.normalize('NFKC'))
+}
+
+function passes(name: string): boolean {
+  return (
+    name !== '' &&
+    !/^\.+$/.test(name) &&
+    // Separators, `%`, C0/C1 controls and DEL, line/paragraph separators, and
+    // format characters (bidi overrides, zero-width joiners …).
+    // oxlint-disable-next-line no-control-regex -- control characters are exactly what is refused
+    !/[/\\%\u0000-\u001f\u007f-\u009f\u2028\u2029\p{Cf}]/u.test(name)
+  )
 }
