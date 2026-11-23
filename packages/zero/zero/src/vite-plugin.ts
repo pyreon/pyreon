@@ -13,6 +13,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApiRouteEntry } from './api-routes'
 import { generateApiRouteModule } from './api-routes'
 import { adoptRouteBase, isRelativeBase, resolveConfig } from './config'
+import { isRoutePath } from './route-path'
 import { assertPublicEnv, loadPublicEnvVars } from './public-env'
 // Used in the dev-mode SSR catch handler to convert loader-thrown
 // `redirect()` errors into real HTTP redirects (302/307/308).
@@ -1715,7 +1716,7 @@ function devRouteBase(server: ViteDevServer): string {
 	if (typeof raw !== "string") return "/";
 	try {
 		const value: unknown = JSON.parse(raw);
-		return typeof value === "string" && value.startsWith("/") ? value : "/";
+		return typeof value === "string" && isRoutePath(value) ? value : "/";
 	} catch {
 		return "/";
 	}

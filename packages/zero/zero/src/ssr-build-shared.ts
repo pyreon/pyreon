@@ -28,6 +28,7 @@ import type { PyreonPluginOptions } from '@pyreon/vite-plugin'
 import type { BuildOptions, Plugin } from 'vite'
 import { _enterInnerBuild, _exitInnerBuild } from './build-flags'
 import { innerPyreonOptions } from './inner-pyreon-options'
+import { isRoutePath } from './route-path'
 
 /**
  * zero's optional native peers — every `peerDependenciesMeta[*].optional`
@@ -456,7 +457,7 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
     // asset base goes to Vite alone (top-level `base` below); giving it to
     // zero would make the inner router's base `/.` or `/https://…`.
     const innerZeroConfig: ZeroConfig =
-      options.base !== undefined && options.base !== '/' && options.base.startsWith('/')
+      options.base !== undefined && options.base !== '/' && isRoutePath(options.base)
         ? { ...options.userConfig, base: options.base }
         : options.userConfig
 

@@ -97,6 +97,9 @@ describe('route base vs asset base (#4269)', () => {
     expect(routeBaseOf(undefined, './')).toBe('/')
     expect(routeBaseOf(undefined, '')).toBe('/')
     expect(routeBaseOf(undefined, 'https://cdn.example.com/x/')).toBe('/')
+    // Protocol-relative is a URL, not a path (#4751 review).
+    expect(routeBaseOf(undefined, '//cdn.example.com/x/')).toBe('/')
+    expect(routeBaseOf(undefined, '/\\evil.com/')).toBe('/')
     expect(routeBaseOf(undefined, undefined)).toBe('/')
   })
 

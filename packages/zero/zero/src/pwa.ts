@@ -31,6 +31,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 import type { Plugin } from 'vite'
 import { routeBaseOf } from './config'
+import { isRoutePath } from './route-path'
 import { writeFileAtomic } from './ssr-build-shared'
 
 /** A web app manifest icon. */
@@ -372,7 +373,7 @@ export function pwaPlugin(config: PwaConfig, zeroMode: string | undefined, zeroB
       isSsrBuild = Boolean(resolved.build.ssr)
       // A service worker precaches and serves same-origin files under its own
       // scope; assets on a CDN or behind a relative base are neither.
-      if (!resolved.base.startsWith('/')) {
+      if (!isRoutePath(resolved.base)) {
         throw new Error(
           `[Pyreon] zero({ pwa }) needs a path base, but Vite's base is \`${resolved.base || "''"}\`. A service worker can only precache and serve same-origin files under its scope. Use a path base (\`zero({ base: '/app/' })\` or \`--base /app/\`), or drop \`pwa\`.`,
         )

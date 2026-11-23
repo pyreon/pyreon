@@ -89,6 +89,16 @@ describe('zero base — real builds (#4269)', () => {
     expect(assetUrls(about).filter((u) => !u.startsWith(`${CDN}assets/`))).toEqual([])
   }, 120_000)
 
+  it('SSG with a protocol-relative Vite base: an asset base, routes stay at /', async () => {
+    const PR = '//cdn.example.com/x/'
+    const dist = await buildShowcase(PR, { mode: 'ssg' })
+    const about = readFileSync(join(dist, 'about', 'index.html'), 'utf8')
+    expect(anchorHrefs(about)).toContain('/about')
+    expect(anchorHrefs(about).filter((h) => h.startsWith('//'))).toEqual([])
+    expect(assetUrls(about).length).toBeGreaterThan(0)
+    expect(assetUrls(about).filter((u) => !u.startsWith(`${PR}assets/`))).toEqual([])
+  }, 120_000)
+
   it('SSG with a relative ./ base is rejected with the fix, not shipped broken below the root', async () => {
     await expect(buildShowcase('./', { mode: 'ssg' })).rejects.toThrow(
       /\[Pyreon\] A relative base \(`\.\/`\) is not supported with zero mode "ssg"/,

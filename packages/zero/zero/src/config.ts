@@ -1,4 +1,5 @@
 import type { ZeroConfig } from './types'
+import { isRoutePath } from './route-path'
 
 /**
  * Define a Zero configuration — a typed identity helper for building the
@@ -77,7 +78,7 @@ function defaultAdapter(): NonNullable<ZeroConfig['adapter']> {
  */
 export function routeBaseOf(zeroBase: string | undefined, assetBase: string | undefined): string {
   if (zeroBase !== undefined) return withTrailingSlash(zeroBase)
-  return assetBase !== undefined && assetBase.startsWith('/') ? withTrailingSlash(assetBase) : '/'
+  return assetBase !== undefined && isRoutePath(assetBase) ? withTrailingSlash(assetBase) : '/'
 }
 
 /**
@@ -117,15 +118,14 @@ export function adoptRouteBase(
 /** Merge user config with defaults. */
 export function resolveConfig(
   userConfig: ZeroConfig = {},
-): Required<Pick<ZeroConfig, 'mode' | 'base' | 'port' | 'adapter' | 'entryClient'>> &
-  ZeroConfig {
+): Required<Pick<ZeroConfig, 'mode' | 'port' | 'adapter' | 'entryClient'>> &
+  ZeroConfig & { base: string } {
   return {
     mode: 'ssr',
-    base: '/',
     port: 3000,
     entryClient: '/src/entry-client.ts',
     ...userConfig,
-    ...(userConfig.base !== undefined ? { base: withTrailingSlash(userConfig.base) } : {}),
+    base: userConfig.base !== undefined ? withTrailingSlash(userConfig.base) : '/',
     adapter: userConfig.adapter ?? defaultAdapter(),
     ssr: {
       mode: 'string',
