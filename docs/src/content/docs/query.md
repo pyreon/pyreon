@@ -1423,7 +1423,16 @@ Type re-exports include `QueryKey`, `QueryFilters`, `MutationFilters`, `Dehydrat
 ### Subpaths
 
 - **`@pyreon/query/devtools`** — `<QueryDevtools client? initialIsOpen? buttonPosition? position? errorTypes? shadowDOMTarget?>`, the TanStack Query devtools panel.
-- **`@pyreon/query/persist`** — `<PersistQueryClientProvider client persistOptions onSuccess? onError?>` (a `QueryClientProvider` that restores the cache on mount and keeps it persisted), `createSyncStoragePersister` / `createAsyncStoragePersister`, and the query-persist-client-core functions (`persistQueryClient`, `persistQueryClientRestore`, `persistQueryClientSave`, `persistQueryClientSubscribe`, `experimental_createQueryPersister`, `removeOldestQuery`).
+- **`@pyreon/query/persist`** — `<PersistQueryClientProvider client persistOptions onSuccess? onError?>` (a `QueryClientProvider` that restores the cache on mount and keeps it persisted), `createSyncStoragePersister` / `createAsyncStoragePersister`, the persist engine (`persistQueryClient`, `persistQueryClientRestore`, `persistQueryClientSave`, `persistQueryClientSubscribe`, `experimental_createQueryPersister`, `removeOldestQuery`), and `shouldPersistMutation`.
+
+  **Persisted mutations stay persisted until they settle.** The provider and the four `persistQueryClient*` functions (same signatures as TanStack's) persist every mutation that has not settled yet, whether it is paused offline or in flight, and restore it as paused so it is resumed once restoration settles. TanStack's own default persists only paused mutations, so a tab closed while a request was in flight lost the mutation. Consequences:
+
+  - Delivery is **at-least-once**: a request the server received but whose response never reached the closing tab is sent again by the next page. Make mutation endpoints idempotent (send a client-generated id in the variables).
+  - A restored mutation finds its function by `mutationKey`: register `client.setMutationDefaults(key, { mutationFn })` at module load.
+  - A mutation that fails has settled and leaves storage; use `retry` for transient failures.
+  - Pass `persistOptions.dehydrateOptions.shouldDehydrateMutation` to choose differently.
+
+  See [Offline and installable apps](/docs/patterns/offline-and-installable-apps) for the full offline flow.
 
 ### Multiplatform
 
