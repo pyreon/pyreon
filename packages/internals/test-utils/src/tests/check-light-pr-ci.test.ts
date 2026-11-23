@@ -37,6 +37,33 @@ describe('check-light-pr-ci', () => {
     expect(v.some((m) => m.includes('no merge_group trigger'))).toBe(true)
   })
 
+  it('rejects a pull_request-only step inside a job light mode skips on the PR', () => {
+    const wf = mutate(
+      'ci.yml',
+      '      - run: bun run test:browser\n',
+      "      - name: PR-only probe\n        if: ${{ github.event_name == 'pull_request' }}\n        run: bun run test:browser\n",
+    )
+    expect(findLightPrCiViolations(wf).some((m) => m.includes('"PR-only probe" of "Test (browser)"'))).toBe(true)
+  })
+
+  it('accepts the same step once it also admits merge_group', () => {
+    const wf = mutate(
+      'ci.yml',
+      '      - run: bun run test:browser\n',
+      "      - name: PR-only probe\n        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}\n        run: bun run test:browser\n",
+    )
+    expect(findLightPrCiViolations(wf)).toEqual([])
+  })
+
+  it('rejects Build taking the light-mode condition (it must stay on the PR)', () => {
+    const wf = mutate(
+      'ci.yml',
+      /(  build:[\s\S]*?\n {4}if: \$\{\{ [^\n]*?)( \}\})/,
+      "$1 && needs.install.outputs.pr-light != 'true'$2",
+    )
+    expect(findLightPrCiViolations(wf).some((m) => m.includes('"Build" must keep running on the pull request'))).toBe(true)
+  })
+
   it('rejects a renamed required job', () => {
     const wf = mutate('ci.yml', /name: Release Build/, 'name: Release Build 2')
     expect(findLightPrCiViolations(wf).some((m) => m.includes('"Release Build" has no job'))).toBe(
@@ -65,7 +92,7 @@ describe('check-light-pr-ci', () => {
   it('rejects a light-mode job whose own if excludes merge_group', () => {
     const wf = mutate(
       'ci.yml',
-      /(  build:[\s\S]*?\n {4}if: \$\{\{ )/,
+      /(  release-build:[\s\S]*?\n {4}if: \$\{\{ )/,
       "$1github.event_name != 'merge_group' && ",
     )
     expect(findLightPrCiViolations(wf).some((m) => m.includes('excludes merge_group'))).toBe(true)

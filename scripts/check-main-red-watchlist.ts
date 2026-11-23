@@ -183,6 +183,23 @@ export function checkWatchlist(
     nameToFile.set(name, file)
 
     const reason = exempt[file]
+    // A `workflow_run` follower that acts on default-branch runs filters the
+    // trigger to them: otherwise every pull request run of the workflows it
+    // follows creates a run here (1,379 skipped runs in one week, 2026-11-16 →
+    // 11-23, before size-ceiling-status and native-device-nightly-status had
+    // it). The pull-request-run follower is the one shape that cannot.
+    if (reason !== 'acts-on-pull-request-runs' && reason !== 'self') {
+      try {
+        if (workflowTriggers(text).includes('workflow_run') && !/^ {4}branches: \[main\]\s*$/m.test(onBlock(text).join('\n'))) {
+          findings.push(
+            `${file}: a \`workflow_run\` follower must declare \`branches: [main]\` under \`on.workflow_run\`, ` +
+              'or every pull request run of the workflows it follows starts a run here',
+          )
+        }
+      } catch {
+        // An unreadable `on:` block is reported by the exemption check below.
+      }
+    }
     const isWatched = watched.includes(name)
     if (reason === undefined) {
       if (!isWatched) {

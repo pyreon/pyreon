@@ -178,6 +178,43 @@ describe('required-check-autoheal — decision', () => {
   })
 })
 
+// The job-level `if:` decides without a runner. Evaluate the REAL expression:
+// translate GitHub's expression syntax to JavaScript (property access on a
+// missing array element yields null in GitHub, undefined with `?.` here; both
+// are falsy, which is all the expression relies on).
+function jobIf(): (wr: Record<string, unknown>) => boolean {
+  const line = text.split('\n').find((l) => /^ {4}if: /.test(l))
+  expect(line).toBeDefined()
+  const js = line!
+    .replace(/^ {4}if: /, '')
+    .replaceAll('github.event.workflow_run', 'wr')
+    .replaceAll('[0].head.sha', '?.[0]?.head?.sha')
+    .replaceAll(' == ', ' === ')
+    .replaceAll(' != ', ' !== ')
+  return new Function('wr', `return Boolean(${js})`) as (wr: Record<string, unknown>) => boolean
+}
+
+describe('required-check-autoheal — runner-free skip of superseded runs', () => {
+  const base = { conclusion: 'cancelled', event: 'pull_request', run_attempt: 1, head_sha: 'old' }
+
+  it('skips a run whose PR head (from the event payload) is a newer commit', () => {
+    expect(jobIf()({ ...base, pull_requests: [{ number: 5, head: { sha: 'new' } }] })).toBe(false)
+  })
+
+  it('runs for the current head, and fails safe (runs) when the payload names no PR', () => {
+    expect(jobIf()({ ...base, pull_requests: [{ number: 5, head: { sha: 'old' } }] })).toBe(true)
+    expect(jobIf()({ ...base, pull_requests: [] })).toBe(true)
+    expect(jobIf()({ ...base, conclusion: 'failure', pull_requests: [{ number: 5, head: {} }] })).toBe(true)
+  })
+
+  it('keeps the other bounds: success, a non-PR event and a second attempt never run', () => {
+    const pr = [{ number: 5, head: { sha: 'old' } }]
+    expect(jobIf()({ ...base, conclusion: 'success', pull_requests: pr })).toBe(false)
+    expect(jobIf()({ ...base, event: 'push', pull_requests: pr })).toBe(false)
+    expect(jobIf()({ ...base, run_attempt: 2, pull_requests: pr })).toBe(false)
+  })
+})
+
 describe('required-check-autoheal — attempt bound', () => {
   it('is gated off for attempt 2 at the job level', () => {
     // The `if:` expression is the bound; a rerun of a rerun never reaches the script.

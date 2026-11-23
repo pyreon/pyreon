@@ -32,13 +32,20 @@ interface RequiredJob {
   file: string
   /** True when the merge queue skips this job today (the PR is its only coverage). */
   queueSkipped?: boolean
+  /**
+   * Runs on the pull request in light mode too, for a measured reason: `Build`
+   * is the job PRs fail most (24% of PR runs, 2026-11-18 → 11-23, none green on a re-run),
+   * and its PR-only steps judge the PR's own diff. In the queue each of those
+   * failures would eject a whole group.
+   */
+  prAlways?: boolean
 }
 
 // `CodeQL` itself is posted by code scanning after the analysis upload, not by a job.
 export const REQUIRED_JOBS: RequiredJob[] = [
   { context: 'Install', file: 'ci.yml' },
   { context: 'Fast Gates', file: 'ci.yml' },
-  { context: 'Build', file: 'ci.yml' },
+  { context: 'Build', file: 'ci.yml', prAlways: true },
   { context: 'Test', file: 'ci.yml' },
   { context: 'Test (browser)', file: 'ci.yml' },
   { context: 'Release Build', file: 'ci.yml' },
@@ -112,6 +119,11 @@ export function findLightPrCiViolations(workflows: Record<string, string>): stri
         `${req.file}: owns required context "${req.context}" but has no merge_group trigger (the queue would wait for it forever)`,
       )
     }
+    if (req.prAlways && LIGHT.test(jobIf(job.body))) {
+      violations.push(
+        `${req.file}: "${req.context}" must keep running on the pull request in light mode (its failures are frequent and judge the PR's own diff); it must not use the light-mode condition`,
+      )
+    }
     if (req.queueSkipped && LIGHT.test(jobIf(job.body))) {
       violations.push(
         `${req.file}: "${req.context}" is skipped in the merge queue, so the PR is its only coverage; it must not use the light-mode condition`,
@@ -151,6 +163,25 @@ export function findLightPrCiViolations(workflows: Record<string, string>): stri
         violations.push(
           `${file}: "${name}" reads PR_CI_MODE without bounding it to the pull_request event`,
         )
+      }
+    }
+  }
+
+  // A job light mode skips on the pull request runs only in the queue and on
+  // main. A step inside it that is limited to `pull_request` would then run
+  // nowhere before merge (`Coverage (changed packages)` in `Build` was such a
+  // step), so its `if:` must also admit `merge_group`.
+  for (const [file, jobs] of jobsByFile) {
+    for (const job of jobs) {
+      if (!LIGHT.test(jobIf(job.body))) continue
+      const name = jobName(job.body) ?? job.name
+      for (const m of job.body.matchAll(/^ {6}- name:\s*(.+)\n((?: {8}[^\n]*\n)*)/gm)) {
+        const stepIf = /^ {8}if:\s*(.+)$/m.exec(m[2]!)?.[1] ?? ''
+        if (/event_name == 'pull_request'/.test(stepIf) && !/merge_group/.test(stepIf)) {
+          violations.push(
+            `${file}: step "${m[1]!.trim()}" of "${name}" runs only on pull_request, but light mode skips "${name}" on the pull request, so it would run nowhere before merge; admit merge_group in its if:`,
+          )
+        }
       }
     }
   }

@@ -30,6 +30,7 @@
  *   - loom-scan             (dependency-fabric errors: phantom deps, runtime cycles, drift)
  *   - check-advisory-comment-steps (advisory PR-comment step that can turn a check red)
  *   - check-main-red-watchlist (a workflow the red-default-branch alarm does not watch)
+ *   - check-workflow-triggers (a PR workflow without superseded-run cancellation, or a draft skip with no ready_for_review)
  *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
  *   - check-counter-catalog (a dev counter emitted with no COUNTERS.md row, or a stale row)
  *   - check-zero-feature-coverage (a documented zero feature has no real-build test)
@@ -329,6 +330,12 @@ const GATES: Gate[] = [
   {
     name: 'check-main-red-watchlist',
     cmd: 'bun scripts/check-main-red-watchlist.ts',
+  },
+  // Every pull_request workflow cancels its superseded runs, and a job that
+  // skips drafts runs when the draft is marked ready.
+  {
+    name: 'check-workflow-triggers',
+    cmd: 'bun scripts/check-workflow-triggers.ts',
   },
 ]
 

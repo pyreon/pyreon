@@ -1450,7 +1450,14 @@ jobs:
   build:
     name: Build
     needs: [install, fast-gates]
-    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' && needs.install.outputs.pr-light != 'true' }}
+    # Runs on the pull request in light PR CI too: it is the job PRs fail
+    # most (46 of 191 PR runs red, 2026-11-18 → 11-23: coverage, size budget
+    # and Rust-binary compiler-suite steps, none green on a re-run),
+    # and its PR-only steps (`Coverage (changed packages)`, the size gates'
+    # own-growth rule) judge the PR's diff, which the queue cannot do. In
+    # the queue those failures would each eject a group (one full run, about
+    # 85 runner-minutes) instead of failing a 7-minute job on the PR.
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     # Derived from the measured steps (2026-09-01): examples build 70s +
     # verify-modes 90s + budgets 55s + distribution 25s + bin-liveness 30s +
@@ -1574,12 +1581,32 @@ jobs:
       # with it loaded; the equivalence harness asserts every JS-path output
       # matches the Rust path. Without it only the JS fallback is exercised —
       # which is exactly what shipped the 6 divergences caught in #491.
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master — pinned (OpenSSF Pinned-Dependencies)
+      # The binary is a pure function of the crate's sources, so restore it by
+      # their hash first (`compiler-native-bin-`; the default branch's push
+      # run saves it below, so every ref reads one entry per source hash).
+      # On a hit the toolchain, the registry and the
+      # cargo build are skipped and the touch makes build-native.ts's mtime
+      # check a no-op (checkout stamps the sources newer than a restored file).
+      # The cargo build runs in a temp directory outside the tree
+      # (build-native.ts), so the `target/` cache this step replaced never had
+      # a path to save: no `cargo-target-*` entry ever existed, and every run
+      # compiled Rust from scratch (37-47 s).
+      - name: Restore native compiler binary
+        id: native-bin
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/core/compiler/native/pyreon-compiler.node
+          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/Cargo.toml', 'packages/core/compiler/native/**/*.rs') }}
+      - name: Mark restored binary fresh
+        if: ${{ !cancelled() && steps.native-bin.outputs.cache-hit == 'true' }}
+        run: touch -d '+1 minute' packages/core/compiler/native/pyreon-compiler.node
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master — pinned (OpenSSF Pinned-Dependencies)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.native-bin.outputs.cache-hit != 'true' }}
         with:
           toolchain: stable
       - name: Cache cargo registry
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.native-bin.outputs.cache-hit != 'true' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -1587,17 +1614,6 @@ jobs:
             ~/.cargo/git
           key: cargo-registry-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
           restore-keys: cargo-registry-${{ runner.os }}-
-      # Keyed by Cargo.lock + every Rust source: cargo's own content hashing
-      # invalidates correctly, so a hit means the compiled output is exact.
-      - name: Cache cargo target/
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: packages/core/compiler/native/target
-          key: cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/src/**/*.rs') }}
-          restore-keys: |
-            cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}-
-            cargo-target-${{ runner.os }}-
       - name: Build native binary
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run --filter='@pyreon/compiler' build:native
@@ -1613,6 +1629,14 @@ jobs:
             exit 1
           fi
           echo "Binary OK: $(ls -la $BIN)"
+      # Default branch only, so every ref reads one shared entry. The key
+      # repeats the restore's hashFiles list verbatim (check-cache-key-sync).
+      - name: Save native compiler binary (main only)
+        if: ${{ !cancelled() && steps.native-bin.outputs.cache-hit != 'true' && github.event_name == 'push' && hashFiles('packages/core/compiler/native/pyreon-compiler.node') != '' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/core/compiler/native/pyreon-compiler.node
+          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/Cargo.toml', 'packages/core/compiler/native/**/*.rs') }}
       - name: Test (Rust binary) — @pyreon/compiler suite against the binary
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         # This job built and asserted the binary above, so specs that guard
