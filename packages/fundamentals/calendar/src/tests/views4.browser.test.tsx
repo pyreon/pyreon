@@ -283,6 +283,10 @@ describe('the timeline: now line, per-row layout, select by dragging, one occurr
     expect(line).not.toBeNull()
     expect(Number.parseFloat(line.style.insetInlineStart)).toBeCloseTo(((2 + 0.4) / 7) * 100, 1)
     expect(root.querySelector('.pcal-tl-nowarea')!.getAttribute('aria-hidden')).toBe('true')
+    // The stylesheet draws it on screen, not only in print: a `}` lost from
+    // the `@media print` block above these rules once made them print-only.
+    expect(getComputedStyle(root.querySelector('.pcal-tl-nowarea') as HTMLElement).position).toBe('absolute')
+    expect(getComputedStyle(line).borderInlineStartWidth).toBe('2px')
     calendar.goTo('2026-12-18')
     await sleep(60)
     expect(root.querySelector('.pcal-tl-now')).toBeNull()
