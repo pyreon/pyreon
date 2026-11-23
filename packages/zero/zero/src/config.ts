@@ -59,24 +59,47 @@ function defaultAdapter(): NonNullable<ZeroConfig['adapter']> {
 }
 
 /**
- * Make `config.base` Vite's RESOLVED base — the single base every zero plugin
- * reads for the URLs it writes (SSG preloads, CSS assets, OG images, redirect
- * canonicals, the PWA worker, the server config). Each zero plugin calls this
- * from its own `configResolved`, so no call site can read a base that differs
- * from the one Vite applied to the assets.
+ * zero works with TWO bases, and every URL it writes uses exactly one:
  *
- * Precedence is settled before this runs: `zero({ base })` is returned from
- * zero's `config()` hook (so it IS the resolved base when set); without it
- * Vite's own base (CLI `--base`, inline `build({ base })`, `vite.config.base`)
- * stands; with neither it is `/`. A relative base (`./`) only describes asset
- * URLs, not routes, so it leaves `config.base` as it was.
+ * - the **route base** — where the app's pages live: router links, `pushState`
+ *   URLs, `__ZERO_BASE__`, redirect canonicals, i18n prefixes, the PWA
+ *   manifest/scope and the server's routing. Always a root-relative path.
+ * - the **asset base** — Vite's resolved `base`, where built files live:
+ *   chunks, modulepreloads, CSS assets, self-hosted fonts, OG images. It may be
+ *   a path, a relative `./`, or a full CDN URL.
+ *
+ * Precedence: `zero({ base })` is returned from zero's `config()` hook, so when
+ * set it is BOTH bases. Without it, Vite's base (CLI `--base`, inline
+ * `build({ base })`, `vite.config.base`) is the asset base, and also the route
+ * base when it is a path; a `./` or CDN asset base leaves the route base `/`.
+ */
+export function routeBaseOf(zeroBase: string | undefined, assetBase: string | undefined): string {
+  if (zeroBase !== undefined) return zeroBase
+  return assetBase !== undefined && assetBase.startsWith('/') ? assetBase : '/'
+}
+
+/** A Vite base that is relative to the HTML document (`./`, `''`). */
+export function isRelativeBase(base: string): boolean {
+  return base === '' || base.startsWith('.')
+}
+
+/**
+ * Make `config.base` the ROUTE base (see {@link routeBaseOf}) once Vite has
+ * resolved its own. Each zero plugin calls this from its `configResolved`, so
+ * `config.base` is never a stale pre-resolution value; asset URLs read Vite's
+ * resolved base directly, never `config.base`.
  *
  * @returns whether `config.base` changed.
  * @internal — used by zero's own plugins; not exported from a public entry.
  */
-export function adoptResolvedBase(config: { base: string }, resolvedBase: string | undefined): boolean {
-  if (resolvedBase === undefined || !resolvedBase.startsWith('/') || resolvedBase === config.base) return false
-  config.base = resolvedBase
+export function adoptRouteBase(
+  config: { base: string },
+  zeroBase: string | undefined,
+  assetBase: string | undefined,
+): boolean {
+  const route = routeBaseOf(zeroBase, assetBase)
+  if (route === config.base) return false
+  config.base = route
   return true
 }
 

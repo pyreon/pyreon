@@ -174,6 +174,16 @@ describe('detectors (via the report)', () => {
     const onEdge = report.issues.filter((i) => i.pkg === '@fix/plugin' && i.dep === '@fix/util')
     expect(onEdge.map((i) => i.code)).toEqual(['internal-range'])
     expect(onEdge[0]?.message).toContain('misses the workspace copy (1.0.0) by a major')
+    // Carried structurally, not only as message text.
+    expect(onEdge[0]?.details).toMatchObject({ peerMajorMismatch: true })
+  })
+
+  it('lowering internal-range to info keeps a peer MAJOR mismatch at warning; a plain bare range goes to info', () => {
+    const lowered = buildReport(root, { settings: { severity: { 'internal-range': 'info' } } })
+    const peer = lowered.issues.find((i) => i.pkg === '@fix/plugin' && i.dep === '@fix/util')
+    expect(peer).toMatchObject({ code: 'internal-range', severity: 'warning' })
+    const bare = lowered.issues.find((i) => i.pkg === '@fix/app' && i.dep === '@fix/util')
+    expect(bare).toMatchObject({ code: 'internal-range', severity: 'info' })
   })
 
   it('comments and template literals never produce findings', () => {

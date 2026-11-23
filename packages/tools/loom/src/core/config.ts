@@ -28,6 +28,7 @@ import { resolve } from 'node:path'
 import { CONFIG_FILENAMES, sectionFrom } from '@pyreon/config'
 import type { IssueCode, IssueSeverity, LoomIgnore } from './types'
 import { closest } from './closest'
+import { retiredCodeMessage } from './retired-codes'
 
 /** The settings loom reads, from either home. */
 export interface LoomSettings {
@@ -108,6 +109,8 @@ export function validateLoomSection(raw: unknown, where: string): Partial<LoomSe
             `suppression is a lie waiting to age (offending entry: ${JSON.stringify(entry)}).`,
         )
       }
+      const retired = retiredCodeMessage(e.code)
+      if (retired) bad(`${where}: a \`loom.ignore\` entry names a retired code. ${retired}`)
       return {
         ...(typeof e.pkg === 'string' ? { pkg: e.pkg } : {}),
         ...(typeof e.dep === 'string' ? { dep: e.dep } : {}),
@@ -129,6 +132,8 @@ export function validateLoomSection(raw: unknown, where: string): Partial<LoomSe
     }
     const severity: Partial<Record<IssueCode, IssueSeverity>> = {}
     for (const [code, level] of Object.entries(v as Record<string, unknown>)) {
+      const retired = retiredCodeMessage(code)
+      if (retired) bad(`${where}: \`loom.severity\` names a retired code. ${retired}`)
       if (!ISSUE_CODES.includes(code as IssueCode)) {
         bad(
           `${where}: \`loom.severity\` names an unknown code \`${code}\`. ` +

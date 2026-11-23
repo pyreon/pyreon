@@ -32,6 +32,7 @@
  *   - check-main-red-watchlist (a workflow the red-default-branch alarm does not watch)
  *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
  *   - check-counter-catalog (a dev counter emitted with no COUNTERS.md row, or a stale row)
+ *   - check-script-imports  (a script in scripts/ imports a module or export that no longer exists)
  *   - check-zero-feature-coverage (a documented zero feature has no real-build test)
  *   - check-breaking-changeset-codemod (a zero minor changeset lacks an `Upgrade:` line)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
@@ -135,6 +136,11 @@ const GATES: Gate[] = [
   // only runs when perf-harness is in a PR's test closure; #4236 added a
   // counter that passed its own CI and turned main red.
   { name: 'check-counter-catalog', cmd: 'bun scripts/check-counter-catalog.ts' },
+  // `scripts/` is not a package, so no per-package typecheck sees it: a script
+  // importing a renamed or removed workspace export broke only when someone ran
+  // it (bench:loom on the retired detectPeerMismatch). Fails on the import
+  // class of tsc diagnostics in scripts/ only. ~15s, the slowest gate here.
+  { name: 'check-script-imports', cmd: 'bun scripts/check-script-imports.ts' },
   // IP: every workspace carries the root LICENSE byte-for-byte and declares
   // "license": "MIT". A published package without either ships with no stated
   // terms; an example without either is code people copy with none.

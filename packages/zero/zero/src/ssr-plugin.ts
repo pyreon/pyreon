@@ -75,7 +75,7 @@ import {
   innerBuildActiveInProcess,
   innerBuildFlagSet,
 } from './build-flags'
-import { adoptResolvedBase, resolveConfig } from './config'
+import { adoptRouteBase, resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
 import { writeServiceWorker } from './pwa'
@@ -138,10 +138,11 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   // See `buildInnerBuildOptions` / `ssg-plugin.ts`.
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
-  // Vite's resolved base verbatim (a relative `./` included), handed to the
-  // inner SSR sub-build so it emits asset URLs exactly as the outer build did.
-  // Every URL zero itself writes reads `config.base` (see adoptResolvedBase).
-  let innerBuildBase = '/'
+  // The ASSET base: Vite's resolved base verbatim (a path, `./` or a CDN
+  // URL). Asset URLs zero writes read it, and the inner SSR sub-build gets it
+  // so it emits assets exactly as the outer build did. Route URLs read
+  // `config.base`, the ROUTE base (see `routeBaseOf` in config.ts).
+  let assetBase = '/'
   // Replaced in configResolved with Vite's logger (honours `logLevel`).
   // oxlint-disable-next-line no-console
   let logInfo: (msg: string) => void = (msg) => console.log(msg)
@@ -210,9 +211,9 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       logInfo = (msg) => resolved.logger.info(msg)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
-      // From here on `config.base` IS Vite's resolved base (see adoptResolvedBase).
-      adoptResolvedBase(config, resolved.base)
-      innerBuildBase = resolved.base
+      // From here on `config.base` is the ROUTE base (see adoptRouteBase).
+      adoptRouteBase(config, userConfig.base, resolved.base)
+      assetBase = resolved.base
       userPlugins = resolved.plugins as readonly Plugin[]
       manifestOption = resolved.build.manifest
     },
@@ -339,7 +340,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // per page. Empty when the entry is not lazy.
       const clientPreload =
         clientManifest && builtTemplate
-          ? computeClientStartPreload(clientManifest, builtTemplate, config.base)
+          ? computeClientStartPreload(clientManifest, builtTemplate, assetBase)
           : undefined
       const define =
         clientPreload && (clientPreload.app.length > 0 || clientPreload.islands.length > 0)
@@ -358,7 +359,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
             assetsInlineLimit,
             assetsDir,
             userPlugins,
-            base: innerBuildBase,
+            base: assetBase,
             edge: true,
             ...(define ? { define } : {}),
           })
@@ -373,7 +374,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           assetsInlineLimit,
           assetsDir,
           userPlugins,
-          base: innerBuildBase,
+          base: assetBase,
           ...(define ? { define } : {}),
         })
       } catch (buildError) {

@@ -464,6 +464,72 @@ describe('useFocusTrap (real Chromium) — content revealed by the activating up
     expect(document.activeElement).toBe(rootEl!.querySelector('nav a'))
   })
 
+  it('a trigger inside the container moves focus on EVERY open, not only the first', async () => {
+    const open = signal(false)
+    let rootEl: HTMLElement | null = null
+    let triggerEl: HTMLButtonElement | null = null
+    const { unmount } = mountInBrowser(
+      h(() => {
+        useFocusTrap(() => rootEl, {
+          active: () => open(),
+          initialFocus: () => rootEl?.querySelector<HTMLElement>('nav a') ?? null,
+        })
+        return h(
+          'header',
+          { ref: (el: HTMLElement | null) => (rootEl = el) },
+          h(
+            'button',
+            { ref: (el: HTMLButtonElement | null) => (triggerEl = el), onClick: () => open.set(!open()) },
+            'Menu',
+          ),
+          h(Show, { when: () => open() }, h('nav', {}, h('a', { href: '#home' }, 'Home'))),
+        )
+      }, {}),
+    )
+    disposers.push(unmount)
+    await flush()
+    for (let i = 0; i < 2; i++) {
+      triggerEl!.focus()
+      triggerEl!.click() // open
+      await flush()
+      expect(document.activeElement, `open #${i + 1}`).toBe(rootEl!.querySelector('nav a'))
+      triggerEl!.focus()
+      triggerEl!.click() // close
+      await flush()
+    }
+  })
+
+  it('re-arming while the user works inside the container does not steal focus', async () => {
+    // `active: () => open() && !saving()` with a named target: the user types in
+    // the password field, a save toggles the trap off and on again — focus must
+    // stay in the password field, not jump to the email field.
+    const open = signal(true)
+    const saving = signal(false)
+    let rootEl: HTMLElement | null = null
+    const { unmount } = mountInBrowser(
+      h(() => {
+        useFocusTrap(() => rootEl, { active: () => open() && !saving(), initialFocus: '[name=email]' })
+        return h(
+          'form',
+          { ref: (el: HTMLElement | null) => (rootEl = el) },
+          h('input', { name: 'email', 'aria-label': 'email' }),
+          h('input', { name: 'password', 'aria-label': 'password' }),
+        )
+      }, {}),
+    )
+    disposers.push(unmount)
+    await flush()
+    expect(document.activeElement).toBe(rootEl!.querySelector('[name=email]')) // first activation
+    const password = rootEl!.querySelector<HTMLInputElement>('[name=password]')!
+    password.focus()
+    saving.set(true)
+    await flush()
+    await Promise.resolve()
+    saving.set(false) // re-armed by async code, not by a user event
+    await flush()
+    expect(document.activeElement).toBe(password)
+  })
+
   it('still leaves focus alone when it moved inside the container during activation', async () => {
     const open = signal(false)
     let rootEl: HTMLElement | null = null

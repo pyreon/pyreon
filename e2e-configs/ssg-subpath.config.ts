@@ -17,13 +17,19 @@ export default definePlaywrightConfig({
   timeout: 60_000,
   projects: [
     { name: 'ssg-subpath', testMatch: /ssg-subpath\.spec\.ts$/, port: 5198 },
+    // A full-URL (CDN) asset base with the route base at `/` (#4269).
+    { name: 'ssg-cdn-base', testMatch: /ssg-cdn-base\.spec\.ts$/, port: 5199 },
   ],
+  // ONE command builds both variants in sequence (two SSG builds of one
+  // fixture at once would share its synthetic entry file) and then serves
+  // both; the second entry only waits for its port.
   webServer: [
     {
       command:
-        'bun run --filter=@pyreon/example-ssr-showcase build:subpath && bun run --filter=@pyreon/example-ssr-showcase preview:subpath -- --port 5198 --strictPort',
+        'bun run --filter=@pyreon/example-ssr-showcase build:subpath && bun run --filter=@pyreon/example-ssr-showcase build:cdn && (bun run --filter=@pyreon/example-ssr-showcase preview:subpath -- --port 5198 --strictPort & bun run --filter=@pyreon/example-ssr-showcase preview:cdn -- --port 5199 --strictPort & wait)',
       port: 5198,
-      timeout: 180_000,
+      timeout: 240_000,
     },
+    { command: 'tail -f /dev/null', port: 5199, timeout: 240_000 },
   ],
 })

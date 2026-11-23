@@ -111,9 +111,14 @@ describe('validateLoomSection — one validator for both homes', () => {
 
   it('rejects the retired `peer-mismatch` code (#4391: internal-range owns that edge)', () => {
     expect(ISSUE_CODES).not.toContain('peer-mismatch')
+    // A targeted message, not the generic unknown-code list: the user's key
+    // was valid until 0.54 and needs to know what replaced it.
     expect(() => validateLoomSection({ severity: { 'peer-mismatch': 'warning' } }, 'test')).toThrow(
-      /unknown code `peer-mismatch`/,
+      /`peer-mismatch` was retired in 0\.54: `internal-range` covers that edge/,
     )
+    expect(() =>
+      validateLoomSection({ ignore: [{ code: 'peer-mismatch', reason: 'x' }] }, 'test'),
+    ).toThrow(/loom\.ignore` entry names a retired code/)
   })
 
   it('rejects a severity level that is not error | warning | info', () => {

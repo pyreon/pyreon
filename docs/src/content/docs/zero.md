@@ -1693,12 +1693,12 @@ For a static build (`ssg` / `spa`) `zero preview` serves `dist/`. For an `ssr` /
 
 ## Base Path
 
-Set the base once, either as `zero({ base: '/blog/' })` or the Vite way (`vite build --base /blog/`, `base` in `vite.config.ts`, or `build({ base })` from code). Precedence: an explicit `zero({ base })` wins; without it Vite's base applies; with neither it is `/`. Whichever wins, Vite's resolved base reaches:
+Set the base once, either as `zero({ base: '/blog/' })` or the Vite way (`vite build --base /blog/`, `base` in `vite.config.ts`, or `build({ base })` from code). zero then works with two bases:
 
-1. **Vite's `base`** — asset URLs in built HTML/JS get the prefix (`<script src="/blog/assets/...">`).
-2. **`createRouter({ base })`** — `<RouterLink>` and zero's `<Link>` hrefs render prefixed (`<a href="/blog/about">`), incoming URLs are `stripBase`d.
-3. **SSG render + `startClient`** — the SSR sub-build and client both read `__ZERO_BASE__` so hydration matches.
-4. **Everything zero writes into the HTML** — SSG route modulepreloads, `ssg.cssMode: 'asset'` stylesheets, per-route OG images, self-hosted font CSS and preloads, the PWA worker scope — and the production server's routing (`__ZERO_SERVER_CONFIG__`).
+- The **route base** is where pages live. It is always a root-relative path: `zero({ base })` when set, else Vite's base when that is a path, else `/`. It reaches `createRouter({ base })` (so `<RouterLink>` and zero's `<Link>` render `<a href="/blog/about">` and incoming URLs are `stripBase`d), `__ZERO_BASE__` (read by `startClient` and the SSG render, so hydration matches), the dev server, redirect canonicals, i18n prefixes, the PWA manifest scope and the production server's routing (`__ZERO_SERVER_CONFIG__`).
+- The **asset base** is Vite's resolved base: where built files live. It is usually the same path, but may be a full URL for assets on a CDN (`base: 'https://cdn.example.com/app/'`, with the pages still at `/`). Chunks, SSG route modulepreloads, `ssg.cssMode: 'asset'` stylesheets, per-route OG images and self-hosted fonts use it.
+
+An explicit `zero({ base })` is both bases (it wins over a Vite base). A **relative** Vite base (`./`) is only supported with `mode: 'spa'`: prerendered and server-rendered pages live at every depth (`about/index.html`), where `./assets/…` would resolve under the page, so other modes stop the build with an error that names the fix. `zero({ pwa })` needs a path base (a service worker cannot precache another origin's files).
 
 The on-disk `dist/` layout stays **unprefixed** (`dist/about/index.html`) — the host serves `dist/` mounted at `/blog/`.
 

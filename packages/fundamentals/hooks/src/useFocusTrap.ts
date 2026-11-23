@@ -28,10 +28,11 @@ export interface UseFocusTrapOptions {
    * Move focus INTO the container when the trap activates. Defaults to `false`
    * (no focus move — byte-identical to the pre-0.x single-arg behavior). Set
    * `true` for the first tabbable, or a selector / element / getter to target a
-   * specific node. `true` is skipped when focus is already inside the
-   * container; a named target is skipped only when focus is already inside
-   * that target, so a toggle button that sits inside the trapped container
-   * does not block it.
+   * specific node. With focus already inside the container, `true` never
+   * moves it; a named target moves it only on the first activation or when a
+   * user event at the focused element (a toggle inside the container)
+   * activated the trap — never when focus is already inside the target, and
+   * not when the trap re-arms while the user works inside.
    */
   initialFocus?: InitialFocusTarget
 }
@@ -180,6 +181,21 @@ export function getFocusable(container: HTMLElement): HTMLElement[] {
 }
 
 /** Resolve an {@link InitialFocusTarget} against the container. */
+/**
+ * Whether the current synchronous code runs inside a user event (click, key)
+ * whose target is the focused element or inside it — i.e. the focused element
+ * is what just activated a trap. `window.event` is the event being dispatched
+ * right now (undefined outside a dispatch, e.g. after an `await`).
+ */
+function activatedByFocusedElement(): boolean {
+  if (typeof window === 'undefined') return false
+  const ev = (window as { event?: Event }).event
+  const focused = document.activeElement
+  if (!ev || !focused || focused === document.body) return false
+  const t = ev.target
+  return t instanceof Node && focused.contains(t)
+}
+
 function resolveInitialFocus(
   container: HTMLElement,
   target: InitialFocusTarget | undefined,
@@ -462,20 +478,31 @@ export function useFocusTrap(
     // a no-op. A microtask runs after the whole synchronous flush. `focusRun`
     // drops a pending focus when the trap deactivates or unmounts first.
     //
-    // Focus already inside the container is left alone only for the generic
-    // `initialFocus: true` ("somewhere sensible"). A NAMED target (selector,
-    // element, getter) is what the author asked for, so it wins unless focus is
-    // already inside it: a menu button inside the header it traps (pyreon.dev's
-    // nav) is focused by its own click, and the container check meant the
-    // named target was never focused there.
+    // When focus is already INSIDE the container, initial focus would steal it
+    // from wherever the user is working — unless that focused element is what
+    // activated the trap. A menu button inside the header it traps
+    // (pyreon.dev's nav) is focused by its own click; a trap that re-arms
+    // after `saving()` clears while the user types in a field must leave the
+    // field alone. So, with focus inside:
+    // - `initialFocus: true` ("somewhere sensible") never moves it;
+    // - a NAMED target (selector, element, getter) moves it only on the first
+    //   activation, or when the activation ran inside a user event (click,
+    //   key) dispatched at the focused element — the trigger — and never when
+    //   focus is already inside that target.
+    // Focus outside the container always moves in.
+    let activatedBefore = false
     const applyInitialFocus = () => {
       const run = ++focusRun
+      const first = !activatedBefore
+      activatedBefore = true
+      const byFocusedTrigger = activatedByFocusedElement()
       queueMicrotask(() => {
         if (run !== focusRun || !pushed) return
         const el = getEl()
         if (!el) return
         const current = document.activeElement
-        if (opts.initialFocus === true && el.contains(current)) return
+        const inside = el.contains(current)
+        if (inside && (opts.initialFocus === true || !(first || byFocusedTrigger))) return
         const target = resolveInitialFocus(el, opts.initialFocus)
         if (!target || target.contains(current)) return
         target.focus?.()

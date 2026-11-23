@@ -54,7 +54,7 @@ It reads the same declarations an install tool reads — root `workspaces` globs
 | Code | Severity | What it means |
 | --- | --- | --- |
 | `version-drift` | error / warning / info | one external dep declared with different ranges. Cross-major = error; same-major = warning; root-overridden = info. **Peer ranges are contracts, not pins** (excluded from the grouping), and a range that's a strict superset of the rest (`>=5 <7` ⊇ `^6.0.3`) reads as policy → info |
-| `internal-range` | error | a workspace member referenced by a bare semver (a registry install waiting to happen) or a `workspace:` pin whose major no longer exists |
+| `internal-range` | error | a workspace member referenced by a bare semver (a registry install waiting to happen) or a `workspace:` pin whose major no longer exists. It owns every edge to a workspace member, peers included: a bare peer range that also misses the workspace major is this one finding: its message says so, it carries `details.peerMajorMismatch: true`, and it stays at least a warning when `loom.severity` lowers `internal-range` to `info`. The retired `peer-mismatch` code is rejected in config with a message naming its replacement |
 | `cycle` | error | a cycle in the **runtime** dependency graph between workspace packages, as declared in `package.json` (`dependencies` + `peerDependencies`) — dev edges are deliberately excluded, because monorepos legitimately share test utilities both ways |
 | `phantom-dep` | error (published) / warning (private) | shipping source imports a package the manifest never declares — hoisting luck that explodes under isolated stores |
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans on a devDependency consumers won't have |

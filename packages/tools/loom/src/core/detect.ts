@@ -148,7 +148,7 @@ export function detectInternalRange(model: WorkspaceModel): LoomIssue[] {
           message:
             `\`${p.name}\` declares workspace member \`${d.name}\` as \`${d.range}\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace` +
             (peerOffMajor ? `; as a peer range it also misses the workspace copy (${actual}) by a major` : ''),
-          details: { declared: d.range, actual },
+          details: { declared: d.range, actual, ...(peerOffMajor ? { peerMajorMismatch: true } : {}) },
         })
       }
     }

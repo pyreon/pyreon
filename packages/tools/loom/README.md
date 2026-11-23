@@ -19,7 +19,7 @@ loom --version
 | Code | Severity | What it means |
 | --- | --- | --- |
 | `version-drift` | error (cross-major) / warning (same-major) / info (root-overridden) | one external dep declared with different ranges across packages |
-| `internal-range` | error | a workspace member referenced by a bare semver (registry install waiting to happen) or a `workspace:` pin whose major no longer exists. It owns every edge to a workspace member, peers included: a bare peer range that also misses the workspace major is this one finding, and its message says so |
+| `internal-range` | error | a workspace member referenced by a bare semver (registry install waiting to happen) or a `workspace:` pin whose major no longer exists. It owns every edge to a workspace member, peers included: a bare peer range that also misses the workspace major is this one finding: its message says so, it carries `details.peerMajorMismatch: true`, and it stays at least a warning when `loom.severity` lowers `internal-range` to `info`. The retired `peer-mismatch` code is rejected in config with a message naming its replacement |
 | `cycle` | error | a cycle in the runtime dependency graph between workspace packages, as declared in `package.json` (`dependencies` + `peerDependencies`; dev edges deliberately excluded — shared test utilities legitimately "cycle") |
 | `phantom-dep` | error (published) / warning (private) | shipping source imports a package at RUNTIME that the manifest never declares — hoisting luck |
 | `phantom-type-dep` | info | a `import type` / `.d.ts` import of an undeclared package — erased at build, so consumers are fine, but typecheck rides on hoisting |

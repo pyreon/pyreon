@@ -451,8 +451,12 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
     // we must inject the base via `zeroPlugin(userConfig)` not via the
     // top-level build call. Defaulting back to `userConfig` when no
     // base was forwarded (e.g. older callers).
+    //
+    // Only a PATH base is a route base too (see `routeBaseOf`). A `./` or CDN
+    // asset base goes to Vite alone (top-level `base` below); giving it to
+    // zero would make the inner router's base `/.` or `/https://…`.
     const innerZeroConfig: ZeroConfig =
-      options.base !== undefined && options.base !== '/'
+      options.base !== undefined && options.base !== '/' && options.base.startsWith('/')
         ? { ...options.userConfig, base: options.base }
         : options.userConfig
 

@@ -36,7 +36,7 @@ import {
   SSR_BUILD_FLAG,
   innerBuildActiveInProcess,
 } from './build-flags'
-import { adoptResolvedBase, resolveConfig } from './config'
+import { adoptRouteBase, resolveConfig } from './config'
 import { isApiRoute } from './api-routes'
 import { collectFileRouteModes, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports, type FileRouteModeEntry } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
@@ -1383,10 +1383,11 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   // client build emits hashed files. See `buildInnerBuildOptions`.
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
-  // Vite's resolved base verbatim (a relative `./` included), handed to the
-  // inner SSR sub-build so it emits asset URLs exactly as the outer build did.
-  // Every URL zero itself writes reads `config.base` (see adoptResolvedBase).
-  let innerBuildBase = '/'
+  // The ASSET base: Vite's resolved base verbatim (a path, `./` or a CDN
+  // URL). Asset URLs zero writes read it, and the inner SSR sub-build gets it
+  // so it emits assets exactly as the outer build did. Route URLs read
+  // `config.base`, the ROUTE base (see `routeBaseOf` in config.ts).
+  let assetBase = '/'
   // Replaced in configResolved with Vite's logger (honours `logLevel`).
   // oxlint-disable-next-line no-console
   let logInfo: (msg: string) => void = (msg) => console.log(msg)
@@ -1474,9 +1475,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       isSsrTargetBuild = Boolean(resolved.build.ssr)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
-      // From here on `config.base` IS Vite's resolved base (see adoptResolvedBase).
-      adoptResolvedBase(config, resolved.base)
-      innerBuildBase = resolved.base
+      // From here on `config.base` is the ROUTE base (see adoptRouteBase).
+      adoptRouteBase(config, userConfig.base, resolved.base)
+      assetBase = resolved.base
       // Informational build output goes through Vite's logger so it honours
       // `logLevel` — a caller running `vite build --logLevel warn`, or a tool
       // driving zero programmatically, must not get the progress narration.
@@ -1586,7 +1587,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           assetsInlineLimit,
           assetsDir,
           userPlugins,
-          base: innerBuildBase,
+          base: assetBase,
         })
       } finally {
         // Remove the synthetic entry file so it never lands in user's
@@ -1715,7 +1716,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           // The entry's static graph + Vite's own modulepreloads are already
           // in the template — subtract them so each route emits only its delta.
           entryPreloadedHrefs = new Set([
-            ...computeEntryHrefs(preloadManifest, config.base),
+            ...computeEntryHrefs(preloadManifest, assetBase),
             ...parseExistingModulePreloads(template),
           ])
           clientStartKeys = computeClientStartKeys(preloadManifest)
@@ -1849,7 +1850,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                     const assetFile = join(distDir, dir, name)
                     await mkdirOnce(dirname(assetFile))
                     await writeFileAtomic(assetFile, css)
-                    const baseUrl = config.base.replace(/\/$/, '')
+                    const baseUrl = assetBase.replace(/\/$/, '')
 
                     return `${baseUrl}/${dir}/${name}`
                     })()
@@ -1878,7 +1879,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         const file = join(distDir, rel)
         await mkdirOnce(dirname(file))
         await writeFileAtomic(file, png)
-        const baseUrl = config.base.replace(/\/$/, '')
+        const baseUrl = assetBase.replace(/\/$/, '')
 
         return ogMetaTags(absoluteOgUrl(`${baseUrl}/${rel}`, config.routeOg?.siteUrl), ogWidth, ogHeight)
       }
@@ -1942,7 +1943,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
                   manifest: preloadManifest,
                   routeModules: result.routeModules,
                   root,
-                  base: config.base,
+                  base: assetBase,
                   alreadyPreloaded: entryPreloadedHrefs,
                   relativeFn: relative,
                 })
@@ -1952,7 +1953,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             // islands-only page that has an island to hydrate. An islands-only
             // page has no `routeModules` (renderPage leaves them out).
             const startKeys = pageStartKeys(result.hydrate, result.appHtml, clientStartKeys)
-            const startHrefs = computeKeysPreloadHrefs(preloadManifest, startKeys, config.base, entryPreloadedHrefs)
+            const startHrefs = computeKeysPreloadHrefs(preloadManifest, startKeys, assetBase, entryPreloadedHrefs)
             const hrefs = startHrefs.length === 0
               ? routeHrefs
               : [...new Set([...routeHrefs, ...startHrefs])].sort()

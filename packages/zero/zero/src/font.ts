@@ -463,10 +463,12 @@ function splitSubsetBlocks(css: string): Array<{ subset: string; text: string }>
  * Prefix the root-relative self-hosted font URLs (`/assets/fonts/…`) in a CSS
  * string or a single href with Vite's resolved `base`. Without it a subpath
  * deploy (`base: '/docs/'`) requested every font from the host root and 404'd.
- * Pure; a `/` (or relative) base leaves the text unchanged.
+ * This is the ASSET base (Vite's resolved base): a path, `./` or a CDN URL.
+ * Pure; a `/` base leaves the text unchanged.
  */
 export function withFontBase(text: string, base: string): string {
-  if (!base || base === '/' || base.startsWith('.')) return text
+  if (!base || base === '/') return text
+  // `./` (a SPA's relative base) keeps the URL relative to its one index.html.
   const prefix = base.endsWith('/') ? base : `${base}/`
   return text.replaceAll(`/${FONTS_SUB_DIR}/`, `${prefix}${FONTS_SUB_DIR}/`)
 }
