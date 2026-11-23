@@ -103,6 +103,19 @@ describe('measureComplexity', () => {
     expect(wallCalls).toBe(0)
   })
 
+  it('cpuClock falls back to performance.now where process.cpuUsage is missing', () => {
+    const cpuUsage = Object.getOwnPropertyDescriptor(process, 'cpuUsage')!
+    Object.defineProperty(process, 'cpuUsage', { value: undefined, configurable: true })
+    const now = vi.spyOn(performance, 'now').mockReturnValue(42)
+    try {
+      expect(cpuClock()).toBe(42)
+    } finally {
+      Object.defineProperty(process, 'cpuUsage', cpuUsage)
+      now.mockRestore()
+    }
+    expect(typeof process.cpuUsage).toBe('function')
+  })
+
   it('cpuClock sums user and system time in milliseconds', () => {
     const cpu = vi.spyOn(process, 'cpuUsage').mockReturnValue({ user: 1500, system: 500 })
     try {

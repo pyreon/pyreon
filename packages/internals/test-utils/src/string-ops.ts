@@ -59,43 +59,34 @@ export interface StringOpsTrace<T> {
 }
 
 type AnyFn = (this: unknown, ...args: unknown[]) => unknown
+type CountedMethod = (typeof COUNTED_STRING_METHODS)[number]
 
 export function countStringOps<T>(fn: () => T): StringOpsTrace<T> {
   const regexSources: string[] = []
   let stringCalls = 0
-  const strProto = String.prototype as unknown as Record<string, AnyFn>
-  const rxProto = RegExp.prototype as unknown as Record<string, AnyFn>
-  const originals = COUNTED_STRING_METHODS.map((m) => {
-    const original = strProto[m]
-    if (typeof original !== 'function') throw new Error(`[Pyreon] String.prototype.${m} is missing`)
-    return [m, original] as const
-  })
+  const strProto = String.prototype as unknown as Record<CountedMethod, AnyFn>
+  const rxProto = RegExp.prototype as unknown as { exec: AnyFn }
+  const originals = COUNTED_STRING_METHODS.map((m) => [m, strProto[m]] as const)
   const originalExec = rxProto.exec
-  if (typeof originalExec !== 'function') {
-    throw new Error('[Pyreon] RegExp.prototype.exec is missing')
-  }
-  // Patch everything first, count only while `fn` runs: the patched methods
-  // must not count the bookkeeping below.
-  let counting = false
+  // Nothing between patching and restoring calls a counted method (the
+  // bookkeeping is array pushes and template literals), so every count
+  // belongs to `fn`.
   for (const [name, original] of originals) {
     strProto[name] = function (this: unknown, ...args: unknown[]) {
-      if (counting) stringCalls++
+      stringCalls++
       return original.apply(this, args)
     }
   }
   rxProto.exec = function (this: unknown, ...args: unknown[]) {
     const rx = this as RegExp
-    if (counting) regexSources.push(`/${rx.source}/${rx.flags}`)
+    regexSources.push(`/${rx.source}/${rx.flags}`)
     return originalExec.apply(this, args)
   }
   try {
-    counting = true
     const result = fn()
-    counting = false
 
     return { result, regexSources, stringCalls }
   } finally {
-    counting = false
     for (const [name, original] of originals) strProto[name] = original
     rxProto.exec = originalExec
   }
