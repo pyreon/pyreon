@@ -19,7 +19,7 @@ import type { ComponentFn, Ref, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { _rdLabelSubscribers, _rdNoteTarget, computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
-import { type Interpolation, normalizeRuleCSS, resolve } from './resolve'
+import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
 import { onSheetClear, sheet } from './sheet'
 import { useThemeAccessor } from './theme-context'
@@ -299,7 +299,7 @@ const createStyledComponent = (
   if (!hasDynamicValues) {
     // Inline resolve for the common no-values case
     const raw = values.length === 0 ? (strings[0] as string) : resolve(strings, values, {})
-    const cssText = normalizeRuleCSS(raw)
+    const cssText = normalizeCSS(raw)
     const hasCss = cssText.length > 0
 
     // `use = false`: creation is not a render. On the server the class reaches
@@ -530,9 +530,9 @@ const createStyledComponent = (
       if (variants) {
         const tracked = resolveRecordingReads(strings, values, resolveProps)
         reads = tracked.reads
-        cssText = normalizeRuleCSS(tracked.css)
+        cssText = normalizeCSS(tracked.css)
       } else {
-        cssText = normalizeRuleCSS(resolve(strings, values, resolveProps))
+        cssText = normalizeCSS(resolve(strings, values, resolveProps))
       }
       // CPSE (non-reactive path only — excludes the rocketstyle classCache
       // path): rewrite the resolved declarations to a value-agnostic rule

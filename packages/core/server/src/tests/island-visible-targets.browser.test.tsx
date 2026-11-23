@@ -120,6 +120,47 @@ describe("hydrate: 'visible' — hosts whose element is not their box (#4435)", 
     })
   }
 
+  // The targets of a box-less island are resolved in the observer's first
+  // report, not at setup: one already in view must still hydrate.
+  it('contents host already in view at setup: hydrates without scrolling', async () => {
+    const st = document.createElement('div')
+    st.innerHTML = '<pyreon-island style="display:contents"><div style="display:contents"><b>x</b></div></pyreon-island>'
+    document.body.prepend(st)
+    roots.push(st)
+    const island = query<HTMLElement>(st, 'pyreon-island')
+    island.setAttribute('data-component', 'Isle')
+    island.setAttribute('data-props', '{}')
+    island.setAttribute('data-hydrate', 'visible')
+    start()
+    expect(await waitHydrated(island)).toBe(true)
+  })
+
+  // pyreon.dev renders every non-hero section `content-visibility: auto`
+  // (skipped until near the viewport): islands inside one must hydrate when
+  // it is scrolled to, also via an anchor link into the section.
+  for (const [how, go] of [
+    ['scrolled into view', async (el: Element) => reveal(el)],
+    [
+      'reached by an anchor link',
+      async () => {
+        location.hash = '#cv-anchor'
+        await frame()
+      },
+    ],
+  ] as const) {
+    it(`island (boxed and contents) inside a content-visibility: auto section, ${how}`, async () => {
+      const { stage: st, island } = stage(
+        '<section style="content-visibility:auto;contain-intrinsic-size:auto 600px"><h2 id="cv-anchor">x</h2><pyreon-island style="display:contents"><p>y</p></pyreon-island></section>',
+      )
+      start()
+      await settle()
+      expect(hydrated(island)).toBe(false)
+      await go(st)
+      expect(await waitHydrated(island)).toBe(true)
+      location.hash = ''
+    })
+  }
+
   it('contents host holding only text: observes the nearest boxed ancestor and warns once in dev', async () => {
     const a = stage('<pyreon-island style="display:contents">just text</pyreon-island>')
     const b = stage('<pyreon-island style="display:contents"></pyreon-island>')

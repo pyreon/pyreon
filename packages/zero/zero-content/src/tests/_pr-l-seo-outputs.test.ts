@@ -9,6 +9,7 @@
 //  - emitSeoOutputs  — plugin closeBundle hook honoring the
 //                       `seo: { sitemap, rss, llms }` opt-ins
 
+import { checkLlmsTxtShape, lighthouseLlmsTxtFailures } from '@pyreon/test-utils/llms-txt'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -338,6 +339,15 @@ describe('PR-L — emitSeoOutputs (plugin closeBundle hook)', () => {
     expect(txt).toContain('## Docs')
     expect(txt).toContain('## Blog')
     expect(txt).toContain('[Introduction](https://x.com/docs/intro): Start here')
+    expect(checkLlmsTxtShape(txt)).toEqual([])
+    expect(lighthouseLlmsTxtFailures(txt)).toEqual([])
+  })
+
+  it('llms.txt without a description still follows the shape', async () => {
+    await emitSeoOutputs({ baseUrl: 'https://x.com', llms: true }, entries, outDir, warn)
+    const txt = await fs.readFile(path.join(outDir, 'llms.txt'), 'utf8')
+    expect(checkLlmsTxtShape(txt)).toEqual([])
+    expect(lighthouseLlmsTxtFailures(txt)).toEqual([])
   })
 
   // A bare `# Title` with no link fails Lighthouse's `llms-txt` audit; a

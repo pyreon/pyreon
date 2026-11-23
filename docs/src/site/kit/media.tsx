@@ -1,4 +1,5 @@
 import { For } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
 import { art } from '../theme'
 import { asset, mediaUrl, type PictureData, pictureOf, posterOf, themePair } from './assets'
 import { C } from './classes'
@@ -12,13 +13,36 @@ import type { LoopSources } from './LoopPlayer'
 
 /**
  * `themed`: one of a dark/light pair, hidden by CSS in the other theme. Such a
- * picture is always `loading="lazy"`, even when `eager`: a lazy image that is
- * not displayed is never fetched, while an eager one is, so an eager pair used
- * to download BOTH theme files at high priority before first paint (on the
- * home page, the hero loop's two posters: 33 KB on the critical path, half of
- * it never shown). The shown one still gets `fetchpriority="high"`; it starts
- * loading at the first layout, which also tells the browser it is in view.
+ * picture is always `loading="lazy"`: a lazy image that is not displayed is
+ * never fetched, while an eager one is, so an eager pair used to download BOTH
+ * theme files at high priority (on the home page, the hero loop's two
+ * posters, 33 KB on a phone where the hero visual is not even displayed). An
+ * eager pair is made discoverable early by `preloadThemePair` instead.
  */
+/**
+ * The preload for an eager theme pair: one `<link rel="preload">` per theme,
+ * each limited by `media` to the color scheme it is shown in (and to
+ * `visibleMedia`, where the picture is displayed at all), so the preload
+ * scanner fetches exactly the file the first paint needs. The pair itself
+ * stays lazy (see `PictureTag`). A visitor whose stored theme differs from the
+ * OS one gets the right file from the lazy `<img>` at first layout.
+ */
+function preloadThemePair(dark: PictureData, light: PictureData, sizes: string, visibleMedia: string | undefined): void {
+  const link = (d: PictureData, scheme: 'dark' | 'light') => {
+    const best = d.sources[0]
+    const media = `${visibleMedia ? `${visibleMedia} and ` : ''}(prefers-color-scheme: ${scheme})`
+    return {
+      rel: 'preload',
+      as: 'image',
+      href: d.src,
+      ...(best ? { imagesrcset: best.srcset, imagesizes: sizes, type: best.type } : {}),
+      media,
+      fetchpriority: 'high' as const,
+    }
+  }
+  useHead({ link: [link(dark, 'dark'), link(light, 'light')] })
+}
+
 function PictureTag(props: {
   data: PictureData
   alt: string
@@ -61,6 +85,8 @@ export function Picture(props: {
   file: string
   alt?: string | undefined
   eager?: boolean | undefined
+  /** Where the picture is displayed at all (e.g. `(min-width: 700px)`); limits an eager pair's preload. */
+  preloadMedia?: string | undefined
   sizes?: string | undefined
   class?: string | undefined
 }) {
@@ -72,6 +98,8 @@ export function Picture(props: {
   }
   const dark = pictureOf(pair.dark)
   const light = pictureOf(pair.light)
+  if (props.eager) preloadThemePair(dark, light, sizes, props.preloadMedia)
+
   return (
     <>
       <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} themed sizes={sizes} class={`${C.onlyDark} ${props.class ?? ''}`} />
@@ -85,10 +113,18 @@ export function Picture(props: {
  * theme-following picture pair. Used under a `Loop` and as the reduced-motion
  * or no-JS face of anything that moves.
  */
-export function Poster(props: { file: string; alt?: string | undefined; eager?: boolean | undefined; sizes?: string | undefined }) {
+export function Poster(props: {
+  file: string
+  alt?: string | undefined
+  eager?: boolean | undefined
+  sizes?: string | undefined
+  preloadMedia?: string | undefined
+}) {
   const sizes = props.sizes ?? '(min-width: 1240px) 1240px, 100vw'
   const dark = posterOf(props.file, 'dark')
   const light = posterOf(props.file, 'light')
+  if (props.eager) preloadThemePair(dark, light, sizes, props.preloadMedia)
+
   return (
     <>
       <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} themed sizes={sizes} class={C.onlyDark} />
@@ -113,6 +149,7 @@ const toSources = (m: LoopMedia): LoopSources => {
     smallWebm: s.small ? mediaUrl(s.small.webm) : undefined,
     smallMp4: s.small ? mediaUrl(s.small.mp4) : undefined,
   })
+
   return { dark: side(m.dark), light: side(m.light) }
 }
 
@@ -125,11 +162,19 @@ const toSources = (m: LoopMedia): LoopSources => {
  * `prefers-reduced-motion`, swaps it when the theme changes, and offers a
  * pause button (WCAG 2.2.2: the loop runs longer than five seconds).
  */
-export function Loop(props: { media: LoopMedia; eager?: boolean | undefined; sizes?: string | undefined }) {
+export function Loop(props: {
+  media: LoopMedia
+  eager?: boolean | undefined
+  sizes?: string | undefined
+  /** Where the loop is displayed at all (e.g. `(min-width: 700px)`); limits an eager loop's poster preload. */
+  preloadMedia?: string | undefined
+}) {
   const m = props.media
   const darkPoster = pictureOf(m.dark.poster)
   const lightPoster = pictureOf(m.light.poster)
   const sizes = props.sizes ?? '(min-width: 1240px) 1240px, 100vw'
+  if (props.eager) preloadThemePair(darkPoster, lightPoster, sizes, props.preloadMedia)
+
   return (
     <figure class={C.loop} style={`aspect-ratio:${m.width} / ${m.height}`}>
       <PictureTag data={darkPoster} alt={m.alt} eager={props.eager} themed sizes={sizes} class={C.onlyDark} />
@@ -205,6 +250,7 @@ export function AnimatedSvg(props: {
   if (props.markup !== undefined) {
     return <div class={C.svgArt} {...artBox(props.markup, props.decorative)} dangerouslySetInnerHTML={{ __html: props.markup }} />
   }
+
   return (
     <img
       class={C.svgArt}

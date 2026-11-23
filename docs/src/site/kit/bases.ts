@@ -1,3 +1,4 @@
+/* oxlint-disable complexity -- `el`'s style callback is one template with one guard per CSS state, in cascade order; splitting it would reorder the rules. */
 import { Element, Text } from '@pyreon/elements'
 import rocketstyle, { type ThemeModeCallback } from '@pyreon/rocketstyle'
 import { type ITheme, makeItResponsive, styles } from '@pyreon/unistyle'
@@ -28,6 +29,16 @@ function split(theme: Record<string, unknown> = {}) {
   return { hover, focus, active, disabled, pressed, rest }
 }
 
+/**
+ * Whether a state slice has any styles. A state block is written only when it
+ * does: `&:hover { ${empty} }` left an empty rule in the stylesheet for every
+ * component that has no hover style (372 empty rule blocks on the home page), and each one
+ * still costs the browser parsing, selector matching and invalidation work on
+ * every element with the class. Exported for the unit test.
+ */
+export const hasStyles = (slice: unknown): boolean =>
+  typeof slice === 'object' && slice !== null && Object.keys(slice).length > 0
+
 /** Whether a theme's `display` (plain or per-breakpoint) is ever `grid`. */
 const isGrid = (display: unknown): boolean =>
   display === 'grid' || (typeof display === 'object' && display !== null && Object.values(display).includes('grid'))
@@ -46,19 +57,20 @@ export const el = rs({ name: 'SiteBase', component: Element }).styles(
       const { disabled, active, pseudo = {} } = $rocketstate ?? {}
       const s = split($rocketstyle)
       const r = (theme: unknown) => makeItResponsive({ theme: theme as never, styles, css: css as never })
+
       return css`
         ${isGrid(s.rest.display) ? gridItems : ''}
         ${r(s.rest)};
         ${!disabled && (onClick || href) ? css`cursor: pointer;` : ''};
-        ${!disabled ? css`&:hover { ${r(s.hover)}; }` : ''};
+        ${!disabled && hasStyles(s.hover) ? css`&:hover { ${r(s.hover)}; }` : ''};
         ${pseudo.hover ? r(s.hover) : ''};
-        ${!disabled ? css`&:focus-visible { ${r(s.focus)}; }` : ''};
+        ${!disabled && hasStyles(s.focus) ? css`&:focus-visible { ${r(s.focus)}; }` : ''};
         ${pseudo.focus ? r(s.focus) : ''};
-        ${!disabled ? css`&:active { ${r(s.active)}; }` : ''};
+        ${!disabled && hasStyles(s.active) ? css`&:active { ${r(s.active)}; }` : ''};
         ${!disabled && (active || pseudo.pressed) ? r(s.active) : ''};
-        &[aria-pressed='true'] { ${r(s.pressed)}; }
+        ${hasStyles(s.pressed) ? css`&[aria-pressed='true'] { ${r(s.pressed)}; }` : ''};
         ${disabled ? r(s.disabled) : ''};
-        &:disabled, &[aria-disabled='true'] { ${r(s.disabled)}; }
+        ${hasStyles(s.disabled) ? css`&:disabled, &[aria-disabled='true'] { ${r(s.disabled)}; }` : ''};
       `
     }}
   `,
@@ -71,11 +83,11 @@ export const txt = rs({ name: 'SiteText', component: Text }).styles(
       const r = (theme: unknown) => makeItResponsive({ theme: theme as never, styles, css: css as never })
       return css`
         ${r(s.rest)};
-        &:hover { ${r(s.hover)}; }
-        &:focus-visible { ${r(s.focus)}; }
-        &:active { ${r(s.active)}; }
-        &[aria-pressed='true'] { ${r(s.pressed)}; }
-        &:disabled, &[aria-disabled='true'] { ${r(s.disabled)}; }
+        ${hasStyles(s.hover) ? css`&:hover { ${r(s.hover)}; }` : ''};
+        ${hasStyles(s.focus) ? css`&:focus-visible { ${r(s.focus)}; }` : ''};
+        ${hasStyles(s.active) ? css`&:active { ${r(s.active)}; }` : ''};
+        ${hasStyles(s.pressed) ? css`&[aria-pressed='true'] { ${r(s.pressed)}; }` : ''};
+        ${hasStyles(s.disabled) ? css`&:disabled, &[aria-disabled='true'] { ${r(s.disabled)}; }` : ''};
       `
     }}
   `,

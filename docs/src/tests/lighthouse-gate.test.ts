@@ -13,6 +13,7 @@ import {
   type Lhr,
   median,
   METRIC_BUDGETS,
+  pageProxies,
   performanceMedians,
   performanceProblems,
   strictProblems,
@@ -184,5 +185,20 @@ describe('lighthouse gate — GitHub Pages path resolution', () => {
     } finally {
       await server.close()
     }
+  })
+})
+
+describe('lighthouse check — deterministic page proxies', () => {
+  it('counts empty rule blocks in inline styles, not at-rule blocks or filled rules', () => {
+    const html =
+      '<style>@layer a,b;@layer x{}.a{color:red; &:hover { } &:focus{ outline:0 }}.b{}</style><div><p>x</p></div>'
+    const p = pageProxies(html)
+    expect(p.emptyRules).toBe(2)
+    expect(p.elements).toBe(3)
+    expect(p.inlineCssBytes).toBeGreaterThan(0)
+  })
+
+  it('a page without empty rules passes', () => {
+    expect(pageProxies('<style>.a{color:red}@media (x){.b{color:blue}}</style>').emptyRules).toBe(0)
   })
 })

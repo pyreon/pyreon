@@ -1,38 +1,45 @@
 /**
- * Lighthouse gate for the built docs site (https://pyreon.dev).
+ * Lighthouse check of the built docs site (https://pyreon.dev).
  *
  * Serves `docs/dist` the way GitHub Pages serves it (gzip, `max-age=600`,
- * `/dir/` → `dir/index.html`, `404.html` for a miss), runs Lighthouse with its
- * default MOBILE config (Moto G Power emulation, simulated slow-4G + 4× CPU
- * throttling — the configuration PageSpeed Insights reports) several times per
- * page, and fails when:
+ * `/dir/` → `dir/index.html`, `404.html` for a miss) and runs the pinned
+ * Lighthouse CLI (`npx lighthouse@LIGHTHOUSE_VERSION`, kept out of the
+ * workspace install) with its default MOBILE config several times per page,
+ * a fresh Chrome per run.
  *
- * - any run scores below 1.0 in Accessibility, Best Practices, SEO or Agentic
- *   Browsing, or fails any audit that counts towards one of them;
- * - the MEDIAN performance score across the runs is below the floor, or the
- *   median of any metric across the runs exceeds its budget.
+ * HARD (fails the run, deterministic):
+ * - any run scoring below 1.0 in Accessibility, Best Practices, SEO or Agentic
+ *   Browsing, or failing an audit that counts towards one of them;
+ * - a page whose inline CSS holds an empty rule block (`sel { }`), the
+ *   deterministic proxy for the first-load style cost that cost performance
+ *   points (see `pageProxies`).
  *
- * Why the performance half is a median with budgets and not "every run = 100":
- * `.agents/guides/ci/README.md`, "Lighthouse gate".
+ * TIMING (report-only unless `--perf assert`): the median performance score
+ * and per-metric medians against `PERFORMANCE_FLOOR` / `METRIC_BUDGETS`,
+ * written to the job summary and to `<out>/medians.json`. Why it is not a hard
+ * gate in CI: `.agents/guides/ci/README.md`, "Lighthouse check".
  *
  * Usage (after `cd docs && bunx vite build`):
- *   bun run lighthouse                      # the CI check
- *   bun run lighthouse -- --runs 3 --cpu 8  # diagnose: fewer runs, slower CPU
- *   bun run lighthouse -- --pages / --out .cache/lh
+ *   bun run lighthouse                          # what CI runs
+ *   bun run lighthouse -- --perf assert         # also fail on the timing budgets
+ *   bun run lighthouse -- --cpu 16 --latency 170 --pages /   # ~PageSpeed Insights hardware
  *
  * Flags: --dist <dir> (default dist), --pages <comma list>, --runs <n>
  * (default 5), --cpu <multiplier | auto> (default auto: see `calibratedCpu`),
- * --out <dir> (write every report as JSON), --latency <ms> (delay every
- * response, to stand in for the live host's server response time when
- * diagnosing; default 0), --no-assert (report only).
+ * --out <dir> (every report as JSON, plus medians.json), --latency <ms> (delay
+ * every response, to stand in for the live host's server time; default 0),
+ * --perf <report | assert> (default report).
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { spawn } from 'node:child_process'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import * as chromeLauncher from 'chrome-launcher'
-import lighthouse from 'lighthouse'
-import { serveStatic } from './lighthouse-server'
+import { resolvePagesPath, serveStatic } from './lighthouse-server'
+
+/** Pinned exactly: a new Lighthouse can add audits. Bump on purpose. */
+export const LIGHTHOUSE_VERSION = '13.6.0'
 
 /** Home page, one docs page, one marketing page. */
 export const DEFAULT_PAGES = ['/', '/docs/getting-started/', '/products/reactivity/'] as const
@@ -42,13 +49,13 @@ export const STRICT_CATEGORIES = ['accessibility', 'best-practices', 'seo', 'age
 
 /**
  * Performance floor (on the median score) and per-metric budgets (on each
- * metric's median). The floor is 0.99, not 1: on GitHub's runners the docs
- * page's median sat on the 99/100 boundary (Total Blocking Time 0–180 ms
- * between runs of the same build), so a floor of 1 failed one CI attempt in
- * three with nothing changed. The budgets sit inside the "good" band of each
- * metric's scoring curve and fail a regression by name.
+ * metric's median), reported in CI and enforced with `--perf assert`. On
+ * GitHub's runners the docs page's median sat on the 99/100 boundary (Total
+ * Blocking Time 0–180 ms between runs of the same build), which is why timing
+ * is not a hard CI gate.
  */
 export const PERFORMANCE_FLOOR = 0.99
+
 export const METRIC_BUDGETS = {
   'first-contentful-paint': 1500,
   'largest-contentful-paint': 2000,
@@ -112,6 +119,7 @@ export function strictProblems(lhr: Lhr): string[] {
       problems.push(`${id}: audit "${audit.id}" (${audit.title}) scored ${audit.score}`)
     }
   }
+
   return problems
 }
 
@@ -137,6 +145,7 @@ export function performanceMedians(lhrs: Lhr[]): PerformanceMedians {
   for (const id of Object.keys(METRIC_BUDGETS)) {
     metrics[id] = median(lhrs.map((l) => l.audits[id]?.numericValue ?? Number.POSITIVE_INFINITY))
   }
+
   return { score: median(lhrs.map((l) => l.categories.performance?.score ?? 0)), metrics }
 }
 
@@ -150,6 +159,7 @@ export function performanceProblems(medians: PerformanceMedians): string[] {
     const value = medians.metrics[id]!
     if (value > budget) problems.push(`performance: median ${id} ${round(value)} over its budget ${budget}`)
   }
+
   return problems
 }
 
@@ -162,6 +172,7 @@ function summary(lhr: Lhr): string {
   const metrics = Object.keys(METRIC_BUDGETS)
     .map((id) => `${id.replace(/-/g, ' ').replace(/\b(\w)\w*/g, '$1').replace(/ /g, '')}=${round(lhr.audits[id]?.numericValue ?? NaN)}`)
     .join(' ')
+
   return `${cats} | ${metrics}`
 }
 
@@ -181,28 +192,114 @@ export function calibratedCpu(benchmarkIndex: number): number {
   return Math.max(4, Math.round((4 * benchmarkIndex * 10) / CALIBRATION_BENCHMARK_INDEX) / 10)
 }
 
-function launchChrome() {
-  return chromeLauncher.launch({ chromeFlags: ['--headless=new', '--no-sandbox', '--disable-gpu'] })
-}
+/**
+ * Run the pinned Lighthouse CLI and return its report. A Chrome that dies
+ * before the audit starts ("Target closed") is retried once with a new
+ * browser; a second failure, or a report with a runtime error, fails the run.
+ */
+type Report = Lhr & { environment?: { benchmarkIndex?: number } }
 
-/** One discarded Lighthouse run that only reads the host's benchmarkIndex. */
-async function measureBenchmarkIndex(url: string): Promise<number> {
-  const chrome = await launchChrome()
+async function runLighthouse(url: string, extra: string[]): Promise<Report> {
   try {
-    const result = await lighthouse(
-      url,
-      { port: chrome.port, output: 'json', logLevel: 'error', onlyCategories: ['performance'] },
-    )
-    const index = (result?.lhr as unknown as { environment?: { benchmarkIndex?: number } })?.environment
-      ?.benchmarkIndex
-    if (!index) throw new Error('[Pyreon] Lighthouse reported no benchmarkIndex; pass --cpu <multiplier> explicitly.')
-    return index
-  } finally {
-    chrome.kill()
+    return await runLighthouseOnce(url, extra)
+  } catch (error) {
+    if (!/Target closed|ECONNREFUSED|Unable to connect to Chrome/.test(String(error))) throw error
+    // oxlint-disable-next-line no-console
+    console.warn(`[Pyreon] Lighthouse lost its browser on ${url}; retrying once.`)
+    return runLighthouseOnce(url, extra)
   }
 }
 
-async function main(): Promise<void> {
+/** Spawned asynchronously: the static server answering Lighthouse runs in this process. */
+function exec(cmd: string, args: string[], cwd: string): Promise<{ status: number | null; stderr: string }> {
+  return new Promise((done, fail) => {
+    const child = spawn(cmd, args, { cwd, stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+    child.stderr.on('data', (d: Buffer) => {
+      stderr += d.toString()
+    })
+    child.on('error', fail)
+    child.on('close', (status) => done({ status, stderr }))
+  })
+}
+
+async function runLighthouseOnce(url: string, extra: string[]): Promise<Report> {
+  const dir = mkdtempSync(join(tmpdir(), 'pyreon-lh-'))
+  const out = join(dir, 'report.json')
+  try {
+    // Outside the workspace: npx inside it reads the root package.json's
+    // overrides and refuses to install (EOVERRIDE).
+    const result = await exec(
+      'npx',
+      [
+        '-y',
+        `lighthouse@${LIGHTHOUSE_VERSION}`,
+        url,
+        '--quiet',
+        '--output=json',
+        `--output-path=${out}`,
+        '--chrome-flags=--headless=new --no-sandbox --disable-gpu',
+        ...extra,
+      ],
+      dir,
+    )
+    if (result.status !== 0) {
+      throw new Error(`[Pyreon] Lighthouse exited ${result.status} for ${url}: ${result.stderr.slice(-2000)}`)
+    }
+    const lhr = JSON.parse(readFileSync(out, 'utf-8')) as Report
+    if (lhr.runtimeError) {
+      throw new Error(`[Pyreon] Lighthouse could not audit ${url}: ${lhr.runtimeError.code} ${lhr.runtimeError.message}`)
+    }
+
+    return lhr
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Deterministic page checks, read from the built HTML (no timing). An empty
+ * rule block in the inline CSS is how the home page carried 372 dead
+ * `&:hover { }` rules that inflated first-load style work: zero is the gate.
+ * Inline CSS bytes and element count are reported for the trend.
+ */
+export function pageProxies(html: string): { emptyRules: number; inlineCssBytes: number; elements: number } {
+  let emptyRules = 0
+  let inlineCssBytes = 0
+  for (const m of html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) {
+    const css = m[1]!
+    inlineCssBytes += css.length
+    // A selector (not an at-rule prelude) followed by an empty block.
+    for (const r of css.matchAll(/(^|[;{}])\s*([^;{}@]+?)\s*\{\s*\}/g)) if (r[2]!.trim() !== '') emptyRules++
+  }
+  const elements = (html.match(/<[a-zA-Z][a-zA-Z0-9-]*[\s>/]/g) ?? []).length
+
+  return { emptyRules, inlineCssBytes, elements }
+}
+
+interface Options {
+  dist: string
+  pages: string[]
+  runs: number
+  cpu: string
+  latency: number
+  assertPerf: boolean
+  outDir: string | undefined
+}
+
+interface PageResult {
+  page: string
+  medians: PerformanceMedians
+  perRun: (number | null | undefined)[]
+  problems: string[]
+}
+
+const log = (line: string) => {
+  // oxlint-disable-next-line no-console
+  console.log(line)
+}
+
+function parseOptions(): Options {
   const { values } = parseArgs({
     options: {
       dist: { type: 'string', default: 'dist' },
@@ -211,91 +308,125 @@ async function main(): Promise<void> {
       cpu: { type: 'string', default: 'auto' },
       out: { type: 'string' },
       latency: { type: 'string', default: '0' },
-      'no-assert': { type: 'boolean', default: false },
+      perf: { type: 'string', default: 'report' },
     },
   })
   const docsDir = fileURLToPath(new URL('..', import.meta.url))
-  const dist = resolve(docsDir, values.dist!)
-  const pages = values.pages ? values.pages.split(',') : [...DEFAULT_PAGES]
-  const runs = Number(values.runs)
-  const outDir = values.out ? resolve(process.cwd(), values.out) : undefined
-  if (outDir) mkdirSync(outDir, { recursive: true })
+  return {
+    dist: resolve(docsDir, values.dist!),
+    pages: values.pages ? values.pages.split(',') : [...DEFAULT_PAGES],
+    runs: Number(values.runs),
+    cpu: values.cpu!,
+    latency: Number(values.latency),
+    assertPerf: values.perf === 'assert',
+    outDir: values.out ? resolve(process.cwd(), values.out) : undefined,
+  }
+}
 
-  const server = await serveStatic(dist, { latencyMs: Number(values.latency) })
+/** The deterministic HTML checks for every page; returns the failures. */
+function checkPageProxies(dist: string, pages: string[], report: Record<string, unknown>): string[] {
   const failures: string[] = []
+  for (const page of pages) {
+    const resolved = resolvePagesPath(dist, page)
+    if (!('file' in resolved) || resolved.status !== 200) {
+      failures.push(`${page}: not a page in ${dist}`)
+      continue
+    }
+    const proxies = pageProxies(readFileSync(resolved.file, 'utf-8'))
+    log(`${page} proxies: empty rule blocks=${proxies.emptyRules} inline CSS=${proxies.inlineCssBytes} B elements=${proxies.elements}`)
+    if (proxies.emptyRules > 0) failures.push(`${page}: ${proxies.emptyRules} empty CSS rule block(s) in the inline styles`)
+    report[page] = { proxies }
+  }
+  return failures
+}
+
+async function cpuMultiplier(cpu: string, firstUrl: string): Promise<number> {
+  if (cpu !== 'auto') return Number(cpu)
+  const index = (await runLighthouse(firstUrl, ['--only-categories=performance'])).environment?.benchmarkIndex
+  if (!index) throw new Error('[Pyreon] Lighthouse reported no benchmarkIndex; pass --cpu <multiplier>.')
+  const multiplier = calibratedCpu(index)
+  log(`benchmarkIndex ${Math.round(index)} → cpuSlowdownMultiplier ${multiplier} (calibrated to ${CALIBRATION_BENCHMARK_INDEX} at 4×)`)
+  return multiplier
+}
+
+/** All runs of one page: strict failures go to `failures`; returns the timing result. */
+async function measurePage(page: string, origin: string, cpu: number, opts: Options, failures: string[]): Promise<PageResult> {
+  const lhrs: Lhr[] = []
+  for (let i = 0; i < opts.runs; i++) {
+    // The CLI launches a fresh Chrome per run, as PageSpeed Insights does:
+    // a reused renderer carries the previous run's heap, which DevTools
+    // instrumentation walks before the next navigation.
+    const lhr = await runLighthouse(`${origin}${page}`, [`--throttling.cpuSlowdownMultiplier=${cpu}`])
+    lhrs.push(lhr)
+    log(`${page} run ${i + 1}/${opts.runs}: ${summary(lhr)}`)
+    if (opts.outDir) writeFileSync(resolve(opts.outDir, `${page.replace(/\//g, '_') || '_'}-run${i + 1}.json`), JSON.stringify(lhr))
+    for (const p of strictProblems(lhr)) failures.push(`${page} run ${i + 1}: ${p}`)
+  }
+  const medians = performanceMedians(lhrs)
+  log(`${page} MEDIAN: performance=${medians.score} | ${Object.entries(medians.metrics).map(([id, v]) => `${id}=${round(v)}`).join(' ')}`)
+  return { page, medians, perRun: lhrs.map((l) => l.categories.performance?.score), problems: performanceProblems(medians) }
+}
+
+function writeStepSummary(results: PageResult[], cpu: number, opts: Options, hardFailures: number): void {
+  if (!process.env.GITHUB_STEP_SUMMARY) return
+  const rows = results.map(
+    (r) =>
+      `| \`${r.page}\` | ${r.medians.score} | ${r.perRun.join(', ')} | ${Object.values(r.medians.metrics).map(round).join(' / ')} | ${r.problems.length === 0 ? 'within budget' : r.problems.join('; ')} |`,
+  )
+  appendFileSync(
+    process.env.GITHUB_STEP_SUMMARY,
+    [
+      `### Lighthouse ${LIGHTHOUSE_VERSION} (mobile, CPU ${cpu}×, ${opts.runs} runs per page)`,
+      '',
+      `Timing is ${opts.assertPerf ? 'asserted' : 'report-only'}. Hard checks: ${hardFailures === 0 ? 'passed' : `${hardFailures} failure(s)`}.`,
+      '',
+      '| page | median perf | per run | median FCP / LCP / SI / TBT / CLS | budgets |',
+      '| --- | --- | --- | --- | --- |',
+      ...rows,
+      '',
+    ].join('\n'),
+  )
+}
+
+function finish(failures: string[], timing: string[], assertPerf: boolean): void {
+  if (timing.length > 0) {
+    // oxlint-disable-next-line no-console
+    console.error(`\n[Pyreon] Lighthouse timing outside budget${assertPerf ? '' : ' (report-only)'}:\n${timing.map((f) => `  - ${f}`).join('\n')}`)
+    if (assertPerf) failures.push(...timing)
+  }
+  if (failures.length > 0) {
+    // oxlint-disable-next-line no-console
+    console.error(`\n[Pyreon] Lighthouse check failed:\n${failures.map((f) => `  - ${f}`).join('\n')}`)
+    // oxlint-disable-next-line no-console
+    console.error('\nReproduce: cd docs && bunx vite build && bun run lighthouse -- --out .cache/lh')
+    process.exit(1)
+  }
+  log('\n[Pyreon] Lighthouse check passed.')
+}
+
+async function main(): Promise<void> {
+  const opts = parseOptions()
+  if (opts.outDir) mkdirSync(opts.outDir, { recursive: true })
+  const pagesReport: Record<string, unknown> = {}
+  const failures = checkPageProxies(opts.dist, opts.pages, pagesReport)
+  const results: PageResult[] = []
+  const server = await serveStatic(opts.dist, { latencyMs: opts.latency })
+  let cpu = 0
   try {
-    let cpuSlowdownMultiplier: number
-    if (values.cpu === 'auto') {
-      const index = await measureBenchmarkIndex(`${server.origin}${pages[0]}`)
-      cpuSlowdownMultiplier = calibratedCpu(index)
-      // oxlint-disable-next-line no-console
-      console.log(
-        `benchmarkIndex ${Math.round(index)} → cpuSlowdownMultiplier ${cpuSlowdownMultiplier} (calibrated to ${CALIBRATION_BENCHMARK_INDEX} at 4×)`,
-      )
-    } else {
-      cpuSlowdownMultiplier = Number(values.cpu)
-    }
-    for (const page of pages) {
-      const url = `${server.origin}${page}`
-      const lhrs: Lhr[] = []
-      for (let i = 0; i < runs; i++) {
-        // A fresh browser per run, as the Lighthouse CLI and PageSpeed
-        // Insights do: a reused renderer carries the previous run's heap, and
-        // DevTools instrumentation walks it before the next navigation — a
-        // task that lands in the simulated timeline as an unattributable long
-        // task and swings Total Blocking Time between runs.
-        const chrome = await launchChrome()
-        let result: Awaited<ReturnType<typeof lighthouse>>
-        try {
-          result = await lighthouse(
-            url,
-            { port: chrome.port, output: 'json', logLevel: 'error' },
-            {
-              extends: 'lighthouse:default',
-              settings: { throttling: { cpuSlowdownMultiplier } as never },
-            },
-          )
-        } finally {
-          chrome.kill()
-        }
-        if (!result) throw new Error(`[Pyreon] Lighthouse returned no result for ${url}`)
-        const lhr = result.lhr as unknown as Lhr
-        if (lhr.runtimeError) {
-          throw new Error(
-            `[Pyreon] Lighthouse could not audit ${url}: ${lhr.runtimeError.code} ${lhr.runtimeError.message}`,
-          )
-        }
-        lhrs.push(lhr)
-        // oxlint-disable-next-line no-console
-        console.log(`${page} run ${i + 1}/${runs}: ${summary(lhr)}`)
-        if (outDir) {
-          const name = `${page.replace(/\//g, '_') || '_'}-run${i + 1}.json`
-          writeFileSync(resolve(outDir, name), JSON.stringify(lhr))
-        }
-        for (const p of strictProblems(lhr)) failures.push(`${page} run ${i + 1}: ${p}`)
-      }
-      const medians = performanceMedians(lhrs)
-      const metricText = Object.entries(medians.metrics)
-        .map(([id, v]) => `${id}=${round(v)}`)
-        .join(' ')
-      // oxlint-disable-next-line no-console
-      console.log(`${page} MEDIAN: performance=${medians.score} | ${metricText}`)
-      for (const p of performanceProblems(medians)) failures.push(`${page}: ${p}`)
-    }
+    cpu = await cpuMultiplier(opts.cpu, `${server.origin}${opts.pages[0]}`)
+    for (const page of opts.pages) results.push(await measurePage(page, server.origin, cpu, opts, failures))
   } finally {
     await server.close()
   }
-
-  if (failures.length > 0) {
-    // oxlint-disable-next-line no-console
-    console.error(`\n[Pyreon] Lighthouse gate failed:\n${failures.map((f) => `  - ${f}`).join('\n')}`)
-    // oxlint-disable-next-line no-console
-    console.error('\nReproduce: cd docs && bunx vite build && bun run lighthouse -- --out .cache/lh')
-    if (!values['no-assert']) process.exit(1)
-  } else {
-    // oxlint-disable-next-line no-console
-    console.log('\n[Pyreon] Lighthouse gate passed.')
+  for (const r of results) pagesReport[r.page] = { ...(pagesReport[r.page] as object), performance: { median: r.medians, runs: r.perRun } }
+  if (opts.outDir) {
+    writeFileSync(
+      resolve(opts.outDir, 'medians.json'),
+      JSON.stringify({ lighthouse: LIGHTHOUSE_VERSION, cpuSlowdownMultiplier: cpu, pages: pagesReport }, null, 2),
+    )
   }
+  writeStepSummary(results, cpu, opts, failures.length)
+  finish(failures, results.flatMap((r) => r.problems.map((p) => `${r.page}: ${p}`)), opts.assertPerf)
 }
 
 if (import.meta.main) await main()

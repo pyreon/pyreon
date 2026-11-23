@@ -142,6 +142,21 @@ describe('regenerateLlmsTxt', () => {
     expect(twice.contents).toBe(once.contents)
   })
 
+  it('rewrites the link when a manifest gains its first API entry (guide → reference page)', () => {
+    const before = '- [@pyreon/flow](https://pyreon.dev/docs/flow): old\n'
+    const result = regenerateLlmsTxt(
+      before,
+      wrapped({
+        ...minimalManifest,
+        name: '@pyreon/flow',
+        tagline: 'now with an API',
+        api: [{ name: 'f', kind: 'function', signature: 'f(): void', summary: 's', example: 'f()' }],
+      }),
+    )
+    expect(result.missingEntries).toEqual([])
+    expect(result.contents).toBe('- [@pyreon/flow](https://pyreon.dev/docs/reference/flow): now with an API\n')
+  })
+
   it('does not match bullet lines for other packages with similar names', () => {
     // Prefix-match safety: `@pyreon/flow` must not match `@pyreon/flow-extra`.
     const content = [

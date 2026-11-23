@@ -1,3 +1,4 @@
+import { checkLlmsTxtShape, lighthouseLlmsTxtFailures } from '@pyreon/test-utils/llms-txt'
 import { describe, expect, it } from 'vitest'
 import {
   aiPlugin,
@@ -6,6 +7,7 @@ import {
   generateLlmsTxt,
   generateOpenApiSpec,
   inferJsonLd,
+  type AiPluginConfig,
 } from '../ai'
 
 const baseConfig = {
@@ -22,20 +24,25 @@ describe('generateLlmsTxt', () => {
   })
 
   // Lighthouse's `llms-txt` audit (agentic-browsing category) fails a file
-  // with no Markdown link — which an app with only dynamic or API routes
-  // used to emit. Its checks: an H1 line, a `[text](url)` link, 50+ chars.
-  it('follows the llms.txt shape Lighthouse audits, even with no static page', () => {
-    for (const txt of [
-      generateLlmsTxt([], [], baseConfig),
-      generateLlmsTxt(['users/[id].tsx'], ['posts.ts'], baseConfig),
-    ]) {
+  // with no Markdown link — which an app with only dynamic or API routes used
+  // to emit — and `## Dynamic Pages` / `## API Endpoints` sections of bare
+  // `- /users/:id` bullets broke the llmstxt.org shape. Every app shape:
+  const shapes: [string, string[], string[], Partial<AiPluginConfig>][] = [
+    ['no routes', [], [], {}],
+    ['static pages', ['index.tsx', 'about.tsx'], [], { pageDescriptions: { '/about': 'About us' } }],
+    ['dynamic routes only', ['users/[id].tsx', 'blog/[...slug].tsx'], [], {}],
+    ['API routes only', [], ['posts.ts', 'posts/[id].ts'], { apiDescriptions: { 'GET /api/posts': 'List posts' } }],
+    ['everything', ['index.tsx', 'users/[id].tsx'], ['posts.ts'], {}],
+  ]
+  for (const [label, routes, api, extra] of shapes) {
+    it(`follows the llmstxt.org shape and passes the Lighthouse audit: ${label}`, () => {
+      const txt = generateLlmsTxt(routes, api, { ...baseConfig, ...extra })
+      expect(checkLlmsTxtShape(txt)).toEqual([])
+      expect(lighthouseLlmsTxtFailures(txt)).toEqual([])
       expect(txt.startsWith('# Test App\n\n> A test application\n')).toBe(true)
-      expect(/^\s*#\s+.+/m.test(txt)).toBe(true)
-      expect(/\[.+\]\(.+\)/.test(txt)).toBe(true)
-      expect(txt.length).toBeGreaterThanOrEqual(50)
       expect(txt).toContain('## Optional\n\n- [Full reference](https://example.com/llms-full.txt): ')
-    }
-  })
+    })
+  }
 
   it('lists static pages', () => {
     const routes = ['index.tsx', 'about.tsx', 'contact.tsx']
@@ -49,8 +56,8 @@ describe('generateLlmsTxt', () => {
   it('lists dynamic pages separately', () => {
     const routes = ['index.tsx', 'users/[id].tsx']
     const txt = generateLlmsTxt(routes, [], baseConfig)
-    expect(txt).toContain('## Dynamic Pages')
-    expect(txt).toContain('/users/:id')
+    expect(txt).toContain('Dynamic pages (one page per parameter value):')
+    expect(txt).toContain('- `/users/:id`')
   })
 
   it('excludes layout, error, loading files', () => {
@@ -78,9 +85,9 @@ describe('generateLlmsTxt', () => {
         'POST /api/posts': 'Create a new post',
       },
     })
-    expect(txt).toContain('## API Endpoints')
-    expect(txt).toContain('GET /api/posts: List all posts')
-    expect(txt).toContain('POST /api/posts: Create a new post')
+    expect(txt).toContain('API endpoints:')
+    expect(txt).toContain('- `GET /api/posts`: List all posts')
+    expect(txt).toContain('- `POST /api/posts`: Create a new post')
   })
 
   it('auto-discovers API files', () => {

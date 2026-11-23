@@ -11,10 +11,10 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { checkLlmsTxtShape } from '../packages/internals/test-utils/src/llms-txt'
 import {
   findManifests,
   formatLineDiff,
-  llmsTxtBulletPrefix,
   type LoadedManifest,
   renderApiReferenceBlock,
   renderLlmsFullSection,
@@ -55,7 +55,10 @@ export function regenerateLlmsTxt(
   const missingEntries: string[] = []
   for (const { manifest } of manifests) {
     const targetLine = renderLlmsTxtLine(manifest)
-    const bulletPrefix = llmsTxtBulletPrefix(manifest)
+    // Identify the bullet by name only: its URL depends on whether the
+    // manifest has API entries, and a manifest that gains its first one must
+    // have its line rewritten, not reported missing.
+    const bulletPrefix = `- [${manifest.name}](`
     const escaped = bulletPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const re = new RegExp(`^${escaped}.*$`, 'm')
     if (!re.test(next)) {
@@ -66,60 +69,8 @@ export function regenerateLlmsTxt(
     next = next.replace(re, targetLine)
     if (prev !== next) changedLines++
   }
-  return { contents: next, changedLines, missingEntries }
-}
 
-/**
- * Check `llms.txt` against the llmstxt.org shape: an H1 title, a `>`
- * summary blockquote, optional prose or lists WITHOUT headings, then `##`
- * sections that hold nothing but file-list entries
- * (`- [title](https://…)` with an optional `: notes`). Returns one message
- * per violation; an empty array means the file conforms.
- *
- * The file is hand-written around the generated package bullets, so a hand
- * edit can break the shape that the generator alone keeps. The served copy
- * at https://pyreon.dev/llms.txt is what Lighthouse's `llms-txt` audit
- * fetches (it needs an H1 and at least one Markdown link); `gen-docs`
- * refuses to write or pass a file that fails this check.
- */
-export function checkLlmsTxtShape(contents: string): string[] {
-  const problems: string[] = []
-  const lines = contents.split('\n')
-  if (!/^# \S/.test(lines[0] ?? '')) problems.push('line 1 must be the H1 title (`# Name`)')
-  const firstContent = lines.findIndex((l, i) => i > 0 && l.trim() !== '')
-  if (firstContent === -1 || !lines[firstContent]!.startsWith('> ')) {
-    problems.push('the H1 must be followed by a `> ` summary blockquote')
-  }
-  let section: string | null = null
-  let inFence = false
-  let links = 0
-  lines.forEach((line, i) => {
-    const at = `line ${i + 1}`
-    if (line.startsWith('```')) {
-      inFence = !inFence
-      if (inFence && section !== null) {
-        problems.push(`${at}: a code block inside "## ${section}" (sections hold only link lists; put code in llms-full.txt)`)
-      }
-      return
-    }
-    if (inFence) return
-    const heading = /^(#{1,6}) (.*)$/.exec(line)
-    if (heading) {
-      if (i === 0) return
-      if (heading[1] === '##') section = heading[2]!
-      else problems.push(`${at}: only one H1 and \`##\` section headings are allowed (found "${line}")`)
-      return
-    }
-    for (const m of line.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
-      links++
-      if (!m[1]!.startsWith('https://')) problems.push(`${at}: link target "${m[1]}" must be an absolute https URL`)
-    }
-    if (section !== null && line.trim() !== '' && !/^- \[[^\]]+\]\([^)]+\)(: .+)?$/.test(line)) {
-      problems.push(`${at}: "## ${section}" may only hold \`- [title](url): notes\` entries (found "${line.slice(0, 60)}")`)
-    }
-  })
-  if (links === 0) problems.push('the file has no Markdown links')
-  return problems
+  return { contents: next, changedLines, missingEntries }
 }
 
 /**
@@ -172,6 +123,7 @@ export function regenerateLlmsFullTxt(
     // stdout message "N sections regenerated".
     if (prev !== next) changedLines++
   }
+
   return { contents: next, changedLines, missingEntries }
 }
 
@@ -202,6 +154,7 @@ function findSectionRange(content: string, name: string): [number, number] | nul
   const sectionStart = headerIdx
   const nextHeaderIdx = sentinel.indexOf('\n## ', headerIdx + 1)
   const sectionEnd = nextHeaderIdx === -1 ? content.length : nextHeaderIdx
+
   return [sectionStart, sectionEnd]
 }
 
@@ -262,6 +215,7 @@ export function regenerateApiReferenceTs(
     next = next.slice(0, start) + replacement + next.slice(end)
     if (prev !== next) changedLines++
   }
+
   return { contents: next, changedLines, missingEntries: [] }
 }
 
@@ -292,6 +246,7 @@ function findApiReferenceRegion(content: string, name: string): [number, number]
   const endLineStart = content.lastIndexOf('\n', endIdx) + 1
   const rangeStart = afterStartLine + 1
   if (rangeStart > endLineStart) return null
+
   return [rangeStart, endLineStart]
 }
 
@@ -375,6 +330,7 @@ export async function main(
         shapeProblems.map((p) => `  - ${p}`).join('\n') +
         '\n\nFix the hand-written part of llms.txt; long-form content belongs in llms-full.txt.',
     )
+
     return io.exit(1)
   }
 
@@ -417,8 +373,10 @@ export async function main(
         io.stderr(formatLineDiff(apiRefBefore, apiRefResult.contents))
       }
       io.stderr('\nFix: run `bun run gen-docs` and commit the result.')
+
       return io.exit(1)
     }
+
     return
   }
 
@@ -455,6 +413,7 @@ function buildMissingEntriesError(fileLabel: string, names: string[]): string {
     fileLabel === 'llms.txt'
       ? 'bullet (form: `- [<name>](https://pyreon.dev/docs/reference/<slug>): <any text>`) under the package list section that matches the package\'s category'
       : 'section (form: `## <name> — <title>` followed by a code block) at an appropriate location'
+
   return (
     `[gen-docs] ERROR: these manifests have no matching ${fileLabel} entry\n` +
     `(valid category sections: "core", "fundamentals", "tools", "ui-system",\n` +
@@ -466,6 +425,7 @@ function buildMissingEntriesError(fileLabel: string, names: string[]): string {
 }
 
 // Re-export for test convenience.
+export { checkLlmsTxtShape } from '../packages/internals/test-utils/src/llms-txt'
 export {
   findManifests,
   formatLineDiff,
