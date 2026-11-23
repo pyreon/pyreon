@@ -24,7 +24,6 @@
 
 import {
   _claimContextOwner,
-  _devOwner,
   type EffectScope,
   getContextOwner,
   runWithContextOwner,
@@ -175,15 +174,28 @@ export function useContext<T>(context: Context<T>): T {
   return context.defaultValue
 }
 
+// Dev only: contextless owner ALIASES (runtime-dom's `devSetupOwner`). An
+// alias stands in for the parent's owner while a non-providing component sets
+// up and renders, so devtools can map the component back to its id; reads walk
+// through it (`alias._parent`) and writes skip it (`providingOwner`), so dev
+// resolves exactly what production does.
+const _devAliases: WeakSet<EffectScope> | null =
+  process.env.NODE_ENV !== 'production' ? new WeakSet() : null
+
+/** @internal Dev only: register a contextless owner alias (see `_devAliases`). */
+export function _devMarkOwnerAlias(alias: EffectScope): void {
+  _devAliases!.add(alias)
+}
+
 /**
  * The owner a `provide()` / `withContext()` writes onto: the current
  * component's scope, which becomes the context owner on its first provide
  * (see the lazy-owner note in @pyreon/reactivity's scope.ts). Dev warns on a
- * LATE claim and writes past a devtools owner alias, so the write lands where
- * production's does.
+ * LATE claim and writes past an owner alias, onto the owner production uses.
  */
 function providingOwner(api: string): EffectScope | null {
   const claim = _claimContextOwner()
+  let owner = getContextOwner()
   if (process.env.NODE_ENV !== 'production') {
     if (claim === 2) {
       // oxlint-disable-next-line no-console
@@ -193,13 +205,10 @@ function providingOwner(api: string): EffectScope | null {
           "parent's owner and will not see this value. Call it before the component builds or returns its children.",
       )
     }
-    let o = getContextOwner()
-    while (o !== null && _devOwner!.aliases.has(o)) o = o._parent
-
-    return o
+    while (owner !== null && _devAliases!.has(owner)) owner = owner._parent
   }
 
-  return getContextOwner()
+  return owner
 }
 
 /**

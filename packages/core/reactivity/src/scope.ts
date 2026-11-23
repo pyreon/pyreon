@@ -200,18 +200,13 @@ export function _currentScope(): EffectScope | null {
 // and nothing retains the component's scope as `_parent`.
 
 /**
- * @internal Dev only (null in production) — the lazy owner's devtools state,
- * one object so production ships one export, not a helper per field:
- *  - `aliases`: contextless owner ALIASES (`devSetupOwner` in runtime-dom). An
- *    alias stands in for the parent's owner so devtools can map a
- *    non-providing component back to its id; context reads walk through it
- *    and `provide()` writes past it, so dev resolves exactly what production
- *    does.
- *  - `late`: a claim of the pending scope now would be LATE (its children
- *    already mounted under the parent's owner) — `provide()` warns.
+ * @internal Dev only (null in production): `late` — a claim of the pending
+ * scope now would be LATE (its children already mounted under the parent's
+ * owner), so `_claimContextOwner` reports it and `provide()` warns. Set and
+ * restored per component by runtime-dom's mount.
  */
-export const _devOwner: { aliases: WeakSet<EffectScope>; late: boolean } | null =
-  process.env.NODE_ENV !== 'production' ? { aliases: new WeakSet(), late: false } : null
+export const _devOwner: { late: boolean } | null =
+  process.env.NODE_ENV !== 'production' ? { late: false } : null
 
 /**
  * @internal Enter a component's pending-owner frame (see `ScopeFrame.p`):

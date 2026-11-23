@@ -21,6 +21,7 @@ import {
   PortalSymbol,
   propagateError,
   reportError,
+  _devMarkOwnerAlias,
   _runHooked,
   _takeHooks,
   SuspenseBoundaryContext,
@@ -1022,16 +1023,18 @@ export function exitPendingOwner(prev: EffectScope | null, prevLate: boolean): v
 /**
  * Dev only: the context owner a component's setup and render run under while
  * it has not provided. Production uses the parent's owner itself. Dev uses a
- * contextless ALIAS of it: lookups walk `alias._parent` to the parent's owner,
- * so every context resolves exactly as in production, but the alias maps to
- * this component's devtools id, so a component that a boundary mounts later
- * (a `<Show>` turning on, a `<For>` row) still finds its real parent in the
- * devtools tree. Only devtools reads the alias's identity.
+ * contextless ALIAS of it, which devtools maps to this component's id, so a
+ * component that a boundary mounts later (a `<Show>` turning on, a `<For>`
+ * row) still finds its real parent in the devtools tree. The alias is
+ * transparent to context: reads walk `alias._parent` to the parent's owner,
+ * and a write (a `provide()` that runs under a restored alias, in an effect
+ * re-run) skips it (`_devMarkOwnerAlias` in `@pyreon/core`) — exactly where
+ * production writes it.
  */
 export function devSetupOwner(parentOwner: EffectScope | null, compId: string): EffectScope {
   const alias = effectScope()
   alias._parent = parentOwner
-  _devOwner!.aliases.add(alias)
+  _devMarkOwnerAlias(alias)
   _devScopeIds!.set(alias, compId)
 
   return alias
