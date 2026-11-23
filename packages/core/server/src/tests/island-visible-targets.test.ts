@@ -10,17 +10,31 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { hydrateIslands } from '../client'
 
 let observed: Element[] = []
+let report: (() => void) | null = null
 const NativeIO = globalThis.IntersectionObserver
 
 beforeEach(() => {
   observed = []
+  report = null
   globalThis.IntersectionObserver = class {
+    constructor(cb: IntersectionObserverCallback) {
+      // The first report a real observer delivers after layout: every target,
+      // none intersecting (the stage is not laid out in happy-dom).
+      report = () =>
+        cb(
+          observed.map((target) => ({ target, isIntersecting: false }) as IntersectionObserverEntry),
+          this as unknown as IntersectionObserver,
+        )
+    }
+
     observe(t: Element) {
       observed.push(t)
     }
 
     disconnect() {}
-    unobserve() {}
+    unobserve(t: Element) {
+      observed = observed.filter((o) => o !== t)
+    }
 
     takeRecords() {
       return []
@@ -40,10 +54,38 @@ const run = (html: string) => {
   el.setAttribute('data-props', '{}')
   el.setAttribute('data-hydrate', 'visible')
   const cleanup = hydrateIslands({ Isle: async () => ({ default: () => null }) })
+  report?.()
   cleanup()
 
   return observed.map((t) => t.id || t.localName)
 }
+
+// Reading computed style while the islands are set up forces a synchronous
+// style recalc + layout of the whole document before the first paint (10 ms of
+// a 17 ms task on pyreon.dev's home page). The targets are resolved in the
+// observer's first report instead, after the browser's own layout.
+describe('visible trigger setup', () => {
+  it('reads no computed style until the observer reports', () => {
+    const spy = vi.spyOn(globalThis, 'getComputedStyle')
+    try {
+      document.body.innerHTML =
+        '<section id="stage"><pyreon-island style="display:contents"><b id="a">x</b></pyreon-island></section>'
+      const el = query<HTMLElement>(document, 'pyreon-island')
+      el.setAttribute('data-component', 'Isle')
+      el.setAttribute('data-props', '{}')
+      el.setAttribute('data-hydrate', 'visible')
+      const cleanup = hydrateIslands({ Isle: async () => ({ default: () => null }) })
+      expect(spy).not.toHaveBeenCalled()
+      expect(observed.map((t) => t.localName)).toEqual(['pyreon-island'])
+      report?.()
+      expect(spy).toHaveBeenCalled()
+      expect(observed.map((t) => t.id)).toEqual(['a'])
+      cleanup()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+})
 
 describe('visible trigger targets', () => {
   it('a boxed island is observed itself', () => {

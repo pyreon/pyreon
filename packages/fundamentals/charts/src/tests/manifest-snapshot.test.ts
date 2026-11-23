@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — charts snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/charts — Pyreon's own charting engine: marks as JSX children, typed channels, canvas and SVG, the same chart on the web, iOS and Android. \`@pyreon/charts\` is the stable surface: \`<Chart>\`, its marks, the family components, formatters, theme and linking. \`/svg\` renders charts to SVG strings with no DOM. \`/engine\` exports every layout, hit test and draw-list builder for building on the engine, and is not covered by the stability promise."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/charts](https://pyreon.dev/docs/reference/charts): Pyreon's own charting engine: marks as JSX children, typed channels, canvas and SVG, the same chart on the web, iOS and Android. \`@pyreon/charts\` is the stable surface: \`<Chart>\`, its marks, the family components, formatters, theme and linking. \`/svg\` renders charts to SVG strings with no DOM. \`/engine\` exports every layout, hit test and draw-list builder for building on the engine, and is not covered by the stability promise."`)
   })
 
   it('renders to llms-full.txt section', () => {

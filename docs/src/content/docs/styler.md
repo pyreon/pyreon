@@ -1319,6 +1319,8 @@ Every caller that resolves a template (`styled()`, `createGlobalStyle`, `keyfram
 
 This ensures consistent hashing regardless of how the template is formatted — two templates differing only in whitespace/comments/formatting resolve to the same class name. `clearNormCache()` clears the memoization (used during HMR).
 
+A component's own CSS (`styled()` and `useCSS`) also has its **empty rule blocks** removed before hashing: `&:hover { ${maybeEmpty} }` leaves `&:hover { }` behind whenever the state has no styles, and each such rule still costs the browser parsing, selector matching and style invalidation on every element with the class. A rule (or `@media`) that held only empty rules goes too; an empty `@layer name {}` stays, because it declares layer order, and braces inside quoted strings are never read as blocks. A component written with an empty state block gets the same class as one written without it. `createGlobalStyle` and `keyframes` keep their text as written.
+
 ## Advanced: `useCSS`, `buildProps`, `filterProps`
 
 These lower-level exports are what `styled()` itself is built on. Reach for them only when `styled()` doesn't fit — e.g. attaching computed styles to a plain element without a dedicated component, or building your own styled-like wrapper.

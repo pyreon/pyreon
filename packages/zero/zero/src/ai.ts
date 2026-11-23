@@ -74,9 +74,10 @@ export interface AiPluginConfig {
 /**
  * Generate llms.txt content from route files and config.
  *
- * Format follows the llms.txt proposal:
+ * Format follows the llms.txt proposal (https://llmstxt.org/):
  * ```
  * # {name}
+ *
  * > {description}
  *
  * ## Pages
@@ -84,6 +85,9 @@ export interface AiPluginConfig {
  *
  * ## API
  * - GET /api/posts: List posts
+ *
+ * ## Optional
+ * - [Full reference]({origin}/llms-full.txt): …
  * ```
  *
  * @internal Exported for testing.
@@ -95,8 +99,9 @@ export function generateLlmsTxt(
 ): string {
   const lines: string[] = []
 
-  // Header
+  // Header — the llmstxt.org shape: H1, blank line, `>` summary.
   lines.push(`# ${config.name}`)
+  lines.push('')
   lines.push(`> ${config.description}`)
   lines.push('')
 
@@ -171,6 +176,17 @@ export function generateLlmsTxt(
     lines.push(config.llmsExtra)
     lines.push('')
   }
+
+  // The llms-full.txt this plugin also emits. llmstxt.org's "Optional"
+  // section is the place for it, and it guarantees the file holds at least
+  // one Markdown link: an app with no static page (only dynamic routes or
+  // API routes) would otherwise emit an llms.txt without links, which
+  // Lighthouse's `llms-txt` audit fails ("File does not appear to contain
+  // any links.").
+  lines.push('## Optional')
+  lines.push('')
+  lines.push(`- [Full reference](${config.origin}/llms-full.txt): Every route with its render mode, and the API reference.`)
+  lines.push('')
 
   return lines.join('\n')
 }

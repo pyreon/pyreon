@@ -437,19 +437,7 @@ export function schedulePrefetch(
     prime()
     return null
   }
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          observer.disconnect()
-          prime()
-          return
-        }
-      }
-    },
-    { rootMargin: '200px' },
-  )
-  for (const target of visibilityTargets(el)) observer.observe(target)
+  const observer = observeNearViewport(el, prime)
 
   return () => {
     cancelled = true
@@ -954,22 +942,46 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
     return null
   }
 
+  const observer = observeNearViewport(el, callback)
+  return () => observer.disconnect()
+}
+
+/**
+ * Call `onNear` once, when the island comes within 200px of the viewport.
+ *
+ * The island element itself is observed first; what to observe instead of a
+ * box-less island (`visibilityTargets`) is decided in the observer's FIRST
+ * report, not here. Reading computed style here — during hydration startup,
+ * before the first paint — forced a synchronous style recalc and a layout of
+ * the whole document inside the islands module's evaluation task (measured on
+ * pyreon.dev's home page: 10 ms of the task's 17 ms, unthrottled). An
+ * IntersectionObserver reports after the browser's own style and layout pass,
+ * so by then the same reads cost nothing extra. A boxed island that is in view
+ * fires on that first report; a `display: contents` one is swapped to its
+ * targets and fires one report later.
+ */
+function observeNearViewport(el: HTMLElement, onNear: () => void): IntersectionObserver {
+  let resolved = false
   const observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
           observer.disconnect()
-          callback()
+          onNear()
           return
         }
       }
+      if (resolved) return
+      resolved = true
+      const targets = visibilityTargets(el)
+      if (targets.length === 1 && targets[0] === el) return
+      observer.unobserve(el)
+      for (const target of targets) observer.observe(target)
     },
     { rootMargin: '200px' },
   )
-
-  for (const target of visibilityTargets(el)) observer.observe(target)
-
-  return () => observer.disconnect()
+  observer.observe(el)
+  return observer
 }
 
 // ─── Server islands — client activation (Phase 4) ───────────────────────────

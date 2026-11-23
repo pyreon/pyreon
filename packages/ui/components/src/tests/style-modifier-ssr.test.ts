@@ -84,7 +84,7 @@ describe('style modifiers (SSR)', () => {
 
   it('a modifier pseudo group renders as the base renders the theme one', async () => {
     const { html, css } = await render()
-    expect(ruleOf(css, rsClassOf(html, 'hover'))).toContain('&:hover { color: rgb(1, 150, 2); }')
+    expect(ruleOf(css, rsClassOf(html, 'hover'))).toContain('&:hover { color: rgb(1, 150, 2);')
   })
 
   it('under useBooleans a false modifier prop is off', async () => {

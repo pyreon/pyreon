@@ -10895,7 +10895,7 @@ const cssText = resolve(strings, values, { theme, $compact: true })`,
     example: `import { normalizeCSS } from "@pyreon/styler"
 
 normalizeCSS("color:  red ;") // canonical form, dedup-stable`,
-    notes: 'Normalizes a raw CSS string (whitespace/format canonicalization) so identical-intent CSS hashes to the same FNV-1a key and dedupes. Memoized via an internal cache — call `clearNormCache()` to drop it (tests / long-lived processes). See also: clearNormCache, resolve.',
+    notes: 'Normalizes a raw CSS string (whitespace/format canonicalization) so identical-intent CSS hashes to the same FNV-1a key and dedupes. Memoized via an internal cache — call `clearNormCache()` to drop it (tests / long-lived processes). `styled()` and `useCSS` additionally drop empty rule blocks (`&:hover { }` left by a state with no styles) before hashing, so a component with an empty state block gets the same class as one without it; `normalizeCSS` itself keeps them. See also: clearNormCache, resolve.',
   },
 
   'styler/resolveValue': {
@@ -12959,7 +12959,7 @@ createISRHandler(handler, {
   'zero/aiPlugin': {
     signature: 'function aiPlugin(config?: AiPluginConfig): Plugin // server-only',
     example: 'plugins: [pyreon(), zero(), seoPlugin({ ... }), aiPlugin()]',
-    notes: `AI integration plugin — generates \`llms.txt\`, \`llms-full.txt\`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon's on-publish artifacts; the plugin runs \`inferJsonLd\` per route to extract structured data from \`meta\` exports. See also: seoPlugin, zero.`,
+    notes: `AI integration plugin — generates \`llms.txt\`, \`llms-full.txt\`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon's on-publish artifacts; the plugin runs \`inferJsonLd\` per route to extract structured data from \`meta\` exports. \`llms.txt\` follows the llmstxt.org shape (H1, \`>\` summary, \`##\` link lists) and always ends with an \`## Optional\` link to \`llms-full.txt\`, so it passes Lighthouse's Agentic Browsing \`llms-txt\` audit (an H1 and at least one Markdown link) even for an app with no static page. See also: seoPlugin, zero.`,
   },
 
   'zero/OgImage': {

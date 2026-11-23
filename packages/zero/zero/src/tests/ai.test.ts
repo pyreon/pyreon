@@ -21,6 +21,22 @@ describe('generateLlmsTxt', () => {
     expect(txt).toContain('> A test application')
   })
 
+  // Lighthouse's `llms-txt` audit (agentic-browsing category) fails a file
+  // with no Markdown link — which an app with only dynamic or API routes
+  // used to emit. Its checks: an H1 line, a `[text](url)` link, 50+ chars.
+  it('follows the llms.txt shape Lighthouse audits, even with no static page', () => {
+    for (const txt of [
+      generateLlmsTxt([], [], baseConfig),
+      generateLlmsTxt(['users/[id].tsx'], ['posts.ts'], baseConfig),
+    ]) {
+      expect(txt.startsWith('# Test App\n\n> A test application\n')).toBe(true)
+      expect(/^\s*#\s+.+/m.test(txt)).toBe(true)
+      expect(/\[.+\]\(.+\)/.test(txt)).toBe(true)
+      expect(txt.length).toBeGreaterThanOrEqual(50)
+      expect(txt).toContain('## Optional\n\n- [Full reference](https://example.com/llms-full.txt): ')
+    }
+  })
+
   it('lists static pages', () => {
     const routes = ['index.tsx', 'about.tsx', 'contact.tsx']
     const txt = generateLlmsTxt(routes, [], baseConfig)

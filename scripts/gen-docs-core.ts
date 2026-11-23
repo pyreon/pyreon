@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import {
   findManifests,
   formatLineDiff,
+  llmsTxtBulletPrefix,
   type LoadedManifest,
   renderApiReferenceBlock,
   renderLlmsFullSection,
@@ -27,7 +28,7 @@ export interface RegenerateResult {
 }
 
 /**
- * Replace existing `- <name> —` bullets in llms.txt with regenerated
+ * Replace existing `- [<name>](<docs url>): ` bullets in llms.txt with regenerated
  * content from the manifests. Returns the list of manifest names whose
  * bullet line could NOT be found in llms.txt — the caller should
  * treat this as a hard error (manifests without a landing line
@@ -54,7 +55,7 @@ export function regenerateLlmsTxt(
   const missingEntries: string[] = []
   for (const { manifest } of manifests) {
     const targetLine = renderLlmsTxtLine(manifest)
-    const bulletPrefix = `- ${manifest.name} —`
+    const bulletPrefix = llmsTxtBulletPrefix(manifest)
     const escaped = bulletPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const re = new RegExp(`^${escaped}.*$`, 'm')
     if (!re.test(next)) {
@@ -66,6 +67,59 @@ export function regenerateLlmsTxt(
     if (prev !== next) changedLines++
   }
   return { contents: next, changedLines, missingEntries }
+}
+
+/**
+ * Check `llms.txt` against the llmstxt.org shape: an H1 title, a `>`
+ * summary blockquote, optional prose or lists WITHOUT headings, then `##`
+ * sections that hold nothing but file-list entries
+ * (`- [title](https://…)` with an optional `: notes`). Returns one message
+ * per violation; an empty array means the file conforms.
+ *
+ * The file is hand-written around the generated package bullets, so a hand
+ * edit can break the shape that the generator alone keeps. The served copy
+ * at https://pyreon.dev/llms.txt is what Lighthouse's `llms-txt` audit
+ * fetches (it needs an H1 and at least one Markdown link); `gen-docs`
+ * refuses to write or pass a file that fails this check.
+ */
+export function checkLlmsTxtShape(contents: string): string[] {
+  const problems: string[] = []
+  const lines = contents.split('\n')
+  if (!/^# \S/.test(lines[0] ?? '')) problems.push('line 1 must be the H1 title (`# Name`)')
+  const firstContent = lines.findIndex((l, i) => i > 0 && l.trim() !== '')
+  if (firstContent === -1 || !lines[firstContent]!.startsWith('> ')) {
+    problems.push('the H1 must be followed by a `> ` summary blockquote')
+  }
+  let section: string | null = null
+  let inFence = false
+  let links = 0
+  lines.forEach((line, i) => {
+    const at = `line ${i + 1}`
+    if (line.startsWith('```')) {
+      inFence = !inFence
+      if (inFence && section !== null) {
+        problems.push(`${at}: a code block inside "## ${section}" (sections hold only link lists; put code in llms-full.txt)`)
+      }
+      return
+    }
+    if (inFence) return
+    const heading = /^(#{1,6}) (.*)$/.exec(line)
+    if (heading) {
+      if (i === 0) return
+      if (heading[1] === '##') section = heading[2]!
+      else problems.push(`${at}: only one H1 and \`##\` section headings are allowed (found "${line}")`)
+      return
+    }
+    for (const m of line.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+      links++
+      if (!m[1]!.startsWith('https://')) problems.push(`${at}: link target "${m[1]}" must be an absolute https URL`)
+    }
+    if (section !== null && line.trim() !== '' && !/^- \[[^\]]+\]\([^)]+\)(: .+)?$/.test(line)) {
+      problems.push(`${at}: "## ${section}" may only hold \`- [title](url): notes\` entries (found "${line.slice(0, 60)}")`)
+    }
+  })
+  if (links === 0) problems.push('the file has no Markdown links')
+  return problems
 }
 
 /**
@@ -313,6 +367,16 @@ export async function main(
     io.stderr(buildMissingEntriesError('llms.txt', llmsResult.missingEntries))
     return io.exit(1)
   }
+  const shapeProblems = checkLlmsTxtShape(llmsResult.contents)
+  if (shapeProblems.length > 0) {
+    io.stderr(
+      '[gen-docs] ERROR: llms.txt does not follow the llmstxt.org shape that\n' +
+        'https://pyreon.dev/llms.txt is audited against (Lighthouse `llms-txt`):\n' +
+        shapeProblems.map((p) => `  - ${p}`).join('\n') +
+        '\n\nFix the hand-written part of llms.txt; long-form content belongs in llms-full.txt.',
+    )
+    return io.exit(1)
+  }
 
   // ─── llms-full.txt ────────────────────────────────────────────────────
   const llmsFullPath = join(repoRoot, 'llms-full.txt')
@@ -389,7 +453,7 @@ export async function main(
 function buildMissingEntriesError(fileLabel: string, names: string[]): string {
   const placementHint =
     fileLabel === 'llms.txt'
-      ? 'bullet (form: `- <name> — <any text>`) under the package list section that matches the package\'s category'
+      ? 'bullet (form: `- [<name>](https://pyreon.dev/docs/reference/<slug>): <any text>`) under the package list section that matches the package\'s category'
       : 'section (form: `## <name> — <title>` followed by a code block) at an appropriate location'
   return (
     `[gen-docs] ERROR: these manifests have no matching ${fileLabel} entry\n` +

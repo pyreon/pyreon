@@ -132,9 +132,10 @@ jobs:
   build:
     name: Build Docs
     runs-on: ubuntu-latest
-    # Cached setup + 8m docs + 3m Atlas + checkout/diagnostic upload headroom.
-    # Inner deadlines fail normally, leaving time to preserve their logs.
-    timeout-minutes: 25
+    # Cached setup + 8m docs + 7m Lighthouse + 3m Atlas + checkout/diagnostic
+    # upload headroom. Inner deadlines fail normally, leaving time to preserve
+    # their logs.
+    timeout-minutes: 33
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -215,6 +216,24 @@ jobs:
             fi
           done
 
+      - name: Lighthouse (mobile) — every category full
+        # Runs Lighthouse 13.6.0 (pinned exactly in docs/package.json) against
+        # docs/dist served the way GitHub Pages serves it, with the default
+        # MOBILE config PageSpeed Insights reports and the CPU slowdown scaled
+        # to the runner's benchmarkIndex: home, a docs page and a marketing
+        # page, 5 runs each. Accessibility, Best Practices, SEO and
+        # Agentic Browsing must be 1.0 with every scored audit passing on
+        # EVERY run; performance is asserted on the median run (score floor +
+        # per-metric budgets). Runs before Atlas/showcase are added to dist, so
+        # it measures the docs site alone. Design and stability evidence:
+        # .agents/guides/ci/README.md, "Lighthouse gate". Local: cd docs &&
+        # bunx vite build && bun run lighthouse
+        shell: bash
+        timeout-minutes: 8
+        run: |
+          cd docs
+          bash ../scripts/gnu-timeout.sh --verbose --signal=KILL 7m bun run lighthouse -- --out ../.cache/docs-ci/lighthouse 2>&1 | tee ../.cache/docs-ci/lighthouse.log
+
       - name: Build the Atlas workbench site
         shell: bash
         timeout-minutes: 5
@@ -274,6 +293,7 @@ jobs:
           name: docs-build-logs-${{ github.run_attempt }}
           path: |
             .cache/docs-ci/*.log
+            .cache/docs-ci/lighthouse/*.json
             docs/dist/_pyreon-ssg-errors.json
           if-no-files-found: warn
           retention-days: 7

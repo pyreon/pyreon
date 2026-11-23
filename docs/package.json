@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "gen": "bun scripts/gen-all.ts",
-    "gen:check": "bun scripts/check-generated-fresh.ts"
+    "gen:check": "bun scripts/check-generated-fresh.ts",
+    "lighthouse": "bun scripts/lighthouse.ts"
   },
   "dependencies": {
     "@pyreon/a11y": "workspace:*",
@@ -75,6 +76,8 @@
     "@pyreon/vitest-config": "workspace:*",
     "@types/bun": "^1.4.4",
     "beasties": "^0.5.5",
+    "chrome-launcher": "1.2.3",
+    "lighthouse": "13.6.0",
     "shiki": "^4.6.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.8",

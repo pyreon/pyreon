@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — attrs snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/attrs — Chainable HOC factory — default props (.attrs), base swaps (.config), HOC composition (.compose), statics (.statics). 'priority' does NOT mean 'highest precedence' — priorityAttrs resolve FIRST (so later .attrs() callbacks can read them as input) but sit at the LOWEST precedence in the final merge: priorityAttrs < attrs < explicit props. @pyreon/rocketstyle uses the slot to seed structural base props the dimension layer can still override."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/attrs](https://pyreon.dev/docs/reference/attrs): Chainable HOC factory — default props (.attrs), base swaps (.config), HOC composition (.compose), statics (.statics). 'priority' does NOT mean 'highest precedence' — priorityAttrs resolve FIRST (so later .attrs() callbacks can read them as input) but sit at the LOWEST precedence in the final merge: priorityAttrs < attrs < explicit props. @pyreon/rocketstyle uses the slot to seed structural base props the dimension layer can still override."`)
   })
 
   it('renders to llms-full.txt section', () => {

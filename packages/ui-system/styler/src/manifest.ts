@@ -263,7 +263,7 @@ const cssText = resolve(strings, values, { theme, $compact: true })`,
       kind: 'function',
       signature: 'normalizeCSS(css: string): string',
       summary:
-        'Normalizes a raw CSS string (whitespace/format canonicalization) so identical-intent CSS hashes to the same FNV-1a key and dedupes. Memoized via an internal cache — call `clearNormCache()` to drop it (tests / long-lived processes).',
+        'Normalizes a raw CSS string (whitespace/format canonicalization) so identical-intent CSS hashes to the same FNV-1a key and dedupes. Memoized via an internal cache — call `clearNormCache()` to drop it (tests / long-lived processes). `styled()` and `useCSS` additionally drop empty rule blocks (`&:hover { }` left by a state with no styles) before hashing, so a component with an empty state block gets the same class as one without it; `normalizeCSS` itself keeps them.',
       example: `import { normalizeCSS } from "@pyreon/styler"
 
 normalizeCSS("color:  red ;") // canonical form, dedup-stable`,

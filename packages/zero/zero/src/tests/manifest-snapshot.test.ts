@@ -22,7 +22,7 @@ import zeroManifest from '../manifest'
 describe('gen-docs — zero snapshot', () => {
   it('renders @pyreon/zero to its expected llms.txt bullet', () => {
     expect(renderLlmsTxtLine(zeroManifest)).toMatchInlineSnapshot(
-      `"- @pyreon/zero — Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes, server actions, adapters, i18n. mode: 'ssg' returns Plugin[] (the SSG plugin auto-attaches a companion \`ssgPlugin()\`); Vite's plugins array flattens nested arrays so \`plugins: [pyreon(), zero()]\` works as-is."`,
+      `"- [@pyreon/zero](https://pyreon.dev/docs/reference/zero): Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes, server actions, adapters, i18n. mode: 'ssg' returns Plugin[] (the SSG plugin auto-attaches a companion \`ssgPlugin()\`); Vite's plugins array flattens nested arrays so \`plugins: [pyreon(), zero()]\` works as-is."`,
     )
   })
 

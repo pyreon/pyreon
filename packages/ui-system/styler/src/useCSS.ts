@@ -5,14 +5,14 @@
  * Use this when you need computed CSS class names on plain elements
  * without the overhead of a styled component layer.
  */
-import { type CSSResult, normalizeCSS, resolve } from './resolve'
+import { type CSSResult, normalizeRuleCSS, resolve } from './resolve'
 import { sheet } from './sheet'
 import { useTheme } from './theme-context'
 
 export function useCSS(template: CSSResult, props?: Record<string, any>): string {
   const theme = useTheme()
   const allProps = theme ? { ...props, theme } : (props ?? {})
-  const cssText = normalizeCSS(resolve(template.strings, template.values, allProps))
+  const cssText = normalizeRuleCSS(resolve(template.strings, template.values, allProps))
 
   if (!cssText.trim()) return ''
 

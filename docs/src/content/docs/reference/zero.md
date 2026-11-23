@@ -736,7 +736,7 @@ seoPlugin({
 function aiPlugin(config?: AiPluginConfig): Plugin // server-only
 ```
 
-AI integration plugin — generates `llms.txt`, `llms-full.txt`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon's on-publish artifacts; the plugin runs `inferJsonLd` per route to extract structured data from `meta` exports.
+AI integration plugin — generates `llms.txt`, `llms-full.txt`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon's on-publish artifacts; the plugin runs `inferJsonLd` per route to extract structured data from `meta` exports. `llms.txt` follows the llmstxt.org shape (H1, `>` summary, `##` link lists) and always ends with an `## Optional` link to `llms-full.txt`, so it passes Lighthouse's Agentic Browsing `llms-txt` audit (an H1 and at least one Markdown link) even for an app with no static page.
 
 **Example**
 

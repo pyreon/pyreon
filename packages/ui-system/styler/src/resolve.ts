@@ -119,8 +119,11 @@ export const resolve = (
  * - Trims leading/trailing whitespace
  */
 const normCache = new Map<string, string>()
-/** Clear the normalizeCSS cache (called during HMR cleanup). */
-export const clearNormCache = () => normCache.clear()
+/** Clear the normalizeCSS caches (called during HMR cleanup). */
+export const clearNormCache = () => {
+  normCache.clear()
+  ruleCache.clear()
+}
 
 export const normalizeCSS = (css: string): string => {
   const cached = normCache.get(css)
@@ -216,6 +219,88 @@ export const normalizeCSS = (css: string): string => {
   }
   normCache.set(css, out)
 
+  return out
+}
+
+/**
+ * Remove rules whose block is empty (`&:hover { }`), innermost first, so a
+ * rule or `@media` that only held empty rules goes too. `@layer a {}` stays:
+ * an empty layer block still declares cascade-layer order. Quoted strings are
+ * copied verbatim, so a
+ * brace inside `content: "{ }"` is never read as a block. Input is
+ * `normalizeCSS` output (comments already stripped).
+ */
+export const dropEmptyRules = (css: string): string => {
+  let out = ''
+  let runStart = 0
+  let preludeStart = 0 // index in `out` where the current rule's prelude begins
+  const open: { start: number; layer: boolean; body: number }[] = []
+  const len = css.length
+  for (let i = 0; i < len; i++) {
+    const c = css.charCodeAt(i)
+    if (c === 34 /* " */ || c === 39 /* ' */) {
+      let j = i + 1
+      while (j < len && css.charCodeAt(j) !== c) j += css.charCodeAt(j) === 92 /* \ */ ? 2 : 1
+      i = j
+      continue
+    }
+    if (c === 59 /* ; */) {
+      out += css.slice(runStart, i + 1)
+      runStart = i + 1
+      preludeStart = out.length
+      continue
+    }
+    if (c === 123 /* { */) {
+      out += css.slice(runStart, i + 1)
+      runStart = i + 1
+      const layer = out.slice(preludeStart).trimStart().startsWith('@layer')
+      open.push({ start: preludeStart, layer, body: out.length })
+      preludeStart = out.length
+      continue
+    }
+    if (c === 125 /* } */) {
+      out += css.slice(runStart, i)
+      runStart = i + 1
+      const block = open.pop()
+      if (block !== undefined && !block.layer && out.slice(block.body).trim() === '') {
+        out = out.slice(0, block.start)
+      } else {
+        out += '}'
+      }
+      preludeStart = out.length
+    }
+  }
+  return out + css.slice(runStart)
+}
+
+const ruleCache = new Map<string, string>()
+
+/**
+ * `normalizeCSS`, then drop empty rule blocks (`dropEmptyRules`). This is what
+ * a component's CSS goes through before it is hashed and inserted.
+ *
+ * `&:hover { ${maybeEmpty} }` is the usual way to write a state block, and it
+ * leaves `&:hover { }` behind whenever the state has no styles — on the
+ * pyreon.dev home page, about 900 of them. Each one still costs the browser
+ * parsing, selector matching and style invalidation on every element that
+ * carries the class. The scan runs only when an empty block is present, once
+ * per distinct input (bounded cache, same eviction as `normalizeCSS`).
+ */
+export const normalizeRuleCSS = (css: string): string => {
+  const normalized = normalizeCSS(css)
+  if (!normalized.includes('{ }') && !normalized.includes('{}')) return normalized
+  const cached = ruleCache.get(normalized)
+  if (cached !== undefined) return cached
+  const out = dropEmptyRules(normalized)
+  if (ruleCache.size > 2000) {
+    let count = 0
+    for (const key of ruleCache.keys()) {
+      if (count >= 200) break
+      ruleCache.delete(key)
+      count++
+    }
+  }
+  ruleCache.set(normalized, out)
   return out
 }
 

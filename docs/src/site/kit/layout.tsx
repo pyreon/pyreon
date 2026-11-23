@@ -6,6 +6,17 @@ import { Eyebrow, Heading, Lede, renderInline } from './type'
 /**
  * Vertical rhythm. size: default (120/120) | tight (20/120, every section
  * after the first on a product page) | hero (160/80) | end (120/140, centred).
+ *
+ * Every section but the hero is `content-visibility: auto`: the browser skips
+ * style, layout and paint for a section until it nears the viewport. On the
+ * home page that took the first-load rendering task from ~17 ms to ~9 ms of
+ * unthrottled main-thread time, which is what Lighthouse's mobile run
+ * multiplies into Total Blocking Time (docs/scripts/lighthouse.ts, the CI
+ * gate). `contain-intrinsic-size: auto …` reserves a placeholder height until
+ * the section first renders and remembers its real height after, so the
+ * scrollbar does not jump. The hero is the first paint, so it keeps normal
+ * rendering. Paint containment clips at the section box: nothing decorative
+ * may overflow a non-hero section.
  */
 export const Section = el
   .config({ name: 'Section' })
@@ -14,6 +25,8 @@ export const Section = el
     position: 'relative',
     paddingTop: { xs: section.padYMobile, md: section.padY },
     paddingBottom: { xs: section.padYMobile, md: section.padY },
+    contentVisibility: 'auto',
+    containIntrinsicSize: 'auto 900px',
   }))
   .sizes(() => ({
     default: {},
@@ -22,6 +35,8 @@ export const Section = el
       paddingTop: { xs: section.heroTopMobile, md: section.heroTop },
       paddingBottom: section.heroBottom,
       overflow: 'hidden',
+      contentVisibility: 'visible',
+      containIntrinsicSize: 'none',
     },
     end: { paddingBottom: { xs: section.padY, md: section.endBottom }, textAlign: 'center' },
   }))

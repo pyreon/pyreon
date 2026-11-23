@@ -10,7 +10,23 @@ import type { LoopSources } from './LoopPlayer'
  * Every size comes from the manifest, so nothing shifts when a file loads.
  */
 
-function PictureTag(props: { data: PictureData; alt: string; eager?: boolean | undefined; sizes: string; class?: string | undefined }) {
+/**
+ * `themed`: one of a dark/light pair, hidden by CSS in the other theme. Such a
+ * picture is always `loading="lazy"`, even when `eager`: a lazy image that is
+ * not displayed is never fetched, while an eager one is, so an eager pair used
+ * to download BOTH theme files at high priority before first paint (on the
+ * home page, the hero loop's two posters: 33 KB on the critical path, half of
+ * it never shown). The shown one still gets `fetchpriority="high"`; it starts
+ * loading at the first layout, which also tells the browser it is in view.
+ */
+function PictureTag(props: {
+  data: PictureData
+  alt: string
+  eager?: boolean | undefined
+  themed?: boolean | undefined
+  sizes: string
+  class?: string | undefined
+}) {
   const d = props.data
   return (
     <picture class={props.class ? `${C.picture} ${props.class}` : C.picture}>
@@ -22,7 +38,7 @@ function PictureTag(props: { data: PictureData; alt: string; eager?: boolean | u
         alt={props.alt}
         width={d.width}
         height={d.height}
-        loading={props.eager ? 'eager' : 'lazy'}
+        loading={props.eager && !props.themed ? 'eager' : 'lazy'}
         fetchPriority={props.eager ? 'high' : undefined}
         decoding={props.eager ? 'sync' : 'async'}
       />
@@ -58,8 +74,8 @@ export function Picture(props: {
   const light = pictureOf(pair.light)
   return (
     <>
-      <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} sizes={sizes} class={`${C.onlyDark} ${props.class ?? ''}`} />
-      <PictureTag data={light} alt={props.alt ?? light.alt} eager={props.eager} sizes={sizes} class={`${C.onlyLight} ${props.class ?? ''}`} />
+      <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} themed sizes={sizes} class={`${C.onlyDark} ${props.class ?? ''}`} />
+      <PictureTag data={light} alt={props.alt ?? light.alt} eager={props.eager} themed sizes={sizes} class={`${C.onlyLight} ${props.class ?? ''}`} />
     </>
   )
 }
@@ -75,8 +91,8 @@ export function Poster(props: { file: string; alt?: string | undefined; eager?: 
   const light = posterOf(props.file, 'light')
   return (
     <>
-      <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} sizes={sizes} class={C.onlyDark} />
-      <PictureTag data={light} alt={props.alt ?? light.alt} eager={props.eager} sizes={sizes} class={C.onlyLight} />
+      <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} themed sizes={sizes} class={C.onlyDark} />
+      <PictureTag data={light} alt={props.alt ?? light.alt} eager={props.eager} themed sizes={sizes} class={C.onlyLight} />
     </>
   )
 }
@@ -116,8 +132,8 @@ export function Loop(props: { media: LoopMedia; eager?: boolean | undefined; siz
   const sizes = props.sizes ?? '(min-width: 1240px) 1240px, 100vw'
   return (
     <figure class={C.loop} style={`aspect-ratio:${m.width} / ${m.height}`}>
-      <PictureTag data={darkPoster} alt={m.alt} eager={props.eager} sizes={sizes} class={C.onlyDark} />
-      <PictureTag data={lightPoster} alt={m.alt} eager={props.eager} sizes={sizes} class={C.onlyLight} />
+      <PictureTag data={darkPoster} alt={m.alt} eager={props.eager} themed sizes={sizes} class={C.onlyDark} />
+      <PictureTag data={lightPoster} alt={m.alt} eager={props.eager} themed sizes={sizes} class={C.onlyLight} />
       <LoopPlayerIsland sources={toSources(m)} label={m.alt} width={m.width} height={m.height} />
     </figure>
   )
