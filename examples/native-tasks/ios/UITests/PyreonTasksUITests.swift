@@ -474,7 +474,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// floor would open on mount and read `closed` before the tap.
     func test_streamsReconnectWithLastEventIdAndGatedNdjson() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
@@ -519,7 +519,7 @@ final class PyreonTasksUITests: XCTestCase {
     func test_hooksMediaQueryReadsDarkAppearance() throws {
         let app = XCUIApplication()
         app.launchArguments += ["-PyreonUITestDarkAppearance"]
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
@@ -543,7 +543,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// the reason noted on useHotkey above; the Android test presses the key.
     func test_hooksInfiniteQueryLatestMediaQueryKeyboard() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
@@ -589,7 +589,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// empty): it shows its placeholder, and tapping it starts a value.
     func test_dateFieldsPickThroughTheNativeDatePicker() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
@@ -673,7 +673,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// keeps its value — the web `<select>` semantics.
     func test_selectChoosesThroughTheNativePicker() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
@@ -733,7 +733,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// (`failing`, never `unreachable`).
     func test_requestsCarryRuntimeValuesAndRejectNon2xx() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
@@ -797,7 +797,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// cannot do.
     func test_intlFormatsLikeTheWebAndFollowsARuntimeTimeZone() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
@@ -838,7 +838,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// own line is the proof that this is a text area.
     func test_multilineFieldIsATextAreaBothWays() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
@@ -899,7 +899,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// the filename, the part type, the file's contents, a text part from the field, and an array as repeated parts.
     func test_uploadsAMultipartFormAndARawFile() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
         username.tap()
@@ -943,11 +943,13 @@ final class PyreonTasksUITests: XCTestCase {
     /// takes the process down with it is worse than none).
     func test_crashReporterRecordsPersistsAcrossRelaunchAndAppSurvives() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         navigateToToolkit(app)
 
         // Fresh session: nothing recorded yet. Asserted so the "true" below is a
-        // CHANGE and not the value it always had.
+        // CHANGE and not the value it always had. `launchFresh()` cleared any
+        // report an earlier test or a failed first attempt left behind, so this
+        // holds on a CI retry too (#4745).
         XCTAssertEqual(
             app.staticTexts["toolkit-crash-had"].firstMatch.label,
             "false",
@@ -967,9 +969,9 @@ final class PyreonTasksUITests: XCTestCase {
         )
         XCTAssertEqual(note.label, "survived", "App did not survive recordError")
 
-        // FIRED: a real process restart, then the report must be back.
-        app.terminate()
-        app.launch()
+        // FIRED: a real process restart that KEEPS the app's files (every other
+        // launch in this suite starts fresh), then the report must be back.
+        app.relaunchKeepingState()
         navigateToToolkit(app)
 
         let had = app.staticTexts["toolkit-crash-had"].firstMatch
@@ -980,9 +982,6 @@ final class PyreonTasksUITests: XCTestCase {
             "Crash report did not survive a real process restart"
         )
 
-        // Hygiene: leave no persisted report behind for a later test to trip on.
-        let clear = app.buttons["toolkit-crash-clear"].firstMatch
-        if clear.exists { clear.tap() }
     }
 
     /// useOidc (@pyreon/auth) on a real simulator. The issuer is under `.invalid`, which never
@@ -992,7 +991,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// `network_error`, the code the web and Android report for the same failure.
     func test_ssoSignInReportsNetworkErrorWithoutAProvider() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let status = app.staticTexts["sso-status"].firstMatch
         XCTAssertTrue(status.waitToExist(timeout: 30), "SSO status did not render — useOidc failed to construct")
@@ -1013,7 +1012,7 @@ final class PyreonTasksUITests: XCTestCase {
 
     func test_appLaunchesOnLoginPage() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let loginPage = app.otherElements["login-page"].firstMatch
         XCTAssertTrue(
@@ -1058,7 +1057,7 @@ final class PyreonTasksUITests: XCTestCase {
     ///   3. REVERSE — a keystroke typed into the editor reaches a native signal over the `v:` / `c:` channel.
     func test_hostedEditorsRoundTrip() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30))
         username.tap()
@@ -1123,7 +1122,7 @@ final class PyreonTasksUITests: XCTestCase {
 
     func test_grammarBarSelectionAfterPartialVisibility() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30))
         username.tap()
@@ -1179,7 +1178,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// centred, the page floated mid-screen and buttons were text links.
     func test_tasksScreenLayoutMatchesTheOtherTargets() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing on login page")
@@ -1224,7 +1223,7 @@ final class PyreonTasksUITests: XCTestCase {
 
     func test_authGateStoreMutationAndTypedParamsDetail() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // Phase 1: login — flips the store's auth flag, the beforeEnter
         // guard on /tasks reads it and admits the navigation.
@@ -2371,7 +2370,7 @@ final class PyreonTasksUITests: XCTestCase {
     /// - target="_blank": hands the URL to Safari instead of doing nothing.
     func test_webHostChromeAndFill() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         navigateToWebHost(app)
 
         let result = app.staticTexts["webhost-result"].firstMatch

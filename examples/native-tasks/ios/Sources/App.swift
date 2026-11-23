@@ -8,6 +8,11 @@ import SwiftUI
 
 @main
 struct PyreonTasksApp: App {
+    init() {
+        // UI tests launch from a fresh-install state (see UITestAppState.swift).
+        UITestAppState.resetIfRequested()
+    }
+
     var body: some Scene {
         WindowGroup {
             // `-PyreonUITestDarkAppearance` (UI tests only) runs the app in dark appearance: it sets the window's
