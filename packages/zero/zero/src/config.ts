@@ -76,8 +76,16 @@ function defaultAdapter(): NonNullable<ZeroConfig['adapter']> {
  * base when it is a path; a `./` or CDN asset base leaves the route base `/`.
  */
 export function routeBaseOf(zeroBase: string | undefined, assetBase: string | undefined): string {
-  if (zeroBase !== undefined) return zeroBase
-  return assetBase !== undefined && assetBase.startsWith('/') ? assetBase : '/'
+  if (zeroBase !== undefined) return withTrailingSlash(zeroBase)
+  return assetBase !== undefined && assetBase.startsWith('/') ? withTrailingSlash(assetBase) : '/'
+}
+
+/**
+ * `/docs` → `/docs/`. A route base is a directory; Vite normalises its own base
+ * the same way, so `zero({ base: '/docs' })` and Vite agree on one spelling.
+ */
+export function withTrailingSlash(base: string): string {
+  return base.endsWith('/') ? base : `${base}/`
 }
 
 /** A Vite base that is relative to the HTML document (`./`, `''`). */
@@ -117,6 +125,7 @@ export function resolveConfig(
     port: 3000,
     entryClient: '/src/entry-client.ts',
     ...userConfig,
+    ...(userConfig.base !== undefined ? { base: withTrailingSlash(userConfig.base) } : {}),
     adapter: userConfig.adapter ?? defaultAdapter(),
     ssr: {
       mode: 'string',

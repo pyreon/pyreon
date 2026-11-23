@@ -1785,10 +1785,12 @@ async function renderSsr(
 	// every page as if its query were empty — an SSR/hydration mismatch.
 	const routerPath = pathname + (req ? new URL(req.url).search : "");
 	// The ROUTE base, from the same define the client and the SSG entry read
-	// (set in `configResolved`). Vite's dev server has already stripped it from
-	// `pathname`; without it here every dev-rendered link dropped the base
-	// (`<a href="/about">` under `--base /blog/`) and the hydrated client,
-	// which does have it, disagreed with the server HTML.
+	// (set in `configResolved`). zero's SSR middleware is registered BEFORE
+	// Vite's base middleware, so `pathname` normally still carries the base;
+	// `withoutRouteBase` below accepts it with or without. Without the base here
+	// every dev-rendered link dropped it (`<a href="/about">` under
+	// `--base /blog/`), every page rendered the loading fallback, and the
+	// hydrated client, which does have it, disagreed with the server HTML.
 	const routeBase = devRouteBase(server);
 	const { App, router: routerInst } = appMod.createApp({
 		routes: routes as import("@pyreon/router").RouteRecord[],

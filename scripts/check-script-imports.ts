@@ -10,7 +10,8 @@
  * gate stayed green (#4751 review).
  *
  * This typechecks `scripts/` (`scripts/tsconfig.json`) and fails on the
- * module-resolution / missing-export diagnostics only. The scripts carry other
+ * module-resolution / missing-export diagnostics, and on any diagnostic that
+ * stops tsc from reporting them (syntax, config, a missing type library). The scripts carry other
  * type errors (bench code written against loosely typed competitor packages,
  * `exactOptionalPropertyTypes` drift); those are a separate clean-up and do
  * not decide whether a script can load.
@@ -29,13 +30,30 @@ const IMPORT_CODES = new Set([
   2613, // Module has no default export
 ])
 
-/** Parse `file(line,col): error TS1234: message` lines into the import-class ones. */
+/**
+ * Diagnostics that make tsc stop reporting import errors at all: a syntax
+ * error (TS1xxx) anywhere, a bad config or option (TS5xxx / TS6xxx), or a
+ * missing type library (TS2688). With one of these, tsc prints only that and
+ * the import check would pass on silence, so they block too.
+ */
+function blindsTheCheck(code: number): boolean {
+  return (code >= 1000 && code < 2000) || (code >= 5000 && code < 7000) || code === 2688
+}
+
+/**
+ * Parse `file(line,col): error TS1234: message` lines (and file-less
+ * `error TS1234:` lines) into the ones that fail the gate: the import class,
+ * plus anything that blinds the check.
+ */
 export function importDiagnostics(tscOutput: string): string[] {
   const out: string[] = []
   for (const line of tscOutput.split('\n')) {
     const m = /error TS(\d+):/.exec(line)
-    if (m && IMPORT_CODES.has(Number(m[1]))) out.push(line.trim())
+    if (!m) continue
+    const code = Number(m[1])
+    if (IMPORT_CODES.has(code) || blindsTheCheck(code)) out.push(line.trim())
   }
+
   return out
 }
 
@@ -44,9 +62,9 @@ if (import.meta.main) {
   const r = spawnSync('bunx', ['tsc', '-p', project], { encoding: 'utf8' })
   const broken = importDiagnostics(`${r.stdout}\n${r.stderr}`)
   if (broken.length > 0) {
-    console.error(`✗ check-script-imports — ${broken.length} broken import(s) in scripts/:`)
+    console.error(`✗ check-script-imports — ${broken.length} diagnostic(s) in scripts/ that break or blind the import check:`)
     for (const b of broken) console.error(`  ${b}`)
-    console.error('Fix the import (the export was renamed or removed), or delete the script if it is dead.')
+    console.error('Fix the import (the export was renamed or removed), the syntax error or the config/type-library error; or delete the script if it is dead.')
     process.exit(1)
   }
   if (r.status !== 0 && !/error TS\d+/.test(`${r.stdout}${r.stderr}`)) {

@@ -29,6 +29,36 @@ describe('check-script-imports', () => {
     ])
   })
 
+  it('fails on what blinds tsc to import errors: syntax, config and missing type libraries', () => {
+    const out = [
+      "scripts/broken.ts(3,1): error TS1005: ',' expected.",
+      'scripts/broken.ts(4,2): error TS1109: Expression expected.',
+      "error TS2688: Cannot find type definition file for 'bun'.",
+      "tsconfig.json(2,5): error TS5023: Unknown compiler option 'nope'.",
+    ].join('\n')
+    expect(importDiagnostics(out)).toHaveLength(4)
+  })
+
+  it('a syntax error elsewhere in scripts/ does not let a broken import pass (real tsc)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-script-imports-syntax-'))
+    try {
+      mkdirSync(join(dir, 'pkg'))
+      writeFileSync(join(dir, 'pkg', 'detect.ts'), 'export function detectCycles(): number { return 1 }\n')
+      writeFileSync(join(dir, 'bench.ts'), "import { detectGone } from './pkg/detect'\nconsole.log(detectGone())\n")
+      writeFileSync(join(dir, 'other.ts'), 'const x = (1, \n')
+      writeFileSync(
+        join(dir, 'tsconfig.json'),
+        JSON.stringify({ compilerOptions: { noEmit: true, strict: true, module: 'esnext', moduleResolution: 'bundler', types: [] }, include: ['./**/*.ts'] }),
+      )
+      const r = spawnSync('bunx', ['tsc', '-p', join(dir, 'tsconfig.json')], { encoding: 'utf8' })
+      const blocking = importDiagnostics(`${r.stdout}\n${r.stderr}`)
+      expect(blocking.length).toBeGreaterThan(0)
+      expect(blocking.some((l) => /error TS1\d{3}:/.test(l))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 60_000)
+
   it('catches a script importing a name its target module does not export (real tsc)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-script-imports-'))
     try {

@@ -95,6 +95,49 @@ describe('zero base — real builds (#4269)', () => {
     )
   }, 120_000)
 
+  it('zero({ base }) must be a path: a CDN URL there is rejected and pointed at vite.config.base', async () => {
+    await expect(buildShowcase(undefined, { mode: 'ssg', base: CDN })).rejects.toThrow(
+      /`base` must be a root-relative path[\s\S]*vite\.config\.ts/,
+    )
+  }, 120_000)
+
+  it('zero({ base: "/sub" }) without a trailing slash routes and serves under /sub/', async () => {
+    const dist = await buildShowcase(undefined, { mode: 'ssg', base: '/sub' })
+    const about = readFileSync(join(dist, 'about', 'index.html'), 'utf8')
+    expect(anchorHrefs(about)).toContain('/sub/about')
+    expect(anchorHrefs(about).filter((h) => h.startsWith('/') && !h.startsWith('/sub/'))).toEqual([])
+    expect(assetUrls(about).filter((u) => !u.startsWith('/sub/assets/'))).toEqual([])
+  }, 120_000)
+
+  it('SSG i18n locale pages render under a Vite path base (dist/de/about, every URL under /sub/)', async () => {
+    const outDir = mkdtempSync(join(tmpdir(), 'pyreon-base-build-'))
+    outDirs.push(outDir)
+    await build({
+      root: SHOWCASE,
+      configFile: false,
+      logLevel: 'silent',
+      base: '/sub/',
+      plugins: [
+        pyreon(),
+        zeroPlugin({
+          mode: 'ssg',
+          i18n: { locales: ['en', 'de'], defaultLocale: 'en', strategy: 'prefix-except-default' },
+        }),
+      ],
+      build: { outDir, emptyOutDir: true },
+    })
+    const deAbout = readFileSync(join(outDir, 'de', 'about', 'index.html'), 'utf8')
+    expect(deAbout).toContain('data-testid="about-page"')
+    // The fixture's nav uses plain RouterLinks (`/about`), not locale links,
+    // so a locale page links `/sub/about`; what matters is that nothing
+    // escapes the base.
+    expect(anchorHrefs(deAbout)).toContain('/sub/about')
+    expect(anchorHrefs(deAbout).filter((h) => h.startsWith('/') && !h.startsWith('/sub/'))).toEqual([])
+    expect(assetUrls(deAbout).filter((u) => !u.startsWith('/sub/assets/'))).toEqual([])
+    const enAbout = readFileSync(join(outDir, 'about', 'index.html'), 'utf8')
+    expect(anchorHrefs(enAbout)).toContain('/sub/about')
+  }, 120_000)
+
   it('SPA with a relative ./ base builds and keeps its asset URLs relative', async () => {
     const dist = await buildShowcase('./', { mode: 'spa' })
     const index = readFileSync(join(dist, 'index.html'), 'utf8')

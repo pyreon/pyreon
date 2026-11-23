@@ -110,6 +110,12 @@ describe('route base vs asset base (#4269)', () => {
     expect(config.base).toBe('/')
   })
 
+  it('a zero({ base }) without a trailing slash is normalised, like Vite normalises its own', () => {
+    expect(resolveConfig({ base: '/docs' }).base).toBe('/docs/')
+    expect(routeBaseOf('/docs', '/docs/')).toBe('/docs/')
+    expect(routeBaseOf(undefined, '/docs')).toBe('/docs/')
+  })
+
   it('isRelativeBase', () => {
     expect(isRelativeBase('./')).toBe(true)
     expect(isRelativeBase('')).toBe(true)
