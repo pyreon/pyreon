@@ -32,7 +32,7 @@ Read only the file for the package you are changing. Packages with a detail file
 | `@pyreon/feature` | Schema-driven CRUD (queries, forms, tables, stores). Validation accepts Zod or any Standard Schema; field introspection (`extractFields`: auto form fields, columns, create defaults) is Zod-only — other schemas need explicit `initialValues` (dev-warned once). |
 | `@pyreon/virtual` | TanStack Virtual adapter. |
 | `@pyreon/charts` | Pyreon's own charting engine: `<Chart>` with mark children, twenty family components, `/svg` (SSR), `/engine` (everything, unstable); theme tokens via `ChartThemeProvider`, `chartThemes`, `palettes`; draws natively on iOS/Android. Band edges share a gap mask and pair runs by index, including singletons; resolve both channels once per frame. Keyed geometry uses `isFiniteNumber`, including on transformed values. Bench: `bench:engine`. |
-| `@pyreon/hooks` | 65 signal-based hooks. |
+| `@pyreon/hooks` | 65 signal-based hooks. `useFocusTrap` places `initialFocus` one microtask after activation; `true` is skipped when focus is already in the container, a named target only when focus is already inside that target (a toggle inside the trapped header must not block it, #4355; locked by `useFocusTrap.browser.test.ts`). |
 | `@pyreon/hotkeys` | Keyboard shortcuts: key-bucketed dispatch, refcounted scopes, `mod` alias, sequences (`g t`), comma lists, keyup bindings, `once`/`ignoreRepeat`, element targets, `trigger()`, conflict detection, SSR-safe. |
 | `@pyreon/document` | Document rendering: 18 primitives, 20 output formats. |
 | `@pyreon/url-state` | `useUrlState` with schema mode and type coercion; SSR-safe. |

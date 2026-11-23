@@ -778,6 +778,8 @@ import { Link, useLink, createLink, prefetchRoute } from '@pyreon/zero'
 | `target`           | `string`                          | auto             | Override `<a target>` (auto `"_blank"` for external) |
 | `rel`              | `string`                          | auto             | Override `<a rel>` (auto `"noopener noreferrer"` on new-tab links) |
 
+An internal root-relative `href` renders with the router base (`<Link href="/about">` → `<a href="/blog/about">` under `base: '/blog/'`), exactly like `<RouterLink>`; `useLink(props).href()` returns the same value for a custom element, and `createLink` passes it as `href`. External, protocol-relative and `external`-forced hrefs are written as given.
+
 #### `<Link>` external links
 
 `<Link>` classifies `href` at runtime and only intercepts INTERNAL navigations. External URLs, `mailto:`/`tel:`, and `#hash` are left to the browser — and external links auto-get `target="_blank" rel="noopener noreferrer"`. No manual `external` prop needed:
@@ -1299,6 +1301,8 @@ export default {
 ```
 
 `fontVariables({ Inter: "'Inter', sans-serif" })` generates CSS custom properties.
+
+Self-hosted files are emitted under `assets/fonts/`; the inlined `@font-face` CSS and the preload hints carry the build's base (see [Base Path](#base-path)), so a subpath deploy loads them from `<base>assets/fonts/`.
 
 ### `usePreloadFont` — per-route runtime preload
 

@@ -311,24 +311,25 @@ const kept = linked(options, (opts, prev): string =>
 ### `effect` `function`
 
 ```ts
-(fn: () => (() => void) | void) => () => void
+(fn: () => (() => void) | void, options?: { name?: string }) => Effect
 ```
 
-Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.
+Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns an `Effect` whose `dispose()` unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.
 
 **Parameters**
 
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `fn` | `() => (() => void) \| void` | Effect body — auto-tracks the signals it reads; may return a cleanup callback run before each re-run and on dispose. |
+| `options?` | `{ name?: string }` | `name` is a dev-only debug name shown in devtools (`@pyreon/vite-plugin` injects it for `const x = effect(…)`). |
 
-**Returns** `() => void` — A dispose function — call it to stop the effect and run its final cleanup.
+**Returns** `Effect` — `{ dispose() }` — call `dispose()` to stop the effect and run its final cleanup.
 
 **Example**
 
 ```tsx
 const count = signal(0)
-const dispose = effect(() => {
+const e = effect(() => {
   console.log("Count:", count())
   onCleanup(() => console.log("cleaning up"))
 })

@@ -244,6 +244,8 @@ interface Computed<T> {
 }
 ```
 
+`computed(fn, { name: 'doubled' })` gives the node a dev-only debug name, shown in devtools instead of `derived#N`. `@pyreon/vite-plugin` injects it in dev for `const doubled = computed(…)`, as it does for signals; production builds never read it.
+
 ### Custom Equality
 
 By default, a computed notifies downstream whenever any dependency changes. Use the `equals` option to suppress updates when the derived value has not meaningfully changed. This is especially useful for derived arrays and objects:
@@ -392,6 +394,8 @@ interface Effect {
   dispose(): void
 }
 ```
+
+`effect(fn, { name: 'logCount' })` gives the effect a dev-only debug name in devtools (instead of `effect#N`); `@pyreon/vite-plugin` injects it in dev for `const x = effect(…)`.
 
 ### Dynamic Dependencies
 

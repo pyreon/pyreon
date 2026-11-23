@@ -72,6 +72,7 @@ function defaultAdapter(): NonNullable<ZeroConfig['adapter']> {
  * URLs, not routes, so it leaves `config.base` as it was.
  *
  * @returns whether `config.base` changed.
+ * @internal — used by zero's own plugins; not exported from a public entry.
  */
 export function adoptResolvedBase(config: { base: string }, resolvedBase: string | undefined): boolean {
   if (resolvedBase === undefined || !resolvedBase.startsWith('/') || resolvedBase === config.base) return false

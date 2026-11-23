@@ -211,22 +211,28 @@ const kept = linked(options, (opts, prev): string =>
     {
       name: 'effect',
       kind: 'function',
-      signature: '(fn: () => (() => void) | void) => () => void',
+      signature: '(fn: () => (() => void) | void, options?: { name?: string }) => Effect',
       params: [
         {
           name: 'fn',
           type: '() => (() => void) | void',
           description: 'Effect body — auto-tracks the signals it reads; may return a cleanup callback run before each re-run and on dispose.',
         },
+        {
+          name: 'options',
+          type: '{ name?: string }',
+          optional: true,
+          description: '`name` is a dev-only debug name shown in devtools (`@pyreon/vite-plugin` injects it for `const x = effect(…)`).',
+        },
       ],
       returns: {
-        type: '() => void',
-        description: 'A dispose function — call it to stop the effect and run its final cleanup.',
+        type: 'Effect',
+        description: '`{ dispose() }` — call `dispose()` to stop the effect and run its final cleanup.',
       },
       summary:
-        'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.',
+        'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns an `Effect` whose `dispose()` unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.',
       example: `const count = signal(0)
-const dispose = effect(() => {
+const e = effect(() => {
   console.log("Count:", count())
   onCleanup(() => console.log("cleaning up"))
 })

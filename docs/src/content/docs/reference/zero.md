@@ -1219,7 +1219,7 @@ const sub = useSubmission(action)
 <Link href={path} prefetch="hover" activeClass={cls}>{children}</Link>
 ```
 
-Default navigation link built on an `<a>` tag. Only INTERNAL navigations are intercepted (`router.push()` + prefetch + `activeClass`); external URLs, `mailto:`/`tel:`, and `#hash` are detected from `href` at runtime and left to the browser — external links auto-get `target="_blank" rel="noopener noreferrer"`. `href` is generic (`CheckHref<T, RoutePath>`): once typed-routes codegen has run, a mistyped internal path is a compile error while dynamic strings + external URLs are always accepted. Built on `createLink` so consumers can swap the rendered element via `createLink(MyCustomLink)` without losing any of this.
+Default navigation link built on an `<a>` tag. An internal root-relative `href` renders with the router base (`/about` → `/blog/about` under `base: '/blog/'`), like `<RouterLink>`. Only INTERNAL navigations are intercepted (`router.push()` + prefetch + `activeClass`); external URLs, `mailto:`/`tel:`, and `#hash` are detected from `href` at runtime and left to the browser — external links auto-get `target="_blank" rel="noopener noreferrer"`. `href` is generic (`CheckHref<T, RoutePath>`): once typed-routes codegen has run, a mistyped internal path is a compile error while dynamic strings + external URLs are always accepted. Built on `createLink` so consumers can swap the rendered element via `createLink(MyCustomLink)` without losing any of this.
 
 **Example**
 
@@ -1250,7 +1250,7 @@ import { Link } from '@pyreon/zero/link'
 function useLink(props: LinkProps): UseLinkReturn
 ```
 
-Composable that returns all link behavior — `{ ref, handleClick, handleMouseEnter, handleTouchStart, isActive, isExactActive, classes }`. Use when `createLink` is too opinionated (e.g. you need a `<button>` link, a card-shaped link, or want to compose with another framework primitive). Internals: hover/viewport prefetch via IntersectionObserver, keyboard-modifier guard (Cmd+click opens new tab), active/exact-active path matching, class-string composition.
+Composable that returns all link behavior — `{ href, ref, handleClick, handleMouseEnter, handleTouchStart, isActive, isExactActive, classes, isInternal, target, rel }`. `href()` is the value to render: an internal root-relative path carries the router base (like `<RouterLink>`), anything else is returned as written. Use when `createLink` is too opinionated (e.g. you need a `<button>` link, a card-shaped link, or want to compose with another framework primitive). Internals: hover/viewport prefetch via IntersectionObserver, keyboard-modifier guard (Cmd+click opens new tab), active/exact-active path matching, class-string composition.
 
 **Example**
 
@@ -1292,7 +1292,7 @@ function CardLink(props: LinkProps) {
 function createLink(Component: (p: LinkRenderProps) => any): (props: LinkProps) => any
 ```
 
-HOC that wraps any component with link behavior. The wrapped component receives `LinkRenderProps` with all handlers + state pre-wired (`href`, `ref`, `onClick`, `onMouseEnter`, `onTouchStart`, `isActive`, `isExactActive`, `class`, `target`, `rel`). Use this to build styled link variants (button-links, card-links, design-system anchors) without re-implementing the prefetch + active-state machine.
+HOC that wraps any component with link behavior. The wrapped component receives `LinkRenderProps` with all handlers + state pre-wired (`href` — base-prefixed for an internal path, `ref`, `onClick`, `onMouseEnter`, `onTouchStart`, `isActive`, `isExactActive`, `class`, `target`, `rel`). Use this to build styled link variants (button-links, card-links, design-system anchors) without re-implementing the prefetch + active-state machine.
 
 **Example**
 
@@ -1981,7 +1981,7 @@ usePreloadFont('/fonts/auth-required.woff2', { crossorigin: 'use-credentials' })
 function fontPlugin(config: FontConfig = {}): Plugin
 ```
 
-Vite plugin that auto-optimizes Google Fonts and local fonts declared in `zero({ font: { google, local } })`. In dev mode, injects CDN links for fast startup; in build mode, downloads fonts at build time, self-hosts them from `/assets/fonts/` with hashed filenames, injects preload + preconnect hints into the HTML, applies `font-display: swap` to prevent FOIT (Flash of Invisible Text), and optionally generates size-adjusted fallback `@font-face` rules to reduce CLS. Self-hosting shares a 60-second download deadline across CSS and all font bodies; failure aborts active requests, warns and falls back to the CDN. Complete downloads are cached. Auto-wired by the zero plugin unless disabled via `zero({ font: false })`.
+Vite plugin that auto-optimizes Google Fonts and local fonts declared in `zero({ font: { google, local } })`. In dev mode, injects CDN links for fast startup; in build mode, downloads fonts at build time, self-hosts them from `<base>assets/fonts/` (the resolved build base) with hashed filenames, injects preload + preconnect hints into the HTML, applies `font-display: swap` to prevent FOIT (Flash of Invisible Text), and optionally generates size-adjusted fallback `@font-face` rules to reduce CLS. Self-hosting shares a 60-second download deadline across CSS and all font bodies; failure aborts active requests, warns and falls back to the CDN. Complete downloads are cached. Auto-wired by the zero plugin unless disabled via `zero({ font: false })`.
 
 **Example**
 
