@@ -15,7 +15,8 @@
  * and each config's servers stop with it.
  */
 import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export interface WebServerLike {
   command?: unknown
@@ -47,7 +48,7 @@ export function webServerProblems(file: string, servers: readonly WebServerLike[
 }
 
 if (import.meta.main) {
-  const dir = join(import.meta.dir, '..', 'e2e-configs')
+  const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'e2e-configs')
   const problems: string[] = []
   for (const f of readdirSync(dir).filter((n) => n.endsWith('.config.ts')).sort()) {
     const mod = (await import(join(dir, f))) as { default?: { webServer?: WebServerLike | WebServerLike[] } }
