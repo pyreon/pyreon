@@ -33,6 +33,7 @@ function kotlinFiles(dir: string): string[] {
     if (statSync(p).isDirectory()) out.push(...kotlinFiles(p))
     else if (name.endsWith('.kt')) out.push(p)
   }
+
   return out
 }
 
