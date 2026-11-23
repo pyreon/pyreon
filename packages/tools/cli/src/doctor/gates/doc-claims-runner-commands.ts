@@ -58,10 +58,7 @@ export function stringLiteralText(source: string, fileName = 'source.tsx'): stri
   const keep = (from: number, to: number): void => {
     for (let i = from; i < to; i++) out[i] = source[i] as string
   }
-  const kind = /\.[cm]?jsx?$/.test(fileName)
-    ? fileName.endsWith('x') ? ts.ScriptKind.JSX : ts.ScriptKind.JS
-    : fileName.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
-  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, kind)
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, scriptKindOf(ts, fileName))
   const visit = (node: import('typescript').Node): void => {
     switch (node.kind) {
       case ts.SyntaxKind.StringLiteral:
@@ -77,10 +74,19 @@ export function stringLiteralText(source: string, fileName = 'source.tsx'): stri
     }
   }
   visit(sf)
+
   return out.join('')
 }
 
+function scriptKindOf(ts: typeof import('typescript'), fileName: string): import('typescript').ScriptKind {
+  const jsx = fileName.endsWith('x')
+  if (/\.[cm]?jsx?$/.test(fileName)) return jsx ? ts.ScriptKind.JSX : ts.ScriptKind.JS
+
+  return jsx ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+}
+
 let tsModule: typeof import('typescript') | undefined
+
 function loadTypeScript(): typeof import('typescript') {
   tsModule ??= createRequire(import.meta.url)('typescript') as typeof import('typescript')
   return tsModule

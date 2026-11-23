@@ -65,6 +65,23 @@ function describeIgnore(ig: LoomIgnore): string {
     .join(' ')
 }
 
+/** Whether entry `index` matches anything, matches nothing, or is shadowed by an earlier entry. */
+function ignoreVerdict(
+  ig: LoomIgnore,
+  index: number,
+  ignores: readonly LoomIgnore[],
+  matchable: readonly LoomIssue[],
+): 'live' | 'gone' | { shadowedBy: LoomIgnore } {
+  const matched = matchable.filter((issue) => ignoreMatches(ig, issue))
+  if (matched.length === 0) return 'gone'
+  const earlier = ignores.slice(0, index)
+  const firsts = matched.map((issue) => earlier.find((e) => ignoreMatches(e, issue)))
+  const first = firsts[0]
+  if (first === undefined || firsts.some((f) => f === undefined)) return 'live'
+
+  return { shadowedBy: first }
+}
+
 /**
  * `loom.ignore` entries that do nothing in this scan.
  *
@@ -91,18 +108,12 @@ function unusedIgnores(
   const out: LoomIssue[] = []
   ignores.forEach((ig, index) => {
     if (opts.noImports && (ig.code === undefined || LEXICAL_CODES.has(ig.code))) return
-    const matched = matchable.filter((issue) => ignoreMatches(ig, issue))
-    let message: string
-    let shadowedBy: LoomIgnore | undefined
-    if (matched.length === 0) {
-      message = `A \`loom.ignore\` entry (${describeIgnore(ig)}) matched no finding — what it excused is gone, or it never matched; delete it, or fix its pkg / dep / code (reason: ${ig.reason})`
-    } else {
-      const earlier = ignores.slice(0, index)
-      const firsts = matched.map((issue) => earlier.find((e) => ignoreMatches(e, issue)))
-      if (firsts.some((f) => f === undefined)) return
-      shadowedBy = firsts[0]
-      message = `A \`loom.ignore\` entry (${describeIgnore(ig)}) is shadowed: every finding it matches is already matched by an earlier entry (${describeIgnore(shadowedBy as LoomIgnore)}), which is the one that applies; delete it, or move it above that entry (reason: ${ig.reason})`
-    }
+    const verdict = ignoreVerdict(ig, index, ignores, matchable)
+    if (verdict === 'live') return
+    const shadowedBy = verdict === 'gone' ? undefined : verdict.shadowedBy
+    const message = shadowedBy
+      ? `A \`loom.ignore\` entry (${describeIgnore(ig)}) is shadowed: every finding it matches is already matched by an earlier entry (${describeIgnore(shadowedBy)}), which is the one that applies; delete it, or move it above that entry (reason: ${ig.reason})`
+      : `A \`loom.ignore\` entry (${describeIgnore(ig)}) matched no finding — what it excused is gone, or it never matched; delete it, or fix its pkg / dep / code (reason: ${ig.reason})`
     out.push({
       code: 'stale-ignore',
       severity: opts.severity,
@@ -114,6 +125,19 @@ function unusedIgnores(
   })
 
   return out
+}
+
+/** The ignore entries in force and the file they were declared in. */
+function ignoreSource(
+  options: BuildReportOptions,
+  rootIgnores: readonly LoomIgnore[],
+): { ignores: readonly LoomIgnore[]; declaredIn: string } {
+  const fromSettings = options.settings?.ignores
+  if (fromSettings && fromSettings.length > 0) {
+    return { ignores: fromSettings, declaredIn: options.settings?.ignoresFrom ?? 'package.json' }
+  }
+
+  return { ignores: rootIgnores, declaredIn: 'package.json' }
 }
 
 export function buildReport(rootDir: string, options: BuildReportOptions = {}): LoomReport {
@@ -143,16 +167,14 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
     }
   }
 
-  const allIgnores = options.settings?.ignores?.length
-    ? options.settings.ignores
-    : model.root.ignores
+  const { ignores: allIgnores, declaredIn } = ignoreSource(options, model.root.ignores)
   const matchable = [...issues]
   applyIgnores(issues, allIgnores)
   issues.push(
     ...unusedIgnores(allIgnores, matchable, {
       noImports: options.noImports === true,
       severity: severityOverrides?.['stale-ignore'] ?? 'warning',
-      declaredIn: options.settings?.ignores?.length ? (options.settings.ignoresFrom ?? 'package.json') : 'package.json',
+      declaredIn,
     }),
   )
 
