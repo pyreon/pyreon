@@ -32,8 +32,7 @@ import { _rdLabelBinding, _renderBind } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
 import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
-import { _parkText } from './parked-text'
-import { _parkElement } from './set-child-claim'
+import { _park } from './parked-text'
 
 type Cleanup = () => void
 
@@ -881,7 +880,7 @@ interface AdoptMatch {
    * EMPTY template elements whose server content is not plain text (#4599;
    * see `TplSig.emptyEls`). No node is inserted (nothing refers into an empty
    * element): the caller records each one's server child nodes on it
-   * (`_parkElement`) for `_setChild` to claim.
+   * (`_park`) for `_setChild` to claim.
    */
   setChildEls: Element[] | null
   /**
@@ -1619,13 +1618,16 @@ export function tplAdoptVerify(
   if (match.midSlots) collapseMidSlots(match.midSlots)
   if (match.parks) parkMidRanges(match.parks)
   if (match.setChildEls !== null) {
-    for (const el of match.setChildEls) _parkElement(el, Array.from(el.childNodes))
+    for (const el of match.setChildEls) _park(el, Array.from(el.childNodes))
   }
   if (match.soleTextParks) {
     for (const el of match.soleTextParks) {
+      // The server run is recorded BEFORE the placeholder goes in, so the
+      // placeholder (the compiled `firstChild` ref's target) is never in it.
+      const server = Array.from(el.childNodes)
       const placeholder = document.createTextNode('')
       el.insertBefore(placeholder, el.firstChild)
-      _parkText(placeholder, null)
+      _park(placeholder, server)
     }
   }
   // Declared innerHTML elements: mark each so the bind's first `_setHtml`

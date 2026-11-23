@@ -10,7 +10,8 @@
  * Scope for every case: `vNode = <b>n</b>`, `vArr = ['t', <b>n</b>]`,
  * `rows = [{ id: 1, cell: <b>one</b> }, { id: 2, cell: ['t', <i>two</i>] }]`,
  * `clear` / `prepend` refs (the server never runs a ref) and
- * `hp = { dangerouslySetInnerHTML: { __html: '<i>h</i>' } }`.
+ * `hp = { dangerouslySetInnerHTML: { __html: '<i>h</i>' } }`,
+ * `parts = () => ['a ', <code>x</code>]`.
  */
 export interface SetChildEmptyCase {
   name: string
@@ -73,5 +74,11 @@ export const SETCHILD_EMPTY_CASES: SetChildEmptyCase[] = [
     source: "export const App = () => <div {...hp}>{vNode}</div>",
     compiled: "const App = () => _tpl(\"<div></div>\", (__root) => {\n  const __d0 = _applyProps(__root, hp);\n  _setChild(__root, vNode);\n  return __d0;\n});\n",
     server: "<div><i>h</i></div>",
+  },
+  {
+    name: "a ref that prepends before a sole text slot holding elements (#4385)",
+    source: "export const App = () => <div><span ref={prepend}>{parts()}</span></div>",
+    compiled: "const App = () => _tpl(\"<div><span> </span></div>\", (__root) => {\n  const __e0 = __root.firstElementChild;\n  const __t1 = __e0.firstChild;\n  const __d0 = _ref(__e0, prepend);\n  const __d1 = _bindText(parts, __t1);\n  return _dispose2(__d0, __d1);\n});\n",
+    server: "<div><span>a <code>x</code></span></div>",
   },
 ]

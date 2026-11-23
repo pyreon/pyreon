@@ -244,11 +244,19 @@ export function reportServerElementRewrite(
   warnHydrationMismatch('tag', expected, serverEl.localName, compiledMismatchPath(parent, leaf))
 }
 
-/** Server content nobody claimed was removed from `parent` (#4599): report
- *  its text, or its first element when it had no text. */
-export function reportRemovedServerContent(parent: Node, text: string, firstEl: Element | null): void {
-  if (text !== '') warnHydrationMismatch('text', '', text, compiledMismatchPath(parent, 'text'))
-  else if (firstEl !== null) reportServerElementRewrite(parent, firstEl, '', 'text')
+/** The build swept an unclaimed mark's server content (#4385, #4599):
+ *  report the text it replaced with `expected` (the placeholder's text, or
+ *  `''` for an element left empty), or, when the text agrees, the server
+ *  element that went with it. */
+export function reportParkedSweep(
+  owner: Node | null,
+  expected: string,
+  server: string,
+  serverEl: Element | null,
+  leaf: 'text' | 'reactive',
+): void {
+  if (server !== expected) warnHydrationMismatch('text', expected, server, compiledMismatchPath(owner, leaf))
+  else if (serverEl !== null) reportServerElementRewrite(owner as Node, serverEl, expected === '' ? '' : '#text', leaf)
 }
 
 /** `_setChild`'s static text write over adopted content: a server ELEMENT it
@@ -257,13 +265,6 @@ export function reportRemovedServerContent(parent: Node, text: string, firstEl: 
 export function reportStaticTextWrite(node: Element, before: string, serverEl: Element | null): void {
   if (serverEl !== null && before === (node.textContent ?? '')) reportServerElementRewrite(node, serverEl, '#text', 'text')
   else reportTextWrite(node, before, 'text')
-}
-
-/** A swept text slot: report the rewrite of the server's text, or, when the
- *  text agrees, the server element (`serverEl`) that went with it. */
-export function reportSlotSweep(text: Text, server: string, serverEl: Element | null): void {
-  if (serverEl === null || server !== text.data) reportTextWrite(text, server, 'reactive')
-  else reportServerElementRewrite(text.parentNode as Node, serverEl, text.data === '' ? '' : '#text', 'reactive')
 }
 
 /** A static write already made: report it if it changed the server's text

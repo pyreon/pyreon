@@ -84,7 +84,7 @@ afterEach(() => {
   for (const el of hosts.splice(0)) el.remove()
 })
 
-async function roundTrip(serverApp: () => unknown, clientApp: () => unknown) {
+async function roundTrip(serverApp: () => unknown, clientApp: () => unknown, opts: { throws?: boolean } = {}) {
   const host = document.createElement('div')
   document.body.appendChild(host)
   hosts.push(host)
@@ -106,11 +106,13 @@ async function roundTrip(serverApp: () => unknown, clientApp: () => unknown) {
     off()
     spy.mockRestore()
   }
-  expect(errors).toEqual([])
-  // Every record and placeholder a build made was claimed or swept.
+  // A throwing client bind is the one case expected to log (`opts.throws`).
+  if (opts.throws === true) expect(errors.length).toBeGreaterThan(0)
+  else expect(errors).toEqual([])
+  // Every record and placeholder a build made was claimed, swept or released.
   expect(parked._parkedPending).toBe(0)
   const fresh = document.createElement('div')
-  dom.mount(h(clientApp as never, null), fresh)
+  if (opts.throws !== true) dom.mount(h(clientApp as never, null), fresh)
   const strip = (s: string) => s.replace(/<!--[^>]*-->/g, '')
 
   return {
@@ -514,6 +516,115 @@ describe('#4599: <For> rows with a structural cell', () => {
   })
 })
 
+describe('#4385 sole text slot: the placeholder claims the recorded run too', () => {
+  const prepend = (el: Element | null) => {
+    if (el !== null) el.prepend(document.createElement('i'))
+  }
+  const clear = (el: Element | null) => {
+    if (el !== null) el.textContent = ''
+  }
+  const parts = () => ['a ', h('code', null, 'x')]
+  for (const [name, src] of [
+    ['a ref that prepends, value call', 'const App = () => <div><span ref={prepend}>{parts()}</span></div>'],
+    ['a ref that prepends, accessor', 'const App = () => <div><span ref={prepend}>{() => parts()}</span></div>'],
+    ['a ref that clears, value call', 'const App = () => <div><span ref={clear}>{parts()}</span></div>'],
+  ] as const) {
+    it(name, async () => {
+      const s = { ...scope(), prepend, clear, parts }
+      const client = compile(src, s, 'client')
+      // A sole text slot: the template bakes the ' ' placeholder.
+      expect(client.code).toContain('<span> </span>')
+      for (const side of ['h', 'ssr'] as const) {
+        const r = await roundTrip(compile(src, s, side).App, client.App)
+        expect(r.html).toBe(r.freshHtml)
+        expect(r.reports).toEqual([])
+        if (name.includes('prepends')) expect(r.replaced).toEqual([])
+      }
+    })
+  }
+})
+
+/**
+ * A bind that throws: `hydrateComponent` logs and keeps the component's server
+ * markup ("degrade, don't destroy"). The parked marks are released without
+ * touching the DOM, so no element in it is emptied and nothing is reported.
+ */
+describe('a throwing bind keeps the parked server content', () => {
+  const boom = (el: Element | null) => {
+    if (el !== null) throw new Error('boom')
+  }
+  const CASES: [string, string, Record<string, unknown>, Record<string, unknown>][] = [
+    [
+      'a throwing getter feeding `_setChild` (#4599)',
+      'const App = () => <div><span>{bad.cell}</span><em>{vNode}</em></div>',
+      { bad: { cell: h('b', null, 'n') } },
+      {
+        bad: {
+          get cell(): never {
+            throw new Error('boom')
+          },
+        },
+      },
+    ],
+    ['a throwing ref before `_setChild` (#4599)', 'const App = () => <div><span ref={boom}>{vNode}</span></div>', { boom: () => {} }, { boom }],
+    [
+      'a throwing ref before a sole text slot (#4385)',
+      'const App = () => <div><span ref={boom}>{parts()}</span></div>',
+      { boom: () => {} },
+      { boom },
+    ],
+  ]
+  for (const [name, src, serverScope, clientScope] of CASES) {
+    it(name, async () => {
+      const base = { ...scope(), parts: () => ['a ', h('code', null, 'x')] }
+      const r = await roundTrip(compile(src, { ...base, ...serverScope }, 'h').App, compile(src, { ...base, ...clientScope }, 'client').App, {
+        throws: true,
+      })
+      expect(r.html).toBe(r.serverHtml.replace(/<!--[^>]*-->/g, ''))
+      expect(r.reports).toEqual([])
+    })
+  }
+})
+
+/**
+ * A literal walk over an SSR-MARKED range (`_mountSlot` / `_setChildAt` with
+ * static neighbours) sweeps what it leaves unclaimed, inside the range only.
+ */
+describe('a divergent value in a marked range with neighbours', () => {
+  const CASES: [string, string, string][] = [
+    ['mid `_setChildAt`', 'const App = () => <div><span><s />{v}<i /></span></div>', '<u>n</u>'],
+    ['trailing `_setChildAt`', 'const App = () => <div><span><s />{v}</span><p /></div>', '<u>n</u>'],
+    ['mid `_mountSlot` (conditional)', 'const App = () => <div><span><s />{on ? v : null}<i /></span></div>', '<u>n</u>'],
+  ]
+  for (const [name, src] of CASES) {
+    it(name, async () => {
+      const s = scope()
+      const r = await roundTrip(
+        compile(src, { ...s, on: true, v: h('b', null, 'n') }, 'h').App,
+        compile(src, { ...s, on: true, v: h('u', null, 'n') }, 'client').App,
+      )
+      expect(r.html).toBe(r.freshHtml)
+      expect(r.reports[0]).toMatch(/^tag: u vs b/)
+      // The neighbours are the server's own nodes.
+      expect(r.replaced).toEqual(['b'])
+    })
+  }
+
+  it('a ref that prepends and removes an inner server marker leaves no stray marker', async () => {
+    const mangle = (el: Element | null) => {
+      if (el === null) return
+      el.prepend(document.createElement('i'))
+      for (const n of [...el.childNodes]) if (n.nodeType === 8 && (n as Comment).data === '$') n.remove()
+    }
+    const s = { ...scope(), mangle }
+    const src = 'const App = () => <div><span ref={mangle}>{vArrLive}</span></div>'
+    const r = await roundTrip(compile(src, s, 'h').App, compile(src, s, 'client').App)
+    expect(r.html).toBe(r.freshHtml)
+    const comments = (el: Element) => [...el.childNodes].filter((n) => n.nodeType === 8).length
+    expect(comments(query(r.host, 'span'))).toBeLessThanOrEqual(1)
+  })
+})
+
 describe('recorded Chromium cases match the real toolchain', () => {
   for (const c of SETCHILD_EMPTY_CASES) {
     it(c.name, async () => {
@@ -523,6 +634,7 @@ describe('recorded Chromium cases match the real toolchain', () => {
         clear: () => {},
         prepend: () => {},
         hp: { dangerouslySetInnerHTML: { __html: '<i>h</i>' } },
+        parts: () => ['a ', h('code', null, 'x')],
       }
       const ssr = compile(c.source, recordedScope, 'h').App
       expect(await renderToString(h(ssr as never, null) as never)).toBe(c.server)

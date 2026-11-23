@@ -25,8 +25,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { tplAdoptVerify } from '../hydration-plan'
-import { _beginParkBatch, _endParkBatch } from '../parked-text'
-import { _takeParkedElement } from '../set-child-claim'
+import { _beginParkBatch, _endParkBatch, _takeParked } from '../parked-text'
 
 type CountSink = { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }
 
@@ -627,7 +626,7 @@ describe('a bind-managed element has its stray server texts removed', () => {
     expect(_endParkBatch(prev)).toEqual([el])
     expect([...el.childNodes]).toEqual([b])
     // Unclaimed here (no bind ran): release the record for the next spec.
-    expect(_takeParkedElement(el)).toEqual([b])
+    expect(_takeParked(el)).toEqual([b])
   })
 
 })

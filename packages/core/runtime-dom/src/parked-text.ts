@@ -1,105 +1,101 @@
 import type { VNodeChild } from '@pyreon/core'
 
 /**
- * A compiled TEXT slot whose server content is not one text node (#4385).
+ * PARKED server content: an adoption build found server nodes that ONE later
+ * bind line will claim, and the verifier could not hand them over by position.
  *
- * A text binding (`bindPolymorphicText`, `_bindText`, `_bindProp`) is
- * polymorphic: `{parts(row)}` can render `['a ', <Code/>, ' b']`, and the
- * server renders that as elements. The compiled bind still resolves its slot to
- * ONE text node, so hydration used to discard the server's nodes: the adoption
- * verifier refused the whole element (sole slot), or `_textSlot` cleared the
- * range (trailing or mid slot), and the binding mounted the content fresh.
+ * - A compiled TEXT slot whose server content is not one text node (#4385). A
+ *   text binding (`bindPolymorphicText`, `_bindText`, `_bindProp`) is
+ *   polymorphic: `{parts(row)}` can render `['a ', <Code/>, ' b']`, which the
+ *   server renders as elements. The compiled bind still resolves its slot to
+ *   ONE text node, so that node is a PLACEHOLDER: inserted by the verifier for
+ *   a sole slot, by `_textSlot` for a trailing or mid range.
+ * - An EMPTY template element that `_setChild` fills (#4599): a sole fixed
+ *   child (`<span>{cell}</span>`) or a fused static mix (`a{cell}b`) whose
+ *   structural value SSR rendered marker-less. Nothing compiled refers into an
+ *   empty element, so the ELEMENT itself carries the mark.
  *
- * Now the slot's resolved text node is a PLACEHOLDER branded with where the
- * server content is: `null` for the element's whole child list (a sole slot,
- * markers elided by SSR), or the range's open `<!--$-->` comment. The binding
- * that receives it hands its accessor to the slot hydrator (`hydrateMountSlot`),
- * which adopts the content as a live reactive slot exactly as a compiled
- * `_mountSlot` does, reporting any real divergence through the walk.
+ * ONE mark for both. Its value says where the server content is: the open
+ * `<!--$-->` of a range, or the server's child nodes RECORDED at verify time
+ * (a sole slot, an empty element). The claimer (`_adoptParkedText`, `_setChild`)
+ * takes the mark by identity and hands that value to the slot hydrator, which
+ * adopts only recorded nodes that are still attached: bind lines that run
+ * earlier (`_ref`, a spread) may have cleared, filled or prepended to the
+ * element, and nothing the client inserted is adopted or removed.
  *
  * Carried on the node (leak class C: never a registry). `_parkedPending` counts
- * branded nodes not yet consumed, so every binding outside hydration pays one
- * integer compare and nothing else.
+ * marks not yet consumed, so every binding outside hydration pays one integer
+ * compare and nothing else.
  */
-const PARKED_TEXT: unique symbol = Symbol('pyreon.parkedText')
-type ParkedText = Text & { [PARKED_TEXT]?: Comment | null | undefined }
+const PARKED: unique symbol = Symbol('pyreon.parked')
+
+/** Where a parked node's server content is: a range's open marker, or the
+ *  server child nodes recorded by the verifier. */
+export type ParkedServer = Comment | ChildNode[]
+type Parked = Node & { [PARKED]?: ParkedServer | undefined }
 
 export let _parkedPending = 0
 
-/**
- * Count and batch one more parked node: an empty `_setChild` element whose
- * server children `set-child-claim.ts` recorded on it (#4599). Kept here so the
- * counter and the batch stay this module's own.
- */
-export function _parkNode(el: Element): void {
+export function _park(node: Text | Element, server: ParkedServer): void {
+  ;(node as Parked)[PARKED] = server
   _parkedPending++
-  ;(_batch ??= []).push(el)
+  ;(_batch ??= []).push(node)
 }
 
-/** One parked element was claimed or swept. */
-export function _unparkNode(): void {
-  _parkedPending--
-}
-
-/**
- * Claim and sweep for the recorded elements (`set-child-claim.ts`), registered
- * by `hydrateRoot` like the slot hydrator, so CSR bundles carry neither: only
- * an adoption build records, and adoption runs under `hydrateRoot`.
- */
-export interface ServerKidsHandlers {
-  claim: (node: Element, value: unknown) => boolean
-  /** Release `el`'s record (the build's first pass); `undefined` if none. */
-  take: (el: Element) => ChildNode[] | undefined
-  sweep: (el: Element, recorded: ChildNode[]) => void
-}
-
-export let _serverKids: ServerKidsHandlers | null = null
-
-export function _setServerKidsHandlers(h: ServerKidsHandlers): void {
-  _serverKids = h
-}
-
-export function _parkText(text: Text, open: Comment | null): void {
-  ;(text as ParkedText)[PARKED_TEXT] = open
-  _parkedPending++
-  ;(_batch ??= []).push(text)
-}
-
-/**
- * Consume `text`'s brand: the open marker of its range, `null` for a sole
- * slot, or `undefined` when the node is not (or no longer) a parked placeholder.
- */
-export function _takeParkedText(text: Text): Comment | null | undefined {
-  const open = (text as ParkedText)[PARKED_TEXT]
-  if (open !== undefined) {
-    ;(text as ParkedText)[PARKED_TEXT] = undefined
+/** Consume `node`'s mark; `undefined` when it has none (or no longer). */
+export function _takeParked(node: Node): ParkedServer | undefined {
+  const server = (node as Parked)[PARKED]
+  if (server !== undefined) {
+    ;(node as Parked)[PARKED] = undefined
     _parkedPending--
   }
 
-  return open
+  return server
 }
 
 /**
- * The placeholders branded during ONE adoption build. A binding that writes
- * `.data` directly (the selector-ternary and signal-method emits) never consumes
- * a brand. In agreement it never meets one (its server content is one text
- * node), but on a divergence the server's nodes would stay beside the text it
- * writes. So the build that branded them sweeps any left unconsumed after its
- * bind (`sweepParkedTexts` in `template.ts`): the server content goes (what the
- * slot did before) and the rewrite is reported. Frames nest (a bind hydrates
- * holes whose components build their own templates): save/restore, never reset.
+ * Remove the recorded nodes still attached to `owner` (the element they were
+ * recorded in): an unclaimed record's sweep. Nothing a bind line inserted is
+ * in the record, so nothing of the client's is touched. Returns, in dev, the
+ * removed text (marker comments are not content) and first element, for the
+ * report.
  */
-let _batch: (Text | Element)[] | null = null
+export function _sweepRecord(owner: Node, server: ChildNode[]): [string, Element | null] {
+  let text = ''
+  let el: Element | null = null
+  for (const n of server) {
+    if (n.parentNode !== owner) continue
+    if (process.env.NODE_ENV !== 'production') {
+      if (n.nodeType !== 8) text += n.textContent
+      if (el === null && n.nodeType === 1) el = n as Element
+    }
+    n.remove()
+  }
 
-export function _beginParkBatch(): (Text | Element)[] | null {
+  return [text, el]
+}
+
+/**
+ * The nodes marked during ONE adoption build. A binding that writes `.data`
+ * directly (the selector-ternary and signal-method emits) never consumes a
+ * placeholder's mark, and a bind with no `_setChild` never consumes an
+ * element's. So the build that marked them sweeps any left unconsumed after its
+ * bind (`sweepParked` in `template.ts`): the recorded server content that is
+ * still attached goes, and the rewrite is reported. Frames nest (a bind
+ * hydrates holes whose components build their own templates): save/restore,
+ * never reset.
+ */
+let _batch: Node[] | null = null
+
+export function _beginParkBatch(): Node[] | null {
   const prev = _batch
   _batch = null
 
   return prev
 }
 
-/** Close the batch opened by `_beginParkBatch`; returns what it branded. */
-export function _endParkBatch(prev: (Text | Element)[] | null): (Text | Element)[] | null {
+/** Close the batch opened by `_beginParkBatch`; returns what it marked. */
+export function _endParkBatch(prev: Node[] | null): Node[] | null {
   const mine = _batch
   _batch = prev
 
@@ -109,18 +105,18 @@ export function _endParkBatch(prev: (Text | Element)[] | null): (Text | Element)
 /**
  * The slot hydrator, registered by `hydrateRoot` (never at module load, so CSR
  * bundles tree-shake it exactly like the `_tpl` adopt verifier). ONE seam for
- * both of its consumers: a compiled `_mountSlot` / `_setChild` (`template.ts`)
- * and a parked text placeholder (below). It lives here because `mount.ts`
+ * its consumers: a compiled `_mountSlot` / `_setChild` (`template.ts`) and a
+ * parked text placeholder (below). It lives here because `mount.ts`
  * (`bindPolymorphicText`) must reach it without importing `template.ts`.
  *
- * `open === null` means a MARKER-LESS range: the slot was its element's SOLE
- * child, so SSR elided the `<!--$-->` pair and the extent is the parent's whole
- * child list. See `_mountSlot`.
+ * `server`: `null` is a MARKER-LESS range whose extent is the parent's whole
+ * child list (a sole slot: SSR elided the `<!--$-->` pair; see `_mountSlot`);
+ * a comment is a range's open marker; an array is a parked record (above).
  */
 export type SlotHydrator = (
   children: VNodeChild | VNodeChild[],
   parent: Node,
-  open: Comment | null,
+  server: ParkedServer | null,
 ) => () => void
 
 export let _slotHydrator: SlotHydrator | null = null
@@ -134,8 +130,8 @@ export function _setSlotHydrator(h: SlotHydrator): void {
  * for `child`; returns the slot's cleanup, or `null` for an ordinary text node.
  */
 export function _adoptParkedText(text: Text, child: () => VNodeChild): (() => void) | null {
-  const open = _takeParkedText(text)
-  if (open === undefined) return null
+  const server = _takeParked(text)
+  if (server === undefined) return null
   const parent = text.parentNode
   // Detached before its binding ran: a `ref` earlier in the bind replaced the
   // element's children. A fresh render writes into the same detached node, so
@@ -146,5 +142,5 @@ export function _adoptParkedText(text: Text, child: () => VNodeChild): (() => vo
   // The binding's accessor IS a reactive child: the hydrator primes it once.
   // A placeholder is only ever parked by an adoption build, and adoption runs
   // under `hydrateRoot`, which registered the hydrator first.
-  return (_slotHydrator as SlotHydrator)(child as unknown as VNodeChild, parent, open)
+  return (_slotHydrator as SlotHydrator)(child as unknown as VNodeChild, parent, server)
 }

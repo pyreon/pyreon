@@ -16,12 +16,12 @@ import {
   _adoptParkedText,
   _beginParkBatch,
   _endParkBatch,
-  _parkText,
+  _park,
   _parkedPending,
-  _serverKids,
-  type ServerKidsHandlers,
+  type ParkedServer,
   _slotHydrator,
-  _takeParkedText,
+  _sweepRecord,
+  _takeParked,
 } from './parked-text'
 import {
   _adoptingCompiledBind,
@@ -29,7 +29,7 @@ import {
   _markServerText,
   rangeText,
   reportFirstText,
-  reportSlotSweep,
+  reportParkedSweep,
   reportStaticTextWrite,
   reportTextWrite,
 } from './hydration-debug'
@@ -148,16 +148,18 @@ export function _setChild(node: Element, value: unknown): void {
   // marker-less slot hydrator, which walks the value against the server's
   // child list and adopts it.
   //
+  //
   // CLAIM (#4599): an EMPTY template element whose server content is structure
-  // carries the server's child nodes as recorded by the verifier
-  // (`_parkElement`). This call claims them by element identity, so the build
-  // does not sweep them; a structural value adopts the ones still attached
-  // (`adoptRecorded`), a text value rewrites the element as below. Outside
-  // hydration `_parkedPending` is 0: one integer compare.
-  if (_parkedPending > 0 && !_freshBind && (_serverKids as ServerKidsHandlers).claim(node, value)) return
+  // is PARKED with the server child nodes the verifier recorded (`_park`), and
+  // the hydrator gets that record instead of `null`, so it adopts only those
+  // nodes, still attached, past anything an earlier bind line (a `ref`, a
+  // spread) did to the element. A text value leaves the mark: its write below
+  // replaces the element's children, and the build's sweep finds nothing left.
+  // Outside hydration `_parkedPending` is 0: one integer compare.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
-      ownByScope(_slotHydrator(value as never, node, null))
+      const server = _parkedPending > 0 ? _takeParked(node) : undefined
+      ownByScope(_slotHydrator(value as never, node, server ?? null))
       return
     }
     // The element leaves as a unit with its template, so the mount needs only
@@ -1195,7 +1197,7 @@ function buildTpl(
     _tplAdoptAllowPlan = false
     _tplRootDecorated = false
     _tplPendingHoles = null
-    // Placeholders parked by this verify and this bind (#4385), swept after it.
+    // Marks parked by this verify and this bind (#4385, #4599), swept after it.
     const prevPark = _beginParkBatch()
     if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan, rootDecorated)) {
       const holes = _tplPendingHoles
@@ -1214,6 +1216,7 @@ function buildTpl(
         const prevFresh = _freshBind
         _freshBind = false // an ADOPTED node holds server content — keep every read
         let cleanup: (() => void) | null
+        let completed = false
         try {
           // Dev: the binders report the server text they correct (#4419).
           cleanup =
@@ -1221,10 +1224,11 @@ function buildTpl(
               ? _bindWithAdoption(true, bind, target as HTMLElement)
               : bind(target as HTMLElement)
           if (holes !== null) sweepHoles(holes)
+          completed = true
         } finally {
           _tplHoleCursors = prevHoles
           _freshBind = prevFresh
-          sweepParkedTexts(prevPark)
+          sweepParked(prevPark, completed)
         }
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
@@ -1233,8 +1237,8 @@ function buildTpl(
         return { __isNative: true, el: target as HTMLElement, cleanup }
       }
     }
-    // Not adopted: close this build's park batch (nothing it parked is bound).
-    sweepParkedTexts(prevPark)
+    // Not adopted: close this build's park batch (a failed verify parks nothing).
+    sweepParked(prevPark, false)
   }
   // (adoption falls through to a normal clone on any verification bail)
   const root = (tpl as CachedTemplate)._root
@@ -1727,7 +1731,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     // is PARKED against the range, so a polymorphic binding adopts the server's
     // nodes through the slot hydrator (which puts a parked range back) instead
     // of re-mounting them; a binding that cannot is swept after the bind.
-    if (parked || (first !== null && !isRangeClose(first))) _parkText(fresh, placeholder as Comment)
+    if (parked || (first !== null && !isRangeClose(first))) _park(fresh, placeholder as Comment)
     // EMPTY range (the accessor rendered ''): nothing to adopt, clear it.
     else clearSlotRange(placeholder as Comment)
 
@@ -1764,47 +1768,48 @@ function clearSlotRange(open: Comment): void {
 }
 
 /**
- * Close a build's park batch and sweep the placeholders no binding adopted
- * (see `_beginParkBatch`): the server content each one stands for is removed,
- * and in dev the rewrite is reported against it.
+ * Close a build's park batch (see `_beginParkBatch`). Every mark is released
+ * first, so no entry's cleanup can leave a later entry's mark (or
+ * `_parkedPending`) behind. Only a bind that COMPLETED then sweeps: the server
+ * content of each mark nobody claimed is removed, and in dev the rewrite is
+ * reported. A bind that threw leaves the DOM alone ("degrade, don't destroy":
+ * `hydrateComponent` keeps the component's server markup, and so does every
+ * parked element in it).
  */
-function sweepParkedTexts(prev: (Text | Element)[] | null): void {
+function sweepParked(prev: Node[] | null, completed: boolean): void {
   const mine = _endParkBatch(prev)
   if (mine === null) return
-  // Release every brand BEFORE touching the DOM, so no entry's cleanup can
-  // leave a later entry's mark (or `_parkedPending`) behind.
-  const opens: (ChildNode[] | Comment | null | undefined)[] = []
-  for (const n of mine) {
-    opens.push(n.nodeType === 1 ? (_serverKids as ServerKidsHandlers).take(n as Element) : _takeParkedText(n as Text))
-  }
+  const servers: (ParkedServer | undefined)[] = []
+  for (const n of mine) servers.push(_takeParked(n))
+  if (!completed) return
   for (let i = 0; i < mine.length; i++) {
-    const open = opens[i]
-    if (open === undefined) continue
-    if (Array.isArray(open)) (_serverKids as ServerKidsHandlers).sweep(mine[i] as Element, open)
-    else sweepParkedText(mine[i] as Text, open)
+    const server = servers[i]
+    if (server !== undefined) sweepOne(mine[i] as Text | Element, server)
   }
 }
 
-function sweepParkedText(text: Text, open: Comment | null): void {
-  let server = ''
-  let serverEl: Element | null = null
-  if (open === null) {
-    // Sole slot: every other child of the element is server content. A
-    // placeholder detached by an earlier bind line (a `ref` replacing the
-    // children) took that content with it.
-    const el = text.parentNode as Element | null
-    if (el === null) return
-    if (process.env.NODE_ENV !== 'production') {
-      // Marker comments are not content (`Comment.textContent` is its data).
-      for (const n of el.childNodes) if (n !== text && n.nodeType !== 8) server += n.textContent
-      serverEl = el.firstElementChild
-    }
-    el.replaceChildren(text)
-  } else {
-    if (process.env.NODE_ENV !== 'production') server = _serverTextOfRange(open)
-    clearSlotRange(open)
+/**
+ * Remove one unclaimed mark's server content. A range (`_textSlot`) is cleared
+ * between its markers; a RECORD loses only its nodes that are still attached
+ * to the element they were recorded in, never anything a bind line inserted.
+ * A placeholder a bind line detached took that content with it.
+ */
+function sweepOne(node: Text | Element, server: ParkedServer): void {
+  const isText = node.nodeType === 3
+  const expected = isText ? (node as Text).data : ''
+  let text = ''
+  if (!Array.isArray(server)) {
+    if (process.env.NODE_ENV !== 'production') text = _serverTextOfRange(server)
+    clearSlotRange(server)
+    if (process.env.NODE_ENV !== 'production') reportParkedSweep(node.parentNode, expected, text, null, 'reactive')
+    return
   }
-  if (process.env.NODE_ENV !== 'production') reportSlotSweep(text, server, serverEl)
+  const owner = isText ? node.parentNode : node
+  if (owner === null) return
+  const [removed, serverEl] = _sweepRecord(owner, server)
+  if (process.env.NODE_ENV !== 'production') {
+    reportParkedSweep(owner, expected, removed, serverEl, isText ? 'reactive' : 'text')
+  }
 }
 
 // Dev: the server text of the range `_textSlot` is resolving (set and read

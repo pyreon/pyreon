@@ -9,7 +9,7 @@
  */
 import { _fuse, For, Fragment, h } from '@pyreon/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { _applyProps, _mountChild, _ref, _setChild, _tpl, hydrateRoot, mount, onHydrationMismatch } from '../index'
+import { _applyProps, _bindText, _dispose2, _mountChild, _ref, _setChild, _tpl, hydrateRoot, mount, onHydrationMismatch } from '../index'
 import { SETCHILD_EMPTY_CASES, type SetChildEmptyCase } from './_setchild-empty-cases'
 
 const SCOPE = {
@@ -26,9 +26,10 @@ const SCOPE = {
     if (el !== null) el.prepend(document.createElement('i'))
   },
   hp: { dangerouslySetInnerHTML: { __html: '<i>h</i>' } },
+  parts: () => ['a ', h('code', null, 'x')],
 }
 
-const DEPS = { _applyProps, _fuse, _mountChild, _ref, _setChild, _tpl, For, Fragment, h, ...SCOPE }
+const DEPS = { _applyProps, _bindText, _dispose2, _fuse, _mountChild, _ref, _setChild, _tpl, For, Fragment, h, ...SCOPE }
 
 function compiledApp(code: string): () => unknown {
   return new Function(...Object.keys(DEPS), `${code}\nreturn App`)(...Object.values(DEPS)) as () => unknown
