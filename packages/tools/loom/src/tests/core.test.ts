@@ -273,6 +273,65 @@ import type { T } from '@scope/thing'`)
   })
 })
 
+// #4307 — 6 of the monorepo's own `loom.ignore` entries had stopped matching
+// anything, and nothing said so: an entry whose finding is gone keeps
+// suppressing whatever fits it next, under a reason that is no longer true.
+describe('stale loom.ignore entries', () => {
+  function workspace(ignore: object[]): string {
+    const root = mkdtempSync(join(tmpdir(), 'loom-stale-'))
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'r', workspaces: ['p/*'], loom: { ignore } }))
+    mkdirSync(join(root, 'p/a/src'), { recursive: true })
+    writeFileSync(join(root, 'p/a/package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
+    writeFileSync(join(root, 'p/a/src/i.ts'), `import 'ghost'`)
+    return root
+  }
+
+  it('reports an entry that suppressed nothing as a stale-ignore warning; a used one is not reported', () => {
+    const root = workspace([
+      { pkg: 'a', dep: 'ghost', code: 'phantom-dep', reason: 'vendored at runtime' },
+      { pkg: 'a', dep: 'gone', code: 'phantom-dep', reason: 'was vendored once' },
+    ])
+    try {
+      const stale = buildReport(root).issues.filter((i) => i.code === 'stale-ignore')
+      expect(stale).toHaveLength(1)
+      expect(stale[0]).toMatchObject({ severity: 'warning', pkg: 'a', dep: 'gone' })
+      expect(stale[0]!.message).toContain('matched no finding')
+      expect(stale[0]!.message).toContain('was vendored once')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not judge an entry for a lexical finding under --no-imports (that detector did not run)', () => {
+    const root = workspace([
+      { pkg: 'a', dep: 'gone', code: 'phantom-dep', reason: 'lexical' },
+      { dep: 'gone', reason: 'any code' },
+      { pkg: 'a', code: 'cycle', reason: 'a cycle that was fixed' },
+    ])
+    try {
+      const stale = buildReport(root, { noImports: true }).issues.filter((i) => i.code === 'stale-ignore')
+      expect(stale.map((i) => i.message.includes('a cycle that was fixed'))).toEqual([true])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('takes a loom.severity override like any other code', () => {
+    const root = workspace([{ pkg: 'a', dep: 'gone', code: 'phantom-dep', reason: 'x' }])
+    try {
+      const r = buildReport(root, { settings: { severity: { 'stale-ignore': 'error' } } })
+      expect(r.issues.find((i) => i.code === 'stale-ignore')?.severity).toBe('error')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('the monorepo has none', () => {
+    const repo = buildReport(new URL('../../../../..', import.meta.url).pathname)
+    expect(repo.issues.filter((i) => i.code === 'stale-ignore').map((i) => i.message)).toEqual([])
+  })
+})
+
 describe('dogfood — the Pyreon monorepo itself', () => {
   it('scans the real workspace with real structure', () => {
     // Four levels up from this file's package: the repo root.

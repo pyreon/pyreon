@@ -60,6 +60,7 @@ It reads the same declarations an install tool reads — root `workspaces` globs
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans on a devDependency consumers won't have |
 | `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major |
 | `unused-dep` | info | a declared dependency no source file imports — lexical evidence only; verify before removing |
+| `stale-ignore` | warning | a `loom.ignore` entry that matched no finding in this scan — the defect it excused is gone, or its `pkg` / `dep` / `code` never matched; under `--no-imports` an entry for a lexical code is not judged |
 
 `loom scan` **exits non-zero on error findings** (`--strict` includes warnings) — wire it into CI and the fabric gates itself. `--json` prints the full report to stdout and *only* that — the write notice goes to stderr, so `loom scan . --json > report.json` is a valid JSON file; `--no-imports` skips the lexical detectors; `--no-write` skips the report file.
 
@@ -133,6 +134,10 @@ Declaring `devPaths: ['src/manifest.ts']` took it from **73 gating warnings to 1
 ### `severity` — adopting loom on an existing repo
 
 Raise a code to `error` once it is clean, lower one to `info` while it is being burned down. Severity is applied **before** suppressions, so an explicit `ignore` still has the last word — a finding you deliberately waved through is not resurrected by a blanket raise. An unknown code is rejected with the list of real ones rather than quietly doing nothing.
+
+### `ignore` — suppressions that stay true
+
+An `ignore` entry downgrades every finding it matches to `info` and attaches its `reason`; the finding stays in the report. An entry that matches **nothing** in a scan is reported as `stale-ignore` (a warning, so `--strict` gates it): the defect it excused has been fixed, or its `pkg` / `dep` / `code` never matched. Left in place it would suppress whatever finding happens to fit it next, under a reason that is no longer true. Delete it or correct it. Under `--no-imports` the lexical detectors (`phantom-dep`, `phantom-type-dep`, `prod-import-of-dev-dep`, `unused-dep`) do not run, so an entry for one of those codes — or with no `code` — is not judged.
 
 ### When a config file cannot be read
 

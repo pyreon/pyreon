@@ -50,6 +50,7 @@ export const ISSUE_CODES: readonly IssueCode[] = [
   'prod-import-of-dev-dep',
   'unused-dep',
   'peer-mismatch',
+  'stale-ignore',
 ]
 
 const SEVERITIES: readonly IssueSeverity[] = ['error', 'warning', 'info']

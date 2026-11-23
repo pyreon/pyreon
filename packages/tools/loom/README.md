@@ -26,6 +26,7 @@ loom --version
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans at RUNTIME on a devDependency consumers won't have |
 | `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major |
 | `unused-dep` | info | a declared dependency no source file imports — lexical evidence only, verify before removing |
+| `stale-ignore` | warning | a `loom.ignore` entry that matched no finding in this scan — the defect it excused is gone, or its `pkg` / `dep` / `code` never matched; under `--no-imports` an entry for a lexical code is not judged |
 
 `loom scan` exits non-zero on error findings (`--strict` includes warnings) — wire it into CI and the fabric gates itself.
 
