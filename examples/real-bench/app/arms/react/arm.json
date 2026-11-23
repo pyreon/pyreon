@@ -1,0 +1,23 @@
+{
+  "id": "react",
+  "label": "React 19 + React Router (declarative mode) + useReducer/context",
+  "docs": [
+    "https://react.dev/learn/scaling-up-with-reducer-and-context",
+    "https://react.dev/learn/you-might-not-need-an-effect",
+    "https://reactrouter.com/start/declarative/installation",
+    "https://reactrouter.com/start/declarative/routing"
+  ],
+  "packages": ["react", "react-dom", "react-router", "@vitejs/plugin-react", "vite"],
+  "router": "react-router declarative mode: BrowserRouter + Routes/Route + Link, useParams, useNavigate",
+  "state": "useReducer in a provider with separate state and dispatch contexts (the react.dev 'Scaling Up with Reducer and Context' shape); derived list with useMemo",
+  "codeSplitting": "none",
+  "build": ["npm", "run", "build"],
+  "outDir": "dist",
+  "fallback": "index.html",
+  "dataFile": "src/data.ts",
+  "cssFile": "src/app.css",
+  "notes": [
+    "No memo() on rows and no React Compiler: the Vite React template's defaults. A favourite toggle re-renders the list view's 50 rows.",
+    "<StrictMode> as the template mounts it (no effect in production)."
+  ]
+}

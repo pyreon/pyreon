@@ -1,0 +1,82 @@
+name: Real Bench App Smoke
+
+# Keeps the catalogue-app benchmark's arms (examples/real-bench/app) BUILDABLE
+# AND CORRECT. It measures nothing: no timing, no memory, no throttled load.
+#
+# The arms sit outside the bun workspace (each has its own package.json and
+# package-lock.json), so neither `bun install`, the typecheck matrix nor the
+# test matrix touches them; an arm that stops installing or stops meeting the
+# contract would otherwise be found by whoever measures next.
+#
+# What it does, on Linux:
+#
+#   1. `bun setup.ts <arm>…`: `npm ci` from each competitor arm's committed
+#      lockfile and a production build.
+#   2. The pyreon arm from the WORKSPACE (`--pyreon=workspace`, the monorepo's
+#      built lib/). Its npm source (the published packages arms/pyreon's
+#      lockfile pins) is not built here: the pinned 0.53.0 fails the gate
+#      (every RouterLink click is a full page load), which `main` fixes. Add the
+#      npm build back when the pin moves to a release that passes.
+#   3. `bun gate.ts`: the correctness gate (harness/gate.ts) on every arm,
+#      served by the harness's static server: deep links, not-found, and two
+#      scripted sessions (search, filter, sort, paginate, favourites, detail,
+#      form validation, create) whose expectations come from shared/data.ts.
+#      It prints no timing.
+#
+# Advisory, not a required check. Path scoping is therefore a TRIGGER-level
+# `paths:` filter (a required check would deadlock on it; see
+# lathe-action-selftest.yml and .agents/guides/ci/README.md). Markdown-only
+# changes do not start it. The weekly run exists because the arms can rot with
+# no commit here: a registry tarball that stops installing, a runner image
+# change, or a workspace change to the Pyreon packages the arm uses. A red
+# weekly run opens the "[main] Real Bench App Smoke is red" sticky issue
+# through main-red-status.yml, which watches this workflow by name.
+
+on:
+  pull_request:
+    paths:
+      - 'examples/real-bench/app/**'
+      - '!examples/real-bench/app/**/*.md'
+      - 'examples/real-bench/package.json'
+      - '.github/workflows/real-bench-app-smoke.yml'
+      - '.bun-version'
+  schedule:
+    # Mondays 07:37 UTC, after Stacks Bench Smoke (07:07).
+    - cron: '37 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-bench-app-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Real Bench App Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      # The competitor arms are installed by npm and built by Vite on Node.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      # Also builds every workspace package's lib/, which step 2 resolves.
+      - name: Install the workspace
+        run: bun install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: bash scripts/install-playwright.sh chromium
+      - name: Build the competitor arms from their lockfiles
+        working-directory: examples/real-bench/app
+        run: bun setup.ts preact react solid svelte vue
+      - name: Build the pyreon arm from the workspace
+        working-directory: examples/real-bench/app
+        run: bun setup.ts pyreon --pyreon=workspace
+      - name: Correctness gate, every arm
+        working-directory: examples/real-bench/app
+        run: bun gate.ts

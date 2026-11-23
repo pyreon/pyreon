@@ -76,6 +76,7 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - `bundle-size-diff.yml` (advisory) — does not run on the release PR (`changeset-release/main`); its job-level `if:` skips it.
 - `lathe-action-selftest.yml` (advisory) — trigger-level `paths:` filter. A trigger filter is allowed only on advisory workflows; a required one needs the always-running decide job.
 - `stacks-bench-smoke.yml` (advisory; PRs touching `examples/stacks-bench/**` except Markdown, weekly, manual) — `npm ci` + production build of the nine full-stack benchmark arms from their own lockfiles and the correctness gate (`bun gate.ts`) on each, the zero arm from npm and again from the workspace. Linux only, no timing and no load generator: it keeps the public benchmark re-runnable, it measures nothing. The arms are outside the bun workspace, so no other job installs or builds them.
+- `real-bench-app-smoke.yml` (advisory; PRs touching `examples/real-bench/app/**` except Markdown, weekly, manual) — `npm ci` + production build of the catalogue-app arms from their own lockfiles, the pyreon arm from the workspace, and the correctness gate (`bun gate.ts`) on each. Linux only, no timing, no throttle, no memory reading: it keeps the arms buildable and correct. The arms are outside the bun workspace, so no other job installs or builds them.
 - Native lane selection follows package-owned lowering as well as the PMTC
   directories. `native-surface-touched.ts` recognizes plugin source and its own
   selector scripts; `native-plugin-surface.ts` derives the runtime import closure
@@ -157,6 +158,7 @@ Classes c and e, and the residue of a and b, are closed only by testing the merg
 | `Deploy Docs` deploy step | Build only, for the listed paths | A deploy failure |
 | `Dependency Audit`, `Scorecard`, `Cancel CI on conflict`, `Release` | Do not run | Their own failures; `Release` is the publish chain |
 | `Stacks Bench Smoke` | Only when the PR touches `examples/stacks-bench/**` (not Markdown) | A workspace change that breaks the zero arm, or an arm that stops installing: found by the weekly run |
+| `Real Bench App Smoke` | Only when the PR touches `examples/real-bench/app/**` (not Markdown) | A workspace change that breaks the pyreon arm, or an arm that stops installing: found by the weekly run |
 | Scheduled only: `Leak Sweep`, `Perf`, `Audit Leak Classes`, `Published State`, `Zero Freshness`, the uncached native nightly | Do not run | Whatever they measure. `check-leak-ratchet` covers the static half of the leak audit in `Fast Gates` |
 
 All of these are watched by the alarm (`main-red-status.yml`).

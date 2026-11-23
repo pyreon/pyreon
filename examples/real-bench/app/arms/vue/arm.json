@@ -1,0 +1,24 @@
+{
+  "id": "vue",
+  "label": "Vue 3 + Vue Router + Pinia",
+  "docs": [
+    "https://vuejs.org/guide/scaling-up/state-management",
+    "https://pinia.vuejs.org/core-concepts/#setup-stores",
+    "https://router.vuejs.org/guide/",
+    "https://vuejs.org/guide/essentials/forms",
+    "https://vuejs.org/guide/essentials/computed#writable-computed"
+  ],
+  "packages": ["vue", "vue-router", "pinia", "@vitejs/plugin-vue", "vite"],
+  "router": "vue-router createRouter({ history: createWebHistory() }), RouterView + RouterLink, useRoute/useRouter",
+  "state": "Pinia setup store: ref() for products, filters, page and a reactive Set of favourites; computed() for the filtered list, page rows, page count and summary. Filter inputs bind with v-model through writable computeds.",
+  "codeSplitting": "none",
+  "build": ["npm", "run", "build"],
+  "outDir": "dist",
+  "fallback": "index.html",
+  "dataFile": "src/data.ts",
+  "cssFile": "src/app.css",
+  "notes": [
+    "products is a plain ref() of the 5,000 records (deeply reactive, proxied lazily on access), as the docs write a store; shallowRef would be a size-specific optimisation the contract excludes.",
+    "Single-file components compiled by @vitejs/plugin-vue (template compiler with patch flags)."
+  ]
+}
