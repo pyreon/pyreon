@@ -31,6 +31,7 @@ import { createRouter, RouterProvider, setActiveRouter } from '@pyreon/router'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { activateServerIslands } from '../client'
+import { isIslandName } from '../island-name'
 import { _resetServerIslands, activateServerIslandElement, serverIsland, setServerIslandBase } from '../server-island'
 
 const Badge: ComponentFn = () => h('span', null, 'live')
@@ -397,8 +398,9 @@ describe('a crafted marker cannot steer the fragment request', () => {
       activateServerIslands()
       await settle()
       const name = attrs['data-name']!
-      if (name === '..' || name === '.') {
-        // A dot segment the URL parser would resolve: refused before any fetch.
+      if (!isIslandName(name)) {
+        // Not a valid island name (a separator, `%`, all dots): refused before
+        // any fetch — a decoding proxy could turn it into another path.
         expect(urls).toEqual([])
         expect(el.getAttribute('data-island-error')).toBe('fragment-refused')
         expect(el.innerHTML).toBe('<span>fallback</span>')

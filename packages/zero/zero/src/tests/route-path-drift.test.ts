@@ -1,4 +1,4 @@
-import { isRoutePath as serverIsRoutePath } from '@pyreon/server/client'
+import { isRoutePath as serverIsRoutePath } from '@pyreon/server/paths'
 import { describe, expect, it } from 'vitest'
 import { ROUTE_PATH_CASES } from '../../../../core/server/src/tests/route-path.cases'
 import { isRoutePath as zeroIsRoutePath } from '../route-path'

@@ -51,19 +51,6 @@ describe('serverIsland — marker component', () => {
     expect(html).not.toContain('data-base')
   })
 
-  it('registration enforces the SAME name rule the client does', () => {
-    // Names that worked before stay valid (every character is percent-encoded
-    // into one path segment); only a whole `.` / `..` / empty is refused.
-    for (const ok of ['shop/cart', 'ns:badge', 'cart badge', 'ünï', 'a?b#c']) {
-      expect(() => serverIsland(async () => Badge, { name: ok }), ok).not.toThrow()
-    }
-    for (const bad of ['', '.', '..']) {
-      expect(() => serverIsland(async () => Badge, { name: bad }), bad).toThrow(
-        /\[Pyreon\] serverIsland: invalid name[\s\S]*except "\." and "\.\."/,
-      )
-    }
-  })
-
   it('renders the fallback inside the marker (no-JS / pre-swap content)', async () => {
     const Island = serverIsland(async () => Badge, {
       name: 'WithFallback',

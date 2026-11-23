@@ -1018,5 +1018,5 @@ export function activateServerIslands(base?: string): () => void {
 }
 
 export { activateServerIslandElement, serverIsland, setServerIslandBase } from './server-island'
-export { isRoutePath } from './route-path'
+export { isIslandName, isRoutePath } from './paths'
 export type { ServerIslandOptions } from './server-island'

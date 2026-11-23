@@ -205,7 +205,7 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
 ): ComponentFn<P> {
   if (!isIslandName(options.name)) {
     throw new Error(
-      `[Pyreon] serverIsland: invalid name ${JSON.stringify(options.name)}. A server-island name is one path segment of its fragment URL: any non-empty string except "." and ".." (every character is percent-encoded). Rename it.`,
+      `[Pyreon] serverIsland: invalid name ${JSON.stringify(options.name)}. A server-island name must stay ONE path segment of its fragment URL even after a proxy decodes it: no "/", "\\" or "%", no control characters, and not empty or only dots. Letters, digits, spaces, ":" and unicode are fine. Rename it.`,
     )
   }
   if (registry.has(options.name) && process.env.NODE_ENV !== 'production') {
@@ -306,10 +306,10 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
  * - the base comes from code — the `base` argument (the marker's router, or
  *   the caller) or the app's `setServerIslandBase` — never from a DOM
  *   attribute, and is accepted only as a root-relative path (`isRoutePath`);
- * - `data-name` is percent-encoded into ONE path segment, so it cannot add
- *   a segment, a query or a fragment; only `.` and `..` (a dot segment the
- *   URL parser resolves) are refused (`isIslandName`, the same rule
- *   `serverIsland()` enforces at registration);
+ * - `data-name` must be a valid island name (`isIslandName`, the rule
+ *   registration and the endpoint use): percent-encoding keeps it one
+ *   segment only until a proxy decodes it, so no separator, `%`, control
+ *   character or all-dots name is accepted;
  * - the URL is resolved against `location.origin` and refused unless it is
  *   still same-origin;
  * - `data-props` / `data-page` / `data-sig` only ever become encoded query
@@ -329,7 +329,7 @@ export function activateServerIslandElement(el: HTMLElement, base?: string): voi
       console.warn(
         fragmentBase === null
           ? `[Pyreon] server island "${name}": base ${JSON.stringify(base)} is not a root-relative path such as "/sub/"; the fragment was not fetched.`
-          : `[Pyreon] server island ${JSON.stringify(name)}: not a valid island name (empty, "." or ".."); the fragment was not fetched.`,
+          : `[Pyreon] server island ${JSON.stringify(name)}: not a valid island name (it contains "/", "\\", "%" or a control character, or is empty or only dots); the fragment was not fetched.`,
       )
     }
 
