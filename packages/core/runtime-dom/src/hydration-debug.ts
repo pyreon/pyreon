@@ -244,6 +244,28 @@ export function reportServerElementRewrite(
   warnHydrationMismatch('tag', expected, serverEl.localName, compiledMismatchPath(parent, leaf))
 }
 
+/** Server content nobody claimed was removed from `parent` (#4599): report
+ *  its text, or its first element when it had no text. */
+export function reportRemovedServerContent(parent: Node, text: string, firstEl: Element | null): void {
+  if (text !== '') warnHydrationMismatch('text', '', text, compiledMismatchPath(parent, 'text'))
+  else if (firstEl !== null) reportServerElementRewrite(parent, firstEl, '', 'text')
+}
+
+/** `_setChild`'s static text write over adopted content: a server ELEMENT it
+ *  replaced is a rewrite even when the text agrees (`<b>n</b>` → `n`), so it
+ *  is reported as a tag; otherwise as a text write. */
+export function reportStaticTextWrite(node: Element, before: string, serverEl: Element | null): void {
+  if (serverEl !== null && before === (node.textContent ?? '')) reportServerElementRewrite(node, serverEl, '#text', 'text')
+  else reportTextWrite(node, before, 'text')
+}
+
+/** A swept text slot: report the rewrite of the server's text, or, when the
+ *  text agrees, the server element (`serverEl`) that went with it. */
+export function reportSlotSweep(text: Text, server: string, serverEl: Element | null): void {
+  if (serverEl === null || server !== text.data) reportTextWrite(text, server, 'reactive')
+  else reportServerElementRewrite(text.parentNode as Node, serverEl, text.data === '' ? '' : '#text', 'reactive')
+}
+
 /** A static write already made: report it if it changed the server's text
  *  (`before`, read just ahead of the write). `node` is the written text node,
  *  or the element whose text content was set. */

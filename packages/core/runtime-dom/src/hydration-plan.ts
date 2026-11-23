@@ -33,6 +33,7 @@ import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
 import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
 import { _parkText } from './parked-text'
+import { _parkElement } from './set-child-claim'
 
 type Cleanup = () => void
 
@@ -653,11 +654,12 @@ interface TplSig {
    * the `_setChild` target (#4599): a sole fixed child (`<span>{vNode}</span>`)
    * or a fused static mix (`a{vNode}b`) is set by the bind into an empty
    * element, and the server rendered the value there marker-less. When the
-   * server's child list holds anything but text, the match PARKS it (see
-   * `AdoptMatch.soleTextParks`): `_setChild` claims the placeholder and hands
-   * the content to the slot hydrator, and a build whose bind never claims it
-   * sweeps the server content and reports it. The claim is the declaration;
-   * nothing is inferred and kept unclaimed.
+   * server's child list holds anything but text, the match records it (see
+   * `AdoptMatch.setChildEls`): the element carries its server child nodes,
+   * `_setChild` claims them by element identity and adopts those still
+   * attached, and a build whose bind never claims them removes and reports
+   * them. The claim is the declaration; nothing is inferred and kept
+   * unclaimed.
    */
   emptyEls: boolean[]
 }
@@ -869,17 +871,19 @@ interface AdoptMatch {
    */
   soles: Element[] | null
   /**
-   * Elements whose whole server child list belongs to ONE later claimer, which
-   * adopts it through the slot hydrator (`parked-text.ts`):
-   *   - a sole dynamic-text slot holding server ELEMENT content (#4385): the
-   *     compiled `firstChild` ref resolves to the placeholder and the text
-   *     binding claims it;
-   *   - an EMPTY template element whose server content is not plain text
-   *     (#4599): `_setChild` claims the placeholder before it hydrates.
-   * The caller inserts a parked placeholder text as each one's first child;
-   * one left unclaimed after the bind is swept with its server content.
+   * Elements whose sole dynamic-text slot holds server ELEMENT content
+   * (#4385). The caller inserts a parked placeholder text as each one's first
+   * child, so the compiled `firstChild` ref resolves to it and the binding
+   * adopts the content through the slot hydrator (`parked-text.ts`).
    */
   soleTextParks: Element[] | null
+  /**
+   * EMPTY template elements whose server content is not plain text (#4599;
+   * see `TplSig.emptyEls`). No node is inserted (nothing refers into an empty
+   * element): the caller records each one's server child nodes on it
+   * (`_parkElement`) for `_setChild` to claim.
+   */
+  setChildEls: Element[] | null
   /**
    * Elements whose ELIDED sole-child slot rendered EMPTY, so SSR emitted no
    * node at all where the template baked its ' ' placeholder. The compiled
@@ -1105,6 +1109,7 @@ function matchDomAgainstTemplate(
   const midFlags = expected.midSlots
   let soles: Element[] | null = null
   let soleTextParks: Element[] | null = null
+  let setChildEls: Element[] | null = null
   let emptySlots: Element[] | null = null
   let holes: Map<Element, ChildNode | null> | null = null
   let htmlEls: Element[] | null = null
@@ -1219,13 +1224,13 @@ function matchDomAgainstTemplate(
     // EMPTY TEMPLATE ELEMENT HOLDING SERVER STRUCTURE (#4599). The bind fills
     // it with `_setChild` (a sole fixed child, or a fused static mix), and the
     // server rendered that value marker-less: its elements, ranges and texts
-    // are the element's whole child list. Parked like the sole text above:
-    // `_setChild` claims the placeholder and adopts the content through the
-    // slot hydrator, which reports a real divergence; a bind that never claims
-    // it gets the server content swept and reported. Plain text keeps the
-    // text path below (sole text adopted in place, a run removed).
+    // are the element's whole child list. Recorded, not descended into:
+    // `_setChild` claims the recorded nodes and adopts them through the slot
+    // hydrator, which reports a real divergence; a bind that never claims them
+    // has them removed and reported. Plain text keeps the text path below
+    // (sole text adopted in place, a run removed).
     if (expected.emptyEls[at] === true && hasNonTextChild(el)) {
-      ;(soleTextParks ??= []).push(el)
+      ;(setChildEls ??= []).push(el)
 
       return true
     }
@@ -1432,7 +1437,7 @@ function matchDomAgainstTemplate(
   if (!walk(root)) return null
   if (idx !== total) return null
 
-  return { removals, triplets, midSlots, parks, soles, soleTextParks, emptySlots, holes, htmlEls }
+  return { removals, triplets, midSlots, parks, soles, soleTextParks, setChildEls, emptySlots, holes, htmlEls }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
@@ -1591,7 +1596,7 @@ export function tplAdoptVerify(
   // element) records no plan: the plan's
   // spot checks are a text-node invariant this row does not satisfy; a later
   // plain row records it, and replay sends rows like this one to the full verify.
-  if (allowPlanReplay && plan === undefined && match.soleTextParks === null) {
+  if (allowPlanReplay && plan === undefined && match.soleTextParks === null && match.setChildEls === null) {
     // TWO restrictions compose here. #2925 gates replay behind
     // `allowPlanReplay`; separately, a slot-bearing template is a CONTAINER —
     // one per hydration, not one per row — so the replay plan buys nothing,
@@ -1613,6 +1618,9 @@ export function tplAdoptVerify(
   if (match.triplets) normalizeDollarTriplets(match.triplets)
   if (match.midSlots) collapseMidSlots(match.midSlots)
   if (match.parks) parkMidRanges(match.parks)
+  if (match.setChildEls !== null) {
+    for (const el of match.setChildEls) _parkElement(el, Array.from(el.childNodes))
+  }
   if (match.soleTextParks) {
     for (const el of match.soleTextParks) {
       const placeholder = document.createTextNode('')

@@ -8,8 +8,8 @@
  * real client emit and server HTML; the happy-dom twin fails if either drifts.
  */
 import { _fuse, For, Fragment, h } from '@pyreon/core'
-import { afterEach, describe, expect, it } from 'vitest'
-import { _mountChild, _setChild, _tpl, hydrateRoot, mount, onHydrationMismatch } from '../index'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { _applyProps, _mountChild, _ref, _setChild, _tpl, hydrateRoot, mount, onHydrationMismatch } from '../index'
 import { SETCHILD_EMPTY_CASES, type SetChildEmptyCase } from './_setchild-empty-cases'
 
 const SCOPE = {
@@ -19,9 +19,16 @@ const SCOPE = {
     { id: 1, cell: h('b', null, 'one') },
     { id: 2, cell: ['t', h('i', null, 'two')] },
   ],
+  clear: (el: Element | null) => {
+    if (el !== null) el.textContent = ''
+  },
+  prepend: (el: Element | null) => {
+    if (el !== null) el.prepend(document.createElement('i'))
+  },
+  hp: { dangerouslySetInnerHTML: { __html: '<i>h</i>' } },
 }
 
-const DEPS = { _fuse, _mountChild, _setChild, _tpl, For, Fragment, h, ...SCOPE }
+const DEPS = { _applyProps, _fuse, _mountChild, _ref, _setChild, _tpl, For, Fragment, h, ...SCOPE }
 
 function compiledApp(code: string): () => unknown {
   return new Function(...Object.keys(DEPS), `${code}\nreturn App`)(...Object.values(DEPS)) as () => unknown
@@ -41,11 +48,19 @@ function hydrate(c: SetChildEmptyCase, serverHtml: string, code = c.compiled) {
   const before = [...host.querySelectorAll('*')]
   const reports: string[] = []
   const off = onHydrationMismatch((m) => reports.push(`${m.type}: ${String(m.expected)} vs ${String(m.actual)}`))
+  // A throw inside hydration is caught and logged, leaving the server markup
+  // un-hydrated: every case asserts that nothing was logged.
+  const errors: string[] = []
+  const spy = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
+    errors.push(a.map(String).join(' '))
+  })
   try {
     hydrateRoot(host, h(compiledApp(code) as never, null))
   } finally {
     off()
+    spy.mockRestore()
   }
+  expect(errors).toEqual([])
   const fresh = document.createElement('div')
   mount(h(compiledApp(code) as never, null), fresh)
   const strip = (s: string) => s.replace(/<!--[^>]*-->/g, '')
@@ -62,7 +77,8 @@ describe('an empty `_setChild` element adopts the server structure in Chromium (
   for (const c of SETCHILD_EMPTY_CASES) {
     it(c.name, () => {
       const r = hydrate(c, c.server)
-      expect(r.replaced).toEqual([])
+      // A clearing ref or an innerHTML spread replaces the server's nodes itself.
+      if (!/clear|dangerouslySetInnerHTML/.test(c.name)) expect(r.replaced).toEqual([])
       expect(r.reports).toEqual([])
       expect(r.html).toBe(r.freshHtml)
     })

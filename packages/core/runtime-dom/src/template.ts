@@ -18,6 +18,8 @@ import {
   _endParkBatch,
   _parkText,
   _parkedPending,
+  _serverKids,
+  type ServerKidsHandlers,
   _slotHydrator,
   _takeParkedText,
 } from './parked-text'
@@ -27,7 +29,8 @@ import {
   _markServerText,
   rangeText,
   reportFirstText,
-  reportServerElementRewrite,
+  reportSlotSweep,
+  reportStaticTextWrite,
   reportTextWrite,
 } from './hydration-debug'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
@@ -145,12 +148,13 @@ export function _setChild(node: Element, value: unknown): void {
   // marker-less slot hydrator, which walks the value against the server's
   // child list and adopts it.
   //
-  // CLAIM (#4599): the verifier admits an EMPTY template element whose server
-  // content is structure only by parking a placeholder as its first child, and
-  // this call is what claims it. Taken before either branch, so a text value
-  // over server elements is written (and reported) like any other rewrite.
-  // Outside hydration `_parkedPending` is 0: one integer compare.
-  if (_parkedPending > 0 && !_freshBind) claimParkedSole(node)
+  // CLAIM (#4599): an EMPTY template element whose server content is structure
+  // carries the server's child nodes as recorded by the verifier
+  // (`_parkElement`). This call claims them by element identity, so the build
+  // does not sweep them; a structural value adopts the ones still attached
+  // (`adoptRecorded`), a text value rewrites the element as below. Outside
+  // hydration `_parkedPending` is 0: one integer compare.
+  if (_parkedPending > 0 && !_freshBind && (_serverKids as ServerKidsHandlers).claim(node, value)) return
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
       ownByScope(_slotHydrator(value as never, node, null))
@@ -180,16 +184,14 @@ export function _setChild(node: Element, value: unknown): void {
     // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = node.textContent ?? ''
-      // A server ELEMENT the text replaces is a rewrite even when its text
-      // equals the value (`<b>n</b>` → `n`), so it is reported as a tag.
+      // A replaced server ELEMENT is reported even when the text agrees.
       const serverEl = node.firstElementChild
       if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
         ;(fc as Text).data = text
       } else {
         node.textContent = text
       }
-      if (serverEl !== null && before === text) reportServerElementRewrite(node, serverEl, '#text', 'text')
-      else reportTextWrite(node, before, 'text')
+      reportStaticTextWrite(node, before, serverEl)
 
       return
     }
@@ -199,12 +201,6 @@ export function _setChild(node: Element, value: unknown): void {
       node.textContent = text
     }
   }
-}
-
-/** Remove `node`'s parked sole placeholder, if it has one (see `_setChild`). */
-function claimParkedSole(node: Element): void {
-  const fc = node.firstChild
-  if (fc !== null && fc.nodeType === 3 && _takeParkedText(fc as Text) !== undefined) fc.remove()
 }
 
 /**
@@ -1772,36 +1768,43 @@ function clearSlotRange(open: Comment): void {
  * (see `_beginParkBatch`): the server content each one stands for is removed,
  * and in dev the rewrite is reported against it.
  */
-function sweepParkedTexts(prev: Text[] | null): void {
+function sweepParkedTexts(prev: (Text | Element)[] | null): void {
   const mine = _endParkBatch(prev)
   if (mine === null) return
-  for (const text of mine) {
-    const open = _takeParkedText(text)
-    if (open === undefined) continue
-    let server = ''
-    if (open === null) {
-      // Sole slot: every other child of the element is server content.
-      const el = text.parentNode as Element
-      let serverEl: Element | null = null
-      if (process.env.NODE_ENV !== 'production') {
-        // Marker comments are not content (`Comment.textContent` is its data).
-        for (const n of el.childNodes) if (n !== text && n.nodeType !== 8) server += n.textContent
-        serverEl = el.firstElementChild
-      }
-      el.replaceChildren(text)
-      // Nothing claimed an EMPTY `_setChild` element's server structure
-      // (#4599), or a text binding wrote over a sole slot's: an element went
-      // even when no text changed.
-      if (process.env.NODE_ENV !== 'production' && serverEl !== null && server === text.data) {
-        reportServerElementRewrite(el, serverEl, text.data === '' ? '' : '#text', 'reactive')
-        continue
-      }
-    } else {
-      if (process.env.NODE_ENV !== 'production') server = _serverTextOfRange(open)
-      clearSlotRange(open)
-    }
-    if (process.env.NODE_ENV !== 'production') reportTextWrite(text, server, 'reactive')
+  // Release every brand BEFORE touching the DOM, so no entry's cleanup can
+  // leave a later entry's mark (or `_parkedPending`) behind.
+  const opens: (ChildNode[] | Comment | null | undefined)[] = []
+  for (const n of mine) {
+    opens.push(n.nodeType === 1 ? (_serverKids as ServerKidsHandlers).take(n as Element) : _takeParkedText(n as Text))
   }
+  for (let i = 0; i < mine.length; i++) {
+    const open = opens[i]
+    if (open === undefined) continue
+    if (Array.isArray(open)) (_serverKids as ServerKidsHandlers).sweep(mine[i] as Element, open)
+    else sweepParkedText(mine[i] as Text, open)
+  }
+}
+
+function sweepParkedText(text: Text, open: Comment | null): void {
+  let server = ''
+  let serverEl: Element | null = null
+  if (open === null) {
+    // Sole slot: every other child of the element is server content. A
+    // placeholder detached by an earlier bind line (a `ref` replacing the
+    // children) took that content with it.
+    const el = text.parentNode as Element | null
+    if (el === null) return
+    if (process.env.NODE_ENV !== 'production') {
+      // Marker comments are not content (`Comment.textContent` is its data).
+      for (const n of el.childNodes) if (n !== text && n.nodeType !== 8) server += n.textContent
+      serverEl = el.firstElementChild
+    }
+    el.replaceChildren(text)
+  } else {
+    if (process.env.NODE_ENV !== 'production') server = _serverTextOfRange(open)
+    clearSlotRange(open)
+  }
+  if (process.env.NODE_ENV !== 'production') reportSlotSweep(text, server, serverEl)
 }
 
 // Dev: the server text of the range `_textSlot` is resolving (set and read

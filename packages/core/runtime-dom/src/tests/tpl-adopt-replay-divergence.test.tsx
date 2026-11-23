@@ -25,7 +25,8 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { tplAdoptVerify } from '../hydration-plan'
-import { _beginParkBatch, _endParkBatch, _takeParkedText } from '../parked-text'
+import { _beginParkBatch, _endParkBatch } from '../parked-text'
+import { _takeParkedElement } from '../set-child-claim'
 
 type CountSink = { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }
 
@@ -614,20 +615,19 @@ describe('a bind-managed element has its stray server texts removed', () => {
     expect(tplAdoptVerify(tplOf(EMPTY_EL), EMPTY_EL, targetOf('<p></p>'))).toBe(true)
   })
 
-  it('PARKS server ELEMENTS in a bind-managed slot for `_setChild` to claim (#4599)', () => {
+  it('RECORDS server ELEMENTS in a bind-managed slot for `_setChild` to claim (#4599)', () => {
     // A structural `_setChild` value (a VNode, an array, a fused mix) renders
-    // as elements marker-less. The verify keeps them behind a parked
-    // placeholder; `_setChild` claims it and adopts them, and a build whose
-    // bind never claims it sweeps them (`setchild-empty-element-adoption`).
+    // as elements marker-less. The verify leaves the DOM as it is and records
+    // the server children on the element; `_setChild` claims them, and a build
+    // whose bind never claims them removes them (`setchild-empty-element-adoption`).
     const el = targetOf('<p><b>x</b></p>')
+    const b = el.firstChild
     const prev = _beginParkBatch()
     expect(tplAdoptVerify(tplOf(EMPTY_EL), EMPTY_EL, el)).toBe(true)
-    expect(_endParkBatch(prev)).toEqual([el.firstChild])
-    expect(el.childNodes.length).toBe(2)
-    expect(el.firstChild?.nodeType).toBe(3)
-    expect((el.firstChild as Text).data).toBe('')
-    expect(el.lastChild?.nodeName).toBe('B')
-    // Unclaimed here (no bind ran): release the brand for the next spec.
-    _takeParkedText(el.firstChild as Text)
+    expect(_endParkBatch(prev)).toEqual([el])
+    expect([...el.childNodes]).toEqual([b])
+    // Unclaimed here (no bind ran): release the record for the next spec.
+    expect(_takeParkedElement(el)).toEqual([b])
   })
+
 })

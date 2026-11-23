@@ -26,6 +26,39 @@ type ParkedText = Text & { [PARKED_TEXT]?: Comment | null | undefined }
 
 export let _parkedPending = 0
 
+/**
+ * Count and batch one more parked node: an empty `_setChild` element whose
+ * server children `set-child-claim.ts` recorded on it (#4599). Kept here so the
+ * counter and the batch stay this module's own.
+ */
+export function _parkNode(el: Element): void {
+  _parkedPending++
+  ;(_batch ??= []).push(el)
+}
+
+/** One parked element was claimed or swept. */
+export function _unparkNode(): void {
+  _parkedPending--
+}
+
+/**
+ * Claim and sweep for the recorded elements (`set-child-claim.ts`), registered
+ * by `hydrateRoot` like the slot hydrator, so CSR bundles carry neither: only
+ * an adoption build records, and adoption runs under `hydrateRoot`.
+ */
+export interface ServerKidsHandlers {
+  claim: (node: Element, value: unknown) => boolean
+  /** Release `el`'s record (the build's first pass); `undefined` if none. */
+  take: (el: Element) => ChildNode[] | undefined
+  sweep: (el: Element, recorded: ChildNode[]) => void
+}
+
+export let _serverKids: ServerKidsHandlers | null = null
+
+export function _setServerKidsHandlers(h: ServerKidsHandlers): void {
+  _serverKids = h
+}
+
 export function _parkText(text: Text, open: Comment | null): void {
   ;(text as ParkedText)[PARKED_TEXT] = open
   _parkedPending++
@@ -56,9 +89,9 @@ export function _takeParkedText(text: Text): Comment | null | undefined {
  * slot did before) and the rewrite is reported. Frames nest (a bind hydrates
  * holes whose components build their own templates): save/restore, never reset.
  */
-let _batch: Text[] | null = null
+let _batch: (Text | Element)[] | null = null
 
-export function _beginParkBatch(): Text[] | null {
+export function _beginParkBatch(): (Text | Element)[] | null {
   const prev = _batch
   _batch = null
 
@@ -66,7 +99,7 @@ export function _beginParkBatch(): Text[] | null {
 }
 
 /** Close the batch opened by `_beginParkBatch`; returns what it branded. */
-export function _endParkBatch(prev: Text[] | null): Text[] | null {
+export function _endParkBatch(prev: (Text | Element)[] | null): (Text | Element)[] | null {
   const mine = _batch
   _batch = prev
 
@@ -103,7 +136,11 @@ export function _setSlotHydrator(h: SlotHydrator): void {
 export function _adoptParkedText(text: Text, child: () => VNodeChild): (() => void) | null {
   const open = _takeParkedText(text)
   if (open === undefined) return null
-  const parent = text.parentNode as Node
+  const parent = text.parentNode
+  // Detached before its binding ran: a `ref` earlier in the bind replaced the
+  // element's children. A fresh render writes into the same detached node, so
+  // the binding proceeds as an ordinary text binding.
+  if (parent === null) return null
   parent.removeChild(text)
 
   // The binding's accessor IS a reactive child: the hydrator primes it once.

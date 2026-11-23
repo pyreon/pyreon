@@ -123,7 +123,7 @@ An expression child of a templated element that builds JSX (`{items.map((x) => <
 A template's skeleton is adoptable only while it fully describes the DOM it claims. For a trailing mount hole the compiler bakes `data-pyreon-hole` (`TPL_HOLE_ATTR`) on the element, which `_tpl` strips at parse time.
   - `matchDomAgainstTemplate` matches the template's own `k` children, then skips the hole range; `k` is read off the template (`el.children.length`), so no count crosses the compiler/runtime boundary.
   - The bind hydrates the range instead of mounting into it (`_mountChild` in hydrate mode), and sweeps whatever it did not claim.
-  - The hole must be declared, never inferred: `_setChild` also fills empty elements (it claims its content through a parked placeholder, #4599) and so does a bind-time `innerHTML`, so a relaxation that hands an empty element's range to `_mountChild` without a declaration hands it to the wrong claimer.
+  - The hole must be declared, never inferred: `_setChild` also fills empty elements (it claims the server children the verifier recorded on the element, #4599) and so does a bind-time `innerHTML`, so a relaxation that hands an empty element's range to `_mountChild` without a declaration hands it to the wrong claimer.
   - The parent's closing tag supplies the extent, so SSR emits no extra markers. Anything static after a component is not absorbed.
   - Reference: `compiler/src/jsx.ts:TPL_HOLE_ATTR` + `processChildren` (both backends), `runtime-dom/src/template.ts`, `hydration-plan.ts:matchDomAgainstTemplate`. Locked by `runtime-dom/src/tests/hydrate-template-hole-limit.test.tsx` + `mount-hole-adoption.browser.test.tsx`. Bisect per backend: `transformJSX` prefers the native binary, so reverting only the JS side passes.
 

@@ -72,6 +72,8 @@ import {
   mountOwned,
 } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
+import { _setServerKidsHandlers } from './parked-text'
+import { SERVER_KIDS_HANDLERS } from './set-child-claim'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import {
@@ -1216,6 +1218,7 @@ function hydrateVNode(
             // hydrateRoot — kept here for direct-adoption robustness).
             _setTplAdoptVerifier(tplAdoptVerify)
   _setTplHoleHydrator(hydrateMountHole)
+            _setServerKidsHandlers(SERVER_KIDS_HANDLERS)
             for (let i = 0; i < rowCount; i++) {
               const rowMarker = rowMarkers[i] as ChildNode
               const rowFirst = rowFirsts[i] as ChildNode
@@ -1460,11 +1463,30 @@ function hydrateMountSlot(
   }
   const first = open.nextSibling
   const cursor = first === close ? null : first!.nodeType === 1 ? first : firstReal(first)
-  const [cleanup] = hydrateChild(children, cursor, parent, close, slotPath)
+  const [cleanup, residual] = hydrateChild(children, cursor, parent, close, slotPath)
+  sweepRangeResidual(parent, open, close, residual)
   open.remove()
   close.remove()
 
   return cleanup
+}
+
+/**
+ * What a literal walk left unclaimed inside a marked range is server content a
+ * divergent value replaced (recovery mounts AT the cursor): sweep it, as the
+ * marker-less branch of `hydrateMountSlot` does, but only up to the range's own
+ * close. Not when nothing precedes the residual inside the range: the same
+ * "degrade, don't destroy" rule as `sweepUnclaimed` (a component that threw or
+ * rendered nothing keeps the server's markup).
+ */
+function sweepRangeResidual(parent: Node, open: Comment, close: ChildNode, residual: ChildNode | null): void {
+  if (residual === null || residual === close || residual.parentNode !== parent) return
+  if (firstReal(open.nextSibling) === residual) return
+  for (let n: ChildNode | null = residual; n !== null && n !== close; ) {
+    const nx: ChildNode | null = n.nextSibling
+    n.remove()
+    n = nx
+  }
 }
 
 function hydrateChild(
@@ -2445,6 +2467,8 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   _setSlotHydrator(
     process.env.NODE_ENV !== 'production' ? outsideAdoptionBind(hydrateMountSlot) : hydrateMountSlot,
   )
+  // Claim/sweep of an empty `_setChild` element's recorded server children (#4599).
+  _setServerKidsHandlers(SERVER_KIDS_HANDLERS)
   // (A compiled text slot whose server content is elements adopts it through
   // this same hydrator: #4385, `parked-text.ts`.)
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
