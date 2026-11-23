@@ -41,14 +41,16 @@ import { isServer } from '@pyreon/reactivity'
 //    `useMutation({ mutationFn: login })` in flight never reaches storage, and
 //    a keyed mutation left out gets a dev warning saying why.
 // 2. Ownership: each persisted mutation holds a Web Lock while it is pending,
-//    and a page that owns any holds an owner lock. A page that restores a
+//    and a page that has persisted one holds an owner lock until a pagehide
+//    finds it owning none. A mutation lock is never released while storage may
+//    still hold that mutation as pending. A page that restores a
 //    mutation whose lock is held leaves it alone and keeps it in storage; once
 //    the lock is released it reads the entry's CURRENT owner from storage and
 //    takes it over only if that owner is gone. Without Web Locks an in-flight
 //    mutation is not persisted (TanStack's behaviour).
 // 3. Writes: the throttled writes TanStack makes, plus one immediate write
 //    (coalesced per microtask) when a mutation becomes owned and when it
-//    settles, the latter before its lock is released, and on page hide. A
+//    settles, the latter LANDED before its lock is released, and on page hide. A
 //    provider that is no longer subscribed still removes its settled mutations
 //    from storage.
 //
@@ -89,7 +91,7 @@ interface LockManagerLike {
 export const FLUSH: unique symbol = Symbol.for('pyreon.query.persist.flush') as never
 
 export type FlushablePersister = Persister & {
-  [FLUSH]?: (client: PersistedClient) => void
+  [FLUSH]?: (client: PersistedClient) => void | Promise<void>
 }
 
 const OWNER_PREFIX = 'pyreon-query-owner:'
@@ -348,12 +350,6 @@ interface Owned {
 interface Session {
   client: QueryClient
   locks: LockManagerLike | undefined
-  /**
-   * This page's owner lock, taken with the first mutation lock and released
-   * once the page owns nothing (so an idle page holds no Web Lock, which keeps
-   * it eligible for the back/forward cache).
-   */
-  ownerLock: { id: string; lock: Promise<HeldLock | null> } | undefined
   /** Locks this page holds, per mutation it owns. */
   held: Map<Mutation, Owned>
   /** Mutation locks requested and not granted yet. */
@@ -377,6 +373,8 @@ interface Session {
    * `pageshow` when the page comes back from the back/forward cache.
    */
   frozen: boolean
+  /** Lock releases held back while frozen: a mutation that failed during teardown stays stored and owned. */
+  deferred: Array<() => void>
   defaultPredicate: (mutation: Mutation) => boolean
 }
 
@@ -394,7 +392,6 @@ function sessionFor(client: QueryClient, persister: Persister): Session {
   const session: Session = {
     client,
     locks: lockManager(),
-    ownerLock: undefined,
     held: new Map(),
     requested: new Set(),
     adopted: new Map(),
@@ -404,6 +401,7 @@ function sessionFor(client: QueryClient, persister: Persister): Session {
     target: undefined,
     flushQueued: undefined,
     frozen: false,
+    deferred: [],
     defaultPredicate: (mutation) => defaultPredicate(session, mutation),
   }
   sessions.set(client, session)
@@ -412,22 +410,67 @@ function sessionFor(client: QueryClient, persister: Persister): Session {
   return session
 }
 
-function ownerId(session: Session, locks: LockManagerLike): string {
-  if (!session.ownerLock) {
-    // Web Locks and randomUUID are both secure-context APIs: where one exists, so does the other.
-    const id = crypto.randomUUID()
-    session.ownerLock = { id, lock: hold(locks, OWNER_PREFIX + id, false) }
-  }
+// ─── The page's owner lock ────────────────────────────────────────────────────
+//
+// ONE per page, whatever the number of clients: taken with the page's first
+// mutation lock and held until a `pagehide` finds the page owning nothing. A
+// page that has not persisted a mutation holds no Web Lock (keeping it eligible
+// for the back/forward cache). While it is held, "the owner is alive" is true,
+// and that is the backstop when a mutation lock is let go: a live owner settled
+// its mutation, whatever a slower write or another tab's copy left in storage.
 
-  return session.ownerLock.id
+interface PageOwner {
+  owner: { id: string; lock: Promise<HeldLock | null> } | undefined
+  /** Sessions owning a mutation right now (dropped as soon as they own none). */
+  owning: Set<Session>
 }
 
-/** Let go of the owner lock once this page owns no mutation and is about to own none. */
-function releaseOwnerIfIdle(session: Session): void {
-  if (!session.ownerLock) return
-  if (session.held.size > 0 || session.adopted.size > 0 || session.requested.size > 0) return
-  const { lock } = session.ownerLock
-  session.ownerLock = undefined
+// Keyed by the page's LockManager (one per page), held weakly.
+const pageOwners = new WeakMap<LockManagerLike, PageOwner>()
+
+function pageOwnerFor(locks: LockManagerLike): PageOwner {
+  let page = pageOwners.get(locks)
+  if (!page) {
+    page = { owner: undefined, owning: new Set() }
+    pageOwners.set(locks, page)
+  }
+
+  return page
+}
+
+function ownerId(locks: LockManagerLike): string {
+  const page = pageOwnerFor(locks)
+  if (!page.owner) {
+    // Web Locks and randomUUID are both secure-context APIs: where one exists, so does the other.
+    const id = crypto.randomUUID()
+    page.owner = { id, lock: hold(locks, OWNER_PREFIX + id, false) }
+  }
+
+  return page.owner.id
+}
+
+/** This page's owner id, if it has one now. */
+function currentOwner(session: Session): string | undefined {
+  return session.locks ? pageOwners.get(session.locks)?.owner?.id : undefined
+}
+
+/** Record whether `session` owns anything (requested, held or adopted locks). */
+function trackOwnership(session: Session): void {
+  if (!session.locks) return
+  const { owning } = pageOwnerFor(session.locks)
+  if (session.held.size > 0 || session.adopted.size > 0 || session.requested.size > 0) {
+    owning.add(session)
+  } else {
+    owning.delete(session)
+  }
+}
+
+/** At `pagehide`: let go of the owner lock if no client on the page owns a mutation. */
+function releasePageOwnerIfIdle(session: Session): void {
+  const page = session.locks ? pageOwners.get(session.locks) : undefined
+  if (!page?.owner || page.owning.size > 0) return
+  const { lock } = page.owner
+  page.owner = undefined
   void lock.then((held) => held?.release())
 }
 
@@ -438,6 +481,7 @@ function onMutationEvent(session: Session, event: MutationCacheNotifyEvent): voi
     if (!adopted) return
     session.adopted.delete(mutation.state)
     session.held.set(mutation, { name: adopted.name, lock: adopted.lock })
+    trackOwnership(session)
     // Storage still names the gone owner: say who owns it now.
     writeNow(session, () => undefined, { retag: { lock: adopted.name, owner: adopted.owner } })
 
@@ -450,16 +494,27 @@ function onMutationEvent(session: Session, event: MutationCacheNotifyEvent): voi
   const owned = session.held.get(mutation)
   if (!owned) return
   session.held.delete(mutation)
-  // Storage loses the settled mutation BEFORE its lock is released, so a page
-  // that takes the lock next does not find it and send it again.
-  writeNow(
-    session,
-    () => {
-      owned.lock.release()
-      releaseOwnerIfIdle(session)
-    },
-    { remove: owned.name },
-  )
+  trackOwnership(session)
+  const release = (): void => owned.lock.release()
+  if (session.frozen) {
+    // After pagehide. A success really happened: remove it from storage (only
+    // that entry), then let go. A failure is most likely teardown aborting the
+    // request: keep it stored and owned; if the page comes back from the
+    // back/forward cache, `pageshow` writes and releases; if it does not, the
+    // lock dies with the page and the next page sends it.
+    if (event.type === 'updated' && event.action.type === 'success') {
+      void editStored(session.source, [{ remove: owned.name }]).then(release)
+    } else {
+      session.deferred.push(release)
+    }
+
+    return
+  }
+  // THE INVARIANT: a mutation lock is never released while storage may still
+  // hold that mutation as pending. The write that drops it has LANDED (an async
+  // persister's included) before `release` runs, so a page that takes the lock
+  // next does not find it and send it again.
+  writeNow(session, release, { remove: owned.name })
 }
 
 function defaultPredicate(session: Session, mutation: Mutation): boolean {
@@ -489,16 +544,18 @@ function defaultPredicate(session: Session, mutation: Mutation): boolean {
 function requestLock(session: Session, locks: LockManagerLike, mutation: Mutation): void {
   if (session.requested.has(mutation)) return
   session.requested.add(mutation)
-  const name = `${MUTATION_PREFIX}${ownerId(session, locks)}:${mutation.mutationId}`
+  trackOwnership(session)
+  const name = `${MUTATION_PREFIX}${ownerId(locks)}:${mutation.mutationId}`
   void hold(locks, name, false).then((lock) => {
     session.requested.delete(mutation)
     if (!lock || mutation.state.status !== 'pending') {
       lock?.release()
-      releaseOwnerIfIdle(session)
+      trackOwnership(session)
 
       return
     }
     session.held.set(mutation, { name, lock })
+    trackOwnership(session)
     // Now that it is owned, write it right away rather than after the throttle:
     // a tab that dies without a pagehide (a crash, a killed process) must still
     // leave it in storage. Writes of mutations that start together coalesce.
@@ -523,7 +580,7 @@ function tagMutations(session: Session, client: PersistedClient): PersistedClien
   const byState = new Map<object, string>()
   for (const [mutation, owned] of session.held) byState.set(mutation.state, owned.name)
   // A page that holds a mutation lock holds its owner lock too.
-  const owner = session.ownerLock?.id ?? ''
+  const owner = currentOwner(session) ?? ''
   const tagged: TaggedMutation[] = (client.clientState.mutations as TaggedMutation[]).map(
     (entry) => {
       const failureReason = writableFailure(entry.state.failureReason)
@@ -550,12 +607,15 @@ function snapshot(session: Session, target: SaveTarget): PersistedClient {
   return tagMutations(session, { buster: target.buster, timestamp: Date.now(), clientState })
 }
 
-/** Write to a persister now, skipping its throttle when it can, and through the throttle too. */
-function writeThrough(persister: FlushablePersister, client: PersistedClient): void {
-  persister[FLUSH]?.(client)
+/** Write to a persister now, skipping its throttle when it can, and through the throttle too; resolves once it has landed. */
+async function writeThrough(persister: FlushablePersister, client: PersistedClient): Promise<void> {
+  const landed = persister[FLUSH]?.(client)
   // Also hand it to the throttled path: its pending write must not be an OLDER
   // snapshot that lands after this one and undoes it.
-  void persister.persistClient(client)
+  const throttled = persister.persistClient(client)
+  // Done when the immediate write has landed; a persister without one (a
+  // custom one) is done when its own write resolves.
+  await (persister[FLUSH] ? landed : throttled)
 }
 
 /** What a page that is not subscribed changes in storage: only entries it owns. */
@@ -597,7 +657,7 @@ async function runWrites(session: Session, queued: QueuedWrite[]): Promise<void>
   // Nothing is written after the page's final write (see `frozen`).
   if (!session.frozen) {
     if (target) {
-      writeThrough(target.persister, snapshot(session, target))
+      await writeThrough(target.persister, snapshot(session, target))
     } else {
       await editStored(
         session.source,
@@ -609,29 +669,37 @@ async function runWrites(session: Session, queued: QueuedWrite[]): Promise<void>
 }
 
 async function editStored(source: FlushablePersister, edits: StoredEdit[]): Promise<void> {
-  const stored = await source.restoreClient()
-  // Nothing stored (removed, or never written): nothing to correct.
-  if (!stored) return
   const removed = new Set<string>()
   const retagged = new Map<string, string>()
   for (const edit of edits) {
     if (edit && 'remove' in edit) removed.add(edit.remove)
     else if (edit) retagged.set(edit.retag.lock, edit.retag.owner)
   }
-  const mutations = (stored.clientState.mutations as TaggedMutation[])
-    .filter((m) => !removed.has(m.pyreonOwner?.lock ?? ''))
-    .map((m) => {
-      const lock = m.pyreonOwner?.lock ?? ''
-      const owner = retagged.get(lock)
+  // Another tab may write the shared key between this read and this write and
+  // put back a copy it still keeps: so read back after a removal, and remove
+  // again once if it came back.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const stored = await source.restoreClient()
+    // Nothing stored (removed, or never written): nothing to correct.
+    if (!stored) return
+    const entries = stored.clientState.mutations as TaggedMutation[]
+    const lockOf = (m: TaggedMutation): string => m.pyreonOwner?.lock ?? ''
+    if (attempt > 0 && !entries.some((m) => removed.has(lockOf(m)))) return
+    const mutations = entries
+      .filter((m) => !removed.has(lockOf(m)))
+      .map((m) => {
+        const owner = retagged.get(lockOf(m))
 
-      return owner ? { ...m, pyreonOwner: { lock, owner } } : m
-    })
-  writeThrough(source, { ...stored, clientState: { ...stored.clientState, mutations } })
+        return owner ? { ...m, pyreonOwner: { lock: lockOf(m), owner } } : m
+      })
+    await writeThrough(source, { ...stored, clientState: { ...stored.clientState, mutations } })
+    if (removed.size === 0) return
+  }
 }
 
 /** Write the current state now (the page is being hidden). */
 function flush(session: Session, target: SaveTarget): void {
-  if (!session.frozen) writeThrough(target.persister, snapshot(session, target))
+  if (!session.frozen) void writeThrough(target.persister, snapshot(session, target))
 }
 
 function mutationPredicate(
@@ -667,9 +735,10 @@ function adopt(
   tag: OwnerTag,
   lock: HeldLock,
 ): DehydratedMutation {
-  const owner = ownerId(session, locks)
+  const owner = ownerId(locks)
   const restored = asPaused(plain(entry))
   session.adopted.set(restored.state, { name: tag.lock, lock, owner })
+  trackOwnership(session)
 
   return restored
 }
@@ -678,7 +747,7 @@ function adopt(
 function releaseUnclaimed(session: Session): void {
   for (const owned of session.adopted.values()) owned.lock.release()
   session.adopted.clear()
-  releaseOwnerIfIdle(session)
+  trackOwnership(session)
 }
 
 /** The stored entry for `lock` as it is NOW: its current owner, or `undefined` if it is gone. */
@@ -712,7 +781,7 @@ function watch(
     if (!current || !owner || (await ownerAlive(locks, owner))) {
       lock.release()
       // Write without the copy this page was keeping for its owner.
-      writeNow(session, () => undefined)
+      writeNow(session, () => undefined, { remove: tag.lock })
 
       return
     }
@@ -728,7 +797,7 @@ async function claimEntry(
   tag: OwnerTag,
 ): Promise<DehydratedMutation | undefined> {
   // This page's own mutation (a remount): it is still in this client's cache.
-  if (tag.owner === session.ownerLock?.id) return undefined
+  if (tag.owner === currentOwner(session)) return undefined
   const lock = await hold(locks, tag.lock, true)
   if (!lock) {
     watch(session, locks, entry, tag)
@@ -820,9 +889,19 @@ function attach(options: DurableOptions): () => void {
   const onPageHide = (): void => {
     flush(session, target)
     session.frozen = true
+    releasePageOwnerIfIdle(session)
   }
+  // Only a page coming back from the back/forward cache was frozen (a page's
+  // first pageshow finds nothing to do).
   const onPageShow = (): void => {
+    if (!session.frozen) return
     session.frozen = false
+    // Write what changed while frozen, then let go of the locks of the
+    // mutations that settled meanwhile.
+    const deferred = session.deferred.splice(0)
+    writeNow(session, () => {
+      for (const release of deferred) release()
+    })
   }
   document.addEventListener('visibilitychange', onHidden)
   window.addEventListener('pagehide', onPageHide)
@@ -897,7 +976,7 @@ export function persistQueryClientSubscribe(options: PersistedQueryClientSaveOpt
 /** Give a persister the immediate write the mutation contract uses (`FLUSH`). */
 export function withFlush<P extends Persister>(
   persister: P,
-  write: (client: PersistedClient) => void,
+  write: (client: PersistedClient) => void | Promise<void>,
 ): P {
   ;(persister as FlushablePersister)[FLUSH] = write
 

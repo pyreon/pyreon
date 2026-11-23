@@ -254,9 +254,10 @@ test('a second tab sends nothing when the live tab\'s request succeeds', async (
   page = pageB
 })
 
-test('a page with the provider holds no Web Lock unless it owns a pending mutation', async () => {
+test('a page with the provider holds no Web Lock until it persists a mutation', async () => {
   // A held Web Lock keeps a page out of the back/forward cache, so a page takes
-  // its locks with its first persisted mutation and lets go once it owns none.
+  // its locks with its first persisted mutation; the mutation's lock goes when
+  // it settles, the page's owner lock at a pagehide that finds it owning none.
   // (The restore itself cannot be observed here: Playwright's Chromium does not
   // restore even a page without the provider from the back/forward cache.)
   const held = () => page.evaluate(async () => (await navigator.locks.query()).held?.length ?? 0)
@@ -273,7 +274,7 @@ test('a page with the provider holds no Web Lock unless it owns a pending mutati
   holdPosts = false
   await page.reload() // the in-flight request dies with the page; the reload takes it over and sends it
   await expect.poll(() => posts).toEqual(['biscuits'])
-  await expect.poll(held).toBe(0)
+  await expect.poll(held).toBe(1) // settled: only the reloaded page's owner lock is left
 })
 
 test('useInstallPrompt reflects a beforeinstallprompt event', async () => {

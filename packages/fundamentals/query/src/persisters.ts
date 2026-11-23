@@ -39,8 +39,8 @@ export function createSyncStoragePersister(options: SyncOptions): Persister {
 /**
  * TanStack's `createAsyncStoragePersister` (IndexedDB, React Native
  * AsyncStorage, any Promise-returning store), with the same immediate write.
- * It STARTS at once but completes asynchronously, so a page torn down in the
- * same moment may not finish it.
+ * It starts at once and completes asynchronously; locks are released only
+ * after it has landed, but a page torn down in the same moment may not finish it.
  */
 export function createAsyncStoragePersister(options: AsyncOptions): Persister {
   const persister = tanstackAsync(options)
@@ -49,10 +49,14 @@ export function createAsyncStoragePersister(options: AsyncOptions): Persister {
   const key = options.key ?? DEFAULT_KEY
   const serialize = options.serialize ?? JSON.stringify
 
-  return withFlush(persister, (client: PersistedClient) => {
-    void Promise.resolve()
+  // Returns the write: lock releases wait for it to land (see persist-mutations.ts).
+  return withFlush(persister, (client: PersistedClient) =>
+    Promise.resolve()
       .then(() => serialize(client))
       .then((text) => storage.setItem(key, text))
-      .catch(() => undefined)
-  })
+      .then(
+        () => undefined,
+        () => undefined,
+      ),
+  )
 }

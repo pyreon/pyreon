@@ -153,7 +153,7 @@ What is promised, and what is not:
 
 - Paused mutations are STARTED in creation order when the connection returns, but run concurrently. Give related mutations the same `scope: { id: 'items' }` to run them one after another.
 - Delivery is at-least-once. A tab that closes mid-request keeps the mutation persisted, so the next page sends it again, even if the server had already received it. Make the endpoint idempotent: send a client-generated id in the variables and ignore repeats.
-- Two open tabs never both send one mutation: a tab takes over another tab's mutation only after that tab has closed (Web Locks). Without Web Locks, an in-flight mutation is not persisted at all. A page holds no Web Lock unless it owns a pending mutation, so it stays eligible for the back/forward cache.
+- Two open tabs never both send one mutation: a tab takes over another tab's mutation only after that tab has closed (Web Locks). Without Web Locks, an in-flight mutation is not persisted at all. A page that never persisted a mutation holds no Web Lock, so it stays eligible for the back/forward cache.
 - A reload aborts an in-flight request; the mutation stays stored and the reloaded page sends it.
 - Mark a mutation `meta: { persist: false }` when its variables are secrets (a sign-in), so they are never written to `localStorage`, not even while it is paused offline.
 - A `File` or `Blob` is not persisted (it would come back as `{}`): upload it first and send its id.
