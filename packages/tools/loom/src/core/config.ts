@@ -24,7 +24,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { basename, resolve } from 'node:path'
+import { basename, relative, resolve } from 'node:path'
 import { CONFIG_FILENAMES, sectionFrom } from '@pyreon/config'
 import type { IssueCode, IssueSeverity, LoomIgnore } from './types'
 import { closest } from './closest'
@@ -227,5 +227,7 @@ export async function loadSharedLoomConfig(cwd: string): Promise<Partial<LoomSet
     )
   }
   const section = validateLoomSection(sectionFrom(mod, 'loom'), found)
-  return section.ignores ? { ...section, ignoresFrom: basename(found) } : section
+  // Relative to the scanned directory (the workspace root), not a bare file
+  // name, so the path stays right if the lookup ever widens to parents.
+  return section.ignores ? { ...section, ignoresFrom: relative(cwd, found) || basename(found) } : section
 }
