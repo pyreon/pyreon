@@ -263,5 +263,28 @@ describe('framework integration — live __PYREON_DEVTOOLS__', () => {
     enableSpy.mockRestore()
     disableSpy.mockRestore()
     highlightSpy.mockRestore()
+
+    // page-hook is a page-lifetime side effect with no teardown: once
+    // imported it stays subscribed to the framework hook and coalesces
+    // mount/unmount events into a `window.postMessage` 100 ms later. Left to
+    // the afterEach, the unmount scheduled that flush AFTER the test, and on
+    // a slow run (Coverage (Full)'s pool) it fired once happy-dom had torn
+    // `window` down: "Unhandled ReferenceError: window is not defined".
+    // Unmount here and wait for the flush, so no timer outlives the test.
+    // The flush is captured, not delivered: happy-dom dispatches a posted
+    // message on a later task, which would reach page-hook's own listener
+    // after the test too.
+    const posted = vi.spyOn(window, 'postMessage').mockImplementation(() => {})
+    dispose?.()
+    dispose = null
+    await vi.waitFor(() =>
+      expect(
+        posted.mock.calls.some(
+          ([data]) =>
+            (data as { payload?: { type?: string } } | null)?.payload?.type === 'components-changed',
+        ),
+      ).toBe(true),
+    )
+    posted.mockRestore()
   })
 })

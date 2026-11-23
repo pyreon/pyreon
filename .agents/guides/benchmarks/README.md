@@ -107,6 +107,17 @@ Two `bench-scenarios.ts` scenarios exist to time specific code paths. Neither ha
 - `bun gate.ts` is the correctness gate alone and prints no timing; `Stacks Bench Smoke` (`.github/workflows/stacks-bench-smoke.yml`) runs setup and the gate on Linux so the arms stay buildable. It must never time anything.
 - A change to an arm follows its framework's docs, keeps `CONTRACT.md` and passes the gate; no arm-specific tuning, zero included.
 
+### Catalogue app (`examples/real-bench/app`)
+
+- **No result is published**, and none may be written into `BENCHMARKS.md`, the docs or the site until a run meets `examples/real-bench/app/results/README.md` and the maintainer decides to publish. Method, metric definitions, known biases and what is not measured: `examples/real-bench/README.md` ("The catalogue app"). Keep it free of result numbers.
+- One client-rendered app (list over 5,000 records with search/category/sort/pagination, detail, validated form, routing, app-wide state) specified in `CONTRACT.md`, in six arms under `arms/<id>/`: Pyreon (`@pyreon/router` + `@pyreon/store`), React (React Router + `useReducer`/context), Vue (Vue Router + Pinia), Solid (`@solidjs/router` + `createStore`), Svelte (SvelteKit SPA mode + a `$state` class), Preact (`preact-iso` + `@preact/signals`). Each has exact versions, its own `package-lock.json` (installed with `npm ci` by `bun setup.ts`) and its own Vite build; they are outside the bun workspace and ignored by oxlint/oxfmt.
+- `shared/data.ts` and `shared/app.css` are copied verbatim into every arm (the harness refuses a drifted copy); every visible string, including every number, is produced there, so V8's number-string cache is charged equally.
+- Metrics: first-load JS/CSS/HTML bytes (raw, gzip -9, brotli 11, sized by the harness); time to interactive (fresh context, CPU 4× + 150 ms / 1.6 Mbit/s, navigation start → a probe's search input is reflected in `#count`); retained JS heap after load, after one and after five scripted sessions (DevTools-protocol GC until two readings differ by under 16 KB, net of a blank page on the same server).
+- The pyreon arm has two sources: npm (default; the only one a published result may use) and `--pyreon=workspace`. The pinned `@pyreon/*@0.53.0` fails the gate: its runtime builds a compiled component-child template (the header `<nav>` under `RouterProvider`) before the provider runs, so those `RouterLink`s find no router and do full page loads. #4174 fixed it on `main` (`remountable-tpl-owner.test.ts`); do not work around it in the arm. Move the pin after the next release and confirm `bun gate.ts pyreon` passes.
+- `bun gate.ts` is the correctness gate alone and prints no timing; `Real Bench App Smoke` (`.github/workflows/real-bench-app-smoke.yml`) runs setup and the gate on Linux, the pyreon arm from the workspace. It must never time anything.
+- `bench.ts` refuses a non-isolated page or a timer coarser than 20 µs and any arm that fails the gate, and its report prints `NOT PUBLISHABLE` for load above 4, a missing arm, lowered knobs, a non-default throttle, a dirty tree, the workspace pyreon source, or a retried probe.
+- A change to an arm follows its framework's docs (named in its `arm.json`), keeps `CONTRACT.md` and passes the gate; no arm-specific tuning, Pyreon included.
+
 ### Fairness rules for competitor arms
 
 - Every arm builds row data with the same helper, outside the timed window.
@@ -225,10 +236,10 @@ Each of these produced a wrong published figure at some point.
 ## Honest limits
 
 - **Author-judge.** Pyreon's authors wrote and judge every bench. The only independent venue is krausest/js-framework-benchmark; a keyed implementation is staged at `contrib/krausest/pyreon-keyed/`. It passes upstream's own build, smoke, keyed and CSP checks (`references/krausest-submission.md`), but it has not been submitted and has no official number. Submitting is the maintainer's decision.
-- **Synthetic.** No real-app head-to-head against real competing frameworks exists; the `cpa-pw-app-*` ports run on Pyreon compat shims. "Fastest" claims stop at what these suites measure.
+- **Synthetic.** No real-app head-to-head against real competing frameworks has a published result. The catalogue app (`examples/real-bench/app`) is the harness for one (six real runtimes, bundle, time to interactive, memory) but has no run that meets its publishing conditions; the `cpa-pw-app-*` ports run on Pyreon compat shims. "Fastest" claims stop at what these suites measure.
 - **CPU-objective, not async latency.** React's default scheduling path would read higher than its `flushSync` arm.
 - **happy-dom rows** (query, virtual, table, toast, dnd, charts wrapper) time a JavaScript DOM implementation; relative work is meaningful, absolute times are not.
-- **Not measured** (per `BENCHMARKS.md` §14): streaming SSR, portals, async waterfalls, startup metrics, krausest's per-op memory metrics, Firefox/Safari, independent third-party runs. Async waterfalls and portals were dropped as unfair to include (Svelte lacks Suspense and a built-in portal).
+- **Not measured** (per `BENCHMARKS.md` §14): streaming SSR, portals, async waterfalls, startup metrics (the catalogue app can measure first-load bytes and time to interactive for client-rendered apps, unpublished), krausest's per-op memory metrics, Firefox/Safari, independent third-party runs. Async waterfalls and portals were dropped as unfair to include (Svelte lacks Suspense and a built-in portal).
 
 ## Deeper detail
 

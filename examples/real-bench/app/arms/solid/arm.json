@@ -1,0 +1,24 @@
+{
+  "id": "solid",
+  "label": "Solid + @solidjs/router + createStore/context",
+  "docs": [
+    "https://docs.solidjs.com/concepts/context",
+    "https://docs.solidjs.com/concepts/stores",
+    "https://docs.solidjs.com/concepts/derived-values/memos",
+    "https://docs.solidjs.com/solid-router/getting-started/component",
+    "https://docs.solidjs.com/solid-router/reference/components/a"
+  ],
+  "packages": ["solid-js", "@solidjs/router", "vite-plugin-solid", "vite"],
+  "router": "@solidjs/router: <Router root={Layout}> + <Route>, <A>, useParams, useNavigate",
+  "state": "a context provider holding createSignal for the products array (replaced on add) and createStore for filters, page and a per-id favourites map; createMemo for the filtered list, page rows, page count and summary",
+  "codeSplitting": "none",
+  "build": ["npm", "run", "build"],
+  "outDir": "dist",
+  "fallback": "index.html",
+  "dataFile": "src/data.ts",
+  "cssFile": "src/app.css",
+  "notes": [
+    "JSX compiled by vite-plugin-solid (babel-preset-solid): templates cloned, getter props.",
+    "Solid 1.9 and @solidjs/router 1.0: the newest stable versions published at least two weeks before pinning (Solid 2.0 stable was newer than that)."
+  ]
+}

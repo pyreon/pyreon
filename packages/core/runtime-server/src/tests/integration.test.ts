@@ -176,7 +176,14 @@ describe('SSR integration — renderToStream', () => {
       children: h(SlowComp as unknown as ComponentFn, null),
     })
 
-    const stream = renderToStream(vnode)
+    // A caller signal makes cancel() propagation OBSERVABLE: cancel must
+    // detach the stream from it at once, not when SlowComp settles. (The
+    // close-promptly check below cannot see propagation by itself: a
+    // cancelled reader's next read is done per the Streams spec, whatever
+    // the source does.)
+    const caller = new AbortController()
+    const detached = vi.spyOn(caller.signal, 'removeEventListener')
+    const stream = renderToStream(vnode, { signal: caller.signal })
     const reader = stream.getReader()
 
     // Drain chunks until we see the fallback (the `__NS` setup script
@@ -192,17 +199,26 @@ describe('SSR integration — renderToStream', () => {
     }
     expect(collected).toContain('fallback-shown')
 
+    expect(detached).not.toHaveBeenCalled()
     await reader.cancel('client-disconnect')
+    expect(detached).toHaveBeenCalledWith('abort', expect.any(Function))
     // After cancellation, the stream MUST close promptly (well before
     // SlowComp's 200ms timer). The next read returns done=true.
-    const beforeRead = Date.now()
-    const done = await reader.read()
-    const elapsed = Date.now() - beforeRead
-    expect(done.done).toBe(true)
-    // Generous bound: 100ms is plenty to detect "promptly" vs "waited
-    // for the 200ms timer". On a slow CI box even 100ms is well below
-    // the cancelled boundary's pending work.
-    expect(elapsed).toBeLessThan(100)
+    //
+    // "Promptly" is an ORDERING, not a duration: the read must settle before
+    // a 100ms timer started now. That was `Date.now()` deltas under 100ms,
+    // which a loaded runner can cross by descheduling this process alone.
+    // Timers only ever fire LATE under load, never early, so load can make
+    // this race slower but cannot flip a prompt close into a loss.
+    let closeTimer: ReturnType<typeof setTimeout> | undefined
+    const first = await Promise.race([
+      reader.read().then((r) => (r.done ? 'closed' : 'chunk')),
+      new Promise<'timer'>((resolve) => {
+        closeTimer = setTimeout(() => resolve('timer'), 100)
+      }),
+    ])
+    clearTimeout(closeTimer)
+    expect(first).toBe('closed')
   })
 
   test('collecting all chunks produces valid complete HTML', async () => {

@@ -1,0 +1,9 @@
+# A run's raw output: results/<runId>/. Ignored until a run is published;
+# results/README.md states where a published run goes and what it must meet.
+results/*
+!results/README.md
+!results/published/
+# Each arm's build output (dist/ and node_modules/ are ignored at the repo root).
+arms/svelte/build/
+arms/svelte/.svelte-kit/
+.scratch/

@@ -59,12 +59,12 @@ export function chartAttrExprKotlin(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   return undefined
 }
 
-/** A numeric host prop as a Double expression: static → literal, dynamic → `(expr).toDouble()`, absent → the default. */
+/** A numeric host prop as a Double expression: static → literal, dynamic → the expression as a Double, absent → the default. */
 export function kotlinChartDouble(e: Extract<ExprIR, { kind: 'jsx-element' }>, name: string, fallback: number, indent: number): string {
   const stat = host.staticAttr(e, name)
   if (typeof stat === 'number') return chartDouble(stat)
   const dyn = chartAttrExprKotlin(e, name)
-  if (dyn !== undefined) return `(${host.expr(dyn, indent)}).toDouble()`
+  if (dyn !== undefined) return host.kotlinDouble(dyn, indent)
   return chartDouble(fallback)
 }
 

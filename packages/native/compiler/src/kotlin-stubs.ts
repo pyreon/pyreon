@@ -1506,6 +1506,7 @@ fun <V> pyreonRecordValues(record: Map<String, V>): List<V> = record.values.toLi
 // (runtime-kotlin's PyreonSlice.kt).
 fun <T> pyreonSlice(a: List<T>, start: Long, end: Long? = null): List<T> = a
 fun pyreonSlice(s: String, start: Long, end: Long? = null): String = s
+fun <T> pyreonAt(xs: List<T>, i: Double): T? = null
 fun pyreonSubstring(s: String, start: Long, end: Long? = null): String = s
 fun pyreonSplit(s: String, separator: String, limit: Long? = null): List<String> = listOf(s)
 fun pyreonCodePoints(s: String): List<String> = listOf(s)

@@ -1,0 +1,17 @@
+{
+  "name": "real-bench-app-preact",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@preact/signals": "2.11.4",
+    "preact": "11.2.0",
+    "preact-iso": "2.12.2"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "2.10.6",
+    "vite": "8.3.6"
+  }
+}

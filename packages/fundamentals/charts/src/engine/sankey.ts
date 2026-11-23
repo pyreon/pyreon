@@ -189,8 +189,7 @@ export function layoutSankey(nodes: readonly SankeyNode[], links: readonly Sanke
     }
   }
   // maxDepthF mirrors the column count as a Double for the x placement.
-  let maxDepthF = 0.0
-  for (let d = 0; d < maxDepth; d++) maxDepthF = maxDepthF + 1.0
+  const maxDepthF: Double = Number(maxDepth)
   const y0: Double[] = []
   const hgt: Double[] = []
   for (let i = 0; i < n; i++) {
@@ -268,8 +267,7 @@ export function layoutSankey(nodes: readonly SankeyNode[], links: readonly Sanke
   }
   const outNodes: SankeyLayoutNode[] = []
   for (let i = 0; i < n; i++) {
-    let depthF = 0.0
-    for (let d = 0; d < depth[i]!; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(depth[i]!)
     const x = maxDepthF <= 0.0 ? box.x : box.x + ((box.w - nodeWidth) * depthF) / maxDepthF
     outNodes.push({
       name: nodes[i]!.name,

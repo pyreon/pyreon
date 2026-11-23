@@ -196,7 +196,7 @@ export function App() {
   const evens = filter(xs)
   return (<Stack><Text>{total()}</Text><Text>{evens().length}</Text></Stack>)
 }`)
-    expect(r.code).toContain('xs.fold(, { a, b -> a + b })')
+    expect(r.code).toContain('xs.fold(, { a, b -> pyreonAdd(a, b) })')
     expect(r.code).toContain('xs.filter()')
   })
 })

@@ -76,6 +76,10 @@ function issueLines(t: Term, issue: LoomIssue, pkgDirs: ReadonlyMap<string, stri
         if (at) locations.push({ ...at, label: range })
       }
     }
+  } else if (issue.code === 'stale-ignore' && typeof issue.details?.declaredIn === 'string') {
+    // The entry lives where it was declared (the root manifest or
+    // `pyreon.config.*`), not in the manifest of the package it names.
+    locations = [{ path: issue.details.declaredIn }]
   } else {
     const at = manifest(issue.pkg)
     if (at) locations = [at]

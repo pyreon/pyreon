@@ -495,3 +495,48 @@ export function unnarrowableWarning(what: string, target: 'swift' | 'kotlin'): s
     `optional chaining (\`x?.field ?? fallback\`).`
   )
 }
+
+/** The disjuncts of a `||` chain, left to right (`a || b || c` → `[a, b, c]`), seeing through parens. */
+function disjuncts(e: ExprIR): ExprIR[] {
+  const x = unparen(e)
+  return x.kind === 'logical' && x.op === '||' ? [...disjuncts(x.left), ...disjuncts(x.right)] : [e]
+}
+
+function isNilComparison(e: ExprIR): boolean {
+  const x = unparen(e)
+  if (x.kind !== 'comparison' || x.op !== '==') return false
+  const isNull = (y: ExprIR): boolean => y.kind === 'literal' && y.value === null
+
+  return isNull(x.left) !== isNull(x.right)
+}
+
+/**
+ * Split a compound early-exit guard whose leading disjuncts are absence tests into one guard per test:
+ *
+ *   if (v === undefined || !isFinite(v)) continue   →   if (v === undefined) continue
+ *                                                        if (!isFinite(v)) continue
+ *
+ * Equivalent because the body always leaves (`return` / `break` / `continue` / `throw`): the second guard is reached
+ * only when the first test was false, which is exactly when `||` evaluates the rest. The split is what lets the guard
+ * NARROW — `planGuard` recognises a single absence test, and the rest of the condition already reads the value as
+ * present in the source (TypeScript narrowed it through the `||`). Without it Swift had no unwrapped binding for
+ * `isFinite(v)` and the code did not compile once `v` was optional. Only a short exit body (up to three statements)
+ * is duplicated.
+ */
+export function splitAbsenceGuards(stmts: StatementIR[]): void {
+  for (let i = 0; i < stmts.length; i++) {
+    const s = stmts[i]!
+    if (s.kind !== 'if' || s.elseBody !== undefined || s.then.length > 3 || !exits(s.then)) continue
+    const parts = disjuncts(s.cond)
+    let lead = 0
+    while (lead < parts.length - 1 && isNilComparison(parts[lead]!)) lead++
+    if (lead === 0) continue
+    const tail = parts.slice(lead).reduce((acc, d): ExprIR => ({ kind: 'logical', op: '||', left: acc, right: d }))
+    const split: StatementIR[] = [
+      ...parts.slice(0, lead).map((cond, k): StatementIR => ({ kind: 'if', cond, then: k === 0 ? s.then : structuredClone(s.then) })),
+      { kind: 'if', cond: tail, then: structuredClone(s.then) },
+    ]
+    stmts.splice(i, 1, ...split)
+    i += split.length - 1
+  }
+}

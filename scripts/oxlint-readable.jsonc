@@ -22,7 +22,8 @@
     "**/native-golden/**",
     "**/api-reference.ts",
     "**/bench/typia/generated.js",
-    "examples/stacks-bench/apps"
+    "examples/stacks-bench/apps",
+    "examples/real-bench/app/arms"
   ],
   "overrides": [
     {

@@ -10,12 +10,17 @@
     "preview": "vite preview --port 4319 --strictPort",
     "bench": "bun bench.ts",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "app:setup": "cd app && bun setup.ts",
+    "app:gate": "cd app && bun gate.ts",
+    "app:bench": "cd app && bun bench.ts"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/store": "workspace:*",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

@@ -96,13 +96,8 @@ export interface GeoValue {
   value: Double
 }
 
-/**
- * A region with no value. `NaN` and `Infinity` are JS globals that emit
- * VERBATIM in a crossing file — no lowering, and no warning either, so the
- * generated Swift says `cannot find 'NaN' in scope`. `0.0 / 0.0` is the
- * engine's spelling for a gap (see `indicator-values.ts`).
- */
-const GEO_NA: Double = 0.0 / 0.0
+/** A region with no value: NaN (it lowers to `Double.nan` / `Double.NaN` natively). */
+const GEO_NA: Double = NaN
 
 /** Linear scan for a region's value; the list is one entry per region. */
 export function geoValueOf(values: readonly GeoValue[], name: string): Double {

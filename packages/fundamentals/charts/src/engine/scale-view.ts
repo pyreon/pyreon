@@ -31,8 +31,8 @@ import type { Domain, Double, Tick } from './types'
 
 /** A real value as its view value; NaN (a gap) where the scale cannot place it. `param` is the log floor (the real value that maps to 0) or the symlog constant. */
 export function viewForward(kind: string, v: Double, param: Double): Double {
-  if (kind === 'log') return v > 0.0 ? Math.log10(v / param) : 0.0 / 0.0
-  if (kind === 'sqrt') return v >= 0.0 ? Math.sqrt(v) : 0.0 / 0.0
+  if (kind === 'log') return v > 0.0 ? Math.log10(v / param) : NaN
+  if (kind === 'sqrt') return v >= 0.0 ? Math.sqrt(v) : NaN
 
   return v >= 0.0 ? Math.log10(1.0 + v / param) : -Math.log10(1.0 - v / param)
 }
@@ -98,8 +98,7 @@ function xRealBounds(kind: string, xs: Double[]): Domain {
 
 /** A reference rule or band in the view; a bound the scale cannot place is dropped like a gap. */
 function viewAnnotation(a: Annotation, kind: string, param: Double, onX: boolean): Annotation {
-  // Coalesce-first (the Swift-narrowing idiom): each bound is read as a plain Double.
-  const map = (v: Double | undefined): Double | undefined => (v === undefined ? v : keepFinite(viewForward(kind, v ?? 0.0, param)))
+  const map = (v: Double | undefined): Double | undefined => (v === undefined ? v : keepFinite(viewForward(kind, v, param)))
   if (onX) return { ...a, x: map(a.x), xFrom: map(a.xFrom), xTo: map(a.xTo), x1: map(a.x1), x2: map(a.x2) }
 
   return { ...a, y: map(a.y), yFrom: map(a.yFrom), yTo: map(a.yTo), y1: map(a.y1), y2: map(a.y2) }
@@ -147,7 +146,7 @@ function applyX(spec: ChartSpec, kind: string, param: Double): ChartSpec {
     const values: Double[] = []
     let i = 0
     for (const v of s.values) {
-      values.push(i < xView.length && !isFiniteNumber(xView[i]!) ? 0.0 / 0.0 : v)
+      values.push(i < xView.length && !isFiniteNumber(xView[i]!) ? NaN : v)
       i = i + 1
     }
     series.push({ ...s, values })

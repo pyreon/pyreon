@@ -24,7 +24,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { resolve } from 'node:path'
+import { basename, relative, resolve } from 'node:path'
 import { CONFIG_FILENAMES, sectionFrom } from '@pyreon/config'
 import type { IssueCode, IssueSeverity, LoomIgnore } from './types'
 import { closest } from './closest'
@@ -34,6 +34,12 @@ import { retiredCodeMessage } from './retired-codes'
 export interface LoomSettings {
   devPaths: string[]
   ignores: LoomIgnore[]
+  /**
+   * The file `ignores` came from, relative to the workspace root
+   * (`package.json` or the `pyreon.config.*` name) — where a `stale-ignore`
+   * finding points the reader.
+   */
+  ignoresFrom?: string
   strict?: boolean
   severity: Partial<Record<IssueCode, IssueSeverity>>
 }
@@ -50,6 +56,7 @@ export const ISSUE_CODES: readonly IssueCode[] = [
   'phantom-type-dep',
   'prod-import-of-dev-dep',
   'unused-dep',
+  'stale-ignore',
 ]
 
 const SEVERITIES: readonly IssueSeverity[] = ['error', 'warning', 'info']
@@ -168,6 +175,11 @@ export function mergeLoomSettings(
   return {
     devPaths: manifest.devPaths ?? shared.devPaths ?? [],
     ignores: manifest.ignores ?? shared.ignores ?? [],
+    ...(manifest.ignores
+      ? { ignoresFrom: 'package.json' }
+      : shared.ignores && shared.ignoresFrom
+        ? { ignoresFrom: shared.ignoresFrom }
+        : {}),
     ...(manifest.strict ?? shared.strict) !== undefined
       ? { strict: manifest.strict ?? shared.strict }
       : {},
@@ -218,5 +230,8 @@ export async function loadSharedLoomConfig(cwd: string): Promise<Partial<LoomSet
       { cause: err },
     )
   }
-  return validateLoomSection(sectionFrom(mod, 'loom'), found)
+  const section = validateLoomSection(sectionFrom(mod, 'loom'), found)
+  // Relative to the scanned directory (the workspace root), not a bare file
+  // name, so the path stays right if the lookup ever widens to parents.
+  return section.ignores ? { ...section, ignoresFrom: relative(cwd, found) || basename(found) } : section
 }

@@ -248,7 +248,7 @@ interface Computed<T> {
 
 ### Custom Equality
 
-By default, a computed notifies downstream whenever any dependency changes. Use the `equals` option to suppress updates when the derived value has not meaningfully changed. This is especially useful for derived arrays and objects:
+By default a computed gates on `Object.is`, like `signal.set`: when a dependency changes but the recomputed value is identical (the same primitive or the same object reference), downstream effects do not re-run. A derivation that builds a fresh array or object each time can never pass that check, so give it an `equals` that compares contents:
 
 ```ts
 const items = signal([3, 1, 4, 1, 5])

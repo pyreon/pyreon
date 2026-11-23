@@ -97,6 +97,7 @@ export type IssueCode =
   | 'phantom-type-dep'
   | 'prod-import-of-dev-dep'
   | 'unused-dep'
+  | 'stale-ignore'
 
 export interface LoomIssue {
   code: IssueCode

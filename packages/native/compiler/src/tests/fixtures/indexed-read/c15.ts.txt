@@ -1,0 +1,5 @@
+type Double = number
+function g(x: Double | undefined): Double { return x === undefined ? 3.0 : x }
+function f1(xs: Double[], i: number): Double { let v = xs[i]; if (v === undefined) v = g(v); return v * 2.0 }
+export function c_f1_out(): string { return String(f1([1.0], 4)) }
+export function c_f1_in(): string { return String(f1([1.0], 0)) }

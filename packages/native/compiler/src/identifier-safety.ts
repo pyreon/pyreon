@@ -133,6 +133,21 @@ export function swiftIdent(name: string): string {
   return swiftIdentIn(name, _observableMembers)
 }
 
+/**
+ * A name in a CALL's argument-label position (`Point(x: 1)`, `Mark(repeat: true)`). Swift accepts every keyword
+ * there except `inout`, `var` and `let` as a bare label and warns "keyword 'repeat' does not need to be escaped in
+ * argument list" for the escaped form — a warning every app compiling the output would see. Everything else (the
+ * non-identifier rewrite, the `@Observable` spelling) is `swiftIdent`'s, so a label always names the declaration it
+ * labels.
+ */
+export function swiftArgLabel(name: string): string {
+  const ident = swiftIdent(name)
+  if (!ident.startsWith('`')) return ident
+  const bare = ident.slice(1, -1)
+
+  return bare === 'inout' || bare === 'var' || bare === 'let' ? ident : bare
+}
+
 function swiftIdentIn(name: string, observable: ReadonlySet<string> | null): string {
   // A name that is not an identifier at all (`my-key`, `has space` — a
   // quoted object key reaching a struct field / member access) is camelCased

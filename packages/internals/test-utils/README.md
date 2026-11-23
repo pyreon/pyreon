@@ -127,7 +127,9 @@ The "parent runs once" pattern catches the bug fixed in PR #191 — a parent com
 
 ### Complexity measurements
 
-`measureComplexity(run, baseN, options)` samples two input sizes and returns their growth ratio; `expectSubQuadratic` throws when the measurement is unmeasurable or exceeds the bound. Both default to `performance.now`. Ratios reduce sensitivity to machine speed, but unequal scheduling, JIT and GC costs can still skew measurements.
+`measureComplexity(run, baseN, options)` samples two input sizes and returns their growth ratio; `expectSubQuadratic` throws when the measurement is unmeasurable or exceeds the bound. Both default to `cpuClock`, this process's CPU time in milliseconds (`performance.now` where `process.cpuUsage` is missing), so time spent waiting for a core on a loaded runner is not counted. Ratios reduce sensitivity to machine speed, but JIT, GC and allocation costs can still skew measurements.
+
+`countStringOps(fn)` runs a synchronous function with `RegExp.prototype.exec` and the common `String.prototype` methods patched, and returns `{ result, regexSources, stringCalls }`. Every regex method reaches `exec`, so `regexSources` lists each pattern that ran. Use it instead of timing to prove a no-backtracking or linear-scan claim: assert the allowed patterns and an equal `stringCalls` at two input sizes. Indexed access (`s[i]`) is not counted.
 
 Tests of the helpers' sampling policy use `options.clock`, a monotonic millisecond clock advanced by counted work. This keeps calibration, resampling and verdict controls deterministic without replacing the real clock used to measure an operation. A flat, unmeasurable operation still stops growing before retained fixtures can exhaust the heap.
 

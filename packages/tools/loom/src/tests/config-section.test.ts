@@ -171,6 +171,11 @@ describe('loadSharedLoomConfig', () => {
     expect((await loadSharedLoomConfig(viaNamed)).devPaths).toEqual(['src/n.ts'])
   })
 
+  it('records where an ignore list came from, relative to the scanned root (stale-ignore points there)', async () => {
+    const root = workspace({ configSource: 'export default { loom: { ignore: [{ dep: "x", reason: "r" }] } }\n' })
+    expect((await loadSharedLoomConfig(root)).ignoresFrom).toBe('pyreon.config.mjs')
+  })
+
   it('a config file that EXISTS but cannot load is a loud, named failure', async () => {
     // Never silent. A project that wrote settings and had them dropped gets a
     // puzzling afternoon; the message names the file and the way out.

@@ -25,6 +25,7 @@ loom --version
 | `phantom-type-dep` | info | a `import type` / `.d.ts` import of an undeclared package — erased at build, so consumers are fine, but typecheck rides on hoisting |
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans at RUNTIME on a devDependency consumers won't have |
 | `unused-dep` | info | a declared dependency no source file imports — lexical evidence only, verify before removing |
+| `stale-ignore` | warning | a `loom.ignore` entry that does nothing: it matches no finding at any severity (the defect it excused is gone, or its `pkg` / `dep` / `code` never matched), or every finding it matches is already taken by an earlier entry (shadowed). An entry for a live `info` finding is not stale. Points at the file the entry is declared in; under `--no-imports` an entry for a lexical code is not judged |
 
 `loom scan` exits non-zero on error findings (`--strict` includes warnings) — wire it into CI and the fabric gates itself.
 

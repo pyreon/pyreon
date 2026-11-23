@@ -683,16 +683,33 @@ final class PyreonCounterUITests: XCTestCase {
         shareButton.tap()
 
         // The presented UIActivityViewController is a system sheet. Check
-        // multiple robust indicators (identifiers vary by iOS version).
+        // multiple robust indicators (identifiers vary by iOS version), and
+        // check them TOGETHER inside one deadline: waiting 5 s for one and then
+        // 5 s for the other gave the indicator that actually appears only half
+        // the window, and on a loaded CI simulator the sheet can take longer
+        // than that to come up (this assertion failed its first attempt in 3 of
+        // 10 runs, passing on the retry each time).
+        //
+        // ONE tap, never repeated: on an iPhone the sheet only covers the lower
+        // part of the screen, so the Share button stays hittable above it, and
+        // a second tap while the sheet is still coming up lands on the dimmed
+        // backdrop and dismisses it. Re-tapping made this fail 3 of 3 (#4758).
         let activityView = app.otherElements["ActivityListView"]
         let copyButton = app.buttons["Copy"]
-        let appeared =
-            activityView.waitToExist(timeout: 5)
-            || copyButton.waitToExist(timeout: 5)
+        var appeared = false
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if activityView.exists || copyButton.exists {
+                appeared = true
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
         XCTAssertTrue(
             appeared,
-            "Tapping Share did not present the system share sheet — "
-                + "PyreonShare failed to present a UIActivityViewController"
+            "Tapping Share did not present the system share sheet within 20 s — "
+                + "PyreonShare failed to present a UIActivityViewController. Screen: "
+                + String(app.debugDescription.prefix(1500))
         )
 
         // DISMISS the share sheet before the test ends. An OPEN
