@@ -9,7 +9,16 @@ import { rs } from './rs'
  * AND JS-driven pseudo state ($rocketstate.pseudo) via makeItResponsive.
  * Auto-adds cursor:pointer for interactive elements (onClick/href).
  */
-export const el = rs({ name: 'Base', component: Element }).styles(
+export const el = rs({ name: 'Base', component: Element })
+  // Native form controls (<button>, <input>, <select>, <textarea>) do not
+  // inherit `font-family` — the UA gives them the system control font — so
+  // every interactive component rendered off-theme (#4426). One rule here, in
+  // the base every `el` component's theme starts from: a component that sets
+  // its own `fontFamily` (a monospace field, say) still wins, since its
+  // `.theme()` merges over this one. On non-form elements `inherit` is what
+  // the cascade does anyway.
+  .theme(() => ({ fontFamily: 'inherit' }))
+  .styles(
   (css) => css`
     ${({ href, onClick, $rocketstyle, $rocketstate }) => {
       const isDynamic = onClick || href

@@ -41,7 +41,7 @@ describe('.params() (SSR, real h())', () => {
     const html = await render(h(ParamGrid, { id: 'g', columns: [1, null, 3], gapPx: { md: 12 } }))
     const [cls] = rsClasses(html)
     const out = css()
-    expect(out).toContain(`.${cls}{display: grid; grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 0.25rem;`)
+    expect(out).toContain(`.${cls}{font-family: inherit; display: grid; grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 0.25rem;`)
     expect(out).toContain(
       `@layer rocketstyle{@media only screen and (min-width: 48em){.${cls}{grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem;}}}`,
     )
