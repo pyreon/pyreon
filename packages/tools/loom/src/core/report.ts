@@ -43,6 +43,26 @@ function ignoreMatches(ig: LoomIgnore, issue: LoomIssue): boolean {
 }
 
 /**
+ * Suppressions downgrade to info WITH the reason attached — a finding is never
+ * silently dropped, and the report shows what was waved through. Returns the
+ * entries that matched at least one finding.
+ */
+function applyIgnores(issues: LoomIssue[], ignores: readonly LoomIgnore[]): Set<LoomIgnore> {
+  const used = new Set<LoomIgnore>()
+  for (const issue of issues) {
+    if (issue.severity === 'info') continue
+    const match = ignores.find((ig) => ignoreMatches(ig, issue))
+    if (!match) continue
+    used.add(match)
+    issue.severity = 'info'
+    issue.message += ` (ignored: ${match.reason})`
+    issue.ignored = match.reason
+  }
+
+  return used
+}
+
+/**
  * A `loom.ignore` entry that suppressed nothing in this scan. The defect it
  * excused is gone (or never matched: a typo in `pkg` / `dep` / `code`), so the
  * entry now only hides the NEXT finding that happens to fit it — and its
@@ -72,6 +92,7 @@ function staleIgnores(
       details: { entry: ig },
     })
   }
+
   return out
 }
 
@@ -105,19 +126,7 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
   const allIgnores = options.settings?.ignores?.length
     ? options.settings.ignores
     : model.root.ignores
-  // Suppressions downgrade to info WITH the reason attached — a finding is
-  // never silently dropped, and the report shows what was waved through.
-  const used = new Set<LoomIgnore>()
-  for (const issue of issues) {
-    if (issue.severity === 'info') continue
-    const match = allIgnores.find((ig) => ignoreMatches(ig, issue))
-    if (match) {
-      used.add(match)
-      issue.severity = 'info'
-      issue.message += ` (ignored: ${match.reason})`
-      issue.ignored = match.reason
-    }
-  }
+  const used = applyIgnores(issues, allIgnores)
   issues.push(...staleIgnores(allIgnores, used, options.noImports === true, severityOverrides?.['stale-ignore'] ?? 'warning'))
 
   issues.sort(
@@ -128,6 +137,7 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
   const errors = issues.filter((i) => i.severity === 'error').length
   const warnings = issues.filter((i) => i.severity === 'warning').length
   const strict = options.settings?.strict === true
+
   return {
     model,
     external,

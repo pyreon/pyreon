@@ -283,6 +283,7 @@ describe('stale loom.ignore entries', () => {
     mkdirSync(join(root, 'p/a/src'), { recursive: true })
     writeFileSync(join(root, 'p/a/package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
     writeFileSync(join(root, 'p/a/src/i.ts'), `import 'ghost'`)
+
     return root
   }
 
