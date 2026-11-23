@@ -519,6 +519,12 @@ WKWebView script-message handlers and Android `addJavascriptInterface` objects a
 
 ---
 
+### Every Android WebView must survive its renderer's death.
+
+All WebViews of an app share one renderer process; when it dies (reclaimed, or crashed by a page) each gets `onRenderProcessGone`, and ANY one answering false (the `WebViewClient` default) kills the whole app. So a WebView is built only by `pyreonNewWebView` with a `PyreonWebViewClientBase` (final `onRenderProcessGone` → true), including throwaway ones such as the `window.open` sink (destroy it with a main-thread `Handler`: `View.post` on a never-attached view never runs). The handler must remove and destroy the view and never touch it again; the host recomposes a new one (`key(generation)`). Reload with a backoff and cap crashes in a row (`pyreonWebViewRendererGone`), because the shared renderer makes every sibling report a crash; iOS mirrors it in `webViewWebContentProcessDidTerminate`. Lock: `hooks/src/tests/webview-renderer-gone.test.ts`, `PyreonWebChromePolicyTest.kt`, device `PyreonWebViewRendererGoneTest`.
+
+---
+
 ### A WebView callback must be answered exactly once on every path.
 
 An Android `onShowFileChooser` `ValueCallback` that is never answered leaves the page's file input dead until the view is recreated; a dropped WKUIDelegate completion handler raises in WebKit. Answer on success, on denial, on dismissal, when a newer request replaces a pending one, and when the view is released. In Swift 6 the WKUIDelegate methods only match with `@MainActor @Sendable` completion types; a "nearly matches optional requirement" warning means WebKit never calls them. Reference: `hooks/native/kotlin/com/pyreon/runtime/PyreonWebChromePolicy.kt` (`PyreonOnceSlot`, `PyreonPermissionQueue`).

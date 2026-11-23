@@ -29,11 +29,31 @@ enum PyreonWebViewTests {
         check(pyreonWebViewDialogTitle(host: nil) == nil, "no host has no title")
 
         originScope()
+        rendererGone()
         print("[PyreonWebViewTests] all assertions passed")
         #endif
     }
 
     #if canImport(WebKit)
+    /// Content-process loss: the same backoff and cap as the Android host.
+    static func rendererGone() {
+        var kills = PyreonRendererLossHistory()
+        let killDelays = (0..<8).map { pyreonWebViewRendererGone(&kills, didCrash: false, nowMs: Double($0) * 1000) }
+        check(killDelays == [0, 1000, 2000, 4000, 8000, 16000, 30000, 30000], "kill backoff: \(killDelays)")
+        var crashes = PyreonRendererLossHistory()
+        check(pyreonWebViewRendererGone(&crashes, didCrash: true, nowMs: 0) == 0, "first crash reloads at once")
+        check(pyreonWebViewRendererGone(&crashes, didCrash: true, nowMs: 5000) == 1000, "second crash reloads after 1 s")
+        check(pyreonWebViewRendererGone(&crashes, didCrash: true, nowMs: 10000) == nil, "third crash in a row stays empty")
+        var spaced = PyreonRendererLossHistory()
+        for i in 0..<5 {
+            check(pyreonWebViewRendererGone(&spaced, didCrash: true, nowMs: Double(i) * pyreonWebViewRendererLossWindowMs) == 0, "crash \(i), a window apart, reloads at once")
+        }
+        var mixed = PyreonRendererLossHistory()
+        _ = pyreonWebViewRendererGone(&mixed, didCrash: true, nowMs: 0)
+        _ = pyreonWebViewRendererGone(&mixed, didCrash: false, nowMs: 1)
+        check(pyreonWebViewRendererGone(&mixed, didCrash: true, nowMs: 2) == 2000, "crash, kill, crash: reload after 2 s")
+    }
+
     /// Origin scope: data and the bridge belong to the page the app loaded.
     static func originScope() {
         // Origins: scheme://host[:port], default ports dropped, file is one origin,

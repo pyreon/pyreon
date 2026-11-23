@@ -170,13 +170,33 @@ private fun originScope() {
 }
 
 private fun rendererGone() {
-    // A renderer the system killed is always reloaded, however often.
-    for (n in 0..10) expect(pyreonWebViewReloadAfterRendererGone(didCrash = false, earlierCrashes = n), "system kill #$n reloads")
-    // A crashing page gets PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS reloads, then the host stays empty.
-    expect(PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS == 2, "two reloads after a crash")
-    expect(pyreonWebViewReloadAfterRendererGone(didCrash = true, earlierCrashes = 0), "first crash reloads")
-    expect(pyreonWebViewReloadAfterRendererGone(didCrash = true, earlierCrashes = 1), "second crash reloads")
-    expect(!pyreonWebViewReloadAfterRendererGone(didCrash = true, earlierCrashes = 2), "third crash stops reloading")
+    // A system kill always reloads: at once, then with a doubling delay capped at 30 s.
+    val kills = PyreonRendererLossHistory()
+    val killDelays = (0 until 8).map { pyreonWebViewRendererGone(kills, didCrash = false, nowMs = it * 1_000L) }
+    expect(killDelays == listOf(0L, 1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L), "kill backoff: $killDelays")
+
+    // Crashes in a row: two reloads (the second delayed), then the host stays empty.
+    val crashes = PyreonRendererLossHistory()
+    expect(pyreonWebViewRendererGone(crashes, didCrash = true, nowMs = 0L) == 0L, "first crash reloads at once")
+    expect(pyreonWebViewRendererGone(crashes, didCrash = true, nowMs = 5_000L) == 1_000L, "second crash reloads after 1 s")
+    expect(pyreonWebViewRendererGone(crashes, didCrash = true, nowMs = 10_000L) == null, "third crash in a row stays empty")
+
+    // Not in a row: a gap of the window or more restarts the count.
+    val spaced = PyreonRendererLossHistory()
+    for (i in 0 until 5) {
+        val at = i * PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS
+        expect(pyreonWebViewRendererGone(spaced, didCrash = true, nowMs = at) == 0L, "crash $i, a window apart, reloads at once")
+    }
+    // Just inside the window still counts as in a row.
+    val tight = PyreonRendererLossHistory()
+    pyreonWebViewRendererGone(tight, didCrash = true, nowMs = 0L)
+    pyreonWebViewRendererGone(tight, didCrash = true, nowMs = PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS - 1)
+    expect(pyreonWebViewRendererGone(tight, didCrash = true, nowMs = 2 * PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS - 2) == null, "a chain of gaps under the window is one run")
+    // Kills in between do not spend the crash budget, but do lengthen the delay.
+    val mixed = PyreonRendererLossHistory()
+    pyreonWebViewRendererGone(mixed, didCrash = true, nowMs = 0L)
+    pyreonWebViewRendererGone(mixed, didCrash = false, nowMs = 1L)
+    expect(pyreonWebViewRendererGone(mixed, didCrash = true, nowMs = 2L) == 2_000L, "crash, kill, crash: reload after 2 s")
 }
 
 public fun main() {

@@ -376,21 +376,32 @@ internal class PyreonWebChrome(private val context: Context) {
 
     // ---- windows -------------------------------------------------------------
 
+    /** The throwaway view of the last `window.open` (see [openWindow]); at most one. */
+    private var sink: WebView? = null
+
     fun openWindow(view: WebView, isUserGesture: Boolean, resultMsg: Message): Boolean {
         if (!isUserGesture) return false
         val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+        dropSink()
         // A throwaway view only to learn the URL the page is opening — WebView
-        // does not pass it to onCreateWindow. It is never attached or shown.
-        val sink = WebView(view.context)
+        // does not pass it to onCreateWindow. It is never attached or shown,
+        // and it is destroyed once the URL is known, when the page never names
+        // one (`window.open('about:blank')`) after PYREON_WEBVIEW_SINK_TIMEOUT_MS,
+        // when the renderer dies, and with the host. Its client is a
+        // PyreonWebViewClientBase: it shares the host's renderer, and a view
+        // that did not handle that renderer's death would kill the app.
         var handled = false
+        lateinit var created: WebView
         val handle = { url: String? ->
             if (!handled && url != null && url != "about:blank") {
                 handled = true
                 openExternally(url)
-                sink.post { sink.destroy() }
+                // Not from inside its own callback. `View.post` on a view that is
+                // never attached would wait for an attach that never comes.
+                pyreonWebViewMainHandler.post { dropSink(created) }
             }
         }
-        sink.webViewClient = object : WebViewClient() {
+        created = pyreonNewWebView(view.context, object : PyreonWebViewClientBase() {
             override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
                 handle(request.url.toString())
                 return true
@@ -400,10 +411,25 @@ internal class PyreonWebChrome(private val context: Context) {
                 handle(url)
                 v.stopLoading()
             }
-        }
-        transport.webView = sink
+
+            override fun rendererGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail) {
+                dropSink(view)
+            }
+        })
+        sink = created
+        pyreonWebViewMainHandler.postAtTime({ dropSink(created) }, created, android.os.SystemClock.uptimeMillis() + PYREON_WEBVIEW_SINK_TIMEOUT_MS)
+        transport.webView = created
         resultMsg.sendToTarget()
         return true
+    }
+
+    /** Destroy the open sink (only if it is [only], when given); a no-op when there is none. */
+    private fun dropSink(only: WebView? = null) {
+        val s = sink ?: return
+        if (only != null && only !== s) return
+        sink = null
+        pyreonWebViewMainHandler.removeCallbacksAndMessages(s)
+        s.destroy()
     }
 
     // Also the main-frame off-origin link hand-off (PyreonWebView.kt).
@@ -448,6 +474,7 @@ internal class PyreonWebChrome(private val context: Context) {
 
     /** The view is going away: answer everything still pending. */
     fun release() {
+        dropSink()
         files.cancel()
         clearCapture(deleteFile = true)
         permissions.cancelAll()
@@ -455,6 +482,9 @@ internal class PyreonWebChrome(private val context: Context) {
         hideCustomView()
     }
 }
+
+/** How long a `window.open` sink waits for the page to name a URL before it is destroyed. */
+internal const val PYREON_WEBVIEW_SINK_TIMEOUT_MS = 10_000L
 
 /** The WebChromeClient that routes every callback to [chrome]. */
 internal class PyreonWebChromeClient(private val chrome: PyreonWebChrome) : WebChromeClient() {

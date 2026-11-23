@@ -1,19 +1,23 @@
 // PyreonWebViewRendererGoneTest — a hosted page's renderer process going away
 // must not take the app down with it.
 //
-// Android runs every WebView's page in a separate renderer process. When that
-// process dies (the system kills it to reclaim memory, or the page crashes it),
-// WebView calls `WebViewClient.onRenderProcessGone`; when that is not handled
-// (the default returns false) WebView KILLS THE APP PROCESS. The likely cause
-// of the intermittent "Test instrumentation process crashed" in
-// PyreonWebViewOriginScopeTest#bundledSrcCannotLeaveTheAssetDirectory (nine
-// WebViews on a cold renderer, one fresh process per test under the Test
-// Orchestrator); the step's logcat artifact names the cause of the next one.
+// Android runs every WebView's page in ONE separate renderer process per app.
+// When that process dies (the system kills it to reclaim memory, or a page
+// crashes it), WebView calls `WebViewClient.onRenderProcessGone` on EVERY
+// WebView, and if any one of them answers false (the default) WebView KILLS THE
+// APP PROCESS. Every WebView the runtime creates therefore extends
+// `PyreonWebViewClientBase`, and the host replaces its dead view.
 //
-// `chrome://kill` is WebView's own way to end the renderer the way the system
-// does (`didCrash == false`); CTS uses it for the same callback. After it, the
-// test process is still alive, the host shows a NEW WebView, and the page
-// loads and talks over the bridge again.
+// This is a SUSPECTED, unconfirmed cause of the intermittent "Test
+// instrumentation process crashed" in
+// PyreonWebViewOriginScopeTest#bundledSrcCannotLeaveTheAssetDirectory: the two
+// failing runs left no logcat. The emulator steps now record logcat, and a
+// renderer loss logs a `[Pyreon] <WebView>: the renderer process` line that the
+// workflow counts on green runs too; see the multiplatform guide, gotcha 11.
+//
+// `chrome://kill` ends the renderer the way the system does
+// (`didCrash == false`); `chrome://crash` crashes it (`didCrash == true`).
+// Android CTS uses both for the same callback.
 
 package com.pyreon
 
@@ -28,11 +32,14 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import com.pyreon.runtime.PyreonWebView
 import com.pyreon.runtime.PyreonWebViewRendering
 import java.util.concurrent.CopyOnWriteArrayList
 import org.junit.After
-import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -44,6 +51,7 @@ class PyreonWebViewRendererGoneTest {
     val rule = createComposeRule()
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
+    private val messages = CopyOnWriteArrayList<String>()
     private var root: View? = null
 
     @Before
@@ -68,9 +76,13 @@ class PyreonWebViewRendererGoneTest {
         return out
     }
 
-    @Test
-    fun aKilledRendererGetsANewWebViewInsteadOfKillingTheApp() {
-        val messages = CopyOnWriteArrayList<String>()
+    private fun url(webView: WebView): String? {
+        var u: String? = null
+        instrumentation.runOnMainSync { u = webView.url }
+        return u
+    }
+
+    private fun hostBridgePage() {
         rule.setContent {
             root = LocalView.current
             PyreonWebView(
@@ -81,17 +93,73 @@ class PyreonWebViewRendererGoneTest {
             )
         }
         rule.waitUntil(30_000) { messages.contains("asset-ok") }
-        val first = webViews().single()
+    }
 
+    /** End the renderer with [debugUrl]; return the NEW host view once it exists. */
+    private fun loseRenderer(debugUrl: String): WebView {
+        val before = webViews().single()
         messages.clear()
-        instrumentation.runOnMainSync { first.loadUrl("chrome://kill") }
+        instrumentation.runOnMainSync { before.loadUrl(debugUrl) }
+        // An unhandled loss ends this process here, before the next line.
+        rule.waitUntil(30_000) { webViews().let { it.size == 1 && it[0] !== before } }
+        return webViews().single()
+    }
 
-        // Still running (an unhandled renderer loss ends this process before
-        // the next line), with a fresh view that loaded the page again.
-        rule.waitUntil(30_000) {
-            val now = webViews()
-            now.size == 1 && now[0] !== first && messages.contains("asset-ok")
+    @Test
+    fun aKilledRendererGetsANewWebViewInsteadOfKillingTheApp() {
+        hostBridgePage()
+        loseRenderer("chrome://kill")
+        rule.waitUntil(30_000) { messages.contains("asset-ok") }
+    }
+
+    /**
+     * Crashes in a row: the first two reload (the second after a 1 s backoff),
+     * the third leaves a new view that loads nothing, and the app lives on.
+     */
+    @Test
+    fun aRendererThatKeepsCrashingIsReloadedTwiceThenTheViewStaysEmpty() {
+        hostBridgePage()
+        loseRenderer("chrome://crash")
+        rule.waitUntil(30_000) { messages.contains("asset-ok") }
+        loseRenderer("chrome://crash")
+        rule.waitUntil(30_000) { messages.contains("asset-ok") }
+        val last = loseRenderer("chrome://crash")
+        // Longer than any backoff that could still be pending.
+        Thread.sleep(5_000)
+        assertEquals("a view past the crash cap must not load the page", emptyList<String>(), messages.toList())
+        assertNull("a view past the crash cap must stay empty", url(last))
+    }
+
+    /**
+     * `window.open` builds a throwaway WebView to learn the URL; with
+     * `about:blank` it never learns one. That view shares the renderer, so it
+     * must handle the renderer's death too, or it alone kills the app.
+     */
+    @Test
+    fun aWindowOpenSinkDoesNotKillTheAppWhenTheRendererDies() {
+        rule.setContent {
+            root = LocalView.current
+            PyreonWebView(
+                html = "<!doctype html><html><body style=\"margin:0\">" +
+                    "<button style=\"width:100vw;height:100vh\" onclick=\"window.open('about:blank');window.pyreonPostMessage('opened')\">open</button>" +
+                    "<script>setTimeout(function(){window.pyreonPostMessage('ready')},0)</script></body></html>",
+                onMessage = { messages.add(it) },
+                modifier = Modifier.fillMaxWidth().height(200.dp),
+            )
         }
-        assertNotSame(first, webViews().single())
+        rule.waitUntil(30_000) { messages.contains("ready") }
+        val webView = webViews().single()
+        val loc = IntArray(2)
+        var size = IntArray(2)
+        instrumentation.runOnMainSync {
+            webView.getLocationOnScreen(loc)
+            size = intArrayOf(webView.width, webView.height)
+        }
+        // A real tap: window.open needs a user gesture to reach onCreateWindow.
+        assertTrue(UiDevice.getInstance(instrumentation).click(loc[0] + size[0] / 2, loc[1] + size[1] / 2))
+        rule.waitUntil(15_000) { messages.contains("opened") }
+        // The sink is alive (no URL yet, its 10 s timeout not reached).
+        loseRenderer("chrome://kill")
+        rule.waitUntil(30_000) { messages.contains("ready") }
     }
 }

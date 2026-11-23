@@ -1191,12 +1191,19 @@ export function ChartHost() {
   WebKit cannot switch Web Storage off). Storage is per origin; every page
   loaded with inline `html` shares the app's `file:///android_asset/` origin on
   Android, so give a page that needs isolated storage a `src`.
-- **Renderer loss (Android)**: the page runs in a separate renderer process.
-  If the system kills it to reclaim memory, or the page crashes it, the host
-  replaces the dead view with a new one and loads the page again, instead of
-  letting WebView end the whole app. A page that keeps crashing its renderer
-  is reloaded twice, then the view stays empty and a `[Pyreon]` warning is
-  logged.
+- **Renderer loss**: the page runs in a separate process (Android's renderer,
+  iOS's web content process), which the system can reclaim and a page can
+  crash. The host then loads the page again (on Android in a new view) instead
+  of going blank, or on Android instead of letting WebView end the whole app.
+  Losses less than 60 seconds apart count as in a row: each one after the
+  first waits twice as long before reloading (1 s, 2 s, … up to 30 s), and
+  after the third crash in a row the view stays **empty** and logs a
+  `[Pyreon] <WebView>` warning. On Android every WebView in the app shares the
+  renderer, so that can empty several views at once, including ones whose
+  page did not cause it. An empty view stays empty until its `html` or `src`
+  changes (a new value loads it); the app gets no callback (a follow-up may
+  add one). iOS does not say whether its process crashed or was reclaimed, so
+  every termination counts towards the cap there.
 - **Sizing**: without `grow` a web view is what an `<iframe>` with no CSS is,
   on every target: as wide as its parent and **150 high**. With `grow` it takes
   the free space of its parent `<Stack>` (height) or `<Inline>` (width) after

@@ -1290,7 +1290,7 @@ jobs:
             # INSTALL_FAILED_UPDATE_INCOMPATIBLE (observed in the local
             # bisect) — uninstall between the lanes.
             adb uninstall com.pyreon.PyreonTodoMVC >/dev/null 2>&1 || true
-            gradle -PpyreonReleaseTests connectedCheck --stacktrace
+            gradle -PpyreonReleaseTests connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/todomvc-release-media || true; exit 1; }
             gradle assembleRelease --stacktrace
             bash ../scripts/release-smoke.sh
             # The store format: bundleRelease → bundletool --local-testing → split install → the same render check.
@@ -1606,6 +1606,27 @@ jobs:
       - name: Name the failed Android tests
         if: failure()
         run: bun scripts/native-android-connected-failures.ts
+
+      # Green runs too. PyreonWebView now RECOVERS when a WebView renderer
+      # process dies, so the suspected cause of the 2026-11-23 instrumentation
+      # crashes would leave a green run and no artifact. This counts renderer
+      # losses, FATAL EXCEPTIONs, ANRs, kills and WebView data-dir lock errors in
+      # each emulator step's logcat: one ::warning:: and a job-summary row per
+      # app and signal. Diagnostic only (always exits 0).
+      - name: Count process-death signals in the Android logcat
+        id: logcat-signals
+        if: always()
+        run: bun scripts/native-android-logcat-signals.ts /tmp/android-logcat
+
+      # A failed run uploads the logcat with the reports below.
+      - name: Upload Android logcat (signals on a green run)
+        if: success() && steps.logcat-signals.outputs.found == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-logcat
+          path: /tmp/android-logcat/
+          retention-days: 14
+          if-no-files-found: ignore
 
       # The connected-test HTML/XML reports are the ONLY place the
       # failing assertion's line number lives — the gradle console log
