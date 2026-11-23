@@ -107,12 +107,12 @@ if (import.meta.main) {
   if (smokeCount > 0 && !javaRuns) {
     if (required) {
       console.error(
-        '[verify-all] FAILED — no working JDK (tried JAVACMD, JAVA_HOME, PATH and the JVM kotlinc runs on), and PYREON_REQUIRE_NATIVE_VALIDATE=1.',
+        '[verify-all] FAILED — no working JDK (tried PYREON_JAVA, JAVACMD, JAVA_HOME, PATH, Homebrew openjdk / java_home and the JVM kotlinc runs on), and PYREON_REQUIRE_NATIVE_VALIDATE=1.',
       )
       process.exit(1)
     }
     console.warn(
-      `[verify-all] ${smokeCount} smoke SKIPPED, no working JDK (tried JAVACMD, JAVA_HOME, PATH and the JVM kotlinc runs on) — typecheck only (including cached verdicts). Install one (\`brew install openjdk\`) or set JAVA_HOME to run the behaviour tests.`,
+      `[verify-all] ${smokeCount} smoke SKIPPED, no working JDK (tried PYREON_JAVA, JAVACMD, JAVA_HOME, PATH, Homebrew openjdk / java_home and the JVM kotlinc runs on) — typecheck only (including cached verdicts). Install one (\`brew install openjdk\`) or set JAVA_HOME to run the behaviour tests.`,
     )
   }
 

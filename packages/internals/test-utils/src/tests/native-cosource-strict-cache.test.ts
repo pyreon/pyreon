@@ -88,6 +88,8 @@ console.log(process.argv.includes('--typecheck-only') ? 'typecheck only' : proce
       env: {
         ...process.env,
         PATH: join(root, 'bin'),
+        // The fixture's fake `java` on its PATH is the only JDK it may find (not the machine's own).
+        PYREON_JAVA: 'java',
         PYREON_REQUIRE_NATIVE_VALIDATE: strict ? '1' : '0',
         PYREON_VALIDATE_CACHE_DIR: cache,
         PYREON_VALIDATE_NO_CACHE: '0',

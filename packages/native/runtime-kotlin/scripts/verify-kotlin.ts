@@ -2411,7 +2411,7 @@ try {
     // success, and used to report "(compiled + ran test)" from the mere
     // EXISTENCE of a test file — so this warning was invisible and the gate
     // claimed a behaviour pass that never happened.
-    console.log(`${SMOKE_SKIPPED_MARKER} — \`java\` not on PATH (typecheck only). Put a JDK on PATH (e.g. /opt/homebrew/opt/openjdk/bin) to RUN the behaviour test.`)
+    console.log(`${SMOKE_SKIPPED_MARKER} — no working JDK (tried PYREON_JAVA, JAVACMD, JAVA_HOME, PATH, Homebrew openjdk / java_home and the JVM kotlinc runs on) — typecheck only. Install one (\`brew install openjdk\`) or set JAVA_HOME to RUN the behaviour test.`)
     // Same contract the swiftc/kotlinc absence already has: a CI runner that
     // cannot run the behaviour test is a broken runner, not a passing gate.
     if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1') {
