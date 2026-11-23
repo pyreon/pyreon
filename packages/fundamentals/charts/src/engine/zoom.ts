@@ -105,7 +105,9 @@ export function isFullWindow(win: ZoomWindow): boolean {
  */
 export function sliceRange(win: ZoomWindow, n: number): SliceRange {
   if (n <= 0) return { from: 0, to: 0 }
-  const nF: Double = Number(n)
+  // `ceil`: the row count as the counting loop this replaced read it (a fractional `n` counted up), so a web caller
+  // passing one gets the same window. Natively `n` is an integer and `ceil` is the identity.
+  const nF: Double = Number(Math.ceil(n))
   const startAt = win.start * nF
   const endAt = win.end * nF
   let from = 0

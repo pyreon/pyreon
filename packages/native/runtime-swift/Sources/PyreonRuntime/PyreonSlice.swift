@@ -62,6 +62,23 @@ public func pyreonAt<T>(_ xs: [T], _ i: Int) -> T? {
     return i >= 0 && i < xs.count ? xs[i] : nil
 }
 
+/// The same read over an array of OPTIONAL elements: a missing element and an absent one are both `nil` (one level of
+/// optional, as the web has one `undefined`), never `T??`.
+public func pyreonAt<T>(_ xs: [T?], _ i: Int) -> T? {
+    return i >= 0 && i < xs.count ? xs[i] : nil
+}
+
+/// JavaScript's `xs[i]` with a NUMBER index: only a whole, in-range index names an element — `xs[0.5]`, `xs[NaN]`
+/// and `xs[Infinity]` are `undefined` on the web, so they are `nil` here (never truncated, never a trap).
+public func pyreonAt<T>(_ xs: [T], _ i: Double) -> T? {
+    return i >= 0 && i < Double(xs.count) && i.rounded(.towardZero) == i ? xs[Int(i)] : nil
+}
+
+/// The number-index read over optional elements (see above).
+public func pyreonAt<T>(_ xs: [T?], _ i: Double) -> T? {
+    return i >= 0 && i < Double(xs.count) && i.rounded(.towardZero) == i ? xs[Int(i)] : nil
+}
+
 /// JavaScript's `str.charAt(i)`: the UTF-16 unit at `i` as a one-unit string, or `""` out of range.
 public func pyreonCharAt(_ s: String, _ i: Int) -> String {
     let units = Array(s.utf16)

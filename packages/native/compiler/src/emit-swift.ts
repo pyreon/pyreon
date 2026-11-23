@@ -6319,8 +6319,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           const objStr = emitSwiftExpr(e.object, indent)
           const idxT = inferType(e.index, _activeInferCtx)
           const idxRaw = emitSwiftExpr(e.index, indent)
-          const idxStr = isFloatTypeIR(idxT) ? `Int(${idxRaw})` : idxRaw
+          const floatIndex = isFloatTypeIR(idxT)
+          const idxStr = floatIndex ? `Int(${idxRaw})` : idxRaw
           if (!exprHasOptionalLink(e.object) && !typeIsOptional(objT)) {
+            // A NUMBER index: `xs[0.5]` / `xs[NaN]` / `xs[Infinity]` are undefined on the web — the runtime's Double
+            // overload reads them as nil, where `Int(i)` truncated (or trapped).
+            if (floatIndex) return `pyreonAt(${objStr}, ${idxRaw})`
             if (isReReadableExpr(e.object) && isReReadableExpr(e.index)) {
               return `(${objStr}.indices.contains(${idxStr}) ? ${objStr}[${idxStr}] : nil)`
             }
@@ -6695,6 +6699,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // precedence is LOWER than JS's (a bare `x ?? y > 0` parses as
       // `x ?? (y > 0)` in Swift).
       if (e.op === '??') {
+        // `x ?? null` (the web's undefined → null) over a NON-optional `x` is `Optional(x)`: the same optional type
+        // the inference gives the expression, without swiftc's "left side of nil coalescing operator has
+        // non-optional type" (`x ?? nil`). An optional `x` keeps the `?? nil`. Kotlin drops it (no nested optional).
+        if (e.right.kind === 'literal' && e.right.value === null) {
+          const lt = inferType(e.left, _activeInferCtx)
+          if (lt.kind !== 'unknown' && !typeIsOptional(lt)) return `Optional(${emitSwiftExpr(e.left, indent)})`
+        }
         // A DEFAULT for an enum-typed optional is written as the literal the
         // union declares (`params.sourcePosition ?? 'bottom'`), and emitting it
         // raw is a type error on both targets ("binary operator '??' cannot be

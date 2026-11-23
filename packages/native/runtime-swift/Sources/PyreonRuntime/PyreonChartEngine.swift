@@ -7078,7 +7078,7 @@ public func renderChartIn(_ raw: ChartSpec, _ measure: (String, Double) -> Doubl
     let markers = (spec.markers ?? [])
     for m in markers {
       let rawSeriesIndex = (m.seriesIndex ?? 0.0)
-      let s = pyreonAt(spec.series, Int(floor(Double(rawSeriesIndex))))
+      let s = pyreonAt(spec.series, floor(Double(rawSeriesIndex)))
       guard let s else {
         continue
       }
@@ -13634,7 +13634,7 @@ public func sliceRange(_ win: ZoomWindow, _ n: Int) -> SliceRange {
     if n <= 0 {
       return SliceRange(from: 0, to: 0)
     }
-    let nF = Double(n)
+    let nF = ceil(Double(n))
     let startAt = win.start * nF
     let endAt = win.end * nF
     var from = 0

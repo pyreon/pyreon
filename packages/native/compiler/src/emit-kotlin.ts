@@ -5107,6 +5107,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           exprHasOptionalLink(e.object) || typeIsOptional(inferType(e.object, _kotlinExprInferCtx))
             ? '?.'
             : '.'
+        // A NUMBER index: `xs[0.5]` / `xs[NaN]` / `xs[Infinity]` are undefined on the web; `getOrNull(i.toInt())`
+        // truncated them to a real element. The runtime's `pyreonAt` reads only a whole, in-range index.
+        if (kotlinFloatness(e.index) === 'double') {
+          const objStr = emitKotlinExpr(e.object, indent)
+          const idxStr = emitKotlinExpr(e.index, indent)
+          return dot === '?.' ? `${objStr}?.let { pyreonAt(it, ${idxStr}) }` : `pyreonAt(${objStr}, ${idxStr})`
+        }
 
         return `${emitKotlinExpr(e.object, indent)}${dot}getOrNull(${kotlinListIndex(e.object, e.index, indent)})`
       }

@@ -8,7 +8,7 @@ import { isDoubleLiteralValue } from './number-literal'
 import { desugarGlobalTimers } from './global-timers-desugar'
 import { lowerDateNode } from './date-lowering'
 import { refineParamFloatsFromCallSites } from './call-site-param-floats'
-import { applyDestructureAbsence, applyDestructureAbsenceToLets } from './destructure-absence'
+import { applyDestructureAbsence, applyDestructureAbsenceToLets, foldAbsenceDefaults } from './destructure-absence'
 import { splitAbsenceGuards } from './optional-narrowing'
 import { GESTURE_EVENTS, isGestureEventName } from './gesture-events'
 import { THIRD_PARTY_SCHEMA_LIBRARIES } from './verbatim-call-warning'
@@ -5880,9 +5880,12 @@ function parseStatementBlockBody(block: AnyNode, ctx: ParseCtx): StatementIR[] {
     if (parsed) out.push(parsed)
   }
   splitAbsenceGuards(out)
+  foldAbsenceDefaults(out)
   markReassignedLocalsMutable(out)
   markMethodMutatedLocals(out)
-  applyDestructureAbsenceToLets(out)
+  applyDestructureAbsenceToLets(out, (m) => {
+    if (!ctx.warnings.includes(m)) ctx.warnings.push(m)
+  })
 
   return out
 }

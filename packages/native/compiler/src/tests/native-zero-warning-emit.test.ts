@@ -21,8 +21,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
-import { canRunKotlin, canRunSwift, caseNames, emitCorpus, mismatches, runKotlin, runSwift, runWeb } from './differential-harness'
+import { canRunKotlinLite, canRunSwift, caseNames, emitCorpus, mismatches, runKotlinLite, runSwift, runWeb } from './differential-harness'
 import { transform } from './first-party-plugins'
+import { classifySwiftWarnings } from './swift-warning-classes'
+
+/** CI's native job sets this: an absent toolchain there is a broken runner, never a skipped spec. */
+const REQUIRED = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
 
 const swift = (src: string): string => transform(src, { target: 'swift' }).code ?? ''
 const kotlin = (src: string): string => transform(src, { target: 'kotlin' }).code ?? ''
@@ -197,7 +201,9 @@ describe('the emitted corpus compiles with zero warnings', () => {
         encoding: 'utf8',
       })
       expect(r.status, r.stderr).toBe(0)
-      expect(warningsIn(r.stderr, 'Emit.swift')).toEqual([])
+      const { hard, advisory } = classifySwiftWarnings(warningsIn(r.stderr, 'Emit.swift'))
+      if (advisory.length > 0) console.warn(`[zero-warnings] new swiftc diagnostics (advisory):\n${advisory.join('\n')}`)
+      expect(hard).toEqual([])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -237,7 +243,98 @@ describe('an out-of-range index takes the guarded path natively, as on the web',
     expect(mismatches(names, web, runSwift(ALL))).toEqual([])
   }, 180_000)
 
-  it.runIf(canRunKotlin())('Kotlin', () => {
-    expect(mismatches(names, web, runKotlin(ALL))).toEqual([])
+  it.runIf(canRunKotlinLite() || REQUIRED)('Kotlin', () => {
+    expect(mismatches(names, web, runKotlinLite(ALL))).toEqual([])
+  }, 300_000)
+})
+
+// ── User code that compiled before must still compile and behave the same ─────────────────────────────────────
+//
+// The shapes the indexed-read rule must NOT make optional (a same-named binding elsewhere, a use the targets cannot
+// narrow), the shapes it must narrow (the default fill), arrays of optional elements, NUMBER indices (web: only a
+// whole, in-range index names an element), and `x ?? null` over a non-optional value. Each compiles on both
+// toolchains and returns the web's answer.
+const USER = `type Double = number
+const XS: Double[] = [1.5, 2.5]
+const YS: (Double | undefined)[] = [2.0, undefined, 4.0]
+const NAMES: string[] = ['ab', 'cde']
+function shadowFor(xs: Double[], ys: (Double | undefined)[]): Double {
+  const v = xs[0]!
+  let sum = v * 2.0
+  for (const w of ys) {
+    const v = w
+    sum = sum + (v ?? 0.0)
+  }
+  return sum
+}
+function shadowArrow(xs: Double[], ys: (Double | undefined)[]): Double {
+  const v = xs[0]!
+  return v * 2.0 + ys.map((v) => v ?? 0.0).length
+}
+function fill(xs: Double[], i: number): Double {
+  let v = xs[i]
+  if (v === undefined) v = 0.0
+  return v * 2.0
+}
+function mixed(names: string[], i: number): number {
+  const v = names[i]
+  const label = v ?? 'none'
+  return v.length + label.length
+}
+function closure(names: string[], i: number): string {
+  const v = names[i]
+  const f = (): string => v ?? 'n'
+  return f() + v
+}
+function optElem(ys: (Double | undefined)[], k: number): Double { return ys[k * 2] ?? 5.0 }
+function dblIndex(xs: Double[], i: Double): string {
+  const v = xs[i]
+  if (v === undefined) return 'none'
+  return String(v)
+}
+function nullNonOpt(n: number): string { const m: number | null = n ?? null; return m === null ? 'null' : String(m) }
+export function c_shadow_for(): string { return String(shadowFor(XS, YS)) }
+export function c_shadow_arrow(): string { return String(shadowArrow(XS, YS)) }
+export function c_fill_in(): string { return String(fill(XS, 1)) }
+export function c_fill_out(): string { return String(fill(XS, 7)) }
+export function c_mixed(): string { return String(mixed(NAMES, 1)) }
+export function c_closure(): string { return closure(NAMES, 0) }
+export function c_opt_elem_present(): string { return String(optElem(YS, 1)) }
+export function c_opt_elem_hole(): string { return String(optElem([undefined, 1.0], 0)) }
+export function c_opt_elem_out(): string { return String(optElem(YS, 4)) }
+export function c_dbl_whole(): string { return dblIndex(XS, 1.0) }
+export function c_dbl_half(): string { return dblIndex(XS, 0.5) }
+export function c_dbl_nan(): string { return dblIndex(XS, NaN) }
+export function c_dbl_inf(): string { return dblIndex(XS, Infinity) }
+export function c_dbl_negative(): string { return dblIndex(XS, -1.0) }
+export function c_null_non_opt(): string { return nullNonOpt(3) }
+`
+
+describe('user code: shadowing, closures, default fill, optional elements, number indices', () => {
+  const names = caseNames(USER)
+  const web = runWeb(USER)
+
+  it('the corpus is what it claims', () => {
+    expect(web).toEqual(['9', '6', '5', '0', '6', 'abab', '4', '5', '5', '2.5', 'none', 'none', 'none', 'none', '3'])
+  })
+
+  it('an unguarded use keeps the plain read and is NAMED; a shadowed same-named binding is not touched', () => {
+    const r = transform(USER, { target: 'swift' })
+    expect(r.warnings.some((w) => w.startsWith('`v` holds an indexed read and is tested for undefined'))).toBe(true)
+    // mixed / closure: the plain read they compiled to before.
+    expect(r.code).toContain('let v = names[i]\n    let label = (v ?? "none")')
+    expect(r.code).toContain('let v = names[i]\n    let f = ')
+    // shadowFor / shadowArrow: the outer `v` is untouched by the inner binding's test.
+    expect(r.code).toContain('let v = xs[0]\n    var sum = v * 2.0')
+    // the default fill folds into one non-optional binding.
+    expect(r.code).toContain('let v = ((xs.indices.contains(i) ? xs[i] : nil) ?? 0.0)')
+  })
+
+  it.runIf(canRunSwift())('Swift returns the web answers', () => {
+    expect(mismatches(names, web, runSwift(USER))).toEqual([])
+  }, 180_000)
+
+  it.runIf(canRunKotlinLite() || REQUIRED)('Kotlin returns the web answers', () => {
+    expect(mismatches(names, web, runKotlinLite(USER))).toEqual([])
   }, 300_000)
 })

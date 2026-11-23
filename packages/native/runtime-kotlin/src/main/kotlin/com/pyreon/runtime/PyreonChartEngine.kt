@@ -4284,7 +4284,7 @@ fun renderChartIn(raw: ChartSpec, measure: (String, Double) -> Double, l: PlotLa
     val markers = (spec.markers ?: listOf())
     for (m in markers) {
       val rawSeriesIndex = (m.seriesIndex ?: 0.0)
-      val s = spec.series.getOrNull((Math.floor(rawSeriesIndex)).toInt())
+      val s = pyreonAt(spec.series, Math.floor(rawSeriesIndex))
       if (s == null) {
         continue
       }
@@ -10849,7 +10849,7 @@ fun sliceRange(win: ZoomWindow, n: Long): SliceRange {
     if (n <= 0L) {
       return SliceRange(from = 0L, to = 0L)
     }
-    val nF = (n).toDouble()
+    val nF = Math.ceil((n).toDouble())
     val startAt = win.start * nF
     val endAt = win.end * nF
     var from = 0L
