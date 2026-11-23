@@ -17,6 +17,7 @@ import {
   type LoomReport,
 } from '../core'
 import { stripNonCode } from '../core/imports'
+import { renderScanText } from '../cli/render'
 import { makeFixtureWorkspace } from './fixture'
 
 let root: string
@@ -322,6 +323,78 @@ describe('stale loom.ignore entries', () => {
     try {
       const r = buildReport(root, { settings: { severity: { 'stale-ignore': 'error' } } })
       expect(r.issues.find((i) => i.code === 'stale-ignore')?.severity).toBe('error')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  // #4756 review: the entry for a LIVE finding that is already info (an
+  // unused-dep, a private package's finding, a code lowered while it is burned
+  // down) was reported as stale, because the info-skip ran before "used" was
+  // recorded; a narrower entry after a broader one looked stale too.
+  function workspaceWithUnused(ignore: object[]): string {
+    const root = mkdtempSync(join(tmpdir(), 'loom-stale-info-'))
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'r', workspaces: ['p/*'], loom: { ignore } }))
+    mkdirSync(join(root, 'p/a/src'), { recursive: true })
+    writeFileSync(
+      join(root, 'p/a/package.json'),
+      JSON.stringify({ name: 'a', version: '1.0.0', dependencies: { 'never-imported': '^1.0.0' } }),
+    )
+    writeFileSync(join(root, 'p/a/src/i.ts'), `import 'ghost'`)
+
+    return root
+  }
+
+  it('an entry for a live INFO finding (unused-dep) is not stale', () => {
+    const root = workspaceWithUnused([{ pkg: 'a', dep: 'never-imported', code: 'unused-dep', reason: 'loaded by a plugin' }])
+    try {
+      const r = buildReport(root)
+      expect(r.issues.find((i) => i.code === 'unused-dep')?.severity).toBe('info')
+      expect(r.issues.filter((i) => i.code === 'stale-ignore')).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('lowering a code to info while burning it down keeps its entries live', () => {
+    const root = workspace([{ pkg: 'a', dep: 'ghost', code: 'phantom-dep', reason: 'vendored' }])
+    try {
+      const r = buildReport(root, { settings: { severity: { 'phantom-dep': 'info' } } })
+      expect(r.issues.filter((i) => i.code === 'stale-ignore')).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('a narrower entry after a broader one is reported as SHADOWED, naming the broader one', () => {
+    const root = workspace([
+      { pkg: 'a', reason: 'everything in a' },
+      { pkg: 'a', dep: 'ghost', code: 'phantom-dep', reason: 'vendored' },
+    ])
+    try {
+      const stale = buildReport(root).issues.filter((i) => i.code === 'stale-ignore')
+      expect(stale).toHaveLength(1)
+      expect(stale[0]!.message).toContain('is shadowed')
+      expect(stale[0]!.message).toContain('any code in `a`')
+      expect(stale[0]!.message).not.toContain('matched no finding')
+      expect(stale[0]!.details).toMatchObject({ shadowedBy: { pkg: 'a' } })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('points at the file the entry is declared in, not the package it names', () => {
+    const root = workspace([{ pkg: 'a', dep: 'gone', code: 'phantom-dep', reason: 'x' }])
+    try {
+      const r = buildReport(root)
+      expect(r.issues.find((i) => i.code === 'stale-ignore')?.details?.declaredIn).toBe('package.json')
+      const text = renderScanText(r, { dir: '.', strict: false, reportPath: undefined, elapsedMs: 1, color: 0, unicode: true })
+      const block = text.slice(text.indexOf('stale-ignore'))
+      expect(block.split('\n').find((l) => l.includes('↳'))?.trim()).toBe('↳ package.json')
+      const fromConfig = buildReport(root, {
+        settings: { ignores: [{ pkg: 'a', dep: 'gone', reason: 'x' }], ignoresFrom: 'pyreon.config.ts' },
+      })
+      expect(fromConfig.issues.find((i) => i.code === 'stale-ignore')?.details?.declaredIn).toBe('pyreon.config.ts')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

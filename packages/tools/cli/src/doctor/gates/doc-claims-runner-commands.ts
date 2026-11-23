@@ -5,6 +5,7 @@
  * inside source files, the narrow, reasoned allowances, and the finding.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { join, relative } from 'node:path'
 import type { Finding } from '../types'
 
@@ -38,90 +39,51 @@ export function commandSourceFiles(repoRoot: string): string[] {
 }
 
 /**
- * `source` with everything that is NOT the text of a string or template
- * literal blanked to spaces (newlines kept, so offsets and line numbers stay
- * true). Comments and code vanish; `${…}` holes in a template are code too.
- * A small scanner rather than a parser: it only has to tell strings from
- * comments, and a regex literal containing a quote is the one shape it can
- * misread — the cost of that is a missed or extra match in that file, never a
- * crash.
+ * `source` with everything that is NOT user-facing text — string literals,
+ * template-literal text and JSX text — blanked to spaces (newlines kept, so
+ * offsets and line numbers stay true). Comments, code, regex literals and the
+ * `${…}` holes of a template vanish.
+ *
+ * Parsed with the TypeScript compiler (a peer of `@pyreon/cli`), not a
+ * hand-rolled scanner: telling a regex literal from a comment or a template
+ * needs the grammar. A scanner read `/\/\//` as a line comment and lost the
+ * real string after it, and a regex containing a backtick inverted
+ * string/code state so a comment was reported (#4756 review).
  *
  * @internal — exported for tests.
  */
-export function stringLiteralText(source: string): string {
+export function stringLiteralText(source: string, fileName = 'source.tsx'): string {
+  const ts = loadTypeScript()
   const out = source.replace(/[^\n]/g, ' ').split('')
-  const keep = (i: number): void => {
-    out[i] = source[i] as string
+  const keep = (from: number, to: number): void => {
+    for (let i = from; i < to; i++) out[i] = source[i] as string
   }
-  // Stack of open template literals; each entry is the `${` brace depth inside it.
-  const templates: number[] = []
-  let i = 0
-  const n = source.length
-  const readQuoted = (quote: string): void => {
-    i++
-    while (i < n && source[i] !== quote && source[i] !== '\n') {
-      if (source[i] === '\\') {
-        keep(i)
-        i++
-      }
-      keep(i)
-      i++
-    }
-    i++
-  }
-  // Reads template text from `i` until the closing backtick or a `${`.
-  const readTemplateText = (): void => {
-    while (i < n) {
-      const c = source[i]
-      if (c === '`') {
-        templates.pop()
-        i++
+  const kind = /\.[cm]?jsx?$/.test(fileName)
+    ? fileName.endsWith('x') ? ts.ScriptKind.JSX : ts.ScriptKind.JS
+    : fileName.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, kind)
+  const visit = (node: import('typescript').Node): void => {
+    switch (node.kind) {
+      case ts.SyntaxKind.StringLiteral:
+      case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
+      case ts.SyntaxKind.TemplateHead:
+      case ts.SyntaxKind.TemplateMiddle:
+      case ts.SyntaxKind.TemplateTail:
+      case ts.SyntaxKind.JsxText:
+        keep(node.getStart(sf), node.end)
         return
-      }
-      if (c === '$' && source[i + 1] === '{') {
-        templates[templates.length - 1] = 1
-        i += 2
-        return
-      }
-      if (c === '\\') {
-        keep(i)
-        i++
-      }
-      keep(i)
-      i++
+      default:
+        ts.forEachChild(node, visit)
     }
   }
-  while (i < n) {
-    const c = source[i]
-    const depth = templates.length > 0 ? (templates[templates.length - 1] as number) : -1
-    if (depth === 0) {
-      readTemplateText()
-      continue
-    }
-    if (c === '/' && source[i + 1] === '/') {
-      while (i < n && source[i] !== '\n') i++
-      continue
-    }
-    if (c === '/' && source[i + 1] === '*') {
-      const end = source.indexOf('*/', i + 2)
-      i = end === -1 ? n : end + 2
-      continue
-    }
-    if (c === "'" || c === '"') {
-      readQuoted(c)
-      continue
-    }
-    if (c === '`') {
-      templates.push(0)
-      i++
-      continue
-    }
-    if (depth > 0 && c === '{') templates[templates.length - 1] = depth + 1
-    else if (depth > 0 && c === '}') templates[templates.length - 1] = depth - 1
-    i++
-  }
-
+  visit(sf)
   return out.join('')
+}
+
+let tsModule: typeof import('typescript') | undefined
+function loadTypeScript(): typeof import('typescript') {
+  tsModule ??= createRequire(import.meta.url)('typescript') as typeof import('typescript')
+  return tsModule
 }
 
 /**
@@ -204,7 +166,12 @@ export function findUnscopedRunnerCommands(repoRoot: string): Finding[] {
   if (bins.size === 0) return []
   const names = [...bins.keys()].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   const re = new RegExp(
-    String.raw`\b(npx|bunx|pnpx|pnpm dlx|yarn dlx)\s+(?:(?:-y|--yes)\s+)?(${names.join('|')})(?=$|[\s` + '`' + String.raw`'")\]])`,
+    // The bin ends at whitespace, a quote, a closing bracket, sentence
+    // punctuation (`npx loom.`, `npx atlas,`), or an escape in raw string text
+    // (`'npx pyreon-native\\n'`) — but `npx loom.js` names a file, not the bin.
+    String.raw`\b(npx|bunx|pnpx|pnpm dlx|yarn dlx)\s+(?:(?:-y|--yes)\s+)?(${names.join('|')})(?=$|[\s` +
+      '`' +
+      String.raw`'")\]},;:!?<>\\]|\.(?![\w-]))`,
     'gm',
   )
   const findings: Finding[] = []
@@ -214,7 +181,7 @@ export function findUnscopedRunnerCommands(repoRoot: string): Finding[] {
   ]
   for (const [filePath, isSource] of sources) {
     const raw = readFileSync(filePath, 'utf8')
-    const content = isSource ? stringLiteralText(raw) : raw
+    const content = isSource ? stringLiteralText(raw, filePath) : raw
     const relPath = relative(repoRoot, filePath)
     const allowed = RUNNER_COMMAND_ALLOWANCES.get(relPath.split('\\').join('/'))
     for (const m of content.matchAll(re)) {

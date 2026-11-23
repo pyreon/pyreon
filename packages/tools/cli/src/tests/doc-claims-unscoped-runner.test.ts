@@ -147,11 +147,53 @@ describe('unscoped runner commands in user-facing source strings', () => {
 })
 
 describe('stringLiteralText', () => {
-  it('keeps string and template text at the same offsets, blanks the rest', () => {
+  it('keeps string, template and JSX text at the same offsets, blanks comments and code', () => {
     const src = "a('x') // c\nb(`t ${f('in')} u`) /* d */ \"q\\\"r\""
-    const out = stringLiteralText(src)
+    const out = stringLiteralText(src, 'a.ts')
     expect(out).toHaveLength(src.length)
     expect(out.split('\n')).toHaveLength(2)
-    expect(out.replace(/\s+/g, ' ').trim()).toBe('x t in u q\\"r')
+    expect(out.replace(/\s+/g, ' ').trim()).toBe("'x' `t ${ 'in' } u` \"q\\\"r\"")
+  })
+})
+
+// #4756 review: the hand-rolled scanner had four blind spots. The scanner is
+// now the TypeScript parser; each spot gets a spec.
+describe('unscoped runner commands — parser blind spots', () => {
+  it('an escaped // inside a regex literal does not hide a real string later on the line', () => {
+    put('packages/tools/cli/src/a.ts', "const r = /https:\\/\\//; const s = 'npx lathe init'\n")
+    expect(codes()).toEqual([
+      'packages/tools/cli/src/a.ts:1: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+    ])
+  })
+
+  it('a regex containing a backtick does not turn a later comment into a string', () => {
+    put('packages/tools/cli/src/b.ts', "const r = /`/\n// run npx lathe init by hand\nexport {}\n")
+    expect(codes()).toEqual([])
+  })
+
+  it('JSX text is user-facing and is scanned', () => {
+    put('packages/tools/cli/src/c.tsx', 'export const Hint = () => <p>Run npx lathe init first.</p>\n')
+    expect(codes()).toEqual([
+      'packages/tools/cli/src/c.tsx:1: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+    ])
+  })
+
+  it('the bin is found before an escaped newline, a full stop and a comma — not inside a file name', () => {
+    put(
+      'packages/tools/cli/src/d.ts',
+      [
+        "export const a = 'npx lathe\\nnext'",
+        "export const b = 'then run npx lathe.'",
+        "export const c = 'npx pyreon, then'",
+        "export const d = 'see npx lathe.js for the shim'",
+      ].join('\n'),
+    )
+    expect(codes().sort()).toEqual(
+      [
+        'packages/tools/cli/src/d.ts:1: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+        'packages/tools/cli/src/d.ts:2: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+        'packages/tools/cli/src/d.ts:3: `npx pyreon` runs the npm package named "pyreon", not @pyreon/cli, when it is not installed locally.',
+      ].sort(),
+    )
   })
 })

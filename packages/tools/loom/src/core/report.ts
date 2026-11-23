@@ -44,54 +44,74 @@ function ignoreMatches(ig: LoomIgnore, issue: LoomIssue): boolean {
 
 /**
  * Suppressions downgrade to info WITH the reason attached — a finding is never
- * silently dropped, and the report shows what was waved through. Returns the
- * entries that matched at least one finding.
+ * silently dropped, and the report shows what was waved through. The FIRST
+ * matching entry applies, to findings that are not already info.
  */
-function applyIgnores(issues: LoomIssue[], ignores: readonly LoomIgnore[]): Set<LoomIgnore> {
-  const used = new Set<LoomIgnore>()
+function applyIgnores(issues: LoomIssue[], ignores: readonly LoomIgnore[]): void {
   for (const issue of issues) {
     if (issue.severity === 'info') continue
     const match = ignores.find((ig) => ignoreMatches(ig, issue))
     if (!match) continue
-    used.add(match)
     issue.severity = 'info'
     issue.message += ` (ignored: ${match.reason})`
     issue.ignored = match.reason
   }
+}
 
-  return used
+/** How an entry describes itself in a message. */
+function describeIgnore(ig: LoomIgnore): string {
+  return [ig.code ?? 'any code', ig.pkg ? `in \`${ig.pkg}\`` : 'in any package', ig.dep ? `for \`${ig.dep}\`` : '']
+    .filter(Boolean)
+    .join(' ')
 }
 
 /**
- * A `loom.ignore` entry that suppressed nothing in this scan. The defect it
- * excused is gone (or never matched: a typo in `pkg` / `dep` / `code`), so the
- * entry now only hides the NEXT finding that happens to fit it — and its
- * reason, which nobody re-reads, is no longer true. Reported as a warning by
- * default (so `--strict` gates it; `loom.severity` can change that). Under `--no-imports` an entry that
- * could match a lexical finding is not judged: those detectors did not run.
+ * `loom.ignore` entries that do nothing in this scan.
+ *
+ * - **Stale**: the entry matches NO finding, at any severity. The defect it
+ *   excused is gone (or a typo in `pkg` / `dep` / `code` means it never
+ *   matched); left in place it hides the next finding that happens to fit it,
+ *   under a reason nobody re-reads. A finding that is `info` still counts as
+ *   matched — an `unused-dep`, a private package's finding, or a code lowered
+ *   with `loom.severity` while it is burned down all keep their entries live.
+ * - **Shadowed**: every finding it matches is also matched by an EARLIER entry,
+ *   which is the one that applies. It is redundant, not gone.
+ *
+ * Judged against the findings BEFORE suppression (`matchable`), so neither the
+ * info-skip nor the first-match rule decides it. Reported as a warning by
+ * default (so `--strict` gates it; `loom.severity` can change that). Under
+ * `--no-imports` an entry that could match a lexical finding is not judged:
+ * those detectors did not run.
  */
-function staleIgnores(
+function unusedIgnores(
   ignores: readonly LoomIgnore[],
-  used: ReadonlySet<LoomIgnore>,
-  noImports: boolean,
-  severity: LoomIssue['severity'],
+  matchable: readonly LoomIssue[],
+  opts: { noImports: boolean; severity: LoomIssue['severity']; declaredIn: string },
 ): LoomIssue[] {
   const out: LoomIssue[] = []
-  for (const ig of ignores) {
-    if (used.has(ig)) continue
-    if (noImports && (ig.code === undefined || LEXICAL_CODES.has(ig.code))) continue
-    const target = [ig.code ?? 'any code', ig.pkg ? `in \`${ig.pkg}\`` : 'in any package', ig.dep ? `for \`${ig.dep}\`` : '']
-      .filter(Boolean)
-      .join(' ')
+  ignores.forEach((ig, index) => {
+    if (opts.noImports && (ig.code === undefined || LEXICAL_CODES.has(ig.code))) return
+    const matched = matchable.filter((issue) => ignoreMatches(ig, issue))
+    let message: string
+    let shadowedBy: LoomIgnore | undefined
+    if (matched.length === 0) {
+      message = `A \`loom.ignore\` entry (${describeIgnore(ig)}) matched no finding — what it excused is gone, or it never matched; delete it, or fix its pkg / dep / code (reason: ${ig.reason})`
+    } else {
+      const earlier = ignores.slice(0, index)
+      const firsts = matched.map((issue) => earlier.find((e) => ignoreMatches(e, issue)))
+      if (firsts.some((f) => f === undefined)) return
+      shadowedBy = firsts[0]
+      message = `A \`loom.ignore\` entry (${describeIgnore(ig)}) is shadowed: every finding it matches is already matched by an earlier entry (${describeIgnore(shadowedBy as LoomIgnore)}), which is the one that applies; delete it, or move it above that entry (reason: ${ig.reason})`
+    }
     out.push({
       code: 'stale-ignore',
-      severity,
+      severity: opts.severity,
       pkg: ig.pkg ?? 'ROOT',
       ...(ig.dep !== undefined ? { dep: ig.dep } : {}),
-      message: `A \`loom.ignore\` entry (${target}) matched no finding — what it excused is gone or it never matched; delete it, or fix its pkg / dep / code (reason: ${ig.reason})`,
-      details: { entry: ig },
+      message,
+      details: { entry: ig, declaredIn: opts.declaredIn, ...(shadowedBy ? { shadowedBy } : {}) },
     })
-  }
+  })
 
   return out
 }
@@ -126,8 +146,15 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
   const allIgnores = options.settings?.ignores?.length
     ? options.settings.ignores
     : model.root.ignores
-  const used = applyIgnores(issues, allIgnores)
-  issues.push(...staleIgnores(allIgnores, used, options.noImports === true, severityOverrides?.['stale-ignore'] ?? 'warning'))
+  const matchable = [...issues]
+  applyIgnores(issues, allIgnores)
+  issues.push(
+    ...unusedIgnores(allIgnores, matchable, {
+      noImports: options.noImports === true,
+      severity: severityOverrides?.['stale-ignore'] ?? 'warning',
+      declaredIn: options.settings?.ignores?.length ? (options.settings.ignoresFrom ?? 'package.json') : 'package.json',
+    }),
+  )
 
   issues.sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || a.code.localeCompare(b.code) || a.pkg.localeCompare(b.pkg),
