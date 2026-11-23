@@ -39,6 +39,7 @@ import nodePath from 'node:path'
 import { SizedMap } from '@pyreon/sized-map'
 import { AstCache } from '../cache'
 import { locateConfig } from '../config/loader'
+import { isPresetName } from '../config/presets'
 import { resolveLintConfig } from '../lint'
 import { allRules } from '../rules/index'
 import { _resetConfigDiagnosticsCache, fixEdits, lintFile, selectFixEdits } from '../runner'
@@ -78,6 +79,16 @@ function mtimeOf(path: string): number {
   } catch {
     return -1
   }
+}
+
+/**
+ * The editor's preset setting, if it names real presets. An unknown name is
+ * dropped (the default applies) rather than breaking every document's lint.
+ */
+function editorPresetFrom(value: unknown): PresetName | readonly PresetName[] | undefined {
+  if (isPresetName(value)) return value
+  if (Array.isArray(value) && value.length > 0 && value.every(isPresetName)) return value
+  return undefined
 }
 
 /** @internal — exported for tests. The config the server lints `filePath` with. */
@@ -780,8 +791,7 @@ export function _handleMessage(
   msg: JsonRpcMessage,
 ): JsonRpcMessage | null | Promise<JsonRpcMessage | null> {
   if (msg.method === 'initialize') {
-    const preset = msg.params?.initializationOptions?.preset
-    editorPreset = typeof preset === 'string' || Array.isArray(preset) ? preset : undefined
+    editorPreset = editorPresetFrom(msg.params?.initializationOptions?.preset)
     configByDir.clear()
     return {
       jsonrpc: '2.0',
