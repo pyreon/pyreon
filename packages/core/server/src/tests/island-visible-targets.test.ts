@@ -32,6 +32,7 @@ beforeEach(() => {
     }
 
     disconnect() {}
+
     unobserve(t: Element) {
       observed = observed.filter((o) => o !== t)
     }

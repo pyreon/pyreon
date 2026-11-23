@@ -441,7 +441,7 @@ export function schedulePrefetch(
 
   return () => {
     cancelled = true
-    observer.disconnect()
+    observer?.disconnect()
   }
 }
 
@@ -943,7 +943,8 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
   }
 
   const observer = observeNearViewport(el, callback)
-  return () => observer.disconnect()
+
+  return () => observer?.disconnect()
 }
 
 /**
@@ -960,7 +961,13 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
  * fires on that first report; a `display: contents` one is swapped to its
  * targets and fires one report later.
  */
-function observeNearViewport(el: HTMLElement, onNear: () => void): IntersectionObserver {
+function observeNearViewport(el: HTMLElement, onNear: () => void): IntersectionObserver | null {
+  // Callers check for IntersectionObserver first; this keeps the helper safe on its own.
+  if (typeof IntersectionObserver === 'undefined') {
+    onNear()
+
+    return null
+  }
   let resolved = false
   const observer = new IntersectionObserver(
     (entries) => {
@@ -981,6 +988,7 @@ function observeNearViewport(el: HTMLElement, onNear: () => void): IntersectionO
     { rootMargin: '200px' },
   )
   observer.observe(el)
+
   return observer
 }
 

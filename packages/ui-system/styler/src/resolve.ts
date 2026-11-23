@@ -106,6 +106,7 @@ export const resolve = (
       result += resolveValue(v, props) + s
     }
   }
+
   return result
 }
 
@@ -119,6 +120,7 @@ export const resolve = (
  * - Trims leading/trailing whitespace
  */
 const normCache = new Map<string, string>()
+
 /** Clear the normalizeCSS caches (called during HMR cleanup). */
 export const clearNormCache = () => {
   normCache.clear()
@@ -270,6 +272,7 @@ export const dropEmptyRules = (css: string): string => {
       preludeStart = out.length
     }
   }
+
   return out + css.slice(runStart)
 }
 
@@ -301,6 +304,7 @@ export const normalizeRuleCSS = (css: string): string => {
     }
   }
   ruleCache.set(normalized, out)
+
   return out
 }
 
@@ -322,8 +326,10 @@ export const resolveValue = (value: Interpolation, props: Record<string, any>): 
       if (value._staticResolved === undefined) {
         value._staticResolved = resolve(value.strings, value.values, {})
       }
+
       return value._staticResolved
     }
+
     return resolve(value.strings, value.values, props)
   }
 
@@ -333,6 +339,7 @@ export const resolveValue = (value: Interpolation, props: Record<string, any>): 
     for (let i = 0; i < value.length; i++) {
       arrayResult += resolveValue(value[i], props)
     }
+
     return arrayResult
   }
 
