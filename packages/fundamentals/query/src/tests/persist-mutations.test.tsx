@@ -97,7 +97,9 @@ function memoryStorage() {
     setItem: (k: string, v: string) => void map.set(k, v),
     removeItem: (k: string) => void map.delete(k),
     raw: () => map.get('REACT_QUERY_OFFLINE_CACHE'),
-    mutations: (): Array<{ state: { variables: unknown; status: string; isPaused: boolean } }> =>
+    mutations: (): Array<{
+      state: { variables: unknown; status: string; isPaused: boolean; failureReason?: unknown }
+    }> =>
       JSON.parse(map.get('REACT_QUERY_OFFLINE_CACHE') ?? '{"clientState":{"mutations":[]}}')
         .clientState.mutations,
   }
@@ -209,26 +211,74 @@ describe('which mutations are persisted', () => {
     b.unsubscribe()
   })
 
-  it('a keyed mutation that overrides the registered function is not persisted (a later page would run another one)', async () => {
+  it('in flight: a keyed mutation is resumable when its key resolves to a registered function, even with an inline mutationFn', async () => {
     const client = new QueryClient()
     const registered = async () => 'registered'
     client.setMutationDefaults(['add'], { mutationFn: registered })
+    // The registered function is what a restored copy runs (#4752 re-review, A1).
     const inline = client
       .getMutationCache()
       .build(client, { mutationKey: ['add'], mutationFn: async () => 'inline' })
     void inline.execute('v').catch(() => undefined)
-    expect(shouldPersistMutation(inline, client)).toBe(false)
-    const same = client
+    expect(shouldPersistMutation(inline, client)).toBe(true)
+    // No function registered for the key: a later page could not send it.
+    const unregistered = client
       .getMutationCache()
-      .build(client, { mutationKey: ['add'], mutationFn: registered })
-    void same.execute('v').catch(() => undefined)
-    expect(shouldPersistMutation(same, client)).toBe(true)
-    // A client-wide default mutationFn makes a keyless mutation that uses it resumable.
+      .build(client, { mutationKey: ['other'], mutationFn: async () => 'inline' })
+    void unregistered.execute('v').catch(() => undefined)
+    expect(shouldPersistMutation(unregistered, client)).toBe(false)
+    // A client-wide default mutationFn makes a keyless mutation that uses it resumable;
+    // a keyless one with its own function is not.
     const global = async () => 'global'
     const withGlobal = new QueryClient({ defaultOptions: { mutations: { mutationFn: global } } })
     const keyless = withGlobal.getMutationCache().build(withGlobal, {})
     void keyless.execute('v').catch(() => undefined)
     expect(shouldPersistMutation(keyless, withGlobal)).toBe(true)
+    const keylessInline = withGlobal
+      .getMutationCache()
+      .build(withGlobal, { mutationFn: async () => 'own' })
+    void keylessInline.execute('v').catch(() => undefined)
+    expect(shouldPersistMutation(keylessInline, withGlobal)).toBe(false)
+  })
+
+  it('paused offline: everything TanStack persists is still persisted (inline fn, unregistered key, keyless)', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    onlineManager.setOnline(false)
+    const tab = openTab(locks, 'a', storage, (c) =>
+      c.setMutationDefaults(['add'], { mutationFn: async () => 'registered' }),
+    )
+    await tab.restored
+    void start(tab.client, ['add'], { id: 'inline' }, async () => 'inline')
+    void start(tab.client, ['unregistered'], { id: 'unregistered' }, async () => 'x')
+    void start(tab.client, undefined, { id: 'keyless' }, async () => 'x')
+    await tick(5)
+    window.dispatchEvent(new Event('pagehide'))
+    expect(
+      storage
+        .mutations()
+        .map((m) => (m.state.variables as { id: string }).id)
+        .sort(),
+    ).toEqual(['inline', 'keyless', 'unregistered'])
+    tab.unsubscribe()
+  })
+
+  it('a keyed mutation left out while in flight gets a dev warning saying why; a keyless one does not', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const tab = openTab(locks, 'a', storage, () => undefined)
+    await tab.restored
+    void start(tab.client, ['unregistered'], { id: 1 }, () => never())
+    void start(tab.client, undefined, { password: 'hunter2' }, () => never())
+    await tick(5)
+    window.dispatchEvent(new Event('pagehide'))
+    expect(storage.mutations()).toEqual([])
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]![0])).toContain(
+      'mutationKey ["unregistered"]: no mutationFn is registered',
+    )
+    tab.unsubscribe()
   })
 
   it('meta: { persist: false } keeps a mutation out of storage, even a paused one', async () => {
@@ -495,7 +545,7 @@ describe('two tabs: only a gone owner hands its mutation over', () => {
     c.unsubscribe()
   })
 
-  it('a stale copy whose owner is alive but let go is dropped on restore', async () => {
+  it('a stale copy whose owner is alive (it still owns another mutation) is dropped on restore', async () => {
     const locks = new FakeLocks()
     const storage = memoryStorage()
     const a = openTab(locks, 'a', storage, (c) =>
@@ -505,8 +555,10 @@ describe('two tabs: only a gone owner hands its mutation over', () => {
     void start(a.client, ['add'], { id: 1 })
     await tick()
     const stored = storage.raw()!
-    // A settles and its write is lost (say, a full storage), then the old copy is read.
-    a.client.getMutationCache().clear()
+    void start(a.client, ['add'], { id: 2 }) // A keeps owning something, so its owner lock stays held
+    await tick()
+    // A settles #1 and that write is lost (say, a full storage), then the old copy is read.
+    a.client.getMutationCache().remove(a.client.getMutationCache().getAll()[0]!)
     await tick(5)
     storage.setItem('REACT_QUERY_OFFLINE_CACHE', stored)
     const sent: unknown[] = []
@@ -600,6 +652,11 @@ describe('entry points and the provider', () => {
     client.setQueryData(['late'], 'value')
     window.dispatchEvent(new Event('pagehide'))
     expect(storage.raw()).toContain('late')
+    // After pagehide that write is final, until the page comes back (pageshow).
+    client.setQueryData(['frozen'], 'value')
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(storage.raw()).not.toContain('frozen')
+    window.dispatchEvent(new Event('pageshow'))
     client.setQueryData(['later'], 'value')
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
     document.dispatchEvent(new Event('visibilitychange'))
@@ -845,6 +902,7 @@ describe('edges of the contract', () => {
     // Restore-only (no subscription): settling it writes nothing, and releases its lock.
     onlineManager.setOnline(true)
     await b.resumePausedMutations()
+    await tick() // the storage correction lands first, then the lock is released
     expect(locks.heldBy('pyreon-query-mutation:')).toEqual([])
   })
 
@@ -919,6 +977,332 @@ describe('edges of the contract', () => {
     })
     void start(client, ['add'], { id: 1 })
     await tick(5)
+    unsubscribe()
+  })
+})
+
+describe('#4752 re-review', () => {
+  it('N4: without a subscription, settling corrects only its own stored entry; an emptied storage stays empty', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    const a = openTab(locks, 'a', storage, (c) =>
+      c.setMutationDefaults(['add'], { mutationFn: () => never() }),
+    )
+    await a.restored
+    void start(a.client, ['add'], { id: 1 })
+    void start(a.client, ['add'], { id: 2 })
+    await tick()
+    locks.kill('a')
+    // An untagged entry (written by TanStack's own persistence) sits alongside them.
+    const raw = JSON.parse(storage.raw()!)
+    raw.clientState.mutations.push({
+      mutationKey: ['legacy'],
+      state: { ...raw.clientState.mutations[0].state, variables: { legacy: true } },
+    })
+    storage.setItem('REACT_QUERY_OFFLINE_CACHE', JSON.stringify(raw))
+    // B takes both over through a restore alone (no subscription), then settles one.
+    useLocks(locks.tab('b'))
+    const b = new QueryClient()
+    const finishers: Array<(v: string) => void> = []
+    b.setMutationDefaults(['add'], {
+      mutationFn: () => new Promise<string>((r) => finishers.push(r)),
+    })
+    await persistQueryClientRestore({
+      queryClient: b,
+      persister: createSyncStoragePersister({ storage }),
+      maxAge: Infinity,
+    })
+    await tick()
+    void b.resumePausedMutations()
+    await tick()
+    finishers[0]!('ok')
+    await tick(5)
+    expect(storage.mutations().map((m) => m.state.variables)).toEqual([{ id: 2 }, { legacy: true }])
+    // Storage removed (a sign-out): settling the other one writes nothing back.
+    storage.removeItem('REACT_QUERY_OFFLINE_CACHE')
+    finishers[1]!('ok')
+    await tick(5)
+    expect(storage.raw()).toBeUndefined()
+  })
+
+  it('N4: a restore-only page that watched a mutation drops it when its live owner settles it', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    let finish!: (v: string) => void
+    const a = openTab(locks, 'a', storage, (c) =>
+      c.setMutationDefaults(['add'], { mutationFn: () => new Promise((r) => (finish = r)) }),
+    )
+    await a.restored
+    const run = start(a.client, ['add'], { id: 1 })
+    await tick()
+    useLocks(locks.tab('b'))
+    const b = new QueryClient()
+    const sent: unknown[] = []
+    b.setMutationDefaults(['add'], { mutationFn: async (v) => (sent.push(v), 'ok') })
+    await persistQueryClientRestore({
+      queryClient: b,
+      persister: createSyncStoragePersister({ storage }),
+      maxAge: Infinity,
+    })
+    finish('ok')
+    await run
+    await tick(5)
+    expect(sent).toEqual([])
+    expect(storage.mutations()).toEqual([])
+    a.unsubscribe()
+  })
+
+  it('N1: a restore TanStack discards (busted) releases what it adopted', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    const a = openTab(locks, 'a', storage, (c) =>
+      c.setMutationDefaults(['add'], { mutationFn: () => never() }),
+    )
+    await a.restored
+    void start(a.client, ['add'], { id: 1 })
+    await tick()
+    locks.kill('a')
+    useLocks(locks.tab('b'))
+    const b = new QueryClient()
+    b.setMutationDefaults(['add'], { mutationFn: () => never() })
+    const persister = createSyncStoragePersister({ storage })
+    const [unsubscribe, restored] = persistQueryClient({
+      queryClient: b,
+      persister,
+      maxAge: Infinity,
+      buster: 'v2',
+    })
+    await restored
+    await tick(5)
+    expect(b.getMutationCache().getAll()).toEqual([])
+    expect(locks.heldBy('pyreon-query-mutation:')).toEqual([])
+    expect(locks.heldBy('pyreon-query-owner:')).toEqual([])
+    unsubscribe()
+  })
+
+  it('N2: a burst of mutations is written once, not twice per mutation', async () => {
+    const locks = new FakeLocks()
+    let writes = 0
+    const storage = memoryStorage()
+    const counted = {
+      ...storage,
+      setItem: (k: string, v: string) => {
+        writes++
+        storage.setItem(k, v)
+      },
+    }
+    useLocks(locks.tab('a'))
+    const client = new QueryClient()
+    const finishers: Array<(v: string) => void> = []
+    client.setMutationDefaults(['add'], {
+      mutationFn: () => new Promise<string>((r) => finishers.push(r)),
+    })
+    const [unsubscribe, restored] = persistQueryClient({
+      queryClient: client,
+      persister: createSyncStoragePersister({ storage: counted, throttleTime: 1000 }),
+      maxAge: Infinity,
+    })
+    await restored
+    const before = writes
+    const runs = Array.from({ length: 50 }, (_, i) => start(client, ['add'], { i }))
+    await tick()
+    expect(storage.mutations()).toHaveLength(50)
+    for (const finish of finishers) finish('ok')
+    await Promise.all(runs)
+    await tick()
+    expect(storage.mutations()).toEqual([])
+    // One immediate write when they become owned, one when they settle.
+    expect(writes - before).toBeLessThanOrEqual(2)
+    unsubscribe()
+  })
+
+  it('N3: a retry whose failureReason has a cycle neither loses the cache write nor the mutation', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    const tab = openTab(locks, 'a', storage, (c) =>
+      c.setMutationDefaults(['r'], {
+        mutationFn: () => {
+          const e = new Error('net') as Error & { req?: unknown }
+          e.req = { err: e }
+          return Promise.reject(e)
+        },
+        retry: 3,
+        retryDelay: 5000,
+      }),
+    )
+    await tab.restored
+    void start(tab.client, ['r'], { x: 1 })
+    await tick(20)
+    tab.client.setQueryData(['todos'], ['z'])
+    window.dispatchEvent(new Event('pagehide'))
+    expect(storage.raw()).toContain('"z"')
+    const [stored] = storage.mutations()
+    expect(stored!.state.failureReason).toEqual({ name: 'Error', message: 'net' })
+    tab.unsubscribe()
+  })
+
+  it('N3: a failure reason that is not an Error (a cyclic plain object) is written as a plain name and message', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    const tab = openTab(locks, 'a', storage, (c) =>
+      c.setMutationDefaults(['r'], {
+        mutationFn: () => {
+          const reason: Record<string, unknown> = {}
+          reason.self = reason
+          return Promise.reject(reason)
+        },
+        retry: 3,
+        retryDelay: 5000,
+      }),
+    )
+    await tab.restored
+    void start(tab.client, ['r'], { x: 1 })
+    await tick(20)
+    window.dispatchEvent(new Event('pagehide'))
+    expect(storage.mutations()[0]!.state.failureReason).toEqual({ name: 'Error', message: '' })
+    tab.unsubscribe()
+  })
+
+  it('N3: a meta that cannot be written keeps the mutation out, with a warning', () => {
+    useLocks(new FakeLocks().tab('a'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const client = new QueryClient()
+    client.setMutationDefaults(['add'], { mutationFn: () => never() })
+    const meta: Record<string, unknown> = {}
+    meta.self = meta
+    const m = client.getMutationCache().build(client, { mutationKey: ['add'], meta })
+    void m.execute({}).catch(() => undefined)
+    expect(shouldPersistMutation(m, client)).toBe(false)
+    void persistQueryClientSave({
+      queryClient: client,
+      persister: {
+        persistClient: () => undefined,
+        restoreClient: () => undefined,
+        removeClient: () => undefined,
+      },
+    })
+    expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([
+      expect.stringContaining('meta.self refers back to itself'),
+    ])
+  })
+
+  it('N4: after a takeover, a page that was watching reads the CURRENT owner and does not resend a settled mutation', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    const a = openTab(locks, 'a', storage, (c) =>
+      c.setMutationDefaults(['add'], { mutationFn: () => never() }),
+    )
+    await a.restored
+    void start(a.client, ['add'], { id: 1 })
+    await tick()
+    // C starts watching while A owns it: its tag names A.
+    const cSent: unknown[] = []
+    const c = openTab(locks, 'c', storage, (cl) =>
+      cl.setMutationDefaults(['add'], { mutationFn: async (v) => (cSent.push(v), 'ok') }),
+    )
+    await c.restored
+    // A dies; the lock goes to C, which takes it over and sends it.
+    locks.kill('a')
+    await tick(5)
+    expect(cSent).toEqual([{ id: 1 }])
+    expect(storage.mutations()).toEqual([])
+    c.unsubscribe()
+  })
+
+  it('N4: a provider that unmounted still removes its settled mutation from storage, so a watching page does not resend it', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    const a = openTab(locks, 'a', storage, (c) =>
+      c.setMutationDefaults(['add'], { mutationFn: () => never() }),
+    )
+    await a.restored
+    void start(a.client, ['add'], { id: 1 })
+    await tick()
+    locks.kill('a')
+    // B takes it over, its provider unmounts mid-flight, then the request succeeds.
+    let finish!: (v: string) => void
+    const b = openTab(locks, 'b', storage, (cl) =>
+      cl.setMutationDefaults(['add'], { mutationFn: () => new Promise((r) => (finish = r)) }),
+    )
+    await b.restored
+    const resumed = b.client.resumePausedMutations()
+    await tick(5)
+    // The takeover re-tagged the stored entry: it names B now.
+    const cSent: unknown[] = []
+    const c = openTab(locks, 'c', storage, (cl) =>
+      cl.setMutationDefaults(['add'], { mutationFn: async (v) => (cSent.push(v), 'ok') }),
+    )
+    await c.restored
+    b.unsubscribe()
+    finish('ok')
+    await resumed
+    await tick(10)
+    expect(storage.mutations()).toEqual([])
+    expect(cSent).toEqual([])
+    c.unsubscribe()
+  })
+
+  it('teardown: a request the unloading page sees fail stays in storage for the next page', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    let abort!: (e: Error) => void
+    const tab = openTab(locks, 'a', storage, (c) =>
+      c.setMutationDefaults(['add'], { mutationFn: () => new Promise((_, rej) => (abort = rej)) }),
+    )
+    await tab.restored
+    const run = start(tab.client, ['add'], { id: 1 })
+    await tick()
+    // A reload: pagehide, then the browser aborts the fetch and the dying page sees it reject.
+    window.dispatchEvent(new Event('pagehide'))
+    abort(new TypeError('Failed to fetch'))
+    await run
+    await tick(5)
+    expect(storage.mutations().map((m) => [m.state.variables, m.state.status])).toEqual([
+      [{ id: 1 }, 'pending'],
+    ])
+    window.dispatchEvent(new Event('pageshow'))
+    tab.unsubscribe()
+  })
+
+  it('N5/N6: a page holds no Web Lock until it persists a mutation, and lets go once it owns none', async () => {
+    const locks = new FakeLocks()
+    const storage = memoryStorage()
+    let finish!: (v: string) => void
+    const tab = openTab(locks, 'q', storage, (c) =>
+      c.setMutationDefaults(['add'], { mutationFn: () => new Promise((r) => (finish = r)) }),
+    )
+    await tab.restored
+    tab.client.setQueryData(['only-queries'], 1)
+    await tick(5)
+    expect(locks.heldBy('pyreon-query-')).toEqual([])
+    const run = start(tab.client, ['add'], { id: 1 })
+    await tick()
+    expect(locks.heldBy('pyreon-query-owner:')).toHaveLength(1)
+    finish('ok')
+    await run
+    await tick()
+    expect(locks.heldBy('pyreon-query-')).toEqual([])
+    tab.unsubscribe()
+  })
+
+  it('N6: the storability check runs once per mutation, not on every cache event', async () => {
+    useLocks(new FakeLocks().tab('a'))
+    let reads = 0
+    const variables = {}
+    Object.defineProperty(variables, 'id', { enumerable: true, get: () => (reads++, 1) })
+    const client = new QueryClient()
+    client.setMutationDefaults(['add'], { mutationFn: () => never() })
+    // A persister that keeps the object, so the only reads are the check's (JSON would read it on every write).
+    const persister = {
+      persistClient: () => undefined,
+      restoreClient: () => undefined,
+      removeClient: () => undefined,
+    }
+    const unsubscribe = persistQueryClientSubscribe({ queryClient: client, persister })
+    void start(client, ['add'], variables)
+    for (let i = 0; i < 20; i++) client.setQueryData(['n'], i)
+    await tick()
+    expect(reads).toBe(1)
     unsubscribe()
   })
 })

@@ -147,14 +147,15 @@ const add = useMutation({ mutationKey: ['add-item'] }) // note: an options objec
 add.mutate('milk')
 ```
 
-`<PersistQueryClientProvider>` persists a mutation from the moment it starts until it settles, paused offline or in flight, and resumes it when restoration settles, including on a page that loads online (when no offline-to-online event will ever fire). Only a mutation another page could send again exactly is persisted: one with a `mutationKey` whose function is registered with `setMutationDefaults` (as above), whose variables survive JSON, and that is not marked `meta: { persist: false }`. The full rule is on the [query page](/docs/query).
+`<PersistQueryClientProvider>` persists a paused mutation (as TanStack does) and, while its request is in flight, a mutation whose `mutationKey` has a function registered with `setMutationDefaults` (as above), until it settles. It resumes them when restoration settles, including on a page that loads online (when no offline-to-online event will ever fire). A mutation marked `meta: { persist: false }`, or whose variables do not survive JSON, is never persisted. The full rule is on the [query page](/docs/query).
 
 What is promised, and what is not:
 
 - Paused mutations are STARTED in creation order when the connection returns, but run concurrently. Give related mutations the same `scope: { id: 'items' }` to run them one after another.
 - Delivery is at-least-once. A tab that closes mid-request keeps the mutation persisted, so the next page sends it again, even if the server had already received it. Make the endpoint idempotent: send a client-generated id in the variables and ignore repeats.
-- Two open tabs never both send one mutation: a tab takes over another tab's mutation only after that tab has closed (Web Locks). Without Web Locks, an in-flight mutation is not persisted at all.
-- Mark a mutation `meta: { persist: false }` when its variables are secrets (a sign-in), so they are never written to `localStorage`.
+- Two open tabs never both send one mutation: a tab takes over another tab's mutation only after that tab has closed (Web Locks). Without Web Locks, an in-flight mutation is not persisted at all. A page holds no Web Lock unless it owns a pending mutation, so it stays eligible for the back/forward cache.
+- A reload aborts an in-flight request; the mutation stays stored and the reloaded page sends it.
+- Mark a mutation `meta: { persist: false }` when its variables are secrets (a sign-in), so they are never written to `localStorage`, not even while it is paused offline.
 - A `File` or `Blob` is not persisted (it would come back as `{}`): upload it first and send its id.
 - A mutation that fails (the server rejects it, or `retry` is used up) has settled and leaves storage; the error reaches `onError` and the mutation's `error` state. Use `retry` for transient failures.
 - No retry queue or backoff beyond TanStack's `retry` option (`0` for mutations by default).

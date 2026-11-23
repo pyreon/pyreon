@@ -1,4 +1,10 @@
-import type { DehydratedState, Mutation, MutationKey, QueryClient } from '@tanstack/query-core'
+import type {
+  DehydratedState,
+  Mutation,
+  MutationCacheNotifyEvent,
+  MutationKey,
+  QueryClient,
+} from '@tanstack/query-core'
 import { dehydrate, hydrate } from '@tanstack/query-core'
 import type {
   PersistedClient,
@@ -22,28 +28,29 @@ import { isServer } from '@pyreon/reactivity'
 // is in flight (a tab closed mid-request, or a resume fired by teardown) loses
 // the mutation (#4723).
 //
-// Pyreon persists a mutation from the moment it is created until it settles,
-// paused or in flight, but ONLY a mutation that a later page could send again
-// exactly, and it hands a persisted mutation to another page only once the page
-// that owns it is gone:
+// Pyreon keeps everything TanStack persists, and also keeps a mutation while
+// its request is in flight when a later page could send it again; it hands a
+// persisted mutation to another page only once the page that owns it is gone:
 //
-// 1. Which mutations: `shouldPersistMutation`. Pending; not opted out with
-//    `meta: { persist: false }`; RESUMABLE (a restored copy would run the same
-//    function this one runs, which means a `mutationKey` whose function is
-//    registered with `setMutationDefaults`, not an inline `mutationFn`); and its
-//    variables survive JSON. A keyless `useMutation({ mutationFn: login })` is
-//    never written to storage, so its `{ password }` never is either.
-// 2. Ownership: each persisted mutation holds a Web Lock for as long as it is
-//    pending, and each page holds an owner lock for its lifetime. A page that
-//    restores a mutation whose lock is still held leaves it alone (another live
-//    tab is sending it) and keeps it in storage; once the lock is released, it
-//    takes the mutation over only if the owner page is gone (if the owner is
-//    alive, the owner settled it). Without Web Locks an in-flight mutation is
-//    not persisted at all (TanStack's behaviour), so no page can double-send.
-// 3. Prompt writes: the storage write lands when a mutation starts being
-//    persisted, when it settles, and when the page is hidden, instead of after
-//    the persister's throttle, through the flush the `/persist` storage
-//    persisters carry (`withFlush`).
+// 1. Which mutations: `shouldPersistMutation`. Pending, not opted out with
+//    `meta: { persist: false }`, and storable (its variables survive JSON; its
+//    context, meta and key can be written). Then: PAUSED, as TanStack persists
+//    it; or IN FLIGHT and resumable, meaning its `mutationKey` resolves to a
+//    registered `mutationFn` (the function a restored copy runs), or it is
+//    keyless and runs the client's default `mutationFn`. A keyless
+//    `useMutation({ mutationFn: login })` in flight never reaches storage, and
+//    a keyed mutation left out gets a dev warning saying why.
+// 2. Ownership: each persisted mutation holds a Web Lock while it is pending,
+//    and a page that owns any holds an owner lock. A page that restores a
+//    mutation whose lock is held leaves it alone and keeps it in storage; once
+//    the lock is released it reads the entry's CURRENT owner from storage and
+//    takes it over only if that owner is gone. Without Web Locks an in-flight
+//    mutation is not persisted (TanStack's behaviour).
+// 3. Writes: the throttled writes TanStack makes, plus one immediate write
+//    (coalesced per microtask) when a mutation becomes owned and when it
+//    settles, the latter before its lock is released, and on page hide. A
+//    provider that is no longer subscribed still removes its settled mutations
+//    from storage.
 //
 // Delivery is AT-LEAST-ONCE: a request the server received but whose response
 // never reached the closing page is sent again by the next page. Endpoints
@@ -59,7 +66,7 @@ type DehydratedMutation = DehydratedState['mutations'][number]
 interface OwnerTag {
   /** The mutation's lock: held by whichever page currently owns it. */
   lock: string
-  /** The owning page's id; its owner lock is held for the page's lifetime. */
+  /** The owning page's id; its owner lock is held while it owns anything. */
   owner: string
 }
 
@@ -93,7 +100,7 @@ function lockManager(): LockManagerLike | undefined {
   return nav?.locks && typeof nav.locks.request === 'function' ? nav.locks : undefined
 }
 
-/** Acquire `name` and keep it until `release()`; `null` when `ifAvailable` and it is held. */
+/** Acquire `name` and keep it until `release()`; `null` when `ifAvailable` and it is held, or refused. */
 function hold(
   locks: LockManagerLike,
   name: string,
@@ -115,6 +122,7 @@ function hold(
 
 async function ownerAlive(locks: LockManagerLike, owner: string): Promise<boolean> {
   const state = await locks.query()
+
   return state.held.some((l) => l.name === OWNER_PREFIX + owner)
 }
 
@@ -209,6 +217,7 @@ function objectProblem(
 export interface MutationView {
   readonly state: {
     readonly status: string
+    readonly isPaused: boolean
     readonly variables: unknown
     readonly context: unknown
   }
@@ -221,14 +230,17 @@ export interface MutationView {
 
 function keyText(mutation: MutationView): string {
   const key = mutation.options.mutationKey
+
   return key ? `mutationKey ${JSON.stringify(key)}` : 'a mutation without a mutationKey'
 }
 
 /**
- * Whether a restored copy of `mutation` would run the same function: the
- * function a fresh page resolves from the client's defaults for its
- * `mutationKey` must be the one this mutation runs. An inline `mutationFn`, or
- * one with no `mutationKey`, cannot be recreated by another page.
+ * Whether a later page could send this mutation: a restored copy runs the
+ * function the client resolves for its `mutationKey` (`setMutationDefaults`,
+ * the client's default `mutationFn`, or a `hydrate` default). A keyed mutation
+ * is resumable when that function exists. A keyless one is resumable only when
+ * the function it runs IS the client's default, since an inline `mutationFn`
+ * cannot be found again by another page.
  */
 function isResumable(client: QueryClient, mutation: MutationView): boolean {
   const key = mutation.options.mutationKey
@@ -236,36 +248,88 @@ function isResumable(client: QueryClient, mutation: MutationView): boolean {
     ...client.getDefaultOptions().hydrate?.mutations,
     ...(key ? { mutationKey: key } : {}),
   })
+  if (typeof restored.mutationFn !== 'function') return false
 
+  return key ? true : restored.mutationFn === mutation.options.mutationFn
+}
+
+/** The first field of a dehydrated mutation that cannot be written, or `null` (the failure reason is made writable instead). */
+function storageProblem(mutation: MutationView): string | null {
   return (
-    typeof restored.mutationFn === 'function' && restored.mutationFn === mutation.options.mutationFn
+    jsonProblem(mutation.state.variables, 'variables', true) ??
+    jsonProblem(mutation.state.context, 'the onMutate context', false) ??
+    // (A mutationKey cannot hold a cycle or a BigInt: TanStack hashes it as JSON.)
+    jsonProblem(mutation.options.meta, 'meta', false)
   )
+}
+
+// The storability check reads the variables, context and meta, which do not
+// change while a mutation is pending, and it runs on every cache event (TanStack
+// dehydrates eagerly), so it is cached per mutation and redone only when one of
+// those objects is replaced.
+const storageChecks = new WeakMap<
+  object,
+  { variables: unknown; context: unknown; meta: unknown; problem: string | null }
+>()
+
+function cachedStorageProblem(mutation: MutationView): string | null {
+  const hit = storageChecks.get(mutation)
+  const { variables, context } = mutation.state
+  const meta = mutation.options.meta
+  if (hit && hit.variables === variables && hit.context === context && hit.meta === meta) {
+    return hit.problem
+  }
+  const problem = storageProblem(mutation)
+  storageChecks.set(mutation, { variables, context, meta, problem })
+
+  return problem
+}
+
+type Verdict = { persist: true } | { persist: false; warning?: string }
+
+function persistVerdict(mutation: MutationView, client: QueryClient): Verdict {
+  if (mutation.state.status !== 'pending') return { persist: false }
+  if ((mutation.options.meta as { persist?: unknown } | undefined)?.persist === false) {
+    return { persist: false }
+  }
+  const problem = cachedStorageProblem(mutation)
+  if (problem) {
+    return {
+      persist: false,
+      warning:
+        `${problem}, so a later page would send a different request (or none). Pass serialisable values ` +
+        `(for a file, upload it first and send its id), or set meta: { persist: false } on the mutation to keep ` +
+        `it out of storage without this warning.`,
+    }
+  }
+  // Paused: TanStack persists it, and so does this, whatever its function.
+  if (mutation.state.isPaused || isResumable(client, mutation)) return { persist: true }
+  if (!mutation.options.mutationKey) return { persist: false }
+
+  return {
+    persist: false,
+    warning:
+      `no mutationFn is registered for this key (client.setMutationDefaults(key, { mutationFn })), so a later ` +
+      `page could not send it. It is kept in storage only while it is paused offline, not while its request is ` +
+      `in flight. Register the function, or set meta: { persist: false } to silence this.`,
+  }
 }
 
 /**
- * Whether `@pyreon/query/persist` may write `mutation` to storage (before the
- * Web Locks ownership rule, which applies on top):
- * - it is pending (not settled);
- * - it is not opted out with `meta: { persist: false }` (do this for any
- *   mutation whose variables are secrets, such as a sign-in);
- * - it is resumable: its `mutationKey` resolves, through
- *   `client.setMutationDefaults`, to the very function it runs;
- * - its variables survive JSON (no `File`, `Date`, `Map`, class instance,
- *   BigInt or cycle) and its `onMutate` context can be serialised.
+ * Whether `@pyreon/query/persist` may write `mutation` to storage (the Web
+ * Locks ownership rule applies on top):
+ * - it is pending (not settled), and not opted out with
+ *   `meta: { persist: false }` (do this for any mutation whose variables are
+ *   secrets, such as a sign-in);
+ * - it can be stored: its variables survive JSON (no `File`, `Date`, `Map`,
+ *   class instance, BigInt or cycle), and its `onMutate` context, `meta` and
+ *   `mutationKey` can be written;
+ * - it is paused (as TanStack persists it), or its request is in flight and a
+ *   later page could send it: its `mutationKey` resolves to a registered
+ *   `mutationFn` (a keyless mutation must run the client's default one).
  */
 export function shouldPersistMutation(mutation: MutationView, client: QueryClient): boolean {
-  return persistVerdict(mutation, client) === null
-}
-
-function persistVerdict(mutation: MutationView, client: QueryClient): string | null | 'skip' {
-  if (mutation.state.status !== 'pending') return 'skip'
-  if ((mutation.options.meta as { persist?: unknown } | undefined)?.persist === false) return 'skip'
-  if (!isResumable(client, mutation)) return 'skip'
-
-  return (
-    jsonProblem(mutation.state.variables, 'variables', true) ??
-    jsonProblem(mutation.state.context, 'the onMutate context', false)
-  )
+  return persistVerdict(mutation, client).persist
 }
 
 // ─── One session per QueryClient ──────────────────────────────────────────────
@@ -276,89 +340,135 @@ interface SaveTarget {
   dehydrateOptions: PersistQueryClientOptions['dehydrateOptions']
 }
 
+interface Owned {
+  name: string
+  lock: HeldLock
+}
+
 interface Session {
   client: QueryClient
   locks: LockManagerLike | undefined
-  owner: string
+  /**
+   * This page's owner lock, taken with the first mutation lock and released
+   * once the page owns nothing (so an idle page holds no Web Lock, which keeps
+   * it eligible for the back/forward cache).
+   */
+  ownerLock: { id: string; lock: Promise<HeldLock | null> } | undefined
   /** Locks this page holds, per mutation it owns. */
-  held: Map<Mutation, { name: string; lock: HeldLock }>
-  requested: WeakSet<Mutation>
+  held: Map<Mutation, Owned>
+  /** Mutation locks requested and not granted yet. */
+  requested: Set<Mutation>
   /** Locks taken over from a gone page, bound to the mutation once hydrated. */
-  adopted: Map<object, { name: string; lock: HeldLock }>
+  adopted: Map<object, Owned & { owner: string }>
   /** Mutations a live page elsewhere owns: written back unchanged, never run here. */
   passthrough: Map<string, TaggedMutation>
   warned: WeakSet<Mutation>
-  /** The persister this client restores from (for re-reading storage). */
-  source: Persister | undefined
-  /** Set while subscribed: what a flush writes, and how. */
+  /** The persister this client last restored from or saved to (re-read before a takeover). */
+  source: FlushablePersister
+  /** Set while subscribed: what a flush writes. */
   target: SaveTarget | undefined
+  /** A write is scheduled for the end of this task; these run after it. */
+  flushQueued: QueuedWrite[] | undefined
+  /**
+   * The page is going away (`pagehide`): its last write is final. Teardown
+   * aborts in-flight requests, and the rejection that reaches the dying page
+   * would settle each mutation as an error and write it OUT of storage, losing
+   * exactly what the write before was there to keep (#4723's class). Cleared by
+   * `pageshow` when the page comes back from the back/forward cache.
+   */
+  frozen: boolean
   defaultPredicate: (mutation: Mutation) => boolean
 }
 
 // Keyed by the client and held weakly: a session lives exactly as long as its
-// QueryClient. Its owner lock is never released while the page lives (that is
-// what "the owner is alive" means to other pages); one lock per client.
+// QueryClient, and it holds Web Locks only while its page owns a mutation.
 const sessions = new WeakMap<QueryClient, Session>()
 
-function sessionFor(client: QueryClient): Session {
+function sessionFor(client: QueryClient, persister: Persister): Session {
   const existing = sessions.get(client)
-  if (existing) return existing
-  const locks = lockManager()
+  if (existing) {
+    existing.source = persister
+
+    return existing
+  }
   const session: Session = {
     client,
-    locks,
-    // Web Locks and randomUUID are both secure-context APIs: where one exists, so does the other.
-    owner: locks ? crypto.randomUUID() : '',
+    locks: lockManager(),
+    ownerLock: undefined,
     held: new Map(),
-    requested: new WeakSet(),
+    requested: new Set(),
     adopted: new Map(),
     passthrough: new Map(),
     warned: new WeakSet(),
-    source: undefined,
+    source: persister,
     target: undefined,
+    flushQueued: undefined,
+    frozen: false,
     defaultPredicate: (mutation) => defaultPredicate(session, mutation),
   }
   sessions.set(client, session)
-  if (session.locks) void hold(session.locks, OWNER_PREFIX + session.owner, false)
-
-  client.getMutationCache().subscribe((event) => {
-    const mutation = event.mutation as Mutation
-    if (event.type === 'added') {
-      const adopted = session.adopted.get(mutation.state)
-      if (adopted) {
-        session.adopted.delete(mutation.state)
-        session.held.set(mutation, adopted)
-      }
-
-      return
-    }
-    const settled =
-      event.type === 'removed' ||
-      (event.type === 'updated' &&
-        (event.action.type === 'success' || event.action.type === 'error'))
-    if (!settled) return
-    const owned = session.held.get(mutation)
-    if (!owned) return
-    // Write storage WITHOUT the settled mutation before letting go of its lock,
-    // so a page that takes the lock next finds it gone and does not resend it.
-    session.held.delete(mutation)
-    flush(session)
-    owned.lock.release()
-  })
+  client.getMutationCache().subscribe((event) => onMutationEvent(session, event))
 
   return session
 }
 
+function ownerId(session: Session, locks: LockManagerLike): string {
+  if (!session.ownerLock) {
+    // Web Locks and randomUUID are both secure-context APIs: where one exists, so does the other.
+    const id = crypto.randomUUID()
+    session.ownerLock = { id, lock: hold(locks, OWNER_PREFIX + id, false) }
+  }
+
+  return session.ownerLock.id
+}
+
+/** Let go of the owner lock once this page owns no mutation and is about to own none. */
+function releaseOwnerIfIdle(session: Session): void {
+  if (!session.ownerLock) return
+  if (session.held.size > 0 || session.adopted.size > 0 || session.requested.size > 0) return
+  const { lock } = session.ownerLock
+  session.ownerLock = undefined
+  void lock.then((held) => held?.release())
+}
+
+function onMutationEvent(session: Session, event: MutationCacheNotifyEvent): void {
+  const mutation = event.mutation as Mutation
+  if (event.type === 'added') {
+    const adopted = session.adopted.get(mutation.state)
+    if (!adopted) return
+    session.adopted.delete(mutation.state)
+    session.held.set(mutation, { name: adopted.name, lock: adopted.lock })
+    // Storage still names the gone owner: say who owns it now.
+    writeNow(session, () => undefined, { retag: { lock: adopted.name, owner: adopted.owner } })
+
+    return
+  }
+  const settled =
+    event.type === 'removed' ||
+    (event.type === 'updated' && (event.action.type === 'success' || event.action.type === 'error'))
+  if (!settled) return
+  const owned = session.held.get(mutation)
+  if (!owned) return
+  session.held.delete(mutation)
+  // Storage loses the settled mutation BEFORE its lock is released, so a page
+  // that takes the lock next does not find it and send it again.
+  writeNow(
+    session,
+    () => {
+      owned.lock.release()
+      releaseOwnerIfIdle(session)
+    },
+    { remove: owned.name },
+  )
+}
+
 function defaultPredicate(session: Session, mutation: Mutation): boolean {
   const verdict = persistVerdict(mutation, session.client)
-  if (verdict === 'skip') return false
-  if (verdict !== null) {
-    if (process.env.NODE_ENV !== 'production' && !session.warned.has(mutation)) {
+  if (!verdict.persist) {
+    if (verdict.warning && process.env.NODE_ENV !== 'production' && !session.warned.has(mutation)) {
       session.warned.add(mutation)
       console.warn(
-        `[Pyreon] @pyreon/query/persist did not persist ${keyText(mutation)}: ${verdict}, so a later page ` +
-          `would send a different request. Pass serialisable variables (for a file, upload it first and send ` +
-          `its id), or set meta: { persist: false } on the mutation to keep it out of storage without this warning.`,
+        `[Pyreon] @pyreon/query/persist did not persist ${keyText(mutation)}: ${verdict.warning}`,
       )
     }
 
@@ -379,31 +489,51 @@ function defaultPredicate(session: Session, mutation: Mutation): boolean {
 function requestLock(session: Session, locks: LockManagerLike, mutation: Mutation): void {
   if (session.requested.has(mutation)) return
   session.requested.add(mutation)
-  const name = `${MUTATION_PREFIX}${session.owner}:${mutation.mutationId}`
+  const name = `${MUTATION_PREFIX}${ownerId(session, locks)}:${mutation.mutationId}`
   void hold(locks, name, false).then((lock) => {
-    if (!lock) return
-    if (mutation.state.status !== 'pending') {
-      lock.release()
+    session.requested.delete(mutation)
+    if (!lock || mutation.state.status !== 'pending') {
+      lock?.release()
+      releaseOwnerIfIdle(session)
+
       return
     }
     session.held.set(mutation, { name, lock })
-    // Now that it is owned, write it right away rather than after the throttle.
-    flush(session)
+    // Now that it is owned, write it right away rather than after the throttle:
+    // a tab that dies without a pagehide (a crash, a killed process) must still
+    // leave it in storage. Writes of mutations that start together coalesce.
+    writeNow(session, () => undefined)
   })
 }
 
+/** Turn a value JSON cannot write into a plain `{ name, message }` (a retry's failure reason). */
+function writableFailure(reason: Error | null): Error | null {
+  if (jsonProblem(reason, 'failureReason', false) === null) return reason
+  // A plain object, not an Error: JSON writes an Error as `{}`.
+  return { name: String(reason?.name ?? 'Error'), message: String(reason?.message ?? '') }
+}
+
 /**
- * Tag each written mutation this page owns with its lock, and append the
- * mutations live pages elsewhere own. A dehydrated mutation carries its
- * mutation's `state` object itself, which is how an entry finds its owner.
+ * Tag each written mutation this page owns with its lock, make every retry's
+ * `failureReason` writable, and append the mutations live pages elsewhere own.
+ * A dehydrated mutation carries its mutation's `state` object itself, which is
+ * how an entry finds its owner.
  */
 function tagMutations(session: Session, client: PersistedClient): PersistedClient {
   const byState = new Map<object, string>()
   for (const [mutation, owned] of session.held) byState.set(mutation.state, owned.name)
+  // A page that holds a mutation lock holds its owner lock too.
+  const owner = session.ownerLock?.id ?? ''
   const tagged: TaggedMutation[] = (client.clientState.mutations as TaggedMutation[]).map(
     (entry) => {
+      const failureReason = writableFailure(entry.state.failureReason)
+      const state =
+        failureReason === entry.state.failureReason
+          ? entry.state
+          : { ...entry.state, failureReason }
       const lock = byState.get(entry.state)
-      return lock ? { ...entry, pyreonOwner: { lock, owner: session.owner } } : entry
+
+      return lock ? { ...entry, state, pyreonOwner: { lock, owner } } : { ...entry, state }
     },
   )
   tagged.push(...session.passthrough.values())
@@ -420,15 +550,88 @@ function snapshot(session: Session, target: SaveTarget): PersistedClient {
   return tagMutations(session, { buster: target.buster, timestamp: Date.now(), clientState })
 }
 
-/** Write the current state now, skipping the persister's throttle when it can. */
-function flush(session: Session): void {
-  const target = session.target
-  if (!target) return
-  const now = snapshot(session, target)
-  target.persister[FLUSH]?.(now)
+/** Write to a persister now, skipping its throttle when it can, and through the throttle too. */
+function writeThrough(persister: FlushablePersister, client: PersistedClient): void {
+  persister[FLUSH]?.(client)
   // Also hand it to the throttled path: its pending write must not be an OLDER
   // snapshot that lands after this one and undoes it.
-  void target.persister.persistClient(now)
+  void persister.persistClient(client)
+}
+
+/** What a page that is not subscribed changes in storage: only entries it owns. */
+type StoredEdit =
+  /** Drop a settled mutation's entry. */
+  | { remove: string }
+  /** Name this page as the owner of an entry it took over. */
+  | { retag: { lock: string; owner: string } }
+  /** Nothing: the write exists for a subscribed page. */
+  | undefined
+
+interface QueuedWrite {
+  after: () => void
+  edit: StoredEdit
+}
+
+/**
+ * Write once at the end of this task, however many mutations asked, then run
+ * each `after` (lock releases). Subscribed: the whole current state. Not
+ * subscribed (a provider that unmounted, a restore-only client): only the
+ * stored entries this page owns change, so nothing it was told to stop
+ * persisting comes back.
+ */
+function writeNow(session: Session, after: () => void, edit?: StoredEdit): void {
+  const queued = session.flushQueued
+  if (queued) {
+    queued.push({ after, edit })
+
+    return
+  }
+  const fresh: QueuedWrite[] = [{ after, edit }]
+  session.flushQueued = fresh
+  queueMicrotask(() => void runWrites(session, fresh))
+}
+
+async function runWrites(session: Session, queued: QueuedWrite[]): Promise<void> {
+  session.flushQueued = undefined
+  const target = session.target
+  // Nothing is written after the page's final write (see `frozen`).
+  if (!session.frozen) {
+    if (target) {
+      writeThrough(target.persister, snapshot(session, target))
+    } else {
+      await editStored(
+        session.source,
+        queued.map((q) => q.edit),
+      )
+    }
+  }
+  for (const q of queued) q.after()
+}
+
+async function editStored(source: FlushablePersister, edits: StoredEdit[]): Promise<void> {
+  const stored = await source.restoreClient()
+  // Nothing stored (removed, or never written): nothing to correct.
+  if (!stored) return
+  const removed = new Set<string>()
+  const retagged = new Map<string, string>()
+  for (const edit of edits) {
+    if (edit && 'remove' in edit) removed.add(edit.remove)
+    else if (edit) retagged.set(edit.retag.lock, edit.retag.owner)
+  }
+  const mutations = (stored.clientState.mutations as TaggedMutation[])
+    .filter((m) => !removed.has(m.pyreonOwner?.lock ?? ''))
+    .map((m) => {
+      const lock = m.pyreonOwner?.lock ?? ''
+      const owner = retagged.get(lock)
+
+      return owner ? { ...m, pyreonOwner: { lock, owner } } : m
+    })
+  writeThrough(source, { ...stored, clientState: { ...stored.clientState, mutations } })
+}
+
+/** Write the current state now (the page is being hidden). */
+function flush(session: Session, target: SaveTarget): void {
+  if (!session.frozen) writeThrough(target.persister, snapshot(session, target))
 }
 
 function mutationPredicate(
@@ -452,22 +655,42 @@ function asPaused(entry: DehydratedMutation): DehydratedMutation {
 
 function plain(entry: TaggedMutation): DehydratedMutation {
   const { pyreonOwner: _tag, ...rest } = entry
+
   return rest
 }
 
 /** Take over a gone page's mutation: it comes back paused, owned by this page. */
 function adopt(
   session: Session,
+  locks: LockManagerLike,
   entry: TaggedMutation,
   tag: OwnerTag,
   lock: HeldLock,
 ): DehydratedMutation {
+  const owner = ownerId(session, locks)
   const restored = asPaused(plain(entry))
-  session.adopted.set(restored.state, { name: tag.lock, lock })
+  session.adopted.set(restored.state, { name: tag.lock, lock, owner })
+
   return restored
 }
 
-/** A live page owns `entry`: keep writing it back, and take it over if that page dies. */
+/** A restore TanStack discarded (expired, busted, failed) never hydrated what it adopted. */
+function releaseUnclaimed(session: Session): void {
+  for (const owned of session.adopted.values()) owned.lock.release()
+  session.adopted.clear()
+  releaseOwnerIfIdle(session)
+}
+
+/** The stored entry for `lock` as it is NOW: its current owner, or `undefined` if it is gone. */
+async function storedEntry(session: Session, lock: string): Promise<TaggedMutation | undefined> {
+  const current = await session.source.restoreClient()
+  // Gone from storage altogether (`removeClient`, a cleared site) counts as settled.
+  const entries = (current?.clientState.mutations ?? []) as TaggedMutation[]
+
+  return entries.find((m) => m.pyreonOwner?.lock === lock)
+}
+
+/** A live page owns `entry`: keep writing it back, and take it over if its owner dies. */
 function watch(
   session: Session,
   locks: LockManagerLike,
@@ -481,23 +704,45 @@ function watch(
     session.passthrough.delete(tag.lock)
     // The browser refused the wait (it aborted it): leave the mutation to its owner.
     if (!lock) return
-    // The owner let go. Alive: it settled the mutation. Gone: it died with the
-    // request in flight, unless storage no longer has it (settled, then gone).
-    const stillStored = async (): Promise<boolean> => {
-      const current = await session.source?.restoreClient()
-      // Gone from storage altogether (`removeClient`, a cleared site) counts as settled.
-      return ((current?.clientState.mutations ?? []) as TaggedMutation[]).some(
-        (m) => m.pyreonOwner?.lock === tag.lock,
-      )
-    }
-    if ((await ownerAlive(locks, tag.owner)) || !(await stillStored())) {
+    // The holder let go. Read who owns it NOW (a page that took it over
+    // re-tagged it): alive means it settled the mutation; gone, with the entry
+    // still stored, means it died with the request in flight.
+    const current = await storedEntry(session, tag.lock)
+    const owner = current?.pyreonOwner?.owner
+    if (!current || !owner || (await ownerAlive(locks, owner))) {
       lock.release()
-      flush(session)
+      // Write without the copy this page was keeping for its owner.
+      writeNow(session, () => undefined)
+
       return
     }
-    hydrate(session.client, { mutations: [adopt(session, entry, tag, lock)], queries: [] })
+    hydrate(session.client, { mutations: [adopt(session, locks, current, tag, lock)], queries: [] })
     void session.client.resumePausedMutations()
   })
+}
+
+async function claimEntry(
+  session: Session,
+  locks: LockManagerLike,
+  entry: TaggedMutation,
+  tag: OwnerTag,
+): Promise<DehydratedMutation | undefined> {
+  // This page's own mutation (a remount): it is still in this client's cache.
+  if (tag.owner === session.ownerLock?.id) return undefined
+  const lock = await hold(locks, tag.lock, true)
+  if (!lock) {
+    watch(session, locks, entry, tag)
+
+    return undefined
+  }
+  if (await ownerAlive(locks, tag.owner)) {
+    // The owner is alive and has let go: it settled the mutation; this copy is stale.
+    lock.release()
+
+    return undefined
+  }
+
+  return adopt(session, locks, entry, tag, lock)
 }
 
 async function claimRestored(
@@ -510,25 +755,14 @@ async function claimRestored(
   for (const entry of entries) {
     const tag = entry.pyreonOwner
     const locks = session.locks
-    // Untagged: written by TanStack's own persistence (or without Web Locks).
-    // Restored exactly as TanStack restores it.
-    if (!tag || !locks) {
+    if (tag && locks) {
+      const claimed = await claimEntry(session, locks, entry, tag)
+      if (claimed) kept.push(claimed)
+    } else {
+      // Untagged: written by TanStack's own persistence (or without Web Locks).
+      // Restored exactly as TanStack restores it.
       kept.push(plain(entry))
-      continue
     }
-    // This page's own mutation (a remount): it is still in this client's cache.
-    if (tag.owner === session.owner) continue
-    const lock = await hold(locks, tag.lock, true)
-    if (!lock) {
-      watch(session, locks, entry, tag)
-      continue
-    }
-    if (await ownerAlive(locks, tag.owner)) {
-      // The owner is alive and has let go: it settled the mutation; this copy is stale.
-      lock.release()
-      continue
-    }
-    kept.push(adopt(session, entry, tag, lock))
   }
 
   return { ...restored, clientState: { ...restored.clientState, mutations: kept } }
@@ -544,10 +778,11 @@ type DurableOptions = {
 }
 
 function durable<T extends DurableOptions>(options: T): T {
-  const session = sessionFor(options.queryClient)
-  session.source = options.persister
+  const session = sessionFor(options.queryClient, options.persister)
   const persister: Persister = {
-    persistClient: (client) => options.persister.persistClient(tagMutations(session, client)),
+    // TanStack's own (throttled) saves stop too once the page has made its final write.
+    persistClient: (client) =>
+      session.frozen ? undefined : options.persister.persistClient(tagMutations(session, client)),
     removeClient: () => options.persister.removeClient(),
     restoreClient: async () => claimRestored(session, await options.persister.restoreClient()),
   }
@@ -567,9 +802,9 @@ function detachTarget(session: Session, target: SaveTarget): void {
   if (session.target === target) session.target = undefined
 }
 
-/** While subscribed: flush on settle (via the session) and when the page is hidden. */
+/** While subscribed: immediate writes go to this persister, and the page hiding writes too. */
 function attach(options: DurableOptions): () => void {
-  const session = sessionFor(options.queryClient)
+  const session = sessionFor(options.queryClient, options.persister)
   const target: SaveTarget = {
     persister: options.persister as FlushablePersister,
     buster: options.buster ?? '',
@@ -580,17 +815,30 @@ function attach(options: DurableOptions): () => void {
   // settle-time writes apply.
   if (isServer) return () => detachTarget(session, target)
   const onHidden = (): void => {
-    if (document.visibilityState === 'hidden') flush(session)
+    if (document.visibilityState === 'hidden') flush(session, target)
   }
-  const onPageHide = (): void => flush(session)
+  const onPageHide = (): void => {
+    flush(session, target)
+    session.frozen = true
+  }
+  const onPageShow = (): void => {
+    session.frozen = false
+  }
   document.addEventListener('visibilitychange', onHidden)
   window.addEventListener('pagehide', onPageHide)
+  window.addEventListener('pageshow', onPageShow)
 
   return () => {
     detachTarget(session, target)
     document.removeEventListener('visibilitychange', onHidden)
     window.removeEventListener('pagehide', onPageHide)
+    window.removeEventListener('pageshow', onPageShow)
   }
+}
+
+/** Run a restore, then release whatever it adopted that TanStack did not hydrate. */
+function restoring<T>(session: Session, restore: Promise<T>): Promise<T> {
+  return restore.finally(() => releaseUnclaimed(session))
 }
 
 /**
@@ -601,11 +849,12 @@ function attach(options: DurableOptions): () => void {
 export function persistQueryClient(
   options: PersistQueryClientOptions,
 ): [() => void, Promise<void>] {
+  const session = sessionFor(options.queryClient, options.persister)
   const opts = durable(options)
   let detach: (() => void) | undefined
   let stopped = false
   const [unsubscribe, restored] = tanstackPersistQueryClient(opts)
-  const done = restored.then(() => {
+  const done = restoring(session, restored).then(() => {
     if (!stopped) detach = attach(options)
   })
 
@@ -623,7 +872,10 @@ export function persistQueryClient(
 export function persistQueryClientRestore(
   options: PersistedQueryClientRestoreOptions,
 ): Promise<void> {
-  return tanstackPersistQueryClientRestore(durable(options))
+  return restoring(
+    sessionFor(options.queryClient, options.persister),
+    tanstackPersistQueryClientRestore(durable(options)),
+  )
 }
 
 /** TanStack's `persistQueryClientSave`, with Pyreon's mutation contract. */
@@ -635,6 +887,7 @@ export function persistQueryClientSave(options: PersistedQueryClientSaveOptions)
 export function persistQueryClientSubscribe(options: PersistedQueryClientSaveOptions): () => void {
   const detach = attach(options)
   const unsubscribe = tanstackPersistQueryClientSubscribe(durable(options))
+
   return () => {
     detach()
     unsubscribe()
@@ -647,5 +900,6 @@ export function withFlush<P extends Persister>(
   write: (client: PersistedClient) => void,
 ): P {
   ;(persister as FlushablePersister)[FLUSH] = write
+
   return persister
 }

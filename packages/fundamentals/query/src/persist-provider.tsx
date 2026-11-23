@@ -30,14 +30,14 @@ export interface PersistQueryClientProviderProps {
  * completes (no redundant network request for data the cache is about to
  * restore). Gate UI on `useIsRestoring()` during the async restore window.
  *
- * A RESUMABLE mutation (a `mutationKey` whose function is registered with
- * `client.setMutationDefaults(mutationKey, { mutationFn })`, JSON-safe
- * variables, not `meta: { persist: false }`) stays persisted from start until
- * it settles, paused or in flight, and is resumed once restoration settles.
- * Another tab takes it over only once the tab that owns it has closed. A
- * function cannot be serialised, so a restored mutation finds its function by
- * `mutationKey`. Delivery is at-least-once: make the endpoint idempotent. See
- * `shouldPersistMutation`.
+ * A paused mutation is persisted (as TanStack persists it), and so is one
+ * whose request is in flight when its `mutationKey` resolves to a function
+ * registered with `client.setMutationDefaults(mutationKey, { mutationFn })`,
+ * until it settles; both are resumed once restoration settles. Never one
+ * marked `meta: { persist: false }`. Another tab takes a mutation over only
+ * once the tab that owns it has closed. A function cannot be serialised, so a
+ * restored mutation finds its function by `mutationKey`. Delivery is
+ * at-least-once: make the endpoint idempotent. See `shouldPersistMutation`.
  *
  * Import from `@pyreon/query/persist`.
  *
