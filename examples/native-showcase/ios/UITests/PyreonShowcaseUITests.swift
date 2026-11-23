@@ -53,7 +53,7 @@ final class PyreonShowcaseUITests: XCTestCase {
 
     func test_addToggleRemove() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let root = app.otherElements["today-app"].firstMatch
         XCTAssertTrue(root.waitToExist(timeout: 30), "TodayApp did not render within 30s")
@@ -105,7 +105,7 @@ final class PyreonShowcaseUITests: XCTestCase {
 
     func test_removingEverythingShowsTheEmptyState() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(app.otherElements["today-app"].firstMatch.waitToExist(timeout: 30))
         for id in 1...3 {
             app.buttons["todo-\(id)-remove"].tap()
