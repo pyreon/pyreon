@@ -147,12 +147,13 @@ const add = useMutation({ mutationKey: ['add-item'] }) // note: an options objec
 add.mutate('milk')
 ```
 
-`<PersistQueryClientProvider>` persists paused mutations with the cache, and resumes them when restoration settles, including on a page that loads online (when no offline-to-online event will ever fire).
+`<PersistQueryClientProvider>` persists every mutation that has not settled yet (paused offline, or in flight) with the cache, and keeps it persisted until it succeeds or fails. A restored mutation comes back paused and is resumed when restoration settles, including on a page that loads online (when no offline-to-online event will ever fire). The `persistQueryClient*` functions from `@pyreon/query/persist` follow the same rule.
 
 What is promised, and what is not:
 
 - Paused mutations are STARTED in creation order when the connection returns, but run concurrently. Give related mutations the same `scope: { id: 'items' }` to run them one after another.
-- A mutation is persisted only while paused. Once it resumes it is no longer persisted, so a tab that dies mid-request loses it: delivery is at-most-once from the client. Make the endpoint idempotent and add your own id if that matters.
+- Delivery is at-least-once. A tab that closes mid-request keeps the mutation persisted, so the next page sends it again, even if the server had already received it. Make the endpoint idempotent: send a client-generated id in the variables and ignore repeats.
+- A mutation that fails (the server rejects it, or `retry` is used up) has settled and leaves storage; the error reaches `onError` and the mutation's `error` state. Use `retry` for transient failures.
 - No retry queue or backoff beyond TanStack's `retry` option (`0` for mutations by default).
 - No conflict handling. Two devices writing the same record is last write wins at your API. For real merge semantics use a local-first store: [`@pyreon/sync`](/docs/sync) (CRDT, `persistViaIndexedDB`) replaces this whole section instead of layering on it.
 - `networkMode: 'always'` skips pausing and sends immediately (use it for requests that work without internet, such as a local API).

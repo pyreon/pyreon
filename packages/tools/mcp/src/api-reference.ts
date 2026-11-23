@@ -5826,7 +5826,8 @@ const persister = createSyncStoragePersister({ storage: localStorage })
     mistakes: `- Using BOTH \`<QueryClientProvider>\` and \`<PersistQueryClientProvider>\` — the persist provider already provides the client; nest only one
 - Expecting synchronous restore — restoration is async (even sync localStorage resolves on a microtask). Gate UI on \`useIsRestoring()\` during the window
 - A heavy \`staleTime: 0\` default — restored queries immediately refetch on subscribe; set a \`staleTime\` so the restored cache is treated as fresh
-- Expecting an offline mutation to be sent after a reload without registering its function — a PAUSED mutation is persisted (variables + \`mutationKey\`) but a function cannot be serialised: give it a \`mutationKey\` and register \`client.setMutationDefaults(key, { mutationFn })\` at module load. The provider then resumes persisted paused mutations once restoration settles. A mutation that was never paused (made online) is not persisted, and one that already resumed is gone if the page dies mid-request (at-most-once, no retry queue, no ordering guarantee beyond TanStack's creation order)
+- Expecting an offline mutation to be sent after a reload without registering its function — every UNSETTLED mutation (paused offline, or in flight) is persisted (variables + \`mutationKey\`) until it succeeds or fails, but a function cannot be serialised: give it a \`mutationKey\` and register \`client.setMutationDefaults(key, { mutationFn })\` at module load. The provider restores unsettled mutations as paused and resumes them once restoration settles
+- Assuming exactly-once delivery — a request the server received but whose response never reached a closing tab is sent again by the next page (at-least-once). Make the endpoint idempotent (send a client-generated id in the variables). A mutation that FAILED is settled and leaves storage; use \`retry\` for transient failures. No ordering guarantee beyond TanStack's creation order (use \`scope\` to serialise)
 - Treating \`navigator.onLine\` as proof of reachability — \`onlineManager\` follows the browser online/offline events, which only report "a network interface is up"; a captive portal or a dead backend still looks online, so the mutation is sent and fails normally (default \`retry: 0\` for mutations)`,
   },
 
@@ -5852,13 +5853,13 @@ const persister = createSyncStoragePersister({ storage: localStorage })
   },
 
   'query/Persistence subpath re-exports': {
-    signature: `import { persistQueryClient, persistQueryClientRestore, persistQueryClientSave, persistQueryClientSubscribe, removeOldestQuery, createSyncStoragePersister, createAsyncStoragePersister } from '@pyreon/query/persist'`,
+    signature: `import { persistQueryClient, persistQueryClientRestore, persistQueryClientSave, persistQueryClientSubscribe, shouldPersistMutation, removeOldestQuery, createSyncStoragePersister, createAsyncStoragePersister } from '@pyreon/query/persist'`,
     example: `import { persistQueryClient, createSyncStoragePersister } from '@pyreon/query/persist'
 
 const persister = createSyncStoragePersister({ storage: localStorage })
 const [unsubscribe, restored] = persistQueryClient({ queryClient: client, persister })
 await restored // cache is now hydrated from storage`,
-    notes: `The \`@pyreon/query/persist\` subpath re-exports TanStack's framework-agnostic persist engine (\`persistQueryClient\` → \`[unsubscribe, restorePromise]\`, plus the \`*Restore\` / \`*Save\` / \`*Subscribe\` granular pieces and \`removeOldestQuery\`) and the storage persisters (\`createSyncStoragePersister\` for localStorage/sessionStorage, \`createAsyncStoragePersister\` for IndexedDB / RN AsyncStorage / any Promise-returning store). Types (\`Persister\`, \`PersistedClient\`, \`PersistQueryClientOptions\`, …) re-export alongside. Use these for a custom persistence flow; most apps just use \`<PersistQueryClientProvider>\`. See also: PersistQueryClientProvider, useIsRestoring.`,
+    notes: `The \`@pyreon/query/persist\` subpath exposes TanStack's framework-agnostic persist engine (\`persistQueryClient\` → \`[unsubscribe, restorePromise]\`, plus the \`*Restore\` / \`*Save\` / \`*Subscribe\` granular pieces and \`removeOldestQuery\`). The four \`persistQueryClient*\` functions keep TanStack's signatures but carry Pyreon's mutation contract: every unsettled mutation (\`shouldPersistMutation\`: \`status === 'pending'\`, paused or in flight) stays persisted until it settles, and is restored as paused so it resumes; an explicit \`dehydrateOptions.shouldDehydrateMutation\` overrides it. The storage persisters are re-exported as is (\`createSyncStoragePersister\` for localStorage/sessionStorage, \`createAsyncStoragePersister\` for IndexedDB / RN AsyncStorage / any Promise-returning store). Types (\`Persister\`, \`PersistedClient\`, \`PersistQueryClientOptions\`, …) re-export alongside. Use these for a custom persistence flow; most apps just use \`<PersistQueryClientProvider>\`. See also: PersistQueryClientProvider, useIsRestoring.`,
   },
 
   'query/TanStack core re-exports': {

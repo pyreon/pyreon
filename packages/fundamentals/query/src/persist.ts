@@ -4,16 +4,22 @@
 // reactive <PersistQueryClientProvider>. Isolated in this subpath so the
 // persist deps stay out of the main @pyreon/query bundle.
 
-// Framework-agnostic persist engine (identity re-export).
+// Framework-agnostic persist engine (identity re-export) …
 export {
   experimental_createQueryPersister,
   PERSISTER_KEY_PREFIX,
+  removeOldestQuery,
+} from '@tanstack/query-persist-client-core'
+// … except the four client-persistence entry points, which carry Pyreon's
+// mutation contract: an unsettled mutation stays persisted until it settles
+// (see persist-mutations.ts). Same signatures as TanStack's.
+export {
   persistQueryClient,
   persistQueryClientRestore,
   persistQueryClientSave,
   persistQueryClientSubscribe,
-  removeOldestQuery,
-} from '@tanstack/query-persist-client-core'
+  shouldPersistMutation,
+} from './persist-mutations'
 export type {
   MaybePromise,
   PersistedClient,
