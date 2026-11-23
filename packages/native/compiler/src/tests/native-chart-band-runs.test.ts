@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 import { kotlinCanvasDataClasses } from '../../../../fundamentals/charts/src/native-plugin/stubs'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const runtime = join(__dirname, '../../..')
 const read = (path: string): string => readFileSync(join(runtime, path), 'utf8')
@@ -71,7 +75,7 @@ const expected = (c: (typeof corpus)[number], target: 'swift' | 'kotlin'): strin
 describe('shipped native band geometry', () => {
   for (const target of ['swift', 'kotlin'] as const) {
     it(`${target}: each filled run closes against its own lower boundary`, (ctx) => {
-      if (target === 'swift' ? !isSwiftcAvailable() : !isKotlincAvailable()) return ctx.skip()
+      if (target === 'swift' ? !isSwiftcAvailable() : !isKotlincAvailable() || resolveJava() === null) return ctx.skip()
       const dir = mkdtempSync(join(tmpdir(), 'pyreon-band-runs-'))
       ctx.onTestFinished(() => rmSync(dir, { recursive: true, force: true }))
       if (target === 'swift') {
@@ -161,7 +165,7 @@ for (a, b) in zip(actual${i}, expected${i}) {
             ],
             { stdio: 'pipe', timeout: 180_000 },
           )
-          execFileSync('java', ['-cp', join(dir, 'run.jar'), 'MainKt'], {
+          execFileSync(JAVA, ['-cp', join(dir, 'run.jar'), 'MainKt'], {
             stdio: 'pipe',
             timeout: 30_000,
           })

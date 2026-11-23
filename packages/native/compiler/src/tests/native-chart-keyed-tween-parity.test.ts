@@ -8,6 +8,10 @@ import { defaultTheme, layoutChart, renderChartIn } from '../../../../fundamenta
 import type { ChartSpec, Series } from '../../../../fundamentals/charts/src/engine/render'
 import type { DrawCmd, Rect } from '../../../../fundamentals/charts/src/engine/types'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * A keyed `<Chart by>` update morphs by row key on BOTH targets — bars, line runs
@@ -123,7 +127,7 @@ function withTempDir<T>(prefix: string, fn: (dir: string) => T): T {
   try { return fn(dir) } finally { rmSync(dir, { recursive: true, force: true }) }
 }
 function jvmPath(): string | undefined {
-  try { execFileSync('java', ['-version'], { stdio: 'ignore' }); return 'java' } catch { /* try known locations */ }
+  try { execFileSync(JAVA, ['-version'], { stdio: 'ignore' }); return JAVA } catch { /* try known locations */ }
   for (const c of ['/opt/homebrew/opt/openjdk/bin/java', '/opt/homebrew/opt/openjdk@17/bin/java', '/usr/bin/java']) if (existsSync(c)) return c
   return undefined
 }

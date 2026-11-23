@@ -5,6 +5,10 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { inferSerializer } from '../../../../fundamentals/url-state/src/serializers'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * `useUrlState('tags', ['a', 'b'])` lowers to a list binding over the web's COMMA format, so the router runtimes'
@@ -143,8 +147,8 @@ function withTempDir<T>(prefix: string, fn: (dir: string) => T): T {
 /** See `native-url-encoder-parity`: a JDK off PATH is the common Homebrew layout, and "no JVM" is easy to conclude wrongly. */
 function jvmPath(): string | undefined {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     // fall through to the off-PATH locations
   }
