@@ -23,7 +23,7 @@ export function commandSourceFiles(repoRoot: string): string[] {
       if (SKIP_DIRS.has(entry) || entry.startsWith('.')) continue
       const full = join(dir, entry)
       if (statSync(full).isDirectory()) walk(full)
-      else if (/\.[cm]?[jt]sx?$/.test(entry) && !/\.(test|spec)\.|\.d\.ts$/.test(entry)) out.push(full)
+      else if (/\.[cm]?[jt]sx?$/.test(entry) && !/\.(?:test|spec)\./.test(entry) && !entry.endsWith('.d.ts')) out.push(full)
     }
   }
   const packagesDir = join(repoRoot, 'packages')
