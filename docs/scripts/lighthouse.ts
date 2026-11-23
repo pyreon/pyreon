@@ -42,12 +42,13 @@ export const STRICT_CATEGORIES = ['accessibility', 'best-practices', 'seo', 'age
 
 /**
  * Performance floor (on the median score) and per-metric budgets (on each
- * metric's median). A category score of 1 is what Lighthouse shows as 100.
- * The budgets sit inside the "good" band of each metric's scoring curve, so a
- * regression in one metric fails here with its name even while the total
- * still rounds to 100.
+ * metric's median). The floor is 0.99, not 1: on GitHub's runners the docs
+ * page's median sat on the 99/100 boundary (Total Blocking Time 0–180 ms
+ * between runs of the same build), so a floor of 1 failed one CI attempt in
+ * three with nothing changed. The budgets sit inside the "good" band of each
+ * metric's scoring curve and fail a regression by name.
  */
-export const PERFORMANCE_FLOOR = 1
+export const PERFORMANCE_FLOOR = 0.99
 export const METRIC_BUDGETS = {
   'first-contentful-paint': 1500,
   'largest-contentful-paint': 2000,

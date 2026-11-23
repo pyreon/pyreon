@@ -124,7 +124,7 @@ describe('lighthouse gate — performance on per-value medians', () => {
     const outlier = withPerf(0.9, 400)
     expect(performanceProblems(performanceMedians([lhr(), outlier, lhr(), lhr(), lhr()]))).toEqual([])
     const problems = performanceProblems(performanceMedians([outlier, outlier, outlier, lhr(), lhr()]))
-    expect(problems).toContain('performance: median score 0.9 (floor 1)')
+    expect(problems).toContain('performance: median score 0.9 (floor 0.99)')
     expect(problems.some((p) => p.includes('total-blocking-time 400 over its budget'))).toBe(true)
   })
 
