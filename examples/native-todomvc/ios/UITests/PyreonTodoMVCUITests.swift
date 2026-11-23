@@ -57,7 +57,7 @@ final class PyreonTodoMVCUITests: XCTestCase {
 
     func test_appLaunchesAndRendersRootView() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         // PMTC emits `data-testid="todo-app"` on the root Stack as
         // `.accessibilityIdentifier("todo-app")` on the SwiftUI view.
@@ -81,7 +81,7 @@ final class PyreonTodoMVCUITests: XCTestCase {
     // state can't false-pass it (the assert is on THIS run's marker).
     func test_todosPersistAcrossRelaunch() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let root = app.otherElements["todo-app"].firstMatch
         XCTAssertTrue(
@@ -108,8 +108,7 @@ final class PyreonTodoMVCUITests: XCTestCase {
         // Full cold restart: terminate() kills the process; launch()
         // starts a fresh one. Anything in memory is gone — the todo can
         // ONLY come back through the storage read path.
-        app.terminate()
-        app.launch()
+        app.relaunchKeepingState()
 
         XCTAssertTrue(
             app.staticTexts[marker].firstMatch.waitToExist(timeout: 30),
@@ -134,7 +133,7 @@ final class PyreonTodoMVCUITests: XCTestCase {
     // The just-added todo is appended last, so the last "Remove" button is its.
     func test_animatedListAddRemove() throws {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
 
         let root = app.otherElements["todo-app"].firstMatch
         XCTAssertTrue(root.waitToExist(timeout: 30), "Root view did not appear")
