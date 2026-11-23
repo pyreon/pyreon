@@ -39,6 +39,7 @@ import { execSync, spawnSync } from 'node:child_process'
 import { SMOKE_SKIPPED_MARKER } from './smoke-marker'
 import { mkdtempSync, writeFileSync, rmSync, readdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { resolveJava } from './java-runtime'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -2397,16 +2398,10 @@ try {
   // macOS ships a /usr/bin/java stub that exits with an install prompt
   // when no JRE is present — `command -v java` returns the path but
   // execution fails. Verify with a real `java -version` probe.
-  const javaAvailable = (() => {
-    try {
-      const probe = spawnSync('java', ['-version'], { encoding: 'utf8' })
-      return probe.status === 0
-    } catch {
-      return false
-    }
-  })()
+  // Never a bare `java` (see `resolveJava`): kotlinc can run on a JDK that PATH does not name.
+  const javaPath = resolveJava()
 
-  if (!javaAvailable) {
+  if (javaPath === null) {
     // Loud and distinct from ✓: a typecheck-only pass is NOT a behaviour pass. The
     // @pyreon/flow port shipped a selectAll/deleteSelected divergence past this
     // line because the smoke never ran locally (java off PATH) and the log read ✓.
@@ -2427,7 +2422,7 @@ try {
     }
   } else {
     const smokeResult = spawnSync(
-      'java',
+      javaPath,
       ['-jar', jarPath, `com.pyreon.runtime.${SERVICE}TestKt`],
       { encoding: 'utf8' },
     )

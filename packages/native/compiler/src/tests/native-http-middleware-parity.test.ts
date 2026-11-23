@@ -32,6 +32,10 @@ import type {
 } from '../../../../fundamentals/http/src/types'
 import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const SWIFT_SRC = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/PyreonHttp.swift')
 /** `PyreonHttp.swift` renders a JS number through `PyreonJSON.jsNumber`, so the real file has to be compiled beside it. */
@@ -434,8 +438,8 @@ function withTempDir<T>(prefix: string, fn: (dir: string) => T): T {
 /** `kotlinc` ships its own JVM for compiling, but running the jar needs one — commonly installed off PATH on a Mac. */
 function jvmPath(): string | undefined {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     // fall through to the off-PATH locations
   }

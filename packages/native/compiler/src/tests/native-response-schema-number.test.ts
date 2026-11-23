@@ -5,6 +5,10 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * A decoded model's `number` fields follow the endpoint's RESPONSE SCHEMA.
@@ -246,7 +250,7 @@ function findKotlinxJars(): { core: string; json: string; plugin: string } | nul
  * then a stub that fails). Same lookup as `native-url-encoder-parity.test.ts`.
  */
 function jvmPath(): string | undefined {
-  for (const c of ['java', '/opt/homebrew/opt/openjdk/bin/java', '/opt/homebrew/opt/openjdk@17/bin/java']) {
+  for (const c of [JAVA, '/opt/homebrew/opt/openjdk/bin/java', '/opt/homebrew/opt/openjdk@17/bin/java']) {
     try {
       execFileSync(c, ['-version'], { stdio: 'ignore' })
       return c

@@ -5,6 +5,10 @@ import { join } from 'node:path'
 import { encodePathParam } from '@pyreon/http'
 import { describe, expect, it } from 'vitest'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * The emit for a RUNTIME path param interpolates
@@ -172,8 +176,8 @@ function withTempDir<T>(prefix: string, fn: (dir: string) => T): T {
  */
 function jvmPath(): string | undefined {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     // fall through to the off-PATH locations
   }

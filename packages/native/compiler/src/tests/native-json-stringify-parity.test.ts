@@ -5,6 +5,10 @@ import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * `JSON.stringify(x)` lowers to `PyreonJSON.stringify` (Swift) and
@@ -164,8 +168,8 @@ function jvmPath(): string | undefined {
     if (existsSync(c)) return c
   }
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     return undefined
   }

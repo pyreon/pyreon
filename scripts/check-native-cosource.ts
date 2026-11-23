@@ -41,6 +41,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { resolveJava } from '../packages/native/runtime-kotlin/scripts/java-runtime'
 import { spawnSwiftToolSync } from '../packages/native/compiler/src/swift-tool'
 import { runSwiftSmoke } from './swift-cosource-smoke'
 import { isCompanionRef, resolveCompanion, type CompanionContext, type CompanionPackage } from './native-companions'
@@ -317,11 +318,14 @@ const kotlincVersion = kotlinc ? toolVersion('kotlinc', '-version') : ''
  * macOS ships a `/usr/bin/java` stub that satisfies `command -v` and then fails
  * with an install prompt, so the probe has to EXECUTE it, not just find it.
  */
-const javaProbe = spawnSync('java', ['-version'], { encoding: 'utf8' })
-const javaRuns = javaProbe.status === 0
+// Never a bare `java`: on a Mac whose JDK is Homebrew's keg-only openjdk, `java` on PATH is the stub while kotlinc
+// runs fine (`resolveJava` asks kotlinc which JVM it uses).
+const javaPath = resolveJava()
+const javaProbe = javaPath === null ? undefined : spawnSync(javaPath, ['-version'], { encoding: 'utf8' })
+const javaRuns = javaProbe?.status === 0
 // kotlinc may use JAVA_HOME; the PATH java that executes the smoke is a
 // separate runtime and its version must also determine the verdict key.
-const javaVersion = javaRuns ? `${javaProbe.stdout ?? ''}\0${javaProbe.stderr ?? ''}` : ''
+const javaVersion = javaRuns ? `${javaProbe?.stdout ?? ''}\0${javaProbe?.stderr ?? ''}` : ''
 
 /** A skipped smoke is a broken runner under the same flag the toolchains use. */
 const requireNativeValidate = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'

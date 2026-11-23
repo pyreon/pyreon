@@ -41,6 +41,7 @@ function fixture(grouped: boolean, hasTest = true) {
   // The checker spawns swiftc through the compiler's helper (one temp dir per call).
   copy('packages/native/compiler/src/swift-tool.ts')
   const harness = 'packages/native/runtime-kotlin/scripts'
+  copy(`${harness}/java-runtime.ts`)
   copy(`${harness}/verdict-cache.ts`)
   copy(`${harness}/smoke-marker.ts`)
   write(

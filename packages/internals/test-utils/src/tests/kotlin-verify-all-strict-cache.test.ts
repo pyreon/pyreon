@@ -33,6 +33,7 @@ function fixture(service = 'PyreonFixture') {
     'services.ts',
     'verdict-cache.ts',
     'smoke-marker.ts',
+    'java-runtime.ts',
   ]) {
     copyFileSync(join(ROOT, 'packages/native/runtime-kotlin/scripts', file), join(scripts, file))
   }

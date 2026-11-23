@@ -6,6 +6,10 @@ import { describe, expect, it } from 'vitest'
 // The ORACLE: the web's own query serializer, not a re-statement of it.
 import { buildQuery } from '../../../../fundamentals/http/src/url'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * A RUNTIME query value (`query: { q: search(), page: page() }`) cannot be serialized at compile time, so the emit
@@ -126,8 +130,8 @@ const extract = (path: string, opener: string): string => {
 
 function jvmPath(): string | undefined {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     // fall through to the off-PATH locations
   }
