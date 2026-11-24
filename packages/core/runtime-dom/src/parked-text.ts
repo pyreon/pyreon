@@ -111,8 +111,6 @@ export type SlotHydrator = (
   children: VNodeChild | VNodeChild[],
   parent: Node,
   open: Comment | null,
-  /** From `_setChild`: claim the element as a #4599 region (see `_park`). */
-  setChild?: boolean,
 ) => () => void
 
 export let _slotHydrator: SlotHydrator | null = null

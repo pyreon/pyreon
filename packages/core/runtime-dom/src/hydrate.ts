@@ -77,7 +77,7 @@ import {
   mountChild,
   mountOwned,
 } from './mount'
-import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
+import { buildRowPlan, findMatchingClose, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import { _hideRegions, _settleRegions } from './regions'
@@ -1391,31 +1391,26 @@ function hydrateMountHole(
  * install, so it is walked against the range directly and the markers removed
  * here.
  */
-function hydrateMountSlot(
-  children: VNodeChild | VNodeChild[],
-  parent: Node,
-  open: Comment | null,
-  setChild?: boolean,
-): Cleanup {
-  // `_setChild` (#4599): claim the element by identity (its mark, see `_park`).
-  // A region hidden from user code is put back when that code left the element
-  // empty; when it did not, the server nodes stay dropped and the value mounts
-  // after that code's nodes, as on a fresh render. A recorded region is swept
-  // of what the walk leaves; an unrecorded element adopts as before #4599.
-  const region = setChild === true ? _takeParked(parent) : undefined
-  if (region != null && region.nodeType === 11) {
-    if (parent.firstChild !== null) return mountChild(children, parent, null)
-    parent.appendChild(region)
-  }
+function hydrateMountSlot(children: VNodeChild | VNodeChild[], parent: Node, open: Comment | null): Cleanup {
   // Dev: mismatch paths below run from the hydration root through the slot's
   // element (`root > div > reactive > b`), as the h() walk spells them; in
   // production they keep the bare `slot` prefix.
+  const slotPath = process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot'
   // MARKER-LESS REGION — the slot was its element's SOLE child, so
   // runtime-server elided the `<!--$-->` pair and the extent is the parent's
   // entire child list. See `_mountSlot` for why a `null` open provably means
   // SOLE rather than merely last.
-  const slotPath = process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot'
   if (open === null) {
+    // A `_setChild` region (#4599) is claimed by identity: only `_setChild`
+    // hands over an element the verifier marked (a template-empty one). One
+    // hidden from user code gets its nodes back when that code left it empty;
+    // when it did not, they stay dropped and the value mounts after that
+    // code's nodes, as on a fresh render.
+    const region = _takeParked(parent)
+    if (region?.nodeType === 11) {
+      if (parent.firstChild !== null) return mountChild(children, parent, null)
+      parent.appendChild(region)
+    }
     const first = parent.firstChild
     if (typeof children === 'function') {
       // SSR rendered nothing into the slot, so there is no region to adopt —
@@ -1461,20 +1456,7 @@ function hydrateMountSlot(
     return hydrateChild(children, open, parent, null, slotPath)[0]
   }
   // Locate the range end (depth-aware — accessor ranges nest).
-  let close: ChildNode | null = null
-  let depth = 0
-  for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
-    if (n.nodeType !== 8) continue
-    const d = (n as Comment).data
-    if (d === '$') depth++
-    else if (d === '/$') {
-      if (depth === 0) {
-        close = n
-        break
-      }
-      depth--
-    }
-  }
+  const close = findMatchingClose(open)
   if (close === null) {
     // No range to adopt (shouldn't reach here — the verifier only admits a
     // container whose slot range is well-formed). Fall back to mounting.

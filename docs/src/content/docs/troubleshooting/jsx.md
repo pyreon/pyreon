@@ -123,9 +123,15 @@ An expression child of a templated element that builds JSX (`{items.map((x) => <
 A template's skeleton is adoptable only while it fully describes the DOM it claims. For a trailing mount hole the compiler bakes `data-pyreon-hole` (`TPL_HOLE_ATTR`) on the element, which `_tpl` strips at parse time.
   - `matchDomAgainstTemplate` matches the template's own `k` children, then skips the hole range; `k` is read off the template (`el.children.length`), so no count crosses the compiler/runtime boundary.
   - The bind hydrates the range instead of mounting into it (`_mountChild` in hydrate mode), and sweeps whatever it did not claim.
-  - The hole must be declared, never inferred: `_setChild` and spread `innerHTML` also fill empty elements and do not hydrate. A verifier relaxation alone duplicates content.
+  - The hole must be declared, never inferred: spread `innerHTML` also fills empty elements and does not hydrate. A verifier relaxation alone duplicates content. (`_setChild` now hydrates its own element: the next entry.)
   - The parent's closing tag supplies the extent, so SSR emits no extra markers. Anything static after a component is not absorbed.
   - Reference: `compiler/src/jsx.ts:TPL_HOLE_ATTR` + `processChildren` (both backends), `runtime-dom/src/template.ts`, `hydration-plan.ts:matchDomAgainstTemplate`. Locked by `runtime-dom/src/tests/hydrate-template-hole-limit.test.tsx` + `mount-hole-adoption.browser.test.tsx`. Bisect per backend: `transformJSX` prefers the native binary, so reverting only the JS side passes.
+
+---
+
+### [FIXED, 2026-11] Hydration that removes or positions server content it did not record (#4599).
+
+An element the template leaves empty and `_setChild` fills holds the server's marker-less rendering of a structural value; the verifier used to refuse it, so the whole template was re-created. Adopting it has one rule: **hydration removes only what it recorded as server content, and claims by element identity, never by position.** A `ref` or spread runs in the same bind BEFORE `_setChild` and can clear, prepend, append or insert: earlier designs that claimed by position deleted the ref's node or crashed, and a sweep of nodes nobody recorded (plan-replayed `<For>` rows, sole `_mountSlot`) deleted client nodes. The fix records the ELEMENT (the #4385 park mark, never on a plain text cell), hides its server nodes in a fragment before user code runs (`_userCodeHook`), puts them back only into an element user code left empty, and otherwise mounts fresh after that code's nodes; a bind that throws gets every fragment back and loses nothing. Reference: `runtime-dom/src/regions.ts`, `parked-text.ts`, `hydration-plan.ts:matchDomAgainstTemplate` (region branch), `replayAdoptPlan` (element-count check). Locked by `runtime-dom/src/tests/setchild-empty-element-adoption.test.tsx` (every shape × ref × full verify, plan replay and `h()`) and its `.browser` twin.
 
 ---
 

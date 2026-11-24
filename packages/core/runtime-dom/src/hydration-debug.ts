@@ -1,3 +1,6 @@
+import { _takeParked } from './parked-text'
+
+
 /**
  * Hydration mismatch warnings + telemetry hook.
  *
@@ -256,4 +259,31 @@ export function reportRegionLost(el: Element, server: Node, after: string): void
   const path = compiledMismatchPath(el, 'text')
   if (text !== after) warnHydrationMismatch('text', after, text, path)
   else if (first !== null) warnHydrationMismatch('tag', after === '' ? '' : '#text', first.tagName.toLowerCase(), path)
+}
+
+/**
+ * Dev, adopting: `_setChild`'s text write (`write` is its production write),
+ * reported if it changed the server's content. A #4599 region's server
+ * structure, hidden or in place, replaced by text is reported against that
+ * structure; production leaves the mark to `_settleRegions`, which finds the
+ * element's content replaced.
+ */
+export function devAdoptedTextWrite(
+  node: Element,
+  fc: ChildNode | null,
+  text: string | number,
+  write: (node: Element, text: string | number) => void,
+): void {
+  const before = node.textContent ?? ''
+  if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
+    ;(fc as Text).data = text as string
+    reportTextWrite(node, before, 'text')
+
+    return
+  }
+  const s = _takeParked(node)
+  const server = s == null ? null : s.nodeType === 11 ? s : node.cloneNode(true)
+  write(node, text)
+  if (server === null) reportTextWrite(node, before, 'text')
+  else reportRegionLost(node, server, node.textContent ?? '')
 }

@@ -608,10 +608,10 @@ interface TplSig {
    */
   holes: Int32Array | null
   /**
-   * Per element (tree order): the template leaves it with NO child nodes and it
-   * is neither a hole nor a declared innerHTML element. `_setChild` fills such
-   * an element (#4599), so its server content is the value's rendering; see the
-   * region branch of the verify walk.
+   * Per element (tree order): the template leaves it with NO child nodes. Unless
+   * it is a hole or a declared innerHTML element (both handled first), only
+   * `_setChild` fills such an element (#4599), so its server content is the
+   * value's rendering; see the region branch of the verify walk.
    */
   empty: boolean[]
   /** Number of declared holes — 0 lets every hole-aware branch short-circuit. */
@@ -790,7 +790,9 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     const isHtml = _isTplHtmlEl(el) && el.firstChild === null && !isHole
     htmlFlags.push(isHtml)
     if (isHtml) htmlCount++
-    emptyList.push(el.firstChild === null && !isHole && !isHtml)
+    // A hole or a declared innerHTML element never reaches the region branch:
+    // the verify walk returns on both first.
+    emptyList.push(el.firstChild === null)
     for (let c = el.firstElementChild; c && !bail; c = c.nextElementSibling) walk(c)
   }
   walk(root)
@@ -1452,7 +1454,7 @@ function collapseMidSlots(
 }
 
 /** The `/$` closing `open`'s range at depth 0, or `null` (accessor ranges nest). */
-function findMatchingClose(open: Comment): Comment | null {
+export function findMatchingClose(open: Comment): Comment | null {
   let depth = 0
   for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
     if (n.nodeType !== 8) continue

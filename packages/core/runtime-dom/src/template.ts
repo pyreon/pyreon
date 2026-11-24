@@ -28,7 +28,7 @@ import {
   _markServerText,
   rangeText,
   reportFirstText,
-  reportRegionLost,
+  devAdoptedTextWrite,
   reportTextWrite,
 } from './hydration-debug'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
@@ -164,11 +164,11 @@ export function _setChild(node: Element, value: unknown): void {
   // strength of a row whose cell held a string. Both kinds go to the
   // marker-less slot hydrator, which walks the value against the server's
   // child list and adopts it.
-  // `true`: the hydrator claims a #4599 region by identity (see `_park` and
-  // `regions.ts`), or mounts fresh where user code filled it.
+  // A #4599 region is claimed there by identity (see `_park`, `regions.ts`),
+  // or mounted fresh where user code filled it.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
-      ownByScope(_slotHydrator(value as never, node, null, true))
+      ownByScope(_slotHydrator(value as never, node, null))
       return
     }
     // The element leaves as a unit with its template, so the mount needs only
@@ -194,20 +194,7 @@ export function _setChild(node: Element, value: unknown): void {
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
-      const before = node.textContent ?? ''
-      if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-        ;(fc as Text).data = text as string
-        reportTextWrite(node, before, 'text')
-      } else {
-        // A recorded region's server structure (#4599), hidden or in place,
-        // replaced by text: reported against that structure. Production leaves
-        // the mark to `_settleRegions`, which finds it replaced.
-        const s = _takeParked(node)
-        const server = s == null ? null : s.nodeType === 11 ? s : node.cloneNode(true)
-        _replaceText(node, text)
-        if (server === null) reportTextWrite(node, before, 'text')
-        else reportRegionLost(node, server, node.textContent ?? '')
-      }
+      devAdoptedTextWrite(node, fc, text, _replaceText)
 
       return
     }
