@@ -1589,8 +1589,11 @@ jobs:
       # matches the Rust path. Without it only the JS fallback is exercised —
       # which is exactly what shipped the 6 divergences caught in #491.
       # The binary is a pure function of the crate's sources, so restore it by
-      # their hash first (`compiler-native-bin-`; the default branch's push
-      # run saves it below, so every ref reads one entry per source hash).
+      # their hash first (`compiler-native-bin-`). This job only RESTORES:
+      # the one writer is `Coverage (Full)` in ci-main.yml, which runs on
+      # every default-branch push and saves on a miss, so every ref reads one
+      # entry per source hash (check-cache-key-sync: one writer per path). A
+      # PR that changes Rust sources misses here and builds, as before.
       # On a hit the toolchain, the registry and the
       # cargo build are skipped and the touch makes build-native.ts's mtime
       # check a no-op (checkout stamps the sources newer than a restored file).
@@ -1636,14 +1639,6 @@ jobs:
             exit 1
           fi
           echo "Binary OK: $(ls -la $BIN)"
-      # Default branch only, so every ref reads one shared entry. The key
-      # repeats the restore's hashFiles list verbatim (check-cache-key-sync).
-      - name: Save native compiler binary (main only)
-        if: ${{ !cancelled() && steps.native-bin.outputs.cache-hit != 'true' && github.event_name == 'push' && hashFiles('packages/core/compiler/native/pyreon-compiler.node') != '' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: packages/core/compiler/native/pyreon-compiler.node
-          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/Cargo.toml', 'packages/core/compiler/native/**/*.rs') }}
       - name: Test (Rust binary) — @pyreon/compiler suite against the binary
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         # This job built and asserted the binary above, so specs that guard

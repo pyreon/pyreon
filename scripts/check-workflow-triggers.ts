@@ -8,9 +8,10 @@
  *
  *  1. a workflow triggered by `pull_request` has no workflow-level
  *     `concurrency` whose `cancel-in-progress` can be true for a pull request
- *     (a superseded run would hold its runners to the end). Exempt only a
- *     workflow whose pull_request trigger is `types: [closed]` alone: a PR
- *     closes once, so there is nothing to supersede.
+ *     (a superseded run would hold its runners to the end). Exempt a workflow
+ *     whose pull_request `types:` leave out `synchronize` (`[closed]`,
+ *     `[opened]`, `[labeled]`): no push supersedes its run, and cancelling a
+ *     label-driven run on the next label would drop work.
  *  2. a workflow with `merge_group` keys its concurrency group on
  *     `github.event.pull_request.number` without a `|| …` fallback: the number
  *     is empty in a merge group, so every group would share one key and cancel
@@ -90,8 +91,12 @@ export function checkWorkflow(file: string, text: string): string[] {
   const conc = topBlock(text, 'concurrency')
   const group = conc.find((l) => /^ {2}group:/.test(l))?.replace(/^ {2}group:\s*/, '') ?? ''
   const cancel = conc.find((l) => /^ {2}cancel-in-progress:/.test(l))?.replace(/^ {2}cancel-in-progress:\s*/, '') ?? ''
-  const closedOnly = types !== null && types.length === 1 && types[0] === 'closed'
-  if (!closedOnly && (!group || !/true|pull_request/.test(cancel))) {
+  // Only a push to the PR (`synchronize`, part of the default types) makes an
+  // earlier run stale. A trigger that lists types without it (`[closed]`,
+  // `[opened]`, `[labeled]`) has nothing to supersede, and cancelling there
+  // would be wrong: a second label would cancel the first label's run.
+  const pushDriven = types === null || types.includes('synchronize')
+  if (pushDriven && (!group || !/true|pull_request/.test(cancel))) {
     findings.push(
       `${file}: triggered by pull_request but has no workflow-level concurrency that cancels a superseded PR run ` +
         '(add `concurrency: { group: <name>-${{ github.event.pull_request.number || github.ref }}, cancel-in-progress: true }`)',

@@ -28,8 +28,11 @@ describe('check-workflow-triggers — superseded-run cancellation', () => {
     expect(checkWorkflow('a.yml', pr('  pull_request:', cancelling))).toEqual([])
   })
 
-  it('exempts a closed-only trigger (a PR closes once) and ignores non-PR workflows', () => {
+  it('exempts a trigger no push supersedes (types without synchronize) and ignores non-PR workflows', () => {
     expect(checkWorkflow('a.yml', pr('  pull_request:\n    types: [closed]'))).toEqual([])
+    expect(checkWorkflow('a.yml', pr('  pull_request:\n    types: [opened]'))).toEqual([])
+    expect(checkWorkflow('a.yml', pr('  pull_request:\n    types: [labeled, unlabeled]'))).toEqual([])
+    expect(checkWorkflow('a.yml', pr('  pull_request:\n    types: [opened, synchronize]'))[0]).toContain('no workflow-level concurrency')
     expect(checkWorkflow('a.yml', pr('  push:\n    branches: [main]'))).toEqual([])
   })
 

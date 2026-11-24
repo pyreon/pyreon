@@ -35,7 +35,7 @@
  *   when every one of those runs concluded success (attempt 1 or later).
  */
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -470,9 +470,30 @@ async function listRuns(from: number, to: number, opts: Options, out: Map<number
   })
 }
 
+function jobsFile(run: Run, opts: Options): string {
+  return join(opts.cache, 'jobs', `${run.id}-${run.run_attempt}.json`)
+}
+
+/**
+ * The cached job list for one run attempt, or null when it is not cached.
+ * One read, no exists-then-read: a check followed by a separate open can see
+ * a different file (CodeQL js/file-system-race).
+ */
+function readCachedJobs(file: string): Job[] | null {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
+  }
+  return JSON.parse(text) as Job[]
+}
+
 async function fetchJobs(run: Run, opts: Options): Promise<Job[] | null> {
-  const file = join(opts.cache, 'jobs', `${run.id}-${run.run_attempt}.json`)
-  if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf8')) as Job[]
+  const file = jobsFile(run, opts)
+  const hit = readCachedJobs(file)
+  if (hit) return hit
   const jobs: Job[] = []
   for (let page = 1; page <= 10; page++) {
     const res = await gh<{ total_count: number; jobs: Job[] }>(
@@ -685,14 +706,16 @@ async function main(): Promise<void> {
       r.event !== 'workflow_run' ||
       (opts.includeWorkflowRun && (r.conclusion === 'success' || r.conclusion === 'failure')),
   )
-  const cached = eligible.filter((r) => existsSync(join(opts.cache, 'jobs', `${r.id}-${r.run_attempt}.json`)))
-  const cachedIds = new Set(cached.map((r) => r.id))
-  const todo = eligible.filter((r) => !cachedIds.has(r.id))
+  const jobsByRun = new Map<number, Job[]>()
+  const todo: Run[] = []
+  for (const r of eligible) {
+    const hit = readCachedJobs(jobsFile(r, opts))
+    if (hit) jobsByRun.set(r.id, hit)
+    else todo.push(r)
+  }
   const budget = opts.offline ? 0 : Math.min(opts.maxJobFetches, Math.max(0, (await remaining()) - opts.reserve))
   // Newest first: when the budget is short the recent window is complete.
   todo.sort((a, b) => ms(b.created_at)! - ms(a.created_at)!)
-  const jobsByRun = new Map<number, Job[]>()
-  for (const r of cached) jobsByRun.set(r.id, (await fetchJobs(r, opts))!)
   let fetched = 0
   await pool(todo.slice(0, budget), opts.concurrency, async (r) => {
     const jobs = await fetchJobs(r, opts)
