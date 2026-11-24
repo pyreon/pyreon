@@ -109,7 +109,7 @@ const numberTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _var
   make('formatNumber', locale, { signDisplay: 'negative', ...optionsOf<Opts>(options, NUMBER_PRESETS, 'formatNumber') }),
 )
 
-const EXPECTED_NUMBER = 'a number, a bigint or a decimal string such as "-1234.5" (NaN is not a number)'
+const EXPECTED_NUMBER = 'a number, a bigint or a decimal string such as "-1234.5" within the double range (NaN is not a number)'
 
 /** Invalid: not a number, not a bigint, not a decimal string, or NaN. Nullish is "missing", not invalid. */
 export function badNumber(fn: string, value: unknown, fallback: string): string {
@@ -139,9 +139,12 @@ export function isDecimal(value: string): boolean {
   return i === len && i > fracStart
 }
 
-/** A value `Intl.NumberFormat` formats exactly: a number (not NaN), a bigint, or a decimal string. */
+/**
+ * A value `Intl.NumberFormat` formats exactly: a number (not NaN), a bigint, or a decimal string within the double range
+ * (any precision, but beyond about 1.8e308 every engine prints `∞`, so such a string is invalid rather than shown wrong).
+ */
 export function isUsable(value: unknown): value is number | bigint | `${number}` {
-  return typeof value === 'bigint' || (typeof value === 'number' && value === value) || (typeof value === 'string' && isDecimal(value))
+  return typeof value === 'bigint' || (typeof value === 'number' && value === value) || (typeof value === 'string' && isDecimal(value) && Number.isFinite(Number(value)))
 }
 
 export function numberIn(locale: string, value: NumberInput, options: NumberOptions | NumberPreset | undefined): string {
@@ -323,7 +326,7 @@ function currencyFormat(fn: string, locale: string, code: string, digits: number
 /** Format a Money with its own digits; `expected` (a currency formatter's code) must match its currency. */
 function moneyText(fn: string, locale: string, m: MoneyLike, options: CurrencyOptions | CurrencyPreset | undefined, expected: string | undefined): string {
   const fallback = fallbackOf(options)
-  if (!isDecimal(m.amount)) return badNumber(fn, m.amount, fallback)
+  if (!isUsable(m.amount)) return badNumber(fn, m.amount, fallback)
   if (!isCode(m.currency)) return badCurrency(fn, m.currency, fallback)
   if (expected !== undefined && m.currency !== expected) {
     if (process.env.NODE_ENV !== 'production') {
@@ -697,7 +700,7 @@ export const currencyKind: KindDef<'currency'> = {
     }
     const fn = 'currencyFormatter'
     /** A Money in another currency or with a malformed amount: warn (dev) and give the fallback. */
-    const wrong = (m: MoneyLike): boolean => m.currency !== code || !isDecimal(m.amount)
+    const wrong = (m: MoneyLike): boolean => m.currency !== code || !isUsable(m.amount)
     /** The format for a value (a Money uses its digits); `undefined` for too many digits. */
     const formatFor = (l: string, digits: number | undefined): Intl.NumberFormat | undefined => currencyFormat(fn, l, code, digits, spec)
 

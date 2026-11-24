@@ -9,7 +9,7 @@
  */
 
 type Exact = number | bigint | string
-type Part = Intl.NumberFormatPart & { source?: string }
+type Part = { type: string; value: string; source?: string }
 
 const NUMERIC = new Set(['integer', 'group', 'decimal', 'fraction'])
 
@@ -92,17 +92,35 @@ function numericRuns(parts: readonly Part[]): string[] {
 
 const join = (parts: readonly Part[]): string => parts.reduce((text, part) => text + part.value, '')
 
+/** Parts that carry meaning beside the digits: everything but digits, literals (spacing, the range separator) and `~`. */
+function significant(parts: readonly Part[]): string {
+  let key = ''
+  for (const part of parts) {
+    if (!NUMERIC.has(part.type) && part.type !== 'literal' && part.type !== 'approximatelySign') key += `${part.type}\u0001${part.value}\u0002`
+  }
+
+  return key
+}
+
+/** The layout as one end sees it: its own parts and the shared ones (a collapsed currency or compact suffix). */
+const viewOf = (layout: readonly Part[], source: string): Part[] => layout.filter((p) => (p.source ?? 'shared') === source || (p.source ?? 'shared') === 'shared')
+
 /**
- * Rewrite the structure's numeric runs with the exact ones, per source (`startRange`, `endRange`, or `shared` for an
- * approximately-equal range). `undefined` when the shapes differ (a rounding carry changed a compact suffix or an exponent).
+ * Rewrite the layout's numeric runs with the exact ones, per source (`startRange`, `endRange`, or `shared` for an
+ * approximately-equal range). `undefined` when anything beside the digits differs between the layout and the exact end:
+ * the double rounded across a power of ten (a compact suffix K to M, an exponent E17 to E18) or a plural form changed
+ * (French "dollar" / "dollars", a long unit name).
  */
-function substitute(structure: readonly Part[], bySource: Record<string, string[]>): string | undefined {
+function substitute(layout: readonly Part[], ends: Record<string, readonly Part[]>): string | undefined {
+  for (const [source, parts] of Object.entries(ends)) {
+    if (significant(viewOf(layout, source)) !== significant(parts)) return undefined
+  }
+  const runs: Record<string, string[]> = {}
+  for (const [source, parts] of Object.entries(ends)) runs[source] = numericRuns(parts)
   const used: Record<string, number> = {}
-  const seen: Record<string, number> = {}
   let out = ''
   let inRun = false
-  for (const part of structure) {
-    const source = part.source ?? 'shared'
+  for (const part of layout) {
     if (!NUMERIC.has(part.type)) {
       inRun = false
       out += part.value
@@ -110,44 +128,61 @@ function substitute(structure: readonly Part[], bySource: Record<string, string[
     }
     if (inRun) continue
     inRun = true
-    const runs = bySource[source]
+    const source = part.source ?? 'shared'
     const index = used[source] ?? 0
-    const run = runs?.[index]
+    const run = runs[source]?.[index]
     if (run === undefined) return undefined
     used[source] = index + 1
-    seen[source] = runs?.length ?? 0
     out += run
   }
-  for (const source of Object.keys(used)) if (used[source] !== seen[source]) return undefined
+  for (const source of Object.keys(runs)) if ((used[source] ?? 0) !== runs[source]?.length) return undefined
 
   return out
 }
 
+/** The range separator of a layout: the literal parts between the start's last part and the end's first. */
+function separatorOf(layout: readonly Part[]): string {
+  const lastStart = layout.findLastIndex((p) => p.source === 'startRange')
+  const firstEnd = layout.findIndex((p) => p.source === 'endRange')
+
+  return lastStart === -1 || firstEnd === -1 ? '' : join(layout.slice(lastStart + 1, firstEnd))
+}
+
+/** Two distinct doubles from `lo` up that format distinctly: the range layout of distinct ends. */
+function distinctLayout(intl: Intl.NumberFormat, d1: number, d2: number): Part[] {
+  let hi = d2
+  for (let i = 0; i < 64 && (hi <= d1 || intl.format(hi) === intl.format(d1)); i++) hi = nextUp(hi <= d1 ? d1 : hi)
+
+  return intl.formatRangeToParts(d1, hi) as Part[]
+}
+
 /**
  * `intl.formatRange(lo, hi)` with exact digits for bigint and decimal-string ends; `lo <= hi` already (see {@link greater}).
- * Equal formatted ends keep `Intl`'s approximately form.
+ * Equal formatted ends keep `Intl`'s approximately form. When the doubles cannot stand in for the exact ends (beyond the
+ * double range, or a different suffix, exponent or plural form), the two exact ends are joined by the locale's separator.
  */
 export function exactRange(intl: Intl.NumberFormat, lo: Exact, hi: Exact): string {
   if (typeof lo === 'number' && typeof hi === 'number') return intl.formatRange(lo, hi)
   const low = intl.formatToParts(lo as `${number}`) as Part[]
   const high = intl.formatToParts(hi as `${number}`) as Part[]
   const d1 = Number(lo)
-  let structure: Part[]
+  const d2 = Number(hi)
+  const finite = Number.isFinite(d1) && Number.isFinite(d2)
   if (join(low) === join(high)) {
-    structure = intl.formatRangeToParts(d1, d1) as Part[]
-    const runs = numericRuns(low)
+    const layout = finite ? (intl.formatRangeToParts(d1, d1) as Part[]) : undefined
+    const exact = layout === undefined ? undefined : substitute(layout, { shared: low })
+    if (exact !== undefined) return exact
+    // The locale's approximately sign, placed as it places it for a small value, around the exact text.
+    const approx = intl.formatRangeToParts(1, 1) as Part[]
+    const at = approx.findIndex((p) => p.type !== 'approximatelySign' && p.type !== 'literal')
+    const text = join(low)
+    const one = join(intl.formatToParts(1) as Part[])
 
-    return substitute(structure, { shared: runs, startRange: runs, endRange: runs }) ?? join(structure)
+    return at === -1 ? text : join(approx).replace(one, text)
   }
-  // Distinct doubles that format distinctly give the range's real structure (shared parts, separator).
-  let d2 = Number(hi)
-  for (let i = 0; i < 64 && (d2 <= d1 || intl.format(d2) === intl.format(d1)) && Number.isFinite(d2); i++) d2 = nextUp(d2 <= d1 ? d1 : d2)
-  structure = intl.formatRangeToParts(d1, d2) as Part[]
-  const exact = substitute(structure, { startRange: numericRuns(low), endRange: numericRuns(high), shared: [] })
+  const layout = finite ? distinctLayout(intl, d1, d2) : undefined
+  const exact = layout === undefined ? undefined : substitute(layout, { startRange: low, endRange: high })
   if (exact !== undefined) return exact
-  // The shapes differ: the two exact ends, joined by the range's own literal between its start and end parts.
-  const lastStart = structure.findLastIndex((p) => p.source === 'startRange')
-  const firstEnd = structure.findIndex((p) => p.source === 'endRange')
 
-  return join(low) + join(structure.slice(lastStart + 1, firstEnd)) + join(high)
+  return join(low) + separatorOf(layout ?? distinctLayout(intl, 1, 2)) + join(high)
 }

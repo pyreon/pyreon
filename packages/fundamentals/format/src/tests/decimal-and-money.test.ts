@@ -60,6 +60,32 @@ describe('decimal strings are formatted exactly by every number formatter', () =
     expect(reactive.formatNumberRange('12345678901234567.19', '12345678901234567.11', two)).toBe('12,345,678,901,234,567.11–12,345,678,901,234,567.19')
   })
 
+  // The doubles standing in for the layout can round across a power of ten or change a plural form: everything beside the
+  // digits must come from the exact ends, never from the doubles.
+  it('a range keeps the exact ends\' compact suffix, exponent and plural form', () => {
+    const n = (o: object) => ({ locale: 'en', ...o })
+    expect(core.formatNumberRange('999999.99999999999999995', '999999.99999999999999999', n({ notation: 'compact', maximumFractionDigits: 20 }))).toBe(
+      '999.99999999999999999995K – 999.99999999999999999999K',
+    )
+    expect(core.formatNumberRange('999.999999999999999995', '999.999999999999999999', n({ notation: 'engineering', maximumFractionDigits: 20 }))).toBe(
+      '999.999999999999999995E0 – 999.999999999999999999E0',
+    )
+    expect(core.currencyFormatter('EUR', n({ notation: 'compact', maximumSignificantDigits: 21 })).range('999999.999999999999999', '999999.999999999999999')).toBe(
+      '~€999.999999999999999999K',
+    )
+    expect(
+      core.currencyFormatter('USD', { locale: 'fr', currencyDisplay: 'name' }).range({ amount: '1.00', currency: 'USD' }, { amount: '12345678901234567.11', currency: 'USD' }),
+    ).toBe('1,00 dollar des États-Unis–12 345 678 901 234 567,11 dollars des États-Unis')
+  })
+
+  it('a decimal string beyond the double range is invalid (every engine prints it as infinity), not shown wrong', () => {
+    const huge = `1${'0'.repeat(400)}`
+    expect(core.formatNumber(huge, { ...en, fallback: '?' })).toBe('?')
+    expect(core.formatNumberRange('1', huge, { ...en, fallback: '?' })).toBe('?')
+    expect(core.currencyFormatter('EUR', { ...en, fallback: '?' }).range({ amount: '1.00', currency: 'EUR' }, { amount: `${huge}.00`, currency: 'EUR' })).toBe('?')
+    expect(core.formatNumber(`1${'0'.repeat(300)}`, en)).toHaveLength(401)
+  })
+
   it('mixed number, bigint and string ends equal as doubles are ordered exactly', () => {
     expect(core.formatNumberRange('9007199254740993', 9007199254740992, en)).toBe('9,007,199,254,740,992–9,007,199,254,740,993')
     expect(core.formatNumberRange(9007199254740992, '9007199254740993', en)).toBe('9,007,199,254,740,992–9,007,199,254,740,993')

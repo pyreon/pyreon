@@ -7,8 +7,8 @@
 /**
  * A number-like input: a number, a bigint, or a decimal string (`"9.99"`, `"-12345678901234567.89"`: an optional `-`,
  * digits, an optional `.` and digits). A decimal string is formatted exactly, at any size and precision, with no
- * conversion to a binary float. `null` / `undefined` format as the `fallback`; any other string (`"1e3"`, `" 12 "`, `""`)
- * is invalid.
+ * conversion to a binary float, up to the double range (beyond about 1.8e308 it is invalid: engines print infinity).
+ * `null` / `undefined` format as the `fallback`; any other string (`"1e3"`, `" 12 "`, `""`) is invalid.
  */
 export type NumberInput = number | bigint | string | null | undefined
 

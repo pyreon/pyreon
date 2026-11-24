@@ -102,7 +102,7 @@ describe('currencies', () => {
     expect(money('1.00', 'VED')).toEqual({ amount: '1.00', currency: 'VED' })
     expect(currencyDigits('XAU')).toBe(2)
     // Withdrawn codes some engines still list are not current ISO 4217 codes.
-    for (const code of ['BYR', 'HRK', 'DEM', 'SLL', 'ZWL', 'CUC']) expect(isCurrency(code), code).toBe(false)
+    for (const code of ['BGN', 'ANG', 'BYR', 'HRK', 'DEM', 'SLL', 'ZWL', 'CUC']) expect(isCurrency(code), code).toBe(false)
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
     defineCurrency('HRK', { digits: 2 })
