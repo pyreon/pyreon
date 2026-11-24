@@ -114,6 +114,25 @@ function _isMountableTextValue(v: unknown): boolean {
 }
 
 /**
+ * Replace `node`'s children with ONE text node holding `text` — the
+ * `textContent =` write, except that a NUMBER reaches the DOM unconverted.
+ *
+ * Why a number is never `String()`-ed here: JS-side Number→String of more than
+ * ~200 distinct integers makes V8 grow its Number→String cache
+ * (`smi_string_cache`, a GC root) to its full size, ~64 KB that is never given
+ * back. The DOM's own conversion (WebIDL `DOMString`, which is ECMAScript
+ * `ToString`, so the characters are identical) does not touch that cache. A
+ * `<For>` of rows rendering `{row.id}` paid the 64 KB once per page.
+ *
+ * Why not `textContent = n`: happy-dom writes `''` for a falsy number (`0`,
+ * `NaN`). `replaceChildren(n)` converts per the spec in every environment.
+ */
+function _replaceText(node: Element, text: string | number): void {
+  if (typeof text === 'number') node.replaceChildren(text as unknown as string)
+  else node.textContent = text
+}
+
+/**
  * Compiler-emitted STATIC child setter for a bare `{x}` child whose type the
  * compiler could not statically resolve (a function param, a custom prop, a
  * function-return const). Primitives take the historical `textContent` fast
@@ -166,25 +185,25 @@ export function _setChild(node: Element, value: unknown): void {
     // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`, and the
     // DOM's handling of a number is not even uniform across implementations
     // (happy-dom writes `''` for `0`). A string, the dominant value, skips the
-    // call.
-    const text = typeof value === 'string' ? value : _childText(value)
+    // call. A NUMBER is handed to the DOM unconverted (see `_replaceText`).
+    const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = node.textContent ?? ''
       if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-        ;(fc as Text).data = text
+        ;(fc as Text).data = text as string
       } else {
-        node.textContent = text
+        _replaceText(node, text)
       }
       reportTextWrite(node, before, 'text')
 
       return
     }
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-      ;(fc as Text).data = text
+      ;(fc as Text).data = text as string
     } else {
-      node.textContent = text
+      _replaceText(node, text)
     }
   }
 }
@@ -243,8 +262,9 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // The shared child-text rule (`_childText`): nullish and `false` render
     // EMPTY, an array of primitives concatenates. `String()` put the word
     // "null" (and "false", and `a,b` for an array) on the page where SSR
-    // renders nothing / `ab`.
-    const text = typeof value === 'string' ? value : _childText(value)
+    // renders nothing / `ab`. A number reaches the DOM unconverted (see
+    // `_replaceText`); `createTextNode` and `Text.data` convert it per the spec.
+    const text = (typeof value === 'string' || typeof value === 'number' ? value : _childText(value)) as string
     if (!isMidSlotText(placeholder)) {
       parent.replaceChild(document.createTextNode(text), placeholder)
     } else if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
@@ -386,6 +406,12 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
     // functions (a VNode, an accessor) keep the general path below.
     const v = d.value as unknown
     if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
+      // A number on a FRESH clone goes to the DOM unconverted (see
+      // `_replaceText`); an adopted node keeps the string read-back below.
+      if (typeof v === 'number' && _freshBind) {
+        node.data = v as unknown as string
+        return _noopDispose
+      }
       const next = v == null || typeof v === 'boolean' ? '' : String(v as string | number)
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
@@ -976,7 +1002,7 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
  *
  * - `TPL_REMOUNTABLE` (1): a template emitted as a component's child. The
  *   returned item SURVIVES being torn down and mounted again — see
- *   {@link remountableTpl}.
+ *   {@link RemountableItem}.
  * - `TPL_SVG_ROOT` (2): the template is rooted at a bare SVG element (`<g>`,
  *   `<path>`, `<linearGradient>`, … not enclosed in an `<svg>`). Setting
  *   `innerHTML` runs the HTML parser, which enters SVG foreign content only at a
@@ -994,7 +1020,8 @@ export function _tpl(
   bind: (el: HTMLElement) => (() => void) | null,
   flags = 0,
 ): NativeItem {
-  if ((flags & TPL_REMOUNTABLE) !== 0) return remountableTpl(html, bind, flags & TPL_SVG_ROOT)
+  if ((flags & TPL_REMOUNTABLE) !== 0)
+    return new RemountableItem(html, bind, flags & TPL_SVG_ROOT) as unknown as RemountableNativeItem
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
@@ -1110,52 +1137,83 @@ export interface RemountableNativeItem extends NativeItem {
   __revive(): void
 }
 
-function remountableTpl(
-  html: string,
-  bind: (el: HTMLElement) => (() => void) | null,
-  flags: number,
-): RemountableNativeItem {
-  // Built on FIRST USE, not at creation. A compiled component child is created while its parent's JSX arguments are
-  // being evaluated — before the enclosing component (a context provider, say) has run its setup — so building here
-  // would mount every component the template holds (a `<RouterView />`, a routed page) under the wrong owner, where
-  // the provider's context does not reach. The first use is the mount, which runs inside the right owner.
-  let current: NativeItem | null = null
-  let dead = false
-  const built = (): NativeItem => (current ??= _tpl(html, bind, flags))
-  const dispose = (): void => {
-    dead = true
-    current?.cleanup?.()
-  }
-  const item = {
-    __isNative: true as const,
-    get el(): HTMLElement {
-      return built().el
-    },
-    // Always a function: even a bind with no disposers must mark the item dead.
-    get cleanup(): () => void {
-      return dispose
-    },
-    get __dead(): boolean {
-      return dead
-    },
-    __revive(): void {
-      dead = false
-      current = null
-    },
-    // Hydration hands a DEFERRED item its real cursor; forward to the item
-    // actually holding the build (the facade is transparent to that protocol).
-    get __deferred(): true | undefined {
-      return (built() as Partial<DeferredNativeItem>).__deferred
-    },
-    __adoptAt(domNode: Element): boolean {
-      const inner = built()
-      // A declaration made on this (outer) item belongs to the build it adopts.
-      if ((item as unknown as DecoratedItem)[ROOT_DECORATED] === true) _declareRootDecoration(inner)
-      return (inner as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
-    },
+/**
+ * The re-mountable item, as ONE object per call. Built on FIRST USE, not at
+ * creation: a compiled component child is created while its parent's JSX
+ * arguments are being evaluated — before the enclosing component (a context
+ * provider, say) has run its setup — so building here would mount every
+ * component the template holds (a `<RouterView />`, a routed page) under the
+ * wrong owner, where the provider's context does not reach. The first use is
+ * the mount, which runs inside the right owner.
+ *
+ * A class with prototype accessors, not an object literal with getters over
+ * closure state. Many of these items are created and never mounted: a keyed
+ * `.map()` re-runs its callback for EVERY row on every list change and keeps
+ * only the rows whose keys are new, so a swap of two rows in a 1,000-row list
+ * created 1,000 rows' items to throw away. The literal cost one object, two
+ * closures and six accessor closures per item and was 85% of that swap's
+ * on-CPU time; an instance is one allocation, and the disposer closure is
+ * made only when a mount first reads `cleanup`.
+ */
+class RemountableItem {
+  readonly __isNative = true as const
+  // One-letter fields: property names survive minification, and this class
+  // ships in every bundle that compiles a component child.
+  /** The current build, null until first use and after `__revive()`. */
+  private c: NativeItem | null = null
+  /** Dead: the cleanup ran, so a re-mount must rebuild first. */
+  private d = false
+  /** The stable disposer handed out by `cleanup`, made on first read. */
+  private x: (() => void) | null = null
+  /** `_tpl`'s arguments, kept to (re)build. */
+  private h: string
+  private b: (el: HTMLElement) => (() => void) | null
+  private f: number
+
+  constructor(html: string, bind: (el: HTMLElement) => (() => void) | null, flags: number) {
+    this.h = html
+    this.b = bind
+    this.f = flags
   }
 
-  return item as unknown as RemountableNativeItem
+  private built(): NativeItem {
+    return (this.c ??= _tpl(this.h, this.b, this.f))
+  }
+
+  get el(): HTMLElement {
+    return this.built().el
+  }
+
+  // Always a function: even a bind with no disposers must mark the item dead.
+  // The same function on every read — callers keep it as the row's cleanup.
+  get cleanup(): () => void {
+    return (this.x ??= () => {
+      this.d = true
+      this.c?.cleanup?.()
+    })
+  }
+
+  get __dead(): boolean {
+    return this.d
+  }
+
+  __revive(): void {
+    this.d = false
+    this.c = null
+  }
+
+  // Hydration hands a DEFERRED item its real cursor; forward to the item
+  // actually holding the build (the facade is transparent to that protocol).
+  get __deferred(): true | undefined {
+    return (this.built() as Partial<DeferredNativeItem>).__deferred
+  }
+
+  __adoptAt(domNode: Element): boolean {
+    const inner = this.built()
+    // A declaration made on this (outer) item belongs to the build it adopts.
+    if ((this as unknown as DecoratedItem)[ROOT_DECORATED] === true) _declareRootDecoration(inner)
+    return (inner as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
+  }
 }
 
 /**

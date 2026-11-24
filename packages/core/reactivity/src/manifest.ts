@@ -684,7 +684,7 @@ count.set(10)  // no log — effect was disposed`,
       kind: 'function',
       signature: '() => EffectScope | null',
       summary:
-        'Returns the currently active `EffectScope` (the one whose `runInScope(fn)` is on the stack), or `null` if no scope is active. Use to register cleanup with the surrounding scope, or to detect "am I inside a component lifetime?" — useful for library code that wants to register an effect with the consumer\'s scope rather than the global one.',
+        'Returns the currently active `EffectScope` (the one whose `runInScope(fn)` is on the stack), or `null` if no scope is active. Use to register cleanup with the surrounding scope, or to detect "am I inside a component lifetime?" — useful for library code that wants to register an effect with the consumer\'s scope rather than the global one. Handing the scope out keeps it alive for the component\'s lifetime: a component scope that nothing registered with is otherwise dropped once its mount finishes, and a caller holding it may register into it later.',
       example: `import { getCurrentScope } from '@pyreon/reactivity'
 
 function myReactiveResource() {

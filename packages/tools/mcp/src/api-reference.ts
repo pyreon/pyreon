@@ -405,7 +405,7 @@ function myReactiveResource() {
     console.warn('myReactiveResource: no active scope; remember to dispose')
   }
 }`,
-    notes: `Returns the currently active \`EffectScope\` (the one whose \`runInScope(fn)\` is on the stack), or \`null\` if no scope is active. Use to register cleanup with the surrounding scope, or to detect "am I inside a component lifetime?" — useful for library code that wants to register an effect with the consumer's scope rather than the global one. See also: effectScope, setCurrentScope.`,
+    notes: `Returns the currently active \`EffectScope\` (the one whose \`runInScope(fn)\` is on the stack), or \`null\` if no scope is active. Use to register cleanup with the surrounding scope, or to detect "am I inside a component lifetime?" — useful for library code that wants to register an effect with the consumer's scope rather than the global one. Handing the scope out keeps it alive for the component's lifetime: a component scope that nothing registered with is otherwise dropped once its mount finishes, and a caller holding it may register into it later. See also: effectScope, setCurrentScope.`,
     mistakes: `- Calling \`getCurrentScope()\` outside any scope and expecting a default — returns \`null\`. Handle the no-scope case explicitly
 - Using \`getCurrentScope()\` as a substitute for \`effectScope()\` — it returns the AMBIENT scope, not a fresh one`,
   },
@@ -882,7 +882,7 @@ function App() {
 }`,
     notes: 'Push a context value for all descendant components. Auto-cleans up on unmount. Must be called during component setup (synchronous function body). Preferred over manual `pushContext`/`popContext`. For reactive values, provide a getter function to a `ReactiveContext`: `provide(ModeCtx, () => modeSignal())`. See also: createContext, createReactiveContext, useContext.',
     mistakes: `- \`provide(ctx, "static")\` for a value that changes — use \`createReactiveContext\` + \`provide(ctx, () => signal())\`
-- Calling \`provide\` inside \`onMount\` or \`effect\` — it must run during synchronous component setup
+- Calling \`provide\` inside \`onMount\` or \`effect\`, or after the component already mounted a child — a component becomes its children's context owner on its FIRST \`provide()\`, so children mounted before it resolve through the parent and never see the value (dev warns). Call it before building or returning children
 - Providing the same context twice in one component — the second \`provide\` shadows the first for that subtree`,
   },
 

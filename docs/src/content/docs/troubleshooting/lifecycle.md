@@ -462,12 +462,24 @@ A ref callback or a nested boundary that writes a signal the enclosing accessor 
 
 ### A template binding with two owners, or a statement helper with none
 
-A render binding built inside a compiled template is owned by the cleanup it is returned to. Registering it with the component's `EffectScope` as well (as `_bind` and runtime-dom's render effects once did) kept a `[dispose]` array per component and hid ownership bugs: `_setChild(el, accessor)` is emitted as a STATEMENT, dropped `mountChild`'s cleanup, and was disposed only because its inner effect happened to register with the scope. **Rule: every binding has exactly one owner. A helper that returns a disposer uses a non-registering binding (`_renderBind`); a helper that cannot return one hands its cleanup to the scope explicitly (`ownByScope` in runtime-dom `mount.ts`); and any code that builds bindings but may throw before handing their cleanup out opens an owner frame (`_openOwnerFrame`, closed or aborted exactly once).** Locks: `template-owned-bindings.test.tsx`, `owner-frame.test.ts`.
+A render binding built inside a compiled template is owned by the cleanup it is returned to. Registering it with the component's `EffectScope` as well (as `_bind` and runtime-dom's render effects once did) kept a `[dispose]` array per component and hid ownership bugs: `_setChild(el, accessor)` is emitted as a STATEMENT, dropped `mountChild`'s cleanup, and was disposed only because its inner effect happened to register with the scope. **Rule: every binding has exactly one owner. A helper that returns a disposer uses a non-registering binding (`_renderBind`); a helper that cannot return one hands its cleanup to the scope explicitly (`ownByScope` in runtime-dom `mount.ts`); a structural boundary whose effect's disposer is returned (`mountReactive`, `mountFor`) builds it with `_effectOwned`, not `effect()`; and any code that builds bindings but may throw before handing their cleanup out opens an owner frame (`_openOwnerFrame`, closed or aborted exactly once).** A list row must be MOUNTED, not only rendered, inside its row collector: a keyed `.map()` row builds lazily at its mount, and mounting it after the window sent its `ownByScope` work to the component's scope (first render) or to no scope (later runs, never disposed). Locks: `template-owned-bindings.test.tsx`, `owner-frame.test.ts`, `effect-owned.test.ts`, `for-clear-bulk-dom-ops.test.tsx`.
 
 ---
 
 ### A cleanup closure created inside the template's bind function
 
 `return () => { __d0(); __d1() }` lives in the bind arrow's context, whose parent is the component function's context, so the template kept the component's `props` and every captured local alive while mounted. Combine disposers through a module-level helper (`_dispose2/3/4/N`) so the closure's context holds only the disposers. The same applies to any long-lived closure a compiled bind returns. Lock: `template-cleanup-context.test.tsx` (real V8 GC; dev builds keep the bind function reachable through devtools creation-site records by design, so the test mounts under `NODE_ENV=production`).
+
+---
+
+### A `provide()` after the component's children chained past it
+
+A component becomes its children's context owner only on its first `provide()`. A child mounted earlier in the body, or any `provide()` in `onMount` or an effect, leaves those children resolving through the parent's owner, so they never see the value; a `provide()` in an effect re-run writes onto whatever owner the effect restored (the nearest provider's), never onto a component that happens to be mid-setup when the re-run fires: `runWithContextOwner` clears the pending frame. Dev warns on the late claim. Because a component is an owner only once it provides, `mount()` / `hydrateRoot()` install a contextless ROOT owner when none is current: without it a tree with no provider above ran with a null owner in production, effects skip restoring a null owner, and a re-run fired inside another subtree's mount resolved context (and built compiled children) under that subtree's provider. A layer whose component BODY runs later inside a render effect (svelte-compat's wrapper) must claim ownership in its setup (`_claimContextOwner()`), or `setContext` leaks to siblings. Lock: `lazy-context-owner.test.tsx`, svelte-compat's "sibling never sees it" spec.
+
+---
+
+### Reading the current scope through the public getter in framework code
+
+`getCurrentScope()` PINS the scope (a component scope empty at the end of its mount is otherwise dropped, and a holder could register into it later). Framework code that only registers synchronously reads `_currentScope()`; anything that keeps the scope to register later (solid-compat `getOwner`, a hook that `scope.add`s on a later tick) must use the public getter. Dev must not pin where production does not: the reactive devtools owner reader uses `_currentScope`. Lock: `lazy-context-owner.test.tsx` ("a scope handed out through getCurrentScope() is kept").
 
 ---
