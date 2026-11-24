@@ -9,19 +9,19 @@ import type {
   VNodeChild,
 } from '@pyreon/core'
 import {
-  dispatchToErrorBoundary,
   EMPTY_PROPS,
   ForSymbol,
   Fragment,
   makeReactiveProps,
   mergeProps,
   PortalSymbol,
-  propagateError,
   reportError,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
 import {
+  dispatchToErrorBoundary,
+  propagateError,
   _childText,
   _isStructuralChild,
   _isVNodeLike,

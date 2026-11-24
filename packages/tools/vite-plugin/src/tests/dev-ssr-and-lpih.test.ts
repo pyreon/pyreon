@@ -23,7 +23,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { writeLpihCacheFile } from '../index'
+import { writeLpihCacheFile } from '../lpih-bridge'
 import { _handleSsrRequest } from '../internal'
 
 interface Captured {

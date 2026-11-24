@@ -9,7 +9,10 @@
  * It holds the plugin's `_`-prefixed helpers that the package's own tests (and
  * sibling Pyreon packages) exercise directly: the compat alias tables and
  * resolution checks, the truthy-env parser, the dev-server SSR request
- * handler, and the source-text scanners the transform passes use.
+ * handler, and the source-text scanners the transform passes use. It also
+ * holds the un-prefixed test seams: the LPIH auto-bridge helpers, the
+ * `@pyreon/*`-file check behind the SSR `NODE_ENV` fold, and the Plain Mode
+ * marker-alias reader.
  */
 
 export {
@@ -21,6 +24,14 @@ export {
 } from './compat-aliases'
 export { _handleSsrRequest, _requestUrlFromTarget } from './dev-ssr'
 export { _isTruthyEnv } from './env'
+export {
+  buildLpihClientScript,
+  registerLpihMiddleware,
+  resolveLpihCachePath,
+  writeLpihCacheFile,
+} from './lpih-bridge'
+export { plainMarkerLocalNames } from './plain-markers'
+export { isPyreonPackageFile } from './pyreon-package-file'
 export {
   _collectImportedNames,
   _computeLineStarts,

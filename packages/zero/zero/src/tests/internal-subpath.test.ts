@@ -51,6 +51,68 @@ describe('@pyreon/zero internal subpaths', () => {
     expect(Object.keys(mod).filter((name) => name.startsWith('_'))).toEqual([])
   })
 
+  // Non-underscore internals (test seams and helpers shared between modules)
+  // moved off the public entries in the 1.0 API freeze. Each must resolve on
+  // its internal subpath and on no public entry.
+  const MOVED: Record<'./internal' | './internal-server', readonly string[]> = {
+    './internal': [
+      'ACTION_QUERY_PARAM',
+      'ACTION_REDIRECT_HEADER',
+      'ENHANCED_ACTION_HEADER',
+      'buildHydrationReport',
+      'checkActionOrigin',
+      'formActionSearch',
+      'islandsOnlyNavigation',
+      'matchLocale',
+      'readActionPayload',
+      'resolveActionOptions',
+      'runActionHandler',
+      'toRfc822',
+      'validateLocale',
+    ],
+    './internal-server': [
+      'ROUTE_MIDDLEWARE_RAN',
+      'buildFontFace',
+      'buildTextOverlaySvg',
+      'clusterPathsByLocale',
+      'compareApiRoutePatterns',
+      'createIcoFromPngs',
+      'emitFontDescriptorModule',
+      'fontFormat',
+      'fontMimeType',
+      'formatLoc',
+      'generateAiPluginManifest',
+      'generateOpenApiSpec',
+      'generatePlaceholder',
+      'hashFontFilename',
+      'inferFontMeta',
+      'isCompressible',
+      'isExcluded',
+      'matchGlob',
+      'parseFontQueryOverrides',
+      'parseJpegDimensions',
+      'parseWebPDimensions',
+      'processImage',
+      'renderOgImage',
+      'renderOgSvgFromLoaded',
+      'resolveHreflangI18n',
+      'resolvePlaceholder',
+      'resolveQuality',
+      'stripLocalePrefix',
+    ],
+  }
+  const allMoved = new Set([...MOVED['./internal'], ...MOVED['./internal-server']])
+
+  it.each(publicEntries)('public entry %s exports none of the moved internals', async (_key, conds) => {
+    const mod = (await import(join(PKG_DIR, conds.bun))) as Record<string, unknown>
+    expect(Object.keys(mod).filter((name) => allMoved.has(name))).toEqual([])
+  })
+
+  it.each(Object.entries(MOVED))('%s exports its moved internals', async (key, names) => {
+    const mod = (await import(key === './internal' ? '../internal' : '../internal-server')) as Record<string, unknown>
+    expect(names.filter((name) => mod[name] === undefined)).toEqual([])
+  })
+
   it('every helper an emitter imports from @pyreon/zero/internal exists there', async () => {
     const emitted = new Set<string>()
     const importRe = /import \{ (_\w+)(?: as \w+)? \} from ["\\]*@pyreon\/zero\/internal/g

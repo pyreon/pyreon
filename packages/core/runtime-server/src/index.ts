@@ -17,7 +17,15 @@
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { EffectScope, registerSingleton } from '@pyreon/reactivity'
 import { _setRequestOwnerReader } from '@pyreon/reactivity/internal'
-import { _childText, _isVNodeLike, _requestIdFrame } from '@pyreon/core/internal'
+import {
+  _childText,
+  _isVNodeLike,
+  _requestIdFrame,
+  isSafeImageDataUri,
+  getContextStackLength,
+  runWithHooks,
+  setContextStackProvider,
+} from '@pyreon/core/internal'
 import { STREAM_FLUSH_BYTES } from './stream-flush'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/runtime-server
@@ -39,15 +47,11 @@ import {
   cx,
   ForSymbol,
   Fragment,
-  getContextStackLength,
-  isSafeImageDataUri,
   isUnsafeUrl,
   makeReactiveProps,
   normalizeStyleValue,
   popContext,
-  runWithHooks,
   Suspense,
-  setContextStackProvider,
   isUrlAttr,
   isEventHandlerAttr,
   UNSAFE_ATTR_NAME_RE,

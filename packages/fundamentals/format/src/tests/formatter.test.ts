@@ -5,14 +5,14 @@
  */
 import * as core from '../core'
 import * as reactive from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { clearAllTables } from './helpers'
 
 const LOCALES = ['en-US', 'en-GB', 'cs', 'de', 'fr', 'ja', 'ar', 'hi', 'pt-BR']
 const AT = Date.UTC(2026, 10, 18, 14, 30)
 
 afterEach(() => {
-  _resetLocaleState()
+  resetLocaleState()
   clearAllTables()
 })
 

@@ -78,6 +78,9 @@ import {
   recordOutputDir,
 } from './build-output-dirs'
 import { injectIslandNames, islandNameEdits } from './island-auto-name'
+import { buildLpihClientScript, registerLpihMiddleware } from './lpih-bridge'
+import { AS_SPLIT_RE, plainMarkerLocalNames } from './plain-markers'
+import { isPyreonPackageFile } from './pyreon-package-file'
 import { SourceMapChain, type TextEdit } from './source-map-chain'
 import type { CollapseResolver } from './rocketstyle-collapse'
 import { createFilter } from 'vite'
@@ -533,49 +536,6 @@ const isTruthyEnv = _isTruthyEnv
 // mismatch at the seam and need an `as never` cast at the call site.
 // Runtime is identical — the Plugin shape itself hasn't changed across
 // vite 5/6/7/8 for the hooks we implement.
-
-/**
- * Whether a module id belongs to a `@pyreon/*` package — decided by the
- * nearest `package.json`'s name, so it holds for an npm install
- * (`node_modules/@pyreon/x/lib/…`) and a workspace link (`packages/…/src/…`)
- * alike, and never for the user's own sources.
- * @internal exported for tests
- */
-export function isPyreonPackageFile(
-  id: string,
-  /** Directory → verdict. The plugin passes one per instance (one build's lifetime). */
-  pyreonDirCache: Map<string, boolean> = new Map(),
-): boolean {
-  const file = id.split('?')[0]!
-  if (file.startsWith('\0') || !file.startsWith('/')) return false
-  if (file.includes('/node_modules/@pyreon/')) return true
-  let dir = dirname(file)
-  const visited: string[] = []
-  let result = false
-  for (;;) {
-    const cached = pyreonDirCache.get(dir)
-    if (cached !== undefined) {
-      result = cached
-      break
-    }
-    visited.push(dir)
-    const pkgPath = pathJoin(dir, 'package.json')
-    if (existsSync(pkgPath)) {
-      try {
-        const name = (JSON.parse(readFileSync(pkgPath, 'utf-8')) as { name?: unknown }).name
-        result = typeof name === 'string' && name.startsWith('@pyreon/')
-      } catch {
-        result = false
-      }
-      break
-    }
-    const parent = dirname(dir)
-    if (parent === dir) break
-    dir = parent
-  }
-  for (const d of visited) pyreonDirCache.set(d, result)
-  return result
-}
 
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any> {
   const ssrConfig = options?.ssr
@@ -1641,211 +1601,6 @@ async function generateProjectContext(root: string, isDisposed: () => boolean): 
   }
 }
 
-// ── LPIH auto-bridge helpers ───────────────────────────────────────────────
-
-/**
- * Resolve the LPIH cache-file path for a given project root. Matches the
- * convention `@pyreon/reactivity/lpih`'s `getDefaultLpihCachePath()` uses
- * AND the LSP auto-discovers (R2, #777): `<projectRoot>/.pyreon-lpih.json`.
- *
- * @internal — exported for tests.
- */
-export function resolveLpihCachePath(projectRoot: string): string {
-  return pathJoin(projectRoot, '.pyreon-lpih.json')
-}
-
-/**
- * Register the LPIH dev-server middleware on a Vite server. Extracted from
- * `configureServer` so the `cachePath` option reference lives at module
- * scope (top-level helper) rather than inside the plugin's inline body —
- * keeps `scripts/audit-types.ts` happy regardless of how its comment-
- * stripping handles the long inline `configureServer` block.
- *
- * @internal — exported for tests.
- */
-export function registerLpihMiddleware(
-  server: ViteDevServer,
-  projectRoot: string,
-  userCfg: PyreonLpihOptions,
-): void {
-  const cachePath = userCfg.cachePath ?? resolveLpihCachePath(projectRoot)
-  server.middlewares.use('/__pyreon_lpih__', (req, res) => {
-    if (req.method !== 'POST') {
-      res.statusCode = 405
-      res.end('Method Not Allowed')
-      return
-    }
-    // A plain POST is a CORS-simple request, so ANY site open in the
-    // developer's browser could write this file (hint poisoning / DoS of the
-    // LSP feature; `--host` widens it to the LAN). A browser always sends
-    // `Origin` on a cross-site POST — require it to be the dev server's own.
-    const origin = req.headers?.origin
-    if (typeof origin === 'string') {
-      let sameOrigin = false
-      try {
-        sameOrigin = new URL(origin).host === req.headers?.host
-      } catch {
-        sameOrigin = false
-      }
-      if (!sameOrigin) {
-        res.statusCode = 403
-        res.end('Forbidden')
-        return
-      }
-    }
-    let body = ''
-    req.on('data', (chunk: Buffer | string) => {
-      body += chunk.toString()
-      // Defensive cap — fire payloads are tiny (a few KB at most);
-      // anything larger is malicious or buggy. Drop the request.
-      if (body.length > 1024 * 1024) {
-        res.statusCode = 413
-        res.end('Payload Too Large')
-        req.destroy()
-      }
-    })
-    req.on('end', () => {
-      void writeLpihCacheFile(cachePath, body)
-        .then(() => {
-          res.statusCode = 204
-          res.end()
-        })
-        .catch((err: unknown) => {
-          // Don't crash the dev server — log + return 500 so the
-          // browser-side bridge can back off + retry next interval.
-          // oxlint-disable-next-line no-console
-          console.warn(
-            '[pyreon] LPIH cache write failed:',
-            err instanceof Error ? err.message : err,
-          )
-          res.statusCode = 500
-          res.end('LPIH cache write failed')
-        })
-    })
-  })
-}
-
-let _lpihSeq = 0
-
-/**
- * Atomically write a LPIH cache file (tmp + rename), mirroring the
- * `@pyreon/reactivity/lpih:writeLpihCache` implementation. The payload
- * comes pre-serialized from the browser-side bridge — we validate the
- * outer shape (`{ fires: [...] }`) and reject malformed bodies to stop a
- * buggy client from corrupting the file the LSP reads.
- *
- * @internal — exported for tests.
- */
-export async function writeLpihCacheFile(path: string, body: string): Promise<void> {
-  // Validate shape — must be a JSON object with `fires: array`. We re-
-  // serialize so the on-disk format is stable regardless of how the
-  // browser-side bridge encodes it.
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(body)
-  } catch {
-    throw new Error('[Pyreon] LPIH bridge: payload is not valid JSON')
-  }
-  if (
-    parsed === null ||
-    typeof parsed !== 'object' ||
-    !Array.isArray((parsed as { fires?: unknown }).fires)
-  ) {
-    throw new Error('[Pyreon] LPIH bridge: payload is missing `fires` array')
-  }
-  // Every entry must be a plain object — the wrapper shape alone let a
-  // payload of arbitrary junk through to disk.
-  for (const f of (parsed as { fires: unknown[] }).fires) {
-    if (f === null || typeof f !== 'object' || Array.isArray(f)) {
-      throw new Error('[Pyreon] LPIH bridge: `fires` entries must be objects')
-    }
-  }
-  const fs = await import('node:fs/promises')
-  const pid = typeof process !== 'undefined' && 'pid' in process ? process.pid : 0
-  const tmp = `${path}.tmp.${pid}.${++_lpihSeq}`
-  // Single try/catch covering BOTH writeFile AND rename. The previous
-  // shape only guarded the rename — if `fs.writeFile` itself threw (disk
-  // full, EIO, EACCES, transient FS error), the partial tmp file leaked
-  // on disk with a unique PID+seq name (so no conflict, but it accumulated
-  // forever). Audit caught this in the LPIH followups round.
-  try {
-    await fs.writeFile(tmp, JSON.stringify(parsed), 'utf8')
-    await fs.rename(tmp, path)
-  } catch (err) {
-    // Best-effort cleanup; original error is more useful than unlink's.
-    // Covers BOTH the writeFile-failed (tmp may not exist) and the
-    // rename-failed (tmp exists, rename didn't move it) cases —
-    // `fs.unlink` of a non-existent file throws ENOENT, which we swallow.
-    try {
-      await fs.unlink(tmp)
-    } catch {
-      /* swallow — original error is the user-facing one */
-    }
-    throw err
-  }
-}
-
-/**
- * Build the `<script type="module">` body injected into the HTML head.
- * The script imports devtools activation + `getFireSummaries` from
- * `@pyreon/reactivity`, sets up a `setInterval` that POSTs every
- * `intervalMs` ms, and registers a `beforeunload` cleanup so the timer
- * doesn't outlive the page.
- *
- * Browser bundlers serve `@pyreon/reactivity` from the workspace via
- * Vite's normal module resolution — no virtual module needed.
- *
- * @internal — exported for tests.
- */
-export function buildLpihClientScript(intervalMs: number): string {
-  // Note: the script body is intentionally compact — the goal is zero
-  // visible payload in DevTools "Sources" while still being readable
-  // when someone DOES go looking. `JSON.stringify` for `intervalMs` is
-  // defense against `__proto__` / NaN / non-finite values reaching the
-  // emitted JS as a literal.
-  // CRITICAL — top-level await on the dynamic import. `<script type="module">`
-  // tags execute in document order with `defer` semantics; the head-injected
-  // LPIH script's body MUST fully evaluate (including this await) BEFORE the
-  // body-injected app entry's module body runs. Otherwise activateReactiveDevtools()
-  // would land AFTER the app has already created its module-scope signals,
-  // and `_rdRegister` (gated on `if (!_active) return undefined`) would skip
-  // them entirely — making the most common signal shape (top-of-file `const x = signal(0)`)
-  // invisible to LPIH. With the `await`, the LPIH module doesn't complete
-  // until activation finishes; the app's entry waits its turn.
-  return `<script type="module">
-  // Pyreon LPIH auto-bridge — POSTs fire summaries to /__pyreon_lpih__
-  // so the LSP (pyreon-lint --lsp) sees live fire data. Dev-only.
-  const __px = await import('@pyreon/reactivity').catch(() => null)
-  if (__px) {
-    __px.activateReactiveDevtools()
-    const __pxGet = __px.getFireSummaries
-    const __pxInterval = ${JSON.stringify(intervalMs)}
-    const __pxPost = () => {
-      const summaries = __pxGet()
-      const payload = JSON.stringify({
-        fires: summaries.map((s) => ({
-          file: s.loc.file,
-          line: s.loc.line,
-          count: s.count,
-          kind: s.kind,
-          lastFire: s.lastFire,
-          rate1s: s.rate1s,
-        })),
-      })
-      fetch('/__pyreon_lpih__', { method: 'POST', body: payload, headers: { 'content-type': 'application/json' } }).catch(() => {
-        // Dev-server might be restarting; swallow + retry next interval.
-      })
-    }
-    const __pxId = setInterval(__pxPost, __pxInterval)
-    window.addEventListener('beforeunload', () => clearInterval(__pxId))
-  }
-  // If __px is null, @pyreon/reactivity isn't in the dep graph — stay silent,
-  // LPIH is opt-in via the runtime API too. The dynamic-import catch returns
-  // null instead of letting the rejection bubble so consumers without the
-  // package don't see a console error.
-</script>`
-}
-
 // ── HMR injection ─────────────────────────────────────────────────────────────
 
 /**
@@ -2669,33 +2424,6 @@ async function prescanSignalExports(
  *
  * Uses simple regex — no AST parse needed.
  */
-// Bounded `\s{1,10}` instead of unbounded `\s+` to remove worst-case
-// backtracking; real import specifiers have 1-2 spaces around `as`.
-const AS_SPLIT_RE = /\s{1,10}as\s{1,10}/
-
-/**
- * The local names a module binds to the plain markers, as regex alternations
- * (`state|s`, `derived|d`). The canonical names are always included — the
- * pre-pass accepts them when there is no import (the `'use plain'` form).
- */
-export function plainMarkerLocalNames(code: string): { state: string; derived: string } {
-  const state = new Set(['state'])
-  const derived = new Set(['derived'])
-  const IMPORT_RE = /import\s{0,10}\{([^}]*)\}\s{0,10}from\s{0,10}['"]@pyreon\/core\/plain['"]/g
-  let m: RegExpExecArray | null
-  while ((m = IMPORT_RE.exec(code)) !== null) {
-    for (const spec of m[1]!.split(',')) {
-      const parts = spec.trim().split(AS_SPLIT_RE)
-      const imported = parts[0]?.trim()
-      const local = (parts[1] ?? parts[0])?.trim()
-      if (!imported || !local || !/^\w+$/.test(local)) continue
-      if (imported === 'state') state.add(local)
-      else if (imported === 'derived') derived.add(local)
-    }
-  }
-  return { state: [...state].join('|'), derived: [...derived].join('|') }
-}
-
 function scanSignalExports(
   code: string,
   moduleId: string,

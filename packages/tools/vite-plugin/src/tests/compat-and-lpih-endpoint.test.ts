@@ -29,7 +29,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { registerLpihMiddleware, resolveLpihCachePath } from '../index'
+import { registerLpihMiddleware, resolveLpihCachePath } from '../lpih-bridge'
 import { _getCompatTarget } from '../internal'
 
 describe('compat aliases redirect a framework onto its shim', () => {

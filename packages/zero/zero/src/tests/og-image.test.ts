@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildTextOverlaySvg, ogImagePath, ogImagePlugin } from '../og-image'
+import { ogImagePath, ogImagePlugin } from '../og-image'
+import { buildTextOverlaySvg } from '../internal-server'
 
 describe('ogImagePath', () => {
   it('returns path without locale', () => {

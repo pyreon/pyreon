@@ -143,6 +143,6 @@ Filename conventions collide. `pyreon/missing-get-static-paths` and `detectDynam
 
 ### Per-call-site handling of a config enum
 
-Open-coding one branch at each site silently ignores the others, and `audit-types` cannot see it because the type is referenced. `imagePlugin` routes every path (CDN, dev, build) through `generatePlaceholder(input, strategy, size)`; `resolvePlaceholder` rejects an unknown strategy at the config boundary instead of letting it fall through to blur. Reference: `packages/zero/zero/src/image-plugin.ts`.
+Open-coding one branch at each site silently ignores the others, and `audit-types` cannot see it because the type is referenced. `imagePlugin` routes every path (CDN, dev, build) through `generatePlaceholder(input, strategy, size)`; `resolvePlaceholder` rejects an unknown strategy at the config boundary instead of letting it fall through to blur. Reference: `packages/zero/zero/src/image-processing.ts` (used by `image-plugin.ts`).
 
 ---

@@ -25,9 +25,9 @@ describe('internal-exports-subpath', () => {
   })
 
   it('replaces a declaration that only imported moved names, and keeps aliases and `type`', () => {
-    const src = `import { _reset as resetToasts, _toasts } from '@pyreon/toast'\nimport type { _currentScope } from '@pyreon/reactivity'\n`
+    const src = `import { _reset as resetToasts } from '@pyreon/toast'\nimport type { _currentScope } from '@pyreon/reactivity'\n`
     expect(run(src)).toBe(
-      `import { _reset as resetToasts, _toasts } from '@pyreon/toast/internal'\n` +
+      `import { _reset as resetToasts } from '@pyreon/toast/internal'\n` +
         `import type { _currentScope } from '@pyreon/reactivity/internal'\n`,
     )
   })
@@ -43,12 +43,11 @@ describe('internal-exports-subpath', () => {
     )
   })
 
-  it('renames the two @pyreon/ambient/testing hooks without touching their call sites', () => {
-    const src = `import { _resetClockState, _fireAll, installFakeClock } from '@pyreon/ambient/testing'\n_resetClockState()\n`
+  it('moves the @pyreon/ambient/testing internals and leaves the renamed hooks for the type checker', () => {
+    const src = `import { _resetClockState, _fireAll, installFakeClock } from '@pyreon/ambient/testing'\n`
     expect(run(src, 'a.test.ts')).toBe(
-      `import { installFakeClock } from '@pyreon/ambient/testing'\n` +
-        `import { resetClockState as _resetClockState } from '@pyreon/ambient/testing'\n` +
-        `import { _fireAll } from '@pyreon/ambient/internal'\n_resetClockState()\n`,
+      `import { _resetClockState, installFakeClock } from '@pyreon/ambient/testing'\n` +
+        `import { _fireAll } from '@pyreon/ambient/internal'\n`,
     )
   })
 
@@ -63,6 +62,8 @@ describe('internal-exports-subpath', () => {
   })
 
   it('leaves compiler ABI, namespace imports, other modules and migrated code alone', () => {
+    // App code reading `_toasts` should move to the public `toast.list()`, not to internal.
+    expect(run(`import { _toasts } from '@pyreon/toast'\n`)).toBeNull()
     expect(run(`import { _rp, _tpl } from '@pyreon/core'\n`)).toBeNull()
     expect(run(`import * as core from '@pyreon/core'\ncore._resetIdCounter()\n`)).toBeNull()
     expect(run(`import { _resetIdCounter } from './unique-id'\n`)).toBeNull()

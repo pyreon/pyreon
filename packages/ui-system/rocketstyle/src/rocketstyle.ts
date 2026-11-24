@@ -4,13 +4,13 @@ import { SizedMap } from '@pyreon/sized-map'
 import {
   compose,
   config,
-  getThemeEngine,
   hoistNonReactStatics,
   omit,
   pick,
   render,
   resolveCssVariables,
 } from '@pyreon/ui-core'
+import { getThemeEngine } from '@pyreon/ui-core/internal'
 import { LocalThemeManager } from './cache'
 import { CONFIG_KEYS, PSEUDO_AND_META_KEYS, PSEUDO_KEYS, STYLING_KEYS } from './constants'
 import createLocalProvider from './context/createLocalProvider'

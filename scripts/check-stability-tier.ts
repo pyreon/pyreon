@@ -38,6 +38,9 @@
  *      compat layers' plumbing), which carries no semver promise. A
  *      `COMPILER_ABI` name its entry no longer exports fails too, so the list
  *      cannot outlive the helpers it names;
+ *   9. a public entry exports a declaration tagged `@internal` in JSDoc. The
+ *      tag is how a non-`_` internal (a test seam, cross-package plumbing) is
+ *      marked; it belongs on `./internal`. Public API carries no such tag;
  *   7. a PRIVATE package (`"private": true`, e.g. `@pyreon/auth` until it is
  *      published) declares a tier or carries a README status line. An
  *      unpublished package makes no semver promise, the generated table and
@@ -497,6 +500,125 @@ function publicEntries(p: PublishedPackage): Array<[string, string]> {
   return out
 }
 
+function resolveModule(from: string, spec: string): string | undefined {
+  const base = resolve(dirname(from), spec).replace(/\.[cm]?[jt]sx?$/, '')
+
+  return ENTRY_EXTS.map((e) => base + e).find((f) => existsSync(f))
+}
+
+const sourceCache = new Map<string, ts.SourceFile>()
+
+function sourceOf(file: string): ts.SourceFile {
+  let sf = sourceCache.get(file)
+  if (sf === undefined) {
+    sf = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true)
+    sourceCache.set(file, sf)
+  }
+
+  return sf
+}
+
+/** The top-level declaration statements in `sf` that declare `name` (a function may have overloads). */
+function localDeclarations(sf: ts.SourceFile, name: string): ts.Statement[] {
+  return sf.statements.filter((st) => {
+    if (ts.isVariableStatement(st)) {
+      return st.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === name)
+    }
+    if (ts.isFunctionDeclaration(st) || ts.isClassDeclaration(st) || ts.isEnumDeclaration(st)) return st.name?.text === name
+
+    return false
+  })
+}
+
+/**
+ * The declaration statements behind `name` as exported by `file`, following
+ * `export { a as b } from './x'`, `export *`, and a local `import` re-exported
+ * by name. Declarations in another package are not followed.
+ */
+// oxlint-disable-next-line complexity -- one branch per export / import syntax form
+export function exportedDeclarations(file: string, name: string, seen: Set<string> = new Set()): ts.Statement[] {
+  const key = `${file}#${name}`
+  if (seen.has(key) || !existsSync(file)) return []
+  seen.add(key)
+  const sf = sourceOf(file)
+  const exported = (n: ts.Node): boolean =>
+    ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+  const viaImport = (local: string): ts.Statement[] => {
+    for (const st of sf.statements) {
+      if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier) || !st.moduleSpecifier.text.startsWith('.')) continue
+      const nb = st.importClause?.namedBindings
+      if (nb === undefined || !ts.isNamedImports(nb)) continue
+      const el = nb.elements.find((e) => e.name.text === local)
+      const target = el === undefined ? undefined : resolveModule(file, st.moduleSpecifier.text)
+      if (el !== undefined && target !== undefined) return exportedDeclarations(target, (el.propertyName ?? el.name).text, seen)
+    }
+
+    return []
+  }
+  for (const st of sf.statements) {
+    if (ts.isExportDeclaration(st) && !st.isTypeOnly) {
+      const spec = st.moduleSpecifier !== undefined && ts.isStringLiteral(st.moduleSpecifier) ? st.moduleSpecifier.text : undefined
+      if (st.exportClause === undefined) {
+        const target = spec?.startsWith('.') ? resolveModule(file, spec) : undefined
+        const found = target === undefined ? [] : exportedDeclarations(target, name, seen)
+        if (found.length > 0) return found
+      } else if (ts.isNamedExports(st.exportClause)) {
+        const el = st.exportClause.elements.find((e) => e.name.text === name && !e.isTypeOnly)
+        if (el === undefined) continue
+        const orig = (el.propertyName ?? el.name).text
+        if (spec === undefined) {
+          const local = localDeclarations(sf, orig)
+
+          return local.length > 0 ? local : viaImport(orig)
+        }
+        const target = spec.startsWith('.') ? resolveModule(file, spec) : undefined
+
+        return target === undefined ? [] : exportedDeclarations(target, orig, seen)
+      }
+    } else if (exported(st) && localDeclarations(sf, name).includes(st)) {
+      return localDeclarations(sf, name)
+    }
+  }
+
+  return []
+}
+
+/** Does a declaration statement carry a JSDoc `@internal` tag? */
+export function hasInternalTag(st: ts.Statement): boolean {
+  const nodes: ts.Node[] = ts.isVariableStatement(st) ? [st, ...st.declarationList.declarations] : [st]
+
+  return nodes.some((n) => ts.getJSDocTags(n).some((t) => t.tagName.text === 'internal'))
+}
+
+/**
+ * Rule 9: a declaration tagged `@internal` must not be reachable from a public
+ * entry. Internal helpers that are not `_`-prefixed (test seams, cross-package
+ * plumbing) are marked with the tag and live on the `./internal` subpath.
+ */
+export function internalTagFailures(
+  pkgs: readonly PublishedPackage[],
+  abi: Record<string, readonly string[]> = COMPILER_ABI,
+): string[] {
+  const failures: string[] = []
+  for (const p of pkgs) {
+    // Compiler ABI is internal to users but must stay on the main entry.
+    const allowed = new Set(abi[p.name] ?? [])
+    for (const [subpath, file] of publicEntries(p)) {
+      for (const n of runtimeExportNames(file)) {
+        if (subpath === '.' && allowed.has(n)) continue
+        if (!exportedDeclarations(file, n).some(hasInternalTag)) continue
+        const spec = subpath === '.' ? p.name : `${p.name}${subpath.slice(1)}`
+        failures.push(
+          `${spec} exports \`${n}\`, whose declaration is tagged \`@internal\`. Move it to ${p.name}/internal ` +
+            '(see "What counts as public API" on the stability page), or, if it is public API, delete the tag.',
+        )
+      }
+    }
+  }
+
+  return failures
+}
+
 /** Rule 8: `_` names on public entries must be compiler ABI. */
 export function underscoreExportFailures(
   pkgs: readonly PublishedPackage[],
@@ -765,6 +887,9 @@ export async function runGate(repoRoot: string, write: boolean): Promise<string[
 
   // 8. `_` exports on public entries are compiler ABI only
   failures.push(...underscoreExportFailures(pkgs))
+
+  // 9. `@internal`-tagged declarations are not on public entries
+  failures.push(...internalTagFailures(pkgs))
 
   // 7. private packages carry no tier
   for (const p of listPrivatePackages(repoRoot)) {

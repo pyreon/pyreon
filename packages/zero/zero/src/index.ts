@@ -146,4 +146,4 @@ export type {
 // client entry so consumer code can import it directly without
 // pulling server-only modules.
 export type { RssConfig, RssItem } from "./seo-rss";
-export { generateRssFeed, toRfc822 } from "./seo-rss";
+export { generateRssFeed } from "./seo-rss";

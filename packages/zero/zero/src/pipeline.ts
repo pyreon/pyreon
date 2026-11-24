@@ -36,8 +36,6 @@ import type { RouteMiddlewareEntry, ZeroConfig } from './types'
 
 export const DATA_ENDPOINT = '/_pyreon/data'
 
-export { ROUTE_MIDDLEWARE_RAN }
-
 export interface RequestPipelineOptions {
   routes: RouteRecord[]
   config: ZeroConfig

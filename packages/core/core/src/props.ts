@@ -308,6 +308,8 @@ export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) =
  * Brand symbol for compiler-emitted reactive prop wrappers.
  * Distinguishes `() => expr` wrappers from user-written accessor props
  * (like Show's `when={() => condition()}`).
+ *
+ * @internal
  */
 export const REACTIVE_PROP = Symbol.for('pyreon.reactiveProp')
 

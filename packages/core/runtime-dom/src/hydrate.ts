@@ -18,16 +18,22 @@
 
 import type { ComponentFn, LazyComponent, LifecycleHooks, RefProp, VNode, VNodeChild } from '@pyreon/core'
 import {
-  dispatchToErrorBoundary,
   ForSymbol,
   Fragment,
   PortalSymbol,
-  propagateError,
   reportError,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
-import { _childText, _isVNodeLike, _setSuspenseHydrating, _runHooked, _takeHooks } from '@pyreon/core/internal'
+import {
+  dispatchToErrorBoundary,
+  propagateError,
+  _childText,
+  _isVNodeLike,
+  _setSuspenseHydrating,
+  _runHooked,
+  _takeHooks,
+} from '@pyreon/core/internal'
 import {
   type EffectScope,
   effectScope,

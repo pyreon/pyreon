@@ -25,11 +25,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import pyreonPlugin, {
-  registerLpihMiddleware,
-  writeLpihCacheFile,
-  type PyreonPluginOptions,
-} from '../index'
+import pyreonPlugin, { type PyreonPluginOptions } from '../index'
+import { registerLpihMiddleware, writeLpihCacheFile } from '../lpih-bridge'
 import { _isPyreonWorkspaceFile } from '../internal'
 
 // A signal read compiles to `name()` in expression position and to the direct

@@ -11,17 +11,7 @@
  * user runs.
  */
 import { type ChildProcess, spawn } from 'node:child_process'
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { expect, test } from '@playwright/test'
@@ -667,9 +657,8 @@ test.describe('atlas dev — cold dependency cache (#3846)', () => {
     writeFileSync(
       join(counter, 'src/Counter.tsx'),
       `import { toast } from '@pyreon/toast'
-import { _toasts } from '@pyreon/toast/internal'
 export function Counter() {
-  return <button onClick={() => toast('hello')}>{() => _toasts().length}</button>
+  return <button onClick={() => toast('hello')}>{() => toast.list().length}</button>
 }
 `,
     )

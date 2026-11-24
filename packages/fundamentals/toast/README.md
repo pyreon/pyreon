@@ -50,6 +50,7 @@ toast.promise(saveDraft(), {
 | `toast.dismiss(id?)` | dismiss one or every toast (soft — plays the leave animation) | |
 | `toast.remove(id?)` | remove one or every toast instantly (hard — no leave animation) | |
 | `toast.promise(promise, opts)` | transitions loading → success / error automatically | |
+| `toast.list()` | reactive read of the live queue (`readonly Toast[]`, oldest first), e.g. a notification count | |
 
 ```ts
 toast(message: string | VNodeChild, options?: ToastOptions): string
@@ -158,7 +159,7 @@ expectToast(/saved/) // a matching toast exists now
 await findToast(/saved/) // wait for one to appear
 ```
 
-`clearToasts()` clears the queue and timers. They wrap `_reset` and `_toasts` from `@pyreon/toast/internal`, which is internal and carries no semver promise.
+`clearToasts()` clears the queue and timers.
 
 ## Gotchas
 

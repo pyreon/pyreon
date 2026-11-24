@@ -2,12 +2,14 @@ import type { ClassValue, Props } from '@pyreon/core'
 import {
   cx,
   isElementEventHandlerAttr,
-  isSafeImageDataUri,
   isUnsafeUrl,
   normalizeStyleValue,
   toKebabCase,
   isUrlAttr,
 } from '@pyreon/core'
+import {
+  isSafeImageDataUri,
+} from '@pyreon/core/internal'
 
 import { batch, renderEffect } from '@pyreon/reactivity'
 import { _rdLabelBinding, _rdNoteTarget, _renderBind } from '@pyreon/reactivity/internal'

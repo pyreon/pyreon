@@ -426,6 +426,18 @@ toast.dismiss = dismiss
 toast.remove = remove
 
 /**
+ * The live toast queue, oldest first (dismissed toasts stay in it until their
+ * leave transition ends). A reactive read: call it inside JSX, an `effect` or a
+ * `computed` and it re-runs when a toast is added, updated or removed. The
+ * array is the queue's own snapshot; treat it as read-only and change the
+ * queue through `toast()` / `toast.update` / `toast.dismiss` / `toast.remove`.
+ *
+ * @example
+ * <span>{() => toast.list().length} notifications</span>
+ */
+toast.list = (): readonly Toast[] => _toasts()
+
+/**
  * Show a loading toast that updates on promise resolution or rejection.
  *
  * @example

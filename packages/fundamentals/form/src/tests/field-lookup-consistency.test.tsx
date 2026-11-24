@@ -127,14 +127,3 @@ describe('unknown-key consistency — baseline writes skip + dev-warn', () => {
     }
   })
 })
-
-describe('the removed useForm({ fields }) shape', () => {
-  it('throws a [Pyreon] error naming the replacement and the codemod', () => {
-    const removed = { fields: [], onSubmit: () => {} } as never
-    expect(() => useForm(removed)).toThrow(/useForm\(\{ fields: \[field\(…\)\] \}\) was removed.*initialValues.*form-use-form-fields/)
-  })
-
-  it('a missing initialValues says what to pass', () => {
-    expect(() => useForm({ onSubmit: () => {} } as never)).toThrow(/needs `initialValues`/)
-  })
-})

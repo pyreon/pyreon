@@ -35,11 +35,13 @@ Moved exports, with their new specifier:
 - `@pyreon/storage`: `_resetDBCache`, `_resetRegistry`, `_resetStorageListener` → `@pyreon/storage/internal`
 - `@pyreon/document`: `_resetRenderers` → `@pyreon/document/internal`
 - `@pyreon/hotkeys`: `_resetHotkeys` → `@pyreon/hotkeys/internal`
-- `@pyreon/toast`: `_reset`, `_toasts` → `@pyreon/toast/internal`. In tests, use `clearToasts`, `getToasts`, `expectToast` and `findToast` from `@pyreon/testing/toast` instead.
+- `@pyreon/toast`: `_reset`, `_toasts` → `@pyreon/toast/internal`. App code that read `_toasts()` uses the new public `toast.list()` (a reactive, read-only view of the live queue); the codemod does not rewrite `_toasts`, so the type checker points at each use. In tests, use `clearToasts`, `getToasts`, `expectToast` and `findToast` from `@pyreon/testing/toast`.
 - `@pyreon/ambient/testing`: `_fireAll`, `_tickerStats` → `@pyreon/ambient/internal`
 
-`@pyreon/ambient/testing` stays the supported test kit, and its two documented hooks lose the underscore: `_resetClockState` → `resetClockState` and `_resetLocaleState` → `resetLocaleState`, both still from `@pyreon/ambient/testing`.
+`@pyreon/ambient/testing` stays the supported test kit, and its two documented hooks lose the underscore: `_resetClockState` → `resetClockState` and `_resetLocaleState` → `resetLocaleState`, both still from `@pyreon/ambient/testing`. This is a clean rename with no alias: rename the imports and calls by hand (the codemod does not).
 
 `@pyreon/testing/toast` now reads the toast store through `@pyreon/toast/internal`; its own API is unchanged. `@pyreon/format` follows the ambient rename internally; its API is unchanged.
+
+`@pyreon/toast` gains `toast.list()`, a reactive read of the live toast queue (`readonly Toast[]`, oldest first), documented in the README and manifest.
 
 Upgrade: codemod internal-exports-subpath

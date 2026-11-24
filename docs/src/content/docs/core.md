@@ -2199,7 +2199,7 @@ const Accordion = defineComponent(
 
 ## Internal APIs
 
-These APIs are used by the renderer and are not intended for application code.
+These APIs are used by the renderer and are not intended for application code. They live on the internal `@pyreon/core/internal` subpath (no semver promise), together with `setContextStackProvider`, `getContextStackLength`, `removeContextFrame` and `REACTIVE_PROP`.
 
 ### runWithHooks
 

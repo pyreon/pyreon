@@ -62,7 +62,14 @@ function aliasInnerRef(rawProps: Record<string, any>): Record<string, any> {
 let _cpseEnabled = false
 let _cpseRewrite: ((cssText: string, varsOut: Record<string, string>) => string) | null = null
 
-/** @internal Wired by `@pyreon/ui-core` `init({ styleExtraction })`. */
+/**
+ * Turn Custom-Property Style Extraction on or off and inject its rewrite.
+ * `@pyreon/ui-core` calls it for `init({ styleExtraction: true })`, passing
+ * `@pyreon/unistyle`'s `cpseRewrite`; apps enable CPSE through that flag.
+ * Reached through `@pyreon/styler/internal`.
+ *
+ * @internal
+ */
 export const setStyleExtraction = (
   enabled: boolean,
   rewrite?: (cssText: string, varsOut: Record<string, string>) => string,

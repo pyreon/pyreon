@@ -12,7 +12,7 @@ import {
   planRun,
   workerCountFor,
 } from '../parallel'
-import { lintSlice } from '../lint-worker'
+import { lintSlice } from '../lint-slice'
 import { getPreset } from '../config/presets'
 import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
 

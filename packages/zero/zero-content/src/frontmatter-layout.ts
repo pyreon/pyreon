@@ -51,7 +51,7 @@ export interface ResolvePageLayoutArgs {
 
 /**
  * Resolve the layout component for a page given its frontmatter +
- * a layout registry. Pure — exported for testing.
+ * a layout registry. Pure — call it from the route that renders the page.
  */
 export function resolvePageLayout(
   args: ResolvePageLayoutArgs,

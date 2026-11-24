@@ -15,10 +15,11 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { build } from 'vite'
-import content, { resolvePublishNow } from '../plugin'
+import content from '../plugin'
 import { isPublished } from '../publish'
 import { _setRegistry, getCollection } from '../runtime'
 import { renderVirtualCollections } from '../virtual-collections'
+import { resolvePublishNow } from '../internal-server'
 
 const NOW = Date.parse('2026-11-16T12:00:00Z')
 

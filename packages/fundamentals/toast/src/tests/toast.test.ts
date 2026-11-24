@@ -675,3 +675,20 @@ describe('toast — queue cap (regression for unbounded growth)', () => {
     vi.useRealTimers()
   })
 })
+
+describe('toast.list()', () => {
+  it('is a reactive, read-only view of the live queue', async () => {
+    const { effect } = await import('@pyreon/reactivity')
+    const seen: number[] = []
+    const e = effect(() => {
+      seen.push(toast.list().length)
+    })
+    const id = toast('one')
+    toast('two')
+    expect(toast.list().map((t) => t.message)).toEqual(['one', 'two'])
+    toast.remove(id)
+    expect(seen).toEqual([0, 1, 2, 1])
+    expect(toast.list()).toBe(_toasts())
+    e.dispose()
+  })
+})

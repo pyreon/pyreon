@@ -14,6 +14,8 @@ export function setInitThemeReset(reset: () => void): void {
 /**
  * Reset the refcount + shared teardown. Test-only. A no-op when `theme.tsx`
  * has not loaded (nothing to reset).
+ *
+ * @internal
  */
 export function _resetInitThemeForTests(): void {
   resetInitTheme?.()

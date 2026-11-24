@@ -272,16 +272,6 @@ export function isRealError(err: ValidationError): boolean {
 export function useForm<TValues extends Record<string, unknown> = Record<string, unknown>>(
   options: UseFormOptions<TValues>,
 ): FormState<TValues> {
-  if (options.initialValues == null) {
-    throw new Error(
-      'fields' in options
-        ? '[Pyreon] useForm({ fields: [field(…)] }) was removed in @pyreon/form 0.55. Pass ' +
-            '`initialValues: { name: default }` and `validators: { name: fn }` instead — ' +
-            '`pyreon upgrade` rewrites it for you (codemod form-use-form-fields).'
-        : '[Pyreon] useForm() needs `initialValues`: an object (or an accessor returning one) ' +
-            'with one key per field, e.g. useForm({ initialValues: { email: "" }, onSubmit }).',
-    )
-  }
   const opts = options as UseFormOptions<Record<string, unknown>>
   const { initialValues: rawInitialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs, focusOnError = true } = opts
 

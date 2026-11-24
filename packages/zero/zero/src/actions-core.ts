@@ -52,7 +52,11 @@ export interface Action<T = unknown, TInput = unknown> {
  * instead of adding a new one. Bounded by the number of `defineAction()`
  * call sites in the app.
  */
-/** Response header carrying an action's `redirect()` target. @internal */
+/**
+ * Response header carrying an action's `redirect()` target.
+ *
+ * @internal
+ */
 export const ACTION_REDIRECT_HEADER = 'X-Zero-Redirect'
 
 const actionRegistry = new Map<string, RegisteredAction>()
@@ -379,7 +383,11 @@ export interface CreateActionMiddlewareOptions {
   bodyLimit?: number
 }
 
-/** Normalized options shared by the JSON endpoint and page form posts. @internal */
+/**
+ * Normalized options shared by the JSON endpoint and page form posts.
+ *
+ * @internal
+ */
 export interface ResolvedActionOptions {
   corsOrigins: readonly string[]
   bodyLimit: number
@@ -447,7 +455,11 @@ export function checkActionOrigin(req: Request, corsOrigins: readonly string[]):
   return sameOrigin || allowedCrossOrigin ? null : headerOrigin
 }
 
-/** Parsed action request payload. @internal */
+/**
+ * Parsed action request payload.
+ *
+ * @internal
+ */
 export interface ActionPayload {
   formData: FormData | null
   json: unknown
@@ -522,7 +534,11 @@ export async function readActionPayload(
   }
 }
 
-/** What running an action produced. @internal */
+/**
+ * What running an action produced.
+ *
+ * @internal
+ */
 export type ActionOutcome =
   | { kind: 'data'; status: number; data: unknown }
   | { kind: 'redirect'; status: number; to: string }

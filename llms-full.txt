@@ -3430,6 +3430,8 @@ const InvertedSection = () => (
 >
 > **System-mode subscription**: `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
 >
+> **Un-enriched theme means unistyle is not loaded**: `@pyreon/unistyle` registers the theme engine (theme enrichment with default breakpoints/spacing, CSS variables, CPSE) into ui-core at module load, so ui-core carries no unistyle dependency. Without it in the module graph — a bare `@pyreon/rocketstyle`-only setup — `<PyreonUI>` falls back to an identity engine and dev-warns once. Missing default breakpoints/spacing or no CSS variables: `import '@pyreon/unistyle'` somewhere reachable from the app (every styled `@pyreon` UI package except bare rocketstyle pulls it in transitively).
+>
 > **Low-level Provider / context**: The package also exports a low-level `Provider` (default export) + `context` from `context.tsx`. It feeds the core theme + mode context and is the path `@pyreon/rocketstyle`'s public `Provider` delegates to, so it is supported and does not warn. App code should still mount `<PyreonUI theme={theme}>`, which sets up every context layer, and read with `useMode()` / `useThemeValue()`.
 
 ## @pyreon/styler — CSS-in-JS
@@ -3550,10 +3552,6 @@ isDynamic("12px")          // false → static, cached
 import { hash, hashUpdate, hashFinalize, HASH_INIT } from "@pyreon/styler"
 hash("color:red")  // e.g. "1a2b3c"
 hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")
-
-// Apps enable CPSE through ui-core, not this call:
-import { init } from "@pyreon/ui-core"
-init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood
 ```
 
 > **css / keyframes return lazy values, not strings**: The `css` tagged template yields a `CSSResult` (resolved on use, never injected by itself); `keyframes` stringifies to an animation NAME and injects its `@keyframes` rule at CALL time; `createGlobalStyle` returns a `ComponentFn` — a fully static template injects at call time, a dynamic one when the component mounts.

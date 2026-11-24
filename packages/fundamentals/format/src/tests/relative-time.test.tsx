@@ -11,7 +11,7 @@ import { _tickerStats } from '@pyreon/ambient/internal'
 import { resetClockState } from '@pyreon/ambient/testing'
 import { RelativeTime } from '../components'
 import { formatRelativeTo, relativeFormatter, useRelativeTime } from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { _resetWarnings } from '../warn'
 
 const T0 = Date.UTC(2026, 10, 18, 12, 0, 0, 400) // 12:00:00.400 UTC
@@ -50,7 +50,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetClockState()
-  _resetLocaleState()
+  resetLocaleState()
   vi.useRealTimers()
 })
 

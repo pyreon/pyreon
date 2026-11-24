@@ -15,23 +15,21 @@ function loadTs(): TS {
   }
 }
 
-/**
- * One entry point's moved names: each name in `names` left `from` for `to`;
- * each key of `renames` stays importable from `to` under its new name.
- */
+/** One entry point's moved names: each name in `names` left `from` for `to`. */
 export interface ExportMove {
   from: string
   to: string
-  names?: readonly string[]
-  renames?: Readonly<Record<string, string>>
+  names: readonly string[]
 }
 
 /**
  * Every export the 1.0 API freeze moved off a public entry (0.55.0). `_`
  * helpers that are not compiler ABI went to each package's `./internal`
- * (`./internal-server` for the Node-only ones of zero and zero-content), the
- * compat-layer plumbing of `@pyreon/core` went to `@pyreon/core/compat`, and
- * the two documented `@pyreon/ambient/testing` hooks lost their underscore.
+ * (`./internal-server` for the Node-only ones of zero and zero-content), and
+ * the compat-layer plumbing of `@pyreon/core` went to `@pyreon/core/compat`.
+ * (The `@pyreon/ambient/testing` hooks renamed in the same release are a clean
+ * break: imports of `_resetClockState` / `_resetLocaleState` must be renamed
+ * by hand.)
  */
 export const EXPORT_MOVES: readonly ExportMove[] = [
   {
@@ -193,23 +191,17 @@ export const EXPORT_MOVES: readonly ExportMove[] = [
   },
   { from: '@pyreon/document', to: '@pyreon/document/internal', names: ['_resetRenderers'] },
   { from: '@pyreon/hotkeys', to: '@pyreon/hotkeys/internal', names: ['_resetHotkeys'] },
-  { from: '@pyreon/toast', to: '@pyreon/toast/internal', names: ['_reset', '_toasts'] },
+  { from: '@pyreon/toast', to: '@pyreon/toast/internal', names: ['_reset'] },
   { from: '@pyreon/ambient/testing', to: '@pyreon/ambient/internal', names: ['_fireAll', '_tickerStats'] },
-  {
-    from: '@pyreon/ambient/testing',
-    to: '@pyreon/ambient/testing',
-    renames: { _resetClockState: 'resetClockState', _resetLocaleState: 'resetLocaleState' },
-  },
 ]
 
-/** `from` specifier → exported name → where it went and under which name. */
-function indexMoves(moves: readonly ExportMove[]): Map<string, Map<string, { to: string; name: string }>> {
-  const out = new Map<string, Map<string, { to: string; name: string }>>()
+/** `from` specifier → exported name → the specifier it moved to. */
+function indexMoves(moves: readonly ExportMove[]): Map<string, Map<string, string>> {
+  const out = new Map<string, Map<string, string>>()
   for (const m of moves) {
     let byName = out.get(m.from)
     if (byName === undefined) out.set(m.from, (byName = new Map()))
-    for (const n of m.names ?? []) byName.set(n, { to: m.to, name: n })
-    for (const [oldName, newName] of Object.entries(m.renames ?? {})) byName.set(oldName, { to: m.to, name: newName })
+    for (const n of m.names) byName.set(n, m.to)
   }
 
   return out
@@ -263,18 +255,14 @@ export function createExportMoveCodemod(moves: readonly ExportMove[]): Codemod['
       const stay: string[] = []
       const moved = new Map<string, string[]>()
       for (const el of braces.elements) {
-        const imported = (el.propertyName ?? el.name).text
-        const local = el.name.text
-        const target = byName.get(imported)
-        const typePrefix = el.isTypeOnly ? 'type ' : ''
-        if (target === undefined) {
+        const to = byName.get((el.propertyName ?? el.name).text)
+        if (to === undefined) {
           stay.push(el.getText(sf))
           continue
         }
-        const text = target.name === local ? `${typePrefix}${local}` : `${typePrefix}${target.name} as ${local}`
-        let list = moved.get(target.to)
-        if (list === undefined) moved.set(target.to, (list = []))
-        list.push(text)
+        let list = moved.get(to)
+        if (list === undefined) moved.set(to, (list = []))
+        list.push(el.getText(sf))
       }
       if (moved.size === 0) continue
 

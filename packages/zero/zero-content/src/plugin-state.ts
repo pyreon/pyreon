@@ -34,7 +34,11 @@ export function setCompileCacheEntry(key: string, entry: CompiledCacheEntry): vo
   COMPILE_CACHE.set(key, entry)
 }
 
-/** Test-only — wipe the cross-build cache so suites don't leak state. */
+/**
+ * Test-only — wipe the cross-build cache so suites don't leak state.
+ *
+ * @internal
+ */
 export function _resetCompileCacheForTesting(): void {
   COMPILE_CACHE.clear()
 }
@@ -51,6 +55,8 @@ export function resolvedRootForPaths(): string | null {
  * repo-relative paths in plugin error messages. Called from
  * `configResolved`; tests reach it as `_setResolvedRootForPaths` from
  * `@pyreon/zero-content/internal-server`.
+ *
+ * @internal
  */
 export function setResolvedRootForPaths(root: string | null): void {
   resolvedRoot = root

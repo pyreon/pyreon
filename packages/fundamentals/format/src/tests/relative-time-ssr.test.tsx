@@ -11,14 +11,14 @@ import { effectScope } from '@pyreon/reactivity'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import { RelativeTime } from '../components'
 import { useRelativeTime } from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 
 const SERVER_AT = Date.UTC(2026, 10, 18, 12, 0, 0)
 const MIN = 60_000
 
 afterEach(() => {
   resetClockState()
-  _resetLocaleState()
+  resetLocaleState()
   vi.useRealTimers()
 })
 

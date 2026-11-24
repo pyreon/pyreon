@@ -11,7 +11,7 @@ import { mount } from '@pyreon/runtime-dom'
 import * as time from '@pyreon/time'
 import { RelativeTime } from '../components'
 import * as format from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { relativeFormatter } from '../index'
 import { relativeFormatter as coreRelativeFormatter } from '../core'
 
@@ -19,7 +19,7 @@ const T0 = Date.UTC(2026, 10, 18, 12, 0, 0)
 
 afterEach(() => {
   resetClockState()
-  _resetLocaleState()
+  resetLocaleState()
   vi.useRealTimers()
 })
 

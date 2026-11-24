@@ -4,7 +4,7 @@
  * NO v8-ignore annotations.
  */
 import { describe, expect, it } from 'vitest'
-import { buildLpihClientScript, resolveLpihCachePath } from '../index'
+import { buildLpihClientScript, resolveLpihCachePath } from '../lpih-bridge'
 import {
   _getCompatTarget,
   _isPyreonWorkspaceFile,

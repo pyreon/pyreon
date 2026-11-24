@@ -24,6 +24,7 @@ import {
   runGate,
   type PublishedPackage,
   type StabilityField,
+  internalTagFailures,
   underscoreExportFailures,
   writeStatusLine,
 } from '../../../../../scripts/check-stability-tier'
@@ -328,6 +329,44 @@ describe('underscoreExportFailures (rule 8)', () => {
     const p = pkg('@pyreon/x', { exports: exportsMap }, dir)
     expect(underscoreExportFailures([p], { '@pyreon/x': ['_tpl'] })).toEqual([])
     expect(underscoreExportFailures([p], { '@pyreon/x': ['_tpl', '_gone'] })[0]).toMatch(/`_gone`.*stale/)
+  })
+})
+
+describe('internalTagFailures (rule 9)', () => {
+  let dir: string
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const setup = (files: Record<string, string>) => {
+    dir = mkdtempSync(join(tmpdir(), 'stability-internal-tag-'))
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(join(dir, rel, '..'), { recursive: true })
+      writeFileSync(join(dir, rel), body)
+    }
+  }
+  const exportsMap = { '.': { bun: './src/index.ts' }, './internal': { bun: './src/internal.ts' } }
+
+  it('fails an @internal-tagged declaration reached through re-exports, imports and export *', () => {
+    setup({
+      'src/index.ts':
+        "export { seam as renamed } from './a'\nexport * from './b'\nimport { local } from './c'\nexport { local }\nexport { fine } from './a'\n",
+      'src/a.ts': '/** @internal */\nexport function seam() {}\n/** Public. Mentions internal in prose only. */\nexport const fine = 1\n',
+      'src/b.ts': '/**\n * Test seam.\n * @internal\n */\nexport const viaStar = 1\n',
+      'src/c.ts': '/** @internal */\nexport const local = 2\n',
+      'src/internal.ts': "export { seam } from './a'\n",
+    })
+    const out = internalTagFailures([pkg('@pyreon/x', { exports: exportsMap }, dir)], {})
+    expect(out.map((f) => f.split(' ').slice(0, 3).join(' '))).toEqual([
+      '@pyreon/x exports `renamed`,',
+      '@pyreon/x exports `viaStar`,',
+      '@pyreon/x exports `local`,',
+    ])
+  })
+
+  it('exempts compiler ABI on the main entry', () => {
+    setup({ 'src/index.ts': '/** @internal */\nexport function _tpl() {}\n', 'src/internal.ts': '' })
+    const p = pkg('@pyreon/x', { exports: exportsMap }, dir)
+    expect(internalTagFailures([p], { '@pyreon/x': ['_tpl'] })).toEqual([])
+    expect(internalTagFailures([p], {})).toHaveLength(1)
   })
 })
 

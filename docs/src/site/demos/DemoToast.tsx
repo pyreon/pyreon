@@ -1,7 +1,6 @@
 import { onMount, onUnmount } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { toast, Toaster } from '@pyreon/toast'
-import { _toasts } from '@pyreon/toast/internal'
 import { font, paper } from '../theme'
 import { el } from '../kit/bases'
 import { CodeBlock } from '../kit/code'
@@ -55,7 +54,7 @@ export default function DemoToast() {
   }
   const wait = (ms: number) => new Promise<void>((resolve) => after(ms, resolve))
 
-  const live = computed(() => _toasts().filter((t) => t.state !== 'exiting').length)
+  const live = computed(() => toast.list().filter((t) => t.state !== 'exiting').length)
   const onScreen = signal(0)
   // The Toaster renders nothing on the server; mounting it after hydration
   // keeps the server HTML and the first client render identical.

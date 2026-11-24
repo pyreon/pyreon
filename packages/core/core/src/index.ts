@@ -7,12 +7,7 @@ import { registerSingleton } from '@pyreon/reactivity'
 // aid, not a load-bearing identity check.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
-export {
-  defineComponent,
-  dispatchToErrorBoundary,
-  propagateError,
-  runWithHooks,
-} from './component'
+export { defineComponent } from './component'
 export { nativeCompat } from './compat-marker'
 // Re-exported from @pyreon/reactivity so existing imports from @pyreon/core
 // keep working AND every package below core in the dep chain can still reach
@@ -30,12 +25,9 @@ export type { Context, ReactiveContext } from './context'
 export {
   createContext,
   createReactiveContext,
-  getContextStackLength,
   popContext,
   provide,
   pushContext,
-  removeContextFrame,
-  setContextStackProvider,
   useContext,
   withContext,
 } from './context'
@@ -93,7 +85,6 @@ export {
   _wrapSpread,
   makeReactiveProps,
   mergeProps,
-  REACTIVE_PROP,
   removeUndefinedProps,
   splitProps,
 } from './props'
@@ -118,7 +109,6 @@ export {
   isElementEventHandlerAttr,
   isEventHandlerAttr,
   UNSAFE_ATTR_NAME_RE,
-  isSafeImageDataUri,
   isUnsafeUrl,
   isUrlAttr,
   UNSAFE_URL_RE,

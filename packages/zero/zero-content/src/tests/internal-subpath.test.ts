@@ -36,6 +36,53 @@ describe('@pyreon/zero-content internal subpaths', () => {
     expect(Object.keys(mod).filter((name) => name.startsWith('_'))).toEqual([])
   })
 
+  // Non-underscore internals (test seams) moved off the public entries in the
+  // 1.0 API freeze. Each must resolve on its internal subpath and on no
+  // public entry.
+  const MOVED: Record<'./internal' | './internal-server', readonly string[]> = {
+    './internal': [
+      'buildBreadcrumbs',
+      'buildSrcdoc',
+      'deriveApiId',
+      'filterHeadings',
+      'groupEntries',
+      'groupsFromConfig',
+      'humanize',
+      'normalizeBlogFrontmatter',
+      'pageFromParam',
+      'renderInstallRows',
+      'resolveBlogConfig',
+      'validateBlogFrontmatter',
+    ],
+    './internal-server': [
+      'buildPageSearchEntry',
+      'collectUnpublishedFiles',
+      'collectionSlugFor',
+      'emitSeoOutputs',
+      'findCollectionForFileImpl',
+      'hasMarkdownInContentDir',
+      'isBrandedComponentsRegistry',
+      'isMarkdownId',
+      'isRelativePath',
+      'joinUrl',
+      'makeInternalLinkResolver',
+      'reportPath',
+      'resolvePublishNow',
+      'selectPublishedEntries',
+    ],
+  }
+  const allMoved = new Set([...MOVED['./internal'], ...MOVED['./internal-server']])
+
+  it.each(publicEntries)('public entry %s exports none of the moved internals', async (_key, conds) => {
+    const mod = (await import(join(PKG_DIR, conds.bun))) as Record<string, unknown>
+    expect(Object.keys(mod).filter((name) => allMoved.has(name))).toEqual([])
+  })
+
+  it.each(Object.entries(MOVED))('%s exports its moved internals', async (key, names) => {
+    const mod = (await import(key === './internal' ? '../internal' : '../internal-server')) as Record<string, unknown>
+    expect(names.filter((name) => mod[name] === undefined)).toEqual([])
+  })
+
   it('the generated collections module imports _setRegistry from ./internal', async () => {
     const code = renderVirtualCollections({ config: { collections: {} }, root: '/abs/project' })
     expect(code).toContain("import { _setRegistry } from '@pyreon/zero-content/internal'")

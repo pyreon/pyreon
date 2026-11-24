@@ -22,6 +22,13 @@
 //     `_setLocaleStoreReader`
 //   - test-reset helpers: `_resetActions`, `_resetSubmissions`,
 //     `_resetInitThemeForTests`, `_resetRateLimitWarning`
+//   - the action protocol shared by `<Form>`, the action endpoint and the
+//     page-form middleware: `ACTION_QUERY_PARAM`, `ENHANCED_ACTION_HEADER`,
+//     `ACTION_REDIRECT_HEADER`, `formActionSearch`, `resolveActionOptions`,
+//     `checkActionOrigin`, `readActionPayload`, `runActionHandler` (+ types)
+//   - client-safe helpers exported for their unit tests: `toRfc822`,
+//     `matchLocale`, `validateLocale`, `islandsOnlyNavigation`,
+//     `buildHydrationReport`
 
 export {
   _actionDeclaringRoute,
@@ -33,8 +40,25 @@ export {
   _registerActionRoutes,
   _resetActions,
   _resolveAction,
+  ACTION_REDIRECT_HEADER,
+  checkActionOrigin,
+  readActionPayload,
+  resolveActionOptions,
+  runActionHandler,
 } from './actions-core'
-export { _resetSubmissions, _setActionSnapshotReader } from './form'
+export type { ActionOutcome, ActionPayload, ResolvedActionOptions } from './actions-core'
+export {
+  _resetSubmissions,
+  _setActionSnapshotReader,
+  ACTION_QUERY_PARAM,
+  ENHANCED_ACTION_HEADER,
+  formActionSearch,
+} from './form'
+export type { ActionSnapshot, EnhancedActionResponse } from './form'
+export { buildHydrationReport } from './hydration-report'
+export { matchLocale, validateLocale } from './i18n-locale-guards'
 export { _registerI18nConfig, _setLocaleStoreReader } from './i18n-routing-state'
 export { _resetRateLimitWarning } from './rate-limit-state'
+export { islandsOnlyNavigation } from './islands-navigation'
+export { toRfc822 } from './seo-rss'
 export { _resetInitThemeForTests } from './theme-state'

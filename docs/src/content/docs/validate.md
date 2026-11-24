@@ -997,7 +997,6 @@ Types: `FieldMeta`, `Input<S>`, `Output<S>`, `ParseResult`, `ReactiveSource`, `P
 | `getFormatValidator` | `(name: string) => FormatValidator \| undefined` | The validator installed for a named format, if any. |
 | `uninstallFormatValidator` | `(name: string) => void` | Remove an installed format validator (falls back to the built-in). |
 | `resolveFormat` | `(name, light: FormatValidator) => FormatValidator` | The installed validator for `name`, else `light`. |
-| `installServerCheck` / `getServerCheck` / `uninstallServerCheck` | `(key, fn?: ServerCheckFn)` | The registry behind `.serverCheck(key)`. Apps normally use `registerServerCheck` from `@pyreon/validate/server`; these are exported for tests. |
 | `validateCreditCard` / `validateIp` / `validatePhone` / `isIPv6` | `(value: string) => boolean` | The lightweight client format validators, for standalone use. |
 
 Types: `ValidateConfig`, `FormatValidator`, `ServerCheckFn` (`(value, context?) => boolean \| Promise<boolean>`), `EmailPrecision` (`'html5' \| 'standard' \| 'rfc5322'`), `UrlOpts`.

@@ -6,7 +6,7 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { processImage } from '../image-plugin'
+import { processImage } from '../internal-server'
 
 const dirs: string[] = []
 afterEach(() => {

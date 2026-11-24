@@ -18,21 +18,29 @@ export default defineNodeConfig({
     'src/ssr-build-shared.ts',
     'src/app.ts',
     'src/favicon.ts',
+    'src/favicon-ico.ts', // split out of favicon.ts
     'src/font.ts',
     'src/icons-plugin.ts',
     'src/image-plugin.ts',
+    'src/image-processing.ts', // split out of image-plugin.ts
     'src/og-image.ts',
+    'src/og-image-render.ts', // split out of og-image.ts
     // Server-runtime middleware / SSR entry:
     'src/entry-server.ts',
     'src/cache.ts',
+    'src/cache-glob.ts', // split out of cache.ts
     'src/compression.ts',
+    'src/compression-filter.ts', // split out of compression.ts
     'src/isr.ts',
     'src/i18n-routing.ts',
+    'src/i18n-locale-guards.ts', // split out of i18n-routing.ts
     'src/ai.ts',
+    'src/ai-manifests.ts', // split out of ai.ts
     'src/actions.ts',
     'src/actions-core.ts', // the implementation behind the actions.ts barrel
     'src/logger.ts',
     'src/seo.ts',
+    'src/seo-internals.ts', // split out of seo.ts
     // JSX components (browser-tested):
     'src/link.tsx',
     'src/image.tsx',
@@ -44,6 +52,7 @@ export default defineNodeConfig({
     'src/web-vitals.ts',
     'src/theme.tsx', // JSX components — browser-tested integration tier
     'src/client.ts', // browser-runtime entry; tested via real-Chromium e2e
+    'src/islands-navigation.ts', // split out of client.ts
     'src/fs-router.ts', // file-system router — exercised by integration fixtures
     // Integration-test fixtures — these are sample apps the integration
     // tests boot, not production source. They count as 0% in coverage

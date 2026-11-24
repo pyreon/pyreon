@@ -7,7 +7,11 @@
  */
 export const sharedBucketWarning = { warned: false }
 
-/** Reset the once-per-process warning latch. Test-only. */
+/**
+ * Reset the once-per-process warning latch. Test-only.
+ *
+ * @internal
+ */
 export function _resetRateLimitWarning(): void {
   sharedBucketWarning.warned = false
 }

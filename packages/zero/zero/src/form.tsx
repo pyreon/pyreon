@@ -29,13 +29,25 @@ import type { Signal } from '@pyreon/reactivity'
 import { useRouter } from '@pyreon/router'
 import type { Action, ActionData } from './actions-core'
 
-/** Query parameter that names the action a page form post targets. @internal */
+/**
+ * Query parameter that names the action a page form post targets.
+ *
+ * @internal
+ */
 export const ACTION_QUERY_PARAM = '_action'
 
-/** Request header marking an enhanced (fetch) submission. @internal */
+/**
+ * Request header marking an enhanced (fetch) submission.
+ *
+ * @internal
+ */
 export const ENHANCED_ACTION_HEADER = 'X-Zero-Action'
 
-/** What the server hands a page about the action that produced it. @internal */
+/**
+ * What the server hands a page about the action that produced it.
+ *
+ * @internal
+ */
 export interface ActionSnapshot {
   id: string
   status: number
@@ -43,7 +55,11 @@ export interface ActionSnapshot {
   error?: string
 }
 
-/** JSON body of an enhanced submission's response. @internal */
+/**
+ * JSON body of an enhanced submission's response.
+ *
+ * @internal
+ */
 export type EnhancedActionResponse =
   | { kind: 'data'; status: number; data: unknown }
   | { kind: 'redirect'; to: string }
@@ -121,7 +137,11 @@ interface SubmissionCell {
  */
 const clientCells = new Map<string, SubmissionCell>()
 
-/** Drop every client submission state. Test isolation. @internal */
+/**
+ * Drop every client submission state. Test isolation.
+ *
+ * @internal
+ */
 export function _resetSubmissions(): void {
   clientCells.clear()
 }
