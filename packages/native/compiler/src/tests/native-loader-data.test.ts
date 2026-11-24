@@ -30,6 +30,22 @@ export function P() {
   effect(() => { console.log(data().title) })
   return <Stack>{data().tags.length > 0 ? <Text>{data().tags.length}</Text> : null}<For each={() => data().tags} by={(t) => t}>{(t) => <Text>{t}</Text>}</For></Stack>
 }`,
+  'an accessor read into a body snapshot, a computed and a local arrow': `import { useLoaderData } from '@pyreon/router'
+import { computed } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+type Post = { title: string; views: number }
+export function P() {
+  const data = useLoaderData<Post>()
+  const snapshot = data().title
+  const upper = computed(() => data().title.toUpperCase())
+  const views = () => data().views
+  return <Stack><Text>{snapshot}</Text><Text>{upper()}</Text><Text>{views()}</Text></Stack>
+}`,
+  'the accessor passed UNCALLED to a `() => T` prop': `import { useLoaderData } from '@pyreon/router'
+import { Stack, Text } from '@pyreon/primitives'
+type Post = { title: string; views: number }
+function Card(props: { post: () => Post }) { return <Text>{props.post().title}</Text> }
+export function P() { const data = useLoaderData<Post>(); return <Stack><Card post={data} /></Stack> }`,
   'an accessor of an inline type': `import { useLoaderData } from '@pyreon/router'
 import { Stack, Text } from '@pyreon/primitives'
 export function P() { const data = useLoaderData<{ x: string }>(); return <Stack><Text>{data().x}</Text></Stack> }`,
@@ -91,6 +107,53 @@ export function App() {
     const kotlin = transform(SHAPES['an accessor read by field']!, { target: 'kotlin' }).code
     expect(kotlin).toContain('Text(text = "${data.title}")')
     expect(kotlin).not.toContain('data()')
+  })
+
+  it('the accessor passed uncalled to a `() => T` prop is passed as a closure, not as the value', () => {
+    const src = SHAPES['the accessor passed UNCALLED to a `() => T` prop']!
+    expect(transform(src, { target: 'swift' }).code).toContain('Card(post: { data })')
+    expect(transform(src, { target: 'kotlin' }).code).toContain('Card(post = { data })')
+  })
+
+  it('a signal or a computed passed uncalled to a `() => T` prop is passed as a closure too (the same class)', () => {
+    const src = `import { signal, computed } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+function Count(props: { n: () => number }) { return <Text>{props.n()}</Text> }
+export function P() { const n = signal(1); const doubled = computed(() => n() * 2); return <Stack><Count n={n} /><Count n={doubled} /></Stack> }`
+    const swift = transform(src, { target: 'swift' }).code
+    const kotlin = transform(src, { target: 'kotlin' }).code
+    expect(swift).toContain('Count(n: { n })')
+    expect(swift).toContain('Count(n: { doubled })')
+    expect(kotlin).toContain('Count(n = { n })')
+    expect(kotlin).toContain('Count(n = { doubled })')
+    if (isSwiftcAvailable()) {
+      const v = validateSwiftWithStubs(swift)
+      expect(v.ok, v.error).toBe(true)
+    }
+    if (isKotlincAvailable()) {
+      const v = validateKotlin(kotlin)
+      expect(v.ok, v.error).toBe(true)
+    }
+  })
+
+  it('`useLoaderData<T>()()` (called where it is made) warns by name with the fix instead of dropping T', () => {
+    const src = `${head}export function P() { const t = useLoaderData<Post>()().title; return <Text>{t}</Text> }`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(src, { target })
+      const w = r.warnings.join('\n')
+      expect(w, target).toContain('`useLoaderData<T>()()` (the accessor called where it is made)')
+      expect(w, target).toContain('`const data = useLoaderData<T>()`')
+      expect(r.code, target).not.toContain('useLoaderData()')
+    }
+  })
+
+  it('a field read off the accessor itself (`data.title`, the pre-accessor shape) warns by name', () => {
+    const src = `${head}export function P() { const data = useLoaderData<Post>(); return <Text>{data.title}</Text> }`
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(transform(src, { target }).warnings.join('\n'), target).toContain(
+        '`data.title` reads a field off the accessor `useLoaderData<T>()` returns',
+      )
+    }
   })
 
   it('a destructure — object, renamed, rest, nested or default — is not lowered and warns with the accessor fix', () => {

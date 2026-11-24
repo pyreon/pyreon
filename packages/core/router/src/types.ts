@@ -771,6 +771,13 @@ export interface RouterInstance extends Router {
   /** Loader data keyed by route record — populated before each navigation commits */
   _loaderData: Map<RouteRecord, unknown>
   /**
+   * The loader key each `_loaderData` entry was loaded for (`setLoaderData`).
+   * RouterView shows a stored value only while its key matches the route on
+   * screen, so the next page's data, written before the route switches, never
+   * reaches the page that is leaving.
+   */
+  _loaderDataKeys: Map<RouteRecord, string>
+  /**
    * The loader cache key of `record` for `route` (its `loaderKey`, else path +
    * params). RouterView remounts a page when this changes: a different key is
    * a different resource. Data that changes under the same key is delivered

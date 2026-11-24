@@ -58,7 +58,7 @@ const User = () => {
 
   return (
     <div>
-      <h1>{data.name} (ID: {route().params.id})</h1>
+      <h1>{data().name} (ID: {route().params.id})</h1>
       <Show when={isTransitioning()}>
         <ProgressBar />
       </Show>

@@ -159,7 +159,14 @@ function createViewState(
     router._loadingSignal()
     const r = routeOf()
     if (r.matched[depth] === rec && (!isLeaf || sameParams(r.params, rendered.params))) {
-      last = router._loaderData.get(rec)
+      // The stored value must have been loaded for the route on screen: a
+      // navigation writes the next page's data BEFORE the route switches (a
+      // View Transition defers the switch), and a tick in that window must
+      // not hand it to this page.
+      const loadedFor = router._loaderDataKeys.get(rec)
+      if (loadedFor === undefined || loadedFor === router._loaderKeyOf(rec, r)) {
+        last = router._loaderData.get(rec)
+      }
     }
 
     return last
@@ -313,30 +320,17 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
       return { ...base, comp: null, errored: false }
     },
     {
-      // Re-emit (→ re-mount the subtree at this depth) when this depth's
-      // record / resolved component / error-state changes. The `route`
-      // object is fresh on EVERY navigation, so comparing it at every depth
-      // would re-mount the WHOLE matched chain — including PARENT LAYOUTS —
-      // on every page change, defeating the "layouts mount once" contract
-      // (a parent layout re-mount tears down its sidebar/header state, e.g.
-      // resetting scroll position and flashing the chrome). A parent layout
-      // renders chrome + an inner <RouterView>; it does NOT consume the
-      // leaf's params/query/loader, so it must persist across child
-      // navigations. Only the LEAF (the param/loader-consuming page) re-emits
-      // on a route change, so its `renderWithLoader` re-renders with fresh
-      // params/query/meta + loader data. A parent layout that reads the leaf's
-      // params/query reads them reactively via `useParams()` (keyed off the
-      // `currentRoute` signal), which updates without a re-mount.
-      //
-      // EXCEPTION: a parameterised parent layout with its OWN loader (e.g.
-      // `/users/:id` whose loader fetches the user) must reflect NEW data when
-      // its param changes across a child navigation (`/users/42/profile →
-      // /users/99/profile`). `useLoaderData()` reads a plain (non-reactive)
-      // context snapshot — depth-specific, so it can't fall back to a signal the
-      // way `useParams()` does — so a never-re-mounting parent would stay STALE.
-      // We re-emit (re-mount, re-reading `useLoaderData()` in the body) only when
-      // THIS depth's own loader data changed. Loader-less layouts keep
-      // `loaderData === undefined` on both sides → still mount once.
+      // Re-emit (→ re-mount the subtree at this depth) only by the rule in
+      // `sameDepth`: record / resolved component / chunk-error state, the
+      // leaf's params, and this depth's loader key. The `route` object is
+      // fresh on EVERY navigation, so comparing it would re-mount the whole
+      // matched chain — parent layouts included — on every page change, and
+      // the leaf on every query edit (#4814). A parent layout persists across
+      // child navigations and reads params via `useParams()` / `useRoute()`.
+      // A parameterised layout with its OWN loader (`/users/:id`) re-mounts
+      // when its loader key changes (`/users/42/… → /users/99/…`); data that
+      // changes under the same key reaches every depth in place, because
+      // `useLoaderData()` is an accessor over this depth's data cell.
       equals: (a, b) => sameDepth(a, b, depth, shown),
     },
   )

@@ -775,3 +775,57 @@ describe('round-2 review: the loader accessor (#4814)', () => {
     }
   })
 })
+
+describe('the page on screen never sees data loaded for the next route (#4814)', () => {
+  it('a loading tick inside a deferred View Transition does not hand the next page\'s data to the current one', async () => {
+    const seen: string[] = []
+    let n = 0
+    const Page = () => {
+      const me = ++n
+      const data = useLoaderData<{ p: string }>()
+      effect(() => {
+        seen.push(`inst${me}:${data()?.p}`)
+      })
+
+      return h('p', null, 'p')
+    }
+    // The commit runs 30 ms after the loaders wrote the next page's data.
+    Object.defineProperty(document, 'startViewTransition', {
+      configurable: true,
+      value: (cb: () => void) => {
+        const done = new Promise<void>((r) =>
+          setTimeout(() => {
+            cb()
+            r()
+          }, 30),
+        )
+
+        return { updateCallbackDone: done, finished: done, ready: done }
+      },
+    })
+    try {
+      window.history.replaceState(null, '', '/')
+      router = createRouter({
+        mode: 'history',
+        routes: [
+          { path: '/', component: () => h('p', null, 'h') },
+          { path: '/p/:id', component: Page, loader: async ({ params }) => ({ p: params.id }) },
+          { path: '/x', component: () => h('p', null, 'x'), loader: () => new Promise((r) => setTimeout(() => r({}), 100)) },
+        ],
+      })
+      mountRouter(router)
+      await router.push('/p/1')
+      await settle(40)
+      const toP2 = router.push('/p/2')
+      await settle(15)
+      expect(router.currentRoute().path).toBe('/p/1') // still inside the transition window
+      void router.push('/x') // a second navigation ticks the loading counter
+      await settle(1)
+      await toP2
+      await settle(150)
+      expect(seen.filter((e) => e.startsWith('inst1:'))).toEqual(['inst1:1'])
+    } finally {
+      Reflect.deleteProperty(document, 'startViewTransition')
+    }
+  })
+})

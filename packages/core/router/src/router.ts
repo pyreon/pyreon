@@ -10,6 +10,7 @@ import {
   isInPlaceReplace,
   stringifyQuery,
 } from './match'
+import { setLoaderData } from './loader-data-store'
 import { isNotFoundError } from './not-found'
 import { classifyRedirectTarget, getRedirectInfo, redirect as throwRedirect } from './redirect'
 import { ScrollManager } from './scroll'
@@ -1094,7 +1095,7 @@ export function createRouter<TNames extends string = string>(
     to: ResolvedRoute,
   ): GuardOutcome {
     if (result.status === 'fulfilled') {
-      router._loaderData.set(record, result.value)
+      setLoaderData(router, record, to, result.value)
       return { action: 'continue' }
     }
     if (ac.signal.aborted) return { action: 'continue' }
@@ -1107,7 +1108,7 @@ export function createRouter<TNames extends string = string>(
     // `notFound()` from a loader is flow control too: the navigation commits
     // into the not-found state (the fallback chain renders), not an error.
     if (isNotFoundError(result.reason)) {
-      router._loaderData.set(record, undefined)
+      setLoaderData(router, record, to, undefined)
       to._loaderNotFound = true
       return { action: 'continue' }
     }
@@ -1115,7 +1116,7 @@ export function createRouter<TNames extends string = string>(
       const cancel = router._onError(result.reason, to)
       if (cancel === false) return { action: 'cancel' }
     }
-    router._loaderData.set(record, undefined)
+    setLoaderData(router, record, to, undefined)
 
     return { action: 'continue' }
   }
@@ -1287,7 +1288,7 @@ export function createRouter<TNames extends string = string>(
       r.loader(loaderCtx)
         .then((data) => {
           if (!ac.signal.aborted) {
-            router._loaderData.set(r, data)
+            setLoaderData(router, r, to, data)
             // Update cache with fresh data
             const key = getCacheKey(r, loaderCtx)
             loaderCacheSet(key, data)
@@ -1415,7 +1416,7 @@ export function createRouter<TNames extends string = string>(
         // Only the records this navigation flagged as remote (hasServerLoader)
         // get applied; isomorphic loaders in the chain ran locally.
         if (r && records.includes(r) && String(i) in data) {
-          router._loaderData.set(r, data[String(i)])
+          setLoaderData(router, r, to, data[String(i)])
         }
       }
 
@@ -1511,6 +1512,7 @@ export function createRouter<TNames extends string = string>(
       for (const record of router._loaderData.keys()) {
         if (!keep.has(record) && !record.staleWhileRevalidate) {
           router._loaderData.delete(record)
+          router._loaderDataKeys.delete(record)
         }
       }
     }
@@ -1958,6 +1960,7 @@ export function createRouter<TNames extends string = string>(
     _viewDepth: 0,
     _erroredChunks: new Set(),
     _loaderData: new Map(),
+    _loaderDataKeys: new Map(),
     _abortController: null,
     _blockers: new Set(),
     _readyResolve,
@@ -2163,6 +2166,7 @@ export function createRouter<TNames extends string = string>(
       router._blockers.clear()
       componentCache.clear()
       router._loaderData.clear()
+      router._loaderDataKeys.clear()
       router._loaderCache.clear()
       router._loaderInflight.clear()
       router._abortController?.abort()

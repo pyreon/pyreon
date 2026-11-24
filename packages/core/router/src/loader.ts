@@ -2,6 +2,7 @@ import type { Context } from '@pyreon/core'
 import { createContext, useContext } from '@pyreon/core'
 import { type Computed, computed } from '@pyreon/reactivity'
 import type { RouterInstance } from './types'
+import { setLoaderData } from './loader-data-store'
 import { isNotFoundError } from './not-found'
 
 // Dev-mode gate + counter sink. See packages/internals/perf-harness for contract.
@@ -131,7 +132,7 @@ export async function prefetchLoaderData(
           router._loaderNotFound?.set(route.path)
           return
         }
-        router._loaderData.set(r, data)
+        setLoaderData(router, r, route, data)
       }),
   )
 }
@@ -424,9 +425,9 @@ export function hydrateLoaderData(
     seen.set(record.path, n + 1)
     const key = n === 0 ? record.path : `${record.path}#${n}`
     if (Object.hasOwn(serialized, key)) {
-      router._loaderData.set(record, serialized[key])
+      setLoaderData(router, record, route, serialized[key])
     } else if (n > 0 && Object.hasOwn(serialized, record.path)) {
-      router._loaderData.set(record, serialized[record.path])
+      setLoaderData(router, record, route, serialized[record.path])
     }
   }
 }

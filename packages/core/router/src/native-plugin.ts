@@ -1,10 +1,13 @@
 /** Hook lowerings are package-owned; canonical navigation hosting remains a backend primitive. */
 import type {
   AstNode,
+  CallExprRecognizer,
   CallRecognizer,
   CompilerPlugin,
   ExtPayload,
   MemberCallLowering,
+  ReceiverLowering,
+  ReceiverSite,
   TypeIR,
 } from '@pyreon/native-compiler/plugin-api'
 const recognizeParams: CallRecognizer = (_call, ctx) => {
@@ -53,6 +56,37 @@ const recognizeLoader: CallRecognizer = (_call, ctx) => {
     `\`const ${shape} = useLoaderData<T>()\` destructures an accessor and is not lowered on native. useLoaderData<T>() returns an accessor: bind it and read the field through the call — \`const data = useLoaderData<T>()\`, then \`data().${field}\`.`,
   )
   return null
+}
+// `useLoaderData<T>()()` — the accessor called where it is made. Natively the loader read is a COMPONENT-level binding:
+// on Swift it needs the View's `pyreonRouter` environment and the body gate, on Kotlin a composable-scope read with its
+// early `return`. An expression in arbitrary position (an event handler, a Kotlin lambda) can get neither, and as
+// written it lowered to `useLoaderData().title`, which drops `T` and fails on both targets. Claimed with the fix.
+const recognizeImmediateLoaderCall: CallExprRecognizer = (site, ctx) => {
+  const inner = site.callee as AstNode & { callee?: AstNode & { name?: string }; arguments?: readonly AstNode[] }
+  if (site.args.length !== 0 || inner.type !== 'CallExpression' || inner.callee?.type !== 'Identifier') return undefined
+  const bound = ctx.binding(inner.callee.name ?? '')
+  if (bound?.kind !== 'import' || bound.module !== '@pyreon/router' || bound.name !== 'useLoaderData') return undefined
+  return ctx.unsupported(
+    site.node,
+    '`useLoaderData<T>()()` (the accessor called where it is made)',
+    'bind it once at the top of the component — `const data = useLoaderData<T>()` — and read `data().field`',
+  )
+}
+// `data.title` on the accessor binding — the pre-accessor shape. Natively the binding IS the value, so it would compile,
+// but on the web it reads a field off a function (`undefined`). Warned by name (the read itself is left as written).
+const accessorFieldRead = (site: ReceiverSite, ctx: { warnOnce(message: string): void }): undefined => {
+  if (site.kind === 'member' && site.expr.object.kind === 'identifier') {
+    const name = site.receiver.name
+    ctx.warnOnce(
+      `\`${name}.${site.expr.property}\` reads a field off the accessor \`useLoaderData<T>()\` returns, which is \`undefined\` on the web. Read it through the call: \`${name}().${site.expr.property}\`.`,
+    )
+  }
+  return undefined
+}
+
+const loaderReceiver: ReceiverLowering = {
+  swift: { expr: accessorFieldRead },
+  kotlin: { expr: accessorFieldRead },
 }
 /**
  * The native type of the loader data. An inline object type (`useLoaderData<{ x: string }>()`) names the struct the
@@ -119,7 +153,9 @@ export const routerPlugin: CompilerPlugin = {
     useLoaderData: recognizeLoader,
   },
   patternCalls: { useParams: recognizePattern, useLoaderData: recognizeLoader },
+  callExprs: recognizeImmediateLoaderCall,
   memberCalls: { push: handleCall('push'), replace: handleCall('replace') },
+  receivers: { loader: loaderReceiver },
   decls: {
     navigate: {
       legacyKind: 'router-hook',
