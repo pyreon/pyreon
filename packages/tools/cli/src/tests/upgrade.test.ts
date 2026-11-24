@@ -63,7 +63,9 @@ describe('cleanVersion', () => {
   it('stays linear on a long run of digits (no regex backtracking)', () => {
     const start = performance.now()
     expect(cleanVersion(`1.${'0'.repeat(200_000)}`)).toBeNull()
-    expect(performance.now() - start).toBeLessThan(200)
+    // ~1 ms normally; the old unanchored regex takes minutes on this input, so a
+    // generous bound stays stable under coverage instrumentation and CI load.
+    expect(performance.now() - start).toBeLessThan(2000)
   })
 })
 

@@ -2641,7 +2641,7 @@
       "name": "@pyreon/cli",
       "version": "0.54.0",
       "bin": {
-        "pyreon": "./lib/index.js",
+        "pyreon": "./bin/pyreon.js",
       },
       "dependencies": {
         "@pyreon/compiler": "workspace:^",
