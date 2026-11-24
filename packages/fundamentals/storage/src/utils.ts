@@ -131,3 +131,25 @@ export function getWebStorage(type: 'local' | 'session'): Storage | null {
 export function toError(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e))
 }
+
+type ErrorChannel = { onError?: ((error: Error) => unknown) | undefined } | undefined
+
+/** A rejection handler that reports to `onError` (a notification; its return is ignored). */
+export const reportTo =
+  (options: ErrorChannel) =>
+  (e: unknown): void => {
+    options?.onError?.(toError(e))
+  }
+
+/**
+ * Run one storage write or remove. A throw (quota, blocked storage, a refused
+ * cookie) never escapes `.set()` / `.remove()` after the signal moved: it is
+ * reported to `onError`, the same way for every backend (#4812).
+ */
+export function attempt(options: ErrorChannel, op: () => void): void {
+  try {
+    op()
+  } catch (e) {
+    reportTo(options)(e)
+  }
+}

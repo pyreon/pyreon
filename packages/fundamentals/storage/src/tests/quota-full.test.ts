@@ -280,6 +280,21 @@ describe('cookie read-back after a write (#4812)', () => {
     }
   })
 
+  it('names the cookie in a short message in production', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const restore = droppingCookies()
+    try {
+      const onError = vi.fn()
+      useCookie('dropped-prod', 'a', { onError }).set('b')
+      expect((onError.mock.calls[0]![0] as Error).message).toBe(
+        '[Pyreon] useCookie("dropped-prod"): the browser did not store the cookie',
+      )
+    } finally {
+      restore()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('is skipped for an expiring write and for a cookie scoped to another path', () => {
     const restore = droppingCookies()
     try {

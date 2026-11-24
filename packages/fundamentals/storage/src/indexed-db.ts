@@ -2,7 +2,7 @@ import { signal, wrapSignal } from '@pyreon/reactivity'
 import { registerPendingFlush, unregisterPendingFlush } from './local'
 import { getEntry, releaseWithOwner, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { IndexedDBOptions, IndexedDBSignal } from './types'
-import { deserialize, isBrowser, serialize, toError } from './utils'
+import { deserialize, isBrowser, reportTo, serialize } from './utils'
 
 
 // ─── Database management ─────────────────────────────────────────────────────
@@ -97,12 +97,12 @@ function settleOnTx(tx: IDBTransaction): Promise<void> {
     tx.oncomplete = () => resolve()
     // A real IDB write failure (quota, aborted commit): exercised in quota.browser.test.ts.
     /* v8 ignore start */
-    tx.onabort = () => reject(tx.error ?? new DOMException('IndexedDB write aborted', 'AbortError'))
+    tx.onabort = () => reject(tx.error ?? new DOMException('', 'AbortError'))
     // During `error` the transaction's own `error` is still null (it is set
     // when the abort follows): the failing REQUEST holds the real error
     // (`ConstraintError`, `QuotaExceededError`, …).
     tx.onerror = (event) =>
-      reject((event.target as IDBRequest | null)?.error ?? tx.error ?? new DOMException('IndexedDB write failed', 'UnknownError'))
+      reject((event.target as IDBRequest | null)?.error ?? tx.error ?? new DOMException('', 'UnknownError'))
     /* v8 ignore stop */
   })
 }
@@ -246,7 +246,7 @@ export function useIndexedDB<T>(
           // oxlint-disable-next-line no-console
           console.warn(`[Pyreon] IndexedDB "${key}" init failed, using default:`, err)
         }
-        options.onError?.(toError(err))
+        reportTo(options)(err)
       })
       /* v8 ignore stop */
       .finally(markReady)
@@ -277,11 +277,9 @@ export function useIndexedDB<T>(
     lastWrite = openDB(dbName, storeName)
       .then((db) => idbSet(db, storeName, key, serialize(value, options)))
       /* v8 ignore start — write-failure catch: signal already holds the value; notify onError */
-      .catch((err) => {
-        // Write failed — signal still has the correct value and the stored
-        // value is unchanged (the transaction rolled back). Notify onError.
-        options.onError?.(toError(err))
-      })
+      // Write failed — the signal still has the value and the stored value is
+      // unchanged (the transaction rolled back).
+      .catch(reportTo(options))
     /* v8 ignore stop */
     return lastWrite
   }
@@ -318,7 +316,7 @@ export function useIndexedDB<T>(
     // Delete failed — the signal is already reset. Report it like a write.
     return openDB(dbName, storeName)
       .then((db) => idbDelete(db, storeName, key))
-      .catch((err) => void options.onError?.(toError(err)))
+      .catch(reportTo(options))
   }
 
   storageSig.ready = () => readySig()

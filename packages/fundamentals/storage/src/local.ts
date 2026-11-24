@@ -9,7 +9,7 @@ import {
   warnIfOptionsDiffer,
 } from './registry'
 import type { StorageOptions, StorageSignal } from './types'
-import { deserialize, getWebStorage, isBrowser, serialize, toError } from './utils'
+import { attempt, deserialize, getWebStorage, isBrowser, serialize } from './utils'
 
 // ─── Cross-tab sync ──────────────────────────────────────────────────────────
 
@@ -225,15 +225,10 @@ export function createStorageSignal<T>(
   const writeNow = (value: T): void => {
     /* v8 ignore next — defensive null storage guard */
     if (!storage) return
-    try {
-      storage.setItem(key, serialize(value, options))
-    } catch (e) {
-      // Storage full or blocked — signal still updates and the previously
-      // stored value stays in storage (reads keep returning it on the next
-      // load). Surface the error to `onError` (notification; return ignored)
-      // so quota failures aren't silent.
-      options?.onError?.(toError(e))
-    }
+    // Storage full or blocked — the signal still updates and the previously
+    // stored value stays in storage (reads keep returning it on the next
+    // load); the failure reaches `onError` so quota problems aren't silent.
+    attempt(options, () => storage.setItem(key, serialize(value, options)))
   }
 
   // Opt-in write coalescing (localStorage/sessionStorage). The signal updates
@@ -305,11 +300,7 @@ export function createStorageSignal<T>(
     sig.set(defaultValue)
     /* v8 ignore next — defensive null storage guard */
     if (!storage) return
-    try {
-      storage.removeItem(key)
-    } catch (e) {
-      options?.onError?.(toError(e))
-    }
+    attempt(options, () => storage.removeItem(key))
   }
 
   // Inbound cross-tab value: update the shared base signal only, and drop any

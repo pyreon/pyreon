@@ -1,7 +1,7 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
 import { getEntry, releaseWithOwner, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { CookieOptions, StorageSignal } from './types'
-import { deserialize, isBrowser, serialize, toError } from './utils'
+import { attempt, deserialize, isBrowser, serialize } from './utils'
 
 // ─── Server-side cookie source ───────────────────────────────────────────────
 
@@ -188,7 +188,9 @@ function verifyStored<T>(key: string, pair: string, options: CookieOptions<T>): 
     .some((part) => part.trim() === pair)
   if (stored) return
   throw new Error(
-    `[Pyreon] useCookie("${key}"): the browser did not store the cookie (over the ~${COOKIE_SIZE_LIMIT}-byte limit, \`sameSite: 'none'\` without \`secure\`, \`secure\` on an http page, or a \`domain\` this page may not set). Reads keep returning the previously stored value. Store large values with useIndexedDB or useStorage.`,
+    process.env.NODE_ENV !== 'production'
+      ? `[Pyreon] useCookie("${key}"): the browser did not store the cookie (over the ~${COOKIE_SIZE_LIMIT}-byte limit, \`sameSite: 'none'\` without \`secure\`, \`secure\` on an http page, or a \`domain\` this page may not set). Reads keep returning the previously stored value. Store large values with useIndexedDB or useStorage.`
+      : `[Pyreon] useCookie("${key}"): the browser did not store the cookie`,
   )
 }
 
@@ -268,17 +270,10 @@ export function useCookie<T>(
   // A cookie write the browser refuses (`document.cookie` throws in a
   // sandboxed document) must not escape `.set()` / `.remove()` after the signal
   // already moved: it goes to `onError`, like every other backend (#4812).
-  const guarded = (write: () => void): void => {
-    try {
-      write()
-    } catch (e) {
-      options.onError?.(toError(e))
-    }
-  }
   const storageSig = wrapSignal(sig, {
     set: (value: T) => {
       sig.set(value)
-      guarded(() => writeCookie(key, value, options))
+      attempt(options, () => writeCookie(key, value, options))
     },
   }) as unknown as StorageSignal<T>
 
@@ -286,7 +281,7 @@ export function useCookie<T>(
   // later `.set()` writes the cookie again (see `createStorageSignal`).
   storageSig.remove = () => {
     sig.set(defaultValue)
-    guarded(() => deleteCookie(key, options))
+    attempt(options, () => deleteCookie(key, options))
   }
 
   setEntry('cookie', key, storageSig, defaultValue, options)
