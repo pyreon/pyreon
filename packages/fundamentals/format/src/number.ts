@@ -200,15 +200,6 @@ const CURRENCY_PRESETS: Record<CurrencyPreset, Opts> = {
   accounting: { currencySign: 'accounting' },
 }
 
-const currencyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, currency, options) =>
-  make('formatCurrency', locale, {
-    signDisplay: 'negative',
-    ...optionsOf<Opts>(options, CURRENCY_PRESETS, 'formatCurrency'),
-    style: 'currency',
-    currency,
-  }),
-)
-
 const DIGIT_OPTIONS = ['minimumFractionDigits', 'maximumFractionDigits', 'minimumSignificantDigits', 'maximumSignificantDigits', 'roundingIncrement'] as const
 
 /** The most fraction digits `Intl.NumberFormat` takes (ES2023; older engines stop at 20). */
@@ -219,10 +210,10 @@ const MAX_SCALE = 100
  * amount's scale), not the platform's display digits for the currency, so it is never rounded: a currency given other
  * digits with `defineCurrency` (ISK in hundredths) shows them. Options that set digits themselves win.
  *
- * Variants: `"EUR2"` (ISO code, 2 digits), `"#2"` / `"#"` (a custom code such as `USDT`, which `Intl` rejects: formatted
+ * Variants: `"EUR"` (the currency's own digits), `"EUR2"` (ISO code, 2 digits), `"#2"` / `"#"` (a custom code such as `USDT`, which `Intl` rejects: formatted
  * as the placeholder `XXX` shown as a code, which {@link relabel} replaces, so the locale's own pattern places the code).
  */
-const moneyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, variant, options) => {
+const currencyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, variant, options) => {
   const own = optionsOf<Opts>(options, CURRENCY_PRESETS, 'formatCurrency')
   const custom = variant.charCodeAt(0) === 35
   const digitText = custom ? variant.slice(1) : variant.slice(3)
@@ -305,22 +296,16 @@ function isCode(c: unknown): c is string {
  * that many digits (more than {@link MAX_SCALE}, or more than 20 on an engine without ES2023 `Intl`): data never throws.
  */
 function currencyFormat(fn: string, locale: string, code: string, digits: number | undefined, options: CurrencyOptions | CurrencyPreset | undefined): Intl.NumberFormat | undefined {
-  const custom = isCustomCode(code)
-  if (digits === undefined && !custom) return resolve(currencyTable, locale, code, options)
-  const variant = (custom ? '#' : code) + (digits === undefined ? '' : String(digits))
-  if (digits !== undefined && digits > 20) {
-    try {
-      if (digits > MAX_SCALE) throw new RangeError('too many digits')
-
-      return resolve(moneyTable, locale, variant, options)
-    } catch {
-      if (process.env.NODE_ENV !== 'production') warnInvalid(fn, digits, `an amount with at most ${MAX_SCALE} fraction digits (at most 20 on engines before ES2023 Intl)`)
-
-      return undefined
-    }
+  const variant = (isCustomCode(code) ? '#' : code) + (digits === undefined ? '' : String(digits))
+  if (digits === undefined || digits <= 20) return resolve(currencyTable, locale, variant, options)
+  try {
+    if (digits <= MAX_SCALE) return resolve(currencyTable, locale, variant, options)
+  } catch {
+    // An engine before ES2023 Intl takes at most 20 fraction digits.
   }
+  if (process.env.NODE_ENV !== 'production') warnInvalid(fn, digits, `an amount with at most ${MAX_SCALE} fraction digits (at most 20 on engines before ES2023 Intl)`)
 
-  return resolve(moneyTable, locale, variant, options)
+  return undefined
 }
 
 /** Format a Money with its own digits; `expected` (a currency formatter's code) must match its currency. */

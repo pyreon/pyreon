@@ -65,7 +65,7 @@ describe('decimal strings are formatted exactly by every number formatter', () =
   it('a range keeps the exact ends\' compact suffix, exponent and plural form', () => {
     const n = (o: object) => ({ locale: 'en', ...o })
     expect(core.formatNumberRange('999999.99999999999999995', '999999.99999999999999999', n({ notation: 'compact', maximumFractionDigits: 20 }))).toBe(
-      '999.99999999999999999995K – 999.99999999999999999999K',
+      '999.99999999999999999995K–999.99999999999999999999K',
     )
     expect(core.formatNumberRange('999.999999999999999995', '999.999999999999999999', n({ notation: 'engineering', maximumFractionDigits: 20 }))).toBe(
       '999.999999999999999995E0 – 999.999999999999999999E0',
@@ -131,7 +131,7 @@ describe('a Money is formatted on its own, exactly, with its own digits', () => 
       '€12,345,678,901,234,567.11 – €12,345,678,901,234,567.19',
     )
     expect(core.currencyFormatter('EUR', { locale: 'de' }).range(big('12345678901234567.19'), big('12345678901234567.11'))).toBe(
-      '12.345.678.901.234.567,11–12.345.678.901.234.567,19 €',
+      '12.345.678.901.234.567,11 €–12.345.678.901.234.567,19 €',
     )
   })
 
