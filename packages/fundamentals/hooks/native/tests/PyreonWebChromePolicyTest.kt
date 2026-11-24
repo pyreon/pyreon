@@ -210,6 +210,12 @@ private fun rendererGone() {
 
     // A different html / src is a new page: a fresh count, even after the cap.
     expect(pyreonWebViewRendererGone(pending, "other.html", didCrash = true, nowMs = 600L) == 0L, "a new page's first crash reloads")
+
+    // A loss with no page key (the frame in which a reload is pending) is not a new page.
+    val frame = PyreonRendererLossHistory()
+    pyreonWebViewRendererGone(frame, PAGE, didCrash = true, nowMs = 0L)
+    pyreonWebViewRendererGone(frame, null, didCrash = true, nowMs = 10L)
+    expect(pyreonWebViewRendererGone(frame, PAGE, didCrash = true, nowMs = 20L) == null, "a loss in the reload frame does not reset the count")
 }
 
 private const val PAGE = "bridge.html"

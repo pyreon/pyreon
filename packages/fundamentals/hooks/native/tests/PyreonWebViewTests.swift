@@ -70,6 +70,11 @@ enum PyreonWebViewTests {
         check(!pyreonWebViewReloadStillDue(pending, generation: scheduled), "crash 2's reload is superseded")
         // A different html / src is a new page: a fresh count, even after the cap.
         check(pyreonWebViewRendererGone(&pending, key: "other.html", didCrash: true, nowMs: 600) == 0, "a new page's first crash reloads")
+        // A loss with no page key (the frame in which a reload is pending) is not a new page.
+        var frame = PyreonRendererLossHistory()
+        _ = pyreonWebViewRendererGone(&frame, key: page, didCrash: true, nowMs: 0)
+        _ = pyreonWebViewRendererGone(&frame, key: nil, didCrash: true, nowMs: 10)
+        check(pyreonWebViewRendererGone(&frame, key: page, didCrash: true, nowMs: 20) == nil, "a loss in the reload frame does not reset the count")
     }
 
     /// Origin scope: data and the bridge belong to the page the app loaded.

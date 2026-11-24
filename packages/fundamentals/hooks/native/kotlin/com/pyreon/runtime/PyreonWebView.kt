@@ -258,6 +258,7 @@ fun PyreonWebView(
                     // html/src changed → (re)load; onPageFinished pushes data. The
                     // new load decides the origin; until it starts nothing is allowed.
                     state.loadedKey = key
+                    state.pageKey = key
                     state.loaded = false
                     state.allowedOrigin = null
                     // Pending BEFORE the load starts: its first request can reach
@@ -355,7 +356,9 @@ private fun pyreonHostClient(state: PyreonWebViewState, chrome: PyreonWebChrome)
         // drop it and compose a new one, which loads the page again unless the
         // renderer keeps crashing (pyreonWebViewRendererGone).
         override fun rendererGone(view: WebView, detail: RenderProcessGoneDetail) {
-            val key = state.loadedKey
+            // Not `loadedKey`: a reload nulls that for the frame before `update`
+            // runs, and a loss in that frame must not count as a new page.
+            val key = state.pageKey
             // A reload an earlier loss scheduled is superseded by this one.
             pyreonWebViewMainHandler.removeCallbacksAndMessages(state)
             val delay = pyreonWebViewRendererGone(state.lossHistory, key, detail.didCrash(), SystemClock.uptimeMillis())
@@ -437,6 +440,8 @@ private class PyreonWebViewState {
     var latestData: String? = null
     var loaded: Boolean = false
     var loadedKey: String? = null
+    /** The html/src this host shows or is about to reload; never cleared (see `rendererGone`). */
+    var pageKey: String? = null
     var onMessage: ((String) -> Unit)? = null
     /** The hosted WebView — a sibling relay evaluates into it. */
     var webView: WeakReference<WebView>? = null

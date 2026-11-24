@@ -27,7 +27,7 @@
  * each implicated process (capped) to `findingsDir/<app>.txt` for upload.
  * Diagnostic only: it always exits 0.
  */
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
 /** Test classes that end the renderer on purpose. */
@@ -40,7 +40,13 @@ const APP = /^com\.pyreon(?:[.:]|$)/
 const RENDERER = /^com\.(?:google\.)?android\.webview:sandboxed_process/
 
 /** `am_kill` reasons that are the orchestrator's own clean-up, not a death. */
-const ROUTINE_KILL = /finished inst|clear data|^stop /
+const ROUTINE_KILL = /finished inst|clear data|^stop |isolated not needed/
+
+/**
+ * The workflow's per-app logcat capture limit (`head -c` in native-device.yml,
+ * held equal by the test). A capture of exactly this size was cut off.
+ */
+export const CAPTURE_LIMIT_BYTES = 64 * 1024 * 1024
 
 /** Per-app cap of the findings excerpt. */
 export const EXCERPT_LIMIT_BYTES = 2 * 1024 * 1024
@@ -60,10 +66,13 @@ const MEANING: Record<string, string> = {
   'webview-renderer-gone': 'a WebView renderer process died and PyreonWebView recovered (reload or empty view)',
   'webview-renderer-unhandled': 'a WebView renderer process died and a WebView did not handle it: WebView killed the app process',
   'webview-data-dir-lock': 'two processes of the app used WebView with the same data directory',
+  'test-process-died': 'a test process died mid-test (started, never finished): the shape of "Test instrumentation process crashed", whatever the cause',
   'app-fatal-exception': 'an uncaught exception ended an app process',
+  'app-native-crash': 'a native signal (SIGSEGV, SIGABRT, …) ended an app process',
   'app-anr': 'an app process stopped responding (with hide_error_dialogs the system kills it)',
   'app-killed': 'the system killed an app process (low memory or similar)',
   'webview-renderer-killed': 'the system killed a WebView renderer process (low memory or similar); which app it served is not in the line',
+  'capture-truncated': 'the logcat capture hit its size limit and was cut off: evidence after that point is missing',
 }
 
 /** Signal order in the output. */
@@ -108,6 +117,13 @@ function fatalSignal(l: Line, pending: Set<number>): boolean {
   return APP.test(proc[1]!)
 }
 
+/** `F libc: Fatal signal 11 (SIGSEGV), … pid 5007 (com.pyreon.PyreonTasks)`: the app pid, else null. */
+function nativeCrash(l: Line): number | null {
+  if (l.tag !== 'libc') return null
+  const m = /^Fatal signal \d+.* pid (\d+) \(([^)]+)\)/.exec(l.msg)
+  return m && APP.test(m[2]!) ? Number(m[1]) : null
+}
+
 /** An ANR or kill the system logs about another process, named in the line. */
 function processSignal(l: Line): { signal: string; pid: number } | null {
   // Event-log payloads: am_anr [user,pid,pkg,flags,reason], am_kill [user,pid,pkg,adj,reason].
@@ -131,6 +147,7 @@ export function scanLogcat(app: string, text: string): SignalHit[] {
   const lines = text.split('\n').map(parse).filter((l): l is Line => l !== null)
   const hits = new Map<string, SignalHit>()
   const pendingFatal = new Set<number>()
+  const finished = new Set<number>()
 
   const hit = (signal: string, pid: number, line: Line) => {
     const test = testOf.get(pid) ?? '(no test)'
@@ -149,6 +166,7 @@ export function scanLogcat(app: string, text: string): SignalHit[] {
     if (l.tag === 'TestRunner') {
       const t = /^started: (.+)\((.+)\)$/.exec(l.msg)
       if (t) testOf.set(l.pid, `${t[2]}#${t[1]}`)
+      if (/^finished: /.test(l.msg)) finished.add(l.pid)
       continue
     }
     const webview = webviewSignal(l.msg)
@@ -156,6 +174,10 @@ export function scanLogcat(app: string, text: string): SignalHit[] {
     if (fatalSignal(l, pendingFatal)) hit('app-fatal-exception', l.pid, l)
     const killed = processSignal(l)
     if (killed) hit(killed.signal, killed.pid, l)
+    const native = nativeCrash(l)
+    if (native !== null) hit('app-native-crash', native, l)
+    const died = l.tag === 'am_proc_died' ? /^\[\d+,(\d+),/.exec(l.msg) : null
+    if (died && testOf.has(Number(died[1])) && !finished.has(Number(died[1]))) hit('test-process-died', Number(died[1]), l)
   }
 
   return [...hits.values()].sort((a, b) => ORDER.indexOf(a.signal) - ORDER.indexOf(b.signal) || a.test.localeCompare(b.test))
@@ -185,6 +207,9 @@ export function scanDir(dir: string, findingsDir?: string): SignalHit[] {
       const app = basename(n, '.txt')
       const text = readFileSync(join(dir, n), 'utf8')
       const hits = scanLogcat(app, text)
+      if (statSync(join(dir, n)).size === CAPTURE_LIMIT_BYTES) {
+        hits.push({ app, signal: 'capture-truncated', meaning: MEANING['capture-truncated']!, test: '(capture)', count: 1, first: `${n} is ${CAPTURE_LIMIT_BYTES} bytes`, pids: [] })
+      }
       if (findingsDir && hits.length > 0) {
         mkdirSync(findingsDir, { recursive: true })
         writeFileSync(join(findingsDir, `${app}.txt`), excerpt(text, hits))

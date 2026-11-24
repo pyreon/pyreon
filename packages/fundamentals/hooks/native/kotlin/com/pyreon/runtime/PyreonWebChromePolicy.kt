@@ -267,7 +267,8 @@ internal class PyreonRendererLossHistory {
  *   [PYREON_WEBVIEW_RENDERER_BACKOFF_MAX_MS]), so sustained memory pressure
  *   cannot churn renderer starts.
  * - A different [key] (the host was given another `html` / `src`) is a new
- *   page: its count starts fresh, even after the cap emptied the old one.
+ *   page: its count starts fresh, even after the cap emptied the old one. A
+ *   null [key] (no page known) never counts as a new page.
  * - Each loss bumps `history.generation`; a reload scheduled by an earlier
  *   loss must check [pyreonWebViewReloadStillDue] and not run, so a newer loss
  *   (with its longer delay, or its "stay empty") always wins.
@@ -275,8 +276,8 @@ internal class PyreonRendererLossHistory {
 internal fun pyreonWebViewRendererGone(history: PyreonRendererLossHistory, key: String?, didCrash: Boolean, nowMs: Long): Long? {
     history.generation++
     val last = history.lastAtMs
-    if (key != history.key || last == null || nowMs - last >= PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS) {
-        history.key = key
+    if ((key != null && key != history.key) || last == null || nowMs - last >= PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS) {
+        if (key != null) history.key = key
         history.crashes = 0
         history.losses = 0
     }

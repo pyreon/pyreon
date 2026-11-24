@@ -6,11 +6,11 @@
 // multi-pid logcat in the `-v threadtime` shape the workflow records, one
 // orchestrated test per pid.
 
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { EXCERPT_LIMIT_BYTES, excerpt, scanDir, scanLogcat, summary } from '../../../../../scripts/native-android-logcat-signals'
+import { CAPTURE_LIMIT_BYTES, EXCERPT_LIMIT_BYTES, excerpt, scanDir, scanLogcat, summary } from '../../../../../scripts/native-android-logcat-signals'
 
 const at = (s: number) => `11-23 21:16:${String(s).padStart(2, '0')}.100`
 
@@ -64,6 +64,32 @@ const APP_CRASH = [
   line(13, 600, 'I', 'am_anr', '[0,5006,com.pyreon,952745540,Input dispatching timed out]'),
 ].join('\n')
 
+const finishedLine = (s: number, pid: number, method: string, cls: string) =>
+  line(s, pid, 'I', 'TestRunner', `finished: ${method}(${cls})`)
+
+/** A normal test: started, finished, then its process ends. */
+const NORMAL_TEST = [
+  started(14, 5010, 'fileAccessIsOff', 'com.pyreon.PyreonWebViewOriginScopeTest'),
+  finishedLine(15, 5010, 'fileAccessIsOff', 'com.pyreon.PyreonWebViewOriginScopeTest'),
+  line(15, 600, 'I', 'am_kill', '[0,5010,com.pyreon,0,stop com.pyreon due to finished inst]'),
+  line(15, 600, 'I', 'am_proc_died', '[0,5010,com.pyreon,0,2]'),
+  // Android ends the dead app's WebView renderer as no longer needed.
+  line(15, 600, 'I', 'am_kill', '[0,5011,com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0,0,isolated not needed]'),
+].join('\n')
+
+/** A native crash mid-test. */
+const NATIVE_CRASH = [
+  started(16, 5012, 'bundledSrcCannotLeaveTheAssetDirectory', 'com.pyreon.PyreonWebViewOriginScopeTest'),
+  line(17, 5012, 'F', 'libc', 'Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 5020 (RenderThread), pid 5012 (com.pyreon.PyreonTasks)'),
+  line(17, 600, 'I', 'am_proc_died', '[0,5012,com.pyreon,0,2]'),
+].join('\n')
+
+/** A silent SIGKILL mid-test: no crash line at all. */
+const SILENT_KILL = [
+  started(18, 5013, 'bundledSrcCannotLeaveTheAssetDirectory', 'com.pyreon.PyreonWebViewOriginScopeTest'),
+  line(19, 600, 'I', 'am_proc_died', '[0,5013,com.pyreon,0,2]'),
+].join('\n')
+
 const signals = (text: string) => scanLogcat('tasks', text).map((h) => `${h.signal} ${h.test} ×${h.count}`)
 
 describe('native-android-logcat-signals', () => {
@@ -91,8 +117,31 @@ describe('native-android-logcat-signals', () => {
     expect(signals(APP_CRASH)).toEqual([`webview-data-dir-lock ${t} ×1`, `app-fatal-exception ${t} ×1`, `app-anr ${t} ×1`])
   })
 
+  it('does not fire for a normal test or the renderer Android ends after it', () => {
+    expect(signals(NORMAL_TEST)).toEqual([])
+  })
+
+  it('names a test process that died mid-test, whatever killed it', () => {
+    const t = 'com.pyreon.PyreonWebViewOriginScopeTest#bundledSrcCannotLeaveTheAssetDirectory'
+    expect(signals(NATIVE_CRASH)).toEqual([`test-process-died ${t} ×1`, `app-native-crash ${t} ×1`])
+    expect(signals(SILENT_KILL)).toEqual([`test-process-died ${t} ×1`])
+  })
+
+  it('warns when a capture hit the workflow size limit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'logcat-cap-'))
+    writeFileSync(join(dir, 'tasks.txt'), '')
+    truncateSync(join(dir, 'tasks.txt'), CAPTURE_LIMIT_BYTES)
+    writeFileSync(join(dir, 'finance.txt'), NORMAL_TEST)
+    expect(scanDir(dir).map((h) => `${h.app} ${h.signal}`)).toEqual(['tasks capture-truncated'])
+    // The limit is the one the workflow passes to `head -c`, on every emulator step.
+    const workflow = readFileSync(resolve(import.meta.dirname, '../../../../../.github/workflows/native-device.yml'), 'utf8')
+    const limits = [...workflow.matchAll(/adb logcat [^|']*\| head -c (\d+)/g)].map((m) => Number(m[1]))
+    expect(limits.length).toBeGreaterThanOrEqual(5)
+    expect(new Set(limits)).toEqual(new Set([CAPTURE_LIMIT_BYTES]))
+  })
+
   it('finds only the real signals in a whole step', () => {
-    const all = [INTENDED_KILLS, GMS_CRASH, ORCHESTRATOR_KILLS, REAL_LOSS, APP_CRASH].join('\n')
+    const all = [INTENDED_KILLS, GMS_CRASH, ORCHESTRATOR_KILLS, REAL_LOSS, APP_CRASH, NORMAL_TEST].join('\n')
     expect(signals(all)).toHaveLength(5)
     expect(summary([])).toContain('None')
   })

@@ -347,10 +347,10 @@ struct PyreonRendererLossHistory {
 /// reload an earlier loss scheduled must check `pyreonWebViewReloadStillDue`.
 func pyreonWebViewRendererGone(_ history: inout PyreonRendererLossHistory, key: String?, didCrash: Bool, nowMs: Double) -> Double? {
     history.generation += 1
-    if key == history.key, let last = history.lastAtMs, nowMs - last < pyreonWebViewRendererLossWindowMs {
-        // in a row
+    if key == nil || key == history.key, let last = history.lastAtMs, nowMs - last < pyreonWebViewRendererLossWindowMs {
+        // in a row (a nil key, no page known, is never a new page)
     } else {
-        history.key = key
+        if let key { history.key = key }
         history.crashes = 0
         history.losses = 0
     }
