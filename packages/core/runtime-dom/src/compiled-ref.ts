@@ -15,6 +15,10 @@ import { _noopDispose } from '@pyreon/reactivity'
  * has no parent yet). Layout reads, `getComputedStyle` and observers that need
  * a connected element belong in `onMount`. On unmount the ref receives
  * `null`.
+ *
+ * ORDER, shared with the h() path: the compiler emits this call AFTER the
+ * element's children lines (#4764), so a ref sees its element's content, and a
+ * child's ref runs before its parent's.
  */
 export function _ref(el: Element, ref: unknown): () => void {
   if (typeof ref === 'function') {
