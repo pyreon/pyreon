@@ -44,7 +44,7 @@ Ui-core owns the `PyreonTheme` type and a slot (`theme-engine.ts`: `setThemeEngi
 
 ### Handling browser Back/Forward with a bare state sync instead of the navigation pipeline
 
-A popstate/hashchange handler that only sets `currentPath` skips loaders (loader data for the left route is pruned, so `useLoaderData()` returns `undefined`), guards, blockers, middleware, `afterEach` (route announcements), scroll and `meta.title`. `@pyreon/router` runs browser traversals through `navigate()` with replace-commit semantics:
+A popstate/hashchange handler that only sets `currentPath` skips loaders (loader data for the left route is pruned, so the `useLoaderData()` accessor reads `undefined`), guards, blockers, middleware, `afterEach` (route announcements), scroll and `meta.title`. `@pyreon/router` runs browser traversals through `navigate()` with replace-commit semantics:
   - A traversal cancelled by a guard or blocker restores URL and position via `history.go(-delta)` using the per-entry `history.state.__pyreonIdx` stamp (`replaceState` for unstamped entries). A superseded traversal restores nothing.
   - Only the owning router (`_navOwner`, the newest live instance) writes the URL back.
   - Browser traversals run the ScrollManager only when `scrollBehavior` is configured; otherwise native scroll restoration applies.

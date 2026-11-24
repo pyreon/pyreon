@@ -996,9 +996,10 @@ function HttpPage() {
   )
 }
 
-// Route loader data, destructured. On the web the loader runs before this page renders; natively it runs on
-// appear, so this page proves three things on device: the page waits for its data instead of rendering without it,
-// the destructured fields lower, and `onMount` sees the data (it runs after the data exists, as on the web).
+// Route loader data, read through its accessor (`data().title`). On the web the loader runs before this page renders;
+// natively it runs on appear, so this page proves three things on device: the page waits for its data instead of
+// rendering without it, the accessor's field reads lower, and `onMount` sees the data (it runs after the data exists,
+// as on the web).
 // A global guard, written inline the way most apps write one. It blocks one path; the device tests try to reach it
 // and assert they stay where they were — the guard runs in the real native router on iOS and Android.
 const GUARDED_PATH = '/guarded'
@@ -1015,15 +1016,15 @@ type Loaded = { title: string; views: number }
 
 function LoadedPage() {
   const navigate = useNavigate()
-  const { title, views } = useLoaderData<Loaded>()
+  const data = useLoaderData<Loaded>()
   const mountedWith = signal('')
   onMount(() => {
-    mountedWith.set(title)
+    mountedWith.set(data().title)
   })
   return (
     <Stack gap={3} padding={4} data-testid="loaded-page">
-      <Text data-testid="loaded-title">Title: {title}</Text>
-      <Text data-testid="loaded-views">Views: {views}</Text>
+      <Text data-testid="loaded-title">Title: {data().title}</Text>
+      <Text data-testid="loaded-views">Views: {data().views}</Text>
       <Text data-testid="loaded-mounted">Mounted with: {mountedWith()}</Text>
       <Button onPress={() => navigate('/')}>Back to Home</Button>
     </Stack>

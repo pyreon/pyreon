@@ -33,7 +33,7 @@ Seven Kotlin sources under `src/main/kotlin/com/pyreon/router/`:
 | `<Link to="/users/123">Profile</Link>` | `PyreonLink("/users/123") { navigate -> ... }` |
 | `useNavigate()` | `useNavigate()` |
 | `useParams()` | `useParams()` |
-| `useLoaderData<T>()` | `useLoaderData()` |
+| `const data = useLoaderData<T>()`, read as `data().title` | `val data = useLoaderData<T>() ?: return`, read as `data.title` |
 | `router.push(path)` | `router.push(path)` |
 | `router.replace(path)` | `router.replace(path)` |
 | `router.back()` / `.forward()` | `router.back()` / `.forward()` |

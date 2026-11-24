@@ -29,7 +29,7 @@ const ErrorPage = () => h('div', { id: 'err' }, 'Error')
 /** Renders whatever `useLoaderData()` gives it, so an empty read is visible. */
 const ShowsData = () => {
   const data = useLoaderData<string>()
-  return h('div', { id: 'data' }, data === undefined ? 'NO-DATA' : String(data))
+  return h('div', { id: 'data' }, () => (data() === undefined ? 'NO-DATA' : String(data())))
 }
 
 function render(route: RouteRecord, url = '/x'): { text: string; router: RouterInstance } {

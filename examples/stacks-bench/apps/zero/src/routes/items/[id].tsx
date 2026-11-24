@@ -8,9 +8,9 @@ export default function ItemPage() {
   const data = useLoaderData<{ item: Item }>()
   return (
     <main>
-      <h1 id="item-name">{data.item.name}</h1>
-      <p>{data.item.description}</p>
-      <p class="price">{formatPrice(data.item.price)}</p>
+      <h1 id="item-name">{data().item.name}</h1>
+      <p>{data().item.description}</p>
+      <p class="price">{formatPrice(data().item.price)}</p>
       <Link href="/items">Back</Link>
     </main>
   )

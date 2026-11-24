@@ -8,7 +8,7 @@ import { h, onMount } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { userEvent } from 'vitest/browser'
-import { createRouter, RouterProvider, RouterView, useLoaderDataAccessor } from '../index'
+import { createRouter, RouterProvider, RouterView, useLoaderData } from '../index'
 import { setActiveRouter } from '../router'
 import type { Router } from '../types'
 
@@ -108,7 +108,7 @@ describe('a server-loader search page (the zero shape) while typing (#4814)', ()
               onMount(() => {
                 mounts++
               })
-              const data = useLoaderDataAccessor<{ hits: string }>()
+              const data = useLoaderData<{ hits: string }>()
 
               return h(
                 'div',

@@ -140,7 +140,7 @@ url-state passes `{ scroll: false, viewTransition: false }` with every write,
 push or replace, so the router neither scrolls (its `scrollBehavior` is not
 consulted) nor starts a view transition. A route `loader` keyed on the query
 (`loaderKey`) remounts the page when the key changes; data refreshed under the
-same key reaches the page in place through `useLoaderDataAccessor()`.
+same key reaches the page in place through the `useLoaderData()` accessor.
 
 With `currentRoute` present (every `@pyreon/router` instance has it), a navigation
 made through the router — `router.push('/products?page=2')`, a `<RouterLink>`

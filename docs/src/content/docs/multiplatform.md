@@ -1025,7 +1025,11 @@ and read back, typed, by the current route. A route's
 `loader: () => <expr>` is now **auto-emitted** (v1): the compiler wraps
 the route in a runtime `PyreonRouteLoader` host that fires the loader once
 on appear (`.task` / `LaunchedEffect`) and calls `setLoaderData`, so
-`useLoaderData<T>()` reads it with no manual wiring. v1 covers zero-param,
+`useLoaderData<T>()` reads it with no manual wiring. As on the web,
+`useLoaderData<T>()` returns an accessor: bind it once
+(`const data = useLoaderData<Post>()`) and read through the call
+(`data().title`), which lowers to the native value read (`data.title` on a
+Swift computed property / a Kotlin `val`), typed by `T`. v1 covers zero-param,
 expression-body loaders (signal/store reads + sync expressions);
 param-using, block-body, and truly-async loaders WARN and emit unloaded —
 see the loader-auto-emit note in the roadmap.
@@ -1331,11 +1335,13 @@ every warning; treat any warning as "this construct is outside v1."
   keeps its own per-key lowering (router section). **Still warn-drop:** a
   rest element (`const { data, ...rest } = …`) or a nested pattern
   (`const { user: { id } } = …`) — v1 lowers all-simple destructures only.
-  `useLoaderData<T>()` destructures too (`const { title } = useLoaderData<Post>()`,
-  renames included), one accessor per field of `T`. Its reads are NON-optional, as on
-  the web: the component renders only once its loader data exists (Kotlin returns
-  early, Swift gates the body, and `PyreonRouteLoader` holds the route's component
-  back until the loader has run), so `onMount` sees the data too.
+  `useLoaderData<T>()` is NOT destructured: it returns an accessor on the web, so
+  `const { title } = useLoaderData<Post>()` reads fields off a function and warns
+  with the fix — bind it (`const data = useLoaderData<Post>()`) and read
+  `data().title`. Its reads are NON-optional, as on the web: the component renders
+  only once its loader data exists (Kotlin returns early, Swift gates the body, and
+  `PyreonRouteLoader` holds the route's component back until the loader has run), so
+  `onMount` sees the data too.
 - **Destructured function/arrow params → lowered.** A helper with a
   destructured param — `const dist = ({ x, y }: Point): number => x + y`,
   `const apply = ({ id }: T) => { remove(id) }` — synthesizes a positional

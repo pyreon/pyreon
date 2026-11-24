@@ -15,7 +15,7 @@ export default function StaticPage() {
   const data = useLoaderData<{ title: string }>()
   return (
     <main data-testid="static-page" data-route-module="STATIC_ROUTE_MODULE_MARKER">
-      <h1>{data?.title}</h1>
+      <h1>{data()?.title}</h1>
       <Counter />
       <RouterLink to="/" data-testid="to-app">
         home

@@ -87,8 +87,7 @@ describe('gen-docs — router snapshot', () => {
 
   it('renders @pyreon/router to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(routerManifest)
-    expect(Object.keys(record).length).toBe(33)
-    expect(Object.keys(record)).toContain('router/useLoaderDataAccessor')
+    expect(Object.keys(record).length).toBe(32)
     // The server-only loader passes are free functions (client bundles drop them).
     expect(Object.keys(record)).toContain('router/preloadRoute')
     expect(Object.keys(record)).toContain('router/runServerLoaders')

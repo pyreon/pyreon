@@ -7,9 +7,12 @@ import { RedirectPage } from '../../../site/pages/RedirectPage'
 export const loader = (): Promise<CompareMeta> => loadCompareMeta()
 
 export default function CompareIndex() {
-  const meta = useLoaderData<CompareMeta | undefined>()
-  const id = meta?.order[0]
-  const rival = meta?.rivals.find((r) => r.id === id)?.rival
-  if (!meta || !id || !rival) return null
-  return <RedirectPage path="/compare" to={`/compare/${id}`} title={meta.template.index.title} label={fill(meta.template.index.label, { rival })} />
+  const data = useLoaderData<CompareMeta | undefined>()
+  return () => {
+    const meta = data()
+    const id = meta?.order[0]
+    const rival = meta?.rivals.find((r) => r.id === id)?.rival
+    if (!meta || !id || !rival) return null
+    return <RedirectPage path="/compare" to={`/compare/${id}`} title={meta.template.index.title} label={fill(meta.template.index.label, { rival })} />
+  }
 }

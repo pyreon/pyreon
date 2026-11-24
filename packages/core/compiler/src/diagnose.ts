@@ -1295,6 +1295,26 @@ const data = useLoaderData<Dashboard>()`,
     }),
   },
   {
+    // #4814: `useLoaderData()` returns a reactive ACCESSOR, not the data. Two
+    // residual footguns: code written for the old value-returning API
+    // (`data.title`, destructuring, `posts.map`) reads properties of a
+    // function, and a body-scope `data()` read is a snapshot that misses
+    // in-place updates (the page is no longer remounted for new data under
+    // the same loader key).
+    pattern:
+      /useLoaderData\b[^\n]{0,80}(?:returns? (?:a |an )?(?:function|accessor)|is (?:now )?a function|\[Function|is not (?:a function|iterable)|does not exist on type '\(\) =>|never updates?|does(?:n't| not) update|stale|snapshot)|loader data[^\n]{0,60}(?:does(?:n't| not) update|never updates?|stale)[^\n]{0,60}(?:revalidat|staleWhileRevalidate|same (?:loader )?key)/i,
+    diagnose: () => ({
+      cause:
+        '`useLoaderData<T>()` returns a reactive accessor `() => T`, not the data (a 0.x breaking change, consistent with `useRoute()` and `useMiddlewareData()`). Code written for the old API reads properties of the function (`data.title` is undefined, `const { post } = useLoaderData()` destructures nothing, `posts.map` is not a function). And because the page is no longer remounted when loader data changes under the same loader key (`router.revalidate()`, `staleWhileRevalidate`, `gcTime: 0`, a server loader re-run on a query-only navigation), reading `data()` ONCE in the component body is a snapshot that never updates.',
+      fix: 'Keep the accessor and call it where the value is used: `{data().title}` in JSX, `<For each={() => data().items} by={…}>`, `<Show when={() => data().post}>`, `useHead(() => ({ title: data().title }))`, or inside an `effect` / `computed`. Do not destructure the result and do not read `data()` into a body-scope const. `useLoaderDataAccessor()` was removed; use `useLoaderData()`.',
+      fixCode: `// before — reads properties of a function, and a body read never updates
+const { post } = useLoaderData<{ post: Post }>()
+// after — read the accessor where the value is used
+const data = useLoaderData<{ post: Post }>()
+return <h1>{data().post.title}</h1>`,
+    }),
+  },
+  {
     // Phase 4 (server islands) surfaced this runtime-dom bug class: data-*/
     // aria-* props on CUSTOM ELEMENTS landed as JS properties, so
     // getAttribute/dataset/CSS attribute selectors silently read null while

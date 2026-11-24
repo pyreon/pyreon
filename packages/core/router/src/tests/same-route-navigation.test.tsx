@@ -9,15 +9,15 @@
 // URL, for every way a navigation arrives: push, replace, Back/Forward
 // (popstate), a tab stack's top entry, and nested layouts.
 import { h, onMount, onUnmount } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
+import { effect, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  RouterLink,
   RouterProvider,
   RouterView,
   routerTabs,
   useLoaderData,
-  useLoaderDataAccessor,
   useRoute,
   useSearchParams,
 } from '../index'
@@ -230,8 +230,8 @@ describe('same matched route + params: no remount (#4814)', () => {
     await settle()
     expect(counts).toEqual({ mounts: 1, unmounts: 0 })
 
-    // NEW loader data still remounts: `useLoaderData()` is a snapshot, and a
-    // loader keyed on the query is how a page asks for fresh data.
+    // A NEW loader key (a `loaderKey` that reads the query) is a different
+    // resource: the page remounts.
     await router.replace('/data?q=x&page=2')
     await settle()
     expect(counts).toEqual({ mounts: 2, unmounts: 1 })
@@ -420,18 +420,16 @@ describe('the page kept mounted still recovers, and never sees the next page ear
 })
 
 describe('loader data under the same loader key is delivered in place (#4814)', () => {
-  function loaderPage(counts: Counts, read: 'none' | 'accessor' | 'snapshot', shown: unknown[]) {
+  function loaderPage(counts: Counts, read: 'none' | 'accessor', shown: unknown[]) {
     return () => {
       onMount(() => {
         counts.mounts++
       })
       if (read === 'accessor') {
-        const data = useLoaderDataAccessor<{ n: number }>()
+        const data = useLoaderData<{ n: number }>()
         effect(() => {
           shown.push(data().n)
         })
-      } else if (read === 'snapshot') {
-        shown.push(useLoaderData<{ n: number }>().n)
       }
 
       return h('input', null)
@@ -505,27 +503,6 @@ describe('loader data under the same loader key is delivered in place (#4814)', 
     } finally {
       vi.unstubAllGlobals()
     }
-  })
-
-  it('a page that took the useLoaderData() snapshot is remounted for new data, so it is never stale', async () => {
-    const counts = { mounts: 0, unmounts: 0 }
-    const shown: unknown[] = []
-    let runs = 0
-    window.history.replaceState(null, '', '/')
-    router = createRouter({
-      mode: 'history',
-      routes: [
-        { path: '/', component: () => h('p', null, 'home') },
-        { path: '/d', component: loaderPage(counts, 'snapshot', shown), gcTime: 0, loader: async () => ({ n: ++runs }) },
-      ],
-    })
-    mountRouter(router)
-    await router.push('/d')
-    await settle(5)
-    await router.replace('/d?q=a')
-    await settle(5)
-    expect(counts.mounts).toBe(2)
-    expect(shown).toEqual([1, 2])
   })
 
   it('a page that reads no loader data is never remounted for it', async () => {
@@ -623,6 +600,175 @@ describe('per-navigation scroll / viewTransition options (#4814)', () => {
       await router.push({ name: 'item', params: { id: '1' } }, { scroll: false })
       await settle()
       expect(router.currentRoute().path).toBe('/item/1')
+      expect(scrollTo).not.toHaveBeenCalled()
+    } finally {
+      scrollTo.mockRestore()
+    }
+  })
+})
+
+describe('round-2 review: the loader accessor (#4814)', () => {
+  it('the page being replaced on a param change never sees the next page\'s data', async () => {
+    const seen: string[] = []
+    let n = 0
+    const Page = (props: Record<string, unknown>) => {
+      const me = ++n
+      const data = useLoaderData<{ id: string }>()
+      effect(() => {
+        seen.push(`inst${me}:params=${(props.params as Record<string, string>).id}:data=${data()?.id}`)
+      })
+
+      return h('p', null, 'u')
+    }
+    window.history.replaceState(null, '', '/')
+    router = createRouter({
+      mode: 'history',
+      routes: [
+        { path: '/', component: () => h('p', null, 'h') },
+        { path: '/user/:id', component: Page, loader: async ({ params }) => ({ id: params.id }) },
+      ],
+    })
+    mountRouter(router)
+    await router.push('/user/1')
+    await settle(5)
+    await router.push('/user/2')
+    await settle(5)
+    // It may re-run while it unmounts, but only ever with its own page's values.
+    expect(new Set(seen.filter((e) => e.startsWith('inst1:')))).toEqual(new Set(['inst1:params=1:data=1']))
+    expect(seen.at(-1)).toBe('inst2:params=2:data=2')
+  })
+
+  it('a consumer re-runs once per data change, not once per navigation tick', async () => {
+    let runs = 0
+    let version = 0
+    const Page = () => {
+      const data = useLoaderData<{ v: number }>()
+      effect(() => {
+        data()
+        runs++
+      })
+
+      return h('p', null, 'p')
+    }
+    window.history.replaceState(null, '', '/')
+    router = createRouter({
+      mode: 'history',
+      routes: [
+        { path: '/', component: () => h('p', null, 'h') },
+        // Same data object unless `revalidate()` bumps it.
+        { path: '/d', component: Page, loader: async () => ({ v: version }) },
+      ],
+    })
+    mountRouter(router)
+    await router.push('/d')
+    await settle(5)
+    expect(runs).toBe(1)
+    // Cached data (same object): no re-run however many ticks the navigation makes.
+    await router.replace('/d?q=a')
+    await router.replace('/d?q=ab')
+    await settle(5)
+    expect(runs).toBe(1)
+    // New data: exactly one re-run.
+    version++
+    await router.revalidate()
+    await settle(5)
+    expect(runs).toBe(2)
+  })
+
+  it('new data under the same key reaches a component mounted later in the page, never remounting it', async () => {
+    let mounts = 0
+    let runs = 0
+    const show = signal(false)
+    const Child = () => {
+      const data = useLoaderData<{ n: number }>()
+
+      return h('b', { id: 'c' }, () => `c${data().n}`)
+    }
+    const Page = () => {
+      onMount(() => {
+        mounts++
+      })
+
+      return h('div', null, () => (show() ? h(Child, null) : null))
+    }
+    window.history.replaceState(null, '', '/')
+    router = createRouter({
+      mode: 'history',
+      routes: [
+        { path: '/', component: () => h('p', null, 'h') },
+        { path: '/a', component: Page, gcTime: 0, loader: async () => ({ n: ++runs }) },
+      ],
+    })
+    const el = mountRouter(router)
+    await router.push('/a')
+    await settle(5)
+    await router.replace('/a?q=1')
+    await settle(5)
+    show.set(true)
+    await settle(5)
+    expect(el.querySelector('#c')?.textContent).toBe('c2')
+    await router.replace('/a?q=2')
+    await settle(10)
+    expect(el.querySelector('#c')?.textContent).toBe('c3')
+    expect(mounts).toBe(1)
+  })
+
+  it("an error page's reset() recovers in place; a later query-only navigation does not remount", async () => {
+    let mounts = 0
+    let bad = true
+    let reset: (() => void) | undefined
+    const Page = () => {
+      if (bad) throw new Error('x')
+      onMount(() => {
+        mounts++
+      })
+
+      return h('input', null)
+    }
+    const Err = (props: Record<string, unknown>) => {
+      reset = props.reset as () => void
+
+      return h('p', null, 'ERR')
+    }
+    window.history.replaceState(null, '', '/s')
+    router = createRouter({ mode: 'history', routes: [{ path: '/s', component: Page, errorComponent: Err }] })
+    const el = mountRouter(router)
+    await settle()
+    expect(el.textContent).toBe('ERR')
+    bad = false
+    reset!()
+    await settle()
+    expect(mounts).toBe(1)
+    const input = el.querySelector('input')
+    await router.replace('/s?q=1')
+    await settle()
+    expect(mounts).toBe(1)
+    expect(el.querySelector('input')).toBe(input)
+  })
+
+  it('RouterLink forwards scroll / viewTransition and keeps them off the anchor', async () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    try {
+      window.history.replaceState(null, '', '/list')
+      router = createRouter({
+        mode: 'history',
+        routes: [
+          {
+            path: '/list',
+            component: () =>
+              h(RouterLink, { to: '/list?page=2', scroll: false, viewTransition: false, id: 'next' }, 'next'),
+          },
+        ],
+      })
+      const el = mountRouter(router)
+      await settle()
+      scrollTo.mockClear()
+      const a = el.querySelector<HTMLAnchorElement>('#next')!
+      expect(a.hasAttribute('scroll')).toBe(false)
+      expect(a.hasAttribute('viewTransition') || a.hasAttribute('viewtransition')).toBe(false)
+      a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+      await settle(5)
+      expect(router.currentRoute().query).toEqual({ page: '2' })
       expect(scrollTo).not.toHaveBeenCalled()
     } finally {
       scrollTo.mockRestore()

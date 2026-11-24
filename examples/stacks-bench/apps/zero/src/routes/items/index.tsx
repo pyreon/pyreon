@@ -22,7 +22,7 @@ export default function ItemsPage() {
       <h1>Items</h1>
       <Counter />
       <ul id="items">
-        {data.items.map((item) => (
+        {data().items.map((item) => (
           <li>
             <Link href={`/items/${item.id}`}>{item.name}</Link>{' '}
             <span class="price">{formatPrice(item.price)}</span>

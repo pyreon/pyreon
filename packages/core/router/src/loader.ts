@@ -1,6 +1,6 @@
 import type { Context } from '@pyreon/core'
 import { createContext, useContext } from '@pyreon/core'
-import { untrack } from '@pyreon/reactivity'
+import { type Computed, computed } from '@pyreon/reactivity'
 import type { RouterInstance } from './types'
 import { isNotFoundError } from './not-found'
 
@@ -10,33 +10,32 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 /**
  * Context frame that holds the loader data for the currently rendered route record.
  * Pushed by RouterView's withLoaderData wrapper before invoking the route component.
- * RouterView provides a {@link LoaderDataCell}; any other value is read as the data itself.
+ * RouterView provides a {@link LoaderDataCell}; any other value (a test, a custom
+ * provider) is read as the data itself.
  */
 export const LoaderDataContext: Context<unknown> = createContext<unknown>(undefined)
 
 const CELL: unique symbol = Symbol('pyreon.loaderDataCell')
 
 /**
- * What RouterView provides at one depth: the LIVE loader data, and whether a
- * component took the plain `useLoaderData()` snapshot. A page stays mounted
- * while its matched record, params and loader key are unchanged (#4814); data
- * that changes under the same key (a revalidation, `staleWhileRevalidate`,
- * `gcTime: 0`, a server loader) is delivered in place through
- * `useLoaderDataAccessor()`. A component that read the snapshot cannot see that
- * update, so RouterView remounts it instead (`snapshotRead`).
+ * What RouterView provides at one depth: the route's loader data as a memoised
+ * reactive read. A page stays mounted while its matched record, params and
+ * loader key are unchanged (#4814); data that changes under the same key (a
+ * revalidation, `staleWhileRevalidate`, `gcTime: 0`, a server loader) arrives
+ * in place through it.
  * @internal
  */
 export interface LoaderDataCell {
   readonly [CELL]: true
-  /** The current data (reactive). */
-  read: () => unknown
-  /** Set when a component read the non-reactive `useLoaderData()` snapshot. */
-  snapshotRead: boolean
+  /** The current data. Notifies only when the data's IDENTITY changes. */
+  read: Computed<unknown>
 }
 
 /** @internal */
 export function createLoaderDataCell(read: () => unknown): LoaderDataCell {
-  return { [CELL]: true, read, snapshotRead: false }
+  // Memoised: the raw read wakes on every navigation tick (`_loadingSignal`,
+  // the route), but consumers re-run only when the data itself changes.
+  return { [CELL]: true, read: computed(read) }
 }
 
 function isLoaderDataCell(value: unknown): value is LoaderDataCell {
@@ -44,7 +43,14 @@ function isLoaderDataCell(value: unknown): value is LoaderDataCell {
 }
 
 /**
- * Returns the data resolved by the current route's `loader` function.
+ * The current route's loader data, as a reactive accessor. Read it inside JSX,
+ * an `effect` or a `computed` and it follows the data: the page is not
+ * remounted when the data changes under the same loader key (a
+ * `router.revalidate()`, a `staleWhileRevalidate` refresh, a `gcTime: 0`
+ * loader, a server loader re-run on a query-only navigation), so inputs keep
+ * their focus and local state survives. A different key (`loaderKey`, else
+ * path + params) is a different resource and remounts the page.
+ *
  * Must be called inside a route component rendered by <RouterView />.
  *
  * @example
@@ -52,37 +58,10 @@ function isLoaderDataCell(value: unknown): value is LoaderDataCell {
  *
  * function Users() {
  *   const users = useLoaderData<User[]>()
- *   return h("ul", null, users.map(u => h("li", null, u.name)))
+ *   return <For each={users} by={(u) => u.id}>{(u) => <li>{u.name}</li>}</For>
  * }
  */
-export function useLoaderData<T = unknown>(): T {
-  const value = useContext(LoaderDataContext)
-  if (!isLoaderDataCell(value)) return value as T
-  // A snapshot: the page is remounted when this depth's data changes, so the
-  // component body re-reads it (see `LoaderDataCell`).
-  value.snapshotRead = true
-
-  return untrack(value.read) as T
-}
-
-/**
- * The current route's loader data as a REACTIVE accessor. Read it inside JSX,
- * an `effect` or a `computed`, and it follows the data when it changes while
- * the page stays mounted — a `router.revalidate()`, a `staleWhileRevalidate`
- * refresh, a `gcTime: 0` loader or a server loader re-run on a query-only
- * navigation. A page that reads its data only this way is never remounted for
- * new data under the same loader key, so a search box keeps its focus.
- *
- * `useLoaderData()` instead returns the value at mount, and RouterView
- * remounts that page when the data changes.
- *
- * @example
- * function Results() {
- *   const data = useLoaderDataAccessor<{ hits: Hit[] }>()
- *   return <For each={() => data().hits} by={(h) => h.id}>{(h) => <li>{h.title}</li>}</For>
- * }
- */
-export function useLoaderDataAccessor<T = unknown>(): () => T {
+export function useLoaderData<T = unknown>(): () => T {
   const value = useContext(LoaderDataContext)
   if (isLoaderDataCell(value)) return value.read as () => T
 
