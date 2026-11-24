@@ -332,6 +332,26 @@ class EffectNode implements WatcherNode, Effect {
   }
 }
 
+/**
+ * @internal `effect()` for a runtime-dom STRUCTURAL boundary (a reactive range,
+ * a keyed list) whose disposer is RETURNED to an owning cleanup. Like
+ * `_bind` / `_renderBind`, it does not register with the ambient
+ * `EffectScope` (see "Template-owned bindings"): the returned cleanup is its
+ * owner, and an open owner frame records it for the error path. Registering it
+ * as well made the scope a redundant second owner, and inside a `<For>` row it
+ * was the ONLY thing that registered, so every row holding a conditional cell
+ * (`{done() ? <a/> : <b/>}`) kept an `EffectScope`, its array and a stop
+ * closure for nothing. An enclosing effect run still collects it as an inner
+ * effect, exactly as `effect()` does. Never use it for an effect whose
+ * disposer is dropped.
+ */
+export function _effectOwned(fn: () => (() => void) | void): Effect {
+  return effect(fn, OWNED)
+}
+
+/** The options identity `_effectOwned` passes; nothing reads its fields. */
+const OWNED: EffectOptions = {}
+
 export function effect(
   fn: () => (() => void) | void,
   options?: EffectOptions,
@@ -381,13 +401,17 @@ export function effect(
   // work that explicitly opted out of the outer reactive context falls through
   // to scope.add — that's what keeps child component effects mounted inside
   // `mountFor`'s `runUntracked` wrap alive across the For's next re-run.
-  registerEffectHere(node)
+  registerEffectHere(node, options === OWNED)
 
   return node
 }
 
-/** Register a new effect with the CURRENT frame: the enclosing run's inner window, else the scope. */
-function registerEffectHere(e: Effect): void {
+/**
+ * Register a new effect with the CURRENT frame: the enclosing run's inner
+ * window, else the scope — or, for an `owned` effect, an open owner frame
+ * instead of the scope (see `_effectOwned`).
+ */
+function registerEffectHere(e: Effect, owned = false): void {
   const collector = _t.n
   if (collector !== null) {
     if (collector === LAZY_INNER) {
@@ -398,6 +422,10 @@ function registerEffectHere(e: Effect): void {
     } else {
       ;(collector as Effect[]).push(e)
     }
+  } else if (owned) {
+    // The node's own disposer, not the `dispose` getter (which allocates a
+    // closure per read on this core).
+    if (_of.d > 0) _of.l.push(() => (e as EffectNode)._dispose())
   } else {
     // Otherwise auto-register with the active EffectScope (if any)
     _ownerScope()?.add(e)
