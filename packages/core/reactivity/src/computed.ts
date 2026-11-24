@@ -367,6 +367,7 @@ function evalThrew<T>(read: ComputedFn<T>, err: unknown, recompute: () => void):
   _errorHandler(err)
   if (read._disposed) cleanupLocalDeps(read._deps, recompute)
   read._dirty = 0
+
   return read._value
 }
 
