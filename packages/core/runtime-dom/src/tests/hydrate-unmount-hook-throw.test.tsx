@@ -110,6 +110,7 @@ const SOURCES: [string, () => unknown, string][] = [
       onMount(() => {
         onCleanup(boom)
       })
+
       return h('b', null, 'x')
     },
     '[pyreon] Unhandled effect error: Error: boom',
@@ -127,11 +128,13 @@ const SOURCES: [string, () => unknown, string][] = [
           if (!live) boom()
         })
       })
+
       return h('b', null, 'x')
     },
     '[pyreon] Unhandled effect error: Error: boom',
   ],
 ]
+
 // The effect source throws only at teardown (a hydrated effect's first-run
 // handling may run a cleanup early; that is not this test's subject).
 let live = true
