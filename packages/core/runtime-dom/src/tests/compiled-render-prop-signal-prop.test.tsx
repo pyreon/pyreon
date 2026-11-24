@@ -7,6 +7,12 @@
  * `each={items()}` — the `<For>` received the array once and never updated
  * (same for `<Show when={open}>`). This compiles REAL source through each
  * backend, mounts it, writes the signals and reads the DOM.
+ *
+ * Handlers are the other half of the rule: JSX a handler builds is built at
+ * click time, so `show(<Edit row={open()} />); open.set(false)` hands the
+ * dialog the click-time value (walking the handler made it `_rpd(open)`,
+ * which read `false` after the click), while a bare `each={items}` there
+ * passes the signal (main auto-called it to a one-time `items()`).
  */
 import { createRequire } from 'node:module'
 import { transformJSX_JS } from '@pyreon/compiler'
@@ -14,7 +20,7 @@ import { For, Fragment, h, Show, _rp, _rpd } from '@pyreon/core'
 import { type Signal, signal } from '@pyreon/reactivity'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it } from 'vitest'
-import { _applyProps, _bindSpread, mount } from '../index'
+import { _applyProps, _bindSpread, bindPolymorphicText, mount } from '../index'
 import { _bindText, _mountSlot, _setChild, _tpl } from '../template'
 
 type Backend = (source: string) => string
@@ -32,7 +38,7 @@ try {
   // The JavaScript backend runs without the optional addon; Rust runs when built.
 }
 
-const RUNTIME = { h, Fragment, For, Show, _rp, _rpd, _tpl, _bindText, _mountSlot, _setChild, _applyProps, _bindSpread }
+const RUNTIME = { h, Fragment, For, Show, _rp, _rpd, bindPolymorphicText, _tpl, _bindText, _mountSlot, _setChild, _applyProps, _bindSpread }
 
 /**
  * Compile `App` with `items` / `open` as known signals (declared in the source
@@ -50,6 +56,8 @@ function load(
     `import { signal } from '@pyreon/reactivity'\n` +
     `const items = signal([])\nconst open = signal(false)\n` +
     `function Slot(props) { return props.render() }\n` +
+    `function Edit(props) { return <i class="row">{String(props.row)}</i> }\n` +
+    `function Btn(props) { return <button class="target" onClick={props.onClick}>b</button> }\n` +
     `function App() { return ${jsx} }`
   const out = compile(src)
   const body = transformSync(
@@ -125,23 +133,48 @@ for (const [name, compile] of backends) {
       expect(count(root)[1], out).toBe(0)
     })
 
-    it('JSX built in a template element handler keeps its signal prop live', () => {
-      const items = signal<string[]>(['a'])
-      const open = signal(false)
-      const host = document.createElement('div')
-      document.body.appendChild(host)
-      const show = (vnode: unknown) => mounted.push(mount(vnode as never, host))
-      const { App, out } = load(
-        compile,
-        `<button class="target" onClick={() => show(<For each={items} by={(x) => x}>{(x) => <li>{x}</li>}</For>)}>x</button>`,
-        items,
-        open,
-        show,
-      )
-      mountApp(App).querySelector<HTMLElement>('.target')!.click()
-      expect(host.querySelectorAll('li').length, out).toBe(1)
-      items.set(['a', 'b', 'c'])
-      expect(host.querySelectorAll('li').length, out).toBe(3)
-    })
+    for (const [where, wrap] of [
+      ['a template element', (h: string) => `<button class="target" onClick={${h}}>x</button>`],
+      ['a component', (h: string) => `<Btn onClick={${h}} />`],
+    ] as const) {
+      it(`JSX built in ${where} handler: an explicit read is the click-time value`, () => {
+        const items = signal<string[]>([])
+        const open = signal(true)
+        const host = document.createElement('div')
+        document.body.appendChild(host)
+        const show = (vnode: unknown) => mounted.push(mount(vnode as never, host))
+        const { App, out } = load(
+          compile,
+          wrap('() => { show(<Edit row={open()} />); open.set(false) }'),
+          items,
+          open,
+          show,
+        )
+        mountApp(App).querySelector<HTMLElement>('.target')!.click()
+        // The handler cleared the signal after building the JSX: the dialog
+        // keeps the value it was opened with.
+        expect(host.querySelector('.row')?.textContent, out).toBe('true')
+      })
+
+      it(`JSX built in ${where} handler: a bare signal prop passes the signal (live)`, () => {
+        const items = signal<string[]>(['a'])
+        const open = signal(false)
+        const host = document.createElement('div')
+        document.body.appendChild(host)
+        const show = (vnode: unknown) => mounted.push(mount(vnode as never, host))
+        const { App, out } = load(
+          compile,
+          wrap('() => show(<For each={items} by={(x) => x}>{(x) => <li>{x}</li>}</For>)'),
+          items,
+          open,
+          show,
+        )
+        mountApp(App).querySelector<HTMLElement>('.target')!.click()
+        expect(host.querySelectorAll('li').length, out).toBe(1)
+        items.set(['a', 'b', 'c'])
+        expect(host.querySelectorAll('li').length, out).toBe(3)
+      })
+    }
+
   })
 }

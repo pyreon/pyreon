@@ -185,6 +185,8 @@ function genNestedFn(c: Ctx): string {
     // A component prop in JSX a function builds (#4797): walked, `_rp`-wrapped.
     `() => <Show when={${s}}><b>x</b></Show>`,
     `(k) => <For each={${s}} by={(x) => x}>{(x) => <li title={k}>{x}</li>}</For>`,
+    // JSX built in a handler: a bare signal prop stays bare, a call stays a call.
+    `() => show(<D v={${s}} w={${s}()}>{${s}}</D>)`,
   ])
 }
 
@@ -383,6 +385,11 @@ function genAttrs(c: Ctx): string {
   }
   if (c.signals.length && c.rnd4() < 0.3) {
     parts.push(`${pick(c.rnd4, [...EVENTS, 'ref', 'render', 'data-fn'])}={${genNestedFn(c)}}`)
+  }
+  // A spread whose object carries a JSX-building function (#4797): handler
+  // keys follow the handler rule, every other key the render-prop rule.
+  if (c.signals.length && c.rnd4() < 0.15) {
+    parts.push(`{...{ ${pick(c.rnd4, ['onClick', 'ref', 'render', 'title'])}: ${genNestedFn(c)} }}`)
   }
 
   return parts.length ? ' ' + parts.join(' ') : ''

@@ -1,24 +1,30 @@
 /**
- * JSX inside an attribute value is WALKED, never sliced (#4797).
+ * JSX in an attribute value: render props are WALKED, handlers stay SLICED
+ * (#4797).
  *
- * A render prop (`render={() => <For each={items}>…</For>}`), a handler or a
- * ref that builds JSX used to be sliced as raw source: the signal auto-call
- * ran over the whole span, so a component prop in the nested JSX became a
- * one-time read (`each={items()}`, `when={open()}`) with no `_rp` wrapper, and
- * the `<For>` / `<Show>` never updated. The same prop at a component's top
- * level is `_rp(() => items())`.
+ * A render prop (`render={() => <For each={items}>…</For>}`) was sliced as
+ * raw source: the signal auto-call ran over the whole span, so a component
+ * prop in its JSX became a one-time read (`each={items()}`) with no `_rp`
+ * wrapper, and the `<For>` / `<Show>` never updated.
  *
- * The rule: the h() path walks an unwrapped attribute value that builds JSX
- * (`walkHPath`: identifier edits outside the JSX, every JSX rule inside it,
- * JSX kept on h()), and a template element whose attribute value builds JSX
- * bails to h() (`hasBailAttr`), because the template emit slices the value
- * into its bind code. Byte-identical in both backends.
+ * The rule:
+ * - A non-handler, non-ref value that builds JSX is DECLARATIVE: the h() path
+ *   walks it (`walkHPath`: identifier edits outside the JSX, every JSX rule
+ *   inside it, JSX kept on h()), a template element carrying one bails to h()
+ *   (`hasBailAttr`), and a spread argument that builds JSX gets this rule per
+ *   property (`walkSpreadArg`).
+ * - An `on*` handler or a `ref` is IMPERATIVE code that builds JSX at event
+ *   time: it stays a slice on every path (template bind, h(), rocketstyle
+ *   collapse), so an explicit read there is the event-time value as written.
+ *   Inside that JSX an EXACTLY-BARE signal prop or child is not auto-called
+ *   (`sliceHandlerValue`), so the signal itself is passed, as in 0.53.
+ * Byte-identical in both backends.
  */
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { transformJSX_JS } from '../jsx'
+import { rocketstyleCollapseKey, transformJSX_JS } from '../jsx'
 
 type NativeTransform = (
   ...args: [string, string, boolean, string[] | null, boolean?, unknown?, boolean?]
@@ -83,24 +89,45 @@ const SHAPES: Record<string, { jsx: string; has: string[]; not?: string[] }> = {
     jsx: '<Slot render={() => { const v = label; return <Comp v={label}>{v}</Comp> }} />',
     has: ['const v = (props.label)', 'v={_rp(() => (props.label))}'],
   },
-  'handler on a component': {
-    jsx: '<Btn onClick={() => show(<Show when={open} />)} />',
-    has: ['when={_rp(() => open())}'],
-  },
-  'handler on a template element bails to h()': {
-    jsx: '<button onClick={() => show(<Show when={open} />)}>x</button>',
-    has: ['<button onClick={() => show(<Show when={_rp(() => open())} />)}>x</button>'],
-    not: ['_tpl(', '__ev_click'],
-  },
-  'ref that builds JSX on a template element bails to h()': {
-    jsx: '<div ref={(el) => show(el, <Show when={open} />)}>x</div>',
-    has: ['when={_rp(() => open())}'],
-    not: ['_tpl('],
-  },
   'function-valued DOM attribute on a template element bails to h()': {
     jsx: '<button data-r={() => <Show when={open} />}>x</button>',
     has: ['when={_rp(() => open())}'],
     not: ['_tpl('],
+  },
+  'handler on a component: a bare signal prop in its JSX stays the signal': {
+    jsx: '<Btn onClick={() => show(<Show when={open} />)} />',
+    has: ['show(<Show when={open} />)'],
+    not: ['open()', '_rp('],
+  },
+  'handler on a template element: stays templated, bare prop and child stay bare': {
+    jsx: '<button onClick={() => show(<Comp v={open}>{open}</Comp>)}>x</button>',
+    has: ['_tpl(', '__ev_click = () => show(<Comp v={open}>{open}</Comp>)'],
+  },
+  'handler: an explicit read in its JSX is the event-time value': {
+    jsx: '<button onClick={() => { show(<Comp row={open()} n={open + 1} />); open.set(false) }}>x</button>',
+    has: ['_tpl(', 'row={open()}', 'n={open() + 1}', 'open.set(false)'],
+    not: ['_rp(', '_rpd('],
+  },
+  'ref that builds JSX: stays templated, bare prop stays bare': {
+    jsx: '<div ref={(el) => show(el, <Show when={open} />)}>x</div>',
+    has: ['_tpl(', '_ref(__root, (el) => show(el, <Show when={open} />))'],
+  },
+  'spread on a component: render prop walked, handler sliced, plain value called': {
+    jsx: '<Comp {...{ render: () => <For each={items}>{(x) => x}</For>, onClick: () => show(<D v={open} w={open()} />), title: open }} />',
+    has: [
+      '_wrapSpread({ render: () => <For each={_rp(() => items())}>',
+      'onClick: () => show(<D v={open} w={open()} />)',
+      'title: open()',
+    ],
+  },
+  'spread on a component: non-object argument walked whole': {
+    jsx: '<Comp {...(flag ? { r: () => <D v={open} /> } : {})} />',
+    has: ['_wrapSpread((flag ? { r: () => <D v={_rp(() => open())} /> } : {}))'],
+  },
+  'spread on a DOM element that builds JSX bails to h()': {
+    jsx: '<div {...{ render: () => <For each={items}>{(x) => x}</For> }}>t</div>',
+    has: ['<div {...{ render: () => <For each={_rp(() => items())}>'],
+    not: ['_tpl(', '_applyProps('],
   },
 }
 
@@ -139,4 +166,32 @@ describe.runIf(nativeTransform !== null)('JSX in an attribute value: the native 
       }
     })
   }
+})
+
+describe('rocketstyle collapse: a peeled handler that builds JSX follows the handler rule', () => {
+  const SITE = { templateHtml: '<button>Save</button>', lightClass: 'l', darkClass: 'd', rules: ['.l{}', '.d{}'], ruleKey: 'rk' }
+  const MODE = { name: 'useMode', source: '@pyreon/ui-core' }
+
+  it('`__rsCollapseH` keeps a bare signal prop bare and an explicit read as written, in both backends', () => {
+    const key = rocketstyleCollapseKey('Button', {}, 'Save')
+    const src =
+      `import { signal } from '@pyreon/reactivity'\nconst count = signal(0)\n` +
+      `export const C = () => <Button onClick={() => open(<Dialog v={count} w={count()} />)}>Save</Button>`
+    const js = transformJSX_JS(src, 'collapse.tsx', {
+      collapseRocketstyle: { candidates: new Set(['Button']), sites: new Map([[key, SITE]]), mode: MODE } as never,
+    }).code
+    expect(js).toContain('__rsCollapseH(')
+    expect(js).toContain('open(<Dialog v={count} w={count()} />)')
+    if (nativeTransform) {
+      const rs = (nativeTransform as unknown as (...a: unknown[]) => { code: string })(
+        src,
+        'collapse.tsx',
+        false,
+        null,
+        false,
+        { candidates: ['Button'], sites: { [key]: SITE }, mode: MODE },
+      ).code
+      expect(rs).toBe(js)
+    }
+  })
 })
