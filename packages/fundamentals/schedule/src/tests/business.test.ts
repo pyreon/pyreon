@@ -29,7 +29,7 @@ describe('business days', () => {
   it('a holidays predicate that throws gives an error that names the date and the fix', () => {
     const cal: BusinessCalendar = { holidays: () => { throw new Error('API down') } }
 
-    expect(() => isBusinessDay('2026-11-18', cal)).toThrow(/\[Pyreon\] isBusinessDay: the holidays predicate threw for 2026-11-18: API down\. A holidays predicate must return a boolean/)
+    expect(() => isBusinessDay('2026-11-18', cal)).toThrow(/\[Pyreon\] isBusinessDay: the holidays predicate threw for 2026-11-18: API down\. A holidays predicate must return true or false/)
   })
 
   it('a holidays predicate that does not return a boolean is an error, not a silent "no holiday"', () => {

@@ -17,29 +17,41 @@ interface Cal {
   holiday: (day: number) => boolean
   /** Opening windows by weekday, in ms from midnight; a window may end after `DAY` (overnight). `null` when there are no hours. */
   windows: Windows[] | null
-  /** A date's own windows from `specialHours` (they replace the weekday's and win over `weekend` and `holidays`), or `undefined`. */
-  special: (day: number) => Windows | undefined
+  /** `specialHours`: windows by day number, or the caller's function. They replace the weekday's and win over `weekend` and `holidays`. */
+  special: Map<number, Windows> | ((day: number) => unknown) | undefined
   fn: string
+}
+
+/** What a calendar callback must answer: a check and its wording in the error. */
+interface Rule {
+  what: string
+  ok: (answer: unknown) => boolean
+  expect: string
+}
+
+const HOLIDAYS: Rule = { what: 'holidays predicate', ok: (v) => typeof v === 'boolean', expect: 'true or false' }
+const SPECIAL: Rule = { what: 'specialHours function', ok: (v) => v === undefined || Array.isArray(v), expect: 'an array of { from, to } (empty = closed) or undefined' }
+
+/** A calendar callback asked by day number; a `[Pyreon]` error when it throws or answers something the rule rejects. */
+function asker(fn: string, rule: Rule, f: (date: PlainDate) => unknown): (day: number) => unknown {
+  return (day) => {
+    const date = writeDate(day)
+    let answer: unknown
+
+    try {
+      answer = f(date)
+    } catch (error) {
+      return badRange(fn, `the ${rule.what} threw for ${date}: ${error instanceof Error ? error.message : String(error)}. A ${rule.what} must return ${rule.expect} for every date.`)
+    }
+    if (!rule.ok(answer)) return badRange(fn, `the ${rule.what} returned ${show(answer)} for ${date}. A ${rule.what} must return ${rule.expect} for every date.`)
+
+    return answer
+  }
 }
 
 function holidayTest(fn: string, holidays: BusinessCalendar['holidays']): (day: number) => boolean {
   if (holidays === undefined) return () => false
-  if (typeof holidays === 'function') {
-    return (day) => {
-      const date = writeDate(day)
-
-      let answer: unknown
-
-      try {
-        answer = holidays(date)
-      } catch (error) {
-        return badRange(fn, `the holidays predicate threw for ${date}: ${error instanceof Error ? error.message : String(error)}. A holidays predicate must return a boolean for every date.`)
-      }
-      if (typeof answer !== 'boolean') return badRange(fn, `the holidays predicate returned ${show(answer)} for ${date}. A holidays predicate must return true or false for every date.`)
-
-      return answer
-    }
-  }
+  if (typeof holidays === 'function') return asker(fn, HOLIDAYS, holidays) as (day: number) => boolean
   if (!Array.isArray(holidays)) return badValue(fn, 'holidays to be an array of PlainDate or a predicate (date) => boolean', holidays)
   const set = new Set<number>()
 
@@ -95,33 +107,10 @@ function windowsOf(fn: string, hours: NonNullable<BusinessCalendar['hours']>): W
   return out
 }
 
-const NO_SPECIAL = (): undefined => undefined
-
-function specialTest(fn: string, special: BusinessCalendar['specialHours']): (day: number) => Windows | undefined {
-  if (special === undefined) return NO_SPECIAL
-  if (typeof special === 'function') {
-    const seen = new Map<number, Windows | undefined>()
-
-    return (day) => {
-      if (seen.has(day)) return seen.get(day)
-      const date = writeDate(day)
-      let answer: unknown
-
-      try {
-        answer = special(date)
-      } catch (error) {
-        return badRange(fn, `the specialHours function threw for ${date}: ${error instanceof Error ? error.message : String(error)}. It must return the windows of a date, or undefined for the usual hours.`)
-      }
-      if (answer !== undefined && !Array.isArray(answer)) {
-        return badRange(fn, `the specialHours function returned ${show(answer)} for ${date}. It must return an array of { from, to } (empty = closed), or undefined for the usual hours.`)
-      }
-      const windows = answer === undefined ? undefined : windowList(fn, `specialHours(${date})`, answer)
-
-      seen.set(day, windows)
-
-      return windows
-    }
-  }
+/** `specialHours` read once: a map from day number to windows, or the caller's function behind its checks. */
+function specialOf(fn: string, special: BusinessCalendar['specialHours']): Cal['special'] {
+  if (special === undefined) return undefined
+  if (typeof special === 'function') return asker(fn, SPECIAL, special)
   if (typeof special !== 'object' || special === null || Array.isArray(special)) {
     return badValue(fn, 'specialHours to be an object { "2026-12-24": [{ from, to }] } or a function (date) => windows | undefined', special)
   }
@@ -129,19 +118,17 @@ function specialTest(fn: string, special: BusinessCalendar['specialHours']): (da
 
   for (const key of Object.keys(special)) map.set(readDay(fn, 'a specialHours date', key), windowList(fn, `specialHours[${key}]`, (special as Record<string, unknown>)[key]))
 
-  return (day) => map.get(day)
+  return map
 }
 
-/**
- * Whether `specialHours` can open anything without weekly `hours`: a function always counts (it cannot be inspected; one
- * that never opens gives a calendar that never opens), a map only with a non-empty entry. Malformed values pass here and
- * are reported by `specialTest`.
- */
-function hasSpecialWindows(special: BusinessCalendar['specialHours']): boolean {
-  if (special === undefined) return false
-  if (typeof special !== 'object' || special === null || Array.isArray(special)) return true
+/** A date's own windows from `specialHours`, or `undefined` when it has none (the usual hours apply). */
+function specialOn(cal: Cal, day: number): Windows | undefined {
+  const sp = cal.special
 
-  return Object.values(special).some((list) => !Array.isArray(list) || list.length > 0)
+  if (sp === undefined || sp instanceof Map) return sp?.get(day)
+  const answer = sp(day)
+
+  return answer === undefined ? undefined : windowList(cal.fn, `specialHours(${writeDate(day)})`, answer)
 }
 
 function calendarOf(fn: string, calendar: BusinessCalendar | undefined, needHours: boolean): Cal {
@@ -154,23 +141,26 @@ function calendarOf(fn: string, calendar: BusinessCalendar | undefined, needHour
     if (!Number.isInteger(w) || w < 1 || w > 7) return badRange(fn, `weekend entries are ISO weekdays 1 to 7, got ${show(w)}.`)
     weekend[w] = true
   }
-  if (needHours && c.hours === undefined && !hasSpecialWindows(c.specialHours)) {
+  const special = specialOf(fn, c.specialHours)
+
+  // Without weekly hours, a specialHours map needs a window somewhere; a function cannot be inspected (one that never opens is a calendar that never opens).
+  if (needHours && c.hours === undefined && (special instanceof Map ? ![...special.values()].some((w) => w.length > 0) : special === undefined)) {
     return badRange(fn, 'the calendar has no hours, so there is no working time to count. Add hours: { 1: [{ from: "09:00", to: "17:00" }], ... } (specialHours alone needs at least one date with a window).')
   }
 
-  return { weekend, holiday: holidayTest(fn, c.holidays), windows: c.hours === undefined ? null : windowsOf(fn, c.hours), special: specialTest(fn, c.specialHours), fn }
+  return { weekend, holiday: holidayTest(fn, c.holidays), windows: c.hours === undefined ? null : windowsOf(fn, c.hours), special, fn }
 }
 
 /** Whether a date is a business day: its own `specialHours` entry decides when it has one (empty = closed), else the weekend and holidays. */
 function isOpenDay(cal: Cal, day: number): boolean {
-  const own = cal.special(day)
+  const own = specialOn(cal, day)
 
   return own !== undefined ? own.length > 0 : !cal.weekend[weekdayOf(day)] && !cal.holiday(day)
 }
 
 /** The opening windows of a date: its `specialHours` entry, else its weekday's hours on a business day, else none. The one place hours are read. */
 function windowsOn(cal: Cal, day: number): Windows {
-  const own = cal.special(day)
+  const own = specialOn(cal, day)
 
   if (own !== undefined) return own
 
