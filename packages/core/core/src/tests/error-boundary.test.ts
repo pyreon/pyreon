@@ -1,15 +1,18 @@
-import { dispatchToErrorBoundary, popErrorBoundary, runWithHooks } from '../component'
+import { effectScope, setContextOwner } from '@pyreon/reactivity'
+import { dispatchToErrorBoundary, nearestErrorBoundary, runWithHooks } from '../component'
 import { ErrorBoundary } from '../error-boundary'
 import { h } from '../h'
 import type { VNodeChild } from '../types'
 
 describe('ErrorBoundary', () => {
-  // Clean up error boundary stack after each test
+  // A boundary provides its handler on the context owner (the component tree),
+  // so each test runs under a fresh owner: nothing outlives the test.
+  let prevOwner: ReturnType<typeof setContextOwner> = null
+  beforeEach(() => {
+    prevOwner = setContextOwner(effectScope())
+  })
   afterEach(() => {
-    // Pop all boundaries that tests may have left
-    while (dispatchToErrorBoundary('cleanup')) {
-      popErrorBoundary()
-    }
+    setContextOwner(prevOwner)
   })
 
   test('is a function', () => {
@@ -68,7 +71,7 @@ describe('ErrorBoundary', () => {
     expect(getter()).toBe(child)
   })
 
-  test('registers unmount cleanup hook', () => {
+  test('provides its handler on its owner instead of a module-level registration', () => {
     const { hooks } = runWithHooks(() => {
       ErrorBoundary({
         fallback: (err) => `Error: ${err}`,
@@ -76,7 +79,9 @@ describe('ErrorBoundary', () => {
       })
       return null
     }, {})
-    expect(hooks.unmount!.length).toBeGreaterThanOrEqual(1)
+    // Nothing to unregister on unmount: the handler dies with the owner scope.
+    expect(hooks.unmount).toBeNull()
+    expect(nearestErrorBoundary()).toBeTypeOf('function')
   })
 
   test('warns when fallback is not a function', () => {
@@ -179,22 +184,13 @@ describe('ErrorBoundary', () => {
     expect(getter()).toBe('Error: second-error')
   })
 
-  test('onUnmount pops its own boundary (identity cleanup)', () => {
-    // The boundary registers `onUnmount(() => popErrorBoundary(handler))` so a
-    // renderer-driven unmount removes THIS boundary's handler by identity (the
-    // #725-class sibling-order fix). `runWithHooks` returns the collected hooks,
-    // so we can fire the unmount cleanup node-side without a renderer.
-    const { hooks } = runWithHooks(
-      () => ErrorBoundary({ fallback: (e) => `fb:${String(e)}`, children: 'c' }),
-      {},
-    )
-    // Mounted → the handler is on the stack and catches.
-    expect(dispatchToErrorBoundary('boom')).toBe(true)
-    // Exactly one unmount cleanup was registered.
-    expect(hooks.unmount).toHaveLength(1)
-    // Fire it → popErrorBoundary(handler) removes this boundary.
-    for (const fn of hooks.unmount!) fn()
-    // Popped → nothing left to catch.
-    expect(dispatchToErrorBoundary('after')).toBe(false)
+  test('a throw outside the boundary\'s owner subtree does not reach it', () => {
+    // The boundary's handler is visible only below its owner. A sibling (an
+    // owner that is not a descendant) resolves no boundary, where the old
+    // module-level stack returned whichever boundary mounted last.
+    runWithHooks(() => ErrorBoundary({ fallback: (e) => `fb:${String(e)}`, children: 'c' }), {})
+    expect(dispatchToErrorBoundary('inside')).toBe(true)
+    setContextOwner(effectScope())
+    expect(dispatchToErrorBoundary('sibling')).toBe(false)
   })
 })

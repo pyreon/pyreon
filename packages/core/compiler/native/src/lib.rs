@@ -5203,7 +5203,9 @@ fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
                 s
             } else { vec![] };
             if let Some(body) = &func.body {
+                let outer_depth = enter_component_body(is_capitalized_fn_decl(func), ctx);
                 walk_fn_body(&func.params, &body.statements, ctx);
+                ctx.callback_depth = outer_depth;
             }
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -5344,7 +5346,9 @@ fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
                         s
                     } else { vec![] };
                     if let Some(body) = &func.body {
+                        let outer_depth = enter_component_body(is_capitalized_fn_decl(func), ctx);
                         walk_fn_body(&func.params, &body.statements, ctx);
+                        ctx.callback_depth = outer_depth;
                     }
                     for name in &shadows { ctx.shadowed_signals.remove(name); }
                     for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -5383,7 +5387,9 @@ fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
                             s
                         } else { vec![] };
                         if let Some(body) = &func.body {
+                            let outer_depth = enter_component_body(is_capitalized_fn_decl(func), ctx);
                             walk_fn_body(&func.params, &body.statements, ctx);
+                            ctx.callback_depth = outer_depth;
                         }
                         for name in &shadows { ctx.shadowed_signals.remove(name); }
                         for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -5471,6 +5477,8 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
             let is_callback_arg = ctx.in_callback_argument;
             ctx.in_jsx_child_callback = false;
             ctx.in_callback_argument = false;
+            // A capitalized `const X = () => …` (read before the props arm takes it).
+            let is_component = !is_callback_arg && ctx.fold_decl_name.is_some();
             if !is_jsx_child_cb && !is_callback_arg {
                 maybe_register_component_props_arrow(arrow, ctx);
             }
@@ -5493,7 +5501,9 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
                 for name in &s { ctx.shadowed_jsx_fns.insert(name.clone()); }
                 s
             } else { vec![] };
+            let outer_depth = enter_component_body(is_component, ctx);
             walk_arrow_body(arrow, ctx);
+            ctx.callback_depth = outer_depth;
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
             ctx.parent_is_jsx = old;
@@ -5511,6 +5521,8 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
             let is_callback_arg = ctx.in_callback_argument;
             ctx.in_jsx_child_callback = false;
             ctx.in_callback_argument = false;
+            // A capitalized `const X = function (…) {…}` (read before the props arm takes it).
+            let is_component = !is_callback_arg && ctx.fold_decl_name.is_some();
             if !is_jsx_child_cb && !is_callback_arg {
                 maybe_register_component_props_fn(func, ctx);
             }
@@ -5530,7 +5542,9 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
                 s
             } else { vec![] };
             if let Some(body) = &func.body {
+                let outer_depth = enter_component_body(is_component, ctx);
                 walk_fn_body(&func.params, &body.statements, ctx);
+                ctx.callback_depth = outer_depth;
             }
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -11381,6 +11395,25 @@ fn set_fold_decl_name(declarator: &VariableDeclarator, init: &Expression, ctx: &
             ctx.fold_decl_name = Some(id.name.to_string());
         }
     }
+}
+
+/// Enter a function body: a COMPONENT nested in a callback (`test('…', () => {
+/// function Page() {…} })`) starts at callback depth 0, so its `signal()` /
+/// prop-derived consts are tracked exactly as at module level. Returns the depth
+/// the caller restores on leaving. Mirrors the JS `outerCallbackDepth` reset in
+/// `walkNode`.
+fn enter_component_body(is_component: bool, ctx: &mut Ctx) -> u32 {
+    let outer = ctx.callback_depth;
+    if is_component {
+        ctx.callback_depth = 0;
+    }
+    outer
+}
+
+/// `function Card(…) {…}` — a capitalized function declaration (jsx.ts
+/// `isCapitalizedComponent`'s declaration arm).
+fn is_capitalized_fn_decl(func: &oxc_ast::ast::Function) -> bool {
+    func.id.as_ref().is_some_and(|i| is_capitalized(i.name.as_str()))
 }
 
 fn is_capitalized(name: &str) -> bool {

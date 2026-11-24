@@ -2304,7 +2304,7 @@ function hydrateComponent(
               releaseDeferral()
             }
           } catch (err) {
-            const handled = dispatchToErrorBoundary(err)
+            const handled = runWithContextOwner(asyncOwner, () => dispatchToErrorBoundary(err))
             if (!handled && process.env.NODE_ENV !== 'production') {
               console.error(
                 `[Pyreon] <${componentName}> threw during async hydration:`,
@@ -2316,7 +2316,7 @@ function hydrateComponent(
         .catch((err) => {
           releaseDeferral()
           if (cancelled) return
-          const handled = dispatchToErrorBoundary(err)
+          const handled = runWithContextOwner(asyncOwner, () => dispatchToErrorBoundary(err))
           if (!handled && process.env.NODE_ENV !== 'production') {
             console.error(
               `[Pyreon] <${componentName}> async hydration rejected:`,

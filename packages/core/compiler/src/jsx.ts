@@ -5545,6 +5545,8 @@ export function transformJSX_JS(
       node.type === 'FunctionExpression'
     let scopeShadows: string[] | null = null
     let scopeJsxFnShadows: string[] | null = null
+    // Callback depth to restore on leaving a component nested in a callback.
+    let outerCallbackDepth = -1
     // Block-scope frame for the prop-derived registry (see `propDerivedLog`).
     // A `const` is scoped to its enclosing block / for-head / switch body.
     const propDerivedMark = propDerivedLog.length
@@ -5555,6 +5557,15 @@ export function transformJSX_JS(
       const isCallbackArg =
         parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)
       if (isCallbackArg) _callbackDepth++
+      else if (_callbackDepth > 0 && isCapitalizedComponent(node, parent)) {
+        // A component declared inside a callback (`test('…', () => { function
+        // Page() {…} })`, a factory passed to a call) is a component body like
+        // any other: its `const s = signal()` / prop-derived consts are tracked
+        // exactly as at module level, so the same component compiles the same
+        // wherever it is declared. Mirrored by `enter_component_body` in Rust.
+        outerCallbackDepth = _callbackDepth
+        _callbackDepth = 0
+      }
       // Register component props (only for non-callback functions with JSX)
       maybeRegisterComponentProps(node)
       // PZ-02: a named function DECLARATION returning JSX is a JSX-returning
@@ -5615,6 +5626,7 @@ export function transformJSX_JS(
       const parent = findParent(node)
       if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node))
         _callbackDepth--
+      else if (outerCallbackDepth >= 0) _callbackDepth = outerCallbackDepth
     }
     // Restore signal shadowing
     if (scopeShadows) for (const name of scopeShadows) shadowedSignals.delete(name)

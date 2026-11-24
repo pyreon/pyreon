@@ -1,6 +1,8 @@
 import { effect, signal } from '@pyreon/reactivity'
+import { nearestErrorBoundary } from './component'
 import { Fragment, h } from './h'
-import { onMount } from './lifecycle'
+import { onMount, onUnmount } from './lifecycle'
+import { reportError } from './telemetry'
 import { createRef } from './ref'
 import type { ComponentFn, VNode, VNodeChild, VNodeChildAccessor } from './types'
 
@@ -14,11 +16,16 @@ type ChunkResult<P extends object> = { default: ComponentFn<P> } | ComponentFn<P
 
 /**
  * Trigger discriminant. Exactly ONE shape is provided:
- *   - `when={() => signal()}` — load when the accessor becomes truthy
+ *   - `when={open}` / `when={() => open()}` — load when the condition becomes truthy
  *   - `on="visible"`         — load when the wrapper enters the viewport
  *   - `on="idle"`            — load during browser idle time
+ *
+ * `when` accepts a value OR an accessor, exactly like `<Show when>`: the
+ * compiler turns `when={open}` (a component-local signal or computed) and
+ * `when={open()}` into a reactive prop that already READS the value, so
+ * `props.when` is the boolean, not a function (#4830).
  */
-type DeferTrigger = { when: () => boolean } | { on: 'visible' | 'idle' }
+type DeferTrigger = { when: unknown | (() => unknown) } | { on: 'visible' | 'idle' }
 
 /**
  * Set up the `on="idle"` trigger. Returns a teardown function the
@@ -153,11 +160,38 @@ export type DeferProps<P extends object> = DeferTrigger & {
  */
 export function Defer<P extends object>(props: DeferProps<P>): VNode {
   const Loaded = signal<ComponentFn<P> | null>(null)
-  const Failed = signal<Error | null>(null)
+  const Failed = signal(false)
   // Module-scope flag prevents repeat fetches when the trigger condition
   // oscillates (e.g. modal opens / closes / opens again). The chunk only
   // loads once per Defer mount.
   let loadStarted = false
+  // The `<ErrorBoundary>` this Defer sits in, captured now: a chunk rejects
+  // AFTER mount, when the owner chain is no longer current, so a dispatch at
+  // that point could not find the boundary (#4831).
+  const boundary = nearestErrorBoundary()
+  let unmounted = false
+  onUnmount(() => {
+    unmounted = true
+  })
+
+  // A failed load goes to the enclosing boundary like any other render error
+  // (the boundary reports it). Without one it is handled like an uncaught
+  // render error: reported to telemetry, logged in development, and the slot
+  // renders nothing. It used to be rethrown from the render accessor, a
+  // reactive re-run no boundary can see.
+  const fail = (err: Error): void => {
+    if (unmounted || boundary?.(err)) return
+    reportError({ component: 'Defer', phase: 'render', error: err, timestamp: Date.now() })
+    if (process.env.NODE_ENV !== 'production') {
+      // oxlint-disable-next-line no-console
+      console.error(
+        '[Pyreon] <Defer> failed to load and no <ErrorBoundary> encloses it, so nothing is ' +
+          'rendered. Wrap the <Defer> in an <ErrorBoundary> to show a fallback:',
+        err,
+      )
+    }
+    Failed.set(true)
+  }
 
   const startLoad = (): void => {
     // Defensive double-guard: the `when` effect already gates on `!loadStarted`
@@ -177,7 +211,7 @@ export function Defer<P extends object>(props: DeferProps<P>): VNode {
           'with `@pyreon/vite-plugin` enabled — the compiler rewrites inline JSX to ' +
           'an explicit chunk-prop call.',
       )
-      Failed.set(err)
+      fail(err)
       return
     }
     props
@@ -198,12 +232,7 @@ export function Defer<P extends object>(props: DeferProps<P>): VNode {
         Loaded.set(Comp)
       })
       .catch((err) => {
-        const wrapped = err instanceof Error ? err : new Error(String(err))
-        if (process.env.NODE_ENV !== 'production') {
-          // oxlint-disable-next-line no-console
-          console.error('[Pyreon] <Defer> chunk() rejected:', wrapped)
-        }
-        Failed.set(wrapped)
+        fail(err instanceof Error ? err : new Error(String(err)))
       })
   }
 
@@ -212,7 +241,8 @@ export function Defer<P extends object>(props: DeferProps<P>): VNode {
     // Signal-driven. Subscribe to the accessor; load when it transitions
     // to truthy. Repeat truthy emissions are no-ops via `loadStarted`.
     effect(() => {
-      if (props.when() && !loadStarted) startLoad()
+      const when = props.when
+      if ((typeof when === 'function' ? (when as () => unknown)() : when) && !loadStarted) startLoad()
     })
   } else if (props.on === 'idle') {
     // Idle-driven. Delegated to `_setupIdleTrigger` so the browser-API
@@ -232,8 +262,7 @@ export function Defer<P extends object>(props: DeferProps<P>): VNode {
   // to include `VNodeChildAccessor`, which can't be returned from another
   // accessor.
   const renderContent = () => {
-    const err = Failed()
-    if (err) throw err
+    if (Failed()) return null
     const Comp = Loaded()
     if (!Comp) return props.fallback ?? null
     // `children` is widened to `VNodeChild | render-prop` so the compiler-driven

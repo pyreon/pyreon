@@ -1523,7 +1523,7 @@ When the boundary catches an error, the internal `error.set(err)` call is deferr
 
 #### Error Boundary Internals
 
-`ErrorBoundary` uses a module-level stack of handler functions. During setup, it pushes a handler onto the stack. When a child component throws during mount, `dispatchToErrorBoundary()` invokes the innermost handler. The handler stores the error in a signal; when the signal becomes non-null, the fallback renders instead of the children.
+`ErrorBoundary` provides its handler through context during setup, so the boundary a throw reaches is the one that encloses the component in the tree, never a sibling that happens to be mounted. When a child component throws during mount, `dispatchToErrorBoundary()` resolves the nearest handler through the context owner chain and invokes it. Code that fails after mount (a `<Defer>` chunk that rejects, an async component) resolves its boundary at setup and hands it the error when it fails. The handler stores the error in a signal; when the signal becomes non-null, the fallback renders instead of the children.
 
 ### Async
 
@@ -1652,7 +1652,7 @@ function Page() {
 
 Exactly one of the three triggers is supplied per `<Defer>`. `when` is mutually exclusive with `on`.
 
-- **`when={() => signal()}`** -- signal-driven. Load the chunk when the accessor becomes truthy. Repeated truthy emissions are no-ops; the chunk loads exactly once per `Defer` instance even if the condition oscillates (e.g. a modal that opens, closes, then opens again). This is the modal / on-demand-panel pattern.
+- **`when={open}`** -- signal-driven. Load the chunk when the condition becomes truthy. Like `<Show when>`, it takes a value or an accessor: `when={open}` (a signal or computed, also a component-local one), `when={open()}` and `when={() => open()}` all stay reactive. Repeated truthy emissions are no-ops; the chunk loads exactly once per `Defer` instance even if the condition oscillates (e.g. a modal that opens, closes, then opens again). This is the modal / on-demand-panel pattern.
 - **`on="visible"`** -- viewport-driven. Load the chunk when the wrapper scrolls into view, detected with an `IntersectionObserver`. Tune the pre-load distance with `rootMargin` (default `'200px'`, so the chunk usually finishes loading before the user reaches it). Best for below-the-fold content like a comments section.
 - **`on="idle"`** -- idle-driven. Load the chunk during browser idle time via `requestIdleCallback`. Best for non-critical work that should warm up after the page is interactive but doesn't block anything.
 
@@ -1681,8 +1681,8 @@ interface DeferProps<P extends Props> {
    * synthesizes it; the explicit form requires it.
    */
   chunk?: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>
-  /** Signal-driven trigger -- load when truthy. Mutually exclusive with `on`. */
-  when?: () => boolean
+  /** Signal-driven trigger -- load when truthy. A value or an accessor. Mutually exclusive with `on`. */
+  when?: unknown | (() => unknown)
   /** Viewport / idle trigger. Mutually exclusive with `when`. */
   on?: 'visible' | 'idle'
   /**
@@ -1698,7 +1698,7 @@ interface DeferProps<P extends Props> {
 }
 ```
 
-A rejected `chunk()` is thrown during rendering and can be caught by an `ErrorBoundary` (the same recovery path as `lazy()`):
+A rejected `chunk()` (offline, a deploy replaced the hashed file) goes to the enclosing `ErrorBoundary` like any other render error, whether the load started at mount or later. `reset()` remounts the `Defer`, which retries the load. Without a boundary the failure is reported to `registerErrorHandler`, logged in development, and the slot renders nothing:
 
 ```tsx
 <ErrorBoundary fallback={(err, reset) => <ChunkFailed error={err} retry={reset} />}>
