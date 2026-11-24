@@ -2134,8 +2134,6 @@ function hydrateComponent(
   if (process.env.NODE_ENV !== 'production') setContextOwner(devSetupOwner(prevOwner, _devScopeIdOf(scope)))
   // Same builder as mountComponent — children merged by descriptor copy, then
   // `_rp` thunks become getters — so a forwarded getter prop stays live here too.
-  const mergedProps = componentProps(vnode)
-
   let output: VNodeChild
   let hooks: LifecycleHooks
   // Compiled-template ADOPTION (component-root fast path). A component whose
@@ -2150,7 +2148,9 @@ function hydrateComponent(
   const adoptTarget = domNode !== null && domNode.nodeType === 1 ? (domNode as Element) : null
   if (adoptTarget !== null) _setTplAdoptTarget(adoptTarget)
   try {
-    output = _runHooked(vnode.type as ComponentFn, mergedProps)
+    // Built inside the try, exactly as `mountComponent` does: the catch below
+    // restores every frame set above, so a throwing props builder is contained.
+    output = _runHooked(vnode.type as ComponentFn, componentProps(vnode))
     hooks = _takeHooks()
   } catch (err) {
     if (adoptTarget !== null) _setTplAdoptTarget(null)

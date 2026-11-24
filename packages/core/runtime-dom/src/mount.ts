@@ -697,9 +697,13 @@ function mountComponent(
   // devtools can map back to this component — see `devSetupOwner`.
   if (process.env.NODE_ENV !== 'production') setContextOwner(devSetupOwner(prevOwner, compId!))
 
-  const mergedProps = componentProps(vnode)
-
+  // Built INSIDE the try: every frame above (scope, owner, pending owner, owner
+  // frame, dev mounting stack) is restored by the catch, so a props builder
+  // that throws (a Proxy props object, a throwing getter) is contained exactly
+  // like a throwing setup instead of leaving those frames set.
+  let mergedProps: Record<string, unknown> | undefined
   try {
+    mergedProps = componentProps(vnode)
     output = _runHooked(vnode.type, mergedProps)
     hooks = _takeHooks()
   } catch (err) {
@@ -724,11 +728,8 @@ function mountComponent(
       // PZ-10: "props.X is not a function", caused by the reactive-prop
       // auto-unwrap. Printed even when an ErrorBoundary handled the throw — the
       // fallback can't explain the root cause. Fires at most once per mount.
-      const diagnosis = diagnoseReactivePropCall(
-        err,
-        mergedProps as Record<string, unknown>,
-        componentName,
-      )
+      const diagnosis =
+        mergedProps === undefined ? null : diagnoseReactivePropCall(err, mergedProps, componentName)
       if (diagnosis) console.error(diagnosis)
       if (!handled) {
         const overlay = document.createElement('pre')
@@ -922,7 +923,7 @@ function mountComponent(
       }
     }
     registerComponent(compId!, componentName, firstEl, devParentId!)
-    _devInspectable(compId!, scope, mergedProps)
+    _devInspectable(compId!, scope, mergedProps!)
   }
 
   // Fire onMount hooks inline — effects created inside are tracked by the scope.

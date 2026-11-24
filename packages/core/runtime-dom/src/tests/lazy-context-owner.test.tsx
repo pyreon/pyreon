@@ -14,7 +14,9 @@ import vm from 'node:vm'
 import { createContext, h, onMount, onUnmount, provide, Show, useContext } from '@pyreon/core'
 import {
   _bind,
+  _claimContextOwner,
   _currentScope,
+  _swapPendingOwner,
   effect,
   type EffectScope,
   getCurrentScope,
@@ -173,6 +175,49 @@ describe('dropped scopes', () => {
     const unmount = mount(h(Comp, null), document.createElement('div'))
     unmount()
     expect(order).toEqual(['unmount', 'mount-cleanup'])
+  })
+})
+
+describe('a props builder that throws', () => {
+  // A props object whose key enumeration throws (a Proxy) — built by the real
+  // h(). The component's frames (current scope, pending owner, owner frame)
+  // are set before its props are built; the throw must be contained like a
+  // throwing setup and leave every frame restored.
+  const throwingProps = () =>
+    new Proxy({} as Record<string, unknown>, {
+      ownKeys() {
+        throw new Error('props boom')
+      },
+    })
+  function Comp() {
+    return h('i', null, 'never')
+  }
+
+  it.each([
+    ['mount', (host: HTMLElement) => mount(h(Comp, throwingProps(), 'child'), host)],
+    [
+      'hydrate',
+      (host: HTMLElement) => {
+        host.innerHTML = '<i>never</i>'
+        return hydrateRoot(host, h(Comp, throwingProps(), 'child'))
+      },
+    ],
+  ])('%s: contained, and the scope and pending-owner frames are restored', (_name, run) => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    let dispose: (() => void) | undefined
+    try {
+      expect(() => {
+        dispose = run(host)
+      }).not.toThrow()
+      expect(_currentScope()).toBeNull()
+      expect(_claimContextOwner()).toBe(0)
+    } finally {
+      _swapPendingOwner(null)
+      err.mockRestore()
+    }
+    dispose?.()
   })
 })
 
