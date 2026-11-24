@@ -7221,7 +7221,7 @@ theme.set('dark') // persists again`,
 - Reading \`.remove()\` return value — it returns void, not the removed value
 - Treating \`.remove()\` as a teardown — it deletes the STORED VALUE and resets the shared signal, and the binding stays alive: a later \`.set()\` persists again and cross-tab updates keep arriving. There is no need to call \`useStorage\` again after \`.remove()\`. The binding is released by its lifecycle: each call holds a refcount that the calling component's (owner scope's) disposal releases, and the entry plus the cross-tab listener go away with the last holder. A call made outside any component holds the key for the page.
 - Evolving the stored shape without \`version\` + \`migrate\` — a user with the OLD shape on disk loads it as-is (or \`onError\`/default if it no longer parses). Bump \`version\` and provide \`migrate\` to transform the old shape; a pre-versioning value is migrated as version \`0\`.
-- Assuming a \`.set()\` that exceeds quota throws — the in-memory signal always updates; the \`setItem\` failure is routed to \`onError\` (a notification) instead of throwing. Provide \`onError\` to surface quota problems to the user.`,
+- Assuming a \`.set()\` that exceeds quota throws — the in-memory signal always updates; the \`setItem\` failure is routed to \`onError\` (a notification) instead of throwing. Provide \`onError\` to surface quota problems to the user. A FULL storage stays readable: the value stored before the quota ran out is what \`useStorage\` returns on the next load, and \`.remove()\` still deletes (#4812).`,
   },
 
   'storage/useCookie': {
@@ -7275,7 +7275,7 @@ const html = await renderToString(<App />)`,
 draft.set({ title: 'New Article', body: 'Content...' })`,
     notes: 'Reactive signal backed by IndexedDB for large data. Writes are debounced to avoid excessive I/O. The signal initializes with `defaultValue` synchronously and hydrates from IndexedDB asynchronously — the value updates reactively once the read completes. Silent init error logging in dev mode. See also: useStorage, useMemoryStorage.',
     mistakes: `- Reading the signal in render and expecting the persisted value on FIRST render — IDB initialization is async. The signal starts at \`defaultValue\`, then the persisted value flows in on the next tick. UIs that need the persisted value before paint should pair with a synchronous fallback (e.g. \`useStorage\` for a small marker).
-- Storing huge blobs without considering quota — IDB has per-origin quotas (~50% of free disk, browser-dependent). Bumping into the quota throws on \`setItem\` async; handle with try/catch around \`.set()\` if the write may exceed.
+- Storing huge blobs without considering quota — IDB has per-origin quotas (~50% of free disk, browser-dependent). A write over the quota aborts its transaction: the signal keeps the new value, the stored value stays the old one, and the error reaches \`onError\` (a try/catch around \`.set()\` catches nothing — the write is debounced and async).
 - Expecting cross-tab sync — IndexedDB does NOT fire storage events. Two tabs writing to the same key will overwrite each other silently. Use \`BroadcastChannel\` alongside if multi-tab consistency matters.
 - Setting the value rapidly in a loop — writes are debounced but unbounded loop assignments still queue. Throttle at the caller for high-frequency mutations.`,
   },

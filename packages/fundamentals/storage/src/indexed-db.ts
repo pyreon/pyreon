@@ -2,7 +2,7 @@ import { signal, wrapSignal } from '@pyreon/reactivity'
 import { registerPendingFlush, unregisterPendingFlush } from './local'
 import { getEntry, releaseWithOwner, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { IndexedDBOptions, IndexedDBSignal } from './types'
-import { deserialize, isBrowser, serialize } from './utils'
+import { deserialize, isBrowser, serialize, toError } from './utils'
 
 
 // ─── Database management ─────────────────────────────────────────────────────
@@ -87,26 +87,32 @@ function idbGet(db: IDBDatabase, storeName: string, key: string): Promise<string
   })
 }
 
-function idbSet(db: IDBDatabase, storeName: string, key: string, value: string): Promise<void> {
+// A write is durable only once its TRANSACTION completes. A quota failure
+// (`QuotaExceededError`) typically surfaces as the transaction ABORTING at
+// commit, after the put request already reported success — settling on
+// `request.onsuccess` resolved such a write as written and never reached
+// `onError` (#4812). Settle on the transaction instead.
+function settleOnTx(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    const request = store.put(value, key)
-    request.onsuccess = () => resolve()
-    /* v8 ignore next — IDB put onerror: defensive reject, fires only on a real IDB write failure */
-    request.onerror = () => reject(request.error)
+    tx.oncomplete = () => resolve()
+    // A real IDB write failure (quota, aborted commit): exercised in quota.browser.test.ts.
+    /* v8 ignore start */
+    tx.onabort = () => reject(tx.error ?? new DOMException('IndexedDB write aborted', 'AbortError'))
+    tx.onerror = () => reject(tx.error ?? new DOMException('IndexedDB write failed', 'UnknownError'))
+    /* v8 ignore stop */
   })
 }
 
+function idbSet(db: IDBDatabase, storeName: string, key: string, value: string): Promise<void> {
+  const tx = db.transaction(storeName, 'readwrite')
+  tx.objectStore(storeName).put(value, key)
+  return settleOnTx(tx)
+}
+
 function idbDelete(db: IDBDatabase, storeName: string, key: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    const request = store.delete(key)
-    request.onsuccess = () => resolve()
-    /* v8 ignore next — IDB delete onerror: defensive reject, fires only on a real IDB delete failure */
-    request.onerror = () => reject(request.error)
-  })
+  const tx = db.transaction(storeName, 'readwrite')
+  tx.objectStore(storeName).delete(key)
+  return settleOnTx(tx)
 }
 
 // ─── useIndexedDB ────────────────────────────────────────────────────────────
@@ -183,7 +189,7 @@ export function useIndexedDB<T>(
           // oxlint-disable-next-line no-console
           console.warn(`[Pyreon] IndexedDB "${key}" init failed, using default:`, err)
         }
-        options.onError?.(err instanceof Error ? err : new Error(String(err)))
+        options.onError?.(toError(err))
       })
       /* v8 ignore stop */
       .finally(markReady)
@@ -215,8 +221,9 @@ export function useIndexedDB<T>(
       .then((db) => idbSet(db, storeName, key, serialize(value, options)))
       /* v8 ignore start — write-failure catch: signal already holds the value; notify onError */
       .catch((err) => {
-        // Write failed — signal still has the correct value. Notify onError.
-        options.onError?.(err instanceof Error ? err : new Error(String(err)))
+        // Write failed — signal still has the correct value and the stored
+        // value is unchanged (the transaction rolled back). Notify onError.
+        options.onError?.(toError(err))
       })
     /* v8 ignore stop */
     return lastWrite
@@ -251,10 +258,9 @@ export function useIndexedDB<T>(
     if (isBrowser() && typeof indexedDB !== 'undefined') {
       openDB(dbName, storeName)
         .then((db) => idbDelete(db, storeName, key))
-        /* v8 ignore start — delete-failure catch: signal already reset, nothing to do */
-        .catch(() => {
-          // Delete failed — signal already reset
-        })
+        /* v8 ignore start — delete-failure catch: exercised in quota.browser.test.ts */
+        // Delete failed — the signal is already reset. Report it like a write.
+        .catch((err) => options.onError?.(toError(err)))
       /* v8 ignore stop */
     }
   }

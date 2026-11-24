@@ -1,7 +1,7 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
 import { getEntry, releaseWithOwner, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { CookieOptions, StorageSignal } from './types'
-import { deserialize, isBrowser, serialize } from './utils'
+import { deserialize, isBrowser, serialize, toError } from './utils'
 
 // ─── Server-side cookie source ───────────────────────────────────────────────
 
@@ -92,8 +92,16 @@ function getCookieString(): string {
 }
 
 function readCookie(key: string): string | null {
-  const cookies = parseCookies(getCookieString())
-  return cookies.get(key) ?? null
+  let cookieString: string
+  try {
+    cookieString = getCookieString()
+  } catch {
+    // `document.cookie` throws `SecurityError` in a sandboxed or cookie-averse
+    // document. No cookie can be read there: the default applies.
+    return null
+  }
+
+  return parseCookies(cookieString).get(key) ?? null
 }
 
 // ─── Cookie writing ──────────────────────────────────────────────────────────
@@ -233,10 +241,20 @@ export function useCookie<T>(
 
   // `wrapSignal` delegates reads (incl. `.direct` + `_v`) to the shared base
   // `sig` and routes writes through our cookie writer; `.update` defaults.
+  // A cookie write the browser refuses (`document.cookie` throws in a
+  // sandboxed document) must not escape `.set()` / `.remove()` after the signal
+  // already moved: it goes to `onError`, like every other backend (#4812).
+  const guarded = (write: () => void): void => {
+    try {
+      write()
+    } catch (e) {
+      options.onError?.(toError(e))
+    }
+  }
   const storageSig = wrapSignal(sig, {
     set: (value: T) => {
       sig.set(value)
-      writeCookie(key, value, options)
+      guarded(() => writeCookie(key, value, options))
     },
   }) as unknown as StorageSignal<T>
 
@@ -244,7 +262,7 @@ export function useCookie<T>(
   // later `.set()` writes the cookie again (see `createStorageSignal`).
   storageSig.remove = () => {
     sig.set(defaultValue)
-    deleteCookie(key, options)
+    guarded(() => deleteCookie(key, options))
   }
 
   setEntry('cookie', key, storageSig, defaultValue, options)

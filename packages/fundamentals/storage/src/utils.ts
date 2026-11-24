@@ -102,19 +102,32 @@ export function deserialize<T>(raw: string, defaultValue: T, options?: StorageOp
 
 /**
  * Safely get a Web Storage instance (localStorage or sessionStorage).
- * Returns null if not available (SSR, security restrictions, etc.).
+ * Returns null only when the storage cannot be READ (SSR, a sandboxed
+ * document, storage disabled by policy).
+ *
+ * Availability is probed with a READ, never a write. A full storage (every
+ * `setItem` throws `QuotaExceededError`, Safari's legacy private mode, a
+ * per-origin quota of 0) still holds its data and still answers `getItem`, so
+ * it must stay available for reads. The old write probe treated it as absent:
+ * `useStorage` returned the default instead of the stored value, and `.set()`
+ * / `.remove()` became silent no-ops (#4812). Write failures are reported by
+ * each write site through `onError`; they never change what reads return.
  */
 export function getWebStorage(type: 'local' | 'session'): Storage | null {
   /* v8 ignore next — SSR/isBrowser guard; tests run with happy-dom */
   if (!isBrowser()) return null
   try {
     const storage = type === 'local' ? window.localStorage : window.sessionStorage
-    // Test that it actually works (can throw in private browsing)
-    const testKey = '__pyreon_storage_test__'
-    storage.setItem(testKey, '1')
-    storage.removeItem(testKey)
+    // The accessor itself throws `SecurityError` where storage is blocked;
+    // `getItem` throws where the object exists but access is denied.
+    storage.getItem('__pyreon_storage_test__')
     return storage
   } catch {
     return null
   }
+}
+
+/** Normalise whatever a storage API threw into an `Error` for `onError`. */
+export function toError(e: unknown): Error {
+  return e instanceof Error ? e : new Error(String(e))
 }

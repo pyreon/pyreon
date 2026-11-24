@@ -29,6 +29,8 @@ export function removeStorage(
   } else {
     // No signal registered — still try to clear the raw storage
     if (type === 'local' || type === 'session') {
+      // A full storage still deletes: `getWebStorage` probes with a read
+      // (#4812), so a quota-exhausted backend is not mistaken for an absent one.
       const storage = getWebStorage(type)
       /* v8 ignore next — defensive null storage guard */
       if (storage) storage.removeItem(key)

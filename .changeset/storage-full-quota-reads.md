@@ -1,0 +1,5 @@
+---
+'@pyreon/storage': patch
+---
+
+A full storage no longer makes `useStorage` forget what is stored (#4812). Availability is now checked with a read, not a test write. On a localStorage or sessionStorage where every write throws `QuotaExceededError`, `useStorage` / `useSessionStorage` return the stored value instead of the default, `.set()` updates the signal and reports the failure to `onError` (it was silently dropped), and `.remove()` deletes again. A storage that recovers space persists the next write; before, it stayed disabled for the life of the binding. The same rule now holds for every backend. A failed write or remove never changes what reads return and always reaches `onError`. A cookie write or delete the browser refuses no longer throws out of `.set()` / `.remove()`. A cookie read the browser refuses falls back to the default. An IndexedDB write or delete is reported failed when its transaction aborts, which is how a quota failure arrives, not only when the request errors. A custom backend's failed `remove()` and IndexedDB's failed delete are reported instead of swallowed.
