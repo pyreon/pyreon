@@ -192,7 +192,9 @@ export function _setChild(node: Element, value: unknown): void {
     // call. A NUMBER is handed to the DOM unconverted (see `_replaceText`).
     const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
     // Dev, adopting: the same write, reported if it changed the server's text
-    // (#4419). A separate block so production keeps exactly the write below.
+    // (#4419). A separate block so production keeps exactly the write below:
+    // neither consumes a #4599 region's mark, so `_settleRegions` treats the
+    // region the same in both builds.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       devAdoptedTextWrite(node, fc, text, _replaceText)
 

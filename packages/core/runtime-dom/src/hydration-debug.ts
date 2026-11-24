@@ -1,4 +1,4 @@
-import { _takeParked } from './parked-text'
+import { PARKED, type Parked } from './parked-text'
 
 
 /**
@@ -264,9 +264,7 @@ export function reportRegionLost(el: Element, server: Node, after: string): void
 /**
  * Dev, adopting: `_setChild`'s text write (`write` is its production write),
  * reported if it changed the server's content. A #4599 region's server
- * structure, hidden or in place, replaced by text is reported against that
- * structure; production leaves the mark to `_settleRegions`, which finds the
- * element's content replaced.
+ * structure in place, replaced by text, is reported against that structure.
  */
 export function devAdoptedTextWrite(
   node: Element,
@@ -281,8 +279,11 @@ export function devAdoptedTextWrite(
 
     return
   }
-  const s = _takeParked(node)
-  const server = s == null ? null : s.nodeType === 11 ? s : node.cloneNode(true)
+  // Read, never consumed: production does not consume it either. A HIDDEN
+  // region (a fragment) is reported by `_settleRegions` once the bind is done.
+  const region = (node as Parked)[PARKED]
+  if (region != null && region.nodeType === 11) return write(node, text)
+  const server = region == null ? null : node.cloneNode(true)
   write(node, text)
   if (server === null) reportTextWrite(node, before, 'text')
   else reportRegionLost(node, server, node.textContent ?? '')

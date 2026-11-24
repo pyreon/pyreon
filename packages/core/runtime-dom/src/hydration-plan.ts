@@ -894,6 +894,8 @@ interface AdoptMatch {
    * by `tplAdoptVerify` once every check has passed.
    */
   htmlEls: Element[] | null
+  /** The template-empty elements, collected only for a plan build (`emptySpots`). */
+  empties: Element[] | null
 }
 
 /**
@@ -921,8 +923,9 @@ interface AdoptPlan {
   /** domPaths of elements whose EXTRA bare texts get removed (template 0, >1 texts). */
   removalSpots: number[][]
   /**
-   * Paths of the template's EMPTY elements, read off the template (so a plan
-   * recorded from a text row covers a later structural row). A replayed row
+   * Paths of the template's EMPTY elements (`TplSig.empty`, every one, text
+   * cells included, so a plan recorded from a text row covers a later
+   * structural row), collected by the verify that builds the plan. A replayed row
    * whose server content there holds anything but text is a #4599 region,
    * which only the full verify marks: the SAME predicate as the verify's
    * region branch, so a replayed row never carries an unmarked region.
@@ -944,7 +947,7 @@ function elByPath(root: Element, path: number[], upto: number): Element | null {
 }
 
 /** Record element paths (element-index hops) alongside a full verify. */
-function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch, troot: Element): AdoptPlan {
+function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPlan {
   const tripletSpots: TripletSpot[] = []
   const removalSpots: number[][] = []
   const pathOf = (el: Element): number[] => {
@@ -975,12 +978,7 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch, troot: El
   if (match.soles) for (const el of match.soles) soleTextSpots.push(pathOf(el))
 
   const emptySpots: number[][] = []
-  const walkEmpty = (el: Element, path: number[]): void => {
-    if (el.firstChild === null) emptySpots.push(path)
-    let i = 0
-    for (let c = el.firstElementChild; c !== null; c = c.nextElementSibling) walkEmpty(c, path.concat(i++))
-  }
-  walkEmpty(troot, [])
+  if (match.empties) for (const el of match.empties) emptySpots.push(pathOf(el))
 
   return { sig, tripletSpots, soleTextSpots, removalSpots, emptySpots }
 }
@@ -1099,6 +1097,7 @@ function matchDomAgainstTemplate(
   root: Element,
   expected: TplSig,
   rootDecorated = false,
+  collectEmpties = false,
 ): AdoptMatch | null {
   let removals: Text[] | null = null
   let triplets: { open: Comment; text: Text | null; close: Comment }[] | null = null
@@ -1110,6 +1109,7 @@ function matchDomAgainstTemplate(
   let emptySlots: Element[] | null = null
   let holes: Map<Element, ChildNode | null> | null = null
   let htmlEls: Element[] | null = null
+  let empties: Element[] | null = null
   const htmlFlags = expected.htmlEls
   const tags = expected.tags
   const wantCounts = expected.counts
@@ -1226,6 +1226,7 @@ function matchDomAgainstTemplate(
     // (see `_park`, `regions.ts`). Text-only content keeps the sole-text path
     // below, so a plain `{row.x}` cell is never marked.
     if (expected.empty[at] === true) {
+      if (collectEmpties) (empties ??= []).push(el)
       for (let c = el.firstChild; c !== null; c = c.nextSibling) {
         if (c.nodeType !== 3) {
           // Parked now: a failed verify releases it (`sweepParkedTexts`).
@@ -1438,7 +1439,7 @@ function matchDomAgainstTemplate(
   if (!walk(root)) return null
   if (idx !== total) return null
 
-  return { removals, triplets, midSlots, parks, soles, soleTextParks, emptySlots, holes, htmlEls }
+  return { removals, triplets, midSlots, parks, soles, soleTextParks, emptySlots, holes, htmlEls, empties }
 }
 
 /** All checks passed — strip markers, ensuring one text node per slot. */
@@ -1591,7 +1592,7 @@ export function tplAdoptVerify(
   const troot = tpl.content.firstElementChild
   if (!troot || target.tagName !== troot.tagName) return false
   const sig = templateSignature(tpl)
-  const match = sig !== null ? matchDomAgainstTemplate(target, sig, rootDecorated) : null
+  const match = sig !== null ? matchDomAgainstTemplate(target, sig, rootDecorated, allowPlanReplay && plan === undefined) : null
   if (match === null) return false
   // A row matched through the sole-text relaxation records no plan: the plan's
   // spot checks are a text-node invariant this row does not satisfy; a later
@@ -1606,7 +1607,7 @@ export function tplAdoptVerify(
     const built =
       (sig as TplSig).slots.includes(true) || (sig as TplSig).midSlotCount > 0
         ? null
-        : buildAdoptPlan(target, sig as TplSig, match, troot)
+        : buildAdoptPlan(target, sig as TplSig, match)
     _tplAdoptPlan.set(tpl, built)
     _lastVerifyTpl = tpl
     _lastVerifyPlan = built

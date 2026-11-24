@@ -115,4 +115,30 @@ describe('an empty `_setChild` element adopts the server structure in Chromium (
     expect(r.replaced).toEqual(['b'])
     expect(r.reports).toEqual(['text:  vs n'])
   })
+
+  it('unmounting a claimed region detaches each node once (custom element: one disconnect)', () => {
+    const log: string[] = []
+    class XRegionB extends HTMLElement {
+      connectedCallback() {
+        log.push('c')
+      }
+      disconnectedCallback() {
+        log.push('d')
+      }
+    }
+    if (customElements.get('x-region-b') === undefined) customElements.define('x-region-b', XRegionB)
+    const c = SETCHILD_EMPTY_CASES[0] as SetChildEmptyCase
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    hosts.push(host)
+    host.innerHTML = c.server.replace('<b>n</b>', '<x-region-b>n</x-region-b>')
+    const server = host.querySelector('x-region-b')
+    const deps = { ...DEPS, vNode: h('x-region-b', null, 'n') }
+    const App = new Function(...Object.keys(deps), `${c.compiled}\nreturn App`)(...Object.values(deps)) as () => unknown
+    const dispose = hydrateRoot(host, h(App as never, null))
+    expect(host.querySelector('x-region-b')).toBe(server)
+    log.length = 0
+    dispose()
+    expect(log).toEqual(['d'])
+  })
 })

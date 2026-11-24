@@ -602,6 +602,125 @@ describe('a throwing bind keeps the server content', () => {
   })
 })
 
+/**
+ * A text write into a region consumes its mark in neither build (dev used to,
+ * production did not, so a later throw left different DOM). A HIDDEN region
+ * gets its server nodes back on the throw, ahead of the client's text; a
+ * region whose nodes the write itself replaced has nothing left to restore.
+ */
+describe('a text write over a region, then a throw: dev and production agree', () => {
+  const okC = { cell: h('i', null, 'c') }
+  const bad = {
+    get cell(): never {
+      throw new Error('boom')
+    },
+  }
+  const R = () => {}
+  const CASES: [string, string, unknown, string][] = [
+    ['hidden region, text value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', 'str', '<div><span><b>n</b>str</span><em><i>c</i></em></div>'],
+    ['unhidden region, text value', 'const App = () => <div><span>{c.v}</span><em>{bad.cell}</em></div>', 'str', '<div><span>str</span><em><i>c</i></em></div>'],
+    ['hidden region, null value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', null, '<div><span><b>n</b></span><em><i>c</i></em></div>'],
+  ]
+  for (const [name, src, v, want] of CASES) {
+    for (const mode of ['development', 'production']) {
+      it(`${name} | ${mode}`, async () => {
+        const prev = process.env.NODE_ENV
+        process.env.NODE_ENV = mode
+        try {
+          const base = { ...scope(), R }
+          const r = await roundTrip(
+            compile(src, { ...base, c: { v: h('b', null, 'n') }, bad: okC }, 'h').App,
+            compile(src, { ...base, c: { v }, bad }, 'client').App,
+            { throws: true },
+          )
+          expect(r.html).toBe(want)
+        } finally {
+          if (prev === undefined) delete process.env.NODE_ENV
+          else process.env.NODE_ENV = prev
+        }
+      })
+    }
+  }
+})
+
+/**
+ * A claimed region's teardown disposes effects and removes nothing: its element
+ * leaves with its template. The first version removed every adopted node and
+ * put it back, so a custom element in a removed hydrated row was disconnected,
+ * connected and disconnected again (an iframe would reload).
+ */
+describe('unmounting a claimed region detaches each node once', () => {
+  const log: string[] = []
+  class XRegion extends HTMLElement {
+    connectedCallback() {
+      log.push('c')
+    }
+    disconnectedCallback() {
+      log.push('d')
+    }
+  }
+  if (customElements.get('x-region') === undefined) customElements.define('x-region', XRegion)
+
+  async function teardown(src: string, s: Record<string, unknown>, act: (dispose: () => void) => void, mode: 'hydrate' | 'mount' = 'hydrate') {
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    hosts.push(host)
+    let dispose: () => void
+    if (mode === 'hydrate') {
+      host.innerHTML = await renderToString(h(compile(src, s, 'h').App as never, null) as never)
+      const before = [...host.querySelectorAll('x-region')]
+      dispose = hydrateRoot(host, h(compile(src, s, 'client').App as never, null))
+      // Adopted, not re-created.
+      expect([...host.querySelectorAll('x-region')]).toEqual(before)
+    } else {
+      dispose = dom.mount(h(compile(src, s, 'client').App as never, null), host)
+    }
+    log.length = 0
+    let records = 0
+    const mo = new MutationObserver((r) => {
+      records += r.filter((m) => m.addedNodes.length > 0).length
+    })
+    mo.observe(host, { childList: true, subtree: true })
+    act(dispose)
+    await new Promise((r) => setTimeout(r, 0))
+    records += mo.takeRecords().filter((m) => m.addedNodes.length > 0).length
+    mo.disconnect()
+
+    return { log: log.join(''), inserted: records, host }
+  }
+
+  it('a <For> row removed', async () => {
+    const rows = signal([1, 2].map((id) => ({ id, cell: h('x-region', null, h('i', null, 'k')) })))
+    const src = 'const App = () => <ul><For each={() => rows()} by={(r) => r.id}>{(r) => <li class="tdr">{r.cell}</li>}</For></ul>'
+    const r = await teardown(src, { ...scope(), rows }, () => rows.set(rows().slice(1)))
+    expect(r).toMatchObject({ log: 'd', inserted: 0 })
+    expect(r.host.querySelectorAll('x-region').length).toBe(1)
+  })
+
+  it('a <For> cleared', async () => {
+    const rows = signal([1, 2].map((id) => ({ id, cell: h('x-region', null, 'k') })))
+    const src = 'const App = () => <ul><For each={() => rows()} by={(r) => r.id}>{(r) => <li class="tdc">{r.cell}</li>}</For></ul>'
+    const r = await teardown(src, { ...scope(), rows }, () => rows.set([]))
+    // The list's own fast clear re-inserts its boundary: compare with a client mount.
+    const rows2 = signal([1, 2].map((id) => ({ id, cell: h('x-region', null, 'k') })))
+    const m = await teardown(src, { ...scope(), rows: rows2 }, () => rows2.set([]), 'mount')
+    expect(r).toMatchObject({ log: 'dd', inserted: m.inserted })
+  })
+
+  it('the hydrated root disposed', async () => {
+    const s = { ...scope(), cell: h('x-region', null, 'k') }
+    const r = await teardown('const App = () => <div><p>{cell}</p></div>', s, (dispose) => dispose())
+    expect(r).toMatchObject({ log: 'd', inserted: 0 })
+  })
+
+  it('a <Show> branch switched off (the reactive-boundary path an HMR remount takes)', async () => {
+    const on = signal(true)
+    const s = { ...scope(), on, cell: h('x-region', null, 'k') }
+    const r = await teardown('const App = () => <section><Show when={() => on()}><div>{cell}</div></Show></section>', s, () => on.set(false))
+    expect(r).toMatchObject({ log: 'd', inserted: 0 })
+  })
+})
+
 describe('user code sees only the regions inside its own element', () => {
   it('a ref on an unrelated sibling hides nothing: the region is never detached', async () => {
     let seen: string | null = null

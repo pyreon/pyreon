@@ -79,7 +79,7 @@ import {
 } from './mount'
 import { buildRowPlan, findMatchingClose, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
-import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
+import { _detachAsUnit, _setPendingForAdoption, detachNode, mountKeyedList, mountReactive } from './nodes'
 import { _hideRegions, _settleRegions } from './regions'
 import { _park, _setParkHooks, _takeParked } from './parked-text'
 import {
@@ -641,7 +641,7 @@ function adoptReactiveRange(
       let c = startMarker.nextSibling
       while (c && c !== a) {
         const nx: ChildNode | null = c.nextSibling
-        c.remove()
+        detachNode(c)
         c = nx
       }
     }
@@ -686,7 +686,7 @@ function adoptReactiveRange(
   // disposes a range WITHOUT destroying its parent would leak one per range.
   return () => {
     cleanup()
-    startMarker.parentNode?.removeChild(startMarker)
+    detachNode(startMarker)
   }
 }
 
@@ -715,9 +715,8 @@ function bindOwnedText(child: () => VNodeChild, text: Text, parentNode: Node): C
   const dispose = bindPolymorphicText(child, text, parentNode)
   return () => {
     dispose()
-    const p = text.parentNode
-    // Skip a DocumentFragment parent (nodeType 11) — mirrors the dispatcher.
-    if (p && p.nodeType !== 11) p.removeChild(text)
+    // `detachNode` skips a DocumentFragment parent, mirroring the dispatcher.
+    detachNode(text)
   }
 }
 
@@ -925,7 +924,7 @@ function adoptUnmarkedRange(
       let c = start.nextSibling
       while (c && c !== a) {
         const nx: ChildNode | null = c.nextSibling
-        c.remove()
+        detachNode(c)
         c = nx
       }
     }
@@ -942,7 +941,7 @@ function adoptUnmarkedRange(
     return [
       () => {
         keyed()
-        end.parentNode?.removeChild(end)
+        detachNode(end)
       },
       after,
     ]
@@ -951,7 +950,7 @@ function adoptUnmarkedRange(
   return [
     () => {
       cleanup()
-      start.parentNode?.removeChild(start)
+      detachNode(start)
     },
     after,
   ]
@@ -1427,11 +1426,12 @@ function hydrateWholeList(
  * value mounts fresh after that code's nodes, as on a fresh render, and the
  * hidden nodes stay marked so a bind that throws later still puts them back.
  *
- * The region's cleanup disposes effects and keeps the nodes: the element leaves
- * with its template, as the fresh path's `mountChildAsUnit` content does. A
- * hydration cleanup removes what it adopted, which on a bind that throws
- * (`hydrateComponent` stops the scope and keeps the server markup) deleted the
- * adopted server nodes.
+ * The region's cleanup disposes effects without removing nodes: the element
+ * leaves with its template, as the fresh path's `mountChildAsUnit` content
+ * does. Its removals go through `detachNode` inside a `_detachAsUnit` window
+ * for the element. A removing cleanup detached every node of a hydrated row on
+ * unmount, and on a bind that throws (`hydrateComponent` stops the scope and
+ * keeps the server markup) deleted the adopted server nodes.
  */
 function claimRegion(children: VNodeChild | VNodeChild[], el: Element, region: Node, slotPath: string): Cleanup {
   if (region.nodeType === 11) {
@@ -1445,23 +1445,11 @@ function claimRegion(children: VNodeChild | VNodeChild[], el: Element, region: N
   }
   const cleanup = hydrateWholeList(children, el, slotPath, true)
 
-  return () => {
-    // Effect-only, as a hydration cleanup cannot be told not to remove: note
-    // every node of the region (parent, node; pre-order), dispose, then put
-    // each back. Appending in pre-order rebuilds every parent's child order.
-    const kept: Node[] = []
-    keepTree(el, kept)
-    cleanup()
-    for (let i = 0; i < kept.length; i += 2) (kept[i] as Node).appendChild(kept[i + 1] as Node)
-  }
-}
-
-/** Record `(parent, child)` pairs below `p`, in pre-order (see `claimRegion`). */
-function keepTree(p: Node, kept: Node[]): void {
-  for (let n = p.firstChild; n !== null; n = n.nextSibling) {
-    kept.push(p, n)
-    keepTree(n, kept)
-  }
+  // The element leaves with its template, so the region's own removals are
+  // redundant: inside the window `detachNode` skips them (O(1): no node is
+  // detached or re-inserted) and only effects are disposed. A bind that throws
+  // later keeps the adopted server markup the same way.
+  return () => _detachAsUnit(el, cleanup)
 }
 
 /**
@@ -1564,7 +1552,7 @@ function hydrateChild(
     if (expected === '') {
       const tn = document.createTextNode('')
       parent.insertBefore(tn, domNode ?? anchor)
-      return [() => tn.remove(), domNode]
+      return [() => detachNode(tn), domNode]
     }
     // EXPLICIT whitespace: the cursor has already walked past the server's
     // whitespace node (see `skippedWhitespaceBefore`), so this vnode claims it
@@ -1584,7 +1572,7 @@ function hydrateChild(
           ws.splitText(expected.length)
         }
         claimedWhitespace.add(ws)
-        return [() => ws.remove(), domNode]
+        return [() => detachNode(ws), domNode]
       }
     }
     if (domNode?.nodeType === Node.TEXT_NODE) {
@@ -1592,7 +1580,7 @@ function hydrateChild(
       if (data === expected) {
         const tns = domNode.nextSibling
         return [
-          () => (domNode as Text).remove(),
+          () => detachNode(domNode as Text),
           tns !== null && tns.nodeType === 1 ? tns : firstReal(tns),
         ]
       }
@@ -1603,7 +1591,7 @@ function hydrateChild(
       // (the SSR output came from the same tree), not a heuristic.
       if (data.startsWith(expected)) {
         const rest = (domNode as Text).splitText(expected.length)
-        return [() => (domNode as Text).remove(), rest]
+        return [() => detachNode(domNode as Text), rest]
       }
       // Genuine content mismatch (server/client divergence). REPLACE the
       // stale node and advance past it, exactly as the reactive twin
@@ -1621,7 +1609,7 @@ function hydrateChild(
       parent.insertBefore(tn, domNode)
       domNode.remove()
 
-      return [() => tn.remove(), after]
+      return [() => detachNode(tn), after]
     }
     warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > text`)
     // Recover AT THE CURSOR (not at the parent-level anchor) so sibling
@@ -1629,7 +1617,7 @@ function hydrateChild(
     const tn = document.createTextNode(expected)
     parent.insertBefore(tn, domNode ?? anchor)
 
-    return [() => tn.remove(), domNode]
+    return [() => detachNode(tn), domNode]
   }
 
   // NativeItem — output of the compiler's `_tpl()` fast path. `_tpl` HAS a true
@@ -1662,8 +1650,7 @@ function hydrateChild(
       // would detach + reattach, destroying focus/selection for nothing.
       const adoptedCleanup = () => {
         native.cleanup?.()
-        const p = native.el.parentNode
-        if (p && p.nodeType !== 11) p.removeChild(native.el)
+        detachNode(native.el)
       }
 
       return [adoptedCleanup, next]
@@ -1680,8 +1667,7 @@ function hydrateChild(
     }
     const cleanup = () => {
       native.cleanup?.()
-      const p = native.el.parentNode
-      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
+      detachNode(native.el)
     }
 
     return [cleanup, next]
@@ -1852,7 +1838,7 @@ function hydrateElement(
       if (propCleanup) propCleanup()
       childCleanup()
       if (valueCleanup) valueCleanup()
-      el.remove()
+      detachNode(el)
     }
 
     // Fast path: an ELEMENT next-sibling is always "real" — skip the scan.
@@ -2126,8 +2112,8 @@ function hydrateSyncOutputInAsyncRange(
   return [
     () => {
       childCleanup()
-      start.remove()
-      end.remove()
+      detachNode(start)
+      detachNode(end)
     },
     after ? firstReal(after) : null,
   ]

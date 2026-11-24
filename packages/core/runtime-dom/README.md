@@ -61,7 +61,7 @@ onHydrationMismatch((ctx) => {
 
 The `_tpl` hydration path uses a framework-wide correctness-first SWAP: when the SSR DOM doesn't match the freshly-built template, the SSR subtree is replaced with the rebuilt one (same final DOM byte-for-byte for matched cases; correct DOM for mismatches without a crash). Reactivity survives across the swap.
 
-An element the template leaves empty for a structural `{value}` (a VNode, an array, a fragment, a component, an accessor returning one, `a{vNode}b`) is adopted with its server content: the element is claimed by identity, never by position. A `ref` or spread on the template sees such an element empty, as on a fresh render; if it puts nodes there, the value mounts fresh after them. Hydration removes only server content it recorded.
+An element the template leaves empty for a structural `{value}` (a VNode, an array, a fragment, a component, an accessor returning one, `a{vNode}b`) is adopted with its server content: the element is claimed by identity, never by position. A `ref` or spread on that element or one of its ancestors sees it empty, as on a fresh render; if it puts nodes there, the value mounts fresh after them. (A ref elsewhere that reaches it through the DOM sees the server content, as for any adopted node.) Hydration removes only server content it recorded.
 
 ## applyProp / applyProps
 
