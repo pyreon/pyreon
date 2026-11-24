@@ -14,7 +14,7 @@
  * from anything else the body calls.
  */
 import { computed } from '../computed'
-import { effect, onCleanup, renderEffect, setErrorHandler } from '../effect'
+import { _effectOwned, effect, onCleanup, renderEffect, setErrorHandler } from '../effect'
 import { effectScope, onScopeDispose } from '../scope'
 import { signal } from '../signal'
 
@@ -147,6 +147,32 @@ describe('effect disposed during its own run', () => {
     s.set(1)
     expect(runs).toBe(1)
     expect(subs(s)).toBe(0)
+  })
+
+  test('an owned effect (`_effectOwned`) disposed by its owner during its run releases what the run registered', () => {
+    // The runtime-dom structural-boundary shape: not in any scope, owned by
+    // the cleanup its disposer is returned to — here the owner runs mid-run.
+    const s = signal(0)
+    const close = signal(false)
+    let innerRuns = 0
+    let cleanups = 0
+    let owner: { dispose(): void } | undefined
+    owner = _effectOwned(() => {
+      if (close()) owner?.dispose()
+      onCleanup(() => cleanups++)
+      effect(() => {
+        s()
+        innerRuns++
+      })
+    })
+    close.set(true)
+    innerRuns = 0
+    cleanups = 0
+    s.set(1)
+    expect(innerRuns).toBe(0)
+    expect(cleanups).toBe(0)
+    expect(subs(s)).toBe(0)
+    expect(subs(close)).toBe(0)
   })
 
   test('a registration with an already-stopped scope is disposed, not dropped', () => {

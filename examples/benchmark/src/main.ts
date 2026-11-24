@@ -140,7 +140,7 @@ const ALL_FRAMEWORKS = [
   { name: 'Vue 3', run: runVue },
   { name: 'Vue 3.6 Vapor (RC)', run: runVueVapor },
   { name: 'SolidJS', run: runSolid },
-  { name: 'SolidJS 2.0 (RC)', run: runSolid2 },
+  { name: 'SolidJS 2.0', run: runSolid2 },
   { name: 'Svelte 5', run: runSvelte },
   { name: 'Octane', run: runOctane },
   { name: 'Pyreon', run: runPyreon },
@@ -214,7 +214,8 @@ runBtn.addEventListener('click', () => {
 //                       the DOM suite's bundle is unaffected.
 const __url = new URL(window.location.href)
 const __frameworkParam = __url.searchParams.get('framework')
-if (__url.searchParams.get('profileClear') === '1') {
+const __profileClear = __url.searchParams.get('profileClear')
+if (__profileClear !== null) {
   // CPU-profiling target for bench-clearprofile.ts — mounts the Pyreon bench
   // markup and exposes __clearBench drivers; never runs the timed suite.
   void (async () => {
@@ -226,7 +227,7 @@ if (__url.searchParams.get('profileClear') === '1') {
     // the same way, so they need the same deterministic layout — without it the
     // instruments built to explain the fair bench run under a layout mode the
     // fair bench no longer uses.
-    setupClearProfile(makeContainer('bench-fixture'))
+    setupClearProfile(makeContainer('bench-fixture'), __profileClear === '1' ? null : __profileClear)
     setStatus('profileClear ready')
   })()
 } else if (__url.searchParams.get('profileSwap') === '1') {

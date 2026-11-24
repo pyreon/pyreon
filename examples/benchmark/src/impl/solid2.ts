@@ -1,27 +1,28 @@
 /**
- * SolidJS 2.0 (release candidate) — the row board on Solid's next major.
+ * SolidJS 2.0 — the row board on Solid's current major.
  *
  * Same ops, data model and markup as `solid.ts` (a per-row label signal, keyed
  * `<For>`, an O(1) keyed selection), on Solid 2.0's own compiler and runtime:
  *
- *  - The component is IDIOMATIC Solid 2 JSX compiled at BUILD time by
- *    `babel-preset-solid@2.0.0-rc` (`vite.config.ts`, `virtual:solid2-rows`),
- *    not hand-written emit, so it is exactly what a Solid 2 app ships.
+ *  - The component is IDIOMATIC Solid 2 JSX (`SOLID2_SOURCES.rows` in
+ *    `solid2-sources.ts`) compiled at BUILD time by `@solidjs/compiler`
+ *    (`vite.config.ts`, `virtual:solid2/rows`), not hand-written emit, so it is
+ *    exactly what a Solid 2 app ships.
  *  - Selection uses `createProjection`, Solid 2's replacement for the removed
  *    `createSelector`: a draft store whose two changed keys notify only the
  *    two affected rows.
  *  - Solid 2 batches writes until `flush()`. Each op flushes ONCE, as an app
- *    committing a user action would (the stable arm needed no flush: Solid 1
+ *    committing a user action would (the Solid 1.9 arm needs no flush: Solid 1
  *    applies writes synchronously).
  *
- * Solid 2 is installed under the `solid-js-rc` alias next to the stable 1.9
- * the `SolidJS` arm uses; the build plugin resolves every `solid-js` import
- * from `@solidjs/web` and from this arm to that one copy, so the renderer and
- * the arm share a single reactive graph.
+ * Solid 2 is installed under the `solid-js-2` alias next to the 1.9 the
+ * `SolidJS` arm uses; the build plugin resolves every `solid-js` import from
+ * `@solidjs/web` and from this arm to that one copy, so the renderer and the
+ * arm share a single reactive graph.
  */
-import { createSignal, flush } from 'solid-js-rc'
+import { createSignal, flush } from 'solid-js-2'
 import { render } from '@solidjs/web'
-import { Rows } from 'virtual:solid2-rows'
+import { Rows } from 'virtual:solid2/rows'
 import type { BenchSuite } from '../runner'
 import {
   BATCH_K_CLEAR,
@@ -46,7 +47,7 @@ function mkRows(n: number): SolidRow[] {
 
 export async function runSolid2(container: HTMLElement): Promise<BenchSuite> {
   resetRng()
-  const suite: BenchSuite = { framework: 'SolidJS 2.0 (RC)', container, results: [] }
+  const suite: BenchSuite = { framework: 'SolidJS 2.0', container, results: [] }
 
   const [rows, writeRows] = createSignal<SolidRow[]>([])
   const [selectedId, writeSelected] = createSignal<number | null>(null)

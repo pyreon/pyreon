@@ -29,27 +29,31 @@ bun bench.ts --report [runId]     # re-print a run and its publishability
 
 (`bun run app:setup`, `app:gate` and `app:bench` from `examples/real-bench` do the same.)
 
-**State of the arms.** All six pass the gate. The pyreon arm passes it only when
-built from the workspace. With the published `@pyreon/*@0.53.0` its lockfile
-pins, the two header `RouterLink`s find no router and fall back to plain anchors,
-so a click is a full page load, which the gate reports as "the session replaced
-the document". The cause is in 0.53.0's runtime: the compiler templates the
-header `<nav>` (a component child of `RouterProvider`), and 0.53.0 built that
-template, mounting the links, while `App` evaluated `RouterProvider`'s children,
-before the provider had run. #4174 (after 0.53.0) builds such templates on
-mount, inside the provider, with a regression test
-(`packages/core/runtime-dom/src/tests/remountable-tpl-owner.test.ts`). The arm
-is not changed to work around it. Until the
-pin moves to a release that passes, no run can meet the "pyreon from npm"
-publishing condition.
+**State of the arms.** All six pass the gate, the pyreon arm from npm (the
+published `@pyreon/*@0.54.0` its lockfile pins) and from the workspace; CI
+(`Real Bench App Smoke`) gates both sources. On 0.53.0 the pyreon arm failed it:
+the compiler templates the header `<nav>` (a component child of
+`RouterProvider`), and 0.53.0 built that template, mounting the two header
+`RouterLink`s, while `App` evaluated `RouterProvider`'s children, before the
+provider had run, so the links found no router, fell back to plain anchors, and
+a click was a full page load ("the session replaced the document"). #4174 builds
+such templates on mount, inside the provider, with a regression test
+(`packages/core/runtime-dom/src/tests/remountable-tpl-owner.test.ts`); 0.54.0 is
+the first release with it. The arm was not changed to work around it. To move
+the pin after a release, move every `@pyreon/*` together (their peer ranges are
+`^0.x`, so one at a time fails with ERESOLVE; if npm still reports ERESOLVE
+inside the old lockfile, delete `node_modules` and `package-lock.json` first):
+`cd app/arms/pyreon && npm install --save-exact @pyreon/core@<v> @pyreon/reactivity@<v> @pyreon/router@<v> @pyreon/runtime-dom@<v> @pyreon/store@<v> @pyreon/vite-plugin@<v> && npm ci`,
+then `bun setup.ts && bun gate.ts` from `app/`.
 
 ### Design
 
 - **One contract, six arms.** [`app/CONTRACT.md`](./app/CONTRACT.md) fixes the
   routes, the exact DOM every view renders, the behaviour, and which router and
   state approach each arm uses. Each arm (`app/arms/<id>/`) is an ordinary
-  project with its own `package.json` (exact versions, each published at least
-  two weeks before it was pinned), its own `package-lock.json` and its own Vite
+  project with its own `package.json` (exact versions; the other frameworks'
+  packages each published at least two weeks before they were pinned, the
+  pyreon arm on the latest `@pyreon/*` release), its own `package-lock.json` and its own Vite
   build with its framework's own plugin, so every arm ships real compiled output
   (Vue's template compiler, `vite-plugin-solid`, the Svelte compiler, the React
   and Preact JSX runtimes, Pyreon's compiler). The arms sit outside the bun

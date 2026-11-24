@@ -67,7 +67,7 @@ Publish a tooling entry separately from the runtime barrel:
       "types": "./lib/native-plugin.d.ts"
     }
   },
-  "peerDependencies": { "@pyreon/native-compiler": "^0.53.0" },
+  "peerDependencies": { "@pyreon/native-compiler": "^0.54.0" },
   "peerDependenciesMeta": { "@pyreon/native-compiler": { "optional": true } },
   "pyreon": {
     "native": {

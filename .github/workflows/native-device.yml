@@ -1028,7 +1028,7 @@ jobs:
       ANDROID_APPS: ${{ needs.fingerprint.outputs.android-apps || needs.changes.outputs.android-apps || 'all' }}
       # The pinned Gradle distribution (see "Install Gradle"). Job-level so the
       # distribution cache can key on it.
-      GRADLE_VERSION: '9.8.2'
+      GRADLE_VERSION: '9.9.1'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1042,7 +1042,7 @@ jobs:
         uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
 
       - name: Setup Android SDK
         # First-party action for the SDK command-line tools. Keep `packages`
@@ -1084,7 +1084,7 @@ jobs:
         # Bump GRADLE_SHA256 when bumping GRADLE_VERSION — the official `.sha256`
         # is at services.gradle.org/distributions/gradle-<V>-bin.zip.sha256.
         env:
-          GRADLE_SHA256: '21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607'
+          GRADLE_SHA256: 'd8a18a7a841dd5df825d35a685fad6f2d7f12ac0c280e57b67c27b4a520ba228'
         run: |
           set -euo pipefail
           ZIP="$HOME/.cache/pyreon-dl/gradle/gradle-${GRADLE_VERSION}-bin.zip"
@@ -1280,14 +1280,17 @@ jobs:
             # logcat FATAL and from the app's window never appearing, neither of
             # which depends on a dialog being drawn.
             adb shell settings put global hide_error_dialogs 1 || true
-            gradle connectedCheck --stacktrace
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/todomvc.txt' < /dev/null > /dev/null 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/todomvc-media || true; exit 1; }
             bash ../scripts/ensure-release-keystore.sh
             # Debug→release signature transition: installing the
             # release-signed APK over the debug-signed one fails with
             # INSTALL_FAILED_UPDATE_INCOMPATIBLE (observed in the local
             # bisect) — uninstall between the lanes.
             adb uninstall com.pyreon.PyreonTodoMVC >/dev/null 2>&1 || true
-            gradle -PpyreonReleaseTests connectedCheck --stacktrace
+            gradle -PpyreonReleaseTests connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/todomvc-release-media || true; exit 1; }
             gradle assembleRelease --stacktrace
             bash ../scripts/release-smoke.sh
             # The store format: bundleRelease → bundletool --local-testing → split install → the same render check.
@@ -1345,7 +1348,10 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
-            gradle connectedCheck --stacktrace
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/finance.txt' < /dev/null > /dev/null 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/finance-media || true; exit 1; }
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
       # ── Gap 5 Android Espresso parity beyond TodoMVC ──
@@ -1396,7 +1402,10 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
-            gradle connectedCheck --stacktrace
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/counter.txt' < /dev/null > /dev/null 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/counter-media || true; exit 1; }
             # useBiometrics through a real BiometricPrompt: enrols a fingerprint, unlocks with it, rejects another, un-enrols.
             bash ../scripts/biometric-device-test.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
@@ -1464,7 +1473,10 @@ jobs:
             adb shell settings put global hide_error_dialogs 1 || true
             nohup bun ../scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
             adb reverse tcp:8790 tcp:8790
-            gradle connectedCheck --stacktrace
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/router-demo.txt' < /dev/null > /dev/null 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/router-demo-media || true; exit 1; }
             bash ../scripts/process-death-android.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
@@ -1563,7 +1575,10 @@ jobs:
             adb reverse tcp:8791 tcp:8791
             # /webhost geolocation proof: give the emulator a fix (the test also accepts an answered-but-unavailable position).
             adb emu geo fix -122.0090 37.3349 || true
-            gradle connectedCheck --stacktrace
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            mkdir -p /tmp/android-logcat
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/tasks.txt' < /dev/null > /dev/null 2>&1 &
+            gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/tasks-media || true; exit 1; }
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
       # Saved only when the EXACT key missed. The key used to end in
@@ -1592,6 +1607,32 @@ jobs:
         if: failure()
         run: bun scripts/native-android-connected-failures.ts
 
+      # Green runs too. PyreonWebView now RECOVERS when a WebView renderer
+      # process dies, so a suspected cause of the 2026-11-23 instrumentation
+      # crashes would leave a green run and no artifact. This counts renderer
+      # losses, app FATAL EXCEPTIONs, ANRs, kills and WebView data-dir lock
+      # errors in each emulator step's logcat, attributed to the test whose
+      # process logged them (PyreonWebViewRendererGoneTest, which ends the
+      # renderer on purpose, other packages and the orchestrator's own
+      # force-stops are excluded): one ::warning:: and a job-summary row per
+      # app, signal and test. Diagnostic only (always exits 0).
+      - name: Count process-death signals in the Android logcat
+        id: logcat-signals
+        if: always()
+        run: bun scripts/native-android-logcat-signals.ts /tmp/android-logcat "$GITHUB_WORKSPACE/android-logcat-findings"
+
+      # Only the implicated processes' lines (2 MB per app at most), and only
+      # when a signal was attributed to a test that does not cause it on
+      # purpose. A failed run uploads the whole logcat with the reports below.
+      - name: Upload Android logcat findings (green run)
+        if: success() && steps.logcat-signals.outputs.found == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-logcat-findings
+          path: android-logcat-findings/
+          retention-days: 7
+          if-no-files-found: ignore
+
       # The connected-test HTML/XML reports are the ONLY place the
       # failing assertion's line number lives — the gradle console log
       # truncates the stack at the assertIsDisplayed frame. Their
@@ -1607,6 +1648,8 @@ jobs:
           path: |
             examples/native-*-android/app/build/reports/androidTests/
             examples/native-*/android/app/build/reports/androidTests/
+            examples/native-*/android/app/build/outputs/androidTest-results/
+            /tmp/android-logcat/
             /tmp/fixture-server.log
             /tmp/stream-server.log
           retention-days: 14

@@ -363,20 +363,9 @@ function readDisposed<T>(read: ComputedFn<T>, fn: () => T, first: boolean): T {
   return read._value
 }
 
-function settleDisposedEval<T>(
-  read: ComputedFn<T>,
-  recompute: () => void,
-  next: T,
-  wasInitialized: boolean,
-  equals: (prev: T, next: T) => boolean,
-): T {
-  cleanupLocalDeps(read._deps, recompute)
-  if (!(wasInitialized && equals(read._value, next))) read._value = next
-  return read._value
-}
-
-function evalThrew<T>(read: ComputedFn<T>, err: unknown): T {
+function evalThrew<T>(read: ComputedFn<T>, err: unknown, recompute: () => void): T {
   _errorHandler(err)
+  if (read._disposed) cleanupLocalDeps(read._deps, recompute)
   read._dirty = 0
   return read._value
 }
@@ -510,15 +499,14 @@ function createComputed<T>(
         next = runVerify(recompute, read._deps, fn)
       } catch (err) {
         initialized = true
-        if (read._disposed) cleanupLocalDeps(read._deps, recompute)
-        return evalThrew(read, err) // keep the previous value on a throwing eval
+        return evalThrew(read, err, recompute) // keep the previous value on a throwing eval
       }
+      // Disposed DURING this evaluation: reads after the dispose re-linked it.
+      // Unlink; the evaluation still settles as the final value. (Not a
+      // `finally`: it grows this frame, and deep chains pull recursively.)
+      if (read._disposed) cleanupLocalDeps(read._deps, recompute)
       read._dirty = 0
       initialized = true
-      // Disposed DURING this evaluation: reads after the dispose re-linked it.
-      // Unlink, and keep this evaluation as the final value (no propagation —
-      // a disposed node notifies nobody).
-      if (read._disposed) return settleDisposedEval(read, recompute, next, wasInitialized, equals)
       // Value gate: keep the OLD value (stable reference — the memo semantic)
       // and notify nobody when equal.
       if (!(wasInitialized && equals(read._value, next))) {

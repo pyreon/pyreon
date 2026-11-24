@@ -1,7 +1,7 @@
 import type { VNode } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { batch, runUntracked, signal, watch } from '@pyreon/reactivity'
-import { flattenChildren, isVNodeLike } from './child-shape'
+import { flattenChildren, isNativeItem, isVNodeLike } from './child-shape'
 
 /** One rendered row of a keyed group: present, or leaving until its animation ends. */
 export type PresenceEntry = {
@@ -26,7 +26,9 @@ const keyedChildren = (children: unknown, warnState: { warned: boolean }): Keyed
   const list = flattenChildren(children)
   for (let i = 0; i < list.length; i++) {
     const element = list[i] as VNode
-    const own = isVNodeLike(element) ? (element as { key?: string | number | null }).key : null
+    // A VNode and a compiled keyed element (`_tpl` item) both carry `key`;
+    // server raw HTML has none.
+    const own = (element as { key?: string | number | null }).key ?? null
     const key = own ?? indexKey(i)
     if (seen.has(key)) {
       if (process.env.NODE_ENV !== 'production') {
@@ -38,12 +40,13 @@ const keyedChildren = (children: unknown, warnState: { warned: boolean }): Keyed
     }
     if (
       own == null &&
-      isVNodeLike(element) &&
+      (isVNodeLike(element) || isNativeItem(element)) &&
       !warnState.warned &&
       process.env.NODE_ENV !== 'production'
     ) {
-      // Compiled static markup and server HTML cannot carry a key, so only a
-      // VNode is asked for one. Without it the row is tracked by POSITION,
+      // A VNode and a compiled element carry the key written on them; server
+      // raw HTML never does (a keyed root stays a VNode on the server), so it
+      // is not asked for one. Without a key the row is tracked by POSITION,
       // which animates the wrong row when a list changes.
       warnState.warned = true
       console.warn(
