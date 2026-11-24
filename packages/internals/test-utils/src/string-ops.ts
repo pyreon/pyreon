@@ -56,6 +56,19 @@ export interface StringOpsTrace<T> {
   regexSources: string[]
   /** Calls to any of {@link COUNTED_STRING_METHODS}. */
   stringCalls: number
+  /**
+   * Characters `indexOf` examined, summed over its calls: from the start
+   * position to the end of the match, or to the end of the string on a miss.
+   * A scan that re-searches the same stretch from every position makes a
+   * linear number of calls but a quadratic number of these.
+   */
+  indexOfScanned: number
+}
+
+/** The stretch one `indexOf` call reads (see `StringOpsTrace.indexOfScanned`). */
+function indexOfSpan(subject: string, args: unknown[], found: number): number {
+  const from = Math.min(Math.max(Math.trunc(Number(args[1] ?? 0)) || 0, 0), subject.length)
+  return found === -1 ? subject.length - from : found + String(args[0]).length - from
 }
 
 type AnyFn = (this: unknown, ...args: unknown[]) => unknown
@@ -64,6 +77,7 @@ type CountedMethod = (typeof COUNTED_STRING_METHODS)[number]
 export function countStringOps<T>(fn: () => T): StringOpsTrace<T> {
   const regexSources: string[] = []
   let stringCalls = 0
+  let indexOfScanned = 0
   const strProto = String.prototype as unknown as Record<CountedMethod, AnyFn>
   const rxProto = RegExp.prototype as unknown as { exec: AnyFn }
   const originals = COUNTED_STRING_METHODS.map((m) => [m, strProto[m]] as const)
@@ -74,7 +88,10 @@ export function countStringOps<T>(fn: () => T): StringOpsTrace<T> {
   for (const [name, original] of originals) {
     strProto[name] = function (this: unknown, ...args: unknown[]) {
       stringCalls++
-      return original.apply(this, args)
+      const result = original.apply(this, args)
+      if (name === 'indexOf') indexOfScanned += indexOfSpan(String(this), args, result as number)
+
+      return result
     }
   }
   rxProto.exec = function (this: unknown, ...args: unknown[]) {
@@ -85,7 +102,7 @@ export function countStringOps<T>(fn: () => T): StringOpsTrace<T> {
   try {
     const result = fn()
 
-    return { result, regexSources, stringCalls }
+    return { result, regexSources, stringCalls, indexOfScanned }
   } finally {
     for (const [name, original] of originals) strProto[name] = original
     rxProto.exec = originalExec
