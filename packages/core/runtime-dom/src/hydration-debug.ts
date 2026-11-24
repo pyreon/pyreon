@@ -1,3 +1,6 @@
+import { PARKED, type Parked } from './parked-text'
+
+
 /**
  * Hydration mismatch warnings + telemetry hook.
  *
@@ -243,4 +246,45 @@ export function reportTextWrite(node: Node, before: string, leaf: 'text' | 'reac
     before,
     compiledMismatchPath(node.nodeType === 3 ? node.parentNode : node, leaf),
   )
+}
+
+/**
+ * Dev: the server content of a `_setChild` region (#4599) that the client
+ * renders as `after` (text, or `''` for nothing) is gone. Report the text that
+ * changed, or, when the server's content had no text, its first element.
+ */
+export function reportRegionLost(el: Element, server: Node, after: string): void {
+  const text = server.textContent ?? ''
+  const first = (server as Element | DocumentFragment).firstElementChild ?? null
+  const path = compiledMismatchPath(el, 'text')
+  if (text !== after) warnHydrationMismatch('text', after, text, path)
+  else if (first !== null) warnHydrationMismatch('tag', after === '' ? '' : '#text', first.tagName.toLowerCase(), path)
+}
+
+/**
+ * Dev, adopting: `_setChild`'s text write (`write` is its production write),
+ * reported if it changed the server's content. A #4599 region's server
+ * structure in place, replaced by text, is reported against that structure.
+ */
+export function devAdoptedTextWrite(
+  node: Element,
+  fc: ChildNode | null,
+  text: string | number,
+  write: (node: Element, text: string | number) => void,
+): void {
+  const before = node.textContent ?? ''
+  if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
+    ;(fc as Text).data = text as string
+    reportTextWrite(node, before, 'text')
+
+    return
+  }
+  // Read, never consumed: production does not consume it either. A HIDDEN
+  // region (a fragment) is reported by `_settleRegions` once the bind is done.
+  const region = (node as Parked)[PARKED]
+  if (region != null && region.nodeType === 11) return write(node, text)
+  const server = region == null ? null : node.cloneNode(true)
+  write(node, text)
+  if (server === null) reportTextWrite(node, before, 'text')
+  else reportRegionLost(node, server, node.textContent ?? '')
 }

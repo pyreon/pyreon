@@ -14,6 +14,7 @@ import {
 import { batch, renderEffect } from '@pyreon/reactivity'
 import { _rdLabelBinding, _rdNoteTarget, _renderBind } from '@pyreon/reactivity/internal'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
+import { _userCodeHook } from './parked-text'
 import { releaseRef } from './teardown'
 
 type Cleanup = () => void
@@ -168,6 +169,9 @@ export function applyPropsWithRef(el: Element, props: Props): Cleanup {
   // `{...(x ?? undefined)}`) — `applyProps(el, null)` is itself a no-op
   // (`for…in null`), but the `.ref` read below would throw. Bail early.
   if (props == null) return NOOP_CLEANUP
+  // A spread can write content (`dangerouslySetInnerHTML`) and carry a ref:
+  // user code, as for `_ref` (see `_userCodeHook`).
+  _userCodeHook?.(el)
   const cleanup = applyProps(el, props)
   const ref = (props as { ref?: RefCallback | RefObject }).ref
   // ALWAYS return a function (never null): the compiler CAPTURES this as a

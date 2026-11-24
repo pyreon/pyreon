@@ -1,10 +1,10 @@
 {
   "package": "@pyreon/schedule",
-  "bundle": 14649,
+  "bundle": 14996,
   "imports": {
-    "business-days": 2516,
+    "business-days": 2836,
     "everything": 14523,
-    "free-slots": 3956,
+    "free-slots": 4223,
     "intervals": 1596,
     "recurrence": 5293,
     "rrule-text": 6321

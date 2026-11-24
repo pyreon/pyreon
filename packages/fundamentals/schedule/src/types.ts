@@ -71,8 +71,20 @@ export interface Interval<T = PlainDateTime> {
   end: T
 }
 
+/** An opening window. A window whose `to` is not after its `from` runs overnight into the next day. */
+export interface OpeningWindow {
+  readonly from: PlainTime
+  readonly to: PlainTime
+}
+
 /** Opening windows by ISO weekday. A window whose `to` is not after its `from` runs overnight into the next day. */
-export type WorkingHours = { readonly [W in Weekday]?: readonly { readonly from: PlainTime; readonly to: PlainTime }[] }
+export type WorkingHours = { readonly [W in Weekday]?: readonly OpeningWindow[] }
+
+/**
+ * Opening windows of particular dates: a map from date to windows, or a function that returns a date's windows (or
+ * `undefined` for the usual hours). An empty list closes the date.
+ */
+export type SpecialHours = { readonly [date: PlainDate]: readonly OpeningWindow[] } | ((date: PlainDate) => readonly OpeningWindow[] | undefined)
 
 /** Business days and opening hours. No holiday data is shipped. */
 export interface BusinessCalendar {
@@ -82,6 +94,15 @@ export interface BusinessCalendar {
   hours?: WorkingHours
   /** A list of dates, or a predicate that says whether a date is a holiday. */
   holidays?: readonly PlainDate[] | ((date: PlainDate) => boolean)
+  /**
+   * A date's own opening windows (a shortened day before a holiday, a Sunday opening). They replace that weekday's
+   * `hours` and decide the date over `weekend` and `holidays`: a date with windows here is open even on a weekend or a
+   * holiday, and an empty list closes it. Business-day functions treat a date with windows as a business day.
+   * The function form decides over `holidays` too: check your holidays inside it when they should win. An empty list
+   * closes the date's own windows; an overnight window of the day before still runs into its early hours.
+   * Business-time functions need `hours`, or a `specialHours` map with at least one window, or the function form.
+   */
+  specialHours?: SpecialHours
   /** Informational: the zone the wall clock is in. */
   timeZone?: TimeZone
 }
