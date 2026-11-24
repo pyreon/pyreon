@@ -15,9 +15,10 @@ export function guardTeardown<A>(fn: (arg: A) => unknown, component: string | nu
   try {
     fn(arg)
   } catch (err) {
-    const name = component ?? 'ref callback'
-    console.error(`[Pyreon] Error in ${component === null ? name : `onUnmount hook of <${name}>`}:`, err)
-    reportError({ component: name, phase: 'unmount', error: err, timestamp: Date.now() })
+    // Two literal messages, so `diagnose` (ERROR_PATTERNS) can match each.
+    if (component === null) console.error('[Pyreon] Error in ref callback:', err)
+    else console.error(`[Pyreon] Error in onUnmount hook of <${component}>:`, err)
+    reportError({ component: component ?? 'ref callback', phase: 'unmount', error: err, timestamp: Date.now() })
   }
 }
 
