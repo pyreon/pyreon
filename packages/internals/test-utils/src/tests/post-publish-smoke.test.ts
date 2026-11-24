@@ -13,7 +13,10 @@ import {
 const R = 'https://registry.npmjs.org/'
 const tgz = (name: string, v: string) => `${R}${name}/-/${name.split('/').pop()}-${v}.tgz`
 
-function lockOf(packages: NonNullable<PackageLock['packages']>): { lock: PackageLock; raw: string } {
+function lockOf(packages: NonNullable<PackageLock['packages']>): {
+  lock: PackageLock
+  raw: string
+} {
   const lock: PackageLock = { lockfileVersion: 3, packages }
   return { lock, raw: JSON.stringify(lock, null, 2) }
 }

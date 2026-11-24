@@ -194,8 +194,9 @@ export function checkLockfileSources(
       problems.push(`${key}: linked (not installed from the registry)`)
       continue
     }
-    if (entry.version && LOCAL_SPEC.test(entry.version))
+    if (entry.version && LOCAL_SPEC.test(entry.version)) {
       problems.push(`${key}: version "${entry.version}"`)
+    }
     if (entry.resolved === undefined) {
       if (!entry.inBundle) problems.push(`${key}: no "resolved" URL`)
     } else if (!entry.resolved.startsWith(registry)) {
@@ -229,11 +230,13 @@ export function checkLockfilePyreonVersions(
     const name = pyreonNameOf(key)
     if (!name) continue
     seen.add(name)
-    if (entry.version !== version)
+    if (entry.version !== version) {
       problems.push(`${key}: ${entry.version ?? '(no version)'}, expected ${version}`)
+    }
   }
-  for (const name of declared)
+  for (const name of declared) {
     if (!seen.has(name)) problems.push(`${name}: declared but not in the lockfile`)
+  }
   return problems
 }
 
@@ -423,8 +426,9 @@ function exec(cmd: string[], cwd: string, timeoutMs: number): void {
     killSignal: 'SIGKILL',
   })
   if (r.error) throw new Error(`${cmd.join(' ')}: ${r.error.message}`)
-  if (r.signal)
+  if (r.signal) {
     throw new Error(`${cmd.join(' ')}: killed by ${r.signal} (timeout ${timeoutMs / 1000}s)`)
+  }
   if (r.status !== 0) throw new Error(`${cmd.join(' ')} exited with code ${r.status}`)
 }
 
@@ -437,10 +441,11 @@ function assertIsolated(dir: string): void {
   }
   for (let d = dirname(real); ; d = dirname(d)) {
     for (const marker of ['package.json', 'node_modules', 'bun.lock', 'pnpm-workspace.yaml']) {
-      if (existsSync(join(d, marker)))
+      if (existsSync(join(d, marker))) {
         throw new Error(
           `${join(d, marker)} exists above the project: resolution could leak into it`,
         )
+      }
     }
     if (dirname(d) === d) break
   }
@@ -492,14 +497,16 @@ async function withProcess(
   try {
     const deadline = Date.now() + 45_000
     for (;;) {
-      if (child.exitCode !== null)
+      if (child.exitCode !== null) {
         throw new Error(`server exited early (code ${child.exitCode}):\n${log.slice(-2000)}`)
+      }
       try {
         await fetch(origin, { signal: AbortSignal.timeout(2000) })
         break
       } catch {
-        if (Date.now() > deadline)
+        if (Date.now() > deadline) {
           throw new Error(`server never answered on ${origin}:\n${log.slice(-2000)}`)
+        }
         await new Promise((r) => setTimeout(r, 250))
       }
     }
@@ -556,8 +563,9 @@ async function clickIncrements(
       )
       .catch(() => undefined)
     const after = (await display.textContent())?.trim()
-    if (before !== '0' || after !== '1')
+    if (before !== '0' || after !== '1') {
       throw new Error(`expected "0" → "1" after the click, got "${before}" → "${after}"`)
+    }
     if (errors.length > 0) throw new Error(`page errors:\n${errors.join('\n')}`)
   } finally {
     await browser.close()
@@ -601,8 +609,9 @@ async function runCell(cell: Cell, version: string, root: string): Promise<Runne
       work,
       180_000,
     )
-    if (!existsSync(join(dir, 'package.json')))
+    if (!existsSync(join(dir, 'package.json'))) {
       throw new Error(`the scaffolder wrote no ${name}/package.json`)
+    }
   })
   const pkg = readJson<{
     dependencies?: Record<string, string>
@@ -631,8 +640,9 @@ async function runCell(cell: Cell, version: string, root: string): Promise<Runne
     // The lockfile is a record; node_modules is what runs. Read it too.
     const scope = join(dir, 'node_modules', '@pyreon')
     const onDisk = existsSync(scope) ? readdirSync(scope) : []
-    for (const n of declared)
+    for (const n of declared) {
       if (!onDisk.includes(n.slice('@pyreon/'.length))) problems.push(`${n}: not in node_modules`)
+    }
     for (const n of onDisk) {
       const v = readJson<{ version?: string }>(join(scope, n, 'package.json')).version
       if (v !== version) problems.push(`node_modules/@pyreon/${n}: ${v}, expected ${version}`)
@@ -652,8 +662,9 @@ async function runCell(cell: Cell, version: string, root: string): Promise<Runne
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2))
   const cells = args.only.length === 0 ? CELLS : CELLS.filter((c) => args.only.includes(c.name))
-  if (cells.length === 0)
+  if (cells.length === 0) {
     throw new Error(`--only matched no cell. Cells: ${CELLS.map((c) => c.name).join(', ')}`)
+  }
 
   const resolveRun = new Runner('registry')
   const results: Runner['results'] = []
@@ -674,10 +685,11 @@ async function main(): Promise<number> {
         )
       }
       const distinct = new Set(versions.values())
-      if (distinct.size !== 1)
+      if (distinct.size !== 1) {
         throw new Error(
           `the scaffolders disagree on "${args.tag}": ${[...versions].map(([p, v]) => `${p}@${v}`).join(', ')}`,
         )
+      }
       return [...distinct][0]!
     })
     console.log(`  dist-tag "${args.tag}" → ${version}`)
@@ -734,8 +746,9 @@ function report(args: Args, version: string, cells: Cell[], failures: StepError[
       console.log(`::error title=post-publish smoke: ${f.cell} failed at "${f.step}"::${msg}`)
     }
   }
-  if (process.env.GITHUB_STEP_SUMMARY)
+  if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`)
+  }
   if (failures.length > 0) {
     console.error(`\npost-publish smoke FAILED: ${failures.length} failing cell(s).`)
     return 1
