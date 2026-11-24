@@ -148,6 +148,36 @@ function exemptionHolds(reason: ExemptReason, file: string, text: string): strin
   return unbounded.length === 0 ? null : 'a job does not require `github.event.workflow_run.event == \'pull_request\'`'
 }
 
+/**
+ * A `workflow_run` follower that acts on default-branch runs filters the
+ * trigger to them: a `workflow_run` run always reports `head_branch: main`,
+ * so without the filter every pull request run of the workflows it follows
+ * creates a run here (1,379 skipped runs in one week, 2026-11-16 → 11-23,
+ * before size-ceiling-status and native-device-nightly-status had it), and
+ * each of those starts the alarm in turn. The pull-request-run follower is
+ * the one shape that cannot filter.
+ */
+function unfilteredFollower(file: string, text: string, reason: ExemptReason | undefined): string | null {
+  if (reason === 'acts-on-pull-request-runs' || reason === 'self') return null
+  try {
+    if (!workflowTriggers(text).includes('workflow_run')) return null
+  } catch {
+    return null // an unreadable `on:` block is reported by the exemption check
+  }
+  // Only the `workflow_run:` sub-block counts: a `push: branches: [main]`
+  // beside it filters a different event.
+  const block = onBlock(text)
+  const start = block.findIndex((l) => /^ {2}workflow_run:/.test(l))
+  const end = block.findIndex((l, i) => i > start && /^ {2}\S/.test(l))
+  const sub = block.slice(start + 1, end < 0 ? block.length : end)
+  if (sub.some((l) => /^ {4}branches: \[main\]$/.test(l.trimEnd()))) return null
+
+  return (
+    `${file}: a \`workflow_run\` follower must declare \`branches: [main]\` under \`on.workflow_run\`, ` +
+    'or every pull request run of the workflows it follows starts a run here'
+  )
+}
+
 /** Pure core: the findings for a set of workflow files (file name → text). */
 export function checkWatchlist(
   files: Record<string, string>,
@@ -183,6 +213,8 @@ export function checkWatchlist(
     nameToFile.set(name, file)
 
     const reason = exempt[file]
+    const unfiltered = unfilteredFollower(file, text, reason)
+    if (unfiltered) findings.push(unfiltered)
     const isWatched = watched.includes(name)
     if (reason === undefined) {
       if (!isWatched) {

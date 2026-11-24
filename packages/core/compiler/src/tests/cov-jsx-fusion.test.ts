@@ -138,15 +138,15 @@ describe('jsx.ts — function-valued fusion parts are INVOKED into the fused str
   })
 })
 
-describe('jsx.ts — `key` bails the template wherever it appears', () => {
-  it('on the ROOT element', () => {
-    expect(transformJSX_JS('<div key="k" id="a">x</div>', 'in.tsx').code).not.toContain('_tpl(')
+describe('jsx.ts — a `key` keeps the template', () => {
+  it('on the ROOT element: the key rides on the item as the fourth argument', () => {
+    const out = transformJSX_JS('<div key="k" id="a">x</div>', 'in.tsx').code
+    expect(out).toContain('_tpl("<div id=\\"a\\">x</div>", () => null, 1, "k")')
   })
 
-  it('on a NESTED element', () => {
-    expect(transformJSX_JS('<div><span key="k" id="a"/></div>', 'in.tsx').code).not.toContain(
-      '_tpl(',
-    )
+  it('on a NESTED element: the key is dropped (a DOM parent never reads it)', () => {
+    const out = transformJSX_JS('<div><span key="k" id="a"/></div>', 'in.tsx').code
+    expect(out).toContain('_tpl("<div><span id=\\"a\\"></span></div>", () => null)')
   })
 
   it('and the same tree without `key` DOES templatize', () => {

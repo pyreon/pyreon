@@ -2,7 +2,7 @@
   "id": "solid",
   "route": "/compare/solid",
   "rival": "Solid",
-  "rivalMeasured": "solid-js 1.9.17 (and 2.0.0-rc.15 on the row board)",
+  "rivalMeasured": "solid-js 1.9.19 and Solid 2.0.3 on the browser rows (2026-11-24); solid-js 1.9.17 for server rendering and forms (2026-11-05)",
   "hook": {
     "eyebrow": "Pyreon vs Solid",
     "title": "Same signals as Solid. `renderToString` up to 4.7× faster.",
@@ -22,10 +22,10 @@
       "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 252–254"
     },
     {
-      "stat": "3.5×",
-      "label": "faster clearing 1,000 rows: 130 µs against 460 µs",
-      "condition": "real Chromium, run 1 table of a two-run record",
-      "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 89"
+      "stat": "4.2×",
+      "label": "faster clearing 1,000 rows than Solid 1.9: 125 µs against 525 µs (Solid 2.0: 295 µs)",
+      "condition": "real Chromium, run 1 table of a two-run refresh (2026-11-24)",
+      "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
     }
   ],
   "table": {
@@ -41,17 +41,17 @@
       },
       {
         "topic": "Clear 1,000 rows",
-        "pyreon": "130 µs",
-        "rival": "460 µs",
+        "pyreon": "125 µs",
+        "rival": "525 µs (Solid 2.0: 295 µs)",
         "verdict": "pyreon",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 89 (run 1)"
+        "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
       },
       {
         "topic": "Create 10,000 rows",
-        "pyreon": "72.64 ms",
-        "rival": "78.75 ms",
+        "pyreon": "73.09 ms",
+        "rival": "78.79 ms (Solid 2.0: 79.79 ms)",
         "verdict": "pyreon",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 90 (run 1)"
+        "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
       },
       {
         "topic": "12-field form, four timed operations",
@@ -62,31 +62,31 @@
       },
       {
         "topic": "Effect list: update 500",
-        "pyreon": "835 / 797 µs",
-        "rival": "870 / 880 µs; a tie in run 1, Pyreon 1.10× in run 2, so not claimed",
+        "pyreon": "880 / 857 µs",
+        "rival": "Solid 2.0 875 / 860 µs, a tie in both runs; Solid 1.9 938 / 955 µs, a tie and then Pyreon 1.11×, so not claimed",
         "verdict": "tie",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 121"
+        "source": "BENCHMARKS.md 2026-11-24 §2a"
       },
       {
         "topic": "Mount a deep tree (2,047 components)",
-        "pyreon": "3.59 / 3.58 ms",
-        "rival": "3.06 / 3.10 ms: Solid 1.15–1.18× faster in both runs",
-        "verdict": "rival",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+        "pyreon": "3.09 / 3.03 ms",
+        "rival": "Solid 1.9 3.03 / 3.02 ms, a tie in both runs; Solid 2.0 3.38 / 3.36 ms (Pyreon 1.09–1.11×)",
+        "verdict": "tie",
+        "source": "BENCHMARKS.md 2026-11-24 §2a"
       },
       {
         "topic": "Bundle, same keyed-table app (gzip)",
-        "pyreon": "17.2 KB",
-        "rival": "7.5 KB: the smallest framework in the record",
+        "pyreon": "18.5 KB",
+        "rival": "7.7 KB: the smallest framework in the record",
         "verdict": "rival",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+        "source": "BENCHMARKS.md 2026-11-24 §7"
       },
       {
-        "topic": "Effect list: dispose 500",
-        "pyreon": "50 / 45 µs",
-        "rival": "45 / 40 µs: Solid 1.11–1.13× faster (one 5 µs clock quantum)",
+        "topic": "Memory of that mounted tree",
+        "pyreon": "531.7 KB retained",
+        "rival": "202.0 / 207.0 KB in Solid 1.9, 410.2 KB in Solid 2.0 (no confidence interval)",
         "verdict": "rival",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 122"
+        "source": "BENCHMARKS.md 2026-11-24 §2b"
       },
       {
         "topic": "Form memory",
@@ -151,8 +151,8 @@
   "pickTheOther": {
     "title": "When to pick Solid",
     "items": [
-      "Bundle size is the deciding number: the same app is 7.5 KB in Solid and 17.2 KB in Pyreon.",
-      "Your pages mount deep component trees and that cost dominates: Solid is 1.15–1.18× faster there.",
+      "Bundle size is the deciding number: the same app is 7.7 KB in Solid and 18.5 KB in Pyreon.",
+      "Memory per component is your tightest constraint: a mounted 2,047-component tree retains about 2.6× less heap in Solid 1.9 than in Pyreon.",
       "You want a stable 1.x API with a long production record."
     ]
   },
@@ -176,16 +176,16 @@
       "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 247–254"
     },
     {
-      "claim": "Clear rows 130 vs Solid 460 µs; create 10,000 72.64 vs 78.75 ms (run 1 table)",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 89–90"
+      "claim": "Clear rows 125 vs Solid 1.9 525 / Solid 2.0 295 µs; create 10,000 73.09 vs 78.79 / 79.79 ms (run 1 table)",
+      "path": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
     },
     {
-      "claim": "Deep tree loss 1.15–1.18×; dispose 500 loss 1.11–1.13×; effect update split",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §2, lines 119–122"
+      "claim": "Deep tree ties Solid 1.9 (Solid 2.0 1.09–1.11× slower); effect update ties Solid 2.0; dispose 500 below 10 clock quanta, no verdict; tree heap 531.7 vs 202–207 / 410.2 KB",
+      "path": "BENCHMARKS.md 2026-11-24 §2a, §2b"
     },
     {
-      "claim": "Bundle Solid 7.5 KB vs Pyreon 17.2 KB",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+      "claim": "Bundle Solid 7.7 KB vs Pyreon 18.5 KB",
+      "path": "BENCHMARKS.md 2026-11-24 §7"
     },
     {
       "claim": "form-bench: Pyreon fastest on all four ops; modular-forms heap 2.33 vs 2.42 MB",

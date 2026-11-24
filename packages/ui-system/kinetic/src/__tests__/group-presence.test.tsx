@@ -17,7 +17,7 @@ import type { VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { query } from '@pyreon/test-utils'
-import { mount } from '@pyreon/runtime-dom'
+import { _tpl, mount } from '@pyreon/runtime-dom'
 import kinetic from '../kinetic'
 import TransitionGroup from '../TransitionGroup'
 
@@ -164,6 +164,52 @@ describe('kinetic(tag).group() — keyed presence', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const root = document.createElement('div')
     const dispose = mount(h(Group, null, [h('li', null, 'x'), h('li', null, 'y')]), root)
+    expect(root.querySelectorAll('li').length).toBe(2)
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('has no `key`')).length).toBe(1)
+    warn.mockRestore()
+    dispose()
+  })
+
+  // A keyed root element compiles to a `_tpl` item carrying `key` (the
+  // compiler's fourth `_tpl` argument), not a VNode. The group reads the key
+  // from either shape. Bisect-verified: with the key read gated on a VNode
+  // again (`isVNodeLike(element) ? element.key : null`), the rows are tracked by
+  // position and removing `b` animates `c` out instead (`expected false to be
+  // true` on b's leave class); the unkeyed spec then sees no warning.
+  // What the compiler emits for `<li key={k}>…</li>`: a re-mountable `_tpl`
+  // item carrying the key. Typed as the VNode a child position accepts.
+  const compiled = (html: string, key: string | null = null): VNode =>
+    _tpl(html, () => null, 1, key) as unknown as VNode
+
+  it('a compiled keyed child (`_tpl` item) is tracked by its key', () => {
+    const items = signal(ids(['a', 'b', 'c']))
+    const root = document.createElement('div')
+    document.body.appendChild(root)
+    const dispose = mount(
+      h(Group, null, () =>
+        items().map((item) => compiled(`<li data-id="${item.id}">${item.id}</li>`, item.id)),
+      ),
+      root,
+    )
+    expect(rows(root)).toEqual(['a', 'b', 'c'])
+    const c = root.querySelector('[data-id="c"]')
+    items.set(ids(['a', 'c']))
+    expect(query<HTMLElement>(root, '[data-id="b"]').classList.contains('g-leave')).toBe(true)
+    expect(root.querySelector('[data-id="c"]')?.classList.contains('g-leave')).toBe(false)
+    vi.advanceTimersByTime(400)
+    expect(rows(root)).toEqual(['a', 'c'])
+    expect(root.querySelector('[data-id="c"]')).toBe(c)
+    dispose()
+    root.remove()
+  })
+
+  it('a compiled child without a key gets the same dev warning as a VNode', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const root = document.createElement('div')
+    const dispose = mount(
+      h(Group, null, [compiled('<li>x</li>'), compiled('<li>y</li>')]),
+      root,
+    )
     expect(root.querySelectorAll('li').length).toBe(2)
     expect(warn.mock.calls.filter((c) => String(c[0]).includes('has no `key`')).length).toBe(1)
     warn.mockRestore()

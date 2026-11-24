@@ -1014,14 +1014,22 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
  * The compiler decides the SVG root at build time from the tag (its table is
  * every SVG element name that is not also an HTML one), so the runtime carries
  * no tag list.
+ *
+ * `key` is the JSX `key` of a KEYED root (`<tr key={row.id}>`). The compiler
+ * passes it with `TPL_REMOUNTABLE` set, and the item carries it as `key`, the
+ * field a VNode's key is read from: the keyed list reconciler (`isKeyedArray`,
+ * `keyOfVNode`), hydration's keyed check and components reading their
+ * children's keys all see it unchanged. The item builds at its mount, so a
+ * keyed `.map()` that re-runs for every row and mounts only the new keys
+ * clones nothing for the rows it keeps.
  */
 export function _tpl(
   html: string,
   bind: (el: HTMLElement) => (() => void) | null,
   flags = 0,
+  key: string | number | null = null,
 ): NativeItem {
-  if ((flags & TPL_REMOUNTABLE) !== 0)
-    return new RemountableItem(html, bind, flags & TPL_SVG_ROOT) as unknown as RemountableNativeItem
+  if ((flags & TPL_REMOUNTABLE) !== 0) return new RemountableItem(html, bind, flags & TPL_SVG_ROOT, key)
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
@@ -1121,9 +1129,10 @@ export function _tpl(
  * revivals, which is what lets a boundary recognize "the same value" and skip an
  * unnecessary teardown.
  *
- * Cost is paid only by children emitted in a component-child position (one
- * object and two closures per mount); `<For>` rows and component roots stay on
- * the plain path.
+ * Cost is paid only by templates emitted in a component-child position and by
+ * keyed roots (one object per item, the disposer closure on first mount);
+ * `<For>` rows and unkeyed component roots stay on the plain path. The class is
+ * `RemountableItem`, below.
  */
 /**
  * A `_tpl` item built with the compiler's re-mountable flag. `__dead` is true once
@@ -1165,16 +1174,15 @@ class RemountableItem {
   private d = false
   /** The stable disposer handed out by `cleanup`, made on first read. */
   private x: (() => void) | null = null
-  /** `_tpl`'s arguments, kept to (re)build. */
-  private h: string
-  private b: (el: HTMLElement) => (() => void) | null
-  private f: number
 
-  constructor(html: string, bind: (el: HTMLElement) => (() => void) | null, flags: number) {
-    this.h = html
-    this.b = bind
-    this.f = flags
-  }
+  constructor(
+    /** `_tpl`'s arguments, kept to (re)build. */
+    private h: string,
+    private b: (el: HTMLElement) => (() => void) | null,
+    private f: number,
+    /** The element's JSX `key` (see `_tpl`), null when it has none. */
+    readonly key: string | number | null,
+  ) {}
 
   private built(): NativeItem {
     return (this.c ??= _tpl(this.h, this.b, this.f))

@@ -62,6 +62,7 @@ import * as ReactDOM from 'react-dom/client'
 import { jsx as reactJsx, jsxs as reactJsxs } from 'react/jsx-runtime'
 import { createComponent, createMemo, createSignal } from 'solid-js'
 import { insert, render as solidRender, template } from 'solid-js/web'
+import { mountMemoWall as solid2MountMemoWall } from 'virtual:solid2/memo'
 import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUnmount } from 'svelte'
 import { computed as vueComputed, createApp, defineComponent, nextTick, ref } from 'vue'
 import { render as vueMemoAppRender } from 'virtual:memo-app-vue-render'
@@ -274,6 +275,17 @@ function solidTarget(container: HTMLElement): MemoTarget {
     },
     teardown: dispose,
   }
+}
+
+// ─── Solid 2.0 ───────────────────────────────────────────────────────────────
+// Idiomatic Solid 2 JSX compiled by `@solidjs/compiler` (`SOLID2_SOURCES.memo`
+// in solid2-sources.ts): the Solid 1.9 arm's wall and 300 consumer components.
+// `createMemo` short-circuits on `===` by default in Solid 2 as in Solid 1.
+// Each write ends with one `flush()`.
+
+function solid2Target(container: HTMLElement): MemoTarget {
+  const wall = solid2MountMemoWall(container, MEMO_CONSUMERS, bucketOf)
+  return { setSource: (n) => wall.setSource(n), teardown: wall.dispose }
 }
 
 // ─── React ───────────────────────────────────────────────────────────────────
@@ -489,6 +501,7 @@ export const MEMO_FRAMEWORKS = [
   'Preact',
   'Vue 3',
   'SolidJS',
+  'SolidJS 2.0',
   'Svelte 5',
 ] as const
 
@@ -522,6 +535,9 @@ export async function runMemo(frameworkName: string, container: HTMLElement): Pr
       break
     case 'SolidJS':
       target = solidTarget(container)
+      break
+    case 'SolidJS 2.0':
+      target = solid2Target(container)
       break
     case 'Svelte 5':
       target = svelteTarget(container)

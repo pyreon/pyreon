@@ -134,11 +134,11 @@ export const COMPILED_MISMATCH_CASES: CompiledMismatchCase[] = [
     reports: [{ type: "tag", expected: "b", actual: "i", path: "root > div > b" }],
   },
   {
-    // A keyed root is never templated, so this slot's content stays `h()` and
-    // the h() walk reports it.
+    // A keyed root with a spread is never templated (the spread may carry its
+    // own key), so this slot's content stays `h()` and the h() walk reports it.
     name: "slot content (`_mountSlot` over h(), reported by the h() walk)",
-    source: "const on = signal(true)\nexport const App = () => <div>{on() ? <b key=\"k\">x</b> : 'text'}</div>",
-    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><!></div>\", (__root) => {\n  const __p0 = __root.firstChild;\n  const __d0 = _mountSlot(() => on() ? /* @__PURE__ */ h(\"b\", { key: \"k\" }, \"x\") : \"text\", __root, __p0, true);\n  return __d0;\n});\n",
+    source: "const on = signal(true)\nexport const App = () => <div>{on() ? <b key=\"k\" {...{}}>x</b> : 'text'}</div>",
+    compiled: "const on = signal(true);\nconst App = () => _tpl(\"<div><!></div>\", (__root) => {\n  const __p0 = __root.firstChild;\n  const __d0 = _mountSlot(() => on() ? /* @__PURE__ */ h(\"b\", { key: \"k\", ...{} }, \"x\") : \"text\", __root, __p0, true);\n  return __d0;\n});\n",
     match: "<div><b>x</b></div>",
     server: "<div><i>x</i></div>",
     reports: [{ type: "tag", expected: "b", actual: "i", path: "root > div > reactive > b" }],

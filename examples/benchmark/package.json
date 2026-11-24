@@ -54,9 +54,9 @@
     "uplot": "1.6.32",
     "vue": "^3.5.45",
     "vue-rc": "npm:vue@3.6.0-rc.11",
-    "solid-js-rc": "npm:solid-js@2.0.0-rc.15",
-    "@solidjs/web": "2.0.0-rc.15",
-    "babel-preset-solid-rc": "npm:babel-preset-solid@2.0.0-rc.2",
+    "solid-js-2": "npm:solid-js@2.0.3",
+    "@solidjs/web": "2.0.3",
+    "@solidjs/compiler": "2.0.2",
     "@babel/core": "^8.1.2"
   },
   "devDependencies": {
@@ -106,7 +106,7 @@
     "@tanstack/solid-table": "9.3.1",
     "@tanstack/solid-virtual": "3.13.53",
     "@tanstack/svelte-table": "9.3.2",
-    "@tanstack/table-core": "^9.1.2",
+    "@tanstack/table-core": "^9.3.1",
     "@tanstack/virtual-core": "^3.19.11",
     "@tanstack/vue-table": "9.3.1",
     "@tanstack/vue-virtual": "3.13.52",
@@ -134,14 +134,14 @@
     "d3": "7.9.2",
     "esbuild": "^0.28.2",
     "goober": "^2.1.19",
-    "hotkeys-js": "^4.0.8",
+    "hotkeys-js": "^4.1.2",
     "i18next": "^27.1.3",
-    "jotai": "^3.0.1",
+    "jotai": "^3.0.2",
     "ky": "^2.2.0",
     "lexical": "0.53.0",
     "lightweight-charts": "5.3.0",
     "mobx": "^7.1.7",
-    "mobx-state-tree": "^9.0.0",
+    "mobx-state-tree": "^9.0.1",
     "nanostores": "1.5.5",
     "notyf": "3.10.0",
     "nuqs": "^2.10.3",
@@ -165,8 +165,8 @@
     "vue-i18n": "11.4.20",
     "vue-router": "^5.5.1",
     "vue-virtual-scroller": "3.0.5",
-    "xstate": "^5.33.3",
-    "zod": "^4.6.5",
-    "zustand": "^5.0.16"
+    "xstate": "^5.33.4",
+    "zod": "^4.6.7",
+    "zustand": "^5.1.0"
   }
 }
