@@ -5923,6 +5923,20 @@ export function transformJSX_JS(
 
   // ── Template emission helpers ─────────────────────────────────────────────
 
+  /**
+   * A non-handler, non-ref attribute value that BUILDS JSX (a render prop on a
+   * DOM element, `title={c() ? <b/> : 'x'}`): the template emit slices the
+   * value into its bind code, where JSX gets no JSX rules (#4797), so the
+   * element bails to the h() path, which walks it (`sliceUnwrappedAttrValue` /
+   * `wrap`). Handlers and refs stay sliced on every path (`sliceHandlerValue`).
+   */
+  function buildsDeclarativeJsx(attr: N, attrName: string): boolean {
+    if (attrName === 'ref' || EVENT_RE.test(attrName) || attr.value?.type !== 'JSXExpressionContainer') return false
+    const e = attr.value.expression
+
+    return !!e && e.type !== 'JSXEmptyExpression' && containsJsx(e)
+  }
+
   function hasBailAttr(node: N, isRoot = false): boolean {
     let sawSpread = false
     let sawKey = false
@@ -5967,15 +5981,7 @@ export function transformJSX_JS(
         continue
       }
       if (TPL_PROPERTY_ONLY_ATTRS.has(attrName)) return true
-      // A non-handler, non-ref attribute value that BUILDS JSX (a render prop
-      // on a DOM element, `title={c() ? <b/> : 'x'}`): the template emit slices
-      // the value into its bind code, where JSX gets no JSX rules (#4797). The
-      // h() path walks it (`sliceUnwrappedAttrValue` / `wrap`): bail to it.
-      // Handlers and refs stay sliced on every path (`sliceHandlerValue`).
-      if (attrName !== 'ref' && !EVENT_RE.test(attrName) && attr.value?.type === 'JSXExpressionContainer') {
-        const e = attr.value.expression
-        if (e && e.type !== 'JSXEmptyExpression' && containsJsx(e)) return true
-      }
+      if (buildsDeclarativeJsx(attr, attrName)) return true
     }
     // A spread may carry its own `key`, and the JSX runtime's precedence
     // between it and the written one is not something a template reproduces:
