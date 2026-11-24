@@ -1,6 +1,7 @@
 /** Canvas view — the live preview on a zoomable stage with an optional dot grid. */
 import { _rp as reactiveProp, Show } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
+import { css } from '@pyreon/styler'
 import * as C from '../../components'
 import type { WorkbenchModel } from '../../model'
 import { BACKGROUND_VARIANT, VIEWPORT_SIZE } from '../../addons'
@@ -140,9 +141,11 @@ export function Canvas(props: { model: WorkbenchModel }) {
             // overridden). `_rp`-branded by hand, exactly what the compiler
             // would emit — the UI ships prebuilt, and a bare function value
             // would land on the DOM as an attribute instead of restyling.
+            // A `css` tagged result, never a raw string (which `css` rejects
+            // with a dev warning), and `undefined` when there is nothing to add.
             css: reactiveProp(() => {
               const w = m.viewportPreset().width
-              return VIEWPORT_SIZE[m.viewport()] || w === null ? '' : `width:${w}px;max-width:100%;`
+              return VIEWPORT_SIZE[m.viewport()] || w === null ? undefined : css`width:${w}px;max-width:100%;`
             }),
           } as Record<string, unknown>)}
         >
@@ -164,7 +167,7 @@ export function Canvas(props: { model: WorkbenchModel }) {
                 // than the 220px a closed component needs.
                 // Fullscreen grows with the frame (its `multiple` dimension).
                 const min = m.overlayOpen() ? 520 : m.layout() === 'fullscreen' ? 0 : 220
-                return `${bg}min-height:${min}px;`
+                return css`${bg}min-height:${min}px;`
               }),
             } as Record<string, unknown>)}
             state={() => (m.outline() ? 'outlined' : 'plain') as never}
