@@ -39,7 +39,29 @@ export interface CensusResult {
 
 export type ClientTransform = (code: string, filename: string) => string
 
-/** Every `.tsx` under `dir`, skipping dependencies, build output and tests. */
+/**
+ * A project directory whose own `package.json` declares no `@pyreon/*` package
+ * is another framework's code (the React, Vue, Solid, Svelte and Preact arms of
+ * `examples/real-bench/app/arms`, the rival meta-framework apps of
+ * `examples/stacks-bench/apps`). Pyreon's compiler never sees it, so counting it
+ * would charge Pyreon's emit with JSX written for another runtime.
+ */
+function isOtherFrameworkProject(dir: string): boolean {
+  let raw: string
+  try {
+    raw = readFileSync(join(dir, 'package.json'), 'utf8')
+  } catch {
+    return false
+  }
+  const pkg = JSON.parse(raw) as Record<string, Record<string, string> | undefined>
+  const deps = [pkg.dependencies, pkg.devDependencies, pkg.peerDependencies].flatMap((d) =>
+    Object.keys(d ?? {}),
+  )
+
+  return !deps.some((name) => name.startsWith('@pyreon/'))
+}
+
+/** Every Pyreon `.tsx` under `dir`, skipping dependencies, build output, tests and other frameworks' projects. */
 export function collectTsx(dir: string, out: string[] = []): string[] {
   let entries: string[]
   try {
@@ -47,6 +69,7 @@ export function collectTsx(dir: string, out: string[] = []): string[] {
   } catch {
     return out
   }
+  if (isOtherFrameworkProject(dir)) return out
   for (const e of entries) {
     if (e === 'node_modules' || e === 'dist' || e === 'lib' || e.startsWith('.')) continue
     if (e === 'tests' || e === '__tests__') continue

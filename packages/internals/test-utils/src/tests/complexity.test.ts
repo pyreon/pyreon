@@ -1,7 +1,7 @@
-import { expectSubQuadratic, measureComplexity } from '../complexity'
+import { cpuClock, expectSubQuadratic, measureComplexity } from '../complexity'
 
 // Count the work performed by real loops, rather than timing a microbenchmark
-// inside a concurrent coverage run. The helper still uses performance.now by
+// inside a concurrent coverage run. The helper uses process CPU time by
 // default; these controls exercise its calibration, sampling and verdicts.
 function linear(n: number, tick: () => void): void {
   for (let i = 0; i < n; i++) tick()
@@ -82,18 +82,47 @@ describe('measureComplexity', () => {
     expect(calls).toBe(16)
   })
 
-  it('uses performance.now by default', () => {
+  it('uses process CPU time by default, not the wall clock', () => {
+    // Microseconds of user + system time; the helper reads them as ms.
     const times = [0, 2, 5, 7, 11, 17, 18, 24]
     let calls = 0
-    const now = vi.spyOn(performance, 'now').mockImplementation(() => times[calls++] ?? 24)
+    const cpu = vi
+      .spyOn(process, 'cpuUsage')
+      .mockImplementation(() => ({ user: (times[calls++] ?? 24) * 1000, system: 0 }))
+    const wall = vi.spyOn(performance, 'now')
     let result: ReturnType<typeof measureComplexity>
     try {
       result = measureComplexity(() => {}, 4, { scale: 3, samples: 2 })
     } finally {
-      now.mockRestore()
+      cpu.mockRestore()
     }
+    const wallCalls = wall.mock.calls.length
+    wall.mockRestore()
     expect(result).toMatchObject({ baseMs: 2, scaledMs: 6, ratio: 3, ok: true })
     expect(calls).toBe(8)
+    expect(wallCalls).toBe(0)
+  })
+
+  it('cpuClock falls back to performance.now where process.cpuUsage is missing', () => {
+    const cpuUsage = Object.getOwnPropertyDescriptor(process, 'cpuUsage')!
+    Object.defineProperty(process, 'cpuUsage', { value: undefined, configurable: true })
+    const now = vi.spyOn(performance, 'now').mockReturnValue(42)
+    try {
+      expect(cpuClock()).toBe(42)
+    } finally {
+      Object.defineProperty(process, 'cpuUsage', cpuUsage)
+      now.mockRestore()
+    }
+    expect(typeof process.cpuUsage).toBe('function')
+  })
+
+  it('cpuClock sums user and system time in milliseconds', () => {
+    const cpu = vi.spyOn(process, 'cpuUsage').mockReturnValue({ user: 1500, system: 500 })
+    try {
+      expect(cpuClock()).toBe(2)
+    } finally {
+      cpu.mockRestore()
+    }
   })
 
   it('marks an unmeasurable run instead of silently passing', () => {

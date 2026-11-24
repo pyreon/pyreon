@@ -134,6 +134,7 @@ describe('PersistQueryClientProvider', () => {
             },
             staleTime: Infinity,
           }))
+
           return null
         }}
       </PersistQueryClientProvider>,
@@ -169,6 +170,7 @@ describe('PersistQueryClientProvider', () => {
               return 'data'
             },
           }))
+
           return null
         }}
       </PersistQueryClientProvider>,
@@ -427,7 +429,10 @@ describe('useIsRestoring', () => {
   it('IsRestoringProvider renders a non-function (static) child', () => {
     const el = document.createElement('div')
     document.body.appendChild(el)
-    const unmount = mount(<IsRestoringProvider value={false}>restoring-child</IsRestoringProvider>, el)
+    const unmount = mount(
+      <IsRestoringProvider value={false}>restoring-child</IsRestoringProvider>,
+      el,
+    )
     expect(el.textContent).toContain('restoring-child')
     unmount()
     el.remove()

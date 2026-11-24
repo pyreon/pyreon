@@ -21,6 +21,7 @@
     "**/templates",
     "**/*.html",
     "packages/native/compiler/src/built-in-services.generated.ts",
-    "examples/stacks-bench/apps"
+    "examples/stacks-bench/apps",
+    "examples/real-bench/app/arms"
   ]
 }

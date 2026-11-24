@@ -39,6 +39,7 @@ import { execSync, spawnSync } from 'node:child_process'
 import { SMOKE_SKIPPED_MARKER } from './smoke-marker'
 import { mkdtempSync, writeFileSync, rmSync, readdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { resolveJava } from './java-runtime'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -2397,16 +2398,10 @@ try {
   // macOS ships a /usr/bin/java stub that exits with an install prompt
   // when no JRE is present — `command -v java` returns the path but
   // execution fails. Verify with a real `java -version` probe.
-  const javaAvailable = (() => {
-    try {
-      const probe = spawnSync('java', ['-version'], { encoding: 'utf8' })
-      return probe.status === 0
-    } catch {
-      return false
-    }
-  })()
+  // Never a bare `java` (see `resolveJava`): kotlinc can run on a JDK that PATH does not name.
+  const javaPath = resolveJava()
 
-  if (!javaAvailable) {
+  if (javaPath === null) {
     // Loud and distinct from ✓: a typecheck-only pass is NOT a behaviour pass. The
     // @pyreon/flow port shipped a selectAll/deleteSelected divergence past this
     // line because the smoke never ran locally (java off PATH) and the log read ✓.
@@ -2416,7 +2411,7 @@ try {
     // success, and used to report "(compiled + ran test)" from the mere
     // EXISTENCE of a test file — so this warning was invisible and the gate
     // claimed a behaviour pass that never happened.
-    console.log(`${SMOKE_SKIPPED_MARKER} — \`java\` not on PATH (typecheck only). Put a JDK on PATH (e.g. /opt/homebrew/opt/openjdk/bin) to RUN the behaviour test.`)
+    console.log(`${SMOKE_SKIPPED_MARKER} — no working JDK (tried PYREON_JAVA, JAVACMD, JAVA_HOME, PATH, Homebrew openjdk / java_home and the JVM kotlinc runs on) — typecheck only. Install one (\`brew install openjdk\`) or set JAVA_HOME to RUN the behaviour test.`)
     // Same contract the swiftc/kotlinc absence already has: a CI runner that
     // cannot run the behaviour test is a broken runner, not a passing gate.
     if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1') {
@@ -2427,7 +2422,7 @@ try {
     }
   } else {
     const smokeResult = spawnSync(
-      'java',
+      javaPath,
       ['-jar', jarPath, `com.pyreon.runtime.${SERVICE}TestKt`],
       { encoding: 'utf8' },
     )

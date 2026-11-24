@@ -74,6 +74,6 @@ Harnesses behind the numbers in [`BENCHMARKS.md`](../BENCHMARKS.md). Read `.agen
 | Harness | Measures |
 | --- | --- |
 | [benchmark](./benchmark/) | The DOM, SSR, hydration, bundle and charts suites, plus probe scripts |
-| [real-bench](./real-bench/) | A TodoMVC-shaped app against real React DOM |
+| [real-bench](./real-bench/) | A catalogue app in six frameworks (bundle, time to interactive, memory) and a TodoMVC-shaped app against real React DOM |
 | [form-bench](./form-bench/) | A 12-field form against six form libraries |
 | [stacks-bench](./stacks-bench/) | Zero against eight meta-frameworks, each on its own server |

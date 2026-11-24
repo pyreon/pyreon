@@ -50,6 +50,8 @@ export const FAMILIES: readonly string[] = [
   'bootstrap-ubuntu-',
   'cargo-registry-',
   'cargo-target-',
+  // The @pyreon/compiler napi binary `Coverage (Full)` restores (ci-main.yml).
+  'compiler-native-bin-',
   // ~650 MB per entry. Keyed on the Android examples' Gradle files, so a
   // dependency bump leaves the previous store unread until LRU eviction.
   'gradle-deps-',

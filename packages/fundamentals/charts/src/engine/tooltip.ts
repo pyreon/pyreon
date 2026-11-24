@@ -90,10 +90,10 @@ export function tooltipLines(c: TooltipContent, format?: Formatter): string[] {
   for (const r of c.rows) {
     // NaN as "absent" rather than an optional narrowing: PMTC does not carry
     // `!== undefined` into Swift, and the gap idiom is already NaN here.
-    const lo: Double = r.value2 ?? (0.0 / 0.0)
+    const lo: Double = r.value2 ?? NaN
     // Low to high reads as a range; the channel order is the band's own
     // (`values` is the HIGH edge), so it is stated low-first here.
-    const sz: Double = r.size ?? (0.0 / 0.0)
+    const sz: Double = r.size ?? NaN
     if (lo === lo) out.push(`${r.label}: ${fmt(lo)} to ${fmt(r.value)}`)
     else if (sz === sz) out.push(`${r.label}: ${fmt(r.value)} (size ${fmt(sz)})`)
     else out.push(`${r.label}: ${fmt(r.value)}`)

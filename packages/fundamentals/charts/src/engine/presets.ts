@@ -48,10 +48,8 @@ const PRESET_STRIP_HEIGHT = 22.0
  */
 export function presetWindow(count: number, total: number): ZoomWindow {
   if (count <= 0 || total <= 0 || count >= total) return { start: 0.0, end: 1.0 }
-  let c = 0.0
-  for (let i = 0; i < count; i++) c = c + 1.0
-  let t = 0.0
-  for (let i = 0; i < total; i++) t = t + 1.0
+  const c: Double = Number(count)
+  const t: Double = Number(total)
   return { start: 1.0 - c / t, end: 1.0 }
 }
 

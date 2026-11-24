@@ -73,7 +73,8 @@ export function renderGeoGraticule(layout: GeoLayout, step: Double, stroke: stri
  */
 export function renderGeoBelow(layout: GeoLayout, options?: GeoOptions): DrawCmd[] {
   const out: DrawCmd[] = []
-  if (options?.sphere === true) for (const c of renderGeoSphere(layout, options?.sphereColor ?? 'rgba(148,163,184,0.16)', 'rgba(148,163,184,0.55)')) out.push(c)
+  const sphereColor = options?.sphereColor ?? 'rgba(148,163,184,0.16)'
+  if (options?.sphere === true) for (const c of renderGeoSphere(layout, sphereColor, 'rgba(148,163,184,0.55)')) out.push(c)
   const step = options?.graticule ?? 0.0
   if (step >= 1.0) for (const c of renderGeoGraticule(layout, step, options?.graticuleColor ?? 'rgba(148,163,184,0.38)')) out.push(c)
 

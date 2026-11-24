@@ -21,7 +21,7 @@ export default defineManifest({
     rationale:
       'wraps TanStack Query (a JS runtime cache), so the full client — QueryClient config, devtools, infinite/suspense queries — stays web; `useQuery` itself lowers to the PyreonQuery runtime',
     nativeFrontend:
-      'PyreonQuery — `useQuery` (key + fetcher, loading/error/data/isFetching state; `refetch()` re-runs the same request, ignoring staleness, and a superseded response never overwrites a newer one); PyreonMutation — `useMutation<T>(ep.mutation())` or `useMutation({ mutationFn: (vars) => ep({ json: vars }) })` with `mutate` / `mutateAsync` / `reset` and data/error/status (the request is built at the call site from runtime values; the latest call owns the state; TanStack callback order; `invalidates` / `onMutate` / `retry` are named, not lowered); PyreonInfiniteQuery — `useInfiniteQuery<Page>` with a literal `queryKey`, a GET `fetch` of a URL that interpolates `pageParam`, a literal `initialPageParam` and `getNextPageParam: (last) => last.field` (read `data()` / `hasNextPage()` / `isFetchingNextPage()`, call `fetchNextPage()`; no fetch init, `getPreviousPageParam`, `maxPages` or shared cache); PyreonQueryCache — the process-wide cache is also the native query CLIENT: a query that registered its request is live until its view goes away, `invalidateQueries(root)` marks every key `root` / `root:…` stale and refetches the live ones, `setQueryData(key, …)` is an optimistic write returning its rollback, and `settleMutation` applies both on a mutation\'s outcome (used by `@pyreon/feature`\'s CRUD mutations; a plain `useMutation`\'s `onSuccess` calling `useQueryClient().invalidateQueries` does not lower); PyreonStream — `useStream` over `openEventStream` / `openNdjsonStream` (SSE + NDJSON, reconnect with Last-Event-ID)',
+      "PyreonQuery — `useQuery` (key + fetcher, loading/error/data/isFetching state; `refetch()` re-runs the same request, ignoring staleness, and a superseded response never overwrites a newer one); PyreonMutation — `useMutation<T>(ep.mutation())` or `useMutation({ mutationFn: (vars) => ep({ json: vars }) })` with `mutate` / `mutateAsync` / `reset` and data/error/status (the request is built at the call site from runtime values; the latest call owns the state; TanStack callback order; `invalidates` / `onMutate` / `retry` are named, not lowered); PyreonInfiniteQuery — `useInfiniteQuery<Page>` with a literal `queryKey`, a GET `fetch` of a URL that interpolates `pageParam`, a literal `initialPageParam` and `getNextPageParam: (last) => last.field` (read `data()` / `hasNextPage()` / `isFetchingNextPage()`, call `fetchNextPage()`; no fetch init, `getPreviousPageParam`, `maxPages` or shared cache); PyreonQueryCache — the process-wide cache is also the native query CLIENT: a query that registered its request is live until its view goes away, `invalidateQueries(root)` marks every key `root` / `root:…` stale and refetches the live ones, `setQueryData(key, …)` is an optimistic write returning its rollback, and `settleMutation` applies both on a mutation's outcome (used by `@pyreon/feature`'s CRUD mutations; a plain `useMutation`'s `onSuccess` calling `useQueryClient().invalidateQueries` does not lower); PyreonStream — `useStream` over `openEventStream` / `openNdjsonStream` (SSE + NDJSON, reconnect with Last-Event-ID)",
   },
   longExample: `import {
   QueryClient,
@@ -153,7 +153,7 @@ const feed = useInfiniteQuery(() => ({
       signature:
         '(props: { state?: DehydratedState | null; options?: HydrateOptions; children: VNodeChild }) => VNodeChild',
       summary:
-        'Hydrates a server-dehydrated query cache into the nearest `QueryClient`, then renders its children — the ergonomic SSR companion to the `dehydrate` / `hydrate` functions. Hydration happens once, synchronously, in component setup BEFORE children mount, so descendant `useQuery` calls resolve from the server-fetched cache (no loading flash, no refetch). `state` is the static dehydrated blob serialized from the server render. Marked `nativeCompat` so the `useQueryClient()` lookup + `hydrate()` run in Pyreon\'s setup frame even under the `*-compat` jsx() runtimes.',
+        "Hydrates a server-dehydrated query cache into the nearest `QueryClient`, then renders its children — the ergonomic SSR companion to the `dehydrate` / `hydrate` functions. Hydration happens once, synchronously, in component setup BEFORE children mount, so descendant `useQuery` calls resolve from the server-fetched cache (no loading flash, no refetch). `state` is the static dehydrated blob serialized from the server render. Marked `nativeCompat` so the `useQueryClient()` lookup + `hydrate()` run in Pyreon's setup frame even under the `*-compat` jsx() runtimes.",
       example: `// server: const state = dehydrate(queryClient)
 // client:
 <QueryClientProvider client={client}>
@@ -163,7 +163,7 @@ const feed = useInfiniteQuery(() => ({
 </QueryClientProvider>`,
       mistakes: [
         'Passing a reactive accessor for `state` — hydration reads `state` once at setup; a server dehydrated blob is static, so a signal-wrapped value is unnecessary and only the initial read takes effect',
-        'Hydrating into a different `QueryClient` than the one the children read — `HydrationBoundary` hydrates the nearest provider\'s client; ensure the same `QueryClientProvider` wraps both',
+        "Hydrating into a different `QueryClient` than the one the children read — `HydrationBoundary` hydrates the nearest provider's client; ensure the same `QueryClientProvider` wraps both",
       ],
       seeAlso: ['QueryClientProvider', 'useQueryClient'],
     },
@@ -173,7 +173,7 @@ const feed = useInfiniteQuery(() => ({
       signature:
         '<TQueryFnData, TError, TData = TQueryFnData, TKey>(options: () => UseQueryOptions<TQueryFnData, TError, TData, TKey>) => UseQueryResult<TData, TError>',
       summary:
-        'Subscribe to a query with fine-grained reactive signals. Generic order matches TanStack (`TQueryFnData` is what `queryFn` resolves to, `TData` what `select` produces), so `select: (posts) => posts.length` types `data()` as `number` with no cast. `options` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent `Signal<T>` per observer field (`data`, `error`, `status`, `isPending`, `isLoading`, `isFetching`, `isError`, `isSuccess`) so templates only re-run for the exact fields they read. Internally wraps TanStack\'s `QueryObserver` and subscribes via `onUnmount`-guarded effect — the observer unsubscribes when the component unmounts.',
+        "Subscribe to a query with fine-grained reactive signals. Generic order matches TanStack (`TQueryFnData` is what `queryFn` resolves to, `TData` what `select` produces), so `select: (posts) => posts.length` types `data()` as `number` with no cast. `options` is a FUNCTION (not an object) so it can read Pyreon signals — when a tracked signal inside changes (e.g. a reactive queryKey), the observer re-evaluates options and refetches automatically. Returns one independent `Signal<T>` per observer field (`data`, `error`, `status`, `isPending`, `isLoading`, `isFetching`, `isError`, `isSuccess`) so templates only re-run for the exact fields they read. Internally wraps TanStack's `QueryObserver` and subscribes via `onUnmount`-guarded effect — the observer unsubscribes when the component unmounts.",
       example: `const userId = signal(1)
 const user = useQuery(() => ({
   queryKey: ['user', userId()],
@@ -221,7 +221,7 @@ const user = useQuery(() => ({
 }))
 // pending() — array of variables of every in-flight mutation`,
       mistakes: [
-        'Passing options as an object instead of a function — loses reactive filter tracking; a signal-driven `status` filter won\'t re-evaluate',
+        "Passing options as an object instead of a function — loses reactive filter tracking; a signal-driven `status` filter won't re-evaluate",
         'Expecting it to TRIGGER mutations — it only READS the cache; use `useMutation` to run a mutation',
         'Reading `pending()` outside a reactive scope — it is a `Signal`, call it inside `() => pending()` or an effect',
       ],
@@ -249,12 +249,13 @@ const user = useQuery(() => ({
     {
       name: 'useQueries',
       kind: 'hook',
-      signature: '<const T extends readonly UseQueriesInput[]>(queries: () => T) => Signal<QueriesResults<T>>',
+      signature:
+        '<const T extends readonly UseQueriesInput[]>(queries: () => T) => Signal<QueriesResults<T>>',
       summary:
         'Subscribe to multiple queries in parallel. Returns a `Signal<QueryObserverResult[]>` — one entry per input query. Options is a function so the query list can depend on signals (e.g. derive one query per item in a reactive array). Each inner query independently tracks its own `data` / `error` / `isFetching` — the outer signal fires when ANY inner query updates.',
       mistakes: [
         'Expecting per-query fine-grained signals — `useQueries` returns a single combined signal, not individual `UseQueryResult` objects. For independent per-query tracking, call `useQuery` N times',
-        'Passing a static array instead of a function — loses reactive query-list tracking; if the list of IDs changes (e.g. `userIds()` is a signal), the queries won\'t re-evaluate. Always wrap: `useQueries(() => ids().map(...))`',
+        "Passing a static array instead of a function — loses reactive query-list tracking; if the list of IDs changes (e.g. `userIds()` is a signal), the queries won't re-evaluate. Always wrap: `useQueries(() => ids().map(...))`",
       ],
       example: `const results = useQueries(() =>
   userIds().map((id) => ({ queryKey: ['user', id], queryFn: () => fetchUser(id) })),
@@ -267,7 +268,7 @@ const user = useQuery(() => ({
       kind: 'hook',
       signature: '<TData, TError, TKey>(options: () => FetchQueryOptions<...>) => void',
       summary:
-        'Prefetch a query during component setup so its data is warm before a child\'s `useQuery` mounts. Fire-and-forget (returns nothing). Only prefetches when the key is NOT already in the cache, so it never re-fetches data the cache already has. Pair with `useSuspenseQuery` in a child to avoid a loading flash — the parent warms the cache, the suspense child reads it as immediately-resolved. `usePrefetchInfiniteQuery` is the paginated equivalent (requires `initialPageParam` + `getNextPageParam`).',
+        "Prefetch a query during component setup so its data is warm before a child's `useQuery` mounts. Fire-and-forget (returns nothing). Only prefetches when the key is NOT already in the cache, so it never re-fetches data the cache already has. Pair with `useSuspenseQuery` in a child to avoid a loading flash — the parent warms the cache, the suspense child reads it as immediately-resolved. `usePrefetchInfiniteQuery` is the paginated equivalent (requires `initialPageParam` + `getNextPageParam`).",
       example: `// In a parent / layout component:
 usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
 // then a child's useSuspenseQuery(['user', id]) resolves instantly`,
@@ -280,9 +281,10 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
     {
       name: 'usePrefetchInfiniteQuery',
       kind: 'hook',
-      signature: '<TQueryFnData, TError, TData, TKey, TPageParam>(options: () => FetchInfiniteQueryOptions<...>) => void',
+      signature:
+        '<TQueryFnData, TError, TData, TKey, TPageParam>(options: () => FetchInfiniteQueryOptions<...>) => void',
       summary:
-        'Infinite-query variant of `usePrefetchQuery` — warms the first page of a paginated query into the cache during setup, only when the key isn\'t already cached. Requires `initialPageParam` + `getNextPageParam` like `useInfiniteQuery`. Pair with `useSuspenseInfiniteQuery` in a child.',
+        "Infinite-query variant of `usePrefetchQuery` — warms the first page of a paginated query into the cache during setup, only when the key isn't already cached. Requires `initialPageParam` + `getNextPageParam` like `useInfiniteQuery`. Pair with `useSuspenseInfiniteQuery` in a child.",
       example: `usePrefetchInfiniteQuery(() => ({
   queryKey: ['feed'],
   queryFn: ({ pageParam }) => fetchPage(pageParam),
@@ -323,7 +325,7 @@ const createPost = mutationOptions({ mutationFn: (p: NewPost) => api.create(p), 
       kind: 'hook',
       signature: '(options: UseSubscriptionOptions) => UseSubscriptionResult',
       summary:
-        'Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries in a single line. Jittered exponential backoff on reconnect (default 1s doubling, capped at `maxReconnectDelay` = 30s, max 10 attempts — configurable via `reconnectDelay` / `maxReconnectDelay` / `maxReconnectAttempts`); when attempts run out `status()` is `\'failed\'`, and a browser `online` event starts over. `url` and `enabled` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns `status` (signal), `send(data)`, `close()`, `reconnect()`.',
+        "Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries in a single line. Jittered exponential backoff on reconnect (default 1s doubling, capped at `maxReconnectDelay` = 30s, max 10 attempts — configurable via `reconnectDelay` / `maxReconnectDelay` / `maxReconnectAttempts`); when attempts run out `status()` is `'failed'`, and a browser `online` event starts over. `url` and `enabled` may be signals for reactive connection management — changing the URL closes the old socket and opens a new one. Returns `status` (signal), `send(data)`, `close()`, `reconnect()`.",
       example: `const sub = useSubscription({
   url: 'wss://api.example.com/feed',
   onMessage: (event, client) => {
@@ -335,7 +337,7 @@ const createPost = mutationOptions({ mutationFn: (p: NewPost) => api.create(p), 
 // sub.status() — 'connecting' | 'connected' | 'disconnected' | 'error' | 'failed'
 // sub.send(data), sub.close(), sub.reconnect()`,
       mistakes: [
-        '`onMessage` runs on every frame the socket receives — debounce cache invalidations for high-frequency streams or you\'ll trigger N refetches per second',
+        "`onMessage` runs on every frame the socket receives — debounce cache invalidations for high-frequency streams or you'll trigger N refetches per second",
         'Storing data in a parallel signal instead of using `queryClient.setQueryData` inside `onMessage` — defeats the QueryClient cache; use `setQueryData` to push updates into the same cache that `useQuery` reads',
         'Forgetting `enabled: false` on unmount-sensitive connections — the WebSocket stays open unless `enabled` is a signal that tracks component lifecycle or a reactive condition',
       ],
@@ -346,9 +348,9 @@ const createPost = mutationOptions({ mutationFn: (p: NewPost) => api.create(p), 
       kind: 'hook',
       signature: '<T>(options: UseSSEOptions<T>) => UseSSEResult<T>',
       summary:
-        'Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation. A `parse` failure surfaces on `error()` (the last good `data()` is kept); a throwing `onMessage` is reported in dev. Same capped, jittered backoff + `\'failed\'` status + `online` recovery as `useSubscription`.',
+        "Reactive Server-Sent Events hook with QueryClient cache integration. Same pattern as `useSubscription` but read-only (no `send`). `parse` deserializes raw event data per message (e.g. `JSON.parse`); `events` filters named SSE event types (defaults to generic `message` events). Honours the SSE spec `id` field via `lastEventId()` so the browser includes `Last-Event-ID` on reconnect and the server can resume from the right offset. `onMessage` receives the `QueryClient` for cache invalidation. A `parse` failure surfaces on `error()` (the last good `data()` is kept); a throwing `onMessage` is reported in dev. Same capped, jittered backoff + `'failed'` status + `online` recovery as `useSubscription`.",
       mistakes: [
-        'Passing `queryKey` (TanStack v4 pattern) instead of using `onMessage` for cache integration — Pyreon\'s `useSSE` does NOT auto-update query cache; use `queryClient.setQueryData` or `invalidateQueries` inside `onMessage`',
+        "Passing `queryKey` (TanStack v4 pattern) instead of using `onMessage` for cache integration — Pyreon's `useSSE` does NOT auto-update query cache; use `queryClient.setQueryData` or `invalidateQueries` inside `onMessage`",
         'Omitting `parse` and expecting typed data — without `parse`, `data()` is `string` (raw event payload); pass `parse: JSON.parse` for auto-deserialization',
       ],
       example: `const sse = useSSE({
@@ -368,7 +370,8 @@ const createPost = mutationOptions({ mutationFn: (p: NewPost) => api.create(p), 
     {
       name: 'useStream',
       kind: 'hook',
-      signature: '<T>(source: (ctx: StreamSourceContext) => AsyncIterable<T> | undefined, options?: UseStreamOptions<T>) => UseStreamResult<T>',
+      signature:
+        '<T>(source: (ctx: StreamSourceContext) => AsyncIterable<T> | undefined, options?: UseStreamOptions<T>) => UseStreamResult<T>',
       summary:
         'Any async-iterable stream as signals — typically `openEventStream` / `openNdjsonStream` from `@pyreon/http/stream`, so unlike `useSSE` (which wraps `EventSource`) the stream can be a POST with auth headers, validated per event, and mocked. `events()` (bounded by `maxEvents`, default 1000), `latest()`, `status()` (`idle` / `connecting` / `open` / `reconnecting` / `closed` / `error`), `error()`, `abort()`, `restart()`. The source runs TRACKED — and so does the first step of the iterable it returns, which is where the `connect` of `openEventStream` runs, so a prop or signal read inside `connect` (`params: { room: props.room }`, a `json` body) is an input too: a change re-opens the stream — the previous request is aborted and a generation guard drops its late events. Return `undefined` to hold it idle; unmount aborts. Pass `ctx.onStatus` through for the finer states. On iOS and Android the documented shape — `(ctx) => openEventStream((c) => endpoint({ …, signal: c.signal, headers: c.headers }), { signal: ctx.signal, onStatus: ctx.onStatus })` over a same-file `@pyreon/http` endpoint, typed `useStream<SseEvent<T>>` (or `openNdjsonStream` with `useStream<T>`) — lowers to the native `PyreonStream` runtime with the same parser, reconnect and `Last-Event-ID` semantics (device-proven on the iOS Simulator and the Android emulator); `enabled` (a boolean, an expression, or an accessor — part of the harness key, so a flip stops or re-opens the stream and `false` reads `idle`) and an inline `onEvent: (event) => …` lower too (on the main thread on both targets, as on the web), as does a RUNTIME `json` body (serialized per run into the same bytes as the web `JSON.stringify`, and keyed, so a new value re-opens the stream — the explicitly triggered POST stream is `enabled: () => sent()`); an `onEvent` that reads its second (QueryClient) argument stays web, and `parse` is ignored natively (each payload is decoded into the declared type instead).',
       example: `import { openEventStream } from '@pyreon/http/stream'
@@ -481,7 +484,8 @@ const feed = useStream((ctx) =>
       name: 'useIsMutating',
       kind: 'hook',
       signature: '(filters?: MutationFilters) => Signal<number>',
-      summary: 'Global reactive count of currently-running mutations (optionally filtered by `MutationFilters`). Same pattern as `useIsFetching` but for the mutation pipeline. Returns `Signal<number>` — zero when no mutations are in flight.',
+      summary:
+        'Global reactive count of currently-running mutations (optionally filtered by `MutationFilters`). Same pattern as `useIsFetching` but for the mutation pipeline. Returns `Signal<number>` — zero when no mutations are in flight.',
       example: `const mutating = useIsMutating()
 // <Banner visible={() => mutating() > 0}>Saving…</Banner>`,
       seeAlso: ['useIsFetching'],
@@ -509,7 +513,7 @@ const feed = useStream((ctx) =>
       kind: 'hook',
       signature: '() => { reset: () => void }',
       summary:
-        'Imperative access to the nearest `QueryErrorResetBoundary`. Returns `{ reset }` — call `reset()` to clear errored queries in the subtree. Useful when an error fallback has its own retry button outside the render-prop form of `QueryErrorResetBoundary`, e.g. inside a standalone `ErrorBoundary` fallback component that isn\'t a direct child of the boundary.',
+        "Imperative access to the nearest `QueryErrorResetBoundary`. Returns `{ reset }` — call `reset()` to clear errored queries in the subtree. Useful when an error fallback has its own retry button outside the render-prop form of `QueryErrorResetBoundary`, e.g. inside a standalone `ErrorBoundary` fallback component that isn't a direct child of the boundary.",
       example: `const { reset } = useQueryErrorResetBoundary()
 // Inside an ErrorBoundary fallback:
 <button onClick={() => { reset(); retry() }}>Try again</button>`,
@@ -535,7 +539,7 @@ await client.prefetchQuery({ queryKey: ['user', 1], queryFn: fetchUser })`,
       signature:
         '(props: { client: QueryClient; persistOptions: Omit<PersistQueryClientOptions, "queryClient">; onSuccess?: () => unknown; onError?: () => unknown; children?: VNodeChild }) => VNodeChild',
       summary:
-        'Drop-in replacement for `<QueryClientProvider>` that ALSO restores the query cache from a persister on mount and keeps it persisted on every change — the offline / reload-survival story. Provides both the `QueryClient` AND the reactive `isRestoring` flag, so descendant `useQuery` calls DEFER their first fetch until restoration completes (no redundant network request for data the cache is about to restore). Import from `@pyreon/query/persist`. Built on TanStack\'s framework-agnostic `persistQueryClient` engine; pair with `createSyncStoragePersister({ storage: localStorage })`.',
+        "Drop-in replacement for `<QueryClientProvider>` that ALSO restores the query cache from a persister on mount and keeps it persisted on every change — the offline / reload-survival story. Provides both the `QueryClient` AND the reactive `isRestoring` flag, so descendant `useQuery` calls DEFER their first fetch until restoration completes (no redundant network request for data the cache is about to restore). Import from `@pyreon/query/persist`. Built on TanStack's framework-agnostic `persistQueryClient` engine; pair with `createSyncStoragePersister({ storage: localStorage })`.",
       example: `import { PersistQueryClientProvider, createSyncStoragePersister } from '@pyreon/query/persist'
 
 const persister = createSyncStoragePersister({ storage: localStorage })
@@ -546,7 +550,9 @@ const persister = createSyncStoragePersister({ storage: localStorage })
         'Using BOTH `<QueryClientProvider>` and `<PersistQueryClientProvider>` — the persist provider already provides the client; nest only one',
         'Expecting synchronous restore — restoration is async (even sync localStorage resolves on a microtask). Gate UI on `useIsRestoring()` during the window',
         'A heavy `staleTime: 0` default — restored queries immediately refetch on subscribe; set a `staleTime` so the restored cache is treated as fresh',
-        'Expecting an offline mutation to be sent after a reload without registering its function — a PAUSED mutation is persisted (variables + `mutationKey`) but a function cannot be serialised: give it a `mutationKey` and register `client.setMutationDefaults(key, { mutationFn })` at module load. The provider then resumes persisted paused mutations once restoration settles. A mutation that was never paused (made online) is not persisted, and one that already resumed is gone if the page dies mid-request (at-most-once, no retry queue, no ordering guarantee beyond TanStack\'s creation order)',
+        'Expecting a mutation whose request was in flight to survive a reload without registering its function: a paused mutation is persisted as TanStack persists it, but an in-flight one only when its `mutationKey` resolves to a function registered with `client.setMutationDefaults(key, { mutationFn })` at module load (a keyed mutation left out gets a dev warning). Persisted ones stay in storage until they settle and are resumed once restoration settles',
+        'Persisting secrets or files: mark a sign-in (any mutation whose variables are secrets) `meta: { persist: false }`, which keeps it out even while paused offline; a `File`, `Blob`, `Date`, `Map`, class instance, BigInt or cycle in the variables, or a `meta`/context that cannot be written, keeps the mutation out of storage with a dev warning (upload a file first and send its id)',
+        'Assuming exactly-once delivery: a request the server received but whose response never reached a closing tab is sent again by the next page (at-least-once). Make the endpoint idempotent (a client-generated id in the variables). Two live tabs never both send one mutation (Web Locks; without them an in-flight mutation is not persisted). A FAILED mutation is settled and leaves storage; use `retry` for transient failures',
         'Treating `navigator.onLine` as proof of reachability — `onlineManager` follows the browser online/offline events, which only report "a network interface is up"; a captive portal or a dead backend still looks online, so the mutation is sent and fails normally (default `retry: 0` for mutations)',
       ],
       seeAlso: ['useIsRestoring', 'QueryClientProvider', 'HydrationBoundary'],
@@ -570,7 +576,7 @@ const persister = createSyncStoragePersister({ storage: localStorage })
       signature:
         '(props: { client?: QueryClient; initialIsOpen?: boolean; buttonPosition?: DevtoolsButtonPosition; position?: DevtoolsPosition; errorTypes?: DevtoolsErrorType[]; shadowDOMTarget?: ShadowRoot }) => VNode',
       summary:
-        'In-app TanStack Query devtools panel — the SAME panel React / Solid / Vue users see, as a thin shim over `@tanstack/query-devtools`\'s framework-agnostic engine (on mount it instantiates the engine with the nearest `QueryClient` and mounts it into a host element; tears down on unmount). Import from the dev-only subpath `@pyreon/query/devtools` so it tree-shakes out of production. Render once under your provider. Config props are read once at mount.',
+        "In-app TanStack Query devtools panel — the SAME panel React / Solid / Vue users see, as a thin shim over `@tanstack/query-devtools`'s framework-agnostic engine (on mount it instantiates the engine with the nearest `QueryClient` and mounts it into a host element; tears down on unmount). Import from the dev-only subpath `@pyreon/query/devtools` so it tree-shakes out of production. Render once under your provider. Config props are read once at mount.",
       example: `import { QueryDevtools } from '@pyreon/query/devtools'
 
 <QueryClientProvider client={client}>
@@ -579,7 +585,7 @@ const persister = createSyncStoragePersister({ storage: localStorage })
 </QueryClientProvider>`,
       mistakes: [
         'Importing from `@pyreon/query` (main) — it lives at the `@pyreon/query/devtools` subpath so the heavy devtools engine stays out of the production bundle',
-        'Rendering it unconditionally in production — gate on `import.meta.env.DEV` (or your bundler\'s dev flag) so it ships only in development',
+        "Rendering it unconditionally in production — gate on `import.meta.env.DEV` (or your bundler's dev flag) so it ships only in development",
       ],
       seeAlso: ['QueryClientProvider', 'useQueryClient'],
     },
@@ -587,9 +593,9 @@ const persister = createSyncStoragePersister({ storage: localStorage })
       name: 'Persistence subpath re-exports',
       kind: 'function',
       signature:
-        "import { persistQueryClient, persistQueryClientRestore, persistQueryClientSave, persistQueryClientSubscribe, removeOldestQuery, createSyncStoragePersister, createAsyncStoragePersister } from '@pyreon/query/persist'",
+        "import { persistQueryClient, persistQueryClientRestore, persistQueryClientSave, persistQueryClientSubscribe, shouldPersistMutation, removeOldestQuery, createSyncStoragePersister, createAsyncStoragePersister } from '@pyreon/query/persist'",
       summary:
-        'The `@pyreon/query/persist` subpath re-exports TanStack\'s framework-agnostic persist engine (`persistQueryClient` → `[unsubscribe, restorePromise]`, plus the `*Restore` / `*Save` / `*Subscribe` granular pieces and `removeOldestQuery`) and the storage persisters (`createSyncStoragePersister` for localStorage/sessionStorage, `createAsyncStoragePersister` for IndexedDB / RN AsyncStorage / any Promise-returning store). Types (`Persister`, `PersistedClient`, `PersistQueryClientOptions`, …) re-export alongside. Use these for a custom persistence flow; most apps just use `<PersistQueryClientProvider>`.',
+        "The `@pyreon/query/persist` subpath exposes TanStack's framework-agnostic persist engine (`persistQueryClient` → `[unsubscribe, restorePromise]`, plus the `*Restore` / `*Save` / `*Subscribe` granular pieces and `removeOldestQuery`). The four `persistQueryClient*` functions keep TanStack's signatures but carry Pyreon's mutation contract (`shouldPersistMutation(mutation, client)`): everything TanStack persists (paused), plus an in-flight mutation whose `mutationKey` resolves to a registered `mutationFn`, never one marked `meta: { persist: false }` or one that cannot be stored; another tab takes it over only once its owner tab has closed (Web Locks, taken only by a page that persists a mutation; a mutation lock is released only after storage has dropped it); precedence is the explicit `dehydrateOptions.shouldDehydrateMutation`, then the client default, then this. The storage persisters also write at once when a mutation becomes owned, when it settles and on page hide. The storage persisters are TanStack's with that immediate write added (`createSyncStoragePersister` for localStorage/sessionStorage, `createAsyncStoragePersister` for IndexedDB / RN AsyncStorage / any Promise-returning store). Types (`Persister`, `PersistedClient`, `PersistQueryClientOptions`, …) re-export alongside. Use these for a custom persistence flow; most apps just use `<PersistQueryClientProvider>`.",
       example: `import { persistQueryClient, createSyncStoragePersister } from '@pyreon/query/persist'
 
 const persister = createSyncStoragePersister({ storage: localStorage })
@@ -628,7 +634,7 @@ useQuery(() => ({ queryKey: ['user', id()], queryFn: id() ? fetchUser : skipToke
 type Posts = QueryData<typeof posts> // Post[]
 function render(rows: QueryData<typeof posts>) { /* … */ }`,
       mistakes: [
-        "`SignalValue<typeof posts.data>` gives `Post[] | undefined` — QueryData strips the loading-state `undefined` because you want the RESOLVED shape",
+        '`SignalValue<typeof posts.data>` gives `Post[] | undefined` — QueryData strips the loading-state `undefined` because you want the RESOLVED shape',
         'Passing options instead of the result — QueryData unwraps the RESULT object `useQuery` returns, not the options function',
         'Expecting page-array access on infinite data — the derived type is `InfiniteData<Page>` (`{ pages, pageParams }`), matching TanStack semantics',
       ],

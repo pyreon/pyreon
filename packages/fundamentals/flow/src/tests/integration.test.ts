@@ -12,6 +12,10 @@ import {
 } from '../edges'
 import { createFlow } from '../flow'
 import { computeLayout } from '../layout'
+// Loaded up front: `flow.layout()` reaches it through a lazy `import()`, and a
+// cold transform of it inside the animated-path test outlasted that test's
+// 1s `vi.waitFor` while the package suites ran in parallel.
+import '../layout-engine'
 import { flowStyles } from '../styles'
 import { Position } from '../types'
 
@@ -2224,37 +2228,40 @@ describe('flow.layout — animated path', () => {
     })
     let now = 1000
     vi.spyOn(performance, 'now').mockImplementation(() => now)
+    // Restored in `finally`: a failure here must not leave performance.now
+    // and requestAnimationFrame mocked for every later test in the file.
+    try {
+      const flow = createFlow({
+        nodes: [
+          { id: '1', position: { x: 0, y: 0 }, data: {} },
+          { id: '2', position: { x: 0, y: 0 }, data: {} },
+        ],
+        edges: [{ source: '1', target: '2' }],
+      })
 
-    const flow = createFlow({
-      nodes: [
-        { id: '1', position: { x: 0, y: 0 }, data: {} },
-        { id: '2', position: { x: 0, y: 0 }, data: {} },
-      ],
-      edges: [{ source: '1', target: '2' }],
-    })
+      let settled = false
+      const done = flow.layout('layered', { animate: true, animationDuration: 100 }).then(() => {
+        settled = true
+      })
+      // ELK runs async; wait until the first frame is scheduled.
+      await vi.waitFor(() => expect(rafCalls.length).toBe(1))
 
-    let settled = false
-    const done = flow.layout('layered', { animate: true, animationDuration: 100 }).then(() => {
-      settled = true
-    })
-    // ELK runs async; wait until the first frame is scheduled.
-    await vi.waitFor(() => expect(rafCalls.length).toBe(1))
+      // Mid-animation: positions move, the promise is still pending.
+      now += 50
+      rafCalls[0]!(now)
+      await Promise.resolve()
+      expect(settled).toBe(false)
+      expect(rafCalls.length).toBe(2)
 
-    // Mid-animation: positions move, the promise is still pending.
-    now += 50
-    rafCalls[0]!(now)
-    await Promise.resolve()
-    expect(settled).toBe(false)
-    expect(rafCalls.length).toBe(2)
-
-    // Past the duration: the last frame writes the final positions and settles.
-    now += 100
-    rafCalls[1]!(now)
-    await done
-    expect(settled).toBe(true)
-    const [a, b] = flow.nodes()
-    expect(a!.position).not.toEqual(b!.position)
-
-    vi.restoreAllMocks()
+      // Past the duration: the last frame writes the final positions and settles.
+      now += 100
+      rafCalls[1]!(now)
+      await done
+      expect(settled).toBe(true)
+      const [a, b] = flow.nodes()
+      expect(a!.position).not.toEqual(b!.position)
+    } finally {
+      vi.restoreAllMocks()
+    }
   })
 })

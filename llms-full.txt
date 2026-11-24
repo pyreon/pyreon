@@ -4,6 +4,347 @@
 > Standard JSX + TypeScript. Fast on the synthetic row-list benchmark, honestly reported (BENCHMARKS.md, 2026-11-05): wins clear rows outright, statistically tied with the fastest frameworks (Vue 3.6 Vapor RC, Octane, Vue 3) on create, replace, partial update, swap and remove; loses deep component-tree mount to Solid (1.15–1.18×); bundle larger than Solid, Preact and Svelte. The record withdraws its own claims when a harness bug is found. See /docs/benchmarks.
 > All packages under @pyreon/* scope.
 
+## Signals (reactivity)
+
+```typescript
+import { signal, computed, effect, batch } from "@pyreon/reactivity"
+
+const count = signal(0)       // create
+count()                        // read (subscribes)
+count.set(5)                   // write
+count.update(n => n + 1)       // update
+count.peek()                   // read without subscribing
+
+const doubled = computed(() => count() * 2)  // auto-tracks deps
+effect(() => console.log(count()))           // runs when count changes
+batch(() => { a.set(1); b.set(2) })          // single notification
+```
+
+## Components
+
+```typescript
+// Components are plain functions that run ONCE
+const Counter = (props: { initial: number }) => {
+  const count = signal(props.initial)
+  return <button onClick={() => count.update(n => n + 1)}>{count()}</button>
+}
+```
+
+## Conditional Rendering
+
+```typescript
+import { Show, Switch, Match } from "@pyreon/core"
+
+<Show when={isLoggedIn()} fallback={<Login />}>
+  <Dashboard />
+</Show>
+```
+
+## List Rendering
+
+```typescript
+import { For } from "@pyreon/core"
+
+// Use "by" not "key" (JSX reserves "key" for VNode reconciliation)
+<For each={items()} by={item => item.id}>
+  {item => <li>{item.name}</li>}
+</For>
+```
+
+## Lifecycle
+
+```typescript
+import { onMount, onUnmount, provide } from "@pyreon/core"
+import { onCleanup } from "@pyreon/reactivity"
+
+onMount(() => {
+  const id = setInterval(tick, 1000)
+  return () => clearInterval(id)  // optional cleanup
+})
+```
+
+## Context
+
+```typescript
+import { createContext, useContext, provide } from "@pyreon/core"
+
+const Theme = createContext<"light" | "dark">("light")
+
+// Provide (auto-cleans up on unmount):
+provide(Theme, "dark")
+
+// Consume:
+const theme = useContext(Theme)
+```
+
+## Smart `class` with `cx()`
+
+```typescript
+import { cx } from "@pyreon/core"
+
+// Strings, arrays, objects, nested mix — all work:
+<div class="base active" />
+<div class={["base", isActive() && "active"]} />
+<div class={{ base: true, active: isActive() }} />
+<div class={cx("base", isActive() && "active", { bold: isBold() })} />
+```
+
+## Props Utilities
+
+```typescript
+import { splitProps, mergeProps, createUniqueId } from "@pyreon/core"
+
+// Split props preserving reactivity:
+const [local, rest] = splitProps(props, ["class", "style"])
+
+// Merge default props:
+const merged = mergeProps({ size: "md", variant: "primary" }, props)
+
+// SSR-safe unique IDs:
+const id = createUniqueId()  // "pyreon-1", "pyreon-2", etc.
+```
+
+## Typed Events
+
+```typescript
+// TargetedEvent types currentTarget per element — no casts needed:
+<input onInput={(e: TargetedEvent<HTMLInputElement>) => {
+  console.log(e.currentTarget.value)  // typed!
+}} />
+```
+
+## Effect Cleanup
+
+```typescript
+import { effect, onCleanup } from "@pyreon/reactivity"
+
+effect(() => {
+  const handler = () => console.log(count())
+  window.addEventListener("resize", handler)
+  onCleanup(() => window.removeEventListener("resize", handler))
+})
+```
+
+## Routing
+
+```typescript
+import { createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useTypedSearchParams, useTransition, useMiddlewareData } from "@pyreon/router"
+
+const router = createRouter([
+  { path: "/", component: Home },
+  { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) },
+])
+
+<RouterProvider router={router}>
+  <RouterLink to="/">Home</RouterLink>
+  <RouterView />
+</RouterProvider>
+
+// Navigation:
+const router = useRouter()
+router.push("/settings")
+router.back()
+```
+
+## Head Management
+
+```typescript
+import { useHead } from "@pyreon/head"
+
+useHead({ title: "Page Title", meta: [{ name: "description", content: "..." }] })
+useHead(() => ({ title: `${name()} — Profile` }))  // reactive
+```
+
+## SSR
+
+```typescript
+import { createHandler } from "@pyreon/server"
+
+export default createHandler({ App, routes, mode: "stream" })
+```
+
+## Islands (Partial Hydration)
+
+```typescript
+import { island } from "@pyreon/server"
+
+const SearchBar = island(() => import("./SearchBar"), { name: "SearchBar", hydrate: "visible" })
+```
+
+## Mount (Client)
+
+```typescript
+import { mount } from "@pyreon/runtime-dom"
+
+mount(<App />, document.getElementById("app")!)
+```
+
+## Common Mistakes — NEVER DO THIS
+
+### Signals
+- `{count}` → `{count()}` — signals are functions, call them to read
+- `signal(5)` → `signal.set(5)` — calling signal with args does NOT write (dev mode warns)
+- `.value` → signals are callable, not `.value` getters (that's Vue)
+- `useState` → `signal()`, `useEffect` → `effect()` or `onMount()`
+- `memo(Component)` → not needed, components run once in Pyreon
+
+### JSX
+- `key={...}` on `<For>` → use `by={...}` prop (`key` is reserved for VNode reconciliation)
+- `className` → `class`, `htmlFor` → `for` (standard HTML attributes)
+- `onChange` on `<input>` → `onInput` for keypress-by-keypress (native DOM events)
+- `.map()` in JSX → use `<For>` for reactive list rendering
+- `class="a b"` works, but for conditional classes use `class={["a", cond && "b"]}` or `cx()`
+
+### Props & Reactivity
+- `const { state } = props` → BREAKS REACTIVITY! Destructuring captures once. Use `props.state` for reactive access
+- `const x = props.y` in JSX is NOW REACTIVE — compiler inlines `props.y` at JSX use sites (text + attributes). Transitive: `const a = props.x; const b = a + 1` inlines as `((props.x) + 1)`. Only `const` tracked (`let`/`var` excluded). Non-JSX usage stays static.
+- For rest props with reactivity: `const [own, rest] = splitProps(props, ['state', 'size'])` — preserves getters
+- Component props with signal reads ARE reactive (compiler wraps with _rp): `<Button state={isActive() ? 'primary' : 'default'} />` updates without remount
+- Single JSX element props are stable: `<Wrapper icon={<Icon name={x()} />} />` — Icon created once, name updates reactively
+- Conditional JSX props remount: `<Wrapper icon={show() ? <Icon /> : null} />` — correct, different VNode types
+
+### Context & Effects
+- `const { mode } = useContext(ctx)` → BREAKS REACTIVITY! Destructuring captures once. Keep reference: `const ctx = useContext(Ctx)` then `ctx.mode`
+- `effect(() => { effect(() => ...) })` → NEVER nest effects. Use `computed()` for derived values
+- `.peek()` inside effects/computeds → bypasses tracking, creates stale reads
+
+### Providers
+- Use `<PyreonUI theme={theme} mode="light">` — this is the ONLY provider you need
+- Do NOT use `CoreProvider` (ui-core's low-level `Provider`) directly — it is internal
+
+### Other
+- `(e.target as HTMLInputElement)` → use `TargetedEvent<HTMLInputElement>` for typed `currentTarget`
+- `onMount(() => { doStuff() })` → can optionally return a cleanup function
+- `onClick={maybeUndefined}` → safe (runtime bails), but be aware the handler is checked at assignment time
+
+## UI system provider
+
+```typescript
+// PyreonUI — unified provider (replaces 3 separate providers)
+import { PyreonUI, useMode } from "@pyreon/ui-core"
+import { enrichTheme } from "@pyreon/unistyle"
+
+const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
+
+const App = () => (
+  <PyreonUI theme={theme} mode="system">
+    <MyApp />
+  </PyreonUI>
+)
+
+// Read resolved mode anywhere:
+const mode = useMode()  // "light" | "dark" (reactive signal)
+```
+
+## Zero features
+
+@pyreon/zero — full-stack meta-framework built on Pyreon + Vite:
+- Client-safe main entry: `@pyreon/zero` = client components only, `@pyreon/zero/server` = server-only
+- File-system routing (src/routes/) with layouts, error boundaries, loading states, 404 pages
+- SSR + SSG + ISR rendering modes — `mode: "ssg"` auto-wires the build-time prerender pipeline (`closeBundle` → SSR sub-build → write `dist/<path>/index.html` per `ssg.paths` entry; auto-detects static paths from the route tree when paths are omitted)
+- API routes (src/routes/api/) with typed handlers
+- Image optimization — responsive srcset, blur placeholders, WebP/AVIF, lazy loading
+- Favicon generation — single source SVG/PNG → ICO, Apple touch, manifest, dark mode SVG
+- Locale-aware favicons — `faviconPlugin({ locales: { de: { source: "./icon-de.svg" } } })`
+- OG image generation — `ogImagePlugin({ templates, locales })`
+- Reactive favicon switching — dual light/dark PNG/ICO with theme-synced media attribute swap
+- Meta component — declarative OG (og:image:width/height, og:video, og:audio), noIndex, ogTemplate, favicon prop
+- I18n routing — locale detection (Accept-Language + cookie), prefix strategies, useLocale()
+- Font optimization — Google Fonts, local fonts, font-display, fallback metrics
+- Theme — dark/light toggle with FOUC prevention script
+- Middleware composition — compose(), shared context, CORS, cache, compression, rate limiting
+- CSP middleware — `cspMiddleware({ directives })` with `useNonce()` for inline scripts
+- Env validation — `validateEnv({ PORT: 3000, DEBUG: false, API_KEY: String })`, `publicEnv()`
+- Request logging — `loggerMiddleware()`
+- AI integration — `aiPlugin()` for llms.txt, JSON-LD inference, AI plugin manifest
+- `useRequestLocals()` — bridge middleware locals into component tree
+- SEO — sitemap.xml, robots.txt, JSON-LD helpers
+- Dev error overlay with stack traces
+- Adapters — Node, Bun, static, Vercel, Cloudflare Pages, Netlify Functions
+- Layouts receive the route content as `props.children` (zero's `createApp` passes `<RouterView />` as the layout's child); render `{props.children}` inside the layout — do NOT render `<RouterView />` directly, or you'll mount it twice
+
+## Key Ecosystem Patterns
+
+```typescript
+// State management
+import { defineStore } from '@pyreon/store'
+const useCounter = defineStore('counter', () => {
+  const count = signal(0)
+  const increment = () => count.update(n => n + 1)
+  return { count, increment }
+})
+
+// Forms
+import { useForm, useField } from '@pyreon/form'
+const form = useForm({ initialValues: { name: '' }, onSubmit: (v) => save(v) })
+const name = useField(form, 'name')
+
+// Permissions
+import { createPermissions } from '@pyreon/permissions'
+const can = createPermissions({ 'posts.read': true, 'posts.delete': (post) => post.authorId === userId })
+
+// State machines
+import { createMachine } from '@pyreon/machine'
+const light = createMachine({ initial: 'red', states: { red: { on: { NEXT: 'green' } }, green: { on: { NEXT: 'yellow' } }, yellow: { on: { NEXT: 'red' } } } })
+
+// Document rendering
+import { createDocument } from '@pyreon/document'
+const doc = createDocument({ title: 'Report' }).heading('Sales').table({ columns: ['Region', 'Revenue'], rows: [['US', '$1M']] })
+await doc.toPdf()   // PDF
+await doc.toEmail() // Outlook-safe HTML
+await doc.toSlack() // Slack Block Kit JSON
+
+// Reactive transforms
+import { filter, pipe, sortBy } from '@pyreon/rx'
+const items = signal([{ name: 'B', age: 30 }, { name: 'A', age: 25 }])
+const adults = filter(items, i => i.age >= 18)  // Computed<Item[]>
+const sorted = pipe(items, sortBy('name'), filter(i => i.age > 20))
+
+// Toast notifications
+import { toast, Toaster } from '@pyreon/toast'
+toast.success('Saved!')
+toast.promise(saveData(), { loading: 'Saving...', success: 'Done!', error: 'Failed' })
+
+// URL-synced state
+import { useUrlState } from '@pyreon/url-state'
+const page = useUrlState('page', 1)     // synced to ?page=
+const filters = useUrlState({ page: 1, sort: 'name' })  // schema mode
+
+// SSE subscription
+import { useSSE } from '@pyreon/query'
+const { data } = useSSE({ queryKey: ['events'], url: '/api/events' })
+
+// Active route detection
+import { useIsActive } from '@pyreon/router'
+const isAdmin = useIsActive('/admin')  // reactive boolean
+
+// Typed search params with auto-coercion
+import { useTypedSearchParams } from '@pyreon/router'
+const params = useTypedSearchParams({ page: 'number', q: 'string' })
+params.page()  // number
+
+// Route transition state — useTransition() returns a reactive accessor () => boolean
+import { useTransition } from '@pyreon/router'
+const isTransitioning = useTransition()  // call it: isTransitioning()
+
+// View Transitions API — auto-enabled, opt out per route:
+{ path: '/modal', component: Modal, meta: { viewTransition: false } }
+// `await router.push()` / `.replace()` resolves AFTER the DOM swap (vt.updateCallbackDone),
+// NOT after the full animation (.finished, 200-300ms). afterEach hooks + scrollManager.restore
+// also fire post-commit — they see the NEW route state.
+
+// Middleware chain with data passing
+const auth: RouteMiddleware = async (ctx) => { ctx.data.user = await getUser(ctx.request) }
+// In component: const data = useMiddlewareData()  // accessor → read via data().user
+```
+
+## AI Tools
+
+- `pyreon doctor --json` — scan project for React patterns, get structured fix suggestions
+- `pyreon doctor --fix` — auto-fix React patterns to Pyreon equivalents
+- `pyreon context` — generate .pyreon/context.json with routes, components, islands
+- MCP server: `bunx @pyreon/mcp` — live API lookup, validation, migration, diagnostics
+
 ## Package Map
 
 | Package | Import | Purpose |
@@ -2350,7 +2691,7 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 >
 > **Live updates retarget the displayed frame**: Web plot updates arriving during an animation start from the displayed values or keyed positions, including visible entering and exiting bars. The latest target is recorded immediately, so settling never replays a superseded update. A running universal shape transition retargets its displayed draw list; disabling update animation cancels the active frame.
 >
-> **A non-finite value is a GAP, everywhere**: In `@pyreon/charts`, NaN AND Infinity are gaps: they are dropped from every domain (`extent`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in `sonifyValues`. Bands share a gap mask across both bounds and close each finite region against its own lower edge. Keyed updates apply the same finite predicate to transformed values. `makeTicks` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. `isFiniteNumber` is the engine's predicate and is exported — it is written in the native subset (`v === v && v - v === 0`) because `Number.isFinite` has no lowering inside the crossing engine, and it is what a custom mark or family should use so its gaps match the built-ins'.
+> **A non-finite value is a GAP, everywhere**: In `@pyreon/charts`, NaN AND Infinity are gaps: they are dropped from every domain (`extent`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in `sonifyValues`. Bands share a gap mask across both bounds and close each finite region against its own lower edge. Keyed updates apply the same finite predicate to transformed values. `makeTicks` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. `isFiniteNumber` is the engine's predicate and is exported — it is written as `v === v && v - v === 0` (which crosses to native like `Number.isFinite`, now lowered too), and it is what a custom mark or family should use so its gaps match the built-ins'.
 
 ## @pyreon/charts-maps — Chart Maps (boundary data)
 
@@ -3660,21 +4001,13 @@ Output: routes, components (with props/signals), islands, framework version.
 
 Tools: get_api, validate, migrate_react, diagnose, get_routes, get_components
 
-## Dev-mode Warnings: Pattern × Bundler Tree-shake Matrix
+## Dev-mode Warnings: the bundler-agnostic gate
 
-Pyreon dev warnings are gated on `import.meta.env?.DEV`. Tree-shake behavior depends on both the source pattern and the consumer bundler:
+Pyreon's dev-only warnings are gated on the bare expression `process.env.NODE_ENV !== 'production'` — the convention React, Vue, Preact, Solid, MobX and Redux use. Every modern bundler (Vite, webpack / Next.js, esbuild, Rollup, Parcel, Bun) replaces `process.env.NODE_ENV` at build time, so the warning code and its strings are removed from production bundles.
 
-| Source pattern | Vite prod | Raw esbuild prod | Test |
-| --- | --- | --- | --- |
-| `if (!import.meta.env?.DEV) return` (inline early-return) | tree-shaken | tree-shaken | `flow/src/tests/integration.test.ts` (esbuild) |
-| `const __DEV__ = import.meta.env?.DEV === true; if (__DEV__) ...` | tree-shaken | mostly tree-shaken | `runtime-dom/src/tests/dev-gate-treeshake.test.ts` (Vite) |
-| `const __DEV__ = ...; __DEV__ && cond && warn(...)` (chained &&) | tree-shaken | runtime-gated only | `runtime-dom/.../dev-gate-treeshake.test.ts` (Vite + non-Vite runtime smoke) |
-| `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` | dead in browser | dead in browser | `pyreon/no-process-dev-gate` lint rule |
-
-Vite is Pyreon's primary supported bundler. Non-Vite consumers (webpack, bunchee, raw esbuild bundles) using the chained `&&` form may retain warning strings as data, but the runtime gate (`import.meta.env?.DEV === true`) evaluates to `false` when `import.meta.env.DEV` is undefined — warnings don't fire. Only a small bundle-size cost.
-
-The runtime-dom tree-shake test bundles via Vite's `build()` API (not raw esbuild) because Vite is the consumer pipeline. Raw `esbuild --minify` cannot propagate a module-scope `const __DEV__` through chained `&&` patterns.
-
+- Write the gate inline. Do not alias it through a local `const __DEV__ = …`: bundlers do not fold through the alias, so the strings survive.
+- Do not guard it with `typeof process !== 'undefined'`: that is dead code in a browser bundle, so the warning never fires in development either. The `pyreon/no-process-dev-gate` lint rule rejects both shapes and auto-fixes them.
+- `runtime-dom/src/tests/dev-gate-treeshake.test.ts` bundles representative files through a Vite production build and asserts the warning strings are gone; `dev-gate-pattern.test.ts` is the cheap source-level guard.
 
 ## @pyreon/zero — Zero — Full-Stack Meta-Framework
 

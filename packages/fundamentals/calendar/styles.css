@@ -1127,6 +1127,8 @@
 
   .pcal-event {
     box-shadow: none;
+  }
+}
 
 /* the now line of the timeline: along the axis, under the bars, with a dot at its head; and a range selected by dragging on a row */
 .pcal-tl-nowarea {

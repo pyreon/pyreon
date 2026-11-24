@@ -864,7 +864,7 @@ public struct PyreonChartCanvas: View {
             let progress = reduceMotion || durationMs <= 0.0 ? 1.0 : min(1.0, max(0.0, elapsed / durationMs))
             PyreonStaticChartCanvas(cmds: animating ? tween(progress) : target, fontFamily: fontFamily)
         }
-        .onChange(of: cmds) { next in
+        .onChange(of: cmds) { _, next in
             let elapsed = Date().timeIntervalSince(startedAt) * 1000.0
             let progress = animating && durationMs > 0.0 ? min(1.0, max(0.0, elapsed / durationMs)) : 1.0
             from = animating ? tween(progress) : target

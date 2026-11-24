@@ -33,6 +33,7 @@ function fixture(service = 'PyreonFixture') {
     'services.ts',
     'verdict-cache.ts',
     'smoke-marker.ts',
+    'java-runtime.ts',
   ]) {
     copyFileSync(join(ROOT, 'packages/native/runtime-kotlin/scripts', file), join(scripts, file))
   }
@@ -88,6 +89,8 @@ exit "\${FIXTURE_SMOKE_EXIT:-0}"
       env: {
         ...process.env,
         PATH: bin,
+        // The fixture's fake `java` on its PATH is the only JDK it may find (not the machine's own).
+        PYREON_JAVA: 'java',
         PYREON_REQUIRE_NATIVE_VALIDATE: strict ? '1' : '0',
         PYREON_VALIDATE_CACHE_DIR: cache,
         PYREON_VALIDATE_NO_CACHE: '0',

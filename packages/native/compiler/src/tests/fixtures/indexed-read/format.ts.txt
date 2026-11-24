@@ -1,0 +1,21 @@
+type Double = number
+const VALS: Double[] = [2.0, -0.0, 123456789.0, 1e21, 0.5, -3.0]
+const INTS: number[] = [2, -7, 0]
+function viaString(xs: Double[], i: number): string { const v = xs[i]; return String(v === undefined ? 0.0 : v) }
+function viaTemplate(xs: Double[], i: number): string { const v = xs[i]; return `${v !== undefined ? v : -1.0}` }
+function viaConcat(xs: Double[], i: number): string { const v = xs[i]; return 'v=' + (v === undefined ? 1.0 : v) }
+function viaGuard(xs: Double[], i: number): string { const v = xs[i]; if (v === undefined) return 'none'; return String(v) + `|${v}` + ' ' + v }
+function viaArith(xs: Double[], i: number): string { const v = xs[i]; const t = v === undefined ? 1.0 : v * 2.0; return String(t) }
+function viaCompare(xs: Double[], i: number): string { const v = xs[i]; return v !== undefined && v > 1.0 ? 'big' : 'small' }
+function viaInt(xs: number[], i: number): string { const v = xs[i]; return String(v === undefined ? 0 : v + 1) }
+function viaCoalesce(xs: Double[], i: number): string { return String(xs[i] ?? 0.0) + `/${xs[i] ?? 1.0}` }
+function viaFill(xs: Double[], i: number): string { let v = xs[i]; if (v === undefined) v = 4.0; return String(v) }
+export function c_string(): string { return [0, 1, 2, 3, 4, 5, 9].map((i) => viaString(VALS, i)).join(',') }
+export function c_template(): string { return [0, 1, 2, 3, 9].map((i) => viaTemplate(VALS, i)).join(',') }
+export function c_concat(): string { return [0, 1, 9].map((i) => viaConcat(VALS, i)).join(',') }
+export function c_guard(): string { return [0, 1, 2, 9].map((i) => viaGuard(VALS, i)).join(',') }
+export function c_arith(): string { return [0, 5, 9].map((i) => viaArith(VALS, i)).join(',') }
+export function c_compare(): string { return [0, 4, 9].map((i) => viaCompare(VALS, i)).join(',') }
+export function c_int(): string { return [0, 1, 2, 9].map((i) => viaInt(INTS, i)).join(',') }
+export function c_coalesce(): string { return [0, 1, 9].map((i) => viaCoalesce(VALS, i)).join(',') }
+export function c_fill(): string { return [0, 2, 9].map((i) => viaFill(VALS, i)).join(',') }

@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — kinetic-presets snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/kinetic-presets — 122 animation presets + 5 configurable factories + 5 composition utilities for @pyreon/kinetic. Tree-shaking is first-class: an internal #__NO_SIDE_EFFECTS__ annotation on the preset factory plus sideEffects: false means importing one named preset ships ~300 bytes — importing the \`presets\` map pins all 122."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/kinetic-presets](https://pyreon.dev/docs/reference/kinetic-presets): 122 animation presets + 5 configurable factories + 5 composition utilities for @pyreon/kinetic. Tree-shaking is first-class: an internal #__NO_SIDE_EFFECTS__ annotation on the preset factory plus sideEffects: false means importing one named preset ships ~300 bytes — importing the \`presets\` map pins all 122."`)
   })
 
   it('renders to llms-full.txt section', () => {

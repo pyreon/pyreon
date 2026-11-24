@@ -8,7 +8,7 @@ import manifest from '../manifest'
 describe('gen-docs — connector-document snapshot', () => {
   it('renders to llms.txt bullet', () => {
     expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
-      `"- @pyreon/connector-document — Bridge between ui-system JSX trees and @pyreon/document — extracts a DocNode tree for multi-format export. Extraction is a snapshot — reactive accessor children and function-valued \`_documentProps\` are resolved (called) at extraction time, not subscribed; re-run \`extractDocumentTree\` after a signal change to export the live state."`,
+      `"- [@pyreon/connector-document](https://pyreon.dev/docs/reference/connector-document): Bridge between ui-system JSX trees and @pyreon/document — extracts a DocNode tree for multi-format export. Extraction is a snapshot — reactive accessor children and function-valued \`_documentProps\` are resolved (called) at extraction time, not subscribed; re-run \`extractDocumentTree\` after a signal change to export the live state."`,
     )
   })
 

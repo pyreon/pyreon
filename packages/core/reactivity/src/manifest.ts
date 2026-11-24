@@ -54,7 +54,7 @@ effect(() => {
   features: [
     'Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata',
     'signal<T>() — callable function with .set(), .update(), .trigger()',
-    'computed<T>() — auto-tracked derivation; caches its value, but notifies downstream on every dependency change unless you pass `equals`',
+    'computed<T>() — auto-tracked, lazy derivation; caches its value and gates on `Object.is` like a signal write (an identical result stops propagation); `equals` replaces the comparator for fresh-object results',
     'linked<T>() — writable derived value that resets when its source changes (Angular linkedSignal)',
     'effect() / renderEffect() — side-effects with auto-tracking',
     'batch() / nextTick() — write-grouping + flush awaiter',
@@ -157,15 +157,15 @@ const initial = isClient ? navigator.onLine : true`,
           name: 'options',
           type: '{ equals?: (a: T, b: T) => boolean }',
           optional: true,
-          description: 'Custom equality gate. WITHOUT it a computed notifies downstream on every dependency change, even when the recomputed value is identical — there is NO default equality check (unlike a signal, which does gate on `Object.is`). Pass `equals` to suppress those updates. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke.',
+          description: 'Custom equality comparator. A computed already gates on `Object.is` by default (like `signal.set`), so an identical primitive or the same object reference stops propagation without it. Pass `equals` only when identity is the wrong test — a derivation that rebuilds a fresh array/object whose CONTENTS are unchanged, which `Object.is` can never gate. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke.',
         },
       ],
       returns: {
         type: 'Computed<T>',
-        description: 'A read-only callable — call to read the cached value; recomputes lazily only when a dependency changes. Caching is about RECOMPUTATION, not propagation: without `equals` it still notifies downstream even when the recomputed value is identical.',
+        description: 'A read-only callable — call to read the cached value; recomputes lazily only when a dependency changes, and notifies downstream only when the result changes (`Object.is`, or your `equals`).',
       },
       summary:
-        'Create a derived value that caches its result and recomputes lazily. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed notifies downstream on every dependency change, even when the recomputed value is unchanged — there is no implicit equality check (a signal gates on `Object.is`; a computed does not). This is the one place Pyreon diverges from Solid `createMemo` / Vue + Preact `computed`, which all gate on equality by default; if you are porting from those, an unchanged result does NOT stop propagation here. Pass `equals` to gate on value, which is what stops an effect re-running on an identical result.',
+        'Create a derived value that caches its result and recomputes lazily. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed gates on `Object.is`, like a signal write and like Solid `createMemo` / Vue + Preact `computed`: when a dependency changes and the recomputed result is identical, downstream effects do not re-run. While nothing subscribes it stays lazy (a dependency change only marks it dirty). Pass `equals` when the result is a fresh array/object each time, which identity can never gate; that also makes the computed eager.',
       example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
 doubled()  // 0
@@ -175,8 +175,8 @@ doubled()  // 10`,
         '`computed(() => count)` — must CALL the signal: `computed(() => count())`',
         'Using `computed()` for side effects — use `effect()` instead; computed is for pure derivation',
         'Expecting `computed()` to re-run when a `.peek()`-read signal changes — `.peek()` bypasses tracking',
-        'Expecting eager evaluation — the default computed is LAZY: a dependency change only marks it dirty; the derivation runs on the next read. Pass `options.equals` for the eager variant that re-evaluates on notification and gates downstream updates',
-        'Assuming `computed()` de-duplicates identical results — it does NOT. A signal write gates on `Object.is`, so `set(same)` is a no-op; a COMPUTED has no such gate, and every dependency change notifies downstream even when the derived value is byte-identical. `computed(() => items().length)` re-runs its effects on every item mutation that leaves the length alone. Pass `{ equals }` (`Object.is` if that is what you meant) to gate on value',
+        'Expecting eager evaluation — the default computed is LAZY: a dependency change only marks it dirty; the derivation runs on the next read. Passing `options.equals` gives the eager variant, which re-evaluates on every notification (the default also gates on value, with `Object.is`, once something subscribes)',
+        'Expecting `Object.is` to gate a fresh object — the default gate stops `computed(() => items().length)` from re-running its effects when the length is unchanged, but `computed(() => items().slice().sort())` returns a NEW array every time, so it always propagates. Pass `{ equals }` with a content comparison for those',
         'Reasoning about memory from stale branches — a re-evaluated computed drops subscriptions to sources it no longer reads (exact dep list per evaluation), so `dispose()` fully unsubscribes even after conditional-branch flips',
       ],
       seeAlso: ['signal', 'effect'],
@@ -678,7 +678,7 @@ count.set(10)  // no log — effect was disposed`,
       kind: 'function',
       signature: '() => EffectScope | null',
       summary:
-        'Returns the currently active `EffectScope` (the one whose `runInScope(fn)` is on the stack), or `null` if no scope is active. Use to register cleanup with the surrounding scope, or to detect "am I inside a component lifetime?" — useful for library code that wants to register an effect with the consumer\'s scope rather than the global one.',
+        'Returns the currently active `EffectScope` (the one whose `runInScope(fn)` is on the stack), or `null` if no scope is active. Use to register cleanup with the surrounding scope, or to detect "am I inside a component lifetime?" — useful for library code that wants to register an effect with the consumer\'s scope rather than the global one. Handing the scope out keeps it alive for the component\'s lifetime: a component scope that nothing registered with is otherwise dropped once its mount finishes, and a caller holding it may register into it later.',
       example: `import { getCurrentScope } from '@pyreon/reactivity'
 
 function myReactiveResource() {

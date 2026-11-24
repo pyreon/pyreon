@@ -11,11 +11,15 @@
 
 import { delimiter } from 'node:path'
 import type { TestProject } from 'vitest/node'
+import { JAVA_ENV, resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
 import { SHARED_SPOOL_ENV, startSharedKotlinDaemons } from '../kotlin-daemon'
 import { KOTLIN_COMPOSE_STUBS } from '../kotlin-stubs'
 import { isKotlincAvailable, kotlincVersionForDaemon } from '../validate'
 
 export default function setup(project: TestProject): (() => void) | undefined {
+  // Resolve the JDK once for the whole run: every test file is a fresh process, and the last-resort lookup (asking
+  // kotlinc which JVM it runs on) starts a JVM. Inherited through the env, like the daemon spools below.
+  if (process.env[JAVA_ENV] === undefined) process.env[JAVA_ENV] = resolveJava() ?? ''
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1' || process.env.PYREON_KOTLIN_DAEMON === '0')
     return
   if (!isKotlincAvailable()) return

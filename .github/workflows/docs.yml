@@ -134,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     # Cached setup + 8m docs + 3m Atlas + checkout/diagnostic upload headroom.
     # Inner deadlines fail normally, leaving time to preserve their logs.
-    timeout-minutes: 25
+    timeout-minutes: 27
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -215,6 +215,17 @@ jobs:
             fi
           done
 
+      - name: Keep the docs site for the Lighthouse job
+        # The site alone (before Atlas and the showcase are added to dist), for
+        # the separate `lighthouse` job below. `deploy` does not wait for that
+        # job, so no Lighthouse result can hold back a pyreon.dev deploy.
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-site-${{ github.run_attempt }}
+          path: docs/dist
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Build the Atlas workbench site
         shell: bash
         timeout-minutes: 5
@@ -286,6 +297,58 @@ jobs:
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: docs/dist
+
+  lighthouse:
+    name: Lighthouse (mobile)
+    # Its own job, and `deploy` does not need it: a Lighthouse result never
+    # blocks a pyreon.dev deploy (including the scheduled blog publish).
+    # HARD (deterministic): Accessibility, Best Practices, SEO and Agentic
+    # Browsing are 1.0 on every run with every scored audit passing, and no
+    # page carries an empty CSS rule block. REPORT-ONLY (timing): performance
+    # score and metric medians go to the job summary and the uploaded
+    # `lighthouse-*` artifact (medians.json), the trend to watch. Why timing is
+    # not a hard gate: .agents/guides/ci/README.md, "Lighthouse check".
+    # Lighthouse 13.6.0 (LIGHTHOUSE_VERSION in docs/scripts/lighthouse.ts) is
+    # installed from scripts/lighthouse-tools' npm lock, outside the workspace.
+    # Local: cd docs && bunx vite build && bun run lighthouse
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Download the docs site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: docs-site-${{ github.run_attempt }}
+          path: docs/dist
+      - name: Install Lighthouse (integrity-pinned lock)
+        # Outside the bun workspace (bun.lock never lists it): every
+        # transitive package is pinned by integrity in
+        # scripts/lighthouse-tools/package-lock.json; no install scripts run.
+        timeout-minutes: 3
+        run: |
+          mkdir -p "$RUNNER_TEMP/lighthouse"
+          cp scripts/lighthouse-tools/package{,-lock}.json "$RUNNER_TEMP/lighthouse/"
+          npm ci --prefix "$RUNNER_TEMP/lighthouse" --ignore-scripts --no-audit --no-fund
+      - name: Lighthouse
+        shell: bash
+        timeout-minutes: 12
+        run: |
+          mkdir -p .cache/lighthouse
+          cd docs
+          PYREON_LIGHTHOUSE_BIN="$RUNNER_TEMP/lighthouse/node_modules/.bin/lighthouse" \
+            bash ../scripts/gnu-timeout.sh --verbose --signal=KILL 11m bun scripts/lighthouse.ts --out ../.cache/lighthouse 2>&1 | tee ../.cache/lighthouse/lighthouse.log
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lighthouse-${{ github.run_attempt }}
+          path: .cache/lighthouse
+          if-no-files-found: warn
+          retention-days: 90
 
   deploy:
     name: Deploy

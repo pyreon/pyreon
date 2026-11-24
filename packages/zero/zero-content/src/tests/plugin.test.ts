@@ -2,7 +2,7 @@
  * Vite plugin contract: `transform` returns Pyreon JSX for `.md` /
  * `.mdx` inputs, passes through everything else.
  */
-import { expectSubQuadratic } from '@pyreon/test-utils'
+import { countStringOps } from '@pyreon/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import content, { _setResolvedRootForPaths, isMarkdownId, reportPath } from '../plugin'
 
@@ -133,16 +133,53 @@ describe('content() Vite plugin', () => {
 })
 
 describe('isMarkdownId — ReDoS regression', () => {
-  it('handles adversarial query/hash input in O(n)', () => {
-    // 10k `#` characters followed by no extension. Old regex pattern
-    // `[?#].*$` was reported by CodeQL as polynomial; the string-ops
-    // rewrite is O(n).
-    expect(isMarkdownId('#'.repeat(10000) + 'foo')).toBe(false)
-    // Scaling, not wall-clock — a "loose budget for CI noise" still flakes,
-    // and still passes a quadratic implementation on fast hardware.
-    expectSubQuadratic((n) => void isMarkdownId('#'.repeat(n) + 'foo'), 10_000, {
-      label: 'isMarkdownId vs input length',
-    })
+  // The hazard CodeQL reported was a BACKTRACKING REGEX (`[?#].*$`, quadratic
+  // on a long `?`/`#` run that ends in a line break, because `.` stops at
+  // `\n` and the match is retried from every position). The fix replaced it
+  // with a fixed sequence of indexOf / slice / lastIndexOf / toLowerCase, each
+  // one linear pass. So linearity is proved by COUNTING (countStringOps), not
+  // by a stopwatch: no regular expression executes, and the number of
+  // string-method calls is the same at 1k and 1M characters.
+  //
+  // This replaced a wall-clock growth ratio that went red on the default
+  // branch under Coverage (Full)'s 4-way load (n=2.56M in 1.6 ms, n=20.48M in
+  // 47 ms: allocating 20 MB strings, not this function), and whose `'#' +
+  // 'foo'` input never reached the old regex's quadratic case: it passed
+  // against the vulnerable implementation.
+  const countOps = (input: string) => {
+    const t = countStringOps(() => isMarkdownId(input))
+    return { result: t.result, regexExecs: t.regexSources.length, stringCalls: t.stringCalls }
+  }
+
+  // Shapes that are quadratic for `[?#].*$` and for a `\.(md|mdx)$` probe.
+  const adversarial = (n: number): Array<[string, boolean]> => [
+    [`${'#'.repeat(n)}\nfoo`, false],
+    [`${'?'.repeat(n)}\n`, false],
+    [`/abs/x.md${'?#'.repeat(n / 2)}\n`, true],
+    [`/abs/${'.m'.repeat(n / 2)}`, false],
+    [`${'#'.repeat(n)}foo`, false],
+  ]
+
+  it('runs no regular expression on adversarial input', () => {
+    for (const [input, expected] of adversarial(10_000)) {
+      const ops = countOps(input)
+      expect(ops.result, JSON.stringify(input.slice(0, 24))).toBe(expected)
+      expect(ops.regexExecs, 'a regex is back in isMarkdownId — ReDoS-prone').toBe(0)
+    }
+  })
+
+  it('makes the same number of string-method calls at 1k and 1M characters', () => {
+    const small = adversarial(1_000)
+    const large = adversarial(1_000_000)
+    for (let i = 0; i < small.length; i++) {
+      const a = countOps(small[i]![0])
+      // Checked BEFORE the 1M run: a backtracking regex would hang there
+      // (synchronous, so no test timeout can interrupt it) instead of failing.
+      expect(a.regexExecs, 'a regex is back in isMarkdownId — ReDoS-prone').toBe(0)
+      const b = countOps(large[i]![0])
+      expect(b.result).toBe(large[i]![1])
+      expect(b.stringCalls, `call count grew with input length (shape ${i})`).toBe(a.stringCalls)
+    }
   })
 
   it('handles adversarial query/hash input followed by .md correctly', () => {

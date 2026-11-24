@@ -50,6 +50,25 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
 
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Context ownership is LAZY: a component becomes its children's context
+    // owner on its first provide(), so a provide() after children mounted is
+    // invisible to them (dev warns from @pyreon/core's context.ts).
+    pattern: /\b(?:provide|withContext)\(\) ran after this component had already mounted children/,
+    diagnose: () => ({
+      cause:
+        "`provide()` ran after the component's children had already mounted: late in the setup body (after a child component was built or mounted), in `onMount`, or in an effect. A component becomes its children's context owner on its FIRST `provide()`, so those children resolve context through the parent's owner and never see the value.",
+      fix: 'Call `provide()` at the top of the component body, before it builds or returns any children. For a value that changes later, provide a reactive context once (`createReactiveContext` + `provide(ctx, () => value())`) and update the signal instead of providing again.',
+      fixCode: `const ThemeCtx = createReactiveContext('light')
+
+function ThemeProvider(props) {
+  const theme = signal('light')
+  provide(ThemeCtx, () => theme())   // first, before children
+  onMount(() => theme.set(readSavedTheme()))   // later changes go through the signal
+  return props.children
+}`,
+    }),
+  },
+  {
     // A loader's notFound() answered HTTP 500: on router versions
     // before the loader-not-found fix, every path that ran loaders (SSR
     // preload, the /_pyreon/data endpoint) treated the branded error like any
@@ -392,7 +411,7 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
         'The Pyreon compiler emitted `_fuse` (text fusion: a static-text run around an interpolation such as `<p>Hello {name}!</p>` is lowered to ONE accessor child so it renders and hydrates without `<!--$-->` range markers), but the `@pyreon/core` your build resolved is older than the compiler and does not export it. The two packages are released as a fixed group, so this is a version skew: a partial upgrade, a second copy of `@pyreon/core` in the dependency tree, or — inside the Pyreon monorepo — a stale `packages/core/core/lib` that Vite reads through the `node` condition.',
       fix: 'Align `@pyreon/core` and `@pyreon/compiler` (and `@pyreon/vite-plugin`) to the same version — `pyreon upgrade` does this — and make sure only ONE `@pyreon/core` resolves (`pyreon info` reports version skew and duplicates). In the monorepo, run `bun scripts/bootstrap.ts` so the built `lib/` catches up with source.',
       fixCode:
-        '// every @pyreon/* package on ONE version — the compiler\'s emit and core\'s exports move together\n// package.json\n"@pyreon/core": "0.52.0",\n"@pyreon/compiler": "0.52.0",\n"@pyreon/vite-plugin": "0.52.0"\n\n// or, in one step:\n// npx pyreon upgrade',
+        '// every @pyreon/* package on ONE version — the compiler\'s emit and core\'s exports move together\n// package.json\n"@pyreon/core": "0.52.0",\n"@pyreon/compiler": "0.52.0",\n"@pyreon/vite-plugin": "0.52.0"\n\n// or, in one step:\n// npx @pyreon/cli upgrade',
     }),
   },
   {
@@ -1671,16 +1690,16 @@ const Page = lazy(() => import('./Page'))`,
         ? {
             cause:
               '`@pyreon/runtime-dom/transition` in `@pyreon/runtime-dom` 0.53.0 was built from the wrong source file: its `lib/transition-entry.js` holds `Transition` but not `TransitionGroup`. Tests inside the Pyreon repo read `src/` and never saw it; an app on the published package does.',
-            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx pyreon upgrade`). On 0.53.0, import `TransitionGroup` from the `@pyreon/runtime-dom` root instead of the `/transition` subpath.',
+            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx @pyreon/cli upgrade`). On 0.53.0, import `TransitionGroup` from the `@pyreon/runtime-dom` root instead of the `/transition` subpath.',
             fixCode: `// on @pyreon/runtime-dom 0.53.0 — the /transition subpath lacks it:
 import { TransitionGroup } from '@pyreon/runtime-dom'`,
           }
         : {
             cause:
               'The JSX runtime your dev server resolved has no `jsxDEV`. In development the JSX transform imports `jsxDEV` from `@pyreon/core/jsx-dev-runtime`, and `pyreon({ compat })` redirects that to the compat package\'s `jsx-runtime`. In 0.53.0 every compat package (`react-`, `preact-`, `vue-`, `solid-`, `svelte-compat`) shipped a `lib/jsx-runtime.js` built from its dev-runtime entry, which exports only `Fragment`, `jsx` and `jsxs`. So `vite` dev renders a blank page while `vite build` works.',
-            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx pyreon upgrade`). There is no app-side workaround in dev; `vite build` + `vite preview` are unaffected. If you see this inside the Pyreon monorepo, a stale `lib/` is the likelier cause: run `bun scripts/bootstrap.ts`.',
+            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx @pyreon/cli upgrade`). There is no app-side workaround in dev; `vite build` + `vite preview` are unaffected. If you see this inside the Pyreon monorepo, a stale `lib/` is the likelier cause: run `bun scripts/bootstrap.ts`.',
             fixCode: `// every @pyreon/* package on one version newer than 0.53.0
-// npx pyreon upgrade`,
+// npx @pyreon/cli upgrade`,
           },
   },
   {
@@ -2699,7 +2718,7 @@ console.log(JSON.stringify(src.slice(offset - 40, offset + 40)))`,
     diagnose: () => ({
       cause:
         "The content audit found a markdown file under `src/content/` that no declared collection claims. Either it really is outside every collection's directory (the runtime ignores it), or the collection that holds it is declared in a way an older `@pyreon/compiler` could not read: before 0.54 the audit only understood a literal `defineCollection({ ... })`, so a `blogCollection()` preset, a factory call or a collection held in a variable left its whole directory looking orphaned.",
-      fix: "If the file's collection is declared with `blogCollection()`, a factory or a variable, upgrade `@pyreon/compiler` (`npx pyreon upgrade`); the audit now treats any value in `collections` as a collection, using its literal `path` or `src/content/<name>`. Otherwise move the file into a collection's directory, declare a collection whose `path` includes it, or delete it.",
+      fix: "If the file's collection is declared with `blogCollection()`, a factory or a variable, upgrade `@pyreon/compiler` (`npx @pyreon/cli upgrade`); the audit now treats any value in `collections` as a collection, using its literal `path` or `src/content/<name>`. Otherwise move the file into a collection's directory, declare a collection whose `path` includes it, or delete it.",
       fixCode: `// content.config.ts — every value here is a collection; a non-literal one
 // reads from src/content/<name> unless it passes a literal path
 export const collections = {

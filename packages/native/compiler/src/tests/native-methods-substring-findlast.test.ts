@@ -54,8 +54,8 @@ describe('JS .substring / .findLast → native idiom', () => {
 
   it('Kotlin: substring goes through pyreonSubstring (Kotlin\'s own throws past the end); findLast passes through', () => {
     const out = transform(SRC(COMPUTEDS), { target: 'kotlin' }).code
-    expect(out).toContain('pyreonSubstring(name, (0L).toLong(), (3L).toLong())')
-    expect(out).toContain('pyreonSubstring(name, (2L).toLong())')
+    expect(out).toContain('pyreonSubstring(name, 0L, 3L)')
+    expect(out).toContain('pyreonSubstring(name, 2L)')
     expect(out).toContain('todos.findLast(')
   })
 

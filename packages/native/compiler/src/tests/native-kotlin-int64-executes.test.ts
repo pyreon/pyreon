@@ -5,6 +5,10 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform } from './first-party-plugins'
 import { isKotlincAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * EXECUTE the Kotlin decode of an integer past 2^31.
@@ -59,7 +63,7 @@ const PLUGIN = (() => {
 const JARS = findJars()
 function javaOk(): boolean {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
     return true
   } catch {
     return false
@@ -105,7 +109,7 @@ describe('a TS integer is a 64-bit Long on Kotlin (Swift Int parity)', () => {
     )
     const cp = [JARS!.json, JARS!.core].join(':')
     execFileSync('kotlinc', [file, '-cp', cp, `-Xplugin=${PLUGIN}`, '-include-runtime', '-d', jar], { stdio: 'pipe' })
-    const out = execFileSync('java', ['-cp', `${jar}:${cp}`, 'MainKt'], { encoding: 'utf8' }).trim().split('\n')
+    const out = execFileSync(JAVA, ['-cp', `${jar}:${cp}`, 'MainKt'], { encoding: 'utf8' }).trim().split('\n')
     expect(out).toEqual(['3000000000', '1729000000000'])
   })
 })

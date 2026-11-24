@@ -33,6 +33,8 @@ export const MACOS_MARKERS: readonly RegExp[] = [
   /\bdarwin\b/,
   /\bprocess\.platform\b/,
   /\bmacOS\b/,
+  // The differential harness RUNS compiled Swift (`swiftc -o` + execute) only on Darwin; the Linux job skips it.
+  /\bcanRunSwift\b/,
 ]
 
 export function isMacOSSpecificTest(source: string): boolean {

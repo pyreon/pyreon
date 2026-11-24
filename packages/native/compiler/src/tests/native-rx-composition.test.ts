@@ -12,6 +12,10 @@ import {
   validateSwiftWithStubs,
   validateSwiftTypecheck,
 } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const app = (imports: string, expression: string) => `
 import { signal, computed } from '@pyreon/reactivity'
@@ -185,7 +189,7 @@ precondition(selected().isEmpty)
   })
 
   const javaAvailable =
-    spawnSync('java', ['-version'], { stdio: 'ignore', timeout: 10_000 }).status === 0
+    spawnSync(JAVA, ['-version'], { stdio: 'ignore', timeout: 10_000 }).status === 0
   if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1' && !javaAvailable) {
     throw new Error(
       '[Pyreon] Native rx execution requires Java; configure JAVA_HOME and PATH to a working JDK.',
@@ -230,7 +234,7 @@ precondition(selected().isEmpty)
         stdio: 'pipe',
         timeout: 90_000,
       })
-      execFileSync('java', ['-jar', jar], { stdio: 'pipe', timeout: 10_000 })
+      execFileSync(JAVA, ['-jar', jar], { stdio: 'pipe', timeout: 10_000 })
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }

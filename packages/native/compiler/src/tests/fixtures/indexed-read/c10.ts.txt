@@ -1,0 +1,43 @@
+type Double = number
+const XS: Double[] = [1.0, 2.0]
+const YS: (Double | undefined)[] = [2.0, undefined, 4.0]
+const NS: string[] = ['ab', 'cde']
+function a(xs: string[], i: number): number { const v = xs[i]; const label = v ?? 'none'; return v.length + label.length }
+function b(xs: Double[], i: number): Double { let v = xs[i]; if (v === undefined) v = 0.0; return v * 2.0 }
+function c(xs: (Double | undefined)[], i: number): Double { const k = i + 1; return xs[k * 2] ?? 5.0 }
+function c2(xs: (Double | undefined)[], i: number): Double { return xs[i] ?? 6.0 }
+function at(xs: Double[], i: Double): string { const v = xs[i]; if (v === undefined) return 'none'; return String(v) }
+function atOpt(xs: (Double | undefined)[], i: Double): string { return String(xs[i] ?? 9.0) }
+function q(n: string): string { const m: string | null = n ?? null; return m === null ? 'null' : m }
+function s1(xs: Double[], ys: (Double | undefined)[]): Double {
+  const v = xs[0]
+  let sum = v * 2.0
+  for (const w of ys) { const v = w; sum = sum + (v ?? 0.0) }
+  return sum
+}
+function s2(xs: Double[], ys: (Double | undefined)[]): Double { const v = xs[0]; return v * 2.0 + Number(ys.map((v) => v ?? 0.0).length) }
+function s3(xs: Double[]): string {
+  const v = xs[0]
+  let r = String(v * 2.0)
+  try { r = r + 'x' } catch (v) { r = 'c' }
+  for (let v = 0; v < 1; v++) { r = r + String(v) }
+  return r
+}
+export function c_a_in(): string { return String(a(NS, 1)) }
+export function c_b_out(): string { return String(b(XS, 7)) }
+export function c_b_in(): string { return String(b(XS, 1)) }
+export function c_c_hole(): string { return String(c([undefined, undefined, undefined], 0)) }
+export function c_c_out(): string { return String(c(YS, 3)) }
+export function c_c2_hole(): string { return String(c2(YS, 1)) }
+export function c_frac(): string { return at(XS, 0.5) }
+export function c_nan(): string { return at(XS, NaN) }
+export function c_inf(): string { return at(XS, Infinity) }
+export function c_neg_zero(): string { return at(XS, -0.0) }
+export function c_whole(): string { return at(XS, 1.0) }
+export function c_opt_frac(): string { return atOpt(YS, 1.5) }
+export function c_opt_hole(): string { return atOpt(YS, 1.0) }
+export function c_opt_whole(): string { return atOpt(YS, 2.0) }
+export function c_q(): string { return q('z') }
+export function c_s1(): string { return String(s1(XS, YS)) }
+export function c_s2(): string { return String(s2(XS, YS)) }
+export function c_s3(): string { return s3(XS) }
