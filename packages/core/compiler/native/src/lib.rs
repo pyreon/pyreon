@@ -6010,7 +6010,7 @@ fn handle_jsx_attribute(
 /// Mirrors `sliceUnwrappedAttrValue` in jsx.ts.
 fn slice_unwrapped_attr_value(expr: &Expression, ctx: &mut Ctx) {
     if contains_jsx_in_expr(expr) {
-        walk_h_path(expr, ctx);
+        walk_h_path_value(expr, ctx);
         return;
     }
     let sp = expr.span();
@@ -6662,6 +6662,11 @@ fn walk_spread_arg(arg: &Expression, ctx: &mut Ctx) {
         match prop {
             ObjectPropertyKind::SpreadProperty(sp) => walk_h_path(&sp.argument, ctx),
             ObjectPropertyKind::ObjectProperty(p) => {
+                // `{ items }` keeps the binding: a shorthand value is never
+                // auto-called. Mirrors JS `walkSpreadArg`.
+                if p.shorthand {
+                    continue;
+                }
                 if p.computed {
                     if let Some(k) = p.key.as_expression() {
                         walk_h_path(k, ctx);
@@ -6683,7 +6688,7 @@ fn walk_spread_arg(arg: &Expression, ctx: &mut Ctx) {
                         ctx.add_replacement(sp.start, sp.end, sliced);
                     }
                 } else {
-                    walk_h_path(&p.value, ctx);
+                    walk_h_path_value(&p.value, ctx);
                 }
             }
         }
@@ -6694,13 +6699,27 @@ fn walk_spread_arg(arg: &Expression, ctx: &mut Ctx) {
 /// `wrap_walked` runs, with no accessor around it (a render prop, a handler or
 /// ref that builds JSX). Mirrors `walkHPath` in jsx.ts.
 fn walk_h_path(expr: &Expression, ctx: &mut Ctx) {
+    walk_h_path_as(expr, ctx, false);
+}
+
+/// `walk_h_path`, flagging a DIRECT function value as a render callback
+/// (`children={(item) => …}`, a spread-object property `render: (row) => …`)
+/// so its parameter is not registered as reactive component props — the
+/// attribute spelling compiles like the child spelling (#4797). Mirrors the
+/// JSXAttribute / spread-property skip in JS `maybeRegisterComponentProps`.
+fn walk_h_path_value(expr: &Expression, ctx: &mut Ctx) {
+    let is_fn = matches!(expr, Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_));
+    walk_h_path_as(expr, ctx, is_fn);
+}
+
+fn walk_h_path_as(expr: &Expression, ctx: &mut Ctx, render_cb: bool) {
     ctx.wrapped_jsx_depth += 1;
     let old = ctx.parent_is_jsx;
     let old_eager = ctx.parent_eager_mount;
     let old_cb = ctx.in_jsx_child_callback;
     ctx.parent_is_jsx = false;
     ctx.parent_eager_mount = false;
-    ctx.in_jsx_child_callback = false;
+    ctx.in_jsx_child_callback = render_cb;
     slice_unsliced(expr, ctx);
     walk_expression(expr, ctx);
     ctx.in_jsx_child_callback = old_cb;

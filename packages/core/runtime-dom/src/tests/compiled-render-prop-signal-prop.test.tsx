@@ -133,6 +133,23 @@ for (const [name, compile] of backends) {
       expect(count(root)[1], out).toBe(0)
     })
 
+    it('a render prop parameter is an item: a const derived from it is computed once', () => {
+      const items = signal<string[]>([])
+      const open = signal(false)
+      const { App, out } = load(
+        compile,
+        `<Slot render={(item) => { const id = (item && item.id) ?? Math.random().toString(36).slice(2); return <div><label for={id}>L</label><input id={id} /></div> }} />`,
+        items,
+        open,
+      )
+      const root = mountApp(App)
+      const label = root.querySelector('label')!
+      const input = root.querySelector('input')!
+      // Registered as props, the const was inlined at each use: two random ids.
+      expect(label.getAttribute('for'), out).toBe(input.id)
+      expect(input.id).not.toBe('')
+    })
+
     for (const [where, wrap] of [
       ['a template element', (h: string) => `<button class="target" onClick={${h}}>x</button>`],
       ['a component', (h: string) => `<Btn onClick={${h}} />`],

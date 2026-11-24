@@ -3709,6 +3709,8 @@ export function transformJSX_JS(
         walkHPath(prop.argument)
         continue
       }
+      // `{ items }` keeps the binding: a shorthand value is never auto-called.
+      if (prop.shorthand) continue
       if (prop.computed) walkHPath(prop.key)
       const key = prop.key
       const keyName =
@@ -4860,6 +4862,13 @@ export function transformJSX_JS(
 
   /** Detect component functions and register their first param as a props name.
    *  Called inline during the walk when entering a function. */
+  /** Is `prop` a property of an object literal that is a JSX spread argument? */
+  function isSpreadObjectProperty(prop: N): boolean {
+    const obj = findParent(prop)
+
+    return obj?.type === 'ObjectExpression' && findParent(obj)?.type === 'JSXSpreadAttribute'
+  }
+
   function maybeRegisterComponentProps(node: N): void {
     if (
       (node.type === 'FunctionDeclaration' ||
@@ -4878,13 +4887,22 @@ export function transformJSX_JS(
       // reactive, so `{String(row.id)}` gets a wasteful per-row `_bind()`
       // renderEffect instead of a static `textContent` assignment. Signal
       // reads (`row.label()`, `() => row.x`) stay reactive via their own
-      // paths. Attribute-value render functions (`component={(p) => …}`) are
-      // NOT skipped — those can be real inline components receiving props.
+      // paths. The same holds for a function that IS an attribute value
+      // (`children={(item) => …}`, `render={(row) => …}`, `component={(p) =>
+      // …}`) or a property value of a spread object: the receiving component
+      // calls it, so its parameter is whatever that component passes, and the
+      // attribute spelling must compile like the child spelling (#4797).
       if (parent && parent.type === 'JSXExpressionContainer') {
         const grandparent = findParent(parent)
-        if (grandparent && (grandparent.type === 'JSXElement' || grandparent.type === 'JSXFragment'))
+        if (
+          grandparent &&
+          (grandparent.type === 'JSXElement' ||
+            grandparent.type === 'JSXFragment' ||
+            grandparent.type === 'JSXAttribute')
+        )
           return
       }
+      if (parent && parent.type === 'Property' && parent.value === node && isSpreadObjectProperty(parent)) return
       // A defaulted props param (`function C(props = {})`) is an
       // AssignmentPattern in ESTree; the identifier is its `.left`. The Rust
       // backend (oxc) keeps the BindingIdentifier and an initializer, so the

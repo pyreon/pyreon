@@ -23,6 +23,7 @@
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseSync } from 'oxc-parser'
 import { describe, expect, it } from 'vitest'
 import { rocketstyleCollapseKey, transformJSX_JS } from '../jsx'
 
@@ -124,6 +125,32 @@ const SHAPES: Record<string, { jsx: string; has: string[]; not?: string[] }> = {
     jsx: '<Comp {...(flag ? { r: () => <D v={open} /> } : {})} />',
     has: ['_wrapSpread((flag ? { r: () => <D v={_rp(() => open())} /> } : {}))'],
   },
+  'spread: a shorthand property keeps the binding (never auto-called)': {
+    jsx: '<Comp {...{ items, open, render: () => <b /> }} />',
+    has: ['_wrapSpread({ items, open, render: () => <b /> })'],
+    not: ['items()', 'open()'],
+  },
+  'spread on a DOM element: a shorthand property keeps the binding': {
+    jsx: '<div {...{ items, render: () => <b /> }}>t</div>',
+    has: ['<div {...{ items, render: () => <b /> }}>t</div>'],
+  },
+  'spread: method, computed key and nested spread properties': {
+    jsx: '<Comp {...{ ...base, [open ? "a" : "b"]: () => <Show when={open} />, render() { return <For each={items}>{(x) => x}</For> } }} />',
+    has: ['[open() ? "a" : "b"]: () => <Show when={_rp(() => open())} />', 'each={_rp(() => items())}', '...base'],
+  },
+  'attribute render callback: its parameter is an item, not props (like the child form)': {
+    jsx: '<For each={items} by={(x) => x} children={(item) => <li>{item.text}</li>} />',
+    has: ['children={(item) => <li>{item.text}</li>}'],
+    not: ['() => item.text'],
+  },
+  'attribute render callback: a const from its parameter is not inlined per use': {
+    jsx: '<List render={(item) => { const id = item.id ?? Math.random(); return <div><label for={id}>L</label><input id={id} /></div> }} />',
+    has: ['const id = item.id ?? Math.random()', '<label for={id}>', '<input id={id} />'],
+  },
+  'spread-object render callback: its parameter is an item': {
+    jsx: '<Comp {...{ render: (item) => <li>{item.text}</li> }} />',
+    has: ['render: (item) => <li>{item.text}</li>'],
+  },
   'spread on a DOM element that builds JSX bails to h()': {
     jsx: '<div {...{ render: () => <For each={items}>{(x) => x}</For> }}>t</div>',
     has: ['<div {...{ render: () => <For each={_rp(() => items())}>'],
@@ -162,6 +189,9 @@ describe.runIf(nativeTransform !== null)('JSX in an attribute value: the native 
       ] as const) {
         const js = transformJSX_JS(app(jsx), 'a.tsx', { ssr, ssrTemplate }).code
         const rs = nativeTransform!(app(jsx), 'a.tsx', ssr, null, false, undefined, ssrTemplate).code
+        // Parse each output independently: two backends could agree on invalid code.
+        expect(parseSync('a.tsx', js).errors, js).toEqual([])
+        expect(parseSync('a.tsx', rs).errors, rs).toEqual([])
         expect(rs, `ssr=${ssr} ssrTemplate=${ssrTemplate}`).toBe(js)
       }
     })

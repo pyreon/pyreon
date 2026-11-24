@@ -388,8 +388,21 @@ function genAttrs(c: Ctx): string {
   }
   // A spread whose object carries a JSX-building function (#4797): handler
   // keys follow the handler rule, every other key the render-prop rule.
+  // Property shapes: keyed, shorthand (never auto-called), method, computed key,
+  // nested spread.
   if (c.signals.length && c.rnd4() < 0.15) {
-    parts.push(`{...{ ${pick(c.rnd4, ['onClick', 'ref', 'render', 'title'])}: ${genNestedFn(c)} }}`)
+    const s = pick(c.rnd4, c.signals)
+    const key = pick(c.rnd4, ['onClick', 'ref', 'render', 'title'])
+    const fn = genNestedFn(c)
+    parts.push(
+      pick(c.rnd4, [
+        `{...{ ${key}: ${fn} }}`,
+        `{...{ ${s}, ${key}: ${fn} }}`,
+        `{...{ ${key}() { return <b>{${s}}</b> } }}`,
+        `{...{ [${s} ? 'a' : 'b']: ${fn}, ${s} }}`,
+        `{...{ ...rest, ${key}: ${fn} }}`,
+      ]),
+    )
   }
 
   return parts.length ? ' ' + parts.join(' ') : ''
