@@ -9,7 +9,7 @@ import manifest from '../manifest'
 describe('gen-docs — loom snapshot', () => {
   it('renders to llms.txt bullet', () => {
     expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
-      `"- @pyreon/loom — Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data"`,
+      `"- [@pyreon/loom](https://pyreon.dev/docs/reference/loom): Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data"`,
     )
   })
 

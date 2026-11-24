@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — state-tree snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/state-tree — Structured reactive state tree — composable models with snapshots, patches, and middleware. State mutations must go through actions — direct \`.set()\` calls on state signals bypass middleware and patch recording. The model enforces this in dev mode."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/state-tree](https://pyreon.dev/docs/reference/state-tree): Structured reactive state tree — composable models with snapshots, patches, and middleware. State mutations must go through actions — direct \`.set()\` calls on state signals bypass middleware and patch recording. The model enforces this in dev mode."`)
   })
 
   it('renders to llms-full.txt section', () => {

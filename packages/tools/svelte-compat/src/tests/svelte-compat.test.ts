@@ -36,12 +36,14 @@ function createHookRunner() {
     unmounted: false,
     unmountCallbacks: [],
   }
+
   return {
     ctx,
     run<T>(fn: () => T): T {
       beginRender(ctx)
       const result = fn()
       endRender()
+
       return result
     },
   }
@@ -250,6 +252,7 @@ describe('@pyreon/svelte-compat — svelte lifecycle', () => {
         mounted()
         return cleaned
       })
+
       return jsx('div', { children: 'hi' })
     }
     const el = container()
@@ -357,6 +360,38 @@ describe('@pyreon/svelte-compat — svelte context', () => {
     expect(span?.getAttribute('data-theme')).toBe('dark')
   })
 
+  it('setContext stays inside the providing component across re-renders: a sibling never sees it', async () => {
+    // A Svelte body runs inside its wrapper's render effect, after the
+    // wrapper's setup. Pyreon makes a component the context owner lazily (on
+    // its first provide), so the wrapper claims ownership up front. Without
+    // that, the first render's setContext was a late claim (dev warning), and
+    // a RE-render's setContext wrote onto the PARENT's owner, leaking the
+    // value to siblings.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const KEY = Symbol('scope')
+    const rerender: Record<string, () => void> = {}
+    const Consumer: ComponentFn = () => {
+      rerender.consumer = getCurrentCtx()!.scheduleRerender
+      const v = getContext<string | undefined>(KEY)
+      return jsx('span', { children: v ?? 'none' })
+    }
+    const Provider: ComponentFn = () => {
+      rerender.provider = getCurrentCtx()!.scheduleRerender
+      setContext(KEY, 'mine')
+      return jsx('b', { children: 'p' })
+    }
+    const Parent: ComponentFn = () => jsx('div', { children: [jsx(Provider, {}), jsx(Consumer, {})] })
+    const el = container()
+    pyreonMount(jsx(Parent, {}), el)
+    rerender.provider!()
+    await tick()
+    rerender.consumer!()
+    await tick()
+    expect(el.querySelector('span')?.textContent).toBe('none')
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('provide() ran after'))
+    warn.mockRestore()
+  })
+
   it('hasContext reports whether a value was provided', () => {
     const KEY = 'k'
     let inside = false
@@ -403,6 +438,7 @@ describe('@pyreon/svelte-compat — createEventDispatcher', () => {
       onMount(() => {
         dispatch('ping', 7)
       })
+
       return jsx('span', { children: 'child' })
     }
     const Parent: ComponentFn = () => jsx(Child, { onPing: handler })
@@ -494,6 +530,7 @@ describe('@pyreon/svelte-compat — jsx-runtime coverage', () => {
       count.subscribe((n) => {
         v = n
       })
+
       return jsx('span', { id: 'cnt', children: String(v) })
     }
     const el = container()
@@ -539,6 +576,7 @@ describe('@pyreon/svelte-compat — jsx-runtime coverage', () => {
           cleanup: undefined,
         })
       }
+
       return jsx('div', { children: 'lf' })
     }
     pyreonMount(jsx(Comp, {}), container())

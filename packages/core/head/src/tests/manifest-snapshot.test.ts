@@ -13,7 +13,7 @@ import manifest from '../manifest'
 describe('gen-docs — head snapshot', () => {
   it('renders a llms.txt bullet starting with the package prefix', () => {
     const line = renderLlmsTxtLine(manifest)
-    expect(line.startsWith('- @pyreon/head —')).toBe(true)
+    expect(line.startsWith('- [@pyreon/head](https://pyreon.dev/docs/reference/head):')).toBe(true)
   })
 
   it('renders a llms-full.txt section with the right header', () => {

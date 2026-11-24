@@ -1824,6 +1824,8 @@ faviconPlugin({ source: './icon.svg', locales: { de: { source: './icon-de.svg' }
 ogImagePlugin({ templates: { default: './og-template.tsx' }, locales: { en: { title: 'My App' } } })
 ```
 
+`aiPlugin` writes `llms.txt` in the [llmstxt.org](https://llmstxt.org/) shape for every app: `# name`, a `> description` summary, the dynamic routes and API endpoints as plain lists (they are not fetchable URLs, and the format's `##` sections are link lists), a `## Pages` list of `- [path](url): description` links, then an `## Optional` link to the `llms-full.txt` it also writes. That last link means the file always holds at least one Markdown link, so it passes Lighthouse's **Agentic Browsing** `llms-txt` audit (an H1 and a link) even for an app with no static page. `llmsExtra` is appended as written: keep it to `##` sections of links to stay in the shape. Both files are served as `text/plain; charset=utf-8`, the type llms.txt readers expect.
+
 ## HTTPS in Development
 
 ```ts

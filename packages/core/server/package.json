@@ -27,6 +27,11 @@
       "bun": "./src/client.ts",
       "import": "./lib/client.js",
       "types": "./lib/types/client.d.ts"
+    },
+    "./paths": {
+      "bun": "./src/paths.ts",
+      "import": "./lib/paths.js",
+      "types": "./lib/types/paths.d.ts"
     }
   },
   "files": [

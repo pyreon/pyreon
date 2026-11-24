@@ -31,6 +31,7 @@ export type { ColorMode, ColorModeInput, ColorModeProviderProps } from './color-
 export { mapCompatDomProps, shallowEqualProps } from './compat-shared'
 export type { Context, ReactiveContext } from './context'
 export {
+  _devMarkOwnerAlias,
   createContext,
   createReactiveContext,
   getContextStackLength,

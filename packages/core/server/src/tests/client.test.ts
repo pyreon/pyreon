@@ -441,6 +441,7 @@ describe('hydrateIslands', () => {
       constructor(cb: IntersectionObserverCallback) {
         observerCb = cb
       }
+
       observe(_el: Element) {
         // Trigger intersection immediately
         if (observerCb) {
@@ -450,17 +451,22 @@ describe('hydrateIslands', () => {
           )
         }
       }
+
       disconnect() {}
       unobserve() {}
+
       takeRecords() {
         return []
       }
+
       get root() {
         return null
       }
+
       get rootMargin() {
         return ''
       }
+
       get thresholds() {
         return []
       }
@@ -489,6 +495,7 @@ describe('hydrateIslands', () => {
     const origIO = globalThis.IntersectionObserver
     globalThis.IntersectionObserver = class {
       constructor(private cb: IntersectionObserverCallback) {}
+
       observe(_el: Element) {
         // Trigger with isIntersecting: false
         this.cb(
@@ -496,17 +503,22 @@ describe('hydrateIslands', () => {
           this as unknown as IntersectionObserver,
         )
       }
+
       disconnect() {}
       unobserve() {}
+
       takeRecords() {
         return []
       }
+
       get root() {
         return null
       }
+
       get rootMargin() {
         return ''
       }
+
       get thresholds() {
         return []
       }
@@ -548,6 +560,7 @@ describe('hydrateIslands', () => {
         removeListener: () => {},
         dispatchEvent: () => true,
       } as unknown as MediaQueryList
+
       return mql
     }
 
@@ -657,6 +670,21 @@ describe('hydrateIslands', () => {
     cleanup()
   })
 
+  test('a data-component naming an inherited property (constructor, toString) is no loader', () => {
+    // `data-component` comes from the page: it must only ever pick one of the
+    // app's registered loaders, never a prototype function called as one.
+    document.body.innerHTML = ['constructor', 'toString', '__proto__', 'hasOwnProperty']
+      .map((n) => `<pyreon-island data-component="${n}" data-props="{}"></pyreon-island>`)
+      .join('')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const cleanup = hydrateIslands({})
+    for (const el of document.querySelectorAll('pyreon-island')) {
+      expect(el.getAttribute('data-island-error'), el.getAttribute('data-component')!).toBe('no-loader')
+    }
+    warnSpy.mockRestore()
+    cleanup()
+  })
+
   test('marks islands with invalid props JSON as data-island-error="invalid-props"', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Bad" data-props="not json"></pyreon-island>'
@@ -689,15 +717,19 @@ describe('hydrateIslands', () => {
       observe() {}
       disconnect() {}
       unobserve() {}
+
       takeRecords() {
         return []
       }
+
       get root() {
         return null
       }
+
       get rootMargin() {
         return ''
       }
+
       get thresholds() {
         return []
       }
@@ -733,26 +765,33 @@ describe('hydrateIslands', () => {
     const origIO = globalThis.IntersectionObserver
     globalThis.IntersectionObserver = class {
       private cb: IntersectionObserverCallback
+
       constructor(cb: IntersectionObserverCallback) {
         this.cb = cb
       }
+
       observe(_el: Element) {
         this.cb(
           [{ isIntersecting: true } as IntersectionObserverEntry],
           this as unknown as IntersectionObserver,
         )
       }
+
       disconnect() {}
       unobserve() {}
+
       takeRecords() {
         return []
       }
+
       get root() {
         return null
       }
+
       get rootMargin() {
         return ''
       }
+
       get thresholds() {
         return []
       }
@@ -838,15 +877,19 @@ describe('hydrateIslands', () => {
       observe() {}
       disconnect() {}
       unobserve() {}
+
       takeRecords() {
         return []
       }
+
       get root() {
         return null
       }
+
       get rootMargin() {
         return ''
       }
+
       get thresholds() {
         return []
       }
@@ -956,15 +999,19 @@ describe('hydrateIslands', () => {
       observe() {}
       disconnect() {}
       unobserve() {}
+
       takeRecords() {
         return []
       }
+
       get root() {
         return null
       }
+
       get rootMargin() {
         return ''
       }
+
       get thresholds() {
         return []
       }
@@ -1113,15 +1160,19 @@ describe('hydrateIslands', () => {
       observe() {}
       disconnect() {}
       unobserve() {}
+
       takeRecords() {
         return []
       }
+
       get root() {
         return null
       }
+
       get rootMargin() {
         return ''
       }
+
       get thresholds() {
         return []
       }
@@ -1158,6 +1209,7 @@ describe('hydrateIslands', () => {
       const onClick = () => {
         liveClicks++
       }
+
       return h(
         'button',
         { 'data-testid': 'trigger', type: 'button', onClick },
@@ -1208,6 +1260,7 @@ describe('hydrateIslands', () => {
         const fd = new FormData(form)
         lastSubmittedEmail = String(fd.get('email') ?? '')
       }
+
       return h(
         'form',
         { 'data-testid': 'newsletter', action: '/subscribe', method: 'post', onSubmit },

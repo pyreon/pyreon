@@ -17,6 +17,11 @@
       "import": "./src/browser/index.ts",
       "types": "./src/browser/index.ts"
     },
+    "./llms-txt": {
+      "bun": "./src/llms-txt.ts",
+      "import": "./src/llms-txt.ts",
+      "types": "./src/llms-txt.ts"
+    },
     "./happy-dom-hashchange-guard": {
       "bun": "./src/happy-dom-hashchange-guard.ts",
       "import": "./src/happy-dom-hashchange-guard.ts",

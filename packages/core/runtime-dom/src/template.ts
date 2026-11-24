@@ -114,6 +114,25 @@ function _isMountableTextValue(v: unknown): boolean {
 }
 
 /**
+ * Replace `node`'s children with ONE text node holding `text` — the
+ * `textContent =` write, except that a NUMBER reaches the DOM unconverted.
+ *
+ * Why a number is never `String()`-ed here: JS-side Number→String of more than
+ * ~200 distinct integers makes V8 grow its Number→String cache
+ * (`smi_string_cache`, a GC root) to its full size, ~64 KB that is never given
+ * back. The DOM's own conversion (WebIDL `DOMString`, which is ECMAScript
+ * `ToString`, so the characters are identical) does not touch that cache. A
+ * `<For>` of rows rendering `{row.id}` paid the 64 KB once per page.
+ *
+ * Why not `textContent = n`: happy-dom writes `''` for a falsy number (`0`,
+ * `NaN`). `replaceChildren(n)` converts per the spec in every environment.
+ */
+function _replaceText(node: Element, text: string | number): void {
+  if (typeof text === 'number') node.replaceChildren(text as unknown as string)
+  else node.textContent = text
+}
+
+/**
  * Compiler-emitted STATIC child setter for a bare `{x}` child whose type the
  * compiler could not statically resolve (a function param, a custom prop, a
  * function-return const). Primitives take the historical `textContent` fast
@@ -166,25 +185,25 @@ export function _setChild(node: Element, value: unknown): void {
     // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`, and the
     // DOM's handling of a number is not even uniform across implementations
     // (happy-dom writes `''` for `0`). A string, the dominant value, skips the
-    // call.
-    const text = typeof value === 'string' ? value : _childText(value)
+    // call. A NUMBER is handed to the DOM unconverted (see `_replaceText`).
+    const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = node.textContent ?? ''
       if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-        ;(fc as Text).data = text
+        ;(fc as Text).data = text as string
       } else {
-        node.textContent = text
+        _replaceText(node, text)
       }
       reportTextWrite(node, before, 'text')
 
       return
     }
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-      ;(fc as Text).data = text
+      ;(fc as Text).data = text as string
     } else {
-      node.textContent = text
+      _replaceText(node, text)
     }
   }
 }
@@ -243,8 +262,9 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // The shared child-text rule (`_childText`): nullish and `false` render
     // EMPTY, an array of primitives concatenates. `String()` put the word
     // "null" (and "false", and `a,b` for an array) on the page where SSR
-    // renders nothing / `ab`.
-    const text = typeof value === 'string' ? value : _childText(value)
+    // renders nothing / `ab`. A number reaches the DOM unconverted (see
+    // `_replaceText`); `createTextNode` and `Text.data` convert it per the spec.
+    const text = (typeof value === 'string' || typeof value === 'number' ? value : _childText(value)) as string
     if (!isMidSlotText(placeholder)) {
       parent.replaceChild(document.createTextNode(text), placeholder)
     } else if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
@@ -386,6 +406,12 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
     // functions (a VNode, an accessor) keep the general path below.
     const v = d.value as unknown
     if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
+      // A number on a FRESH clone goes to the DOM unconverted (see
+      // `_replaceText`); an adopted node keeps the string read-back below.
+      if (typeof v === 'number' && _freshBind) {
+        node.data = v as unknown as string
+        return _noopDispose
+      }
       const next = v == null || typeof v === 'boolean' ? '' : String(v as string | number)
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
