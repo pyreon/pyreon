@@ -37,3 +37,11 @@ export const APPEND_REF_COMPILED =
 
 /** Server HTML of `APPEND_REF_SRC` with `on() === true`. */
 export const APPEND_REF_SERVER = '<p><span><s></s><!--$--><b>on</b><!--/$--></span></p>'
+
+/** A static element after a divergent static array (h() path). */
+export const INPUT_AFTER_SRC =
+  'const App = () => <div>{v}<input class="in" /><span>after</span></div>'
+
+/** Server HTML of `INPUT_AFTER_SRC` with `v = [<b>1</b>, <b>2</b>]`, h() tree. */
+export const INPUT_AFTER_H_SERVER =
+  '<div><b>1</b><b>2</b><input class="in" /><span>after</span></div>'

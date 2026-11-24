@@ -28,6 +28,7 @@ import {
   FOR_IN_RANGE_COMPILED,
   FOR_IN_RANGE_COMPILED_SERVER,
   FOR_IN_RANGE_H_SERVER,
+  INPUT_AFTER_H_SERVER,
 } from './_hydration-recovery-4764-cases'
 
 const RUNTIME = { _dispose2, _mountSlot, _ref, _setChild, _setChildAt, _tpl, For, Fragment, h }
@@ -175,5 +176,31 @@ describe('#4764 in Chromium', () => {
     expect(el.querySelector('b')).toBe(b)
     on.set(false)
     expect(shape(el)).toBe('<p><span><s></s><i>off</i><u></u></span></p>')
+  })
+
+  it('(2) a static element after a divergent static array keeps its server node: typed input survives', () => {
+    const el = host(INPUT_AFTER_H_SERVER)
+    const input = el.querySelector('input') as HTMLInputElement
+    input.value = 'typed'
+    input.focus()
+    const errors = hydrateQuiet(
+      el,
+      h(
+        () =>
+          h(
+            'div',
+            null,
+            [h('i', null, '1')] as never,
+            h('input', { class: 'in' }),
+            h('span', null, 'after'),
+          ),
+        null,
+      ),
+    )
+    expect(errors).toEqual([])
+    expect(shape(el)).toBe('<div><i>1</i><input class="in"><span>after</span></div>')
+    expect(el.querySelector('input')).toBe(input)
+    expect(input.value).toBe('typed')
+    expect(document.activeElement).toBe(input)
   })
 })

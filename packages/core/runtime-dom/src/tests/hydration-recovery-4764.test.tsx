@@ -300,6 +300,54 @@ describe('#4764 (2): a sibling whose server output opens with a marker skips the
     on.set(true)
     expect(shape(el)).toBe('<div>text<em>e</em><span>after</span></div>')
   })
+
+  it('a static element after a divergent static array adopts its server element (typed input survives)', async () => {
+    const src = cases.INPUT_AFTER_SRC
+    const el = host()
+    el.innerHTML = await renderToString(
+      h(build(src, { v: [h('b', null, '1'), h('b', null, '2')] }, 'h()') as never, null) as never,
+    )
+    const input = el.querySelector('input') as HTMLInputElement
+    const span = el.querySelector('span')
+    input.value = 'typed'
+    const mismatches: string[] = []
+    const off = dom.onHydrationMismatch((ctx) => {
+      mismatches.push(ctx.type)
+    })
+    dom.disableHydrationWarnings()
+    try {
+      dom.hydrateRoot(el, h(build(src, { v: [h('i', null, '1')] }, 'h()') as never, null))
+    } finally {
+      dom.enableHydrationWarnings()
+      off()
+    }
+    expect(shape(el)).toBe('<div><i>1</i><input class="in"><span>after</span></div>')
+    expect(el.querySelector('input')).toBe(input)
+    expect(input.value).toBe('typed')
+    expect(el.querySelector('span')).toBe(span)
+    expect(mismatches).toEqual(['tag'])
+  })
+
+  it('the skip never passes a comment: a tag found only inside a later range is not taken', async () => {
+    // The client's static `<span>a</span>` has no server node; the only
+    // `<span>` is inside the accessor's range. The skip stops at `<!--$-->`, the
+    // span mounts fresh, and the accessor still adopts its own `<span>r</span>`.
+    const server = 'const App = () => <div>{v}{() => <span>r</span>}</div>'
+    const client = 'const App = () => <div>{v}<span>a</span>{() => <span>r</span>}</div>'
+    const el = host()
+    el.innerHTML = await renderToString(
+      h(build(server, { v: [h('b', null, '1')] }, 'h()') as never, null) as never,
+    )
+    const r = el.querySelector('span')
+    dom.disableHydrationWarnings()
+    try {
+      dom.hydrateRoot(el, h(build(client, { v: [h('i', null, '1')] }, 'h()') as never, null))
+    } finally {
+      dom.enableHydrationWarnings()
+    }
+    expect(shape(el)).toBe('<div><i>1</i><span>a</span><span>r</span></div>')
+    expect(el.querySelectorAll('span')[1]).toBe(r)
+  })
 })
 
 describe('#4764 (3): a compiled literal slot sweeps the server nodes its value did not claim', () => {
@@ -345,6 +393,16 @@ const REFS = {
   clear: 'el.textContent = ""',
   prepend: 'el.prepend(document.createElement("u"))',
   append: 'el.append(document.createElement("u"))',
+  // Reads what h() shows a ref: its computed class and its mounted children.
+  reads: 'el.setAttribute("data-seen", el.className + el.children.length)',
+}
+
+// How the ref reaches the element: a literal `ref`, or inside a static or a
+// dynamic spread (`_applyProps` / `_bindSpread`).
+const FORMS = {
+  literal: (ref: string) => `ref={(el) => { if (el) ${ref} }}`,
+  spread: () => '{...sp}',
+  'dynamic spread': () => '{...mk()}',
 }
 
 // Every child shape a template can lower to: a static `_setChild`, a sole and
@@ -371,7 +429,12 @@ const BODIES = [
   '<s/><Comp/>',
 ]
 
-const refScope = () => ({
+const refFn = (ref: string) => new Function('el', `if (el) ${ref}`) as (el: Element | null) => void
+
+const refScope = (ref: string) => () => ({
+  sp: { ref: refFn(ref) },
+  mk: () => ({ ref: refFn(ref) }),
+  cls: () => 'c',
   v: 'str',
   vn: h('b', null, 'n'),
   vArr: [h('b', null, '1'), h('i', null, '2')],
@@ -379,56 +442,63 @@ const refScope = () => ({
   Comp: () => h('em', null, 'c'),
 })
 
-const refSrc = (ref: string, body: string) =>
-  `const App = () => <p><span ref={(el) => { if (el) ${ref} }}>${body}</span></p>`
+const refSrc = (form: keyof typeof FORMS, ref: string, body: string) =>
+  `const App = () => <p><span class={\`k \${cls()}\`} ${FORMS[form](ref)}>${body}</span></p>`
+
+const FORM_NAMES = Object.keys(FORMS) as (keyof typeof FORMS)[]
 
 describe("#4764 (4): a ref that changes its element runs after the element's children, on every path", () => {
-  for (const [name, ref] of Object.entries(REFS)) {
-    for (const body of BODIES) {
-      it(`${name} ${body}`, () => {
-        const out: string[] = []
-        for (const client of CLIENTS) {
-          const el = host()
-          const errors: string[] = []
-          const origError = console.error
-          console.error = (...a: unknown[]) => {
-            errors.push(a.map(String).join(' '))
-          }
-          try {
-            dom.mount(h(build(refSrc(ref, body), refScope(), client) as never, null), el)
-          } finally {
-            console.error = origError
-          }
-          expect(errors, client).toEqual([])
-          out.push(shape(el))
-        }
-        // compiled, compiled + tcc and h() agree.
-        expect(out[0]).toBe(out[2])
-        expect(out[1]).toBe(out[2])
-      })
-    }
-  }
-})
-
-describe('#4764 (5): a ref over adopted content sees what a fresh render gives it', () => {
-  for (const client of CLIENTS) {
+  for (const form of FORM_NAMES)
     for (const [name, ref] of Object.entries(REFS)) {
       for (const body of BODIES) {
-        // A static VNode or array as an element's SOLE child (`_setChild` into
-        // a template-empty element) is refused by the verifier and swapped to
-        // a clone on main; the swap report then sees the ref's change. That
-        // shape is #4599 / PR #4790, not this issue.
-        if (client !== 'h()' && (body === '{vn}' || body === '{vArr}')) continue
-        it(`${client}: ${name} ${body}`, async () => {
-          const src = refSrc(ref, body)
-          const r = await run(src, serverFor(client), client, refScope(), refScope)
-          expect(r.errors).toEqual([])
-          expect(r.mismatches).toEqual([])
-          expect(shape(r.hydrated)).toBe(shape(r.fresh))
+        it(`${form}: ${name} ${body}`, () => {
+          const out: string[] = []
+          for (const client of CLIENTS) {
+            const el = host()
+            const errors: string[] = []
+            const origError = console.error
+            console.error = (...a: unknown[]) => {
+              errors.push(a.map(String).join(' '))
+            }
+            try {
+              dom.mount(
+                h(build(refSrc(form, ref, body), refScope(ref)(), client) as never, null),
+                el,
+              )
+            } finally {
+              console.error = origError
+            }
+            expect(errors, client).toEqual([])
+            out.push(shape(el))
+          }
+          // compiled, compiled + tcc and h() agree.
+          expect(out[0]).toBe(out[2])
+          expect(out[1]).toBe(out[2])
         })
       }
     }
-  }
+})
+
+describe('#4764 (5): a ref over adopted content sees what a fresh render gives it', () => {
+  for (const client of CLIENTS)
+    for (const form of FORM_NAMES) {
+      for (const [name, ref] of Object.entries(REFS)) {
+        for (const body of BODIES) {
+          // A static VNode or array as an element's SOLE child (`_setChild` into
+          // a template-empty element) is refused by the verifier and swapped to
+          // a clone on main; the swap report then sees the ref's change. That
+          // shape is #4599 / PR #4790, not this issue.
+          if (client !== 'h()' && (body === '{vn}' || body === '{vArr}')) continue
+          it(`${client}, ${form}: ${name} ${body}`, async () => {
+            const src = refSrc(form, ref, body)
+            const r = await run(src, serverFor(client), client, refScope(ref)(), refScope(ref))
+            expect(r.errors).toEqual([])
+            expect(r.mismatches).toEqual([])
+            expect(shape(r.hydrated)).toBe(shape(r.fresh))
+          })
+        }
+      }
+    }
 
   const onScope = () => ({ on: signal(true) })
 
@@ -462,5 +532,6 @@ describe("#4764: the Chromium twin's strings are the real pipeline's output", ()
     expect(await html(cases.APPEND_REF_SRC, 'server', { on: signal(true) })).toBe(
       cases.APPEND_REF_SERVER,
     )
+    expect(await html(cases.INPUT_AFTER_SRC, 'h()', serverScope)).toBe(cases.INPUT_AFTER_H_SERVER)
   })
 })

@@ -291,22 +291,39 @@ function insertMarker(parent: Node, ref: Node | null, text: string): Comment {
  * A MARKER (an accessor's `<!--$-->`, a `<For>`'s `<!--pyreon-for-->`) cannot,
  * and without this it took the stale node as its own content: the For mounted
  * fresh over the rest of the parent, re-creating every later sibling. One slot,
- * compared by identity, cleared when the walk ends.
+ * compared by identity, emptied on every walk entry and exit (`setHydrating`).
  */
 let refused: ChildNode | null = null
 
 /**
- * When `domNode` is the node a divergence refused, skip to the marker `data`
- * that opens this child's server output, dropping the stale nodes before it.
- * The search stops at the first comment and at the range end: the stale run is
- * the previous child's server elements and text, and the server emits this
- * child's marker right after it.
+ * When `domNode` is the node a divergence refused, skip to where this child's
+ * server output starts, dropping the stale nodes before it: the marker comment
+ * `key` (an accessor's `$`, a `<For>`'s `pyreon-for`), or, with `tag`, the
+ * first element named `key`. The search never passes a comment or the range
+ * end: the stale run is the previous child's server elements and text, and this
+ * child's output follows it.
+ *
+ * It does not prove the target is THIS child's: a `$` after the stale run may
+ * be a later accessor's when the server rendered this one without markers
+ * (#4448), and the first `<b>` may be a later `<b>`'s. Either way the walk
+ * that follows repairs what differs, as it does for any divergence.
  */
-function skipRefused(domNode: ChildNode | null, anchor: Node | null, data: string): ChildNode | null {
+function skipRefused(
+  domNode: ChildNode | null,
+  anchor: Node | null,
+  key: string,
+  tag?: true,
+): ChildNode | null {
   if (domNode === null || domNode !== refused) return domNode
   let n: ChildNode | null = domNode
-  while (n !== null && n !== anchor && n.nodeType !== 8) n = n.nextSibling
-  if (n === null || n === anchor || (n as Comment).data !== data) return domNode
+  for (; n !== null && n !== anchor; n = n.nextSibling) {
+    if (n.nodeType === 8) {
+      if (tag || (n as Comment).data !== key) return domNode
+      break
+    }
+    if (tag && n.nodeType === 1 && (n as Element).localName === key) break
+  }
+  if (n === null || n === anchor) return domNode
   while (domNode !== n) {
     const nx: ChildNode | null = domNode.nextSibling
     domNode.remove()
@@ -651,7 +668,7 @@ function adoptReactiveRange(
     // parent from `end` on, later siblings included (#4764). Recoveries land
     // before `end`; the boundary then moves after them.
     const [disposeBindings, nextCursor] = hydrateChild(value, cursor, p, end, `${path} > reactive`)
-    p.insertBefore(a as ChildNode, end)
+    if ((a as ChildNode).nextSibling !== end) p.insertBefore(a as ChildNode, end)
     // Everything the walk consumed sits before the cursor it returned; a
     // snapshotted node at or after that cursor is unclaimed. Walk from the
     // STABLE start marker, not from the cursor the walk began at: a nested
@@ -1774,6 +1791,7 @@ function hydrateElement(
   // dev-rare. In production pass the parent's path ref through unchanged.
   const elPath =
     process.env.NODE_ENV !== 'production' ? `${path} > ${vnode.type as string}` : path
+  domNode = skipRefused(domNode, anchor, vnode.type as string, true)
 
   // Check if existing DOM node matches. `localName`, never `tagName.toLowerCase()`:
   // the HTML parser case-adjusts SVG names (`linearGradient`, `clipPath`,
@@ -1933,8 +1951,14 @@ function hydrateChildren(
  * cursor) and core's (`<Suspense>` renders its child, not its fallback, over
  * server content). Returns the previous state for the caller to RESTORE —
  * never reset to a constant: walks nest (islands, deferred lazy ranges).
+ *
+ * Every walk entry and exit (the root, a deferred lazy's and an async
+ * component's continuation) also empties `refused`: a refusal is consumed by
+ * the very next sibling, never across a walk boundary, so no walk can leave a
+ * detached server node pinned in it (#4764).
  */
 function setHydrating(v: boolean): boolean {
+  refused = null
   _setSuspenseHydrating(v)
   return _setHydrationActive(v)
 }
@@ -2557,7 +2581,6 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
     if (vnode != null && vnode !== false) sweepUnclaimed(container, residual)
     return cleanup
   } finally {
-    refused = null
     setHydrating(prevHydrationActive)
     setContextOwner(prevOwner)
     if (process.env.NODE_ENV !== 'production') _popPathRoot(container)
