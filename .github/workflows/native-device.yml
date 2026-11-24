@@ -1619,7 +1619,7 @@ jobs:
       - name: Count process-death signals in the Android logcat
         id: logcat-signals
         if: always()
-        run: bun scripts/native-android-logcat-signals.ts /tmp/android-logcat /tmp/android-logcat-findings
+        run: bun scripts/native-android-logcat-signals.ts /tmp/android-logcat "$GITHUB_WORKSPACE/android-logcat-findings"
 
       # Only the implicated processes' lines (2 MB per app at most), and only
       # when a signal was attributed to a test that does not cause it on
@@ -1629,7 +1629,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-logcat-findings
-          path: /tmp/android-logcat-findings/
+          path: android-logcat-findings/
           retention-days: 7
           if-no-files-found: ignore
 

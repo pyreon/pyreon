@@ -5,6 +5,9 @@
  *
  *   bun scripts/native-android-logcat-signals.ts [logcatDir] [findingsDir]
  *
+ * `findingsDir` defaults to `./android-logcat-findings` (the workspace on CI);
+ * it is created 0700 and each excerpt 0600.
+ *
  * Every Android emulator step in `native-device.yml` records its full logcat
  * to `/tmp/android-logcat/<app>.txt`. A failed run uploads it with the
  * reports, but a RECOVERED event leaves a green run and no artifact: since
@@ -40,7 +43,14 @@ const APP = /^com\.pyreon(?:[.:]|$)/
 const RENDERER = /^com\.(?:google\.)?android\.webview:sandboxed_process/
 
 /** `am_kill` reasons that are the orchestrator's own clean-up, not a death. */
-const ROUTINE_KILL = /finished inst|clear data|^stop |isolated not needed/
+function isRoutineKill(reason: string): boolean {
+  return (
+    reason.startsWith('stop ') ||
+    reason.includes('finished inst') ||
+    reason.includes('clear data') ||
+    reason.includes('isolated not needed')
+  )
+}
 
 /**
  * The workflow's per-app logcat capture limit (`head -c` in native-device.yml,
@@ -131,7 +141,7 @@ function processSignal(l: Line): { signal: string; pid: number } | null {
   if (event && (l.tag === 'am_anr' || l.tag === 'am_kill')) {
     const [, pid, name, reason] = event
     if (l.tag === 'am_anr') return APP.test(name!) ? { signal: 'app-anr', pid: Number(pid) } : null
-    if (ROUTINE_KILL.test(reason!)) return null
+    if (isRoutineKill(reason!)) return null
     if (APP.test(name!)) return { signal: 'app-killed', pid: Number(pid) }
     return RENDERER.test(name!) ? { signal: 'webview-renderer-killed', pid: Number(pid) } : null
   }
@@ -183,13 +193,22 @@ export function scanLogcat(app: string, text: string): SignalHit[] {
   return [...hits.values()].sort((a, b) => ORDER.indexOf(a.signal) - ORDER.indexOf(b.signal) || a.test.localeCompare(b.test))
 }
 
+/**
+ * The system's own lines about processes, kept in every excerpt: event-log
+ * tags starting `am_` (`am_kill`, `am_proc_died`, …) and the exact tags
+ * `ActivityManager` and `lowmemorykiller`.
+ */
+export function isSystemProcessTag(tag: string): boolean {
+  return tag.startsWith('am_') || tag === 'ActivityManager' || tag === 'lowmemorykiller'
+}
+
 /** The lines of the implicated processes, capped at [EXCERPT_LIMIT_BYTES]. */
 export function excerpt(text: string, hits: SignalHit[]): string {
   const pids = new Set(hits.flatMap((h) => h.pids))
   let out = ''
   for (const raw of text.split('\n')) {
     const l = parse(raw)
-    if (!l || !(pids.has(l.pid) || /^am_|lowmemorykiller|ActivityManager/.test(l.tag))) continue
+    if (!l || !(pids.has(l.pid) || isSystemProcessTag(l.tag))) continue
     if (out.length + raw.length + 1 > EXCERPT_LIMIT_BYTES) return `${out}[truncated at ${EXCERPT_LIMIT_BYTES} bytes]\n`
     out += `${raw}\n`
   }
@@ -211,8 +230,9 @@ export function scanDir(dir: string, findingsDir?: string): SignalHit[] {
         hits.push({ app, signal: 'capture-truncated', meaning: MEANING['capture-truncated']!, test: '(capture)', count: 1, first: `${n} is ${CAPTURE_LIMIT_BYTES} bytes`, pids: [] })
       }
       if (findingsDir && hits.length > 0) {
-        mkdirSync(findingsDir, { recursive: true })
-        writeFileSync(join(findingsDir, `${app}.txt`), excerpt(text, hits))
+        // Private to the runner user: the excerpt is app logcat.
+        mkdirSync(findingsDir, { recursive: true, mode: 0o700 })
+        writeFileSync(join(findingsDir, `${app}.txt`), excerpt(text, hits), { mode: 0o600 })
       }
 
       return hits
@@ -230,7 +250,8 @@ export function summary(hits: SignalHit[]): string {
 
 if (import.meta.main) {
   const dir = process.argv[2] ?? '/tmp/android-logcat'
-  const findings = process.argv[3] ?? '/tmp/android-logcat-findings'
+  // In the workspace (the workflow passes $GITHUB_WORKSPACE/android-logcat-findings), not the shared temp dir.
+  const findings = process.argv[3] ?? join(process.cwd(), 'android-logcat-findings')
   const hits = scanDir(dir, findings)
   for (const h of hits) {
     console.log(

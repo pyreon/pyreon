@@ -6,11 +6,11 @@
 // multi-pid logcat in the `-v threadtime` shape the workflow records, one
 // orchestrated test per pid.
 
-import { mkdtempSync, mkdirSync, readFileSync, truncateSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, statSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CAPTURE_LIMIT_BYTES, EXCERPT_LIMIT_BYTES, excerpt, scanDir, scanLogcat, summary } from '../../../../../scripts/native-android-logcat-signals'
+import { CAPTURE_LIMIT_BYTES, EXCERPT_LIMIT_BYTES, excerpt, isSystemProcessTag, scanDir, scanLogcat, summary } from '../../../../../scripts/native-android-logcat-signals'
 
 const at = (s: number) => `11-23 21:16:${String(s).padStart(2, '0')}.100`
 
@@ -45,6 +45,7 @@ const ORCHESTRATOR_KILLS = [
   line(8, 600, 'I', 'am_kill', '[0,5003,com.pyreon,0,stop com.pyreon due to finished inst]'),
   line(8, 600, 'I', 'am_kill', '[0,5003,com.pyreon,0,finished inst]'),
   line(8, 600, 'I', 'am_kill', '[0,5003,com.pyreon,0,clear data]'),
+  line(8, 600, 'I', 'am_kill', '[0,5003,com.pyreon,0,stop com.pyreon due to from pid 1234]'),
 ].join('\n')
 
 /** A real renderer loss in a test that does not cause one. */
@@ -117,6 +118,13 @@ describe('native-android-logcat-signals', () => {
     expect(signals(APP_CRASH)).toEqual([`webview-data-dir-lock ${t} ×1`, `app-fatal-exception ${t} ×1`, `app-anr ${t} ×1`])
   })
 
+  it('keeps the system process tags in an excerpt: am_* and two exact tags', () => {
+    for (const tag of ['am_kill', 'am_proc_died', 'ActivityManager', 'lowmemorykiller']) expect(isSystemProcessTag(tag)).toBe(true)
+    for (const tag of ['notam_x', 'XActivityManagerY', 'ActivityManagerX', 'mylowmemorykiller', 'chromium']) {
+      expect(isSystemProcessTag(tag)).toBe(false)
+    }
+  })
+
   it('does not fire for a normal test or the renderer Android ends after it', () => {
     expect(signals(NORMAL_TEST)).toEqual([])
   })
@@ -155,6 +163,9 @@ describe('native-android-logcat-signals', () => {
     const hits = scanDir(dir, findings)
     expect(new Set(hits.map((h) => h.app))).toEqual(new Set(['tasks']))
     const ex = readFileSync(join(findings, 'tasks.txt'), 'utf8')
+    // Private to the runner user.
+    expect(statSync(findings).mode & 0o777).toBe(0o700)
+    expect(statSync(join(findings, 'tasks.txt')).mode & 0o777).toBe(0o600)
     expect(ex).toContain('bundledSrcCannotLeaveTheAssetDirectory')
     expect(ex).not.toContain('PyreonWebViewRendererGoneTest')
     expect(summary(hits)).toContain('| tasks | webview-renderer-gone | com.pyreon.PyreonWebViewOriginScopeTest#bundledSrcCannotLeaveTheAssetDirectory | 2 |')
