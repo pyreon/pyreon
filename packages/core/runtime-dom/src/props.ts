@@ -2,6 +2,7 @@ import type { ClassValue, Props } from '@pyreon/core'
 import { cx, isElementEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, isUrlAttr } from '@pyreon/core'
 
 import { _rdLabelBinding, _rdNoteTarget, _renderBind, batch, renderEffect } from '@pyreon/reactivity'
+import { _ref } from './compiled-ref'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
 
 type Cleanup = () => void
@@ -151,13 +152,22 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
  * static spread, and `_bindSpread` (below) manages it for a dynamic spread —
  * so `<div {...props}>` is fully torn down on unmount.
  */
-export function applyPropsWithRef(el: Element, props: Props): Cleanup {
+export function applyPropsWithRef(el: Element, props: Props, deferRef?: 1): DeferredRefCleanup {
   // A nullish spread source is legal JSX (`{...(cond ? obj : null)}`,
   // `{...(x ?? undefined)}`) — `applyProps(el, null)` is itself a no-op
   // (`for…in null`), but the `.ref` read below would throw. Bail early.
   if (props == null) return NOOP_CLEANUP
   const cleanup = applyProps(el, props)
   const ref = (props as { ref?: RefCallback | RefObject }).ref
+  // DEFERRED REF (#4764): the compiler passes `1` and calls `.r()` from the
+  // template's ref tail, after the element's children and the template's
+  // attribute effects, where a literal `ref` runs too, as on the h() path.
+  // `.r()` applies the ref and returns its disposer.
+  if (deferRef) {
+    const c: DeferredRefCleanup = () => cleanup?.()
+    c.r = () => _ref(el, ref)
+    return c
+  }
   // ALWAYS return a function (never null): the compiler CAPTURES this as a
   // template disposer (`const __dN = _applyProps(...)`) and calls `__dN()`
   // unconditionally — the same contract as `_bind`/`_bindText`/`_bindDirect`. A
@@ -173,7 +183,10 @@ export function applyPropsWithRef(el: Element, props: Props): Cleanup {
   }
 }
 
-const NOOP_CLEANUP: Cleanup = () => {}
+/** A spread's cleanup; with a deferred ref, `.r()` applies the ref (#4764). */
+type DeferredRefCleanup = Cleanup & { r?: () => Cleanup }
+const NOOP_CLEANUP: DeferredRefCleanup = () => {}
+NOOP_CLEANUP.r = () => NOOP_CLEANUP
 type RefCallback = (el: Element | null) => void
 type RefObject = { current: Element | null }
 
@@ -191,17 +204,36 @@ type RefObject = { current: Element | null }
  * the compiled `_bind`. Result: a dynamic spread's reactive props AND its ref
  * are fully torn down on unmount, matching the static-spread path.
  */
-export function bindSpread(el: Element, getProps: () => Props): Cleanup {
+export function bindSpread(el: Element, getProps: () => Props, deferRef?: 1): DeferredRefCleanup {
   let inner: Cleanup | null = null
+  let ref: unknown
+  let refOff: Cleanup | null = null
+  // Not armed until `.r()` when the compiler defers the ref (#4764); armed,
+  // every re-apply re-wires the current object's ref, as before.
+  let armed = !deferRef
+  const wire = () => {
+    refOff?.()
+    refOff = _ref(el, ref)
+  }
   const stop = _renderBind(() => {
     inner?.()
-    inner = applyPropsWithRef(el, getProps())
+    const props = getProps()
+    inner = applyProps(el, props)
+    ref = (props as { ref?: unknown } | null)?.ref
+    if (armed) wire()
   })
   if (process.env.NODE_ENV !== 'production') _rdLabelBinding(stop, 'attr', el, '...spread', null)
-  return () => {
+  const d: DeferredRefCleanup = () => {
     stop()
     inner?.()
+    refOff?.()
   }
+  d.r = () => {
+    armed = true
+    wire()
+    return NOOP_CLEANUP
+  }
+  return d
 }
 
 /**

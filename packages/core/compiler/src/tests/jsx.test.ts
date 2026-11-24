@@ -700,7 +700,7 @@ describe('JSX transform — template emission', () => {
   test('emits _tpl for root spread with _applyProps in bind', () => {
     const result = t('<div {...props}><span /></div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('_applyProps(__root, props)')
+    expect(result).toContain('_applyProps(__root, props, 1)')
   })
 
   test('does NOT emit _tpl for spread on inner elements', () => {
@@ -1149,10 +1149,34 @@ describe('JSX transform — template emission', () => {
     const refB = at('_ref(__e0, b)')
     const refC = at('_ref(__e2, c)')
     const refA = at('_ref(__root, a)')
-    expect(refA).toBeGreaterThan(Math.max(slotAt, textAt, refB, refC))
-    // Post-order, as h(): a child's ref before its later siblings' lines.
-    expect(refB).toBeLessThan(slotAt)
-    expect(refC).toBeGreaterThan(textAt)
+    // One post-order tail after every other line: children's refs, then the
+    // parent's.
+    expect(refB).toBeGreaterThan(Math.max(slotAt, textAt))
+    expect(refC).toBeGreaterThan(refB)
+    expect(refA).toBeGreaterThan(refC)
+  })
+
+  test('refs run after the template\'s attribute effects (#4764)', () => {
+    // h() applies props before the ref, so a ref sees its computed class.
+    const result = t('<div ref={r} class={`a ${cls()}`} title={tip()}>{v}</div>')
+    const ref = result.indexOf('_ref(__root, r)')
+    expect(ref).toBeGreaterThan(-1)
+    for (const s of ['_bind(', 'renderEffect(', '_bindDirect(']) {
+      const i = result.indexOf(s)
+      if (i > -1) expect(ref, s).toBeGreaterThan(i)
+    }
+    expect(ref).toBeGreaterThan(result.indexOf('_setChild('))
+  })
+
+  test('a spread\'s ref is deferred to the ref tail, static and dynamic (#4764)', () => {
+    const stat = t('<p {...p}><s />{v}</p>')
+    expect(stat).toMatch(/const (__d\d+) = _applyProps\(__root, p, 1\)/)
+    const sd = /const (__d\d+) = _applyProps/.exec(stat)![1]
+    expect(stat.indexOf(`${sd}.r()`)).toBeGreaterThan(stat.indexOf('_setChildAt('))
+    const dyn = t('<p {...make()}><s />{v}</p>')
+    expect(dyn).toMatch(/const (__d\d+) = _bindSpread\(__root, \(\) => \(make\(\)\), 1\)/)
+    const dd = /const (__d\d+) = _bindSpread/.exec(dyn)![1]
+    expect(dyn.indexOf(`${dd}.r()`)).toBeGreaterThan(dyn.indexOf('_setChildAt('))
   })
 
   test('a ref runs after a deferred <select value> (#4764)', () => {
@@ -2883,7 +2907,8 @@ describe('JSX transform — template combined _bind for complex expressions', ()
     expect(result).toContain('_tpl(')
     // Applied ONCE at mount; disposer captured (was a bare `_applyProps(...)`
     // statement with `return null` — the cleanup discarded).
-    expect(result).toMatch(/const __d\d = _applyProps\(__root, props\)/)
+    // `1`: the spread's ref is deferred to the template's ref tail (#4764).
+    expect(result).toMatch(/const (__d\d) = _applyProps\(__root, props, 1\)[\s\S]*= \1\.r\(\)/)
     expect(result).not.toContain('return null')
   })
 })
