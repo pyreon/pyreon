@@ -52,6 +52,7 @@ describe('sole-watcher dispatch matches the queue', () => {
       log.length = 0
       write(mode, () => s.set(1))
       write(mode, () => s.set(2))
+
       return log
     })
     expect(logs[0]).toEqual(logs[1])
@@ -77,6 +78,7 @@ describe('sole-watcher dispatch matches the queue', () => {
         runs = 0
         // A later write must still reach it: nothing was left marked.
         write(mode, () => s.set(-100))
+
         return [first, runs]
       })
       expect(counts[0]).toEqual(counts[1])
@@ -115,6 +117,7 @@ describe('sole-watcher dispatch matches the queue', () => {
       // (a different value) and of `s` both still reach their subscribers.
       write(mode, () => t.set(5))
       write(mode, () => s.set(2))
+
       return { log, thrown: (thrown as Error | null)?.message, t: t() }
     })
     expect(results[0]).toEqual(results[1])
@@ -137,6 +140,7 @@ describe('sole-watcher dispatch matches the queue', () => {
         evals++
         const v = src()
         write(mode, () => ping.set(v))
+
         return v
       })
       src.set(1)
@@ -146,6 +150,7 @@ describe('sole-watcher dispatch matches the queue', () => {
       // evaluating. Had it linked to `c`, this write would make `c` stale.
       x.set(7)
       expect(c()).toBe(1)
+
       return { extra: evals - before, bound }
     })
     expect(results[0]).toEqual(results[1])

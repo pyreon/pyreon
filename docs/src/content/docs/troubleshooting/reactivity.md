@@ -60,6 +60,18 @@ Marking stops at an already-marked node, so in the graph core a flush cut short 
 
 ---
 
+### A write-path shortcut that is not the queue in disguise
+
+An unbatched write whose only subscriber is one watcher runs it in place (`graph.ts:deliver`) instead of pushing and draining. It is correct only because it leaves EXACTLY the state the queue would: the watcher is marked as marking marks it (DIRTY) and as the flush marks the entry it dispatches (RAN, not QUEUED), it runs inside the window with no tracking frame, what it queues runs after it through the same loop (`drainFrom`, where it counts as pass 0's first entry for `MAX_PASSES`), and a throw drops the rest with `settleDropped`, itself first. Any further shortcut must state which queue state it reproduces and test it against the queued path. Test: `write-dispatch.test.ts` (differential, unbatched vs `batch()`; each spec bisect-verified).
+
+---
+
+### Inferring a walk's level from its stack depth when pushes are conditional
+
+The single-walk `propagate` pushes a continuation only when one exists, so after level 0 descends from its last node a deeper level's continuation lands at the same depth and was marked DIRTY (a wasted re-evaluation below an unchanged node). The walk records that level 0 is exhausted (`zero = -1`). Caught by the differential fuzz; deterministic test in `write-dispatch.test.ts`.
+
+---
+
 ### Clearing a mark that was upgraded during its own resolution
 
 Resolving a node evaluates its dependencies, and an evaluated computed may WRITE a signal the node (or a computed between them) reads. That write upgrades the already-marked node from PENDING to DIRTY without queueing it, because a marked node is assumed queued. A walk that then concludes "not dirty" and clears only PENDING leaves the node DIRTY and unqueued, and since marking stops at marked nodes, it never runs again (B4).

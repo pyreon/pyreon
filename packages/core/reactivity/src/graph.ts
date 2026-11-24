@@ -366,28 +366,26 @@ export function propagate(head: Link): void {
     const sub: Subscriber = l.sub
     const next: Link | null = l.nextSub
     const f = sub._f
-    if ((f & (F_MARKED | F_DISPOSED)) === 0) {
-      if ((f & F_RUNNING) === 0 || isConfirmed(l, sub)) {
-        if ((f & F_COMPUTED) === 0) {
-          // An unmarked watcher is never queued (see "Marks" in the header).
-          sub._f = f | mark | F_QUEUED
-          _q.push(sub as QueueEntry)
-        } else {
-          sub._f = f | mark
-          if ((f & F_HAS_DIRECT) !== 0) enqueueNode(sub)
-          const s = (sub as ComputedNode)._subs
-          if (s !== null) {
-            if (next !== null) {
-              _st.p.push(next)
-              depth++
-            } else if (mark === F_DIRTY) zero = -1
-            mark = F_PENDING
-            l = s
-            continue
-          }
+    if ((f & (F_MARKED | F_DISPOSED)) === 0 && ((f & F_RUNNING) === 0 || isConfirmed(l, sub))) {
+      if ((f & F_COMPUTED) === 0) {
+        // An unmarked watcher is never queued (see "Marks" in the header).
+        sub._f = f | mark | F_QUEUED
+        _q.push(sub as QueueEntry)
+      } else {
+        sub._f = f | mark
+        if ((f & F_HAS_DIRECT) !== 0) enqueueNode(sub)
+        const s = (sub as ComputedNode)._subs
+        if (s !== null) {
+          if (next !== null) {
+            _st.p.push(next)
+            depth++
+          } else if (mark === F_DIRTY) zero = -1
+          mark = F_PENDING
+          l = s
+          continue
         }
       }
-    } else if (mark === F_DIRTY && (f & (F_DIRTY | F_DISPOSED)) === 0) {
+    } else if (mark === F_DIRTY && (f & (F_MARKED | F_DISPOSED)) === F_PENDING) {
       // Already PENDING (reached through another path, its subtree already
       // marked and its watchers queued): record that a source it READ changed.
       sub._f = f | F_DIRTY
@@ -816,6 +814,7 @@ export function deliver(subs: Link): void {
           _b.d = 0
         } else drainFrom(sub as WatcherNode, ok, prevSub)
       }
+
       return
     }
   }
