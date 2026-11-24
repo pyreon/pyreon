@@ -408,9 +408,6 @@ async function dispatch(): Promise<void> {
   await usageError(`Unknown command: ${command}`, 'run pyreon --help for the list of commands')
 }
 
-// `bun packages/tools/cli/src/index.ts …` (the repo's own scripts). The built
-// `lib/` never relies on this: the published bin calls `runPyreonCli`.
-if ((import.meta as { main?: boolean }).main === true) void runPyreonCli(process.argv.slice(2))
 
 // Library API — the programmatic surface (unchanged baseline). CLI-only
 // command handlers (info/upgrade/…) are intentionally NOT re-exported here:

@@ -182,7 +182,7 @@ describe('the gate is registered', () => {
   // because it too named dependency-fabric, hiding the missing help return.
   it('appears in doctor --help\'s gate list so it is discoverable', () => {
     const startedAt = Date.now()
-    const out = execFileSync('bun', [resolve(__dirname, '../index.ts'), 'doctor', '--help'], {
+    const out = execFileSync('bun', [resolve(__dirname, '../main.ts'), 'doctor', '--help'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       cwd: project(false),

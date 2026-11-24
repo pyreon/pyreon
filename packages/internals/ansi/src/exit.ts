@@ -1,4 +1,5 @@
 import type { Writable } from 'node:stream'
+import { isClosed, outputError, recordOutputError } from './output.ts'
 
 /**
  * Exit a command only after its output has left the process.
@@ -39,37 +40,79 @@ import type { Writable } from 'node:stream'
 export function exitAfterFlush(code: number): Promise<never> {
   process.exitCode = code
   const how = process.versions.bun === undefined ? 'write' : 'end'
+
   return new Promise<never>(() => {
-    afterStreamsFlush([process.stdout, process.stderr], how, () => process.exit(code))
+    afterStreamsFlush([process.stdout, process.stderr], how, () => {
+      reportLostOutput()
+      process.exit(code)
+    })
   })
 }
 
+/**
+ * A write error other than a closed reader (`EPIPE`) means output was lost.
+ * Say so on stderr when stderr still works; the exit code stays the
+ * command's own.
+ */
+function reportLostOutput(): void {
+  const err = outputError(process.stdout)
+  if (!err || (err as NodeJS.ErrnoException).code === 'EPIPE' || isClosed(process.stderr)) return
+  process.stderr.write(`[Pyreon] could not write the command's output: ${err.message}\n`)
+}
+
+/**
+ * How long `afterStreamsFlush` waits before giving up. Flushing finishes as
+ * soon as the reader takes the data, so this only fires when a runtime never
+ * reports the end of a write; then exiting late beats never exiting.
+ */
+export const FLUSH_FALLBACK_MS = 30_000
+
 /** The part of a `Writable` (`process.stdout`, `process.stderr`) this needs. */
-export type FlushableStream = Pick<Writable, 'destroyed' | 'writableFinished' | 'once' | 'write' | 'end'>
+export type FlushableStream = Pick<
+  Writable,
+  'destroyed' | 'writableFinished' | 'writable' | 'errored' | 'once' | 'write' | 'end'
+>
 
 /**
  * Call `done` once every stream has flushed what was queued on it (or
- * errored, or was already closed). `how` is the runtime's flush method (see
- * `exitAfterFlush`). Exported for tests.
+ * errored, or was already closed), or after `fallbackMs`. `how` is the
+ * runtime's flush method (see `exitAfterFlush`). A stream that already
+ * errored or stopped being writable counts as flushed: Bun's stdout after an
+ * `EPIPE` is `errored` and not writable but not `destroyed`, and `end()` on it
+ * never emits, which hung `bun pyreon check | head` forever. Exported for tests.
  * @internal
  */
-export function afterStreamsFlush(streams: readonly FlushableStream[], how: 'write' | 'end', done: () => void): void {
+export function afterStreamsFlush(
+  streams: readonly FlushableStream[],
+  how: 'write' | 'end',
+  done: () => void,
+  fallbackMs: number = FLUSH_FALLBACK_MS,
+): void {
   let pending = streams.length
+  let finished = false
+  const finish = (): void => {
+    if (finished) return
+    finished = true
+    clearTimeout(fallback)
+    done()
+  }
   const one = (): void => {
     pending--
-    if (pending === 0) done()
+    if (pending === 0) finish()
   }
+  const fallback = setTimeout(finish, fallbackMs)
   if (pending === 0) {
-    done()
+    finish()
     return
   }
   for (const s of streams) {
-    if (s.destroyed || s.writableFinished) {
+    if (s.writableFinished || isClosed(s)) {
       one()
       continue
     }
     let settled = false
-    const settle = (): void => {
+    const settle = (err?: Error | null): void => {
+      if (err) recordOutputError(s, err)
       if (settled) return
       settled = true
       one()
@@ -79,8 +122,8 @@ export function afterStreamsFlush(streams: readonly FlushableStream[], how: 'wri
     if (how === 'write') {
       s.write('', settle)
     } else {
-      s.once('finish', settle)
-      s.once('close', settle)
+      s.once('finish', () => settle())
+      s.once('close', () => settle())
       s.end()
     }
   }

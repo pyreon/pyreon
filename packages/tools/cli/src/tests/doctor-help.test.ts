@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 // The published bin: rebuild @pyreon/cli before running or bisecting this test.
-const BIN = resolve(__dirname, '../../lib/index.js')
+const BIN = resolve(__dirname, '../../bin/pyreon.js')
 let cwd: string
 
 beforeEach(() => {

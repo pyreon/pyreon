@@ -32,7 +32,7 @@
     "test:watch": "vitest",
     "lint": "oxlint .",
     "lint:browser-smoke": "bun scripts/check-browser-smoke.ts",
-    "lint:pyreon": "bun packages/tools/cli/src/index.ts doctor --only lint --ci",
+    "lint:pyreon": "bun packages/tools/cli/src/main.ts doctor --only lint --ci",
     "lint:readable": "oxlint -c scripts/oxlint-readable.jsonc",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",

@@ -13,7 +13,7 @@
  * receive 65,536 bytes of unterminated JSON on macOS.
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
@@ -115,6 +115,41 @@ describe.skipIf(!built || !hasBun)('under Bun, a piped report over 1 MB is whole
   }, 60_000)
 })
 
+/** Run the bin, close the reader after the first chunk (`| head`), and report how it ended. */
+function runEarlyClose(args: string[], runtime: string): Promise<{ code: number | null; hung: boolean }> {
+  return new Promise((done, reject) => {
+    const child = spawn(runtime, [BIN, ...args], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] })
+    let hung = false
+    const guard = setTimeout(() => {
+      hung = true
+      child.kill('SIGKILL')
+    }, 15_000)
+    child.stdout.once('data', () => child.stdout.destroy())
+    child.on('error', reject)
+    child.on('close', (code) => {
+      clearTimeout(guard)
+      done({ code, hung })
+    })
+  })
+}
+
+/**
+ * #4810 review: a reader that closes early (`bun pyreon check src | head`).
+ * Under Bun the stdout is then errored and not writable but not destroyed, and
+ * `end()` on it never emits, so `writeOut` + `exitAfterFlush` waited forever.
+ * Bisect: drop the `isClosed` check from `afterStreamsFlush` and rebuild; the
+ * Bun case is killed by the 15 s guard.
+ */
+describe.skipIf(!built)('a reader that closes early ends the command with its own exit code', () => {
+  for (const [name, runtime] of [['node', process.execPath], ...(hasBun ? [['bun', 'bun']] : [])] as const) {
+    it(`${name}: pyreon check | head`, async () => {
+      const r = await runEarlyClose(['check', 'src'], runtime)
+      expect(r.hung).toBe(false)
+      expect(r.code).toBe(1)
+    }, 30_000)
+  }
+})
+
 /**
  * The library entry runs nothing on import. It used to be the bin as well, so
  * `zero doctor` (which imports `doctor` from it) ran the whole `pyreon` CLI a
@@ -140,6 +175,15 @@ describe.skipIf(!built)('importing @pyreon/cli runs nothing', () => {
     expect(r.stdout).toBe('')
     expect(r.code).toBe(0)
   }, 30_000)
+
+  // #4810 review: not even behind `import.meta.main`. That guard ships in
+  // `lib/index.js` and is true again in a consumer that bundles `@pyreon/cli`
+  // into its own entry script. The repo's scripts use `src/main.ts`.
+  it('the built library entry contains no self-run of any kind', () => {
+    const lib = readFileSync(LIB, 'utf8')
+    expect(lib).not.toContain('import.meta.main')
+    expect(lib).not.toMatch(/^(?:void |await )?runPyreonCli\(/m)
+  })
 
   it('the bin still runs the CLI', async () => {
     const r = await runPiped(['--version'])

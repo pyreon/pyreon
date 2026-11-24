@@ -15,7 +15,7 @@ import { dirname, join } from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { afterStreamsFlush, exitAfterFlush } from '../exit'
-import { writeOut } from '../output'
+import { isClosed, outputError, writeOut } from '../output'
 
 const CHILD = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'flush-child.ts')
 const TOTAL = 3_000_000
@@ -225,5 +225,54 @@ describe('writeOut', () => {
     })
     failing.on('error', () => {})
     await writeOut('long enough', failing)
+  })
+})
+
+describe('a reader that closed early (#4810 review)', () => {
+  // Bun's stdout after an EPIPE: errored, not writable, not destroyed, and an
+  // end() on it never emits. Both helpers must treat it as flushed.
+  const bunAfterEpipe = () => {
+    const s = new Writable({ write: (_c, _e, cb) => cb() })
+    Object.defineProperty(s, 'errored', { value: Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }) })
+    Object.defineProperty(s, 'writable', { value: false })
+    s.end = (() => s) as typeof s.end
+
+    return s
+  }
+
+  it('afterStreamsFlush counts an errored, unwritable stream as flushed', () => {
+    for (const how of ['write', 'end'] as const) {
+      const done = vi.fn()
+      afterStreamsFlush([bunAfterEpipe()], how, done)
+      expect(done).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('writeOut skips a closed stream and records an error it waited through', async () => {
+    const closed = bunAfterEpipe()
+    const write = vi.spyOn(closed, 'write')
+    await writeOut('x', closed)
+    expect(write).not.toHaveBeenCalled()
+
+    const failing = new Writable({
+      highWaterMark: 1,
+      write(_chunk, _enc, cb) {
+        setTimeout(() => cb(Object.assign(new Error('write EIO'), { code: 'EIO' })), 5)
+      },
+    })
+    await writeOut('long enough', failing)
+    expect(outputError(failing)?.message).toBe('write EIO')
+    expect(isClosed(failing)).toBe(true)
+  })
+
+  it('a stream that never reports the end of a write still exits, after the fallback', async () => {
+    const silent = new Writable({ write: () => {} })
+    silent.write('stuck')
+    silent.end = (() => silent) as typeof silent.end
+    const done = vi.fn()
+    afterStreamsFlush([silent], 'end', done, 30)
+    expect(done).not.toHaveBeenCalled()
+    await new Promise((r) => setTimeout(r, 60))
+    expect(done).toHaveBeenCalledTimes(1)
   })
 })
