@@ -184,6 +184,8 @@ interface PyreonPluginOptions {
   lpih?: boolean | PyreonLpihOptions
   /** Dev throw-time fix printer for known-foot-gun error messages. Default: true in dev. */
   devErrorPrinter?: boolean
+  /** Dev-server `.pyreon/context.json` project map for AI assistants. Default: true in dev. */
+  projectContext?: boolean
   /**
    * Compile-time rocketstyle wrapper collapse. OFF by default (zero
    * behaviour change). `true` enables it with defaults; pass an object
@@ -236,6 +238,7 @@ interface PyreonCollapseOptions {
 | `islands`   | `boolean` | No                    | Auto-discover `island()` declarations + emit a virtual registry. Default: `true`. Set `false` to opt out of auto-registration (e.g., when using `hydrateIslands({ ... })` manually).    |
 | `lpih`      | `boolean \| object` | No          | Zero-config Live Program Inlay Hints dev-server bridge. Default: `true` in dev, no-op in production builds. See [`@pyreon/reactivity-lens`](/docs/lpih). |
 | `devErrorPrinter` | `boolean` | No               | Print a foot-gun's cause + fix at throw time in dev, matched against the `@pyreon/compiler/diagnose` catalog. Default: `true` in dev; zero cost in production. |
+| `projectContext` | `boolean` | No                | Write `<root>/.pyreon/context.json` (a project map for AI coding assistants) when the dev server starts, and refresh it on save. Default: `true` in dev; never in a build. Set `false` for a dev server whose root is not the user's project (a tool that ships its own app). |
 | `collapse`  | `boolean \| object` | No          | Compile-time rocketstyle wrapper collapse. Default: `false` (off — zero behaviour change). `true` enables with defaults; an object scopes `sources` / `components` / `provider` / `theme` / `mode`. See [Compile-time rocketstyle collapse](#compile-time-rocketstyle-collapse).                                       |
 | `ssrTemplate` | `boolean` | No                 | Compile-to-string SSR fast path. Default: auto-detected (on when `@pyreon/runtime-server` is resolvable). See [`@pyreon/runtime-server`'s Compile-to-String SSR Fast Path](/docs/runtime-server#compile-to-string-ssr-fast-path-ssrtemplate). |
 | `templatizeComponentChildren` | `boolean` | No     | Absorb component children into the enclosing `_tpl()` template (client build only). Default: `true`. |

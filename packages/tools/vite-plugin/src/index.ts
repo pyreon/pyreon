@@ -237,6 +237,15 @@ export interface PyreonPluginOptions {
    * pyreon({ devErrorPrinter: false })  // opt out
    */
   devErrorPrinter?: boolean
+  /**
+   * Dev-server project map for AI coding assistants: `<root>/.pyreon/context.json`,
+   * written at start and refreshed on save. Default `true` in dev; `false` to
+   * opt out — for a dev server whose root is not the user's project (a tool
+   * that ships its own app, like `atlas dev`, whose root sits inside an
+   * installed package: the map would describe the tool and land in its
+   * install directory). Never runs in a build.
+   */
+  projectContext?: boolean
 
   /**
    * P0 — opt-in compile-time rocketstyle wrapper collapse. `true` uses
@@ -805,6 +814,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   const lpihUserCfg: PyreonLpihOptions = lpihOpt && lpihOpt !== true ? lpihOpt : {}
   // Dev throw-time fix printer (Theme 6.1b) — on by default in dev.
   const devErrorPrinterEnabled = options?.devErrorPrinter !== false
+  const projectContextEnabled = options?.projectContext !== false
   const lpihIntervalMs = lpihUserCfg.intervalMs ?? 250
 
   // ── Compile-to-string SSR fast path (`ssrTemplate`) config ────────────────
@@ -1774,11 +1784,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         }, 1_000)
       }
 
-      // Generate .pyreon/context.json for AI tools on dev server start
-      void generateProjectContext(serverRoot, () => disposed)
-
-      // Debounced regeneration on file changes
-      server.watcher.on('change', onContextChange)
+      // Generate .pyreon/context.json for AI tools on dev server start, and
+      // regenerate it (debounced) on file changes.
+      if (projectContextEnabled) {
+        void generateProjectContext(serverRoot, () => disposed)
+        server.watcher.on('change', onContextChange)
+      }
 
       // LPIH auto-bridge — accepts POST /__pyreon_lpih__ from the browser
       // client and atomically writes the cache file the LSP auto-discovers.
