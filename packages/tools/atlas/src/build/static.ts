@@ -36,6 +36,7 @@ import { componentKey, type ComponentIntelligence } from '../core'
 import { atlasDevPlugin, builtinMethods, type RpcMethod } from '../dev/plugin'
 import { catalogIds, type CatalogEntrySource } from '../dev/catalog-module'
 import { appDir, loadZeroStack, missingStackMessage, projectDirs, PYREON_OPTIONS, zeroOptions } from '../dev/zero-app'
+import { loadProjectViteConfig, projectConfigFields, tailwindSourcePlugin } from '../dev/project-vite'
 import { BAKED_RPC_DIR, bakeRpc, splitBakedRpc } from './bake'
 import { collectEntries } from './entries'
 
@@ -254,6 +255,8 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   }
   const stack = await loadZeroStack('build')
   const app = appDir()
+  const projectVite = await loadProjectViteConfig(root, 'build')
+  if (projectVite.warning) log(`atlas build: ${projectVite.warning}`)
   // Realpath'd like the app root (see `appDir`): the html plugin relativizes
   // the output against the root, and a symlinked half escapes upward. The
   // leaf may not exist yet, so its existing parent is the one resolved.
@@ -275,12 +278,13 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
       root: app,
       base,
       configFile: false,
-      // The project's `.env*`, `public/` (copied into the site) and PostCSS
-      // config, as `atlas dev` reads them — see `projectDirs`.
+      // The project's `.env*`, `public/` (copied into the site) and Atlas's
+      // cache dir, as `atlas dev` uses them — see `projectDirs`.
       ...projectDirs(root),
-      // The project's own `resolve.alias`: without it a `~/…` import in a
-      // component fails the build that `atlas dev` serves fine.
-      ...(alias.length > 0 ? { resolve: { alias: [...alias] } } : {}),
+      // The project's own vite config (`resolve` with the scan's alias —
+      // without it a `~/…` import fails the build `atlas dev` serves fine —
+      // `css`, `define`, `envPrefix`). See `../dev/project-vite`.
+      ...projectConfigFields(projectVite, root, { alias: [...alias] }),
       logLevel: 'warn',
       plugins: [
         // Resolve the framework for Atlas's generated modules. They are
@@ -292,6 +296,9 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
         // `/` plus one page per component, each the client shell (every route
         // is `spa`, see `app/src/routes/_layout.tsx`).
         stack.zero(zeroOptions({ base, paths: ['/', ...ids.map((id) => `/${id}`)] })),
+        // The project's own plugins, minus its `pyreon()` / `zero()`.
+        tailwindSourcePlugin(root),
+        ...projectVite.plugins,
         atlasDevPlugin({
           root,
           // The SCANNED directory, not the project root — groups are derived

@@ -21,10 +21,11 @@
  * generated entry's `@pyreon/*` imports resolve the way they do in an installed
  * project. Nothing here reads or writes the example it borrows from.
  */
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { appDir } from '../../dev/zero-app'
 import { buildStatic } from '../static'
 
 /** An installed project whose `node_modules` the fixtures borrow, read-only. */
@@ -75,6 +76,29 @@ const CONFIG = [
   '',
 ].join('\n')
 
+
+/** A project vite config with its OWN plugin and define — no imports, so it loads from a bare temp dir. */
+const PROJECT_VITE_CONFIG = [
+  'export default {',
+  '  define: { __PROJECT_DEFINE__: JSON.stringify("defined-by-project") },',
+  '  plugins: [{',
+  "    name: 'project-mark',",
+  '    transform(code, id) {',
+  "      return id.includes('Marked') ? code.replace('__PROJECT_MARK__', 'transformed-by-project-plugin') : null",
+  '    },',
+  '  }],',
+  '}',
+  '',
+].join('\n')
+
+const MARKED = [
+  'declare const __PROJECT_DEFINE__: string',
+  'export function Marked(props: { label?: string }) {',
+  "  return `${props.label ?? ''} __PROJECT_MARK__ ${__PROJECT_DEFINE__}`",
+  '}',
+  '',
+].join('\n')
+
 afterEach(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true })
   roots = []
@@ -107,6 +131,41 @@ describe('the emitted site', () => {
     // Nothing went wrong, so nothing was said. Without this the degradation
     // specs below would pass against a build that logs unconditionally.
     expect(logs).toEqual([])
+  }, 300_000)
+
+  it("applies the PROJECT's own vite plugins and define to the built site", async () => {
+    // Atlas runs its app with `configFile: false`, so a project whose
+    // components need its own plugin (Tailwind v4's `@tailwindcss/vite`, a
+    // custom transform) shipped them untransformed.
+    const root = fixture({ components: false })
+    writeFileSync(join(root, 'vite.config.ts'), PROJECT_VITE_CONFIG, 'utf8')
+    writeFileSync(join(root, 'src', 'widgets', 'Marked.tsx'), MARKED, 'utf8')
+    await buildStatic({ cwd: root, out: 'dist' })
+    const js = readdirSync(join(root, 'dist', 'assets'))
+      .filter((f) => f.endsWith('.js'))
+      .map((f) => readFileSync(join(root, 'dist', 'assets', f), 'utf8'))
+      .join('\n')
+    expect(js).toContain('transformed-by-project-plugin')
+    expect(js).toContain('defined-by-project')
+    expect(js).not.toContain('__PROJECT_MARK__')
+  }, 300_000)
+
+  it('builds with the workbench app directory READ-ONLY — nothing is written into the install', async () => {
+    // zero wrote its temporary SSG entry into the Vite root, which is the app
+    // inside the Atlas install: a read-only install (Yarn PnP, a Nix store)
+    // failed, and a writable one got a file in node_modules. It now goes to
+    // the project's cache dir.
+    const root = fixture()
+    const app = appDir()
+    const before = readdirSync(app).sort()
+    chmodSync(app, 0o555)
+    try {
+      const result = await buildStatic({ cwd: root, out: 'dist' })
+      expect(result.routedPages).toBe(1)
+    } finally {
+      chmodSync(app, 0o755)
+    }
+    expect(readdirSync(app).sort()).toEqual(before)
   }, 300_000)
 
   it("copies the PROJECT's public/ into the site", async () => {

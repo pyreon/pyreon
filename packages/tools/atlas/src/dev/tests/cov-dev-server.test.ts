@@ -25,6 +25,29 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { startDevServer, type DevServerHandle } from '../server'
 
+
+/** A project vite config with its OWN plugin and define — no imports, so it loads from a bare temp dir. */
+const PROJECT_VITE_CONFIG = [
+  'export default {',
+  '  define: { __PROJECT_DEFINE__: JSON.stringify("defined-by-project") },',
+  '  plugins: [{',
+  "    name: 'project-mark',",
+  '    transform(code, id) {',
+  "      return id.includes('Marked') ? code.replace('__PROJECT_MARK__', 'transformed-by-project-plugin') : null",
+  '    },',
+  '  }],',
+  '}',
+  '',
+].join('\n')
+
+const MARKED = [
+  'declare const __PROJECT_DEFINE__: string',
+  'export function Marked(props: { label?: string }) {',
+  "  return `${props.label ?? ''} __PROJECT_MARK__ ${__PROJECT_DEFINE__}`",
+  '}',
+  '',
+].join('\n')
+
 /** What only the workbench app's page carries: its client entry. */
 const SHELL = '/src/entry-client.ts'
 
@@ -177,6 +200,24 @@ describe('the workbench app page', () => {
       expect(await asset.text()).toBe('from the project public dir\n')
       const css = await fetch(`http://localhost:${port}/@fs${realpathSync(root)}/src/look.css?direct`)
       expect(await css.text()).toContain('atlas-postcss-ran')
+    } finally {
+      await handle?.close()
+    }
+  }, 120_000)
+
+  it("applies the PROJECT's own vite plugins and define to its components", async () => {
+    const root = fixture({ viteConfig: PROJECT_VITE_CONFIG })
+    writeFileSync(join(root, 'src', 'widgets', 'Marked.tsx'), MARKED, 'utf8')
+    const port = await freePort()
+    let handle: DevServerHandle | undefined
+    try {
+      handle = await startDevServer({ cwd: root, port })
+      const mod = await (await fetch(`http://localhost:${port}/@fs${realpathSync(root)}/src/widgets/Marked.tsx`)).text()
+      expect(mod).toContain('transformed-by-project-plugin')
+      // Vite delivers a non-builtin `define` to the dev client through its env
+      // module rather than by rewriting each file.
+      const env = await (await fetch(`http://localhost:${port}/@vite/env`)).text()
+      expect(env).toContain('defined-by-project')
     } finally {
       await handle?.close()
     }

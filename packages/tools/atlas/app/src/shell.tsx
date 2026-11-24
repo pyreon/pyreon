@@ -13,8 +13,10 @@
  * the scanned project does not declare `@pyreon/atlas`, so a bare self
  * specifier is not guaranteed to resolve from here.
  */
+import { onMount } from '@pyreon/core'
 import { useRoute, useRouter } from '@pyreon/router'
 import { catalog } from 'virtual:atlas/catalog'
+import { installComponentHmr } from './hot'
 import { title } from 'virtual:atlas/shell'
 import type { WorkbenchRoute } from '../../src/ui'
 import { Workbench } from '../../src/ui'
@@ -31,6 +33,12 @@ export default function AtlasShell() {
       void router.replace(query ? `${path}?${query}` : path)
     },
   }
+
+  // Dev only — a build folds this away with the module it imports. After
+  // MOUNT: every router created while the workbench mounts (the preview's own
+  // memory router among them) claims the global HMR hook as it is created
+  // ("last router wins"), so a boundary installed earlier was overwritten.
+  if (import.meta.env.DEV) onMount(() => installComponentHmr())
 
   return <Workbench catalog={catalog} title={title} route={route} />
 }

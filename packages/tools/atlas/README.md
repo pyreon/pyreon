@@ -116,16 +116,18 @@ components, many of which need a browser, so it is never server-rendered.
 zero's router owns the URL: `/<component>/` (the trailing slash is kept, since each
 page is a `<component>/index.html` directory), and a link naming a component that
 no longer exists, or a path with extra segments, lands on the first component.
-Your project's `public/`, `.env` files and PostCSS config apply as they do in your
-own app; your own Vite plugins do not (Atlas reads only `resolve.alias` from your
-Vite config).
+Your project's `vite.config.*` applies: its plugins (Tailwind v4's
+`@tailwindcss/vite`, a custom transform), `resolve`, `css`, `define` and
+`envPrefix`, minus its own `pyreon()` and `zero()`, which Atlas runs itself. So do
+your `public/`, `.env` files and PostCSS config. Tailwind v4 scans for class names
+from Vite's root, which is the workbench app, so Atlas adds your project as an
+`@source` to a CSS file that imports `tailwindcss` without its own `source(...)`.
 
-Saving a scanned file re-derives the catalog in a child process. When that changes
-the catalog (a prop, a variant, the config, a new component) Atlas reloads the
-page. An edit to a component's body leaves the catalog as it was, so Atlas adds
-no reload of its own, but Vite's update of the edited module currently travels up
-to the workbench shell and the page still reloads. Your control edits survive it,
-because they are in the URL.
+Editing a component's body is an in-place update: the workbench swaps in the
+re-evaluated module and re-mounts the preview, keeping the selection and every
+control value. Saving a scanned file also re-derives the catalog in a child
+process; when that changes the catalog (a prop, a variant, the config, a new
+component), the page reloads with it.
 
 A previewed component gets an empty router of its own: `useRoute()` and
 `useRouter()` inside it never see the workbench's router.

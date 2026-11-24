@@ -819,6 +819,67 @@ test.describe('atlas dev — provenance, "added" and the Lens fix (#4440)', () =
 })
 
 /**
+ * A component edit is an IN-PLACE update: the workbench swaps the re-evaluated
+ * module into the catalog and re-mounts only the preview (`app/src/hot.ts`).
+ * It used to propagate to the app shell and reload the page. Own fixture and
+ * server, like the block above: the edit must not disturb the shared one.
+ */
+test.describe('atlas dev — component edits are in-place HMR', () => {
+  const ROOT = resolve(process.cwd())
+  const BIN = resolve(ROOT, 'packages/tools/atlas/bin/atlas.js')
+  const FX = join(realpathSync(mkdtempSync(join(tmpdir(), 'atlas-hmr-'))), 'ws')
+  const PORT = 5464
+  let server: ChildProcess | undefined
+
+  test.afterAll(() => {
+    server?.kill('SIGKILL')
+    rmSync(join(FX, '..'), { recursive: true, force: true })
+  })
+
+  test('editing a component body updates the canvas without a reload, keeping control edits', async ({ page }) => {
+    test.setTimeout(240_000)
+    mkdirSync(join(FX, 'src'), { recursive: true })
+    mkdirSync(join(FX, 'node_modules/@pyreon'), { recursive: true })
+    writeFileSync(join(FX, 'package.json'), JSON.stringify({ name: 'hmr-fixture', private: true, type: 'module' }))
+    for (const [name, rel] of [
+      ['core', 'packages/core/core'],
+      ['reactivity', 'packages/core/reactivity'],
+      ['runtime-dom', 'packages/core/runtime-dom'],
+    ] as const) {
+      symlinkSync(resolve(ROOT, rel), join(FX, 'node_modules/@pyreon', name), 'dir')
+    }
+    const card = join(FX, 'src/Card.tsx')
+    const source = (v: string) =>
+      `export function Card(props: { title?: string }) {\n  return <h2 data-testid="hmr-card">${v}:{props.title}</h2>\n}\n`
+    writeFileSync(card, source('v1'))
+
+    const logs: string[] = []
+    server = spawn('node', [BIN, 'dev', FX, `--port=${PORT}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+    server.stdout?.on('data', (d) => logs.push(String(d)))
+    server.stderr?.on('data', (d) => logs.push(String(d)))
+    await expect
+      .poll(async () => (await fetch(`http://localhost:${PORT}/`).catch(() => null))?.ok ?? false, {
+        timeout: 120_000,
+      })
+      .toBe(true)
+
+    // A control edit, carried in the link.
+    const args = encodeURIComponent(JSON.stringify({ title: 'Edited' }))
+    await page.goto(`http://localhost:${PORT}/card/?args=${args}`)
+    const preview = page.getByTestId('canvas-preview').getByTestId('hmr-card')
+    await expect(preview, logs.join('').slice(-1200)).toHaveText('v1:Edited', { timeout: 30_000 })
+    await page.evaluate(() => {
+      ;(window as { __hmrMarker?: number }).__hmrMarker = 1
+    })
+
+    writeFileSync(card, source('v2'))
+    await expect(preview).toHaveText('v2:Edited', { timeout: 30_000 })
+    // The same document: a reload would have dropped the marker.
+    expect(await page.evaluate(() => (window as { __hmrMarker?: number }).__hmrMarker)).toBe(1)
+  })
+})
+
+/**
  * zero's router owns the component URL in dev exactly as on the built site:
  * a stale id or extra segments land on a working component, the trailing
  * slash is kept, and a previewed component never sees the workbench router.

@@ -29,6 +29,7 @@ import { scanInChild } from './rescan'
 import type { ComponentIntelligence } from '../core'
 import { atlasDevPlugin, type RpcMethod } from './plugin'
 import { appDir, loadZeroStack, missingStackMessage, projectDirs, PYREON_OPTIONS, zeroOptions } from './zero-app'
+import { loadProjectViteConfig, projectConfigFields, tailwindSourcePlugin } from './project-vite'
 import type { CatalogEntrySource } from './catalog-module'
 
 export interface DevServerOptions {
@@ -147,6 +148,8 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   }
   const stack = await loadZeroStack('dev')
   const app = appDir()
+  const projectVite = await loadProjectViteConfig(root, 'serve')
+  if (projectVite.warning) process.stderr.write(`[Pyreon] atlas dev: ${projectVite.warning}\n`)
 
   // Explicit option wins over the config, which wins over the default — the
   // same precedence `atlas build --title` follows, so a project cannot end up
@@ -164,19 +167,17 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     // project is reached by absolute path — see `./zero-app`.
     root: app,
     configFile: false,
-    // The project's `.env*`, `public/` and PostCSS config — see `projectDirs`.
+    // The project's `.env*`, `public/` and Atlas's cache dir — see `projectDirs`.
     ...projectDirs(root),
-    // The project's own `resolve.alias`, put back after `configFile: false`
-    // removed it. Without this a single `~/components/…` import fails to
-    // resolve and the dev overlay covers the WHOLE workbench, not just that
-    // component's card (#2744).
+    // The project's own vite config — its `resolve`, `css` (PostCSS searched
+    // from the project), `define`, `envPrefix` — with `resolve.alias` as the
+    // scan resolved it (put back after `configFile: false` removed it: without
+    // it a single `~/components/…` import fails to resolve and the overlay
+    // covers the WHOLE workbench, #2744). See `./project-vite`.
     //
     // `dedupe` pins every `@pyreon/*` to one copy however the import chain
     // reaches it (direct, transitive, from a workspace package's own link).
-    resolve: {
-      ...(alias.length > 0 ? { alias: [...alias] } : {}),
-      ...(singletons.length > 0 ? { dedupe: singletons } : {}),
-    },
+    ...projectConfigFields(projectVite, root, { alias: [...alias], dedupe: singletons }),
     // An explicit port is a requirement; the default is a preference. Failing
     // because 5210 is taken — by another workbench, say — made a second
     // `atlas dev` refuse to start with nothing else wrong.
@@ -191,11 +192,6 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         allow: [...new Set([vite.searchForWorkspaceRoot(realpathSync(root)), vite.searchForWorkspaceRoot(app)])],
       },
     },
-    // Its own dependency cache. Sharing the project's `node_modules/.vite`
-    // made the workbench and the project's own dev server invalidate each
-    // other on every start ("Re-optimizing dependencies because vite config
-    // has changed"), a full re-optimize for both.
-    cacheDir: resolve(root, 'node_modules', '.cache', 'atlas-vite'),
     // No crawl: the app's entry reaches the catalog through virtual modules
     // the optimizer's scanner cannot load, and the project's own `index.html`
     // belongs to the project, not the workbench.
@@ -216,6 +212,11 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
       workspaceResolvePlugin(root),
       stack.pyreon(PYREON_OPTIONS),
       stack.zero(zeroOptions({ port: options.port ?? 5210 })),
+      // The project's own plugins (Tailwind v4, a custom transform), minus its
+      // own `pyreon()` / `zero()` — see `./project-vite`.
+      // Before them: Tailwind's source scan starts at the project, not the app.
+      tailwindSourcePlugin(root),
+      ...projectVite.plugins,
       atlasDevPlugin({
         root,
         scanRoot,

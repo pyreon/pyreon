@@ -140,19 +140,23 @@ export const PYREON_OPTIONS = { devErrorPrinter: false, projectContext: false } 
  * - `envDir`: the project's `.env*` files.
  * - `publicDir`: the project's `public/` — a component referencing
  *   `/logo.svg` must find it in `atlas dev` and in the built site.
- * - `css.postcss`: where the PostCSS config (Tailwind v3, autoprefixer, …) is
- *   searched from; a string is a directory, searched upward.
+ * - `cacheDir`: Atlas's own dependency cache inside the PROJECT. Sharing the
+ *   project's `node_modules/.vite` made the workbench and the project's own
+ *   dev server invalidate each other on every start; the default
+ *   (`<root>/node_modules/.vite`) would sit inside the Atlas install. zero
+ *   also writes its temporary build entries here, so a build never writes
+ *   into the (possibly read-only) installed package.
  *
- * Not here, because they are not root-relative: `json`, `assetsInclude`, the
- * per-file tsconfig lookup. Not inherited at all: the project's own Vite
- * PLUGINS (a Tailwind v4 `@tailwindcss/vite`, say) — Atlas reads only
- * `resolve.alias` from the project's vite config (see `ScanResult.alias`).
+ * The PostCSS config search (`css.postcss`) and everything the project's own
+ * `vite.config.*` contributes (plugins, `resolve`, `css`, `define`,
+ * `envPrefix`) come from `./project-vite`. Not root-relative, so not here:
+ * `json`, `assetsInclude`, the per-file tsconfig lookup.
  */
 export function projectDirs(projectRoot: string): Record<string, unknown> {
   return {
     envDir: projectRoot,
     publicDir: join(projectRoot, 'public'),
-    css: { postcss: projectRoot },
+    cacheDir: join(projectRoot, 'node_modules', '.cache', 'atlas-vite'),
   }
 }
 
