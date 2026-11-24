@@ -63,3 +63,51 @@ describe('a colon after `?` or `#` is never a placeholder', () => {
     }
   }
 })
+
+// path + query + FRAGMENT: a `query` option goes BEFORE a `#fragment` written
+// in the template, as the web's `buildUrl` does — appended after it, the query
+// became part of the fragment and never reached the server (`/doc#x?a=1`).
+describe('the query option lands before a template fragment', () => {
+  const CASES: [template: string, query: Record<string, string>][] = [
+    ['/doc#x', { a: '1' }],
+    ['/doc?v=2#x:y', { a: '1' }],
+    ['/doc?v=2', { a: '1' }],
+    ['/doc#frag?not=query', { a: '1' }],
+  ]
+  for (const target of ['swift', 'kotlin'] as const) {
+    for (const [template, query] of CASES) {
+      it(`${target}: ${template} + query bakes the web's URL`, () => {
+        const out = transform(src(template, `{ query: ${JSON.stringify(query)} }`), { target })
+        expect(out.warnings).toEqual([])
+        const web = buildUrl('https://api.test', template, undefined, query)
+        expect(web.indexOf('a=1')).toBeLessThan(web.includes('#') ? web.indexOf('#') : Infinity)
+        expect(emittedUrl(out.code)).toBe(web)
+      })
+    }
+
+    it(`${target}: a RUNTIME query is built before the fragment too`, () => {
+      const code = transform(
+        `
+import { createHttp } from '@pyreon/http'
+import { useQuery } from '@pyreon/query'
+import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+const api = createHttp({ baseUrl: 'https://api.test' })
+const op = api.endpoint('GET /doc?v=2#x')
+export function S() {
+  const p = signal('1')
+  const u = useQuery<{ id: string }>(() => op.query({ query: { a: p() } }))
+  return <Stack><Text>{u.data()?.id ?? ''}</Text></Stack>
+}
+`,
+        { target },
+      ).code
+      const q = code.indexOf('PyreonURL.query(')
+      expect(q).toBeGreaterThan(-1)
+      // The fragment follows the runtime query call in the emitted URL template.
+      const line = code.slice(code.lastIndexOf('\n', q), code.indexOf('\n', q))
+      expect(line.indexOf('#x')).toBeGreaterThan(line.indexOf('PyreonURL.query('))
+      expect(line).toContain('https://api.test/doc?v=2')
+    })
+  }
+})

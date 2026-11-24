@@ -232,3 +232,26 @@ describe('applyPathParams — path part only', () => {
     expect(pathPartEnd('https://h.io:8080/a?x')).toBe(19)
   })
 })
+
+// path + query + FRAGMENT: the `query` option goes before a template fragment —
+// after it, the query was part of the fragment and never reached the server.
+describe('buildUrl — query before fragment', () => {
+  it('inserts the query before a `#fragment`', () => {
+    expect(buildUrl(undefined, '/doc#x', undefined, { a: 1 })).toBe('/doc?a=1#x')
+    expect(buildUrl('https://h.io', '/doc#x:y', undefined, { a: 1 })).toBe('https://h.io/doc?a=1#x:y')
+  })
+
+  it('merges with an existing `?` in the template, still before the fragment', () => {
+    expect(buildUrl(undefined, '/doc?v=2#x', undefined, { a: 1 })).toBe('/doc?v=2&a=1#x')
+    expect(buildUrl(undefined, '/doc?v=2', undefined, { a: 1 })).toBe('/doc?v=2&a=1')
+  })
+
+  it('a `?` inside the fragment is not a query', () => {
+    expect(buildUrl(undefined, '/doc#frag?not=query', undefined, { a: 1 })).toBe('/doc?a=1#frag?not=query')
+  })
+
+  it('leaves a fragment alone when there is no query', () => {
+    expect(buildUrl(undefined, '/doc#x', undefined, undefined)).toBe('/doc#x')
+    expect(buildUrl(undefined, '/doc#x', undefined, { a: undefined })).toBe('/doc#x')
+  })
+})

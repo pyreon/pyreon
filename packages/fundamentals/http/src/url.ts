@@ -229,7 +229,15 @@ export function buildUrl(
   const joined = joinUrl(baseUrl, withParams)
   const qs = buildQuery(query, styles)
   if (!qs) return joined
-  return joined.includes('?') ? `${joined}&${qs.slice(1)}` : `${joined}${qs}`
+  // path + query + FRAGMENT: the query goes before a `#fragment` written in the
+  // template — appended after it, it became part of the fragment, which is
+  // never sent, so the server saw no query at all (`/doc#x?a=1`). A path
+  // param VALUE can never contribute a `#` (`encodePathParam` encodes it).
+  const hash = joined.indexOf('#')
+  const head = hash === -1 ? joined : joined.slice(0, hash)
+  const fragment = hash === -1 ? '' : joined.slice(hash)
+
+  return (head.includes('?') ? `${head}&${qs.slice(1)}` : `${head}${qs}`) + fragment
 }
 
 /**

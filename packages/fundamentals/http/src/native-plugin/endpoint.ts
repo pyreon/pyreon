@@ -727,7 +727,13 @@ function resolveEndpointParts(
     quasis.push('')
   }
   if (bailed) return null
-  const tail = pathPart.slice(cursor) + pathTemplateTail(def.pathTemplate, pathEnd)
+  // The `#fragment` is held back and appended AFTER the query below — the web's
+  // `buildUrl` order (path + query + fragment), so a `query` option never lands
+  // inside the fragment, where it would never be sent.
+  const hashAt = def.pathTemplate.indexOf('#')
+  const queryEnd = hashAt === -1 ? def.pathTemplate.length : hashAt
+  const fragment = pathTemplateTail(def.pathTemplate, queryEnd)
+  const tail = pathPart.slice(cursor) + pathTemplateTail(def.pathTemplate.slice(0, queryEnd), pathEnd)
   literalPath += tail
   quasis[quasis.length - 1] += tail
   const path = literalPath
@@ -783,6 +789,8 @@ function resolveEndpointParts(
     url += joined
     quasis[quasis.length - 1] += joined
   }
+  url += fragment
+  quasis[quasis.length - 1] += fragment
 
   // --- headers -----------------------------------------------------------
   // Mirrors the web's `mergeHeaders(declared, call)`: with no per-call headers

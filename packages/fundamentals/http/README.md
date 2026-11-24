@@ -106,6 +106,9 @@ or `#`. A colon in a query string or fragment you write out yourself
 declares no parameter, on the web and in the native lowering alike; structured
 query values belong in the `query` option. Inside the path, `\\:` writes a
 literal colon (`/v1/:name\\:cancel`).
+A `query` option is merged into the written query and placed before any
+`#fragment`: `api.get('/doc?v=2#x', { query: { a: 1 } })` requests
+`/doc?v=2&a=1#x`.
 
 ## Request bodies
 
