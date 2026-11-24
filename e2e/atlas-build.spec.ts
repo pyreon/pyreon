@@ -164,7 +164,7 @@ test.describe('atlas build — static site', () => {
  * the failure is a blank page with no error a unit test would see.
  */
 test.describe('atlas build — under a subdirectory base', () => {
-  const SUB = 'http://localhost:5219/sub/'
+  const SUB = 'http://localhost:5245/sub/'
 
   test('the root and a component page both boot under the base', async ({ page }) => {
     const errors: string[] = []

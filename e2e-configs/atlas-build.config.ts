@@ -37,9 +37,9 @@ export default definePlaywrightConfig({
       // before in another zero-built tool (#4391).
       command:
         'bun packages/tools/atlas/bin/atlas.js build examples/atlas-workshop --out atlas-dist-e2e-base/sub --base /sub/ --title "Atlas E2E" && ' +
-        'bun scripts/serve-ssg.ts examples/atlas-workshop/atlas-dist-e2e-base 5219',
+        'bun scripts/serve-ssg.ts examples/atlas-workshop/atlas-dist-e2e-base 5245',
       cwd: '..',
-      port: 5219,
+      port: 5245,
       timeout: 240_000,
     },
   ],
