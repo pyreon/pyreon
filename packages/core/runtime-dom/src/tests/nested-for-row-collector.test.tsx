@@ -21,7 +21,15 @@
  * Bisect (runRowCallback reverted to read-without-claim): the outer-row
  * `effect()` cases fail (`['R2:4']` instead of `['R1:4', 'R2:4']`); with the
  * inner `<For>`'s effect also scope-registered again (its 0.54 shape) the
- * issue's own repro fails with `'a1,b,c'` instead of `'a1,b2,c'`.
+ * issue's own repro fails with `'a1,b,c'` instead of `'a1,b2,c'`. The
+ * report's five cases pass on main without this fix (#4778 hid them); the
+ * outer-row `effect()` cases are the regression lock.
+ *
+ * Same slot, second way in: an EMPTY collector went back to the pool even
+ * when a row had taken it with `getCurrentScope()` (pinned), so a later
+ * `runInScope(effect)` there landed in the scope the NEXT row kept, and that
+ * row's removal disposed it. Only a droppable collector is pooled now.
+ * Bisect (`_isEmpty()` instead of `_isDroppable()`): `[]` instead of `['a']`.
  */
 import { transformJSX } from '@pyreon/compiler'
 import * as core from '@pyreon/core'
@@ -171,5 +179,45 @@ describe("nested <For>: an inner row's removal never disposes what the outer row
     log.length = 0
     cur.set({ ms: [{ id: 'c', round: 'R2', t: '1' }] })
     expect(log).toEqual(['R2:1'])
+  })
+})
+
+describe('a row collector someone holds is never pooled', () => {
+  it('a row that took its scope with getCurrentScope() keeps it: a later effect there survives another row\'s removal', () => {
+    const items = reactivity.signal(['a', 'b'])
+    const tick = reactivity.signal(0)
+    const log: string[] = []
+    let heldA: reactivity.EffectScope | null = null
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    mounted.push(
+      runtime.mount(
+        core.h(
+          'ul',
+          null,
+          core.h(core.For as never, {
+            each: items,
+            by: (x: string) => x,
+            children: (x: string) => {
+              // Pins row a's collector while registering nothing in it yet.
+              if (x === 'a') heldA = reactivity.getCurrentScope()
+              if (x === 'b') reactivity.effect(() => { tick(); log.push('b') })
+              return core.h('li', null, x)
+            },
+          }),
+        ),
+        host,
+      ),
+    )
+    // A deferred registration into row a's scope (e.g. after an await).
+    heldA!.runInScope(() => reactivity.effect(() => { tick(); log.push('a') }))
+    items.set(['a']) // remove row b
+    log.length = 0
+    tick.set(1)
+    expect(log).toEqual(['a'])
+    items.set([]) // remove row a: its effect goes with it
+    log.length = 0
+    tick.set(2)
+    expect(log).toEqual([])
   })
 })

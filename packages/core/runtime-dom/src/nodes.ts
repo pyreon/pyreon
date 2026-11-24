@@ -1480,8 +1480,10 @@ function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null 
   // reading the shared slot there handed THIS row's collector to the inner
   // list's first row, which then stopped it on removal: whatever the outer row
   // had registered (an `effect()` in its callback, in 0.54 the inner `<For>`'s
-  // own effect) was disposed with an unrelated row (#4800). Only an EMPTY
-  // collector goes back to the pool.
+  // own effect) was disposed with an unrelated row (#4800). Only a REUSABLE
+  // collector goes back to the pool: nothing registered, and nobody holds it
+  // (`getCurrentScope()` pins it; the holder may register later, e.g.
+  // `scope.runInScope(...)` after an await, so the row keeps it).
   const collector = rowCollector ?? effectScope()
   rowCollector = null
   setCurrentScope(collector)
@@ -1501,7 +1503,7 @@ function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null 
     setCurrentScope(prev)
   }
   _closeOwnerFrame(ownerFrame)
-  if (collector._isEmpty()) {
+  if (collector._isDroppable()) {
     rowCollector = collector
     return { result, scope: null }
   }
