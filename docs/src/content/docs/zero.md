@@ -253,6 +253,8 @@ Parameter names may contain letters, digits, `_` and `-`: `[post-id].tsx` reads 
 fs-router emits `_layout.tsx` as a **parent route**. Do **not** also pass it via `createApp({ layout })` / `startClient({ layout })` — that mounts the layout twice. `createApp` detects this collision and ignores the explicit `layout` with a dev warning, but the correct shape is to never pass it.
 :::
 
+`startClient({ routes, trailingSlash })` (and `createApp`) forward `trailingSlash: 'strip' | 'add' | 'ignore'` to the client router (default `'strip'`). An app that is deployed as SSG directories (`<route>/index.html`, the default `ssg.format`) to a plain static host can pass `'add'`, so the URL the router writes is the one the host serves without a redirect.
+
 ### Route Groups
 
 Wrap a directory name in parentheses to group routes without affecting the URL:

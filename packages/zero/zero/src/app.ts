@@ -41,6 +41,15 @@ export interface CreateAppOptions {
    * `createRouter({ links })`; read by `<Link>` / `useLink`.
    */
   links?: LinkConfig
+
+  /**
+   * Trailing-slash policy, forwarded to `createRouter({ trailingSlash })`.
+   * Default `'strip'`. An app whose pages are SSG directories
+   * (`<route>/index.html`, zero's default `ssg.format`) and that is served by
+   * a plain static host can pass `'add'`, so the URL the router writes is the
+   * URL the host serves without a redirect.
+   */
+  trailingSlash?: 'strip' | 'add' | 'ignore'
 }
 
 /** Does this record (or a descendant) declare loader data? */
@@ -81,6 +90,7 @@ export function createApp(options: CreateAppOptions) {
     ...(options.url ? { url: options.url } : {}),
     ...(options.base && options.base !== '/' ? { base: options.base } : {}),
     ...(options.links ? { links: options.links } : {}),
+    ...(options.trailingSlash ? { trailingSlash: options.trailingSlash } : {}),
     scrollBehavior: 'top',
   })
 
