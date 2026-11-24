@@ -32,10 +32,22 @@ export function isAbsoluteUrl(url: string): boolean {
  * in production only.
  */
 export function joinUrl(base: string | undefined, path: string): string {
-  if (!base || isAbsoluteUrl(path)) return path
+  return joinPrefix(base, path) + path
+}
+
+/**
+ * What {@link joinUrl} puts IN FRONT of `path`: `''` for an absolute path or an
+ * empty base, else the base without a trailing slash, plus the `/` a
+ * slash-less path needs. Split out so a caller that assembles the path from
+ * pieces (the native lowering, whose path may hold runtime values) prefixes
+ * EXACTLY what the web does — only the path's FIRST character and whether it
+ * is absolute decide the prefix.
+ */
+export function joinPrefix(base: string | undefined, path: string): string {
+  if (!base || isAbsoluteUrl(path)) return ''
   const b = base.endsWith('/') ? base.slice(0, -1) : base
-  const p = path.startsWith('/') ? path : `/${path}`
-  return `${b}${p}`
+
+  return path.startsWith('/') ? b : `${b}/`
 }
 
 /**
@@ -82,6 +94,8 @@ export function encodePathParam(value: string): string {
  * file must produce one URL on every target.
  */
 export function pathPartEnd(url: string): number {
+  // The authority (`scheme://host`) cannot hold `?` or `#` — either ends it —
+  // so the first one is always where the path part ends.
   const q = url.indexOf('?')
   const h = url.indexOf('#')
   if (q === -1) return h === -1 ? url.length : h
@@ -89,8 +103,36 @@ export function pathPartEnd(url: string): number {
   return h === -1 || q < h ? q : h
 }
 
-/** The `\\:` escape — the only token the query/fragment tail still reads. */
+/**
+ * Where a URL's PATH part STARTS: after `scheme://authority` for an absolute
+ * URL (`https://u:pw@[2001:db8::1]:8080/x` → the `/x`), after `//authority` for
+ * a network-path reference, else 0. The authority's colons (a port, IPv6
+ * literal, `user:password`) are never placeholders; it ends at the first `/`,
+ * `?` or `#`. The same cut as {@link pathPartEnd}, on the other side.
+ */
+export function pathPartStart(url: string): number {
+  let i: number
+  if (url.startsWith('//')) i = 2
+  else {
+    const m = ABSOLUTE_RE.exec(url)
+    if (m === null) return 0
+    i = m[0].length
+  }
+  for (; i < url.length; i++) {
+    const c = url.charCodeAt(i)
+    if (c === 47 /* / */ || c === 63 /* ? */ || c === 35 /* # */) return i
+  }
+
+  return url.length
+}
+
+/** The `\\:` escape — the only token the authority / query / fragment still read. */
 const ESCAPED_COLON = /\\:/g
+
+/** Template text OUTSIDE the path part, as sent: as written, `\\:` read as `:`. */
+export function literalTemplateText(text: string): string {
+  return text.includes('\\') ? text.replace(ESCAPED_COLON, ':') : text
+}
 
 /**
  * The query/fragment tail of a path template (from `end`, see
@@ -100,7 +142,7 @@ const ESCAPED_COLON = /\\:/g
  * producing the same URL. Shared with the native lowering.
  */
 export function pathTemplateTail(template: string, end: number): string {
-  return end >= template.length ? '' : template.slice(end).replace(ESCAPED_COLON, ':')
+  return end >= template.length ? '' : literalTemplateText(template.slice(end))
 }
 
 /**
@@ -114,19 +156,22 @@ export function pathTemplateTail(template: string, end: number): string {
  * second parameter. The type-level `PathParamNames` honours the same
  * escape, so the two can never disagree about what the caller must supply.
  *
- * Only the PATH part is read (see {@link pathPartEnd}): a `:` in the query
- * string or fragment is never a placeholder, so `/search?tag=a:b` is sent as
- * written. Structured query values belong in the `query` option.
+ * Only the PATH part is read (see {@link pathPartStart} / {@link pathPartEnd}):
+ * a `:` in the authority (`http://[::1]:8080`, `https://u:pw@h`), the query
+ * string or the fragment is never a placeholder, so `/search?tag=a:b` is sent
+ * as written. Structured query values belong in the `query` option.
  *
  * Throws on a missing param rather than leaving a literal `:id` in the URL
  * — a silently-malformed request is far harder to diagnose than a throw.
  */
 export function applyPathParams(path: string, params: PathParams | undefined): string {
   if (!path.includes(':')) return path
+  const start = pathPartStart(path)
   const end = pathPartEnd(path)
   const tail = pathTemplateTail(path, end)
+  if (process.env.NODE_ENV !== 'production' && params) warnUnreadPlaceholders(path, end, params)
 
-  return path.slice(0, end).replace(PATH_TOKEN, (_match, name: string | undefined) => {
+  return literalTemplateText(path.slice(0, start)) + path.slice(start, end).replace(PATH_TOKEN, (_match, name: string | undefined) => {
     if (name === undefined) return ':'
     const value = params?.[name]
     if (value === undefined || value === null) {
@@ -268,4 +313,25 @@ function keySafeValue(v: unknown): unknown {
   }
   if (v !== null && typeof v === 'object') return keySafeScope(v as Record<string, unknown>)
   return v
+}
+
+/**
+ * Dev-only: a `:name` AFTER the path part is sent as written — but when the
+ * caller ALSO passed `params.name`, they almost certainly meant a placeholder
+ * (`/items?tenant=:tenant`), and the value would silently go nowhere.
+ */
+function warnUnreadPlaceholders(path: string, end: number, params: PathParams): void {
+  if (end >= path.length) return
+  const tail = path.slice(end)
+  for (const m of tail.matchAll(/(?<!\\):([A-Za-z_][A-Za-z0-9_]*)/g)) {
+    const name = m[1] as string
+    if (params[name] !== undefined && process.env.NODE_ENV !== 'production') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        `[Pyreon] http: "${path}" passes \`params.${name}\`, but \`:${name}\` sits in the query string or fragment, ` +
+          `where placeholders are not read (only the path part is) — it is sent as written. ` +
+          `Pass the value through \`query: { … }\` instead.`,
+      )
+    }
+  }
 }

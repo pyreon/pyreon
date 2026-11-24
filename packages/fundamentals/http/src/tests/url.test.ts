@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createHttp } from '../client'
 import { bearer } from '../middleware'
 import { createFetchTransport } from '../transport'
-import { applyPathParams, buildQuery, buildUrl, encodePathParam, isAbsoluteUrl, joinUrl, pathPartEnd } from '../url'
+import { applyPathParams, buildQuery, buildUrl, encodePathParam, isAbsoluteUrl, joinPrefix, joinUrl, pathPartEnd, pathPartStart } from '../url'
 
 describe('isAbsoluteUrl', () => {
   it('recognises schemes', () => {
@@ -253,5 +253,61 @@ describe('buildUrl — query before fragment', () => {
   it('leaves a fragment alone when there is no query', () => {
     expect(buildUrl(undefined, '/doc#x', undefined, undefined)).toBe('/doc#x')
     expect(buildUrl(undefined, '/doc#x', undefined, { a: undefined })).toBe('/doc#x')
+  })
+})
+
+// The authority (`scheme://host`) is never read for placeholders either: a
+// port, an IPv6 literal or `user:password@` declares no parameter.
+describe('applyPathParams — never inside the authority', () => {
+  it('passes IPv6 literals, ports and userinfo through as written', () => {
+    expect(applyPathParams('http://[fe80::abcd]/x/:id', { id: '1' })).toBe('http://[fe80::abcd]/x/1')
+    expect(applyPathParams('http://[2001:db8::1]/x', undefined)).toBe('http://[2001:db8::1]/x')
+    expect(applyPathParams('http://[::1]:8080/x/:id', { id: '1' })).toBe('http://[::1]:8080/x/1')
+    expect(applyPathParams('https://u:secret@h/x', undefined)).toBe('https://u:secret@h/x')
+    expect(applyPathParams('//u:pw@h:81/x/:id', { id: 'a b' })).toBe('//u:pw@h:81/x/a%20b')
+    expect(applyPathParams('https://h:8080?q=a:b', undefined)).toBe('https://h:8080?q=a:b')
+  })
+
+  it('pathPartStart cuts after the authority', () => {
+    expect(pathPartStart('/a/:b')).toBe(0)
+    expect(pathPartStart('https://u:p@h:1/x')).toBe(15)
+    expect(pathPartStart('//h/x')).toBe(3)
+    expect(pathPartStart('https://h')).toBe(9)
+    expect(pathPartStart('https://h?x')).toBe(9)
+  })
+})
+
+describe('joinPrefix — what joinUrl puts in front of the path', () => {
+  it('agrees with joinUrl on every shape', () => {
+    const cases: [string | undefined, string][] = [
+      ['https://api.test/v1/', '/users'],
+      ['https://api.test/v1', 'users'],
+      ['https://api.test', 'https://other.test/x'],
+      ['', '/x'],
+      [undefined, 'x'],
+      ['/api/', 'x'],
+    ]
+    for (const [b, p] of cases) expect(joinPrefix(b, p) + p).toBe(joinUrl(b, p))
+    expect(joinUrl('https://api.test/v1/', '/users')).toBe('https://api.test/v1/users')
+    expect(joinUrl('https://api.test/v1', 'users')).toBe('https://api.test/v1/users')
+    expect(joinUrl('https://api.test', 'https://other.test/x')).toBe('https://other.test/x')
+  })
+})
+
+describe('a `:name` after the path part, with that name in params, warns in dev', () => {
+  it('warns once per such name, and never for a plain query colon', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(applyPathParams('/items?tenant=:tenant', { tenant: 't1' })).toBe('/items?tenant=:tenant')
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toMatch(/params\.tenant.*query string or fragment/)
+      warn.mockClear()
+      applyPathParams('/search?tag=a:b', undefined)
+      applyPathParams('/u/:id?tag=a:b', { id: 1 })
+      applyPathParams('/s?x=a\\:b', { b: 1 })
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

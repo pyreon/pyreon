@@ -111,3 +111,36 @@ export function S() {
     })
   }
 })
+
+// The base is JOINED like the web's `joinUrl` (one `/`, an absolute endpoint
+// URL ignores the base), and the authority is never scanned for placeholders.
+describe('base join and authority, as the web builds them', () => {
+  const app = (base: string, spec: string, args: string): string => `
+import { createHttp } from '@pyreon/http'
+import { useFetch } from '@pyreon/query'
+import { Stack, Text } from '@pyreon/primitives'
+const api = createHttp({ baseUrl: '${base}' })
+const op = api.endpoint('${spec}')
+export function S() {
+  const u = useFetch<{ id: string }>(op(${args}))
+  return <Stack><Text>{u.data()?.id ?? ''}</Text></Stack>
+}
+`
+  const CASES: [base: string, path: string, args: string, params: Record<string, string> | undefined][] = [
+    ['https://api.test/v1/', '/users', '{}', undefined],
+    ['https://api.test/v1', 'users', '{}', undefined],
+    ['https://api.test', 'https://other.test/x', '{}', undefined],
+    ['', 'http://[fe80::abcd]/x/:id', "{ params: { id: '1' } }", { id: '1' }],
+    ['', 'http://[2001:db8::1]/x', '{}', undefined],
+    ['', 'https://u:secret@h.test/x', '{}', undefined],
+  ]
+  for (const target of ['swift', 'kotlin'] as const) {
+    for (const [base, path, args, params] of CASES) {
+      it(`${target}: base "${base}" + ${path}`, () => {
+        const out = transform(app(base, `GET ${path}`, args), { target })
+        expect(out.warnings).toEqual([])
+        expect(emittedUrl(out.code)).toBe(buildUrl(base, path, params, undefined))
+      })
+    }
+  }
+})
