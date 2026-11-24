@@ -1,3 +1,4 @@
+import { deleteIndexedDBKey } from './indexed-db'
 import { getEntriesByBackend, getEntry, removeEntry } from './registry'
 import { getWebStorage, isBrowser } from './utils'
 
@@ -19,25 +20,48 @@ type StorageType = 'local' | 'session' | 'cookie' | 'indexeddb' | 'all'
  */
 export function removeStorage(
   key: string,
-  options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb' },
+  options?: {
+    type?: 'local' | 'session' | 'cookie' | 'indexeddb'
+    /** `indexeddb` only: the database and store the key lives in (defaults match `useIndexedDB`). */
+    dbName?: string
+    storeName?: string
+  },
 ): void {
   const type = options?.type ?? 'local'
   const entry = getEntry(type, key)
 
   if (entry) {
     entry.signal.remove()
-  } else {
-    // No signal registered — still try to clear the raw storage
+    return
+  }
+  // No signal registered — still clear the raw storage. There is no binding
+  // and so no `onError` to report to: a refused delete is swallowed here
+  // rather than thrown out of a cleanup call.
+  removeRaw(type, key, options)
+  removeEntry(type, key)
+}
+
+function removeRaw(
+  type: 'local' | 'session' | 'cookie' | 'indexeddb',
+  key: string,
+  options: { dbName?: string; storeName?: string } | undefined,
+): void {
+  try {
     if (type === 'local' || type === 'session') {
       // A full storage still deletes: `getWebStorage` probes with a read
       // (#4812), so a quota-exhausted backend is not mistaken for an absent one.
-      const storage = getWebStorage(type)
-      /* v8 ignore next — defensive null storage guard */
-      if (storage) storage.removeItem(key)
-    } else if (type === 'cookie' && isBrowser()) {
-      document.cookie = `${encodeURIComponent(key)}=; max-age=0; path=/`
+      getWebStorage(type)?.removeItem(key)
+    } else if (type === 'cookie') {
+      /* v8 ignore next — SSR guard */
+      if (isBrowser()) document.cookie = `${encodeURIComponent(key)}=; max-age=0; path=/`
+    } else {
+      // IndexedDB: the delete used to be skipped entirely without a binding.
+      // A failed delete has no binding to report to (exercised in quota.browser.test.ts).
+      /* v8 ignore next */
+      deleteIndexedDBKey(key, options?.dbName, options?.storeName).catch(() => {})
     }
-    removeEntry(type, key)
+  } catch {
+    // Storage blocked (`SecurityError`): nothing was stored that we could read.
   }
 }
 

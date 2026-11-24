@@ -7221,7 +7221,7 @@ theme.set('dark') // persists again`,
 - Reading \`.remove()\` return value — it returns void, not the removed value
 - Treating \`.remove()\` as a teardown — it deletes the STORED VALUE and resets the shared signal, and the binding stays alive: a later \`.set()\` persists again and cross-tab updates keep arriving. There is no need to call \`useStorage\` again after \`.remove()\`. The binding is released by its lifecycle: each call holds a refcount that the calling component's (owner scope's) disposal releases, and the entry plus the cross-tab listener go away with the last holder. A call made outside any component holds the key for the page.
 - Evolving the stored shape without \`version\` + \`migrate\` — a user with the OLD shape on disk loads it as-is (or \`onError\`/default if it no longer parses). Bump \`version\` and provide \`migrate\` to transform the old shape; a pre-versioning value is migrated as version \`0\`.
-- Assuming a \`.set()\` that exceeds quota throws — the in-memory signal always updates; the \`setItem\` failure is routed to \`onError\` (a notification) instead of throwing. Provide \`onError\` to surface quota problems to the user. A FULL storage stays readable: the value stored before the quota ran out is what \`useStorage\` returns on the next load, and \`.remove()\` still deletes (#4812).`,
+- Assuming a \`.set()\` that exceeds quota throws — the in-memory signal always updates; the \`setItem\` failure is routed to \`onError\` (a notification) instead of throwing. Provide \`onError\` to surface quota problems to the user. A FULL storage stays readable: the value stored before the quota ran out is what \`useStorage\` returns on the next load, and \`.remove()\` still deletes (#4812). \`onError\` fires on EVERY failed write, so a permanently unwritable storage (legacy Safari private mode, quota 0) reports each \`.set()\` — throttle user-facing notifications.`,
   },
 
   'storage/useCookie': {
@@ -7295,12 +7295,13 @@ const secret = useEncrypted('api-key', '')`,
   },
 
   'storage/removeStorage': {
-    signature: `removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb' }) => void`,
+    signature: `removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb'; dbName?: string; storeName?: string }) => void`,
     example: `import { removeStorage } from '@pyreon/storage'
 
 removeStorage('theme')                       // localStorage
 removeStorage('step', { type: 'session' })   // sessionStorage
-removeStorage('locale', { type: 'cookie' })  // deletes the cookie`,
+removeStorage('locale', { type: 'cookie' })  // deletes the cookie
+removeStorage('draft', { type: 'indexeddb' }) // deletes from IndexedDB (dbName/storeName for a non-default db)`,
     notes: 'Imperatively remove a single key from storage and RESET its signal to the default value. Default backend is `local`; pass `{ type: "session" | "cookie" | "indexeddb" }` for the others. Works whether or not a `useStorage`-family signal is currently registered for the key: a registered key routes through `signal.remove()` (reactive reset + storage delete), an unregistered key clears the raw storage directly (`removeItem` / cookie `max-age=0`). See also: clearStorage, useStorage.',
     mistakes: `- Expecting the signal to read \`undefined\` afterward — \`removeStorage(key)\` RESETS the signal to its \`useStorage\` DEFAULT (a \`useStorage("theme", "light")\` reads \`"light"\` again, not \`undefined\`).
 - Omitting \`{ type }\` for a non-local backend — it defaults to \`local\`; use \`removeStorage("locale", { type: "cookie" })\` for a cookie, etc.

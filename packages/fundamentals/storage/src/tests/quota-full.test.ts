@@ -147,6 +147,23 @@ describe('removeStorage on a full storage without a live binding (#4812)', () =>
   })
 })
 
+describe('removeStorage of an unbound cookie in a document that refuses cookies (#4812)', () => {
+  it('does not throw', () => {
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get: () => '',
+      set: () => {
+        throw new DOMException('cookies are disabled in this document', 'SecurityError')
+      },
+    })
+    try {
+      expect(() => removeStorage('lang', { type: 'cookie' })).not.toThrow()
+    } finally {
+      Reflect.deleteProperty(document, 'cookie')
+    }
+  })
+})
+
 describe('a cookie write the browser refuses (#4812)', () => {
   it('reports to onError instead of throwing out of set(); the signal still updates', () => {
     document.cookie = `lang=${encodeURIComponent(JSON.stringify('de'))}; path=/`
@@ -230,5 +247,63 @@ describe('a custom backend whose remove() throws (#4812)', () => {
     s.remove()
     expect(s()).toBe('default')
     expect(onError).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('cookie read-back after a write (#4812)', () => {
+  function droppingCookies(): () => void {
+    let owner = Object.getPrototypeOf(document) as object | null
+    while (owner && !Object.getOwnPropertyDescriptor(owner, 'cookie')) {
+      owner = Object.getPrototypeOf(owner) as object | null
+    }
+    const real = Object.getOwnPropertyDescriptor(owner!, 'cookie')!
+    // A browser that silently refuses every cookie write: no throw, nothing stored.
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get: () => real.get!.call(document),
+      set: () => {},
+    })
+
+    return () => {
+      Reflect.deleteProperty(document, 'cookie')
+    }
+  }
+
+  it('a write the browser silently drops reaches onError', () => {
+    const restore = droppingCookies()
+    try {
+      const onError = vi.fn()
+      useCookie('dropped', 'a', { onError }).set('b')
+      expect(onError).toHaveBeenCalledTimes(1)
+    } finally {
+      restore()
+    }
+  })
+
+  it('is skipped for an expiring write and for a cookie scoped to another path', () => {
+    const restore = droppingCookies()
+    try {
+      const onError = vi.fn()
+      useCookie('a1', 'x', { onError, maxAge: 0 }).set('y')
+      useCookie('a2', 'x', { onError, expires: new Date(0) }).set('y')
+      useCookie('a3', 'x', { onError, path: '/somewhere-else' }).set('y')
+      expect(onError).not.toHaveBeenCalled()
+    } finally {
+      restore()
+    }
+  })
+
+  it('verifies a cookie scoped to a path the page is under', () => {
+    const restore = droppingCookies()
+    const here = window.location.pathname
+    try {
+      const onError = vi.fn()
+      const scoped = here === '/' ? '/' : here.replace(/\/[^/]*$/, '') || '/'
+      useCookie('a4', 'x', { onError, path: scoped, expires: new Date(Date.now() + 60_000) }).set('y')
+      useCookie('a5', 'x', { onError, path: here }).set('y')
+      expect(onError).toHaveBeenCalledTimes(2)
+    } finally {
+      restore()
+    }
   })
 })

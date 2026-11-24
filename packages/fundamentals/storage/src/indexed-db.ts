@@ -98,7 +98,11 @@ function settleOnTx(tx: IDBTransaction): Promise<void> {
     // A real IDB write failure (quota, aborted commit): exercised in quota.browser.test.ts.
     /* v8 ignore start */
     tx.onabort = () => reject(tx.error ?? new DOMException('IndexedDB write aborted', 'AbortError'))
-    tx.onerror = () => reject(tx.error ?? new DOMException('IndexedDB write failed', 'UnknownError'))
+    // During `error` the transaction's own `error` is still null (it is set
+    // when the abort follows): the failing REQUEST holds the real error
+    // (`ConstraintError`, `QuotaExceededError`, …).
+    tx.onerror = (event) =>
+      reject((event.target as IDBRequest | null)?.error ?? tx.error ?? new DOMException('IndexedDB write failed', 'UnknownError'))
     /* v8 ignore stop */
   })
 }
@@ -113,6 +117,22 @@ function idbDelete(db: IDBDatabase, storeName: string, key: string): Promise<voi
   const tx = db.transaction(storeName, 'readwrite')
   tx.objectStore(storeName).delete(key)
   return settleOnTx(tx)
+}
+
+/**
+ * Delete one key from a database/store without a live binding (what
+ * `removeStorage(key, { type: 'indexeddb' })` needs when nothing is mounted).
+ * Resolves once the delete commits; rejects with the IndexedDB error.
+ */
+export function deleteIndexedDBKey(
+  key: string,
+  dbName = 'pyreon-storage',
+  storeName = 'kv',
+): Promise<void> {
+  /* v8 ignore next — SSR/no-IDB guard */
+  if (!isBrowser() || typeof indexedDB === 'undefined') return Promise.resolve()
+  /* v8 ignore next — happy-dom has no IndexedDB; exercised in quota.browser.test.ts */
+  return openDB(dbName, storeName).then((db) => idbDelete(db, storeName, key))
 }
 
 // ─── useIndexedDB ────────────────────────────────────────────────────────────

@@ -15,6 +15,8 @@ import {
   _resetDBCache,
   _resetRegistry,
   _resetStorageListener,
+  removeStorage,
+  useCookie,
   useIndexedDB,
   useSessionStorage,
   useStorage,
@@ -133,5 +135,104 @@ describe('an IndexedDB write whose transaction aborts at commit', () => {
     const reloaded = useIndexedDB('draft', 'v0', { dbName })
     await reloaded.whenReady()
     expect(reloaded()).toBe('stored')
+  })
+})
+
+describe('IndexedDB request errors keep their real name', () => {
+  const dbName = `pyreon-reqerr-${Date.now()}`
+
+  afterEach(async () => {
+    _resetDBCache()
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(dbName)
+      req.onsuccess = req.onerror = req.onblocked = () => resolve()
+    })
+  })
+
+  it('a failing put request reaches onError as its own error, not a synthetic UnknownError', async () => {
+    _resetDBCache()
+    const seed = useIndexedDB('k', 'v0', { dbName, debounceMs: 0 })
+    await seed.whenReady()
+    seed.set('v1')
+    await seed.flush()
+
+    // `add` on an existing key fails the REQUEST with `ConstraintError`; while
+    // the transaction's `error` event runs, `tx.error` is still null.
+    const realPut = IDBObjectStore.prototype.put
+    IDBObjectStore.prototype.put = function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+      return this.add(value, key)
+    }
+    const onError = vi.fn()
+    try {
+      _resetRegistry()
+      _resetDBCache()
+      const s = useIndexedDB('k', 'v0', { dbName, debounceMs: 0, onError })
+      await s.whenReady()
+      s.set('v2')
+      await s.flush()
+    } finally {
+      IDBObjectStore.prototype.put = realPut
+    }
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect((onError.mock.calls[0]![0] as DOMException).name).toBe('ConstraintError')
+  })
+
+  it('removeStorage(key, { type: "indexeddb" }) deletes without a live binding', async () => {
+    _resetDBCache()
+    const s = useIndexedDB('orphan', 'v0', { dbName, debounceMs: 0 })
+    await s.whenReady()
+    s.set('stored')
+    await s.flush()
+    _resetRegistry()
+    _resetDBCache()
+
+    removeStorage('orphan', { type: 'indexeddb', dbName })
+    let value: unknown = 'stored'
+    for (let i = 0; i < 50 && value !== undefined; i++) {
+      await new Promise((r) => setTimeout(r, 10))
+      value = await new Promise((resolve) => {
+        const open = indexedDB.open(dbName)
+        open.onsuccess = () => {
+          const db = open.result
+          const req = db.transaction('kv', 'readonly').objectStore('kv').get('orphan')
+          req.onsuccess = () => {
+            db.close()
+            resolve(req.result)
+          }
+        }
+      })
+    }
+    expect(value).toBeUndefined()
+  })
+})
+
+describe('a cookie the browser refuses silently', () => {
+  afterEach(() => {
+    for (const name of ['big', 'flag']) document.cookie = `${name}=; max-age=0; path=/`
+  })
+
+  it('an over-limit value reaches onError; the stored cookie keeps its old value', () => {
+    const onError = vi.fn()
+    const big = useCookie('big', 'small', { onError })
+    big.set('stored')
+    expect(onError).not.toHaveBeenCalled()
+
+    big.set('x'.repeat(5000))
+    expect(big()).toHaveLength(5000) // the signal shows the new value
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect((onError.mock.calls[0]![0] as Error).message).toMatch(/did not store the cookie/)
+    expect(document.cookie).toContain(`big=${encodeURIComponent(JSON.stringify('stored'))}`)
+  })
+
+  it("sameSite: 'none' without secure reaches onError", () => {
+    const onError = vi.fn()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const flag = useCookie('flag', 'a', { onError, sameSite: 'none', secure: false })
+      flag.set('b')
+      expect(onError).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

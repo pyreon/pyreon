@@ -166,6 +166,30 @@ function writeCookie<T>(key: string, value: T, options: CookieOptions<T>): void 
   }
 
   document.cookie = cookie
+  verifyStored(key, pair, options)
+}
+
+// `document.cookie = …` never throws when the browser REFUSES a cookie: one
+// over the ~4 KB limit, `sameSite: 'none'` without `secure`, `secure` on an
+// insecure page, a `domain` the page may not set. The cookie is silently not
+// stored, and reads go on returning the OLD value. Read it back and report the
+// refusal through `onError` like every other failed write (#4812). Skipped when
+// the write is a deletion (expiry in the past) or the cookie is not visible
+// from this page (`path` not a prefix of the current path), where reading it
+// back proves nothing.
+function verifyStored<T>(key: string, pair: string, options: CookieOptions<T>): void {
+  if (options.maxAge !== undefined && options.maxAge <= 0) return
+  if (options.expires && options.expires.getTime() <= Date.now()) return
+  const path = options.path ?? '/'
+  const here = globalThis.location?.pathname ?? '/'
+  if (path !== '/' && here !== path && !here.startsWith(path.endsWith('/') ? path : `${path}/`)) return
+  const stored = getCookieString()
+    .split(';')
+    .some((part) => part.trim() === pair)
+  if (stored) return
+  throw new Error(
+    `[Pyreon] useCookie("${key}"): the browser did not store the cookie (over the ~${COOKIE_SIZE_LIMIT}-byte limit, \`sameSite: 'none'\` without \`secure\`, \`secure\` on an http page, or a \`domain\` this page may not set). Reads keep returning the previously stored value. Store large values with useIndexedDB or useStorage.`,
+  )
 }
 
 // Dev-only, once per message id. Bounded by (keys × 3 kinds).
