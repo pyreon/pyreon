@@ -448,6 +448,37 @@ const refSrc = (form: keyof typeof FORMS, ref: string, body: string) =>
 
 const FORM_NAMES = Object.keys(FORMS) as (keyof typeof FORMS)[]
 
+describe('#4764 (3b): a value that renders nothing statically sweeps the server content and reports it', () => {
+  // No function and no component: it cannot have thrown, so "nothing claimed"
+  // is a divergence, not hydration that did not happen.
+  const SHAPES: [string, Client[]][] = [
+    ['const App = () => <div><s/>{v}<span>a</span></div>', ['compiled', 'compiled, tcc', 'h()']],
+    ['const App = () => <div>{v}<span>a</span></div>', ['compiled', 'compiled, tcc', 'h()']],
+    // h() flattens `[]` children to none, the same as a childless element,
+    // whose content a prop may own: only nullish and booleans are swept there.
+    ['const App = () => <div>{v}</div>', ['compiled', 'compiled, tcc', 'h()']],
+  ]
+  for (const [src, clients] of SHAPES) {
+    for (const client of clients) {
+      for (const v of [null, false, [null, false]] as unknown[]) {
+        it(`${client}: ${src.slice(18)} with ${JSON.stringify(v)}`, async () => {
+          const r = await run(
+            src,
+            serverFor(client),
+            client,
+            { v: [h('b', null, '1'), h('b', null, '2')] },
+            () => ({ v }),
+          )
+          expect(r.errors).toEqual([])
+          expect(shape(r.hydrated)).toBe(shape(r.fresh))
+          expect(r.hydrated.querySelector('b')).toBeNull()
+          expect(r.mismatches.length).toBeGreaterThan(0)
+        })
+      }
+    }
+  }
+})
+
 describe("#4764 (4): a ref that changes its element runs after the element's children, on every path", () => {
   for (const form of FORM_NAMES) {
     for (const [name, ref] of Object.entries(REFS)) {
@@ -558,6 +589,85 @@ describe('#4764: a ref that throws keeps the adopted slot content, as h() does',
       })
     }
   }
+})
+
+describe('#4764: an adopted reactive range pins none of its nodes', () => {
+  const hasGc = typeof globalThis.gc === 'function'
+
+  async function collectGarbage(): Promise<void> {
+    for (let i = 0; i < 6; i++) {
+      globalThis.gc!()
+      await new Promise((r) => setTimeout(r, 0))
+    }
+  }
+
+  it('the GC harness is present, so the spec below runs rather than skips', () => {
+    expect(hasGc, 'run with --expose-gc (see vitest.config.ts)').toBe(true)
+  })
+
+  it.runIf(hasGc)(
+    'a node the walk passed over is collectable once it leaves the DOM, while the accessor lives',
+    async () => {
+      // The comment sits inside the accessor's range, so the adoption counts it
+      // as claimed. A per-run teardown that kept the claimed set pinned it (and
+      // every adopted top-level node) until the accessor re-ran or unmounted.
+      const el = host()
+      el.innerHTML = '<div><!--$--><b>x</b><!--note--><!--/$--><i></i></div>'
+      const on = signal(true)
+      dom.hydrateRoot(
+        el,
+        h(() => h('div', null, () => (on() ? h('b', null, 'x') : null), h('i', null)), null),
+      )
+      let note: Comment | null = null
+      for (const n of el.firstChild!.childNodes)
+        {if (n.nodeType === 8 && (n as Comment).data === 'note') note = n as Comment}
+      expect(note).not.toBeNull()
+      const witness = new WeakRef(note!)
+      note!.remove()
+      note = null
+      await collectGarbage()
+      expect(witness.deref()).toBeUndefined()
+      // The accessor is still live.
+      on.set(false)
+      expect(shape(el)).toBe('<div><i></i></div>')
+    },
+  )
+})
+
+describe('#4764: no user code, no hiding', () => {
+  // `_userCodeHook` hides a #4599 region's server nodes before user code runs.
+  // A nullish spread source and a spread without a ref run no user code, so
+  // they must not hide (and re-show) anything.
+  async function hides(sp: unknown): Promise<number> {
+    const src = 'const App = () => <div {...sp}><span>{vNode}</span></div>'
+    const vNode = h('b', null, 'n')
+    const el = host()
+    el.innerHTML = await renderToString(
+      h(build(src, { sp: { class: 'c' }, vNode }, 'server') as never, null) as never,
+    )
+    let n = 0
+    const sink = globalThis as { __pyreon_count__?: ((name: string) => void) | undefined }
+    const prev = sink.__pyreon_count__
+    sink.__pyreon_count__ = (name) => {
+      if (name === 'runtime.tpl.hide') n++
+    }
+    try {
+      dom.hydrateRoot(el, h(build(src, { sp, vNode }, 'compiled') as never, null))
+    } finally {
+      sink.__pyreon_count__ = prev
+    }
+    expect(shape(el)).toContain('<span><b>n</b></span>')
+
+    return n
+  }
+
+  it('a nullish spread source hides nothing', async () => {
+    expect(await hides(null)).toBe(0)
+  })
+
+  it('a spread with props still hides before it writes (it may write content)', async () => {
+    expect(await hides({ class: 'c' })).toBe(1)
+  })
 })
 
 describe("#4764: the Chromium twin's strings are the real pipeline's output", () => {

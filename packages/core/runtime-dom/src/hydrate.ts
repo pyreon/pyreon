@@ -683,22 +683,22 @@ function adoptReactiveRange(
     // unclaimed. Start from the node BEFORE the range, not from the cursor the
     // walk began at: a nested accessor's hydration removes its own `$` markers
     // as it adopts, so the starting cursor may already be detached.
-    const claimed = new Set<ChildNode>()
-    for (let n = before ? before.nextSibling : p.firstChild; n && n !== nextCursor && n !== a; n = n.nextSibling) {
-      claimed.add(n)
+    {
+      const claimed = new Set<ChildNode>()
+      for (let n = before ? before.nextSibling : p.firstChild; n && n !== nextCursor && n !== a; n = n.nextSibling) {
+        claimed.add(n)
+      }
+      for (const n of stale) if (!claimed.has(n)) n.remove()
     }
-    for (const n of stale) if (!claimed.has(n)) n.remove()
     // CONTRACT BRIDGE. `mountReactive`'s per-run cleanup is what clears the
-    // previous render before the next one mounts, so anything left behind
-    // survives every future flip (the parity fuzzer caught an adopted text node
-    // staying put after the accessor flipped to an element). The walk's
-    // cleanups remove what they own, including anything the adopted subtree's
-    // own bindings added later; the claimed top-level nodes go too, as a fresh
-    // mount's per-node removers would take them.
-    return () => {
-      disposeBindings()
-      for (const n of claimed) detachNode(n)
-    }
+    // previous render before the next one mounts. The walk's cleanups remove
+    // what they own (adopted texts, elements, ranges, templates, and anything
+    // the adopted subtree's own bindings added later), exactly as a fresh
+    // mount's per-node removers do, so the run's cleanup is theirs alone. The
+    // claimed set above lives only for the stale filter: kept for the
+    // teardown it would pin every adopted top-level node for the accessor's
+    // whole life (#4764 review, leak class H).
+    return disposeBindings
   })
   // The accessor's initial value may be null/false, in which case mountReactive
   // never called the mount fn — the server region is then stale content the
@@ -1560,7 +1560,7 @@ function hydrateSlot(children: VNodeChild | VNodeChild[], parent: Node, open: Co
   // The range is the extent: what the walk left unclaimed before the close
   // marker is server DOM the value does not render (#4764: `[<i>]` over the
   // server's `[<b>, <b>]` kept both `<b>`s beside the client's `<i>`).
-  sweepUnclaimed(parent, rest, open.nextSibling, close)
+  sweepUnclaimed(parent, rest, open.nextSibling, close, rendersNothing(children) ? slotPath : undefined)
   open.remove()
   close.remove()
 
@@ -1772,11 +1772,17 @@ function hydrateChild(
  * own `$` markers as it adopts) — a walk from a detached node claims the wrong
  * chain, so decline rather than guess.
  */
+/** A child that renders nothing without running code: nullish, a boolean, `''`, or an array of those. */
+function rendersNothing(v: unknown): boolean {
+  return v == null || typeof v === 'boolean' || v === '' || (Array.isArray(v) && v.every(rendersNothing))
+}
+
 function sweepUnclaimed(
   parent: Node,
   cursor: ChildNode | null,
   first: ChildNode | null = parent.firstChild as ChildNode | null,
   end: Node | null = null,
+  emptyPath?: string,
 ): void {
   // `first`/`end` bound a RANGE (a marked slot, an async component's range):
   // the same rule, from the range's first node to its close marker.
@@ -1795,7 +1801,19 @@ function sweepUnclaimed(
   // client's own node before the cursor (recovery mounts AT it), so this
   // declines exactly the nothing-happened case and nothing else. The scan runs
   // only once the cursor is non-null, i.e. on the divergence path.
-  if (firstReal(first) === cursor) return
+  //
+  // `emptyPath` (#4764): the client value renders NOTHING statically (nullish,
+  // a boolean, `''`, or an array of those: no function, no component), so it
+  // cannot have thrown. Nothing claimed is then a real divergence: sweep it
+  // and report the first server node it drops (`tag`, expected nothing).
+  if (emptyPath !== undefined) {
+    warnHydrationMismatch(
+      'tag',
+      '',
+      cursor.nodeType === 1 ? (cursor as Element).localName : cursor.nodeType,
+      emptyPath,
+    )
+  } else if (firstReal(first) === cursor) return
   let n: ChildNode | null = cursor
   while (n && n !== end) {
     const nx: ChildNode | null = n.nextSibling
@@ -1880,7 +1898,7 @@ function hydrateElement(
       // both that shape. A childless vnode over server children therefore
       // keeps today's behavior; the sweep is for divergence INSIDE a walked
       // child list, which is where every reported cell lives.
-      if (kids.length > 0) sweepUnclaimed(el, residual[1])
+      if (kids.length > 0) sweepUnclaimed(el, residual[1], undefined, null, rendersNothing(kids) ? elPath : undefined)
     }
 
     // The cleanup slots are statically known (props / children / select-value /

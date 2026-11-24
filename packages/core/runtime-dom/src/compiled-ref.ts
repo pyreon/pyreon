@@ -24,12 +24,14 @@ import { releaseRef } from './teardown'
  * before its parent's. A spread's ref is applied there too (`.r()`).
  */
 export function _ref(el: Element, ref: unknown): () => void {
+  // No ref (a spread without one reaches here through `.r()`): no user code.
+  if (ref == null) return _noopDispose
   _userCodeHook?.(el)
   if (typeof ref === 'function') {
     ;(ref as (el: Element | null) => void)(el)
     return () => releaseRef(ref)
   }
-  if (ref != null && typeof ref === 'object') {
+  if (typeof ref === 'object') {
     ;(ref as { current: Element | null }).current = el
     return () => releaseRef(ref)
   }

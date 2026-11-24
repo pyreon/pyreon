@@ -161,9 +161,13 @@ export function applyPropsWithRef(el: Element, props: Props, deferRef?: 1): Defe
   if (props == null && !deferRef) return NOOP_CLEANUP
   // A spread can write content (`dangerouslySetInnerHTML`) at its attribute
   // position, before `_setChild` claims a #4599 region: user code (see
-  // `_userCodeHook`). Its ref runs later, from the ref tail (#4764).
-  _userCodeHook?.(el)
-  const cleanup = props == null ? null : applyProps(el, props)
+  // `_userCodeHook`). A nullish source runs nothing. Its ref runs later, from
+  // the ref tail (#4764).
+  let cleanup: Cleanup | null = null
+  if (props != null) {
+    _userCodeHook?.(el)
+    cleanup = applyProps(el, props)
+  }
   const ref = (props as { ref?: RefCallback | RefObject } | null)?.ref
   // DEFERRED REF (#4764): the compiler passes `1` and calls `.r()` from the
   // template's ref tail, after the element's children and the template's
@@ -222,7 +226,7 @@ export function bindSpread(el: Element, getProps: () => Props, deferRef?: 1): De
   const stop = _renderBind(() => {
     inner?.()
     const props = getProps()
-    _userCodeHook?.(el)
+    if (props != null) _userCodeHook?.(el)
     inner = applyProps(el, props)
     ref = (props as { ref?: unknown } | null)?.ref
     if (armed) wire()
