@@ -8,7 +8,7 @@ import manifest from '../manifest'
 describe('gen-docs — compiler snapshot', () => {
   it('renders a llms.txt bullet starting with the package prefix', () => {
     const line = renderLlmsTxtLine(manifest)
-    expect(line.startsWith('- @pyreon/compiler —')).toBe(true)
+    expect(line.startsWith('- [@pyreon/compiler](https://pyreon.dev/docs/reference/compiler):')).toBe(true)
   })
 
   it('renders a llms-full.txt section with the right header', () => {

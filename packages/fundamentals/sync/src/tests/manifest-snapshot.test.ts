@@ -16,7 +16,7 @@ import manifest from '../manifest'
 describe('gen-docs — @pyreon/sync manifest snapshot', () => {
   it('renders the llms.txt bullet', () => {
     expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
-      `"- @pyreon/sync — Local-first CRDT-backed sync for signals — a synced signal IS a signal, so a remote op drives ONE fine-grained DOM update, not a re-render. \`@pyreon/sync\` (core bridge — engine-free, universal), \`@pyreon/sync/yjs\` (real Yjs engine + transports + persistence + collaborative text/lists — pulls in \`yjs\`), \`@pyreon/sync/server\` (Node/Bun relay — pulls in \`ws\` + \`node:http\`, never import into client code)."`,
+      `"- [@pyreon/sync](https://pyreon.dev/docs/reference/sync): Local-first CRDT-backed sync for signals — a synced signal IS a signal, so a remote op drives ONE fine-grained DOM update, not a re-render. \`@pyreon/sync\` (core bridge — engine-free, universal), \`@pyreon/sync/yjs\` (real Yjs engine + transports + persistence + collaborative text/lists — pulls in \`yjs\`), \`@pyreon/sync/server\` (Node/Bun relay — pulls in \`ws\` + \`node:http\`, never import into client code)."`,
     )
   })
 

@@ -32,8 +32,8 @@ function finite(v: Double): boolean {
  * which is where a user-supplied window actually arrives.
  */
 
-/** NaN, written so it lowers — the gap marker this file produces. */
-const GAP: Double = 0.0 / 0.0
+/** NaN — the gap marker this file produces. */
+const GAP: Double = NaN
 
 // Technical indicators — derived line marks over a series (Highcharts Stock's
 // vocabulary: SMA, EMA, Bollinger bands, a linear trend).

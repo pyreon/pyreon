@@ -1,5 +1,111 @@
 # @pyreon/create-multiplatform
 
+## 0.54.0
+
+### Minor Changes
+
+- [#3999](https://github.com/pyreon/pyreon/pull/3999) [`fc00911`](https://github.com/pyreon/pyreon/commit/fc009119b79f1c97ca4bd8d19c4a076962aa7226) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Scaffolded Android apps now build on the current Android stack: AGP 9.4.1 (needs Gradle 9.6+), Kotlin 2.4.21, compileSdk 37, Compose BOM 2026.09.00, and current androidx, kotlinx, okhttp 5 and media3 releases. The template was previously on AGP 8.7 and Kotlin 2.0.21, and its `kotlinOptions` block is an error under Kotlin 2.4.
+
+  AGP 9 runs Kotlin itself, so the generated build no longer applies `kotlin("android")`. JVM target configuration moves to `kotlin { compilerOptions { … } }`. Existing apps that upgrade need Gradle 9.6 or newer.
+
+  The generated README no longer tells you to run `./gradlew`: no Gradle wrapper is generated, so it now says to use a system `gradle` (9.6+) and shows `gradle assembleDebug`.
+
+- [#3958](https://github.com/pyreon/pyreon/pull/3958) [`1f0208a`](https://github.com/pyreon/pyreon/commit/1f0208a1d6e55b41d65972f4ba0ab17ab4911810) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The multi-platform scaffold now ships AI-agent files, matching `create-zero`: `AGENTS.md` and `CLAUDE.md` (the project's commands, the native-subset rules, and where the capability matrix lives) and a `.mcp.json` that registers the Pyreon MCP server. A spec ties every `bun run <script>` named in the instructions to the scripts in the generated `package.json`, so the guidance cannot drift from the scaffold.
+
+- [#3964](https://github.com/pyreon/pyreon/pull/3964) [`a59a409`](https://github.com/pyreon/pyreon/commit/a59a4090c8108d1b7fa92eaf60aed465d81f0e73) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The scaffold is now ready for on-device end-to-end testing with Maestro: the sample app carries `data-testid` values, a `.maestro/counter.yaml` flow runs unchanged on iOS and Android, and `e2e:ios` / `e2e:android` scripts build and launch the app (`pyreon-native dev --once`) before running the flows. `MainActivity` now exposes test tags as Android resource ids (without it, `id:` selectors match nothing on Android) and pads for the system bars (on Android 15+ the top of the screen otherwise sits under the status bar). Verified by running the flow with Maestro on an iOS 18.5 simulator and an API 35 emulator. The scripts need a `@pyreon/native-cli` that ships `dev`, so they work from the release that contains this change.
+
+- [#3994](https://github.com/pyreon/pyreon/pull/3994) [`7c3272f`](https://github.com/pyreon/pyreon/commit/7c3272f02ad33482300c744f72ec7b7b34ab2ae3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Generated apps can be opened by URL out of the box ([#3984](https://github.com/pyreon/pyreon/issues/3984)). The iOS host forwards `onOpenURL` and universal links to `PyreonDeepLink`, the Android host forwards the launch intent and `onNewIntent` (the activity is now `singleTop`), and both register a URL scheme, which defaults to the project's identifier (`my-app` becomes `myapp://`) and can be chosen with `--scheme`. Previously the runtime could receive a link but the generated hosts never called it and declared no scheme, so every app had to hand-edit the Swift, the Kotlin and the manifest. Verified on an iOS 18 simulator and an Android API 35 emulator, cold start and warm. Verified web links (universal links / `autoVerify` app links) are not generated: they need a domain you control.
+
+- [#4604](https://github.com/pyreon/pyreon/pull/4604) [`5556eb8`](https://github.com/pyreon/pyreon/commit/5556eb8612bfea2023320e382dc823ca19d41431) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Scaffolded release builds now keep the files that make a crash stack readable.
+
+  `gradle assembleRelease` / `bundleRelease` copies R8's `mapping.txt` to `symbols/android/<versionName>-<versionCode>/`. The new `npm run release:ios` (`scripts/archive-ios.sh`) builds an unsigned device-SDK archive and copies its dSYM to `symbols/ios/<version>-<build>/`, after checking that its UUID matches the binary. `symbols/` is gitignored, so archive it with each release you ship. `npx pyreon-native symbolicate crash.json --symbols=symbols` reads that layout.
+
+### Patch Changes
+
+- [#4604](https://github.com/pyreon/pyreon/pull/4604) [`5556eb8`](https://github.com/pyreon/pyreon/commit/5556eb8612bfea2023320e382dc823ca19d41431) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useBiometrics` on Android now shows a real BiometricPrompt. Before, the Android runtime returned false from `authenticate` and `isAvailable` whatever the device could do. It now checks `BiometricManager` for an enrolled strong biometric and resolves true only when the user authenticates.
+
+  Breaking for existing Android apps: the build needs `implementation("androidx.biometric:biometric:1.1.0")`, and for the prompt to show, `MainActivity` must extend `androidx.fragment.app.FragmentActivity` (a `ComponentActivity` subclass). New apps from `create-multiplatform` get both.
+
+- [#4475](https://github.com/pyreon/pyreon/pull/4475) [`6226165`](https://github.com/pyreon/pyreon/commit/622616554a579355c50df591e54ea73585dc505d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The scaffolded Android `MainActivity` asks for light system bars (`enableEdgeToEdge` with `SystemBarStyle.light`), so the status-bar clock and icons are dark and readable over the light window background instead of white on white. The repo's own example Android hosts now pad for the system bars too (`Box(Modifier.safeDrawingPadding())`, as the scaffold already did): on Android 15+ they drew under the status bar.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - create-zero, create-multiplatform, `pyreon-native`, lathe, loom and atlas now print in the shared Pyreon terminal theme (the one `pyreon doctor`, `pyreon-lint` and `zero build` use): a header line naming what ran, findings as symbol · rule · message with a `↳ file:line:col` line, and a last line that is the verdict with counts and elapsed time. Colour is truecolor on dark or light terminals (`PYREON_CLI_THEME`, `COLORFGBG`), 16 colours otherwise, plain under `NO_COLOR`, `TERM=dumb` or a pipe, and symbols fall back to ASCII when the locale is not UTF-8. Every `--json`, lathe `diff --format github|markdown|json` and LSP payload is unchanged byte for byte.
+
+  - create-zero honours `FORCE_COLOR` and `TERM=dumb` (it ignored both), ends with `✓ created <name> · N files · <ms>`, and no longer erases earlier answers on a terminal that reports 0 columns.
+  - loom: warnings use `!`, findings point at the importing files or the declaring `package.json`, and the verdict is the last stdout line; the CLI no longer calls `process.exit()`, which cut piped output off mid-line.
+  - lathe: messages wrap instead of being truncated at 120 characters; `--color` / `--no-color` still force colour on and off.
+
+- [#4481](https://github.com/pyreon/pyreon/pull/4481) [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every Pyreon command now prints in the shared terminal theme, and the theme gains a 256-colour level.
+
+  - New flags: `pyreon check --gha` and `pyreon-lint --format gha` print one GitHub Actions annotation per finding. `@pyreon/lint` also exports `formatGha` and the `TermChoice` type.
+  - 256 colours: a terminal that advertises 256 colours but not truecolor (`TERM=xterm-256color`, macOS Terminal, `FORCE_COLOR=2`) now gets the nearest xterm-256 colour for each role instead of 16 colours. Every index keeps at least 4.5:1 contrast on dark and light backgrounds. Colour-level options that took `0 | 1 | 2` (where 2 was truecolor) now take `0 | 1 | 2 | 3`: 2 is 256 colours and 3 is truecolor, the numbering `FORCE_COLOR` uses. `FORCE_COLOR=1|2|3` is a minimum: a terminal that advertises more keeps it.
+  - Migrated: `pyreon check`, `plain`, `add`, `context` and the usage errors; `pyreon-lint --list`, `--why-off`, `--init` and watch mode; `zero dev` and the failure output of every `zero` command; the zero build's route-mode table and perf advisor; `lathe pull` and `--watch`; usage errors in `pyreon-native`, atlas and loom; `loom build` and `loom dev` status lines; create-zero's argument and fatal errors; the MCP server's fatal error.
+  - States the reference did not show: an empty run ends on `ℹ` (never `✓`), a run stopped with Ctrl-C ends on `! interrupted · elapsed` and exits 130 (watch modes end on `ℹ stopped watching` and exit 0), and a table that does not fit a narrow terminal stacks its rows instead of cutting them.
+  - Lines wrap at the terminal's width, at most 100 columns; `PYREON_CLI_WIDTH` sets it. A verdict too long for the line moves its counts onto an indented line.
+  - `pyreon-lint --watch` now prints a verdict after a clean re-lint, so a fixed problem no longer stays on screen.
+  - Every `--json` output is unchanged byte for byte.
+
+- [#4684](https://github.com/pyreon/pyreon/pull/4684) [`448c2d0`](https://github.com/pyreon/pyreon/commit/448c2d0e7eb0a34986ea3d97f117d923316abd1f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The scaffolded `.gitignore` now ignores the files Pyreon tooling writes into the app root: `.pyreon/`, `.pyreon-lpih.json` and the temporary `__pyreon-zero-ssg-entry.js` / `__pyreon-zero-ssr-entry.js`.
+
+- [#4009](https://github.com/pyreon/pyreon/pull/4009) [`282ed1a`](https://github.com/pyreon/pyreon/commit/282ed1ae49ab3f6be24cdcc290de97654ab42c2b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation only: the README told users to run `npx create-multiplatform`, which resolves an unscoped npm package that does not exist. It now uses `npm create @pyreon/multiplatform@latest` / `npx @pyreon/create-multiplatform`.
+
+- [#4530](https://github.com/pyreon/pyreon/pull/4530) [`5ab63c0`](https://github.com/pyreon/pyreon/commit/5ab63c0446a68b3cf9e1e570f01a3b214d4e54f9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Read a signal one way in JSX: `count()`.
+
+  The compiler auto-calls a bare `{count}` in JSX, but only for a `const` signal or computed it can see, TypeScript rejects the bare form in expressions and typed component props, and without the Pyreon compiler (vitest's JSX transform, compat projects) the two forms behave differently. One called form is the only rule that holds in every position.
+
+  - New rule `pyreon/consistent-signal-read` (style, on in the `readable` layer). It flags a bare known signal in JSX and fixes it to `count()` wherever the compiler emits the same code for both forms. It reports without a fix the whole value of a component prop (on iOS and Android `<Field value={draft}>` is a two-way binding). It skips Plain Mode files, files the Pyreon compiler does not lower, names bound more than once, identity uses (`{ count }`, spreads) and `on*` / `ref` values. `form: "bare"` asks for `{count}` where the bare form type-checks and compiles the same. There are now 141 rules.
+  - `pyreon/no-signal-in-props` now fires only in files the Pyreon compiler does not lower (test files, compat projects, a foreign `@jsxImportSource`). In a compiled file `<Comp x={sig()} />` is a reactive prop (`_rpd(sig)`), so the rule was wrong there and pushed authors toward the bare form.
+  - The `create-zero` dashboard template and the `create-multiplatform` scaffold read their signals with `count()`.
+
+- [#4479](https://github.com/pyreon/pyreon/pull/4479) [`e195518`](https://github.com/pyreon/pyreon/commit/e195518d5ac7384a0c6cafbfc3b4b4f3c1f3a1c6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/lint` gets a `readable` preset: rules about how code reads, with the spacing fixed for you.
+
+  Turn it on with one line in `.pyreonlintrc.json`:
+
+  ```json
+  { "preset": ["recommended", "readable"] }
+  ```
+
+  `preset` now takes a list, composed left to right. `readable` and `readable-strict` are layers: they set only their own rules, so `["strict", "readable"]` keeps strict's errors and adds readability warnings. They turn on six new opt-in rules in a new `style` category and group:
+
+  - `pyreon/padding-between-declarations` (auto-fixable): a blank line between adjacent top-level statements or class members when either spans lines.
+  - `pyreon/padding-before-return` (auto-fixable): a blank line before a `return` that follows a multi-line statement or three or more statements.
+  - `pyreon/padding-between-component-sections` (auto-fixable): a component reads setup → behaviour → render, with a blank line between sections. Handlers and effects share one section, because `effect()` runs when it is created.
+  - `pyreon/padding-around-multiline-blocks` (auto-fixable, `readable-strict`): a blank line around multi-line `if` / `for` / `try` / `switch` blocks inside a function.
+  - `pyreon/max-jsx-depth`: a component's JSX nests at most 6 deep (5 in strict), and the message names the subtree to extract. Fragments and control-flow components (`<For>`, `<Show>`, …) add no depth.
+  - `pyreon/no-nested-ternary-branch`: no ternary inside another ternary's branch; flat chains are fine up to 4 outcomes (3 in strict).
+
+  The fixes only insert blank lines between statements, which oxfmt keeps, so `--fix` and the formatter never fight. Two matching presets ship for the other tools: `@pyreon/lint/oxlint/readable.json` (function length, complexity, depth, parameters and file length, for `.oxlintrc.json` to extend) and `@pyreon/lint/oxfmt` (formatting with sorted imports, for `oxfmt.config.ts`).
+
+  Also in `@pyreon/lint`:
+
+  - The language server offers code actions: a quick fix for every auto-fixable finding, and `source.fixAll.pyreon` for `editor.codeActionsOnSave`. It now lints each file with the project's own `.pyreonlintrc.json` (it used a fixed `recommended` before), and diagnostic ranges are exact (they started one character early).
+  - `pyreon-lint` without `--preset` now uses the config file's preset. It used to apply `recommended` and ignore the file's choice. `--preset` takes a comma list.
+  - `--watch` now reads `.pyreonlintrc.json`.
+  - Suppression comments accept a reason: `// pyreon-lint-disable-next-line <rule> -- <why>`. A whole file opts out with `// pyreon-lint-disable-file <rule> -- <why>`. The reason is required there, and a directive without one is ignored and reported.
+  - The language server frames messages by bytes. A document containing any non-ASCII character used to be cut short and dropped.
+  - The VS Code extension starts the `pyreon-lint` bin (it used to start a module that exits immediately) and declares its `vscode-languageclient` dependency.
+
+  New `create-zero` projects with lint on, and every new `create-multiplatform` project, ship the readable setup: the preset plus block padding, `.oxlintrc.json`, `oxfmt.config.ts`, the `oxlint` and `oxfmt` dev dependencies, `lint` / `format` / `fix` scripts, and `.vscode/` settings that format and fix on save. A fresh create-zero project of every template lints with zero findings, and its first `bun run format` changes nothing: the templates use `<For>` lists, validate their API body, and are formatted with the shipped preset. The same holds for a new create-multiplatform project: every file it writes (`App.tsx`, `package.json`, the JSON configs, `index.html`, the Maestro flow and the markdown) is already in the formatter's shape. Its README no longer starts a line with `+`, which Markdown read as a list item.
+
+- [#4216](https://github.com/pyreon/pyreon/pull/4216) [`2c85b8d`](https://github.com/pyreon/pyreon/commit/2c85b8d6f68cc01a1bf9c38ecd43daf9b0bb5f95) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `scripts/ensure-release-keystore.sh` generates a random keystore password per project instead of the fixed `pyreon-local` shared by every scaffold. The password is passed to `keytool` through the environment rather than argv, and is written only to the gitignored, owner-only `android/keystore.properties`.
+
+- [#4519](https://github.com/pyreon/pyreon/pull/4519) [`5fdb9c7`](https://github.com/pyreon/pyreon/commit/5fdb9c726905b8b20907a03b5c41fe5b144add14) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Comments name the one-folder TodoMVC and Tasks example apps (`examples/native-todomvc/`, `examples/native-tasks/`). No behaviour change.
+
+- [#4563](https://github.com/pyreon/pyreon/pull/4563) [`327771b`](https://github.com/pyreon/pyreon/commit/327771b3abd8513416f324aa7b202bcca800463c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package now declares its tier in `package.json`: `"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`. From 1.0 the semver promise covers Stable packages only; Experimental packages, and the experimental subpaths of Stable packages (every `./native-plugin`, `@pyreon/core/plain`, `@pyreon/compiler/audits` and `/plain`, `@pyreon/charts/engine`, and the `./webview` subpaths of code, flow and rich-text), may break in a minor release. Each README opens with a status line generated from the field. The policy, including the compiler-helper ABI rule and deprecations, is at https://pyreon.dev/docs/stability-and-direction.
+
+  The `@pyreon/http` and `@pyreon/loom` READMEs no longer claim the packages are unpublished.
+
+  **Breaking (`@pyreon/meta`):** the barrel no longer re-exports `@pyreon/document-primitives` (the `Doc*` components, `createDocumentExport`, `documentTheme`, `extractDocNode`, `DocumentPreview`) or `@pyreon/connector-document` (`extractDocumentTree`, `resolveStyles`), because both are Experimental and meta is Stable. Upgrade: install those packages and import from them directly.
+
+  The ui-core, unistyle, rocketstyle, coolgrid and elements manifests no longer claim that the low-level `Provider` logs a dev warning; it has not warned for some time.
+
+- [#4052](https://github.com/pyreon/pyreon/pull/4052) [`2de6084`](https://github.com/pyreon/pyreon/commit/2de6084df506180f468f9674fa341fea50044574) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<WebView>` now hosts a whole web flow on iOS and Android: the page gets the browser chrome it would get in a browser, and the view can fill the screen.
+
+  Browser chrome ([#3982](https://github.com/pyreon/pyreon/issues/3982)). The Android host had no `WebChromeClient`, so a hosted page's `<input type="file">` never opened a picker, `navigator.geolocation` was never answered, `alert()` / `confirm()` / `prompt()` showed nothing, and `getUserMedia` was denied. The iOS host had no `WKUIDelegate`, so the dialogs were dropped and `window.open` / `target="_blank"` did nothing. Both now answer all of them: the system file chooser (on Android the document picker, or the camera for `capture`), native dialogs titled with the page's host, a per-site prompt for location / camera / microphone followed by the runtime permission, and `http(s)` / `mailto` / `tel` / `sms` links from `window.open` / `target="_blank"` handed to the system browser instead of replacing the hosted page. Location, camera and microphone are only granted when the app declares them (Info.plist usage string, AndroidManifest permission); an undeclared one is refused, and Android logs the entry to add. The `create-multiplatform` scaffold now declares the FileProvider the camera writes through, and lists the permissions and usage strings commented out.
+
+  Sizing ([#3956](https://github.com/pyreon/pyreon/issues/3956), item 5). An unsized `<WebView>` is now the `<iframe>` default on every target: full width and 150 high. iOS used to fill whatever a stack offered while Android was 150dp, and the web filled a sized container. The new `grow` prop takes the free main-axis space of the parent `<Stack>` / `<Inline>` (Compose `Modifier.weight(1f)`, a greedy SwiftUI frame, `flex: 1 1 150px` on the web) and fills a non-stack parent. Inside a `<Scroll>` there is no free space, so the compiler drops `grow` with a named warning. `<CodeWebView>`, `<RichTextWebView>` and `<FlowWebView>` forward `grow` too.
+
+  Breaking for apps that relied on the old defaults: on iOS an unsized `<WebView>` in a stack is no longer stretched to fill it, and on the web the iframe no longer has `height: 100%`. Add `grow` where a web view should fill its parent.
+
 ## 0.53.0
 
 ### Patch Changes

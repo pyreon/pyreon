@@ -316,7 +316,7 @@ export const MISSING_CATALOG_MESSAGE =
   `No \`${CATALOG_FILENAME}\` found in this project (searched upward from the ` +
   `working directory).\n\n` +
   `Atlas builds it by scanning your components:\n\n` +
-  '  bunx atlas scan\n\n' +
+  '  bunx @pyreon/atlas scan\n\n' +
   `That writes \`${CATALOG_FILENAME}\` plus \`atlas-agent-guide.md\`. Re-run this ` +
   `tool afterwards.\n\n` +
   `Returning nothing rather than guessing: the point of the catalog is that its ` +

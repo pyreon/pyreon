@@ -16,7 +16,7 @@ Everything is secure by default — S256 PKCE, `state` and `nonce`, the RFC 9207
 ## Installation
 
 :::warning
-`@pyreon/auth` is **Experimental**: its API may change in a minor release (see the [stability policy](/docs/stability-and-direction)). It is published to npm for the first time with the release that follows 0.54.0; if `npm install` reports that the package does not exist, that release has not reached npm yet.
+`@pyreon/auth` is **Experimental**: its API may change in a minor release (see the [stability policy](/docs/stability-and-direction)). Its first npm version is 0.54.0; if `npm install` reports that the package does not exist, it has not been published yet.
 :::
 
 :::code-group
@@ -730,7 +730,7 @@ The live demo at the top of this page is built exactly this way — its provider
 - Sessions: HMAC-SHA-256 compared without an early exit (only the fixed signature length can leak), ≥ 32-character secrets, `__Host-` + `HttpOnly` + `Secure` + `SameSite=Lax` cookies.
 - `returnTo` validated with the URL parser browsers use, after resolving dot segments and decoding (no `//host` in any spelling).
 
-**Known limits** — read these before you ship:
+**Known limits** (accepted for the first release on 2026-11-24, to be fixed after it) — read these before you ship:
 
 - **L1 — iOS Keychain backups.** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not `…ThisDeviceOnly`: an encrypted backup moves it to another device, and Keychain items survive an uninstall.
 - **L2 — OAuth2-only sign-in.** A sign-in with a provider that returns no ID token (GitHub, Facebook) has no verified identity until a refresh brings an ID token, and two such sessions in one app cannot be told apart, so native instances never adopt each other's refresh of one.
@@ -742,7 +742,7 @@ The live demo at the top of this page is built exactly this way — its provider
 - **A leaked authorization request still allows login CSRF.** Pushed authorization requests (PAR) are not offered.
 - **Server sign-ins need the public callback path or URL, and HTTPS.** The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported. Redirect URIs must be ASCII (punycode hosts), with no `%2e`, backslash or whitespace.
 - **A refresh that cannot reach the provider** keeps the session in `error` until `refresh()` succeeds or the app relaunches. If the response to a rotating refresh is lost in transit, the new refresh token is lost with it and a provider with reuse detection may revoke the family — inherent to rotation.
-- **The first version is published by hand**, from a release tag, after `package.json` moves onto the group version (it says 0.53.0 now), without provenance. Later versions publish through CI with provenance.
+- **The first npm version, 0.54.0, is published by hand** from the commit that made the package public (after the `v0.54.0` tag, which does not contain a public auth), without provenance. From the next release on it publishes through CI with provenance.
 - **TOTP secrets under 128 bits throw** unless `allowShortSecret: true` is set. Existing 80-bit enrolments need the flag: a behaviour change to announce.
 
 **Your production checklist** — these need storage or policy only your app has:

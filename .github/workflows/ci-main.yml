@@ -81,6 +81,41 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # @pyreon/compiler's floor is measured WITH its native binary loaded
+      # (check-coverage.ts NATIVE_BINARY_REQUIREMENTS fails the run without
+      # it). build-native.ts skips silently when cargo is absent, and whether
+      # the runner had cargo used to decide the verdict: 96.77% vs 97.11% on
+      # the same tree. So the binary is restored by the hash of every input
+      # build-native.ts checks, BEFORE setup-pyreon: on a hit the touch makes
+      # the bootstrap's build-native call a fresh no-op (it compares mtimes,
+      # with a 2 s margin, and checkout stamps sources newer than a restored
+      # file, hence the future stamp). That also drops the 37-47 s cargo build
+      # this job paid whenever the runner did have cargo.
+      - name: Restore native compiler binary
+        id: native-bin
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/core/compiler/native/pyreon-compiler.node
+          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/Cargo.toml', 'packages/core/compiler/native/**/*.rs') }}
+      - name: Mark restored binary fresh
+        if: steps.native-bin.outputs.cache-hit == 'true'
+        run: touch -d '+1 minute' packages/core/compiler/native/pyreon-compiler.node
+      # Miss (a Rust source changed): install the toolchain the Build job
+      # uses, so the bootstrap in setup-pyreon builds it; the explicit build
+      # below is a no-op when that worked and the real attempt when not.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master — pinned (OpenSSF Pinned-Dependencies)
+        if: steps.native-bin.outputs.cache-hit != 'true'
+        with:
+          toolchain: stable
+      - name: Restore cargo registry
+        if: steps.native-bin.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
+          restore-keys: cargo-registry-${{ runner.os }}-
       - uses: ./.github/actions/setup-pyreon
         with:
           # Coverage REQUIRES node — bun's inspector lacks the V8 coverage API
@@ -89,6 +124,17 @@ jobs:
           # and preflights for it; this pins the version instead of trusting
           # whatever the runner image happens to ship on PATH that day.
           node-version: '24'
+      - name: Build native compiler binary (cache miss)
+        if: steps.native-bin.outputs.cache-hit != 'true'
+        run: bun run --filter='@pyreon/compiler' build:native
+      # Only the default branch saves, so every ref reads one shared entry.
+      # The key repeats the restore's hashFiles list verbatim (check-cache-key-sync).
+      - name: Save native compiler binary
+        if: steps.native-bin.outputs.cache-hit != 'true' && github.event_name == 'push' && hashFiles('packages/core/compiler/native/pyreon-compiler.node') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/core/compiler/native/pyreon-compiler.node
+          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/Cargo.toml', 'packages/core/compiler/native/**/*.rs') }}
       - name: Run full per-package coverage
         timeout-minutes: 25
         shell: bash

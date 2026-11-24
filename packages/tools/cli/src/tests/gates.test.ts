@@ -137,6 +137,11 @@ describe('runDistributionGate', () => {
   })
 })
 
+// The gate parses every published source file (about 2,600) with the
+// TypeScript parser. A few seconds alone; past vitest's 20 s default under
+// the coverage job's instrumented, 4-way parallel run.
+const DOC_CLAIMS_REAL_REPO_TIMEOUT_MS = 120_000
+
 describe('runDocClaimsGate', () => {
   it('returns GateResult against real repo with expected shape', async () => {
     const result = await runDocClaimsGate({ cwd: REPO_ROOT })
@@ -210,7 +215,7 @@ describe('runDocClaimsGate', () => {
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
     expect(errs).toHaveLength(0)
-  })
+  }, DOC_CLAIMS_REAL_REPO_TIMEOUT_MS)
 
   it('has no claim that silently STOPPED matching', async () => {
     // A `pattern-miss` is ADVISORY, and that is the hole it opened: a claim
@@ -233,7 +238,7 @@ describe('runDocClaimsGate', () => {
       misses.map((f) => `${f.code} ${f.location?.relPath ?? ''}`),
       'a claim stopped matching its pattern — restore the text, or drop the entry from the doc-claims gate checks[]',
     ).toEqual([])
-  })
+  }, DOC_CLAIMS_REAL_REPO_TIMEOUT_MS)
 
   // Mark a tmp fixture as the Pyreon monorepo so the doc-claims gate
   // doesn't skip. The gate's monorepo guard keys on the presence of its

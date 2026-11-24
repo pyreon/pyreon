@@ -1,4 +1,5 @@
 import { For } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
 import { art } from '../theme'
 import { asset, mediaUrl, type PictureData, pictureOf, posterOf, themePair } from './assets'
 import { C } from './classes'
@@ -10,7 +11,63 @@ import type { LoopSources } from './LoopPlayer'
  * Every size comes from the manifest, so nothing shifts when a file loads.
  */
 
-function PictureTag(props: { data: PictureData; alt: string; eager?: boolean | undefined; sizes: string; class?: string | undefined }) {
+/**
+ * `themed`: one of a dark/light pair, hidden by CSS in the other theme. Such a
+ * picture is always `loading="lazy"`: a lazy image that is not displayed is
+ * never fetched, while an eager one is, so an eager pair used to download BOTH
+ * theme files at high priority (on the home page, the hero loop's two
+ * posters, 33 KB on a phone where the hero visual is not even displayed). An
+ * eager pair is made discoverable early by `preloadThemePair` instead.
+ */
+/** One theme's preload, as the inline script below inserts it. */
+interface PosterPreload {
+  readonly href: string
+  readonly srcset?: string | undefined
+  readonly type?: string | undefined
+}
+
+const posterPreload = (d: PictureData): PosterPreload => {
+  const best = d.sources[0]
+  return best ? { href: d.src, srcset: best.srcset, type: best.type } : { href: d.src }
+}
+
+/**
+ * The inline script that preloads an eager theme pair: ONE `<link
+ * rel="preload">`, for the theme the visitor will see. It runs in `<head>`
+ * after the pre-paint script (`color-mode.ts`), which has already written
+ * `data-theme` from the stored choice (`pyreon-theme`) or the OS preference,
+ * so it picks the same file CSS will show. A declarative preload per
+ * `prefers-color-scheme` got it wrong whenever the stored theme differs from
+ * the OS: the hidden poster at high priority, the shown one late. `media`
+ * limits it to where the visual is displayed (none on phones). Exported for
+ * the unit test.
+ */
+export function posterPreloadScript(dark: PictureData, light: PictureData, sizes: string, visibleMedia: string | undefined): string {
+  const data = JSON.stringify({ dark: posterPreload(dark), light: posterPreload(light), sizes, media: visibleMedia ?? '' }).replace(
+    /</g,
+    '\\u003c',
+  )
+
+  return (
+    `(function(){var c=${data},d=document,p=c[d.documentElement.getAttribute("data-theme")==="light"?"light":"dark"],` +
+    `l=d.createElement("link");l.rel="preload";l.as="image";l.href=p.href;` +
+    `if(p.srcset){l.setAttribute("imagesrcset",p.srcset);l.setAttribute("imagesizes",c.sizes);l.type=p.type}` +
+    `if(c.media)l.media=c.media;l.setAttribute("fetchpriority","high");d.head.appendChild(l)})()`
+  )
+}
+
+function preloadThemePair(dark: PictureData, light: PictureData, sizes: string, visibleMedia: string | undefined): void {
+  useHead({ script: [{ children: posterPreloadScript(dark, light, sizes, visibleMedia) }] })
+}
+
+function PictureTag(props: {
+  data: PictureData
+  alt: string
+  eager?: boolean | undefined
+  themed?: boolean | undefined
+  sizes: string
+  class?: string | undefined
+}) {
   const d = props.data
   return (
     <picture class={props.class ? `${C.picture} ${props.class}` : C.picture}>
@@ -22,7 +79,7 @@ function PictureTag(props: { data: PictureData; alt: string; eager?: boolean | u
         alt={props.alt}
         width={d.width}
         height={d.height}
-        loading={props.eager ? 'eager' : 'lazy'}
+        loading={props.eager && !props.themed ? 'eager' : 'lazy'}
         fetchPriority={props.eager ? 'high' : undefined}
         decoding={props.eager ? 'sync' : 'async'}
       />
@@ -45,6 +102,8 @@ export function Picture(props: {
   file: string
   alt?: string | undefined
   eager?: boolean | undefined
+  /** Where the picture is displayed at all (e.g. `(min-width: 700px)`); limits an eager pair's preload. */
+  preloadMedia?: string | undefined
   sizes?: string | undefined
   class?: string | undefined
 }) {
@@ -56,10 +115,12 @@ export function Picture(props: {
   }
   const dark = pictureOf(pair.dark)
   const light = pictureOf(pair.light)
+  if (props.eager) preloadThemePair(dark, light, sizes, props.preloadMedia)
+
   return (
     <>
-      <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} sizes={sizes} class={`${C.onlyDark} ${props.class ?? ''}`} />
-      <PictureTag data={light} alt={props.alt ?? light.alt} eager={props.eager} sizes={sizes} class={`${C.onlyLight} ${props.class ?? ''}`} />
+      <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} themed sizes={sizes} class={`${C.onlyDark} ${props.class ?? ''}`} />
+      <PictureTag data={light} alt={props.alt ?? light.alt} eager={props.eager} themed sizes={sizes} class={`${C.onlyLight} ${props.class ?? ''}`} />
     </>
   )
 }
@@ -69,14 +130,22 @@ export function Picture(props: {
  * theme-following picture pair. Used under a `Loop` and as the reduced-motion
  * or no-JS face of anything that moves.
  */
-export function Poster(props: { file: string; alt?: string | undefined; eager?: boolean | undefined; sizes?: string | undefined }) {
+export function Poster(props: {
+  file: string
+  alt?: string | undefined
+  eager?: boolean | undefined
+  sizes?: string | undefined
+  preloadMedia?: string | undefined
+}) {
   const sizes = props.sizes ?? '(min-width: 1240px) 1240px, 100vw'
   const dark = posterOf(props.file, 'dark')
   const light = posterOf(props.file, 'light')
+  if (props.eager) preloadThemePair(dark, light, sizes, props.preloadMedia)
+
   return (
     <>
-      <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} sizes={sizes} class={C.onlyDark} />
-      <PictureTag data={light} alt={props.alt ?? light.alt} eager={props.eager} sizes={sizes} class={C.onlyLight} />
+      <PictureTag data={dark} alt={props.alt ?? dark.alt} eager={props.eager} themed sizes={sizes} class={C.onlyDark} />
+      <PictureTag data={light} alt={props.alt ?? light.alt} eager={props.eager} themed sizes={sizes} class={C.onlyLight} />
     </>
   )
 }
@@ -97,6 +166,7 @@ const toSources = (m: LoopMedia): LoopSources => {
     smallWebm: s.small ? mediaUrl(s.small.webm) : undefined,
     smallMp4: s.small ? mediaUrl(s.small.mp4) : undefined,
   })
+
   return { dark: side(m.dark), light: side(m.light) }
 }
 
@@ -109,15 +179,23 @@ const toSources = (m: LoopMedia): LoopSources => {
  * `prefers-reduced-motion`, swaps it when the theme changes, and offers a
  * pause button (WCAG 2.2.2: the loop runs longer than five seconds).
  */
-export function Loop(props: { media: LoopMedia; eager?: boolean | undefined; sizes?: string | undefined }) {
+export function Loop(props: {
+  media: LoopMedia
+  eager?: boolean | undefined
+  sizes?: string | undefined
+  /** Where the loop is displayed at all (e.g. `(min-width: 700px)`); limits an eager loop's poster preload. */
+  preloadMedia?: string | undefined
+}) {
   const m = props.media
   const darkPoster = pictureOf(m.dark.poster)
   const lightPoster = pictureOf(m.light.poster)
   const sizes = props.sizes ?? '(min-width: 1240px) 1240px, 100vw'
+  if (props.eager) preloadThemePair(darkPoster, lightPoster, sizes, props.preloadMedia)
+
   return (
     <figure class={C.loop} style={`aspect-ratio:${m.width} / ${m.height}`}>
-      <PictureTag data={darkPoster} alt={m.alt} eager={props.eager} sizes={sizes} class={C.onlyDark} />
-      <PictureTag data={lightPoster} alt={m.alt} eager={props.eager} sizes={sizes} class={C.onlyLight} />
+      <PictureTag data={darkPoster} alt={m.alt} eager={props.eager} themed sizes={sizes} class={C.onlyDark} />
+      <PictureTag data={lightPoster} alt={m.alt} eager={props.eager} themed sizes={sizes} class={C.onlyLight} />
       <LoopPlayerIsland sources={toSources(m)} label={m.alt} width={m.width} height={m.height} />
     </figure>
   )
@@ -189,6 +267,7 @@ export function AnimatedSvg(props: {
   if (props.markup !== undefined) {
     return <div class={C.svgArt} {...artBox(props.markup, props.decorative)} dangerouslySetInnerHTML={{ __html: props.markup }} />
   }
+
   return (
     <img
       class={C.svgArt}

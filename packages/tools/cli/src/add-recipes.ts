@@ -87,7 +87,7 @@ export const ADD_RECIPES: Record<string, AddRecipe> = {
   '@pyreon/loom': {
     summary: 'Dependency observatory — workspace graph, cycles, phantom deps, blast radius, as data.',
     usage: `# Scan the fabric; red exit on error findings, so it gates CI as-is.
-npx loom scan .
+npx @pyreon/loom scan .
 
 # Configure via package.json's \`loom\` key or a \`loom\` section in pyreon.config.*:
 #   devPaths  globs that are NOT shipping source (build-time codegen, manifests)
@@ -96,16 +96,16 @@ npx loom scan .
 #   severity  per-code override: error | warning | info
 
 # The observatory UI (needs vite + @pyreon/vite-plugin as dev deps):
-npx loom dev`,
+npx @pyreon/loom dev`,
     docs: '/docs/loom',
   },
   '@pyreon/atlas': {
     summary: 'AI-native component workbench — derives a verified catalog from your source.',
     usage: `# Derive the catalog (writes atlas-catalog.json — the machine surface):
-npx atlas scan
+npx @pyreon/atlas scan
 
 # Serve the workbench:
-npx atlas dev
+npx @pyreon/atlas dev
 
 # Optional atlas.config.ts, or an \`atlas\` section in pyreon.config.*.`,
     docs: '/docs/atlas',

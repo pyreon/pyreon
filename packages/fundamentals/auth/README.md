@@ -266,8 +266,8 @@ and pass it down.
 
 ## Security notes and known limits
 
-`@pyreon/auth` is **Experimental**: its API may change in a minor release. These are the limits to accept before you
-ship it:
+`@pyreon/auth` is **Experimental**: its API may change in a minor release. Known limits (accepted for the first release
+on 2026-11-24, to be fixed after it):
 
 - **L1 — iOS Keychain backups.** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not `…ThisDeviceOnly`: an encrypted backup moves it to another device, and Keychain items survive an uninstall.
 - **L2 — OAuth2-only sign-in.** A sign-in with a provider that returns no ID token (GitHub, Facebook) has no verified identity until a refresh brings an ID token, and two such sessions in one app cannot be told apart, so native instances never adopt each other's refresh of one.
@@ -279,7 +279,7 @@ ship it:
 - **A leaked authorization request still allows login CSRF.** Pushed authorization requests (PAR) are not offered.
 - **Server sign-ins need the public callback path or URL, and HTTPS.** The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported. Redirect URIs must be ASCII (punycode hosts), with no `%2e`, backslash or whitespace.
 - **A refresh that cannot reach the provider** keeps the session in `error` until `refresh()` succeeds or the app relaunches. If the response to a rotating refresh is lost in transit, the new refresh token is lost with it and a provider with reuse detection may revoke the family — inherent to rotation.
-- **The first version is published by hand**, from a release tag, after `package.json` moves onto the group version (it says 0.53.0 now), without provenance. Later versions publish through CI with provenance.
+- **The first npm version, 0.54.0, is published by hand** from the commit that made the package public (after the `v0.54.0` tag, which does not contain a public auth), without provenance. From the next release on it publishes through CI with provenance.
 - **TOTP secrets under 128 bits throw** unless `allowShortSecret: true` is set. Existing 80-bit enrolments need the flag: a behaviour change to announce.
 
 MIT

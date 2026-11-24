@@ -1,0 +1,208 @@
+// Execution-parity cases for the chart-engine functions whose source the zero-warning PR changed (counting loops →
+// `Number(n)`, `0.0 / 0.0` → `NaN`, the narrowing workarounds). Appended to the engine bundle and run as JavaScript,
+// and through PMTC as Swift and Kotlin (`native-chart-engine-execution-parity.test.ts`). Every case returns a
+// string; integers, zero, negatives and fractional values where the function takes a Double.
+//
+// Not a module of its own: it is concatenated after `bundleEngineSource()`, so every engine function is in scope.
+
+function r3(x: Double): string {
+  return String(Math.round(x * 1000.0) / 1000.0)
+}
+
+export function c_count_to_double(): string {
+  return r3(countToDouble(-3)) + ',' + r3(countToDouble(0)) + ',' + r3(countToDouble(5))
+}
+
+export function c_count_of(): string {
+  return r3(countOf(-2)) + ',' + r3(countOf(0)) + ',' + r3(countOf(3))
+}
+
+export function c_window_of_rows(): string {
+  const a = windowOfRows(0, 0, 4)
+  const b = windowOfRows(1, 2, 5)
+  const c = windowOfRows(-1, 3, 4)
+  const d = windowOfRows(2, -1, 4)
+  const e = windowOfRows(0, 3, 0)
+  return [a, b, c, d, e].map((w) => r3(w.start) + ':' + r3(w.end)).join(',')
+}
+
+export function c_slice_range(): string {
+  const a = sliceRange({ start: 0.1, end: 0.6 }, 7)
+  const b = sliceRange({ start: 0.0, end: 1.0 }, 5)
+  const c = sliceRange({ start: 0.5, end: 0.5 }, 3)
+  const d = sliceRange({ start: 0.0, end: 1.0 }, 0)
+  return [a, b, c, d].map((s) => String(s.from) + ':' + String(s.to)).join(',')
+}
+
+export function c_preset_window(): string {
+  const a = presetWindow(3, 10)
+  const b = presetWindow(10, 10)
+  const c = presetWindow(0, 5)
+  const d = presetWindow(1, 3)
+  return [a, b, c, d].map((w) => r3(w.start) + ':' + r3(w.end)).join(',')
+}
+
+export function c_ramp_color(): string {
+  const stops = ['#000000', '#ffffff', '#ff0000']
+  return [0.0, 0.25, 0.5, 0.99, 1.0, -0.5].map((t) => rampColor(stops, t)).join(' ')
+}
+
+export function c_five_number(): string {
+  const f = fiveNumber([3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0, 5.5])
+  return [f.min, f.q1, f.median, f.q3, f.max].map((x) => r3(x)).join(',')
+}
+
+export function c_legend_plan(): string {
+  const entries: LegendEntry[] = [
+    { label: 'alpha', color: '#111' },
+    { label: 'beta', color: '#222' },
+    { label: 'gamma', color: '#333' },
+  ]
+  const opts: LegendOptions = { fontSize: 12.0, labelColor: '#000', swatch: 10.0, gap: 8.0, orientation: 'vertical' }
+  const p = legendPlan(entries, { x: 0.0, y: 0.0, w: 200.0, h: 100.0 }, opts, (t: string, s: Double): Double => Number(t.length) * s * 0.5, 200.0)
+  return r3(p.rows) + '|' + p.row.map((x) => r3(x)).join(',')
+}
+
+export function c_layout_tree(): string {
+  const roots: TreeNode[] = [{ name: 'r', children: [{ name: 'a', value: 2.0 }, { name: 'b', children: [{ name: 'c', value: 1.0 }] }] }]
+  const l = layoutTree(roots, { x: 0.0, y: 0.0, w: 300.0, h: 200.0 })
+  return l.nodes.map((n) => n.name + '@' + r3(n.at.x) + '/' + r3(n.at.y) + 'd' + String(n.depth)).join(',')
+}
+
+export function c_layout_sunburst(): string {
+  const roots: TreeNode[] = [{ name: 'r', children: [{ name: 'a', value: 2.0 }, { name: 'b', children: [{ name: 'c', value: 1.0 }] }] }]
+  const arcs = layoutSunburst(roots, 10.0, 100.0)
+  return arcs.map((a) => a.name + ':' + r3(a.innerR) + '-' + r3(a.outerR)).join(',')
+}
+
+export function c_layout_treemap(): string {
+  const roots: TreeNode[] = [{ name: 'a', value: 3.0 }, { name: 'b', children: [{ name: 'c', value: 1.0 }, { name: 'd', value: 2.0 }] }]
+  const cells = layoutTreemap(roots, { x: 0.0, y: 0.0, w: 120.0, h: 80.0 })
+  return cells.map((c) => c.name + '@' + r3(c.rect.x) + ',' + r3(c.rect.y) + ',' + r3(c.rect.w) + ',' + r3(c.rect.h)).join(' ')
+}
+
+export function c_layout_sankey(): string {
+  const nodes: SankeyNode[] = [{ name: 'a' }, { name: 'b' }, { name: 'c' }]
+  const links: SankeyLink[] = [{ source: 'a', target: 'b', value: 3.0 }, { source: 'b', target: 'c', value: 2.0 }, { source: 'a', target: 'c', value: 1.0 }]
+  const l = layoutSankey(nodes, links, { x: 0.0, y: 0.0, w: 300.0, h: 120.0 })
+  return l.nodes.map((n) => n.name + '@' + r3(n.rect.x) + ',' + r3(n.rect.y) + ',' + r3(n.rect.h)).join(' ')
+}
+
+export function c_layout_polar(): string {
+  const series: PolarSeries[] = [
+    { name: 's', kind: 'bar', values: [1.0, 2.0, 3.0] },
+    { name: 't', kind: 'bar', values: [2.0, 1.0, 0.5] },
+  ]
+  const l = layoutPolar({ categories: ['x', 'y', 'z'] }, series, { x: 0.0, y: 0.0, w: 200.0, h: 200.0 })
+  return String(l.sectors.length) + '|' + l.sectors.map((s) => r3(s.start) + ':' + r3(s.end)).join(',')
+}
+
+export function c_layout_parallel(): string {
+  const axes: ParallelAxis[] = [{ name: 'a' }, { name: 'b', type: 'category', categories: ['p', 'q', 'r'] }]
+  const l = layoutParallel(axes, [[1.0, 0.0], [3.0, 2.0], [2.0, 1.0]], { x: 0.0, y: 0.0, w: 200.0, h: 100.0 })
+  return l.axes.map((a) => r3(a.x)).join(',') + '|' + String(l.lines.length)
+}
+
+export function c_layout_river(): string {
+  const series: RiverSeries[] = [{ name: 'a', values: [1.0, 2.0, 3.0] }, { name: 'b', values: [2.0, 0.0, 1.0] }]
+  const l = layoutRiver(series, { x: 0.0, y: 0.0, w: 200.0, h: 100.0 })
+  return l.xs.map((x) => r3(x)).join(',') + '|' + String(l.layers.length)
+}
+
+export function c_layout_graph(): string {
+  const nodes: GraphNode[] = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }]
+  const l = layoutGraph(nodes, [], { x: 0.0, y: 0.0, w: 200.0, h: 200.0 }, { layout: 'circular' })
+  return l.nodes.map((n) => r3(n.at.x) + '/' + r3(n.at.y)).join(',')
+}
+
+export function c_heat_grid(): string {
+  const g = buildHeatGrid(['a', 'b'], ['x', 'y', 'z'], [0.0, 1.0, 1.0], [0.0, 2.0, 1.0], [1.0, 5.0, 3.0])
+  return String(g.cells.length) + '|' + r3(g.min) + ':' + r3(g.max)
+}
+
+export function c_render_slider_zoom(): string {
+  return String(renderSliderZoom([1.0, 3.0, 2.0, 5.0], { start: 0.25, end: 0.75 }, { x: 0.0, y: 0.0, w: 100.0, h: 20.0 }, false).length)
+}
+
+export function c_render_candles(): string {
+  const candles: Ohlc[] = [
+    { open: 1.0, high: 3.0, low: 0.5, close: 2.0 },
+    { open: 2.0, high: 2.5, low: 1.0, close: 1.5 },
+  ]
+  return String(renderCandles(candles, { x: 0.0, y: 0.0, w: 100.0, h: 50.0 }, { min: 0.0, max: 4.0 }).length)
+}
+
+// ── The other functions whose source changed (NaN gaps, removed narrowing workarounds) ──────────────────────────
+
+function measureText(t: string, s: Double): Double {
+  return Number(t.length) * s * 0.55
+}
+
+function lineSpec(values: Double[], yScale: string, normalize: boolean, kind: string): ChartSpec {
+  const series: Series[] = [
+    { kind: kind === 'stacked' ? 'stacked' : 'line', values: values, color: '#3366cc', width: 2.0, radius: 3.0, label: 'a' },
+    { kind: kind === 'stacked' ? 'stacked' : 'line', values: [2.0, 1.0, 3.0, 2.0], color: '#cc3366', width: 2.0, radius: 3.0, label: 'b' },
+  ]
+  return {
+    width: 320.0,
+    height: 200.0,
+    series: series,
+    categories: ['q1', 'q2', 'q3', 'q4'],
+    theme: defaultTheme,
+    showXAxis: true,
+    showYAxis: true,
+    showGrid: true,
+    yScale: yScale,
+    stackNormalize: normalize,
+  }
+}
+
+export function c_render_log_with_gaps(): string {
+  // log scale: a non-positive value is a NaN gap (render.ts), not a point.
+  return String(renderChart(lineSpec([1.0, 10.0, 0.0, 100.0], 'log', false, 'line'), measureText).length)
+}
+
+export function c_render_stack_normalize(): string {
+  return String(renderChart(lineSpec([1.0, 2.0, 0.0, 4.0], 'linear', true, 'stacked'), measureText).length)
+}
+
+export function c_stack_levels(): string {
+  const l = stackLevels([[1.0, 2.0, -1.0], [3.0, NaN, 2.0]])
+  return l.tops.map((row) => row.map((x) => (isFiniteNumber(x) ? r3(x) : 'gap')).join(' ')).join('|')
+}
+
+export function c_tooltip_lines(): string {
+  const rows: TooltipRow[] = [{ label: 'a', value: 2.0, color: '#111' }, { label: 'b', value: 0.5, color: '#222' }]
+  return tooltipLines({ title: 'Q1', rows: rows }).join('|')
+}
+
+export function c_tooltip_at(): string {
+  const series: TooltipSeries[] = [
+    { label: 'a', values: [1.0, NaN, 3.0], color: '#111' },
+    { label: 'b', values: [2.0], color: '#222' },
+  ]
+  return [0, 1, 2, 5].map((i) => {
+    const t = tooltipAt(i, ['x', 'y', 'z'], series)
+    return t.title + ':' + String(t.rows.length)
+  }).join(',')
+}
+
+export function c_heat_render_and_hit(): string {
+  const grid = buildHeatGrid(['a', 'b'], ['x', 'y'], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0], [1.0, 5.0, 3.0])
+  const plot: Rect = { x: 0.0, y: 0.0, w: 100.0, h: 60.0 }
+  const cmds = renderHeat({ grid: grid, plot: plot })
+  const hits = [hitHeatCell(grid, plot, 0.0, 10.0, 10.0), hitHeatCell(grid, plot, 0.0, 75.0, 45.0), hitHeatCell(grid, plot, 0.0, -5.0, 10.0)]
+  return String(cmds.length) + '|' + hits.map((h) => String(h)).join(',')
+}
+
+export function c_view_annotation(): string {
+  const a = viewAnnotation({ x: 10.0, y: 100.0, xFrom: 1.0, xTo: -1.0 }, 'log', 1.0, true)
+  const show = (v: Double | undefined): string => (v === undefined ? 'u' : isFiniteNumber(v) ? r3(v) : 'gap')
+  return [a.x, a.xFrom, a.xTo, a.y].map((v) => show(v)).join(',')
+}
+
+export function c_geo_value_of(): string {
+  const values: GeoValue[] = [{ region: 'a', value: 2.0 }]
+  const missing = geoValueOf(values, 'b')
+  return r3(geoValueOf(values, 'a')) + ',' + (isFiniteNumber(missing) ? 'num' : 'gap')
+}

@@ -198,7 +198,7 @@ export function App() {
 }`,
       { target: 'swift' },
     )
-    expect(r.warnings.join('\n')).toContain('the safe-index lowering needs a re-readable')
+    expect(r.warnings.join('\n')).toContain('the safe-index lowering needs a non-optional receiver')
   })
 
   it('a NON-optional chain of the same depth stays plain (the false arm)', () => {

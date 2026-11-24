@@ -48,13 +48,7 @@ export function brushRange(
 
 /** An index difference as a Double — negative when the selection sits before the visible slice. */
 export function countToDouble(k: number): Double {
-  let f = 0.0
-  if (k >= 0) {
-    for (let i = 0; i < k; i++) f = f + 1.0
-  } else {
-    for (let i = 0; i < 0 - k; i++) f = f - 1.0
-  }
-  return f
+  return Number(k)
 }
 
 /**

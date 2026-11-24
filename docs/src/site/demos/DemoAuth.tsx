@@ -11,8 +11,8 @@ import { Eyebrow } from '../kit/type'
 import { Badge } from '../kit/badge'
 
 /**
- * Auth demo (`auth.json` → demo). `@pyreon/auth` is Experimental and first published
- * with the release after 0.54.0, which the demo says on screen. It mounts the REAL
+ * Auth demo (`auth.json` → demo). `@pyreon/auth` is Experimental, which the demo says
+ * on screen. It mounts the REAL
  * `useOidc` against the OpenID provider that lives in this page
  * (`docs/src/examples/auth/fake-provider.ts`: real discovery, S256 PKCE and
  * ES256-signed ID tokens; only the network and the login page are
@@ -222,7 +222,7 @@ export default function DemoAuth() {
         <div>
           <Badge tone="experimental" size="sm" placement="after">experimental</Badge>
         </div>
-        <SimulatedNote>@pyreon/auth is Experimental and first published with the release after 0.54.0. This runs it against an OpenID provider inside this page; only the network and the login page are simulated.</SimulatedNote>
+        <SimulatedNote>@pyreon/auth is Experimental. This runs it against an OpenID provider inside this page; only the network and the login page are simulated.</SimulatedNote>
       </GlowCard>
     </DemoGrid>
   )

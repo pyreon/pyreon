@@ -1,0 +1,124 @@
+type Double = number
+interface O { name: string }
+const XS: Double[] = [1.5, 2.5]
+const OS: O[] = [{ name: 'a' }]
+let calls = ''
+function idx(k: number): number { calls = calls + 'i'; return k }
+function dflt(): Double { calls = calls + 'd'; return 7.0 }
+function closureAfterGuard(xs: Double[], i: number): string {
+  const v = xs[i]
+  if (v === undefined) return 'none'
+  const f = (): string => String(v * 2.0)
+  return f()
+}
+function loopGuard(xs: Double[], i: number): string {
+  const v = xs[i]
+  let out = ''
+  for (let k = 0; k < 2; k++) {
+    if (v === undefined) continue
+    out = out + String(v + k)
+  }
+  return out
+}
+function sw(xs: Double[], i: number, k: number): string {
+  const v = xs[i]
+  switch (k) {
+    case 1:
+      return String(v ?? 0.0)
+    default:
+      if (v === undefined) return 'none'
+      return String(v * 2.0)
+  }
+}
+function andNarrow(xs: Double[], i: number): string {
+  const v = xs[i]
+  return v !== undefined && v > 2.0 ? 'y' : 'n'
+}
+function elseNarrow(xs: Double[], i: number): string {
+  const v = xs[i]
+  if (v === undefined) {
+    return 'none'
+  } else {
+    return String(v * 2.0)
+  }
+}
+function multiExit(xs: Double[], i: number, flag: boolean): string {
+  const v = xs[i]
+  if (v === undefined) {
+    if (flag) return 'a'
+    else return 'b'
+  }
+  return String(v * 2.0)
+}
+function longExit(xs: Double[], i: number): string {
+  const v = xs[i]
+  let c = 0
+  if (v === undefined) {
+    c = c + 1
+    c = c + 2
+    return 'x' + String(c)
+  }
+  return String(v)
+}
+function ternRev(xs: Double[], i: number): string {
+  const v = xs[i]
+  return String(v !== undefined ? v * 2.0 : 0.0)
+}
+function aliasAfter(xs: Double[], i: number): string {
+  const v = xs[i]
+  if (v === undefined) return 'none'
+  const w = v
+  return String(w + 1.0)
+}
+function chainMix(os: O[], i: number): string {
+  const v = os[i]
+  return (v?.name ?? 'n') + (v === undefined ? '' : v.name)
+}
+function nestedFn(xs: Double[], i: number): string {
+  const v = xs[i]
+  const f = (): Double => {
+    return v ?? 1.0
+  }
+  return String(f())
+}
+function foldSide(xs: Double[], k: number): string {
+  calls = ''
+  let v = xs[idx(k)]
+  if (v === undefined) v = dflt()
+  return String(v) + calls
+}
+function foldTernary(xs: Double[], i: number, c: boolean): string {
+  let v = c ? xs[0] : xs[i]
+  if (v === undefined) v = 1.0
+  return String(v * 2.0)
+}
+function guardInIf(xs: Double[], i: number, flag: boolean): string {
+  const v = xs[i]
+  if (flag) {
+    if (v === undefined) return 'a'
+    return String(v + 1.0)
+  }
+  return 'f'
+}
+export function c_closure_after_guard_in(): string { return closureAfterGuard(XS, 1) }
+export function c_loop_guard_in(): string { return loopGuard(XS, 0) }
+export function c_loop_guard_out(): string { return loopGuard(XS, 5) }
+export function c_switch_in(): string { return sw(XS, 1, 2) }
+export function c_switch_out(): string { return sw(XS, 5, 2) }
+export function c_switch_case1_out(): string { return sw(XS, 5, 1) }
+export function c_and_in(): string { return andNarrow(XS, 1) }
+export function c_else_in(): string { return elseNarrow(XS, 1) }
+export function c_else_out(): string { return elseNarrow(XS, 9) }
+export function c_multi_exit_out(): string { return multiExit(XS, 9, false) }
+export function c_multi_exit_in(): string { return multiExit(XS, 0, true) }
+export function c_long_exit_out(): string { return longExit(XS, 9) }
+export function c_tern_rev_out(): string { return ternRev(XS, 9) }
+export function c_alias_after_out(): string { return aliasAfter(XS, 9) }
+export function c_alias_after_in(): string { return aliasAfter(XS, 0) }
+export function c_chain_mix_out(): string { return chainMix(OS, 3) }
+export function c_chain_mix_in(): string { return chainMix(OS, 0) }
+export function c_nested_fn_out(): string { return nestedFn(XS, 4) }
+export function c_fold_side_in(): string { return foldSide(XS, 1) }
+export function c_fold_side_out(): string { return foldSide(XS, 8) }
+export function c_fold_ternary_in(): string { return foldTernary(XS, 1, false) }
+export function c_guard_in_if_out(): string { return guardInIf(XS, 9, true) }

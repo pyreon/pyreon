@@ -53,8 +53,7 @@ export function fiveNumber(values: Double[]): FiveNumber {
       jf = jf + 1.0
     }
     const hi = lo + 1 < n ? lo + 1 : lo
-    let loF = 0.0
-    for (let k = 0; k < lo; k++) loF = loF + 1.0
+    const loF: Double = Number(lo)
     const frac = pos - loF
     return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * frac
   }

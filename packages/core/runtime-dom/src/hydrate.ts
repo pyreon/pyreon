@@ -1309,8 +1309,12 @@ function hydrateVNode(
     // keyed branch documents).
     const stale: ChildNode[] = []
     for (let n: ChildNode | null = domNode; n; n = n.nextSibling) stale.push(n)
+    // The marker is only the insertion point: the mounted list brings its own
+    // boundaries, so it goes once the list is in. Left in place it was a
+    // stray `<!--pyreon-for-->` a fresh render does not have.
     const marker = insertMarker(parent, domNode, 'pyreon-for')
     const cleanup = mountChild(vnode, parent, marker)
+    marker.remove()
     for (const n of stale) {
       if (n.parentNode === parent) n.remove()
     }

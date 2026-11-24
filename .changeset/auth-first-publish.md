@@ -2,7 +2,7 @@
 '@pyreon/auth': minor
 ---
 
-`@pyreon/auth` is published to npm for the first time, with this release. It is **Experimental**: its API may change in a minor release. Its first version is published by hand, without provenance; later versions publish through CI with provenance.
+`@pyreon/auth` is public. Its first npm version, 0.54.0, was published by hand from the commit that made it public (after the `v0.54.0` tag), without provenance; from this release on it publishes through CI with provenance. It is **Experimental**: its API may change in a minor release.
 
 Security fixes and contract changes made before the first publish:
 

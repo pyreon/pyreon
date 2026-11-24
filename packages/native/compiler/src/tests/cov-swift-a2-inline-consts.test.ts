@@ -67,9 +67,9 @@ describe('a value const is inlined into every statement kind', () => {
     expect(out).toContain('while v < (3) {')
     expect(out).toContain('} while v < (3)')
     // the for-range `to` bound AND the body
-    expect(out).toContain('for i in 0..<(3) {')
+    expect(out).toContain('for _ in 0..<(3) {')
     // a stride keeps its literal step; the BODY still inlines
-    expect(out).toContain('for j in stride(from: 0, to: 6, by: 2) {')
+    expect(out).toContain('for _ in stride(from: 0, to: 6, by: 2) {')
     expect(out).toContain('for q in [(3), (3) + 1] {')
     // the discriminant is untouched (`v`), the TESTS and bodies inline
     expect(out).toContain('case (3):')

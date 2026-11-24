@@ -111,8 +111,8 @@ describe('a fractional slice bound', () => {
 describe('substring has JavaScript semantics on both targets', () => {
   it('Kotlin always goes through pyreonSubstring (its own substring throws past the end)', () => {
     const out = emit(substrings, 'kotlin').code
-    expect(out).toContain('fun trunc(s: String): String = pyreonSubstring(s, (0L).toLong(), (10L).toLong())')
-    expect(out).toContain('p.name?.let { pyreonSubstring(it, (1L).toLong()) }')
+    expect(out).toContain('fun trunc(s: String): String = pyreonSubstring(s, 0L, 10L)')
+    expect(out).toContain('p.name?.let { pyreonSubstring(it, 1L) }')
     expect(out).not.toMatch(/\.substring\(/)
   })
   it('Swift always uses the runtime (a String position is a UTF-16 offset; `dropFirst` counts Characters)', () => {

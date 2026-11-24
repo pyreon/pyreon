@@ -8,7 +8,8 @@ import { isDoubleLiteralValue } from './number-literal'
 import { desugarGlobalTimers } from './global-timers-desugar'
 import { lowerDateNode } from './date-lowering'
 import { refineParamFloatsFromCallSites } from './call-site-param-floats'
-import { applyDestructureAbsence, applyDestructureAbsenceToLets } from './destructure-absence'
+import { applyDestructureAbsence, applyDestructureAbsenceToLets, foldAbsenceDefaults } from './destructure-absence'
+import { splitAbsenceGuards } from './optional-narrowing'
 import { GESTURE_EVENTS, isGestureEventName } from './gesture-events'
 import { THIRD_PARTY_SCHEMA_LIBRARIES } from './verbatim-call-warning'
 import { widenLiteralsInDoubleContexts } from './contextual-double-literals'
@@ -105,6 +106,8 @@ type AnyNode = any
 interface ParseCtx {
   warnings: string[]
   source: string
+  /** The file being parsed, for diagnostics that name a location. */
+  filename?: string
   /** Component-local immutable literal bindings available to structural recognizers. */
   staticExprs?: Map<string, AnyNode>
   /** Module-scope immutable literal bindings, collected before components. */
@@ -335,6 +338,7 @@ function parsePyreonClassic(source: string, filename = 'input.tsx'): ParseResult
   const ctx: ParseCtx = {
     warnings: [],
     source,
+    filename,
     objectTypeAliases: new Map(),
     liftedPropsStructs: new Map(),
     enumTypeNames: new Set(),
@@ -5876,24 +5880,51 @@ function parseStatementBlockBody(block: AnyNode, ctx: ParseCtx): StatementIR[] {
       continue
     }
     const parsed = parseStatement(stmt, ctx)
-    if (parsed) out.push(parsed)
+    if (parsed) {
+      out.push(parsed)
+      if (parsed.kind === 'let' && typeof stmt.start === 'number') statementLines.set(parsed, lineOfOffset(ctx.source, stmt.start as number))
+    }
   }
+  splitAbsenceGuards(out)
+  foldAbsenceDefaults(out)
   markReassignedLocalsMutable(out)
   markMethodMutatedLocals(out)
-  applyDestructureAbsenceToLets(out)
+  applyDestructureAbsenceToLets(out, (s, m) => {
+    const line = statementLines.get(s)
+    const where = line === undefined ? '' : `${ctx.filename ?? 'input.tsx'}:${line}: `
+    const message = `${where}${m}`
+    if (!ctx.warnings.includes(message)) ctx.warnings.push(message)
+  })
 
   return out
 }
 
-/**
- * A `let`/`val` local that is later REASSIGNED (an `assign` statement with a
- * bare-identifier target) must emit as `var` so the reassignment typechecks
- * on Swift + Kotlin. Collect every identifier reassigned anywhere in the
- * block (incl. nested loop/if bodies — a loop accumulator is declared in the
- * outer scope and mutated inside the loop) and flip the matching `let`'s
- * `mutable` flag. Conservative: only bare-identifier targets promote a local;
- * member/index reassignment doesn't declare a local.
- */
+/** The source line of each parsed `let`, for warnings that name where a binding is declared. */
+const statementLines = new WeakMap<StatementIR, number>()
+
+/** Line starts per source text (computed once per text), for offset → 1-based line. */
+const lineStartCache = new Map<string, number[]>()
+
+function lineOfOffset(source: string, offset: number): number {
+  let starts = lineStartCache.get(source)
+  if (starts === undefined) {
+    starts = [0]
+    for (let i = 0; i < source.length; i++) if (source.charCodeAt(i) === 10) starts.push(i + 1)
+    // One entry is enough: parses are sequential, and the text of the previous file is not needed again.
+    lineStartCache.clear()
+    lineStartCache.set(source, starts)
+  }
+  let lo = 0
+  let hi = starts.length - 1
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (starts[mid]! <= offset) lo = mid
+    else hi = mid - 1
+  }
+
+  return lo + 1
+}
+
 /**
  * Kotlin's List has no `add` — a local ARRAY literal that later receives a
  * mutating method (`push`/`pop`/`shift`/`unshift`/`splice`) must emit as
@@ -5958,76 +5989,113 @@ function indexRoot(target: ExprIR): string | undefined {
   return t.kind === 'identifier' ? t.name : undefined
 }
 
+type LetStatement = Extract<StatementIR, { kind: 'let' }>
+
+/** Statement keys that hold a nested statement LIST — walked as blocks, never as expressions. */
+const NESTED_STATEMENT_KEYS = new Set(['then', 'elseBody', 'body', 'cases', 'catchBody', 'finallyBody'])
+
+/**
+ * Mark each `let` that is written after its declaration `mutable` (emitted `var`), resolving every write to the
+ * declaration it actually targets — JavaScript's block scoping (a write is `writtenLocal`).
+ *
+ * Name-based marking was wrong in both directions of shadowing: a `const ddx` in one loop became `var` because an
+ * unrelated `let ddx` in a sibling loop was reassigned, and swiftc warned "variable 'ddx' was never mutated" in every
+ * app compiling the output. Resolving through the scope chain marks exactly the written binding. Within a block, every
+ * declaration is in scope for every statement of the block (so a closure written before the `let` it assigns still
+ * resolves to it); a loop variable, an arrow parameter, a catch parameter or a `declare` shadows like a `let` but
+ * has nothing to mark.
+ */
+/**
+ * The local a statement writes in place, if any: a reassignment (`x = …`, `x += …`), a subscript write (`r[k] = v`:
+ * a Swift Array / `PyreonMap` is a value type, so a `let` rejects it), a bare `x++` statement, or an `out.push(v)`
+ * statement (the same value-type reason).
+ */
+function writtenLocal(s: StatementIR): string | undefined {
+  if (s.kind === 'assign') {
+    if (s.target.kind === 'identifier') return s.target.name
+    return s.target.kind === 'index' ? indexRoot(s.target) : undefined
+  }
+  if (s.kind !== 'expr') return undefined
+  const e = s.expr
+  if (e.kind === 'update' && e.argument.kind === 'identifier') return e.argument.name
+  if (e.kind !== 'call' || e.callee.kind !== 'member' || e.callee.property !== 'push') return undefined
+
+  return e.callee.object.kind === 'identifier' ? e.callee.object.name : undefined
+}
+
 function markReassignedLocalsMutable(stmts: StatementIR[]): void {
-  const reassigned = new Set<string>()
-  const collect = (list: StatementIR[]): void => {
-    for (const s of list) {
-      if (s.kind === 'assign' && s.target.kind === 'identifier') reassigned.add(s.target.name)
-      // `r[k] = v` / `r[k].x = v` writes INTO the local: a Swift `PyreonMap` / Array is a value type, so a `let`
-      // binding rejects the subscript set ("cannot assign through subscript: 'r' is a 'let' constant").
-      else if (s.kind === 'assign' && s.target.kind === 'index' && indexRoot(s.target) !== undefined) {
-        reassigned.add(indexRoot(s.target)!)
-      }
-      // A bare `i++` / `i--` STATEMENT mutates `i` — it must promote the
-      // local to `var`, exactly like an `assign`. Without this the loop
-      // counter stayed `let` and Swift/Kotlin rejected the in-loop mutation.
-      else if (
-        s.kind === 'expr' &&
-        s.expr.kind === 'update' &&
-        s.expr.argument.kind === 'identifier'
-      ) {
-        reassigned.add(s.expr.argument.name)
-      } else if (
-        // `out.push(x)` MUTATES `out`. A Swift Array is a value type, so an
-        // immutable `let` binding rejects `append` outright; the reassignment
-        // tracker only ever saw `=` and `++`, so an accumulator built by
-        // pushing stayed `let` and could not be appended to.
-        s.kind === 'expr' &&
-        s.expr.kind === 'call' &&
-        s.expr.callee.kind === 'member' &&
-        s.expr.callee.property === 'push' &&
-        s.expr.callee.object.kind === 'identifier'
-      ) {
-        reassigned.add(s.expr.callee.object.name)
-      } else {
-        for (const l of childStatementLists(s)) collect(l)
-      }
-      // Assignments inside CALLBACK arrows (`nums.forEach(x => { acc = acc +
-      // x })` — the accumulate idiom) live in EXPRESSION trees, which the
-      // per-kind statement walk above never enters — the outer `let acc`
-      // stayed immutable and Kotlin rejected "'val' cannot be reassigned"
-      // (Swift the same). A generic structural walk finds every nested
-      // arrow's statement list. Over-marking is harmless (a same-named
-      // arrow-LOCAL assignment promotes the outer local to var — a
-      // never-mutated var is a compiler warning, not an error).
-      walkForNestedArrows(s)
+  // name → the `let`s that declare it in this scope (empty: a non-`let` binding that shadows outer ones).
+  type Scope = Map<string, LetStatement[]>
+  const scopes: Scope[] = []
+  const mutate = (name: string): void => {
+    for (let i = scopes.length - 1; i >= 0; i--) {
+      const decls = scopes[i]!.get(name)
+      if (decls === undefined) continue
+      for (const d of decls) d.mutable = true
+      return
     }
   }
-  const walkForNestedArrows = (n: unknown): void => {
+  const withScope = (bindings: readonly string[], run: () => void): void => {
+    scopes.push(new Map(bindings.map((b) => [b, []])))
+    try {
+      run()
+    } finally {
+      scopes.pop()
+    }
+  }
+  const block = (list: readonly StatementIR[], bindings: readonly string[] = []): void =>
+    withScope(bindings, () => {
+      const scope = scopes[scopes.length - 1]!
+      for (const s of list) {
+        if (s.kind === 'let') scope.set(s.name, [...(scope.get(s.name) ?? []), s])
+        else if (s.kind === 'declare') scope.set(s.name, scope.get(s.name) ?? [])
+      }
+      for (const s of list) statement(s)
+    })
+  // Assignments inside CALLBACK arrows (`nums.forEach(x => { acc = acc + x })`, the accumulate idiom) live in
+  // EXPRESSION trees; each arrow is a scope of its own parameters around its statement body.
+  const expressions = (n: unknown): void => {
     if (Array.isArray(n)) {
-      for (const x of n) walkForNestedArrows(x)
+      for (const x of n) expressions(x)
       return
     }
     if (n === null || typeof n !== 'object') return
-    const node = n as Record<string, unknown> & { kind?: string; stmts?: StatementIR[] }
-    if (node.kind === 'arrow' && Array.isArray(node.stmts) && node.stmts.length > 0) {
-      collect(node.stmts)
+    const node = n as Record<string, unknown> & { kind?: string }
+    if (node.kind === 'arrow') {
+      const arrow = node as unknown as Extract<ExprIR, { kind: 'arrow' }>
+      withScope(arrow.params, () => {
+        if (arrow.stmts !== undefined && arrow.stmts.length > 0) block(arrow.stmts)
+        expressions(arrow.body)
+      })
+      return
     }
-    for (const k of Object.keys(node)) {
-      if (k === 'then' || k === 'elseBody' || k === 'body' || k === 'cases' || k === 'catchBody' || k === 'finallyBody')
-        continue // already walked per-kind
-      walkForNestedArrows(node[k])
+    for (const v of Object.values(node)) expressions(v)
+  }
+  const statement = (s: StatementIR): void => {
+    for (const [k, v] of Object.entries(s)) if (!NESTED_STATEMENT_KEYS.has(k)) expressions(v)
+    const written = writtenLocal(s)
+    if (written !== undefined) mutate(written)
+    switch (s.kind) {
+      case 'for-range':
+      case 'for-of':
+        block(s.body, [s.item])
+        return
+      case 'switch':
+        for (const c of s.cases) {
+          expressions(c.tests)
+          block(c.body)
+        }
+        return
+      case 'try':
+        block(s.body)
+        if (s.catchBody) block(s.catchBody, s.catchParam !== undefined ? [s.catchParam] : [])
+        if (s.finallyBody) block(s.finallyBody)
+        return
+      default:
+        for (const l of childStatementLists(s)) block(l)
     }
   }
-  collect(stmts)
-  if (reassigned.size === 0) return
-  const mark = (list: StatementIR[]): void => {
-    for (const s of list) {
-      if (s.kind === 'let' && reassigned.has(s.name)) s.mutable = true
-      else for (const l of childStatementLists(s)) mark(l)
-    }
-  }
-  mark(stmts)
+  block(stmts)
 }
 
 /**
