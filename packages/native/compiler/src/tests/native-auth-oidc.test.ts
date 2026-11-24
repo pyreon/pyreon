@@ -118,7 +118,7 @@ export function A(props: { issuer: string }) {
     })
   }
 
-  it('refuses two providers on one native redirect URI (OAuth mix-up), and allows one per provider', () => {
+  it('warns about two providers on one native redirect URI (OAuth mix-up), and not about one per provider', () => {
     const two = (a: string, b: string) => `import { useOidc } from '@pyreon/auth'
 import { Text } from '@pyreon/primitives'
 export function A() {
@@ -130,6 +130,8 @@ export function A() {
     for (const target of ['swift', 'kotlin'] as const) {
       const shared = transform(two('com.example.app:/oauth', 'Com.Example.App:///oauth'), { target })
       expect(shared.warnings.join('\n'), target).toMatch(/share the native redirect URI Com\.Example\.App:\/\/\/oauth.*own `nativeRedirectUri`/)
+      // Still emitted: whether both providers send `iss` is decided at run time.
+      expect(shared.code, target).toMatch(/PyreonOidcAuth\(issuer: "https:\/\/evil\.example"|rememberPyreonOidcAuth\(issuer = "https:\/\/evil\.example"/)
       const own = transform(two('com.example.app:/oauth/google', 'com.example.app:/oauth/evil'), { target })
       expect(own.warnings, target).toEqual([])
     }

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import java.util.concurrent.CompletableFuture
@@ -147,7 +148,7 @@ public fun rememberPyreonOidcAuth(
     authorizationParams: Map<String, String> = emptyMap(),
 ): PyreonOidcAuth {
     val context = LocalContext.current.applicationContext
-    return remember(issuer, clientId, redirectUri) {
+    val auth = remember(issuer, clientId, redirectUri) {
         PyreonOidcAuth(
             issuer = issuer,
             clientId = clientId,
@@ -159,4 +160,12 @@ public fun rememberPyreonOidcAuth(
             browser = PyreonActivityAuthBrowser(context),
         )
     }
+    // Entering the composition runs the refresh a restored, expired session needs (not the
+    // constructor, which runs on every Activity recreation); leaving it releases the instance's
+    // claim on its redirect URI, as the web and iOS containers do.
+    DisposableEffect(auth) {
+        auth.start()
+        onDispose { auth.dispose() }
+    }
+    return auth
 }

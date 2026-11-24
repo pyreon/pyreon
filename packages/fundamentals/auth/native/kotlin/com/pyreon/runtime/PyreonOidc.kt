@@ -47,13 +47,22 @@ public open class PyreonAuthError(public val code: String, message: String) : Ex
  */
 public object PyreonRedirect {
     public fun target(url: String): String? {
+        // Spellings the three parsers disagree on are refused everywhere (see the web rule).
+        val head = url.substringBefore('?').substringBefore('#')
+        if (head.contains('\\') || head.any { it.isWhitespace() } || head.contains("%2e", ignoreCase = true) ||
+            head.any { it.code > 0x7f }
+        ) {
+            return null
+        }
         val u = try {
-            java.net.URI(url)
+            // Only the part that is matched: a query is free text (java.net.URI rejects a raw space there).
+            java.net.URI(head)
         } catch (_: Exception) {
             return null
         }
         val scheme = u.scheme?.lowercase() ?: return null
         if (u.isOpaque) return "$scheme  ${u.rawSchemeSpecificPart.substringBefore('?')}"
+        if ((u.rawAuthority ?: "").contains('%')) return null
         val h = u.host
         val host = if (h != null) {
             val p = u.port
@@ -62,9 +71,27 @@ public object PyreonRedirect {
         } else {
             (u.rawAuthority ?: "").lowercase()
         }
-        val raw = u.rawPath ?: ""
+        val raw = (u.rawPath ?: "").let { if (it.startsWith("/")) removeDotSegments(it) else it }
         val path = if (raw.isEmpty() && (scheme == "http" || scheme == "https")) "/" else raw
         return "$scheme $host $path"
+    }
+
+    /** RFC 3986 §5.2.4 for an absolute path, as the web URL parser applies it. */
+    internal fun removeDotSegments(path: String): String {
+        val out = ArrayList<String>()
+        val segs = path.substring(1).split("/")
+        for ((i, seg) in segs.withIndex()) {
+            val last = i == segs.size - 1
+            when (seg) {
+                "." -> if (last) out.add("")
+                ".." -> {
+                    if (out.isNotEmpty()) out.removeAt(out.size - 1)
+                    if (last) out.add("")
+                }
+                else -> out.add(seg)
+            }
+        }
+        return "/" + out.joinToString("/")
     }
 }
 
@@ -83,10 +110,12 @@ public object PyreonRedirectClaims {
     public fun claim(redirectUri: String, issuer: String): PyreonRedirectToken {
         val target = PyreonRedirect.target(redirectUri) ?: redirectUri
         val name = issuer.removeSuffix("/")
-        synchronized(this) {
-            claims.getOrPut(target) { HashMap() }.getOrPut(name) { Claim(0, null) }.count++
-        }
+        add(target, name)
         return PyreonRedirectToken(target, name)
+    }
+
+    internal fun add(target: String, issuer: String): Unit = synchronized(this) {
+        claims.getOrPut(target) { HashMap() }.getOrPut(issuer) { Claim(0, null) }.count++
     }
 
     internal fun release(target: String, issuer: String): Unit = synchronized(this) {
@@ -116,6 +145,11 @@ public class PyreonRedirectToken internal constructor(public val target: String,
     public fun advertise(iss: Boolean): Boolean = PyreonRedirectClaims.advertise(target, issuer, iss)
     public fun release() {
         if (released.compareAndSet(false, true)) PyreonRedirectClaims.release(target, issuer)
+    }
+
+    /** Register again after [release] (a disposed instance that signs in again). */
+    public fun reclaimIfReleased() {
+        if (released.compareAndSet(true, false)) PyreonRedirectClaims.add(target, issuer)
     }
 }
 

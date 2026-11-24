@@ -85,8 +85,8 @@ public class PyreonOidcAuth(
     // Bumped whenever the session itself changes (commit or clear): a refresh applies its result
     // only to the session it started from.
     @Volatile private var sessionGen = 0
-    private val refreshLock = Any()
-    private var refreshInFlight: java.util.concurrent.CountDownLatch? = null
+    // A restored session expired: refresh it on first use (`start()`), not in the constructor.
+    @Volatile private var launchRefreshPending = false
 
     init {
         rehydrate()
@@ -100,10 +100,12 @@ public class PyreonOidcAuth(
     public fun refresh() { val my = epoch.get(); executor.execute { refreshNow(my) } }
 
     public fun signInNow(my: Int = epoch.incrementAndGet()) {
+        launchRefreshPending = false
         status.value = PyreonOidcStatus.SIGNING_IN
         error.value = null
         try {
             val m = metadata()
+            redirectClaim.reclaimIfReleased()
             if (!redirectClaim.advertise(m.issParameterSupported)) throw PyreonAuthError.RedirectShared
             val url = PyreonAuthCore(store).begin(
                 m.authorizationEndpoint, m.issuer, clientId, redirectUri, scope, authorizationParams = authorizationParams,
@@ -128,6 +130,7 @@ public class PyreonOidcAuth(
 
     private fun complete(callback: String, my: Int) {
         val m = metadata()
+        redirectClaim.reclaimIfReleased()
         redirectClaim.advertise(m.issParameterSupported)
         // On a redirect URI another provider also uses, only `iss` says who answered: require it.
         val (code, flow) = PyreonAuthCore(store).complete(callback, m.issuer, m.issParameterSupported || redirectClaim.isShared)
@@ -138,29 +141,66 @@ public class PyreonOidcAuth(
     }
 
     /**
-     * One refresh in flight per instance: with rotating refresh tokens and reuse detection, a
-     * second concurrent refresh would present the already-rotated token and the provider would
-     * revoke the whole token family. A caller that finds one running waits for it instead.
+     * Run the refresh a restored, expired session needs, once. `rememberPyreonOidcAuth` calls it
+     * when the container enters the composition; it is not done in the constructor, which runs for
+     * every Activity recreation.
+     */
+    public fun start() {
+        if (!launchRefreshPending) return
+        launchRefreshPending = false
+        refresh()
+    }
+
+    /**
+     * One refresh in flight per stored session, PROCESS-WIDE: with rotating refresh tokens and
+     * reuse detection, two instances (or two calls) presenting the same token would get the whole
+     * token family revoked. A caller that finds one running for the same token waits for it and
+     * adopts the stored result; a refresh always presents the newest stored token.
      */
     public fun refreshNow(my: Int = epoch.get()) {
+        launchRefreshPending = false
+        adoptNewerStoredSession()
+        val key = sessionKey + "\u0000" + (refreshToken ?: "")
         var owner = false
-        val latch = synchronized(refreshLock) {
-            refreshInFlight ?: java.util.concurrent.CountDownLatch(1).also {
-                refreshInFlight = it
+        val latch = synchronized(INFLIGHT) {
+            INFLIGHT[key] ?: java.util.concurrent.CountDownLatch(1).also {
+                INFLIGHT[key] = it
                 owner = true
             }
         }
         if (!owner) {
             latch.await()
+            adoptNewerStoredSession()
             return
         }
         try {
             performRefresh(my)
         } finally {
-            synchronized(refreshLock) { refreshInFlight = null }
+            synchronized(INFLIGHT) { if (INFLIGHT[key] === latch) INFLIGHT.remove(key) }
             latch.countDown()
         }
     }
+
+    /** Another instance over the same stored session refreshed it: take its result, not the old token. */
+    private fun adoptNewerStoredSession() {
+        val r = store.read(sessionKey)?.let { PyreonAuthJson.obj(it) } ?: return
+        val stored = r["refreshToken"] as? String ?: return
+        val access = r["accessToken"] as? String
+        if (r["issuer"] != issuer || stored == refreshToken || access.isNullOrEmpty()) return
+        sessionGen++
+        accessToken.value = access
+        refreshToken = stored
+        (r["idToken"] as? String)?.let { idToken = it }
+        @Suppress("UNCHECKED_CAST")
+        val c = (r["claims"] as? Map<String, Any?>)?.entries?.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }?.toMap()
+        if (c != null) {
+            claims.value = c
+            subject.value = c["sub"]
+        }
+        expiresAt.value = PyreonJose.number(r["expiresAt"])
+        status.value = PyreonOidcStatus.SIGNED_IN
+    }
+
 
     private fun performRefresh(my: Int) {
         // A refresh never bumps the epoch, so starting one cannot discard a sign-in in flight. It
@@ -187,14 +227,18 @@ public class PyreonOidcAuth(
     }
 
     /**
-     * Clear the session. With [endProviderSession], also end it AT THE PROVIDER (RP-initiated
-     * logout) — otherwise the next sign-in completes without a prompt.
+     * Release this instance's claim on its redirect URI (`rememberPyreonOidcAuth` does it when it
+     * leaves the composition). The instance is not retired: a later sign-in or callback registers
+     * it again.
      */
-    /** Release this instance's claim on its redirect URI (an instance that is thrown away). */
     public fun dispose() {
         redirectClaim.release()
     }
 
+    /**
+     * Clear the session. With [endProviderSession], also end it AT THE PROVIDER (RP-initiated
+     * logout) — otherwise the next sign-in completes without a prompt.
+     */
     public fun signOut(endProviderSession: Boolean = false) {
         epoch.incrementAndGet()
         val hint = idToken
@@ -293,7 +337,8 @@ public class PyreonOidcAuth(
         subject.value = c["sub"]
         expiresAt.value = exp
         status.value = PyreonOidcStatus.SIGNED_IN
-        if (expired) refresh()
+        // Not refreshed here: the constructor runs for every Activity recreation.
+        launchRefreshPending = expired
     }
 
     public companion object {
@@ -301,5 +346,8 @@ public class PyreonOidcAuth(
         private val DEFAULT_EXECUTOR: Executor by lazy {
             Executors.newSingleThreadExecutor { r -> Thread(r, "pyreon-auth").apply { isDaemon = true } }
         }
+
+        /** Refreshes in flight, process-wide, by session key and the refresh token presented. */
+        private val INFLIGHT = HashMap<String, java.util.concurrent.CountDownLatch>()
     }
 }

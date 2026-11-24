@@ -167,7 +167,7 @@ describe('redirect matching — one rule on web, iOS and Android', () => {
   const root = join(import.meta.dirname, '..', '..')
   const vectors = JSON.parse(readFileSync(join(root, 'native', 'tests', 'redirect-vectors.json'), 'utf8')) as [string, string][]
   it('the web rule produces every vector key', () => {
-    for (const [uri, key] of vectors) expect(redirectTarget(uri), uri).toBe(key)
+    for (const [uri, key] of vectors) expect(redirectTarget(uri) ?? '', uri).toBe(key) // '' = refused
   })
   it('the Swift and Kotlin tests embed the same vectors', () => {
     const one = JSON.stringify(vectors)

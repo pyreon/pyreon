@@ -110,9 +110,15 @@ provider answered. With a shared one, a malicious or compromised provider you al
 honest one and receive its code and your PKCE verifier (the OAuth mix-up attack, RFC 9700 §4.4). Instances are
 registered process-wide by redirect URI: two providers may share one only if both send RFC 9207 `iss` — a provider known
 not to is refused at construction (explicit metadata) or at sign-in (`redirect_shared`), and every callback on a shared
-URI must carry `iss`. `auth.dispose()` releases a claim (`useOidc` does it on unmount). Use `/auth/callback/github`,
+URI must carry `iss`. `auth.dispose()` releases a claim: `useOidc` does it on unmount on the web, the iOS container on
+deinit, and `rememberPyreonOidcAuth` when it leaves the composition on Android; a disposed instance that signs in again
+registers again. Use `/auth/callback/github`,
 `/auth/callback/google`, … — and on iOS / Android one `nativeRedirectUri` per provider (`com.example.app:/oauth/google`):
 the compiler and the native runtime apply the same rule.
+
+**Hot reload and tests.** The registry lives as long as the page or process. A module-level `createAuth` whose issuer
+you edit during hot module replacement keeps its old claim until a full reload. In your own tests, call `auth.dispose()`
+for every instance a test creates (the registry's reset is internal), or give each test its own redirect URI.
 
 The lower-level steps are exported too (`discover`, `beginAuthorization`, `parseCallback`, `exchangeCode`,
 `refreshTokens`, `endSessionUrl`, `verifyIdToken`, `createJwksCache`) for server-side flows; `beginAuthorization` and
@@ -201,7 +207,7 @@ nothing is emitted.
 - **iOS** — nothing. Sign-in runs in `ASWebAuthenticationSession`, which hands the redirect straight back. Register
   `nativeRedirectUri` with the provider; an https redirect is matched as a universal link on iOS 17.4+.
 - **One `nativeRedirectUri` per provider** — `com.example.app:/oauth/google`, `com.example.app:/oauth/github`, not one
-  shared `com.example.app:/oauth`: the OAuth mix-up attack above works on native too. The compiler refuses two issuers on
+  shared `com.example.app:/oauth`: the OAuth mix-up attack above works on native too. The compiler warns about two issuers on
   one `nativeRedirectUri` in a file; the native runtime refuses to sign in on a shared one unless the provider sends
   `iss`, and then requires it on the callback.
 - **Android** — declare the two activities in `AndroidManifest.xml` (sources are wired, not an AAR, so there is no
@@ -243,14 +249,15 @@ and pass it down.
 ship it:
 
 - **L1 — iOS Keychain backups.** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not `…ThisDeviceOnly`: the refresh token can move to another device through an encrypted backup, and Keychain items survive an uninstall.
-- **L2 — no verified identity without an ID token.** A sign-in with an OAuth2-only provider (GitHub, Facebook) has no verified identity: `claims()` stays `null` until a refresh brings an ID token.
+- **L2 — no verified identity without an ID token.** A sign-in with an OAuth2-only provider (GitHub, Facebook) has no verified identity until a refresh brings an ID token.
 - **L3 — callback parsing.** Duplicated callback parameters are read differently on Android (last value) than on the web and iOS (first). On native, a flow started for another provider is refused but consumed, so that sign-in has to be retried.
 - **Native sign-in is unverified on a device.** It has never completed against a real provider on a device (only the `network_error` path has run on a simulator and emulator), and the native redirect check has not been tested against real `ASWebAuthenticationSession` / Custom Tab callbacks.
-- **Android custom schemes.** Another installed app can claim the scheme and receive the redirect; PKCE is then the only defence (the code is useless without the verifier). The exported `PyreonAuthRedirectActivity` lets any app send a fake redirect, which cancels a sign-in in progress. Prefer an App Link.
+- **Android custom schemes.** Another installed app can claim the scheme and receive the redirect; PKCE is then the only defence. Any app can send the exported `PyreonAuthRedirectActivity` a fake redirect, which cancels a sign-in in progress. Prefer an App Link.
 - **Sign-out does not revoke tokens.** `signOut({ endProviderSession: true })` ends the provider session; tokens already issued stay valid until they expire (no RFC 7009 revocation).
-- **The mix-up defence depends on configuration.** Enforced: instances are registered process-wide by redirect URI; two providers may share one only if both send RFC 9207 `iss` — a provider known not to is refused (at construction with explicit metadata, at sign-in after discovery, `redirect_shared`), every callback on a shared URI must carry `iss`, and the native compiler refuses two issuers on one `nativeRedirectUri` in a file. Not enforced: providers that are never constructed in the same process at the same time (a server that builds only the provider named in the request, separate workers). One redirect URI per provider is the complete defence.
+- **OAuth mix-up: one redirect URI per provider is the only complete defence.** The registry only sees providers alive at the same moment in one process: not a server or worker that builds only the requested provider, and not a browser page that builds only the chosen provider (the common single-page-app pattern). Where it sees them, two providers may share a redirect URI only if both send RFC 9207 `iss`; a provider known not to is refused (`redirect_shared`), and a callback on a shared URI must carry `iss`. The native compiler only warns, one file at a time. On Android the claim is released when `rememberPyreonOidcAuth` leaves the composition (that wiring is SDK code, verified only by a device build, which has not run).
 - **A leaked authorization request still allows login CSRF.** Someone who obtains the provider URL a victim's browser was sent to can sign in with it as themselves and send the resulting callback to that browser, whose binding matches. Pushed authorization requests (PAR) are not offered.
-- **Server sign-ins need the public callback URL and HTTPS.** Pass `handleCallback` the request's path and query (or the public URL), never a proxy's internal URL. The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported (the cross-site POST would drop the `SameSite=Lax` binding cookie).
-- **The first published version is published by hand, without provenance** (later versions go through CI with provenance).
+- **Server sign-ins need the public callback path or URL, and HTTPS.** Pass `handleCallback` the request's path and query (or the public URL), never a proxy's internal URL. The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported.
+- **The first version is published by hand, without provenance**, from a release tag, after `package.json` is moved onto the group version (it is 0.53.0 in this change). Later versions publish through CI with provenance.
+- **TOTP secrets under 128 bits throw** unless `allowShortSecret: true` is set. Existing 80-bit enrolments need the flag: a behaviour change to announce.
 
 MIT

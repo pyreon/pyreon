@@ -190,10 +190,19 @@ export const FLOW_TTL_MS = 10 * 60_000
  *  - scheme and host lowercased; a default port (80 for http, 443 for https) dropped, any other kept;
  *  - the path as written (percent-encoding NOT decoded), `/` for an empty http(s) path, and the
  *    whole scheme-specific part for an opaque URI (`app:cb` → path `cb`, host empty);
- *  - query and fragment ignored. `app:/cb` and `app:///cb` are the same target.
+ *  - dot segments resolved (`/a/../cb` is `/cb`); query and fragment ignored; `app:/cb` and
+ *    `app:///cb` are the same target;
+ *  - refused (null): a backslash, raw whitespace or a percent-encoded dot before the query, a
+ *    percent-encoded authority, and anything non-ASCII before the query (write internationalised
+ *    hosts in punycode).
  * Null when the URL cannot be parsed.
  */
 export function redirectTarget(url: string | URL): string | null {
+  // Spellings the three URL parsers disagree on are refused on every target instead: a backslash
+  // (a separator only to the WHATWG parser), raw whitespace, and percent-encoded dots (`%2e`,
+  // dot segments only to WHATWG). Checked before the query and fragment only.
+  const head = String(url).split(/[?#]/, 1)[0] ?? ''
+  if (/[\\\s]|%2e/i.test(head) || /^[a-z][a-z0-9+.-]*:\/\/[^/]*%/i.test(head)) return null
   let u: URL
   try {
     u = new URL(url)
@@ -201,6 +210,9 @@ export function redirectTarget(url: string | URL): string | null {
     return null
   }
   const scheme = u.protocol.slice(0, -1).toLowerCase()
+  // Native parsers do not convert an internationalised host to punycode: refuse what was not written in ASCII.
+  // oxlint-disable-next-line no-control-regex
+  if (/[^\x00-\x7f]/.test(head)) return null
   const path = u.pathname === '' && (scheme === 'http' || scheme === 'https') ? '/' : u.pathname
 
   return `${scheme} ${u.host.toLowerCase()} ${path}`

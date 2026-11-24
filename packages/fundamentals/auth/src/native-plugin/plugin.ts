@@ -138,18 +138,18 @@ const recognizeOidc: CallRecognizer = (_call, ctx) => {
   }
   // RFC 9700 §4.4 (OAuth mix-up): two providers on ONE native redirect URI let a malicious or
   // compromised provider receive the other's code and PKCE verifier when that one sends no `iss`.
-  // Native apps nearly always share one scheme, so refuse it here, where the literals are known;
-  // the runtime registry (PyreonRedirectClaims) covers what one file cannot see.
+  // Native apps nearly always share one scheme, so say so here, where the literals are known. It
+  // is a warning, not a refusal: whether the providers send `iss` is only known at run time, where
+  // `PyreonRedirectClaims` applies the rule (sharing only between providers that send `iss`). One
+  // file at a time: providers in different files are left to the runtime.
   const claims = ctx.fileState('@pyreon/auth:redirect-claims', () => new Map<string, string>())
   const target = redirectTarget(payload.redirectUri) ?? payload.redirectUri
   const issuer = payload.issuer.replace(/\/$/, '')
   const prev = claims.get(target)
   if (prev !== undefined && prev !== issuer) {
-    ctx.report(
-      `${where}: \`${issuer}\` and \`${prev}\` share the native redirect URI ${payload.redirectUri}. Give each provider its own \`nativeRedirectUri\` (e.g. \`com.example.app:/oauth/google\`) and register it with that provider: a provider that sends no \`iss\` can otherwise be confused with another (OAuth mix-up, RFC 9700 §4.4). The native session container is not emitted.`,
+    ctx.warn(
+      `${where}: \`${issuer}\` and \`${prev}\` share the native redirect URI ${payload.redirectUri}. Unless both providers send RFC 9207 \`iss\` (sign-in is refused at run time otherwise, \`redirect_shared\`), give each its own \`nativeRedirectUri\` (e.g. \`com.example.app:/oauth/google\`) and register it with that provider (OAuth mix-up, RFC 9700 §4.4).`,
     )
-
-    return null
   }
   claims.set(target, issuer)
   if (strings.nativeRedirectUri === undefined && /^https?:/i.test(strings.redirectUri!)) {

@@ -14,13 +14,13 @@ Security fixes and contract changes made before the first publish:
   - `sessionStorageFlowStore` is `tabScoped`.
 - **OAuth mix-up (RFC 9700 §4.4), on the web, iOS and Android.**
   - Instances are registered process-wide by redirect URI. Two providers may share one only if both send RFC 9207 `iss`: a provider known not to is refused at construction (explicit metadata) or at sign-in (`redirect_shared`), and every callback on a shared redirect URI must carry `iss`.
-  - The native compiler refuses two issuers on one `nativeRedirectUri` in a file. Use one per provider (`com.example.app:/oauth/google`).
-  - `dispose()` releases an instance's claim; `useOidc` calls it when its component unmounts.
-  - The callback must arrive at the flow's own redirect URI (`redirect_mismatch`). The matching rule (scheme and host lowercased, default ports dropped, the path as written) is now the same on all three targets.
+  - The native compiler warns about two issuers on one `nativeRedirectUri` in a file. Use one per provider (`com.example.app:/oauth/google`).
+  - `dispose()` releases an instance's claim: `useOidc` on unmount, the iOS container on deinit, `rememberPyreonOidcAuth` when it leaves the composition. A disposed instance that signs in again registers again.
+  - The callback must arrive at the flow's own redirect URI (`redirect_mismatch`). The matching rule is now the same on all three targets: scheme and host lowercased, default ports dropped, dot segments resolved, the path otherwise as written; a backslash, whitespace, a percent-encoded dot or authority, or anything non-ASCII before the query is refused (write internationalised hosts in punycode).
   - A flow started for another issuer or client is refused (`issuer_mismatch`).
 - **Server callbacks behind a proxy.** `handleCallback` accepts the request's path and query (Node's `req.url`) and resolves it against the configured redirect URI's origin; forwarded headers are never read. A path passed to `parseCallback` fails with `invalid_callback` instead of a `TypeError`.
 - **`response_mode` is reserved** (`form_post` would drop the `SameSite=Lax` binding cookie on the cross-site POST).
-- **Refresh, on the web, iOS and Android.** Concurrent `refresh()` calls share one request, so an already-rotated refresh token is never presented again (providers with reuse detection revoked the session). A refresh no longer discards a sign-in in flight, and never overwrites a newer session.
+- **Refresh, on the web, iOS and Android.** Concurrent `refresh()` calls share one request, so an already-rotated refresh token is never presented again (providers with reuse detection revoked the session); natively this holds process-wide for every instance over one stored session, and a restored, expired session is refreshed on first use instead of in the initializer (SwiftUI and Activity recreation construct extra instances). A refresh no longer discards a sign-in in flight, never overwrites a newer session, and a call after a sign-out and new sign-in refreshes the new session.
 - **ID tokens, on all three targets:**
   - `azp` must be this client whenever it is present;
   - an `iat` in the future is refused;
@@ -31,7 +31,7 @@ Security fixes and contract changes made before the first publish:
   - `safeReturnTo` refuses paths that resolve or decode to `//host` (`/a/../..//evil`, `/%2F%2Fevil`, `;` path parameters, more than three layers of encoding);
   - passkey DER signatures must be canonical;
   - `sessionCookie` refuses names and values that would inject attributes;
-  - `totp` and `verifyTotp` share `period` / `digits` options, and a secret under 128 bits throws (`allowShortSecret: true` admits existing 80-bit secrets).
+  - `totp` and `verifyTotp` share `period` / `digits` options, and a secret under 128 bits throws. **Behaviour change:** existing 80-bit enrolments need `allowShortSecret: true`.
 - **Native:**
   - the stored session is keyed by client id and issuer;
   - `signOut({ endProviderSession: true })` after a relaunch now discovers the provider and ends its session.

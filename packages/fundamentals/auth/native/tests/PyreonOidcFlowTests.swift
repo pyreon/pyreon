@@ -14,6 +14,10 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
     var subject = "user-1"
     var nonceOverride: String?
     var advertiseIss = false
+    /// Issue a fresh refresh token per sign-in (a real provider does), and delay refresh responses.
+    var uniqueRefreshTokens = false
+    var refreshDelayNanos: UInt64 = 0
+    private var codeCount = 0
     var rotateRefresh = false
     var refreshStatus = 200
     var jwksFetches = 0
@@ -46,11 +50,14 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
             guard let grant = codes.removeValue(forKey: form["code"] ?? ""),
                   PyreonPKCE.challengeS256(form["code_verifier"] ?? "") == grant.challenge
             else { return PyreonAuthResponse(status: 400, body: Data("{\"error\":\"invalid_grant\"}".utf8)) }
-            return ok(["access_token": "at-0", "token_type": "Bearer", "expires_in": 3600, "refresh_token": "rt-0",
+            codeCount += 1
+            return ok(["access_token": "at-0", "token_type": "Bearer", "expires_in": 3600,
+                       "refresh_token": uniqueRefreshTokens ? "rt-c\(codeCount)" : "rt-0",
                        "id_token": idToken(nonce: nonceOverride ?? grant.nonce)])
         }
         if form["grant_type"] == "refresh_token" {
             if refreshStatus != 200 { return PyreonAuthResponse(status: refreshStatus) }
+            if refreshDelayNanos > 0 { try? await _Concurrency.Task.sleep(nanoseconds: refreshDelayNanos) }
             refreshCount += 1
             var t: [String: Any] = ["access_token": "at-\(refreshCount)", "token_type": "Bearer", "expires_in": 3600,
                                     "id_token": idToken(nonce: nil)]
@@ -297,6 +304,53 @@ enum PyreonOidcFlowTests {
         rfB.beforeReturn = nil
         for _ in 0..<500 { await _Concurrency.Task.yield() }
         expect(rfAuth.status == PyreonOidcStatus.signedIn && rfAuth.accessToken == "at-0", "a refresh does not discard a sign-in in flight (\(rfAuth.accessToken ?? "nil"))")
+
+        // Two instances over ONE stored, expired session (SwiftUI's throwaway @State values, a
+        // recreated view): construction makes no request, and refreshing both presents the refresh
+        // token once — a provider with reuse detection would otherwise revoke the family.
+        let shP = FakeProvider(), shB = FakeBrowser(shP), shStore = CountingStore()
+        shP.rotateRefresh = true
+        shStore.entries["pyreon.auth.session.app|https://idp.example"] =
+            #"{"issuer":"https://idp.example","accessToken":"old","expiresAt":1,"refreshToken":"rt-0","claims":{"sub":"user-1"}}"#
+        let shA = make(shP, shStore, shB)
+        let shBInst = make(shP, shStore, shB)
+        for _ in 0..<50 { await _Concurrency.Task.yield() }
+        expect(shP.requests.isEmpty, "restoring an expired session makes no request until first use (\(shP.requests))")
+        async let s1: Void = shA.refreshNow()
+        async let s2: Void = shBInst.refreshNow()
+        _ = await (s1, s2)
+        let shTokenPosts = shP.requests.filter { $0.hasSuffix("/token") }.count
+        expect(shTokenPosts == 1, "two instances over one stored session refresh once (\(shTokenPosts))")
+        expect(shA.accessToken == "at-1" && shBInst.accessToken == "at-1", "both adopt the one refresh")
+
+        // A refresh in flight for an old session is not handed to a caller of the new one.
+        let stP = FakeProvider(), stB = FakeBrowser(stP)
+        stP.uniqueRefreshTokens = true
+        stP.refreshDelayNanos = 50_000_000
+        let stAuth = make(stP, CountingStore(), stB)
+        await stAuth.signInNow()
+        let staleRefresh = _Concurrency.Task { await stAuth.refreshNow() }
+        // Wait until the old session's refresh is on the wire.
+        for _ in 0..<1000 where stP.requests.filter({ $0.hasSuffix("/token") }).count < 2 { await _Concurrency.Task.yield() }
+        stAuth.signOut()
+        await stAuth.signInNow()
+        await stAuth.refreshNow()
+        await staleRefresh.value
+        let refreshGrants = stP.requests.filter { $0.hasSuffix("/token") }.count - 2
+        expect(refreshGrants == 2, "the new session is refreshed itself (\(refreshGrants) refresh requests)")
+
+        // A disposed instance that signs in again claims its redirect URI again.
+        PyreonRedirectClaims.shared.reset()
+        let dcP = FakeProvider(), dcB = FakeBrowser(dcP)
+        let dcAuth = make(dcP, CountingStore(), dcB)
+        dcAuth.dispose()
+        await dcAuth.signInNow()
+        let dcOther = PyreonOidcAuth(issuer: "https://honest.example", clientId: "app", redirectUri: "com.example.app:/oauth",
+                                     store: CountingStore(), transport: dcP, browser: dcB)
+        await dcAuth.signInNow()
+        expect(dcAuth.error == "redirect_shared", "a disposed instance that signs in again is registered again (\(dcAuth.error ?? "nil"))")
+        dcOther.dispose()
+        PyreonRedirectClaims.shared.reset()
 
         // An expired session with no refresh token is dropped on relaunch, not restored.
         let es = CountingStore()

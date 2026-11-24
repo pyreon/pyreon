@@ -119,11 +119,20 @@ export function createAuth(opts: AuthOptions): Auth {
     )
   }
   // Explicit metadata says up front whether the provider sends RFC 9207 `iss`; discovery says so at sign-in.
-  const claim = claimRedirect(
-    opts.client.redirectUri,
-    issuerName,
-    opts.metadata ? opts.metadata.authorization_response_iss_parameter_supported === true : undefined,
-  )
+  const knownIss = opts.metadata ? opts.metadata.authorization_response_iss_parameter_supported === true : undefined
+  let claim = claimRedirect(opts.client.redirectUri, issuerName, knownIss)
+  let disposed = false
+  // A disposed instance is not retired: a later sign-in or callback registers it again (and is
+  // refused like a new instance would be if the URI is now shared with a provider without `iss`).
+  const ensureClaim = () => {
+    if (!disposed) return
+    try {
+      claim = claimRedirect(opts.client.redirectUri, issuerName, knownIss)
+    } catch (e) {
+      throw new AuthError('redirect_shared', e instanceof Error ? e.message.replace(/^\[Pyreon\] auth: /, '') : String(e))
+    }
+    disposed = false
+  }
   // A tab-scoped store binds flows to the browser by itself. `null` (no binding cookie on this
   // request) is a runtime condition, not a configuration error: the callback fails `unbound_flow`.
   const binding = opts.binding ?? (opts.flows.tabScoped ? 'tab' : '')
@@ -194,7 +203,8 @@ export function createAuth(opts: AuthOptions): Auth {
     })
   }
 
-  let refreshing: Promise<void> | undefined
+  // The refresh in flight, and the session generation it was started for.
+  let refreshing: { gen: number; done: Promise<void> } | undefined
   const doRefresh = async (): Promise<void> => {
     // A refresh never bumps the epoch: starting one must not discard a sign-in or callback in
     // flight. It applies its result only while nothing else happened — no new attempt or sign-out
@@ -238,6 +248,7 @@ export function createAuth(opts: AuthOptions): Auth {
       error.set(null)
       try {
         const m = await meta()
+        ensureClaim()
         if (!claim.advertise(m.authorization_response_iss_parameter_supported === true)) {
           throw new AuthError(
             'redirect_shared',
@@ -258,6 +269,7 @@ export function createAuth(opts: AuthOptions): Auth {
         const m = await meta()
         const href = callbackHref(url, opts.client.redirectUri)
         const params = new URL(href).searchParams
+        ensureClaim()
         claim.advertise(m.authorization_response_iss_parameter_supported === true)
         if (!binding) throw new AuthError('unbound_flow', 'no flow binding on this request — the sign-in was started in another browser, or its cookie expired')
         // The key includes this instance's issuer, client, redirect URI and browser binding, so
@@ -288,12 +300,20 @@ export function createAuth(opts: AuthOptions): Auth {
       // One refresh in flight per instance: with rotating refresh tokens and reuse detection, a
       // second concurrent call would present the already-rotated token and the provider would
       // revoke the whole token family.
-      return (refreshing ??= doRefresh().finally(() => {
-        refreshing = undefined
-      }))
+      // Keyed by the session generation: after a sign-out and a new sign-in, a refresh still in
+      // flight belongs to the old session and must not be handed to a caller of the new one.
+      if (refreshing && refreshing.gen === sessionGen) return refreshing.done
+      const entry = { gen: sessionGen, done: Promise.resolve() }
+      entry.done = doRefresh().finally(() => {
+        if (refreshing === entry) refreshing = undefined
+      })
+      refreshing = entry
+
+      return entry.done
     },
     dispose() {
       claim.release()
+      disposed = true
     },
     signOut(o) {
       epoch++

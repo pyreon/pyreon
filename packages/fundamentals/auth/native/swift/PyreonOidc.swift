@@ -21,13 +21,37 @@ public struct PyreonAuthFlow: Codable, Equatable {
 /// empty http(s) path, the scheme-specific part for an opaque URI; query and fragment ignored.
 public enum PyreonRedirect {
     public static func target(_ s: String) -> String? {
+        // Spellings the three parsers disagree on are refused everywhere (see the web rule).
+        let head = String(s.prefix { $0 != "?" && $0 != "#" })
+        if head.contains("\\") || head.contains(where: { $0.isWhitespace }) || head.lowercased().contains("%2e")
+            || !head.allSatisfy({ $0.isASCII }) { return nil }
+        if let r = head.range(of: "://"), head[r.upperBound...].prefix(while: { $0 != "/" }).contains("%") { return nil }
         guard let c = URLComponents(string: s), let rawScheme = c.scheme else { return nil }
         let scheme = rawScheme.lowercased()
-        var host = (c.percentEncodedHost ?? "").lowercased()
+        // `encodedHost` keeps an ASCII (punycode) host as written; Foundation may decode it in `host`.
+        var host = (c.encodedHost ?? c.percentEncodedHost ?? "").lowercased()
         if let port = c.port, !((scheme == "http" && port == 80) || (scheme == "https" && port == 443)) { host += ":\(port)" }
         var path = c.percentEncodedPath
+        if path.hasPrefix("/") { path = removeDotSegments(path) }
         if path.isEmpty && (scheme == "http" || scheme == "https") { path = "/" }
         return "\(scheme) \(host) \(path)"
+    }
+
+    /// RFC 3986 §5.2.4 for an absolute path, as the web URL parser applies it.
+    static func removeDotSegments(_ path: String) -> String {
+        var out: [Substring] = []
+        let segs = path.dropFirst().split(separator: "/", omittingEmptySubsequences: false)
+        for (i, seg) in segs.enumerated() {
+            let last = i == segs.count - 1
+            if seg == "." { if last { out.append("") }; continue }
+            if seg == ".." {
+                if !out.isEmpty { out.removeLast() }
+                if last { out.append("") }
+                continue
+            }
+            out.append(seg)
+        }
+        return "/" + out.joined(separator: "/")
     }
 }
 
@@ -46,10 +70,14 @@ public final class PyreonRedirectClaims: @unchecked Sendable {
     public func claim(redirectUri: String, issuer: String) -> PyreonRedirectToken {
         let target = PyreonRedirect.target(redirectUri) ?? redirectUri
         let name = issuer.hasSuffix("/") ? String(issuer.dropLast()) : issuer
-        lock.lock()
-        claims[target, default: [:]][name, default: Claim(count: 0, iss: nil)].count += 1
-        lock.unlock()
+        add(target: target, issuer: name)
         return PyreonRedirectToken(registry: self, target: target, issuer: name)
+    }
+
+    fileprivate func add(target: String, issuer: String) {
+        lock.lock()
+        claims[target, default: [:]][issuer, default: Claim(count: 0, iss: nil)].count += 1
+        lock.unlock()
     }
 
     fileprivate func release(target: String, issuer: String) {
@@ -106,6 +134,15 @@ public final class PyreonRedirectToken: @unchecked Sendable {
         released = true
         lock.unlock()
         if first { registry.release(target: target, issuer: issuer) }
+    }
+
+    /// Register again after `release()` (a disposed instance that signs in again).
+    public func reclaimIfReleased() {
+        lock.lock()
+        let again = released
+        released = false
+        lock.unlock()
+        if again { registry.add(target: target, issuer: issuer) }
     }
 }
 

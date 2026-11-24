@@ -49,6 +49,9 @@ class FakeProvider : PyreonAuthTransport {
     var subject = "user-1"
     var nonceOverride: String? = null
     var advertiseIss = false
+    /** Issue a fresh refresh token per sign-in, as a real provider does. */
+    var uniqueRefreshTokens = false
+    private var codeCount = 0
     var rotateRefresh = false
     var refreshStatus = 200
     @Volatile var refreshDelayMs = 0L
@@ -84,7 +87,7 @@ class FakeProvider : PyreonAuthTransport {
             if (grant == null || PyreonPKCE.challengeS256(form["code_verifier"] ?: "") != grant.first) {
                 return PyreonAuthResponse(400, """{"error":"invalid_grant"}""")
             }
-            return ok(mapOf("access_token" to "at-0", "token_type" to "Bearer", "expires_in" to 3600.0, "refresh_token" to "rt-0",
+            return ok(mapOf("access_token" to "at-0", "token_type" to "Bearer", "expires_in" to 3600.0, "refresh_token" to (if (uniqueRefreshTokens) "rt-c${++codeCount}" else "rt-0"),
                 "id_token" to idToken(nonceOverride ?: grant.second)))
         }
         if (form["grant_type"] == "refresh_token") {
@@ -347,6 +350,62 @@ fun testRefreshDoesNotDiscardSignIn() {
     check(auth.status.value == PyreonOidcStatus.SIGNED_IN && auth.accessToken.value == "at-0") { "a refresh does not discard a sign-in in flight: ${auth.accessToken.value}" }
 }
 
+fun testOneRefreshPerStoredSession() {
+    // Two instances over ONE stored, expired session (an Activity recreation): construction makes
+    // no request, and refreshing both presents the refresh token once.
+    val p = FakeProvider()
+    p.rotateRefresh = true
+    p.refreshDelayMs = 300
+    val store = MemStore()
+    store.entries["pyreon.auth.session.app|https://idp.example"] =
+        """{"issuer":"https://idp.example","accessToken":"old","expiresAt":1,"refreshToken":"rt-0","claims":{"sub":"user-1"}}"""
+    val b = FakeBrowser(p)
+    val a1 = make(p, store, b)
+    val a2 = make(p, store, b)
+    check(p.requests.isEmpty()) { "restoring an expired session makes no request until start(): ${p.requests}" }
+    val threads = listOf(Thread { a1.refreshNow() }, Thread { a2.refreshNow() })
+    threads.forEach { it.start() }
+    threads.forEach { it.join() }
+    val posts = p.requests.count { it.endsWith("/token") }
+    check(posts == 1) { "two instances over one stored session refresh once: $posts" }
+    check(a1.accessToken.value == "at-1" && a2.accessToken.value == "at-1") { "both adopt the one refresh" }
+}
+
+fun testStaleRefreshNotReused() {
+    // A refresh in flight for an old session is not handed to a caller of the new one.
+    val p = FakeProvider()
+    p.uniqueRefreshTokens = true
+    p.refreshDelayMs = 300
+    val auth = make(p, MemStore(), FakeBrowser(p))
+    auth.signIn()
+    val stale = Thread { auth.refreshNow() }
+    stale.start()
+    Thread.sleep(50)
+    auth.signOut()
+    auth.signIn()
+    auth.refreshNow()
+    stale.join()
+    val refreshGrants = p.requests.count { it.endsWith("/token") } - 2
+    check(refreshGrants == 2) { "the new session is refreshed itself: $refreshGrants refresh requests" }
+}
+
+fun testDisposedInstanceReclaims() {
+    PyreonRedirectClaims.reset()
+    val p = FakeProvider()
+    val b = FakeBrowser(p)
+    val auth = make(p, MemStore(), b)
+    auth.dispose()
+    auth.signIn()
+    val other = PyreonOidcAuth(
+        issuer = "https://honest.example", clientId = "app", redirectUri = "com.example.app:/oauth",
+        store = MemStore(), browser = b, transport = p, executor = INLINE,
+    )
+    auth.signIn()
+    check(auth.error.value == "redirect_shared") { "a disposed instance that signs in again is registered again: ${auth.error.value}" }
+    other.dispose()
+    PyreonRedirectClaims.reset()
+}
+
 fun testKeyRotation() {
     val kp = FakeProvider()
     var t = 1_000_000L
@@ -423,5 +482,8 @@ fun main() {
     testSessionKeyedByIssuer()
     testSharedRedirectUri()
     testRefreshDoesNotDiscardSignIn()
+    testOneRefreshPerStoredSession()
+    testStaleRefreshNotReused()
+    testDisposedInstanceReclaims()
     println("[PyreonOidcAuthTest] all smoke tests passed")
 }
