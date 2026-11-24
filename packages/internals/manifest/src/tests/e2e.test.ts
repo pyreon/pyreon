@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import flowManifest from '../../../../fundamentals/flow/src/manifest'
+import { llmsTxtBulletPrefix } from '../index'
 import {
   findManifests,
   regenerateLlmsFullTxt,
@@ -47,7 +48,7 @@ describe('gen-docs — end-to-end', () => {
       { path: 'flow', manifest: flowManifest },
     ])
     expect(contents).toBe(current)
-    expect(current).toContain(`- ${flowManifest.name} — ${flowManifest.tagline}`)
+    expect(current).toContain(`${llmsTxtBulletPrefix(flowManifest)}${flowManifest.tagline}`)
   })
 
   it(

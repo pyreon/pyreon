@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/test-utils",
-  "version": "0.50.3",
+  "version": "0.50.4",
   "private": true,
   "description": "Internal testing utilities for Pyreon UI system components",
   "license": "MIT",
@@ -16,6 +16,11 @@
       "bun": "./src/browser/index.ts",
       "import": "./src/browser/index.ts",
       "types": "./src/browser/index.ts"
+    },
+    "./llms-txt": {
+      "bun": "./src/llms-txt.ts",
+      "import": "./src/llms-txt.ts",
+      "types": "./src/llms-txt.ts"
     },
     "./happy-dom-hashchange-guard": {
       "bun": "./src/happy-dom-hashchange-guard.ts",

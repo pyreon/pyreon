@@ -28,6 +28,7 @@ import proofSsr from '../../media/home/proof-ssr.svg?raw'
 import runsOnceTree from '../../media/home/runs-once-tree.svg?raw'
 import { Badge } from '../../kit/badge'
 import { Tag } from '../../kit/tag'
+import { layout } from '../../theme'
 import { Note } from '../../kit/note'
 import {
   BenchList,
@@ -111,7 +112,8 @@ function Hero(props: { s: HomeHero }) {
           <CodeBlock code={v.code} html={v.codeHtml} label={v.file} />
         </Pane>
         <div>
-          <Loop media={v.media} eager />
+          {/* TargetsGrid is `display: none` below layout.split, so the poster preload is limited to where it shows. */}
+          <Loop media={v.media} eager preloadMedia={`(min-width: ${layout.split}px)`} />
           <TargetLabels aria-label="The three targets">
             <For each={v.targets} by={(t) => t.label}>
               {(t) => (

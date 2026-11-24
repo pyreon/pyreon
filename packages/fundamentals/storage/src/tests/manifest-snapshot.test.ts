@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — storage snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/storage — Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB. Browser-backed hooks (\`useStorage\`, \`useSessionStorage\`, \`useIndexedDB\`) return the default value on the server. \`useCookie\` is SSR-readable via \`setCookieSource()\` which reads from the request headers. Under \`@pyreon/runtime-server\` the signal registry is isolated per request automatically, so concurrent renders never share a cached signal — pass an ACCESSOR cookie source bound to your request context to make use of it."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/storage](https://pyreon.dev/docs/reference/storage): Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB. Browser-backed hooks (\`useStorage\`, \`useSessionStorage\`, \`useIndexedDB\`) return the default value on the server. \`useCookie\` is SSR-readable via \`setCookieSource()\` which reads from the request headers. Under \`@pyreon/runtime-server\` the signal registry is isolated per request automatically, so concurrent renders never share a cached signal — pass an ACCESSOR cookie source bound to your request context to make use of it."`)
   })
 
   it('renders to llms-full.txt section', () => {

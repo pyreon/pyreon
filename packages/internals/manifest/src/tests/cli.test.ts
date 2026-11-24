@@ -143,7 +143,7 @@ describe('gen-docs main() — in-process', () => {
     )
     writeLlmsFiles(
       fx.root,
-      '# llms.txt\n\n- @pyreon/x — does things\n',
+      '# llms.txt\n\n> Summary.\n\n## Packages\n\n- [@pyreon/x](https://pyreon.dev/docs/x): does things\n',
       '# llms-full.txt\n\n## @pyreon/x — does things\n\nd\n\n```typescript\nconst x = 1\n```\n',
     )
     const out = await runMain(fx.root, ['--check'])
@@ -159,15 +159,15 @@ describe('gen-docs main() — in-process', () => {
     )
     writeLlmsFiles(
       fx.root,
-      '# llms.txt\n\n- @pyreon/x — old\n',
+      '# llms.txt\n\n> Summary.\n\n## Packages\n\n- [@pyreon/x](https://pyreon.dev/docs/x): old\n',
       '# llms-full.txt\n\n## @pyreon/x — old\n\nd\n\n```typescript\nold body\n```\n',
     )
     const out = await runMain(fx.root, ['--check'])
     expect(out.exitCode).toBe(1)
     const err = out.stderr.join('\n')
     expect(err).toContain('out of sync')
-    expect(err).toContain('- - @pyreon/x — old')
-    expect(err).toContain('+ - @pyreon/x — NEW')
+    expect(err).toContain('- - [@pyreon/x](https://pyreon.dev/docs/x): old')
+    expect(err).toContain('+ - [@pyreon/x](https://pyreon.dev/docs/x): NEW')
     expect(err).toContain('bun run gen-docs')
   })
 
@@ -189,6 +189,25 @@ describe('gen-docs main() — in-process', () => {
     expect(err).toContain('fundamentals')
   })
 
+  it('exits 1 when llms.txt leaves the llmstxt.org shape (code in a section)', async () => {
+    writeManifest(
+      fx.root,
+      'fundamentals',
+      'x',
+      `export default { name: '@pyreon/x', tagline: 't', description: 'd', category: 'universal' as const, features: [], api: [], longExample: 'body' }`,
+    )
+    writeLlmsFiles(
+      fx.root,
+      '# llms.txt\n\n> Summary.\n\n## Packages\n\n- [@pyreon/x](https://pyreon.dev/docs/x): t\n\n```ts\nconst y = 1\n```\n',
+      '# llms-full.txt\n\n## @pyreon/x — t\n\nd\n\n```typescript\nbody\n```\n',
+    )
+    for (const argv of [['--check'], []]) {
+      const out = await runMain(fx.root, argv)
+      expect(out.exitCode).toBe(1)
+      expect(out.stderr.join('\n')).toContain('does not follow the llmstxt.org shape')
+    }
+  })
+
   it('exits 1 on llms-full missing-entry when llms.txt has the bullet but llms-full lacks the section', async () => {
     // Second missing-entry branch in main(): manifest lands in
     // llms.txt (so the llms.txt check passes), but llms-full.txt has
@@ -202,7 +221,7 @@ describe('gen-docs main() — in-process', () => {
     )
     writeLlmsFiles(
       fx.root,
-      '# llms.txt\n\n- @pyreon/ghost — t\n',
+      '# llms.txt\n\n> Summary.\n\n## Packages\n\n- [@pyreon/ghost](https://pyreon.dev/docs/ghost): t\n',
       '# llms-full.txt\n\nnothing here\n',
     )
     const out = await runMain(fx.root, ['--check'])
@@ -225,7 +244,7 @@ describe('gen-docs main() — in-process', () => {
     const llmsFullPath = join(fx.root, 'llms-full.txt')
     writeLlmsFiles(
       fx.root,
-      '# llms.txt\n\n- @pyreon/x — old\n',
+      '# llms.txt\n\n> Summary.\n\n## Packages\n\n- [@pyreon/x](https://pyreon.dev/docs/x): old\n',
       '# llms-full.txt\n\n## @pyreon/x — old\n\nd\n\n```typescript\nold body\n```\n',
     )
     const out = await runMain(fx.root, [])
@@ -233,7 +252,7 @@ describe('gen-docs main() — in-process', () => {
     const stdout = out.stdout.join('\n')
     expect(stdout).toContain('llms.txt: 1 line regenerated')
     expect(stdout).toContain('llms-full.txt: 1 section regenerated')
-    expect(readFileSync(llmsPath, 'utf8')).toContain('- @pyreon/x — NEW')
+    expect(readFileSync(llmsPath, 'utf8')).toContain('- [@pyreon/x](https://pyreon.dev/docs/x): NEW')
     expect(readFileSync(llmsFullPath, 'utf8')).toContain('new body')
   })
 
@@ -251,7 +270,7 @@ describe('gen-docs main() — in-process', () => {
     const apiRefPath = join(fx.root, 'packages', 'tools', 'mcp', 'src', 'api-reference.ts')
     writeLlmsFiles(
       fx.root,
-      '# llms.txt\n\n- @pyreon/x — t\n',
+      '# llms.txt\n\n> Summary.\n\n## Packages\n\n- [@pyreon/x](https://pyreon.dev/docs/reference/x): t\n',
       '# llms-full.txt\n\n## @pyreon/x — t\n\nd\n\n```typescript\nbody\n```\n',
       [
         'export const API_REFERENCE = {',
@@ -280,7 +299,7 @@ describe('gen-docs main() — in-process', () => {
     )
     writeLlmsFiles(
       fx.root,
-      '# llms.txt\n\n- @pyreon/x — stable\n',
+      '# llms.txt\n\n> Summary.\n\n## Packages\n\n- [@pyreon/x](https://pyreon.dev/docs/x): stable\n',
       '# llms-full.txt\n\n## @pyreon/x — stable\n\nd\n\n```typescript\nbody\n```\n',
     )
     const first = await runMain(fx.root, [])

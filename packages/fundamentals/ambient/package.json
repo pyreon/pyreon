@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/ambient",
-  "version": "0.53.0",
+  "version": "0.54.0",
   "description": "The ambient values every formatted thing depends on for Pyreon: locale, time zone and a shared clock with self-updating tickers, SSR-safe and request-scoped",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/ambient#readme",

@@ -118,7 +118,7 @@ When upstream notifies, the accessor can run before B recomputes and see `(A_new
 
 ### Effects that read context across re-runs capture and restore the owner
 
-Client context is owner-based. `provide()` writes onto the component's `EffectScope` (`scope._contexts`), `useContext()` walks `scope._parent`, and context dies with the scope; there is no client context stack. `_bind` / `renderEffect` / `effect` capture the active owner at setup via the `setSnapshotCapture` hook (`getContextOwner` / `runWithContextOwner`, registered by `@pyreon/core`) and restore it on every re-run after the first. Deferred boundaries (`<Show>`/`<For>`) capture and restore the owner the same way. SSR keeps a request-scoped stack (`pushContext`/`popContext`); the `*-compat` layers keep their own. Reference: `packages/core/core/src/context.ts`, `packages/core/reactivity/src/effect.ts`, `packages/core/reactivity/src/scope.ts`.
+Client context is owner-based. A component's `EffectScope` becomes a context owner on its FIRST `provide()` (`_claimContextOwner`, lazily — a non-providing component is not in the chain and its children link straight to the nearest provider); `provide()` writes onto `scope._contexts`, `useContext()` walks `scope._parent`, and context dies with the scope; there is no client context stack. `_bind` / `renderEffect` / `effect` capture the active owner at setup via the `setSnapshotCapture` hook (`getContextOwner` / `runWithContextOwner`, registered by `@pyreon/core`) and restore it on every re-run after the first. Deferred boundaries (`<Show>`/`<For>`) capture and restore the owner the same way. SSR keeps a request-scoped stack (`pushContext`/`popContext`); the `*-compat` layers keep their own. Reference: `packages/core/core/src/context.ts`, `packages/core/reactivity/src/effect.ts`, `packages/core/reactivity/src/scope.ts`.
 
 ---
 
@@ -595,5 +595,11 @@ An MCP tool's arguments are written by a model that may be reading untrusted tex
 ### Inferring a singleton member in the surrounding component scope
 
 A fractional store/model field was unknown to its computed/view/action body, leaving an `Int` return around a `Double` expression. Seed inference from the declaration’s own fields, carry cumulative computed/view types, and restore emitter context in `finally`. Refine default parameter types before return inference and coerce integer callers against the known signature. Keep syntactic parameter guards independent of successful return inference; unsupported array/rest helper parameters still require a named decline. Validate with real Swift/Kotlin compilers; unchanged golden output can preserve invalid code. Reference: `native-compiler/src/tests/singleton-fractional-members.test.ts`.
+
+---
+
+### `String(n)` on a number in a runtime text write
+
+JS-side Number→String (`String(n)`, `n + ''`, a template literal) of more than ~200 distinct integers grows V8's `smi_string_cache`, a GC-root cache, to its full ~64 KB, and the page never gets it back. The DOM's own conversion (`Text.data = n`, `createTextNode(n)`, `append(n)`, `replaceChildren(n)`; WebIDL `DOMString`, the same characters) does not touch it. #4560 routed `_setChild`/`_setChildAt` through `_childText` and the row board's retained heap rose 64 KB. A static text sink hands a number to the DOM as a number; never `textContent = n` (happy-dom writes `''` for `0`). Check a heap delta for a GC-root `smi_string_cache` entry before attributing it to framework objects. Code: `_replaceText` in `packages/core/runtime-dom/src/template.ts`; test `tests/number-text-unconverted.test.tsx`. The reactive text bindings still `String()` a number, because their dedupe and hydration read-back compare strings.
 
 ---

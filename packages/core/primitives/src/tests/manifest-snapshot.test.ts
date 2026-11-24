@@ -17,7 +17,7 @@ import primitivesManifest from '../manifest'
 describe('gen-docs — @pyreon/primitives snapshot', () => {
   it('renders the llms.txt bullet', () => {
     const line = renderLlmsTxtLine(primitivesManifest)
-    expect(line.startsWith('- @pyreon/primitives — ')).toBe(true)
+    expect(line.startsWith('- [@pyreon/primitives](https://pyreon.dev/docs/reference/primitives): ')).toBe(true)
     expect(line).toContain('22 canonical cross-platform UI primitives')
     expect(line).toContain('WebView')
   })
