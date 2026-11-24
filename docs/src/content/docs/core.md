@@ -939,6 +939,8 @@ scheme applies.
 
 Refs provide mutable containers for DOM element references. The runtime sets `ref.current` (or calls a callback ref) once, while the component mounts, and sets it to `null` (or calls the callback with `null`) when the element is removed. This holds for every ref form and for both compiled JSX and `h()`.
 
+A ref fires after its element's children are mounted (or, during hydration, adopted), so it sees the element's rendered content and anything it adds or removes stays. An element's children's refs fire before its own.
+
 When a ref fires, the element belongs to the page's `document`, so `el.ownerDocument.defaultView` is the window. It may **not yet be in the live document**, though: a subtree is built and then inserted as a whole. Read layout (`getBoundingClientRect`, `getComputedStyle`), focus, or attach observers that need a connected element in `onMount`, as below.
 
 ### createRef

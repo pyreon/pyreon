@@ -204,6 +204,24 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] A recovery that is not bounded by the range it runs in
+
+(#4764). Four shapes of one class, all after a server/client divergence:
+  - A `<For>` with no block at its cursor claimed "the rest of the parent" and deleted to the parent's end: inside a reactive range that took the range's own boundary marker and every later sibling (`<App> threw during hydration: … insertBefore … not a child`). With no cursor it inserted at the parent's end, past `anchor`. Delete up to `anchor`, insert before `domNode ?? anchor` (`insertMarker` takes the reference node).
+  - The cursor skips plain comments and stops only at structural markers, so a walk inside `adoptReactiveRange` reached the range's `<!--/$-->` PAST `mountReactive`'s boundary comment. Walk with the structural `end` as the anchor, then move the boundary after what the walk mounted (`adoptUnmarkedRange` already did this).
+  - A static child's tag/text recovery leaves the server node at the cursor for the next sibling. A sibling whose server output opens with a MARKER cannot claim it and took it as content: no row adopted, later siblings re-created. `skipRefused` (one identity slot, cleared at the end of the walk) skips the stale element/text run up to that marker and drops it; it stops at the first comment and at `anchor`.
+  - A compiled literal slot in a marked range (`_setChildAt`) never swept what its value left unclaimed before the close marker: `sweepUnclaimed(parent, cursor, first, end)` is now the one bounded sweep (the async-range sweep uses it too), keeping its "nothing claimed, keep the markup" rule.
+  - Not done: a divergent static child followed by another STATIC element still re-creates that element (no marker to skip to); the SSR emit does not bracket static children in an h()-rendered parent, by choice (bytes per child).
+  - Tests: `runtime-dom/src/tests/hydration-recovery-4764.test.tsx` + `.browser`.
+
+---
+
+### [FIXED, 2026-11] Compiled refs ran before their element's children
+
+(#4764): the compiler emitted `_ref` at the attribute's position, before the slot lines. A ref that cleared its element removed the `<!>` / `' '` placeholders, and a client MOUNT threw (`_setChildAt`, `_textSlot`, `mountElement` insertBefore); a static `_setChild` overwrote what a ref added; during hydration a ref saw server content before it was claimed (false mismatch reports). The h() path calls a ref after the element's children. Rule: a ref line is deferred to the end of its element's lines (post-order, after a deferred `<select value>`) in BOTH backends; never patch the slot helpers to tolerate a detached placeholder. A ref inside a spread still runs at the spread. Tests: `hydration-recovery-4764.test.tsx` (ref x child-shape matrix, mount and hydrate), compiler `jsx.test.ts`, `native-equivalence.test.ts`.
+
+---
+
 ### Unclaimed server DOM must be removed before `hydrateRoot` returns
 
 The hydration barrier promises everything on screen is live. Otherwise a warm-server/cold-client divergence (rows vs "Loading…") shows both, and the server rows have no handlers.
