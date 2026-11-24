@@ -207,9 +207,9 @@ describe('workspaceResolvePlugin — Atlas resolving its OWN package', () => {
    * The bug this locks: `atlas build` only worked against a project that
    * happened to declare `@pyreon/atlas` as a dependency.
    *
-   * The generated entry lives in `<project>/node_modules/.atlas-build/` and is
-   * Atlas's UI code, so it imports `@pyreon/atlas/ui`. Resolution walks up from
-   * there looking for `node_modules/@pyreon/atlas` — and a package manager
+   * Atlas's generated modules are its own code, so they import `@pyreon/atlas/*`
+   * (the catalog imports `@pyreon/atlas/core`). Resolution looks for
+   * `node_modules/@pyreon/atlas` — and a package manager
    * NEVER links a package inside its own `node_modules`, nor above it unless
    * some project declares it. Every other framework package resolved (those sit
    * in Atlas's own `node_modules`); the workbench itself did not:
@@ -224,7 +224,7 @@ describe('workspaceResolvePlugin — Atlas resolving its OWN package', () => {
    * directory from this module's location), because that is the copy a build
    * has to reach.
    */
-  const generatedImporter = (): string => join(root, 'node_modules/.atlas-build/entry.js')
+  const generatedImporter = (): string => '\0virtual:atlas/catalog'
 
   it('resolves @pyreon/atlas/ui from a project that does not depend on Atlas', () => {
     write('package.json', JSON.stringify({ name: '@a/lib', dependencies: {} }))
