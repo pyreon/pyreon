@@ -111,6 +111,7 @@ export type SlotHydrator = (
   children: VNodeChild | VNodeChild[],
   parent: Node,
   open: Comment | null,
+  unit?: 1,
 ) => () => void
 
 export let _slotHydrator: SlotHydrator | null = null

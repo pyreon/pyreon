@@ -642,8 +642,13 @@ function adoptReactiveRange(
     return keyed
   }
 
-  const startMarker = document.createComment('pyreon')
-  parent.insertBefore(startMarker, rangeFirst)
+  // NO start marker (#4764): the adopted range ends up shaped exactly like a
+  // fresh mount's (content, then `mountReactive`'s boundary), so user code that
+  // counts or positions by child nodes (a ref inserting "in the middle") sees
+  // the same list on both paths. The range's start is the node before it, read
+  // once here: the `<!--$-->` open marker (its caller removes it only after
+  // this returns) or, for a marker-less sole range, the parent's start.
+  const before = rangeFirst.previousSibling
   const cleanup = mountReactive(child, parent, end, (value, p, a) => {
     if (hydrated) return mountOwned(value, p, a)
     hydrated = true
@@ -673,35 +678,26 @@ function adoptReactiveRange(
     // before `end`; the boundary then moves after them.
     const [disposeBindings, nextCursor] = hydrateChild(value, cursor, p, end, `${path} > reactive`)
     if ((a as ChildNode).nextSibling !== end) p.insertBefore(a as ChildNode, end)
-    // Everything the walk consumed sits before the cursor it returned; a
-    // snapshotted node at or after that cursor is unclaimed. Walk from the
-    // STABLE start marker, not from the cursor the walk began at: a nested
-    // accessor's hydration removes its own `$` markers as it adopts, so the
-    // starting cursor may already be detached (its `nextSibling` is null and
-    // a walk from it claims nothing — the first cut swept every adopted node
-    // after a nested range). Freshly mounted nodes are never in the snapshot.
+    // Everything the walk consumed or mounted sits between the range's start
+    // and the cursor it returned; a snapshotted node at or after that cursor is
+    // unclaimed. Start from the node BEFORE the range, not from the cursor the
+    // walk began at: a nested accessor's hydration removes its own `$` markers
+    // as it adopts, so the starting cursor may already be detached.
     const claimed = new Set<ChildNode>()
-    for (let n = startMarker.nextSibling; n && n !== nextCursor && n !== a; n = n.nextSibling) claimed.add(n)
+    for (let n = before ? before.nextSibling : p.firstChild; n && n !== nextCursor && n !== a; n = n.nextSibling) {
+      claimed.add(n)
+    }
     for (const n of stale) if (!claimed.has(n)) n.remove()
-    // CONTRACT BRIDGE. `hydrateChild`'s cleanups DISPOSE bindings; they do not
-    // remove the nodes, because hydrateRoot tears the whole container down.
-    // `mountReactive` needs the opposite: its per-run cleanup is what clears the
+    // CONTRACT BRIDGE. `mountReactive`'s per-run cleanup is what clears the
     // previous render before the next one mounts, so anything left behind
-    // survives every future flip. (The parity fuzzer caught exactly this — an
-    // adopted text node stayed put after the accessor flipped to an element,
-    // 5/300 seeds diverging post-flip.)
-    //
-    // Clear the LIVE range at teardown (start marker → mountReactive's anchor),
-    // not a list frozen now: the adopted subtree's own bindings may add or drop
-    // top-level nodes while it is mounted.
+    // survives every future flip (the parity fuzzer caught an adopted text node
+    // staying put after the accessor flipped to an element). The walk's
+    // cleanups remove what they own, including anything the adopted subtree's
+    // own bindings added later; the claimed top-level nodes go too, as a fresh
+    // mount's per-node removers would take them.
     return () => {
       disposeBindings()
-      let c = startMarker.nextSibling
-      while (c && c !== a) {
-        const nx: ChildNode | null = c.nextSibling
-        detachNode(c)
-        c = nx
-      }
+      for (const n of claimed) detachNode(n)
     }
   })
   // The accessor's initial value may be null/false, in which case mountReactive
@@ -717,35 +713,15 @@ function adoptReactiveRange(
     // accessor (`{err() && <span/>}`, a toast list, a conditional row) is that
     // shape, which is why it fails loudly and everywhere rather than subtly.
     const boundary = end.previousSibling
-    let c = startMarker.nextSibling
+    let c: ChildNode | null = rangeFirst
     while (c && c !== boundary && c !== end) {
       const nx: ChildNode | null = c.nextSibling
       c.remove()
       c = nx
     }
   }
-  // `startMarker` is the STABLE origin every walk above starts from — the
-  // per-run cleanup and the claimed-set scan both need it to survive each
-  // re-render, so it must NOT be removed there (do that and the walk's
-  // `nextSibling` is null, it clears nothing, and the previous render is left
-  // on screen under the new one). `cleanup` is `mountReactive`'s FINAL
-  // disposer, and after it runs nothing walks from here again — so this is the
-  // one place the marker can go. Mirrors `mountReactive`'s own
-  // `marker.parentNode?.removeChild(marker)`, tolerance for an
-  // already-detached marker included.
-  //
-  // HONEST SCOPE: this is hygiene, not an observable fix, and it ships without
-  // a regression test on purpose rather than with one that cannot fail. The
-  // only consumer of this cleanup today is `hydrateRoot`'s dispose, which tears
-  // down the whole container — so the marker's parent is removed with it and no
-  // public-API assertion can tell the two versions apart (verified in both
-  // directions). It is kept because the marker is otherwise a permanent
-  // artifact of adoption in a live document, and because a future consumer that
-  // disposes a range WITHOUT destroying its parent would leak one per range.
-  return () => {
-    cleanup()
-    detachNode(startMarker)
-  }
+
+  return cleanup
 }
 
 /**
@@ -1507,13 +1483,11 @@ function claimRegion(children: VNodeChild | VNodeChild[], el: Element, region: N
     }
     el.appendChild(region)
   }
-  const cleanup = hydrateWholeList(children, el, slotPath, true)
-
-  // The element leaves with its template, so the region's own removals are
-  // redundant: inside the window `detachNode` skips them (O(1): no node is
-  // detached or re-inserted) and only effects are disposed. A bind that throws
-  // later keeps the adopted server markup the same way.
-  return () => _detachAsUnit(el, cleanup)
+  // The element leaves with its template: `_setChild` asks for a unit cleanup
+  // (`hydrateMountSlot`), so the region's own removals are skipped (O(1): no
+  // node is detached or re-inserted) and only effects are disposed. A bind
+  // that throws later keeps the adopted server markup the same way.
+  return hydrateWholeList(children, el, slotPath, true)
 }
 
 /**
@@ -1529,7 +1503,23 @@ function claimRegion(children: VNodeChild | VNodeChild[], el: Element, region: N
  * install, so it is walked against the range directly and the markers removed
  * here.
  */
-function hydrateMountSlot(children: VNodeChild | VNodeChild[], parent: Node, open: Comment | null): Cleanup {
+function hydrateMountSlot(
+  children: VNodeChild | VNodeChild[],
+  parent: Node,
+  open: Comment | null,
+  unit?: 1,
+): Cleanup {
+  const cleanup = hydrateSlot(children, parent, open)
+  // `unit`: a STATIC slot (`_setChild`, `_setChildAt`), whose content leaves
+  // with its template element, as the fresh path's `mountChildAsUnit` content
+  // does. Its scope-owned cleanup then disposes effects and removes nothing
+  // (`detachNode` skips every removal inside the window): a bind that throws
+  // later (a ref in the tail, #4764) keeps the adopted server markup, as the
+  // h() path keeps it, and an unmount detaches nothing node by node.
+  return unit ? () => _detachAsUnit(parent, cleanup) : cleanup
+}
+
+function hydrateSlot(children: VNodeChild | VNodeChild[], parent: Node, open: Comment | null): Cleanup {
   // Dev: mismatch paths below run from the hydration root through the slot's
   // element (`root > div > reactive > b`), as the h() walk spells them; in
   // production they keep the bare `slot` prefix.

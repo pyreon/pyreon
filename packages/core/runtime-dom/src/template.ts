@@ -168,7 +168,7 @@ export function _setChild(node: Element, value: unknown): void {
   // or mounted fresh where user code filled it.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
-      ownByScope(_slotHydrator(value as never, node, null))
+      ownByScope(_slotHydrator(value as never, node, null, 1))
       return
     }
     // The element leaves as a unit with its template, so the mount needs only
@@ -251,7 +251,7 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
   // child list, so it is handed over as `_mountSlot` hands over its own.
   const open = isRangeOpen(placeholder)
   if (_slotHydrator !== null && (open || (!isCloneSlotPlaceholder(placeholder) && !isMidSlotText(placeholder)))) {
-    ownByScope(_slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null))
+    ownByScope(_slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null, 1))
     return
   }
   // A function is an accessor (see `_setChild`) — mount it reactively.

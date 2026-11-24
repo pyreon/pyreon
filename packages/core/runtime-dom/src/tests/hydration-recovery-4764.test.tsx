@@ -516,6 +516,50 @@ describe('#4764 (5): a ref over adopted content sees what a fresh render gives i
   }
 })
 
+describe('#4764: a ref that throws keeps the adopted slot content, as h() does', () => {
+  // The ref tail runs after the slot lines, so a throwing ref stops a scope
+  // that already owns adopted slot content. Its cleanup disposes effects and
+  // removes nothing: the server markup stays, as on the h() path.
+  const R = (el: Element | null) => {
+    if (el !== null) throw new Error('boom')
+  }
+  const SHAPES = [
+    'const App = () => <div><span ref={R}>{fnText}</span><em>e</em></div>',
+    'const App = () => <div><span>{fnText}</span><i ref={R} /></div>',
+    'const App = () => <div><s />{fnNode}<i ref={R} /></div>',
+    'const App = () => <div><span ref={R}><s />{fnNode}</span></div>',
+  ]
+  const sc = (r: unknown) => ({ R: r, fnText: () => 'ft', fnNode: () => h('b', null, 'n') })
+  for (const src of SHAPES) {
+    for (const client of CLIENTS) {
+      it(`${client}: ${src.slice(18)}`, async () => {
+        const el = host()
+        el.innerHTML = await renderToString(
+          h(
+            build(
+              src,
+              sc(() => {}),
+              serverFor(client),
+            ) as never,
+            null,
+          ) as never,
+        )
+        const want = shape(el)
+        const origError = console.error
+        console.error = () => {}
+        dom.disableHydrationWarnings()
+        try {
+          dom.hydrateRoot(el, h(build(src, sc(R), client) as never, null))
+        } finally {
+          dom.enableHydrationWarnings()
+          console.error = origError
+        }
+        expect(shape(el)).toBe(want)
+      })
+    }
+  }
+})
+
 describe("#4764: the Chromium twin's strings are the real pipeline's output", () => {
   const emit = (src: string) => lower(transformJSX(src, 'c.tsx', {}).code)
 
