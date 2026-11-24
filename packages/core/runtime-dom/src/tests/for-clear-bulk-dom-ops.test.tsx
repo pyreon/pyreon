@@ -55,6 +55,7 @@ import { _bindDirect, _bindText, _mountSlot, _textSlot, _setChild, _setChildAt, 
 const g = globalThis as { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }
 let counts: Record<string, number>
 let prevSink: typeof g.__pyreon_count__
+
 beforeEach(() => {
   counts = {}
   prevSink = g.__pyreon_count__
@@ -62,10 +63,13 @@ beforeEach(() => {
     counts[name] = (counts[name] ?? 0) + n
   }
 })
+
 let mounted: Array<() => void>
+
 beforeEach(() => {
   mounted = []
 })
+
 afterEach(() => {
   for (const dispose of mounted) dispose()
   mounted = []
@@ -95,6 +99,7 @@ const RUNTIME_DEPS = {
   signal,
   document,
 } as const
+
 const DEP_NAMES = Object.keys(RUNTIME_DEPS)
 const DEP_VALUES = Object.values(RUNTIME_DEPS)
 
@@ -143,6 +148,7 @@ function mountCompiledFor(n: number, source: string = FOR_LI_SOURCE) {
   })
   // The list's parent: the `<ul>` of the plain rows, the `<tbody>` of the table rows.
   const ul = query<HTMLElement>(container, 'ul, tbody')
+
   return { rows, container, ul, cleanup, mk }
 }
 
@@ -185,6 +191,7 @@ function recordRemovals(fn: () => void) {
       ownRemovals++
       if (this.isConnected) liveRemovals++
     }
+
     return realRemove.call(this, c) as T
   }
   elProto.replaceChildren = function (this: Element, ...nodes: Node[]) {
@@ -202,6 +209,7 @@ function recordRemovals(fn: () => void) {
     nodeProto.removeChild = realRemove
     elProto.replaceChildren = realReplace
   }
+
   return {
     ownRemovals,
     liveRemovals,
@@ -302,6 +310,7 @@ export const App = (props) => (
   </table>
 )
 `
+
 const MAP_COND_SOURCE = `
 export const App = (props) => (
   <table>
@@ -408,7 +417,7 @@ describe.each([
     // The surviving rows' conditional cells still flip in place.
     const first = rows.peek()[0]!
     first.done.set(!first.done.peek())
-    const cell = ul.querySelector('tr td.status') as HTMLElement
+    const cell = query<HTMLElement>(ul, 'tr td.status')
     expect(cell.children).toHaveLength(1)
     expect(cell.firstElementChild?.className).toBe(first.done.peek() ? 'done' : 'todo')
     expect(cell.childNodes.length).toBe(2) // branch + its marker, nothing stranded

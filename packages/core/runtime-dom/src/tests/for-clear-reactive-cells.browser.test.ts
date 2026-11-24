@@ -37,6 +37,7 @@ function mountRows(n: number) {
     ),
   )
   rows.set(Array.from({ length: n }, (_, i) => mk(i + 1)))
+
   return { rows, mk, container, unmount }
 }
 
@@ -53,6 +54,7 @@ function countLiveRemovals(fn: () => void): number {
   } finally {
     proto.removeChild = real
   }
+
   return live
 }
 
