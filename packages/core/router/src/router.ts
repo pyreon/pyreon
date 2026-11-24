@@ -2206,7 +2206,12 @@ export function createRouter<TNames extends string = string>(
   // `@pyreon/router` (zero import coupling — same pattern as the perf-harness
   // counter sink). Last router wins; single-router apps (the norm, every
   // `@pyreon/zero` app) are unaffected. Dev+browser only.
-  if (process.env.NODE_ENV !== 'production' && isClient && router._hmrSwap) {
+  //
+  // Never a MEMORY router: its routes are not the page's (a component
+  // workbench's preview, an embedded widget, a test), and claiming the hook
+  // took route-component HMR away from the page's own router — every edit then
+  // fell back to a full reload.
+  if (process.env.NODE_ENV !== 'production' && isClient && router._hmrSwap && !memory) {
     // `_hmrSwap` closes over `currentRoute`/`componentCache`/`loadingSignal`
     // (not `this`), so the raw reference is safe to expose and to compare by
     // identity on `destroy()`.
