@@ -68,7 +68,7 @@
     "arktype": "^2.2.9",
     "bun-types": "^1.4.4",
     "mobx": "^7.1.7",
-    "mobx-state-tree": "^9.0.0",
+    "mobx-state-tree": "^9.0.1",
     "valibot": "^1.5.0",
     "zod": "^4.6.7",
     "@pyreon/native-compiler": "workspace:*"

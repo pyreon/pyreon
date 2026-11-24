@@ -222,7 +222,7 @@
     "zod": "^4.6.7"
   },
   "overrides": {
-    "follow-redirects": "^1.16.1",
+    "follow-redirects": "^1.16.3",
     "launch-editor": "^2.14.2",
     "markdown-it": "^15.0.3",
     "@codemirror/view": "6.43.15",
@@ -239,17 +239,19 @@
     "uuid": "^11.1.1",
     "fast-uri": "^3.1.9",
     "body-parser": "^2.4.0",
-    "ip-address": "^10.7.4",
-    "qs": "^6.16.0",
+    "ip-address": "^10.7.6",
+    "qs": "^6.17.1",
     "hono": "^4.13.19",
     "@changesets/parse": {
       "js-yaml": "^4.3.2"
     },
-    "devalue": "^5.9.2",
-    "image-size": "^2.0.4",
-    "prosemirror-view": "^1.42.6",
+    "octane": {
+      "devalue": "6.0.3"
+    },
+    "image-size": "^2.1.0",
+    "prosemirror-view": "1.42.9",
     "proxy-addr": "^2.0.8",
-    "seroval": "^1.6.8",
+    "seroval": "1.8.0",
     "source-map-js": "^1.2.2"
   },
   "dependencies": {
