@@ -140,7 +140,7 @@ const ALL_FRAMEWORKS = [
   { name: 'Vue 3', run: runVue },
   { name: 'Vue 3.6 Vapor (RC)', run: runVueVapor },
   { name: 'SolidJS', run: runSolid },
-  { name: 'SolidJS 2.0 (RC)', run: runSolid2 },
+  { name: 'SolidJS 2.0', run: runSolid2 },
   { name: 'Svelte 5', run: runSvelte },
   { name: 'Octane', run: runOctane },
   { name: 'Pyreon', run: runPyreon },
