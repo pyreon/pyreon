@@ -5,6 +5,7 @@ import { octane } from '@octanejs/vite-plugin'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import pyreon from '@pyreon/vite-plugin'
 import { rivalsPlugin } from './vite-rivals'
+import { SOLID2_SOURCES } from './src/impl/solid2-sources'
 import { defineConfig, type Plugin } from 'vite'
 import { DBMON_VUE_TEMPLATE } from './src/impl/dbmon-vue-template'
 import {
@@ -188,73 +189,47 @@ function vueVaporPlugin(): Plugin {
 }
 
 /**
- * SolidJS 2.0 (release candidate) for the row board — see impl/solid2.ts.
+ * SolidJS 2.0 arms — see impl/solid2-sources.ts (the sources) and
+ * impl/solid2.ts (the row board).
  *
- * `virtual:solid2-rows` is idiomatic Solid 2 JSX compiled at build time by
- * `babel-preset-solid@2.0.0-rc` (aliased `babel-preset-solid-rc`). Solid 2 is
- * installed as `solid-js-rc` beside the stable 1.9; `@solidjs/web` declares
- * `solid-js` as a peer, so every `solid-js` import made by `@solidjs/web` or by
- * this arm is resolved to the ONE `solid-js-rc` copy. Without that, the
- * renderer and the arm could load different Solid instances and their
- * reactive graphs would never connect.
+ * `virtual:solid2/<key>` is the idiomatic Solid 2 JSX in `SOLID2_SOURCES`,
+ * compiled at build time by Solid 2.0's own compiler, `@solidjs/compiler`
+ * (what `@solidjs/vite-plugin` runs; production DOM output). Solid 2 is
+ * installed as `solid-js-2` beside the 1.9 the `SolidJS` arms use;
+ * `@solidjs/web` declares `solid-js` as a peer, so every `solid-js` import made
+ * by `@solidjs/web`, by these virtual modules or by `impl/solid2.ts` is
+ * resolved to the ONE `solid-js-2` copy. Without that, the renderer and the
+ * arm could load different Solid instances and their reactive graphs would
+ * never connect.
  */
-const SOLID2_ROWS_JSX = `
-import { For, createProjection } from 'solid-js'
-export function Rows(props) {
-  // Keyed selection: only the previous and the new key change, so only those
-  // two rows' class effects re-run (Solid 2's replacement for createSelector).
-  const selected = createProjection((draft) => {
-    const id = props.selectedId()
-    if (draft.prev != null) draft[draft.prev] = false
-    if (id != null) draft[id] = true
-    draft.prev = id
-  }, {})
-  return (
-    <table>
-      <tbody>
-        <For each={props.rows()}>
-          {(row) => (
-            <tr class={selected[row.id] ? 'selected' : ''}>
-              <td>{row.id}</td>
-              <td>{row.label()}</td>
-            </tr>
-          )}
-        </For>
-      </tbody>
-    </table>
-  )
-}`
-
 function solid2Plugin(): Plugin {
-  const ROWS = 'virtual:solid2-rows'
+  const PREFIX = 'virtual:solid2/'
   const SELF = fileURLToPath(import.meta.url)
   return {
-    name: 'solid2-rc',
+    name: 'solid2',
     // Runs before Vite's resolver, which would otherwise hand @solidjs/web the
-    // stable solid-js 1.9 first.
+    // solid-js 1.9 first.
     enforce: 'pre',
     async resolveId(id, importer) {
-      if (id === ROWS) return `\0${ROWS}`
-      const fromRc =
-        importer !== undefined && (importer.includes('/@solidjs/web/') || importer === `\0${ROWS}` || importer.endsWith('/impl/solid2.ts'))
-      if (fromRc && (id === 'solid-js' || id.startsWith('solid-js/'))) {
-        // Resolve from THIS package, which declares the `solid-js-rc` alias;
-        // @solidjs/web's own folder only sees the stable copy.
-        return this.resolve(id.replace(/^solid-js/, 'solid-js-rc'), SELF, { skipSelf: true })
+      if (id.startsWith(PREFIX)) return `\0${id}`
+      const fromSolid2 =
+        importer !== undefined &&
+        (importer.includes('/@solidjs/web/') || importer.startsWith(`\0${PREFIX}`) || importer.endsWith('/impl/solid2.ts'))
+      if (fromSolid2 && (id === 'solid-js' || id.startsWith('solid-js/'))) {
+        // Resolve from THIS package, which declares the `solid-js-2` alias;
+        // @solidjs/web's own folder only sees the 1.9 copy.
+        return this.resolve(id.replace(/^solid-js/, 'solid-js-2'), SELF, { skipSelf: true })
       }
       return null
     },
     async load(id) {
-      if (id !== `\0${ROWS}`) return null
-      const { transformAsync } = await import('@babel/core')
-      const preset = (await import('babel-preset-solid-rc')).default
-      const out = await transformAsync(SOLID2_ROWS_JSX, {
-        filename: 'solid2-rows.jsx',
-        presets: [[preset, { generate: 'dom' }]],
-        babelrc: false,
-        configFile: false,
-      })
-      return out?.code ?? null
+      if (!id.startsWith(`\0${PREFIX}`)) return null
+      const key = id.slice(PREFIX.length + 1)
+      const source = SOLID2_SOURCES[key]
+      if (source === undefined) throw new Error(`[solid2] no Solid 2 source "${key}"`)
+      const { transformAsync } = await import('@solidjs/compiler')
+      const out = await transformAsync(source, { filename: `solid2-${key}.jsx`, generate: 'dom', dev: false })
+      return out.code
     },
   }
 }

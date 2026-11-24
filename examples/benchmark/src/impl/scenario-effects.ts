@@ -73,6 +73,7 @@ import * as ReactDOM from 'react-dom/client'
 import { jsx as reactJsx } from 'react/jsx-runtime'
 import { batch as solidBatch, createComponent, createEffect, createSignal } from 'solid-js'
 import { insert, render as solidRender, template } from 'solid-js/web'
+import { createEffectList as solid2CreateEffectList } from 'virtual:solid2/effects'
 import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUnmount } from 'svelte'
 import { defineComponent, createApp, nextTick, ref, watchEffect } from 'vue'
 import { render as vueFxListRender } from 'virtual:fx-list-vue-render'
@@ -287,6 +288,17 @@ function solidTarget(sink: EffectSink): EffectsTarget {
       set(value)
     },
   }
+}
+
+// ─── Solid 2.0 ───────────────────────────────────────────────────────────────
+// Idiomatic Solid 2 JSX compiled by `@solidjs/compiler`
+// (`SOLID2_SOURCES.effects` in solid2-sources.ts): 500 `FxRow` components,
+// each with one split `createEffect(get, effectFn)` writing the sink and its
+// signal rendered as text — the Solid 1.9 arm's shape on Solid 2's API. Writes
+// end with one `flush()` (Solid 2 has no `batch()`; the flush is the batch).
+
+function solid2Target(sink: EffectSink): EffectsTarget {
+  return solid2CreateEffectList(EFFECT_ROWS, sink)
 }
 
 // ─── External store shared by the React and Preact arms ──────────────────────
@@ -515,6 +527,7 @@ export const EFFECTS_FRAMEWORKS = [
   'Preact',
   'Vue 3',
   'SolidJS',
+  'SolidJS 2.0',
   'Svelte 5',
 ] as const
 
@@ -557,6 +570,9 @@ export async function runEffects(
       break
     case 'SolidJS':
       target = solidTarget(sink)
+      break
+    case 'SolidJS 2.0':
+      target = solid2Target(sink)
       break
     case 'Svelte 5':
       target = svelteTarget(sink)

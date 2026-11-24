@@ -123,7 +123,7 @@ jobs:
           # red main). check-coverage.ts spawns vitest under node explicitly
           # and preflights for it; this pins the version instead of trusting
           # whatever the runner image happens to ship on PATH that day.
-          node-version: '24'
+          node-version: '26'
       - name: Build native compiler binary (cache miss)
         if: steps.native-bin.outputs.cache-hit != 'true'
         run: bun run --filter='@pyreon/compiler' build:native
@@ -186,7 +186,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
-          node-version: '24'
+          node-version: '26'
       - name: Restore native compile-verdict cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

@@ -404,6 +404,20 @@ function genAttrs(c: Ctx): string {
       ]),
     )
   }
+  // A spread object with no JSX, on whatever element this is (DOM spreads
+  // compile by one rule on the template and h() paths): a handler, a bare and
+  // a derived signal property, a shorthand.
+  if (c.signals.length && c.rnd4() < 0.15) {
+    const s = pick(c.rnd4, c.signals)
+    parts.push(
+      pick(c.rnd4, [
+        `{...{ onClick: () => ${s}.set(${s} + 1) }}`,
+        `{...{ title: ${s}, n: ${s} + 1 }}`,
+        `{...{ ${s} }}`,
+        `{...({ title: ${s} })}`,
+      ]),
+    )
+  }
 
   return parts.length ? ' ' + parts.join(' ') : ''
 }

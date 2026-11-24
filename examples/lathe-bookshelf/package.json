@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@faker-js/faker": "^10.1.0",
+    "@faker-js/faker": "^10.6.0",
     "@pyreon/core": "workspace:*",
     "@pyreon/http": "workspace:*",
     "@pyreon/query": "workspace:*",

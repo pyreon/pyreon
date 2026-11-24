@@ -464,6 +464,35 @@ describe('the time grid', () => {
     expect(slot(none.root, '2026-11-19', 600).hasAttribute('data-business')).toBe(false)
   })
 
+  it('business hours that open nothing render closed instead of failing; malformed ones report a [Pyreon] error', () => {
+    for (const businessHours of [{}, { hours: {} }, { specialHours: {} }, { specialHours: { '2026-11-18': [] } }, { hours: {}, specialHours: { '2026-11-18': [] } }]) {
+      const { root } = week({ businessHours: businessHours as never })
+
+      expect(slot(root, '2026-11-18', 600).getAttribute('data-business'), JSON.stringify(businessHours)).toBe('closed')
+      expect(slot(root, '2026-11-17', 0).getAttribute('data-business'), JSON.stringify(businessHours)).toBe('closed')
+    }
+    const special = week({ businessHours: { specialHours: { '2026-11-18': [{ from: '09:00', to: '12:00' }] } } as never })
+
+    expect(slot(special.root, '2026-11-18', 600).getAttribute('data-business')).toBe('open')
+    expect(slot(special.root, '2026-11-19', 600).getAttribute('data-business')).toBe('closed')
+    // A malformed calendar is a programming error: the time-grid model reports schedule's [Pyreon] error.
+    const reported = (businessHours: unknown): string => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      try {
+        createCalendar({ events: () => [], date: '2026-11-18', view: 'week', timeZone: () => 'UTC', businessHours: businessHours as never, now: () => 0 }).timeGrid()
+
+        return spy.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+      } finally {
+        spy.mockRestore()
+      }
+    }
+
+    expect(reported({ hours: { 9: [] } })).toMatch(/\[Pyreon\].*ISO weekdays/)
+    expect(reported({ specialHours: { '2026-11-18': 'closed' } })).toMatch(/\[Pyreon\].*specialHours\[2026-11-18\]/)
+    expect(reported({ specialHours: {} })).toBe('')
+  })
+
   it('dayStart and dayEnd cut the grid; a slot of an hour makes hour rows', () => {
     const { root } = week({ dayStart: '08:00', dayEnd: '18:00' })
     expect(root.querySelectorAll('.pcal-row')).toHaveLength(20)

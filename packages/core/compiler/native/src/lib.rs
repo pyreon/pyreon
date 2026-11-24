@@ -815,6 +815,10 @@ struct Ctx<'a> {
     /// exactly-bare skip then covers component props and children too.
     /// Mirrors JS `inHandlerSlice`.
     in_handler_slice: bool,
+    /// Start offset of the object literal being sliced as a DOM element's
+    /// spread argument (`u32::MAX` = none): its exactly-bare signal property
+    /// values stay bare. Mirrors JS `isBareDomSpreadValue`.
+    dom_spread_obj: u32,
     /// Span starts of preserved template holes in SVG/MathML content that build
     /// JSX: walked like every hole, but under `wrapped_jsx_depth` so the JSX
     /// keeps the h() path (mounted in its parent's namespace). Mirrors JS
@@ -1004,6 +1008,7 @@ impl<'a> Ctx<'a> {
             in_jsx_child_callback: false,
             wrapped_jsx_depth: 0,
             in_handler_slice: false,
+            dom_spread_obj: u32::MAX,
             h_path_holes: FxHashSet::default(),
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
@@ -4238,13 +4243,35 @@ fn collect_signal_idents(
 
     // Skip shorthand object properties
     if let Expression::ObjectExpression(obj) = expr {
+        let dom = obj.span.start == ctx.dom_spread_obj;
+        collect_object_idents(obj, dom, ctx, out, range_start, range_end, shadows);
+        return;
+    }
+    collect_signal_idents_rest(expr, ctx, out, range_start, range_end, shadows);
+}
+
+/// The properties of an object literal. `dom_spread`: the object is a DOM
+/// element's spread argument, whose exactly-bare signal property values stay
+/// bare (a DOM prop treats a function as a live accessor). Mirrors JS
+/// `isBareDomSpreadValue`.
+fn collect_object_idents(
+    obj: &ObjectExpression,
+    dom_spread: bool,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
         for prop in &obj.properties {
             match prop {
                 ObjectPropertyKind::ObjectProperty(p) => {
                     if p.shorthand {
                         continue; // { name } — can't auto-call
                     }
-                    collect_signal_idents(&p.value, ctx, out, range_start, range_end, shadows);
+                    if !(dom_spread && is_dom_spread_value_key(p) && is_bare_active_signal(&p.value, ctx, shadows)) {
+                        collect_signal_idents(&p.value, ctx, out, range_start, range_end, shadows);
+                    }
                     if p.computed {
                         if let Some(e) = p.key.as_expression() {
                             collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
@@ -4256,9 +4283,34 @@ fn collect_signal_idents(
                 }
             }
         }
-        return;
-    }
+}
 
+/// A DOM spread property whose exactly-bare signal value stays bare: a NAMED
+/// key that is not `ref` or an `on*` handler (that value is the listener or the
+/// ref itself, so a computed there must be read). Mirrors the key check in JS
+/// `isBareDomSpreadValue`.
+fn is_dom_spread_value_key(p: &ObjectProperty) -> bool {
+    if p.computed {
+        return false;
+    }
+    let name: &str = match &p.key {
+        PropertyKey::StaticIdentifier(id) => id.name.as_str(),
+        PropertyKey::StringLiteral(l) => l.value.as_str().unwrap_or(""),
+        _ => "",
+    };
+    !name.is_empty() && name != "ref" && !is_event_handler(name)
+}
+
+/// The generic recursion of `collect_signal_idents` (everything but the
+/// identifier and object-literal arms).
+fn collect_signal_idents_rest(
+    expr: &Expression,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
     // Generic recursion for other expression types
     match expr {
         Expression::BinaryExpression(b) => {
@@ -4736,7 +4788,12 @@ fn collect_jsx_element_idents(
                 }
             }
             JSXAttributeItem::SpreadAttribute(sp) => {
-                collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows);
+                match unwrap_value_layers(&sp.argument) {
+                    Expression::ObjectExpression(obj) if is_dom => {
+                        collect_object_idents(obj, true, ctx, out, range_start, range_end, shadows);
+                    }
+                    _ => collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows),
+                }
             }
         }
     }
@@ -5802,13 +5859,20 @@ fn handle_jsx_element_body(el: &JSXElement, ctx: &mut Ctx) {
                     if wrapped {
                         ctx.add_replacement(sp.end, sp.end, ")".to_string());
                     }
+                } else if !is_component {
+                    // A DOM element's spread on the h() path is sliced exactly
+                    // as the template path slices it. Mirrors JS
+                    // `handleJsxSpreadAttribute`.
+                    let sp = arg.span();
+                    let sliced = slice_dom_spread_arg(arg, ctx);
+                    if sliced != ctx.source[sp.start as usize..sp.end as usize] {
+                        ctx.add_replacement(sp.start, sp.end, sliced);
+                    }
                 } else {
                     // Walk the spread argument FIRST so any nested JSX / signal
                     // accesses get their own transformations applied.
                     walk_expression(arg, ctx);
-                    if is_component {
-                        handle_jsx_spread_attribute(spread, ctx);
-                    }
+                    handle_jsx_spread_attribute(spread, ctx);
                 }
             }
         }
@@ -6098,6 +6162,35 @@ fn slice_unsliced(expr: &Expression, ctx: &mut Ctx) {
 ///
 /// Idempotent: skip when the argument is already a `_wrapSpread(...)`
 /// call so multi-pass / re-run compilation doesn't double-wrap.
+/// Parens and TS type layers, value-transparent.
+fn unwrap_value_layers<'b, 'a>(expr: &'b Expression<'a>) -> &'b Expression<'a> {
+    let mut cur = expr;
+    loop {
+        match cur {
+            Expression::ParenthesizedExpression(p) => cur = &p.expression,
+            Expression::TSAsExpression(e) => cur = &e.expression,
+            Expression::TSSatisfiesExpression(e) => cur = &e.expression,
+            Expression::TSNonNullExpression(e) => cur = &e.expression,
+            Expression::TSTypeAssertion(e) => cur = &e.expression,
+            _ => return cur,
+        }
+    }
+}
+
+/// `slice_expr` of a DOM element's spread argument, on both element paths (the
+/// template's `_applyProps` / `_bindSpread`, the h() path's `{...arg}`): an
+/// exactly-bare signal property of an object-literal argument stays bare.
+/// Mirrors the JS `sliceExpr` + `isBareDomSpreadValue` pair.
+fn slice_dom_spread_arg(arg: &Expression, ctx: &mut Ctx) -> String {
+    let prev = ctx.dom_spread_obj;
+    if let Expression::ObjectExpression(obj) = unwrap_value_layers(arg) {
+        ctx.dom_spread_obj = obj.span.start;
+    }
+    let out = slice_expr(arg, ctx);
+    ctx.dom_spread_obj = prev;
+    out
+}
+
 fn handle_jsx_spread_attribute(spread: &JSXSpreadAttribute, ctx: &mut Ctx) {
     let arg = &spread.argument;
     // Idempotent guard: don't double-wrap on re-compilation.
@@ -10043,7 +10136,7 @@ fn process_one_attr(
 ) -> String {
     match attr {
         JSXAttributeItem::SpreadAttribute(spread) => {
-            let expr_text = slice_expr(&spread.argument, ctx);
+            let expr_text = slice_dom_spread_arg(&spread.argument, ctx);
             // `_applyProps` / `_bindSpread` RETURN a cleanup (dispose the
             // spread's reactive bindings + null a spread `ref`) — thread it
             // into the mount lifecycle or it leaks on unmount. Mirror of the JS

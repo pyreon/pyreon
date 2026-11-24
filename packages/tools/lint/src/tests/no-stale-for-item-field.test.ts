@@ -37,6 +37,38 @@ export const List = () => (
 )
 `
 
+/** The toggle write plus a `<For>` keyed by `by`, whose row reads `t.done`. */
+const keyed = (by: string, extra = '') => `
+const todos = signal<Todo[]>([])
+${TOGGLE}
+${extra}
+export const List = () => (
+  <ul>
+    <For each={todos} by={${by}}>
+      {(t) => <li class={t.done ? 'done' : ''}>{t.id}</li>}
+    </For>
+  </ul>
+)
+`
+
+/** `keyed`, with the key function declared inside the component and other code at file level. */
+const keyedIn = (by: string, local: string, fileLevel: string) => `
+const todos = signal<Todo[]>([])
+${TOGGLE}
+${fileLevel}
+export const List = () => {
+  ${local}
+  return <ul><For each={todos} by={${by}}>{(t) => <li class={t.done ? 'done' : ''}>{t.id}</li>}</For></ul>
+}
+`
+
+/** Edges whose `node` is replaced, keyed by `by`, with the row `row`. */
+const nested = (by: string, row: string) => `
+const edges = signal([])
+const rename = (id, title) => edges.set(edges().map((e) => (e.node.id === id ? { ...e, node: { ...e.node, title } } : e)))
+export const L = () => <For each={edges} by={${by}}>{${row}}</For>
+`
+
 const CASES: Array<[name: string, code: string, expected: number]> = [
   // ── fires ──────────────────────────────────────────────────────────────
   ['text child read', list(`(t) => <li>{t.done ? 'done' : 'todo'}</li>`), 1],
@@ -84,7 +116,95 @@ const CASES: Array<[name: string, code: string, expected: number]> = [
     `const todos = signal([])\n${TOGGLE}\nexport const L = () => <For each={groups} by={(g) => g.id}>{(g) => <For each={todos()} by={(t) => t.id}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>}</For>`,
     1,
   ],
+  // `by` keys that read some fields: only those are safe (#4798).
+  // Precision over silence: a key covers a read only by its exact path, and an
+  // opaque key keeps reporting with a qualified message.
+  ['opaque key: imported function', keyed('importedKeyOf'), 1],
+  ['opaque key: helper given the whole item', keyed('(t) => keyOf(t)'), 1],
+  ['opaque key: built by a call', keyed("keyBy('id', 'done')"), 1],
+  ['opaque key: a member function', keyed('keys.row'), 1],
+  ['opaque key: the item method', keyed('(t) => t.getKey?.()'), 1],
+  ['opaque key: the item in JSX', keyed('(t) => <span data-k={t} />'), 1],
+  ['opaque key: the item inside an object', keyed('(t) => ({ t }).t.id'), 1],
+  ['opaque key: the item as a fallback', keyed('(t) => t.id ?? t'), 1],
+  ['opaque key: a used rest', keyed('({ id, ...rest }) => id + JSON.stringify(rest)'), 1],
+  ['helper given only the id', keyed('(t) => keyOf(t.id)'), 1],
+  ['nested key path does not cover a sibling', nested('(e) => e.node.id', '(e) => <li>{e.node.title}</li>'), 1],
+  ['nested destructured key does not cover a sibling', nested('({ node: { id } }) => id', '(e) => <li>{e.node.title}</li>'), 1],
+  ['an object coerced in a template does not cover its fields', `const todos = signal([])\nconst bump = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, meta: { ...t.meta, title: 'x' } } : t)))\nexport const L = () => <For each={todos} by={(t) => \`\${t.id}:\${t.meta}\`}>{(t) => <li>{t.meta.title}</li>}</For>`, 1],
+  ['key destructuring only the id in the body', keyed('(t) => { const { id } = t; return id }'), 1],
+  ['unused rest in a destructured key', keyed('({ id, ...rest }) => id'), 1],
+  ['a const alias of an id read', keyed('(t) => { const k = t.id; return k }'), 1],
+  ['optional and default key params', keyed('(t = {}) => t?.id'), 1],
+  ['type positions in the key are not reads', keyed('(t) => t.id as keyof typeof t'), 1],
+  ['type annotation and type alias in the key', keyed('(t: typeof x) => { type K = typeof t; return t.id satisfies string }'), 1],
+  ['a tagged template key', keyed('(t) => tag`${t.id}`'), 1],
+  ['in-scope key function, not the first one in the file', keyedIn('getKey', 'const getKey = (t) => t.id', 'function Other() { const getKey = (x) => `${x.id}${x.done}`; return getKey }'), 1],
+  ['a parameter named like a file-level key function', `const todos = signal([])\n${TOGGLE}\nconst getKey = (t) => \`\${t.id}\${t.done}\`\nexport const L = (getKey) => <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['an imported name shadows nothing local', `import { getKey } from './k'\nconst todos = signal([])\n${TOGGLE}\nexport const L = () => <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['a non-function const key', keyed('keyOf', 'const keyOf = makeKey()'), 1],
+  ['composite key without the read field', keyed('(t) => `${t.id}:${t.title}`'), 1],
+  ['destructured key without the read field', keyed('({ id }) => id'), 1],
+  ['same-file key function without the read field', keyed('keyOf', 'const keyOf = (t) => String(t.id)'), 1],
+  ['same-file key function declaration without the read field', keyed('keyOf', 'function keyOf(t) { return t.id }'), 1],
+  // Key-shape coverage (#4809 review): each walks a branch of both key walkers.
+  ['dynamic member key is opaque', keyed('(t) => t[k]'), 1],
+  ['key with no parameter reads nothing', keyed('() => 1'), 1],
+  ['array-pattern key param is opaque', keyed('([id]) => id'), 1],
+  ['computed key in a destructured key param is opaque', keyed('({ [k]: v }) => v'), 1],
+  ['array pattern inside a destructured key is opaque', keyed('({ ids: [a] }) => a'), 1],
+  ['nested function in the key rebinding the item', keyed('(t) => [t.id].map((t) => t).join()'), 1],
+  ['a method call ends the key path', keyed('(t) => t.id.trim()'), 1],
+  ['default import of the key function', `import getKey from './k'\nconst todos = signal([])\n${TOGGLE}\nexport const L = () => <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['namespace import of the key function', `import * as getKey from './k'\nconst todos = signal([])\n${TOGGLE}\nexport const L = () => <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['exported key function reading only the id', `export { other }\nconst todos = signal([])\n${TOGGLE}\nexport function getKey(t) { return t.id }\nexport const L = () => <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['row destructuring a nested replaced field', nested('(e) => e.node.id', '({ node: { title, ...more }, [k]: v }) => <li>{title}</li>'), 1],
+  ['spread item into a component reading a nested field', nested('(e) => e.node.id', '(e) => <Cell {...e} />').replace('export const L', 'const Cell = ({ node: { title }, [k]: v }) => <b>{title}</b>\nexport const L'), 1],
+  ['an item name in non-read positions inside the key', keyed("(t) => { const o = { t: 1, t() { return 0 } }; const { t: a } = o; class C { t = 1 }; function f() { const t = 2; return t }; return <K t=\"x\" k={t.id} /> }"), 1],
+  ['a string-keyed override in the replacement', `const todos = signal([])\nconst toggle = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, 'done': true, 2: 0 } : t)))\nexport const L = () => <For each={todos} by={(t) => t.id}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['a computed override hides which field moves', `const todos = signal([])\nconst set = (id, k, v) => todos.set(todos().map((t) => (t.id === id ? { ...t, [k]: v } : t)))\nexport const L = () => <For each={todos} by={(t) => t.id}>{(t) => <li>{t.title}</li>}</For>`, 1],
+  ['two spreads in a .with hide which field moves', `const todos = signal([])\ntodos.set(todos().with(0, { ...todos()[0], ...patch }))\nexport const L = () => <For each={todos} by={(t) => t.id}>{(t) => <li>{t.title}</li>}</For>`, 1],
+  ['a call result outside any accessor keeps its rows', `const todos = signal([])\n${TOGGLE}\nexport const el = <For each={todos()} by={(t) => t.id}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['a key resolved past other statements at file level', `console.log('start')\nif (ready) init()\nconst todos = signal([])\n${TOGGLE}\nconst getKey = (t) => t.id\nexport const L = () => <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['a bare by attribute with no value reads nothing', keyed('').replace('by={}', 'by'), 1],
+  ['a used rest read twice', keyed('({ id, ...rest }) => id + rest.a + rest.b'), 1],
+  ['component destructuring other props and an array', list(`(t) => <Other label="x" todo={t} />`, `const Other = ({ label, todo: [first], [key]: v }) => <b>{label}{first}</b>`), 0],
+  ['component with no props given the item', list(`(t) => <NoProps todo={t} />`, `function NoProps() { return <b /> }`), 0],
   // ── quiet ──────────────────────────────────────────────────────────────
+  ['nested callbacks rebinding the item by pattern, rest and default', list(`(t) => <P a={([, t]) => t.done} b={(...t) => t.done} c={(t = 1) => t.done} d={({ x: { t } }) => t.done} />`), 0],
+  ['a row that rebinds the item with a const', list(`(t) => { const t2 = 1; { const t = load() } return <li>{t.done}</li> }`), 0],
+  ['row callbacks with no param or an array param', list(`() => <li>row</li>`).replace(`{() => <li>row</li>}`, `{() => <li>row</li>}{([id, done]) => <li>{done}</li>}`), 0],
+  ['a <For> with by but no each', `const todos = signal([])\n${TOGGLE}\nexport const L = () => <For by={(t) => t.id}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 0],
+  ['literal template member keys', keyed('(t) => t[`id`] + t[`done`]'), 0],
+  ['a method call after the key field still reads it', keyed('(t) => t.id + t.done.toString()'), 0],
+  ['destructured key value read by member', nested('({ node }) => node.id + node.title', '(e) => <li>{e.node.title}</li>'), 0],
+  ['destructured key value with types and a shadowing callback', nested('({ node }) => [1].map((node) => node).join() + (node.title as typeof node.title)', '(e) => <li>{e.node.title}</li>'), 0],
+  ['default value in a destructured key', keyed('({ id = 0, done = false }) => `${id}${done}`'), 0],
+  ['spread item into a component reading only key paths', nested('(e) => e.node.title', '(e) => <Cell {...e} />').replace('export const L', 'const Cell = ({ node: { title } }) => <b>{title}</b>\nexport const L'), 0],
+  // A field the `by` key reads changes the key, so the row is rebuilt (#4798).
+  ['composite template key', keyed('(t) => `${t.id}:${t.done}`'), 0],
+  ['concatenated key', keyed("(t) => t.id + ':' + t.done"), 0],
+  ['array join key', keyed("(t) => [t.id, t.done].join(':')"), 0],
+  ['wrapped and optional key reads', keyed('(t) => `${(t as Todo).id}:${t!.done}:${t?.title}`'), 0],
+  ['element-access key', keyed("(t) => `${t['id']}:${t['done']}`"), 0],
+  ['block-bodied key', keyed("(t) => { const d = t.done ? 'd' : 'o'; return t.id + d }"), 0],
+  ['destructured key param', keyed('({ id, done }) => `${id}:${done}`'), 0],
+  ['same-file key function', keyed('keyOf', 'const keyOf = (t) => `${t.id}:${t.done}`'), 0],
+  ['the item itself as the key', keyed('(t) => t'), 0],
+  ['the serialised item as the key', keyed('(t) => JSON.stringify(t)'), 0],
+  ['in-scope key function wins over a same-named one elsewhere', keyedIn('getKey', 'const getKey = (t) => `${t.id}${t.done}`', 'function Other() { const getKey = (x) => x.id; return getKey }'), 0],
+  ['key destructuring in the body', keyed('(t) => { const { id, done } = t; return id + done }'), 0],
+  ['nested key path read in full', nested('(e) => e.node.title + e.node.id', '(e) => <li>{e.node.title}</li>'), 0],
+  [
+    'member-chain key covers its top-level field',
+    `const todos = signal([])\nconst bump = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, meta: { rev: t.meta.rev + 1 } } : t)))\nexport const L = () => <For each={todos} by={(t) => \`\${t.id}:\${t.meta.rev}\`}>{(t) => <li>{t.meta.rev}</li>}</For>`,
+    0,
+  ],
+  [
+    'the #4798 repro',
+    `import { For } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\ntype Row = { id: string; done: boolean }\nexport function List() {\n  const rows = signal<Row[]>([{ id: 'a', done: false }])\n  const toggle = (id: string) => rows.set(rows().map((r) => (r.id === id ? { ...r, done: !r.done } : r)))\n  return (\n    <ul>\n      <For each={rows} by={(r) => \`\${r.id}:\${r.done}\`}>\n        {(r) => <li class={r.done ? 'done' : ''} onClick={() => toggle(r.id)}>{r.id}</li>}\n      </For>\n    </ul>\n  )\n}`,
+    0,
+  ],
   [
     'per-item signals',
     `const todos = signal([])\nconst rename = (id, title) => todos.set(todos().map((t) => (t.id === id ? { ...t, title } : t)))\nexport const L = () => <For each={todos} by={(t) => t.id}>{(t) => <li onClick={() => t.done.set(!t.done())}>{t.done() ? 'y' : 'n'}</li>}</For>`,
@@ -123,6 +243,18 @@ describe(ID, () => {
 
   it.each(CASES)('detector parity: %s', (_name, code, expected) => {
     expect(detectorHits(code)).toHaveLength(expected)
+  })
+
+  it('an opaque key names the function it cannot see into, on both surfaces', () => {
+    const code = keyed('(t) => keyOf(t)')
+    const [l] = lintHits(code)
+    const [d] = detectorHits(code)
+    for (const message of [l?.message, d?.message]) {
+      expect(message).toContain('Safe only if `keyOf` reads `done` into the key')
+      expect(message).toContain('inline the key')
+    }
+    expect(lintHits(keyed('importedKeyOf'))[0]?.message).toContain('`importedKeyOf`')
+    expect(lintHits(keyed('(t) => t.id'))[0]?.message).not.toContain('Safe only if')
   })
 
   it('reports at the read and names the field and the fix', () => {

@@ -1,8 +1,8 @@
 {
   "app": "ssr-showcase",
   "routes": {
-    "/": 56950,
-    "/about": 56950,
-    "/island-demo": 59450
+    "/": 62787,
+    "/about": 62772,
+    "/island-demo": 65553
   }
 }
