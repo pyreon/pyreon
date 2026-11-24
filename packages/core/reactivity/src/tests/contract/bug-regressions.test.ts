@@ -241,6 +241,7 @@ describe('B4 — a write made by a dependency evaluated during a dirty check rea
     const t = signal(0)
     const c = computed(() => {
       t.set(s())
+
       return 0
     })
     let runs = 0
@@ -261,6 +262,7 @@ describe('B4 — a write made by a dependency evaluated during a dirty check rea
     const t = signal(0)
     const c1 = computed(() => {
       t.set(s())
+
       return 0
     })
     const c2 = computed(() => t() + c1())
@@ -281,6 +283,7 @@ describe('B4 — a write made by a dependency evaluated during a dirty check rea
     const c: () => number = computed(() => {
       evals++
       if (evals === 1) inner = c()
+
       return s()
     })
     expect(c()).toBe(0)
@@ -305,8 +308,10 @@ describe('B5 — an effect disposed during its own run tears down what that run 
       effect(() => {
         s()
         log.push('inner run')
+
         return () => log.push('inner cleanup')
       })
+
       return () => log.push('returned')
     })
     log.length = 0
