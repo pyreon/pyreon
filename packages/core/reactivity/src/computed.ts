@@ -4,6 +4,7 @@ import {
   F_COMPUTED,
   F_DIRTY,
   F_DISPOSED,
+  F_HAS_DIRECT,
   F_HAS_VALUE,
   F_PENDING,
   type Link,
@@ -81,8 +82,13 @@ const ComputedProto = {
     // Dev: instrumented wrapper — see `_directFn` in signal.ts.
     if (process.env.NODE_ENV !== 'production') updater = _rdDirect(updater)
     _addDirect(this, updater)
+    this._f |= F_HAS_DIRECT
     const self = this
-    return () => _removeDirect(self, updater)
+    return () => {
+      _removeDirect(self, updater)
+      // The last updater left: marking stops queueing the node (it is lazy again).
+      if (self._d1 === null && (self._d === null || self._d.size === 0)) self._f &= ~F_HAS_DIRECT
+    }
   },
   /**
    * Remove this computed from all its sources. A disposed computed keeps its

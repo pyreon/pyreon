@@ -59,6 +59,10 @@
  * opens a new pass; more than `MAX_PASSES` passes drops the rest of the queue
  * with a message (an effect writing a signal it reads, without a guard).
  *
+ * An unbatched write whose only subscriber is one watcher skips the push and
+ * runs it in place as the flush's first entry (`deliver`), in exactly the
+ * state the queue would have dispatched it in. Marking alone opens no window.
+ *
  * Every piece of hot module state lives on a `const` holder object, never a
  * module-level `let` (V8 pays a context load plus a hole check per access; see
  * `tests/no-hot-module-let.test.ts`).
@@ -95,6 +99,11 @@ export const F_RAN = 256
 export const F_NOTIFYING = 512
 /** A `_bind` render binding: re-runs skip tracking (static deps). */
 export const F_STATIC = 1024
+/**
+ * A computed whose direct tier (`_d1` / `_d`) holds an updater: marking queues
+ * it like a watcher. Kept in step with the tier by `ComputedProto.direct`.
+ */
+export const F_HAS_DIRECT = 2048
 
 const F_MARKED = F_DIRTY | F_PENDING
 
@@ -197,7 +206,7 @@ export const _b: BatchState = { d: 0 }
 export const _q: QueueEntry[] = []
 
 /**
- * Scratch stacks for `propagateDeep` (`p`) and `checkDirty` (`c`). Entries are
+ * Scratch stacks for `propagate` (`p`) and `checkDirty` (`c`). Entries are
  * popped as the walks climb back, so nothing is retained after a walk; each
  * walk works above the length it found (`base`), which makes nested walks safe.
  * Capacity is bounded by the deepest fan-out ever walked.
@@ -338,66 +347,57 @@ export function enqueueFn(fn: () => void): void {
 /**
  * A source changed: mark its direct subscribers DIRTY and everything below
  * PENDING, queueing every watcher reached. Runs no user code.
+ *
+ * One iterative walk (alien-signals' shape): `next` is the continuation at the
+ * current level, the scratch stack holds the continuations of the levels above
+ * (only non-null ones — a level whose last node is being descended needs none).
+ * `depth` counts the continuations this walk has on the stack (the stack is
+ * touched only to push one). Level 0 pushes its continuation at depth 0; once
+ * level 0 descends from its LAST node nothing of it is left, so from then on
+ * a continuation popped back to depth 0 belongs to a deeper level (`zero`
+ * becomes -1).
  */
 export function propagate(head: Link): void {
-  let l: Link | null = head
-  do {
+  let depth = 0
+  let zero = 0
+  let l: Link = head
+  let mark = F_DIRTY
+  for (;;) {
     const sub: Subscriber = l.sub
+    const next: Link | null = l.nextSub
     const f = sub._f
     if ((f & (F_MARKED | F_DISPOSED)) === 0) {
       if ((f & F_RUNNING) === 0 || isConfirmed(l, sub)) {
-        if ((f & F_COMPUTED) !== 0) {
-          sub._f = f | F_DIRTY
-          const c = sub as ComputedNode
-          if (c._d1 !== null || c._d !== null) enqueueNode(c)
-          const s = c._subs
-          if (s !== null) propagateDeep(s)
-        } else {
+        if ((f & F_COMPUTED) === 0) {
           // An unmarked watcher is never queued (see "Marks" in the header).
-          sub._f = f | F_DIRTY | F_QUEUED
+          sub._f = f | mark | F_QUEUED
           _q.push(sub as QueueEntry)
+        } else {
+          sub._f = f | mark
+          if ((f & F_HAS_DIRECT) !== 0) enqueueNode(sub)
+          const s = (sub as ComputedNode)._subs
+          if (s !== null) {
+            if (next !== null) {
+              _st.p.push(next)
+              depth++
+            } else if (mark === F_DIRTY) zero = -1
+            mark = F_PENDING
+            l = s
+            continue
+          }
         }
       }
-    } else if ((f & (F_DIRTY | F_DISPOSED)) === 0) {
+    } else if (mark === F_DIRTY && (f & (F_DIRTY | F_DISPOSED)) === 0) {
       // Already PENDING (reached through another path, its subtree already
       // marked and its watchers queued): record that a source it READ changed.
       sub._f = f | F_DIRTY
     }
-    l = l.nextSub
-  } while (l !== null)
-}
-
-/** Mark PENDING below a changed node — iterative, stops at marked nodes. */
-function propagateDeep(head: Link): void {
-  const stack = _st.p
-  const base = stack.length
-  let l: Link | null = head
-  for (;;) {
-    if (l === null) {
-      if (stack.length === base) return
-      l = stack.pop() as Link
-      continue
+    if (next !== null) l = next
+    else {
+      if (depth === 0) return
+      l = _st.p.pop() as Link
+      if (--depth === zero) mark = F_DIRTY
     }
-    const sub: Subscriber = l.sub
-    const next: Link | null = l.nextSub
-    const f = sub._f
-    if ((f & (F_MARKED | F_DISPOSED)) === 0 && ((f & F_RUNNING) === 0 || isConfirmed(l, sub))) {
-      if ((f & F_COMPUTED) !== 0) {
-        sub._f = f | F_PENDING
-        const c = sub as ComputedNode
-        if (c._d1 !== null || c._d !== null) enqueueNode(c)
-        const s = c._subs
-        if (s !== null) {
-          if (next !== null) stack.push(next)
-          l = s
-          continue
-        }
-      } else {
-        sub._f = f | F_PENDING | F_QUEUED
-        _q.push(sub as QueueEntry)
-      }
-    }
-    l = next
   }
 }
 
@@ -468,7 +468,11 @@ export function updateComputed(c: ComputedNode): boolean {
 
     return false
   }
-  purgeDeps(c)
+  // Inline guard: a run that read the same deps as last time leaves nothing
+  // after the cursor (the steady state), so the call is skipped.
+  // (Re-read: the run moved the cursor since it was reset above.)
+  const tail = c._depsTail as Link | null
+  if ((tail !== null ? tail.nextDep : c._deps) !== null) purgeDeps(c)
   if (same) {
     c._f = f
     return false
@@ -506,17 +510,32 @@ export function unconfirmed(sub: Subscriber): Link | null {
 function computedChanged(c: ComputedNode): void {
   const subs = c._subs
   if (subs !== null) shallowPropagate(subs)
-  if (c._d1 !== null || c._d !== null) {
-    const f = c._f | F_DIRECT_STALE
-    c._f = f
-    // Normally the computed is already queued (marking reached it). Not when
-    // it changed while unmarked — a direct updater added to a stale node.
-    if ((f & (F_QUEUED | F_NOTIFYING)) === 0) {
-      enqueueNode(c)
-      if (_b.d === 0) {
-        _b.d = 1
-        drain()
-      }
+  if ((c._f & F_HAS_DIRECT) !== 0) directChanged(c)
+}
+
+/**
+ * `computedChanged` for a dependency `checkDirty` just evaluated on behalf of
+ * the reader it is checking. A SOLE subscriber is that reader, and the walk
+ * records the change itself (`dirty`), so it is not re-marked.
+ */
+function changedInCheck(c: ComputedNode): void {
+  // The walk reached `c` through an edge, so it has a subscriber.
+  const subs = c._subs as Link
+  if (subs.nextSub !== null) shallowPropagate(subs)
+  if ((c._f & F_HAS_DIRECT) !== 0) directChanged(c)
+}
+
+/** A computed with direct updaters changed: fire them at its queue turn. */
+function directChanged(c: ComputedNode): void {
+  const f = c._f | F_DIRECT_STALE
+  c._f = f
+  // Normally the computed is already queued (marking reached it). Not when
+  // it changed while unmarked — a direct updater added to a stale node.
+  if ((f & (F_QUEUED | F_NOTIFYING)) === 0) {
+    enqueueNode(c)
+    if (_b.d === 0) {
+      _b.d = 1
+      drain()
     }
   }
 }
@@ -564,7 +583,7 @@ export function checkDirty(root: Subscriber): boolean {
       if (df !== undefined && (df & F_DISPOSED) === 0) {
         if ((df & F_DIRTY) !== 0) {
           if (updateComputed(dep as ComputedNode)) {
-            computedChanged(dep as ComputedNode)
+            changedInCheck(dep as ComputedNode)
             dirty = true
           }
         } else if ((df & F_PENDING) !== 0) {
@@ -590,7 +609,7 @@ export function checkDirty(root: Subscriber): boolean {
       // everything above it stay stale for good.
       if (dirty || (sub._f & F_DIRTY) !== 0) {
         if (updateComputed(sub as ComputedNode)) {
-          computedChanged(sub as ComputedNode)
+          changedInCheck(sub as ComputedNode)
           dirty = true
           sub = pl.sub
           continue
@@ -695,42 +714,115 @@ function warnMaxPasses(dropped: number): void {
  * different effects each writing the next never counts as a loop.
  */
 export function drain(): void {
-  const q = _q
   const prevSub = _t.e
   // Runs dispatched from the flush are top-level: a `_bind` re-run (which does
   // not open a tracking frame) must not link to whatever was tracking when the
   // outermost write happened.
   _t.e = null
+  drainFrom(null, true, prevSub)
+}
+
+/**
+ * The flush loop. `head` is a watcher `deliver` already ran OUT OF LINE as the
+ * flush's first entry, without a queue slot (`headOk`: its run returned):
+ * it belongs to pass 0 like any first entry, so a re-queue of itself opens
+ * pass 1, and if its run threw nothing queued runs — everything is dropped,
+ * itself first, exactly as a throw escaping the first queue entry would.
+ * `_t.e` is already null; `prevSub` is restored at the end.
+ */
+function drainFrom(head: WatcherNode | null, headOk: boolean, prevSub: Subscriber | null): void {
+  const q = _q
   let i = 0
   let passStart = 0
   let passes = 0
+  // `head` while it still counts as a member of the current pass.
+  let h = head
   try {
-    for (; i < q.length; i++) {
-      const e = q[i] as QueueEntry
-      const f = (e as Subscriber)._f
-      if ((f & F_RAN) !== 0) {
-        for (let k = passStart; k < i; k++) (q[k] as Subscriber)._f &= ~F_RAN
-        passStart = i
-        if (++passes >= MAX_PASSES) {
-          warnMaxPasses(q.length - i)
-          break
+    if (headOk) {
+      for (; i < q.length; i++) {
+        const e = q[i] as QueueEntry
+        const f = (e as Subscriber)._f
+        if ((f & F_RAN) !== 0) {
+          for (let k = passStart; k < i; k++) (q[k] as Subscriber)._f &= ~F_RAN
+          if (h !== null) {
+            h._f &= ~F_RAN
+            h = null
+          }
+          passStart = i
+          if (++passes >= MAX_PASSES) {
+            warnMaxPasses(q.length - i)
+            break
+          }
         }
+        ;(e as Subscriber)._f = (f & ~F_QUEUED) | F_RAN
+        dispatch(e)
       }
-      ;(e as Subscriber)._f = (f & ~F_QUEUED) | F_RAN
-      dispatch(e)
     }
   } finally {
+    // A head that threw is dropped like a queue entry that threw (first, as it
+    // ran first); one that ran leaves the pass like its other members.
+    if (h !== null) {
+      if (headOk) h._f &= ~F_RAN
+      else settleDropped(h)
+    }
     for (let k = passStart; k < i && k < q.length; k++) (q[k] as Subscriber)._f &= ~F_RAN
     // Anything not run: a throw escaped a raw listener or render binding, or
     // MAX_PASSES dropped the rest. The length is re-read: settling can append.
     for (let k = i; k < q.length; k++) settleDropped(q[k] as QueueEntry)
     // A one-entry flush (one write, one effect) empties with `pop()`, which
-    // keeps the backing store; `length = 0` drops it. The queue is never empty
-    // here: a drain starts with an entry and nothing removes the entry it runs.
-    if (q.length === 1) q.pop()
-    else q.length = 0
+    // keeps the backing store; `length = 0` drops it, and costs a slow store
+    // even on an already-empty array.
+    const n = q.length
+    if (n === 1) q.pop()
+    else if (n !== 0) q.length = 0
     _t.e = prevSub
     _b.d = 0
+  }
+}
+
+/**
+ * Deliver a change of a source to its tracked subscribers (`subs`) outside any
+ * batch window, when no direct-tier entry has to run first. Marking runs no
+ * user code, so it needs no window; one opens only if marking queued work.
+ *
+ * The dominant shape — one effect or render binding reading the source,
+ * nothing marked, nothing running — skips the queue: it is marked as marking
+ * would mark it (DIRTY) and as the flush marks the entry it dispatches (RAN,
+ * not QUEUED), and run here as the flush's first entry, inside the window and
+ * with no tracking frame, as the flush would. That is exactly the order the
+ * queue gives (it would be the only entry): what its run queues runs after it
+ * (`drainFrom`), a re-queue of itself counts as pass 1, and a throw drops the
+ * rest.
+ */
+export function deliver(subs: Link): void {
+  if (subs.nextSub === null) {
+    const sub = subs.sub
+    const f = sub._f
+    // Unmarked implies unqueued (see "Marks" in the module header); a running
+    // or computed subscriber takes the general walk.
+    if ((f & (F_MARKED | F_RUNNING | F_DISPOSED | F_COMPUTED)) === 0) {
+      sub._f = f | F_DIRTY | F_RAN
+      _b.d = 1
+      const prevSub = _t.e
+      _t.e = null
+      let ok = false
+      try {
+        ;(sub as WatcherNode).run()
+        ok = true
+      } finally {
+        if (ok && _q.length === 0) {
+          sub._f &= ~F_RAN
+          _t.e = prevSub
+          _b.d = 0
+        } else drainFrom(sub as WatcherNode, ok, prevSub)
+      }
+      return
+    }
+  }
+  propagate(subs)
+  if (_q.length !== 0) {
+    _b.d = 1
+    drain()
   }
 }
 

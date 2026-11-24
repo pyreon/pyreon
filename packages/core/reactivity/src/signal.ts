@@ -1,5 +1,5 @@
 import { _notifyTraceListeners, isTracing } from './debug'
-import { type Link, _b, endBatch, enqueueFn, propagate, trackSubscriber } from './graph'
+import { F_DIRTY, type Link, _b, deliver, drain, endBatch, enqueueFn, propagate, trackSubscriber } from './graph'
 import { _captureCallerLocation, _rdDirect, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { _recordSignalWrite } from './reactive-trace'
 
@@ -133,37 +133,59 @@ function _peek(this: SignalFn<unknown>) {
 }
 
 /**
- * Deliver a change of `src` (a signal write or `trigger()`): the direct tier
- * first, then mark the tracked subscribers (`propagate`). Outside any batch
- * window this opens one, fires a SOLE direct entry synchronously (the
- * historical fast path — no queue round-trip) and flushes the queue when the
- * window closes; inside one everything is queued for the outermost close.
+ * Deliver a change of a signal (a write or `trigger()`) whose DIRECT tier is
+ * not empty: the direct tier first, then mark the tracked subscribers
+ * (`propagate`). Inside a batch window everything is queued for the outermost
+ * close. Outside one, a SOLE direct entry fires synchronously inside a window
+ * of its own (the historical fast path — no queue round-trip); a Set is
+ * queued ahead of the marked watchers and flushed.
  *
- * Shared by `_set` and `_trigger` deliberately: the window, the direct tier
- * and the marking are one sequence, and a copy per caller drifted before.
+ * A signal with tracked subscribers only is marked (`propagate`) or, outside a
+ * batch, delivered (`deliver`, graph.ts) directly by `_set` /
+ * `notifySignalChange`.
  */
-function notifySignal(d1: (() => void) | null, d: Set<() => void> | null, subs: Link | null): void {
+function notifyDirectTier(d1: (() => void) | null, d: Set<() => void> | null, subs: Link | null): void {
   if (_b.d > 0) {
     if (d1 !== null) enqueueFn(d1)
     else if (d !== null) for (const fn of d) enqueueFn(fn)
     if (subs !== null) propagate(subs)
     return
   }
+  if (d1 === null) {
+    // Nothing runs before the flush (queueing and marking run no user code),
+    // so no window is needed around them.
+    for (const fn of d as Set<() => void>) enqueueFn(fn)
+    if (subs !== null) propagate(subs)
+    _b.d = 1
+    drain()
+    return
+  }
   _b.d = 1
   try {
-    if (d1 !== null) {
-      // Mark BEFORE the sole direct entry runs: it may read a computed below
-      // this signal (which must resolve fresh), and if it throws, the window's
-      // close still flushes the effects this write reached.
-      if (subs !== null) propagate(subs)
-      d1()
-    } else {
-      if (d !== null) for (const fn of d) enqueueFn(fn)
-      if (subs !== null) propagate(subs)
-    }
+    // Mark BEFORE the sole direct entry runs: it may read a computed below
+    // this signal (which must resolve fresh), and if it throws, the window's
+    // close still flushes the effects this write reached.
+    if (subs !== null) propagate(subs)
+    d1()
   } finally {
     endBatch()
   }
+}
+
+/**
+ * Deliver a change of `s` (`trigger()`). `_set` carries the same sequence
+ * inline — keep the two in step.
+ */
+function notifySignalChange(s: SignalFn<unknown>): void {
+  const d1 = s._d1
+  const d = s._d
+  const subs = s._subs
+  if (d1 === null && d === null) {
+    if (subs === null) return
+    if (_b.d > 0) {
+      if (subs.nextSub !== null || (subs.sub._f & F_DIRTY) === 0) propagate(subs)
+    } else deliver(subs)
+  } else notifyDirectTier(d1, d, subs)
 }
 
 function _set(this: SignalFn<unknown>, newValue: unknown) {
@@ -197,13 +219,21 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
       }
     }
   }
-  // No-subscriber fast path: nothing to deliver, no batch window. The
-  // dominant shape for write-only signals.
+  // `notifySignalChange`, inlined: as a call it measured ~10% of an
+  // unbatched write → effect on JSC and V8 (neither engine inlined it here).
   const d1 = this._d1
   const d = this._d
   const subs = this._subs
-  if (d1 === null && d === null && subs === null) return
-  notifySignal(d1, d, subs)
+  if (d1 === null && d === null) {
+    // No subscriber at all: nothing to deliver, no window. The dominant shape
+    // for write-only signals.
+    if (subs === null) return
+    // Inside a batch: a SOLE subscriber already DIRTY (an earlier write of
+    // this batch) is all the walk would find — marked nodes are not descended.
+    if (_b.d > 0) {
+      if (subs.nextSub !== null || (subs.sub._f & F_DIRTY) === 0) propagate(subs)
+    } else deliver(subs)
+  } else notifyDirectTier(d1, d, subs)
 }
 
 function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
@@ -214,11 +244,7 @@ function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
 function _trigger(this: SignalFn<unknown>) {
   if (process.env.NODE_ENV !== 'production' && this == null) _detached('trigger')
   if (process.env.NODE_ENV !== 'production') _rdRecordFire(this)
-  const d1 = this._d1
-  const d = this._d
-  const subs = this._subs
-  if (d1 === null && d === null && subs === null) return
-  notifySignal(d1, d, subs)
+  notifySignalChange(this)
 }
 
 /** Add `fn` to a source's direct tier (idempotent). */
