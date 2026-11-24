@@ -918,33 +918,43 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
 const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
 
 /**
- * Controlled `<select value>` (#4820): the value the framework last applied,
- * owned by the element. Assigning `select.value` selects a matching `<option>`
- * only if it EXISTS at that moment, so options added later (a `<For>` over a
- * list that loads after mount) left the first option selected while the signal
- * held a valid value. Each reconciler re-applies this after it changes a
- * select's children (`_resyncSelect`), as React re-syncs a controlled select
- * after every update of its subtree.
+ * A `<select value>` still waiting for its option (#4820), owned by the
+ * element. Assigning `select.value` selects a matching `<option>` only if it
+ * EXISTS at that moment, so options added later (a `<For>` over a list that
+ * loads after mount) left the first option selected while the signal held a
+ * valid value. A value with no matching option is recorded here, and each
+ * reconciler that changes the select's children applies it once its option
+ * arrives (`_resyncSelect`), then forgets it. It is never re-applied after it
+ * matched: from then on the selection is the user's (a pick, an `onChange`
+ * that declines the change, a removed option behave as without a framework).
+ * Set the signal to select something else.
  */
 const SELECT_VALUE = Symbol('pyreon.selectValue')
 type SelectHost = Element & { [SELECT_VALUE]?: unknown }
 
 /**
- * Whether any `<select value>` was ever applied. A one-way switch: a page that
- * never binds a select value pays one boolean read per reconcile, nothing else.
+ * Whether any `<select value>` ever had to wait for its option. A one-way
+ * switch: a page where that never happens pays one boolean read per reconcile.
  */
 export let _selectValueSeen = false
 
 /**
- * Re-apply a controlled `<select value>` after a reconciler changed the
- * children of `parent` (the select itself, or an `<optgroup>` in it). Called
- * only when `_selectValueSeen`; a no-op for any other parent.
+ * After a reconciler changed the children of `parent` (a select, or an
+ * `<optgroup>` in one): apply the select's waiting value if its option now
+ * exists. Called only when `_selectValueSeen`; a no-op for any other parent
+ * and for a select with nothing waiting (the browser default stands).
  */
 export function _resyncSelect(parent: Node | null): void {
-  const host = (parent?.nodeName === 'OPTGROUP' ? parent.parentNode : parent) as SelectHost | null
+  const name = parent?.nodeName
+  const host = (name === 'OPTGROUP' ? parent!.parentNode : name === 'SELECT' ? parent : null) as SelectHost | null
   const value = host?.[SELECT_VALUE]
-  // Re-assigning the selected value is a no-op for the selection and fires no event.
-  if (value !== undefined) (host as unknown as HTMLSelectElement).value = value as string
+  if (value === undefined) return
+  const sel = host as unknown as HTMLSelectElement
+  const prev = sel.selectedIndex
+  sel.value = value as string
+  // Matched: done waiting. Still no such option: keep what was selected.
+  if (sel.value === value) host![SELECT_VALUE] = undefined
+  else sel.selectedIndex = prev
 }
 
 /**
@@ -1027,7 +1037,7 @@ export function applyDomPropStatic(el: Element, key: string, value: unknown): vo
  * The `defaultValue` step is scoped to `input`/`textarea`, the only elements
  * with one. `select` (whose default lives in `<option selected>`) gets no
  * default; it only records the value it was given, so the reconcilers can
- * re-apply it when its options change (`_resyncSelect`, #4820), and a nullish
+ * apply it when its option arrives later (`_resyncSelect`, #4820), and a nullish
  * value leaves the options' own `selected` alone. Media `muted` is not
  * normalized here — React, Preact and Solid all diverge identically on it.
  */
@@ -1051,7 +1061,7 @@ export function applyValueProp(el: Element, value: unknown): void {
   // one-shot default establishment below (the real initial value may follow).
   if (value == null) {
     // `<select>`: nullish leaves the selection to the options' own `selected`
-    // (the h() path's long-standing no-op) and stops controlling it.
+    // (the h() path's long-standing no-op) and stops waiting for a value.
     if (el.tagName === 'SELECT') {
       ;(el as SelectHost)[SELECT_VALUE] = undefined
       return
@@ -1066,9 +1076,12 @@ export function applyValueProp(el: Element, value: unknown): void {
 
   const tag = el.tagName
   if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+    // A single-choice select whose option is not there yet waits for it (see
+    // SELECT_VALUE). A `multiple` select keeps the browser's own behaviour.
     if (tag === 'SELECT') {
-      ;(el as SelectHost)[SELECT_VALUE] = value
-      _selectValueSeen = true
+      const v = String(value)
+      ;(el as SelectHost)[SELECT_VALUE] =
+        !(node as unknown as HTMLSelectElement).multiple && node.value !== v ? ((_selectValueSeen = true), v) : undefined
     }
 
     return

@@ -1,6 +1,6 @@
 /**
- * #4820: `<select value>` is CONTROLLED — when its options change after mount
- * (a `<For>` over a list that loads later), the value is applied again.
+ * #4820: a `<select value>` whose matching option arrives AFTER mount selects
+ * it when it arrives.
  *
  * `select.value = 'b'` selects an option only if one with that value EXISTS at
  * that moment; on an empty select it is a no-op, and appending options later
@@ -8,14 +8,16 @@
  * mount (PZ-09), and its binding tracked only the value — so the select showed
  * the first option while the signal held a valid value.
  *
- * Fix: the value the framework applied is recorded on the select
+ * Fix: a value with no matching option yet is recorded on the select
  * (`applyValueProp`, which the compiler now emits for `<select value>` as
- * `_setValue`), and every reconciler that changes a select's children
- * (`mountFor`, `mountReactive`) re-applies it (`_resyncSelect`). Locked on the
- * compiled path (both compiler backends), the h() path and hydration. happy-dom
- * models the drop-before-options semantics faithfully (see
- * select-value.test.tsx); the real-Chromium cells are in
- * select-value-late-options.browser.test.tsx.
+ * `_setValue`), and the reconcilers that change a select's children
+ * (`mountFor`, `mountReactive`) apply it once its option exists
+ * (`_resyncSelect`), then forget it. After that the selection is the user's:
+ * a pick, a declining `onChange`, a removed option and an unmatched value
+ * behave exactly as before (the maintainer decision: never fight the user).
+ * A `multiple` select is left alone. Locked on the compiled path (both
+ * compiler backends), the h() path and hydration; the real-Chromium cells are
+ * in select-value-late-options.browser.test.tsx.
  */
 import { createRequire } from 'node:module'
 import * as core from '@pyreon/core'
@@ -136,7 +138,7 @@ return Picker`,
       expect(select.value, out).toBe('c')
     })
 
-    it('a static value="b" is controlled too', async () => {
+    it('a static value="b" waits for its option too', async () => {
       const options = signal<string[]>([])
       const { App, out } = load(
         compile,
@@ -271,10 +273,75 @@ describe('h() path', () => {
     await tick()
     expect(select.value).toBe('z')
   })
+  it('once applied, a pick the app did not mirror into the signal survives option updates', async () => {
+    const value = signal('a')
+    const options = signal(['a', 'b'])
+    const select = mountApp(
+      h(
+        'select',
+        { value: () => value() },
+        h(For, { each: () => options(), by: (o: string) => o, children: (o: string) => h('option', { value: o }, o) }),
+      ),
+    )
+    // No onChange (or one that declines the change): main's behaviour, kept.
+    select.value = 'b'
+    options.set(['a', 'b', 'c'])
+    await tick()
+    expect(select.value).toBe('b')
+    expect(value()).toBe('a')
+  })
+
+  it('an unmatched value leaves the browser default once options change', async () => {
+    const options = signal(['a'])
+    const select = mountApp(
+      h(
+        'select',
+        { value: 'z' },
+        h(For, { each: () => options(), by: (o: string) => o, children: (o: string) => h('option', { value: o }, o) }),
+      ),
+    )
+    options.set(['a', 'b'])
+    await tick()
+    // Not forced back to "nothing selected" on every update.
+    expect(select.value).not.toBe('')
+  })
+
+  it('removing the selected option is not undone', async () => {
+    const options = signal(['a', 'b'])
+    const select = mountApp(
+      h(
+        'select',
+        { value: 'b' },
+        h(For, { each: () => options(), by: (o: string) => o, children: (o: string) => h('option', { value: o }, o) }),
+      ),
+    )
+    expect(select.value).toBe('b')
+    options.set(['a', 'c'])
+    await tick()
+    options.set(['a', 'c', 'b'])
+    await tick()
+    expect(select.value).not.toBe('b')
+  })
+
+  it('a multiple select is left to the browser', async () => {
+    const options = signal(['a', 'b'])
+    const select = mountApp(
+      h(
+        'select',
+        { multiple: true, value: 'a' },
+        h(For, { each: () => options(), by: (o: string) => o, children: (o: string) => h('option', { value: o }, o) }),
+      ),
+    )
+    select.options[1]!.selected = true
+    options.set(['a', 'b', 'c'])
+    await tick()
+    expect(select.options[0]!.selected).toBe(true)
+    expect(select.options[1]!.selected).toBe(true)
+  })
 })
 
 describe('hydration', () => {
-  it('a hydrated select re-applies its value when options load later', async () => {
+  it('a hydrated select applies its value when its option loads later', async () => {
     const value = signal('b')
     const options = signal<string[]>([])
     const app = () =>

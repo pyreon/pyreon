@@ -6,8 +6,9 @@
  * node-level matrix (both compiler backends, h(), hydration, user changes) is
  * `select-value-late-options.test.tsx`.
  *
- * Bisect-verified: with the reconcilers' `_resyncSelect` calls removed, every
- * spec here fails with the first option selected (`'a'` / `'none'`).
+ * The value is applied once its option exists and then forgotten, so the user
+ * owns the selection afterwards: a pick survives option updates, an unmatched
+ * value leaves the browser default, a `multiple` select keeps its selection.
  */
 import { For, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -74,5 +75,43 @@ describe('<select value> with options added after mount — real Chromium', () =
     options.set(['a', 'b'])
     await flush()
     expect(select.value).toBe('b')
+  })
+})
+
+describe('after the value applied, the selection is the user\'s — real Chromium', () => {
+  const forOptions = (options: ReturnType<typeof signal<string[]>>) =>
+    h(For, { each: () => options(), by: (o: string) => o, children: (o: string) => h('option', { value: o }, o) })
+
+  it('a pick the app does not mirror into the signal survives option updates', async () => {
+    const value = signal('a')
+    const options = signal(['a', 'b'])
+    const select = render(h('select', { value: () => value() }, forOptions(options)))
+    expect(select.value).toBe('a')
+    select.value = 'b'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    options.set(['a', 'b', 'c'])
+    await flush()
+    expect(select.value).toBe('b')
+  })
+
+  it('an unmatched value shows the browser default after an options update, not a blank select', async () => {
+    const options = signal(['a'])
+    const select = render(h('select', { value: 'z' }, forOptions(options)))
+    options.set(['a', 'b'])
+    await flush()
+    expect(select.selectedIndex).not.toBe(-1)
+    // …and the value still applies if its option arrives.
+    options.set(['a', 'b', 'z'])
+    await flush()
+    expect(select.value).toBe('z')
+  })
+
+  it('a multiple select keeps its selection across option updates', async () => {
+    const options = signal(['a', 'b'])
+    const select = render(h('select', { multiple: true, value: 'a' }, forOptions(options)))
+    select.options[1]!.selected = true
+    options.set(['a', 'b', 'c'])
+    await flush()
+    expect([...select.selectedOptions].map((o) => o.value)).toEqual(['a', 'b'])
   })
 })
