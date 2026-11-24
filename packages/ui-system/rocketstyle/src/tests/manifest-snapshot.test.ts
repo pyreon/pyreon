@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — rocketstyle snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/rocketstyle — Multi-dimensional component styling — states, sizes, variants, custom dimensions, dark/light mode, all cached. useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/rocketstyle](https://pyreon.dev/docs/reference/rocketstyle): Multi-dimensional component styling — states, sizes, variants, custom dimensions, dark/light mode, all cached. useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both."`)
   })
 
   it('renders to llms-full.txt section', () => {

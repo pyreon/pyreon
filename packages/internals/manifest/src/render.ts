@@ -10,10 +10,35 @@ function gotchaParts(g: Gotcha): { label: string; note: string } {
 }
 
 /**
+ * The site that serves `llms.txt` and the generated reference pages
+ * (`docs/scripts/gen-reference.ts` writes one per manifest at
+ * `/docs/reference/<name without @pyreon/>`).
+ */
+export const LLMS_SITE_ORIGIN = 'https://pyreon.dev'
+
+/**
+ * Absolute URL of a package's page on the docs site: its generated reference
+ * page (`docs/scripts/gen-reference.ts`, same slug rule), or — for a manifest
+ * with no `api` entries, which gets no reference page — its guide at
+ * `/docs/<slug>`. `docs/src/tests/llms-txt.test.ts` checks every such link
+ * resolves to a page the site builds.
+ */
+export function packageDocsUrl(m: PackageManifest, origin: string = LLMS_SITE_ORIGIN): string {
+  const slug = m.name.replace(/^@pyreon\//, '')
+  return m.api.length > 0 ? `${origin}/docs/reference/${slug}` : `${origin}/docs/${slug}`
+}
+
+/**
  * Render a manifest to its one-line `llms.txt` bullet form. Compact by
  * design — the full structured expansion lives in `llms-full.txt`.
  * Includes peerDeps inline when present and the first
  * `gotcha` as a teaser so the one-liner retains meaningful density.
+ *
+ * The bullet is an llmstxt.org file-list entry, `- [name](url): notes`,
+ * linking the package's generated reference page. An `llms.txt` without
+ * Markdown links fails the llmstxt.org shape and Lighthouse's `llms-txt`
+ * audit ("File does not appear to contain any links."), which is what
+ * the old `- name — tagline` bullet produced.
  *
  * Lives in `@pyreon/manifest` (not in `scripts/gen-docs-core.ts`) because
  * it's a pure type-level helper with no filesystem or CLI concerns —
@@ -34,7 +59,7 @@ function gotchaParts(g: Gotcha): { label: string; note: string } {
  *   api: [],
  * })
  * renderLlmsTxtLine(m)
- * // → "- @pyreon/flow — Reactive flow diagrams (peer: @pyreon/runtime-dom)"
+ * // → "- [@pyreon/flow](https://pyreon.dev/docs/reference/flow): Reactive flow diagrams (peer: @pyreon/runtime-dom)"
  * ```
  */
 export function renderLlmsTxtLine(m: PackageManifest): string {
@@ -45,7 +70,16 @@ export function renderLlmsTxtLine(m: PackageManifest): string {
   // the one-line bullet.
   const gotchaSuffix =
     m.gotchas && m.gotchas.length > 0 ? `. ${gotchaParts(m.gotchas[0]!).note}` : ''
-  return `- ${m.name} — ${m.tagline}${peerSuffix}${gotchaSuffix}`
+  return `${llmsTxtBulletPrefix(m)}${m.tagline}${peerSuffix}${gotchaSuffix}`
+}
+
+/**
+ * The fixed start of a package's `llms.txt` bullet, up to and including
+ * the `: ` before its notes. `scripts/gen-docs-core.ts` finds the line to
+ * regenerate by this prefix.
+ */
+export function llmsTxtBulletPrefix(m: PackageManifest): string {
+  return `- [${m.name}](${packageDocsUrl(m)}): `
 }
 
 /**

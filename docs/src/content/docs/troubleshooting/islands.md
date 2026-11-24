@@ -49,6 +49,12 @@ The `visible` trigger observed the island element, then (one fix later) its elem
 
 ---
 
+### [FIXED, 2026-11] Reading layout or computed style while islands are set up.
+
+`visibilityTargets` called `getComputedStyle` for every `visible` island inside the islands module's evaluation, which usually runs before the first paint, so it forced a synchronous style recalc and a layout of the whole document there (10 ms of a 17 ms task on pyreon.dev's home page, unthrottled; Lighthouse multiplies that into Total Blocking Time). Observe the island element first and resolve its targets in the IntersectionObserver's first report, which arrives after the browser's own layout (`observeNearViewport` in `server/src/client.ts`). Any startup code that measures (`getComputedStyle`, `getBoundingClientRect`, `offset*`) has the same cost. Test: `server/src/tests/island-visible-targets.test.ts` ("reads no computed style until the observer reports").
+
+---
+
 ### [FIXED, 2026-11] A deferred mount that drops the dispose it was handed (#4387).
 
 `hydrateIsland` called `hydrateRoot` and discarded the unmount it returned, `scheduleHydration`'s cancel was ignored by `island()`, and the marker registered no unmount, so a client-side navigation away from an island left its `onUnmount` unrun and its effects, timers, listeners and pending triggers (IntersectionObserver, idle callback, matchMedia, interaction listeners, prefetch) alive; a chunk still loading mounted into a detached marker; a second `hydrateIslands()` hydrated a live island again. **Rule: whatever starts a root owns its end. `scheduleHydration` returns ONE idempotent dispose for every stage (cancel the trigger, drop an in-flight chunk, unmount a hydrated root and clear `data-island-hydrated`); every removal path calls it** — the `island()` marker's `onMount` cleanup (router navigation and HMR swap, `<Show>`/`<For>`, parent re-render, Suspense all unmount the marker) and the cleanup `hydrateIslands()` returns (static pages: the host owns removal it performs itself, e.g. an `innerHTML` swap — not observed, by design: no MutationObserver in the shell). Leak contract: no module-level registry; each island's state lives in its dispose closure, held by the marker's mount cleanup or the `hydrateIslands` cleanup array (emptied when called). An empty marker (client-rendered, or emptied by a previous unmount) is `mount`ed into rather than hydrated. Locks: `server/src/tests/island-lifecycle.browser.test.tsx` (every path in real Chromium, 50-navigation instance count), `island-dispose.test.tsx`, and the `#4387` specs in `e2e/zero-islands.spec.ts` (50 history round trips in a zero SSG app) — bisect-verified.
@@ -112,5 +118,11 @@ An `island()` in a file nothing imports never renders. Route it or delete it. Au
 ### Cross-file registry drift
 
 A manual `hydrateIslands({ X })` key with no matching `island()` `name` (keys are case-sensitive). Use `hydrateIslandsAuto()` with `pyreon({ islands: true })` to avoid manual sync. `pyreon doctor --only islands-audit` reports `registry-mismatch`.
+
+---
+
+### `content-visibility: auto` on page sections of varying height.
+
+It skips style, layout and paint of a section until it nears the viewport, using `contain-intrinsic-size` as a placeholder height. On pyreon.dev (sections 446–2,463 px against a 900 px placeholder) it broke two things real visitors rely on: a scroll to an element in a later section (`scrollIntoView`, an in-page link) landed where the placeholders put it, then the sections in between rendered at their real height and pushed the target out of view, so a `hydrate: 'visible'` island there never hydrated; and `innerText` of a skipped section is empty (copy, reading tools). Tried for Lighthouse TBT in #4766 and removed: use it only for a long list of items of known, uniform height.
 
 ---

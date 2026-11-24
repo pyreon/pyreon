@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — document snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/document — Universal document rendering — 18 primitives, 20 output formats. Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The engines are optional peer dependencies, so an app installs only the ones for the formats it renders, and bundlers ship only the renderers it invokes."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/document](https://pyreon.dev/docs/reference/document): Universal document rendering — 18 primitives, 20 output formats. Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The engines are optional peer dependencies, so an app installs only the ones for the formats it renders, and bundlers ship only the renderers it invokes."`)
   })
 
   it('renders to llms-full.txt section', () => {

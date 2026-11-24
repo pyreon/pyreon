@@ -74,17 +74,31 @@ export interface AiPluginConfig {
 /**
  * Generate llms.txt content from route files and config.
  *
- * Format follows the llms.txt proposal:
+ * Format follows the llms.txt proposal (https://llmstxt.org/):
  * ```
  * # {name}
+ *
  * > {description}
  *
- * ## Pages
- * - [/about](/about): About page
+ * Dynamic pages (one page per parameter value):
  *
- * ## API
- * - GET /api/posts: List posts
+ * - `/users/:id`
+ *
+ * API endpoints:
+ *
+ * - `GET /api/posts`: List posts
+ *
+ * ## Pages
+ *
+ * - [/about]({origin}/about): About page
+ *
+ * ## Optional
+ *
+ * - [Full reference]({origin}/llms-full.txt): …
  * ```
+ *
+ * `llmsExtra` is appended as written, before `## Optional`; to keep the shape,
+ * give it `##` sections of links only.
  *
  * @internal Exported for testing.
  */
@@ -95,73 +109,65 @@ export function generateLlmsTxt(
 ): string {
   const lines: string[] = []
 
-  // Header
+  // Header — the llmstxt.org shape: H1, blank line, `>` summary.
   lines.push(`# ${config.name}`)
+  lines.push('')
   lines.push(`> ${config.description}`)
   lines.push('')
 
-  // Pages section
   const routes = parseFileRoutes(routeFiles)
+
+  // llmstxt.org: everything between the summary and the first `##` is free
+  // prose or lists (no headings), and every `##` section is a list of LINKS.
+  // Dynamic routes and API endpoints are not fetchable URLs, so they are
+  // described here, before the link sections, rather than as `##` sections of
+  // bare `- /users/:id` bullets (which break the shape).
+  const dynamicRoutes = routes.filter(
+    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound
+      && (r.urlPath.includes(':') || r.isCatchAll),
+  )
+  if (dynamicRoutes.length > 0) {
+    lines.push('Dynamic pages (one page per parameter value):')
+    lines.push('')
+    for (const route of dynamicRoutes) {
+      const desc = config.pageDescriptions?.[route.urlPath]
+      lines.push(desc ? `- \`${route.urlPath}\`: ${desc}` : `- \`${route.urlPath}\``)
+    }
+    lines.push('')
+  }
+
+  const apiPatterns = parseApiFiles(apiFiles)
+  if (apiPatterns.length > 0 || config.apiDescriptions) {
+    lines.push('API endpoints:')
+    lines.push('')
+    // From apiDescriptions (most detailed — user-provided)
+    if (config.apiDescriptions) {
+      for (const [endpoint, desc] of Object.entries(config.apiDescriptions)) {
+        lines.push(`- \`${endpoint}\`: ${desc}`)
+      }
+    }
+    // From auto-discovered API files (only those not already described)
+    const describedPatterns = new Set(
+      Object.keys(config.apiDescriptions ?? {}).map((k) => k.replace(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+/, '')),
+    )
+    for (const pattern of apiPatterns) {
+      if (!describedPatterns.has(pattern)) lines.push(`- \`${pattern}\``)
+    }
+    lines.push('')
+  }
+
+  // Static pages: a `##` section of links.
   const pages = routes.filter(
     (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound
       && !r.isCatchAll && !r.urlPath.includes(':'),
   )
-
   if (pages.length > 0) {
     lines.push('## Pages')
     lines.push('')
     for (const page of pages) {
       const desc = config.pageDescriptions?.[page.urlPath]
       const url = `${config.origin}${page.urlPath === '/' ? '' : page.urlPath}`
-      if (desc) {
-        lines.push(`- [${page.urlPath}](${url}): ${desc}`)
-      } else {
-        lines.push(`- [${page.urlPath}](${url})`)
-      }
-    }
-    lines.push('')
-  }
-
-  // Dynamic routes (documented separately — AI needs to know about params)
-  const dynamicRoutes = routes.filter(
-    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound
-      && (r.urlPath.includes(':') || r.isCatchAll),
-  )
-  if (dynamicRoutes.length > 0) {
-    lines.push('## Dynamic Pages')
-    lines.push('')
-    for (const route of dynamicRoutes) {
-      const desc = config.pageDescriptions?.[route.urlPath]
-      if (desc) {
-        lines.push(`- ${route.urlPath}: ${desc}`)
-      } else {
-        lines.push(`- ${route.urlPath}`)
-      }
-    }
-    lines.push('')
-  }
-
-  // API section
-  const apiPatterns = parseApiFiles(apiFiles)
-  if (apiPatterns.length > 0 || config.apiDescriptions) {
-    lines.push('## API Endpoints')
-    lines.push('')
-
-    // From apiDescriptions (most detailed — user-provided)
-    if (config.apiDescriptions) {
-      for (const [endpoint, desc] of Object.entries(config.apiDescriptions)) {
-        lines.push(`- ${endpoint}: ${desc}`)
-      }
-    }
-
-    // From auto-discovered API files (only those not already described)
-    const describedPatterns = new Set(
-      Object.keys(config.apiDescriptions ?? {}).map((k) => k.replace(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+/, '')),
-    )
-    for (const pattern of apiPatterns) {
-      if (!describedPatterns.has(pattern)) {
-        lines.push(`- ${pattern}`)
-      }
+      lines.push(desc ? `- [${page.urlPath}](${url}): ${desc}` : `- [${page.urlPath}](${url})`)
     }
     lines.push('')
   }
@@ -171,6 +177,17 @@ export function generateLlmsTxt(
     lines.push(config.llmsExtra)
     lines.push('')
   }
+
+  // The llms-full.txt this plugin also emits. llmstxt.org's "Optional"
+  // section is the place for it, and it guarantees the file holds at least
+  // one Markdown link: an app with no static page (only dynamic routes or
+  // API routes) would otherwise emit an llms.txt without links, which
+  // Lighthouse's `llms-txt` audit fails ("File does not appear to contain
+  // any links.").
+  lines.push('## Optional')
+  lines.push('')
+  lines.push(`- [Full reference](${config.origin}/llms-full.txt): Every route with its render mode, and the API reference.`)
+  lines.push('')
 
   return lines.join('\n')
 }
@@ -584,6 +601,7 @@ function parseApiFiles(files: string[]): string[] {
       if (!path.startsWith('/')) path = `/${path}`
       // Convert [param] to :param
       path = path.replace(/\[\.\.\.(\w[\w-]*)\]/g, ':$1*').replace(/\[(\w[\w-]*)\]/g, ':$1')
+
       return `/api${path === '/' ? '' : path}`
     })
 }
@@ -604,6 +622,7 @@ async function scanDir(dir: string, base: string): Promise<string[]> {
         files.push(relative(base, full))
       }
     }
+
     return files
   } catch {
     return []
