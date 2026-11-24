@@ -107,6 +107,21 @@ describe('check-main-red-watchlist — fails closed', () => {
     )
   })
 
+  it('a watched workflow_run follower must filter its trigger to the default branch', () => {
+    const files = { ...base, [ALARM_WORKFLOW]: alarm(['CI', 'Nightly', 'Size']) }
+    const unfiltered = follower('Size', "github.event.workflow_run.event == 'push'")
+    expect(checkWatchlist({ ...files, 'size.yml': unfiltered }, exempt)).toEqual([
+      'size.yml: a `workflow_run` follower must declare `branches: [main]` under `on.workflow_run`, ' +
+        'or every pull request run of the workflows it follows starts a run here',
+    ])
+    const filtered = unfiltered.replace('    types: [completed]\n', '    types: [completed]\n    branches: [main]\n')
+    expect(checkWatchlist({ ...files, 'size.yml': filtered }, exempt)).toEqual([])
+    // A `push: branches: [main]` beside it filters a different event.
+    const pushFiltered = unfiltered.replace('on:\n', 'on:\n  push:\n    branches: [main]\n')
+    expect(pushFiltered).not.toBe(unfiltered)
+    expect(checkWatchlist({ ...files, 'size.yml': pushFiltered }, exempt)[0]).toContain('must declare `branches: [main]`')
+  })
+
   it('only the alarm itself can be exempt as "self"', () => {
     const findings = checkWatchlist(base, { ...exempt, 'ci.yml': 'self' })
     expect(findings.join('\n')).toContain('ci.yml is exempt ("self") and also watched')
