@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path'
 import { compileKotlinViaDaemon } from './kotlin-daemon'
 import { KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
 import { SWIFT_UI_STUBS } from './swift-stubs'
+import { execSwiftToolSync, spawnSwiftToolSync } from './swift-tool'
 import { kotlinAugmentation, swiftAugmentation, type ValidateOptions } from './stub-augmentation'
 import {
   readToolProbe,
@@ -105,7 +106,7 @@ export function isSwiftcAvailable(): boolean {
     // Capture stdout rather than discarding it: the version string is needed
     // as a verdict-cache key component anyway, so taking it here costs
     // nothing and saves a second spawn.
-    _swiftcVersion = execFileSync('swiftc', ['--version'], {
+    _swiftcVersion = execSwiftToolSync('swiftc', ['--version'], {
       stdio: ['ignore', 'pipe', 'ignore'],
       encoding: 'utf8',
       timeout: PROBE_TIMEOUT_MS,
@@ -184,7 +185,7 @@ function validateSwiftUncached(source: string): ValidationResult {
   writeFileSync(filename, source, 'utf8')
 
   try {
-    execFileSync(
+    execSwiftToolSync(
       'swiftc',
       ['-module-cache-path', join(tempDir, 'module-cache'), '-parse', filename],
       { stdio: 'pipe', encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS },
@@ -231,7 +232,7 @@ export function isSwiftUIAvailable(): boolean {
   const filename = join(tempDir, 'probe.swift')
   writeFileSync(filename, 'import SwiftUI\nlet _pyreonSwiftUIProbe = 0\n', 'utf8')
   try {
-    execFileSync(
+    execSwiftToolSync(
       'swiftc',
       ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename],
       { stdio: 'pipe', timeout: PROBE_TIMEOUT_MS },
@@ -299,7 +300,7 @@ export function isObservationAvailable(): boolean {
     'utf8',
   )
   try {
-    execFileSync(
+    execSwiftToolSync(
       'swiftc',
       ['-module-cache-path', join(tempDir, 'module-cache'), '-typecheck', filename],
       { stdio: 'pipe', timeout: PROBE_TIMEOUT_MS },
@@ -427,6 +428,8 @@ const SWIFT_RUNTIME_HELPERS: readonly { readonly name: string; readonly file: st
   { name: 'pyreonSliceIndex', file: 'PyreonSlice.swift' },
   { name: 'pyreonSubstring', file: 'PyreonSlice.swift' },
   { name: 'pyreonCharAt', file: 'PyreonSlice.swift' },
+  // A bounds-checked indexed read whose receiver or index cannot be named twice (destructure-absence.ts).
+  { name: 'pyreonAt', file: 'PyreonSlice.swift' },
   { name: 'pyreonIndexOf', file: 'PyreonSlice.swift' },
   { name: 'pyreonStartsWith', file: 'PyreonSlice.swift' },
   { name: 'pyreonEndsWith', file: 'PyreonSlice.swift' },
@@ -497,7 +500,7 @@ const SILENT_MISCOMPILE_WARNINGS: readonly RegExp[] = [/string interpolation pro
  */
 function runSwiftcTypecheck(args: readonly string[], fallback: string): ValidationResult {
   try {
-    const r = spawnSync('swiftc', args, { encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
+    const r = spawnSwiftToolSync('swiftc', args, { encoding: 'utf8', timeout: COMPILE_TIMEOUT_MS })
     if (r.error !== undefined || r.status !== 0) {
       // The shape `execFileSync` throws, so the transient classification stays the same.
       throw Object.assign(r.error ?? new Error(`swiftc exited with ${String(r.status)}`), {

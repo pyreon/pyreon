@@ -41,6 +41,8 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { resolveJava } from '../packages/native/runtime-kotlin/scripts/java-runtime'
+import { spawnSwiftToolSync } from '../packages/native/compiler/src/swift-tool'
 import { runSwiftSmoke } from './swift-cosource-smoke'
 import { isCompanionRef, resolveCompanion, type CompanionContext, type CompanionPackage } from './native-companions'
 
@@ -171,7 +173,7 @@ let baseModuleDir: string | undefined
 function baseRuntimeModule(): { ok: true; args: string[] } | { ok: false; error: string } {
   if (baseModule !== undefined) return baseModule
   baseModuleDir = mkdtempSync(join(tmpdir(), 'pyreon-base-module-'))
-  const r = spawnSync(
+  const r = spawnSwiftToolSync(
     'swiftc',
     [
       '-parse-as-library',
@@ -247,7 +249,7 @@ const swiftFullSdk =
       // SwiftUI` even when the module is absent (Linux). Typecheck RESOLVES the
       // import, so it fails on Linux and succeeds only with the real SDK (macOS).
       try {
-        return spawnSync('swiftc', ['-typecheck', probe], { encoding: 'utf8' }).status === 0
+        return spawnSwiftToolSync('swiftc', ['-typecheck', probe], { encoding: 'utf8' }).status === 0
       } finally {
         rmSync(probeDir, { recursive: true, force: true })
       }
@@ -290,7 +292,7 @@ const bytesOf = (files: readonly string[]): string =>
   files.map((f) => `${f.slice(ROOT.length)}\0${readOr(f)}`).join('\0')
 
 const toolVersion = (bin: string, flag: string): string => {
-  const p = spawnSync(bin, [flag], { encoding: 'utf8' })
+  const p = bin === 'swiftc' ? spawnSwiftToolSync(bin, [flag], { encoding: 'utf8' }) : spawnSync(bin, [flag], { encoding: 'utf8' })
   if (p.status !== 0) {
     console.error(`[check-native-cosource] ${bin} ${flag} failed:\n${p.stderr ?? ''}${p.error?.message ?? ''}`)
     process.exit(1)
@@ -316,11 +318,14 @@ const kotlincVersion = kotlinc ? toolVersion('kotlinc', '-version') : ''
  * macOS ships a `/usr/bin/java` stub that satisfies `command -v` and then fails
  * with an install prompt, so the probe has to EXECUTE it, not just find it.
  */
-const javaProbe = spawnSync('java', ['-version'], { encoding: 'utf8' })
-const javaRuns = javaProbe.status === 0
+// Never a bare `java`: on a Mac whose JDK is Homebrew's keg-only openjdk, `java` on PATH is the stub while kotlinc
+// runs fine (`resolveJava` asks kotlinc which JVM it uses).
+const javaPath = resolveJava()
+const javaProbe = javaPath === null ? undefined : spawnSync(javaPath, ['-version'], { encoding: 'utf8' })
+const javaRuns = javaProbe?.status === 0
 // kotlinc may use JAVA_HOME; the PATH java that executes the smoke is a
 // separate runtime and its version must also determine the verdict key.
-const javaVersion = javaRuns ? `${javaProbe.stdout ?? ''}\0${javaProbe.stderr ?? ''}` : ''
+const javaVersion = javaRuns ? `${javaProbe?.stdout ?? ''}\0${javaProbe?.stderr ?? ''}` : ''
 
 /** A skipped smoke is a broken runner under the same flag the toolchains use. */
 const requireNativeValidate = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
@@ -602,7 +607,7 @@ for (const pkg of pkgs) {
           writeVerdict(swiftKey, { ok: true })
         }
       } else {
-        const r = spawnSync('swiftc', ['-typecheck', ...moduleArgs, ...srcFiles], { encoding: 'utf8' })
+        const r = spawnSwiftToolSync('swiftc', ['-typecheck', ...moduleArgs, ...srcFiles], { encoding: 'utf8' })
         if (r.status !== 0) {
           failures++
           console.error(`  ✗ ${pkg.name} [swift] typecheck:\n${r.stderr}`)

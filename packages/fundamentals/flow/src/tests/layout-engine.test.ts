@@ -1,3 +1,4 @@
+import { cpuClock } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { runLayout } from '../layout-engine'
 import type { FlowEdge, FlowNode } from '../types'
@@ -203,6 +204,10 @@ describe('scale — the engine must not freeze the tab', () => {
   // stress 8312ms. All three were quadratic in a hot loop. These lock the
   // fixes — a reintroduced O(n^2) would blow the budget by an order of
   // magnitude, not squeak past it, so a generous bound is still a real guard.
+  // Measured in this process's CPU time (cpuClock), not wall-clock: the
+  // slowest healthy algorithm (force) takes ~56 ms idle, and a saturated
+  // runner stretches WALL time by tens of x while it waits for a core —
+  // enough to cross 2000 ms with no regression at all.
   const dag = (n: number) => {
     const nodes = Array.from({ length: n }, (_, i) => node(`d${i}`))
     const edges: FlowEdge[] = []
@@ -213,9 +218,9 @@ describe('scale — the engine must not freeze the tab', () => {
   for (const algo of ALL) {
     it(`${algo}: lays out 1000 nodes without freezing the tab`, () => {
       const g = dag(1000)
-      const t0 = performance.now()
+      const t0 = cpuClock()
       const p = runLayout(g.nodes, g.edges, algo)
-      const ms = performance.now() - t0
+      const ms = cpuClock() - t0
       expect(p).toHaveLength(1000)
       expect(ms).toBeLessThan(2000)
     })

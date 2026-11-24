@@ -22,7 +22,7 @@ import zeroManifest from '../manifest'
 describe('gen-docs — zero snapshot', () => {
   it('renders @pyreon/zero to its expected llms.txt bullet', () => {
     expect(renderLlmsTxtLine(zeroManifest)).toMatchInlineSnapshot(
-      `"- @pyreon/zero — Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes, server actions, adapters, i18n. mode: 'ssg' returns Plugin[] (the SSG plugin auto-attaches a companion \`ssgPlugin()\`); Vite's plugins array flattens nested arrays so \`plugins: [pyreon(), zero()]\` works as-is."`,
+      `"- [@pyreon/zero](https://pyreon.dev/docs/reference/zero): Full-stack meta-framework: fs-routing, SSR/SSG/ISR/SPA, API routes, server actions, adapters, i18n. mode: 'ssg' returns Plugin[] (the SSG plugin auto-attaches a companion \`ssgPlugin()\`); Vite's plugins array flattens nested arrays so \`plugins: [pyreon(), zero()]\` works as-is."`,
     )
   })
 
@@ -83,8 +83,10 @@ describe('gen-docs — zero snapshot', () => {
     // up as a snapshot failure. Bump intentionally when adding a new
     // API entry. The `gen-docs --check` CI gate catches the same drift
     // from the OTHER direction (rendered file out of sync with source).
-    expect(keys.length).toBe(63)
+    expect(keys.length).toBe(68)
     expect(keys).toContain('zero/https')
+    expect(keys).toContain('zero/hydrate')
+    expect(keys).toContain('zero/startClientLazy')
     expect(keys).toContain('zero/usePreconnect')
     expect(keys).toContain('zero/usePreloadFont')
     expect(keys).toContain('zero/createImageRegistry')

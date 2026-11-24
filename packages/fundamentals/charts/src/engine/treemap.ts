@@ -67,9 +67,7 @@ export function nodeValue(node: TreeNode): Double {
     sp = sp - 1
     const cur = stack[sp]!
     const own = cur.value
-    /* v8 ignore next — same unreachable native unwrap as `nodeValue`'s own
-       first line: `own` is known defined here. */
-    if (own !== undefined) sum = sum + (own ?? 0.0)
+    if (own !== undefined) sum = sum + own
     else {
       for (const c of cur.children ?? []) {
         if (sp < stack.length) stack[sp] = c
@@ -208,8 +206,7 @@ export function layoutTreemap(nodes: readonly TreeNode[], rect: Rect, options?: 
     sp = sp - 1
     const frame = stack[sp]!
     // depthF mirrors the Int depth as a Double for the maxDepth comparison.
-    let depthF = 0.0
-    for (let d = 0; d < frame.depth; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(frame.depth)
     if (depthF >= maxDepth || frame.children.length === 0) continue
     const order = orderByValue(frame.children)
     const values: Double[] = []
@@ -303,8 +300,7 @@ export function renderTreemap(cells: TreemapCell[], options?: TreemapOptions, me
     const x = c.rect.x + (c.rect.w - w) / 2.0
     const y = c.rect.y + (c.rect.h - h) / 2.0
     // depthF mirrors the Int depth as a Double for the tint arithmetic.
-    let depthF = 0.0
-    for (let d = 0; d < c.depth; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(c.depth)
     const tintT = 0.35 + depthF * 0.15
     out.push({ kind: 'rect', rect: { x, y, w, h }, fill: c.leaf ? c.color : tintHex(c.color, tintT > 0.6 ? 0.6 : tintT) })
     if (showLabels && progress >= 1.0 && c.leaf) {

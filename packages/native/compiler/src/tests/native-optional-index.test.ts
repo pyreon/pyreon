@@ -105,10 +105,11 @@ export function App(){
     expect(rs.code).toContain('sel?.tags[0]')
     expect(rs.warnings.some((w) => w.includes('safe-index'))).toBe(true)
   })
-  it('guard: a chained (non-re-readable) receiver warns NAMED on Swift; Kotlin stays clean', () => {
+  it('a chained (non-re-readable) receiver reads through the single-evaluation pyreonAt on Swift; both clean', () => {
     const src = A(`  const out = computed(() => nums().filter((x: number) => x > 0)?.[0] ?? 0)`)
     const rs = transform(src, { target: 'swift' })
-    expect(rs.warnings.some((w) => w.includes('safe-index'))).toBe(true)
+    expect(rs.code).toContain('pyreonAt(nums.filter')
+    expect(rs.warnings).toHaveLength(0)
     const rk = transform(src, { target: 'kotlin' })
     expect(rk.code).toContain('.getOrNull(0)')
     expect(rk.warnings).toHaveLength(0)

@@ -1,5 +1,57 @@
 # @pyreon/document-primitives
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4575](https://github.com/pyreon/pyreon/pull/4575) [`7bb39b4`](https://github.com/pyreon/pyreon/commit/7bb39b4076d20e95b2cd0a05c43650a53e2d0e87) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Breaking: remove two second names for existing APIs. Neither was deprecated before this release; each was documented as a convenience alias.
+
+  - `@pyreon/runtime-dom`'s `render`, documented as an alias of `mount` "for API familiarity". It was `export const render = mount`, so `mount` behaves identically.
+  - `@pyreon/document-primitives`'s `createDocumentExport` and its `DocumentExport` type, documented as "kept for backward compat": a wrapper object whose only method, `getDocNode()`, called `extractDocNode`.
+
+  `@pyreon/meta` drops its re-exports of `createDocumentExport` and `DocumentExport`. In state-tree, an unreachable `ModelConfig` type alias is deleted; no public entry exported it.
+
+  ```ts
+  // before
+  import { render } from '@pyreon/runtime-dom'
+  render(<App />, el)
+  const tree = createDocumentExport(() => <Resume />).getDocNode()
+
+  // after
+  import { mount } from '@pyreon/runtime-dom'
+  mount(<App />, el)
+  const tree = extractDocNode(() => <Resume />) // same options argument
+  ```
+
+  An old import fails at build time: TypeScript reports the missing export and the bundler reports `MISSING_EXPORT`.
+
+  Upgrade: codemod runtime-dom-render-to-mount (`pyreon upgrade` switches every `render` imported from `@pyreon/runtime-dom` to `mount`, including namespace and re-export forms). `createDocumentExport` is migrated by hand: replace `createDocumentExport(fn).getDocNode()` with `extractDocNode(fn)`, and pass the tree instead of the wrapper object where one was stored.
+
+### Patch Changes
+
+- [#4628](https://github.com/pyreon/pyreon/pull/4628) [`e767651`](https://github.com/pyreon/pyreon/commit/e767651be4ddfef4e4b2a892a810ffe06e61ab2d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Docs now state the real count of `@pyreon/document` output formats (20) everywhere, and the native compiler's `Date` notes match what it does.
+
+  The `@pyreon/document-primitives` description and README still said "14+ formats". The doctor's doc-claims gate now refuses the "N+" form of every count claim it checks, not only the claims that listed a hedge pattern, and it reads the document-primitives README and `llms-full.txt` too. The native compiler's warning for an unsupported `Date.*` static now names `Date.parse` and `Date.UTC` as supported, since both lower.
+
+- [#4422](https://github.com/pyreon/pyreon/pull/4422) [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Documentation and API-reference corrections (manifests feed `llms.txt` and MCP `get_api`). Every docs page and README now runs Pyreon CLIs through their scoped package (`npx @pyreon/lathe init`, not `npx lathe init`, which ran an unrelated npm package), and `pyreon doctor`'s doc-claims gate fails on an unscoped `npx` / `bunx` / `pnpm dlx` / `yarn dlx` command for one of our bins. The gate also checks the lint VS Code README's rule and category counts, the rx function count, the table feature count and the document-primitives format count. MCP `validate`'s text output now includes the column (`line 3, column 9`).
+
+- [#4563](https://github.com/pyreon/pyreon/pull/4563) [`327771b`](https://github.com/pyreon/pyreon/commit/327771b3abd8513416f324aa7b202bcca800463c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package now declares its tier in `package.json`: `"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`. From 1.0 the semver promise covers Stable packages only; Experimental packages, and the experimental subpaths of Stable packages (every `./native-plugin`, `@pyreon/core/plain`, `@pyreon/compiler/audits` and `/plain`, `@pyreon/charts/engine`, and the `./webview` subpaths of code, flow and rich-text), may break in a minor release. Each README opens with a status line generated from the field. The policy, including the compiler-helper ABI rule and deprecations, is at https://pyreon.dev/docs/stability-and-direction.
+
+  The `@pyreon/http` and `@pyreon/loom` READMEs no longer claim the packages are unpublished.
+
+  **Breaking (`@pyreon/meta`):** the barrel no longer re-exports `@pyreon/document-primitives` (the `Doc*` components, `createDocumentExport`, `documentTheme`, `extractDocNode`, `DocumentPreview`) or `@pyreon/connector-document` (`extractDocumentTree`, `resolveStyles`), because both are Experimental and meta is Stable. Upgrade: install those packages and import from them directly.
+
+  The ui-core, unistyle, rocketstyle, coolgrid and elements manifests no longer claim that the low-level `Provider` logs a dev warning; it has not warned for some time.
+
+- Updated dependencies [[`a4a2ebc`](https://github.com/pyreon/pyreon/commit/a4a2ebc7f014a7f93fc34431aef232f6e28b83ab), [`8d3ca8a`](https://github.com/pyreon/pyreon/commit/8d3ca8ad3216e33216bbc28ebbc750ecc052d6fa), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`556de62`](https://github.com/pyreon/pyreon/commit/556de62953e46d3d5b30afdd04c3f8c9d3bcbb05), [`34990d5`](https://github.com/pyreon/pyreon/commit/34990d5155b03fa6c9eefaed4388b901e6adc111), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3), [`cfd192d`](https://github.com/pyreon/pyreon/commit/cfd192d363b5a4c0860ee31280c1a6d3a743d38a), [`608cb93`](https://github.com/pyreon/pyreon/commit/608cb93578bec5c4f13be39f60117abd0b8d97f9), [`2610d24`](https://github.com/pyreon/pyreon/commit/2610d248313fb85ccd787af6d65e62e2aa56c8a9), [`d321f13`](https://github.com/pyreon/pyreon/commit/d321f138f0c36f99434a9b5d83160d2b13a89680), [`606d713`](https://github.com/pyreon/pyreon/commit/606d713f5265a250b078fb7481fec9c6262cca40), [`c640088`](https://github.com/pyreon/pyreon/commit/c640088b7eaaa7f5ad24999fd8884e557ce22fe0), [`a1114db`](https://github.com/pyreon/pyreon/commit/a1114db6c3050235333bb5b13666f53ea3b2c8de), [`1fa0bf7`](https://github.com/pyreon/pyreon/commit/1fa0bf75529fa5c011a97314f9b59899b0f0d485), [`34990d5`](https://github.com/pyreon/pyreon/commit/34990d5155b03fa6c9eefaed4388b901e6adc111), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`6b7085a`](https://github.com/pyreon/pyreon/commit/6b7085a6bad6e48c7a764d0f502e755ed54aaf8e), [`26815df`](https://github.com/pyreon/pyreon/commit/26815dfed810d848b28e09395d6ee171f3c10db4), [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb), [`02da900`](https://github.com/pyreon/pyreon/commit/02da900bf63421da6d2bcea6a45c1dfa43691168), [`1d0d0b8`](https://github.com/pyreon/pyreon/commit/1d0d0b8afde33477e6e7191f6607fd029a79b33a), [`2360982`](https://github.com/pyreon/pyreon/commit/2360982240544405e69c1774547c438cc8077c5b), [`5f64d7e`](https://github.com/pyreon/pyreon/commit/5f64d7e1821eb6b7fed029a33d926a6315dcda09), [`511dd4a`](https://github.com/pyreon/pyreon/commit/511dd4acac8c673cafcc26dc9d4af88311300f98), [`5abcb2d`](https://github.com/pyreon/pyreon/commit/5abcb2d51816c8e114b0755cf761ba58a4ea8db5), [`fc12522`](https://github.com/pyreon/pyreon/commit/fc12522441c02e15db1d9670013401f3fe926593), [`bbac2d8`](https://github.com/pyreon/pyreon/commit/bbac2d834fe4be327ae31dfba2fa92ee3fb7d744), [`c0df87c`](https://github.com/pyreon/pyreon/commit/c0df87ca58a9c23fcc0035cb46c3db5f9f399c46), [`03b6bfa`](https://github.com/pyreon/pyreon/commit/03b6bfa460bca4b9512ea411a5eaef79033dc1b8), [`0fc7458`](https://github.com/pyreon/pyreon/commit/0fc745886238a2ead837732f4eea6022fdd33781), [`cc39f71`](https://github.com/pyreon/pyreon/commit/cc39f7107e4c0283687f5ce2e10cd66d77468b18), [`cc39f71`](https://github.com/pyreon/pyreon/commit/cc39f7107e4c0283687f5ce2e10cd66d77468b18), [`327771b`](https://github.com/pyreon/pyreon/commit/327771b3abd8513416f324aa7b202bcca800463c), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`1a82dcc`](https://github.com/pyreon/pyreon/commit/1a82dcc99c3e4fe9e1b3ba071373003e983befa5), [`38f7aaa`](https://github.com/pyreon/pyreon/commit/38f7aaa8ee7f73c168d66b4e53f24d7f85e62ee4), [`1451442`](https://github.com/pyreon/pyreon/commit/14514429cefc2d68a138d4520a70bbba577fdc06), [`2360982`](https://github.com/pyreon/pyreon/commit/2360982240544405e69c1774547c438cc8077c5b), [`a5635c1`](https://github.com/pyreon/pyreon/commit/a5635c178584d49173d2f47740abcc30f7b4fe49), [`3ea632e`](https://github.com/pyreon/pyreon/commit/3ea632e40a6cba1211fc95307e7c721ac39b388b), [`5fa21a9`](https://github.com/pyreon/pyreon/commit/5fa21a95219b8714ed9648a1790a619f6cfa8092), [`2655fa3`](https://github.com/pyreon/pyreon/commit/2655fa3b4a29943b5c3f83dd6516eeeb3f26ec67), [`b0064b5`](https://github.com/pyreon/pyreon/commit/b0064b51d8724a4f4a1db626926280d6abc764fd), [`c655989`](https://github.com/pyreon/pyreon/commit/c6559893e81150811adf41052b550d58e196d43a), [`8106e81`](https://github.com/pyreon/pyreon/commit/8106e81d8f6915d18f40a65574edaa2f604e2337), [`8a5702e`](https://github.com/pyreon/pyreon/commit/8a5702ea3588f18ced3a7d419b825630b70d07b1), [`c1f21cc`](https://github.com/pyreon/pyreon/commit/c1f21cca9d17b2563fa847907e0019fc4e6425d2), [`eb3c73b`](https://github.com/pyreon/pyreon/commit/eb3c73b5a4d6ee91cb5042a7e1d0afe994d5430a), [`2360982`](https://github.com/pyreon/pyreon/commit/2360982240544405e69c1774547c438cc8077c5b), [`2e9b71e`](https://github.com/pyreon/pyreon/commit/2e9b71e9c6735377511d152ada609c539fbca870), [`d1fde54`](https://github.com/pyreon/pyreon/commit/d1fde5475234338be3967179a8239547081eacd3)]:
+  - @pyreon/core@0.54.0
+  - @pyreon/connector-document@0.54.0
+  - @pyreon/ui-core@0.54.0
+  - @pyreon/document@0.54.0
+  - @pyreon/elements@0.54.0
+  - @pyreon/rocketstyle@0.54.0
+  - @pyreon/unistyle@0.54.0
+
 ## 0.53.0
 
 ### Patch Changes

@@ -21,6 +21,7 @@ import {
   PortalSymbol,
   propagateError,
   reportError,
+  _devMarkOwnerAlias,
   _runHooked,
   _takeHooks,
   SuspenseBoundaryContext,
@@ -33,8 +34,13 @@ import {
   batch,
   effectScope,
   getContextOwner,
-  getCurrentScope,
-  renderEffect,
+  _currentScope,
+  _devOwner,
+  _swapPendingOwner,
+  _abortOwnerFrame,
+  _closeOwnerFrame,
+  _openOwnerFrame,
+  _renderBind,
   runUntracked,
   runWithContextOwner,
   setContextOwner,
@@ -50,6 +56,7 @@ import { _adoptParkedText, _parkedPending } from './parked-text'
 import { _adoptingCompiledBind, reportFirstText } from './hydration-debug'
 import { _devInspectable, registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
+import type { FirstRun } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 import { suspenseAttachOf } from './suspense-boundary'
 import type { RemountableNativeItem } from './template'
@@ -61,7 +68,7 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 
 type Cleanup = () => void
 
-const noop: Cleanup = () => {
+export const noop: Cleanup = () => {
   /* noop */
 }
 
@@ -87,6 +94,48 @@ if (process.env.NODE_ENV !== 'production') _devScopeIds = new WeakMap()
  * This function is the hot path — all child types are handled inline to avoid
  * function call overhead in tight render loops (1000+ calls per list render).
  */
+/**
+ * `_setChild` / `_setChildAt` are emitted as STATEMENTS — the compiled template
+ * never receives a cleanup from them — so what they mount (an accessor's
+ * binding, a VNode's components) is owned by the ambient scope instead: the
+ * component's, or a `<For>` row's collector. Template bindings proper are
+ * owned by the template's cleanup and never register with the scope (see
+ * "Template-owned bindings" in @pyreon/reactivity), so this is the one place
+ * a mount made inside a template bind hands its cleanup to the scope.
+ */
+export function ownByScope(cleanup: () => void): void {
+  if (cleanup !== noop && cleanup !== _noopDispose) _currentScope()?.add(cleanup)
+}
+
+/**
+ * Mount content that a REACTIVE BOUNDARY owns and removes itself — the range a
+ * `mountReactive` run renders, a `TransitionGroup` item, `KeepAlive`'s
+ * children, the polymorphic text core's subtree. Always at element depth 0, so
+ * every cleanup it returns is a real remover.
+ *
+ * The depth window (`_elementDepth > 0` → effect-only cleanups) is valid only
+ * for children mounted SYNCHRONOUSLY by the element being built, which leave
+ * with it. A boundary's effect does not run only there: a component that
+ * writes a signal during its setup re-runs an earlier sibling boundary right
+ * then, inside the parent element's children loop, and that run used to
+ * inherit the parent's depth — its content got no-op cleanups, so a later run
+ * of the boundary that rendered nothing left the old nodes in the document.
+ * Every boundary mounts through this, so no run of any of them can.
+ */
+export function mountOwned(
+  child: VNodeChild | VNodeChild[] | (() => VNodeChild | VNodeChild[]),
+  parent: Node,
+  anchor: Node | null,
+): Cleanup {
+  const prevDepth = _elementDepth
+  _elementDepth = 0
+  try {
+    return mountChild(child, parent, anchor)
+  } finally {
+    _elementDepth = prevDepth
+  }
+}
+
 /**
  * Mount a STATIC child (a value, never an accessor) as part of a freshly built
  * element — the same depth window `mountElement` gives its own children, so
@@ -138,7 +187,10 @@ export function mountChild(
 
   // Primitive — text node (static, no reactive effects to tear down).
   if (typeof child !== 'object') {
-    const tn = document.createTextNode(String(child))
+    // A number reaches the DOM unconverted: JS-side Number→String grows V8's
+    // Number→String cache to ~64 KB for good (see `_replaceText` in template.ts);
+    // `createTextNode` converts it per the spec without touching that cache.
+    const tn = document.createTextNode(typeof child === 'number' ? (child as unknown as string) : String(child))
     parent.insertBefore(tn, anchor)
     // `_elementDepth > 0` → this text is a child of a freshly-built element
     // removed as a unit, so a per-node remover is redundant (noop). BUT at depth 0
@@ -581,58 +633,43 @@ function mountComponent(
   parent: Node,
   anchor: Node | null,
 ): Cleanup {
-  // Owner chain: link this component's scope to its parent owner so
-  // `useContext()` resolves up the component tree. The owner stays `scope`
-  // through both `runWithHooks` (so `provide()` writes onto it) and `mountChild`
-  // (so children chain to it), restored on every exit path. Kept SEPARATE from
-  // `setCurrentScope` (effect tracking) so the two concerns don't interfere.
+  // Owner chain: this component's scope links to the parent owner so
+  // `useContext()` resolves up the tree once the scope becomes an owner (on
+  // its first `provide()`); the owner is restored on every exit path. Kept
+  // SEPARATE from `setCurrentScope` (effect tracking) so the two concerns
+  // don't interfere.
   //
-  // The per-component `EffectScope` allocation below is NOT an optimization
-  // target — measured + rejected (2026-08). Making it LAZY (allocate on first
-  // use, so the ~50% of components that register no effect, computed, template
-  // binding, cleanup or context never pay for one) is the obvious idea and it
-  // does not pay:
-  //
-  //  - CEILING. Adding a SECOND `EffectScope` and a second `LifecycleHooks` per
-  //    component — the correctness-preserving way to price them, since removing
-  //    them breaks disposal and would bias the run by leaking across iterations
-  //    — cost +0.59% on the 2,047-component deep-tree mount. In the same
-  //    interleaved session the `context → 1,024 consumers` op, which mounts
-  //    nothing and cannot be affected, moved ±2%. The allocations are below the
-  //    benchmark's own resolution.
-  //  - COST. A safe lazy design cannot be free. `getCurrentScope()` and
-  //    `getContextOwner()` would each need a materialize branch, and those run
-  //    far more often than once per component (every effect, computed, binding,
-  //    context read, deferred-boundary capture and effect snapshot-capture).
-  //    Per component it also needs two flags, a materialized slot, and
-  //    save/restore of three values — which cannot be packed into a frame object
-  //    without re-introducing exactly the allocation being removed. The same
-  //    bookkeeping applied to the (simpler) hooks object measured net zero.
-  //  - RISK. Every registration path would have to be routed through one
-  //    materializer or a disposable is silently dropped. `onScopeDispose` reads
-  //    the module variable directly rather than through `getCurrentScope()`, and
-  //    `EffectScope.runInScope` / `setCurrentScope` would each need to clear the
-  //    pending flag or `@pyreon/store`'s scope shielding silently re-parents its
-  //    computeds onto the component. `getCurrentScope()` is also public and is
-  //    what `@pyreon/solid-compat` returns from `getOwner()`.
-  //
-  // So: a leak-class risk surface across a public API, for a win that is not
-  // measurable. Re-open only with a measurement that clears ±2% on this
-  // benchmark. That verdict is about SPEED and the scope. The hooks object IS
-  // now lazy (`_runHooked` in `@pyreon/core`), for RETAINED HEAP: it lives as
-  // long as the component, and its lazy design needs no hot-path branch
-  // (registration is rare, unlike scope/owner reads).
+  // The per-component `EffectScope` is still allocated EAGERLY (lazy
+  // ALLOCATION was measured and rejected for speed in 2026-08: it needs a
+  // materialize branch in `getCurrentScope()` / `getContextOwner()`, which run
+  // far more often than once per component). What changed is RETENTION: the
+  // scope becomes the context owner only on the setup's first `provide()`, and
+  // a scope that is empty at the end of the mount, never an owner and never
+  // handed out through `getCurrentScope()` is dropped instead of being kept by
+  // the unmount closure (`_isDroppable` below). The hooks object is lazy too
+  // (`_runHooked` in `@pyreon/core`).
   const prevOwner = getContextOwner()
   // RESTORED on every exit, never reset to null: a component can mount while
   // another scope is current (inside a parent's onMount via a signal write
   // that flips a <Show>, inside a <For> row's collector, inside a parent's
   // compiled template), and nulling it there left everything that scope's
   // owner created afterwards with no owner — never disposed.
-  const prevScope = getCurrentScope()
+  const prevScope = _currentScope()
   const scope = effectScope()
   scope._parent = prevOwner
+  // LAZY CONTEXT OWNER: `scope` becomes the context owner only when the setup
+  // calls `provide()` (`_claimContextOwner`). Until then the owner stays the
+  // parent's, so this component's children chain straight to the nearest
+  // provider and nothing retains `scope` as their `_parent`. The pending frame
+  // is saved here and restored on every exit.
+  const prevPending = _swapPendingOwner(scope)
+  const prevLate = process.env.NODE_ENV !== 'production' ? _devEnterLate(prevPending) : false
   setCurrentScope(scope)
-  setContextOwner(scope)
+  // Template bindings built by this setup and render are owned by the cleanups
+  // they are returned to, not by `scope`. The frame is their owner on the
+  // error paths below, where no cleanup is ever handed out (see
+  // "Template-owned bindings" in @pyreon/reactivity's effect.ts).
+  const ownerFrame = _openOwnerFrame()
 
   let hooks: LifecycleHooks
   let output: VNodeChild
@@ -658,16 +695,26 @@ function mountComponent(
     _devScopeIds!.set(scope, compId)
     _mountingStack!.push(compId)
   }
+  // The owner during setup and render stays the parent's (already current —
+  // production writes nothing). Dev swaps in a contextless alias of it that
+  // devtools can map back to this component — see `devSetupOwner`.
+  if (process.env.NODE_ENV !== 'production') setContextOwner(devSetupOwner(prevOwner, compId!))
 
-  const mergedProps = componentProps(vnode)
-
+  // Built INSIDE the try: every frame above (scope, owner, pending owner, owner
+  // frame, dev mounting stack) is restored by the catch, so a props builder
+  // that throws (a Proxy props object, a throwing getter) is contained exactly
+  // like a throwing setup instead of leaving those frames set.
+  let mergedProps: Record<string, unknown> | undefined
   try {
+    mergedProps = componentProps(vnode)
     output = _runHooked(vnode.type, mergedProps)
     hooks = _takeHooks()
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
     setCurrentScope(prevScope)
     setContextOwner(prevOwner)
+    exitPendingOwner(prevPending, prevLate)
+    _abortOwnerFrame(ownerFrame)
     scope.stop()
     reportError({
       component: componentName,
@@ -684,11 +731,8 @@ function mountComponent(
       // PZ-10: "props.X is not a function", caused by the reactive-prop
       // auto-unwrap. Printed even when an ErrorBoundary handled the throw — the
       // fallback can't explain the root cause. Fires at most once per mount.
-      const diagnosis = diagnoseReactivePropCall(
-        err,
-        mergedProps as Record<string, unknown>,
-        componentName,
-      )
+      const diagnosis =
+        mergedProps === undefined ? null : diagnoseReactivePropCall(err, mergedProps, componentName)
       if (diagnosis) console.error(diagnosis)
       if (!handled) {
         const overlay = document.createElement('pre')
@@ -708,6 +752,9 @@ function mountComponent(
   } finally {
     setCurrentScope(prevScope)
   }
+  // Setup returned: any `provide()` from here on runs after children chained
+  // past this component (dev warning in `provide`).
+  if (process.env.NODE_ENV !== 'production') _devOwner!.late = true
 
   if (process.env.NODE_ENV !== 'production' && output != null && typeof output === 'object') {
     if (!(output instanceof Promise) && !('type' in output) && !Array.isArray(output) && !(output as any).__isNative) {
@@ -735,6 +782,9 @@ function mountComponent(
     // boundary until it settles — the same contract `lazy()` follows. Resolved
     // with the component's own scope as owner, so the NEAREST boundary answers.
     useContext(SuspenseBoundaryContext)?.register(output)
+    // The owner the resolved subtree mounts under: this scope if the setup
+    // provided before its first await, the parent's otherwise.
+    const asyncOwner = getContextOwner()
     const placeholder = document.createComment('async')
     parent.insertBefore(placeholder, anchor)
     let resolvedCleanup: Cleanup = noop
@@ -762,7 +812,7 @@ function mountComponent(
             //    SYNCHRONOUSLY — taking `placeholder` out of `liveParent` halfway
             //    through this mount (`insertBefore` NotFoundError, empty page).
             batch(() => {
-              resolvedCleanup = runWithContextOwner(scope, () =>
+              resolvedCleanup = runWithContextOwner(asyncOwner, () =>
                 mountChild(resolved as VNodeChild, liveParent, placeholder),
               )
             })
@@ -795,6 +845,8 @@ function mountComponent(
     // owner pointing here for the rest of the parent's mount, and clobbered
     // whatever owner was current when the component later unmounted.)
     setContextOwner(prevOwner)
+    exitPendingOwner(prevPending, prevLate)
+    _closeOwnerFrame(ownerFrame)
 
     return () => {
       if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
@@ -835,8 +887,10 @@ function mountComponent(
     }
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
+    _abortOwnerFrame(ownerFrame)
     scope.stop()
     setContextOwner(prevOwner)
+    exitPendingOwner(prevPending, prevLate)
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
     if (!handled) {
       reportError({
@@ -851,6 +905,7 @@ function mountComponent(
 
     return noop
   }
+  _closeOwnerFrame(ownerFrame)
 
   if (process.env.NODE_ENV !== 'production') {
     _mountingStack!.pop()
@@ -871,7 +926,7 @@ function mountComponent(
       }
     }
     registerComponent(compId!, componentName, firstEl, devParentId!)
-    _devInspectable(compId!, scope, mergedProps)
+    _devInspectable(compId!, scope, mergedProps!)
   }
 
   // Fire onMount hooks inline — effects created inside are tracked by the scope.
@@ -898,13 +953,27 @@ function mountComponent(
   // Subtree fully mounted (incl. onMount) — restore the parent owner so this
   // component's siblings resolve their own context, not this component's.
   setContextOwner(prevOwner)
+  exitPendingOwner(prevPending, prevLate)
 
-  // No unmount work beyond the scope and the subtree (the common case — no
-  // onUnmount / setup onCleanup / onMount cleanup): return a closure that
-  // captures only those two. The full closure below captures this function's
-  // whole context (parent, owner, hooks, name, …), which then lives as long
-  // as the component.
-  if (hooks.unmount === null && mountCleanups === null) return leanUnmount(scope, subtreeCleanup, compId)
+  if (hooks.unmount === null && mountCleanups === null) {
+    // Nothing registered with the scope, it never became a context owner and
+    // nobody was handed it: DROP it. The subtree's cleanup is the component's
+    // whole unmount, with no scope and no closure retained (the common case
+    // for a component whose bindings all live in its template).
+    if (scope._isDroppable()) {
+      return process.env.NODE_ENV !== 'production'
+        ? () => {
+            unregisterComponent(compId!)
+            subtreeCleanup()
+          }
+        : subtreeCleanup
+    }
+    // No unmount work beyond the scope and the subtree: a closure that
+    // captures only those two. The full closure below captures this
+    // function's whole context (parent, owner, hooks, name, …), which then
+    // lives as long as the component.
+    return leanUnmount(scope, subtreeCleanup, compId)
+  }
 
   return () => {
     if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
@@ -927,6 +996,52 @@ function mountComponent(
     }
     if (mountCleanups) for (const fn of mountCleanups) fn()
   }
+}
+
+/**
+ * @internal Dev only: entering a component's pending-owner frame. A component
+ * mounting while its PARENT is still pending (`prevPending`) makes any later
+ * `provide()` in that parent late, so the parent's flag is set first; it is
+ * then returned (for `exitPendingOwner`) and reset for the child.
+ */
+export function _devEnterLate(prevPending: EffectScope | null): boolean {
+  const d = _devOwner!
+  if (prevPending !== null) d.late = true
+  const prevLate = d.late
+  d.late = false
+
+  return prevLate
+}
+
+/** @internal Dev only: the devtools id `_devNameScope` gave `scope`. */
+export function _devScopeIdOf(scope: EffectScope): string {
+  return _devScopeIds!.get(scope)!
+}
+
+/** Restore the pending-owner frame a component's mount entered with `_swapPendingOwner`. */
+export function exitPendingOwner(prev: EffectScope | null, prevLate: boolean): void {
+  _swapPendingOwner(prev)
+  if (process.env.NODE_ENV !== 'production') _devOwner!.late = prevLate
+}
+
+/**
+ * Dev only: the context owner a component's setup and render run under while
+ * it has not provided. Production uses the parent's owner itself. Dev uses a
+ * contextless ALIAS of it, which devtools maps to this component's id, so a
+ * component that a boundary mounts later (a `<Show>` turning on, a `<For>`
+ * row) still finds its real parent in the devtools tree. The alias is
+ * transparent to context: reads walk `alias._parent` to the parent's owner,
+ * and a write (a `provide()` that runs under a restored alias, in an effect
+ * re-run) skips it (`_devMarkOwnerAlias` in `@pyreon/core`) — exactly where
+ * production writes it.
+ */
+export function devSetupOwner(parentOwner: EffectScope | null, compId: string): EffectScope {
+  const alias = effectScope()
+  alias._parent = parentOwner
+  _devMarkOwnerAlias(alias)
+  _devScopeIds!.set(alias, compId)
+
+  return alias
 }
 
 /** `mountComponent`'s unmount for a component with no hook cleanups — see the call site. */
@@ -1010,11 +1125,47 @@ export interface PolyTextCore {
   mounted: () => boolean
 }
 
+/**
+ * Whether a poly text binding renders `v` as TEXT (in place) rather than as a
+ * mounted subtree.
+ */
+export function isPolyTextish(v: unknown): boolean {
+  // The shared child-text rule: a primitive, or an object that is not
+  // structural (an array of primitives, a `Date`).
+  return (typeof v !== 'object' && typeof v !== 'function') || !_isStructuralChild(v)
+}
+
+/**
+ * The text write every poly text binding performs for a textish `v` — the ONE
+ * implementation shared by the swap core and the lazy text-only phase of
+ * `bindPolymorphicText` / `mountAccessorChild`, so the two cannot drift.
+ * `written` is the string the binding last wrote (`null` before the first
+ * write, which reads the node once so adopted SSR text that already matches
+ * is left untouched). Returns the new `written`.
+ */
+export function writePolyText(text: Text, v: VNodeChild, written: string | null): string {
+  // An array of strings writes ONE text node holding their concatenation, the
+  // characters SSR renders, so an adopted server text node is kept as-is.
+  const next = typeof v === 'string' ? v : _childText(v)
+  if (written === null) {
+    written = text.data
+    // Dev: inside a compiled template's ADOPTION bind this is server
+    // text; report the first write if it changes it (#4419). The h()
+    // walk reports before it binds and never runs inside that window.
+    if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
+      reportFirstText(text, v, next, 'reactive')
+  }
+  if (next !== written) text.data = next
+
+  return next
+}
+
 export function createPolyTextCore(
   text: Text,
   parentAtSetup: Node,
   ownerAtSetup: ReturnType<typeof getContextOwner>,
 ): PolyTextCore {
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.polyTextCore')
   let marker: Comment | null = null
   let mode: 'text' | 'sub' = 'text'
   let subCleanup: Cleanup = noop
@@ -1034,12 +1185,7 @@ export function createPolyTextCore(
   return {
     apply(v: VNodeChild): void {
       const myGen = ++applyGen
-      // Text per the shared child-text rule: a primitive, or an object that is
-      // not structural (an array of primitives, a `Date`). An array of strings
-      // writes ONE text node holding their concatenation, the characters SSR
-      // renders, so an adopted server text node is kept as-is.
-      const textish = (typeof v !== 'object' && typeof v !== 'function') || !_isStructuralChild(v)
-      if (textish) {
+      if (isPolyTextish(v)) {
         if (mode === 'sub') {
           runUntracked(subCleanup)
           subCleanup = noop
@@ -1049,19 +1195,7 @@ export function createPolyTextCore(
           marker!.parentNode?.removeChild(marker!)
           mode = 'text'
         }
-        const next = typeof v === 'string' ? v : _childText(v)
-        if (written === null) {
-          written = text.data
-          // Dev: inside a compiled template's ADOPTION bind this is server
-          // text; report the first write if it changes it (#4419). The h()
-          // walk reports before it binds and never runs inside that window.
-          if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
-            reportFirstText(text, v, next, 'reactive')
-        }
-        if (next !== written) {
-          text.data = next
-          written = next
-        }
+        written = writePolyText(text, v, written)
 
         return
       }
@@ -1082,16 +1216,13 @@ export function createPolyTextCore(
         runUntracked(previous)
       }
       const liveParent = marker!.parentNode ?? parentAtSetup
-      // Reset _elementDepth: this mount can run at SETUP time (a signal that
-      // ALREADY holds a VNode at bind time, inside a `_tpl` bind under
-      // mountChildren's depth>0 window). The subtree is torn down INDIVIDUALLY on
-      // the next textish flip, so its cleanups must be REAL removers.
-      const prevDepth = _elementDepth
-      _elementDepth = 0
+      // `mountOwned`: this mount can run at SETUP time (a signal that ALREADY
+      // holds a VNode at bind time, inside a `_tpl` bind under mountChildren's
+      // depth>0 window), and the subtree is torn down INDIVIDUALLY on the next
+      // textish flip, so its cleanups must be REAL removers.
       const mounted = runUntracked(() =>
-        runWithContextOwner(ownerAtSetup, () => mountChild(v as VNodeChild, liveParent, marker)),
+        runWithContextOwner(ownerAtSetup, () => mountOwned(v as VNodeChild, liveParent, marker)),
       )
-      _elementDepth = prevDepth
       if (myGen !== applyGen) {
         runUntracked(mounted)
         return
@@ -1131,20 +1262,37 @@ export function bindPolymorphicText(
     const adopted = _adoptParkedText(text, child)
     if (adopted !== null) return adopted
   }
-  const core = createPolyTextCore(text, parentAtSetup, getContextOwner())
-  const dispose = renderEffect(() => core.apply(child()))
+  // The swap core is built LAZILY, on the first non-text value. Almost every
+  // text binding only ever sees text, and an eager core (an object with three
+  // closures over an 8-slot context, ~150 B) was retained by every one of them
+  // for the binding's lifetime. Until then the effect writes the text itself
+  // through the same `writePolyText` the core uses.
+  const ownerAtSetup = getContextOwner()
+  let core: PolyTextCore | null = null
+  let written: string | null = null
+  const dispose = _renderBind(() => {
+    const v = child()
+    if (core === null) {
+      if (isPolyTextish(v)) {
+        written = writePolyText(text, v, written)
+        return
+      }
+      core = createPolyTextCore(text, parentAtSetup, ownerAtSetup)
+    }
+    core.apply(v)
+  })
   // Dev: a text binding at its caller (the compiled template, for the emitted
   // `bindPolymorphicText(() => expr, text, el)`).
   if (process.env.NODE_ENV !== 'production')
     _rdLabelBinding(dispose, 'text', text, undefined, 1)
-  // Dead binding whose value was text: nothing re-runs it and the core holds
-  // no subtree, so there is nothing to tear down. A first value that mounted a
-  // subtree keeps the core's disposer (it removes that subtree).
-  if (dispose === _noopDispose && !core.mounted()) return _noopDispose
+  // Dead binding whose value was text: nothing re-runs it and no core exists,
+  // so there is nothing to tear down. A first value that mounted a subtree
+  // keeps the core's disposer (it removes that subtree).
+  if (dispose === _noopDispose && (core === null || !(core as PolyTextCore).mounted())) return _noopDispose
 
   return () => {
     dispose()
-    core.dispose()
+    if (core !== null) core.dispose()
   }
 }
 
@@ -1187,6 +1335,58 @@ export function bindPolymorphicText(
  */
 const FIRST_RUN_OK = Symbol('pyreon.firstRunOk')
 
+/**
+ * A value that says nothing yet about what an accessor child will hold: an
+ * empty array or nullish. The dispatcher's choice of machinery (keyed
+ * reconciler, general reactive mount, text) is fixed for the binding's life, so
+ * it is not made on such a value — `{() => rows().map((r) => <li key={r.id}/>)}`
+ * whose data arrives after mount used to be pinned to the general path by its
+ * first `[]`, and every later update re-created every row. The dispatcher waits
+ * (see `mountAccessorChild`) until the accessor yields something to classify.
+ * Hydration applies the same rule (`hydrate.ts`).
+ */
+export function isUndecidedChild(value: unknown): boolean {
+  return value == null || (Array.isArray(value) && value.length === 0)
+}
+
+/**
+ * Build the effect()-grade machinery a STRUCTURAL accessor value hands off to:
+ * the keyed reconciler for a keyed array, `mountReactive` otherwise.
+ * Constructed UNTRACKED (the machinery was historically built outside any
+ * tracking frame; its own effect establishes the real subscriptions) at depth
+ * 0 (reactive-boundary child cleanups must be real removers). `first` carries
+ * the value the dispatcher already computed and the reads it made, so the
+ * machinery does not evaluate the accessor again.
+ */
+function handOffStructural(
+  child: () => VNodeChild | VNodeChild[],
+  v: unknown,
+  parent: Node,
+  anchor: Node | null,
+  first: FirstRun<VNodeChild> | undefined,
+): Cleanup {
+  const prevDepth = _elementDepth
+  _elementDepth = 0
+  try {
+    return runUntracked(() =>
+      isKeyedArray(v)
+        ? mountKeyedList(
+            child as () => VNode[],
+            parent,
+            anchor,
+            mountOwned,
+            first as FirstRun<VNode[]> | undefined,
+          )
+        : // Every later run of the machinery mounts through `mountOwned` too, at
+          // depth 0 whatever is mounting around it: this depth window covers only
+          // this first run.
+          mountReactive(child as () => VNodeChild, parent, anchor, mountOwned, first),
+    )
+  } finally {
+    _elementDepth = prevDepth
+  }
+}
+
 function mountAccessorChild(
   child: () => VNodeChild | VNodeChild[],
   parent: Node,
@@ -1194,10 +1394,17 @@ function mountAccessorChild(
 ): Cleanup {
   const depthAtEntry = _elementDepth
   const ownerAtSetup = getContextOwner()
+  // Built lazily, on the first non-text value (see `bindPolymorphicText`).
   let core: PolyTextCore | null = null
   let text: Text | null = null
+  let written: string | null = null
   let handoff: Cleanup | null = null
   let firstRunError: unknown = FIRST_RUN_OK
+  // Holds the slot's position while the value is UNDECIDED (`isUndecidedChild`):
+  // nothing is mounted, the dispatcher stays subscribed, and each re-run
+  // classifies again until a value says what the slot holds. Removed once the
+  // binding is chosen. Null for the dominant slot, decided on its first run.
+  let placeholder: Comment | null = null
   // Set the moment the first run classifies the value as structural, BEFORE the
   // machinery below is built. Building it mounts the value, and that mount can
   // write a signal this dispatcher read on its first run (a ref recording
@@ -1207,10 +1414,22 @@ function mountAccessorChild(
   // the same reads and handles the change; a dispatcher re-run here built a
   // SECOND binding and mounted the content twice.
   let structural = false
-  const disposeEffect = renderEffect(() => {
+  const disposeEffect = _renderBind(() => {
     if (structural) return
-    if (core !== null) {
-      core.apply((child as () => VNodeChild)())
+    if (text !== null) {
+      // Classified textish on the first run: write text until a non-text value
+      // arrives, then hand every later value to the swap core.
+      const v = (child as () => VNodeChild)()
+      if (core === null) {
+        if (isPolyTextish(v)) {
+          written = writePolyText(text, v, written)
+          return
+        }
+        // The text's LIVE parent: a late-decided slot mounts where its placeholder stood (#4736).
+        core = createPolyTextCore(text, text.parentNode ?? parent, ownerAtSetup)
+      }
+      core.apply(v)
+
       return
     }
     // First (tracked) run — classify once. The try exists ONLY so a throwing
@@ -1225,6 +1444,11 @@ function mountAccessorChild(
     // first run otherwise — so a single call registers exactly where it did
     // when the machinery made its own call.
     const run: RunCapture = { inner: null, cleanups: null }
+    // Re-run while undecided: mount where the placeholder holds the slot, in its
+    // LIVE parent, and let errors propagate as any re-run's do.
+    const late = placeholder !== null
+    const at: Node | null = placeholder ?? anchor
+    const into: Node = placeholder?.parentNode ?? parent
     try {
       const v = _captureRun(child, run)
       // Text fast path: reactive string/number/boolean — update text.data in
@@ -1234,10 +1458,17 @@ function mountAccessorChild(
       // unconditional `text.data = String(v)` rendered "[object Object]" for
       // the VNode arm.
       if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-        text = document.createTextNode(typeof v === 'boolean' ? '' : String(v))
-        parent.insertBefore(text, anchor)
-        core = createPolyTextCore(text, parent, ownerAtSetup)
+        written = typeof v === 'boolean' ? '' : String(v)
+        text = document.createTextNode(written)
+        into.insertBefore(text, at)
         _releaseRun(run)
+        dropPlaceholder()
+
+        return
+      }
+      if (isUndecidedChild(v)) {
+        _releaseRun(run)
+        placeholder ??= parent.insertBefore(document.createComment(''), anchor)
 
         return
       }
@@ -1249,43 +1480,35 @@ function mountAccessorChild(
       // machinery will call the accessor itself, so the work stays here.
       if (reads === null) _releaseRun(run)
       // Structural shape — hand off to the effect()-grade machinery.
-      // Constructed UNTRACKED (the machinery was historically built outside
-      // any tracking frame; its own effect establishes the real
-      // subscriptions) at depth 0 (reactive-boundary child cleanups must be
-      // real removers).
-      const prevDepth = _elementDepth
-      _elementDepth = 0
-      try {
-        runUntracked(() => {
-          handoff = isKeyedArray(v)
-            ? mountKeyedList(
-                child as () => VNode[],
-                parent,
-                anchor,
-                (vn, p, a) => mountChild(vn, p, a),
-                reads === null ? undefined : { value: v as unknown as VNode[], reads, run },
-              )
-            : mountReactive(
-                child as () => VNodeChild,
-                parent,
-                anchor,
-                mountChild,
-                reads === null ? undefined : { value: v, reads, run },
-              )
-        })
-      } finally {
-        _elementDepth = prevDepth
-      }
+      handoff = handOffStructural(child, v, into, at, reads === null ? undefined : { value: v as VNodeChild, reads, run })
+      dropPlaceholder()
     } catch (err) {
       // Whatever the throwing call registered goes where it always went.
       _releaseRun(run)
+      if (late) throw err
       firstRunError = err
     }
   })
+  function dropPlaceholder(): void {
+    placeholder?.parentNode?.removeChild(placeholder)
+    placeholder = null
+  }
   if (firstRunError !== FIRST_RUN_OK) {
     if (process.env.NODE_ENV !== 'production') _rdDropBinding(disposeEffect)
     disposeEffect()
     throw firstRunError
+  }
+  if (placeholder !== null) {
+    // Undecided at mount: the dispatcher stays live and owns whatever it hands
+    // off to later. After a late hand-off its next run reads nothing
+    // (`structural`), which drops its subscriptions.
+    return () => {
+      disposeEffect()
+      ;(handoff as Cleanup | null)?.()
+      core?.dispose()
+      if (text !== null) text.parentNode?.removeChild(text)
+      dropPlaceholder()
+    }
   }
   if (handoff !== null) {
     // Drop the dispatcher's first-run subscriptions — the machinery's own
@@ -1299,8 +1522,8 @@ function mountAccessorChild(
   if (process.env.NODE_ENV !== 'production') _rdLabelBinding(disposeEffect, 'text', text, undefined, null)
   // Textish — this dispatcher IS the binding (bindPolymorphicText's shape).
   if (depthAtEntry > 0) {
-    // Dead (tracked nothing): the core is in text mode and can never leave it,
-    // and the text node leaves with its parent element.
+    // Dead (tracked nothing): no core exists and none can be built, and the
+    // text node leaves with its parent element.
     if (disposeEffect === _noopDispose) return noop
     return () => {
       disposeEffect()
@@ -1335,7 +1558,10 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
         (typeof c === 'string' || typeof c === 'number') &&
         parent.firstChild === null
       ) {
-        ;(parent as HTMLElement).textContent = String(c)
+        // A number is appended unconverted (see the primitive branch of
+        // `mountChild`); `textContent = 0` writes `''` in happy-dom.
+        if (typeof c === 'number') (parent as ParentNode).append(c as unknown as string)
+        else (parent as HTMLElement).textContent = c
         return noop
       }
 

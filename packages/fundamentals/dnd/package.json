@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/dnd",
-  "version": "0.53.0",
+  "version": "0.54.0",
   "description": "Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/dnd#readme",
@@ -76,6 +76,8 @@
     "access": "public"
   },
   "pyreon": {
+    "stability": "stable",
+    "experimentalSubpaths": ["./native-plugin"],
     "native": {
       "swift": "native/swift",
       "kotlin": "native/kotlin",

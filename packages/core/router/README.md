@@ -1,5 +1,7 @@
 # @pyreon/router
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Type-safe client-side router with nested routes, loaders, View Transitions, middleware, and SSR.
 
 `@pyreon/router` provides `createRouter`, `<RouterProvider>`, `<RouterView>`, `<RouterLink>`, and a suite of hooks (`useRoute`, `useRouter`, `useLoaderData`, `useTransition`, `useIsActive`, `useSearchParams`, `useTypedSearchParams`, `useValidatedSearch`, `useMiddlewareData`, `useBlocker`). Path params are TypeScript-inferred from path strings (`'/user/:id'` → `{ id: string }`); named routes enable typed programmatic navigation. Supports hash, history, and SSR modes; per-route data loaders with TTL cache + in-flight dedup + SWR; navigation guards + middleware; View Transitions integration; `notFound()` / `redirect()` thrown from loaders with discriminated-union helpers; validated typed search params; `lazy(loader)` for code-split route components.
@@ -63,9 +65,46 @@ mount(<App />, document.getElementById('app')!)
 createRouter({ routes, mode: 'hash' })    // default; for static hosting; pushState w/ #
 createRouter({ routes, mode: 'history' }) // uses pushState (set `base` for sub-path deploys)
 createRouter({ routes, url: '/some/path' }) // SSR — pin to a URL for one render
+createRouter({ routes, mode: 'memory' })  // location inside the router; the page URL is never touched
 ```
 
 Hash mode uses `history.pushState` under the hood (not `window.location.hash`) to avoid the double-update jank.
+
+### Memory mode
+
+`mode: 'memory'` keeps the location in an entry stack inside the router, for a
+router embedded in a page that already has one (a live demo, a widget), for
+tests, and for hosts with no `window`:
+
+```ts
+const demo = createRouter({
+  routes,
+  mode: 'memory',
+  initialEntries: ['/', '/users/1'], // default [url ?? '/']
+  initialIndex: 1,                   // default: the last entry
+})
+await demo.push('/users/2') // 'committed' — the page URL and history.length do not change
+demo.back()                 // guards, blockers, loaders and afterEach run, as on a real Back
+```
+
+- `push` / `replace` / `back` / `forward` / `go` run the full navigation
+  pipeline against the stack. A traversal that a guard or blocker cancels
+  leaves the position where it was; a step past either end, or `go(0)`, does
+  nothing.
+- Nothing is read from or written to `window.history` / `location`, no window
+  listener is attached, and the router never takes over the page router's
+  cancelled-Back restores — two routers (one memory, one browser) share a page
+  without disturbing each other. It also works with no `window` at all.
+- `<RouterLink>` renders the plain route path as its `href` (`/users/2`), so
+  the link stays an accessible anchor; a click navigates the memory router.
+  There is no real URL, so "open in new tab" opens that path on the host
+  origin.
+- Left to the page: `document.title` (`meta.title` is not written), View
+  Transitions (not used), and scroll (only with an explicit `scrollBehavior`).
+  An external `redirect('https://…')` resolves `'cancelled'` with a dev
+  warning instead of navigating the page.
+- Native (iOS/Android) routers are in-memory stacks already; `initialEntries`
+  / `initialIndex` are ignored there with a compiler warning.
 
 ### Navigation results + browser Back/Forward
 
@@ -157,7 +196,14 @@ const data = useLoaderData<{ name: string }>()
 
 - **`serverLoader`** on a `RouteRecord` is a server-only data loader — present as a real function ONLY in the SSR module graph (zero's `.server.ts` sibling convention); it never ships to the client. A record must not have both `loader` and `serverLoader`.
 - **`hasServerLoader`** is the serializable marker client builds carry instead — it triggers ONE fetch to the data endpoint for the whole matched chain on client navigations (single-fetch).
-- **`router.runServerLoaders(path, request?)`** runs only the matched chain's serverLoaders, keyed by matched-chain index; returns `{ kind: 'data', data }` or `{ kind: 'redirect', to, status }`. Server-side use — it's what the data endpoint's worker calls.
+- **`runServerLoaders(router, path, request?)`** runs only the matched chain's serverLoaders, keyed by matched-chain index; returns `{ kind: 'data', data }`, `{ kind: 'redirect', to, status }` or `{ kind: 'notFound' }`. Server-side use — it's what the data endpoint's worker calls.
+
+### Preloading for SSR
+
+- **`preloadRoute(router, path, request?)`** prepares a server render: the initial route's guards, the matched lazy components, then the matched loaders. Every SSR/SSG host calls it before rendering.
+- **`router.preloadComponents(path)`** loads the matched lazy components only (never loaders) and resolves `false` when the initial guards refuse the route. Zero's hydrating client calls it before `hydrateRoot`, and `<Link>` calls it to warm a chunk.
+
+`preloadRoute` and `runServerLoaders` are free functions rather than router methods so client bundles, which never call them, do not carry them.
 - **`dataEndpoint`** (createRouter option, default `` `${base}/_pyreon/data` ``) is the URL the client router fetches server-loader data from; zero's `createServer` auto-mounts it.
 
 ### Compiling loaders out
@@ -222,6 +268,25 @@ loader: async ({ request }) => {
   redirect(safeRedirectLocation(next))
 }
 ```
+
+## Tab stacks
+
+A tab-bar app gives every tab its own back stack with `routerTabs()` and binds `<Tabs router>` from `@pyreon/primitives`, with a `<RouterView />` in each `<Tab>`:
+
+```ts
+import { createRouter, routerTabs } from '@pyreon/router'
+
+const router = createRouter({
+  routes,
+  tabs: routerTabs([
+    { name: 'feed', root: '/feed' },
+    { name: 'me', root: '/me' },
+  ]),
+})
+router.selectTab('me') // keeps every stack; re-selecting the active tab pops it to its root
+```
+
+`push` acts on the active tab; a path under another tab's root selects that tab. On the web every history entry records its tab and stack, so Back/Forward restore both. `tabs` takes the `routerTabs()` value rather than a plain array so the tab engine is bundled only by apps that use tabs (a plain array throws).
 
 ## Pending components
 

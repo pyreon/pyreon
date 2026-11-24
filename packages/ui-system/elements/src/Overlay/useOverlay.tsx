@@ -9,7 +9,7 @@
  * nested overlay blocking is coordinated through the overlay context.
  */
 
-import { onMount } from '@pyreon/core'
+import { lockScroll, onMount } from '@pyreon/core'
 import { batch, isServer, signal } from '@pyreon/reactivity'
 import { throttle } from '@pyreon/ui-core'
 import { value } from '@pyreon/unistyle'
@@ -45,9 +45,6 @@ export type UseOverlayProps = Partial<{
   onOpen: () => void
   onClose: () => void
 }>
-
-// Reference counter for nested modals sharing document.body overflow lock.
-let modalOverflowCount = 0
 
 // Tabbable selector for the modal focus trap (mirrors @pyreon/hooks
 // useFocusTrap). Used to find the first/last focusable descendant so Tab /
@@ -205,7 +202,8 @@ const processVisibilityEvent = (
  * - **Mount-time (listener-ATTACHMENT decisions in `setupListeners`)**:
  *   which listener kinds attach — the window click listener (click-driven
  *   `openOn`/`closeOn`), the ESC listener (`closeOnEsc`), the modal focus
- *   trap + body-overflow lock (`type === 'modal'`), the hover listeners
+ *   trap + page scroll lock (`type === 'modal'`; the lock itself is held
+ *   only while open), the hover listeners
  *   (`openOn`/`closeOn === 'hover'`), `parentContainer` scroll, and
  *   `throttleDelay` (baked into the throttle wrappers at hook init). The
  *   DISPATCH logic inside attached handlers still reads live.
@@ -265,6 +263,25 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
   const setBlocked = () => blockedCount.update((c) => c + 1)
   const setUnblocked = () => blockedCount.update((c) => Math.max(0, c - 1))
 
+  // This instance's block on its PARENT overlay (nested overlays). A child
+  // holds at most ONE block, taken when it opens and released exactly once:
+  // on hide, or on detach (the `setupListeners` cleanup, which runs on
+  // unmount) if it is removed while open (route change, conditional render). Before, `showContent` blocked and only
+  // `hideContent` unblocked, so a child unmounted while open left the parent
+  // blocked forever (it never closed on outside click or Escape again), and
+  // a child shown twice without a hide double-counted its block.
+  let holdsParentBlock = false
+  const blockParent = () => {
+    if (holdsParentBlock) return
+    holdsParentBlock = true
+    ctx.setBlocked?.()
+  }
+  const releaseParent = () => {
+    if (!holdsParentBlock) return
+    holdsParentBlock = false
+    ctx.setUnblocked?.()
+  }
+
   const showContent = () => {
     // Targeted misuse signal: opening with listeners never attached means
     // positioning, click-outside, ESC, and hover-close are all dead — the
@@ -306,7 +323,7 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
       /* v8 ignore stop */
     }
     props.onOpen?.()
-    ctx.setBlocked?.()
+    blockParent()
   }
 
   const hideContent = () => {
@@ -333,7 +350,7 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
     })
     if (shouldRestore && prev && typeof prev.focus === 'function') prev.focus()
     props.onClose?.()
-    ctx.setUnblocked?.()
+    releaseParent()
   }
 
   // Position calculation helpers
@@ -647,19 +664,49 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
       })
     }
 
-    // Resize/scroll repositioning
-    // Captured ONCE at attach time so the cleanup decrement stays symmetric
-    // with the increment even if a (getter-shaped) `type` changes mid-life.
-    const shouldSetOverflow = readType() === 'modal'
+    // Scroll locks: held only while the overlay is OPEN — the page for a
+    // modal, `parentContainer` for any non-hover overlay — and released on
+    // close and on detach. They go through `lockScroll` from `@pyreon/core`,
+    // the one counter `@pyreon/hooks` `useScrollLock` also uses, so releasing
+    // never clobbers another owner's lock and restores the value saved by the
+    // first hold. (The lock used to be taken at MOUNT and released by writing
+    // `''`: a closed modal blocked page scrolling for as long as its trigger
+    // was on the page.) Which locks apply is decided once at attach time, so
+    // a getter-shaped `type` changing mid-life cannot unbalance a hold.
+    const locksPage = readType() === 'modal'
+    const locksParent = !!parentContainer && readCloseOn() !== 'hover'
+    let releaseLocks: (() => void) | null = null
+    const syncScrollLocks = () => {
+      if (active()) {
+        if (releaseLocks) return
+        const releasePage = locksPage ? lockScroll() : null
+        const releaseContainer = locksParent ? lockScroll(parentContainer) : null
+        releaseLocks = () => {
+          releasePage?.()
+          releaseContainer?.()
+        }
+      } else if (releaseLocks) {
+        releaseLocks()
+        releaseLocks = null
+      }
+    }
+    // Removed while open: give back the block this instance holds on its
+    // parent overlay (see `releaseParent`).
+    cleanups.push(releaseParent)
 
+    if (locksPage || locksParent) {
+      syncScrollLocks()
+      cleanups.push(active.subscribe(syncScrollLocks))
+      cleanups.push(() => {
+        releaseLocks?.()
+        releaseLocks = null
+      })
+    }
+
+    // Resize/scroll repositioning
     const onScroll = (e: Event) => {
       handleContentPosition()
       handleVisibility(e)
-    }
-
-    if (shouldSetOverflow) {
-      modalOverflowCount++
-      if (modalOverflowCount === 1) document.body.style.overflow = 'hidden'
     }
 
     window.addEventListener('resize', handleContentPosition)
@@ -667,18 +714,12 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
     cleanups.push(() => {
       handleContentPosition.cancel()
       handleVisibility.cancel()
-      if (shouldSetOverflow) {
-        modalOverflowCount--
-        if (modalOverflowCount === 0) document.body.style.overflow = ''
-      }
       window.removeEventListener('resize', handleContentPosition)
       window.removeEventListener('scroll', onScroll)
     })
 
     // Parent container scroll
     if (parentContainer) {
-      if (readCloseOn() !== 'hover') parentContainer.style.overflow = 'hidden'
-
       const onParentScroll = (e: Event) => {
         handleContentPosition()
         handleVisibility(e)
@@ -688,7 +729,6 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
         passive: true,
       })
       cleanups.push(() => {
-        parentContainer.style.overflow = ''
         parentContainer.removeEventListener('scroll', onParentScroll)
       })
     }
@@ -722,6 +762,11 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
   if (readDisabled()) {
     active.set(false)
   }
+
+  // An overlay that STARTS open holds its parent's block like one opened by
+  // `showContent`, so its first hide releases a block it actually took
+  // (before, that hide released a block it never took — another child's).
+  if (active() && !isServer) blockParent()
 
   return {
     triggerRef,

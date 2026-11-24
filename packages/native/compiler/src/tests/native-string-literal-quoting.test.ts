@@ -100,7 +100,7 @@ describe('identifiers that are not identifiers', () => {
     const c = code('swift')
     expect(c).toContain('var myKey: Int')
     expect(c).toContain('case myKey = "my-key"')
-    expect(c).toContain('AppO(myKey: 1, `class`: 4, plain: "x")')
+    expect(c).toContain('AppO(myKey: 1, class: 4, plain: "x")')
   })
   it('Kotlin struct fields and named arguments are backticked on BOTH declaration paths', () => {
     const c = code('kotlin')

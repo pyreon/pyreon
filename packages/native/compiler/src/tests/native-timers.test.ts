@@ -13,6 +13,10 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const emit = (src: string, target: 'swift' | 'kotlin') => transform(src, { target })
 
@@ -278,7 +282,7 @@ describe('PyreonTimers keeps the web contract', () => {
     expect(execFileSync(join(dir, 'run'), { encoding: 'utf8' }).trim()).toBe(EXPECTED)
   }, 180_000)
 
-  it.runIf(isKotlincAvailable())('Kotlin runtime', () => {
+  it.runIf(isKotlincAvailable() && resolveJava() !== null)('Kotlin runtime', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-timers-'))
     writeFileSync(join(dir, 'PyreonTimers.kt'), runtime('kotlin'))
     writeFileSync(join(dir, 'Android.kt'), ANDROID_STANDINS)
@@ -288,6 +292,6 @@ describe('PyreonTimers keeps the web contract', () => {
       [join(dir, 'PyreonTimers.kt'), join(dir, 'Android.kt'), join(dir, 'main.kt'), '-include-runtime', '-d', join(dir, 'p.jar')],
       { stdio: 'pipe' },
     )
-    expect(execFileSync('java', ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim()).toBe(EXPECTED)
+    expect(execFileSync(JAVA, ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim()).toBe(EXPECTED)
   }, 240_000)
 })

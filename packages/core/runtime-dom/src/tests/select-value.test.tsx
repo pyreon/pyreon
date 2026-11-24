@@ -38,19 +38,35 @@ import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, _setStyle, _setStyleOnce, _mountSlot, _textSlot, hydrateRoot, mountChild, _bindProp} from '../index'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
+import {
+  _applyProps,
+  _bindProp,
+  _mountSlot,
+  _setAttr,
+  _setChild,
+  _setChildAt,
+  _setPropStatic,
+  _setStyle,
+  _setStyleOnce,
+  _textSlot,
+  bindPolymorphicText,
+  hydrateRoot,
+  mountChild,
+} from '../index'
 
 // ─── Compiled-template harness ───────────────────────────────────────────────
 // Same shape as compiler-integration.test.tsx, plus an esbuild classic-JSX
-// pass for RESIDUAL JSX the Pyreon compiler leaves to the automatic runtime
-// (e.g. `<option>` inside a `.map` callback routed through `_mountSlot`).
+// pass for RESIDUAL JSX the Pyreon compiler leaves to the automatic runtime.
+// An `<option>` inside a `.map` callback routed through `_mountSlot` is a
+// walked hole, so it compiles to a template of its own (the binders below).
 
 function stripImports(code: string): string {
   return code.replace(/^import\s+.*$/gm, '').trim()
 }
 
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   _bindText,
   _bindProp,
@@ -60,6 +76,11 @@ const RUNTIME_DEPS = {
   _setStyleOnce,
   _mountSlot,
   _textSlot,
+  _setAttr,
+  _setChild,
+  _setChildAt,
+  _setPropStatic,
+  bindPolymorphicText,
   _rp,
   _rpd,
   _cx: cx,

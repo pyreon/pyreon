@@ -2,7 +2,7 @@
 
 import { groupThousands, plain } from './format'
 import type { Formatter } from './format'
-import type { Domain, Tick, Double } from './types'
+import type { Domain, Tick, Double, Rect } from './types'
 
 /**
  * Map a domain value onto a pixel range.
@@ -17,6 +17,21 @@ export function scaleLinear(d: Domain, r0: Double, r1: Double, v: Double): Doubl
   if (span === 0.0) return (r0 + r1) / 2.0
   if (d.inverse === true) return r1 + ((v - d.min) / span) * (r0 - r1)
   return r0 + ((v - d.min) / span) * (r1 - r0)
+}
+
+/**
+ * The pixel row of `v` on a plot's value-up axis: the domain's low end at the
+ * plot's bottom, its high end at the top. EVERY y position the engine draws or
+ * hits goes through here (and `xPx` for the horizontal one), so how an axis maps
+ * a value to a pixel is decided in one place.
+ */
+export function yPx(d: Domain, plot: Rect, v: Double): Double {
+  return scaleLinear(d, plot.y + plot.h, plot.y, v)
+}
+
+/** The pixel column of `v` on a plot's left-to-right axis: the domain's low end at the left. */
+export function xPx(d: Domain, plot: Rect, v: Double): Double {
+  return scaleLinear(d, plot.x, plot.x + plot.w, v)
 }
 
 /**
@@ -170,4 +185,16 @@ export function stepPrecision(step: Double): Double {
 export function roundTo(v: Double, digits: Double): Double {
   const k = Math.pow(10.0, digits)
   return Math.floor(v * k + 0.5) / k
+}
+
+/**
+ * The thickness of one of `k` bars sharing a band `slot`: they abut when `gap`
+ * (the space between bars, a fraction of a bar) is 0, and `barWidth` (px, when
+ * positive) is a ceiling on the result. Unset, a bar fills its share of the slot.
+ */
+export function barThickness(slot: Double, k: Double, gap: Double, barWidth?: Double): Double {
+  const natural = slot / (k + (k - 1.0) * gap)
+  const w = barWidth ?? 0.0
+
+  return w > 0.0 && w < natural ? w : natural
 }

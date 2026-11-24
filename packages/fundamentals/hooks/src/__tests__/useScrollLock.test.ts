@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@pyreon/core', () => ({
+vi.mock('@pyreon/core', async () => ({
+  ...(await vi.importActual<typeof import('@pyreon/core')>('@pyreon/core')),
   onMount: (_fn: () => unknown) => {
     /* no-op */
   },
@@ -21,7 +22,8 @@ describe('useScrollLock', () => {
 
   async function getUseScrollLock() {
     // Re-mock after resetModules
-    vi.doMock('@pyreon/core', () => ({
+    vi.doMock('@pyreon/core', async () => ({
+      ...(await vi.importActual<typeof import('@pyreon/core')>('@pyreon/core')),
       onMount: (_fn: () => unknown) => {
         /* no-op */
       },
@@ -111,6 +113,20 @@ describe('useScrollLock', () => {
 
     lock2.unlock()
     expect(document.body.style.overflow).toBe('scroll')
+  })
+
+  it('shares ONE counter with lockScroll from @pyreon/core (the Overlay modal lock)', async () => {
+    const useScrollLock = await getUseScrollLock()
+    const { lockScroll } = await import('@pyreon/core')
+    document.body.style.overflow = 'auto'
+    const hooksLock = useScrollLock()
+    hooksLock.lock()
+    const release = lockScroll()
+    // Releasing the hook's hold must not unlock the page while another holds it.
+    hooksLock.unlock()
+    expect(document.body.style.overflow).toBe('hidden')
+    release()
+    expect(document.body.style.overflow).toBe('auto')
   })
 
   it('unlock without prior lock is no-op', async () => {

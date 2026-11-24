@@ -1,0 +1,66 @@
+type Double = number
+const XS: Double[] = [1.0, 2.0]
+function elseIf(xs: Double[], i: number): string {
+  const v = xs[i]
+  if (v === undefined) {
+    return 'none'
+  } else if (v > 1.5) {
+    return 'big' + String(v)
+  } else {
+    return 'small' + String(v)
+  }
+}
+function nestedTern(xs: Double[], i: number): string {
+  const v = xs[i]
+  return String(v === undefined ? 0.0 : v > 1.5 ? v * 10.0 : v)
+}
+function two(xs: Double[], i: number, j: number): string {
+  const a = xs[i]
+  const b = xs[j]
+  if (a === undefined || b === undefined) return 'none'
+  return String(a + b)
+}
+function whileBreak(xs: Double[], i: number): string {
+  const v = xs[i]
+  let n = 0
+  while (n < 3) {
+    n = n + 1
+    if (v === undefined) break
+    if (v > 0.0) n = n + 1
+  }
+  return String(n)
+}
+function presentBody(xs: Double[], i: number): string {
+  const v = xs[i]
+  let out = 'p'
+  if (v !== undefined) {
+    out = out + String(v * 3.0)
+  }
+  return out
+}
+function guardThenSwitch(xs: Double[], i: number, k: number): string {
+  const v = xs[i]
+  if (v === undefined) return 'none'
+  switch (k) {
+    case 0:
+      return String(v)
+    default:
+      return String(v + 1.0)
+  }
+}
+function interp(xs: string[], i: number): string {
+  const v = xs[i]
+  if (v === undefined) return 'none'
+  return `v=${v}!`
+}
+export function c_elseif_out(): string { return elseIf(XS, 5) }
+export function c_elseif_big(): string { return elseIf(XS, 1) }
+export function c_elseif_small(): string { return elseIf(XS, 0) }
+export function c_nested_tern(): string { return nestedTern(XS, 1) + nestedTern(XS, 9) }
+export function c_two_out(): string { return two(XS, 0, 9) }
+export function c_two_in(): string { return two(XS, 0, 1) }
+export function c_while_out(): string { return whileBreak(XS, 9) }
+export function c_while_in(): string { return whileBreak(XS, 1) }
+export function c_present_out(): string { return presentBody(XS, 9) + presentBody(XS, 0) }
+export function c_switch_g(): string { return guardThenSwitch(XS, 0, 1) + guardThenSwitch(XS, 9, 0) }
+export function c_interp(): string { return interp(['a'], 0) + interp(['a'], 4) }

@@ -1,6 +1,6 @@
 import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { buildServiceWorker, buildWebManifest } from '../pwa'
+import { buildServiceWorker, buildWebManifest, writeServiceWorker } from '../pwa'
 
 type Listener = (e: unknown) => void
 
@@ -9,17 +9,28 @@ function bootWorker(opts: {
   skipWaiting?: boolean
   online: () => boolean
   responseHeaders?: HeadersInit
+  shell?: string
+  offlineFallback?: string
 }) {
   const stores = new Map<string, Map<string, string>>()
+  const varyOrigin = true // the server sends `Vary: Origin`
   const open = async (name: string) => {
     if (!stores.has(name)) stores.set(name, new Map())
     const m = stores.get(name)!
     const key = (r: string | { url: string }) =>
       new URL(typeof r === 'string' ? r : r.url, 'https://a.test').pathname +
       new URL(typeof r === 'string' ? r : r.url, 'https://a.test').search
+
     return {
-      match: async (r: string | { url: string }) =>
-        m.has(key(r)) ? { body: m.get(key(r))!, ok: true } : undefined,
+      // Models the real Cache API: a stored response with `Vary: Origin` does
+      // not match a request carrying an `Origin` header unless ignoreVary is set.
+      match: async (r: string | { url: string; headers?: Headers }, o?: { ignoreVary?: boolean }) => {
+        if (!m.has(key(r))) return undefined
+        const hasOrigin = typeof r !== 'string' && r.headers?.has('origin')
+        if (hasOrigin && varyOrigin && !o?.ignoreVary) return undefined
+
+        return { body: m.get(key(r))!, ok: true }
+      },
       addAll: async (urls: string[]) => urls.forEach((u) => m.set(u, `pre:${u}`)),
       put: async (r: { url: string }, res: { body: string }) => void m.set(key(r), res.body),
     }
@@ -60,6 +71,8 @@ function bootWorker(opts: {
     assetsDir: 'assets',
     cacheName: 'p',
     skipWaiting: opts.skipWaiting ?? false,
+    shell: opts.shell,
+    offlineFallback: opts.offlineFallback,
   })
   runInNewContext(src, {
     self,
@@ -84,8 +97,10 @@ function bootWorker(opts: {
     listeners.get(type)!(ev)
     const response = await pending
     await Promise.all(lifetime)
+
     return response
   }
+
   return { dispatch, calls, stores }
 }
 
@@ -152,6 +167,42 @@ describe('generated service worker', () => {
     online = false
     expect(await w.dispatch('fetch', req('/search?q=one', 'navigate'))).toMatchObject({ body: 'net:/search' })
     await expect(w.dispatch('fetch', req('/search?q=two', 'navigate'))).rejects.toThrow('offline')
+  })
+
+  it('SPA shell: an unvisited route offline gets the precached app shell', async () => {
+    const w = bootWorker({ online: () => false, shell: 'index.html' })
+    await w.dispatch('install', {})
+    expect(await w.dispatch('fetch', req('/deep/unvisited/route', 'navigate'))).toMatchObject({
+      body: 'pre:/index.html',
+    })
+  })
+
+  it('SSG offlineFallback: an unprerendered route offline gets the configured page', async () => {
+    const w = bootWorker({ online: () => false, offlineFallback: '/posts/a/' })
+    await w.dispatch('install', {})
+    expect(await w.dispatch('fetch', req('/never/prerendered', 'navigate'))).toMatchObject({
+      body: 'pre:/posts/a/index.html',
+    })
+  })
+
+  it('without shell or offlineFallback an unknown route offline is a network error', async () => {
+    const w = bootWorker({ online: () => false })
+    await w.dispatch('install', {})
+    await expect(w.dispatch('fetch', req('/never/prerendered', 'navigate'))).rejects.toThrow('offline')
+  })
+
+  it('a precached asset matches a module-script request carrying Origin (Vary: Origin servers)', async () => {
+    const w = bootWorker({ online: () => false })
+    await w.dispatch('install', {})
+    const moduleRequest = {
+      request: {
+        url: 'https://a.test/assets/app.abc.js',
+        method: 'GET',
+        mode: 'cors',
+        headers: new Headers({ origin: 'https://a.test' }),
+      },
+    }
+    expect(await w.dispatch('fetch', moduleRequest)).toMatchObject({ body: 'pre:/assets/app.abc.js' })
   })
 
   it('hashed assets are cache-first (no network hit when precached)', async () => {
@@ -234,7 +285,8 @@ describe('registerServiceWorker', () => {
     // Idempotent: a second call reuses the registration, attaching nothing new.
     expect(await registerServiceWorker({ onUpdate: () => {} })).toBe(reg)
     expect(register).toHaveBeenCalledTimes(1)
-    expect(reg.addEventListener).not.toHaveBeenCalled()
+    // The update listener is attached ONCE (by the first call), never again.
+    expect(reg.addEventListener).toHaveBeenCalledTimes(1)
   })
 
   it('registers under the configured base, adding the trailing slash', async () => {
@@ -314,5 +366,143 @@ describe('registerServiceWorker', () => {
     reg.installing = null
     listeners.updatefound!()
     expect(offers).toHaveLength(2)
+  })
+})
+
+describe('useServiceWorkerUpdate', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+  it('flips updateReady when a worker is waiting (no onUpdate needed) and apply() activates it', async () => {
+    const container = { register: vi.fn(), controller: {}, addEventListener: vi.fn() }
+    const waiting = { postMessage: vi.fn() }
+    container.register.mockResolvedValue({ waiting, installing: null, addEventListener: vi.fn() })
+    vi.stubGlobal('navigator', { serviceWorker: container })
+    vi.stubEnv('NODE_ENV', 'production')
+    const { registerServiceWorker, useServiceWorkerUpdate } = await loadClient()
+    const update = useServiceWorkerUpdate()
+    expect(update.updateReady()).toBe(false)
+    update.apply() // no-op, nothing waiting
+    expect(waiting.postMessage).not.toHaveBeenCalled()
+    await registerServiceWorker()
+    expect(update.updateReady()).toBe(true)
+    update.apply()
+    expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' })
+  })
+})
+
+describe('unregisterServiceWorkers', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  it('unregisters every worker and deletes only this app\'s caches', async () => {
+    const unregister = vi.fn(async () => true)
+    const del = vi.fn(async () => true)
+    vi.stubGlobal('navigator', {
+      serviceWorker: { getRegistrations: async () => [{ unregister }, { unregister }] },
+    })
+    vi.stubGlobal('caches', { keys: async () => ['pyreon-precache-x', 'other-cache'], delete: del })
+    const { unregisterServiceWorkers } = await loadClient()
+    expect(await unregisterServiceWorkers()).toBe(2)
+    expect(unregister).toHaveBeenCalledTimes(2)
+    expect(del).toHaveBeenCalledTimes(1)
+    expect(del).toHaveBeenCalledWith('pyreon-precache-x')
+  })
+  it('resolves 0 without service-worker support', async () => {
+    vi.stubGlobal('navigator', {})
+    const { unregisterServiceWorkers } = await loadClient()
+    expect(await unregisterServiceWorkers()).toBe(0)
+  })
+})
+
+describe('useInstallPrompt', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  function setup(standalone = false) {
+    const win = new EventTarget()
+    vi.stubGlobal('window', win)
+    vi.stubGlobal('navigator', {})
+    vi.stubGlobal('matchMedia', () => ({
+      matches: standalone,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+
+    return win
+  }
+  function offer(win: EventTarget, outcome: 'accepted' | 'dismissed') {
+    const e = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
+      prompt: vi.fn(async () => undefined),
+      userChoice: Promise.resolve({ outcome }),
+    })
+    win.dispatchEvent(e)
+    return e
+  }
+
+  it('captures beforeinstallprompt once, suppresses the infobar, and prompts on demand', async () => {
+    const win = setup()
+    const { useInstallPrompt } = await loadClient()
+    const install = useInstallPrompt()
+    expect(install.canInstall()).toBe(false)
+    expect(await install.prompt()).toBe('unavailable')
+    const e = offer(win, 'accepted')
+    expect(e.defaultPrevented).toBe(true)
+    expect(install.canInstall()).toBe(true)
+    expect(await install.prompt()).toBe('accepted')
+    expect(e.prompt).toHaveBeenCalledTimes(1)
+    // Single-use: the event is spent.
+    expect(install.canInstall()).toBe(false)
+    expect(await install.prompt()).toBe('unavailable')
+  })
+
+  it('reports dismissed, and appinstalled marks the app installed', async () => {
+    const win = setup()
+    const { useInstallPrompt } = await loadClient()
+    const install = useInstallPrompt()
+    offer(win, 'dismissed')
+    expect(await install.prompt()).toBe('dismissed')
+    expect(install.isInstalled()).toBe(false)
+    offer(win, 'dismissed')
+    win.dispatchEvent(new Event('appinstalled'))
+    expect(install.isInstalled()).toBe(true)
+    expect(install.canInstall()).toBe(false)
+  })
+
+  it('isInstalled reads the standalone display mode', async () => {
+    setup(true)
+    const { useInstallPrompt } = await loadClient()
+    expect(useInstallPrompt().isInstalled()).toBe(true)
+  })
+
+  it('shares ONE listener set across callers (no per-call listener leak)', async () => {
+    const win = setup()
+    const add = vi.spyOn(win, 'addEventListener')
+    const { useInstallPrompt } = await loadClient()
+    useInstallPrompt()
+    useInstallPrompt()
+    useInstallPrompt()
+    expect(add.mock.calls.filter(([t]) => t === 'beforeinstallprompt')).toHaveLength(1)
+  })
+
+  it('is inert on the server (no window access, nothing available)', async () => {
+    vi.stubGlobal('window', undefined)
+    vi.stubGlobal('navigator', {})
+    vi.resetModules()
+    vi.stubGlobal('document', undefined)
+    const { useInstallPrompt } = await import('../pwa-client')
+    const install = useInstallPrompt()
+    expect(install.canInstall()).toBe(false)
+    expect(install.isInstalled()).toBe(false)
+    expect(await install.prompt()).toBe('unavailable')
+  })
+})
+
+describe('pwa.offlineFallback', () => {
+  it('is rejected outside mode ssg with a [Pyreon] message', async () => {
+    await expect(
+      writeServiceWorker('/nonexistent', { manifest: { name: 'x' }, offlineFallback: '/offline' }, {
+        base: '/',
+        assetsDir: 'assets',
+        includeHtml: false,
+      }),
+    ).rejects.toThrow(/\[Pyreon\].*offlineFallback.*mode: "ssg"/)
   })
 })

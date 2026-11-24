@@ -1,4 +1,4 @@
-// Per-tab back stacks — `createRouter({ tabs })` + `<Tabs router>` (#4060).
+// Per-tab back stacks — `createRouter({ tabs: routerTabs([...]) })` + `<Tabs router>` (#4060).
 //
 // iOS: the RouterProvider adds no stack; `<Tabs router>` lowers to
 // `PyreonRouterTabs` (selection = the router's active tab, a write goes
@@ -61,5 +61,15 @@ describe('router tabs — Kotlin emit', () => {
   it.skipIf(!isKotlincAvailable())('compiles on kotlinc', () => {
     const res = validateKotlin(out.code)
     expect(res.ok, res.error).toBe(true)
+  })
+})
+
+describe('router tabs — the routerTabs() shape', () => {
+  it('refuses a bare tabs array (the web router throws on it) and names the fix', () => {
+    const bare = SRC.replace(/\n(\s+)tabs: routerTabs\((\[[\s\S]*?\])\),/, '\n$1tabs: $2,')
+    expect(bare).not.toBe(SRC)
+    const out = transform(bare, { target: 'swift' })
+    expect(out.code).not.toContain('PyreonRouter(tabs:')
+    expect(out.warnings.some((w) => w.includes('routerTabs([...])') && w.includes('bare array'))).toBe(true)
   })
 })

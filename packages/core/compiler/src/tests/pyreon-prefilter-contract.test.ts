@@ -18,6 +18,7 @@ const FIXTURES: Record<PyreonDiagnosticCode, string> = {
   'props-destructured-body': `export function A(props) { const { name } = props; return <div>{name}</div> }`,
   'process-dev-gate': `if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') warn()`,
   'empty-theme': `export const B = Button.theme({})`,
+  'css-prop-on-component': `export const A = () => <Card css={css\`color: red;\`} />`,
   'raw-add-event-listener': `export function A() { window.addEventListener('resize', onResize); return <div /> }`,
   'raw-remove-event-listener': `export function A() { window.removeEventListener('resize', onResize); return <div /> }`,
   'date-math-random-id': `export const id = \`\${Date.now()}-\${Math.random()}\``,

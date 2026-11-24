@@ -1,5 +1,7 @@
 # @pyreon/rocketstyle
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Multi-dimensional component styling — states, sizes, variants, themes, light/dark, all cached.
 
 `@pyreon/rocketstyle` is the styling layer Pyreon's UI system builds on. Organize styles by named DIMENSIONS — `state` (`primary` / `danger` / `success`), `size` (`sm` / `md` / `lg`), `variant`, plus any custom dimension you declare — instead of flat boolean props. Each dimension is a chainable method (`.states({...})`, `.sizes({...})`); per-dimension values are themed via `.theme()` callbacks that receive `(theme, mode, css)`, with light/dark mode threaded through and pseudo-states (`hover` / `focus` / `pressed` / `active` / `disabled`) auto-detected. Built on `@pyreon/attrs` + `@pyreon/styler`. Per-definition WeakMap caches make per-mount cost near zero for same-definition components — verified 73% reduction in `styler.resolve` calls on real-app benchmarks.
@@ -303,6 +305,8 @@ For a 150-component page with 8 dimensions each: ~1,350 Set allocations, ~300 ar
 - **`useBooleans: false` is the default** (since April 2026 alignment fix). String props are the idiomatic surface.
 - **Cache keys are downstream of normalization.** Under `useBooleans: true`, the memo correctly keys by the resolved dimension (not the raw boolean prop) — otherwise every boolean variant would collide on the first cached entry.
 - **Dimension props don't accept function accessors directly.** `state={() => signal()}` is wrong — write `state={signal()}` and let the compiler emit reactive `_rp()` wrapping. Caught by the Reactivity Lens.
+- **A one-off look is a `.multiple()` modifier, not a style prop.** `const Grid = BaseGrid.multiple({ threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } } })`, then `<Grid multiple="threeUp" />` or `multiple={['threeUp', compact() && 'dense']}` (falsy entries are skipped). A slice takes every `.theme()` value form (responsive arrays and breakpoint objects, `mode()` pairs, pseudo groups), is type-checked against `StylesDefault`, and beats the theme and state / size / variant; a responsive slice wins from its first breakpoint up and keeps the theme value below it. A caller-chosen value is a `.params()` param (below); a product-wide look is a variant.
+- **A caller-chosen value is a `.params()` param.** ``Grid.params({ columns: (n: number) => ({ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }) })`` adds a `columns` prop typed from the mapper and widened to the responsive forms: `columns={3}`, `columns={{ xs: 1, md: 3 }}`, `columns={[1, null, 3]}`, `columns={cols()}`. The framework splits a responsive value (the mapper sees one value, plus the theme and `mode`), resolves it into the theme after state / size / variant and before `multiple`, memoizes by value, and never forwards the prop.
 - **`provider: true` + `consumer:` on the same component** is a legal but rare shape. Most apps separate the two for clarity.
 
 ## Documentation

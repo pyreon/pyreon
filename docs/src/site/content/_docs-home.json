@@ -16,7 +16,7 @@
  "hero": {
   "eyebrow": "Pyreon docs",
   "title": "Build the website. Get the apps.",
-  "lede": "Pyreon is a full-stack TypeScript framework with 40 products in the box. Pick where you are starting, and the docs take it from there."
+  "lede": "Pyreon is a full-stack TypeScript framework with {{@productCount}} products in the box. Pick where you are starting, and the docs take it from there."
  },
  "startHere": [
   {
@@ -166,7 +166,7 @@
    }
   ],
   "link": {
-   "label": "All 40 products",
+   "label": "All {{@productCount}} products",
    "href": "/products"
   }
  },

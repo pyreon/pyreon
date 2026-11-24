@@ -128,8 +128,7 @@ export function layoutTree(roots: readonly TreeNode[], box: Rect, options?: Tree
   while (sp > 0) {
     sp = sp - 1
     const frame = stack[sp]!
-    let depthF = 0.0
-    for (let d = 0; d < frame.depth; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(frame.depth)
     if (depthF + 1.0 > levelsF) levelsF = depthF + 1.0
     const kids: TreeNode[] = []
     if (depthF + 1.0 < maxDepth) for (const k of frame.node.children ?? []) kids.push(k)
@@ -178,8 +177,7 @@ export function layoutTree(roots: readonly TreeNode[], box: Rect, options?: Tree
   const links: TreeLink[] = []
   for (let i = 0; i < frames.length; i++) {
     const f = frames[i]!
-    let depthF = 0.0
-    for (let d = 0; d < f.depth; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(f.depth)
     const t = (lo[i]! + hi[i]!) / 2.0
     const p = placeTreeNode(orient, box, gutter, levelsF, slotsF, depthF, t)
     nodes.push({ name: f.node.name, value: f.node.value, at: p.at, depth: f.depth, path: f.path, color: f.color, leaf: leafFlags[i]!, dir: p.dir })
@@ -224,8 +222,7 @@ export function renderTree(layout: TreeLayout, options?: TreeOptions): DrawCmd[]
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
   let levelsF = 0.0
   for (const n of layout.nodes) {
-    let depthF = 0.0
-    for (let d = 0; d < n.depth; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(n.depth)
     if (depthF + 1.0 > levelsF) levelsF = depthF + 1.0
   }
   // The whole-level count that has appeared: floor(levels * progress), as a Double scan.
@@ -238,14 +235,12 @@ export function renderTree(layout: TreeLayout, options?: TreeOptions): DrawCmd[]
   const fontSize = options?.fontSize ?? 11.0
   const labelColor = options?.labelColor ?? '#334155'
   for (const l of layout.links) {
-    let depthF = 0.0
-    for (let d = 0; d < l.depth; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(l.depth)
     if (depthF >= shownF) continue
     out.push({ kind: 'polyline', points: linkPoints(l, orient, shape), stroke: linkColor, width: 1.0 })
   }
   for (const n of layout.nodes) {
-    let depthF = 0.0
-    for (let d = 0; d < n.depth; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(n.depth)
     if (depthF >= shownF) continue
     out.push({ kind: 'circle', center: n.at, radius: size / 2.0, fill: n.color })
     if (!showLabels || progress < 1.0) continue

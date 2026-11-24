@@ -7,7 +7,7 @@ description: Type-safe client-side router with nested routes, navigation guards,
 
 <LiveDemo id="router" />
 
-`@pyreon/router` is Pyreon's type-safe client-side router. It supports nested routes, TypeScript param inference from path strings, navigation guards, data loaders, lazy loading with retries, scroll restoration, and both hash and history mode.
+`@pyreon/router` is Pyreon's type-safe client-side router. It supports nested routes, TypeScript param inference from path strings, navigation guards, data loaders, lazy loading with retries, scroll restoration, and hash, history and in-memory mode.
 
 <PackageBadge name="@pyreon/router" href="/docs/router" />
 
@@ -75,7 +75,7 @@ const router = createRouter({
     { path: '/', component: Home },
     { path: '/about', component: About },
   ],
-  mode: 'history', // "hash" (default) or "history"
+  mode: 'history', // "hash" (default), "history" or "memory"
   scrollBehavior: 'restore', // "top" | "restore" | "none" | ScrollBehaviorFn
 })
 
@@ -91,7 +91,9 @@ const router = createRouter([
 ```ts
 interface RouterOptions {
   routes: RouteRecord[]
-  mode?: 'hash' | 'history'
+  mode?: 'hash' | 'history' | 'memory'
+  initialEntries?: string[]
+  initialIndex?: number
   base?: string
   dataEndpoint?: string
   scrollBehavior?: ScrollBehaviorFn | 'top' | 'restore' | 'none'
@@ -100,14 +102,16 @@ interface RouterOptions {
   onError?: (err: unknown, route: ResolvedRoute) => undefined | false
   maxCacheSize?: number
   links?: LinkConfig
-  tabs?: RouterTab[]
+  tabs?: RouterTabs // routerTabs([{ name, root }, …])
 }
 ```
 
 | Option           | Type                                               | Default   | Description                                                                                                                                        |
 | ---------------- | -------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `routes`         | `RouteRecord[]`                                    | required  | Route definitions                                                                                                                                  |
-| `mode`           | `"hash" \| "history"`                              | `"hash"`  | URL mode                                                                                                                                           |
+| `mode`           | `"hash" \| "history" \| "memory"`                  | `"hash"`  | Where the location lives. See [Memory mode](#memory-mode).                                                                                        |
+| `initialEntries` | `string[]`                                         | `[url ?? "/"]` | Memory mode only: the entry stack the router starts with, oldest first.                                                                     |
+| `initialIndex`   | `number`                                           | last entry | Memory mode only: the entry to start at (clamped into range, with a dev warning).                                                          |
 | `base`           | `string`                                           | `""`      | Base path for sub-path deployments (e.g. `"/app"`). Must start with `/`. Only applies in history mode.                                             |
 | `dataEndpoint`   | `string`                                           | `` `${base}/_pyreon/data` `` | URL the client router fetches server-loader data from (one single-fetch request per navigation). Zero's `createServer` auto-mounts it.  |
 | `scrollBehavior` | `ScrollBehaviorFn \| "top" \| "restore" \| "none"` | `"top"`   | Scroll behavior on navigation                                                                                                                      |
@@ -116,7 +120,7 @@ interface RouterOptions {
 | `onError`        | `(err, route) => undefined \| false`               | -         | Global loader error handler. Return `false` to cancel navigation.                                                                                  |
 | `maxCacheSize`   | `number`                                           | `100`     | Max number of resolved lazy components to cache (LRU eviction)                                                                                     |
 | `links`          | `LinkConfig`                                       | -         | `<RouterLink>` external-link behaviour — `sameOriginAbsolute` (`'internal'` \| `'external'`), `externalNewTab`, `externalRel`. See [External links](#external-links). |
-| `tabs`           | `{ name: string; root: string }[]`                 | -         | One back stack per tab for a tab-bar app. See [Tab stacks](#tab-stacks). |
+| `tabs`           | `RouterTabs` (from `routerTabs([{ name, root }])`) | -         | One back stack per tab for a tab-bar app. See [Tab stacks](#tab-stacks). |
 
 **Hash mode vs history mode:**
 
@@ -131,6 +135,31 @@ const router = createRouter({ routes, mode: 'history' })
 Hash mode uses `window.location.hash` and listens to `hashchange` events. History mode uses `pushState`/`replaceState` and listens to `popstate` events. History mode requires your server to serve the app for all routes (SPA fallback).
 
 **Browser Back/Forward runs the full navigation pipeline.** A `popstate`/`hashchange` traversal goes through the same flow as `router.push()`: blockers, middleware, guards, and loaders all run (so `useLoaderData()` is populated after pressing Back), `afterEach` fires (the route announcer announces the change), and `meta.title` updates. If a guard or blocker cancels the traversal, the router restores the URL and history position — `history.go()` when the target entry carries the router's position stamp (`history.state.__pyreonIdx`), `replaceState` otherwise. Traversal-driven route updates are asynchronous (they await the pipeline).
+
+### Memory mode
+
+`mode: 'memory'` keeps the location in an entry stack inside the router instead of the page URL. Use it for a router embedded in a page that already has one (a live demo, a widget, an in-page preview), for tests, and for hosts with no `window`:
+
+```ts
+const demo = createRouter({
+  routes,
+  mode: 'memory',
+  initialEntries: ['/', '/users/1'], // default: [url ?? '/']
+  initialIndex: 1, // default: the last entry
+})
+
+await demo.push('/users/2') // 'committed' — location.href and history.length are unchanged
+demo.back() // blockers, middleware, guards, loaders and afterEach run, as on a real Back
+```
+
+- `push`, `replace`, `back`, `forward` and `go` run the full navigation pipeline against the stack. A guard or blocker that cancels a traversal leaves the position where it was. A step past either end, or `go(0)`, does nothing.
+- Nothing is read from or written to `window.history` or `location`, no window listener is attached, and a memory router never takes over the page router's restore of a cancelled Back. A memory router and a hash- or history-mode router on the same page do not disturb each other.
+- It works with no `window` at all (a server render, a test runner). `url` seeds the single starting entry when there are no `initialEntries`, as it does for the other modes on the server.
+- `<RouterLink>` renders the plain route path as its `href` (`href="/users/2"`), so the link stays an accessible anchor and a click navigates the memory router. There is no real URL behind it: "open in new tab" opens that path on the host page's origin.
+- What belongs to the page is left to the page: `meta.title` is not written to `document.title`, View Transitions are not used (they snapshot the whole document), and the window is scrolled only when you set `scrollBehavior`. An external `redirect('https://…')` resolves `'cancelled'` with a dev warning instead of navigating the page away.
+- With `tabs`, each entry remembers its tab and that tab's stack, so `back()` restores both.
+- `@pyreon/url-state` registered with a memory router reads and writes the router's own query.
+- iOS and Android routers are in-memory stacks already, so `mode: 'memory'` needs nothing there; `initialEntries` / `initialIndex` are ignored on native with a named compiler warning (the native router opens on its root route).
 
 **Base path (sub-directory deployment):**
 
@@ -176,11 +205,11 @@ const router = createRouter({
 
 ### Tab stacks
 
-A tab-bar app wants every tab to keep its own stack of screens: push a post in the Feed tab, switch to Me, come back, and Feed is still on the post. Configure the tabs on the router and bind a `<Tabs>` from `@pyreon/primitives` to it:
+A tab-bar app wants every tab to keep its own stack of screens: push a post in the Feed tab, switch to Me, come back, and Feed is still on the post. Configure the tabs on the router with `routerTabs()` and bind a `<Tabs>` from `@pyreon/primitives` to it:
 
 ```tsx
 import { Tab, Tabs } from '@pyreon/primitives'
-import { createRouter, RouterProvider, RouterView } from '@pyreon/router'
+import { createRouter, RouterProvider, RouterView, routerTabs } from '@pyreon/router'
 
 const router = createRouter({
   mode: 'history',
@@ -190,10 +219,10 @@ const router = createRouter({
     { path: '/me', component: MeHome },
     { path: '/me/settings', component: Settings },
   ],
-  tabs: [
+  tabs: routerTabs([
     { name: 'feed', root: '/feed' },
     { name: 'me', root: '/me' },
-  ],
+  ]),
 })
 
 export function App() {
@@ -232,7 +261,9 @@ How navigation maps onto the stacks:
 
 **Android.** Each tab keeps its own back stack. The system Back pops the active tab's stack first; at another tab's root it returns to the first tab; at the first tab's root it leaves the app.
 
-**Native requirements.** `tabs` must be an array literal of `{ name, root }` with string-literal values. Each `<Tab value>` must name a configured tab, and each tab needs a top-level literal route at its `root` (the stack's root screen). Shapes outside that are named in a compiler warning.
+`tabs` takes the value `routerTabs()` returns rather than a plain array so that the tab engine is in a bundle only when an app uses tabs; a plain array throws with that fix.
+
+**Native requirements.** `tabs` must be `routerTabs([...])` with an array literal of `{ name, root }` and string-literal values. Each `<Tab value>` must name a configured tab, and each tab needs a top-level literal route at its `root` (the stack's root screen). Shapes outside that are named in a compiler warning.
 
 ## Route Records
 
@@ -868,6 +899,7 @@ The active class is segment-aware. `/admin` is a prefix of `/admin/users` but NO
 
 - Hash mode: `href="#/about"`
 - History mode: `href="/about"`
+- Memory mode: `href="/about"` (the plain route path; a click navigates the memory router)
 
 The router is resolved the same way every router hook resolves it — the nearest `<RouterProvider>` context first, falling back to the active router (`setActiveRouter()`), so links rendered outside the provider subtree (portals, detached trees) still client-navigate when a router is active.
 
@@ -1382,7 +1414,7 @@ Each group runs in order. If any guard cancels or redirects, subsequent guards d
 The first URL a router resolves — a deep link, a reload, the URL an SSR request asked for — goes through the guards too, exactly as Vue Router's initial navigation does. A guarded route reached by typing its URL is gated the same as one reached with `push()`.
 
 - `from` is a START route with no `matched` records, so no `beforeLeave` runs. Route `redirect`, `middleware`, `beforeEnter` and global guards all run.
-- A redirect REPLACES the deep link (it never adds a history entry). On the server it becomes an HTTP redirect: `router.preload(url)`, which every SSR/SSG host calls before rendering, throws the same `redirect()` a loader does.
+- A redirect REPLACES the deep link (it never adds a history entry). On the server it becomes an HTTP redirect: `preloadRoute(router, url)`, which every SSR/SSG host calls before rendering, throws the same `redirect()` a loader does.
 - While the guards are pending, and after they cancel, `<RouterView>` renders nothing, so guarded content never reaches the DOM. A cancelled deep link has no previous route to stay on, so return a path (`'/login'`) rather than `false` when you want the user to land somewhere.
 - The guards run on the server **and** on the client. A guard that returns `false` or a path on the server gates the SSR HTML. A guard that **throws** on the server — almost always one reading `window` or `localStorage` — is treated as undecidable there: the server renders, and the client's initial navigation re-runs it and enforces it. Decide explicitly with `isServer` when you can:
 
@@ -1395,7 +1427,7 @@ The first URL a router resolves — a deep link, a reload, the URL an SSR reques
 
   A guard that only knows browser state cannot protect the server's HTML. Gate server-rendered content with a `loader` that throws `redirect()` (loaders receive the `request` and its cookies).
 - Register guards before you mount. Options (`beforeEach: [...]`) and `router.beforeEach()` calls made right after `createRouter` are included; a guard added after the first `<RouterView>` mounts misses the initial navigation.
-- An app with no guards renders on the first pass exactly as before — nothing is deferred. With guards, hydrate after `await router.isReady()` (or `preload`) so the first client render matches the server's. `@pyreon/zero` already does this.
+- An app with no guards renders on the first pass exactly as before — nothing is deferred. With guards, hydrate after `await router.isReady()` (or `router.preloadComponents`) so the first client render matches the server's. `@pyreon/zero` already does this.
 
 #### Global Guards
 
@@ -1569,7 +1601,7 @@ interface LoaderContext {
 
 The `signal` is crucial for cancellation: if the user navigates away before the loader finishes, the signal is aborted. Always pass it to `fetch()` and other async operations.
 
-`request` is populated when the loader runs **during SSR** (via `router.preload(path, request)` or `prefetchLoaderData(router, path, request)`) AND for **serverLoaders run by the data endpoint** on client-side navigations — it is `undefined` for an isomorphic `loader` running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `throw redirect('/login')` *before* the layout renders:
+`request` is populated when the loader runs **during SSR** (via `preloadRoute(router, path, request)` or `prefetchLoaderData(router, path, request)`) AND for **serverLoaders run by the data endpoint** on client-side navigations — it is `undefined` for an isomorphic `loader` running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `throw redirect('/login')` *before* the layout renders:
 
 ```ts
 loader: ({ request }) => {
@@ -1679,7 +1711,12 @@ For SSR, preload the matched route before rendering, serialize its loader data i
 **Server:**
 
 ```tsx
-import { createRouter, serializeLoaderData, stringifyLoaderDataForScript } from '@pyreon/router'
+import {
+  createRouter,
+  preloadRoute,
+  serializeLoaderData,
+  stringifyLoaderDataForScript,
+} from '@pyreon/router'
 import { renderToString } from '@pyreon/runtime-server'
 
 // In your SSR handler:
@@ -1689,7 +1726,7 @@ const router = createRouter({ routes, url: pathname + search })
 // Resolve lazy route components AND run the matched loaders.
 // `renderToString` is synchronous over the route tree, so a lazy page that
 // was not preloaded renders empty.
-await router.preload(pathname + search, req)
+await preloadRoute(router, pathname + search, req)
 
 // Render the app
 const html = await renderToString(<App />)
@@ -1732,7 +1769,7 @@ mount(<App />, document.getElementById('app')!)
 
 ### Server loaders + single-fetch
 
-A record can carry a `serverLoader` instead of a `loader` — a data loader that exists as a real function ONLY in the SSR module graph (zero emits it from the `.server.ts` sibling convention; client builds carry just the serializable `hasServerLoader` marker). On a client-side navigation to a chain with `hasServerLoader` records, the router makes **ONE** fetch to the data endpoint (`dataEndpoint`, default `` `${base}/_pyreon/data` ``) for the whole matched chain — single-fetch, no per-record waterfall. The endpoint's worker calls `router.runServerLoaders(path, request)` server-side. A `redirect()` thrown from a server loader comes back as a JSON envelope at HTTP 200, which the client router turns into a navigation. See [Zero → Server Loaders](/docs/zero#server-loaders) for the file convention.
+A record can carry a `serverLoader` instead of a `loader` — a data loader that exists as a real function ONLY in the SSR module graph (zero emits it from the `.server.ts` sibling convention; client builds carry just the serializable `hasServerLoader` marker). On a client-side navigation to a chain with `hasServerLoader` records, the router makes **ONE** fetch to the data endpoint (`dataEndpoint`, default `` `${base}/_pyreon/data` ``) for the whole matched chain — single-fetch, no per-record waterfall. The endpoint's worker calls `runServerLoaders(router, path, request)` server-side. A `redirect()` thrown from a server loader comes back as a JSON envelope at HTTP 200, which the client router turns into a navigation. See [Zero → Server Loaders](/docs/zero#server-loaders) for the file convention.
 
 ### Compiling loaders out
 
@@ -1777,7 +1814,7 @@ import { isRedirectError, getRedirectInfo } from '@pyreon/router'
 
 `getRedirectInfo(err)` returns `{ url, status }` for further inspection. Most apps don't need to touch these — the framework handles redirects transparently — but they're available for advanced control flow.
 
-**`LoaderContext.request`** is populated when a loader runs during SSR (via `router.preload(path, request)` or `prefetchLoaderData(router, path, request)`) AND for serverLoaders run by the data endpoint on client navigations; `undefined` for isomorphic loaders running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
+**`LoaderContext.request`** is populated when a loader runs during SSR (via `preloadRoute(router, path, request)` or `prefetchLoaderData(router, path, request)`) AND for serverLoaders run by the data endpoint on client navigations; `undefined` for isomorphic loaders running in the browser. This lets server-side loaders read cookies / auth headers and decide whether to `redirect()` BEFORE the layout renders.
 
 ### notFound() — "matched route, missing resource"
 
@@ -2035,33 +2072,13 @@ interface Router {
   isReady(): Promise<void>
 
   /**
-   * Resolve `path`, load any lazy route components into the cache, and run
-   * the matched routes' loaders. After this resolves, a `RouterView`
-   * rendered for `path` produces final HTML synchronously. Used by SSR/SSG.
-   * `request` is forwarded to loaders as `LoaderContext.request`.
-   * `options.skipLoaders: true` resolves lazy components but skips loaders
-   * entirely (used by SSG 404 generation, where there's no real request).
+   * Load the lazy route components `path` matches into the cache (never
+   * loaders). For the initial path, the initial guards run first and a
+   * route they refuse resolves `false`. Server renders that also need
+   * loader data call the free function `preloadRoute(router, path, request)`;
+   * the data endpoint calls `runServerLoaders(router, path, request)`.
    */
-  preload(
-    path: string,
-    request?: Request,
-    options?: { skipLoaders?: boolean },
-  ): Promise<void>
-
-  /**
-   * Run ONLY the matched chain's serverLoaders for `path`, keyed by
-   * matched-chain index. Returns the index-keyed data, or a redirect
-   * descriptor when a server loader threw redirect(). Server-only —
-   * the `serverLoader` fn exists only in the SSR module graph. This is
-   * what the single-fetch data endpoint's worker calls.
-   */
-  runServerLoaders(
-    path: string,
-    request?: Request,
-  ): Promise<
-    | { kind: 'data'; data: Record<number, unknown> }
-    | { kind: 'redirect'; to: string; status: number }
-  >
+  preloadComponents(path: string): Promise<boolean>
 
   /**
    * Invalidate cached loader data. Forces loaders to re-run on next nav.
@@ -2100,7 +2117,7 @@ function App() {
 
 **The `isReady` method:**
 
-`isReady()` returns a promise that resolves once the initial navigation's guards — and any redirect they trigger — have settled. The initial route's loaders run through `router.preload()` (what SSR hosts and `@pyreon/zero` call) or come from hydrated loader data. Use it to delay rendering until the router is fully initialized:
+`isReady()` returns a promise that resolves once the initial navigation's guards — and any redirect they trigger — have settled. The initial route's loaders run through `preloadRoute()` (what SSR hosts call) or come from hydrated loader data. Use it to delay rendering until the router is fully initialized:
 
 ```tsx
 const router = createRouter({ routes })
@@ -2528,7 +2545,7 @@ The module-level `_activeRouter` fallback is set by `RouterProvider` for CSR con
 A typical SSR flow:
 
 1. Create the router with `url: req.url`
-2. Preload the route with `router.preload(path, req)` (resolves lazy components and runs loaders)
+2. Preload the route with `preloadRoute(router, path, req)` (resolves lazy components and runs loaders)
 3. Render the app to string
 4. Serialize loader data with `stringifyLoaderDataForScript(serializeLoaderData(router))` and embed in HTML
 5. On the client, create a new router and hydrate with `hydrateLoaderData(router, data)`
@@ -2538,6 +2555,7 @@ A typical SSR flow:
 // Server
 import {
   createRouter,
+  preloadRoute,
   RouterProvider,
   RouterView,
   serializeLoaderData,
@@ -2549,7 +2567,7 @@ export async function handleRequest(req: Request): Promise<Response> {
   const path = new URL(req.url).pathname
   const router = createRouter({ routes, url: path })
 
-  await router.preload(path, req)
+  await preloadRoute(router, path, req)
 
   const html = await renderToString(
     <RouterProvider router={router}>
@@ -2768,7 +2786,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="stringifyQuery" type="function" signature={"stringifyQuery(params: Record<string, string>): string"} description="Convert a query object to a query string with a leading '?'. Returns empty string if the object is empty." />
 
-<APICard name="prefetchLoaderData" type="function" signature={"prefetchLoaderData(router: Router, url: string, request?: Request): Promise<void>"} description="Run all loaders for the matched route at the given URL (loaders only — it does not resolve lazy route components; use router.preload for SSR rendering). The optional request is forwarded to loaders as LoaderContext.request." />
+<APICard name="prefetchLoaderData" type="function" signature={"prefetchLoaderData(router: Router, url: string, request?: Request): Promise<void>"} description="Run all loaders for the matched route at the given URL (loaders only — it does not resolve lazy route components; use preloadRoute for SSR rendering). The optional request is forwarded to loaders as LoaderContext.request." />
 
 <APICard name="serializeLoaderData" type="function" signature={"serializeLoaderData(router: Router): Record<string, unknown>"} description="SSR: serialize the router's loader data for embedding in HTML." />
 

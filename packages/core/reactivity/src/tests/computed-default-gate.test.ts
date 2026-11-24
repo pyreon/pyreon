@@ -456,3 +456,17 @@ describe('computed — the gate holds the documented propagation invariants', ()
     eff.dispose()
   })
 })
+
+// The default gate shipped, but the manifest (and so llms.txt, the MCP API
+// reference and the docs reference page) kept saying a computed has NO default
+// equality check — telling every reader to add `{ equals: Object.is }`, which
+// also turns a lazy computed eager. The documented contract must be this one.
+describe('computed — the manifest states the default gate', () => {
+  test('summary, options and mistakes describe the Object.is gate', async () => {
+    const { default: manifest } = await import('../manifest')
+    const entry = manifest.api.find((e) => e.name === 'computed')
+    const text = JSON.stringify(entry)
+    expect(text).toContain('gates on `Object.is`')
+    expect(text).not.toMatch(/NO default equality|no implicit equality|has no such gate/i)
+  })
+})

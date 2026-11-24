@@ -60,7 +60,7 @@ Keep this list honest and current; it mirrors `BENCHMARKS.md` §13:
 - Pyreon loses the 1k mount (2.28×). The whole loss is the default offscreen accessible data table; the chart alone mounts 3.1× faster than ECharts, which ships no table (`aria` off by default). Say "with the accessible table Pyreon renders by default" whenever quoting it. `accessibleTable={false}` removes it at an accessibility cost.
 - The table is built in 50-row `<tbody>` blocks (the chunking is what saves time). `content-visibility:auto` on the table's wrapper would skip ~5 ms of layout but drops every row from the accessibility tree — rejected; `packages/fundamentals/charts/src/engine/a11y-table-chunks.browser.test.tsx` fails on that change. The table is deliberately not deferred to idle time; that would move work out of the timed region, not off the main thread.
 - Category labels are sampled like ECharts' `calculateCategoryInterval` rather than measured per label (`large-series.test.ts`).
-- Size (`bench:charts-bundle`, gzip, beyond the Pyreon runtime): line 40.9 KB vs ECharts tree-shaken 155.9 KB / whole 361.1 KB; pie 18.1 vs 117.3 KB. `PlotChart` does not tree-shake per cartesian mark.
+- Size (`bench:charts-bundle`, gzip, beyond the Pyreon runtime): line 40.3 KB vs ECharts tree-shaken 155.9 KB / whole 361.0 KB; pie 19.8 vs 117.2 KB (2026-11-19, 12.1 KB runtime baseline). `PlotChart` does not tree-shake per cartesian mark.
 
 ## Measurement protocol
 
@@ -78,6 +78,25 @@ Keep this list honest and current; it mirrors `BENCHMARKS.md` §13:
 - The bimodality guard (`examples/benchmark/bimodality-guard.ts`) flags cells whose samples split between two timing modes.
 - Retained heap is read post-GC with `--enable-precise-memory-info`. `STABLE_DELTA` (16 KB) in `bench-fair.ts` is a GC-convergence threshold, not the metric's resolution.
 - Standard run: `cd examples/benchmark && bun bench-fair.ts --repeat 5 --wait-quiet 6`. Also `bench-scenarios.ts`, `bench-hydration.ts`, `bench-apppage.ts`, `bench-ssr.ts`, `bench-crossover.ts`.
+- A scenario with an explicit pre-timing correctness gate (`maplist`, `router`) reports a failing op as `✗ NOT TIMED` rather than aborting the arm (`gateThenTime` in `src/impl/scenario-gated.ts`, `BenchSuite.gateFailures`); a failure during timing still aborts.
+
+### Instruments without published rows: `maplist` and `router`
+
+Two `bench-scenarios.ts` scenarios exist to time specific code paths. Neither has a measured row in `BENCHMARKS.md`; do not quote a number from them until a quiet-machine run under the two-run rule exists.
+
+- **`maplist`** (`bun run bench:maplist`, `src/impl/scenario-maplist*.ts`, `MapList.svelte`). A keyed `.map()` of JSX rows inside an element, with conditional JSX in two slots (each row's status cell, the list's empty state): the shapes every other list in the suite lacks. 1,000 rows; ops: create into the mounted empty list, replace all, update one cell, toggle one conditional, swap 2 ↔ 999, remove row 500, clear. The single-row ops' per-op samples are dominated by the forced layout of the 1,000-row table (identical for every arm); each has a batch twin (one cycle = write + restore = two updates, each with a forced layout, K = 200) as the clock-independent cross-check. Quote a single-row verdict only where both rows agree.
+  - Arms: `Pyreon (.map)` (mounted with its rows, so the slot is classified keyed), `Pyreon (.map, first render empty)` (unranked diagnostic: the same component mounted empty — the runtime pins a slot to the non-keyed path on an empty first render, so every change re-creates every row), `Pyreon (<For>)` (reference), React 19 and Preact (`rows.map(row => <Row key …/>)` with a `memo` row, immutable updates), Vue 3 (compiled keyed `v-for` + `v-if`/`v-else`, `shallowRef`), SolidJS (`<For>` + ternary through the real `babel-preset-solid`; Solid has no keyed `.map()`, so equal observable work with a different source shape), Svelte 5 (keyed `{#each}` + `{#if}`, `$state.raw` list with `$state` fields).
+  - Correctness gate before timing: every op runs once on a prepared list and the DOM is checked against the harness model (row count, empty-state slot, id/label/status branch of a spread of rows). An op that fails is **not timed** for that arm and the report prints `✗ NOT TIMED — failed the correctness gate` in its place. Every timed iteration is re-verified.
+  - On `main` of 2026-11-19, `Pyreon (.map)` fails the gate on both single-row ops: a signal read inside a keyed `.map()` item (`{row.label()}`) is evaluated by the list's accessor, the keyed reconciler keeps the row for the unchanged key, and the cell stays stale. #4705 (compiler walks JSX inside template holes) gives that read its own binding.
+- **`router`** (`bun run bench:router`, `src/impl/scenario-router*.ts`). `@pyreon/router` `push()` through resolve, guards, commit, `history.pushState` and the `<RouterView>` swap, in real Chromium, history mode, no loaders, `meta.viewTransition: false` on every route (a View Transition makes `push()` frame-bound). Ops: route change, push through one `beforeEnter` guard, param change; each has a batch twin whose cycle is the reset plus the op (two pushes for the first two, three for the param change), always through `/home`. Arms `Pyreon` and `Pyreon (tabs)` (two tabs; every reset goes through the tab root, so the stack stays bounded — the gate fails if it grows).
+  - A **regression instrument, Pyreon only**: the report prints each arm's ratio to the faster arm and no verdicts. The installed rival routers do not share this guard/commit model, so an equal-work arm is not a straight port.
+  - The scenario pushes thousands of times. Its browser is launched with `--disable-ipc-flooding-protection` (`chromiumArgs` in `bench-scenarios.ts`) as a safeguard against Chromium's `pushState` flood throttle, which did not trigger on the 2026-11-19 Playwright Chromium even without the flag. Every per-op iteration and every batch cycle checks `location.pathname`, so a dropped push fails instead of timing.
+  - Use the batch rows for an A/B. The per-op rows (one push after a forced GC and an event-loop yield) were slower per push and noisier than the warm batch rows in the smoke run.
+  - The tabs option is passed through `Reflect.get(router, 'routerTabs')` so the same source builds before and after #4702 (bare array vs `routerTabs([...])`). Replace it with a direct call once #4702 merges.
+
+#### A/B of a compiler or runtime PR
+
+`examples/benchmark` resolves `@pyreon/reactivity`, `core`, `runtime-dom` and `router` from `src/` (the `bun` condition) and only `@pyreon/compiler` from `lib/` plus the native binary. Swapping `lib/` alone builds identical bundles. Build each side in its own worktree checked out at the ref (`bun install` rebuilds `lib/` and the native binary), copy the scenario files in if the ref predates them, and confirm the two builds differ where the PR does (the chunk that holds the changed code, and for a compiler PR the compiled scenario component) before timing anything. Two sides with the same chunk hashes is a broken setup, not a result. Then, on a quiet machine (load below 4), per side: `bun bench-scenarios.ts --scenario <id> --only '<arm>' --repeat 5 --wait-quiet 4 --raw-out <side>-run1.json`, alternate sides, repeat for run 2, and report only cells where both runs agree.
 
 ### Full-stack suite (`examples/stacks-bench`)
 
@@ -87,6 +106,17 @@ Keep this list honest and current; it mirrors `BENCHMARKS.md` §13:
 - A run writes `results/<runId>/run.json` (`RunManifest`, `lib/run.ts`) and one `<arm>.json` (`ArmResult`, `lib/result.ts`). `--report` checks the single-run conditions (`runConditions`) and prints `NOT PUBLISHABLE` with the reason. A published run is committed unchanged under `results/published/<runId>/`.
 - `bun gate.ts` is the correctness gate alone and prints no timing; `Stacks Bench Smoke` (`.github/workflows/stacks-bench-smoke.yml`) runs setup and the gate on Linux so the arms stay buildable. It must never time anything.
 - A change to an arm follows its framework's docs, keeps `CONTRACT.md` and passes the gate; no arm-specific tuning, zero included.
+
+### Catalogue app (`examples/real-bench/app`)
+
+- **No result is published**, and none may be written into `BENCHMARKS.md`, the docs or the site until a run meets `examples/real-bench/app/results/README.md` and the maintainer decides to publish. Method, metric definitions, known biases and what is not measured: `examples/real-bench/README.md` ("The catalogue app"). Keep it free of result numbers.
+- One client-rendered app (list over 5,000 records with search/category/sort/pagination, detail, validated form, routing, app-wide state) specified in `CONTRACT.md`, in six arms under `arms/<id>/`: Pyreon (`@pyreon/router` + `@pyreon/store`), React (React Router + `useReducer`/context), Vue (Vue Router + Pinia), Solid (`@solidjs/router` + `createStore`), Svelte (SvelteKit SPA mode + a `$state` class), Preact (`preact-iso` + `@preact/signals`). Each has exact versions, its own `package-lock.json` (installed with `npm ci` by `bun setup.ts`) and its own Vite build; they are outside the bun workspace and ignored by oxlint/oxfmt.
+- `shared/data.ts` and `shared/app.css` are copied verbatim into every arm (the harness refuses a drifted copy); every visible string, including every number, is produced there, so V8's number-string cache is charged equally.
+- Metrics: first-load JS/CSS/HTML bytes (raw, gzip -9, brotli 11, sized by the harness); time to interactive (fresh context, CPU 4× + 150 ms / 1.6 Mbit/s, navigation start → a probe's search input is reflected in `#count`); retained JS heap after load, after one and after five scripted sessions (DevTools-protocol GC until two readings differ by under 16 KB, net of a blank page on the same server).
+- The pyreon arm has two sources: npm (default; the only one a published result may use) and `--pyreon=workspace`. The pinned `@pyreon/*@0.53.0` fails the gate: its runtime builds a compiled component-child template (the header `<nav>` under `RouterProvider`) before the provider runs, so those `RouterLink`s find no router and do full page loads. #4174 fixed it on `main` (`remountable-tpl-owner.test.ts`); do not work around it in the arm. Move the pin after the next release and confirm `bun gate.ts pyreon` passes.
+- `bun gate.ts` is the correctness gate alone and prints no timing; `Real Bench App Smoke` (`.github/workflows/real-bench-app-smoke.yml`) runs setup and the gate on Linux, the pyreon arm from the workspace. It must never time anything.
+- `bench.ts` refuses a non-isolated page or a timer coarser than 20 µs and any arm that fails the gate, and its report prints `NOT PUBLISHABLE` for load above 4, a missing arm, lowered knobs, a non-default throttle, a dirty tree, the workspace pyreon source, or a retried probe.
+- A change to an arm follows its framework's docs (named in its `arm.json`), keeps `CONTRACT.md` and passes the gate; no arm-specific tuning, Pyreon included.
 
 ### Fairness rules for competitor arms
 
@@ -206,10 +236,10 @@ Each of these produced a wrong published figure at some point.
 ## Honest limits
 
 - **Author-judge.** Pyreon's authors wrote and judge every bench. The only independent venue is krausest/js-framework-benchmark; a keyed implementation is staged at `contrib/krausest/pyreon-keyed/`. It passes upstream's own build, smoke, keyed and CSP checks (`references/krausest-submission.md`), but it has not been submitted and has no official number. Submitting is the maintainer's decision.
-- **Synthetic.** No real-app head-to-head against real competing frameworks exists; the `cpa-pw-app-*` ports run on Pyreon compat shims. "Fastest" claims stop at what these suites measure.
+- **Synthetic.** No real-app head-to-head against real competing frameworks has a published result. The catalogue app (`examples/real-bench/app`) is the harness for one (six real runtimes, bundle, time to interactive, memory) but has no run that meets its publishing conditions; the `cpa-pw-app-*` ports run on Pyreon compat shims. "Fastest" claims stop at what these suites measure.
 - **CPU-objective, not async latency.** React's default scheduling path would read higher than its `flushSync` arm.
 - **happy-dom rows** (query, virtual, table, toast, dnd, charts wrapper) time a JavaScript DOM implementation; relative work is meaningful, absolute times are not.
-- **Not measured** (per `BENCHMARKS.md` §14): streaming SSR, portals, async waterfalls, startup metrics, krausest's per-op memory metrics, Firefox/Safari, independent third-party runs. Async waterfalls and portals were dropped as unfair to include (Svelte lacks Suspense and a built-in portal).
+- **Not measured** (per `BENCHMARKS.md` §14): streaming SSR, portals, async waterfalls, startup metrics (the catalogue app can measure first-load bytes and time to interactive for client-rendered apps, unpublished), krausest's per-op memory metrics, Firefox/Safari, independent third-party runs. Async waterfalls and portals were dropped as unfair to include (Svelte lacks Suspense and a built-in portal).
 
 ## Deeper detail
 

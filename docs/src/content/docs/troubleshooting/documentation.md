@@ -190,3 +190,15 @@ Both registry discovery and auto-naming validate regex candidates against parsed
 Parse emitted source independently and keep fallback assertions alive without the optional binary. Prop inlining and signal auto-calls use the same original AST offsets, so compose their edits before emission; static hoist declarations terminate explicitly before a following JSX statement. Controls: `packages/core/compiler/src/tests/jsx-composed-edits.test.ts`, the curated syntax corpus and seeded fallback grammar.
 
 ---
+
+### A global `keydown` listener per command, a hand-kept list of commands, a palette built from a `div` (`@pyreon/command`)
+
+A bare `window.addEventListener('keydown', ...)` fires while the user types in a field, differs between macOS and Windows (`metaKey` against `ctrlKey`; use `mod`), and registers twice when the module loads twice — give the command a `shortcut` and let `@pyreon/command` register it through `@pyreon/hotkeys` once, while the command is registered and enabled. A list of commands someone keeps in sync with the screens goes stale (it offers "Mark paid" on a page with no invoice): `useCommand` in the screen, so the list is true by construction and the shortcut is released on unmount. A palette that is a positioned `div` has no inert background and no focus return: use `<CommandPalette>` (a native modal `<dialog>`). Reading a title once (`title: i18n.t('save')`) pins the locale: pass a function. Reference: `packages/fundamentals/command`, pattern `patterns/command`.
+
+---
+
+### Positioning calendar events by hand, an all-day event that ends on its own day, rows keyed by index (`@pyreon/calendar`)
+
+Pixels computed from a `Date` in a component put overlapping events on top of each other, lose an event across midnight and are wrong on the 23 and 25 hour days — `createCalendar` places events with pure layout functions (column packing, lanes) and a wall-clock grid with defined DST behaviour. An event's `end` is exclusive: an all-day event on the 18th ends on the 19th (`allDay(date)` makes the pair); one that ends on its own day is a single moment. A wall clock without a `timeZone` is floating (it shows the same clock in every zone), "9:00 in Prague" needs `timeZone: 'Europe/Prague'`. Key rows by `occurrence.key` (`<id>:<original start>`, the same in every window), not by index. Fetch the window `onRangeChange` reports, not every event. Edit through `onEventChange` (return `false` to refuse; the calendar shows the change at once and rolls it back), never with your own drag handlers, never by mutating the events array on drop; edit a recurring series with `chooseScope` and `applyEventChange`, not by moving its first event. Reference: `packages/fundamentals/calendar`, pattern `patterns/calendar`.
+
+---

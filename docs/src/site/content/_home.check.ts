@@ -21,7 +21,7 @@ export const checked = {
    "kind": "hero",
    "id": "hero",
    "variant": "hook",
-   "eyebrow": "Open source · MIT · pre-1.0",
+   "eyebrow": "Open source · MIT · web stable, native experimental",
    "title": "Your component runs once. Ever.",
    "emberWord": "Ever.",
    "lede": "Pyreon updates the one DOM node that changed, so there is nothing to memoise and nothing re-renders. Full stack on the web today, and the same `.tsx` compiles to SwiftUI and Jetpack Compose (experimental).",
@@ -43,7 +43,7 @@ export const checked = {
     },
     {
      "dot": "ok",
-     "text": "77 packages, one version"
+     "text": "{{@packageCount}} packages, one version"
     },
     {
      "dot": "warn",
@@ -384,7 +384,7 @@ export const checked = {
     {
      "topic": "Maturity",
      "cells": [
-      "Web: pre-1.0. iOS and Android: experimental",
+      "Web: stable. iOS and Android: experimental",
       "Production",
       "Production",
       "Production",
@@ -468,7 +468,7 @@ export const checked = {
    "items": [
     {
      "name": "MCP server",
-     "text": "24 tools. `get_api` returns the real API, `validate` flags misuse with the line, the offending code and the fix. No network calls."
+     "text": "{{@mcpToolCount}} tools. `get_api` returns the real API, `validate` flags misuse with the line, the offending code and the fix. No network calls."
     },
     {
      "name": "Reactivity Lens",
@@ -479,8 +479,8 @@ export const checked = {
      "text": "Scans changed files, prints each finding with its fix, `--fix` applies the auto-fixable ones, exits non-zero in CI."
     },
     {
-     "name": "141 lint rules",
-     "text": "In 26 categories, from destructured props and context to browser globals in server code."
+     "name": "{{@lintRuleCount}} lint rules",
+     "text": "In {{@lintCategoryCount}} categories, from destructured props and context to browser globals in server code."
     }
    ],
    "example": {
@@ -541,7 +541,7 @@ export const checked = {
    "kind": "products",
    "id": "products",
    "eyebrow": "Products",
-   "title": "40 products. One version.",
+   "title": "{{@productCount}} products. One version.",
    "lede": "One reactive core, one release train, one set of docs. Here are the ones people start with.",
    "featured": [
     {
@@ -583,7 +583,7 @@ export const checked = {
    ],
    "pitchesFrom": "content/_products.json#products[].pitch",
    "link": {
-    "label": "See all 40 products",
+    "label": "See all {{@productCount}} products",
     "href": "/products"
    }
   },
@@ -631,7 +631,7 @@ export const checked = {
    "id": "status",
    "eyebrow": "Status",
    "title": "What's ready, and what isn't (yet).",
-   "lede": "Pre-1.0 means versions can still break, and we say so in a changeset when they do. The web is what apps run on today. iOS and Android are experimental and move every release.",
+   "lede": "Stable packages follow semver from 1.0; Experimental ones can still break in a minor release, and the changelog says so when they do. The web is what apps run on today. iOS and Android are experimental and move every release.",
    "columns": [
     {
      "dot": "ok",
@@ -816,7 +816,7 @@ export const checked = {
    "path": "facts.md 'Native mappings'; docs primitives.md"
   },
   {
-   "claim": "MCP 24 tools, 141 lint rules, pyreon check, Reactivity Lens",
+   "claim": "MCP {{@mcpToolCount}} tools, {{@lintRuleCount}} lint rules, pyreon check, Reactivity Lens",
    "path": "facts.md AI lines"
   },
   {

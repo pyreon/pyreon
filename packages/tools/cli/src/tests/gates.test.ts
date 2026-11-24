@@ -137,6 +137,11 @@ describe('runDistributionGate', () => {
   })
 })
 
+// The gate parses every published source file (about 2,600) with the
+// TypeScript parser. A few seconds alone; past vitest's 20 s default under
+// the coverage job's instrumented, 4-way parallel run.
+const DOC_CLAIMS_REAL_REPO_TIMEOUT_MS = 120_000
+
 describe('runDocClaimsGate', () => {
   it('returns GateResult against real repo with expected shape', async () => {
     const result = await runDocClaimsGate({ cwd: REPO_ROOT })
@@ -201,14 +206,16 @@ describe('runDocClaimsGate', () => {
     // 79 since the marketing site's 21 lint-count sites joined (doc-claims-site.ts).
     // 85 with three blog posts (+4: one also states the category count) and the
     // /docs/cli share-image alt text in `_docs-og.json` and `_assets.json` (+2).
-    // 87 with the document-primitives README and the llms-full.txt format-count
-    // sites (#4315: both still said "14+" against a real 20).
-    expect(result.meta.scanned).toBe(87)
+    // 87 with the document-primitives README and the llms-full.txt format-count sites (#4315: both still said "14+"
+    // against a real 20); 103 with the sites the marketing site states that are not derived (the five blog sites that
+    // state the package count, the share-image alt text and the typed sections). The site's derived counts are
+    // placeholders and are checked for digits instead (doc-claims-site-counts.ts), not counted here.
+    expect(result.meta.scanned).toBe(103)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
     expect(errs).toHaveLength(0)
-  })
+  }, DOC_CLAIMS_REAL_REPO_TIMEOUT_MS)
 
   it('has no claim that silently STOPPED matching', async () => {
     // A `pattern-miss` is ADVISORY, and that is the hole it opened: a claim
@@ -231,7 +238,7 @@ describe('runDocClaimsGate', () => {
       misses.map((f) => `${f.code} ${f.location?.relPath ?? ''}`),
       'a claim stopped matching its pattern — restore the text, or drop the entry from the doc-claims gate checks[]',
     ).toEqual([])
-  })
+  }, DOC_CLAIMS_REAL_REPO_TIMEOUT_MS)
 
   // Mark a tmp fixture as the Pyreon monorepo so the doc-claims gate
   // doesn't skip. The gate's monorepo guard keys on the presence of its

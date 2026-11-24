@@ -89,11 +89,11 @@ interface HandlerOptions {
    * there is none) — forward it to `sheet.getStyleTag(nonce)` so a strict
    * `style-src 'nonce-…'` policy admits the emitted tag.
    *
-   *   collectStyles: (nonce) => {
-   *     const tag = sheet.getStyleTag(nonce)
-   *     sheet.reset()
-   *     return tag
-   *   }
+   *   collectStyles: (nonce) => sheet.getStyleTag(nonce)
+   *
+   * Never call `sheet.reset()` here: it drops the module-level keyframes and
+   * static global styles from every later response, and request isolation is
+   * already automatic (each request renders in its own styler scope).
    *
    * **You usually don't need to pass this at all when using `@pyreon/styler`.**
    * `createHandler` only forwards `collectStyles` to the shared render
@@ -101,7 +101,7 @@ interface HandlerOptions {
    * back to `globalThis.__PYREON_STYLER_COLLECT__`, which styler's own
    * singleton registers on SSR module init. So a plain `createHandler({ App, routes })`
    * already ships the correct CSS with no FOUC, and `collectStyles` is only
-   * needed to override the default (a custom flush/reset sequence, a
+   * needed to override the default (post-processing the tag, a
    * different CSS-in-JS library).
    */
   collectStyles?: (nonce?: string) => string
@@ -130,7 +130,7 @@ Every incoming request goes through these steps:
 
 1. **Middleware pipeline** — each middleware runs in order. Any middleware can short-circuit by returning a `Response` (for redirects, auth checks, etc.).
 2. **Router creation** — a per-request `createRouter` instance is created with the matched URL.
-3. **Preload** — `router.preload(path, request)` resolves the matched route's lazy components and runs its loaders, so the synchronous render produces the final page.
+3. **Preload** — `preloadRoute(router, path, request)` resolves the matched route's lazy components and runs its loaders, so the synchronous render produces the final page.
 4. **Render** — the app component tree is rendered to HTML (string or stream mode).
 5. **Head collection** — `@pyreon/head` collects title, meta, and link tags emitted during render.
 6. **Template injection** — head tags, app HTML, and scripts are injected into the HTML template.
@@ -566,7 +566,7 @@ if (result.kind === 'html') {
 }
 ```
 
-`options` carries `request` (forwarded to loaders — `router.preload` runs entirely inside `runWithRequestContext`, so loaders observe the same per-request context/store isolation the production handler gives them), `skipLoaders`, `collectStyles`, `locals` (bridged to `useRequestLocals()`), and `bailOnUnmatched` (returns `{ kind: 'unmatched' }` instead of rendering — used by the dev middleware's static-404 fall-through).
+`options` carries `request` (forwarded to loaders — `preloadRoute` runs entirely inside `runWithRequestContext`, so loaders observe the same per-request context/store isolation the production handler gives them), `skipLoaders`, `collectStyles`, `locals` (bridged to `useRequestLocals()`), `bailOnUnmatched` (returns `{ kind: 'unmatched' }` instead of rendering — used by the dev middleware's static-404 fall-through), and `onPreloaded` (called once the preload has settled, before the render — zero's dev SSR uses it to tell a loader failure from a render failure).
 
 `result.head` already carries the styler `<style>` tag prepended (via `collectStyles`, including the `globalThis.__PYREON_STYLER_COLLECT__` default described under `HandlerOptions.collectStyles` above) when it's non-empty; `result.routeModules` is the matched chain's lazy-component source ids, used by the SSG plugin to emit per-route `<link rel=modulepreload>` — empty for a non-lazy chain.
 

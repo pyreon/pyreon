@@ -69,5 +69,28 @@ export function sharedHost(current: () => EmitContext) {
     resolveDeferred: (key: string, value: string): void => current().resolveDeferred(key, value),
     /** The enclosing colour-mode scope as the chart theme it resolved to, or `undefined` outside any. */
     colorScope: (): RawChartTheme | undefined => current().colorScope<RawChartTheme>(),
+    /**
+     * Kotlin: `e` (emitted at `at`) as a Double — unchanged when the inference proves it one, `(…).toDouble()`
+     * otherwise. A blanket conversion put kotlinc's "redundant call of conversion method" warning in the build log
+     * of every app whose chart value was already a Double.
+     */
+    kotlinDouble: (e: ExprIR, at: number): string => {
+      const code = current().expr(e, at)
+      return numericKindOf(current().inferType(e)) === 'double' ? code : `(${code}).toDouble()`
+    },
+    /** Kotlin: `e` as a Long — unchanged when provably an integer, `(…).toLong()` otherwise. */
+    kotlinLong: (e: ExprIR, at: number): string => {
+      const code = current().expr(e, at)
+      return numericKindOf(current().inferType(e)) === 'int' ? code : `(${code}).toLong()`
+    },
   }
+}
+
+/** A float `number` or the `Double` alias is a Double; a plain `number` or the `Int` alias an integer. */
+function numericKindOf(t: TypeIR): 'double' | 'int' | 'other' {
+  if (t.kind === 'typeRef' && (t.name === 'Double' || t.name === 'Float')) return 'double'
+  if (t.kind === 'typeRef' && t.name === 'Int') return 'int'
+  if (t.kind !== 'number') return 'other'
+
+  return t.float === true ? 'double' : 'int'
 }

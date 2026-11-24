@@ -5,7 +5,7 @@
  "package": "@pyreon/hooks",
  "category": "fundamentals · hooks",
  "hero": {
-  "title": "65 hooks. Zero cleanup code to write.",
+  "title": "{{@hookCount}} hooks. Zero cleanup code to write.",
   "emberWord": "Zero",
   "lede": "From `useToggle` and `useClickOutside` to `useShare`, `useBiometrics` and `useGeolocation`. Each one removes its own listeners, timers and observers when the component unmounts, renders safely on the server, and hands back signals you can read anywhere.",
   "install": "bun add @pyreon/hooks",
@@ -120,7 +120,7 @@
   ]
  },
  "api": {
-  "title": "65 hooks.",
+  "title": "{{@hookCount}} hooks.",
   "groups": [
    {
     "name": "state",
@@ -379,7 +379,7 @@
  ],
  "sources": [
   {
-   "claim": "65 hooks, 7 categories",
+   "claim": "{{@hookCount}} hooks, 7 categories",
    "path": "packages/fundamentals/hooks/src/index.ts (65 use* exports); README.md line 3"
   },
   {

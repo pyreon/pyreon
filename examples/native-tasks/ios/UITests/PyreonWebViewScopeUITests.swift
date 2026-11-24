@@ -46,7 +46,7 @@ final class PyreonWebViewScopeUITests: XCTestCase {
     private func launch(_ scenario: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-PyreonWebViewScope", scenario]
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(app.staticTexts["scope-title"].firstMatch.waitToExist(timeout: 30), "probe did not render")
         return app
     }

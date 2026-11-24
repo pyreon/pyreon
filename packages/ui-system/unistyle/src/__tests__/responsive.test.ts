@@ -232,3 +232,31 @@ describe('optimizeTheme', () => {
     expect(result.sm).toEqual({ color: 'red', padding: 10 })
   })
 })
+
+// A class instance (a styler `css\`…\`` result) is ONE value, not a breakpoint
+// map. Walking its own keys (`strings`, `values`, …) as breakpoints dropped an
+// Element's `css={css\`…\`}` entirely.
+describe('non-plain object values are single values', () => {
+  class CssLike {
+    strings = ['color: green;']
+    values: unknown[] = []
+  }
+  const bpKeys = ['xs', 'sm', 'md']
+
+  it('normalizeTheme spreads a class instance to every breakpoint unchanged', () => {
+    const value = new CssLike()
+    const result = normalizeTheme({ theme: { extraStyles: value, block: { md: true } }, breakpoints: bpKeys })
+    expect(result.extraStyles).toEqual({ xs: value, sm: value, md: value })
+  })
+
+  it('transformTheme puts a class instance on the first breakpoint', () => {
+    const value = new CssLike()
+    const result = transformTheme({ theme: { extraStyles: value }, breakpoints: bpKeys })
+    expect(result).toEqual({ xs: { extraStyles: value } })
+  })
+
+  it('a plain object is still a breakpoint map', () => {
+    const result = transformTheme({ theme: { color: { xs: 'red', md: 'blue' } }, breakpoints: bpKeys })
+    expect(result).toEqual({ xs: { color: 'red' }, md: { color: 'blue' } })
+  })
+})

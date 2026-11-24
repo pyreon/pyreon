@@ -108,8 +108,7 @@ export function layoutParallel(axes: readonly ParallelAxis[], rows: Double[][], 
   const top = box.y + fontSize * 1.8
   const bottom = box.y + box.h - fontSize * 1.4
   const n = axes.length
-  let nF = 0.0
-  for (let i = 0; i < n; i++) nF = nF + 1.0
+  const nF: Double = Number(n)
   const outAxes: ParallelLayoutAxis[] = []
   let aF = 0.0
   for (let a = 0; a < n; a++) {
@@ -123,8 +122,7 @@ export function layoutParallel(axes: readonly ParallelAxis[], rows: Double[][], 
     let lo = 0.0
     let hi = 0.0
     if (isCat) {
-      let catsF = 0.0
-      for (let i = 0; i < cats.length; i++) catsF = catsF + 1.0
+      const catsF: Double = Number(cats.length)
       hi = catsF > 1.0 ? catsF - 1.0 : 0.0
     } else if (hasDomain) {
       lo = dMin
@@ -165,7 +163,7 @@ export function layoutParallel(axes: readonly ParallelAxis[], rows: Double[][], 
     const points: Pt[] = []
     const present: boolean[] = []
     for (let a = 0; a < n; a++) {
-      const v = a < row.length ? row[a]! : 0.0 / 0.0
+      const v = a < row.length ? row[a]! : NaN
       const placed = parallelPlace(outAxes[a]!, v)
       points.push({ x: outAxes[a]!.x, y: placed.y })
       present.push(placed.ok)
@@ -184,8 +182,7 @@ export function renderParallel(layout: ParallelLayout, options?: ParallelOptions
   const rawP = options?.progress ?? 1.0
   const progress = rawP < 0.0 ? 0.0 : rawP > 1.0 ? 1.0 : rawP
   const n = layout.axes.length
-  let nF = 0.0
-  for (let i = 0; i < n; i++) nF = nF + 1.0
+  const nF: Double = Number(n)
   const shown = progress >= 1.0 ? nF : Math.floor(nF * progress)
   const highlight = options?.highlight ?? []
   const highlightColor = options?.highlightColor ?? '#b42318'

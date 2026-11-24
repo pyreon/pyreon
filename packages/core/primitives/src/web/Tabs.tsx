@@ -114,7 +114,7 @@ export const Tabs = (props: TabsProps): VNode => {
   const router = props.router
   if (process.env.NODE_ENV !== 'production' && router !== undefined && router.activeTab() === undefined) {
     console.warn(
-      '[Pyreon] <Tabs router={router}>: this router has no `tabs` — configure them with createRouter({ routes, tabs: [{ name, root }] }).',
+      '[Pyreon] <Tabs router={router}>: this router has no `tabs` — configure them with createRouter({ routes, tabs: routerTabs([{ name, root }]) }).',
     )
   }
 

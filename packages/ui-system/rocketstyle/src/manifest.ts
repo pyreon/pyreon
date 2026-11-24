@@ -69,6 +69,8 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
     'Owns its native compiler frontend through the optional ./native-plugin tooling entry; the native CLI discovers it from package metadata',
     'Chainable immutable builder — every method returns a NEW component, bases fork cleanly into variants',
     'Five built-in dimensions: states/sizes/variants (single-value), multiple (multi-value), modifiers (multi + transform)',
+    'One-off looks as named `.multiple()` modifiers — typed, responsive, composable (`multiple={["threeUp", cond && "dense"]}`), merged over the theme; no styles through props',
+    'Caller-chosen values as typed `.params()` — `columns={{ xs: 1, md: 3 }}` from `.params({ columns: (n: number) => ({ … }) })`, responsive forms split by the framework, memoized by value',
     'Custom dimensions at factory init — each key becomes a chain method + a typed consumer prop',
     "Dark/light via the mode(light, dark) helper in .theme() and dimension callbacks; .config({ inversed }) inverts the mode for that component's OWN styles (use <PyreonUI inversed> for a whole subtree)",
     'Nested pseudo-state objects (hover/focus/active/pressed/disabled/readOnly) compile to CSS pseudo-selectors',
@@ -251,13 +253,21 @@ const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '
       signature:
         '(values: Record<string, object | ((theme) => object)> | ((theme, mode, css) => Record<string, object>)) => RocketStyleComponent',
       summary:
-        'Multi-value dimension definition methods (from the default dimension map). `.multiple({...})` drives the `multiple` prop, `.modifiers({...})` drives `modifier` — both accept an ARRAY of active values at the call site (`multiple={["rounded", "shadow"]}`), all of which compose onto the theme. `modifiers` is additionally a TRANSFORM dimension: its value functions receive the theme ACCUMULATED from all prior dimensions, so a modifier can derive from the active state (e.g. `outlined` reading the current state\'s `backgroundColor`). Custom dimensions opt into the same behaviors via `{ multi: true }` / `{ transform: true }`.',
+        'Multi-value dimension definition methods (from the default dimension map). `.multiple({...})` drives the `multiple` prop, `.modifiers({...})` drives `modifier` — both accept an ARRAY of active values at the call site (`multiple={["rounded", "shadow"]}`), all of which compose onto the theme. `.multiple()` is how a ONE-OFF LOOK is expressed: a named, typed modifier on the component (`Grid.multiple({ threeUp: { gridTemplateColumns: { md: "repeat(3, minmax(0, 1fr))" } } })` → `<Grid multiple="threeUp" />`), never CSS through a prop. A slice takes every value form a `.theme()` value takes (single value, mobile-first array, breakpoint object, `mode()` pair) and the `hover` / `focus` / `active` / `disabled` / `pressed` / `readOnly` groups; with a typed `StylesDefault` its keys are checked. A list may hold falsy entries, which are skipped (`multiple={["threeUp", compact() && "dense"]}`), so the memo and class are those of the list without them; a signal-driven list swaps the class on the same node. Slices merge in list order after state / size / variant, so a modifier beats them and the base theme; a responsive slice wins from its first breakpoint up and keeps the earlier value below it. Under `useBooleans: true` each value is also a boolean prop (`<Grid threeUp />`). `modifiers` is additionally a TRANSFORM dimension: its value functions receive the theme ACCUMULATED from all prior dimensions, so a modifier can derive from the active state (e.g. `outlined` reading the current state\'s `backgroundColor`). Custom dimensions opt into the same behaviors via `{ multi: true }` / `{ transform: true }`.',
       example: `const Box = rs({ name: 'Box', component: Element })
   .multiple({
     rounded: { borderRadius: 999 },
     shadow: { boxShadow: '0 2px 8px rgba(0,0,0,0.15)' },
   })
 <Box multiple={['rounded', 'shadow']} />       // both slices compose
+<Box multiple={['rounded', raised() && 'shadow']} />  // falsy entries are skipped
+
+// A one-off look on a shipped component: a modifier, not a style prop
+const Grid = BaseGrid.multiple({
+  threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } }, // theme value kept below md
+  dense: { gap: 8 },
+})
+<Grid multiple={['threeUp', compact() && 'dense']} />
 
 // Transform dimension — value fn receives the ACCUMULATED theme
 const Button2 = rs({ name: 'Button2', component: Element })
@@ -270,9 +280,36 @@ const Button2 = rs({ name: 'Button2', component: Element })
       mistakes: [
         'Passing a single string to a multi dimension and expecting array semantics — `multiple="rounded"` and `multiple={["rounded"]}` both work, but composing several values requires the array form',
         'Expecting a transform value fn to see the raw app theme — transform-dimension value functions receive the theme accumulated from PRIOR dimensions (base + active state/size/variant), which is the whole point; read app-theme tokens in a dimension-level callback instead',
+        'Passing CSS to one instance (`css="…"`, `style={{ padding: 4 }}`) for a one-off look — add a named `.multiple()` modifier to the component and apply it by name. A caller-chosen VALUE is a `.params()` param; a product-wide look is a variant',
         'Declaring a custom multi dimension as a bare string — `{ decorations: "decoration" }` is single-value; multi needs the object form `{ propName: "decoration", multi: true }`',
       ],
       seeAlso: ['.states() / .sizes() / .variants()', 'rocketstyle'],
+    },
+    {
+      name: '.params()',
+      kind: 'function',
+      signature:
+        '<P extends Record<string, (value: V, theme, mode) => ThemeSlice>>(mappers: P) => RocketStyleComponent // adds props { [K in keyof P]?: V | (V | null)[] | Partial<Record<Breakpoint, V>> }',
+      summary:
+        'Caller-chosen VALUES mapped into the theme. Each key becomes an optional prop typed from the mapper\'s first parameter and widened to the responsive forms (single value, mobile-first array with `null` = inherit, breakpoint object); the framework splits a responsive value per breakpoint, so the mapper always sees ONE value, plus the app theme and the `mode(light, dark)` helper, and returns the same slice a `.theme()` / dimension value takes (pseudo groups included). Resolved with the dimension props into `$rocketstyle` and memoized by value (JSON of the prop), so equal values share one class and a signal-driven value swaps the class on the same node. Order: base theme → state / size / variant → params → `multiple` → transform `modifiers`; between params, a later-declared param wins within a breakpoint. Param props never reach the DOM. A later `.params()` overrides by key. A param named like a dimension or pseudo prop throws in dev. A look is a `.multiple()` modifier; a value is a param; a product-wide look is a variant.',
+      example: `const Grid = el.config({ name: 'Grid' })
+  .theme(() => ({ display: 'grid' }))
+  .params({
+    columns: (n: number) => ({ gridTemplateColumns: \`repeat(\${n}, minmax(0, 1fr))\` }),
+    min: (px: number) => ({ gridTemplateColumns: \`repeat(auto-fit, minmax(\${px}px, 1fr))\` }),
+    pad: (step: 'small' | 'large', t) => ({ padding: t.spacing[step] }),
+  })
+
+<Grid columns={3} />
+<Grid columns={{ xs: 1, md: 3 }} />   // the mapper sees 1, then 3
+<Grid columns={[1, null, 3]} pad="small" />
+<Grid columns={cols()} />             // signal-driven: class swaps in place`,
+      mistakes: [
+        'Reading a prop inside `.styles()` to vary CSS per instance — that path is not in the memo key, so instances with the same resolved theme share the first one\'s class; declare the value with `.params()`',
+        'Passing an object or array as ONE value — a param value is a scalar; an array or plain object is read as a responsive value (per breakpoint)',
+        'Naming a param like an Element prop the base also takes (`gap`, `tag`) — the param swallows it (params are never forwarded)',
+      ],
+      seeAlso: ['.multiple() / .modifiers()', '.theme()', '.attrs()'],
     },
     {
       name: '.styles()',
@@ -361,7 +398,6 @@ import { PyreonUI } from '@pyreon/ui-core'
         "Expecting a nested `<Provider inversed>` to follow the parent when the parent's mode changes — the parent context is read ONCE at setup, so the inverted mode is frozen at mount; `<PyreonUI inversed>` stays reactive",
         'Setting only `mode` with no theme in scope — the default delegate provides nothing when the resolved theme is empty, so `<Provider mode="dark">` outside any themed ancestor leaves descendants on `"light"`; pass a `theme` or use `<PyreonUI>`',
         'Expecting `styled()` / `useTheme()` from `@pyreon/styler` to see the theme passed here — this Provider writes only the ui-core context that rocketstyle reads; `<PyreonUI>` writes both',
-        "Being surprised by the dev warning `[Pyreon] CoreProvider is internal` — mounting this Provider delegates to ui-core's internal provider, which logs it in development; switch to `<PyreonUI>`",
         'Mounting a fresh `Provider`/`PyreonUI` per view — the `_rsMemo` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider',
         'Expecting `inversed` to FORCE dark — it inverts whatever mode the parent resolves (light↔dark), and tracks that parent as it changes',
         'Confusing this theme/mode provider with `.config({ provider: true })` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming',
@@ -436,6 +472,10 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
   ],
   gotchas: [
     'useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both.',
+    {
+      label: 'No styles through props: a one-off look is a .multiple() modifier',
+      note: 'A look for some instances is a named, typed modifier (`.multiple({ threeUp: { … } })`, applied as `multiple="threeUp"` or `multiple={["threeUp", compact() && "dense"]}`); it is a theme slice, so it is type-checked, composes, and always beats `.theme()` and state / size / variant. A responsive slice wins from its first breakpoint up and keeps the earlier value below it (`mergeTheme` in utils/theme.ts; a mobile-first array survives the light/dark walk). A caller-chosen value is a `.params()` param (`columns={{ xs: 1, md: 3 }}`, typed from its mapper, after variants and before `multiple`); a product-wide look is a variant. The `css` prop of the Element underneath remains the escape hatch for a selector or an at-rule (tagged template or callback, no raw string), rendered into `@layer instance` after `@layer rocketstyle`: `@layer elements, rocketstyle, instance;`.',
+    },
     {
       label: 'Layout vs CSS split',
       note: 'With Element-based bases, layout props go in `.attrs()` (`tag`, `direction`, `alignX`, `alignY`, `gap`, `block`) and visual CSS goes in `.theme()`. CSS property names follow the unistyle convention (`borderWidthTop`, not `borderTopWidth`).',

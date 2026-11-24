@@ -100,8 +100,7 @@ export function layoutSunburst(
   const rawLevels = treeDepth(nodes)
   const maxDepth = options?.maxDepth ?? 64.0
   // levelsF mirrors the level count as a Double for the ring-width division.
-  let levelsF = 0.0
-  for (let i = 0; i < rawLevels; i++) levelsF = levelsF + 1.0
+  let levelsF: Double = Number(rawLevels)
   if (levelsF > maxDepth) levelsF = maxDepth
   if (levelsF <= 0.0) return arcs
   const ringW = (outerR - innerR) / levelsF
@@ -116,8 +115,7 @@ export function layoutSunburst(
     sp = sp - 1
     const frame = stack[sp]!
     // depthF mirrors the Int depth for the radius arithmetic.
-    let depthF = 0.0
-    for (let d = 0; d < frame.depth; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(frame.depth)
     if (depthF >= levelsF || frame.children.length === 0) continue
     const order: number[] = []
     if (sortMode === 'desc') for (const i of orderByValue(frame.children)) order.push(i)
@@ -183,8 +181,7 @@ export function renderSunburst(arcs: SunburstArc[], center: Pt, options?: Sunbur
   for (const a of arcs) {
     if (a.start >= limit || a.end <= a.start) continue
     const end = a.end < limit ? a.end : limit
-    let depthF = 0.0
-    for (let d = 0; d < a.depth; d++) depthF = depthF + 1.0
+    const depthF: Double = Number(a.depth)
     const tintT = 0.2 + depthF * 0.15
     const fill = a.leaf ? a.color : tintHex(a.color, tintT > 0.5 ? 0.5 : tintT)
     out.push({ kind: 'polygon', points: arcPolygon(center, a.outerR, a.innerR, a.start, end), fill })

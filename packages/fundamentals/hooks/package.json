@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/hooks",
-  "version": "0.53.0",
+  "version": "0.54.0",
   "description": "Signal-based reactive utilities for Pyreon",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/hooks#readme",
@@ -78,6 +78,8 @@
     "access": "public"
   },
   "pyreon": {
+    "stability": "stable",
+    "experimentalSubpaths": ["./native-plugin"],
     "native": {
       "swift": "native/swift",
       "kotlin": "native/kotlin",

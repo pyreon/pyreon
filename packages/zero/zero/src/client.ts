@@ -1,9 +1,25 @@
 import type { ComponentFn } from '@pyreon/core'
 import { h, isServer } from '@pyreon/core'
-import type { RouteRecord } from '@pyreon/router'
-import { hydrateLoaderData, RouterProvider } from '@pyreon/router'
+import type { ResolvedRoute, RouteRecord } from '@pyreon/router'
+import { hydrateLoaderData, RouterProvider, stringifyQuery } from '@pyreon/router'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { createApp } from './app'
+import { type IslandsOnlyOptions, isIslandsOnlyPage, startIslandsOnlyPage } from './client-marker'
+
+export type { IslandRootLoader, IslandsOnlyOptions, IslandsRegistry } from './client-marker'
+
+// PWA client surface (also exported from the barrel) — client-safe, no Node imports.
+export type {
+  InstallPrompt,
+  RegisterServiceWorkerOptions,
+  ServiceWorkerUpdate,
+} from './pwa-client'
+export {
+  registerServiceWorker,
+  unregisterServiceWorkers,
+  useInstallPrompt,
+  useServiceWorkerUpdate,
+} from './pwa-client'
 
 // Vite-injected build-time constant. Defined in `vite-plugin.ts`'s
 // `config()` hook from `zero({ base })`. Falls back to `'/'` for
@@ -16,14 +32,66 @@ declare const __ZERO_BASE__: string
 // machinery behind it. Checked inline, never through a local alias — several
 // bundlers do not fold a define through one.
 declare const __ZERO_HYDRATE__: boolean | undefined
+// Build-time flag from `client-flags-plugin.ts`: `false` when no route file
+// exports `hydrate` (#4371), which compiles the islands-only page support out
+// of an app that cannot have such a page. Checked inline, like the one above.
+declare const __ZERO_ISLANDS_ONLY__: boolean | undefined
 
 // ─── Client entry factory ───────────────────────────────────────────────────
 
-export interface StartClientOptions {
+/**
+ * The navigation guard that sends a client-side navigation TO an islands-only
+ * route (`meta.hydrate === 'islands'`) to the server as a full page load.
+ * Exported for its unit test; `assign` is the browser's `location.assign`.
+ * @internal
+ */
+export function islandsOnlyNavigation(
+  base: string,
+  assign: (href: string) => void = (href) => globalThis.location.assign(href),
+): (to: ResolvedRoute, from: ResolvedRoute) => boolean | undefined {
+  return (to, from) => {
+    if ((to.meta as { hydrate?: unknown }).hydrate !== 'islands') return undefined
+    // The route the app is already on (a cold start re-running loaders for
+    // the current URL) is rendered here, never reloaded: reloading it would
+    // loop when a static host served this app's shell at that URL.
+    if (to.path === from.path) return undefined
+    assign(`${base}${to.path}${stringifyQuery(to.query as Record<string, string>)}${to.hash ? `#${to.hash}` : ''}`)
+
+    return false
+  }
+}
+
+export interface StartClientOptions extends IslandsOnlyOptions {
   /** Route definitions. */
   routes: RouteRecord[]
   /** Root layout component. */
   layout?: ComponentFn
+}
+
+/**
+ * An islands-only page (`export const hydrate = 'islands'`) is static HTML
+ * plus its islands: hydrate those, start nothing else. The `__ZERO_ISLANDS_ONLY__`
+ * check stays inline here (a define does not fold through an alias), so an
+ * app whose routes never export `hydrate` compiles this to `return null`.
+ */
+function startIfIslandsOnly(options: StartClientOptions): (() => void) | null {
+  if ((typeof __ZERO_ISLANDS_ONLY__ === 'undefined' || __ZERO_ISLANDS_ONLY__) && isIslandsOnlyPage()) {
+    return startIslandsOnlyPage(options)
+  }
+
+  return null
+}
+
+/**
+ * A client-side navigation to an islands-only route becomes a full page
+ * load: that page is its server HTML plus islands, never a route this router
+ * renders (its loader output is in the HTML, not shipped as data). Compiled
+ * out like {@link startIfIslandsOnly}.
+ */
+function guardIslandsOnlyRoutes(router: { beforeEach: (g: ReturnType<typeof islandsOnlyNavigation>) => unknown }, base: string): void {
+  if (typeof __ZERO_ISLANDS_ONLY__ === 'undefined' || __ZERO_ISLANDS_ONLY__) {
+    router.beforeEach(islandsOnlyNavigation(base))
+  }
 }
 
 /**
@@ -68,6 +136,12 @@ export function startClient(options: StartClientOptions) {
   if (isServer) {
     throw new Error('[Pyreon] startClient() can only be called in the browser.')
   }
+  // An islands-only page (`export const hydrate = 'islands'`) is static HTML
+  // plus its islands: hydrate those, start nothing else. The app code is still
+  // downloaded here (`routes` is a static import of the entry); `startClientLazy`
+  // is the entry that keeps it off such a page.
+  const islandsOnly = startIfIslandsOnly(options)
+  if (islandsOnly) return islandsOnly
   const container = document.getElementById('app')
   if (!container) throw new Error('[Pyreon] Missing #app container element')
   // A static host serves the same 404.html at every missing URL. Its SSR tree
@@ -90,6 +164,11 @@ export function startClient(options: StartClientOptions) {
     ...(options.layout ? { layout: options.layout } : {}),
     ...(base ? { base } : {}),
   })
+
+  // A client-side navigation to an islands-only route becomes a full page
+  // load: that page is its server HTML plus islands, never a route this
+  // router renders (its loader output is in the HTML, not shipped as data).
+  guardIslandsOnlyRoutes(router, base ?? '')
 
   // ── Loader data hydration (SSR path) ───────────────────────────────────────
   // If the server embedded loader data, hydrate it BEFORE mounting so the
@@ -241,8 +320,8 @@ export function startClient(options: StartClientOptions) {
     // listeners attached by non-Pyreon code) survives, and the client skips DOM
     // construction the server already paid for.
     //
-    // `skipLoaders` because loader data was already seeded from
-    // `__PYREON_LOADER_DATA__` above; this step is purely about code.
+    // Components only (`preloadComponents` never runs loaders): loader data
+    // was already seeded from `__PYREON_LOADER_DATA__` above.
     //
     // Cost: the route chunks are emitted with `<link rel="modulepreload">` by
     // the SSG/SSR build, so this normally resolves from cache. While it does,
@@ -253,19 +332,20 @@ export function startClient(options: StartClientOptions) {
     // A rejection must NOT leave the app dead: fall through and hydrate anyway,
     // which reproduces exactly the pre-change behaviour for that route.
     //
-    // An ABSENT `preload` is the stronger version of that same case and was
+    // An ABSENT `preloadComponents` is the stronger version of that same case and was
     // unhandled: calling it would throw synchronously out of `startClient`, so
     // the app never mounts at all — strictly worse than the rejection this
     // block already defends against. Guarded the way `_currentPath` is guarded
     // a few lines above, for the same reason: the router is reached through a
     // structural type here, so its shape is an assumption rather than a
     // guarantee.
-    const preload = (router as unknown as { preload?: typeof router.preload }).preload
-    if (typeof preload !== 'function') {
+    const preloadComponents = (router as unknown as { preloadComponents?: typeof router.preloadComponents })
+      .preloadComponents
+    if (typeof preloadComponents !== 'function') {
       hydrateOrMount()
     } else {
-      preload
-        .call(router, currentPath, undefined, { skipLoaders: true })
+      preloadComponents
+        .call(router, currentPath)
         .then(hydrateOrMount, (err) => {
           // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
           if (import.meta.env?.DEV === true) {

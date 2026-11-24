@@ -5,7 +5,8 @@
  * through makeItResponsive.
  */
 import { config } from '@pyreon/ui-core'
-import { extendCss, makeItResponsive } from '@pyreon/unistyle'
+import { makeItResponsive } from '@pyreon/unistyle'
+import { instanceCss } from '../helpers/instanceCss'
 import type { Css, ResponsiveStylesCallback } from '../types'
 
 const { styled, css, textComponent } = config
@@ -16,7 +17,7 @@ const { styled, css, textComponent } = config
 type ThemeProps = { extraStyles?: Css }
 
 const styles: ResponsiveStylesCallback<ThemeProps> = ({ css: cssFn, theme: t }) => cssFn`
-  ${t.extraStyles && extendCss(t.extraStyles as Parameters<typeof extendCss>[0])};
+  ${t.extraStyles && instanceCss(cssFn, t.extraStyles)};
 `
 
 export default styled(textComponent, { layer: 'elements' })`

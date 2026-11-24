@@ -83,8 +83,7 @@ export function legendPlan(
     if (opts.orientation === 'horizontal') x = x + entryW
     else r = r + 1.0
   }
-  let count = 0.0
-  for (let i = 0; i < entries.length; i++) count = count + 1.0
+  const count: Double = Number(entries.length)
   const rows = opts.orientation === 'horizontal' ? r + 1.0 : count
   return { row, xs, rows }
 }

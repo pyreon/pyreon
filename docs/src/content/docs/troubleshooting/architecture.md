@@ -118,7 +118,7 @@ When upstream notifies, the accessor can run before B recomputes and see `(A_new
 
 ### Effects that read context across re-runs capture and restore the owner
 
-Client context is owner-based. `provide()` writes onto the component's `EffectScope` (`scope._contexts`), `useContext()` walks `scope._parent`, and context dies with the scope; there is no client context stack. `_bind` / `renderEffect` / `effect` capture the active owner at setup via the `setSnapshotCapture` hook (`getContextOwner` / `runWithContextOwner`, registered by `@pyreon/core`) and restore it on every re-run after the first. Deferred boundaries (`<Show>`/`<For>`) capture and restore the owner the same way. SSR keeps a request-scoped stack (`pushContext`/`popContext`); the `*-compat` layers keep their own. Reference: `packages/core/core/src/context.ts`, `packages/core/reactivity/src/effect.ts`, `packages/core/reactivity/src/scope.ts`.
+Client context is owner-based. A component's `EffectScope` becomes a context owner on its FIRST `provide()` (`_claimContextOwner`, lazily — a non-providing component is not in the chain and its children link straight to the nearest provider); `provide()` writes onto `scope._contexts`, `useContext()` walks `scope._parent`, and context dies with the scope; there is no client context stack. `_bind` / `renderEffect` / `effect` capture the active owner at setup via the `setSnapshotCapture` hook (`getContextOwner` / `runWithContextOwner`, registered by `@pyreon/core`) and restore it on every re-run after the first. Deferred boundaries (`<Show>`/`<For>`) capture and restore the owner the same way. SSR keeps a request-scoped stack (`pushContext`/`popContext`); the `*-compat` layers keep their own. Reference: `packages/core/core/src/context.ts`, `packages/core/reactivity/src/effect.ts`, `packages/core/reactivity/src/scope.ts`.
 
 ---
 
@@ -362,6 +362,14 @@ Use `useControllableState` from `@pyreon/hooks` instead of hand-written `isContr
 
 ---
 
+### Styles through props
+
+`<Card css={…}>` / `css="…"` / an inline `style={{ padding: 4 }}` on a themed component. Nothing checks the text, it skips the theme (no breakpoints, tokens or dark mode), and every call site restates the look. One rule: a caller-chosen VALUE is a `.params()` param (`Grid.params({ columns: (n: number) => ({ gridTemplateColumns: … }) })` → `columns={{ xs: 1, md: 3 }}`); a one-off LOOK is a named `.multiple()` modifier (`Grid.multiple({ threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } } })`, applied as `multiple="threeUp"` or `multiple={['threeUp', compact() && 'dense']}`); a product-wide look is a variant. A modifier is a theme slice, so it cannot lose to `.theme()` (#4354) and a responsive modifier keeps the theme value below its first breakpoint (rocketstyle `mergeTheme`). `css` stays only as the escape hatch for a selector or an at-rule, as a tagged template or callback (no raw string type), with a lint suppression saying why. Lint: `pyreon/prefer-style-modifier` (warn), `pyreon/no-raw-css-string` (error), `pyreon/no-theme-props-in-style` (opt-in). Never read a prop in `.styles()` to vary CSS per instance: that path is not part of the memo key (see the styler class-cache entry). Tests: `ui/components/src/style-modifier.browser.test.tsx`, `ui/components/src/tests/style-params-ssr.test.ts`, `rocketstyle/src/__tests__/{modifier-responsive-merge,params}.test.ts`.
+
+**Detected by:** `css-prop-on-component` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
 ### Empty `.theme({})`
 
 Never chain `.theme({})` as a no-op; omit `.theme()` when there is no base theme.
@@ -383,7 +391,7 @@ Never chain `.theme({})` as a no-op; omit `.theme()` when there is no base theme
 
 ### Unguarded `decodeURIComponent` on request text
 
-It throws `URIError` on `%`, `%zz` or a truncated escape. `@pyreon/router`'s matcher runs on path segments and query keys/values before auth (via `router.preload` in the SSR handler), so `GET /?q=%` returned 500 even for static routes. The matcher cannot answer 400, so `safeDecodeURIComponent` keeps an undecodable segment literal; `@pyreon/zero`'s island-fragment middleware answers 400. Params may contain a literal `%`, so decode once at the edge. Every decode reachable from request text needs an explicit raw-or-400 decision; grep for sibling decodes. Reference: `packages/core/router/src/match.ts`; test `tests/malformed-url-decode.test.ts`.
+It throws `URIError` on `%`, `%zz` or a truncated escape. `@pyreon/router`'s matcher runs on path segments and query keys/values before auth (via `preloadRoute` in the SSR handler), so `GET /?q=%` returned 500 even for static routes. The matcher cannot answer 400, so `safeDecodeURIComponent` keeps an undecodable segment literal; `@pyreon/zero`'s island-fragment middleware answers 400. Params may contain a literal `%`, so decode once at the edge. Every decode reachable from request text needs an explicit raw-or-400 decision; grep for sibling decodes. Reference: `packages/core/router/src/match.ts`; test `tests/malformed-url-decode.test.ts`.
 
 ---
 
@@ -587,5 +595,11 @@ An MCP tool's arguments are written by a model that may be reading untrusted tex
 ### Inferring a singleton member in the surrounding component scope
 
 A fractional store/model field was unknown to its computed/view/action body, leaving an `Int` return around a `Double` expression. Seed inference from the declaration’s own fields, carry cumulative computed/view types, and restore emitter context in `finally`. Refine default parameter types before return inference and coerce integer callers against the known signature. Keep syntactic parameter guards independent of successful return inference; unsupported array/rest helper parameters still require a named decline. Validate with real Swift/Kotlin compilers; unchanged golden output can preserve invalid code. Reference: `native-compiler/src/tests/singleton-fractional-members.test.ts`.
+
+---
+
+### `String(n)` on a number in a runtime text write
+
+JS-side Number→String (`String(n)`, `n + ''`, a template literal) of more than ~200 distinct integers grows V8's `smi_string_cache`, a GC-root cache, to its full ~64 KB, and the page never gets it back. The DOM's own conversion (`Text.data = n`, `createTextNode(n)`, `append(n)`, `replaceChildren(n)`; WebIDL `DOMString`, the same characters) does not touch it. #4560 routed `_setChild`/`_setChildAt` through `_childText` and the row board's retained heap rose 64 KB. A static text sink hands a number to the DOM as a number; never `textContent = n` (happy-dom writes `''` for `0`). Check a heap delta for a GC-root `smi_string_cache` entry before attributing it to framework objects. Code: `_replaceText` in `packages/core/runtime-dom/src/template.ts`; test `tests/number-text-unconverted.test.tsx`. The reactive text bindings still `String()` a number, because their dedupe and hydration read-back compare strings.
 
 ---

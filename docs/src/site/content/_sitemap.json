@@ -26,7 +26,7 @@
         {
           "route": "/products",
           "title": "All products",
-          "purpose": "Show the whole box: 40 products in five groups, a one-line pitch each, so nobody installs a 31st library.",
+          "purpose": "Show the whole box: {{@productCount}} products in five groups, a one-line pitch each, so nobody installs a 31st library.",
           "audience": "developer",
           "primaryCta": "Open a product",
           "content": "content/_products.json",
@@ -814,7 +814,7 @@
         {
           "route": "/status",
           "title": "Status and direction",
-          "purpose": "What is pre-1.0, what is experimental, the directions under consideration, from stability-and-direction.md only.",
+          "purpose": "What is Stable, what is Experimental, the semver and deprecation policy, the directions under consideration, from stability-and-direction.md only.",
           "audience": "tech lead",
           "primaryCta": "Read the native matrix",
           "content": "content/_project.json#status",

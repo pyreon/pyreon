@@ -43,8 +43,8 @@ const parses = (s: string): boolean => {
   }
 }
 
-const R7_CALLBACK = `function C(props){ const cls = props.theme + '-btn'; return <ul>{props.items.map(i => <li class={cls}>{i}</li>)}</ul> }`
-const R7_TRANSITIVE = `function C(props){ const a = props.x; const b = a + 1; return <ul>{props.items.map(i => <li>{b}</li>)}</ul> }`
+const R7_CALLBACK = `function C(props){ const cls = props.theme + '-btn'; return <List>{props.items.map(i => <li class={cls}>{i}</li>)}</List> }`
+const R7_TRANSITIVE = `function C(props){ const a = props.x; const b = a + 1; return <List>{props.items.map(i => <li>{b}</li>)}</List> }`
 const R7_SHADOW = `function C(props){ const a = props.x; return <ul>{props.items.map(a => <li>{a}</li>)}</ul> }`
 const R7_DIRECT = `function C(props){ const a = props.x; return <div>{a}</div> }`
 const R9_CONST = `function C(){ const header = <h1>T</h1>; return <div>{header}<p>x</p></div> }`
@@ -54,12 +54,20 @@ const R9_STR_CTRL = `function C(){ const t = 'T'; return <div>{t}<p/></div> }`
 describe('Round 7 — callback-nested prop-derived inlining is 1:1 JS≡Rust', () => {
   it('callback-nested prop-derived inlines on BOTH backends, identically', () => {
     expect(rust(R7_CALLBACK)).toBe(js(R7_CALLBACK))
-    expect(js(R7_CALLBACK)).toContain("class={(props.theme + '-btn')}")
-    expect(rust(R7_CALLBACK)).toContain("class={(props.theme + '-btn')}")
+    // The `.map` child of a component parent is WALKED (its JSX keeps the h()
+    // path), so the inlined read is the attribute's own accessor, exactly as a
+    // `<li class={cls}>` written anywhere else gets.
+    expect(js(R7_CALLBACK)).toContain("class={() => (props.theme + '-btn')}")
+    expect(rust(R7_CALLBACK)).toContain("class={() => (props.theme + '-btn')}")
+  })
+  it('callback-nested prop-derived inlines in a SLICED callback (no JSX) on both backends', () => {
+    const src = R7_CALLBACK.replace('<li class={cls}>{i}</li>', 'cls')
+    expect(rust(src)).toBe(js(src))
+    expect(rust(src)).toContain("props.items.map(i => (props.theme + '-btn'))")
   })
   it('transitive prop-derived chain inlines in a callback on both backends', () => {
     expect(rust(R7_TRANSITIVE)).toBe(js(R7_TRANSITIVE))
-    expect(rust(R7_TRANSITIVE)).toContain('{((props.x) + 1)}')
+    expect(rust(R7_TRANSITIVE)).toContain('{() => ((props.x) + 1)}')
   })
   it('a shadowing arrow param is NOT clobbered on either backend (parseable + identical)', () => {
     expect(parses(js(R7_SHADOW))).toBe(true)

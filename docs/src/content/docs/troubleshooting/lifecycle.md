@@ -41,6 +41,24 @@ The web `RouterView` claims its depth from `router._viewDepth`, a counter every 
 
 ---
 
+### [FIXED, 2026-11] Index-addressed passes over a raw key list that repeats a key.
+
+`<For>` promises first-wins for duplicate keys (the row appears once, at its FIRST position), but only the fresh render kept it. On an update the LIS and small-k placement walked the raw `newKeys`, so a duplicated row was moved twice and landed at its LAST position; replace-all mounted a duplicate twice, overwriting the first row's cache entry and stranding its DOM; and the contiguous-insertion fast path skipped a repeat of a suffix key that first-wins needed moved up. Fix: every update path stores a deduplicated order — the general path detects a repeat for free (`keptDistinct + added !== n`) and dedupes only then; replace-all skips cached keys; the insertion path finishes with the LIS when it skipped one. **Rule: a list that addresses rows by INDEX must see each key once; dedupe before any positional pass, not after.** Reference: `runtime-dom/src/nodes.ts:mountFor`; bisect-locked in `tests/for-duplicate-keys-fuzz.test.tsx` (each of the three paths reverted alone fails it).
+
+---
+
+### [FIXED, 2026-11] A JSX-building expression the emit SLICES loses the JSX rules.
+
+Wherever the compiler copies source text into a generated accessor without walking it, the JSX inside never gets the rules every other JSX element gets: `{row.label()}` is not made an accessor, a component's `label={row.label()}` gets no `_rp`. In a keyed `.map()` the read then runs in the LIST's accessor, the reconciler keeps the row for the unchanged key, and the cell never updates. Four slice sites, all walked in place now: the `_mountSlot(() => (…))` hole of a compiled template (walked WITH templates, `clientWalksHole`); the same hole in SVG/MathML content (`<svg>{rows().map(…)}</svg>`; a `_tpl` root is namespaced by its own tag, so this hole is walked with its JSX kept on the h() path, `hPathHoles` / `h_path_holes`); the `() => (…)` an h()-path child or DOM attribute gets (`<Comp>{rows().map(…)}</Comp>`, the inner `.map` of a keyed row); and a component prop's `_rp(() => …)` (both `wrapWalked` / `wrap_walked`, JSX kept on the h() path so a component receiving it still gets vnodes). **Rule: an expression that builds JSX is never copied into an accessor as a slice. It is walked in place, with templates only where the consumer is a template hole outside foreign content; everywhere else its JSX stays on the h() path.** A slice of JSX survives only where the JSX is not rendered by the emit (an event handler's body), and there an exactly-bare signal stays bare (`isBareDomBinding`). Reference: `compiler/src/jsx.ts:wrapWalked`, `processOneChild` (`hPathHoles`); locked by `compiler/src/tests/wrap-walked-jsx.test.ts`, `template-hole-walk.test.ts` and `runtime-dom/src/tests/keyed-map-row-reactivity.test.tsx` (JS and Rust each reverted alone fail them).
+
+---
+
+### [FIXED, 2026-11] A binding that picks its machinery for life must not pick on a value that carries no evidence.
+
+The accessor dispatcher (`mountAccessorChild`) chooses keyed reconciler, general reactive mount or text once. It chose on the first value, so a keyed list whose first value was `[]` (or `undefined`, `rows()?.map(…)`) was pinned to the general path and re-created every row on every later update — focus, typed input and transitions lost — in the common data-arrives-after-mount case; hydration over an empty server list chose `mountReactive` directly. Fix: an empty array or nullish value is UNDECIDED (`isUndecidedChild`): the dispatcher mounts a placeholder and classifies again on its next run; hydration over an empty range mounts that same dispatcher (`mountOverEmpty`). The keyed reconciler also takes a non-array value (nullish → no rows, anything else → one row), which it threw on before. **Rule: defer a once-only classification until a value can decide it; keep a placeholder for the position meanwhile.** Reference: `runtime-dom/src/mount.ts:mountAccessorChild`, `hydrate.ts:mountOverEmpty`; locked by `tests/keyed-map-undecided-first.test.tsx` (+ `.browser` twin for focus and input value).
+
+---
+
 ### [FIXED, 2026-10] An `effect()` / `computed()` created in a `<For>` row callback had no owner.
 
 The callback runs after the surrounding component's setup, when no scope is current, so the effect registered nowhere: a removed row kept running it, and so did every row after the list unmounted. Each row callback now runs under a pooled collector scope that the row keeps (and stops on removal) only when something registered — zero allocation otherwise, no measurable cost on the fair board. **Rule: any framework construct that runs a user callback outside component setup must give that callback an owner, or effects created in it are unowned.** Reference: `runtime-dom/src/nodes.ts:runRowCallback`; locked by `for-row-effect-scope.test.tsx` (bisect-verified).
@@ -50,6 +68,18 @@ The callback runs after the surrounding component's setup, when no scope is curr
 ### [FIXED, 2026-11] Resetting the current effect scope to `null` instead of restoring it.
 
 `mountComponent` and `hydrateComponent` ended setup with `setCurrentScope(null)`. A component can mount while another scope is current: inside a parent's `onMount` (`runInScope`) when a signal write flips a `<Show>`, inside a `<For>` row's collector, inside a parent's compiled template. The reset left everything that owner created afterwards with no owner, so an effect created later in the same `onMount` kept running after the parent unmounted. **Rule: code that sets the current scope saves the previous one and restores it on every exit path (`runInScope`, `runRowCallback`), never a constant.** Reference: `runtime-dom/src/mount.ts`, `hydrate.ts`; locked by `mount-restores-scope.test.ts` (h(), hydration, and both compiler backends; bisect-verified).
+
+---
+
+### [FIXED, 2026-11] A hydration walk that lets a subtree throw escape.
+
+`mountComponent` contains a throw from its subtree (stop the component's scope, restore the owner, route to the nearest error boundary or log, continue), but `hydrateComponent`'s `hydrateChild` call had no try/catch. A throw during hydration escaped `hydrateRoot`, so the caller got no cleanup and everything already hydrated (a sibling's effects) could never be disposed, and the context owner stayed pointing at the dead component, so the next mount chained to it. **Rule: the hydrate path contains a throw exactly where and how the mount path does, and every root entry restores the ambient walk state (flags AND context owner) in `finally`.** Reference: `runtime-dom/src/hydrate.ts` (`hydrateComponent`, `hydrateRoot`); locked by `hydrate-throw-disposes.test.ts` (bisect-verified).
+
+---
+
+### [FIXED, 2026-11] An `effect()` / `computed()` created during server rendering had no owner.
+
+The server never mounts, so no component scope exists and nothing disposed what a component created. Each one reading a signal that outlives the request (module state, a cache, `systemColorMode()` under `<ColorModeProvider mode="system">`) kept one subscriber per request, forever, and its closure pinned props, children and request data. **Rule: on the server the REQUEST owns every node created with no current scope.** `@pyreon/runtime-server` keeps an `EffectScope` on the request's AsyncLocalStorage store; reactivity reads it (`_setRequestOwnerReader`) only where a node registers and only when no scope is current; the request's last hold (the call that opened it, plus every render or stream inside it until that ends, so a streamed body outlives the handler's `runWithRequestContext` callback) stops it. Never make a request scope current with `setCurrentScope` around a render: renders interleave across `await`s, and a slot held over one hands one request's nodes to another. A per-request registry whose entries own their own scope (a store's `effectScope` and plugin cleanups) must publish a disposer the renderer calls at request end (`__PYREON_STORE_DISPOSE_REGISTRY__`); dropping the map is not disposing it. Corollary, the same as on the client: a module-level singleton created lazily inside a render must build its nodes under its own `effectScope()`, or the first request disposes them. Reference: `runtime-server/src/index.ts` (`RequestCtx`, `releaseRequest`); locked by `ssr-reactive-ownership.test.ts` (includes two interleaved async renders) and store `ssr-request-dispose.ssr.test.ts` (bisect-verified).
 
 ---
 
@@ -91,7 +121,43 @@ Solid-compat's `onCleanup` always meant "component unmount", so a cleanup regist
 
 ### Side indexes and guards that outlive the entries they describe (Class C)
 
-The ISR memory store capped its cache at `maxEntries` but its tag index only grew (`setTags` added; `delete()` and LRU eviction never pruned), `createFsStore`'s `_tags.json` likewise, and `createISRHandler` kept one invalidation epoch per key EVER passed to `revalidateNow`, though an epoch only guards a render in flight. Rules: every index keyed by a cached entry is pruned on EVERY path that removes the entry (delete, eviction, clear), via a reverse key → index map; a guard for in-flight work lives exactly as long as that work (refcounted ticket, released in `finally`); a read-only lookup must not refresh LRU order. Reference: `packages/zero/zero/src/isr.ts` (`createMemoryStore`, `createFsStore`, `_beginRender`/`_endRender`); locked by `isr-store-bounds.test.ts`, which also caught `revalidateAll` missing a cold render in flight.
+The ISR memory store capped its cache at `maxEntries` but its tag index only grew (`setTags` added; `delete()` and LRU eviction never pruned), `createFsStore`'s `_tags.json` likewise, and `createISRHandler` kept one invalidation epoch per key EVER passed to `revalidateNow`, though an epoch only guards a render in flight. Rules: every index keyed by a cached entry is pruned on EVERY path that removes the entry (delete, eviction, clear), via a reverse key → index map; a guard for in-flight work lives exactly as long as that work (refcounted ticket, released in `finally`); a read-only lookup must not refresh LRU order. Reference: `packages/zero/zero/src/isr.ts` (`createMemoryStore`, `_beginRender`/`_endRender`); locked by `isr-store-bounds.test.ts`, which also caught `revalidateAll` missing a cold render in flight.
+
+---
+
+### Keeping a block whose CONTENT changes under a stable identity in an append-only, content-keyed store
+
+`<PyreonUI>` under `cssVariables` injected each theme's `:root { --px-… }` block with `sheet.injectRules([css], css)`. The variable NAMES depend only on the theme path, so every block redefined the same names and the last INSERTED one won: theme A -&gt; B -&gt; A inserted nothing the third time (A's text was already "injected") and the page kept showing B, while the sheet (and, server side, the process-lifetime rule map) grew by one block per distinct theme. After `clearCache()`, SSR also stopped emitting the block (the dedup set survived, the rules did not). Rule: a block that represents CURRENT state ("the theme now") gets one owned, replaceable slot keyed by its role, not by its content: `sheet.setRootVariables(css)`. Reference: `packages/ui-system/styler/src/sheet.ts`, `packages/ui-system/ui-core/src/PyreonUI.tsx`; locked by `rocketstyle/src/__tests__/css-variables-theme-swap.browser.test.tsx` and `styler/src/__tests__/sheet-root-variables.test.ts`.
+
+---
+
+### A refcounted module cache whose async load writes back unconditionally (Class F)
+
+`@pyreon/zero-content` search released its MiniSearch when the last `<Search>` unmounted, but a load still in flight then assigned `_instance = ms`, re-pinning the whole index with zero subscribers; a rejected load stayed cached as `_loading`, so every later load of that URL failed until the last subscriber left; and a slow load for an older catalog URL overwrote the current one. Rule: a load writes into a shared cache only if the generation it started under is still current (bump on release-to-zero, reset and every new load), and both settle paths clear the promise cache. Reference: `packages/zero/zero-content/src/search/search-runtime.tsx` (`_generation`); locked by `src/tests/search-load-race.test.ts`.
+
+---
+
+### A resource held for the component's LIFETIME when it belongs to a STATE, and released by writing a constant
+
+`useOverlay({ type: 'modal' })` took the page scroll lock in `setupListeners` (on mount) and released it with `document.body.style.overflow = ''`, so a closed modal blocked page scrolling while its trigger was on the page, and its release wiped the value `@pyreon/hooks` `useScrollLock` (its own counter) had saved under an open `ModalBase`. Rules: acquire when the state that needs it begins (open) and release when it ends (close) AND on unmount if still held; release by restoring what the first hold saved, never by writing a default; one shared resource gets ONE counter for the whole framework. Page and element scroll locks go through `lockScroll()` from `@pyreon/core`. Reference: `packages/core/core/src/scroll-lock.ts`, `packages/ui-system/elements/src/Overlay/useOverlay.tsx`; locked by `Overlay-modal-scroll-lock.browser.test.tsx` (every older modal test mounted with `isOpen: true`, which is why mount-time locking passed).
+
+---
+
+### A hold on someone else's counter released only by the opposite EVENT, never by teardown
+
+A nested `useOverlay` blocked its parent in `showContent` and unblocked only in `hideContent`. A child removed while open (conditional render, route change) never hid, so the parent stayed blocked and never again closed on outside click or Escape; a child shown twice double-counted, and a hide on a never-opened child released someone else's block. Rule: each holder records whether it holds (at most one hold per holder), takes it when its state begins, and releases it exactly once — on the opposite event OR on detach, whichever comes first. Reference: `packages/ui-system/elements/src/Overlay/useOverlay.tsx` (`blockParent` / `releaseParent`); locked by `Overlay-nested-unmount-block.browser.test.tsx`.
+
+---
+
+### A disk-backed cache is a cache too (Class C)
+
+`createFsStore` wrote one file per cache key and never evicted, so under the default `pathname + search` key an anonymous visitor could fill the disk with distinct query strings; it also rewrote one shared `_tags.json` index on every tagged miss (O(N) bytes per miss). Rules: a persistent cache gets the same cap as its in-memory sibling, and the cap is enforced against what is ON DISK — count the directory at start and trim, so a restart (or an older version's directory) cannot reset it; eviction removes the entry and every file that references it; keep per-entry metadata in per-entry files so a write costs O(1), not O(cached); write tmp+rename so a crash leaves no torn file, and sweep leftover temp files at start; serialize fs mutations per key so a later `delete` cannot be overtaken by an earlier `set`. Reference: `packages/zero/zero/src/isr-fs-store.ts`; locked by `isr-fs-store-bounds.test.ts`.
+
+---
+
+### A refcounted shared resource created inside the FIRST consumer's `onMount` is owned by that consumer
+
+Zero's `initTheme()` ran its shared setup (matchMedia listener + the effect that keeps `<html data-theme>` following the theme) when the refcount went 0 -&gt; 1, inside the first `<ThemeToggle>`'s `onMount`. An `effect()` created there registers with that component's scope, so unmounting the first toggle disposed the effect while the others still held the refcount, and `data-theme` stopped following changes. Rule: anything whose lifetime is a refcount must be created in its own `effectScope()` (`scope.runInScope(...)`) and stopped by the refcount's teardown, never left to the ambient owner. Reference: `packages/zero/zero/src/theme.tsx` (`_setupShared`); locked by `src/tests/theme-shared-effect-owner.test.tsx`.
 
 ---
 
@@ -122,6 +188,7 @@ When a differential disagrees, check both sides against the specification. `@pyr
 ### Content mounted into a live parent with no explicit remover
 
 `mountChild` returns a no-op cleanup for element children when `_elementDepth > 0`, which is valid only when the parent is removed as a unit. A portal target such as `document.body` never is, so portaled modals and toasts stayed in the document after their owner unmounted. `<Portal>` brackets its content with `<!--portal-->…<!--/portal-->`, mounts before the end marker, and removes the whole range on dispose. Any code mounting into a parent it does not own must return a real remover. Reference: `packages/core/runtime-dom/src/mount.ts` (PortalSymbol branch); `tests/portal-dispose.test.tsx`.
+  - The same holds for anything a REACTIVE BOUNDARY mounts from its effect and later removes itself: the range of a `() => …` child or `<Show>` (`mountReactive`), the keyed `.map()` reconciler, the polymorphic text core's subtree, `TransitionGroup` items, `KeepAlive` children. A boundary's effect does not only run at top level: a component that writes a signal during its setup re-runs an earlier sibling boundary right then, inside the parent element's children loop, so the run inherited `_elementDepth > 0` and its content got no-op cleanups; a later run that rendered nothing left the old nodes in the document (fixed 2026-11, pre-existing). **Rule: every boundary mounts through `mountOwned` (`mount.ts`), which forces depth 0 — never pass bare `mountChild` to `mountReactive` / `mountKeyedList` or call it from an effect.** `<For>` removes its rows by range and uses the depth deliberately. Tests: `runtime-dom/src/tests/reactive-range-reentrant-render.test.tsx` (h() and compiled), `reactive-range-reentrant-render.browser.test.tsx` (TransitionGroup).
 
 ---
 
@@ -209,6 +276,12 @@ An animation function that does not store its frame ID leaks frames when called 
 
 ---
 
+### [FIXED, 2026-11] A cancel that covers the work a frame STARTS but not the frame itself.
+
+`<Transition>` set its cancel (listeners, safety timer) inside the `requestAnimationFrame` callback, so an unmount before the frame left the frame to run on a detached element and fire `onAfterEnter`/`onAfterLeave` 5s later. **Rule: the cancel is installed when the work is scheduled (cancel the frame id), and the frame replaces it with the cancel for what it starts.** Reference: `runtime-dom/src/transition.ts`; locked by `transition-unmount-before-frame.test.ts` (bisect-verified).
+
+---
+
 ### Bare `requestAnimationFrame` in async animation paths
 
 An async path (`await computeLayout(...)`) can reach its rAF call after the test environment is torn down, throwing `ReferenceError: requestAnimationFrame is not defined` as an unhandled error that fails the run with all tests green. Wrap rAF/cAF in helpers that no-op when the global is not a function: `const _raf = (cb) => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(cb) : 0`. Applies to SSR and workers too. Reference: `flow/src/flow.ts` (`_raf`, `_caf`); `flow/src/tests/raf-teardown-safety.test.ts`.
@@ -245,7 +318,7 @@ Bypasses lifecycle cleanup, so listeners leak on unmount. Use `useEventListener`
 
 ### Closure-captured `parent` in a reactive mount loop
 
-A reactive region is often built inside a detached container (a `DocumentFragment`, or an outer element that is not yet attached) and then moved into the live parent, carrying markers along, but an inner mount's closure still holds the empty fragment as `parent`. The next re-run's `parent.insertBefore(node, marker)` throws `NotFoundError` and the subtree is lost. Any mount loop inside an effect must read `marker.parentNode` (or `tailMarker.parentNode`) on each run and thread that live parent through every helper that inserts, falling back to the captured `parent` only when the marker is detached. Fixed in `mountReactive` and `mountKeyedList` (`mountNewEntries`, `mountVNode`, `keyedListReorder` → `applyKeyedMoves` → `moveEntryBefore`); `mountFor` uses `startMarker.parentNode`, and `KeepAlive`/`TransitionGroup`/`Transition` use live element refs. Reference: `packages/core/runtime-dom/src/nodes.ts`; `tests/keyed-array-in-for-batched-toggle.browser.test.ts`, `tests/show-of-for-batched-toggle.browser.test.ts`; `bun run perf:leak-sweep --app perf-dashboard --journeys domConditionalToggle-1000`.
+A reactive region is often built inside a detached container (a `DocumentFragment`, or an outer element that is not yet attached) and then moved into the live parent, carrying markers along, but an inner mount's closure still holds the empty fragment as `parent`. The next re-run's `parent.insertBefore(node, marker)` throws `NotFoundError` and the subtree is lost. Any mount loop inside an effect must read `marker.parentNode` (or `tailMarker.parentNode`) on each run and thread that live parent through every helper that inserts, falling back to the captured `parent` only when the marker is detached. Fixed in `mountReactive`; `mountFor` (which also reconciles keyed `.map()` arrays — `mountKeyedList` is a thin wrapper over it) uses `startMarker.parentNode`, and `KeepAlive`/`TransitionGroup`/`Transition` use live element refs. Reference: `packages/core/runtime-dom/src/nodes.ts`; `tests/keyed-array-in-for-batched-toggle.browser.test.ts`, `tests/show-of-for-batched-toggle.browser.test.ts`; `bun run perf:leak-sweep --app perf-dashboard --journeys domConditionalToggle-1000`.
 
 ---
 
@@ -282,6 +355,24 @@ The file pickers (`useCamera`, `useFilePicker`, `useImagePicker`) append a hidde
 ### [FIXED, 2026-11] A client convenience fallback written and read on the server.
 
 `<RouterProvider>` also stored its router in a module-level fallback (`setActiveRouter`), and every router hook read `useContext(RouterContext) ?? _activeRouter`. On a server that slot held the LAST page request's router, so a server-island fragment (rendered with no provider) resolved `useRoute()` / `useParams()` / `useSearchParams()` to another user's path and query: a cross-request data exposure. **Rule: a module-level "current X" fallback is client-only; on the server, resolve through request-scoped context or fail.** All router reads go through one resolver (`resolveRouter` in `router/src/router.ts`), which ignores the slot when `isClient` is false, and `setActiveRouter` stores nothing on a server. Locked by `server/src/tests/server-island-router-bleed.test.ts` (node environment; bisect-verified).
+
+---
+
+### [FIXED, 2026-11] A wrapper `ReadableStream` that does not forward `cancel`.
+
+The streaming handler copied the app stream into the response body from `start()` with no `cancel`, so a client disconnect never reached the render: it ran until every Suspense boundary settled or timed out (forever with `suspenseTimeoutMs: Infinity`), and its next write into the cancelled body threw and was logged and reported to `onError` as a render failure. **Rule: a stream that pumps another must implement `cancel` by cancelling its source reader, stop writing once cancelled, and never report a consumer disconnect as an error.** Reference: `server/src/handler.ts:renderStreamResponse`; locked by `handler-stream-cancel.test.ts` (bisect-verified).
+
+---
+
+### [FIXED, 2026-11] `{ once: true }` on a CALLER's signal is not a cleanup (Class D).
+
+`renderToStream({ signal })` chained the caller's signal with `addEventListener('abort', …, { once: true })`, which removes the listener only if that signal fires. A caller sharing one long-lived signal across operations (a shutdown signal, a reused connection signal) gained one listener, and the stream it closed over, per render. **Rule: a listener on a signal or target you do not own comes off on every end of your operation (success, error, cancel), through an idempotent detach.** Reference: `runtime-server/src/index.ts:chainCallerSignal`; locked by `stream-abort-listener.test.ts` (bisect-verified).
+
+---
+
+### [FIXED, 2026-11] Ref-dependent DOM work scheduled from setup with `queueMicrotask` / a timer.
+
+`<RouterLink prefetch="viewport">` called `observer.observe(ref.current)` from a microtask queued at setup. A link unmounted in the same tick had its ref cleared first, so `observe(null)` threw an uncaught TypeError. **Rule: work that needs a component's DOM runs in `onMount` (the ref is set there) and is undone in that hook's returned cleanup; never in a microtask or timer queued from the body, which can outlive the component.** Reference: `router/src/components.tsx` (RouterLink); locked by `router-link-viewport-unmount.test.ts` (bisect-verified).
 
 ---
 
@@ -366,5 +457,29 @@ Solid-compat's `mapArray` re-ran `mapFn` for the whole list, so per-item state a
 ### [FIXED, 2026-11] A binding that mounts content must expect its OWN mount to re-run it.
 
 A ref callback or a nested boundary that writes a signal the enclosing accessor read (kinetic's `appear` ref moves the stage that `<Show when={shouldMount}>` reads) re-runs that accessor's binding synchronously while its first mount is still on the stack. `mountAccessorChild` classified the value again and built a second `mountReactive`, and the polymorphic text core mounted the subtree again and then overwrote the nested run's cleanup, so the content appeared twice and one copy had no cleanup. **Rule: a dispatcher marks itself handed-off BEFORE building the machinery that mounts, and a mount that can be superseded checks a generation counter after it returns and discards its own result (as `mountReactive` already did).** Locked by `runtime-dom/src/tests/reentrant-accessor-mount.test.ts`.
+
+---
+
+### A template binding with two owners, or a statement helper with none
+
+A render binding built inside a compiled template is owned by the cleanup it is returned to. Registering it with the component's `EffectScope` as well (as `_bind` and runtime-dom's render effects once did) kept a `[dispose]` array per component and hid ownership bugs: `_setChild(el, accessor)` is emitted as a STATEMENT, dropped `mountChild`'s cleanup, and was disposed only because its inner effect happened to register with the scope. **Rule: every binding has exactly one owner. A helper that returns a disposer uses a non-registering binding (`_renderBind`); a helper that cannot return one hands its cleanup to the scope explicitly (`ownByScope` in runtime-dom `mount.ts`); and any code that builds bindings but may throw before handing their cleanup out opens an owner frame (`_openOwnerFrame`, closed or aborted exactly once).** Locks: `template-owned-bindings.test.tsx`, `owner-frame.test.ts`.
+
+---
+
+### A cleanup closure created inside the template's bind function
+
+`return () => { __d0(); __d1() }` lives in the bind arrow's context, whose parent is the component function's context, so the template kept the component's `props` and every captured local alive while mounted. Combine disposers through a module-level helper (`_dispose2/3/4/N`) so the closure's context holds only the disposers. The same applies to any long-lived closure a compiled bind returns. Lock: `template-cleanup-context.test.tsx` (real V8 GC; dev builds keep the bind function reachable through devtools creation-site records by design, so the test mounts under `NODE_ENV=production`).
+
+---
+
+### A `provide()` after the component's children chained past it
+
+A component becomes its children's context owner only on its first `provide()`. A child mounted earlier in the body, or any `provide()` in `onMount` or an effect, leaves those children resolving through the parent's owner, so they never see the value; a `provide()` in an effect re-run writes onto whatever owner the effect restored (the nearest provider's), never onto a component that happens to be mid-setup when the re-run fires: `runWithContextOwner` clears the pending frame. Dev warns on the late claim. Because a component is an owner only once it provides, `mount()` / `hydrateRoot()` install a contextless ROOT owner when none is current: without it a tree with no provider above ran with a null owner in production, effects skip restoring a null owner, and a re-run fired inside another subtree's mount resolved context (and built compiled children) under that subtree's provider. A layer whose component BODY runs later inside a render effect (svelte-compat's wrapper) must claim ownership in its setup (`_claimContextOwner()`), or `setContext` leaks to siblings. Lock: `lazy-context-owner.test.tsx`, svelte-compat's "sibling never sees it" spec.
+
+---
+
+### Reading the current scope through the public getter in framework code
+
+`getCurrentScope()` PINS the scope (a component scope empty at the end of its mount is otherwise dropped, and a holder could register into it later). Framework code that only registers synchronously reads `_currentScope()`; anything that keeps the scope to register later (solid-compat `getOwner`, a hook that `scope.add`s on a later tick) must use the public getter. Dev must not pin where production does not: the reactive devtools owner reader uses `_currentScope`. Lock: `lazy-context-owner.test.tsx` ("a scope handed out through getCurrentScope() is kept").
 
 ---

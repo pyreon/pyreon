@@ -22,6 +22,7 @@
  * `console.error` from `hydrateComponent`'s catch, then `expected 'off' to be
  * 'on'`) while the non-empty control stays green.
  */
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import { For, Fragment, h } from '@pyreon/core'
 import { _bind, renderEffect, signal } from '@pyreon/reactivity'
@@ -54,7 +55,7 @@ afterEach(() => {
 })
 
 const RUNTIME_DEPS = {
-  _tpl, _bind, renderEffect, _bindText, _bindDirect, _applyProps, _setStyle, _setStyleOnce, _setAttr, _setClass,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN, _bind, renderEffect, _bindText, _bindDirect, _applyProps, _setStyle, _setStyleOnce, _setAttr, _setClass,
   _mountSlot, _textSlot, _setChild, _setChildAt, _mountChild, _setHtml,
   bindPolymorphicText, h, Fragment, For, signal,
 }

@@ -8,7 +8,7 @@ import {
   _rdNodeId,
   _rdOpenBindingFrame,
   getContextOwner,
-  renderEffect,
+  _renderBind,
 } from '@pyreon/reactivity'
 import { _tagTextBinding } from './binding-registry'
 import { _takeParkedRange, hasParkedRange, isMidSlotText, peekParkedRange } from './slot-brands'
@@ -29,7 +29,7 @@ import {
   reportFirstText,
   reportTextWrite,
 } from './hydration-debug'
-import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, type PolyTextCore } from './mount'
+import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -114,6 +114,25 @@ function _isMountableTextValue(v: unknown): boolean {
 }
 
 /**
+ * Replace `node`'s children with ONE text node holding `text` — the
+ * `textContent =` write, except that a NUMBER reaches the DOM unconverted.
+ *
+ * Why a number is never `String()`-ed here: JS-side Number→String of more than
+ * ~200 distinct integers makes V8 grow its Number→String cache
+ * (`smi_string_cache`, a GC root) to its full size, ~64 KB that is never given
+ * back. The DOM's own conversion (WebIDL `DOMString`, which is ECMAScript
+ * `ToString`, so the characters are identical) does not touch that cache. A
+ * `<For>` of rows rendering `{row.id}` paid the 64 KB once per page.
+ *
+ * Why not `textContent = n`: happy-dom writes `''` for a falsy number (`0`,
+ * `NaN`). `replaceChildren(n)` converts per the spec in every environment.
+ */
+function _replaceText(node: Element, text: string | number): void {
+  if (typeof text === 'number') node.replaceChildren(text as unknown as string)
+  else node.textContent = text
+}
+
+/**
  * Compiler-emitted STATIC child setter for a bare `{x}` child whose type the
  * compiler could not statically resolve (a function param, a custom prop, a
  * function-return const). Primitives take the historical `textContent` fast
@@ -129,8 +148,9 @@ export function _setChild(node: Element, value: unknown): void {
   // branch). The compiler routes every child it cannot type statically here —
   // a named binding (`const label = () => …`, `function label() {}`), a helper
   // param, a function-valued prop — and `textContent = fn` rendered the
-  // closure's SOURCE (#4086). Mount it reactively instead; the binding's effect
-  // registers with the active EffectScope, so it is disposed with its owner.
+  // closure's SOURCE (#4086). Mount it reactively instead; the mount's cleanup
+  // goes to the active EffectScope (`ownByScope`), so it is disposed with its
+  // owner.
   //
   // ADOPTED element (hydration, `!_freshBind`): the server already rendered the
   // value as this element's whole child list (SSR elides the range markers for
@@ -144,10 +164,12 @@ export function _setChild(node: Element, value: unknown): void {
   // child list and adopts it.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
-      _slotHydrator(value as never, node, null)
+      ownByScope(_slotHydrator(value as never, node, null))
       return
     }
-    mountChild(value as VNodeChild, node, null)
+    // The element leaves as a unit with its template, so the mount needs only
+    // its effect cleanups (`mountChildAsUnit`): no per-node removers.
+    ownByScope(mountChildAsUnit(value as VNodeChild, node, null))
   } else {
     // Sole-text fast path: when the element already holds exactly one text
     // node (the hydration-ADOPTION case — the SSR text is still in place —
@@ -163,25 +185,25 @@ export function _setChild(node: Element, value: unknown): void {
     // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`, and the
     // DOM's handling of a number is not even uniform across implementations
     // (happy-dom writes `''` for `0`). A string, the dominant value, skips the
-    // call.
-    const text = typeof value === 'string' ? value : _childText(value)
+    // call. A NUMBER is handed to the DOM unconverted (see `_replaceText`).
+    const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
       const before = node.textContent ?? ''
       if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-        ;(fc as Text).data = text
+        ;(fc as Text).data = text as string
       } else {
-        node.textContent = text
+        _replaceText(node, text)
       }
       reportTextWrite(node, before, 'text')
 
       return
     }
     if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-      ;(fc as Text).data = text
+      ;(fc as Text).data = text as string
     } else {
-      node.textContent = text
+      _replaceText(node, text)
     }
   }
 }
@@ -229,19 +251,20 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
   // child list, so it is handed over as `_mountSlot` hands over its own.
   const open = isRangeOpen(placeholder)
   if (_slotHydrator !== null && (open || (!isCloneSlotPlaceholder(placeholder) && !isMidSlotText(placeholder)))) {
-    _slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null)
+    ownByScope(_slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null))
     return
   }
   // A function is an accessor (see `_setChild`) — mount it reactively.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
-    mountChild(value as VNodeChild, parent, placeholder)
+    ownByScope(mountChildAsUnit(value as VNodeChild, parent, placeholder))
     placeholder.remove()
   } else {
     // The shared child-text rule (`_childText`): nullish and `false` render
     // EMPTY, an array of primitives concatenates. `String()` put the word
     // "null" (and "false", and `a,b` for an array) on the page where SSR
-    // renders nothing / `ab`.
-    const text = typeof value === 'string' ? value : _childText(value)
+    // renders nothing / `ab`. A number reaches the DOM unconverted (see
+    // `_replaceText`); `createTextNode` and `Text.data` convert it per the spec.
+    const text = (typeof value === 'string' || typeof value === 'number' ? value : _childText(value)) as string
     if (!isMidSlotText(placeholder)) {
       parent.replaceChild(document.createTextNode(text), placeholder)
     } else if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
@@ -383,6 +406,12 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
     // functions (a VNode, an accessor) keep the general path below.
     const v = d.value as unknown
     if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
+      // A number on a FRESH clone goes to the DOM unconverted (see
+      // `_replaceText`); an adopted node keeps the string read-back below.
+      if (typeof v === 'number' && _freshBind) {
+        node.data = v as unknown as string
+        return _noopDispose
+      }
       const next = v == null || typeof v === 'boolean' ? '' : String(v as string | number)
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
@@ -408,7 +437,7 @@ function bindTextTracked(fn: () => unknown, node: Text, ownerAtSetup: ReturnType
   let core: PolyTextCore | null = null
   // Last string written — same read-back saving as the fast path above.
   let written: string | null | undefined = null
-  const disposeEffect = renderEffect(() => {
+  const disposeEffect = _renderBind(() => {
     const v = fn()
     if (core !== null) {
       core.apply(v as VNodeChild)
@@ -603,7 +632,7 @@ export function _bindDirect(
   // is one (preserves `this` for member-expression sources); otherwise call
   // source directly.
   const fn = resolveSlowCaller(source, caller, receiver)
-  const dispose = renderEffect(() => updater(fn()))
+  const dispose = _renderBind(() => updater(fn()))
   // Dev: keep the label the updater's DOM setter reported; point the location
   // at the compiled template rather than at this helper.
   if (process.env.NODE_ENV !== 'production')
@@ -668,49 +697,6 @@ let _freshBind = false
  *   return () => { __d0() };
  * })
  */
-// Every SVG element name (SVG 1.1 and SVG 2, case-sensitive) that is NOT also an
-// HTML element name. A template rooted at one of these is SVG content; the
-// names HTML shares (`a`, `script`, `style`, `title`, `font`) are left out, since
-// a template rooted at one is almost always the HTML element, and `svg` opens
-// SVG content by itself. The list has to be complete: a missing name
-// (`feDropShadow` was one) parses as an inert HTML element. MathML is the same
-// shape of bug but has no real template-rooted instances, and happy-dom cannot
-// parse MathML foreign content to verify a fix, so it is out of scope.
-const SVG_ROOT_TAGS = new Set([
-  'altGlyph', 'altGlyphDef', 'altGlyphItem', 'animate', 'animateColor', 'animateMotion',
-  'animateTransform', 'circle', 'clipPath', 'color-profile', 'cursor', 'defs', 'desc', 'discard',
-  'ellipse', 'feBlend', 'feColorMatrix', 'feComponentTransfer', 'feComposite',
-  'feConvolveMatrix', 'feDiffuseLighting', 'feDisplacementMap', 'feDistantLight',
-  'feDropShadow', 'feFlood', 'feFuncA', 'feFuncB', 'feFuncG', 'feFuncR', 'feGaussianBlur',
-  'feImage', 'feMerge', 'feMergeNode', 'feMorphology', 'feOffset', 'fePointLight',
-  'feSpecularLighting', 'feSpotLight', 'feTile', 'feTurbulence', 'filter', 'font-face',
-  'font-face-format', 'font-face-name', 'font-face-src', 'font-face-uri', 'foreignObject', 'g',
-  'glyph', 'glyphRef', 'hkern', 'image', 'line', 'linearGradient', 'marker', 'mask',
-  'metadata', 'missing-glyph', 'mpath', 'path', 'pattern', 'polygon', 'polyline',
-  'radialGradient', 'rect', 'set', 'stop', 'switch', 'symbol', 'text', 'textPath', 'tref',
-  'tspan', 'use', 'view', 'vkern',
-])
-
-/**
- * Whether a template STRING is rooted at a bare SVG element — `<g>`, `<path>`,
- * `<rect>`, `<linearGradient>`, … NOT enclosed in an `<svg>`.
- *
- * `document.createElement('template').innerHTML = html` runs the HTML parser,
- * which only enters SVG foreign-content mode when it hits a literal `<svg>`. A
- * string rooted at `<g>` is parsed in the HTML namespace, so the cloned nodes
- * are inert `HTMLUnknownElement`s that render nothing — the `@pyreon/flow`
- * edge / minimap-dot bug (edges lower to `_tpl("<g><path…")`). Wrapping in
- * `<svg>` for parsing (then lifting the children back out) gives correctly
- * namespaced `SVGElement`s.
- */
-function isSvgRooted(html: string): boolean {
-  const m = /^\s*<([a-zA-Z][a-zA-Z0-9-]*)/.exec(html)
-  if (m === null) return false
-  const tag = m[1] as string
-
-  return SVG_ROOT_TAGS.has(tag)
-}
-
 // ─── Compiled-template hydration adoption (SEAM) ────────────────────────────
 // One-shot handoff: the <For> hydration-adoption path sets the SSR row root
 // before invoking renderItem; the _tpl call inside consumes it and — when the
@@ -720,6 +706,11 @@ function isSvgRooted(html: string): boolean {
 // effect pinning it into CSR bundles), so compiled CSR apps tree-shake ALL of
 // it — _tpl carries only this slot and a nullable hook check.
 let _tplAdoptTarget: Element | null = null
+
+/** `_tpl` flag: the item may be torn down and mounted again (a component child). */
+const TPL_REMOUNTABLE = 1
+/** `_tpl` flag: the template is rooted at a bare SVG element — parse it as SVG. */
+const TPL_SVG_ROOT = 2
 let _tplAdoptConsumed = false
 let _tplAdoptAllowPlan = false
 
@@ -820,6 +811,7 @@ export function _setHydrationActive(v: boolean): boolean {
   const prev = _walkActive
   _walkActive = v
   _hydrationActive = v || _asyncPending > 0
+
   return prev
 }
 
@@ -834,6 +826,7 @@ export function _holdTplDeferral(): () => void {
   _asyncPending++
   _hydrationActive = true
   let held = true
+
   return () => {
     if (!held) return
     held = false
@@ -1005,21 +998,34 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
 }
 
 /**
- * `remountable` (the compiler passes `1` for a template emitted as a
- * component's child) makes the returned item SURVIVE being torn down and
- * mounted again — see {@link remountableTpl}.
+ * `flags` is a bit set the compiler computes from the JSX:
+ *
+ * - `TPL_REMOUNTABLE` (1): a template emitted as a component's child. The
+ *   returned item SURVIVES being torn down and mounted again — see
+ *   {@link remountableTpl}.
+ * - `TPL_SVG_ROOT` (2): the template is rooted at a bare SVG element (`<g>`,
+ *   `<path>`, `<linearGradient>`, … not enclosed in an `<svg>`). Setting
+ *   `innerHTML` runs the HTML parser, which enters SVG foreign content only at a
+ *   literal `<svg>`, so such a string would parse as inert HTML elements that
+ *   render nothing (the `@pyreon/flow` edge bug: edges lower to
+ *   `_tpl("<g><path…")`). With the flag the string is parsed inside an `<svg>`
+ *   wrapper and the children are lifted back out, correctly namespaced.
+ *
+ * The compiler decides the SVG root at build time from the tag (its table is
+ * every SVG element name that is not also an HTML one), so the runtime carries
+ * no tag list.
  */
 export function _tpl(
   html: string,
   bind: (el: HTMLElement) => (() => void) | null,
-  remountable?: 1,
+  flags = 0,
 ): NativeItem {
-  if (remountable === 1) return remountableTpl(html, bind)
+  if ((flags & TPL_REMOUNTABLE) !== 0) return remountableTpl(html, bind, flags & TPL_SVG_ROOT)
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
     tpl = document.createElement('template')
-    if (isSvgRooted(html)) {
+    if ((flags & TPL_SVG_ROOT) !== 0) {
       // Parse inside an `<svg>` wrapper so root + descendants land in the SVG
       // namespace, then MOVE the parsed children into the cache template's
       // content — moving preserves `namespaceURI`, and the cloned root inherits it.
@@ -1133,6 +1139,7 @@ export interface RemountableNativeItem extends NativeItem {
 function remountableTpl(
   html: string,
   bind: (el: HTMLElement) => (() => void) | null,
+  flags: number,
 ): RemountableNativeItem {
   // Built on FIRST USE, not at creation. A compiled component child is created while its parent's JSX arguments are
   // being evaluated — before the enclosing component (a context provider, say) has run its setup — so building here
@@ -1140,7 +1147,7 @@ function remountableTpl(
   // the provider's context does not reach. The first use is the mount, which runs inside the right owner.
   let current: NativeItem | null = null
   let dead = false
-  const built = (): NativeItem => (current ??= _tpl(html, bind))
+  const built = (): NativeItem => (current ??= _tpl(html, bind, flags))
   const dispose = (): void => {
     dead = true
     current?.cleanup?.()
@@ -1526,7 +1533,7 @@ export function _rsCollapseDyn(
     // exactly ONCE per re-run: the `_bindDirect` fallback calls the source and
     // passes the result, and calling `valueIndex()` again inside would fire a
     // side-effecting cond expression twice.
-    const disposeClass = renderEffect(() => {
+    const disposeClass = _renderBind(() => {
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
@@ -1605,7 +1612,7 @@ export function _rsCollapseDynH(
     // Reactive class — identical shape to `_rsCollapseDyn`: one `renderEffect`
     // reads both accessors, so a change to EITHER re-runs only this className
     // assignment, no remount.
-    const disposeClass = renderEffect(() => {
+    const disposeClass = _renderBind(() => {
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })

@@ -22,7 +22,7 @@
  *   - check-manifest-depth  (LOCKED package density regressed)
  *   - check-manifest-examples (a manifest api[].example no longer typechecks vs the shipped export)
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
- *   - check-ios-signing-policy (unsigned test step -> CI-only Keychain denial)
+ *   - check-ios-signing-policy (unsigned test step -> CI-only Keychain denial; xcodebuild without -derivedDataPath)
  *   - check-shared-source-deps (tri-target shared source unbuildable for web)
  *   - check-native-srcdirs-drift (an example's Gradle srcDirs disagree with `wire`)
  *   - check-lathe-fresh     (committed generated client drifted from its OpenAPI spec)
@@ -36,6 +36,7 @@
  *   - check-breaking-changeset-codemod (a zero minor changeset lacks an `Upgrade:` line)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - check-multiplatform-tier (published pkg without a declared multiplatform story)
+ *   - check-stability-tier  (published pkg tier, README status, stable→experimental deps, meta, @deprecated)
  *   - check-native-coverage (an app-runtime pkg that should cross to native regressed)
  *   - check-native-golden   (the native compiler's emitted Swift/Kotlin changed for the golden corpus)
  *   - check-compiler-boundary (library knowledge inside a compiler grew above its committed baseline)
@@ -104,6 +105,9 @@ const GATES: Gate[] = [
   // users upgrade: `Upgrade: none | codemod <id> | manual — <reason>`.
   { name: 'check-breaking-changeset-codemod', cmd: 'bun scripts/check-breaking-changeset-codemod.ts' },
   { name: 'check-multiplatform-tier', cmd: 'bun scripts/check-multiplatform-tier.ts' },
+  // Published package tiers (Stable / Experimental): field, README status line,
+  // dependency direction, @pyreon/meta, @deprecated → manifest removeIn.
+  { name: 'check-stability-tier', cmd: 'bun scripts/check-stability-tier.ts' },
   // The finish-line ratchet: every app-runtime/feature-building package that
   // SHOULD cross to native either lowers clean through PMTC or ships a native
   // runtime — regressions (a snippet that starts warning, a co-source that
@@ -135,6 +139,10 @@ const GATES: Gate[] = [
   // "license": "MIT". A published package without either ships with no stated
   // terms; an example without either is code people copy with none.
   { name: 'check-license-coverage', cmd: 'bun scripts/check-license-coverage.ts' },
+  // Every tracked stylesheet closes the blocks it opens. A `}` lost in a merge
+  // shipped @pyreon/calendar's styles.css with its timeline rules print-only,
+  // and broke `vite build` for any app importing CSS after it.
+  { name: 'check-css-balanced', cmd: 'bun scripts/check-css-balanced.ts' },
   // examples/README.md is the index of every example (curated, fixture,
   // native host, benchmark); an add, move or removal updates it in the same PR.
   { name: 'check-examples-index', cmd: 'bun scripts/check-examples-index.ts' },
@@ -171,6 +179,9 @@ const GATES: Gate[] = [
   { name: 'check-no-major-changesets', cmd: 'bun scripts/check-no-major-changesets.ts' },
   { name: 'check-bundle-budgets', cmd: 'bun scripts/check-bundle-budgets.ts' },
   { name: 'check-distribution', cmd: 'bun scripts/check-distribution.ts' },
+  // Every bare import a published entry reaches (through its built lib) must be declared: an optional peer imported by the root
+  // entry crashes a clean install on load (the @pyreon/ambient / @pyreon/core failure). Reads lib/, like check-bundle-budgets.
+  { name: 'check-declared-imports', cmd: 'bun scripts/check-declared-imports.ts' },
   { name: 'check-declarations', cmd: 'bun scripts/check-declarations.ts' },
   { name: 'check-esm-only', cmd: 'bun scripts/check-esm-only.ts' },
   { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },

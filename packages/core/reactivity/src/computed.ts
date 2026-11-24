@@ -14,7 +14,7 @@ import {
   unlinkAllDeps,
 } from './graph'
 import { _captureCallerLocation, _rdDirect, _rdRegister } from './reactive-devtools'
-import { getCurrentScope } from './scope'
+import { _ownerScope } from './scope'
 import { _addDirect, _removeDirect } from './signal'
 
 export interface Computed<T> {
@@ -177,7 +177,9 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
     )
 
   // The scope stores the node itself; `stop()` calls its prototype `dispose`.
-  getCurrentScope()?.add(read)
+  // `_ownerScope()`: the current scope WITHOUT pinning it, else the server
+  // request's scope.
+  _ownerScope()?.add(read)
   return read as unknown as Computed<T>
 }
 

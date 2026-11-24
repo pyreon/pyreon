@@ -1,4 +1,4 @@
-// Per-tab back stacks — `createRouter({ tabs })` (#4060).
+// Per-tab back stacks — `createRouter({ tabs: routerTabs([...]) })` (#4060).
 //
 // The router keeps one stack per tab and one ACTIVE tab; the URL is the active
 // tab's top entry. These specs pin the model (push/replace/selectTab/deep
@@ -9,7 +9,7 @@
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { RouterProvider, RouterView, useParams, useRoute } from '../index'
+import { RouterProvider, RouterView, routerTabs, useParams, useRoute } from '../index'
 import { createRouter, setActiveRouter } from '../router'
 import type { RouteRecord, Router, RouterTab } from '../types'
 
@@ -25,10 +25,12 @@ const routes: RouteRecord[] = [
   { path: '/me/settings', component: page('settings') },
   { path: '/users/:id', component: page('user') },
 ]
-const tabs: RouterTab[] = [
+const tabList: RouterTab[] = [
   { name: 'feed', root: '/feed' },
   { name: 'me', root: '/me' },
 ]
+
+const tabs = routerTabs(tabList)
 
 let router: Router | null = null
 function make(url = '/feed', extra: Partial<Parameters<typeof createRouter>[0] & object> = {}): Router {
@@ -158,6 +160,20 @@ describe('tab stacks — model', () => {
     expect(await router.selectTab('feed')).toBe('cancelled')
     expect(warn).toHaveBeenCalledTimes(2)
     warn.mockRestore()
+  })
+})
+
+describe('tab stacks — the routerTabs() value', () => {
+  it('a plain tabs array (the pre-0.54 shape) throws with the fix', () => {
+    expect(() =>
+      createRouter({ routes, tabs: tabList as never, mode: 'history' }),
+    ).toThrow(/routerTabs\(\[\.\.\.\]\)/)
+  })
+
+  it('an empty routerTabs([]) is a router without tabs', () => {
+    window.history.replaceState(null, '', '/feed')
+    router = createRouter({ routes, tabs: routerTabs([]), mode: 'history' })
+    expect(router.activeTab()).toBeUndefined()
   })
 })
 

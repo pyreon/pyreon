@@ -341,7 +341,7 @@ const PureStyled = styled('div', {
 
 ### `layer` — CSS `@layer` wrapping
 
-`styled(tag, { layer })` wraps every rule this component generates in `@layer <name> { ... }`. This is how the framework's own UI layers avoid specificity wars: `@pyreon/elements` inserts its base layout rules under `layer: 'elements'`, and `@pyreon/rocketstyle` inserts theme rules under `layer: 'rocketstyle'` — the framework declares the cascade order once (`@layer elements, rocketstyle;`), so a rocketstyle theme rule always beats an Elements base rule regardless of source order or selector specificity.
+`styled(tag, { layer })` wraps every rule this component generates in `@layer <name> { ... }`. This is how the framework's own UI layers avoid specificity wars: `@pyreon/elements` inserts its base layout rules under `layer: 'elements'`, `@pyreon/rocketstyle` inserts theme rules under `layer: 'rocketstyle'`, and a per-instance `css` prop on an Elements primitive lands in `instance`. The framework declares the cascade order once (`@layer elements, rocketstyle, instance;`), so a rocketstyle theme rule always beats an Elements base rule, and a `css` prop passed on one instance beats both, regardless of source order or selector specificity. Unlayered CSS still beats every layer.
 
 ```ts
 const Panel = styled('div', { layer: 'app-base' })`
@@ -349,6 +349,19 @@ const Panel = styled('div', { layer: 'app-base' })`
 `
 // Emits: @layer app-base { .pyr-xyz { padding: 16px; } }
 ```
+
+A NAMED `@layer <name> { … }` block written inside a component's CSS goes into that top-level layer, under the same class name, instead of becoming a sublayer of the component's own `layer`. That is how one Elements class puts its base layout in `elements` and the instance `css` escape hatch in `instance`:
+
+```ts
+const Box = styled('div', { layer: 'elements' })`
+  display: flex;
+  @layer instance { @media (min-width: 768px) { display: grid; } }
+`
+// Emits: @layer elements{.pyr-xyz{display: flex;}}
+//        @layer instance{@media (min-width: 768px){.pyr-xyz{display: grid;}}}
+```
+
+A layer block nested inside another becomes the dotted sublayer (`@layer a { @layer b {…} }` → `a.b`), and anonymous `@layer { … }` blocks are left as they are.
 
 `insertLayer` on `sheet.insert()` is the lower-level per-call equivalent (see below). The sheet feature-detects `@layer` support once, when it first mounts its `<style>` element (by attempting to insert an `@layer` ordering rule and catching the failure): on the **client**, if that probe fails (e.g. a very old browser, or happy-dom in tests), every later `layer` wrapper is omitted entirely and rules are inserted un-layered — an unsupported `@layer` block would otherwise have its whole body dropped by the parser, which is worse than no layering. On the **server** the `@layer` wrapper is always emitted (SSR output is served to real, `@layer`-capable browsers). See [`sheet.insertGlobal(css)`](#sheetinsertglobalcss) for the equivalent fallback in the global-CSS path.
 
@@ -703,18 +716,11 @@ const requestSheet = createSheet({ nonce: req.cspNonce })
 
 ### `sheet.reset()`
 
-Clears the dedup cache Maps and the SSR rules buffer. It does **not** remove any CSS rule already injected into a live `<style>` element on the client, nor the element itself — it's meant for the **server**, called between requests so a request's `getStyleTag()` only reflects rules inserted during that request:
+Clears the dedup cache Maps, the SSR rules buffer and the registry of module-level keyframes and static global styles. It does **not** remove any CSS rule already injected into a live `<style>` element on the client, nor the element itself. Use it for test isolation and teardown.
 
-```ts
-import { sheet } from '@pyreon/styler'
-
-async function handleRequest(req, res) {
-  sheet.reset() // clear per-request accumulation before rendering
-  const html = await renderToString(<App />)
-  const styles = sheet.getStyleTag()
-  res.send(`<html><head>${styles}</head><body>${html}</body></html>`)
-}
-```
+:::warning{title="Not at a request boundary"}
+Do not call `sheet.reset()` between server requests. Keyframes and static `createGlobalStyle` CSS are inserted **once**, when their module evaluates; after a reset, every later response ships without them. Per-request isolation is already automatic: `runWithRequestContext` (which `@pyreon/server`'s `createHandler` and zero use for every request) gives each request its own styler scope, so its `getStyleTag()` carries exactly the rules its render used plus those module-level rules. See [Per-Request Isolation](#per-request-isolation).
+:::
 
 ### `sheet.clearAll()` — full reset (client / HMR)
 
@@ -768,23 +774,22 @@ const html = `
     <body>${renderedApp}</body>
   </html>
 `
-
-// 4. Reset for the next request
-sheet.reset()
 ```
 
 ### Per-Request Isolation
 
-For server environments handling multiple requests, reset the sheet between requests to prevent style leakage:
+For server environments handling multiple requests, render each request inside `runWithRequestContext` (from `@pyreon/runtime-server`; `@pyreon/server`'s `createHandler` and zero already do). Each request gets its own styler scope, so its `<style>` carries exactly the rules its render used plus the module-level keyframes and static global styles, and concurrent requests never share a buffer. Do **not** call `sheet.reset()` between requests: it drops those module-level rules from every later response.
 
 ```ts
-async function handleRequest(req, res) {
-  sheet.reset()
+import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 
-  // Render FIRST — this is what populates the sheet's SSR buffer.
-  const html = await renderToString(<App />)
-  // THEN collect styles — getStyleTag() only returns rules already inserted.
-  const styles = sheet.getStyleTag()
+async function handleRequest(req, res) {
+  const { html, styles } = await runWithRequestContext(async () => {
+    // Render FIRST — this is what populates the request's SSR buffer.
+    const html = await renderToString(<App />)
+    // THEN collect styles — getStyleTag() only returns rules already used.
+    return { html, styles: sheet.getStyleTag(req.cspNonce) }
+  })
 
   res.send(`<html><head>${styles}</head><body>${html}</body></html>`)
 }
@@ -1354,7 +1359,7 @@ function PassthroughDiv(props) {
 
 - **Reaching for `<ThemeContext.Provider value={...}>`.** `ThemeContext` is a plain Pyreon `Context` object, not a React-style context — there is no `.Provider` component. Use `provide(ThemeContext, () => theme)` (from `@pyreon/core`), or, in a real app, `<PyreonUI theme={theme}>` from `@pyreon/ui-core`. See [Theming](#theming) above.
 - **Expecting a live theme swap to re-color an already-mounted, hand-written `styled()` component.** It won't — see the caution box under [Theming](#theming). Only rocketstyle/`@pyreon/elements`-driven components (which pass their dimension props as reactive accessors) get automatic re-resolution; a plain `styled()` component's CSS is fixed once it mounts.
-- **Calling `sheet.reset()` on the client expecting it to remove already-injected CSS.** It only clears the internal dedup caches — any rule already in the live `<style>` element's `sheet.cssRules` stays there. `reset()` is for server request boundaries; use `sheet.clearAll()` on the client (e.g. for a full HMR-style wipe).
+- **Calling `sheet.reset()` on the client expecting it to remove already-injected CSS.** It only clears the internal dedup caches — any rule already in the live `<style>` element's `sheet.cssRules` stays there. `reset()` is for test isolation; use `sheet.clearAll()` on the client (e.g. for a full HMR-style wipe).
 - **Getting silently-wrong CSS from a theme-token expression and not noticing.** In development, every resolved CSS string is scanned for common footguns before insertion — a `NaN` (JS arithmetic on a CSS-variable token, e.g. `${(t) => t.spacing.sm * 2}` where `spacing.sm` is a `var(--...)` string), an `undefined`/`null` value (a theme-token path that doesn't exist), a malformed `var(--x)concat` (string concatenation instead of `calc()`/`color-mix()`), or `content-visibility: auto` without `contain-intrinsic-size` (a Cumulative Layout Shift footgun) all print a `[Pyreon] styler: ...` console warning naming the exact declaration. Watch for these when styles silently don't apply.
 - **Assuming `styled()`'s `on*` forwarding is a wildcard.** It's a fixed allowlist of ~40 specific handler names (`onClick`, `onInput`, `onMouseEnter`, ...), not "any prop starting with `on`" — an unrecognized custom `onXyz` prop is filtered out just like any other unknown prop. Use `shouldForwardProp` to allow it through.
 - **Augmenting `DefaultTheme` in your own app when a theme package (e.g. `@pyreon/ui-theme`) already does.** Two `declare module '@pyreon/styler' { interface DefaultTheme {...} }` blocks for different shapes fail with `TS2320` ("cannot simultaneously extend"). Only augment it once.

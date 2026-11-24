@@ -95,6 +95,9 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     'edge-runtimes': 150,
     'zero-hmr': 10,
     'zero-islands': 7,
+    // Not yet measured in CI: an SSG and an SSR build of a five-route fixture
+    // (~2s each), a dev server, 11 specs; ~9s locally.
+    'zero-islands-only': 12,
     'app-showcase': 38,
     compat: 24,
     'sync-yjs-demo': 10,
@@ -108,6 +111,8 @@ const WEIGHTS: Record<BatchProfile, Record<string, number>> = {
     'loom-dev': 47,
     lathe: 8,
     'https-dev': 2,
+    // Not yet measured in CI: one build + preview, 6 specs, ~15s locally.
+    'pwa-offline': 10,
     // Not yet measured in CI: one Vite dev server, 5 specs, ~4s locally.
     'zero-dev-overlay': 4,
     // Measured at 44 with seven dev servers; four compat fixtures moved to the

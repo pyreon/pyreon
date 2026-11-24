@@ -1,12 +1,12 @@
 // `<Tabs router={router}>` — tabs bound to a router with per-tab back stacks
-// (`createRouter({ tabs })`, #4060). Uses the REAL @pyreon/router, so the
+// (`createRouter({ tabs: routerTabs([...]) })`, #4060). Uses the REAL @pyreon/router, so the
 // structural `TabsRouter` contract this package types is checked against the
 // router that actually implements it.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
-import { createRouter, RouterProvider, RouterView, setActiveRouter } from '@pyreon/router'
+import { createRouter, RouterProvider, RouterView, routerTabs, setActiveRouter } from '@pyreon/router'
 import type { Router } from '@pyreon/router'
 import { Tab, Tabs } from '../index'
 
@@ -33,10 +33,10 @@ function renderApp(): HTMLDivElement {
   router = createRouter({
     routes,
     mode: 'history',
-    tabs: [
+    tabs: routerTabs([
       { name: 'feed', root: '/feed' },
       { name: 'me', root: '/me' },
-    ],
+    ]),
   })
   const container = document.createElement('div')
   document.body.appendChild(container)

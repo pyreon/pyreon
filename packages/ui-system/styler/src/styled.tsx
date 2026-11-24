@@ -45,6 +45,7 @@ function aliasInnerRef(rawProps: Record<string, any>): Record<string, any> {
   // Guarded above (rawProps.innerRef != null) ⇒ the own descriptor exists.
   descs.ref = descs.innerRef!
   delete descs.innerRef
+
   return Object.defineProperties({}, descs)
 }
 
@@ -59,6 +60,7 @@ function aliasInnerRef(rawProps: Record<string, any>): Record<string, any> {
 // still resolves per distinct $element, so resolve stays O(N) (documented).
 let _cpseEnabled = false
 let _cpseRewrite: ((cssText: string, varsOut: Record<string, string>) => string) | null = null
+
 /** @internal Wired by `@pyreon/ui-core` `init({ styleExtraction })`. */
 export const setStyleExtraction = (
   enabled: boolean,
@@ -67,9 +69,113 @@ export const setStyleExtraction = (
   _cpseEnabled = enabled
   if (rewrite) _cpseRewrite = rewrite
 }
+
 // Theme key for the per-definition `$element` cache when no theme object is
 // provided (WeakMap keys must be objects).
 const NO_THEME = {}
+
+/**
+ * One cached class of a dynamic styled component, with the props its styles
+ * read besides the two objects that key the cache (`$rocketstyle` /
+ * `$rocketstate` on the rocketstyle path; the theme and the `$element` /
+ * `$text` bundle on the elements path). A style callback may read any prop:
+ * the documented `cursor: pointer` gate reads `onClick` / `href`. Keyed on the
+ * two objects alone, every instance with the same key got the class of the
+ * first one resolved (#4434). An entry is reused only when each recorded prop
+ * still has the same value: primitives by value, objects by identity (through
+ * a `WeakRef`, so the cache never keeps a prop object alive), functions by
+ * presence (a handler's identity changes per instance), and an absent prop as
+ * absent (so `'x' in props` is keyed too).
+ */
+interface ClassEntry {
+  readonly cls: string
+  readonly keys: readonly PropertyKey[]
+  readonly vals: readonly unknown[]
+  /** CPSE per-instance vars of this resolve (elements path, flag on), restored on a hit. */
+  readonly cpse: Record<string, string> | null
+}
+
+// Sentinels. Plain object literals, not `Symbol()`: bundlers keep a module-level
+// call in every bundle that imports the barrel (it cost `useTheme` alone 25 B).
+const FN = {}
+const ABSENT = {}
+// Variants kept per key pair (one per distinct set of read prop values); the
+// oldest is dropped first. Pairs themselves die with their key objects.
+const MAX_CLASS_VARIANTS = 16
+type ClassCache = WeakMap<object, WeakMap<object, ClassEntry[]>>
+
+const propToken = (v: unknown): unknown =>
+  typeof v === 'function' ? FN : v !== null && typeof v === 'object' ? new WeakRef(v) : v
+
+const tokenMatches = (token: unknown, v: unknown): boolean =>
+  token === FN
+    ? typeof v === 'function'
+    : token instanceof WeakRef
+      ? token.deref() === v
+      : Object.is(token, v)
+
+/** The variant list for one key pair, created on first use. */
+const variantsFor = (cache: ClassCache, a: object, b: object): ClassEntry[] => {
+  let inner = cache.get(a)
+  if (!inner) {
+    inner = new WeakMap()
+    cache.set(a, inner)
+  }
+  let variants = inner.get(b)
+  if (!variants) {
+    variants = []
+    inner.set(b, variants)
+  }
+
+  return variants
+}
+
+/**
+ * Resolve through a Proxy that records the props the styles read or test
+ * (`get`, `in`, `getOwnPropertyDescriptor`). `reads` is null when the styles
+ * enumerated the props (a rest spread, `Object.keys`) and so may depend on any
+ * of them; such a class is not cached.
+ */
+const resolveRecordingReads = (
+  strings: TemplateStringsArray,
+  values: Interpolation[],
+  props: Record<string, any>,
+): { css: string; reads: PropertyKey[] | null } => {
+  const read = new Set<PropertyKey>()
+  let enumerated = false
+  const note = (key: PropertyKey): void => {
+    read.add(key)
+  }
+  const css = resolve(
+    strings,
+    values,
+    new Proxy(props, {
+      get(target, key) {
+        note(key)
+
+        return target[key as keyof typeof target]
+      },
+      has(target, key) {
+        note(key)
+
+        return key in target
+      },
+      getOwnPropertyDescriptor(target, key) {
+        note(key)
+
+        return Reflect.getOwnPropertyDescriptor(target, key)
+      },
+      ownKeys(target) {
+        enumerated = true
+
+        return Reflect.ownKeys(target)
+      },
+    }),
+  )
+
+  return { css, reads: enumerated ? null : [...read] }
+}
+
 /** Merge CPSE custom-property vars into a finalProps `style` (object | string | absent). */
 const mergeCpseStyle = (finalProps: Record<string, any>, vars: Record<string, string>): void => {
   const existing = finalProps.style
@@ -92,11 +198,13 @@ export interface StyledOptions {
   shouldForwardProp?: (prop: string) => boolean
   /**
    * CSS @layer name. Rules are wrapped in `@layer <name> { ... }`.
-   * Framework CSS uses two layers with explicit ordering:
-   *   `@layer elements, rocketstyle;`
+   * Framework CSS uses three layers with explicit ordering (`LAYER_ORDER`):
+   *   `@layer elements, rocketstyle, instance;`
    * Elements (base layout) use `'elements'`, rocketstyle themes use
-   * `'rocketstyle'`. The ordering ensures themes always override base
-   * styles regardless of source order.
+   * `'rocketstyle'`, and an Element's per-instance `css` prop lands in
+   * `'instance'` (a nested `@layer instance { … }` block, hoisted by the
+   * sheet). The ordering makes each layer override the ones before it
+   * regardless of source order.
    */
   layer?: string
 }
@@ -144,6 +252,7 @@ const _hotCache: {
 // `styled()` call both caches are empty, so a `clearAll()` in that window has
 // nothing to invalidate.
 let _clearHookRegistered = false
+
 const registerClearHook = (): void => {
   if (_clearHookRegistered) return
   _clearHookRegistered = true
@@ -175,6 +284,7 @@ const createStyledComponent = (
         _hotCache.strings = strings
         _hotCache.tag = tag
         _hotCache.component = cached
+
         return cached
       }
     }
@@ -251,6 +361,7 @@ const createStyledComponent = (
       if (!hasExtraProps && rawProps.ref == null) {
         if (process.env.NODE_ENV !== 'production')
           _countSink.__pyreon_count__?.('styler.staticVNode.hit')
+
         return cachedEmptyVNode
       }
 
@@ -290,27 +401,21 @@ const createStyledComponent = (
     return StaticStyled
   }
 
-  // ─── Tier 2: Per-definition class cache ───────────────────────────────────
-  // Two-level WeakMap: $rocketstyle → $rocketstate → className.
-  // 50 identical Items with the same resolved theme → 1 resolve + 49 hits.
-  const classCache = new WeakMap<object, WeakMap<object, string>>()
-  // Cache for non-rocketstyle styled components (e.g. Element's Wrapper,
-  // which depends on `$element` + `$childFix` + the THEME). Keyed theme →
-  // `$element` identity → `$childFix`. The theme level is load-bearing: the
-  // resolved CSS reads `theme.rootSize` / `theme.breakpoints`, so a class
-  // cached under one theme is wrong under another (a whole-theme swap, or two
-  // server tenants with different themes). Theme entries die with the theme
-  // object (WeakMap); `$element` entries die with the interned bundle.
-  // Element-layer interning (see `@pyreon/elements` Element/component.tsx)
-  // gives `$element` stable identity across mounts, which is what makes this
-  // cache fire — analogous to rocketstyle's dimension-prop memo.
-  const elClassCache = new WeakMap<object, WeakMap<object, Map<unknown, string>>>()
-  // CPSE per-instance vars, parallel to `elClassCache` (same keys): the value
-  // must survive an `elClassCache` HIT, where `doResolve` returns the cached
-  // className WITHOUT re-resolving. Per-definition and per-theme like the
-  // class, because the vars come from the same resolve. Only written when CPSE
-  // is on.
-  const cpseVarsCache = new WeakMap<object, WeakMap<object, Map<unknown, Record<string, string>>>>()
+  // ─── Tier 2: Per-definition class caches ──────────────────────────────────
+  // Both are key pair → variants (see `ClassEntry`), one variant per set of
+  // values of the other props the styles read. 50 identical Items with the same
+  // resolved theme → 1 resolve + 49 hits.
+  //  - `classCache`: `$rocketstyle` → `$rocketstate` (rocketstyle components).
+  //  - `elClassCache`: theme → `$element` (or `$text`) bundle, for the elements
+  //    layer (Element's Wrapper / Content, Text). The theme level is
+  //    load-bearing: the CSS reads `theme.rootSize` / `theme.breakpoints`, so a
+  //    class cached under one theme is wrong under another. Element-layer
+  //    interning (`internElementBundle` / `internTextBundle`) gives the bundle
+  //    a stable identity across mounts, which is what makes this cache hit.
+  // Entries die with their key objects (WeakMap); each pair keeps at most
+  // MAX_CLASS_VARIANTS variants, oldest dropped first.
+  const classCache: ClassCache = new WeakMap()
+  const elClassCache: ClassCache = new WeakMap()
 
   // DYNAMIC PATH: uses computed() for reactive class derivation.
   //
@@ -368,54 +473,45 @@ const createStyledComponent = (
     // SSR render paths below. Reset at the top of every doResolve; only set on
     // the non-reactive CPSE paths when the flag is on (else stays null).
     let pendingCpseVars: Record<string, string> | null = null
-    // The `.set()` calls in doResolve are WeakMap/Map CACHE writes (classCache,
-    // elClassCache, cpseVarsCache), NOT signal updates — `batch()` does not
-    // apply. The rule counts `.set()` syntactically (a known Map-like FP class,
-    // per its own docstring); CPSE's cpseVarsCache.set pushed the Element path to 3.
     // `elVal` / `textVal` are the RESOLVED accessor values when the
     // $element / $text axis is reactive (undefined otherwise — the static
     // values stay on rawProps and flow through the resolveProps spread).
+    // The `.set()` calls reached from here are WeakMap CACHE writes, NOT signal
+    // updates — `batch()` does not apply.
     // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
     const doResolve = (rs: unknown, rsState: unknown, t: unknown, elVal?: unknown, textVal?: unknown): string => {
       pendingCpseVars = null
-      // Tier 2 cache: skip resolve if same object identity seen before
-      if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
-        const inner = classCache.get(rs)
-        if (inner) {
-          const cached = inner.get(rsState)
-          // `isLive`: the sheet may have evicted the rule since this name was
-          // cached — then fall through, re-resolve and re-insert it.
-          if (cached !== undefined && sheet.isLive(cached)) return cached
-        }
-      }
+      const rsCacheable = !!rs && typeof rs === 'object' && !!rsState && typeof rsState === 'object'
+      // Element-layer cache (no rocketstyle objects, but a static `$element` —
+      // or, for Text, `$text` — bundle).
+      const $el = rawProps.$element ?? rawProps.$text
+      // Cached only while no accessor axis is reactive besides the cache key
+      // itself, so every other prop the styles read is the raw prop (or the
+      // theme) and `current` below sees what the resolve saw.
+      const variants = bypassElCacheAndCpse
+        ? undefined
+        : rsCacheable
+          ? variantsFor(classCache, rs, rsState)
+          : !isReactiveRS && !isReactiveState && $el && typeof $el === 'object'
+            ? variantsFor(elClassCache, t && typeof t === 'object' ? t : NO_THEME, $el)
+            : undefined
+      const current = (key: PropertyKey): unknown =>
+        key === 'theme' ? t : key in rawProps ? rawProps[key as keyof typeof rawProps] : ABSENT
+      if (variants) {
+        for (const entry of variants) {
+          let matches = true
+          for (let j = 0; j < entry.keys.length && matches; j++)
+            matches = tokenMatches(entry.vals[j], current(entry.keys[j]!))
+          // `isLive`: the sheet may have evicted the rule since it was cached;
+          // then this resolves again, and re-inserting the same CSS revives it.
+          if (!matches || !sheet.isLive(entry.cls)) continue
+          if (process.env.NODE_ENV !== 'production' && !rsCacheable)
+            _countSink.__pyreon_count__?.('styler.elClassCache.hit')
+          // The CPSE vars of the resolve that produced this (value-agnostic)
+          // class, so they survive the hit.
+          pendingCpseVars = entry.cpse
 
-      // Element-layer cache (no rocketstyle props, but $element — or, for
-      // Text, $text — is present and an object). Fires only when the
-      // rocketstyle path didn't apply — they're mutually exclusive in practice.
-      // Text interns its `$text` bundle (`internTextBundle`) exactly like
-      // Element interns `$element`, so the same identity reaches this cache.
-      const $el = isReactiveEl ? elVal : (rawProps.$element ?? rawProps.$text)
-      const $childFix = rawProps.$childFix
-      const useElCache =
-        !bypassElCacheAndCpse &&
-        (!rs || typeof rs !== 'object' || !rsState || typeof rsState !== 'object') &&
-        $el &&
-        typeof $el === 'object'
-      const themeKey = t && typeof t === 'object' ? (t as object) : NO_THEME
-      if (useElCache) {
-        const inner = elClassCache.get(themeKey)?.get($el as object)
-        if (inner) {
-          const cached = inner.get($childFix)
-          if (cached !== undefined && sheet.isLive(cached)) {
-            if (process.env.NODE_ENV !== 'production')
-              _countSink.__pyreon_count__?.('styler.elClassCache.hit')
-            // Restore the per-instance CPSE vars cached alongside this $element
-            // (the className was the value-agnostic one) so the value survives
-            // the cache hit.
-            if (_cpseEnabled)
-              pendingCpseVars = cpseVarsCache.get(themeKey)?.get($el as object)?.get($childFix) ?? null
-            return cached
-          }
+          return entry.cls
         }
       }
 
@@ -427,60 +523,42 @@ const createStyledComponent = (
         ...(isReactiveText ? { $text: textVal } : {}),
         theme: t,
       }
-      let cssText = normalizeCSS(resolve(strings, values, resolveProps))
+      // On a cached path, record which props the styles read so the class is
+      // cached under their values (the key props included: they always match).
+      let reads: PropertyKey[] | null = null
+      let cssText: string
+      if (variants) {
+        const tracked = resolveRecordingReads(strings, values, resolveProps)
+        reads = tracked.reads
+        cssText = normalizeCSS(tracked.css)
+      } else {
+        cssText = normalizeCSS(resolve(strings, values, resolveProps))
+      }
       // CPSE (non-reactive path only — excludes the rocketstyle classCache
       // path): rewrite the resolved declarations to a value-agnostic rule
       // (`prop: var(--u-…)`) and collect the per-instance values. The agnostic
       // text dedups across distinct values → ONE shared CSS rule (O(1) rules);
       // the value rides as an inline custom property. Flag-off → skipped.
-      if (
-        _cpseEnabled &&
-        _cpseRewrite &&
-        !bypassElCacheAndCpse &&
-        !(rs && typeof rs === 'object' && rsState && typeof rsState === 'object')
-      ) {
+      if (_cpseEnabled && _cpseRewrite && !bypassElCacheAndCpse && !rsCacheable) {
         const vars: Record<string, string> = {}
         const agnostic = _cpseRewrite(cssText, vars)
         if (Object.keys(vars).length > 0) {
           cssText = agnostic
           pendingCpseVars = vars
-          if (useElCache) {
-            let byEl = cpseVarsCache.get(themeKey)
-            if (!byEl) {
-              byEl = new WeakMap()
-              cpseVarsCache.set(themeKey, byEl)
-            }
-            let byFix = byEl.get($el as object)
-            if (!byFix) {
-              byFix = new Map()
-              byEl.set($el as object, byFix)
-            }
-            byFix.set($childFix, vars)
-          }
         }
       }
       const className = cssText.length > 0 ? sheet.insert(cssText, insertLayer) : ''
 
-      if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
-        let inner = classCache.get(rs)
-        if (!inner) {
-          inner = new WeakMap()
-          classCache.set(rs, inner)
-        }
-        inner.set(rsState, className)
-      } else if (useElCache) {
-        let byEl = elClassCache.get(themeKey)
-        if (!byEl) {
-          byEl = new WeakMap()
-          elClassCache.set(themeKey, byEl)
-        }
-        let inner = byEl.get($el as object)
-        if (!inner) {
-          inner = new Map()
-          byEl.set($el as object, inner)
-        }
-        inner.set($childFix, className)
+      if (variants && reads) {
+        if (variants.length >= MAX_CLASS_VARIANTS) variants.shift()
+        variants.push({
+          cls: className,
+          keys: reads,
+          vals: reads.map((key) => propToken(current(key))),
+          cpse: pendingCpseVars,
+        })
       }
+
       return className
     }
 
@@ -510,6 +588,7 @@ const createStyledComponent = (
       const finalProps = buildProps(rawProps, className, typeof finalTag === 'string', customFilter)
       // CPSE: surface the per-instance custom properties into the SSR style attr.
       if (pendingCpseVars) mergeCpseStyle(finalProps, pendingCpseVars)
+
       return h(
         finalTag as string,
         finalProps,
@@ -629,6 +708,7 @@ const createStyledComponent = (
 
   ;(DynamicStyled as ComponentFn & { displayName?: string }).displayName =
     `styled(${getDisplayName(tag)})`
+
   return DynamicStyled
 }
 
@@ -773,6 +853,7 @@ export const styled: StyledFunction = /* @__PURE__ */ new Proxy(styledFactory as
         createStyledComponent(prop, strings, values)) as TagTemplateFn
       proxyCache.set(prop, fn)
     }
+
     return fn
   },
 })

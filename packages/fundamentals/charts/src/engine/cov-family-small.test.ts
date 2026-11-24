@@ -14,8 +14,6 @@ import { hitToolbox, renderToolbox } from './toolbox'
 import { brushBand, brushRange } from './brush'
 import { lineRuns, parallelRows } from './parallel-web'
 import { geoShapes, geoValues } from './geo-web'
-import { layoutGeoShapes } from './geo'
-import { renderGeoPaths, renderGeoPoints } from './geo-points'
 import { histogram, bars } from './marks'
 import { layoutSeriesPointsH } from './layout'
 import { buildHeatGrid, hitHeatCell, renderHeat } from './heat'
@@ -224,34 +222,6 @@ describe('geo web adapters', () => {
   })
   it('a feature with a NULL geometry is skipped entirely', () => {
     expect(geoShapes({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: null }] } as never)).toEqual([])
-  })
-})
-
-describe('geo overlays', () => {
-  const layout = layoutGeoShapes([{ name: 'a', rings: [[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }]] }], { x: 0, y: 0, w: 200, h: 200 })
-  const pts = [{ name: 'P', lon: 2, lat: 2, value: 4 }, { lon: 8, lat: 8 }]
-
-  it('point progress is clamped at both ends', () => {
-    const settled = renderGeoPoints(layout, pts)
-    expect(renderGeoPoints(layout, pts, { progress: 5 })).toEqual(settled)
-    const zero = renderGeoPoints(layout, pts, { progress: -1 }) as { radius: number }[]
-    for (const c of zero) expect(c.radius).toBe(0)
-  })
-  it('the effect halo adds two rings under each point', () => {
-    expect(renderGeoPoints(layout, pts, { effect: true })).toHaveLength(6)
-    expect(renderGeoPoints(layout, pts)).toHaveLength(2)
-  })
-  it('a label is drawn only for a NAMED point on the settled frame', () => {
-    const texts = renderGeoPoints(layout, pts, { showLabels: true }).filter((c) => c.kind === 'text')
-    expect(texts).toHaveLength(1)
-    expect(renderGeoPoints(layout, pts, { showLabels: true, progress: 0.5 }).filter((c) => c.kind === 'text')).toHaveLength(0)
-  })
-  it('path progress is clamped, and a path of fewer than two points is skipped', () => {
-    const paths = [{ coords: [[0, 0], [5, 5], [10, 10]] as [number, number][] }, { coords: [[1, 1]] as [number, number][] }]
-    const settled = renderGeoPaths(layout, paths)
-    expect(settled).toHaveLength(1)
-    expect(renderGeoPaths(layout, paths, { progress: 9 })).toEqual(settled)
-    expect(renderGeoPaths(layout, paths, { progress: -1 })).toEqual([])
   })
 })
 

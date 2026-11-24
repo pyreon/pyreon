@@ -27,7 +27,14 @@
 
 import type { ComponentFn } from '@pyreon/core'
 import { _IslandIds, h } from '@pyreon/core'
-import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } from '@pyreon/router'
+import {
+  createRouter,
+  hydrateLoaderData,
+  type NavigationGuard,
+  type RouteRecord,
+  RouterProvider,
+  stringifyQuery,
+} from '@pyreon/router'
 import { decodeIslandProps } from './island-codec'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { isServer, runWithContextOwner, type EffectScope } from '@pyreon/reactivity'
@@ -77,7 +84,65 @@ export interface StartClientOptions {
   routes: RouteRecord[]
   /** CSS selector or element for the app container (default: "#app") */
   container?: string | Element
+  /**
+   * Islands-only pages (route `meta: { hydrate: 'islands' }`), built with
+   * {@link islandsOnlyPages}: on a page the server marked islands-only, run
+   * your islands start INSTEAD of the app (no router, no tree hydration), and
+   * make a client-side navigation to an islands-only route a full page load.
+   *
+   * @example
+   * import * as registry from 'virtual:pyreon/islands-registry'
+   * startClient({ App, routes, islandsOnly: islandsOnlyPages(() => hydrateIslandsAuto(registry)) })
+   */
+  islandsOnly?: IslandsOnlyPages
 }
+
+/** What {@link islandsOnlyPages} builds for `startClient({ islandsOnly })`. */
+export interface IslandsOnlyPages {
+  /** On a page the server marked islands-only: run the start and return its cleanup. Otherwise null. */
+  startIfMarked(): (() => void) | null
+  /** Turns a navigation TO an islands-only route into a full page load. */
+  guard: NavigationGuard
+}
+
+/**
+ * Islands-only page support for `@pyreon/server`'s own {@link startClient}
+ * (apps without `@pyreon/zero`, whose client entry does this itself). `start`
+ * runs instead of the app on a page the server marked islands-only, usually
+ * `() => hydrateIslandsAuto(registry, { root })`; its return is the cleanup.
+ *
+ * A separate function on purpose: `startClient` only calls what this returns,
+ * so the marker check, the navigation guard and the islands runtime enter a
+ * bundle only when the app imports this. An app that never uses islands-only
+ * pages ships none of it.
+ *
+ * The navigation guard never reloads the current path (a cold start that
+ * re-runs loaders for this URL), so a static host's fallback cannot loop.
+ */
+export function islandsOnlyPages(start: () => () => void): IslandsOnlyPages {
+  return {
+    startIfMarked: () => {
+      // pyreon-lint-disable-next-line pyreon/no-dom-in-setup -- called by startClient in the browser, never during a render
+      if (isServer || document.querySelector(ISLANDS_ONLY_SELECTOR) === null) return null
+
+      return start()
+    },
+    guard: (to, from) => {
+      if (isServer) return undefined
+      if ((to.meta as { hydrate?: unknown }).hydrate !== 'islands' || to.path === from.path) return undefined
+      location.assign(`${to.path}${stringifyQuery(to.query)}${to.hash ? `#${to.hash}` : ''}`)
+
+      return false
+    },
+  }
+}
+
+/**
+ * The marker `renderPage` / `createHandler` put in an islands-only page's
+ * head (`ISLANDS_ONLY_MARKER`, render-page.ts; not imported from there: that
+ * module is server-only). `island-root.test.tsx` keeps the two in step.
+ */
+export const ISLANDS_ONLY_SELECTOR = 'meta[name="pyreon-hydrate"][content="islands"]'
 
 /**
  * Hydrate a server-rendered Pyreon app on the client.
@@ -96,7 +161,22 @@ export function startClient(options: StartClientOptions): () => void {
   if (isServer) {
     throw new Error('[Pyreon] startClient() can only be called in the browser.')
   }
-  const { App, routes, container = '#app' } = options
+  const { App, routes, container = '#app', islandsOnly } = options
+  const islandsCleanup = islandsOnly?.startIfMarked()
+  if (islandsCleanup) return islandsCleanup
+  if (
+    process.env.NODE_ENV !== 'production'
+    && !islandsOnly
+    && document.querySelector(ISLANDS_ONLY_SELECTOR) !== null
+  ) {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      "[Pyreon] This page is islands-only (route meta `hydrate: 'islands'`): the server shipped no loader data for it, " +
+        'so starting the whole app here re-runs its loaders in the browser. Hydrate only its islands: ' +
+        'startClient({ App, routes, islandsOnly: islandsOnlyPages(() => hydrateIslandsAuto(registry)) }), with ' +
+        "`import * as registry from 'virtual:pyreon/islands-registry'`.",
+    )
+  }
 
   const el = typeof container === 'string' ? document.querySelector(container) : container
 
@@ -106,6 +186,7 @@ export function startClient(options: StartClientOptions): () => void {
 
   // Create client-side router (history mode to match SSR)
   const router = createRouter({ routes, mode: 'history' })
+  if (islandsOnly) router.beforeEach(islandsOnly.guard)
 
   // Hydrate loader data from SSR (avoids re-fetching on initial render)
   const loaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
@@ -141,6 +222,39 @@ export function startClient(options: StartClientOptions): () => void {
 
 type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
 
+/** Options for {@link hydrateIslands} / {@link hydrateIslandsAuto}. */
+export interface HydrateIslandsOptions {
+  /**
+   * A component that wraps every island these calls hydrate: the place for
+   * the providers a standalone island needs (a theme, a UI system's root
+   * scope). An island hydrated this way is its own root, with no app around
+   * it, so a component inside it that reads context finds nothing unless the
+   * root provides it.
+   *
+   * Loaded once, with the first island that hydrates; a page with no islands
+   * never downloads it. It must render ONLY its children (providers, no
+   * element), or the island no longer matches its server HTML. Pass the
+   * children through as they are (`return props.children`, or
+   * `h(Provider, props, props.children)`).
+   *
+   * @example
+   * hydrateIslands(registry, { root: () => import('./IslandRoot') })
+   */
+  root?: IslandLoader | undefined
+}
+
+/** One cached load of the root, per `hydrateIslands` call (never module-level). */
+function withRoot(loader: IslandLoader, loadRoot: () => Promise<ComponentFn>): IslandLoader {
+  return () =>
+    Promise.all([loader(), loadRoot()]).then(([mod, Root]) => {
+      const Comp = typeof mod === 'function' ? mod : mod.default
+      // The island passed as a plain child argument: the root returns it as
+      // it is, so the hydrated tree has exactly the server's shape.
+      const Rooted: ComponentFn = (props) => h(Root, null, h(Comp, props))
+      return Rooted
+    })
+}
+
 /**
  * Hydrate all `<pyreon-island>` elements on the page.
  *
@@ -171,9 +285,30 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  *   // in the HTML — registering one would defeat the strategy.
  * })
  */
-export function hydrateIslands(registry: Record<string, IslandLoader>): () => void {
+/**
+ * The loader registered under `id`, own keys only. `data-component` comes
+ * from the page, and an inherited name (`constructor`, `toString`,
+ * `__proto__`) must not resolve to a prototype function and be called as a
+ * loader (anti-pattern: a DOM attribute never chooses code).
+ */
+function ownLoader<T>(registry: Record<string, T>, id: string): T | undefined {
+  return Object.hasOwn(registry, id) ? registry[id] : undefined
+}
+
+export function hydrateIslands(
+  registry: Record<string, IslandLoader>,
+  options?: HydrateIslandsOptions,
+): () => void {
   /* v8 ignore next */
   if (isServer) return () => {}
+
+  // The root loads at most once for every island this call hydrates, and only
+  // when one does. Held by this call's closure, so it lives exactly as long as
+  // the islands it wraps.
+  const rootLoader = options?.root
+  let rootPromise: Promise<ComponentFn> | null = null
+  const loadRoot = (): Promise<ComponentFn> =>
+    (rootPromise ??= (rootLoader as IslandLoader)().then((m) => (typeof m === 'function' ? m : m.default)))
 
   // Dev-mode footgun guard: calling `hydrateIslands()` twice without
   // invoking the previous call's cleanup function leaks the old
@@ -233,14 +368,15 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
       continue
     }
 
-    const loader = registry[componentId]
-    if (!loader) {
+    const registered = ownLoader(registry, componentId)
+    if (!registered) {
       console.warn(`No loader registered for island "${componentId}"`)
       el.setAttribute('data-island-error', 'no-loader')
       if (process.env.NODE_ENV !== 'production') _count('island.skipped.no-loader')
       continue
     }
 
+    const loader = rootLoader ? withRoot(registered, loadRoot) : registered
     const propsJson = el.getAttribute('data-props') ?? '{}'
 
     // Prefetch (if requested) primes the module cache before the hydration
@@ -311,23 +447,11 @@ export function schedulePrefetch(
     prime()
     return null
   }
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          observer.disconnect()
-          prime()
-          return
-        }
-      }
-    },
-    { rootMargin: '200px' },
-  )
-  for (const target of visibilityTargets(el)) observer.observe(target)
+  const observer = observeNearViewport(el, prime)
 
   return () => {
     cancelled = true
-    observer.disconnect()
+    observer?.disconnect()
   }
 }
 
@@ -366,7 +490,10 @@ export interface AutoIslandRegistry {
  * import * as registry from 'virtual:pyreon/islands-registry'
  * hydrateIslandsAuto(registry)
  */
-export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
+export function hydrateIslandsAuto(
+  registry?: AutoIslandRegistry,
+  options?: HydrateIslandsOptions,
+): () => void {
   /* v8 ignore next */
   if (isServer) return () => {}
   // When there is nothing to auto-hydrate — a missing / malformed registry
@@ -398,7 +525,7 @@ export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
     return () => {}
   }
 
-  return hydrateIslands(registry.__pyreonIslandRegistry)
+  return hydrateIslands(registry.__pyreonIslandRegistry, options)
 }
 
 /**
@@ -825,22 +952,54 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
     return null
   }
 
+  const observer = observeNearViewport(el, callback)
+
+  return () => observer?.disconnect()
+}
+
+/**
+ * Call `onNear` once, when the island comes within 200px of the viewport.
+ *
+ * The island element itself is observed first; what to observe instead of a
+ * box-less island (`visibilityTargets`) is decided in the observer's FIRST
+ * report, not here. Reading computed style here — during hydration startup,
+ * before the first paint — forced a synchronous style recalc and a layout of
+ * the whole document inside the islands module's evaluation task (measured on
+ * pyreon.dev's home page: 10 ms of the task's 17 ms, unthrottled). An
+ * IntersectionObserver reports after the browser's own style and layout pass,
+ * so by then the same reads cost nothing extra. A boxed island that is in view
+ * fires on that first report; a `display: contents` one is swapped to its
+ * targets and fires one report later.
+ */
+function observeNearViewport(el: HTMLElement, onNear: () => void): IntersectionObserver | null {
+  // Callers check for IntersectionObserver first; this keeps the helper safe on its own.
+  if (typeof IntersectionObserver === 'undefined') {
+    onNear()
+
+    return null
+  }
+  let resolved = false
   const observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
           observer.disconnect()
-          callback()
+          onNear()
           return
         }
       }
+      if (resolved) return
+      resolved = true
+      const targets = visibilityTargets(el)
+      if (targets.length === 1 && targets[0] === el) return
+      observer.unobserve(el)
+      for (const target of targets) observer.observe(target)
     },
     { rootMargin: '200px' },
   )
+  observer.observe(el)
 
-  for (const target of visibilityTargets(el)) observer.observe(target)
-
-  return () => observer.disconnect()
+  return observer
 }
 
 // ─── Server islands — client activation (Phase 4) ───────────────────────────
@@ -861,11 +1020,13 @@ import { activateServerIslandElement } from './server-island'
  * failures leave the fallback content in place and flag the marker
  * (`data-island-error="fragment-failed"`) — a personalized hole degrading
  * to its structural fallback is the designed failure mode, never a broken
- * page. In-flight fetches are not aborted on teardown — a swap to a
+ * page. `base` (`/sub`) is the sub-path the fragment endpoint lives under;
+ * without it the base set with `setServerIslandBase` applies. It is never
+ * read from the page (see `activateServerIslandElement`). In-flight fetches are not aborted on teardown — a swap to a
  * detached node is skipped via the `el.isConnected` guard in
  * `activateServerIslandElement`.
  */
-export function activateServerIslands(base = ''): () => void {
+export function activateServerIslands(base?: string): () => void {
   if (isServer) return () => {}
   const markers = document.querySelectorAll<HTMLElement>(
     'pyreon-server-island[data-name]:not([data-pyreon-si])',
@@ -876,5 +1037,6 @@ export function activateServerIslands(base = ''): () => void {
   return () => {}
 }
 
-export { activateServerIslandElement, serverIsland } from './server-island'
+export { activateServerIslandElement, serverIsland, setServerIslandBase } from './server-island'
+export { isIslandName, isRoutePath } from './paths'
 export type { ServerIslandOptions } from './server-island'

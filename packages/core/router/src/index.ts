@@ -82,6 +82,9 @@ export {
   stringifyLoaderDataForScript,
   useLoaderData,
 } from './loader'
+// Server-side loader passes (free functions: client bundles that never call them drop them)
+export type { ServerLoadersResult } from './server-loaders'
+export { preloadRoute, runServerLoaders } from './server-loaders'
 // Match utilities (useful for SSR route pre-fetching)
 export {
   buildPath,
@@ -138,3 +141,6 @@ export type {
 } from './types'
 // Lazy helper
 export { lazy } from './types'
+// Per-tab back stacks (a function, so the tab engine is bundled only when used)
+export type { RouterTabs } from './tabs'
+export { routerTabs } from './tabs'

@@ -228,6 +228,7 @@
       {
         "exemptPaths": [
           "packages/core/runtime-dom/",
+          "packages/fundamentals/ambient/",
           "packages/fundamentals/hooks/",
           "packages/fundamentals/hotkeys/",
           "packages/fundamentals/storage/",

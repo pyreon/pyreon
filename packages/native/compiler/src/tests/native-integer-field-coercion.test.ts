@@ -25,6 +25,10 @@ import {
   isSwiftUIAvailable,
   validateSwiftTypecheck,
 } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const head = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text, Button, For } from '@pyreon/primitives'
@@ -230,7 +234,7 @@ const RUNTIME = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime/Py
 const KOTLIN_RUNTIME = join(__dirname, '../../../runtime-kotlin/src/main/kotlin/com/pyreon/runtime/PyreonNumber.kt')
 const javaOk = (() => {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
     return true
   } catch {
     return false
@@ -281,7 +285,7 @@ describe('a non-finite whole-valued Double is stored the same on both targets an
       execFileSync('kotlinc', [join(dir, 'main.kt'), KOTLIN_RUNTIME, '-include-runtime', '-d', join(dir, 'p.jar')], {
         stdio: 'pipe',
       })
-      expect(execFileSync('java', ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim().split('\n')).toEqual(
+      expect(execFileSync(JAVA, ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim().split('\n')).toEqual(
         expected,
       )
     },
@@ -343,7 +347,7 @@ describe("Math.round is JavaScript's on both targets, NaN and ±Infinity include
       execFileSync('kotlinc', [join(dir, 'main.kt'), KOTLIN_RUNTIME, '-include-runtime', '-d', join(dir, 'p.jar')], {
         stdio: 'pipe',
       })
-      expect(execFileSync('java', ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim().split('\n')).toEqual(
+      expect(execFileSync(JAVA, ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim().split('\n')).toEqual(
         ROUND_ROWS.map(() => 'true'),
       )
     },

@@ -143,7 +143,12 @@ export type Props = Partial<{
   dangerouslySetInnerHTML: { __html: string }
 
   /**
-   * An additional prop for extending styling of the **root** wrapper element
+   * Escape hatch for styling the **root** element with CSS a theme value
+   * cannot express (a selector, an at-rule): a `css\`…\`` result or a
+   * `(css) => css\`…\`` callback, optionally per breakpoint. No raw string.
+   * Renders into `@layer instance`, so it beats the component's theme. For a
+   * one-off look, add a named modifier to the component instead
+   * (`.multiple({ threeUp: { … } })`).
    */
   css: ExtendCss
 

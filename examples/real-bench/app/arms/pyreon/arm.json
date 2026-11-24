@@ -1,0 +1,23 @@
+{
+  "id": "pyreon",
+  "label": "Pyreon + @pyreon/router + @pyreon/store",
+  "docs": [
+    "https://pyreon.dev/docs/router",
+    "https://pyreon.dev/docs/store",
+    "MCP get_pattern routing-setup / state-management / keyed-lists (packages/tools/mcp)"
+  ],
+  "packages": ["@pyreon/core", "@pyreon/reactivity", "@pyreon/runtime-dom", "@pyreon/router", "@pyreon/store", "@pyreon/vite-plugin", "vite"],
+  "router": "@pyreon/router, createRouter({ mode: 'history' }), RouterProvider + RouterView + RouterLink",
+  "state": "@pyreon/store defineStore: signals for products, filters, page and favourites; computeds for the filtered list, page rows, page count and summary",
+  "codeSplitting": "none",
+  "build": ["npm", "run", "build"],
+  "outDir": "dist",
+  "fallback": "index.html",
+  "dataFile": "src/data.ts",
+  "cssFile": "src/app.css",
+  "notes": [
+    "Two sources for @pyreon/*, chosen by `bun setup.ts --pyreon=npm|workspace` and recorded in run.json: npm (default) installs the published packages this arm's package-lock.json pins; workspace installs nothing here and resolves the monorepo's built lib/.",
+    "The router's defaults are kept, including View Transitions on navigation where the browser supports them and 'intent' link prefetch (a no-op here: no route has a loader).",
+    "Rows render with <For by={id}>; a row reads the favourites Set signal, so a favourite toggle re-runs the 50 visible rows' favourite bindings (no createSelector: the docs' plain shape)."
+  ]
+}

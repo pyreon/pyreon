@@ -59,10 +59,23 @@ export function getRegistry(): Map<string, unknown> {
  * Server-only: in a browser one process serves one user, so the module-level
  * registry is correct and this costs nothing.
  */
+//
+// Beside the setter, a registry DISPOSER: `@pyreon/runtime-server` calls it
+// with a request's registry when the request ends. Dropping the map alone was a
+// leak: each store runs its setup in its OWN `effectScope`, so a setup effect
+// or computed over a signal that outlives the request (module state, a shared
+// cache) stayed subscribed, with that request's store state in its closure, one
+// per request, forever. `dispose()` stops the scope and runs plugin cleanups;
+// duck-checked like `resetStore` for a foreign registry value.
 if (isServer) {
-  ;(
-    globalThis as {
-      __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown> | undefined) => void
-    }
-  ).__PYREON_STORE_SET_REGISTRY_PROVIDER__ = setRegistryProvider
+  const g = globalThis as {
+    __PYREON_STORE_SET_REGISTRY_PROVIDER__?: (fn: () => Map<string, unknown> | undefined) => void
+    __PYREON_STORE_DISPOSE_REGISTRY__?: (registry: Map<string, unknown>) => void
+  }
+  g.__PYREON_STORE_SET_REGISTRY_PROVIDER__ = setRegistryProvider
+  g.__PYREON_STORE_DISPOSE_REGISTRY__ = (registry) => {
+    // Snapshot: `dispose()` deletes its own entry from the registry.
+    for (const api of Array.from(registry.values())) (api as { dispose?: () => void }).dispose?.()
+    registry.clear()
+  }
 }

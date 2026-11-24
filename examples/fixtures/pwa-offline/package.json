@@ -1,0 +1,31 @@
+{
+  "name": "@pyreon/example-pwa-offline",
+  "version": "0.50.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/query": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/zero": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@types/bun": "^1.4.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.8"
+  }
+}

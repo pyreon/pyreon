@@ -1,5 +1,7 @@
 # @pyreon/mcp
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 MCP server for AI-assisted Pyreon development — API reference, validation, migration, project audits.
 
 `@pyreon/mcp` is a Model Context Protocol server that gives AI coding assistants (Claude Code, Cursor, Windsurf, etc.) direct access to Pyreon's API reference + foot-gun catalogue + project audits. **24 tools** span discovery (`mcp_overview`), API lookup (`get_api`), static validation (`validate`, `explain_reactivity`), codemods (`migrate_react`, `migrate_pyreon`), error diagnosis (`diagnose`, `explain_error`), project introspection (`get_routes`, `get_components`), content navigation (`get_content_collection`, `get_content_entry`), proactive docs (`get_pattern`, `get_anti_patterns`, `get_changelog`), project-wide audits (`audit_test_environment`, `audit_islands`, `get_browser_smoke_status`), workspace / component-catalog verification (`get_dependency_fabric`, `get_atlas_catalog`, `get_atlas_component`), and the project's generated API client (`get_api_client`, `get_api_operation`, `explain_api_diff`). Token-frugal by default: `get_anti_patterns` returns a compact index — kept at least ~60% smaller than the full catalogue by a density gate, not a pinned size (see `src/tests/token-budget.test.ts`).
@@ -110,7 +112,7 @@ Returns signature + usage example + common mistakes. Covers every `@pyreon/*` pa
 validate({ code: 'const { x } = props; return <div>{x}</div>' })
 ```
 
-Merges three detectors (React anti-patterns + Pyreon-specific patterns + multiplatform/PMTC hazards), sorts by source line. `detectPyreonPatterns` ships 23 codes today: `for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `props-early-return-conditional`, `props-object-copy`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`. `detectNativePatterns` only fires when the snippet imports `@pyreon/primitives`.
+Merges three detectors (React anti-patterns + Pyreon-specific patterns + multiplatform/PMTC hazards), sorts by source line. `detectPyreonPatterns` ships 24 codes today: `for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `props-early-return-conditional`, `props-object-copy`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`, `accessor-uncalled-in-template`, `accessor-uncalled-in-condition`, `charts-legacy-import`, `plain-mode`, `for-stale-item-field`, `css-prop-on-component`. `detectNativePatterns` only fires when the snippet imports `@pyreon/primitives`.
 
 `query-options-as-function` is **proactive**: the same rule ships as the opt-in `pyreon/query-options-as-function` lint rule AND as a `validate` detector — an AI agent calling `validate` sees the fix BEFORE commit, not just after running lint.
 
@@ -133,7 +135,7 @@ A `token-budget.test.ts` regression gate keeps `tools/list` and the index DENSIT
 get_pattern({ name: 'reactive-spread' })
 ```
 
-Serves `docs/src/content/docs/patterns/<name>.md` from the monorepo, or the package's **bundled snapshot** when run in a consumer (see "Consumer usage" below). Foundational patterns today: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Add a new pattern by dropping a new `docs/src/content/docs/patterns/<slug>.md` file.
+Serves `docs/src/content/docs/patterns/<name>.md` from the monorepo, or the package's **bundled snapshot** when run in a consumer (see "Consumer usage" below). Foundational patterns today: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `multiplatform`, `offline-and-installable-apps`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Add a new pattern by dropping a new `docs/src/content/docs/patterns/<slug>.md` file.
 
 ### `migrate_react`
 

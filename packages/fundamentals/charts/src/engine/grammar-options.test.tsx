@@ -11,6 +11,7 @@ import { h } from '@pyreon/core'
 import { Bar, Line, resolveGrammar } from './grammar'
 import { resolveMarks } from './marks'
 import { smooth } from './curve'
+import { fillBy } from './item-colors'
 import type { MarkOptions } from './marks'
 
 interface Row { m: string; v: number }
@@ -40,6 +41,8 @@ const EVERY: Readonly<Record<keyof MarkOptions, unknown>> = {
   dash: [4, 2],
   negativeColor: '#ff0000',
   areaOpacity: 0.55,
+  fill: fillBy<Row>(() => '#123456'),
+  connectNulls: true,
 }
 
 describe('grammar ⇄ array option parity', () => {

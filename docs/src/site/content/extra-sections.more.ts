@@ -169,7 +169,7 @@ $ echo $?
         },
         {
           name: '@pyreon/lint',
-          title: '141 rules that know the framework',
+          title: '{{@lintRuleCount}} rules that know the framework',
           text: 'Five presets, two `readable` layers, a config file with a JSON schema, watch mode, `--why-off` to explain a disabled rule, and an LSP server for your editor.',
           cmd: 'pyreon lint --watch',
           prompt: true,
@@ -236,7 +236,7 @@ $ echo $?
   ai: [
     {
       kind: 'chips',
-      label: 'all 24 tools',
+      label: 'all {{@mcpToolCount}} tools',
       title: 'Six jobs your assistant can now do properly.',
       groups: [
         { name: 'discover', items: ['mcp_overview', 'get_api', 'get_pattern', 'get_anti_patterns', 'get_changelog'] },

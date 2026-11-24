@@ -4,6 +4,11 @@ import SwiftUI
 // (the same file the web and Android hosts build) into generated/TodayApp.swift.
 @main
 struct PyreonShowcaseApp: App {
+    init() {
+        // UI tests launch from a fresh-install state (see UITestAppState.swift).
+        UITestAppState.resetIfRequested()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

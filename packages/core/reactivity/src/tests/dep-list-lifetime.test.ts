@@ -122,14 +122,11 @@ describe('owners keep a working dep list', () => {
       effect(() => {
         x()
       })
-      _bind(() => {
-        x()
-      })
       renderEffect(() => {
         x()
       })
     })
-    expect(subs(x)).toBe(3)
+    expect(subs(x)).toBe(2)
     scope.stop()
     expect(subs(x)).toBe(0)
   })

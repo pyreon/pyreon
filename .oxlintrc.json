@@ -272,6 +272,7 @@
     "atlas-dist",
     "atlas-dist-e2e",
     "**/bench/typia/generated.js",
-    "examples/stacks-bench/apps"
+    "examples/stacks-bench/apps",
+    "examples/real-bench/app/arms"
   ]
 }

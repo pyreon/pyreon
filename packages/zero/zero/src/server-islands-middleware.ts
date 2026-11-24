@@ -36,6 +36,7 @@ import type { RouteRecord } from '@pyreon/router'
 import { ROUTE_MIDDLEWARE_RAN } from './og-route'
 import type { IslandSigner } from './server-island-token'
 import { createIslandMint, createIslandSigner } from './server-island-token'
+import { isIslandName } from '@pyreon/server/paths'
 
 export const FRAGMENT_PREFIX = '/_pyreon/fragment/'
 
@@ -54,6 +55,7 @@ export function fragmentPage(url: URL): string | null {
     if (c === 92 || c === 63 || c === 35 || c < 32 || c === 127) return null
   }
   if (raw.split('/').some((s) => s === '.' || s === '..')) return null
+
   return raw
 }
 
@@ -110,7 +112,10 @@ export function createServerIslandMiddleware(
     } catch {
       return new Response('Bad Request', { status: 400 })
     }
-    if (!name || name.includes('/')) {
+    // The SAME rule registration and the browser use (`isIslandName`): a name
+    // that survives decoding as one segment, so a decoding proxy cannot have
+    // turned it into another path.
+    if (!isIslandName(name)) {
       return new Response('Bad Request', { status: 400 })
     }
 
@@ -137,6 +142,7 @@ export function createServerIslandMiddleware(
     if (result.kind === 'bad-props') {
       return new Response('Bad Request', { status: 400 })
     }
+
     return new Response(result.html, {
       status: 200,
       headers: {

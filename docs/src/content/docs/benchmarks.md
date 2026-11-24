@@ -242,8 +242,9 @@ input and with columnar input (the shape uPlot takes):
 that label is wrong, because it compares against the leading *columns* arm
 rather than Chart.js (see [Harness caveats](#harness-caveats)). Pyreon renders
 an offscreen accessible data table by default; none of the others do. Bundle
-cost beyond the runtime (overnight run): a line chart is 38.0KB gzipped vs
-ECharts tree-shaken 155.9KB (4.10×); a pie is 19.1 vs 117.2KB.
+cost beyond the runtime (`bench:charts-bundle`, re-measured 2026-11-19): a line
+chart is 40.3KB gzipped vs ECharts tree-shaken 155.9KB (3.87×); a pie is 19.8
+vs 117.2KB.
 
 Reproduce: `bun bench-scenarios.ts --scenario charts` / `--scenario charts-libs`,
 `bun bench-charts-bundle.ts`.
@@ -306,6 +307,12 @@ Reproduce: `cd examples/benchmark && bun bench-ssr.ts`, `bun run bench:ssr-cross
 clear-1000 **3.14×** faster. The add-100 ratio has read 1.14×, 1.38–1.51× and
 1.99× on different days with the same harness, because React's own figure moves
 (its CV was 24%); quote it as **1.14–1.99×**.
+
+**A realistic client app across six frameworks** (a filtered, paginated
+catalogue with routing, a form and app-wide state, in Pyreon, React, Vue, Solid,
+Svelte and Preact; first-load bytes, time to interactive and memory) has a
+harness but no published result yet. Its method: [Real-app benchmark
+method](/docs/benchmarks-real-app).
 
 **12-field form vs six form libraries** (real Chromium): Pyreon leads every
 scenario — mount 210µs vs Solid modular-forms 305, keystroke in blur mode 60 vs

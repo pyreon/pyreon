@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — permissions snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/permissions — Reactive permissions — RBAC, ABAC, feature flags, subscription tiers. \`admin.*\` matches exactly one segment (\`admin.users\`, not \`admin.users.list\`); use \`admin.**\` to match any depth below \`admin\`, and \`*\` for everything. Resolution is most-specific-first, so an exact or \`**\` deny overrides a broader subtree grant."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/permissions](https://pyreon.dev/docs/reference/permissions): Reactive permissions — RBAC, ABAC, feature flags, subscription tiers. \`admin.*\` matches exactly one segment (\`admin.users\`, not \`admin.users.list\`); use \`admin.**\` to match any depth below \`admin\`, and \`*\` for everything. Resolution is most-specific-first, so an exact or \`**\` deny overrides a broader subtree grant."`)
   })
 
   it('renders to llms-full.txt section', () => {

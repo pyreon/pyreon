@@ -11,6 +11,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { checkLlmsTxtShape } from '../packages/internals/test-utils/src/llms-txt'
 import {
   findManifests,
   formatLineDiff,
@@ -27,7 +28,7 @@ export interface RegenerateResult {
 }
 
 /**
- * Replace existing `- <name> —` bullets in llms.txt with regenerated
+ * Replace existing `- [<name>](<docs url>): ` bullets in llms.txt with regenerated
  * content from the manifests. Returns the list of manifest names whose
  * bullet line could NOT be found in llms.txt — the caller should
  * treat this as a hard error (manifests without a landing line
@@ -54,7 +55,10 @@ export function regenerateLlmsTxt(
   const missingEntries: string[] = []
   for (const { manifest } of manifests) {
     const targetLine = renderLlmsTxtLine(manifest)
-    const bulletPrefix = `- ${manifest.name} —`
+    // Identify the bullet by name only: its URL depends on whether the
+    // manifest has API entries, and a manifest that gains its first one must
+    // have its line rewritten, not reported missing.
+    const bulletPrefix = `- [${manifest.name}](`
     const escaped = bulletPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const re = new RegExp(`^${escaped}.*$`, 'm')
     if (!re.test(next)) {
@@ -65,6 +69,7 @@ export function regenerateLlmsTxt(
     next = next.replace(re, targetLine)
     if (prev !== next) changedLines++
   }
+
   return { contents: next, changedLines, missingEntries }
 }
 
@@ -118,6 +123,7 @@ export function regenerateLlmsFullTxt(
     // stdout message "N sections regenerated".
     if (prev !== next) changedLines++
   }
+
   return { contents: next, changedLines, missingEntries }
 }
 
@@ -148,6 +154,7 @@ function findSectionRange(content: string, name: string): [number, number] | nul
   const sectionStart = headerIdx
   const nextHeaderIdx = sentinel.indexOf('\n## ', headerIdx + 1)
   const sectionEnd = nextHeaderIdx === -1 ? content.length : nextHeaderIdx
+
   return [sectionStart, sectionEnd]
 }
 
@@ -208,6 +215,7 @@ export function regenerateApiReferenceTs(
     next = next.slice(0, start) + replacement + next.slice(end)
     if (prev !== next) changedLines++
   }
+
   return { contents: next, changedLines, missingEntries: [] }
 }
 
@@ -238,6 +246,7 @@ function findApiReferenceRegion(content: string, name: string): [number, number]
   const endLineStart = content.lastIndexOf('\n', endIdx) + 1
   const rangeStart = afterStartLine + 1
   if (rangeStart > endLineStart) return null
+
   return [rangeStart, endLineStart]
 }
 
@@ -313,6 +322,17 @@ export async function main(
     io.stderr(buildMissingEntriesError('llms.txt', llmsResult.missingEntries))
     return io.exit(1)
   }
+  const shapeProblems = checkLlmsTxtShape(llmsResult.contents)
+  if (shapeProblems.length > 0) {
+    io.stderr(
+      '[gen-docs] ERROR: llms.txt does not follow the llmstxt.org shape that\n' +
+        'https://pyreon.dev/llms.txt is audited against (Lighthouse `llms-txt`):\n' +
+        shapeProblems.map((p) => `  - ${p}`).join('\n') +
+        '\n\nFix the hand-written part of llms.txt; long-form content belongs in llms-full.txt.',
+    )
+
+    return io.exit(1)
+  }
 
   // ─── llms-full.txt ────────────────────────────────────────────────────
   const llmsFullPath = join(repoRoot, 'llms-full.txt')
@@ -353,8 +373,10 @@ export async function main(
         io.stderr(formatLineDiff(apiRefBefore, apiRefResult.contents))
       }
       io.stderr('\nFix: run `bun run gen-docs` and commit the result.')
+
       return io.exit(1)
     }
+
     return
   }
 
@@ -389,8 +411,9 @@ export async function main(
 function buildMissingEntriesError(fileLabel: string, names: string[]): string {
   const placementHint =
     fileLabel === 'llms.txt'
-      ? 'bullet (form: `- <name> — <any text>`) under the package list section that matches the package\'s category'
+      ? 'bullet (form: `- [<name>](https://pyreon.dev/docs/reference/<slug>): <any text>`) under the package list section that matches the package\'s category'
       : 'section (form: `## <name> — <title>` followed by a code block) at an appropriate location'
+
   return (
     `[gen-docs] ERROR: these manifests have no matching ${fileLabel} entry\n` +
     `(valid category sections: "core", "fundamentals", "tools", "ui-system",\n` +
@@ -402,6 +425,7 @@ function buildMissingEntriesError(fileLabel: string, names: string[]): string {
 }
 
 // Re-export for test convenience.
+export { checkLlmsTxtShape } from '../packages/internals/test-utils/src/llms-txt'
 export {
   findManifests,
   formatLineDiff,

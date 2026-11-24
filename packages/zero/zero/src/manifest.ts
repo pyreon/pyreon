@@ -81,6 +81,7 @@ export default function PostPage() { /* component body */ }`,
     'usePreloadFont(href) + ?font import — font preload + auto @font-face / hashed-URL FontDescriptor',
     'zero({ image, font, seo, favicon, og, ai }) — ONE config surface auto-wires image/font (default-on, `false` opts out) + seo/favicon/og-image/ai plugins (config-present opt-in) — no manual plugin imports',
     'SSG injects per-route <link rel=modulepreload> — islands-safe (follows static imports, never dynamicImports)',
+    "Islands-only pages — `export const hydrate = 'islands'` on a route or `_layout`: static HTML plus its islands, no router, no route code, no loader-data blob; `startClientLazy` keeps the app off such a page",
   ],
   // MCP-density entries: dense summary + 6+ mistakes per flagship API.
   // Scope: the SSG roadmap surface (i18n, ISR, adapter, getStaticPaths,
@@ -172,6 +173,58 @@ const fileRoutes = expandRoutesForLocales(baseRoutes, {
         "Passing user-controlled strings as locales without validation — the helper validates against path-traversal (`..`, `/`, backslash, `.`, NUL) but does NOT validate BCP-47 shape; an invalid locale silently produces oddly-shaped URLs",
       ],
       seeAlso: ['I18nRoutingConfig', 'zero', 'parseFileRoutes'],
+    },
+    {
+      name: 'hydrate',
+      kind: 'constant',
+      signature: "export const hydrate: 'islands' | 'app' // route or _layout file export",
+      summary:
+        "Per-route (cascading from `_layout`, leaf wins, like `renderMode`) choice of how the browser takes over the page. `'app'` (the default) hydrates the whole tree under the router. `'islands'` keeps the page as static HTML plus its `island()`s: the server (SSG, SSR string and streaming, ISR, dev) marks the page with `<meta name=\"pyreon-hydrate\" content=\"islands\">`, leaves out the loader-data script (the loader still runs, its output is in the HTML) and the route's modulepreloads; `startClient` / `startClientLazy` then hydrate the islands from the `islands` registry and start nothing else (no router, no app tree). A client-side navigation from an app page TO an islands-only route becomes a full page load; on an islands-only page every link, `<RouterLink>` included, is a plain link. `@pyreon/head` does not run in the browser there (head tags are server-rendered). Must be a string literal, and never on a page rendered `'spa'` (both are `[Pyreon]` errors at route-scan time). `zero({ routeRules: { '/docs/**': { hydrate: 'islands' } } })` declares it centrally, with the same validation and the precedence `renderMode` has (page export > nearest `_layout` export > the most specific rule > `'app'`); the rule is applied to the route records at generation, so server, SSG, dev and the navigation guard read one value. In dev, an edit to a module the server rendered an islands-only page with reloads that page (there is no client module to hot-swap).",
+      example: `// src/routes/(marketing)/_layout.tsx — every page under it is static + islands
+export const hydrate = 'islands'
+export function layout() { return <SiteShell><RouterView /></SiteShell> }
+
+// src/routes/(marketing)/pricing.tsx — the loader runs at build; its output is in the HTML
+export async function loader() { return { plans: await readPlans() } }
+const Calculator = island(() => import('../../islands/Calculator'), { name: 'Calculator', hydrate: 'visible' })
+export default function Pricing() { /* static markup + <Calculator /> */ }
+
+// src/entry-client.ts — the app is loaded only on pages that start it
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+startClientLazy({ routes: () => import('virtual:zero/routes'), islands, islandRoot: () => import('./IslandRoot') })`,
+      mistakes: [
+        "A handler or signal OUTSIDE an island on an islands-only page — that markup never runs in the browser, so the handler silently does nothing. Anything interactive must be an `island()`",
+        "Keeping `startClient({ routes })` with a static `import { routes } from 'virtual:zero/routes'` — islands-only pages still work, but the entry's static graph (the routes module, the layouts, the router) downloads on them. Use `startClientLazy` for the byte win",
+        "Forgetting `islands` in the client entry — an islands-only page then hydrates nothing and logs a `[Pyreon]` error naming the fix",
+        "An island that reads context (a theme) with no provider above it — on an islands-only page the island is its own root. Pass `islandRoot` (render only the providers and the children), or wrap inside the island",
+        "`export const hydrate = 'islands'` on an `spa` page (route, layout, `routeRules` or app mode) — an SPA page has no server HTML to keep; route-scan error",
+        "Expecting `useLoaderData()` inside an island on an islands-only page — there is no loader-data blob and no router; pass what the island needs as props",
+      ],
+      seeAlso: ['startClientLazy', 'zero'],
+    },
+    {
+      name: 'startClientLazy',
+      kind: 'function',
+      signature:
+        'startClientLazy(options: { routes: () => Promise<{ routes: RouteRecord[] }>; layout?: ComponentFn; islands?: IslandsRegistry; islandRoot?: IslandRootLoader }): () => void // from @pyreon/zero/client-lazy',
+      summary:
+        "The client entry for an app with islands-only routes (`export const hydrate = 'islands'`). On a page the server marked islands-only it hydrates the islands with the `islands` registry (wrapped in `islandRoot` when given; loaded with the first island) and starts nothing else; a marked page with no islands loads nothing at all. On any other page it loads the routes and the app with dynamic imports, then hydrates or mounts exactly as `startClient` does. Its own subpath so the router never enters the entry chunk. `startClient` takes the same `islands` / `islandRoot` options and honours islands-only pages too, but its static `routes` import keeps the app in the entry. SSG, SSR (string and streaming) and ISR pages all preload the app chunks on app pages and the islands runtime on islands-only pages with an island, so neither waits for the entry to discover them (the SSR post-step reads them from the client manifest and bakes them into the server bundle as `__ZERO_CLIENT_PRELOAD__`; an ISR cache entry keeps the set its page kind was rendered with). When EVERY page is islands-only, the production client build carries no app: the client routes module is empty and the app path compiles out (`__ZERO_APP_PAGES__`). With any islands-only page, `@pyreon/server/client` and the islands runtime are grouped into one `islands-runtime` chunk (what the entry itself needs stays in the entry).",
+      example: `// src/entry-client.ts
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+
+startClientLazy({
+  routes: () => import('virtual:zero/routes'),
+  islands,
+  islandRoot: () => import('./IslandRoot'), // providers for standalone islands
+})`,
+      mistakes: [
+        "Importing it from `@pyreon/zero/client` — it is not exported there on purpose: that module's static imports (the router, the app) would join the entry chunk",
+        "Passing `routes` as the array instead of a loader — the point is that the routes module loads only on pages that start the app",
+        "An `islandRoot` that renders an element around its children — the island no longer matches its server HTML. Render only providers",
+      ],
+      seeAlso: ['hydrate', 'zero'],
     },
     {
       name: 'GetStaticPaths',
@@ -372,25 +425,28 @@ createISRHandler(handler, { revalidate: 60, store: redisStore })`,
       kind: 'function',
       signature: 'function createMemoryStore<E = ISRCacheEntry>(opts?: { maxEntries?: number }): ISRStore<E>',
       summary:
-        'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index prunes evicted keys lazily). Per-process — fine for single-instance deploys; multi-instance wants a shared external store.',
+        'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index drops a key the moment it is deleted, evicted or cleared). Per-process — fine for single-instance deploys; multi-instance wants a shared external store.',
       example: `createISRHandler(handler, { revalidate: 60, store: createMemoryStore({ maxEntries: 5000 }) })`,
       seeAlso: ['createISRHandler', 'ISRStore', 'createFsStore'],
     },
     {
       name: 'createFsStore',
       kind: 'function',
-      signature: 'function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E>',
+      signature:
+        'function createFsStore<E = ISRCacheEntry>(dir: string, opts?: { maxEntries?: number }): ISRStore<E>',
       summary:
-        "Filesystem-backed ISR store for self-hosted node/bun: cache entries (and the tag index) persist as JSON files under `dir`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). One file per key (fs-safe encoded; over-length keys hash to a fixed name so long query strings can't silently ENAMETOOLONG-drop), `_tags.json` sidecar written atomically (tmp+rename). EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV.",
+        "Filesystem-backed ISR store for self-hosted node/bun: cache entries (and their tags) persist as JSON files under `dir`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). Bounded like `createMemoryStore`: at most `maxEntries` entries (default 1000) on disk, least recently written or read evicted first (its file AND its tags); the cap holds across restarts because a new store counts what is already in `dir` and trims it. One file per entry (fs-safe encoded; a long key or one with upper-case letters gets a SHA-256 name, so a long query string cannot ENAMETOOLONG-drop and `/About` never shares a file with `/about` on a case-insensitive file system) plus a small per-entry tags sidecar, so a tagged miss writes O(1) bytes. Writes go through tmp+rename (a crash never leaves a torn entry; leftover temp files are removed at start), run in call order per key, and an older `_tags.json` index is migrated. EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV.",
       mistakes: [
         'Using it across multiple instances — each box has its own directory; tag invalidation on one box does not reach the others',
         'Pointing `dir` at a tmpfs that clears on reboot — defeats the restart-survival purpose',
+        'Keeping the default `pathname + search` cache key on pages that ignore their query string — every distinct query string is its own entry, so random `?x=` requests evict real pages (the disk stays bounded by `maxEntries`); supply a `cacheKey` that keeps only the parameters the page reads',
+        'Sharing one `dir` between processes and expecting one cap — the index and `maxEntries` are per process (each adopts entries it reads), and a tag recorded by another process is only seen after a restart',
       ],
       example: `import { createFsStore } from '@pyreon/zero/server'
 
 createISRHandler(handler, {
   revalidate: 60,
-  store: createFsStore('./.isr-cache'),
+  store: createFsStore('./.isr-cache', { maxEntries: 5000 }),
   tagsForRequest: (req) => (new URL(req.url).pathname.startsWith('/posts/') ? ['posts'] : []),
 })`,
       seeAlso: ['createISRHandler', 'ISRStore', 'createMemoryStore'],
@@ -449,7 +505,7 @@ createISRHandler(handler, {
       kind: 'function',
       signature: 'function aiPlugin(config?: AiPluginConfig): Plugin // server-only',
       summary:
-        'AI integration plugin — generates `llms.txt`, `llms-full.txt`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon\'s on-publish artifacts; the plugin runs `inferJsonLd` per route to extract structured data from `meta` exports.',
+        'AI integration plugin — generates `llms.txt`, `llms-full.txt`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon\'s on-publish artifacts; the plugin runs `inferJsonLd` per route to extract structured data from `meta` exports. `llms.txt` follows the llmstxt.org shape for every app (H1, `>` summary, dynamic routes and API endpoints as plain lists before the `##` link lists) and always ends with an `## Optional` link to `llms-full.txt`, so it passes Lighthouse\'s Agentic Browsing `llms-txt` audit (an H1 and at least one Markdown link) even for an app with no static page.',
       example: 'plugins: [pyreon(), zero(), seoPlugin({ ... }), aiPlugin()]',
       seeAlso: ['seoPlugin', 'zero'],
     },
@@ -482,7 +538,7 @@ export const og: OgImage<{ title: string }> = ({ data }) => (
       signature:
         'function registerServiceWorker(options?: { url?: string; scope?: string; onUpdate?: (activate: () => void) => void }): Promise<ServiceWorkerRegistration | null>',
       summary:
-        'Registers the worker generated by `zero({ pwa })` (`<base>sw.js`, `updateViaCache: \'none\'`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under `mode: \'ssg\'`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit `Cache-Control: public` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. New versions WAIT by default; `onUpdate(activate)` fires when one is installed so the app can ask, and `activate()` switches + reloads. Resolves `null` during SSR, outside production builds, and without service-worker support.',
+        'Registers the worker generated by `zero({ pwa })` (`<base>sw.js`, `updateViaCache: \'none\'`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under `mode: \'ssg\'`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit `Cache-Control: public` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. SPA output also precaches the app shell and answers every failed navigation with it; `pwa.offlineFallback` (SSG) names a prerendered page used as the shell for routes never prerendered or visited. New versions WAIT by default; `onUpdate(activate)` fires when one is installed so the app can ask, and `activate()` switches + reloads. Resolves `null` during SSR, outside production builds, and without service-worker support.',
       example: `import { registerServiceWorker } from '@pyreon/zero'
 
 registerServiceWorker({
@@ -496,6 +552,60 @@ registerServiceWorker({
         'Serving `sw.js` with a long or immutable Cache-Control from a custom host — the worker script is the update channel; zero\'s adapters serve it must-revalidate',
       ],
       seeAlso: ['zero'],
+    },
+    {
+      name: 'useServiceWorkerUpdate',
+      kind: 'hook',
+      signature:
+        'function useServiceWorkerUpdate(): { updateReady: () => boolean; apply: () => void }',
+      summary:
+        'Reactive "a new version is waiting" state over `registerServiceWorker()`: `updateReady()` flips once a new worker finished installing (only when `pwa.skipWaiting` is off); `apply()` activates it and reloads into the new version. Always `false` on the server and in development. Needs `registerServiceWorker()` called once in the client entry; works with or without its `onUpdate` option. Exported from `@pyreon/zero` and `@pyreon/zero/client`.',
+      example: `import { useServiceWorkerUpdate } from '@pyreon/zero/client'
+
+const update = useServiceWorkerUpdate()
+<Show when={() => update.updateReady()}>
+  <button onClick={() => update.apply()}>New version available. Reload</button>
+</Show>`,
+      mistakes: [
+        'Using it without calling `registerServiceWorker()` — nothing ever sets `updateReady`',
+        'Reading `update.updateReady` without calling it in JSX — it is an accessor; use `() => update.updateReady()`',
+        'Expecting other open tabs to reload on `apply()` — only the calling tab reloads; the others keep running the old page until closed or reloaded',
+      ],
+      seeAlso: ['registerServiceWorker', 'useInstallPrompt'],
+    },
+    {
+      name: 'useInstallPrompt',
+      kind: 'hook',
+      signature:
+        "function useInstallPrompt(): { canInstall: () => boolean; prompt: () => Promise<'accepted' | 'dismissed' | 'unavailable'>; isInstalled: () => boolean }",
+      summary:
+        "Install-prompt state for an installable PWA (Chromium: Chrome, Edge, Samsung Internet). ONE shared, refcounted set of `beforeinstallprompt` / `appinstalled` / `display-mode: standalone` listeners regardless of how many callers; the event is held (and the browser's own infobar suppressed) until the app calls `prompt()` from its own button. `prompt()` resolves `'unavailable'` when the browser offered nothing (iOS Safari and Firefox never do), and the event is single-use. `isInstalled()` is true in standalone display mode, iOS `navigator.standalone`, or after `appinstalled`. Inert on the server. Call it early (root layout): the browser fires `beforeinstallprompt` once per page load and an event fired while no caller is mounted is missed. Lives in `@pyreon/zero` (not `@pyreon/hooks`) because it is the install half of the same PWA client surface as `registerServiceWorker`.",
+      example: `import { useInstallPrompt } from '@pyreon/zero/client'
+
+const install = useInstallPrompt()
+<Show when={() => install.canInstall() && !install.isInstalled()}>
+  <button onClick={() => install.prompt()}>Install app</button>
+</Show>`,
+      mistakes: [
+        'Mounting it only on a settings page — `beforeinstallprompt` fires early, once per page load; call it in the root layout',
+        'Expecting `canInstall()` on iOS Safari — it never fires there; document "Share, Add to Home Screen" instead',
+        'Calling `prompt()` outside a user gesture — the browser rejects it; call it from a click handler',
+      ],
+      seeAlso: ['registerServiceWorker', 'useServiceWorkerUpdate'],
+    },
+    {
+      name: 'unregisterServiceWorkers',
+      kind: 'function',
+      signature: 'function unregisterServiceWorkers(cacheName?: string): Promise<number>',
+      summary:
+        "Unregisters every service worker of the origin and deletes this app's caches (names starting with `cacheName`, default `'pyreon'`); resolves the number of workers removed. The escape hatch for the stale-worker trap: a production build previewed on the same origin (`localhost:PORT`) as a later dev server leaves the old worker serving cached modules over HMR. Dev never registers a worker but cannot remove one it did not install.",
+      example: `import { unregisterServiceWorkers } from '@pyreon/zero/client'
+
+if (import.meta.env.DEV) void unregisterServiceWorkers()`,
+      mistakes: [
+        'Calling it in production code paths — it removes the offline cache; use it from a dev entry or a "reset app" action',
+      ],
+      seeAlso: ['registerServiceWorker'],
     },
     {
       name: 'i18nRouting',

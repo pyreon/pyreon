@@ -11,6 +11,12 @@ Vue-compat `watch` treated any non-ref source as a getter, so `watch(reactive(ob
 
 ---
 
+### Formatting with `toLocaleString()` / `new Intl.*Format()` in a component body or JSX, or building money by concatenation
+
+A component runs once, so `value.toLocaleString('en-US', …)` captures the locale once and a later locale change never reaches the text; a formatter constructed in the body is rebuilt on every render (the dominant cost of a list row); `toLocaleString()` with no locale formats with the server's locale on the server and the user's in the browser, so hydration mismatches; and `'€' + n.toFixed(2)` hard-codes a symbol position, separators and minor-unit digits that differ per locale and currency. **Fix**: `@pyreon/format` (`formatCurrency`, `formatNumber`, `formatBytes`, `formatDate`, `formatRelativeTo`, or a reusable `currencyFormatter('EUR')`), which reads the active locale and time zone reactively, caches the `Intl` object, and is request-scoped on the server via `provideLocale`. Also: `new Date('2026-11-18')` for a calendar date is midnight UTC (the 17th west of Greenwich) — pass the string to `formatDate`. No static detector: `pyreon/no-locale-dependent-format` already flags the argument-less calls; telling "inside a component body" from a module-level helper needs scope analysis that a pattern matcher cannot do without false positives on correct code. Pattern: `get_pattern formatting`. Reference: `packages/fundamentals/format`.
+
+---
+
 ### Importing `@pyreon/charts` through a pre-0.52 entry point
 
 The main entry is now the engine (`<Chart>` with mark children, formerly `<Plot>` at `/plot`), and the ECharts wrapper is `<EChart>` at `/echarts`, with `/manual` and `/vite` under it. `<Chart options={…}>` from the root is the old wrapper and no longer type-checks.
@@ -207,5 +213,65 @@ Whatever a template ships is what a deployed app runs until someone replaces it,
 ### [FIXED, 2026-11] A component that iterates or clones its children must accept every shape the compiler emits, not just `VNode`.
 
 `@pyreon/kinetic`'s stagger renderers filtered children on `'type' in child`, but the compiler lowers literal markup (`<li>Install</li>`) to a pre-built `_tpl` item on the client and `_ssr` raw HTML on the server, so the docs' own stagger example rendered an empty `<ol>`. A forwarded `children` arrives as an accessor, and around a user's own `() => items.map(…)` as an accessor returning an accessor (one `typeof === 'function'` unwrap threw `children is not iterable`). **Rule: flatten children by unwrapping EVERY accessor level and every array/fragment; decorate a `_tpl` item by setting the extras on its element at mount (it has no props to clone), and pass raw server HTML through. Test it through the real compiler: kinetic's browser suite runs `@pyreon/vite-plugin` for exactly this.** Kinetic's group renderers also rebuilt every row on each change, so a removed row never unmounted: a keyed animated list keeps one row per key (`<For by>`), flips that row's `show` to leave, and drops it from its own `onAfterLeave`.
+
+---
+
+### Reading a whole file to upload it, trusting `file.type`, never revoking an object URL, using `fetch` for a large upload (`@pyreon/upload`).
+
+`FileReader` / `arrayBuffer()` holds the whole file in memory; `file.type` and the extension are what the sender's machine claims (use `rules.sniff` for the interface and check content on the server); `URL.createObjectURL` leaks until `revokeObjectURL` (`preview: true` revokes on remove, clear and dispose); `fetch` has no upload progress (`xhrTransport` reports bytes). Also: hand-counting `dragenter` / `dragleave` (they fire on every child: `useFileDrop` counts them), and showing a file name with `innerHTML`. Reference: `packages/fundamentals/upload`, pattern `patterns/upload`.
+
+---
+
+### Date math with `setDate` or `+ 86_400_000` across a DST change
+
+A day is 23 or 25 hours twice a year, so `new Date(t + 24 * 3_600_000)` is not "tomorrow" and `d.setDate(d.getDate() + 1)` depends on the machine's zone. Use `add(date, { days: 1 })` on a PlainDate, or `addInstant(instant, { days: 1 }, zone)`, which keeps the time of day. `@pyreon/time` tests the 23- and 25-hour days against `Temporal`.
+
+---
+
+### `new Date('2026-11-18')` displayed in local time
+
+A date-only ISO string parses as UTC midnight, so formatting it in a zone west of Greenwich shows the previous day. A date-only string is a calendar date; keep it a string (`PlainDate`) and format it as that day, never through a `Date` in the viewer's zone.
+
+---
+
+### `new Date()` or `Date.now()` read in a component body
+
+The body runs once, so the value freezes at mount, and on a server-rendered page the server's and the client's reads differ, which is a hydration mismatch. Read the clock inside an effect or an event handler, and pin it in tests with `setClock`.
+
+---
+
+### `toISOString().slice(0, 10)` as today's date
+
+It is today in UTC, not in the user's zone. Use `today(zone)` from `@pyreon/time`.
+
+---
+
+### Float arithmetic on prices
+
+`0.1 + 0.2` is `0.30000000000000004`, so adding, multiplying by a tax rate or dividing prices as `number` drifts by a cent and the error shows up on an invoice. Keep money as `{ amount: "9.99", currency: "EUR" }` and use `@pyreon/money` (`add`, `multiply`, `percentage`), which computes on `bigint`; `money(0.1 + 0.2, "EUR")` throws on purpose.
+
+---
+
+### `toFixed` (or `Math.round(x * 100) / 100`) as money rounding
+
+It rounds the binary float, so `(1.005).toFixed(2)` is `"1.00"` and `(2.675).toFixed(2)` is `"2.67"`. Round the exact decimal with an explicit mode: `money("1.005", "EUR", { rounding: "halfExpand" })` is `1.01`.
+
+---
+
+### Summing rounded parts, or dividing a total and multiplying back
+
+Three parts of `100 / 3` rounded to 33.33 lose a cent, and per-line VAT summed differs from VAT on the total (three 9.99 lines at 21% give 6.30 against 6.29). Share a total with `allocate` or `split` (the parts sum exactly), and decide whether rounding happens per line or once.
+
+---
+
+### Stepping day by day with `add` to find occurrences, storing every occurrence as a row, anchoring a recurring local time in UTC (`@pyreon/schedule`).
+
+Stepping is slow, clamps the 31st where RFC 5545 skips the month, and misses nth-weekday and set-position rules; expanded rows turn "edit the series" into rewriting thousands of rows; a UTC-anchored 09:00 is 10:00 local after the clocks change. Store the rule (`{ every, on, start, timeZone }`), expand the window with `occurrencesBetween` / `nextOccurrence` / `expandEvents`, keep the wall time and the zone, and convert with `toInstants`. `count` counts the rule's own occurrences, so an excepted date still uses one up. Reference: `packages/fundamentals/schedule`, pattern `patterns/schedule`.
+
+---
+
+### Counting an SLA in hours with `add` (`@pyreon/schedule`).
+
+`add('2026-11-20T15:00', { hours: 8 })` counts nights and weekends. Use `addBusinessTime(start, { hours: 8 }, calendar)` with opening hours, weekends and `holidays` (a list or a predicate; no holiday data is shipped).
 
 ---

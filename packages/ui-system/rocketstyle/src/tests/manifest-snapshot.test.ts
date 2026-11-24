@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — rocketstyle snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/rocketstyle — Multi-dimensional component styling — states, sizes, variants, custom dimensions, dark/light mode, all cached. useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/rocketstyle](https://pyreon.dev/docs/reference/rocketstyle): Multi-dimensional component styling — states, sizes, variants, custom dimensions, dark/light mode, all cached. useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both."`)
   })
 
   it('renders to llms-full.txt section', () => {
@@ -73,6 +73,8 @@ describe('gen-docs — rocketstyle snapshot', () => {
 
       > **Note**: useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both.
       >
+      > **No styles through props: a one-off look is a .multiple() modifier**: A look for some instances is a named, typed modifier (\`.multiple({ threeUp: { … } })\`, applied as \`multiple="threeUp"\` or \`multiple={["threeUp", compact() && "dense"]}\`); it is a theme slice, so it is type-checked, composes, and always beats \`.theme()\` and state / size / variant. A responsive slice wins from its first breakpoint up and keeps the earlier value below it (\`mergeTheme\` in utils/theme.ts; a mobile-first array survives the light/dark walk). A caller-chosen value is a \`.params()\` param (\`columns={{ xs: 1, md: 3 }}\`, typed from its mapper, after variants and before \`multiple\`); a product-wide look is a variant. The \`css\` prop of the Element underneath remains the escape hatch for a selector or an at-rule (tagged template or callback, no raw string), rendered into \`@layer instance\` after \`@layer rocketstyle\`: \`@layer elements, rocketstyle, instance;\`.
+      >
       > **Layout vs CSS split**: With Element-based bases, layout props go in \`.attrs()\` (\`tag\`, \`direction\`, \`alignX\`, \`alignY\`, \`gap\`, \`block\`) and visual CSS goes in \`.theme()\`. CSS property names follow the unistyle convention (\`borderWidthTop\`, not \`borderTopWidth\`).
       >
       > **Cache keys post-normalization**: The \`_rsMemo\` dimension-prop memo keys on RESOLVED dimension values (after boolean-shorthand normalization), not raw props — under \`useBooleans: true\`, keying on raw props would collide every boolean variant onto the first cached entry (a real shipped bug, since fixed). Cache capacity is LRU 128 entries per theme; real apps need ONE shared \`<PyreonUI>\` for the memo to span instances.
@@ -86,7 +88,7 @@ describe('gen-docs — rocketstyle snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(15)
+    expect(Object.keys(record).length).toBe(16)
     expect(record['rocketstyle/rocketstyle']!.notes).toContain('Factory')
     expect(record['rocketstyle/rocketstyle']!.mistakes?.split('\n').length).toBe(7)
     // The raw context export (backing Provider) is now documented.

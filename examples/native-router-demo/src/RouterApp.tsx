@@ -25,7 +25,7 @@ import { Element } from '@pyreon/elements'
 import { Col, Container, Row } from '@pyreon/coolgrid'
 import { state as plainState } from '@pyreon/core/plain'
 import { signal } from '@pyreon/reactivity'
-import { createRouter, useLoaderData, useNavigate, useRouter, RouterProvider, RouterView } from '@pyreon/router'
+import { createRouter, useLoaderData, useNavigate, useRouter, RouterProvider, RouterView, routerTabs } from '@pyreon/router'
 import { type EchoReply, usePostEcho } from './hooks'
 import { ReorderPage } from './ReorderPage'
 import { defineTheme, styled } from '@pyreon/styler'
@@ -1201,10 +1201,10 @@ export function TabsApp() {
       { path: '/me', component: TabMeHome },
       { path: '/me/settings', component: TabMeSettings },
     ],
-    tabs: [
+    tabs: routerTabs([
       { name: 'feed', root: '/feed' },
       { name: 'me', root: '/me' },
-    ],
+    ]),
   })
   return (
     <RouterProvider router={router}>

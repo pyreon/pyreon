@@ -1,4 +1,5 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import type { RouterTabs } from './tabs'
 import type { LinkConfig } from './typed-routes'
 
 export type { ComponentFn }
@@ -428,8 +429,38 @@ export interface RouterOptions {
   beforeEach?: NavigationGuard[]
   /** Hooks run after every committed navigation. Same contract as `router.afterEach(hook)`, which appends. */
   afterEach?: AfterEachHook[]
-  /** "hash" (default) uses location.hash; "history" uses pushState */
-  mode?: 'hash' | 'history'
+  /**
+   * Where the location lives:
+   *   - `'hash'` (default) — in `location.hash`;
+   *   - `'history'` — in the path, written with `pushState`;
+   *   - `'memory'` — in an entry stack inside the router. Nothing is read
+   *     from or written to `window.history` / `location`, no window listener
+   *     is attached, and `document.title` is left alone, so the router can be
+   *     embedded in a page that already has one (a live demo, a widget, a test
+   *     harness) and works with no `window` at all. `push` / `replace` /
+   *     `back` / `forward` / `go` run the full navigation pipeline against the
+   *     stack. `<RouterLink>` renders the plain route path as its `href`
+   *     (there is no real URL to open in a new tab). Scroll is managed only
+   *     when `scrollBehavior` is set, View Transitions are not used, and an
+   *     external `redirect('https://…')` resolves `'cancelled'` instead of
+   *     leaving the page. Start position: `initialEntries` / `initialIndex`.
+   */
+  mode?: 'hash' | 'history' | 'memory'
+  /**
+   * `mode: 'memory'` only — the entry stack the router starts with, oldest
+   * first. Default: `[url ?? '/']`. Ignored by the other modes, which read the
+   * page URL.
+   *
+   * @example
+   * createRouter({ routes, mode: 'memory', initialEntries: ['/', '/users/1'] })
+   */
+  initialEntries?: string[]
+  /**
+   * `mode: 'memory'` only — the index in `initialEntries` the router starts
+   * at. Default: the last entry. An index outside the stack is clamped (with a
+   * dev warning).
+   */
+  initialIndex?: number
   /**
    * Phase 5 — endpoint the client-side router fetches server-loader data
    * from on navigations (one request per navigation for the whole matched
@@ -483,11 +514,11 @@ export interface RouterOptions {
    */
   links?: LinkConfig
   /**
-   * Per-tab back stacks for a tab-bar app. Each tab owns its own stack of
-   * entries, rooted at `root`; the router keeps one ACTIVE tab, and
-   * `push` / `replace` / `useNavigate()` act on the active tab's stack.
-   * Bind a `<Tabs router={router}>` (from `@pyreon/primitives`) to it and
-   * put a `<RouterView />` in each `<Tab>`:
+   * Per-tab back stacks for a tab-bar app, built with `routerTabs([...])`.
+   * Each tab owns its own stack of entries, rooted at `root`; the router keeps
+   * one ACTIVE tab, and `push` / `replace` / `useNavigate()` act on the active
+   * tab's stack. Bind a `<Tabs router={router}>` (from `@pyreon/primitives`)
+   * to it and put a `<RouterView />` in each `<Tab>`:
    *
    * - a path under ANOTHER tab's root selects that tab and pushes onto it
    *   (the longest matching root wins, so a `'/'` root is the fallback);
@@ -503,16 +534,19 @@ export interface RouterOptions {
    * Android each tab keeps its own stack and the system Back pops the active
    * tab first.
    *
+   * `routerTabs()` rather than a plain array, so the tab engine is in a bundle
+   * only when the app uses tabs. A plain array throws.
+   *
    * @example
    * createRouter({
    *   routes,
-   *   tabs: [
+   *   tabs: routerTabs([
    *     { name: 'feed', root: '/feed' },
    *     { name: 'me', root: '/me' },
-   *   ],
+   *   ]),
    * })
    */
-  tabs?: RouterTab[]
+  tabs?: RouterTabs
 }
 
 /** One tab of a tab-bar router — see {@link RouterOptions.tabs}. */
@@ -547,8 +581,10 @@ export interface Router<TNames extends string = string> {
    * navigated a hash-mode app off its own route on the first param write. The
    * field was on the router object from the start — only the public TYPE
    * omitted it, which is what let the wrong assumption look correct.
+   *
+   * `'memory'` — the location lives inside the router, not in the page URL.
    */
-  readonly mode: 'hash' | 'history'
+  readonly mode: 'hash' | 'history' | 'memory'
   /** Navigate to a path. Resolves with what the navigation did — see {@link NavigationResult}. */
   push(path: string): Promise<NavigationResult>
   /** Navigate to a named route */
@@ -565,11 +601,19 @@ export interface Router<TNames extends string = string> {
     params?: Record<string, string>
     query?: Record<string, string>
   }): Promise<NavigationResult>
-  /** Go back one step in history */
+  /**
+   * Go back one step in history. In `mode: 'memory'` this moves through the
+   * router's own entry stack, through the full navigation pipeline (a guard
+   * that cancels leaves the position unchanged); at the first entry it does
+   * nothing.
+   */
   back(): void
-  /** Go forward one step in history */
+  /** Go forward one step in history (see {@link back} for `mode: 'memory'`). */
   forward(): void
-  /** Navigate forward or backward by `delta` steps in the history stack */
+  /**
+   * Navigate forward or backward by `delta` steps in the history stack. In
+   * `mode: 'memory'` a step past either end, or `go(0)`, does nothing.
+   */
   go(delta: number): void
   /** Register a global before-navigation guard. Returns an unregister function. */
   beforeEach(guard: NavigationGuard): () => void
@@ -585,39 +629,22 @@ export interface Router<TNames extends string = string> {
    */
   isReady(): Promise<void>
   /**
-   * Resolve `path` and prepare everything needed to render it: load any lazy
-   * route components into the router's cache and run the matched routes'
-   * loaders. After this resolves, a `RouterView` rendered against this router
-   * for `path` will produce final HTML synchronously — no loading fallbacks,
-   * no `useLoaderData()` returning `undefined`.
+   * Load the lazy route components `path` matches into the router's cache, so
+   * a `RouterView` rendered for `path` shows the real page on its first pass
+   * instead of a `lazy()` fallback. When `path` is the router's INITIAL path,
+   * the initial navigation's guards run first: a route they cancel or
+   * redirect is not loaded and the result is `false` (on the server a guard
+   * redirect rejects with that `redirect()`, which hosts turn into HTTP 30x).
    *
-   * Used by SSR/SSG to hydrate the route tree before `renderToString`.
-   * The router's `currentRoute` is NOT changed by `preload` — pass the path
-   * separately when creating the router (`createRouter({ url, ... })`) or
-   * call this for the same `url` you initialised the router with.
+   * Never runs loaders. A server render that also needs loader data calls
+   * `preloadRoute(router, path, request)`; the single-fetch data endpoint
+   * calls `runServerLoaders(router, path, request)`. Both are free functions
+   * exported from `@pyreon/router`, so client bundles do not carry them.
+   *
+   * Zero's hydrating client calls this before `hydrateRoot` (loader data comes
+   * from the serialized blob), and `<Link>` calls it to warm a route's chunk.
    */
-  preload(
-    path: string,
-    request?: Request,
-    options?: { skipLoaders?: boolean },
-  ): Promise<void>
-  /**
-   * Phase 5 — run ONLY the matched chain's `serverLoader` records for the
-   * single-fetch data endpoint, keyed by matched-chain index. Returns the
-   * index-keyed data, a redirect descriptor when a server loader threw
-   * `redirect()`, or `{ kind: 'notFound' }` when one threw `notFound()`
-   * (the endpoint answers `{ notFound: true }` and the client lands on the
-   * not-found page). Server-only (the `serverLoader` fn exists only in the SSR
-   * module graph).
-   */
-  runServerLoaders(
-    path: string,
-    request?: Request,
-  ): Promise<
-    | { kind: 'data'; data: Record<number, unknown> }
-    | { kind: 'redirect'; to: string; status: number }
-    | { kind: 'notFound' }
-  >
+  preloadComponents(path: string): Promise<boolean>
   /**
    * Invalidate cached loader data. Forces loaders to re-run on next navigation.
    * - No args: invalidate ALL cached loader data

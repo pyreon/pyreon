@@ -1,5 +1,7 @@
 # @pyreon/query
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./native-plugin`.
+
 Pyreon adapter for TanStack Query — reactive queries, mutations, suspense, subscriptions, SSE.
 
 `@pyreon/query` wraps `@tanstack/query-core` with Pyreon's fine-grained signal model: every observer field (`data`, `error`, `isFetching`, …) is its own `Signal<T>`, so reading `query.data()` doesn't re-run when `isFetching` flips. Query options are passed as a **function** so reactive values (signal-driven query keys, params) trigger automatic refetches; mutation options are a plain object because mutations are imperative. Ships `useQuery` / `useMutation` / `useInfiniteQuery` / `useQueries`, Suspense variants, `useSubscription` (WebSocket) + `useSSE` (Server-Sent Events) with QueryClient cache integration, and the full `@tanstack/query-core` re-export so consumers get one import surface.
@@ -70,6 +72,8 @@ Honest read: react-query is **not** naive — its tracked-props make it field-aw
 | Devtools (`/devtools` subpath) | ✅ |
 | `defineQueries` (named parallel queries → typed object) | ✅ Pyreon extra |
 | `useSubscription` (WebSocket) + `useSSE` (Server-Sent Events) | ✅ Pyreon extra |
+
+Persistence (`@pyreon/query/persist`) keeps everything TanStack persists (a paused mutation) and also keeps a mutation while its request is in flight when its `mutationKey` resolves to a function registered with `setMutationDefaults`, until it settles. Never one marked `meta: { persist: false }` (do that for secrets) or one whose variables do not survive JSON; a keyed mutation left out gets a dev warning. A tab takes over another tab's mutation only once that tab has closed (Web Locks, taken only by a page that persists a mutation), and delivery is at-least-once, so make mutation endpoints idempotent. Override with `dehydrateOptions.shouldDehydrateMutation`; the rule is `shouldPersistMutation(mutation, client)`.
 
 Deliberate scope: `useSSE`'s `Last-Event-ID` cannot be set on the FIRST `EventSource` connection (a platform limitation) — pair with `useStorage` + the `initialLastEventId` option to resume across remounts (see the SSE section).
 

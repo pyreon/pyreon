@@ -3,14 +3,14 @@
  * loader throws `redirect()`.
  *
  * The fix delegates `handle404` to `renderSsr`, which calls
- * `router.preload(pathname)`. preload runs parent-layout loaders for the
+ * `preloadRoute(router, pathname)`. It runs parent-layout loaders for the
  * matched (synthetic 404) chain. If the loader throws `redirect()`, the
  * error must propagate cleanly — same as the existing `mode: 'ssr'`
  * dev path, same as production runtime SSR.
  *
  * Behavior expected (matching `mode: 'ssr'` dev today):
  *   - The redirect-throwing loader fires on the unmatched URL.
- *   - The thrown `RedirectError` propagates up through `router.preload`.
+ *   - The thrown `RedirectError` propagates up through `preloadRoute`.
  *   - handle404's try/catch swallows it → falls through to bare HTML
  *     fallback. The dev server does NOT currently convert dev-mode
  *     redirect errors to HTTP 302/307 (that's an existing dev-SSR

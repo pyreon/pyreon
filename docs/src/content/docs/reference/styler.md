@@ -95,7 +95,7 @@ const Card = styled(Stack)`
 styled: ((tag: Tag, options?: StyledOptions) => TagTemplateFn) & { div: TagTemplateFn; span: TagTemplateFn; /* …all HTML tags via Proxy */ }
 ```
 
-Component factory. `styled('div')`, `styled(MyComp)`, and `styled.div` (Proxy sugar) are all tagged templates returning a `ComponentFn` that injects a generated class. Tagged-template interpolations are called with the live `props` object (theme included), so a function interpolation reading `p.theme.color` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic `as` prop and `$`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM); `innerRef` is accepted as an alias for `ref`. `options` takes `shouldForwardProp(prop)` (per-component DOM prop filter — replaces the default allowlist) and `layer` (wrap the generated rules in `@layer <name>`). A template with NO function interpolation is resolved and injected ONCE, when the component is defined; per-definition caching keys generated classes so repeat mounts skip re-resolution.
+Component factory. `styled('div')`, `styled(MyComp)`, and `styled.div` (Proxy sugar) are all tagged templates returning a `ComponentFn` that injects a generated class. Tagged-template interpolations are called with the live `props` object (theme included), so a function interpolation reading `p.theme.color` / signal-driven values works and puts the component on the dynamic resolve path. Supports the polymorphic `as` prop and `$`-prefixed TRANSIENT props (consumed by styles, NOT forwarded to the DOM); `innerRef` is accepted as an alias for `ref`. `options` takes `shouldForwardProp(prop)` (per-component DOM prop filter — replaces the default allowlist) and `layer` (wrap the generated rules in `@layer <name>`; a NAMED `@layer x { … }` block written inside the template goes to the top-level layer `x` under the same class, not a sublayer — the framework order is `@layer elements, rocketstyle, instance;`, declared once per sheet). A template with NO function interpolation is resolved and injected ONCE, when the component is defined; per-definition caching keys generated classes so repeat mounts skip re-resolution.
 
 **Example**
 
@@ -115,6 +115,9 @@ const Button = styled("button")`
 - Destructuring `props` in the interpolation (`${({ theme }) => …}`) and being surprised it does not update on a whole-theme swap — read `props.theme` lazily; the theme context is reactive and the styled resolver re-runs on swap
 - Passing a resolved value where a function interpolation is needed for reactivity — `${signal()}` snapshots once at definition; use `${() => signal()}` (or `${(p) => p.x}`) to stay on the dynamic path
 - Using `styled.div` and expecting a different identity per call — the Proxy returns the same tag template fn shape; per-definition caches key on the template, not the call site
+- Enumerating the props inside an interpolation or a helper it calls (`({ theme, ...rest }) => …`, `Object.keys(props)`, `{ ...props }`) — the class cache records which props the styles read, and styles that enumerate them may depend on any prop, so that component's class is never cached and every mount re-resolves. Read the props you need by name
+- Calling a FUNCTION prop inside an interpolation to compute CSS — the class cache keys a function prop by presence (handlers change identity per instance), so every instance gets the first one's result. Pass the computed value as a primitive prop instead
+- Expecting a signal-driven prop that the styles read (`columns={() => n()}` reaching `props.columns`) to update the class after mount — only the `$rocketstyle` / `$rocketstate` / `$element` / `$text` accessors and the theme are tracked. For a value that changes, use a rocketstyle `.multiple()` modifier or the reactive `css` prop of `@pyreon/elements`
 
 **See also:** `css` · `useCSS` · `useTheme`
 
@@ -374,7 +377,7 @@ const s = new StyleSheet({ /* options */ })
 sheet: StyleSheet
 ```
 
-The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. For SSR, render the app and then emit `sheet.getStyleTag(nonce?)` (a complete `<style>` tag) or `sheet.getStyles()` (the CSS text) into the document head; do not mutate it directly.
+The process-wide singleton `StyleSheet` that `styled()` / `css` / `keyframes` / `createGlobalStyle` inject into by default. For SSR, render the app and then emit `sheet.getStyleTag(nonce?)` (a complete `<style>` tag) or `sheet.getStyles()` (the CSS text) into the document head; do not mutate it directly. `sheet.setRootVariables(css)` owns ONE replaceable root-variables block (what `<PyreonUI>` writes its `cssVariables` `:root` block into): each call replaces the previous block, server side it is per request and emitted first.
 
 **Example**
 

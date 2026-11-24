@@ -1,5 +1,7 @@
 # @pyreon/compiler
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction). Experimental subpaths, which may change in a minor release: `./audits`, `./plain`.
+
 JSX reactive transform (Rust native + JS fallback) plus authoring-time analysis tools.
 
 `@pyreon/compiler` is the build-time toolchain Pyreon ships. It transforms JSX into `_tpl()` + `_bind()` cloneNode templates against `@pyreon/runtime-dom`, auto-wraps dynamic expressions in reactive getters, hoists fully-static subtrees to module scope, inlines `const`-from-`props` for end-to-end reactivity, and auto-calls bare signal references in JSX. The reactive transform ships as a Rust native binary (napi-rs, 3.7-8.9× faster) with a per-call JS fallback — cross-backend equivalence is asserted by 180+ tests. The package also exports authoring-time tools: a Reactivity-Lens sidecar, React-pattern detection + one-shot migration, a Pyreon anti-pattern detector (the MCP `validate` engine), and three project audits (`auditTestEnvironment`, `auditIslands`, `auditSsg`) consumed by `pyreon doctor`.
@@ -135,7 +137,7 @@ const diags = detectPyreonPatterns(
   `const C = ({ state }) => <div>{state}</div>`,
   'C.tsx',
 )
-// PyreonDiagnostic[] — 23 codes today: 'for-missing-by', 'for-with-key',
+// PyreonDiagnostic[] — 24 codes today: 'for-missing-by', 'for-with-key',
 // 'props-destructured', 'props-destructured-body', 'process-dev-gate',
 // 'empty-theme', 'raw-add-event-listener', 'raw-remove-event-listener',
 // 'date-math-random-id', 'on-click-undefined', 'signal-write-as-call',
@@ -144,7 +146,7 @@ const diags = detectPyreonPatterns(
 // 'as-unknown-as-vnodechild', 'island-never-with-registry-entry',
 // 'query-options-as-function', 'accessor-uncalled-in-template',
 // 'accessor-uncalled-in-condition', 'charts-legacy-import', 'plain-mode',
-// 'for-stale-item-field'
+// 'for-stale-item-field', 'css-prop-on-component'
 ```
 
 This is what the MCP `validate({ code })` tool runs. Some shapes are caught syntactically here AND also as lint rules in `@pyreon/lint` (proactive + reactive — the agent sees the fix before commit; CI catches it post-commit).

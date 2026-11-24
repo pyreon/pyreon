@@ -12,7 +12,7 @@ import manifest from '../manifest'
 describe('gen-docs — http snapshot', () => {
   it('renders a single llms.txt bullet', () => {
     const line = renderLlmsTxtLine(manifest)
-    expect(line.startsWith('- @pyreon/http — ')).toBe(true)
+    expect(line.startsWith('- [@pyreon/http](https://pyreon.dev/docs/reference/http): ')).toBe(true)
     expect(line).toContain('Transport layer under @pyreon/query')
     expect(line.split('\n')).toHaveLength(1)
   })

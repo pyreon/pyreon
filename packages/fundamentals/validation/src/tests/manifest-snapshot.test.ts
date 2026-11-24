@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — validation snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/validation — The library-agnostic validation gate — Standard Schema bridge + Zod / Valibot / ArkType adapters. Zero runtime dependencies — the one dependency is the types-only \`@standard-schema/spec\` (the Standard Schema contract's official type, erased at build), and there are no peer-dependency records: schema libraries are detected by duck-typing the \`~standard\` (Standard Schema) contract. Install only the one you use — the adapters are tree-shaken per import path (\`@pyreon/validation/zod\`, \`@pyreon/validation/valibot\`, \`@pyreon/validation/arktype\`)."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/validation](https://pyreon.dev/docs/reference/validation): The library-agnostic validation gate — Standard Schema bridge + Zod / Valibot / ArkType adapters. Zero runtime dependencies — the one dependency is the types-only \`@standard-schema/spec\` (the Standard Schema contract's official type, erased at build), and there are no peer-dependency records: schema libraries are detected by duck-typing the \`~standard\` (Standard Schema) contract. Install only the one you use — the adapters are tree-shaken per import path (\`@pyreon/validation/zod\`, \`@pyreon/validation/valibot\`, \`@pyreon/validation/arktype\`)."`)
   })
 
   it('renders to llms-full.txt section', () => {

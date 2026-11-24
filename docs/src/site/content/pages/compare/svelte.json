@@ -104,7 +104,7 @@
       },
       {
         "topic": "Ecosystem and maturity",
-        "pyreon": "Pre-1.0.",
+        "pyreon": "No adoption claims yet.",
         "rival": "Svelte 5 is a stable major with SvelteKit and years in production.",
         "verdict": "rival",
         "source": "00-brief/facts.md (status labels)"

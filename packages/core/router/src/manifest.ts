@@ -4,9 +4,9 @@ export default defineManifest({
   name: '@pyreon/router',
   title: 'Router',
   tagline:
-    'hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params',
+    'hash+history+memory+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params',
   description:
-    'Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (`RouterContext`) with hash and history mode support. Route params are inferred from path strings (`"/user/:id"` yields `{ id: string }`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit), not after animation completion.',
+    'Type-safe client-side router for Pyreon with nested routes, per-route and global navigation guards, data loaders, middleware chain, View Transitions API integration, and typed search params. Context-based (`RouterContext`) with hash, history and in-memory mode support. Route params are inferred from path strings (`"/user/:id"` yields `{ id: string }`). Named routes enable typed programmatic navigation. SSR-compatible with server-side route resolution. Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit), not after animation completion.',
   category: 'browser',
   multiplatform: {
     tier: 'service-backend',
@@ -69,7 +69,7 @@ const User = () => {
   features: [
     'Native compiler tooling: routerPlugin from @pyreon/router/native-plugin owns hook recognition and Swift/Kotlin lowering; the native CLI discovers it through pyreon.native.plugin, and direct compiler callers install it explicitly',
     'Server loaders (zero integration): records carry `serverLoader` (SSR module graph only) / `hasServerLoader` (client marker) — client navigations fetch the whole chain via ONE request to the `dataEndpoint` (default `<base>/_pyreon/data`); redirect() from a server loader arrives as a JSON envelope the client turns into a navigation',
-    'createRouter() — factory with routes, guards, middleware, loaders, hash/history mode',
+    'createRouter() — factory with routes, guards, middleware, loaders, hash/history/memory mode',
     'RouterProvider / RouterView / RouterLink — context-based rendering components',
     'useRouter / useRoute — programmatic navigation and typed route access',
     'useIsActive — reactive boolean for path matching (segment-aware prefix)',
@@ -84,27 +84,61 @@ const User = () => {
   ],
   api: [
     {
+      name: 'preloadRoute',
+      kind: 'function',
+      signature: 'preloadRoute(router: Router, path: string, request?: Request): Promise<void>',
+      summary:
+        "Resolve `path` for a server render: the initial navigation's guards, the matched lazy route components (`router.preloadComponents`), then the matched loaders (`serverLoader` when the record has one, else `loader`) with `request`. Afterwards a `RouterView` for `path` renders final HTML synchronously. A loader's `redirect()` rejects (hosts turn it into HTTP 30x); a loader's `notFound()` puts the router in the not-found state (status 404); a route the initial guards cancel runs no loaders. A free function, so client bundles that never call it do not carry it. `@pyreon/server`'s handler and `renderPage`, zero's SSG and OG images all call it.",
+      mistakes: [
+        'Calling `router.preloadComponents(path)` in an SSR host and expecting loader data — it loads code only; `preloadRoute` runs the loaders',
+        'Only running `prefetchLoaderData` before `renderToString` — that runs loaders but does not resolve `lazy()` components, so the page renders blank',
+      ],
+      example: `const router = createRouter({ routes, url: path })
+await preloadRoute(router, path, request)
+const html = await renderToString(h(RouterProvider, { router }, h(App, null)))`,
+    },
+    {
       name: 'runServerLoaders',
       kind: 'function',
       signature:
-        "router.runServerLoaders(path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number }>",
+        "runServerLoaders(router: Router, path: string, request?: Request): Promise<{ kind: 'data'; data: Record<number, unknown> } | { kind: 'redirect'; to: string; status: number } | { kind: 'notFound' }>",
       summary:
-        "The single-fetch data endpoint's worker (server-only — `serverLoader` functions exist only in the SSR module graph). Runs ONLY the matched chain's `serverLoader` records (NOT isomorphic `loader`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a `path`, so path-keying collided). A `redirect()` thrown by any server loader returns the redirect descriptor instead of data.",
+        "The single-fetch data endpoint's worker (server-only — `serverLoader` functions exist only in the SSR module graph). Runs ONLY the matched chain's `serverLoader` records (NOT isomorphic `loader`s — those run client-side; running them here would double-fire side effects) and keys results by MATCHED-CHAIN INDEX (a layout and its index page share a `path`, so path-keying collided). A `redirect()` thrown by any server loader returns the redirect descriptor instead of data; a `notFound()` returns `{ kind: 'notFound' }`. A free function, so client bundles do not carry it.",
       mistakes: [
         'Calling it client-side — `serverLoader` is undefined in the client graph; the client router does the single FETCH instead',
         'Expecting isomorphic `loader`s to run here — deliberately excluded (double-fire prevention); they run on the client during navigation',
       ],
       example: `// zero's /_pyreon/data endpoint does exactly this:
-const result = await router.runServerLoaders('/dash', ctx.req)
+const result = await runServerLoaders(router, '/dash', ctx.req)
 if (result.kind === 'redirect') return jsonRedirect(result)
 return json({ data: result.data }) // keyed by matched-chain index`,
+    },
+    {
+      name: 'routerTabs',
+      kind: 'function',
+      signature: 'routerTabs(tabs: RouterTab[]): RouterTabs',
+      summary:
+        "The `tabs` option of `createRouter`: one back stack per tab for a tab-bar app (`createRouter({ routes, tabs: routerTabs([{ name: 'feed', root: '/feed' }, …]) })`). `push` acts on the ACTIVE tab (a path under another tab's root selects that tab and pushes there; a tab's exact root pops it to the root), `router.selectTab(name)` switches tabs keeping every stack, and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. A function rather than a plain array so the tab engine is in a bundle only when an app uses tabs; `createRouter` throws on a plain array. Native (PMTC) lowers the same call: iOS `NavigationStack` per tab inside the `TabView`, Android per-tab stacks.",
+      mistakes: [
+        'Passing a plain array (`tabs: [{ name, root }]`, the pre-0.54 shape) — `createRouter` throws; wrap it in `routerTabs(...)` (`pyreon upgrade` rewrites it)',
+        'A `<Tab value>` that names no configured tab — it has no stack; `selectTab` cancels and native drops the tab with a warning',
+      ],
+      example: `import { createRouter, routerTabs } from '@pyreon/router'
+
+const router = createRouter({
+  routes,
+  tabs: routerTabs([
+    { name: 'feed', root: '/feed' },
+    { name: 'me', root: '/me' },
+  ]),
+})`,
     },
     {
       name: 'createRouter',
       kind: 'function',
       signature: 'createRouter(options: RouterOptions | RouteRecord[]): Router',
       summary:
-        'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: [{ name, root }]` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab\'s root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab\'s top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first.',
+        'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"hash"` default | `"history"` | `"memory"`), `scrollBehavior`, and global `beforeEach` / `afterEach` guard arrays (which run before any added later with `router.beforeEach()` / `router.afterEach()`, and are the form the native targets lower). Middleware is per-route (`RouteRecord.middleware`), not a router option. The returned `Router` is generic over route names for typed programmatic navigation. `tabs: routerTabs([{ name, root }])` gives a tab-bar app one back stack per tab: `push` acts on the ACTIVE tab (a path under another tab\'s root selects that tab and pushes there; a tab root pops it to the root), `selectTab(name)` switches and keeps every stack (re-selecting the active tab pops to root), and `<Tabs router={router}>` from `@pyreon/primitives` binds the tab bar. Web: the URL is the active tab\'s top entry and every history entry is stamped with its tab + stack, so Back/Forward restore both through the full pipeline. iOS: a `NavigationStack` per tab inside the `TabView`; Android: per-tab stacks with the system Back popping the active tab first. `mode: "memory"` keeps the location in an entry stack inside the router (start it with `initialEntries` / `initialIndex`; default `[url ?? "/"]`, last entry): `push` / `replace` / `back` / `forward` / `go` run the full pipeline against the stack (a cancelled traversal keeps the position; a step past either end is a no-op), nothing touches `window.history` / `location` / `document.title`, no window listener is attached, and it never takes over the page router\'s cancelled-traversal restores, so it embeds in a page that already has a router and runs with no `window`. `<RouterLink>` renders the plain route path as `href`. The native routers are in-memory stacks already, so `mode` needs no lowering there; `initialEntries` / `initialIndex` are ignored on iOS/Android with a named compiler warning.',
       example: `const router = createRouter([
   { path: "/", component: Home },
   { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) },
@@ -114,6 +148,7 @@ return json({ data: result.data }) // keyed by matched-chain index`,
 ])`,
       mistakes: [
         '`createRouter({ routes: [...], mode: "hash" })` and using `window.location.hash` elsewhere — hash mode uses `history.pushState`, not `location.hash`. Reading `location.hash` directly will not reflect router state',
+        'Using `mode: "memory"` for an app that owns the page — the URL never changes, so reload, deep links, sharing and "open in new tab" do not work. It is for routers EMBEDDED in a page that has its own (a demo, a widget), tests and native previews. It also does not write `document.title`, does not use View Transitions, scrolls only with an explicit `scrollBehavior`, and resolves an external `redirect("https://…")` as `"cancelled"`',
         'Defining route paths without leading `/` in root routes — all root-level paths must start with `/`',
         'Using `redirect: "/target"` with a guard on the same route — redirects bypass guards. Use `beforeEnter` to conditionally redirect instead',
         'Forgetting the catch-all route — `{ path: "(.*)", component: NotFound }` should be the last route to handle 404s',
@@ -154,7 +189,7 @@ const Admin = () => (
   </div>
 )`,
       mistakes: [
-        'SSR renders a BLANK page for a lazy route when the handler only ran `prefetchLoaderData` — that runs LOADERS ONLY, it does NOT resolve `lazy()` route components. `renderToString` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must ALSO call `router.preload(path, req)` (resolves lazy components into `_componentCache`) before rendering.',
+        'SSR renders a BLANK page for a lazy route when the handler only ran `prefetchLoaderData` — that runs LOADERS ONLY, it does NOT resolve `lazy()` route components. `renderToString` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must call `preloadRoute(router, path, req)` (resolves lazy components into `_componentCache` AND runs the loaders) before rendering.',
         'Forgetting the inner `<RouterView />` inside a LAYOUT component — nested child routes render by placing a SECOND `<RouterView />` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).',
         "Expecting a param-only navigation (`/user/1 → /user/2`) to re-run the layout body — it does NOT. Each depth is a single atomic `computed` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth's own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.",
         'Passing the route component as a prop or child to `<RouterView>` — it takes none except `router?` (explicit router override; defaults to the context/active router) and `announceRouteChanges` (a11y live-region opt-out). It reads the matched chain from `RouterContext`; configure routes in `createRouter`, never on RouterView.',
@@ -304,7 +339,7 @@ const User = () => {
       mistakes: [
         'Getting `undefined` when the route has NO `loader` — it reads `LoaderDataContext` (default `undefined`). The `<T>` generic is an unchecked CAST, not validation; `data.name` then throws on the undefined.',
         'Wrapping `useLoaderData()` in an `effect` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS the route component on a real navigation, which re-runs the body and re-reads the hook; there is no signal to subscribe to.',
-        'SSR returning `undefined` at render time — loaders are async but `renderToString` is synchronous, so the handler must run loaders (`prefetchLoaderData` or `router.preload`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.',
+        'SSR returning `undefined` at render time — loaders are async but `renderToString` is synchronous, so the handler must run loaders (`preloadRoute` or `prefetchLoaderData`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.',
         'Calling it in a component NOT rendered by `<RouterView>` (a sibling inside `<RouterProvider>`, a portal outside the route tree) — no `LoaderDataProvider` wraps it, so the context is the default `undefined`.',
         "Expecting a nested LAYOUT's `useLoaderData()` to return the child PAGE's data — each depth is wrapped with its OWN `LoaderDataProvider`, so a layout reads its own loader's data and the page reads the page's. The hook reads the nearest provider, not the leaf.",
       ],
@@ -538,7 +573,7 @@ const app = (
 ]`,
       mistakes: [
         'Calling the result like a component (`lazy(...)()`) — it is an inert DESCRIPTOR; assign it to a route `component` and the router resolves it (into `_componentCache`) on navigation.',
-        'Assuming `lazy()` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; `router.preload()` warms it before SSR renderToString, which is required so a lazy route is not blank on the server).',
+        'Assuming `lazy()` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; `preloadRoute()` / `router.preloadComponents()` warm it before SSR renderToString, which is required so a lazy route is not blank on the server).',
       ],
       seeAlso: ['createRouter', 'RouterView'],
     },

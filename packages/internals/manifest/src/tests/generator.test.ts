@@ -30,18 +30,18 @@ const minimalManifest: PackageManifest = {
 }
 
 describe('renderLlmsTxtLine', () => {
-  it('produces the minimal `- name — tagline` form when no peerDeps / gotchas', () => {
-    expect(renderLlmsTxtLine(minimalManifest)).toBe('- @pyreon/x — does things')
+  it('produces the minimal `- [name](url): tagline` form when no peerDeps / gotchas', () => {
+    expect(renderLlmsTxtLine(minimalManifest)).toBe('- [@pyreon/x](https://pyreon.dev/docs/x): does things')
   })
 
   it('appends peerDeps in `(peer: a, b)` form when present', () => {
     expect(
       renderLlmsTxtLine({ ...minimalManifest, peerDeps: ['@pyreon/runtime-dom'] }),
-    ).toBe('- @pyreon/x — does things (peer: @pyreon/runtime-dom)')
+    ).toBe('- [@pyreon/x](https://pyreon.dev/docs/x): does things (peer: @pyreon/runtime-dom)')
 
     expect(
       renderLlmsTxtLine({ ...minimalManifest, peerDeps: ['@pyreon/core', '@pyreon/reactivity'] }),
-    ).toBe('- @pyreon/x — does things (peer: @pyreon/core, @pyreon/reactivity)')
+    ).toBe('- [@pyreon/x](https://pyreon.dev/docs/x): does things (peer: @pyreon/core, @pyreon/reactivity)')
   })
 
   it('appends the FIRST gotcha as a teaser (not all gotchas — that belongs in llms-full)', () => {
@@ -50,7 +50,7 @@ describe('renderLlmsTxtLine', () => {
         ...minimalManifest,
         gotchas: ['first thing', 'second thing', 'third thing'],
       }),
-    ).toBe('- @pyreon/x — does things. first thing')
+    ).toBe('- [@pyreon/x](https://pyreon.dev/docs/x): does things. first thing')
   })
 
   it('combines peerDeps and first gotcha in the documented order', () => {
@@ -60,13 +60,13 @@ describe('renderLlmsTxtLine', () => {
         peerDeps: ['@pyreon/runtime-dom'],
         gotchas: ['watch out'],
       }),
-    ).toBe('- @pyreon/x — does things (peer: @pyreon/runtime-dom). watch out')
+    ).toBe('- [@pyreon/x](https://pyreon.dev/docs/x): does things (peer: @pyreon/runtime-dom). watch out')
   })
 
   it('handles empty arrays identically to missing fields', () => {
     expect(
       renderLlmsTxtLine({ ...minimalManifest, peerDeps: [], gotchas: [] }),
-    ).toBe('- @pyreon/x — does things')
+    ).toBe('- [@pyreon/x](https://pyreon.dev/docs/x): does things')
   })
 
   it('teases the labeled-gotcha note (not the label itself) for `{label, note}` form', () => {
@@ -78,7 +78,17 @@ describe('renderLlmsTxtLine', () => {
         ...minimalManifest,
         gotchas: [{ label: 'Mount once', note: 'nodes mount exactly once' }],
       }),
-    ).toBe('- @pyreon/x — does things. nodes mount exactly once')
+    ).toBe('- [@pyreon/x](https://pyreon.dev/docs/x): does things. nodes mount exactly once')
+  })
+
+  it('links the generated reference page when the manifest has an API (the guide otherwise)', () => {
+    const withApi: PackageManifest = {
+      ...minimalManifest,
+      api: [{ name: 'x', kind: 'function', signature: 'x(): void', summary: 's', example: 'x()' }],
+    }
+    expect(renderLlmsTxtLine(withApi)).toBe(
+      '- [@pyreon/x](https://pyreon.dev/docs/reference/x): does things',
+    )
   })
 })
 
@@ -86,9 +96,9 @@ describe('regenerateLlmsTxt', () => {
   const baseline = [
     '# llms.txt',
     '',
-    '- @pyreon/core — core stuff',
-    '- @pyreon/flow — old flow text',
-    '- @pyreon/other — other stuff',
+    '- [@pyreon/core](https://pyreon.dev/docs/core): core stuff',
+    '- [@pyreon/flow](https://pyreon.dev/docs/flow): old flow text',
+    '- [@pyreon/other](https://pyreon.dev/docs/other): other stuff',
     '',
   ].join('\n')
 
@@ -103,11 +113,11 @@ describe('regenerateLlmsTxt', () => {
     )
     expect(result.missingEntries).toEqual([])
     expect(result.changedLines).toBe(1)
-    expect(result.contents).toContain('- @pyreon/flow — reactive flow diagrams')
-    expect(result.contents).not.toContain('- @pyreon/flow — old flow text')
+    expect(result.contents).toContain('- [@pyreon/flow](https://pyreon.dev/docs/flow): reactive flow diagrams')
+    expect(result.contents).not.toContain('- [@pyreon/flow](https://pyreon.dev/docs/flow): old flow text')
     // Other bullets untouched
-    expect(result.contents).toContain('- @pyreon/core — core stuff')
-    expect(result.contents).toContain('- @pyreon/other — other stuff')
+    expect(result.contents).toContain('- [@pyreon/core](https://pyreon.dev/docs/core): core stuff')
+    expect(result.contents).toContain('- [@pyreon/other](https://pyreon.dev/docs/other): other stuff')
   })
 
   it('reports manifests whose bullet line cannot be found (hard-error signal)', () => {
@@ -132,18 +142,33 @@ describe('regenerateLlmsTxt', () => {
     expect(twice.contents).toBe(once.contents)
   })
 
+  it('rewrites the link when a manifest gains its first API entry (guide → reference page)', () => {
+    const before = '- [@pyreon/flow](https://pyreon.dev/docs/flow): old\n'
+    const result = regenerateLlmsTxt(
+      before,
+      wrapped({
+        ...minimalManifest,
+        name: '@pyreon/flow',
+        tagline: 'now with an API',
+        api: [{ name: 'f', kind: 'function', signature: 'f(): void', summary: 's', example: 'f()' }],
+      }),
+    )
+    expect(result.missingEntries).toEqual([])
+    expect(result.contents).toBe('- [@pyreon/flow](https://pyreon.dev/docs/reference/flow): now with an API\n')
+  })
+
   it('does not match bullet lines for other packages with similar names', () => {
     // Prefix-match safety: `@pyreon/flow` must not match `@pyreon/flow-extra`.
     const content = [
-      '- @pyreon/flow — real flow',
-      '- @pyreon/flow-extra — a different package',
+      '- [@pyreon/flow](https://pyreon.dev/docs/flow): real flow',
+      '- [@pyreon/flow-extra](https://pyreon.dev/docs/flow-extra): a different package',
     ].join('\n')
     const result = regenerateLlmsTxt(
       content,
       wrapped({ ...minimalManifest, name: '@pyreon/flow', tagline: 'updated' }),
     )
-    expect(result.contents).toContain('- @pyreon/flow — updated')
-    expect(result.contents).toContain('- @pyreon/flow-extra — a different package')
+    expect(result.contents).toContain('- [@pyreon/flow](https://pyreon.dev/docs/flow): updated')
+    expect(result.contents).toContain('- [@pyreon/flow-extra](https://pyreon.dev/docs/flow-extra): a different package')
   })
 })
 

@@ -14,6 +14,7 @@
  * "[object Object]"), and swaps back to text; (5) the non-fusable shapes are
  * untouched.
  */
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 import { transformJSX } from '@pyreon/compiler'
 import { _fuse, _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, Show } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
@@ -34,7 +35,7 @@ afterEach(() => {
 })
 
 const RUNTIME_DEPS = {
-  _tpl, _bind, _bindText, _bindProp, _bindDirect, _applyProps, _setStyle, _setStyleOnce, _setAttr, _setClass, _mountSlot, _textSlot,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN, _bind, _bindText, _bindProp, _bindDirect, _applyProps, _setStyle, _setStyleOnce, _setAttr, _setClass, _mountSlot, _textSlot,
   _setChild, _setChildAt, _mountChild, _setHtml, bindPolymorphicText, h, Fragment, For, Show, _lc, _rp, _rpd, _fuse,
   _wrapSpread, signal,
   _ssr, _ssrChildren, _ssrItem, _ssrForKeyed, _esc, _escSole, _ssrAttr, _ssrAttrGen, _ssrAttrUrl,

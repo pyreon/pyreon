@@ -305,6 +305,34 @@ const SUITES: Suite[] = [
     ],
   },
   {
+    // Offline + installable apps in a real browser: the generated worker, the
+    // persisted query cache and offline mutations, the update flow.
+    name: 'pwa-offline',
+    script: 'test:e2e:pwa-offline',
+    triggers: [
+      'packages/zero/zero/src/pwa',
+      'packages/fundamentals/query/src/persist',
+      'examples/fixtures/pwa-offline/',
+      'e2e/pwa-offline.spec.ts',
+      'e2e-configs/pwa-offline.config.ts',
+    ],
+  },
+  {
+    // Islands-only pages (#4371): zero's own fixture as a real SSG build
+    // served per route, a real SSR build run by `node`, and the dev server
+    // (HMR). Built from zero's SOURCE by the fixture's build.ts / dev.ts.
+    name: 'zero-islands-only',
+    script: 'test:e2e:zero-islands-only',
+    triggers: [
+      ...RENDER_CORE,
+      'packages/core/server/',
+      'packages/zero/zero/',
+      'packages/tools/vite-plugin/',
+      'e2e/zero-islands-only.spec.ts',
+      'e2e-configs/zero-islands-only.config.ts',
+    ],
+  },
+  {
     // `https()` in a real browser. The node-side suites prove the certificate
     // parses and Vite applies it; only a browser can say whether the page is a
     // secure context and the gated APIs are consequently DEFINED.
@@ -347,7 +375,7 @@ const SUITES: Suite[] = [
     // + spec are listed explicitly too.
     name: 'ssr-node',
     script: 'test:e2e:ssr-node',
-    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssr-node.spec.ts'],
+    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssr-node.spec.ts', 'e2e/ssr-base.spec.ts'],
   },
   {
     // ISR node-deploy artifact — shares the SSR staging/template path, wraps

@@ -212,7 +212,7 @@ export type DeclIR =
        */
       zeroArgGuards?: string[]
       /**
-       * `createRouter({ tabs: [{ name, root }] })` — per-tab back stacks
+       * `createRouter({ tabs: routerTabs([{ name, root }]) })` — per-tab back stacks
        * (#4060). Literal names and roots only; the router runtime is
        * constructed with them (`PyreonRouter(tabs:)`), and a
        * `<Tabs router={…}>` bound to this router lowers to one native stack
@@ -671,6 +671,12 @@ export type ExprIR =
       optional?: boolean
       /** An array-destructured element (`const [a] = xs`) — see `destructure-absence.ts`. */
       destructured?: boolean
+      /**
+       * The source tests this read for absence (`xs[i] ?? d`, `xs[i] === undefined`, or a `const v = xs[i]` whose
+       * later uses do): on an ARRAY receiver it lowers like `optional` — see `indexReadsOptionally` in
+       * `destructure-absence.ts`.
+       */
+      absenceTested?: boolean
     }
   /**
    * `new Map<K, V>()` / `new Set<T>()` / `new Set(seedArray)` — the two

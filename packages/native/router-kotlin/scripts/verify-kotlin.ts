@@ -24,6 +24,7 @@
 import { execSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { resolveJava } from '../../runtime-kotlin/scripts/java-runtime'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -237,20 +238,14 @@ try {
 
   if (typecheckOnly) process.exit(0)
 
-  const javaAvailable = (() => {
-    try {
-      const probe = spawnSync('java', ['-version'], { encoding: 'utf8' })
-      return probe.status === 0
-    } catch {
-      return false
-    }
-  })()
+  // Never a bare `java` (see `resolveJava`): kotlinc can run on a JDK that PATH does not name.
+  const javaPath = resolveJava()
 
-  if (!javaAvailable) {
+  if (javaPath === null) {
     console.log('[verify-kotlin] java not available; skipping smoke-run (typecheck passed)')
   } else {
     const smokeResult = spawnSync(
-      'java',
+      javaPath,
       ['-jar', jarPath, 'com.pyreon.router.PyreonRouterTestKt'],
       { encoding: 'utf8' },
     )

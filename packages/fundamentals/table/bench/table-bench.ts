@@ -315,6 +315,10 @@ async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean
     const deps: Record<string, unknown> = {
       // runtime helpers the compiled output may reference
       _tpl: (rd as any)._tpl,
+      _dispose2: (rd as any)._dispose2,
+      _dispose3: (rd as any)._dispose3,
+      _dispose4: (rd as any)._dispose4,
+      _disposeN: (rd as any)._disposeN,
       _bind: (reactivity as any)._bind,
       _bindText: (rd as any)._bindText,
       _bindDirect: (rd as any)._bindDirect,

@@ -7,6 +7,46 @@ import { diagnoseError } from '../diagnose'
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 describe('diagnoseError (browser-safe error catalog)', () => {
+  it('explains a memory router initialIndex outside its entries', () => {
+    const result = diagnoseError(
+      '[Pyreon Router] initialIndex 5 is outside initialEntries (0–2) — starting at entry 2. Pass an index into the initialEntries array.',
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('initialIndex')
+    expect(result!.fix).toContain('initialEntries.length - 1')
+    // The option name alone is not this entry.
+    expect(diagnoseError('what does initialIndex do?')?.cause ?? '').not.toContain('clamps')
+  })
+
+  it('explains a memory router that cancelled an external redirect', () => {
+    const result = diagnoseError(
+      `[Pyreon Router] mode: 'memory' does not follow the external redirect to "https://example.com/pay" — it would navigate the whole page. Navigation cancelled; call window.location.assign() yourself if leaving the page is intended.`,
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('memory')
+    expect(result!.fix).toContain('window.location.assign')
+    // An ordinary redirect message is not this entry.
+    expect(diagnoseError('redirect loop detected')?.fix ?? '').not.toContain('window.location.assign')
+  })
+
+  it('explains an effect cleanup that threw when a server request ended', () => {
+    const result = diagnoseError('[Pyreon SSR] An effect cleanup threw while a request ended: TypeError: x is not a function')
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('cleanup')
+    expect(result!.fix).toContain('onMount')
+    // Another SSR message is not this entry.
+    expect(diagnoseError('[Pyreon] SSR render failed for /x: TypeError: boom')?.fix ?? '').not.toContain('Find the cleanup')
+  })
+
+  it('explains a per-request registry whose dispose threw', () => {
+    const result = diagnoseError('[Pyreon SSR] Disposing the request registry (__PYREON_STORE_DISPOSE_REGISTRY__) threw: Error: socket closed')
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('per-request registry')
+    expect(result!.fix).toContain('must not throw')
+    // The effect-cleanup message is a different entry.
+    expect(diagnoseError('[Pyreon SSR] An effect cleanup threw while a request ended:')?.cause ?? '').not.toContain('per-request registry')
+  })
+
   it('explains a loader notFound() that answered 500 (SSR and the data endpoint)', () => {
     for (const message of [
       '[Pyreon] SSR render failed for /items/9999: Error: Not Found',
@@ -104,7 +144,7 @@ describe('diagnoseError (browser-safe error catalog)', () => {
       "Markdown file `src/content/blog/hello.md` lives under `src/content/` but is not under any declared collection's `path`. The runtime ignores it.",
     )
     expect(r?.cause).toContain('blogCollection()')
-    expect(r?.fix).toContain('pyreon upgrade')
+    expect(r?.fix).toContain('npx @pyreon/cli upgrade')
     expect(diagnoseError('content audit: orphaned-md-file in src/content/x.md')?.cause).toContain('no declared collection')
   })
 
@@ -639,5 +679,57 @@ describe('diagnoseError — visible island with nothing to observe (#4435)', () 
 
   it('does not fire on unrelated visible-strategy text', () => {
     expect(diagnoseError("island uses hydrate: 'visible' and loads late")?.cause ?? '').not.toContain('box-less')
+  })
+})
+
+describe('diagnoseError — a throw while hydrating a subtree', () => {
+  test('the runtime-dom message names the component and the containment', () => {
+    const result = diagnoseError('[Pyreon] <ProfileCard> threw during hydration: TypeError: x is undefined')
+    expect(result?.cause).toContain('<ProfileCard>')
+    expect(result?.cause).toContain('hydrated')
+    expect(result?.fix).toContain('ErrorBoundary')
+  })
+
+  test('an unrelated message does not match', () => {
+    expect(diagnoseError('[Pyreon] <ProfileCard> threw during render: boom')?.cause ?? '').not.toContain(
+      'hydrated',
+    )
+  })
+})
+
+// Router tabs (`routerTabs()`, 0.54). The messages below are the router's REAL
+// runtime text, captured from `createRouter` / `selectTab` (the tab name is
+// JSON-quoted at runtime), plus the source-shaped form the catalog gate samples.
+describe('diagnoseError — router tabs', () => {
+  it('explains a plain tabs array and names routerTabs()', () => {
+    const d = diagnoseError(
+      '[Pyreon Router] createRouter({ tabs }) takes routerTabs([...]) from @pyreon/router, not an array (`pyreon upgrade` rewrites it).',
+    )
+    expect(d?.cause).toContain('plain array')
+    expect(d?.fixCode).toContain('tabs: routerTabs([')
+  })
+
+  it('explains selectTab of an unknown tab, quoted (runtime) or not (source)', () => {
+    for (const msg of [
+      '[Pyreon Router] selectTab("nope"): no tab with that name (configured: feed, me).',
+      '[Pyreon Router] selectTab(nope): no tab with that name (configured: feed, me).',
+    ]) {
+      const d = diagnoseError(msg)
+      expect(d?.cause).toContain('selectTab("nope")')
+      expect(d?.cause).toContain('configured: feed, me')
+      expect(d?.fixCode).toContain('routerTabs([')
+    }
+  })
+
+  it('explains selectTab on a router without tabs', () => {
+    const d = diagnoseError(
+      '[Pyreon Router] selectTab("feed"): this router has no `tabs` — pass `createRouter({ tabs: routerTabs([...]) })`.',
+    )
+    expect(d?.cause).toContain('WITHOUT `tabs`')
+    expect(d?.fixCode).toContain('routerTabs([')
+  })
+
+  it('does not fire on unrelated router text', () => {
+    expect(diagnoseError('[Pyreon Router] navigation to /x was cancelled by a guard')).toBeNull()
   })
 })

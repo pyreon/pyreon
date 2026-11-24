@@ -8,7 +8,7 @@ import manifest from '../manifest'
 describe('gen-docs — server snapshot', () => {
   it('renders a llms.txt bullet starting with the package prefix', () => {
     const line = renderLlmsTxtLine(manifest)
-    expect(line.startsWith('- @pyreon/server —')).toBe(true)
+    expect(line.startsWith('- [@pyreon/server](https://pyreon.dev/docs/reference/server):')).toBe(true)
   })
 
   it('renders a llms-full.txt section with the right header', () => {
@@ -25,6 +25,7 @@ describe('gen-docs — server snapshot', () => {
       'server/hydrateIslands',
       'server/hydrateIslandsAuto',
       'server/island',
+      'server/islandsOnlyPages',
       'server/prerender',
       'server/renderPage',
       'server/serverIsland',

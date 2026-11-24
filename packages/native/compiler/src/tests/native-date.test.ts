@@ -12,6 +12,10 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const emit = (src: string, target: 'swift' | 'kotlin') => transform(src, { target })
 
@@ -164,14 +168,14 @@ describe('PyreonDate keeps the web semantics (TZ=America/New_York)', () => {
     expect(out).toEqual(webLines())
   }, 180_000)
 
-  it.runIf(isKotlincAvailable())('Kotlin runtime', () => {
+  it.runIf(isKotlincAvailable() && resolveJava() !== null)('Kotlin runtime', () => {
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-date-'))
     writeFileSync(join(dir, 'PyreonDate.kt'), runtimeFile('kotlin'))
     writeFileSync(join(dir, 'main.kt'), `import com.pyreon.runtime.*\n${kotlinMain()}\n`)
     execFileSync('kotlinc', [join(dir, 'PyreonDate.kt'), join(dir, 'main.kt'), '-include-runtime', '-d', join(dir, 'p.jar')], {
       stdio: 'pipe',
     })
-    const out = execFileSync('java', ['-jar', join(dir, 'p.jar')], { encoding: 'utf8', env: { ...process.env, TZ } })
+    const out = execFileSync(JAVA, ['-jar', join(dir, 'p.jar')], { encoding: 'utf8', env: { ...process.env, TZ } })
       .trim()
       .split('\n')
     expect(out).toEqual(webLines())

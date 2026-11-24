@@ -19,7 +19,7 @@ import { tooltipAt, tooltipLines } from './tooltip'
 import type { Series } from './render'
 import type { A11ySeries } from './a11y'
 
-type Role = 'data' | 'presentation'
+type Role = 'data' | 'presentation' | 'companion'
 
 /**
  * What each `Series` field IS. `data` means a reader must be able to get the
@@ -37,6 +37,11 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   errLow: 'data',
   errHigh: 'data',
   rValues: 'data',
+  // The numbers behind a `shadeBy` colour are DATA, but they reach the reader as a companion series
+  // (`<label> (shade)`) built by the descriptor the host calls, not by the shared a11y / tooltip code
+  // (which would put the bytes in every chart); the spec below asserts that route.
+  shades: 'companion',
+  itemColors: 'presentation',
 
   radii: 'presentation',
   // How values stack changes where a segment is drawn, not what the datum is: the table reads the values.
@@ -56,6 +61,7 @@ const ROLE: Readonly<Record<keyof Series, Role>> = {
   pattern: 'presentation',
   dash: 'presentation',
   negativeColor: 'presentation',
+  connectNulls: 'presentation',
   inBrush: 'presentation',
   brushOpacity: 'presentation',
   seriesSelected: 'presentation',

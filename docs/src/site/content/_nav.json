@@ -183,7 +183,7 @@
             "id": "hooks",
             "name": "Hooks",
             "href": "/products/hooks",
-            "sub": "65 hooks"
+            "sub": "{{@hookCount}} hooks"
           },
           {
             "id": "kinetic",
@@ -280,6 +280,18 @@
             "name": "i18n",
             "href": "/products/i18n",
             "sub": "Translations"
+          },
+          {
+            "id": "format",
+            "name": "Format",
+            "href": "/products/format",
+            "sub": "Numbers, dates, sizes"
+          },
+          {
+            "id": "time",
+            "name": "Time",
+            "href": "/products/time",
+            "sub": "Dates as strings"
           }
         ]
       },
@@ -381,7 +393,7 @@
             "id": "ai",
             "name": "AI and MCP",
             "href": "/products/ai",
-            "sub": "MCP server, 24 tools"
+            "sub": "MCP server, {{@mcpToolCount}} tools"
           },
           {
             "id": "migrate",
@@ -394,7 +406,7 @@
     ],
     "footer": [
       {
-        "label": "All 40 products",
+        "label": "All {{@productCount}} products",
         "href": "/products"
       },
       {
@@ -481,7 +493,7 @@
         },
         {
           "title": "Products",
-          "items": "megaMenu.columns[*].items (all 40, grouped by column)"
+          "items": "megaMenu.columns[*].items (all 42, grouped by column)"
         }
       ],
       "install": "npm create @pyreon/zero@latest",
@@ -588,7 +600,7 @@
             "href": "/products/charts"
           },
           {
-            "label": "All 40 products",
+            "label": "All {{@productCount}} products",
             "href": "/products"
           }
         ]

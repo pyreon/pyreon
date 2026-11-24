@@ -1,8 +1,8 @@
 # @pyreon/loom
 
-**Monorepo dependency observatory** — reads your workspace the way an install tool does and turns its dependency fabric into data: the internal graph (depths, cycles, blast radius), the external version-usage map, and a detector-driven issue list with honest severities.
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
 
-> Status: private / pre-release. API and findings vocabulary may still move.
+**Monorepo dependency observatory** — reads your workspace the way an install tool does and turns its dependency fabric into data: the internal graph (depths, cycles, blast radius), the external version-usage map, and a detector-driven issue list with honest severities.
 
 ## Commands
 
@@ -26,6 +26,7 @@ loom --version
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans at RUNTIME on a devDependency consumers won't have |
 | `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major |
 | `unused-dep` | info | a declared dependency no source file imports — lexical evidence only, verify before removing |
+| `stale-ignore` | warning | a `loom.ignore` entry that does nothing: it matches no finding at any severity (the defect it excused is gone, or its `pkg` / `dep` / `code` never matched), or every finding it matches is already taken by an earlier entry (shadowed). An entry for a live `info` finding is not stale. Points at the file the entry is declared in; under `--no-imports` an entry for a lexical code is not judged |
 
 `loom scan` exits non-zero on error findings (`--strict` includes warnings) — wire it into CI and the fabric gates itself.
 

@@ -1,0 +1,11 @@
+{
+  "package": "@pyreon/command",
+  "bundle": 11597,
+  "imports": {
+    "full-palette": 14174,
+    "matcher": 2821,
+    "palette-state": 11349,
+    "registry": 6450,
+    "router": 649
+  }
+}

@@ -1,6 +1,6 @@
 {
   "package": "@pyreon/zero",
-  "bundle": 9310,
+  "bundle": 10557,
   "imports": {
     "web-vitals": 1500
   }

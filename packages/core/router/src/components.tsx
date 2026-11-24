@@ -44,6 +44,7 @@ const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
   // Also set the module fallback so programmatic useRouter() outside a component
   // tree (e.g. navigation guards in event handlers) still works in CSR.
   setActiveRouter(router)
+
   return props.children ?? null
 }
 
@@ -90,7 +91,7 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
     useContext(RouterContext)) as RouterInstance | null
   if (!router) return null
 
-  // Inside a tab of a tab-bar router (`createRouter({ tabs })`), this view
+  // Inside a tab of a tab-bar router (`createRouter({ tabs: routerTabs([...]) })`), this view
   // shows ITS tab's top entry — not the URL's — so a hidden tab keeps its own
   // page mounted. Depth comes from the tab scope (each tab starts at 0) rather
   // than the shared counter, which numbers sibling views in mount order and so
@@ -280,6 +281,7 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
             ((a.loaderData === undefined && !!b.rec?.pendingComponent) || a.loaderData === b.loaderData)
           )
         }
+
         return a.loaderData === b.loaderData
       },
     },
@@ -446,7 +448,10 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     // `#${path}`, which is wrong for history-mode apps (the dominant mode)
     // and a dead destination without a router to interpret the hash.
     if (!inst) return path
-    return inst.mode === 'history' ? `${inst._base}${path}` : `#${path}`
+    // Memory mode has no real URL: the href is the plain route path (`_base`
+    // is '' there), which keeps the anchor accessible; the click navigates the
+    // memory router, and "open in new tab" opens that path on the host origin.
+    return inst.mode === 'hash' ? `#${path}` : `${inst._base}${path}`
   }
 
   // Auto target/rel for external links (overridable per-link). `_blank` gets a
@@ -467,6 +472,7 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     if (!isInternal()) return false
     const target = toRouterPath(props.to)
     if (typeof target !== 'string') return false
+
     return router.currentRoute().path === target
   }
 
@@ -481,6 +487,7 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     const classes: string[] = []
     if (isActive) classes.push(props.activeClass ?? 'router-link-active')
     if (isExact) classes.push(props.exactActiveClass ?? 'router-link-exact-active')
+
     return classes.join(' ').trim()
   }
 
@@ -526,11 +533,14 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
       },
       { rootMargin: '200px' },
     )
-    // Observe after mount — the ref will be populated once the element is in the DOM
-    queueMicrotask(() => {
-      observer.observe(ref.current as Element)
+    // Observe from onMount, where the ref is set, and stop in its cleanup. A
+    // microtask scheduled at setup could run after an unmount in the same
+    // tick, when the ref is null: `observe(null)` is an uncaught TypeError.
+    onMount(() => {
+      const el = ref.current
+      if (el) observer.observe(el)
+      return () => observer.disconnect()
     })
-    onUnmount(() => observer.disconnect())
   }
 
   // Forward all non-RouterLink props (style, id, data-*, etc.) to the <a>.
@@ -585,6 +595,7 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     const userClass = own.class
     const userResolved =
       typeof userClass === 'function' ? (userClass as () => ClassValue)() : userClass
+
     return cx([userResolved, activeClass()] as ClassValue)
   }
 
@@ -675,6 +686,7 @@ function renderLazyRoute(
       })
 
   tryLoad(0)
+
   return raw.loadingComponent ? h(raw.loadingComponent, {}) : null
 }
 
@@ -720,6 +732,7 @@ function renderWithLoader(
   if (!carriesLoaderData) {
     return h(Comp, routeProps)
   }
+
   return renderLoaderContent(router, record, Comp, routeProps)
 }
 
@@ -748,6 +761,7 @@ function renderLoaderContent(
   if (record.errorComponent) {
     return h(record.errorComponent, routeProps)
   }
+
   return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
 }
 
@@ -838,6 +852,7 @@ function PendingLoader(props: {
     if (p === 'pending') return h(record.pendingComponent!, routeProps)
     // ready
     const data = router._loaderData.get(record)
+
     return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
   })
 }
@@ -869,6 +884,7 @@ function isSegmentPrefix(current: string, target: string): boolean {
   const cs = current.split('/').filter(Boolean)
   const ts = target.split('/').filter(Boolean)
   if (ts.length > cs.length) return false
+
   return ts.every((seg, i) => seg === cs[i])
 }
 

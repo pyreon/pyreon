@@ -127,14 +127,14 @@ export const checked = {
           },
           {
             "topic": "Library ecosystem",
-            "pyreon": "77 first-party packages (router, forms, query, charts, flow, table, i18n…); React libraries that use only public hooks can run through `@pyreon/react-compat`.",
+            "pyreon": "{{@packageCount}} first-party packages (router, forms, query, charts, flow, table, i18n…); React libraries that use only public hooks can run through `@pyreon/react-compat`.",
             "rival": "A far larger third-party catalog: component kits, React Flow, react-aria and thousands more, all running as-is.",
             "verdict": "rival",
-            "source": "AGENTS.md (77 packages); packages/tools/react-compat/README.md (third-party section)"
+            "source": "AGENTS.md ({{@packageCount}} packages); packages/tools/react-compat/README.md (third-party section)"
           },
           {
             "topic": "Production track record",
-            "pyreon": "Pre-1.0. No adoption claims.",
+            "pyreon": "No adoption claims yet.",
             "rival": "Over a decade in production and the largest hiring pool in front-end.",
             "verdict": "rival",
             "source": "00-brief/facts.md (status labels, things not to claim)"
@@ -354,7 +354,7 @@ export const checked = {
           },
           {
             "topic": "Ecosystem and maturity",
-            "pyreon": "Pre-1.0.",
+            "pyreon": "No adoption claims yet.",
             "rival": "Years in production, a large plugin and hosting ecosystem, and Vercel behind it.",
             "verdict": "rival",
             "source": "00-brief/facts.md (things not to claim)"
@@ -578,7 +578,7 @@ export const checked = {
           },
           {
             "topic": "Maturity",
-            "pyreon": "Pre-1.0.",
+            "pyreon": "No adoption claims yet.",
             "rival": "A stable 1.x with years of production use.",
             "verdict": "rival",
             "source": "00-brief/facts.md (status labels)"
@@ -760,7 +760,7 @@ export const checked = {
           },
           {
             "topic": "Ecosystem and maturity",
-            "pyreon": "Pre-1.0.",
+            "pyreon": "No adoption claims yet.",
             "rival": "Nuxt, Pinia, Vue Router and years in production.",
             "verdict": "rival",
             "source": "00-brief/facts.md (status labels)"
@@ -963,7 +963,7 @@ export const checked = {
           },
           {
             "topic": "Ecosystem and maturity",
-            "pyreon": "Pre-1.0.",
+            "pyreon": "No adoption claims yet.",
             "rival": "Svelte 5 is a stable major with SvelteKit and years in production.",
             "verdict": "rival",
             "source": "00-brief/facts.md (status labels)"

@@ -16,6 +16,10 @@ import { dirname, join } from 'node:path'
 import ts from 'typescript'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 import { transform } from './first-party-plugins'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const NATIVE = join(__dirname, '../../..')
 
@@ -63,8 +67,8 @@ export function jvmPath(): string | undefined {
     if (existsSync(c)) return c
   }
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     return undefined
   }
@@ -184,6 +188,50 @@ export function runKotlin(src: string): string[] {
       throw new Error(`the Kotlin emit of the corpus does not compile:\n${String((e as { stderr?: unknown }).stderr ?? e)}`)
     }
     const out = execFileSync(jvmPath()!, ['-cp', `${join(dir, 'out')}:${kx.classpath}:${kx.stdlib}`, 'com.pyreon.runtime.MainKt'], {
+      maxBuffer: 64 * 1024 * 1024,
+    }).toString('utf8')
+
+    return out
+      .split('\n')
+      .slice(0, names.length)
+      .map((l) => l.replace(/\\(n|\\)/g, (_, c: string) => (c === 'n' ? '\n' : '\\')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+/**
+ * The Kotlin runner without kotlinx-serialization: the corpus compiled with the runtime's number and slice files only
+ * (`@Serializable` stripped) and run on any JVM. For corpora that decode no JSON, so the spec can run wherever kotlinc
+ * and a JDK are — the Linux CI job included — instead of needing the Gradle cache's serialization jars.
+ */
+export const canRunKotlinLite = (): boolean => isKotlincAvailable() && jvmPath() !== undefined
+
+export function runKotlinLite(src: string): string[] {
+  const java = jvmPath()
+  if (java === undefined) throw new Error('no JVM to run the Kotlin corpus (install a JDK or set JAVA_HOME)')
+  const names = caseNames(src)
+  const code = emitCorpus(src, 'kotlin').code.replace(/^@Serializable\n/gm, '').replace(/^import kotlinx\..*$/gm, '')
+  const dir = mkdtempSync(join(tmpdir(), 'pyreon-diff-kotlin-lite-'))
+  try {
+    const main = `package com.pyreon.runtime\n${code}\nfun main() {\n${names
+      .map(
+        (n) =>
+          `  try { println(${n}().toString().replace("\\\\", "\\\\\\\\").replace("\\n", "\\\\n")) } catch (e: Throwable) { println("<THROW " + e.javaClass.simpleName + ">") }`,
+      )
+      .join('\n')}\n}\n`
+    writeFileSync(join(dir, 'Main.kt'), main)
+    const runtime = ['PyreonNumber', 'PyreonSlice'].map((f) =>
+      join(NATIVE, 'runtime-kotlin/src/main/kotlin/com/pyreon/runtime', `${f}.kt`),
+    )
+    try {
+      execFileSync('kotlinc', ['-nowarn', ...runtime, join(dir, 'Main.kt'), '-include-runtime', '-d', join(dir, 'run.jar')], {
+        stdio: 'pipe',
+      })
+    } catch (e) {
+      throw new Error(`the Kotlin emit of the corpus does not compile:\n${String((e as { stderr?: unknown }).stderr ?? e)}`)
+    }
+    const out = execFileSync(java, ['-cp', join(dir, 'run.jar'), 'com.pyreon.runtime.MainKt'], {
       maxBuffer: 64 * 1024 * 1024,
     }).toString('utf8')
 

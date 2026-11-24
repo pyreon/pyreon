@@ -9,7 +9,7 @@ description: Full-stack meta-framework for Pyreon applications.
 
 `@pyreon/zero` is a batteries-included meta-framework for Pyreon, similar to Next.js for React or Nuxt for Vue. It provides file-system routing, SSR/SSG/ISR/SPA rendering modes, optimized components, a theme system, SEO utilities, font/image optimization, and production deployment adapters — everything you need to ship a full-stack Pyreon application.
 
-<PackageBadge name="@pyreon/zero" href="/docs/zero" status="beta" />
+<PackageBadge name="@pyreon/zero" href="/docs/zero" />
 
 :::tip{title="Static Site Generation"}
 This page is a quick-start + feature overview. SSG has its own dedicated reference with the full `getStaticPaths`, redirects, i18n, ISR, and adapter story — see **[SSG](/docs/ssg)**.
@@ -131,7 +131,7 @@ export default {
 | `ssr.mode`   | `"stream" \| "string"`                                                        | `"string"` | SSR output mode. `"stream"` flushes the shell first and streams Suspense boundaries — opt in with `ssr: { mode: 'stream' }`. ISR routes always render buffered (the cache stores complete responses) regardless of this setting |
 | `ssg`        | `{ paths?, format?, modulePreload?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, workers?, onProgress?, splitChunks? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
 | `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, revalidateTimeoutMs?, cacheKey?, expireOnTimeout?, store?, revalidateRequest?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
-| `routeRules` | `Record<string, { renderMode?: RenderMode }>`                                 | —       | Central glob-keyed per-path render-mode overrides (`'*'` = one segment, `'**'` = any depth). Applies only to routes without their own `renderMode` export — precedence is route-file export > `routeRules` > app `mode`. See [Per-route render modes](#per-route-render-modes-hybrid-rendering) |
+| `routeRules` | `Record<string, { renderMode?: RenderMode; hydrate?: 'islands' \| 'app' }>`  | —       | Central glob-keyed per-path overrides (`'*'` = one segment, `'**'` = any depth) of the render mode and of [islands-only hydration](#islands-only-pages-export-const-hydrate-islands). Each applies only to routes without their own export (a `_layout` export counts) — precedence is route-file export > `routeRules` > app `mode`. See [Per-route render modes](#per-route-render-modes-hybrid-rendering) |
 | `adapter`    | `"node" \| "bun" \| "deno" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance, e.g. `adapter: vercelAdapter()`). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local/self-hosted builds default to `"node"` |
 | `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
 | `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication (fans every route into per-locale copies at build) — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)**. Independent of the `i18nRouting()` Vite plugin below, which only does request-time locale detection — the two compose |
@@ -406,6 +406,10 @@ export function error(props) {
 // Optional: per-route rendering mode override
 export const renderMode = 'ssr' // "ssr" | "ssg" | "spa" | "isr"
 
+// Optional: static HTML plus its islands, without starting the app
+// (see "Islands-only pages" below)
+export const hydrate = 'islands' // "islands" | "app"
+
 // SSG-only: enumerate concrete params for a dynamic route
 export const getStaticPaths = () => [{ params: { id: 'a' } }, { params: { id: 'b' } }]
 
@@ -575,6 +579,58 @@ Precedence is always: route-file `export const renderMode` (closest to the code)
 
 **No silent missing pages.** Under SSG, a dynamic route (`[id].tsx`) with no `getStaticPaths` cannot be enumerated — the build now warns loudly, naming the file and the three fixes (add `getStaticPaths`, hand-list `ssg.paths`, or declare `renderMode = 'spa'` if a client-rendered shell is intended). Routes that declare a non-static mode and API routes are exempt.
 
+### Islands-only pages (`export const hydrate = 'islands'`)
+
+A content page whose only interactive parts are `island()`s does not need the app. Declare it on the route, or on a `_layout` to cover every page under it (the page's own declaration wins, like `renderMode`; `'app'` opts a page back in):
+
+```tsx
+// src/routes/(marketing)/_layout.tsx
+export const hydrate = 'islands'
+```
+
+The page is then static HTML plus its islands:
+
+- **Server (SSG, SSR string and streaming, ISR, dev).** The loader runs as usual and its output is rendered into the HTML, but the page carries no `window.__PYREON_LOADER_DATA__` blob and no `<link rel="modulepreload">` for the route's code. It is marked with `<meta name="pyreon-hydrate" content="islands">`. Shared `@pyreon/store` state is still shipped, for islands that share a store.
+- **Browser.** The client hydrates the page's `<pyreon-island>` elements and starts nothing else: no router, no page tree, no route code. A page with no islands loads nothing beyond the entry. Anything interactive must be an island; a handler outside one never runs.
+- **Links.** An islands-only page has no router, so every link on it, `<RouterLink>` included, is a full page load. A client-side navigation from an app page to an islands-only route is a full page load too, so the page always arrives as its server HTML.
+- **Head.** Head tags are rendered on the server. `@pyreon/head` does not run in the browser on these pages.
+
+The client entry passes the islands registry and, to keep the app off these pages entirely, loads the routes lazily with `startClientLazy`:
+
+```ts
+// src/entry-client.ts
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+
+startClientLazy({
+  routes: () => import('virtual:zero/routes'),
+  islands,
+  // Optional: providers for islands that read context (a theme). Render only
+  // the children; it loads with the first island that hydrates.
+  islandRoot: () => import('./IslandRoot'),
+})
+```
+
+`startClient({ routes, islands })` honours islands-only pages too, but its static `routes` import keeps the router and the layouts in the entry, so they still download there. Every page preloads what its client starts from, so the lazy entry costs no extra round trip: app pages preload the app chunks and islands-only pages with an island preload the islands runtime, whether the page was prerendered (SSG), rendered per request (SSR, string or streaming) or served from the ISR cache (each cache entry keeps the set of its own page kind).
+
+To declare it centrally instead of in route files, use `routeRules`, with the same precedence `renderMode` has (a page's or a `_layout`'s own `hydrate` export wins over the rule; the most specific rule wins among rules):
+
+```ts
+zero({
+  mode: 'ssg',
+  routeRules: {
+    '/docs/**': { hydrate: 'islands' },
+    '/docs/playground': { hydrate: 'app' },
+  },
+})
+```
+
+`hydrate` must be a string literal (`'islands'` or `'app'`, in a rule too), and a page that renders `'spa'` (by its own `renderMode`, a layout, `routeRules` or the app mode) cannot be islands-only: it has no server HTML to keep. Both fail when the routes module loads, naming the file or the rule. A build whose route files and rules never declare `hydrate` compiles this support out of `startClient`.
+
+**When every page is islands-only** (a content site: `export const hydrate = 'islands'` on the root `_layout`, or a `'/**'` rule), no page ever starts the app, and the production client build carries none of it: the client routes module is empty, and `startClientLazy`'s app path, with the router, compiles out. The islands runtime is one chunk. Keep the same entry; nothing changes in the code.
+
+**Dev.** Islands-only pages render through dev SSR like any page. The browser never loads their route code, so there is nothing to hot-swap when the route, its layout or a component the server rendered changes: the page reloads instead, to get the new server HTML. App pages are unaffected.
+
 ### Streaming is opt-in (`ssr: { mode: 'stream' }`)
 
 `ssr.mode` defaults to `'string'` (buffered — `renderToString`, one complete response) for a `zero()` app, same as `createHandler`'s own default. Opt into streaming explicitly:
@@ -662,7 +718,7 @@ zero({
 await isrHandler.revalidateTag('posts') // drops every page that rendered posts
 ```
 
-`tagsForRequest` records tags at cache-set time; `revalidateTag(tag)` drops every entry carrying the tag — the webhook-ergonomic unit (no path enumeration). Both shipped stores (`createMemoryStore`, `createFsStore`) implement the tag index; custom stores add `setTags`/`keysByTag`. `createFsStore(dir)` persists entries (and the tag index) as JSON files so a restart doesn't cold-start the cache — multi-instance deploys still want a shared external store (Redis/KV).
+`tagsForRequest` records tags at cache-set time; `revalidateTag(tag)` drops every entry carrying the tag — the webhook-ergonomic unit (no path enumeration). Both shipped stores (`createMemoryStore`, `createFsStore`) implement the tag index; custom stores add `setTags`/`keysByTag`. `createFsStore(dir, { maxEntries })` persists entries (and their tags) as JSON files so a restart doesn't cold-start the cache, and keeps at most `maxEntries` of them on disk (default `1000`, least recently used evicted first, also across restarts) — multi-instance deploys still want a shared external store (Redis/KV).
 
 ## Server Loaders
 
@@ -1471,6 +1527,8 @@ registerServiceWorker({
 - **Private pages** — navigation responses are retained only with `Cache-Control: public`, no `private`/`no-store`/`no-cache`, and no user-dependent `Vary`. Session and preview responses stay online-only. Updating the worker deletes the older runtime cache that did not enforce this policy.
 - **Updates** — safe by default: a new worker **waits** until the old version's tabs close, so a running page never has its asset set swapped underneath it. `onUpdate(activate)` lets you ask the user; `activate()` activates the waiting worker and reloads once it takes control. `pwa.skipWaiting: true` opts into immediate activation.
 - **Caching of the worker itself** — never immutable: the node/bun adapters serve `sw.js` and `*.webmanifest` with `max-age=0, must-revalidate`, the platform adapters only mark `<base><assetsDir>/*` immutable, and registration uses `updateViaCache: 'none'`.
+- **Offline navigation** — a visited public page wins, then a precached prerendered page (`mode: 'ssg'`). Beyond that it depends on the mode: **SPA** precaches the app shell and answers every failed navigation with it (any route loads, the client router takes over); **SSG** can set `pwa.offlineFallback: '/'` (a prerendered page used as the shell for routes never prerendered or visited; the router then renders the route matching the address); **SSR/ISR** HTML is per-request, so an unvisited route shows the browser's offline error.
+- **Install and update UI** — `useInstallPrompt()` and `useServiceWorkerUpdate()` (from `@pyreon/zero/client`) turn the install prompt and the "new version" banner into a few lines; `unregisterServiceWorkers()` clears a stale worker left on a dev origin. See [Offline and installable apps](/docs/patterns/offline-and-installable-apps) for the recipes and the limits.
 - `registerServiceWorker()` resolves `null` and registers nothing during SSR, outside production builds (a caching worker in dev fights HMR), and where service workers are unsupported.
 
 ## Environment Variables
@@ -1623,7 +1681,7 @@ import { startClient } from '@pyreon/zero/client'
 startClient({ routes })
 ```
 
-`startClient` auto-detects whether to hydrate (SSR-rendered HTML present) or mount fresh (SPA). It also reads the Vite-injected `__ZERO_BASE__` so the router prefix matches the SSR/build output. With fs-router, never pass `layout` to `startClient`.
+`startClient` auto-detects whether to hydrate (SSR-rendered HTML present) or mount fresh (SPA). It also reads the Vite-injected `__ZERO_BASE__` so the router prefix matches the SSR/build output. With fs-router, never pass `layout` to `startClient`. For apps with [islands-only pages](#islands-only-pages-export-const-hydrate-islands), `startClientLazy` from `@pyreon/zero/client-lazy` takes `routes` as a loader so the app never downloads on those pages.
 
 ### `zero preview`
 
@@ -1765,6 +1823,8 @@ import { ogImagePlugin } from '@pyreon/zero/og-image'
 faviconPlugin({ source: './icon.svg', locales: { de: { source: './icon-de.svg' } } })
 ogImagePlugin({ templates: { default: './og-template.tsx' }, locales: { en: { title: 'My App' } } })
 ```
+
+`aiPlugin` writes `llms.txt` in the [llmstxt.org](https://llmstxt.org/) shape for every app: `# name`, a `> description` summary, the dynamic routes and API endpoints as plain lists (they are not fetchable URLs, and the format's `##` sections are link lists), a `## Pages` list of `- [path](url): description` links, then an `## Optional` link to the `llms-full.txt` it also writes. That last link means the file always holds at least one Markdown link, so it passes Lighthouse's **Agentic Browsing** `llms-txt` audit (an H1 and a link) even for an app with no static page. `llmsExtra` is appended as written: keep it to `##` sections of links to stay in the shape. Both files are served as `text/plain; charset=utf-8`, the type llms.txt readers expect.
 
 ## HTTPS in Development
 

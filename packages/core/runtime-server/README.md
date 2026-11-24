@@ -1,5 +1,7 @@
 # @pyreon/runtime-server
 
+> **Status: Stable.** Covered by the [semver policy](https://pyreon.dev/docs/stability-and-direction).
+
 VNode → HTML renderer with progressive streaming and per-request `AsyncLocalStorage` isolation.
 
 Walks a VNode tree and produces an HTML string or a Web-standard `ReadableStream` of chunks. Signal accessors are called synchronously to snapshot their current value — there is no reactivity on the server. `renderToStream` flushes progressively and resolves Suspense boundaries out-of-order (fallback first, then a `<template>` + inline swap script). Every `renderToString` / `renderToStream` / `runWithRequestContext` call runs in its own ALS store so concurrent requests never share `provide()` frames; the `@pyreon/store` registry is isolated automatically when the store is loaded (`configureStoreIsolation()` is the override, not the switch). Most apps consume this transitively through `@pyreon/server.createHandler` or `@pyreon/zero` rather than calling directly.
@@ -67,7 +69,7 @@ Pyreon's `provide()` / `useContext` use a module-level context stack at runtime 
 ```ts
 // Outside any render? Use runWithRequestContext to isolate manual API calls
 await runWithRequestContext(async () => {
-  router.preload(pathname, request)
+  await preloadRoute(router, pathname, request)
   return renderToString(<App />)
 })
 ```

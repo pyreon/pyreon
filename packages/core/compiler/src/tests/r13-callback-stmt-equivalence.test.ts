@@ -21,6 +21,13 @@
  * → these specs fail (Rust emits `class={c}`, JS `class={(p.x+'-b')}`).
  * Restore + rebuild → all pass. The 180 native-equivalence tests + full
  * suite remain green (no regression).
+ *
+ * The sources use a COMPONENT parent (`<List>`): its `.map` child is walked
+ * with its JSX kept on the h() path (`wrapWalked` / `wrap_walked`), so the
+ * inlined read is the attribute's own accessor. Under a DOM parent the same
+ * child is a template hole, walked with templates (`template-hole-walk.test.ts`).
+ * An expression that builds no JSX is still sliced; the `text` cases below
+ * cover that path.
  */
 import { describe, expect, it } from 'vitest'
 import { transformJSX, transformJSX_JS } from '../jsx'
@@ -29,29 +36,37 @@ const j = (c: string): string => transformJSX_JS(c, 'c.tsx').code ?? ''
 const r = (c: string): string => transformJSX(c, 'c.tsx').code ?? ''
 
 const CASES: Array<[string, string]> = [
-  ['while', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { while(i){ return <li class={c}/> } })}</ul> }`],
-  ['switch', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { switch(i){ default: return <li class={c}/> } })}</ul> }`],
-  ['labeled', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { lbl: { return <li class={c}/> } })}</ul> }`],
-  ['try-catch', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { try { return <li class={c}/> } catch { return null } })}</ul> }`],
-  ['for', `function C(p){ const c=p.x+'-b'; return <ul>{p.i.map(i => { for(let k=0;k<i;k++){ return <li class={c}/> } })}</ul> }`],
+  ['while', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { while(i){ return <li class={c}/> } })}</List> }`],
+  ['switch', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { switch(i){ default: return <li class={c}/> } })}</List> }`],
+  ['labeled', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { lbl: { return <li class={c}/> } })}</List> }`],
+  ['try-catch', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { try { return <li class={c}/> } catch { return null } })}</List> }`],
+  ['for', `function C(p){ const c=p.x+'-b'; return <List>{p.i.map(i => { for(let k=0;k<i;k++){ return <li class={c}/> } })}</List> }`],
 ]
 
 describe('Round 13 — prop-derived inlining inside callback statement shapes is JS≡Rust', () => {
   for (const [name, src] of CASES) {
     it(`${name}: native backend matches JS (inlines the prop-derived const)`, () => {
       expect(r(src)).toBe(j(src))
-      expect(r(src)).toContain("class={(p.x+'-b')}")
+      expect(r(src)).toContain("class={() => (p.x+'-b')}")
+    })
+    // The same body returning text builds no JSX, so it stays a slice: the
+    // inliner rewrites the read inside the sliced statement.
+    const text = src.replace('<li class={c}/>', 'c')
+    it(`${name} (text, sliced): native backend matches JS (inlines the prop-derived const)`, () => {
+      expect(r(text)).toBe(j(text))
+      expect(r(text)).toContain("return (p.x+'-b')")
+      expect(r(text)).not.toMatch(/return c\b/)
     })
   }
 
   it('catch-param shadowing is NOT clobbered (filter discipline, both backends)', () => {
-    const src = `function C(p){ const e=p.x+'-b'; return <ul>{p.i.map(i => { try {} catch (e) { return <li class={e}/> } })}</ul> }`
+    const src = `function C(p){ const e=p.x+'-b'; return <List>{p.i.map(i => { try {} catch (e) { return <li class={e}/> } })}</List> }`
     expect(r(src)).toBe(j(src))
     expect(r(src)).not.toContain("class={(p.x+'-b')}") // `e` is the catch param
   })
 
   it('nested const inside a while body shadowing the prop-derived is NOT clobbered (no R2 regression)', () => {
-    const src = `function C(p){ const c=p.x; return <ul>{p.i.map(i => { while(i){ const c=2; return <li>{c}</li> } })}</ul> }`
+    const src = `function C(p){ const c=p.x; return <List>{p.i.map(i => { while(i){ const c=2; return <li>{c}</li> } })}</List> }`
     expect(r(src)).toBe(j(src))
     expect(r(src)).not.toContain('{(p.x)}') // inner `const c=2` shadows — must stay `{c}`
   })

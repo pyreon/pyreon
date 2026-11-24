@@ -17,6 +17,10 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const head = `import { signal, computed } from '@pyreon/reactivity'
 import { Stack, Text, Button } from '@pyreon/primitives'
@@ -27,7 +31,7 @@ const swiftOk = isSwiftcAvailable()
 const kotlincOk = isKotlincAvailable()
 function javaOk(): boolean {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
     return true
   } catch {
     return false
@@ -241,7 +245,7 @@ func pyreonCharAt(_ s: String, _ i: Int) -> String { let u = Array(s.utf16); ret
     const dir = mkdtempSync(join(tmpdir(), 'pyreon-globals-'))
     writeFileSync(join(dir, 'main.kt'), `${runtimeNumber('kotlin')}\n${fns}\n${main}\n`)
     execFileSync('kotlinc', [join(dir, 'main.kt'), '-include-runtime', '-d', join(dir, 'p.jar')], { stdio: 'pipe' })
-    expect(execFileSync('java', ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim().split('\n')).toEqual(expected.split('\n'))
+    expect(execFileSync(JAVA, ['-jar', join(dir, 'p.jar')], { encoding: 'utf8' }).trim().split('\n')).toEqual(expected.split('\n'))
   }, 240_000)
 })
 

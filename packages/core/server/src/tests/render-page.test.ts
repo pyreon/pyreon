@@ -17,7 +17,7 @@ const Page: ComponentFn = () => h('main', { id: 'page' }, 'Hello')
 
 // Consumers' contract (handler / SSG entry / dev middleware all hold it):
 // the router is a PER-REQUEST instance created AT the target path —
-// `preload` warms lazy components + loaders but does not navigate. Tests
+// `preloadRoute` warms lazy components + loaders but does not navigate. Tests
 // mirror that by creating the router at the path under test.
 function makeRouter(routes: import('@pyreon/router').RouteRecord[], url: string) {
   return createRouter({ routes, mode: 'history', url })
@@ -73,6 +73,48 @@ describe('renderPage — html kind', () => {
     expect(result.kind).toBe('html')
     expect(loaderRan).toBe(0)
     if (result.kind === 'html') expect(result.loaderScript).toBe('')
+  })
+})
+
+describe('renderPage — onPreloaded', () => {
+  test('fires once after loaders settle and before the render', async () => {
+    const order: string[] = []
+    const Posts: ComponentFn = () => {
+      order.push('render')
+      return h('p', null, String(useLoaderData<number>()))
+    }
+    const router = makeRouter([
+      {
+        path: '/p',
+        component: Posts,
+        loader: async () => {
+          order.push('loader')
+          return 7
+        },
+      },
+    ], '/p')
+    const result = await renderPage(() => h(RouterView, null), router as never, '/p', {
+      onPreloaded: () => order.push('preloaded'),
+    })
+    expect(result.kind).toBe('html')
+    expect(order).toEqual(['loader', 'preloaded', 'render'])
+  })
+
+  test('does not fire when a loader fails (the failure belongs to the preload)', async () => {
+    let fired = 0
+    const router = makeRouter([
+      {
+        path: '/p',
+        component: Page,
+        loader: async () => {
+          throw new Error('db down')
+        },
+      },
+    ], '/p')
+    await expect(
+      renderPage(() => h(RouterView, null), router as never, '/p', { onPreloaded: () => fired++ }),
+    ).rejects.toThrow('db down')
+    expect(fired).toBe(0)
   })
 })
 

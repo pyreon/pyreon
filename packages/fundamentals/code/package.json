@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/code",
-  "version": "0.53.0",
+  "version": "0.54.0",
   "description": "Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/code#readme",
@@ -174,6 +174,8 @@
     "access": "public"
   },
   "pyreon": {
+    "stability": "stable",
+    "experimentalSubpaths": ["./webview", "./native-plugin"],
     "native": {
       "plugin": "./lib/native-plugin.js",
       "modules": [

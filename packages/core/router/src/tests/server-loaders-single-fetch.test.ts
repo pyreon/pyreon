@@ -18,6 +18,7 @@
  * data on the right route, a stale response overwriting a newer one, a
  * redirect that never happens. The happy path was never the risk.
  */
+import { runServerLoaders } from '../server-loaders'
 import { createRouter } from '../router'
 import { redirect } from '../redirect'
 import type { LoaderContext, RouteRecord, RouterInstance } from '../types'
@@ -64,7 +65,7 @@ describe('runServerLoaders — what the data endpoint runs', () => {
       },
     ]
     const router = makeRouter(routes, '/app/page')
-    const res = await router.runServerLoaders('/app/page')
+    const res = await runServerLoaders(router, '/app/page')
 
     expect(serverRuns, 'the serverLoader must run').toBe(1)
     expect(isomorphicRuns, 'the isomorphic loader must NOT run on the server').toBe(0)
@@ -84,7 +85,7 @@ describe('runServerLoaders — what the data endpoint runs', () => {
       },
     ]
     const router = makeRouter(routes, '/dash')
-    const res = await router.runServerLoaders('/dash')
+    const res = await runServerLoaders(router, '/dash')
 
     expect(res.kind).toBe('data')
     const data = (res as { kind: 'data'; data: Record<number, unknown> }).data
@@ -108,7 +109,7 @@ describe('runServerLoaders — what the data endpoint runs', () => {
       },
     ]
     const router = makeRouter(routes, '/private')
-    const res = await router.runServerLoaders('/private')
+    const res = await runServerLoaders(router, '/private')
 
     expect(res.kind).toBe('redirect')
     expect(res).toMatchObject({ to: '/login', status: 302 })
@@ -125,7 +126,7 @@ describe('runServerLoaders — what the data endpoint runs', () => {
         },
       },
     ]
-    const res = await makeRouter(routes, '/private').runServerLoaders('/private')
+    const res = await runServerLoaders(makeRouter(routes, '/private'), '/private')
     expect(res).toMatchObject({ kind: 'redirect', to: '/login', status: 307 })
   })
 
@@ -142,7 +143,7 @@ describe('runServerLoaders — what the data endpoint runs', () => {
       },
     ]
     const router = makeRouter(routes, '/boom')
-    await expect(router.runServerLoaders('/boom')).rejects.toThrow('db is down')
+    await expect(runServerLoaders(router, '/boom')).rejects.toThrow('db is down')
   })
 
   test('passes params, query and a signal to the loader, and the Request when given', async () => {
@@ -159,7 +160,7 @@ describe('runServerLoaders — what the data endpoint runs', () => {
     ]
     const router = makeRouter(routes, '/u/7')
     const request = new Request('https://example.test/u/7?tab=posts')
-    await router.runServerLoaders('/u/7?tab=posts', request)
+    await runServerLoaders(router, '/u/7?tab=posts', request)
 
     expect(seen.params).toEqual({ id: '7' })
     expect(seen.query).toMatchObject({ tab: 'posts' })
@@ -181,7 +182,7 @@ describe('runServerLoaders — what the data endpoint runs', () => {
         },
       },
     ]
-    await makeRouter(routes, '/x').runServerLoaders('/x')
+    await runServerLoaders(makeRouter(routes, '/x'), '/x')
     expect('request' in seen).toBe(false)
   })
 })

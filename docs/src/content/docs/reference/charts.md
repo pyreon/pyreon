@@ -65,6 +65,10 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`Chart`](#chart-component) | component | The chart — `<Chart data x>` with MARK CHILDREN, from `@pyreon/charts`. |
+| [`Axis`](#axis-component) | component | Configures one axis of a `<Chart>`: `<Axis y format={currency('$')} domain title ticks hidden scale time inverse />`,… |
+| [`Bar`](#bar-component) | component | The bar mark: `<Bar y>` draws vertical bars from the zero line (`horizontal` on the chart turns them on their side),… |
+| [`shadeBy`](#shadeby-function) | function | Per-datum colour for `<Bar>` and `<Dot>`, as an imported binding for the `fill` prop. |
+| [`Line`](#line-component) | component | The line mark: `<Line y>` draws a polyline through the values; `curve={smooth\|step}` shapes it (an imported binding),… |
 | [`Sma`](#sma-component) | component | The INDICATOR marks, from `@pyreon/charts`: `<Sma y window>` (simple moving average), `<Ema y window>` (exponential),… |
 | [`PlotChart`](#plotchart-component) | component | The array form of `<Chart>`, from `@pyreon/charts/engine`: the same engine, with marks passed as a `marks={[…]}` array… |
 | [`ChartThemeProvider`](#chartthemeprovider-component) | component | Provides ONE theme to every chart below it, in layers: the mode's built-in theme (or an outer provider's), then `theme`… |
@@ -76,7 +80,7 @@ rows.set([...rows(), { month: 'Apr', revenue: 190, target: 180 }])
 | [`Cell`](#cell-component) | component | The heatmap mark: `<Chart data><Cell x y value /></Chart>` — two categorical axes, a value per cell, colour as the third… |
 | [`RadarChart`](#radarchart-component) | component | Radar (spider) chart from `@pyreon/charts` — one polygon per datum over shared spokes. |
 | [`TreemapChart`](#treemapchart-component) | component | The hierarchy families of Pyreon's own engine share ONE data shape: `TreeNode { name, value?, children?, color? }`. |
-| [`MapChart`](#mapchart-component) | component | GeoJSON regions filled by value. |
+| [`MapChart`](#mapchart-component) | component | GeoJSON regions filled by value, with the inner rings (lakes, enclaves) cut out of the fill and out of the hit test. |
 | [`GanttChart`](#ganttchart-component) | component | The Gantt family — one row per task on a calendar-aligned time axis. |
 | [`createChartHandle`](#createcharthandle-function) | function | The imperative handle (ECharts `dispatchAction`) for ONE `<PlotChart handle>`: a link (`zoom`, `hover`) plus `selected`… |
 | [`createChartLink`](#createchartlink-function) | function | Linked charts (ECharts `connect`): a shared `{ zoom, hover }` pair of signals that every `<PlotChart link>` in a group… |
@@ -123,6 +127,145 @@ const rows: Row[] = [{ month: 'Jan', revenue: 3200, target: 3000 }, { month: 'Fe
 - Looking for a `series` array — layering IS the children; a combo chart is a `<Bar>` beside a `<Line>`, a second axis is `<Line axis="right">` + `<Axis y2>`
 
 **See also:** `PlotChart` · `ChartThemeProvider`
+
+---
+
+### `Axis` `component`
+
+```ts
+(props: AxisProps) => VNode | null
+```
+
+Configures one axis of a `<Chart>`: `<Axis y format={currency('$')} domain title ticks hidden scale time inverse />`, `<Axis y2 …>` for the right axis, `<Axis x time format title labels ticks hidden />`. One `format` feeds the axis, the tooltip and the accessible description. `inverse` (y and y2, independently) REVERSES the value axis: the high end at the bottom (the left, on a horizontal chart), bars and areas hanging from the top with their rounded ends and the ticks following, composing with log and time axes, dual axes, zoom, the crosshair and the tooltip. Only the value-to-pixel mapping flips: the data, the tooltip rows and the accessible table keep their order, and under `rtl` the two commute (RTL mirrors x, `inverse` flips y). `<Axis x inverse>` reverses the DIRECTION of the x axis (first category at the right) without moving the y axis; hits, brush ranges, callbacks and the keyboard walk stay in DATA order, and under `rtl` the two cancel (the plot reads left to right again). `scale` picks the axis scale: `'log'` (a string, value axis) or an imported DESCRIPTOR — `sqrt()`, `symlog({ constant })`, `log()` — on either axis (a numeric `xValue` x axis takes a descriptor); descriptors are imported bindings, so a chart without one bundles none of the scale code. A value the scale cannot place (log: &lt;= 0, sqrt: &lt; 0) is a gap, and ticks are nice in the real values. `grid` / `minor` set the grid per axis: `<Axis y grid={false}>` hides the value-axis lines, `<Axis x grid>` adds vertical lines at the x ticks, `<Axis y minor={4}>` draws three thin lines between each pair of major ticks (linear axes). `yInverse` / `y2Inverse` / `xInverse`, the grid fields and the scale descriptors (recognised at compile time with their literal options) lower to iOS and Android.
+
+**Example**
+
+```tsx
+import { Axis, Bar, Chart } from '@pyreon/charts'
+
+interface Team { name: string; rank: number }
+const teams: Team[] = [{ name: 'Ada', rank: 3 }, { name: 'Bao', rank: 1 }]
+
+// Rank 1 at the top: the value axis runs downward.
+<Chart<Team> data={teams} x="name">
+  <Bar<Team> y="rank" />
+  <Axis y inverse />
+</Chart>
+```
+
+**Common mistakes**
+
+- Reversing the data to get a top-down ranking — that changes the table and the tooltip order too; `<Axis y inverse>` flips only where a value is drawn, so the table keeps reading in data order
+- Expecting bars on a reversed axis to rise from the bottom — their baseline is the axis floor, which is now the TOP, so they hang down from it (the rank-chart look); a value below zero hangs the other way
+- Expecting `<Axis x inverse>` to also move the y axis to the other side (ECharts does) — it reverses the direction only; the y axis stays where it is
+- Reversing the rows to get a right-to-left x — that changes the table, the tooltip order, callbacks and the keyboard walk; `<Axis x inverse>` reverses only the picture, every index stays in data order
+- Passing a computed `inverse` in a native app — only a literal `inverse` lowers (`yInverse` / `y2Inverse` are compile-time spec fields); a computed one warns and the axis stays as it was
+- Expecting a log or sqrt axis to plot zero or negative values — log places only values above zero and sqrt only values from zero up; the rest are gaps (use `symlog()` to keep every value, with a linear region around zero), and a time axis ignores the scale
+- Writing `<Scale x="log">` for a numeric x axis — the x axis takes a descriptor (`<Scale x={log()} />`, `import { log } from '@pyreon/charts'`); the string form `yScale="log"` is for the value axis only
+- Expecting `showGrid={false}` to hide only one axis's lines, or `<Axis x grid>` to draw them under a log or time x axis — `showGrid` is the master switch; per-axis control is `<Axis y grid={false}>` and `<Axis x grid>`, and `minor` only subdivides linear axes (a log or time axis ticks its own way)
+- Reversing y on a dual-axis chart and expecting both to flip — each axis reverses on its own: `<Axis y inverse>` the left, `<Axis y2 inverse>` the right
+
+**See also:** `Chart` · `Bar`
+
+---
+
+### `Bar` `component`
+
+```ts
+<T>(props: BarProps<T>) => VNode | null
+```
+
+The bar mark: `<Bar y>` draws vertical bars from the zero line (`horizontal` on the chart turns them on their side), `stack` stacks, `group` places side by side, `waterfall` floats steps from running total to running total. With `xValue` (a numeric or time x axis) bars sit at their own x: the slot is the smallest gap between two x values or `barSpan` (x units), bars are centred and the axis padded by half a slot, so a missing day is an empty stretch. Bar THICKNESS is set on the chart, not the mark: `<Chart barWidth barGap barCategoryGap>` (`barWidth` a px ceiling, `barGap` the space between a group's bars as a fraction of one bar, `barCategoryGap` the space between categories as a fraction of the band, 0.25 by default). `fill={fillBy(…)}` / `fill={shadeBy(…)}` colour each datum on its own; `color` stays the series colour and `<Chart color="field">` the long-format split. `errorLow` / `errorHigh` draw whiskers, `showValues` labels each bar, `borderRadius`, `gradient` and `pattern` style it.
+
+**Example**
+
+```tsx
+import { Bar, Chart, Tooltip, shadeBy } from '@pyreon/charts'
+
+interface Region { name: string; revenue: number; margin: number }
+const regions: Region[] = [{ name: 'North', revenue: 420, margin: 12 }, { name: 'South', revenue: 310, margin: 4 }]
+
+<Chart<Region> data={regions} x="name" barWidth={28}>
+  <Bar<Region> y="revenue" label="Revenue" fill={shadeBy<Region>('margin')} />
+  <Tooltip />
+</Chart>
+```
+
+**Common mistakes**
+
+- Setting `barWidth` on the `<Bar>` mark — thickness is a property of the CATEGORY BAND the chart lays out, so it is a `<Chart>` prop (and a `<PlotChart>` prop) and applies to every bar mark in the chart
+- Expecting `barWidth` to stretch bars — it is a ceiling in px: a bar is never wider than the slot its band leaves, so a width larger than the slot changes nothing; use `barCategoryGap` to give bars more of the band
+- Using `barGap` on plain or stacked bars — it spaces the bars WITHIN a group, so it only has an effect on `<Bar group>`; the space between categories is `barCategoryGap`
+- Writing `color="region"` to colour each bar by a field — that is the long-format SPLIT (one series per distinct value); per-datum colour is `fill={fillBy("colour")}` (a colour on the row) or `fill={shadeBy("margin")}` (a value through a ramp)
+- Setting `barSpan` on a category axis — it is the slot width in X-DOMAIN units for a numeric or time axis (`xValue`; a day is `86_400_000`), and is ignored when x is a category; the slot also never needs to be wider than the smallest gap, or neighbouring bars overlap by your own choice
+- Expecting a missing day to be filled on a time axis — the bar sits at its own x, so a day with no row is an empty stretch; zoom and brush windows are fractions of the DATA INDEX, not of the x range, so on an irregular series the window edge is not where the pointer is
+- Passing a colour string to `fill` — it takes the descriptor `fillBy` / `shadeBy` returns, not a colour; one colour for the whole series is `color="#hex"`
+- Passing an accessor function to `fillBy` / `shadeBy` in a native app — only a LITERAL field name and literal options lower to iOS and Android (the engine colours from data); a function is a closure over a row, so the compiler warns by name and the bars draw in the series colour
+- Treating a `shadeBy` colour as the only carrier of the value — a ramp legend sits above the plot, the number behind each colour is a `Revenue (shade)` row in the tooltip and a column in the accessible table (web; natively the colours lower and the legend and those rows are named as web-only)
+
+**See also:** `Chart` · `Line`
+
+---
+
+### `shadeBy` `function`
+
+```ts
+<T>(channel: ItemChannel<T, number | undefined>, options?: { ramp?: readonly string[]; domain?: Domain }) => ItemFill<T>  // also fillBy(channel)
+```
+
+Per-datum colour for `<Bar>` and `<Dot>`, as an imported binding for the `fill` prop. `shadeBy(channel, { ramp, domain })` maps each datum's VALUE through a colour ramp (`#rrggbb` stops, low to high; default the heatmap's cool-to-warm; domain defaults to the finite extent of the values, pin it to compare charts). `fillBy(channel)` instead reads a CSS colour off the row (a field holding `'#16a34a'`, or an accessor). A datum with no colour or no finite value keeps the series colour. The values behind a shade are data: a ramp legend sits above the plot (also in server SVG, mirrored under `rtl`), and a `<label> (shade)` row reaches the tooltip and the accessible table. The default ramp follows the theme (light and dark). Both bindings are imported, so a chart that never colours a datum does not bundle them. A literal field name and literal options lower to iOS and Android; an accessor function stays web-only and the compiler names it.
+
+**Example**
+
+```tsx
+import { Bar, Chart, fillBy, shadeBy } from '@pyreon/charts'
+
+interface Region { name: string; revenue: number; margin: number; status: string }
+const regions: Region[] = [{ name: 'North', revenue: 420, margin: 12, status: '#16a34a' }]
+
+<Chart<Region> data={regions} x="name">
+  <Bar<Region> y="revenue" fill={shadeBy<Region>('margin', { ramp: ['#fde68a', '#b45309'] })} />
+  <Bar<Region> y="revenue" fill={fillBy<Region>('status')} />
+</Chart>
+```
+
+**Common mistakes**
+
+- Passing the result as `color` — `color` is the series colour (a string); the per-datum descriptor goes on `fill`
+- Giving `shadeBy` a ramp of named colours or `rgb()` strings — the ramp is `#rrggbb` stops, the hex restriction being what lets the ramp math be the engine's own
+- Expecting a native shade with no `ramp` to follow the dark theme — the web default is the theme ramp, but natively it resolves at compile time to the light ramp (and says so); pass a `ramp`
+
+**See also:** `Bar` · `Cell`
+
+---
+
+### `Line` `component`
+
+```ts
+<T>(props: MarkProps<T>) => VNode | null
+```
+
+The line mark: `<Line y>` draws a polyline through the values; `curve={smooth|step}` shapes it (an imported binding), `dash={[4, 2]}` dashes it, `symbol` draws a mark at every datum. A missing value (NaN, null, an infinity) BREAKS the line into runs, because an absent measurement is not a zero; `connectNulls` draws one continuous stroke through the finite points instead, straight across each gap. The gap stays missing data either way: no tooltip row, an empty cell in the accessible table. `<Area connectNulls>` does the same for the fill. `connectNulls` lowers to iOS and Android as a literal.
+
+**Example**
+
+```tsx
+import { Chart, Line } from '@pyreon/charts'
+
+interface Reading { day: string; temp: number }
+const readings: Reading[] = [{ day: 'Mon', temp: 18 }, { day: 'Tue', temp: Number.NaN }, { day: 'Wed', temp: 21 }]
+
+<Chart<Reading> data={readings} x="day">
+  <Line<Reading> y="temp" connectNulls />
+</Chart>
+```
+
+**Common mistakes**
+
+- Turning on `connectNulls` to hide missing data — the line then claims a trend across the gap that no measurement supports; leave it off unless the gap is a sampling artefact, and the tooltip and table still show the datum as missing
+- Expecting a single isolated point to draw a stroke — a run of one point has no length, so it draws nothing by default; `connectNulls` joins it to its neighbours, or add `symbol` to see every datum
+
+**See also:** `Chart` · `Bar`
 
 ---
 
@@ -524,7 +667,7 @@ const repo: TreeNode[] = [
 (props: MapChartProps) => VNode
 ```
 
-GeoJSON regions filled by value. `map` takes three shapes: a name registered once with `registerMap(name, geojson)` (ECharts' shape), a FeatureCollection directly, or already-projected `GeoShape[]` (what `geoShapes(json)` returns) — the third is the one that LOWERS TO NATIVE (a `Polygon | MultiPolygon` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and `geoShapes` itself reads GeoJSON so shared source passes a PRECOMPUTED const). `layoutGeoShapes` fits the rings into the box with aspect preserved and north up; `renderGeo` colours through the SAME ramp the heatmap uses so a `visualMap` strip cannot disagree with the map; `hitGeoIndex` is ring-accurate. `renderGeoPoints` / `renderGeoPaths` draw scatter, effectScatter halos and flight paths on top through `layout.project`. The other coordinate families follow the same pattern: `<CalendarChart>` (contribution grid, strict ISO dates), `<ParallelChart>`, `<PolarChart>` (radial or concentric bars, polar lines), `<RiverChart>` (silhouette streamgraph) and `layoutSingleAxis`.
+GeoJSON regions filled by value, with the inner rings (lakes, enclaves) cut out of the fill and out of the hit test. `map` takes three shapes: a name registered once with `registerMap(name, geojson)` (ECharts' shape), a FeatureCollection directly, or already-projected `GeoShape[]` (what `geoShapes(json)` returns) — the third is the one that LOWERS TO NATIVE (a `Polygon | MultiPolygon` union puts one field at two array depths, which the native struct lowering refuses to merge; the two web-only shapes warn by name at compile time, and `geoShapes` itself reads GeoJSON so shared source passes a PRECOMPUTED const). `layoutGeoShapes` fits the rings into the box with aspect preserved and north up; `renderGeo` colours through the SAME ramp the heatmap uses so a `visualMap` strip cannot disagree with the map; `hitGeoIndex` is ring-accurate. `points`, `paths`, `heat` and `pies` draw scatter, effectScatter halos, flight paths, heat blobs and pies on top, and `geoToSvg` (from `@pyreon/charts/svg`) draws the same layers server-side. The other coordinate families follow the same pattern: `<CalendarChart>` (contribution grid, strict ISO dates), `<ParallelChart>`, `<PolarChart>` (radial or concentric bars, polar lines), `<RiverChart>` (silhouette streamgraph) and `layoutSingleAxis`. `map` also takes TopoJSON (decoded with no dependency by `topoToGeo`) and a `MapDefinition` `{ data, object, projection, nameProperty, idProperty }`, which `registerMap(name, source, { projection, nameProperty, idProperty, object })` registers with its defaults; an explicit `options` value still wins over the map's own default. `options.projection` is `equirectangular`, `mercator`, `equalEarth`, `naturalEarth1`, `albers` or `albersUsa` (the lower 48 with Alaska and Hawaii in insets), with `centerLon`, `centerLat`, `parallel1` and `parallel2` for the central meridian and the Albers parallels; `geoProject` / `geoUnproject` map lon/lat to pixels and back (a pointer to lon/lat), all of it lowering to iOS and Android. `options.sphere` and `options.graticule` draw the whole-sphere outline and a graticule behind the land (and lower to native); `flows` draw great-circle arcs (`flowOptions.progress` is arc length on the sphere, a seam crossing is two runs), `sizeLegend` a key for sized `points`, `fitTo` / `zoomOnClick` zoom to regions, Point / MultiPoint / LineString features in the GeoJSON or TopoJSON become marks and paths, and rings that cross the seam half a turn from the central meridian are cut there. Boundary data is the separate `@pyreon/charts-maps` package. Interaction: hover outlines the region under the pointer (`emphasis`, default on), `selectedMode` `'single'` or `'multiple'` keeps a selection (click, or Enter / Space on the keyboard-focused region; `onSelectionChange` reports the table row indices), and the canvas description and the accessible table name the selected regions. `options.idProperty` (`'id'` or any feature property) joins `values` to something other than the display name, and `tooltipFormatter` / `onSelect` receive the region's join key, label, value and the feature's own GeoJSON properties. `selectedMode`, `emphasis`, `onSelectionChange` and `tooltipFormatter` are web-only: iOS and Android warn by name.
 
 **Example**
 
@@ -546,7 +689,8 @@ const euShapes: GeoShape[] = geoShapes(euGeoJson)
 **Common mistakes**
 
 - Keying `values` by a property the features do not carry — the region name comes from `properties.name` by default; pass `options.nameProperty` for ISO codes or ids
-- Expecting hole rings (lakes) to be cut out — only outer rings are drawn; a hole renders as part of its region
+- Expecting `values` keyed by an id to match — values match the region's JOIN key, which is its display name unless `options.idProperty` names another (`'id'` for the feature id, or any property); a `FeatureCollection` whose ids are numbers joins on their string form
+- Passing `selectedMode` or `tooltipFormatter` in a native app — they are web-only (the compiler warns by name); a native map selects through `onSelectIndex`
 - Passing coordinates in Mercator metres — `projectLonLat` takes DEGREES (lon, lat) and projects itself; pre-projected data double-projects
 - Using a hand-picked colour per region instead of `values` — the fill is a value → colour mapping through the ramp so the accessible table and any visualMap strip stay truthful
 - Reaching for `registerMap` in SHARED multiplatform source — the registry is a module map no native target has, and neither raw GeoJSON nor `geoShapes()` crosses; pass a PRECOMPUTED `GeoShape[]` const (projected on the web or in a build step) and the warnings go away
@@ -694,4 +838,4 @@ const sound = sonifyValues(closes, { duration: 3000, minHz: 220, maxHz: 880, lin
 
 > **Live updates retarget the displayed frame:** Web plot updates arriving during an animation start from the displayed values or keyed positions, including visible entering and exiting bars. The latest target is recorded immediately, so settling never replays a superseded update. A running universal shape transition retargets its displayed draw list; disabling update animation cancels the active frame.
 
-> **A non-finite value is a GAP, everywhere:** In `@pyreon/charts`, NaN AND Infinity are gaps: they are dropped from every domain (`extent`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in `sonifyValues`. Bands share a gap mask across both bounds and close each finite region against its own lower edge. Keyed updates apply the same finite predicate to transformed values. `makeTicks` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. `isFiniteNumber` is the engine's predicate and is exported — it is written in the native subset (`v === v && v - v === 0`) because `Number.isFinite` has no lowering inside the crossing engine, and it is what a custom mark or family should use so its gaps match the built-ins'.
+> **A non-finite value is a GAP, everywhere:** In `@pyreon/charts`, NaN AND Infinity are gaps: they are dropped from every domain (`extent`, the auto axis, the parallel/calendar/boxplot/histogram domains), draw as nothing (a zero-height bar at the zero line, a break in a line, an absent parallel segment), are absent from the tooltip and the accessible table, and are silence in `sonifyValues`. Bands share a gap mask across both bounds and close each finite region against its own lower edge. Keyed updates apply the same finite predicate to transformed values. `makeTicks` returns ZERO ticks for a non-finite BOUND rather than a thousand NaN labels. `isFiniteNumber` is the engine's predicate and is exported — it is written as `v === v && v - v === 0` (which crosses to native like `Number.isFinite`, now lowered too), and it is what a custom mark or family should use so its gaps match the built-ins'.

@@ -8,7 +8,11 @@
 // Type inference is deliberately naive — numeric assumption for
 // computed properties. Phase 1 grows a real inference pass.
 
+import { unloweredSignalMethodWarning } from './signal-object-methods'
 import { bitwiseHelper, integerOpHelper, isNumericConstant } from './integer-arithmetic'
+import { numberConversion } from './int-to-double'
+import { lowerNumberGlobal, lowerNumberStatic } from './number-constants'
+import { indexReadsOptionally } from './destructure-absence'
 import { dateFieldWarning, swiftDateWrapper } from './date-json'
 import { isDoubleLiteralValue, wholeDoubleLiteral } from './number-literal'
 import { hasOptionalChain, interpolandAbsentSpelling, isUntypedTextChild, optionalTextCall } from './optional-text'
@@ -21,6 +25,7 @@ import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
 import { resolveDateFieldShape, type DateBound } from './date-field-shape'
+import { componentNamesTakingAValue, namesTakingAValue, withValueArgument } from './value-change-handler'
 import { resolveFieldShape } from './field-shape'
 import { resolveSelectOptions } from './select-shape'
 import { effectReadCandidates, effectTriggerPaths, isComponentStateName } from './effect-deps'
@@ -158,10 +163,12 @@ import {
   isInlineObjectAnnotation,
   registerComponentFnReturns,
   widenFloatLocals,
+  rootedAtExtDecl,
   widenFloatSignals,
 } from './infer-type'
 import {
   safeIdent,
+  swiftArgLabel,
   swiftIdent,
   swiftEnumCase,
   swiftObservableIdent,
@@ -664,6 +671,10 @@ const _argExpectedTypes: WeakMap<object, TypeIR> = new WeakMap()
 let _zeroArgFnNames: Set<string> = new Set()
 /** File-scope half of `_zeroArgFnNames`, re-seeded per component. */
 let _zeroArgHelperNames: Set<string> = new Set()
+/** Per-component: the function names in scope that take a value (`value-change-handler.ts`). */
+let _valueArgFnNames: Set<string> = new Set()
+/** File-scope half of `_valueArgFnNames`. */
+let _valueArgHelperNames: Set<string> = new Set()
 /**
  * Per-component: set to true when the component declares any router
  * hook (`useNavigate()` / `useParams()`). When set, the View struct
@@ -868,6 +879,19 @@ function swiftSpreadOverride(source: ExprIR, f: { name: string; value: ExprIR },
   const ft = def?.fields.find((x) => x.name === f.name)?.type
 
   return swiftIntoIntegerField(base.name, f.name, ft, f.value, raw)
+}
+
+/**
+ * The binding a Swift `for … in` loop declares: the loop variable, or `_` when the emitted body never names it.
+ * swiftc warns "immutable value 'i' was never used" for every counted loop whose body ignores the counter
+ * (`for (let i = 0; i < n; i++) retry()`), and the warning reaches every app that compiles the output. Decided on the
+ * EMITTED body text, so whatever lowering produced the body, a mention keeps the name: a false "mentioned" (the name
+ * inside a string literal, a same-named member) only keeps a binding, it can never drop one the body reads.
+ */
+function swiftLoopBinding(item: string, body: string): string {
+  const ident = swiftIdent(item)
+  const escaped = ident.replace(/[.*+?^${}()|[\]\\`]/g, '\\$&')
+  return new RegExp(`(?<![A-Za-z0-9_$])${escaped}(?![A-Za-z0-9_$])`).test(body) ? ident : '_'
 }
 
 function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
@@ -1169,6 +1193,7 @@ export function emitSwift(
   // type-gated lowering downstream of it went dark.
 
   _zeroArgHelperNames = new Set(helperFns.filter((h) => h.params.length === 0).map((h) => h.name))
+  _valueArgHelperNames = namesTakingAValue(helperFns)
   _fontMap = fonts
   _constStringMap = new Map()
   for (const md of moduleDecls) {
@@ -1862,6 +1887,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // File-scope view helpers are CALLED (`row()`), never read like a signal.
   _functionNames = moduleFunctionNamesSwift()
   _zeroArgFnNames = new Set(_zeroArgHelperNames)
+  _valueArgFnNames = componentNamesTakingAValue(c, _valueArgHelperNames)
   _serviceBindings = bindServices(c.decls)
   _asyncDeclsSwift = []
   // C4: reset router-usage tracking. Set during decl-pass if any
@@ -2705,7 +2731,7 @@ function swiftTemplatePart(expr: ExprIR, indent: number): string {
   // An optional interpoland prints `Optional(3)` / `nil` under Swift interpolation (optional-text.ts).
   const spelling = interpolandAbsentSpelling(expr, (x) => inferType(x, _activeInferCtx))
   if (spelling !== null) return optionalTextCall(emitted, spelling)
-  const t = inferType(expr, _activeInferCtx)
+  const t = normalizeNumericAlias(inferType(expr, _activeInferCtx))
 
   return t.kind === 'number' && t.float === true ? `pyreonNumberString(${emitted})` : emitted
 }
@@ -3139,7 +3165,16 @@ function emitSwiftNarrowedTernary(
     innerOptional: typeIsOptional(inferType(rewritten, _exprInferCtx)),
   }))
 
-  return `(${emitSwiftExpr(n.subject, indent)}${filter}.${innerOptional ? 'flatMap' : 'map'} { ${b} in ${inner} } ?? ${emitSwiftExpr(other, indent)})`
+  // An OPTIONAL present branch (`v === undefined ? v : keepFinite(v)`) must not be flattened: `flatMap { … } ?? other`
+  // turned the branch's own nil into `other` (the web keeps `undefined`). `.map` yields `T??`, whose outer nil is
+  // exactly "subject absent", so `?? other` fires only then; a non-optional `other` is lifted with `.some(…)`.
+  if (innerOptional) {
+    const otherOptional = typeIsOptional(inferType(other, _exprInferCtx)) || (other.kind === 'literal' && other.value === null)
+    const fallback = otherOptional ? emitSwiftExpr(other, indent) : `.some(${emitSwiftExpr(other, indent)})`
+    return `(${emitSwiftExpr(n.subject, indent)}${filter}.map { ${b} in ${inner} } ?? ${fallback})`
+  }
+
+  return `(${emitSwiftExpr(n.subject, indent)}${filter}.map { ${b} in ${inner} } ?? ${emitSwiftExpr(other, indent)})`
 }
 
 /**
@@ -3247,7 +3282,9 @@ function emitSwiftStmtLinesScoped(stmts: readonly StatementIR[], indent: number)
         if (c.locals.has(s.name)) continue
         const t = inferType(s.expr, c)
         const typed = t.kind === 'unknown' && s.declaredType !== undefined ? s.declaredType : t
-        if (typeIsOptional(typed)) c.locals.set(s.name, typed)
+        // Any known type, not only an optional one: every type-gated lowering of a nested local
+        // (`Object.keys(r)` over a `Record`, a numeric coercion) needs it (#4588).
+        if (typed.kind !== 'unknown') c.locals.set(s.name, typed)
       }
     }
   }
@@ -3930,7 +3967,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       })
       const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
 
-      return `${lbl}for ${swiftIdent(s.item)} in ${iter} {\n${lines}\n${pad}}`
+      return `${lbl}for ${swiftLoopBinding(s.item, lines)} in ${iter} {\n${lines}\n${pad}}`
     }
     case 'break':
       // Plain or labeled — pre-fix these warn-DROPPED (a semantic
@@ -3988,7 +4025,7 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
               ? `${from}...${to}`
               : `${from}..<${to}`
 
-      return `for ${swiftIdent(s.item)} in ${head} {\n${lines}\n${pad}}`
+      return `for ${swiftLoopBinding(s.item, lines)} in ${head} {\n${lines}\n${pad}}`
     }
     case 'do-while': {
       const pad = ' '.repeat(indent)
@@ -4067,7 +4104,12 @@ function emitSwiftTry(s: Extract<StatementIR, { kind: 'try' }>, indent: number):
     emitSwiftStmtLines(s.body, caught ? inner + 2 : inner).join('\n'),
   )
   let core: string
-  if (caught) {
+  // A `do` body that cannot throw (no `try` / `throw` in its emit) never reaches its catch — swiftc: "'catch' block is
+  // unreachable because no errors are thrown in 'do' block". Natively nothing in it can raise what a JS `catch`
+  // catches, so the catch is dropped and the body keeps its own scope.
+  if (caught && !/(?<![\w$])(?:try|throw)(?![\w$])/.test(bodyLines)) {
+    core = `${ipad}do {\n${bodyLines}\n${ipad}}`
+  } else if (caught) {
     // A source `catch { … }` with no binding becomes `catch _`, never a bare `catch`: Swift binds a bare catch's error
     // to an implicit `error`, which shadowed any user identifier named `error` in the body (a signal assigned there
     // failed `swiftc` with "cannot assign to value: 'error' is immutable"). `_` binds nothing.
@@ -4745,6 +4787,8 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'identifier': {
       const constant = lowerPluginIdentifier(e.name, 'swift', () => swiftEmitContext(0))
       if (constant !== undefined) return constant
+      const numberGlobal = _activeInferCtx.locals.has(e.name) ? undefined : lowerNumberGlobal(e.name, 'swift')
+      if (numberGlobal !== undefined) return numberGlobal
       if (isModuleStateRead(e.name)) return `${moduleStateClassName()}.shared.${swiftIdent(e.name)}`
 
       return swiftIdent(e.name)
@@ -5342,8 +5386,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         ) {
           return `(${arg} ? 1 : 0)`
         }
+        // `Number(n)` over a NUMBER is the documented int→double conversion (`int-to-double.ts`): the identity on the
+        // web, `Double(n)` natively. The string form's `Double(s) ?? 0` would not even compile over a `Double`
+        // argument cleanly (`??` on a non-optional) and has no reason to: a number never fails to convert.
+        if (e.callee.name === 'Number') {
+          const conv = numberConversion(e.args[0]!, (x) => numericFloatness(x))
+          if (conv === 'identity') return arg
+          if (conv === 'widen') return `Double(${arg})`
+        }
 
         return `(Double(${arg}) ?? 0)`
+      }
+      // `count.subscribe(fn)`, `theme.remove()`, … — the rest of the signal OBJECT's API, called on the signal itself,
+      // has no native counterpart: natively the name is a plain property holding the value (signal-object-methods.ts).
+      if (e.callee.kind === 'member' && e.callee.object.kind === 'identifier' && _signalNames.has(e.callee.object.name)) {
+        const w = unloweredSignalMethodWarning(e.callee.object.name, e.callee.property, 'swift')
+        if (w !== undefined && !_emitWarnings.includes(w)) _emitWarnings.push(w)
       }
       // `.update(fn)` lowering — `x.update((list) => EXPR)` lowers to
       // `x = EXPR[list := <read of x>]` by IR-level param substitution,
@@ -5554,6 +5612,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (prop === 'delete' && e.args.length === 1)
               return `${obj}${objDot}remove(${argExprs[0]!})`
             if (prop === 'clear' && e.args.length === 0) return `${obj}${objDot}removeAll()`
+          }
+          // `d.toJSON()` / `d.valueOf()` — natively a date IS its epoch milliseconds (date-lowering.ts). No JavaScript
+          // number has a `toJSON`, so on a number receiver it is a date's: the ISO string `d.toISOString()` lowers to. An
+          // UNKNOWN receiver is a date too: a signal seeded with `new Date(…)` infers no type here, and a plugin binding
+          // whose runtime defines `toJSON` (a flow) was lowered above. `valueOf()` is the receiver itself for every
+          // value — a date's milliseconds, a number, a string — so it needs no type.
+          if (e.args.length === 0 && e.callee.optional !== true) {
+            if (prop === 'toJSON' && (recvT.kind === 'number' || (recvT.kind === 'unknown' && !rootedAtExtDecl(e.callee.object, _activeInferCtx)))) {
+              return emitSwiftExpr({ kind: 'call', callee: { kind: 'identifier', name: 'pyreonDateISO' }, args: [e.callee.object] }, indent)
+            }
+            if (prop === 'valueOf') return `(${obj})`
           }
         }
         switch (prop) {
@@ -6249,33 +6318,39 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `${callee}(${args})`
     }
     case 'index': {
-      // `xs[i]` — Swift arrays share the subscript syntax verbatim. The
-      // OPTIONAL form `xs?.[i]` (JS: undefined out-of-bounds) lowers to the
-      // guarded idiom `(xs.indices.contains(i) ? xs[i] : nil)` — both
-      // operands are named TWICE, so both must be RE-READABLE
-      // (isReReadableExpr — the seedless-reduce rule); and the receiver
-      // must be NON-optional (an optional receiver would need flatMap
-      // plumbing — named warning, tracked). Non-qualifying shapes warn
-      // NAMED + emit the unguarded native index (compiles; OOB traps —
-      // the warning says so). Kotlin needs none of this (getOrNull is
-      // single-eval).
-      if (e.optional === true) {
+      // `xs[i]` — Swift arrays share the subscript syntax verbatim. An
+      // OPTIONAL read — the source's `xs?.[i]`, or a read it tests for
+      // absence (`xs[i] ?? d`, `xs[i] === undefined`; destructure-absence.ts)
+      // — is the web's `undefined` out of bounds: the guarded idiom
+      // `(xs.indices.contains(i) ? xs[i] : nil)` when receiver and index are
+      // RE-READABLE (each is named twice), the runtime's single-evaluation
+      // `pyreonAt(xs, i)` otherwise. An OPTIONAL receiver would need flatMap
+      // plumbing — named warning, unguarded index. Kotlin's `getOrNull` is
+      // single-eval and covers every shape.
+      {
         const objT = inferType(e.object, _activeInferCtx)
-        const objStr = emitSwiftExpr(e.object, indent)
-        const idxStr = emitSwiftExpr(e.index, indent)
-        if (
-          isReReadableExpr(e.object) &&
-          isReReadableExpr(e.index) &&
-          !exprHasOptionalLink(e.object) &&
-          !typeIsOptional(objT)
-        ) {
-          return `(${objStr}.indices.contains(${idxStr}) ? ${objStr}[${idxStr}] : nil)`
-        }
-        _emitWarnings.push(
-          `${objStr}?.[${idxStr}]: the safe-index lowering needs a re-readable, non-optional receiver and index (each is named twice) — emitting the UNGUARDED native index, which TRAPS out-of-bounds instead of returning nil. Bind the receiver/index to a const first, or guard the bounds explicitly.`,
-        )
+        if (indexReadsOptionally(e, objT)) {
+          const objStr = emitSwiftExpr(e.object, indent)
+          const idxT = inferType(e.index, _activeInferCtx)
+          const idxRaw = emitSwiftExpr(e.index, indent)
+          const floatIndex = isFloatTypeIR(idxT)
+          const idxStr = floatIndex ? `Int(${idxRaw})` : idxRaw
+          if (!exprHasOptionalLink(e.object) && !typeIsOptional(objT)) {
+            // A NUMBER index: `xs[0.5]` / `xs[NaN]` / `xs[Infinity]` are undefined on the web — the runtime's Double
+            // overload reads them as nil, where `Int(i)` truncated (or trapped).
+            if (floatIndex) return `pyreonAt(${objStr}, ${idxRaw})`
+            if (isReReadableExpr(e.object) && isReReadableExpr(e.index)) {
+              return `(${objStr}.indices.contains(${idxStr}) ? ${objStr}[${idxStr}] : nil)`
+            }
+            // Receiver or index named once: the runtime's single-evaluation twin (`PyreonSlice.swift`).
+            return `pyreonAt(${objStr}, ${idxStr})`
+          }
+          _emitWarnings.push(
+            `${objStr}?.[${idxStr}]: the safe-index lowering needs a non-optional receiver — emitting the UNGUARDED native index, which TRAPS out-of-bounds instead of returning nil. Bind the receiver to a const first, or guard the bounds explicitly.`,
+          )
 
-        return `${objStr}[${idxStr}]`
+          return `${objStr}[${idxStr}]`
+        }
       }
       // A provably-Double index (Math.floor now returns Double) needs the
       // Int() wrap Swift subscripts demand; unknown/Int stays bare.
@@ -6302,6 +6377,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // `Math.PI` is a member READ (the Math CALL mapping never sees it) —
       // emitted verbatim it is "cannot find 'Math' in scope". Swift's
       // constant is `Double.pi`.
+      // `Number.NaN` / `Number.POSITIVE_INFINITY` / `Number.EPSILON` / … (number-constants.ts).
+      if (e.object.kind === 'identifier' && e.object.name === 'Number' && !_activeInferCtx.locals.has('Number')) {
+        const k = lowerNumberStatic(e.property, 'swift')
+        if (k !== undefined) return k
+      }
       if (e.object.kind === 'identifier' && e.object.name === 'Math' && e.property === 'PI') {
         return 'Double.pi'
       }
@@ -6466,7 +6546,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // An OPTIONAL operand: `"n=" + u.nick` did not compile on Swift, and prints `n=null` on Kotlin.
           const spelling = interpolandAbsentSpelling(sub, (x) => inferType(x, _activeInferCtx))
           if (spelling !== null) return optionalTextCall(emitted, spelling)
-          const t = inferType(sub, _activeInferCtx)
+          const t = normalizeNumericAlias(inferType(sub, _activeInferCtx))
           // A DOUBLE operand takes the JS-faithful formatter: `String(250.0)`
           // is `"250.0"` in Swift but `"250"` in JS, and the int-division →
           // Double coercion makes almost every computed number a Double — so
@@ -6633,6 +6713,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // precedence is LOWER than JS's (a bare `x ?? y > 0` parses as
       // `x ?? (y > 0)` in Swift).
       if (e.op === '??') {
+        // `x ?? null` (the web's undefined → null) over a NON-optional `x` is `Optional(x)`: the same optional type
+        // the inference gives the expression, without swiftc's "left side of nil coalescing operator has
+        // non-optional type" (`x ?? nil`). An optional `x` keeps the `?? nil`. Kotlin drops it (no nested optional).
+        if (e.right.kind === 'literal' && e.right.value === null) {
+          const lt = inferType(e.left, _activeInferCtx)
+          if (lt.kind !== 'unknown' && !typeIsOptional(lt)) return `Optional(${emitSwiftExpr(e.left, indent)})`
+        }
         // A DEFAULT for an enum-typed optional is written as the literal the
         // union declares (`params.sourcePosition ?? 'bottom'`), and emitting it
         // raw is a type error on both targets ("binary operator '??' cannot be
@@ -6772,76 +6859,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `{ let __v = ${arg}; ${arg} ${step}; return __v }()`
     }
     case 'arrow': {
-      return _pluginScope.withBindings(
-        e.params.map((name) => ({ name })),
-        () => {
-          // Swift closure: `{ params in body }`. A BLOCK body carries `stmts` —
-          // reading only `e.body` (the block-body SENTINEL `""`) silently DROPPED
-          // the whole body on the PLAIN 1-param path (the indexed path fixed
-          // this in #1954; the dedup idiom `filter(x => { …; seen.add(x); return
-          // true })` exposed the plain-path sibling).
-          // Typed form when EVERY param carries an annotation — Swift's
-          // parenthesized closure params are all-or-nothing, and a standalone
-          // `let f = { r in … }` cannot infer its param types at all.
-          const standaloneClosure = _typedClosureLet
-          _typedClosureLet = false
-          const swiftClosureParams = (): string => {
-            const types = e.paramTypes
-            if (
-              standaloneClosure &&
-              e.params.length > 0 &&
-              types !== undefined &&
-              types.length === e.params.length &&
-              types.every((t) => t !== undefined && t.kind !== 'unknown')
-            ) {
-              return `(${e.params.map((n, i) => `${swiftIdent(n)}: ${swiftType(types[i]!)}`).join(', ')})`
-            }
-
-            return e.params.map(swiftIdent).join(', ')
-          }
-          if (e.stmts !== undefined && e.stmts.length > 0) {
-            const inlined = inlineValueConstsInStmts(e.stmts)
-            // Bind ANNOTATED closure params into both ctxs — the body's
-            // type-gated lowerings otherwise see them as unknown (`pts.count`
-            // in the charts reveal closure could not coerce against a Double).
-            const paramBind: Array<
-              [string, boolean, TypeIR | undefined, boolean, TypeIR | undefined]
-            > = []
-            if (e.paramTypes !== undefined) {
-              e.params.forEach((pn, pi) => {
-                const pt = e.paramTypes![pi]
-                if (pt === undefined || pt.kind === 'unknown') return
-                paramBind.push([
-                  pn,
-                  _exprInferCtx.locals.has(pn),
-                  _exprInferCtx.locals.get(pn),
-                  _activeInferCtx.locals.has(pn),
-                  _activeInferCtx.locals.get(pn),
-                ])
-                _exprInferCtx.locals.set(pn, pt)
-                _activeInferCtx.locals.set(pn, pt)
-              })
-            }
-            const saved = seedHandlerLocals(inlined, _exprInferCtx)
-            const savedAct8 = seedHandlerLocals(inlined, _activeInferCtx)
-            const lines = emitSwiftStmtLines(inlined, indent + 2).join('\n')
-            _exprInferCtx.locals = saved
-            _activeInferCtx.locals = savedAct8
-            for (const [pn, hadE, prevE, hadA, prevA] of paramBind.reverse()) {
-              if (hadE) _exprInferCtx.locals.set(pn, prevE!)
-              else _exprInferCtx.locals.delete(pn)
-              if (hadA) _activeInferCtx.locals.set(pn, prevA!)
-              else _activeInferCtx.locals.delete(pn)
-            }
-            const params = e.params.length > 0 ? `${swiftClosureParams()} in` : ''
-
-            return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
-          }
-          if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
-
-          return `{ ${swiftClosureParams()} in ${emitSwiftExpr(e.body, indent)} }`
-        },
+      // An ANNOTATED parameter's type is in scope for the body's inference, in both contexts (the narrowing guard
+      // reads the expression one): `(v: Double | undefined) => v === undefined ? v : f(v)` narrows `v` only when the
+      // inference knows it is optional — unseeded, the else branch passed a `Double?` where a `Double` is required.
+      const seedCtxs = _exprInferCtx === _activeInferCtx ? [_activeInferCtx] : [_activeInferCtx, _exprInferCtx]
+      const seeded = (e.paramTypes ?? []).flatMap((t, i) =>
+        t !== undefined && t.kind !== 'unknown' && e.params[i] !== undefined ? [[e.params[i]!, t] as const] : [],
       )
+      const restore = seedCtxs.flatMap((c) => seeded.map(([n]) => [c, n, c.locals.has(n), c.locals.get(n)] as const))
+      for (const c of seedCtxs) for (const [n, t] of seeded) c.locals.set(n, t)
+      try {
+        return emitSwiftArrow(e, indent)
+      } finally {
+        for (const [c, n, had, prev] of restore.reverse()) {
+          if (had) c.locals.set(n, prev!)
+          else c.locals.delete(n)
+        }
+      }
     }
     case 'new-collection': {
       // `new Map<K,V>()` → `PyreonMap<K, V>()`; `new Set<T>()` → `PyreonSet<T>()`;
@@ -7085,9 +7119,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               const raw = withExpectedType(ft, () => emitSwiftExpr(f.value, indent))
               const wantsFloat = ft !== undefined && typeWantsFloat(ft)
               const coerce = wantsFloat && numericFloatness(f.value) === 'int'
-              if (coerce) return `${swiftIdent(f.name)}: Double(${raw})`
+              if (coerce) return `${swiftArgLabel(f.name)}: Double(${raw})`
 
-              return `${swiftIdent(f.name)}: ${swiftIntoIntegerField(structName, f.name, ft, f.value, raw)}`
+              return `${swiftArgLabel(f.name)}: ${swiftIntoIntegerField(structName, f.name, ft, f.value, raw)}`
             })
             .join(', ')
 
@@ -7711,7 +7745,7 @@ function swiftInterpSegment(e: ExprIR, indent: number): string {
   // would never fire for an arrow-wrapped optional.
   const expr = resolveAccessorChild(e)
   const emitted = emitSwiftExpr(expr, indent)
-  const t = inferType(expr, _activeInferCtx)
+  const t = normalizeNumericAlias(inferType(expr, _activeInferCtx))
   // An absent JSX text child renders nothing on the web. An OPTIONAL — an optional chain, or a read the inference
   // cannot type (a plugin's `q.data`, which is optional until the query resolves) — goes through
   // `pyreonOptionalText`, which also prints a present Double as the web does; the old `.map { "\\($0)" }` printed
@@ -8119,6 +8153,19 @@ function emitSwiftCallbackArg(handler: ExprIR, indent: number): string {
   return `{ ${params} in${action.slice(1)}`
 }
 
+/**
+ * A value-change event (`<Field onChangeText>`, `<Toggle|Select|Tabs onChange>`) whose by-reference handler takes the
+ * value, rewritten to pass it: `onChangeText={save}` → `(newValue) => save(newValue)`, and a signal setter `draft.set` alike
+ * (value-change-handler.ts, #4544).
+ */
+function swiftValueChangeEvent<A extends Extract<AttrIR, { kind: 'event' }> | undefined>(attr: A): A {
+  return withValueArgument(attr, {
+    takesValue: (n) => _valueArgFnNames.has(n) && _functionNames.has(n),
+    isSignal: (n) => _signalNames.has(n),
+    propsParam: _activePropsParamName,
+  })
+}
+
 function emitSwiftAction(handler: ExprIR, indent: number): string {
   return withSwiftThrowCtx('none', () => emitSwiftActionBody(handler, indent))
 }
@@ -8255,10 +8302,13 @@ function swiftProjectedSignal(value: ExprIR, handler: ExprIR | undefined): strin
   const name = value.kind === 'identifier' ? value.name : called ? (value.callee as { name: string }).name : undefined
   if (name === undefined || !_signalNames.has(name)) return undefined
   if (handler === undefined) return called ? undefined : name
-  // A handler passed by reference (`onChangeText={save}`): the `Binding` shape
-  // would call it as `save()`, without the value, so the bare signal keeps the
-  // projection (the earlier behaviour) and the called read keeps the Binding.
-  if (handler.kind !== 'arrow') return called ? undefined : name
+  // A handler passed by reference whose callee takes the value arrives here as
+  // `(newValue) => save(newValue)` (swiftValueChangeEvent), so it takes the
+  // Binding below. A zero-parameter function reference (`onChange={props.onToggle}`)
+  // must run too, as it does on Android and the web, so it takes the Binding
+  // (`set: { _ in onToggle() }`). Any other reference keeps the projection on a
+  // bare signal and the Binding on the called read.
+  if (handler.kind !== 'arrow') return called || resolveFunctionHandler(handler) !== undefined ? undefined : name
   if (handler.params.length !== 1) return undefined
   const body = stripSwiftClosureBody(emitSwiftAction(handler, 0))
 
@@ -10398,8 +10448,10 @@ function emitSwiftTabs(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const valueAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  const onChange = swiftValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+    ),
   )
   const { tabs, warnings } = planTabs(e)
   for (const w of warnings) pushEmitWarning(w)
@@ -10908,9 +10960,11 @@ function emitSwiftField(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // broken generic `Field(value: …)` on iOS — a "one code, run everywhere"
   // break. Accept both (canonical `changetext` first, web-style `change` for
   // compat).
-  const onChangeAttr = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> =>
-      a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
+  const onChangeAttr = swiftValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> =>
+        a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
+    ),
   )
   const projected = valueAttr === undefined ? undefined : swiftProjectedSignal(valueAttr.value, onChangeAttr?.handler)
   let textArg: string
@@ -11036,8 +11090,10 @@ function emitSwiftSelect(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   const attr = (n: string) =>
     e.attrs.find((a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === n)
   const valueAttr = attr('value')
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  const onChange = swiftValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+    ),
   )
   if (valueAttr === undefined || onChange === undefined) {
     _emitWarnings.push(
@@ -11146,8 +11202,10 @@ function emitSwiftToggle(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: nu
   //    reads via the expression + writes via the `onChange` handler.
   //    This unblocks <Checkbox> → <Toggle> migration for the common
   //    parent-owns-state shape.
-  const onChange = e.attrs.find(
-    (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+  const onChange = swiftValueChangeEvent(
+    e.attrs.find(
+      (a): a is Extract<AttrIR, { kind: 'event' }> => a.kind === 'event' && a.name === 'change',
+    ),
   )
   const projected = swiftProjectedSignal(valueAttr.value, onChange?.handler)
   if (projected !== undefined) {
@@ -11492,7 +11550,7 @@ function swiftRouteParamsInvocation(
     }
     if (info !== undefined && info !== 'opaque') {
       const args = info.fields
-        .map((f) => `${swiftIdent(f.name)}: ${swiftParamFieldExpr(f)}`)
+        .map((f) => `${swiftArgLabel(f.name)}: ${swiftParamFieldExpr(f)}`)
         .join(', ')
 
       return { call: `${expr}(params: ${info.typeName}(${args}))`, usesParams: true }
@@ -12021,7 +12079,7 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       // `forClass` — both halves are reserved when used as identifiers).
       argEntries.push({
         name: a.name,
-        part: `${swiftIdent(safeIdent(a.name))}: ${emitSwiftExpr(a.value, indent)}`,
+        part: `${swiftArgLabel(safeIdent(a.name))}: ${emitSwiftExpr(a.value, indent)}`,
       })
     } else if (a.kind === 'event' && isUserComponent) {
       // User component prop named `on<Cap>` — the parser stripped the
@@ -12031,7 +12089,7 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       const propName = `on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`
       argEntries.push({
         name: propName,
-        part: `${swiftIdent(propName)}: ${emitSwiftCallbackArg(a.handler, indent)}`,
+        part: `${swiftArgLabel(propName)}: ${emitSwiftCallbackArg(a.handler, indent)}`,
       })
     } else if (a.kind === 'spread' && isUserComponent) {
       argEntries.push(...expandSwiftSpread(a.argument, e.tag, explicitNames, indent))
@@ -12465,4 +12523,78 @@ function swiftSpreadResolver(indent: number): SpreadResolver {
     typeKeyOf: named,
     label: (e) => emitSwiftExpr(e, indent),
   }
+}
+
+/** The closure emit of an arrow (its parameter types already seeded by the caller). */
+function emitSwiftArrow(e: Extract<ExprIR, { kind: 'arrow' }>, indent: number): string {
+  return _pluginScope.withBindings(
+    e.params.map((name) => ({ name })),
+    () => {
+      // Swift closure: `{ params in body }`. A BLOCK body carries `stmts` —
+      // reading only `e.body` (the block-body SENTINEL `""`) silently DROPPED
+      // the whole body on the PLAIN 1-param path (the indexed path fixed
+      // this in #1954; the dedup idiom `filter(x => { …; seen.add(x); return
+      // true })` exposed the plain-path sibling).
+      // Typed form when EVERY param carries an annotation — Swift's
+      // parenthesized closure params are all-or-nothing, and a standalone
+      // `let f = { r in … }` cannot infer its param types at all.
+      const standaloneClosure = _typedClosureLet
+      _typedClosureLet = false
+      const swiftClosureParams = (): string => {
+        const types = e.paramTypes
+        if (
+          standaloneClosure &&
+          e.params.length > 0 &&
+          types !== undefined &&
+          types.length === e.params.length &&
+          types.every((t) => t !== undefined && t.kind !== 'unknown')
+        ) {
+          return `(${e.params.map((n, i) => `${swiftIdent(n)}: ${swiftType(types[i]!)}`).join(', ')})`
+        }
+
+        return e.params.map(swiftIdent).join(', ')
+      }
+      if (e.stmts !== undefined && e.stmts.length > 0) {
+        const inlined = inlineValueConstsInStmts(e.stmts)
+        // Bind ANNOTATED closure params into both ctxs — the body's
+        // type-gated lowerings otherwise see them as unknown (`pts.count`
+        // in the charts reveal closure could not coerce against a Double).
+        const paramBind: Array<
+          [string, boolean, TypeIR | undefined, boolean, TypeIR | undefined]
+        > = []
+        if (e.paramTypes !== undefined) {
+          e.params.forEach((pn, pi) => {
+            const pt = e.paramTypes![pi]
+            if (pt === undefined || pt.kind === 'unknown') return
+            paramBind.push([
+              pn,
+              _exprInferCtx.locals.has(pn),
+              _exprInferCtx.locals.get(pn),
+              _activeInferCtx.locals.has(pn),
+              _activeInferCtx.locals.get(pn),
+            ])
+            _exprInferCtx.locals.set(pn, pt)
+            _activeInferCtx.locals.set(pn, pt)
+          })
+        }
+        const saved = seedHandlerLocals(inlined, _exprInferCtx)
+        const savedAct8 = seedHandlerLocals(inlined, _activeInferCtx)
+        const lines = emitSwiftStmtLines(inlined, indent + 2).join('\n')
+        _exprInferCtx.locals = saved
+        _activeInferCtx.locals = savedAct8
+        for (const [pn, hadE, prevE, hadA, prevA] of paramBind.reverse()) {
+          if (hadE) _exprInferCtx.locals.set(pn, prevE!)
+          else _exprInferCtx.locals.delete(pn)
+          if (hadA) _activeInferCtx.locals.set(pn, prevA!)
+          else _activeInferCtx.locals.delete(pn)
+        }
+        const params = e.params.length > 0 ? `${swiftClosureParams()} in` : ''
+
+        return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
+      }
+      if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
+
+      return `{ ${swiftClosureParams()} in ${emitSwiftExpr(e.body, indent)} }`
+    },
+  )
 }

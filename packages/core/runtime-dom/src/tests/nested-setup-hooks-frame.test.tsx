@@ -31,9 +31,10 @@ import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, test } from 'vitest'
 import { _applyProps, _setAttr, _setStyle, _setStyleOnce, bindPolymorphicText, mountChild, _bindProp} from '../index'
 import { _bindDirect, _bindText, _mountSlot, _textSlot, _setChild, _setChildAt, _tpl } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   renderEffect,
   _bindText,
