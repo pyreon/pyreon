@@ -281,7 +281,7 @@ const secret = useEncrypted('api-key', '')
 ### `removeStorage` `function`
 
 ```ts
-removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb'; dbName?: string; storeName?: string }) => void
+removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb'; dbName?: string; storeName?: string }) => Promise<void>
 ```
 
 Imperatively remove a single key from storage and RESET its signal to the default value. Default backend is `local`; pass `{ type: "session" | "cookie" | "indexeddb" }` for the others. Works whether or not a `useStorage`-family signal is currently registered for the key: a registered key routes through `signal.remove()` (reactive reset + storage delete), an unregistered key clears the raw storage directly (`removeItem` / cookie `max-age=0`).
@@ -294,12 +294,13 @@ import { removeStorage } from '@pyreon/storage'
 removeStorage('theme')                       // localStorage
 removeStorage('step', { type: 'session' })   // sessionStorage
 removeStorage('locale', { type: 'cookie' })  // deletes the cookie
-removeStorage('draft', { type: 'indexeddb' }) // deletes from IndexedDB (dbName/storeName for a non-default db)
+await removeStorage('draft', { type: 'indexeddb' }) // resolves once deleted (dbName/storeName for a non-default db)
 ```
 
 **Common mistakes**
 
 - Expecting the signal to read `undefined` afterward — `removeStorage(key)` RESETS the signal to its `useStorage` DEFAULT (a `useStorage("theme", "light")` reads `"light"` again, not `undefined`).
+- Not awaiting an IndexedDB removal before reading the database again — `removeStorage` / `clearStorage` (and `useIndexedDB().remove()`) return a promise that resolves once the delete has committed. Local, session and cookie removals are done when the call returns. An unbound IndexedDB removal never creates or upgrades a database or store.
 - Omitting `{ type }` for a non-local backend — it defaults to `local`; use `removeStorage("locale", { type: "cookie" })` for a cookie, etc.
 - Mixing up the arg shape with `clearStorage` — `removeStorage` takes the backend in an OPTIONS object (`{ type }`), while `clearStorage` takes it POSITIONALLY (`clearStorage("session")`). The two are asymmetric.
 
@@ -310,7 +311,7 @@ removeStorage('draft', { type: 'indexeddb' }) // deletes from IndexedDB (dbName/
 ### `clearStorage` `function`
 
 ```ts
-clearStorage(type?: 'local' | 'session' | 'cookie' | 'indexeddb' | 'all') => void
+clearStorage(type?: 'local' | 'session' | 'cookie' | 'indexeddb' | 'all') => Promise<void>
 ```
 
 Imperatively clear all storage entries MANAGED by @pyreon/storage for one backend (default `local`) or `all` backends. Each managed entry's signal is RESET to its default value (reactive — components reading it re-render to the default). It only touches keys @pyreon/storage tracks (created via `useStorage` / `useSessionStorage` / `useCookie` / `useIndexedDB`); unmanaged keys in the same backend are LEFT ALONE — it is NOT `localStorage.clear()`.

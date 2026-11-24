@@ -192,12 +192,15 @@ import { removeStorage, clearStorage } from '@pyreon/storage'
 removeStorage('theme') // localStorage by default
 removeStorage('step', { type: 'session' })
 removeStorage('locale', { type: 'cookie' })
+await removeStorage('draft', { type: 'indexeddb' }) // resolves once the delete committed
 
 clearStorage('local') // clear all managed localStorage entries
 clearStorage('all') // clear every backend
 ```
 
-`removeStorage` calls `.remove()` on the registered signal (resetting it to default + clearing storage). `clearStorage` walks the registry for that backend and removes every entry. Unmanaged keys in raw storage are NOT touched.
+`removeStorage` calls `.remove()` on the registered signal (resetting it to default + clearing storage). With no registered signal it deletes the raw key; for IndexedDB (`dbName` / `storeName` options) that never creates or upgrades a database or store. `clearStorage` walks the registry for that backend and removes every entry. Unmanaged keys in raw storage are NOT touched by `clearStorage`.
+
+Both return a promise. Local, session and cookie removals are already done when the call returns; the promise matters for IndexedDB, where it resolves once the delete has committed (`useIndexedDB(...).remove()` returns the same promise).
 
 ## Internal `_v` getter contract
 

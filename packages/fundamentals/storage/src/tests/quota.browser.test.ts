@@ -186,22 +186,75 @@ describe('IndexedDB request errors keep their real name', () => {
     _resetRegistry()
     _resetDBCache()
 
-    removeStorage('orphan', { type: 'indexeddb', dbName })
-    let value: unknown = 'stored'
-    for (let i = 0; i < 50 && value !== undefined; i++) {
-      await new Promise((r) => setTimeout(r, 10))
-      value = await new Promise((resolve) => {
-        const open = indexedDB.open(dbName)
-        open.onsuccess = () => {
-          const db = open.result
-          const req = db.transaction('kv', 'readonly').objectStore('kv').get('orphan')
-          req.onsuccess = () => {
-            db.close()
-            resolve(req.result)
-          }
+    await removeStorage('orphan', { type: 'indexeddb', dbName })
+    const value = await new Promise((resolve) => {
+      const open = indexedDB.open(dbName)
+      open.onsuccess = () => {
+        const db = open.result
+        const req = db.transaction('kv', 'readonly').objectStore('kv').get('orphan')
+        req.onsuccess = () => {
+          db.close()
+          resolve(req.result)
         }
+      }
+    })
+    expect(value).toBeUndefined()
+  })
+
+  it('an unbound removeStorage never creates a database or upgrades one to add a store', async () => {
+    const missing = `pyreon-never-created-${Date.now()}`
+    await removeStorage('k', { type: 'indexeddb', dbName: missing })
+    // Give a fire-and-forget open (the old behaviour) time to create it.
+    await new Promise((r) => setTimeout(r, 200))
+    const names = (await indexedDB.databases()).map((d) => d.name)
+    expect(names).not.toContain(missing)
+
+    // An existing database without the store keeps its version and stores.
+    _resetDBCache()
+    const seed = useIndexedDB('k', 'v0', { dbName, debounceMs: 0 })
+    await seed.whenReady()
+    const before = (await indexedDB.databases()).find((d) => d.name === dbName)?.version
+    await removeStorage('k', { type: 'indexeddb', dbName, storeName: 'no-such-store' })
+    await new Promise((r) => setTimeout(r, 200))
+    const after = (await indexedDB.databases()).find((d) => d.name === dbName)?.version
+    expect(after).toBe(before)
+  })
+
+  it('a bound removeStorage resolves once the delete has committed', async () => {
+    _resetDBCache()
+    const s = useIndexedDB('bound', 'v0', { dbName, debounceMs: 0 })
+    await s.whenReady()
+    s.set('stored')
+    await s.flush()
+    // Record when the delete request actually succeeds.
+    let deleted = false
+    const realDelete = IDBObjectStore.prototype.delete
+    IDBObjectStore.prototype.delete = function (this: IDBObjectStore, query: IDBValidKey | IDBKeyRange) {
+      const req = realDelete.call(this, query)
+      req.addEventListener('success', () => {
+        deleted = true
       })
+
+      return req
     }
+    try {
+      // `removeStorage` without dbName uses the binding, which knows its database.
+      await removeStorage('bound', { type: 'indexeddb' })
+      expect(deleted).toBe(true)
+    } finally {
+      IDBObjectStore.prototype.delete = realDelete
+    }
+    const value = await new Promise((resolve) => {
+      const open = indexedDB.open(dbName)
+      open.onsuccess = () => {
+        const db = open.result
+        const req = db.transaction('kv', 'readonly').objectStore('kv').get('bound')
+        req.onsuccess = () => {
+          db.close()
+          resolve(req.result)
+        }
+      }
+    })
     expect(value).toBeUndefined()
   })
 })

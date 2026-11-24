@@ -120,19 +120,56 @@ function idbDelete(db: IDBDatabase, storeName: string, key: string): Promise<voi
 }
 
 /**
+ * Open an EXISTING database without creating or upgrading anything: resolves
+ * `null` when the database does not exist (the version change that would
+ * create it is aborted) or lacks `storeName`.
+ */
+/* v8 ignore start — happy-dom has no IndexedDB; exercised in quota.browser.test.ts */
+function openExisting(dbName: string, storeName: string): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null)
+
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(dbName)
+    let created = false
+    request.onupgradeneeded = () => {
+      // Only a database that does not exist yet upgrades on a version-less
+      // open. Abort, so a cleanup call never leaves an empty database behind.
+      created = true
+      request.transaction?.abort()
+    }
+    request.onsuccess = () => {
+      const db = request.result
+      if (db.objectStoreNames.contains(storeName)) return resolve(db)
+      db.close()
+      resolve(null)
+    }
+    request.onerror = () => (created ? resolve(null) : reject(request.error))
+  })
+}
+/* v8 ignore stop */
+
+/**
  * Delete one key from a database/store without a live binding (what
  * `removeStorage(key, { type: 'indexeddb' })` needs when nothing is mounted).
- * Resolves once the delete commits; rejects with the IndexedDB error.
+ * Never creates or upgrades a database or store: a missing one has nothing to
+ * delete. Resolves once the delete commits; rejects with the IndexedDB error.
  */
-export function deleteIndexedDBKey(
+export async function deleteIndexedDBKey(
   key: string,
   dbName = 'pyreon-storage',
   storeName = 'kv',
 ): Promise<void> {
   /* v8 ignore next — SSR/no-IDB guard */
-  if (!isBrowser() || typeof indexedDB === 'undefined') return Promise.resolve()
-  /* v8 ignore next — happy-dom has no IndexedDB; exercised in quota.browser.test.ts */
-  return openDB(dbName, storeName).then((db) => idbDelete(db, storeName, key))
+  if (!isBrowser() || typeof indexedDB === 'undefined') return
+  /* v8 ignore start — happy-dom has no IndexedDB; exercised in quota.browser.test.ts */
+  const db = await openExisting(dbName, storeName)
+  if (db === null) return
+  try {
+    await idbDelete(db, storeName, key)
+  } finally {
+    db.close()
+  }
+  /* v8 ignore stop */
 }
 
 // ─── useIndexedDB ────────────────────────────────────────────────────────────
@@ -267,7 +304,8 @@ export function useIndexedDB<T>(
     },
   }) as unknown as IndexedDBSignal<T>
 
-  storageSig.remove = () => {
+  // Resolves once the delete commits (or fails and `onError` is notified).
+  storageSig.remove = (): Promise<void> => {
     localWrite = true
     sig.set(defaultValue)
     hasPending = false
@@ -275,14 +313,12 @@ export function useIndexedDB<T>(
     writeTimer = null
     unregisterPendingFlush(flushWrite)
 
-    if (isBrowser() && typeof indexedDB !== 'undefined') {
-      openDB(dbName, storeName)
-        .then((db) => idbDelete(db, storeName, key))
-        /* v8 ignore start — delete-failure catch: exercised in quota.browser.test.ts */
-        // Delete failed — the signal is already reset. Report it like a write.
-        .catch((err) => options.onError?.(toError(err)))
-      /* v8 ignore stop */
-    }
+    /* v8 ignore next — SSR/no-IDB guard */
+    if (!isBrowser() || typeof indexedDB === 'undefined') return Promise.resolve()
+    // Delete failed — the signal is already reset. Report it like a write.
+    return openDB(dbName, storeName)
+      .then((db) => idbDelete(db, storeName, key))
+      .catch((err) => void options.onError?.(toError(err)))
   }
 
   storageSig.ready = () => readySig()

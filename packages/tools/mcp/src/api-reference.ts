@@ -7295,21 +7295,22 @@ const secret = useEncrypted('api-key', '')`,
   },
 
   'storage/removeStorage': {
-    signature: `removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb'; dbName?: string; storeName?: string }) => void`,
+    signature: `removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb'; dbName?: string; storeName?: string }) => Promise<void>`,
     example: `import { removeStorage } from '@pyreon/storage'
 
 removeStorage('theme')                       // localStorage
 removeStorage('step', { type: 'session' })   // sessionStorage
 removeStorage('locale', { type: 'cookie' })  // deletes the cookie
-removeStorage('draft', { type: 'indexeddb' }) // deletes from IndexedDB (dbName/storeName for a non-default db)`,
+await removeStorage('draft', { type: 'indexeddb' }) // resolves once deleted (dbName/storeName for a non-default db)`,
     notes: 'Imperatively remove a single key from storage and RESET its signal to the default value. Default backend is `local`; pass `{ type: "session" | "cookie" | "indexeddb" }` for the others. Works whether or not a `useStorage`-family signal is currently registered for the key: a registered key routes through `signal.remove()` (reactive reset + storage delete), an unregistered key clears the raw storage directly (`removeItem` / cookie `max-age=0`). See also: clearStorage, useStorage.',
     mistakes: `- Expecting the signal to read \`undefined\` afterward — \`removeStorage(key)\` RESETS the signal to its \`useStorage\` DEFAULT (a \`useStorage("theme", "light")\` reads \`"light"\` again, not \`undefined\`).
+- Not awaiting an IndexedDB removal before reading the database again — \`removeStorage\` / \`clearStorage\` (and \`useIndexedDB().remove()\`) return a promise that resolves once the delete has committed. Local, session and cookie removals are done when the call returns. An unbound IndexedDB removal never creates or upgrades a database or store.
 - Omitting \`{ type }\` for a non-local backend — it defaults to \`local\`; use \`removeStorage("locale", { type: "cookie" })\` for a cookie, etc.
 - Mixing up the arg shape with \`clearStorage\` — \`removeStorage\` takes the backend in an OPTIONS object (\`{ type }\`), while \`clearStorage\` takes it POSITIONALLY (\`clearStorage("session")\`). The two are asymmetric.`,
   },
 
   'storage/clearStorage': {
-    signature: `clearStorage(type?: 'local' | 'session' | 'cookie' | 'indexeddb' | 'all') => void`,
+    signature: `clearStorage(type?: 'local' | 'session' | 'cookie' | 'indexeddb' | 'all') => Promise<void>`,
     example: `import { clearStorage } from '@pyreon/storage'
 
 clearStorage()          // all MANAGED localStorage entries
