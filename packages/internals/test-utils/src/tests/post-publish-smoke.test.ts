@@ -80,6 +80,14 @@ describe('post-publish-smoke — resolveDistTag', () => {
     expect(() => resolveDistTag({}, '@pyreon/create-zero', 'latest')).toThrow(/Tags: \(none\)/)
   })
 
+  it('rejects a tag value that is not a semver version (registry data is untrusted)', () => {
+    for (const bad of ['../../etc', '1.0.0\n| injected |', 'latest', '1.0']) {
+      expect(() => resolveDistTag({ 'dist-tags': { latest: bad } }, '@pyreon/create-zero', 'latest')).toThrow(
+        /not a semver version/,
+      )
+    }
+  })
+
   it('fails when the tag did not move to the expected (just released) version', () => {
     expect(resolveDistTag(packument, 'p', 'latest', '0.54.0')).toBe('0.54.0')
     expect(() => resolveDistTag(packument, 'p', 'latest', '0.55.0')).toThrow(

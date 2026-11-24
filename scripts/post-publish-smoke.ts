@@ -125,6 +125,11 @@ export function resolveDistTag(
         .join(', ') || '(none)'
     throw new Error(`${pkg} has no dist-tag "${tag}" on npm. Tags: ${known}`)
   }
+  // The registry response is untrusted: only a plain semver version may flow on into
+  // file paths, install specs and the job summary.
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error(`${pkg}@${tag} resolved to a value that is not a semver version: ${JSON.stringify(version)}`)
+  }
   if (expectVersion !== undefined && version !== expectVersion) {
     throw new Error(
       `${pkg}@${tag} is ${version}, expected ${expectVersion} (the dist-tag did not move to the released version)`,
@@ -573,7 +578,7 @@ async function clickIncrements(
 }
 
 async function fetchPackument(pkg: string): Promise<{ 'dist-tags'?: Record<string, string> }> {
-  const url = `${REGISTRY}${pkg.replace('/', '%2f')}`
+  const url = `${REGISTRY}${pkg.replaceAll('/', '%2f')}`
   const res = await fetch(url, {
     headers: { accept: 'application/vnd.npm.install-v1+json' },
     signal: AbortSignal.timeout(20_000),
