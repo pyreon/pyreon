@@ -244,3 +244,16 @@ export function reportTextWrite(node: Node, before: string, leaf: 'text' | 'reac
     compiledMismatchPath(node.nodeType === 3 ? node.parentNode : node, leaf),
   )
 }
+
+/**
+ * Dev: the server content of a `_setChild` region (#4599) that the client
+ * renders as `after` (text, or `''` for nothing) is gone. Report the text that
+ * changed, or, when the server's content had no text, its first element.
+ */
+export function reportRegionLost(el: Element, server: Node, after: string): void {
+  const text = server.textContent ?? ''
+  const first = (server as Element | DocumentFragment).firstElementChild ?? null
+  const path = compiledMismatchPath(el, 'text')
+  if (text !== after) warnHydrationMismatch('text', after, text, path)
+  else if (first !== null) warnHydrationMismatch('tag', after === '' ? '' : '#text', first.tagName.toLowerCase(), path)
+}

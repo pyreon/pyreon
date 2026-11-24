@@ -80,6 +80,8 @@ import {
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
+import { _hideRegions, _settleRegions } from './regions'
+import { _setParkHooks, _takeParked } from './parked-text'
 import {
   _holdTplDeferral,
   _setHydrationActive,
@@ -1393,7 +1395,18 @@ function hydrateMountSlot(
   children: VNodeChild | VNodeChild[],
   parent: Node,
   open: Comment | null,
+  setChild?: boolean,
 ): Cleanup {
+  // `_setChild` (#4599): claim the element by identity (its mark, see `_park`).
+  // A region hidden from user code is put back when that code left the element
+  // empty; when it did not, the server nodes stay dropped and the value mounts
+  // after that code's nodes, as on a fresh render. A recorded region is swept
+  // of what the walk leaves; an unrecorded element adopts as before #4599.
+  const region = setChild === true ? _takeParked(parent) : undefined
+  if (region != null && region.nodeType === 11) {
+    if (parent.firstChild !== null) return mountChild(children, parent, null)
+    parent.appendChild(region)
+  }
   // Dev: mismatch paths below run from the hydration root through the slot's
   // element (`root > div > reactive > b`), as the h() walk spells them; in
   // production they keep the bare `slot` prefix.
@@ -1428,8 +1441,15 @@ function hydrateMountSlot(
     // walked against the region directly — there is no later render whose
     // cleanup would have to remove these nodes.
     const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
+    const [cleanup, rest] = hydrateChild(children, cursor, parent, null, slotPath)
+    // A recorded `_setChild` region (#4599) holds nothing but server nodes, and
+    // the walk inserts its repairs BEFORE its cursor: everything from the cursor
+    // on is server content the value did not claim (`sweepUnclaimed`, which
+    // keeps it when nothing was claimed at all). An unrecorded parent may hold
+    // client nodes there, so it keeps them.
+    if (region !== undefined) sweepUnclaimed(parent, rest)
 
-    return hydrateChild(children, cursor, parent, null, slotPath)[0]
+    return cleanup
   }
   // A PARKED mid range (see `PARKED_RANGE` in template.ts): the verifier moved
   // this slot's server content out so the compiled refs after it resolved
@@ -2481,6 +2501,8 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   )
   // (A compiled text slot whose server content is elements adopts it through
   // this same hydrator: #4385, `parked-text.ts`.)
+  // A ref or spread in an adoption build sees `_setChild` regions empty (#4599).
+  _setParkHooks(_hideRegions, _settleRegions)
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
   // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
   // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent

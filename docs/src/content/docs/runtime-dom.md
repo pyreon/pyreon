@@ -270,6 +270,10 @@ import { hydrateRoot } from '@pyreon/runtime-dom'
 hydrateRoot(document.getElementById('app')!, <App />)
 ```
 
+#### Compiled templates: an empty element filled by a value
+
+A compiled template leaves an element empty when its only child is a value the compiler cannot type, `<td>{row.cell}</td>` or `<span>a{vNode}b</span>`. When that value is structure (a VNode, an array, a fragment, a component, or an accessor returning one), the server renders it there with no markers, and hydration adopts those nodes: node identity is kept, handlers and live children inside stay connected. The element is claimed by identity, never by position. A `ref` or a spread on the template runs before the value is set, and sees the element empty, as it does on a fresh client render. If it puts nodes into the element, the value mounts fresh after them and the server's nodes for it are dropped. Hydration removes only server content it recorded, so nothing a ref inserted is ever removed.
+
 #### Hydration Mismatch Handling
 
 When the server-rendered DOM does not match the client VNode tree, Pyreon falls back to a fresh `mountChild` call for the mismatched subtree. This means hydration is self-healing -- it always produces a correct result, though with a performance cost for the mismatched portion.

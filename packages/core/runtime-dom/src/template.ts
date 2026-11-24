@@ -16,10 +16,11 @@ import {
   _adoptParkedText,
   _beginParkBatch,
   _endParkBatch,
-  _parkText,
+  _park,
+  _parkCloser,
   _parkedPending,
   _slotHydrator,
-  _takeParkedText,
+  _takeParked,
 } from './parked-text'
 import {
   _adoptingCompiledBind,
@@ -27,6 +28,7 @@ import {
   _markServerText,
   rangeText,
   reportFirstText,
+  reportRegionLost,
   reportTextWrite,
 } from './hydration-debug'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
@@ -162,9 +164,11 @@ export function _setChild(node: Element, value: unknown): void {
   // strength of a row whose cell held a string. Both kinds go to the
   // marker-less slot hydrator, which walks the value against the server's
   // child list and adopts it.
+  // `true`: the hydrator claims a #4599 region by identity (see `_park` and
+  // `regions.ts`), or mounts fresh where user code filled it.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
-      ownByScope(_slotHydrator(value as never, node, null))
+      ownByScope(_slotHydrator(value as never, node, null, true))
       return
     }
     // The element leaves as a unit with its template, so the mount needs only
@@ -193,10 +197,17 @@ export function _setChild(node: Element, value: unknown): void {
       const before = node.textContent ?? ''
       if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
         ;(fc as Text).data = text as string
+        reportTextWrite(node, before, 'text')
       } else {
+        // A recorded region's server structure (#4599), hidden or in place,
+        // replaced by text: reported against that structure. Production leaves
+        // the mark to `_settleRegions`, which finds it replaced.
+        const s = _takeParked(node)
+        const server = s == null ? null : s.nodeType === 11 ? s : node.cloneNode(true)
         _replaceText(node, text)
+        if (server === null) reportTextWrite(node, before, 'text')
+        else reportRegionLost(node, server, node.textContent ?? '')
       }
-      reportTextWrite(node, before, 'text')
 
       return
     }
@@ -1207,7 +1218,7 @@ function buildTpl(
     _tplAdoptAllowPlan = false
     _tplRootDecorated = false
     _tplPendingHoles = null
-    // Placeholders parked by this verify and this bind (#4385), swept after it.
+    // What this verify and this bind park (#4385, #4599), settled after it.
     const prevPark = _beginParkBatch()
     if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan, rootDecorated)) {
       const holes = _tplPendingHoles
@@ -1225,7 +1236,8 @@ function buildTpl(
         _tplHoleCursors = holes
         const prevFresh = _freshBind
         _freshBind = false // an ADOPTED node holds server content — keep every read
-        let cleanup: (() => void) | null
+        // Stays `undefined` when the bind throws.
+        let cleanup: (() => void) | null | undefined
         try {
           // Dev: the binders report the server text they correct (#4419).
           cleanup =
@@ -1236,7 +1248,8 @@ function buildTpl(
         } finally {
           _tplHoleCursors = prevHoles
           _freshBind = prevFresh
-          sweepParkedTexts(prevPark)
+          // Settle what this build parked; `cleanup` is unset when the bind threw.
+          sweepParkedTexts(prevPark, cleanup !== undefined)
         }
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
@@ -1245,8 +1258,8 @@ function buildTpl(
         return { __isNative: true, el: target as HTMLElement, cleanup }
       }
     }
-    // Not adopted: close this build's park batch (nothing it parked is bound).
-    sweepParkedTexts(prevPark)
+    // Not adopted: release what a failed verify parked; nothing is bound.
+    sweepParkedTexts(prevPark, false)
   }
   // (adoption falls through to a normal clone on any verification bail)
   const root = (tpl as CachedTemplate)._root
@@ -1739,7 +1752,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     // is PARKED against the range, so a polymorphic binding adopts the server's
     // nodes through the slot hydrator (which puts a parked range back) instead
     // of re-mounting them; a binding that cannot is swept after the bind.
-    if (parked || (first !== null && !isRangeClose(first))) _parkText(fresh, placeholder as Comment)
+    if (parked || (first !== null && !isRangeClose(first))) _park(fresh, placeholder as Comment)
     // EMPTY range (the accessor rendered ''): nothing to adopt, clear it.
     else clearSlotRange(placeholder as Comment)
 
@@ -1776,16 +1789,19 @@ function clearSlotRange(open: Comment): void {
 }
 
 /**
- * Close a build's park batch and sweep the placeholders no binding adopted
- * (see `_beginParkBatch`): the server content each one stands for is removed,
- * and in dev the rewrite is reported against it.
+ * Close a build's park batch and settle it: regions through the hydration side
+ * (`_parkCloser`), then every #4385 text placeholder no binding adopted. After a
+ * completed bind (`done`) the placeholder's server content is removed and dev
+ * reports the rewrite; after a bind that threw, the mark is only released.
  */
-function sweepParkedTexts(prev: Text[] | null): void {
+function sweepParkedTexts(prev: Node[] | null, done: boolean): void {
   const mine = _endParkBatch(prev)
   if (mine === null) return
+  // Regions first: what is left marked after that is text placeholders.
+  _parkCloser?.(mine, done)
   for (const text of mine) {
-    const open = _takeParkedText(text)
-    if (open === undefined) continue
+    const open = _takeParked(text) as Comment | null | undefined
+    if (open === undefined || !done) continue
     let server = ''
     if (open === null) {
       // Sole slot: every other child of the element is server content.
@@ -1798,7 +1814,7 @@ function sweepParkedTexts(prev: Text[] | null): void {
       if (process.env.NODE_ENV !== 'production') server = _serverTextOfRange(open)
       clearSlotRange(open)
     }
-    if (process.env.NODE_ENV !== 'production') reportTextWrite(text, server, 'reactive')
+    if (process.env.NODE_ENV !== 'production') reportTextWrite(text as Text, server, 'reactive')
   }
 }
 

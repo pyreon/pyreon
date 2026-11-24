@@ -1,76 +1,99 @@
 import type { VNodeChild } from '@pyreon/core'
 
 /**
- * A compiled TEXT slot whose server content is not one text node (#4385).
+ * PARKED server content: what an adoption build has not yet handed to the bind
+ * line that claims it. Two kinds share one mark and one per-build list.
  *
- * A text binding (`bindPolymorphicText`, `_bindText`, `_bindProp`) is
+ * A compiled TEXT slot whose server content is not one text node (#4385). A
+ * text binding (`bindPolymorphicText`, `_bindText`, `_bindProp`) is
  * polymorphic: `{parts(row)}` can render `['a ', <Code/>, ' b']`, and the
  * server renders that as elements. The compiled bind still resolves its slot to
- * ONE text node, so hydration used to discard the server's nodes: the adoption
- * verifier refused the whole element (sole slot), or `_textSlot` cleared the
- * range (trailing or mid slot), and the binding mounted the content fresh.
+ * ONE text node, so the slot's resolved text node is a PLACEHOLDER marked with
+ * where the server content is: `null` for the element's whole child list (a
+ * sole slot, markers elided by SSR), or the range's open `<!--$-->` comment.
+ * The binding that receives it hands its accessor to the slot hydrator
+ * (`hydrateMountSlot`), which adopts the content as a live reactive slot exactly
+ * as a compiled `_mountSlot` does, reporting any real divergence.
  *
- * Now the slot's resolved text node is a PLACEHOLDER branded with where the
- * server content is: `null` for the element's whole child list (a sole slot,
- * markers elided by SSR), or the range's open `<!--$-->` comment. The binding
- * that receives it hands its accessor to the slot hydrator (`hydrateMountSlot`),
- * which adopts the content as a live reactive slot exactly as a compiled
- * `_mountSlot` does, reporting any real divergence through the walk.
+ * A `_setChild` REGION (#4599): an element the template leaves empty, holding
+ * the server's marker-less rendering of a structural value. The element itself
+ * is marked, with the server's FIRST child as recorded by the verifier, or with
+ * a fragment once user code ran (`_hideRegions` in `regions.ts`). `_setChild`
+ * claims it by identity through the slot hydrator.
  *
- * Carried on the node (leak class C: never a registry). `_parkedPending` counts
- * branded nodes not yet consumed, so every binding outside hydration pays one
- * integer compare and nothing else.
+ * Carried on the node (leak class C: never a registry), and never on a plain
+ * text cell. `_parkedPending` counts marked nodes not yet consumed, so every
+ * binding outside hydration pays one integer compare and nothing else.
  */
-const PARKED_TEXT: unique symbol = Symbol('pyreon.parkedText')
-type ParkedText = Text & { [PARKED_TEXT]?: Comment | null | undefined }
+export const PARKED: unique symbol = Symbol('pyreon.parked')
+export type Parked = Node & { [PARKED]?: Node | null | undefined }
 
 export let _parkedPending = 0
 
-export function _parkText(text: Text, open: Comment | null): void {
-  ;(text as ParkedText)[PARKED_TEXT] = open
+export function _park(node: Node, server: Node | null): void {
+  ;(node as Parked)[PARKED] = server
   _parkedPending++
-  ;(_batch ??= []).push(text)
+  ;(_batch ??= []).push(node)
 }
 
 /**
- * Consume `text`'s brand: the open marker of its range, `null` for a sole
- * slot, or `undefined` when the node is not (or no longer) a parked placeholder.
+ * Consume `node`'s mark: what it records (see above), or `undefined` when the
+ * node is not (or no longer) parked.
  */
-export function _takeParkedText(text: Text): Comment | null | undefined {
-  const open = (text as ParkedText)[PARKED_TEXT]
-  if (open !== undefined) {
-    ;(text as ParkedText)[PARKED_TEXT] = undefined
+export function _takeParked(node: Node): Node | null | undefined {
+  const server = (node as Parked)[PARKED]
+  if (server !== undefined) {
+    ;(node as Parked)[PARKED] = undefined
     _parkedPending--
   }
 
-  return open
+  return server
 }
 
 /**
- * The placeholders branded during ONE adoption build. A binding that writes
- * `.data` directly (the selector-ternary and signal-method emits) never consumes
- * a brand. In agreement it never meets one (its server content is one text
- * node), but on a divergence the server's nodes would stay beside the text it
- * writes. So the build that branded them sweeps any left unconsumed after its
- * bind (`sweepParkedTexts` in `template.ts`): the server content goes (what the
- * slot did before) and the rewrite is reported. Frames nest (a bind hydrates
- * holes whose components build their own templates): save/restore, never reset.
+ * The nodes parked during ONE adoption build. A binding that writes `.data`
+ * directly (the selector-ternary and signal-method emits) never consumes a text
+ * mark, and a region the client renders empty is never claimed. The build that
+ * parked them settles what is left after its bind (`sweepParkedTexts` in
+ * `template.ts`, and `_parkCloser` for regions, registered by `hydrateRoot`):
+ * after a completed bind the unclaimed server content goes (what a clone
+ * renders) and the change is reported; after a bind that THREW every mark is
+ * released and nothing is removed. Frames nest (a bind hydrates holes and
+ * regions whose components build their own templates): save/restore, never
+ * reset.
  */
-let _batch: Text[] | null = null
+export let _batch: Node[] | null = null
 
-export function _beginParkBatch(): Text[] | null {
+export function _beginParkBatch(): Node[] | null {
   const prev = _batch
   _batch = null
 
   return prev
 }
 
-/** Close the batch opened by `_beginParkBatch`; returns what it branded. */
-export function _endParkBatch(prev: Text[] | null): Text[] | null {
+/** Close the batch opened by `_beginParkBatch`; returns what it parked. */
+export function _endParkBatch(prev: Node[] | null): Node[] | null {
   const mine = _batch
   _batch = prev
 
   return mine
+}
+
+/** Settles a closed batch's regions (`_settleRegions` in `regions.ts`). */
+export let _parkCloser: ((parked: Node[], done: boolean) => void) | null = null
+
+/**
+ * Called before a compiled bind hands an element to USER code (`_ref`, a spread
+ * through `applyPropsWithRef`): `_hideRegions` in `regions.ts` hides the server
+ * content of the running build's regions, so that code sees each element as a
+ * fresh render's clone has it, empty.
+ */
+export let _userCodeHook: (() => void) | null = null
+
+/** Both registered by `hydrateRoot`, so a client-only bundle carries neither. */
+export function _setParkHooks(hide: () => void, settle: (parked: Node[], done: boolean) => void): void {
+  _userCodeHook = hide
+  _parkCloser = settle
 }
 
 /**
@@ -88,6 +111,8 @@ export type SlotHydrator = (
   children: VNodeChild | VNodeChild[],
   parent: Node,
   open: Comment | null,
+  /** From `_setChild`: claim the element as a #4599 region (see `_park`). */
+  setChild?: boolean,
 ) => () => void
 
 export let _slotHydrator: SlotHydrator | null = null
@@ -101,7 +126,7 @@ export function _setSlotHydrator(h: SlotHydrator): void {
  * for `child`; returns the slot's cleanup, or `null` for an ordinary text node.
  */
 export function _adoptParkedText(text: Text, child: () => VNodeChild): (() => void) | null {
-  const open = _takeParkedText(text)
+  const open = _takeParked(text) as Comment | null | undefined
   if (open === undefined) return null
   const parent = text.parentNode as Node
   parent.removeChild(text)

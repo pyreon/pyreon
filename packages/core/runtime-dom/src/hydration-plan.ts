@@ -32,7 +32,7 @@ import { _rdLabelBinding, _renderBind } from '@pyreon/reactivity'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
 import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
-import { _parkText } from './parked-text'
+import { _park } from './parked-text'
 
 type Cleanup = () => void
 
@@ -607,6 +607,13 @@ interface TplSig {
    * may have extra children" rule would duplicate or discard their content.
    */
   holes: Int32Array | null
+  /**
+   * Per element (tree order): the template leaves it with NO child nodes and it
+   * is neither a hole nor a declared innerHTML element. `_setChild` fills such
+   * an element (#4599), so its server content is the value's rendering; see the
+   * region branch of the verify walk.
+   */
+  empty: boolean[]
   /** Number of declared holes — 0 lets every hole-aware branch short-circuit. */
   holeCount: number
   /**
@@ -665,6 +672,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
   let holeCount = 0
   const htmlFlags: boolean[] = []
   let htmlCount = 0
+  const emptyList: boolean[] = []
   const slotList: boolean[] = []
   const soleSlotList: boolean[] = []
   const soleTextList: boolean[] = []
@@ -782,6 +790,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     const isHtml = _isTplHtmlEl(el) && el.firstChild === null && !isHole
     htmlFlags.push(isHtml)
     if (isHtml) htmlCount++
+    emptyList.push(el.firstChild === null && !isHole && !isHtml)
     for (let c = el.firstElementChild; c && !bail; c = c.nextElementSibling) walk(c)
   }
   walk(root)
@@ -798,6 +807,7 @@ function templateSignature(tpl: HTMLTemplateElement): TplSig | null {
     soleSlots: soleSlotList,
     soleTexts: soleTextList,
     holes: holeCount > 0 ? Int32Array.from(holeFlags) : null,
+    empty: emptyList,
     holeCount,
     htmlEls: htmlCount > 0 ? htmlFlags : null,
     htmlCount,
@@ -965,6 +975,12 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
  * loop per row.
  */
 function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
+  // First, before anything below normalizes the row: a replayable template has
+  // no slot, so a row whose element count is not the template's holds content
+  // the plan says nothing about. That includes a #4599 region (a structural
+  // value in an empty element), which only the full verify records: a replayed
+  // row records nothing, and an unrecorded region is never hidden from a ref.
+  if (countElements(root) !== plan.sig.tags.length - 1) return false
   const spots = plan.tripletSpots
   for (let s = 0; s < spots.length; s++) {
     const spot = spots[s] as TripletSpot
@@ -1020,6 +1036,14 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
   }
 
   return true
+}
+
+/** The number of elements below `el`. */
+function countElements(el: Element): number {
+  let n = 0
+  for (let c = el.firstElementChild; c !== null; c = c.nextElementSibling) n += 1 + countElements(c)
+
+  return n
 }
 
 /** The element's ONLY child is the compiler's dynamic-text placeholder `' '`. */
@@ -1179,6 +1203,23 @@ function matchDomAgainstTemplate(
       ;(soleTextParks ??= []).push(el)
 
       return true
+    }
+    // A `_setChild` REGION (#4599): the template leaves this element empty and
+    // the server rendered a structural value into it, marker-less (anything
+    // but text: elements, the value's own ranges). The template says nothing
+    // about that content, so it is not descended into: the element is parked,
+    // marked with its first server child, and `_setChild` claims it by identity
+    // (see `_park`, `regions.ts`). Text-only content keeps the sole-text path
+    // below, so a plain `{row.x}` cell is never marked.
+    if (expected.empty[at] === true) {
+      for (let c = el.firstChild; c !== null; c = c.nextSibling) {
+        if (c.nodeType !== 3) {
+          // Parked now: a failed verify releases it (`sweepParkedTexts`).
+          _park(el, el.firstChild)
+
+          return true
+        }
+      }
     }
     let texts = 0
     let bare: Text[] | null = null
@@ -1567,7 +1608,7 @@ export function tplAdoptVerify(
     for (const el of match.soleTextParks) {
       const placeholder = document.createTextNode('')
       el.insertBefore(placeholder, el.firstChild)
-      _parkText(placeholder, null)
+      _park(placeholder, null)
     }
   }
   // Declared innerHTML elements: mark each so the bind's first `_setHtml`
