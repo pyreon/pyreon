@@ -62,6 +62,7 @@ addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00'
 | [`businessTimeBetween`](#businesstimebetween-function-experimental) | function | The working time between two moments as `{ hours, minutes }` (plus seconds when needed); negative when `b` is earlier. |
 | [`isOpen`](#isopen-function-experimental) | function | Is the calendar open at a moment? A window is half-open: open at its `from`, closed at its `to`. |
 | [`nextOpening`](#nextopening-function-experimental) | function | The next time the calendar opens, strictly after `at`; `null` when it never opens within ten years. |
+| [`openingWindows`](#openingwindows-function-experimental) | function | The times the calendar is open within one date (midnight to midnight), in order: the same answer `isOpen` gives for… |
 | [`nextClosing`](#nextclosing-function-experimental) | function | The next time the calendar closes, strictly after `at`. |
 | [`overlaps`](#overlaps-function-experimental) | function | Whether two half-open intervals share time: `[9:00, 10:00)` and `[10:00, 11:00)` do not. |
 | [`intersection`](#intersection-function-experimental) | function | The shared part of two intervals, or `null`. |
@@ -91,6 +92,7 @@ addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00'
 | [`fp.addBusinessTime`](#fpaddbusinesstime-function-experimental) | function | Value-last `addBusinessTime`. |
 | [`fp.isOpen`](#fpisopen-function-experimental) | function | Value-last `isOpen`. |
 | [`fp.nextOpening`](#fpnextopening-function-experimental) | function | Value-last `nextOpening`. |
+| [`fp.openingWindows`](#fpopeningwindows-function-experimental) | function | Value-last `openingWindows`. |
 | [`fp.nextClosing`](#fpnextclosing-function-experimental) | function | Value-last `nextClosing`. |
 | [`fp.overlaps`](#fpoverlaps-function-experimental) | function | Value-last `overlaps`. |
 | [`fp.intersection`](#fpintersection-function-experimental) | function | Value-last `intersection`. |
@@ -421,6 +423,23 @@ The next time the calendar opens, strictly after `at`; `null` when it never open
 
 ```tsx
 nextOpening('2026-11-20T18:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T09:00'
+```
+
+---
+
+### `openingWindows` `function` — **experimental**
+
+```ts
+(date: PlainDate, calendar) => Interval[]
+```
+
+The times the calendar is open within one date (midnight to midnight), in order: the same answer `isOpen` gives for every moment of it. Includes the tail of an overnight window that started the day before (even when the date itself is closed), and ends a window that runs past midnight at the next day's `T00:00`. One interpretation of a calendar for views: `@pyreon/calendar` shades business hours with it.
+
+**Example**
+
+```tsx
+openingWindows('2026-12-24', { hours: { 4: [{ from: '09:00', to: '17:00' }] }, specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } })   // => [{ start: '2026-12-24T09:00', end: '2026-12-24T13:00' }]
+openingWindows('2026-11-21', { hours: { 5: [{ from: '22:00', to: '02:00' }] } })   // => [{ start: '2026-11-21T00:00', end: '2026-11-21T02:00' }]
 ```
 
 ---
@@ -899,6 +918,23 @@ Value-last `nextOpening`.
 ```tsx
 import { nextOpening } from '@pyreon/schedule/fp'
 nextOpening({ hours: { 4: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => '2026-11-19T09:00'
+```
+
+---
+
+### `fp.openingWindows` `function` — **experimental**
+
+```ts
+(calendar) => (date: PlainDate) => Interval[]
+```
+
+Value-last `openingWindows`.
+
+**Example**
+
+```tsx
+import { openingWindows } from '@pyreon/schedule/fp'
+openingWindows({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18')   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T17:00' }]
 ```
 
 ---

@@ -4,7 +4,7 @@ import type { Duration, PlainDate, PlainDateTime } from '@pyreon/time/core'
 import { DAY, HOUR, MINUTE, readDay, readWall, weekdayOf, writeDate, writeWall } from './civil'
 import { timeMs } from './durations'
 import { badRange, badValue, guard, show } from './errors'
-import type { BusinessCalendar } from './types'
+import type { BusinessCalendar, Interval } from './types'
 
 /** Days the search for a business day or an opening runs before it gives up (a calendar with no open day at all). */
 const MAX_SCAN_DAYS = 3660
@@ -132,6 +132,18 @@ function specialTest(fn: string, special: BusinessCalendar['specialHours']): (da
   return (day) => map.get(day)
 }
 
+/**
+ * Whether `specialHours` can open anything without weekly `hours`: a function always counts (it cannot be inspected; one
+ * that never opens gives a calendar that never opens), a map only with a non-empty entry. Malformed values pass here and
+ * are reported by `specialTest`.
+ */
+function hasSpecialWindows(special: BusinessCalendar['specialHours']): boolean {
+  if (special === undefined) return false
+  if (typeof special !== 'object' || special === null || Array.isArray(special)) return true
+
+  return Object.values(special).some((list) => !Array.isArray(list) || list.length > 0)
+}
+
 function calendarOf(fn: string, calendar: BusinessCalendar | undefined, needHours: boolean): Cal {
   const c = calendar === undefined ? {} : calendar
 
@@ -142,7 +154,9 @@ function calendarOf(fn: string, calendar: BusinessCalendar | undefined, needHour
     if (!Number.isInteger(w) || w < 1 || w > 7) return badRange(fn, `weekend entries are ISO weekdays 1 to 7, got ${show(w)}.`)
     weekend[w] = true
   }
-  if (needHours && c.hours === undefined && c.specialHours === undefined) return badRange(fn, 'the calendar has no hours, so there is no working time to count. Add hours: { 1: [{ from: "09:00", to: "17:00" }], ... }.')
+  if (needHours && c.hours === undefined && !hasSpecialWindows(c.specialHours)) {
+    return badRange(fn, 'the calendar has no hours, so there is no working time to count. Add hours: { 1: [{ from: "09:00", to: "17:00" }], ... } (specialHours alone needs at least one date with a window).')
+  }
 
   return { weekend, holiday: holidayTest(fn, c.holidays), windows: c.hours === undefined ? null : windowsOf(fn, c.hours), special: specialTest(fn, c.specialHours), fn }
 }
@@ -392,6 +406,22 @@ export const nextOpening = /* @__PURE__ */ guard('nextOpening', function nextOpe
  */
 export const nextClosing = /* @__PURE__ */ guard('nextClosing', function nextClosing(at: PlainDateTime, calendar: BusinessCalendar): PlainDateTime | null {
   return search('nextClosing', at, calendar, (iv, t) => (iv[1] > t ? iv[1] : null))
+})
+
+/**
+ * The times a calendar is open within one date, midnight to midnight, as half-open intervals in order. This is the same
+ * answer `isOpen` gives for every moment of the date: the tail of an overnight window that started the day before is
+ * included (even when the date itself is closed: an empty `specialHours` list, a weekend or a holiday closes the date's
+ * own windows, not the previous night's), and a window that runs past midnight ends at the next day's `T00:00`. Needs
+ * `hours` (or `specialHours` with a window), like the other business-time functions.
+ *
+ * @example openingWindows('2026-12-24', { hours: { 4: [{ from: '09:00', to: '17:00' }] }, specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } }) // => [{ start: '2026-12-24T09:00', end: '2026-12-24T13:00' }]
+ * @example openingWindows('2026-11-21', { hours: { 5: [{ from: '22:00', to: '02:00' }] } }) // => [{ start: '2026-11-21T00:00', end: '2026-11-21T02:00' }]
+ */
+export const openingWindows = /* @__PURE__ */ guard('openingWindows', function openingWindows(date: PlainDate, calendar: BusinessCalendar): Interval[] {
+  const day = readDay('openingWindows', 'date', date)
+
+  return openWindow('openingWindows', calendar, day * DAY, (day + 1) * DAY).map(([s, e]) => ({ start: writeWall(s), end: writeWall(e) }))
 })
 
 /** The opening intervals of a calendar clipped to `[lo, hi)`, in ms: what `freeSlots` intersects with. */

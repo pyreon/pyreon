@@ -4,7 +4,7 @@ export { nextOccurrence, occurrences, occurrencesBetween, occursOn, previousOccu
 export { parseRRule, toRRule, tryParseRRule } from './rrule'
 export { describeRule } from './describe'
 export type { RuleMessages } from './describe'
-export { addBusinessDays, addBusinessTime, businessDaysBetween, businessTimeBetween, isBusinessDay, isOpen, nextBusinessDay, nextClosing, nextOpening, previousBusinessDay } from './business'
+export { addBusinessDays, addBusinessTime, businessDaysBetween, businessTimeBetween, isBusinessDay, isOpen, nextBusinessDay, nextClosing, nextOpening, openingWindows, previousBusinessDay } from './business'
 export { intersection, mergeIntervals, overlaps, subtractIntervals } from './intervals'
 export { freeSlots } from './slots'
 export type { FreeSlotsOptions } from './slots'

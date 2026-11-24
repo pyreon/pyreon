@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addBusinessDays, addBusinessTime, businessDaysBetween, businessTimeBetween, isBusinessDay, isOpen, nextBusinessDay, nextClosing, nextOpening, previousBusinessDay } from '../core'
+import { addBusinessDays, addBusinessTime, businessDaysBetween, businessTimeBetween, isBusinessDay, isOpen, nextBusinessDay, nextClosing, nextOpening, openingWindows, previousBusinessDay } from '../core'
 import { int, rng } from './rng'
 import type { BusinessCalendar } from '../types'
 
@@ -228,5 +228,44 @@ describe('specialHours: a date with its own opening windows (#4806)', () => {
     expect(() => isOpen('2026-12-24T10:00', { ...office, specialHours: (() => 'closed') as never })).toThrow(/\[Pyreon\] isOpen.*specialHours function returned "closed" for 2026-12-2[34]/)
     expect(() => isOpen('2026-12-24T10:00', { ...office, specialHours: () => { throw new Error('offline') } })).toThrow(/specialHours function threw for 2026-12-2[34]: offline/)
     expect(() => isOpen('2026-12-24T10:00', { ...office, specialHours: [shortDay] as never })).toThrow(/\[Pyreon\] isOpen.*specialHours to be an object/)
+  })
+})
+
+describe('openingWindows: the open times within one date', () => {
+  const shortDay = [{ from: '09:00', to: '13:00' }] as const
+
+  it('gives a date its special windows, its weekday hours, or none', () => {
+    const cal: BusinessCalendar = { ...office, holidays: ['2026-12-25'], specialHours: { '2026-12-24': shortDay } }
+
+    expect(openingWindows('2026-12-24', cal)).toEqual([{ start: '2026-12-24T09:00', end: '2026-12-24T13:00' }])
+    expect(openingWindows('2026-12-23', cal)).toEqual([{ start: '2026-12-23T09:00', end: '2026-12-23T17:00' }])
+    expect(openingWindows('2026-12-25', cal)).toEqual([])
+    expect(openingWindows('2026-12-26', cal)).toEqual([])
+  })
+
+  it('includes the previous night\'s overnight tail even on a closed date, and cuts its own overnight window at midnight', () => {
+    const cal: BusinessCalendar = { hours: { 4: [{ from: '22:00', to: '02:00' }] }, weekend: [], specialHours: { '2026-12-25': [] } }
+
+    expect(openingWindows('2026-12-24', cal)).toEqual([{ start: '2026-12-24T22:00', end: '2026-12-25T00:00' }])
+    expect(openingWindows('2026-12-25', cal)).toEqual([{ start: '2026-12-25T00:00', end: '2026-12-25T02:00' }])
+    expect(isOpen('2026-12-25T01:00', cal)).toBe(true)
+  })
+})
+
+describe('a calendar needs some working time to count', () => {
+  it('rejects no hours and a specialHours map without any window, with the "no hours" error', () => {
+    for (const cal of [{}, { specialHours: {} }, { specialHours: { '2026-12-24': [] } }] as BusinessCalendar[]) {
+      expect(() => isOpen('2026-12-24T10:00', cal)).toThrow(/\[Pyreon\] isOpen.*no hours/)
+      expect(() => addBusinessTime('2026-12-24T10:00', { hours: 1 }, cal)).toThrow(/\[Pyreon\] addBusinessTime.*no hours/)
+      expect(() => openingWindows('2026-12-24', cal)).toThrow(/\[Pyreon\] openingWindows.*no hours/)
+    }
+  })
+
+  it('accepts a specialHours function without hours (it cannot be inspected): one that never opens is a calendar that never opens', () => {
+    const never: BusinessCalendar = { specialHours: () => undefined }
+
+    expect(isOpen('2026-12-24T10:00', never)).toBe(false)
+    expect(nextOpening('2026-12-24T10:00', never)).toBe(null)
+    expect(() => addBusinessTime('2026-12-24T10:00', { hours: 1 }, never)).toThrow(/no open hours within 3660 days/)
   })
 })

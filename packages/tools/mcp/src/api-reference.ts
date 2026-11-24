@@ -2613,6 +2613,13 @@ isOpen('2026-11-20T17:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{
     notes: '[EXPERIMENTAL] The next time the calendar opens, strictly after `at`; `null` when it never opens within ten years. Added in v0.53.0.',
   },
 
+  'schedule/openingWindows': {
+    signature: '(date: PlainDate, calendar) => Interval[]',
+    example: `openingWindows('2026-12-24', { hours: { 4: [{ from: '09:00', to: '17:00' }] }, specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } })   // => [{ start: '2026-12-24T09:00', end: '2026-12-24T13:00' }]
+openingWindows('2026-11-21', { hours: { 5: [{ from: '22:00', to: '02:00' }] } })   // => [{ start: '2026-11-21T00:00', end: '2026-11-21T02:00' }]`,
+    notes: `[EXPERIMENTAL] The times the calendar is open within one date (midnight to midnight), in order: the same answer \`isOpen\` gives for every moment of it. Includes the tail of an overnight window that started the day before (even when the date itself is closed), and ends a window that runs past midnight at the next day's \`T00:00\`. One interpretation of a calendar for views: \`@pyreon/calendar\` shades business hours with it. Added in v0.53.0.`,
+  },
+
   'schedule/nextClosing': {
     signature: '(at: PlainDateTime, calendar) => PlainDateTime | null',
     example: `nextClosing('2026-11-20T10:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-20T17:00'`,
@@ -2799,6 +2806,13 @@ isOpen({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')  
     example: `import { nextOpening } from '@pyreon/schedule/fp'
 nextOpening({ hours: { 4: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => '2026-11-19T09:00'`,
     notes: '[EXPERIMENTAL] Value-last `nextOpening`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.openingWindows': {
+    signature: '(calendar) => (date: PlainDate) => Interval[]',
+    example: `import { openingWindows } from '@pyreon/schedule/fp'
+openingWindows({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18')   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T17:00' }]`,
+    notes: '[EXPERIMENTAL] Value-last `openingWindows`. Added in v0.53.0.',
   },
 
   'schedule/fp.nextClosing': {

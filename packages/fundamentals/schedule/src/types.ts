@@ -98,6 +98,9 @@ export interface BusinessCalendar {
    * A date's own opening windows (a shortened day before a holiday, a Sunday opening). They replace that weekday's
    * `hours` and decide the date over `weekend` and `holidays`: a date with windows here is open even on a weekend or a
    * holiday, and an empty list closes it. Business-day functions treat a date with windows as a business day.
+   * The function form decides over `holidays` too: check your holidays inside it when they should win. An empty list
+   * closes the date's own windows; an overnight window of the day before still runs into its early hours.
+   * Business-time functions need `hours`, or a `specialHours` map with at least one window, or the function form.
    */
   specialHours?: SpecialHours
   /** Informational: the zone the wall clock is in. */

@@ -276,6 +276,20 @@ isBusinessDay('2026-12-20', shop) // => true
 addBusinessTime('2026-12-24T12:00', { hours: 2 }, shop) // => '2026-12-28T10:00'
 ```
 
+Three rules to know. The function form decides over `holidays` as the map does, so check your holidays inside it when they should win. An empty list closes the date's own windows, but an overnight window of the day before still runs into its early hours (it belongs to the day it starts on). Without weekly `hours`, a `specialHours` map needs at least one window or the business-time functions throw the "no hours" error; a function cannot be inspected, so one that never opens makes a calendar that never opens (`isOpen` is `false`, `addBusinessTime` throws after its ten-year search).
+
+`openingWindows(date, calendar)` lists the times a calendar is open within one date, the same answer `isOpen` gives for every moment of it: the previous night's overnight tail is included and a window that runs past midnight ends at the next day's `T00:00`. Views use it to shade hours (`@pyreon/calendar` does), so there is one reading of a calendar:
+
+```ts
+// @check
+import { openingWindows } from '@pyreon/schedule'
+
+const bar = { hours: { 5: [{ from: '18:00', to: '02:00' }] }, specialHours: { '2026-12-25': [{ from: '20:00', to: '23:00' }] } } as const
+
+openingWindows('2026-12-25', bar) // => [{ start: '2026-12-25T20:00', end: '2026-12-25T23:00' }]
+openingWindows('2026-11-21', bar) // => [{ start: '2026-11-21T00:00', end: '2026-11-21T02:00' }]
+```
+
 **An SLA due date: "respond within 8 business hours".**
 
 ```ts
