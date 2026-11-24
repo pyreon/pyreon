@@ -16,6 +16,7 @@ export {
   _abortOwnerFrame,
   _captureRun,
   _closeOwnerFrame,
+  _effectOwned,
   _enterCleanupFrame,
   _exitCleanupFrame,
   _noopDispose,

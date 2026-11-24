@@ -12,7 +12,8 @@
 // the default route layout". The route consults `resolvePageLayout`
 // against a registry the user supplies (typically auto-built from
 // `src/layouts/*.tsx`); a missing layout name falls back to the
-// default layout with a console warning so authors get feedback.
+// default layout and is reported back (`fellBack` / `missingName`) so the
+// route can warn the author.
 //
 // Pure / runtime-agnostic — no DOM / Vite imports. Callable from SSR,
 // CSR, and tests alike.
