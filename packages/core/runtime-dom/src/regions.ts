@@ -11,7 +11,8 @@ import { _batch, PARKED, type Parked, _takeParked } from './parked-text'
  * verifier parks it when that content is not a lone text, marked with its
  * first server child (PENDING). The rule: hydration removes only what it
  * recorded as server content, and claims by element identity, never by
- * position.
+ * position. The claim is in the slot hydrator (`hydrateMountSlot`), which
+ * `_setChild` already calls.
  */
 
 /**
