@@ -60,7 +60,7 @@
     "bench:stores": "NODE_ENV=production bun bench/store-bench.ts"
   },
   "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/reactivity": "workspace:*",
     "@pyreon/native-compiler": "workspace:^"
   },
   "dependencies": {

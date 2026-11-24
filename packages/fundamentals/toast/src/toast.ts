@@ -435,7 +435,7 @@ toast.remove = remove
  * @example
  * <span>{() => toast.list().length} notifications</span>
  */
-toast.list = (): readonly Toast[] => _toasts()
+toast.list = (): readonly Readonly<Toast>[] => _toasts()
 
 /**
  * Show a loading toast that updates on promise resolution or rejection.

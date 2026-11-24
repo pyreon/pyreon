@@ -42,6 +42,6 @@ Moved exports, with their new specifier:
 
 `@pyreon/testing/toast` now reads the toast store through `@pyreon/toast/internal`; its own API is unchanged. `@pyreon/format` follows the ambient rename internally; its API is unchanged.
 
-`@pyreon/toast` gains `toast.list()`, a reactive read of the live toast queue (`readonly Toast[]`, oldest first), documented in the README and manifest.
+`@pyreon/toast` gains `toast.list()`, a reactive read of the live toast queue (`readonly Readonly<Toast>[]`, oldest first), documented in the README and manifest.
 
 Upgrade: codemod internal-exports-subpath

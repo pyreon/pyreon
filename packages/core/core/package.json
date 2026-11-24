@@ -80,7 +80,7 @@
   },
   "peerDependencies": {
     "@pyreon/native-compiler": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@pyreon/native-compiler": {

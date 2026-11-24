@@ -40,7 +40,18 @@
  *      cannot outlive the helpers it names;
  *   9. a public entry exports a declaration tagged `@internal` in JSDoc. The
  *      tag is how a non-`_` internal (a test seam, cross-package plumbing) is
- *      marked; it belongs on `./internal`. Public API carries no such tag;
+ *      marked; it belongs on `./internal`. Public API carries no such tag.
+ *      Rules 8 and 9 follow re-exports, `export *`, `export { default as x }`,
+ *      re-bound aliases (`const x = y`) and namespace re-exports (`export * as
+ *      ns`, `import * as ns` + `export { ns }`, whose members count as
+ *      `ns.member`). Not followed: re-exports of another package (that
+ *      package's own entries are checked) and computed or object-literal
+ *      re-wrapping (`export const api = { seam }`);
+ *  10. a package's shipped source imports another package's internal subpath
+ *      (`./internal`, `./internal-server`, `@pyreon/core/compat`) while its
+ *      `package.json` declares that package with a non-exact range. Internals
+ *      change in any release, so the edge must be `workspace:*` (published as
+ *      the exact version);
  *   7. a PRIVATE package (`"private": true`, e.g. `@pyreon/auth` until it is
  *      published) declares a tier or carries a README status line. An
  *      unpublished package makes no semver promise, the generated table and
@@ -530,57 +541,128 @@ function localDeclarations(sf: ts.SourceFile, name: string): ts.Statement[] {
   })
 }
 
+/** Is `n` a statement with an `export` modifier (and `default`, when asked)? */
+function hasModifier(n: ts.Node, kind: ts.SyntaxKind): boolean {
+  return ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === kind)
+}
+
+/** What an exported name is bound to: declaration statements, or a whole module (a namespace). */
+export interface ExportBinding {
+  decls: ts.Statement[]
+  /** Set when the name is a namespace object (`export * as ns`, or `import * as ns` re-exported). */
+  namespace?: string
+}
+
 /**
- * The declaration statements behind `name` as exported by `file`, following
- * `export { a as b } from './x'`, `export *`, and a local `import` re-exported
- * by name. Declarations in another package are not followed.
+ * The binding behind `name` as exported by `file`. Follows
+ * `export { a as b } from './x'`, `export *`, `export { default as x }`, a
+ * local `import` re-exported by name, a re-bound alias (`const x = y`), and
+ * namespace re-exports. Declarations in another package are not followed.
  */
 // oxlint-disable-next-line complexity -- one branch per export / import syntax form
-export function exportedDeclarations(file: string, name: string, seen: Set<string> = new Set()): ts.Statement[] {
+export function exportBinding(file: string, name: string, seen: Set<string> = new Set()): ExportBinding {
+  const none: ExportBinding = { decls: [] }
   const key = `${file}#${name}`
-  if (seen.has(key) || !existsSync(file)) return []
+  if (seen.has(key) || !existsSync(file)) return none
   seen.add(key)
   const sf = sourceOf(file)
-  const exported = (n: ts.Node): boolean =>
-    ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
-  const viaImport = (local: string): ts.Statement[] => {
+
+  // A local binding: a declaration (an alias `const x = y` also brings y's), a
+  // default export, or an import from a relative module.
+  // oxlint-disable-next-line complexity -- one branch per binding form
+  const local = (id: string): ExportBinding => {
+    if (id === 'default') {
+      for (const st of sf.statements) {
+        if (ts.isExportAssignment(st) && !st.isExportEquals && ts.isIdentifier(st.expression)) return local(st.expression.text)
+        if ((ts.isFunctionDeclaration(st) || ts.isClassDeclaration(st)) && hasModifier(st, ts.SyntaxKind.DefaultKeyword)) {
+          return { decls: [st] }
+        }
+      }
+
+      return none
+    }
+    const decls = localDeclarations(sf, id)
+    if (decls.length > 0) {
+      const out = [...decls]
+      for (const st of decls) {
+        if (!ts.isVariableStatement(st)) continue
+        for (const d of st.declarationList.declarations) {
+          if (!ts.isIdentifier(d.name) || d.name.text !== id || d.initializer === undefined) continue
+          let init: ts.Expression = d.initializer
+          while (ts.isAsExpression(init) || ts.isSatisfiesExpression(init) || ts.isParenthesizedExpression(init)) init = init.expression
+          if (ts.isIdentifier(init)) out.push(...local(init.text).decls)
+        }
+      }
+
+      return { decls: out }
+    }
     for (const st of sf.statements) {
       if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier) || !st.moduleSpecifier.text.startsWith('.')) continue
-      const nb = st.importClause?.namedBindings
-      if (nb === undefined || !ts.isNamedImports(nb)) continue
-      const el = nb.elements.find((e) => e.name.text === local)
-      const target = el === undefined ? undefined : resolveModule(file, st.moduleSpecifier.text)
-      if (el !== undefined && target !== undefined) return exportedDeclarations(target, (el.propertyName ?? el.name).text, seen)
+      const target = resolveModule(file, st.moduleSpecifier.text)
+      const clause = st.importClause
+      if (target === undefined || clause === undefined) continue
+      if (clause.name?.text === id) return exportBinding(target, 'default', seen)
+      const nb = clause.namedBindings
+      if (nb !== undefined && ts.isNamespaceImport(nb) && nb.name.text === id) return { decls: [], namespace: target }
+      const el = nb !== undefined && ts.isNamedImports(nb) ? nb.elements.find((e) => e.name.text === id) : undefined
+      if (el !== undefined) return exportBinding(target, (el.propertyName ?? el.name).text, seen)
     }
 
-    return []
+    return none
   }
+
+  if (name === 'default') return local('default')
   for (const st of sf.statements) {
     if (ts.isExportDeclaration(st) && !st.isTypeOnly) {
       const spec = st.moduleSpecifier !== undefined && ts.isStringLiteral(st.moduleSpecifier) ? st.moduleSpecifier.text : undefined
+      const target = spec?.startsWith('.') ? resolveModule(file, spec) : undefined
       if (st.exportClause === undefined) {
-        const target = spec?.startsWith('.') ? resolveModule(file, spec) : undefined
-        const found = target === undefined ? [] : exportedDeclarations(target, name, seen)
-        if (found.length > 0) return found
-      } else if (ts.isNamedExports(st.exportClause)) {
+        const found = target === undefined ? none : exportBinding(target, name, seen)
+        if (found.decls.length > 0 || found.namespace !== undefined) return found
+      } else if (ts.isNamespaceExport(st.exportClause)) {
+        if (st.exportClause.name.text === name) return target === undefined ? none : { decls: [], namespace: target }
+      } else {
         const el = st.exportClause.elements.find((e) => e.name.text === name && !e.isTypeOnly)
         if (el === undefined) continue
         const orig = (el.propertyName ?? el.name).text
-        if (spec === undefined) {
-          const local = localDeclarations(sf, orig)
+        if (spec === undefined) return local(orig)
 
-          return local.length > 0 ? local : viaImport(orig)
-        }
-        const target = spec.startsWith('.') ? resolveModule(file, spec) : undefined
-
-        return target === undefined ? [] : exportedDeclarations(target, orig, seen)
+        return target === undefined ? none : exportBinding(target, orig, seen)
       }
-    } else if (exported(st) && localDeclarations(sf, name).includes(st)) {
-      return localDeclarations(sf, name)
+    } else if (hasModifier(st, ts.SyntaxKind.ExportKeyword) && localDeclarations(sf, name).includes(st)) {
+      return local(name)
     }
   }
 
-  return []
+  return none
+}
+
+/** The declaration statements behind `name` as exported by `file` (see `exportBinding`). */
+export function exportedDeclarations(file: string, name: string): ts.Statement[] {
+  return exportBinding(file, name).decls
+}
+
+/**
+ * Every runtime name reachable through `file`'s exports, with namespace
+ * re-exports expanded (`ns` → `ns`, `ns._x`, …), each with its binding. A
+ * namespace object exposes its module's every export at runtime, so it must
+ * not smuggle a `_` name or an `@internal` declaration past rules 8 and 9.
+ */
+export function reachableExports(
+  file: string,
+  prefix = '',
+  seenModules: Set<string> = new Set(),
+): Array<{ name: string; binding: ExportBinding }> {
+  if (seenModules.has(file)) return []
+  seenModules.add(file)
+  const out: Array<{ name: string; binding: ExportBinding }> = []
+  for (const n of runtimeExportNames(file)) {
+    const binding = exportBinding(file, n)
+    out.push({ name: prefix + n, binding })
+    if (binding.namespace !== undefined) out.push(...reachableExports(binding.namespace, `${prefix}${n}.`, seenModules))
+  }
+
+  return out
 }
 
 /** Does a declaration statement carry a JSDoc `@internal` tag? */
@@ -604,13 +686,54 @@ export function internalTagFailures(
     // Compiler ABI is internal to users but must stay on the main entry.
     const allowed = new Set(abi[p.name] ?? [])
     for (const [subpath, file] of publicEntries(p)) {
-      for (const n of runtimeExportNames(file)) {
+      for (const { name: n, binding } of reachableExports(file)) {
         if (subpath === '.' && allowed.has(n)) continue
-        if (!exportedDeclarations(file, n).some(hasInternalTag)) continue
+        if (!binding.decls.some(hasInternalTag)) continue
         const spec = subpath === '.' ? p.name : `${p.name}${subpath.slice(1)}`
         failures.push(
           `${spec} exports \`${n}\`, whose declaration is tagged \`@internal\`. Move it to ${p.name}/internal ` +
             '(see "What counts as public API" on the stability page), or, if it is public API, delete the tag.',
+        )
+      }
+    }
+  }
+
+  return failures
+}
+
+const INTERNAL_IMPORT_RE = /(?:from\s*|import\s*\(?\s*)['"](@pyreon\/[a-z0-9-]+)\/(internal|internal-server|compat)['"]/g
+
+/** An exact published range: `workspace:*` (published as `X.Y.Z`) or a bare `X.Y.Z`. */
+export function isExactRange(range: string): boolean {
+  return range === 'workspace:*' || /^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(range)
+}
+
+/**
+ * Rule 10: lockstep pins. A package whose shipped source imports another
+ * package's internal subpath (`./internal`, `./internal-server`, or
+ * `@pyreon/core/compat`) relies on that package's internals, which change in
+ * any release. It must declare the target in `dependencies` or
+ * `peerDependencies` with an EXACT range (`workspace:*`, which publishes as
+ * `X.Y.Z`), so an install can never pair it with another version.
+ */
+export function internalImportPinFailures(pkgs: readonly PublishedPackage[]): string[] {
+  const failures: string[] = []
+  for (const p of pkgs) {
+    const targets = new Map<string, string>()
+    for (const file of listSourceFiles(join(p.dir, 'src'))) {
+      for (const m of readFileSync(file, 'utf8').matchAll(INTERNAL_IMPORT_RE)) {
+        const target = m[1] as string
+        if (target !== p.name && !targets.has(target)) targets.set(target, `${target}/${m[2]} (${relative(p.dir, file)})`)
+      }
+    }
+    for (const [target, where] of targets) {
+      const range = p.pkg.dependencies?.[target] ?? p.pkg.peerDependencies?.[target]
+      if (range === undefined) {
+        failures.push(`${p.name} imports ${where} but does not declare ${target} in dependencies or peerDependencies.`)
+      } else if (!isExactRange(range)) {
+        failures.push(
+          `${p.name} imports ${where} but declares ${target} as "${range}". Internal subpaths change in any ` +
+            'release, so the edge must be pinned exact: use "workspace:*" (published as the exact version).',
         )
       }
     }
@@ -629,10 +752,9 @@ export function underscoreExportFailures(
     const allowed = new Set(abi[p.name] ?? [])
     const onMain = new Set<string>()
     for (const [subpath, file] of publicEntries(p)) {
-      const names = runtimeExportNames(file)
-      for (const n of names) {
+      for (const { name: n } of reachableExports(file)) {
         if (subpath === '.') onMain.add(n)
-        if (!n.startsWith('_')) continue
+        if (!(n.split('.').pop() as string).startsWith('_')) continue
         if (subpath === '.' && allowed.has(n)) continue
         const spec = subpath === '.' ? p.name : `${p.name}${subpath.slice(1)}`
         failures.push(
@@ -890,6 +1012,9 @@ export async function runGate(repoRoot: string, write: boolean): Promise<string[
 
   // 9. `@internal`-tagged declarations are not on public entries
   failures.push(...internalTagFailures(pkgs))
+
+  // 10. importing another package's internal subpath pins it exact
+  failures.push(...internalImportPinFailures(pkgs))
 
   // 7. private packages carry no tier
   for (const p of listPrivatePackages(repoRoot)) {

@@ -62,8 +62,8 @@
     "prepublishOnly": "bun run build"
   },
   "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "21.0.4",
