@@ -108,7 +108,10 @@ dependencies {
     // import; the DEP lives here — an emit whose import resolves but
     // whose artifact is missing fails only at the real gradle build,
     // the stub-masked-symbol class).
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    // Coil 3 has no network fetcher by default: without this an http(s)
+    // model renders nothing. Rides the okhttp artifact this file declares.
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
     implementation("androidx.core:core-ktx:1.19.1")
     // useBiometrics: BiometricManager + BiometricPrompt (PyreonBiometricsAndroid.kt).
     implementation("androidx.biometric:biometric:1.1.0")

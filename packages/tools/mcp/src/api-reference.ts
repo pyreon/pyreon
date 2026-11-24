@@ -2559,7 +2559,7 @@ describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, star
     signature: '(date, calendar: BusinessCalendar) => boolean',
     example: `isBusinessDay('2026-11-18', {})   // => true
 isBusinessDay('2026-12-25', { holidays: ['2026-12-25'] })   // => false`,
-    notes: `[EXPERIMENTAL] Not on the calendar's \`weekend\` (default Saturday and Sunday) and not a holiday. Added in v0.53.0.`,
+    notes: `[EXPERIMENTAL] Not on the calendar's \`weekend\` (default Saturday and Sunday) and not a holiday. A date with its own \`specialHours\` entry is a business day when that entry has a window (even on a weekend or holiday), and not one when it is empty. Added in v0.53.0.`,
   },
 
   'schedule/addBusinessDays': {
@@ -2611,6 +2611,13 @@ isOpen('2026-11-20T17:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{
     signature: '(at: PlainDateTime, calendar) => PlainDateTime | null',
     example: `nextOpening('2026-11-20T18:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T09:00'`,
     notes: '[EXPERIMENTAL] The next time the calendar opens, strictly after `at`; `null` when it never opens within ten years. Added in v0.53.0.',
+  },
+
+  'schedule/openingWindows': {
+    signature: '(date: PlainDate, calendar) => Interval[]',
+    example: `openingWindows('2026-12-24', { hours: { 4: [{ from: '09:00', to: '17:00' }] }, specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } })   // => [{ start: '2026-12-24T09:00', end: '2026-12-24T13:00' }]
+openingWindows('2026-11-21', { hours: { 5: [{ from: '22:00', to: '02:00' }] } })   // => [{ start: '2026-11-21T00:00', end: '2026-11-21T02:00' }]`,
+    notes: `[EXPERIMENTAL] The times the calendar is open within one date (midnight to midnight), in order: the same answer \`isOpen\` gives for every moment of it. Includes the tail of an overnight window that started the day before (even when the date itself is closed), and ends a window that runs past midnight at the next day's \`T00:00\`. One interpretation of a calendar for views: \`@pyreon/calendar\` shades business hours with it. Added in v0.53.0.`,
   },
 
   'schedule/nextClosing': {
@@ -2681,9 +2688,15 @@ overlaps({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-
   },
 
   'schedule/BusinessCalendar': {
-    signature: 'interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); timeZone? }',
-    example: `const cal: BusinessCalendar = { holidays: ['2026-12-25'] }`,
-    notes: '[EXPERIMENTAL] Business days and opening hours. No holiday data is shipped: pass a list or a predicate. Added in v0.53.0.',
+    signature: 'interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); specialHours?: SpecialHours; timeZone? }',
+    example: `const cal: BusinessCalendar = { holidays: ['2026-12-25'], specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } }`,
+    notes: '[EXPERIMENTAL] Business days and opening hours. No holiday data is shipped: pass a list or a predicate. `specialHours` gives particular dates their own windows (a shortened day, a Sunday opening); they replace the weekday hours and decide the date over `weekend` and `holidays`. Added in v0.53.0.',
+  },
+
+  'schedule/SpecialHours': {
+    signature: 'type SpecialHours = { [date: PlainDate]: OpeningWindow[] } | ((date: PlainDate) => OpeningWindow[] | undefined)',
+    example: `const special: SpecialHours = { '2026-12-24': [{ from: '09:00', to: '13:00' }], '2026-12-31': [] }`,
+    notes: '[EXPERIMENTAL] Opening windows of particular dates, as a map or a function (`undefined` = the usual hours). An empty list closes the date. Used by every business-day and business-time function. Added in v0.53.0.',
   },
 
   'schedule/WorkingHours': {
@@ -2793,6 +2806,13 @@ isOpen({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')  
     example: `import { nextOpening } from '@pyreon/schedule/fp'
 nextOpening({ hours: { 4: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => '2026-11-19T09:00'`,
     notes: '[EXPERIMENTAL] Value-last `nextOpening`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.openingWindows': {
+    signature: '(calendar) => (date: PlainDate) => Interval[]',
+    example: `import { openingWindows } from '@pyreon/schedule/fp'
+openingWindows({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18')   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T17:00' }]`,
+    notes: '[EXPERIMENTAL] Value-last `openingWindows`. Added in v0.53.0.',
   },
 
   'schedule/fp.nextClosing': {
@@ -3455,14 +3475,14 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
   },
 
   'runtime-dom/_tpl': {
-    signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined, flags?: number): NativeItem',
+    signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined, flags?: number, key?: string | number | null): NativeItem',
     example: `// Compiler output for <div class="box">{text()}</div>:
 _tpl("<div class=\\"box\\"> </div>", (__root) => {
   const __t0 = __root.firstChild as Text
   const __d0 = _bindText(text, __t0)
   return () => { __d0() }
 })`,
-    notes: 'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The optional third argument is a bit set the compiler computes: `1` when a template is emitted as a component child (that item is built once but may be torn down and mounted again — `<Show>` re-showing — so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting), and `2` when the template is rooted at a bare SVG element such as `<g>` or `<path>` (the string is parsed inside an `<svg>` wrapper so it lands in the SVG namespace; the compiler decides this from the root tag, so the runtime carries no SVG tag list). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
+    notes: 'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The optional third argument is a bit set the compiler computes: `1` when a template is emitted as a component child (that item is built once but may be torn down and mounted again — `<Show>` re-showing — so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting), and `2` when the template is rooted at a bare SVG element such as `<g>` or `<path>` (the string is parsed inside an `<svg>` wrapper so it lands in the SVG namespace; the compiler decides this from the root tag, so the runtime carries no SVG tag list). The optional fourth argument is the JSX `key` of a keyed root (`<tr key={row.id}>`, flag `1` always set): the item carries it as `key`, the same field a VNode carries its key in, so the keyed `.map()` reconciler and components reading the keys of their children see it unchanged, and the item builds only when it is mounted (a keyed `.map()` re-runs for every row and mounts only the new keys). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
     mistakes: `- COMPILER-EMITTED — never hand-write \`_tpl()\`; the html string + the bind walks (\`.firstChild\`/\`.nextSibling\` captures) are generated to match the JSX exactly, and a hand-written mismatch corrupts the ref walks
 - The html is parsed + cached per DISTINCT string (module-level) then \`cloneNode(true)\`d — a dynamically-built html string defeats the cache (a \`<template>\` parse per unique string)
 - Bindings run against the CLONE after ALL node references are captured (the two-phase ref-hoist) — this is what keeps a dynamic slot before static siblings from corrupting their walks; the capture-before-mutate ordering is load-bearing, not cosmetic`,

@@ -5,15 +5,15 @@
   "rivalMeasured": "svelte 5.57.3",
   "hook": {
     "eyebrow": "Pyreon vs Svelte",
-    "title": "2,047 components. Mounted 3× faster than Svelte 5.",
+    "title": "2,047 components. Mounted 3.6× faster than Svelte 5.",
     "lede": "Svelte compiles components into direct DOM updates. So does Pyreon, from plain TSX instead of a `.svelte` file, and its server rendering came out ahead of Svelte 5 at 10, 100 and 1,000 rows. Miss writing `count++`? Plain Mode lets you."
   },
   "proof": [
     {
-      "stat": "3.0×",
-      "label": "faster to mount a 2,047-component tree: 3.59 ms against 10.80 ms",
-      "condition": "real Chromium, run 1 table of a two-run record",
-      "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+      "stat": "3.6×",
+      "label": "faster to mount a 2,047-component tree: 3.09 ms against 11.02 ms",
+      "condition": "real Chromium, run 1 table of a two-run refresh (2026-11-24)",
+      "source": "BENCHMARKS.md 2026-11-24 §2a"
     },
     {
       "stat": "1.55×",
@@ -22,10 +22,10 @@
       "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243"
     },
     {
-      "stat": "1.9×",
-      "label": "faster swapping two rows in 1,000: 805 µs against 1.50 ms",
-      "condition": "real Chromium, run 1 table",
-      "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 87"
+      "stat": "2.0×",
+      "label": "faster swapping two rows in 1,000: 745 µs against 1.49 ms",
+      "condition": "real Chromium, run 1 table (1.8× in run 2)",
+      "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
     }
   ],
   "table": {
@@ -34,10 +34,10 @@
     "rows": [
       {
         "topic": "Mount a deep tree (2,047 components)",
-        "pyreon": "3.59 ms",
-        "rival": "10.80 ms",
+        "pyreon": "3.09 ms",
+        "rival": "11.02 ms",
         "verdict": "pyreon",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119 (run 1)"
+        "source": "BENCHMARKS.md 2026-11-24 §2a (run 1)"
       },
       {
         "topic": "Compiled SSR, 10 / 100 / 1,000 rows",
@@ -48,24 +48,24 @@
       },
       {
         "topic": "Create 10,000 rows",
-        "pyreon": "72.64 ms",
-        "rival": "87.51 ms",
+        "pyreon": "73.09 ms",
+        "rival": "87.54 ms",
         "verdict": "pyreon",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 90 (run 1)"
+        "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
       },
       {
         "topic": "Swap two rows in 1,000",
-        "pyreon": "805 µs",
-        "rival": "1.50 ms",
+        "pyreon": "745 µs",
+        "rival": "1.49 ms",
         "verdict": "pyreon",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 87 (run 1)"
+        "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
       },
       {
         "topic": "Memo wall: passthrough",
-        "pyreon": "450 / 451 µs",
-        "rival": "487 / 487 µs (Svelte was the fastest rival); Pyreon 1.08× in both runs",
+        "pyreon": "410 / 407 µs",
+        "rival": "438 / 437 µs (Svelte was the fastest rival); Pyreon 1.07× in both runs",
         "verdict": "pyreon",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 124"
+        "source": "BENCHMARKS.md 2026-11-24 §2a"
       },
       {
         "topic": "12-field form, keystroke (blur mode)",
@@ -83,10 +83,10 @@
       },
       {
         "topic": "Bundle, same keyed-table app (gzip)",
-        "pyreon": "17.2 KB",
-        "rival": "16.1 KB: Svelte is 1.1 KB smaller",
+        "pyreon": "18.5 KB",
+        "rival": "16.1 KB: Svelte is 2.4 KB smaller",
         "verdict": "rival",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+        "source": "BENCHMARKS.md 2026-11-24 §7"
       },
       {
         "topic": "Authoring",
@@ -142,7 +142,7 @@
   "pickTheOther": {
     "title": "When to pick Svelte",
     "items": [
-      "The smallest output matters more than mount or update cost: the same app is 16.1 KB in Svelte and 17.2 KB in Pyreon.",
+      "The smallest output matters more than mount or update cost: the same app is 16.1 KB in Svelte and 18.5 KB in Pyreon.",
       "You like single-file components with template blocks and scoped CSS.",
       "You want SvelteKit and a stable major version with a long production record."
     ]
@@ -163,28 +163,28 @@
   },
   "sources": [
     {
-      "claim": "Deep tree Svelte 10.80 ms vs Pyreon 3.59 ms (run 1)",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+      "claim": "Deep tree Svelte 11.02 ms vs Pyreon 3.09 ms (run 1)",
+      "path": "BENCHMARKS.md 2026-11-24 §2a"
     },
     {
       "claim": "Compiled SSR vs Svelte 5: 2.18 / 18.08 / 160.5 vs 1.80 / 11.64 / 109.9 µs, one run",
       "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243"
     },
     {
-      "claim": "Create 10,000 87.51 ms, swap 1.50 ms for Svelte (run 1)",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 87, 90"
+      "claim": "Create 10,000 87.54 ms, swap 1.49 ms for Svelte (run 1)",
+      "path": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
     },
     {
-      "claim": "Memo passthrough 450/451 vs Svelte 487/487 µs, 1.08× both runs",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 124"
+      "claim": "Memo passthrough 410 / 407 vs Svelte 438 / 437 µs, 1.07× both runs",
+      "path": "BENCHMARKS.md 2026-11-24 §2a"
     },
     {
       "claim": "dbmon three-way tie including Svelte",
       "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 118"
     },
     {
-      "claim": "Bundle Svelte 16.1 KB vs Pyreon 17.2 KB",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+      "claim": "Bundle Svelte 16.1 KB vs Pyreon 18.5 KB",
+      "path": "BENCHMARKS.md 2026-11-24 §7"
     },
     {
       "claim": "Felte keystroke blur 700 vs 60 µs, one run",

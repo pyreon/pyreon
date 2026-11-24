@@ -124,8 +124,15 @@ describe('template holes are walked', () => {
     expect(out).toContain('<a href={() => p.u}>x</a>')
   })
 
-  it('a keyed item root stays on h() — its children still compile', () => {
+  it('a keyed item root is ONE template, its key on the item', () => {
     const out = client('const A = (p) => <ul>{p.xs.map((x) => <li key={x.id}><b>{x.n}</b></li>)}</ul>')
+    expect(domJsxLeft(out)).toEqual([])
+    expect(out).toContain('_tpl("<li><b></b></li>"')
+    expect(out).toContain('}, 1, x.id)')
+  })
+
+  it('a keyed item root with a spread stays on h() — its children still compile', () => {
+    const out = client('const A = (p) => <ul>{p.xs.map((x) => <li key={x.id} {...x.a}><b>{x.n}</b></li>)}</ul>')
     expect(domJsxLeft(out)).toEqual(['li'])
     expect(out).toContain('_tpl("<b></b>"')
   })
@@ -185,6 +192,8 @@ describe.runIf(nativeTransform !== null)('template holes: the native backend is 
     // An optional call's callback param is a value, not props (the native walk
     // skipped the callback flags for `?.(…)`, so `r.label` was wrapped).
     ['optional-chained keyed map', `${SIG}const A = () => { const rows = signal([]); return <ul>{rows()?.map((r) => <li key={r.id}>{r.label}</li>)}</ul> }`],
+    // The same on the h() path (a keyed root with a spread stays h()).
+    ['optional-chained keyed map on h()', `${SIG}const A = () => { const rows = signal([]); return <ul>{rows()?.map((r) => <li key={r.id} {...r.a}>{r.label}</li>)}</ul> }`],
     ['For row with a walked map', 'const A = (p) => <ul><For each={p.rows} by={(r) => r.id}>{(r) => <li><b>{r.name.split(" ").map((w) => <i>{w}</i>)}</b></li>}</For></ul>'],
     ['residual component arm under foreignObject', 'const A = (p) => <svg><foreignObject><div>{p.on ? <b>x</b> : <Comp />}<i /></div></foreignObject></svg>'],
   ]
@@ -204,10 +213,12 @@ describe.runIf(nativeTransform !== null)('template holes: the native backend is 
   }
 
   it('an optional-chained map item param is not wrapped as a props read', () => {
-    const src = EXTRA[0]![1]
-    const rs = nativeTransform!(src, 'hole.tsx', false, null, false, undefined, false, true).code
-    expect(rs).toContain('{r.label}')
-    expect(rs).not.toContain('() => r.label')
+    const templated = nativeTransform!(EXTRA[0]![1], 'hole.tsx', false, null, false, undefined, false, true).code
+    expect(templated).toContain('_setChild(__root, r.label)')
+    expect(templated).not.toContain('() => r.label')
+    const hPath = nativeTransform!(EXTRA[1]![1], 'hole.tsx', false, null, false, undefined, false, true).code
+    expect(hPath).toContain('{r.label}')
+    expect(hPath).not.toContain('() => r.label')
   })
 })
 
@@ -238,7 +249,9 @@ describe('template-bail census over examples/', () => {
     // 79 → 74: the corpus no longer counts other frameworks' JSX (`collectTsx` skips a
     // project whose package.json declares no `@pyreon/*` package, e.g. the rival apps of
     // `examples/stacks-bench/apps`), which had been compiled here as if it were Pyreon.
-    expect(r.buckets['in-template'] ?? 0).toBeLessThanOrEqual(74)
+    // 74 → 52: keyed roots are templated (the key rides on the `_tpl` item), so
+    // the keyed `.map` item roots and their children left this bucket.
+    expect(r.buckets['in-template'] ?? 0).toBeLessThanOrEqual(52)
   })
 
   it('element jsx() calls in total stay at or below the walked level', () => {
@@ -249,6 +262,7 @@ describe('template-bail census over examples/', () => {
     // 350 → 331: 328 once other frameworks' projects are skipped (see above), + 3 from the
     // real-bench catalogue app's Pyreon arm (`examples/real-bench/app/arms/pyreon`), all
     // `child-of-h`: idiomatic arm code, not reshaped for the compiler (its contract forbids it).
-    expect(r.total).toBeLessThanOrEqual(331)
+    // 331 → 309: keyed roots are templated (see the in-template ceiling above).
+    expect(r.total).toBeLessThanOrEqual(309)
   })
 })

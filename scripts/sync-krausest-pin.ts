@@ -79,9 +79,20 @@ function writePin(pkg: EntryPackageJson, version: string): void {
   writeFileSync(PACKAGE_JSON, `${JSON.stringify(pkg, null, 2)}\n`)
 }
 
-/** npm resolves the lockfile without installing anything or running a package script. */
+/**
+ * npm resolves the lockfile without installing anything or running a package script.
+ *
+ * `--prefer-online` revalidates every cached packument. The compiler's
+ * platform binaries are published by a later job than the JS packages, so a
+ * cache filled in between knows `@pyreon/compiler@x.y.z` but not
+ * `@pyreon/compiler-<platform>@x.y.z`. On 0.54.0 npm then wrote version-less
+ * placeholder entries for two of the binaries (`node_modules/@pyreon/compiler/
+ * node_modules/@pyreon/compiler-darwin-arm64: { dev, optional }`), which
+ * `checkLockfile` rejects.
+ */
 function regenerateLockfile(): void {
-  const result = spawnSync('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'], {
+  const args = ['install', '--package-lock-only', '--ignore-scripts', '--prefer-online', '--no-audit', '--no-fund']
+  const result = spawnSync('npm', args, {
     cwd: ENTRY_DIR,
     stdio: 'inherit',
   })

@@ -18,13 +18,17 @@
  *     trigger;
  *  4. a job the queue SKIPS (`queueSkipped`: its only coverage is the PR) uses
  *     the light-mode condition at all, including its helper jobs;
- *  5. a direct `PR_CI_MODE` read is not bounded to `pull_request`, or the
+ *  5. a step inside a light-skipped job can run on pull_request but not on
+ *     merge_group (its `if:` is evaluated, see workflow-yaml.ts), so it would
+ *     run nowhere before merge;
+ *  6. a direct `PR_CI_MODE` read is not bounded to `pull_request`, or the
  *     `Install` mode step can set `light=true` on another event.
  */
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseJobBlocks } from './check-ci-fail-fast'
+import { type YamlValue, evaluate, isMap, parseWorkflowYaml, truthOf, UNKNOWN } from './workflow-yaml'
 
 interface RequiredJob {
   /** The check name branch protection pins. */
@@ -32,13 +36,20 @@ interface RequiredJob {
   file: string
   /** True when the merge queue skips this job today (the PR is its only coverage). */
   queueSkipped?: boolean
+  /**
+   * Runs on the pull request in light mode too, for a measured reason: `Build`
+   * is the job PRs fail most (24% of PR runs, 2026-11-18 → 11-23, none green on a re-run),
+   * and its PR-only steps judge the PR's own diff. In the queue each of those
+   * failures would eject a whole group.
+   */
+  prAlways?: boolean
 }
 
 // `CodeQL` itself is posted by code scanning after the analysis upload, not by a job.
 export const REQUIRED_JOBS: RequiredJob[] = [
   { context: 'Install', file: 'ci.yml' },
   { context: 'Fast Gates', file: 'ci.yml' },
-  { context: 'Build', file: 'ci.yml' },
+  { context: 'Build', file: 'ci.yml', prAlways: true },
   { context: 'Test', file: 'ci.yml' },
   { context: 'Test (browser)', file: 'ci.yml' },
   { context: 'Release Build', file: 'ci.yml' },
@@ -91,6 +102,57 @@ function jobIf(body: string): string {
   return out.join(' ')
 }
 
+/**
+ * A job light mode skips on the pull request runs only in the queue and on
+ * main, so a step inside it that runs on the PR but not in a merge group would
+ * run nowhere before merge. Read structurally: a step may start with `- uses:`
+ * or `- if:`, quote either way, and a condition such as
+ * `github.event_name != 'push' && github.event_name != 'merge_group'` mentions
+ * merge_group while excluding it. So each step's `if:` is EVALUATED for a
+ * pull_request and for a merge_group event; a step that can run on the PR but
+ * is known not to run in a group is the violation (anything the evaluator
+ * cannot decide, such as a step output, is not).
+ */
+function lightStepViolations(workflows: Record<string, string>): string[] {
+  const violations: string[] = []
+  for (const file of Object.keys(workflows).sort()) {
+    let doc: YamlValue
+    try {
+      doc = parseWorkflowYaml(workflows[file]!)
+    } catch (error) {
+      violations.push(`${file}: cannot be read: ${(error as Error).message}`)
+      continue
+    }
+    const jobs = isMap(doc) ? doc.jobs : undefined
+    if (!isMap(jobs)) continue
+    for (const [id, job] of Object.entries(jobs)) {
+      if (!isMap(job) || typeof job.if !== 'string' || !LIGHT.test(job.if)) continue
+      const name = typeof job.name === 'string' ? job.name : id
+      const steps = Array.isArray(job.steps) ? job.steps : []
+      steps.forEach((step, index) => {
+        if (!isMap(step) || typeof step.if !== 'string') return
+        const label =
+          typeof step.name === 'string' ? step.name : typeof step.uses === 'string' ? step.uses : `step ${index + 1}`
+        let onPr: boolean | typeof UNKNOWN
+        let inGroup: boolean | typeof UNKNOWN
+        try {
+          onPr = truthOf(evaluate(step.if, { 'github.event_name': 'pull_request' }, true))
+          inGroup = truthOf(evaluate(step.if, { 'github.event_name': 'merge_group' }, true))
+        } catch (error) {
+          violations.push(`${file}: cannot read the if: of step "${label}" of "${name}": ${(error as Error).message}`)
+          return
+        }
+        if (onPr !== false && inGroup === false) {
+          violations.push(
+            `${file}: step "${label}" of "${name}" runs on pull_request but not on merge_group, and light mode skips "${name}" on the pull request, so it would run nowhere before merge; admit merge_group in its if:`,
+          )
+        }
+      })
+    }
+  }
+  return violations
+}
+
 export function findLightPrCiViolations(workflows: Record<string, string>): string[] {
   const violations: string[] = []
   const jobsByFile = new Map<string, ReturnType<typeof parseJobBlocks>>()
@@ -110,6 +172,11 @@ export function findLightPrCiViolations(workflows: Record<string, string>): stri
     if (!hasTrigger(text, 'merge_group')) {
       violations.push(
         `${req.file}: owns required context "${req.context}" but has no merge_group trigger (the queue would wait for it forever)`,
+      )
+    }
+    if (req.prAlways && LIGHT.test(jobIf(job.body))) {
+      violations.push(
+        `${req.file}: "${req.context}" must keep running on the pull request in light mode (its failures are frequent and judge the PR's own diff); it must not use the light-mode condition`,
       )
     }
     if (req.queueSkipped && LIGHT.test(jobIf(job.body))) {
@@ -154,6 +221,9 @@ export function findLightPrCiViolations(workflows: Record<string, string>): stri
       }
     }
   }
+
+  // A PR-only step inside a light-skipped job runs nowhere before merge.
+  violations.push(...lightStepViolations(workflows))
 
   // The single source of `pr-light`: only a pull_request run may set it.
   const ci = workflows['ci.yml']

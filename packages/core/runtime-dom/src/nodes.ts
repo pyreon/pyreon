@@ -51,6 +51,22 @@ import { _abortOwnerFrame, _closeOwnerFrame, _currentScope, _effectOwned, _frame
  */
 let bulkDetachParent: Node | null = null
 
+/**
+ * Run `fn` (a teardown) with `parent` declared as leaving as a unit, so every
+ * removal of a node inside it through `detachNode` is skipped. Used by a
+ * claimed #4599 region (`claimRegion` in hydrate.ts): its element leaves with
+ * its template, and a bind that throws keeps its server markup.
+ */
+export function _detachAsUnit(parent: Node, fn: () => void): void {
+  const prev = bulkDetachParent
+  bulkDetachParent = parent
+  try {
+    fn()
+  } finally {
+    bulkDetachParent = prev
+  }
+}
+
 /** Remove `node` from its parent, unless a bulk detach makes it redundant. */
 export function detachNode(node: Node): void {
   const p = node.parentNode
@@ -1475,7 +1491,17 @@ let rowCollector: EffectScope | null = null
 
 function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null } {
   const prev = _currentScope()
-  const collector = rowCollector ?? (rowCollector = effectScope())
+  // CLAIM the pooled collector for this row before its callback runs. A row
+  // can build another `<For>` whose rows run their callbacks inside this one;
+  // reading the shared slot there handed THIS row's collector to the inner
+  // list's first row, which then stopped it on removal: whatever the outer row
+  // had registered (an `effect()` in its callback, in 0.54 the inner `<For>`'s
+  // own effect) was disposed with an unrelated row (#4800). Only a REUSABLE
+  // collector goes back to the pool: nothing registered, and nobody holds it
+  // (`getCurrentScope()` pins it; the holder may register later, e.g.
+  // `scope.runInScope(...)` after an await, so the row keeps it).
+  const collector = rowCollector ?? effectScope()
+  rowCollector = null
   setCurrentScope(collector)
   // Template bindings the row builds are owned by the row's cleanup, not the
   // collector; this frame owns them only if the callback throws.
@@ -1485,16 +1511,18 @@ function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null 
     result = fn()
   } catch (err) {
     _abortOwnerFrame(ownerFrame)
-    // A half-filled collector must never be handed to the next row.
+    // A half-filled collector must never be handed to the next row: it is
+    // stopped and not returned to the pool.
     collector.stop()
-    rowCollector = null
     throw err
   } finally {
     setCurrentScope(prev)
   }
   _closeOwnerFrame(ownerFrame)
-  if (collector._isEmpty()) return { result, scope: null }
-  rowCollector = null
+  if (collector._isDroppable()) {
+    rowCollector = collector
+    return { result, scope: null }
+  }
   return { result, scope: collector }
 }
 

@@ -538,11 +538,12 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('Dialog(')) {
     imports.push('import androidx.compose.ui.window.Dialog')
   }
-  // Remote image (<Image src="http…">): AsyncImage is Coil's
-  // composable — needs the import AND the io.coil-kt:coil-compose dep
-  // (wired into the host + scaffold gradle).
+  // Remote image (<Image src="http…">): AsyncImage is Coil 3's
+  // composable — needs the import AND the io.coil-kt.coil3:coil-compose +
+  // coil-network-okhttp deps (wired into the host + scaffold gradle; Coil 3
+  // loads nothing over http without a network artifact).
   if (emitted.includes('AsyncImage(')) {
-    imports.push('import coil.compose.AsyncImage')
+    imports.push('import coil3.compose.AsyncImage')
   }
   // Icon emit (PR-1.3): compile-time Icons.Filled references need the
   // Icons object + one import per used glyph (Kotlin star imports are

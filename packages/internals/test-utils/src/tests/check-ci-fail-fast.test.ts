@@ -59,7 +59,7 @@ ${name.includes('cell') || name === 'e2e-suite' ? '    strategy:\n      fail-fas
   )
   .join('\n')}
   fast-gates:
-${overrides['fast-gates'] ?? "    needs: install\n    if: !cancelled() && needs.install.result == 'success'\n"}
+${overrides['fast-gates'] ?? '    runs-on: ubuntu-latest\n'}
   test:
     needs: [install, fast-gates, typecheck-cell, test-cell, e2e-suite, scaffold-smoke-cell]
     if: !cancelled()
@@ -293,15 +293,16 @@ describe('findCiFailFastViolations', () => {
     }
   })
 
-  it('rejects preflight that survives cancellation after Install succeeds', () => {
-    const bad = workflow({
-      'fast-gates': `    needs: install
-    if: always() && needs.install.result == 'success'
-`,
-    })
-    expect(findCiFailFastViolations(bad, aggregate)).toContain(
-      'Fast Gates must require Install success and respect workflow cancellation',
-    )
+  it('rejects a Fast Gates that waits for Install (an extra queue round)', () => {
+    for (const shape of [
+      "    needs: install\n    if: !cancelled() && needs.install.result == 'success'\n",
+      '    needs: install\n',
+      "    if: github.event_name != 'merge_group'\n",
+    ]) {
+      expect(findCiFailFastViolations(workflow({ 'fast-gates': shape }), aggregate)).toContain(
+        'Fast Gates must not wait for Install: it runs at level 1, beside it (no needs:, no if:)',
+      )
+    }
   })
 
   it('rejects an expensive job that bypasses preflight', () => {

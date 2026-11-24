@@ -4,38 +4,54 @@ import type { Duration, PlainDate, PlainDateTime } from '@pyreon/time/core'
 import { DAY, HOUR, MINUTE, readDay, readWall, weekdayOf, writeDate, writeWall } from './civil'
 import { timeMs } from './durations'
 import { badRange, badValue, guard, show } from './errors'
-import type { BusinessCalendar } from './types'
+import type { BusinessCalendar, Interval } from './types'
 
 /** Days the search for a business day or an opening runs before it gives up (a calendar with no open day at all). */
 const MAX_SCAN_DAYS = 3660
 const MAX_STEPS = 1_000_000
 
+type Windows = [number, number][]
+
 interface Cal {
   weekend: boolean[]
   holiday: (day: number) => boolean
   /** Opening windows by weekday, in ms from midnight; a window may end after `DAY` (overnight). `null` when there are no hours. */
-  windows: [number, number][][] | null
+  windows: Windows[] | null
+  /** `specialHours`: windows by day number, or the caller's function. They replace the weekday's and win over `weekend` and `holidays`. */
+  special: Map<number, Windows> | ((day: number) => unknown) | undefined
   fn: string
+}
+
+/** What a calendar callback must answer: a check and its wording in the error. */
+interface Rule {
+  what: string
+  ok: (answer: unknown) => boolean
+  expect: string
+}
+
+const HOLIDAYS: Rule = { what: 'holidays predicate', ok: (v) => typeof v === 'boolean', expect: 'true or false' }
+const SPECIAL: Rule = { what: 'specialHours function', ok: (v) => v === undefined || Array.isArray(v), expect: 'an array of { from, to } (empty = closed) or undefined' }
+
+/** A calendar callback asked by day number; a `[Pyreon]` error when it throws or answers something the rule rejects. */
+function asker(fn: string, rule: Rule, f: (date: PlainDate) => unknown): (day: number) => unknown {
+  return (day) => {
+    const date = writeDate(day)
+    let answer: unknown
+
+    try {
+      answer = f(date)
+    } catch (error) {
+      return badRange(fn, `the ${rule.what} threw for ${date}: ${error instanceof Error ? error.message : String(error)}. A ${rule.what} must return ${rule.expect} for every date.`)
+    }
+    if (!rule.ok(answer)) return badRange(fn, `the ${rule.what} returned ${show(answer)} for ${date}. A ${rule.what} must return ${rule.expect} for every date.`)
+
+    return answer
+  }
 }
 
 function holidayTest(fn: string, holidays: BusinessCalendar['holidays']): (day: number) => boolean {
   if (holidays === undefined) return () => false
-  if (typeof holidays === 'function') {
-    return (day) => {
-      const date = writeDate(day)
-
-      let answer: unknown
-
-      try {
-        answer = holidays(date)
-      } catch (error) {
-        return badRange(fn, `the holidays predicate threw for ${date}: ${error instanceof Error ? error.message : String(error)}. A holidays predicate must return a boolean for every date.`)
-      }
-      if (typeof answer !== 'boolean') return badRange(fn, `the holidays predicate returned ${show(answer)} for ${date}. A holidays predicate must return true or false for every date.`)
-
-      return answer
-    }
-  }
+  if (typeof holidays === 'function') return asker(fn, HOLIDAYS, holidays) as (day: number) => boolean
   if (!Array.isArray(holidays)) return badValue(fn, 'holidays to be an array of PlainDate or a predicate (date) => boolean', holidays)
   const set = new Set<number>()
 
@@ -51,40 +67,68 @@ function todOf(fn: string, v: unknown): number {
   return t.hour * HOUR + t.minute * MINUTE + t.second * 1000 + t.millisecond
 }
 
-function windowsOf(fn: string, hours: NonNullable<BusinessCalendar['hours']>): [number, number][][] {
-  const out: [number, number][][] = [[], [], [], [], [], [], [], []]
+/** One list of `{ from, to }` windows as merged, sorted ms intervals from midnight (overnight windows end after `DAY`). */
+function windowList(fn: string, label: string, list: unknown): Windows {
+  if (!Array.isArray(list)) return badValue(fn, `${label} to be an array of { from, to }`, list)
+  const merged: Windows = []
+
+  for (const entry of list as { from: unknown; to: unknown }[]) {
+    const from = todOf(fn, entry?.from)
+    let to = todOf(fn, entry?.to)
+
+    if (to === from && from !== 0) return badRange(fn, `the window ${show(entry)} is empty (from equals to). Remove it; for a whole day use { from: "00:00", to: "00:00" }.`)
+    if (to <= from) to += DAY
+    merged.push([from, to])
+  }
+  merged.sort((a, b) => a[0] - b[0])
+  const joined: Windows = []
+
+  for (const m of merged) {
+    const last = joined[joined.length - 1]
+
+    if (last !== undefined && m[0] <= last[1]) last[1] = Math.max(last[1], m[1])
+    else joined.push([m[0], m[1]])
+  }
+
+  return joined
+}
+
+function windowsOf(fn: string, hours: NonNullable<BusinessCalendar['hours']>): Windows[] {
+  const out: Windows[] = [[], [], [], [], [], [], [], []]
 
   if (typeof hours !== 'object' || hours === null) return badValue(fn, 'hours to be an object { 1: [{ from, to }], ... }', hours)
   for (const key of Object.keys(hours)) {
     const w = Number(key)
 
     if (!Number.isInteger(w) || w < 1 || w > 7) return badRange(fn, `hours has the key ${show(key)}; keys are ISO weekdays 1 (Monday) to 7 (Sunday).`)
-    const list = (hours as Record<string, unknown>)[key]
-
-    if (!Array.isArray(list)) return badValue(fn, `hours[${key}] to be an array of { from, to }`, list)
-    const merged: [number, number][] = []
-
-    for (const entry of list as { from: unknown; to: unknown }[]) {
-      const from = todOf(fn, entry?.from)
-      let to = todOf(fn, entry?.to)
-
-      if (to === from && from !== 0) return badRange(fn, `the window ${show(entry)} is empty (from equals to). Remove it; for a whole day use { from: "00:00", to: "00:00" }.`)
-      if (to <= from) to += DAY
-      merged.push([from, to])
-    }
-    merged.sort((a, b) => a[0] - b[0])
-    const joined: [number, number][] = []
-
-    for (const m of merged) {
-      const last = joined[joined.length - 1]
-
-      if (last !== undefined && m[0] <= last[1]) last[1] = Math.max(last[1], m[1])
-      else joined.push([m[0], m[1]])
-    }
-    out[w] = joined
+    out[w] = windowList(fn, `hours[${key}]`, (hours as Record<string, unknown>)[key])
   }
 
   return out
+}
+
+/** `specialHours` read once: a map from day number to windows, or the caller's function behind its checks. */
+function specialOf(fn: string, special: BusinessCalendar['specialHours']): Cal['special'] {
+  if (special === undefined) return undefined
+  if (typeof special === 'function') return asker(fn, SPECIAL, special)
+  if (typeof special !== 'object' || special === null || Array.isArray(special)) {
+    return badValue(fn, 'specialHours to be an object { "2026-12-24": [{ from, to }] } or a function (date) => windows | undefined', special)
+  }
+  const map = new Map<number, Windows>()
+
+  for (const key of Object.keys(special)) map.set(readDay(fn, 'a specialHours date', key), windowList(fn, `specialHours[${key}]`, (special as Record<string, unknown>)[key]))
+
+  return map
+}
+
+/** A date's own windows from `specialHours`, or `undefined` when it has none (the usual hours apply). */
+function specialOn(cal: Cal, day: number): Windows | undefined {
+  const sp = cal.special
+
+  if (sp === undefined || sp instanceof Map) return sp?.get(day)
+  const answer = sp(day)
+
+  return answer === undefined ? undefined : windowList(cal.fn, `specialHours(${writeDate(day)})`, answer)
 }
 
 function calendarOf(fn: string, calendar: BusinessCalendar | undefined, needHours: boolean): Cal {
@@ -97,15 +141,35 @@ function calendarOf(fn: string, calendar: BusinessCalendar | undefined, needHour
     if (!Number.isInteger(w) || w < 1 || w > 7) return badRange(fn, `weekend entries are ISO weekdays 1 to 7, got ${show(w)}.`)
     weekend[w] = true
   }
-  if (needHours && c.hours === undefined) return badRange(fn, 'the calendar has no hours, so there is no working time to count. Add hours: { 1: [{ from: "09:00", to: "17:00" }], ... }.')
+  const special = specialOf(fn, c.specialHours)
 
-  return { weekend, holiday: holidayTest(fn, c.holidays), windows: c.hours === undefined ? null : windowsOf(fn, c.hours), fn }
+  // Without weekly hours, a specialHours map needs a window somewhere; a function cannot be inspected (one that never opens is a calendar that never opens).
+  if (needHours && c.hours === undefined && (special instanceof Map ? ![...special.values()].some((w) => w.length > 0) : special === undefined)) {
+    return badRange(fn, 'the calendar has no hours, so there is no working time to count. Add hours: { 1: [{ from: "09:00", to: "17:00" }], ... } (specialHours alone needs at least one date with a window).')
+  }
+
+  return { weekend, holiday: holidayTest(fn, c.holidays), windows: c.hours === undefined ? null : windowsOf(fn, c.hours), special, fn }
 }
 
-const isOpenDay = (cal: Cal, day: number): boolean => !cal.weekend[weekdayOf(day)] && !cal.holiday(day)
+/** Whether a date is a business day: its own `specialHours` entry decides when it has one (empty = closed), else the weekend and holidays. */
+function isOpenDay(cal: Cal, day: number): boolean {
+  const own = specialOn(cal, day)
+
+  return own !== undefined ? own.length > 0 : !cal.weekend[weekdayOf(day)] && !cal.holiday(day)
+}
+
+/** The opening windows of a date: its `specialHours` entry, else its weekday's hours on a business day, else none. The one place hours are read. */
+function windowsOn(cal: Cal, day: number): Windows {
+  const own = specialOn(cal, day)
+
+  if (own !== undefined) return own
+
+  return !cal.weekend[weekdayOf(day)] && !cal.holiday(day) ? (cal.windows?.[weekdayOf(day)] ?? []) : []
+}
 
 /**
- * Is this date a business day: not on the calendar's `weekend` (default Saturday and Sunday) and not a holiday?
+ * Is this date a business day: not on the calendar's `weekend` (default Saturday and Sunday) and not a holiday? A date with
+ * its own `specialHours` entry is a business day when that entry has a window, whatever the weekend and holidays say.
  *
  * @example isBusinessDay('2026-11-18', {}) // => true
  * @example isBusinessDay('2026-11-21', {}) // => false
@@ -190,12 +254,10 @@ export const previousBusinessDay = /* @__PURE__ */ guard('previousBusinessDay', 
 
 /** The merged opening intervals (ms) that overlap `[lo, hi)`, not clipped: an interval may start before `lo` or end after `hi`. */
 function openIntervals(cal: Cal, lo: number, hi: number): [number, number][] {
-  const windows = cal.windows!
   const out: [number, number][] = []
 
   for (let day = Math.floor(lo / DAY) - 1; day <= Math.floor((hi - 1) / DAY); day++) {
-    if (!isOpenDay(cal, day)) continue
-    for (const [from, to] of windows[weekdayOf(day)]!) {
+    for (const [from, to] of windowsOn(cal, day)) {
       const s = day * DAY + from
       const e = day * DAY + to
 
@@ -334,6 +396,22 @@ export const nextOpening = /* @__PURE__ */ guard('nextOpening', function nextOpe
  */
 export const nextClosing = /* @__PURE__ */ guard('nextClosing', function nextClosing(at: PlainDateTime, calendar: BusinessCalendar): PlainDateTime | null {
   return search('nextClosing', at, calendar, (iv, t) => (iv[1] > t ? iv[1] : null))
+})
+
+/**
+ * The times a calendar is open within one date, midnight to midnight, as half-open intervals in order. This is the same
+ * answer `isOpen` gives for every moment of the date: the tail of an overnight window that started the day before is
+ * included (even when the date itself is closed: an empty `specialHours` list, a weekend or a holiday closes the date's
+ * own windows, not the previous night's), and a window that runs past midnight ends at the next day's `T00:00`. Needs
+ * `hours` (or `specialHours` with a window), like the other business-time functions.
+ *
+ * @example openingWindows('2026-12-24', { hours: { 4: [{ from: '09:00', to: '17:00' }] }, specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } }) // => [{ start: '2026-12-24T09:00', end: '2026-12-24T13:00' }]
+ * @example openingWindows('2026-11-21', { hours: { 5: [{ from: '22:00', to: '02:00' }] } }) // => [{ start: '2026-11-21T00:00', end: '2026-11-21T02:00' }]
+ */
+export const openingWindows = /* @__PURE__ */ guard('openingWindows', function openingWindows(date: PlainDate, calendar: BusinessCalendar): Interval[] {
+  const day = readDay('openingWindows', 'date', date)
+
+  return openWindow('openingWindows', calendar, day * DAY, (day + 1) * DAY).map(([s, e]) => ({ start: writeWall(s), end: writeWall(e) }))
 })
 
 /** The opening intervals of a calendar clipped to `[lo, hi)`, in ms: what `freeSlots` intersects with. */
