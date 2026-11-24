@@ -29,12 +29,14 @@ export interface ShippedSrcImport {
 }
 
 const CODE = /\.(?:[cm]?[jt]sx?|d\.[cm]?ts)$/
+
 const SPECIFIERS = [
   /\bfrom\s*['"]([^'"]+)['"]/g,
   /\bimport\s*['"]([^'"]+)['"]/g,
   /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
   /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
 ]
+
 /** Never part of a package's shipped source, wherever they sit. */
 const SKIP_DIRS = new Set(['node_modules', '.pyreon', '.cache'])
 
@@ -51,6 +53,7 @@ function filesUnder(path: string): string[] {
     if (SKIP_DIRS.has(entry)) continue
     out.push(...filesUnder(join(path, entry)))
   }
+
   return out
 }
 
@@ -80,6 +83,7 @@ export function shippedSrcImports(pkgDir: string): ShippedSrcImport[] {
       }
     }
   }
+
   return out
 }
 
@@ -93,6 +97,7 @@ export function workspacePackageDirs(root: string): string[] {
       if (existsSync(join(catDir, name, 'package.json'))) out.push(join(catDir, name))
     }
   }
+
   return out
 }
 

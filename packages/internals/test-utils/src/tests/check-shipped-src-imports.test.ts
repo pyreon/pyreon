@@ -13,6 +13,7 @@ import { shippedSrcImports } from '../../../../../scripts/check-shipped-src-impo
  */
 
 let roots: string[] = []
+
 afterEach(() => {
   for (const r of roots) rmSync(r, { recursive: true, force: true })
   roots = []
@@ -26,6 +27,7 @@ function pkg(manifest: Record<string, unknown>, files: Record<string, string>): 
     mkdirSync(dirname(join(dir, rel)), { recursive: true })
     writeFileSync(join(dir, rel), content)
   }
+
   return dir
 }
 
