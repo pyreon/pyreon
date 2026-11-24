@@ -12,11 +12,11 @@
  * registry, which Vite's dep graph can resolve to a second instance that
  * never saw a single node.
  *
- * `runAxe` comes from the same relative path the shell imports the workbench
- * from, so the page holds ONE copy of the UI module.
+ * `runAxe` comes from the same subpath the shell imports the workbench from
+ * (`@pyreon/atlas/ui`), so the page holds ONE copy of the UI module.
  */
 import { computeReactiveCoverage } from '@pyreon/reactivity/coverage'
-import { runAxe } from '../../src/ui'
+import { runAxe } from '@pyreon/atlas/ui'
 
 export function installVerifyBridge(): void {
   ;(globalThis as { __ATLAS_VERIFY__?: unknown }).__ATLAS_VERIFY__ = {

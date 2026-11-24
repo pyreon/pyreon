@@ -9,17 +9,19 @@
  * selection from the route params and writes through `router.replace` — it
  * never parses or builds a path itself (see `WorkbenchRoute`).
  *
- * Imported RELATIVELY from Atlas's own source (which ships in the package):
- * the scanned project does not declare `@pyreon/atlas`, so a bare self
- * specifier is not guaranteed to resolve from here.
+ * Imported through Atlas's own PUBLIC subpath (`@pyreon/atlas/ui`, a package
+ * self-reference), never `../../src/ui`: the publish strips `src/`, so a
+ * relative import into it resolved here and failed in every install
+ * (`UNRESOLVED_IMPORT`). Locked by `check-shipped-src-imports` and by
+ * `src/build/tests/published-package.test.ts`, which builds from the packed
+ * package.
  */
 import { onMount } from '@pyreon/core'
 import { useRoute, useRouter } from '@pyreon/router'
 import { catalog } from 'virtual:atlas/catalog'
 import { installComponentHmr } from './hot'
 import { title } from 'virtual:atlas/shell'
-import type { WorkbenchRoute } from '../../src/ui'
-import { Workbench } from '../../src/ui'
+import { Workbench, type WorkbenchRoute } from '@pyreon/atlas/ui'
 
 export default function AtlasShell() {
   const router = useRouter()

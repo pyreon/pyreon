@@ -6,6 +6,6 @@
  * five times and, worse, could disagree if the workspace changed mid-build.
  */
 import report from 'virtual:loom/report'
-import type { LoomReport } from '../../src/core/types'
+import type { LoomReport } from '@pyreon/loom/core'
 
 export const loomReport = report as LoomReport
