@@ -20,15 +20,25 @@
  * each test runs in its own process, which logs `TestRunner: started:
  * <method>(<class>)` from its pid; a line from that pid (or an event naming it)
  * belongs to that test. Dropped:
- * - anything attributed to a test in INTENDED (they kill the renderer on purpose);
+ * - anything but an `infra` signal attributed to a test in INTENDED (they kill
+ *   the renderer on purpose);
  * - another package's crash, ANR or kill (GMS, the launcher);
  * - the system's force-stops at the end of every orchestrated test
  *   (`am_kill` reasons `finished inst`, `clear data`, `stop <pkg>`).
  *
- * Prints one `::warning::` per app, signal and test, adds a table to the job
- * summary, writes `found=true` to `$GITHUB_OUTPUT`, and writes the lines of
- * each implicated process (capped) to `findingsDir/<app>.txt` for upload.
- * Diagnostic only: it always exits 0.
+ * A kill of an app process because ANOTHER package's process died while the app
+ * held one of its content providers (`am_kill … depends on provider <p> in
+ * dying proc <q>`) is its own signal of kind `infra`: on the google_apis
+ * emulator Google Play services restarts all its processes once per boot, and
+ * an app holding its font provider then dies mid-test (nightly run
+ * 45437790724). Such a kill explains the death, so that test is not also
+ * reported as `test-process-died`.
+ *
+ * Prints one `::warning::` per app, signal and test (the title says `infra`
+ * for an infrastructure signal), adds a table to the job summary with the Play
+ * services restarts of each capture, writes `found=true` to `$GITHUB_OUTPUT`,
+ * and writes the lines of each implicated process (capped) to
+ * `findingsDir/<app>.txt` for upload. Diagnostic only: it always exits 0.
  */
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -64,6 +74,8 @@ export const EXCERPT_LIMIT_BYTES = 2 * 1024 * 1024
 export interface SignalHit {
   app: string
   signal: string
+  /** `infra`: the emulator or another package, not the app under test. */
+  kind: 'app' | 'infra'
   meaning: string
   /** `Class#method`, or `(no test)` when the pid never started one. */
   test: string
@@ -81,12 +93,23 @@ const MEANING: Record<string, string> = {
   'app-native-crash': 'a native signal (SIGSEGV, SIGABRT, …) ended an app process',
   'app-anr': 'an app process stopped responding (with hide_error_dialogs the system kills it)',
   'app-killed': 'the system killed an app process (low memory or similar)',
+  'app-killed-provider-died':
+    "INFRA: the system killed an app process because another package's process died while the app held one of its content providers (Google Play services restarting, on the emulator). Not an app failure",
   'webview-renderer-killed': 'the system killed a WebView renderer process (low memory or similar); which app it served is not in the line',
   'capture-truncated': 'the logcat capture hit its size limit and was cut off: evidence after that point is missing',
 }
 
 /** Signal order in the output. */
 const ORDER = Object.keys(MEANING)
+
+/** Signals caused by the emulator or another package, not by the app under test. */
+export const INFRA_SIGNALS: ReadonlySet<string> = new Set(['app-killed-provider-died', 'capture-truncated'])
+
+/**
+ * `am_kill` reason for a client of a provider whose host process died:
+ * `depends on provider <component> in dying proc <process> (adj …)`.
+ */
+const PROVIDER_DEATH = /^depends on provider (\S+) in dying proc (\S+)/
 
 interface Line {
   pid: number
@@ -142,7 +165,12 @@ function processSignal(l: Line): { signal: string; pid: number } | null {
     const [, pid, name, reason] = event
     if (l.tag === 'am_anr') return APP.test(name!) ? { signal: 'app-anr', pid: Number(pid) } : null
     if (isRoutineKill(reason!)) return null
-    if (APP.test(name!)) return { signal: 'app-killed', pid: Number(pid) }
+    if (APP.test(name!)) {
+      // The app's own provider process dying is the app's failure; another package's is not.
+      const provider = PROVIDER_DEATH.exec(reason!)
+      const infra = provider !== null && !APP.test(provider[2]!)
+      return { signal: infra ? 'app-killed-provider-died' : 'app-killed', pid: Number(pid) }
+    }
     return RENDERER.test(name!) ? { signal: 'webview-renderer-killed', pid: Number(pid) } : null
   }
   const lmk = l.tag === 'lowmemorykiller' ? /Kill '([^']+)' \((\d+)\)/.exec(l.msg) : null
@@ -158,17 +186,29 @@ export function scanLogcat(app: string, text: string): SignalHit[] {
   const hits = new Map<string, SignalHit>()
   const pendingFatal = new Set<number>()
   const finished = new Set<number>()
+  /** Pids whose death an infrastructure signal already explains. */
+  const explained = new Set<number>()
 
   const hit = (signal: string, pid: number, line: Line) => {
     const test = testOf.get(pid) ?? '(no test)'
-    if (INTENDED.some((c) => test.startsWith(`${c}#`))) return
+    // Infrastructure signals are kept: the renderer tests cause renderer losses, not those.
+    if (!INFRA_SIGNALS.has(signal) && INTENDED.some((c) => test.startsWith(`${c}#`))) return
     const key = `${signal}\u0000${test}`
     const h = hits.get(key)
     if (h) {
       h.count++
       if (!h.pids.includes(pid)) h.pids.push(pid)
     } else {
-      hits.set(key, { app, signal, meaning: MEANING[signal]!, test, count: 1, first: line.raw.trim(), pids: [pid] })
+      hits.set(key, {
+        app,
+        signal,
+        kind: INFRA_SIGNALS.has(signal) ? 'infra' : 'app',
+        meaning: MEANING[signal]!,
+        test,
+        count: 1,
+        first: line.raw.trim(),
+        pids: [pid],
+      })
     }
   }
 
@@ -183,14 +223,66 @@ export function scanLogcat(app: string, text: string): SignalHit[] {
     if (webview) hit(webview, l.pid, l)
     if (fatalSignal(l, pendingFatal)) hit('app-fatal-exception', l.pid, l)
     const killed = processSignal(l)
-    if (killed) hit(killed.signal, killed.pid, l)
+    if (killed) {
+      hit(killed.signal, killed.pid, l)
+      if (INFRA_SIGNALS.has(killed.signal)) explained.add(killed.pid)
+    }
     const native = nativeCrash(l)
     if (native !== null) hit('app-native-crash', native, l)
     const died = l.tag === 'am_proc_died' ? /^\[\d+,(\d+),/.exec(l.msg) : null
-    if (died && testOf.has(Number(died[1])) && !finished.has(Number(died[1]))) hit('test-process-died', Number(died[1]), l)
+    const diedPid = died ? Number(died[1]) : -1
+    if (died && testOf.has(diedPid) && !finished.has(diedPid) && !explained.has(diedPid)) hit('test-process-died', diedPid, l)
   }
 
   return [...hits.values()].sort((a, b) => ORDER.indexOf(a.signal) - ORDER.indexOf(b.signal) || a.test.localeCompare(b.test))
+}
+
+export interface PlayServicesActivity {
+  app: string
+  /** One entry per restart: its time and the test whose process was running then. */
+  restarts: Array<{ at: string; test: string }>
+  /**
+   * Fonts Play services served in Chromium's query format
+   * (`name=<family>&weight=<n>`): WebView's or Chrome's downloadable-font
+   * lookup, the dependency native-android-emulator-prep.sh switches off in
+   * WebView. Compose's emoji font uses a different query and is not counted.
+   */
+  chromiumFontQueries: number
+}
+
+/** `ChimeraModuleLdr: Module config changed, forcing restart …`, logged by each Play services process. */
+const GMS_RESTART = /^Module config changed, forcing restart/
+
+/** When Google Play services restarted itself during [text], and how often Chromium asked it for a font. */
+export function playServicesActivity(app: string, text: string): PlayServicesActivity {
+  const restarts: PlayServicesActivity['restarts'] = []
+  const running = new Map<number, string>()
+  let lastSecond = ''
+  let chromiumFontQueries = 0
+  for (const raw of text.split('\n')) {
+    const l = parse(raw)
+    if (!l) continue
+    if (l.tag === 'TestRunner') {
+      const t = /^started: (.+)\((.+)\)$/.exec(l.msg)
+      if (t) running.set(l.pid, `${t[2]}#${t[1]}`)
+      if (l.msg.startsWith('finished: ')) running.delete(l.pid)
+      continue
+    }
+    if (l.tag === 'am_proc_died') {
+      const d = /^\[\d+,(\d+),/.exec(l.msg)
+      if (d) running.delete(Number(d[1]))
+      continue
+    }
+    if (l.tag === 'FontLog' && l.msg.startsWith('Received query name=')) chromiumFontQueries++
+    if (l.tag !== 'ChimeraModuleLdr' || !GMS_RESTART.test(l.msg)) continue
+    // Every Play services process logs the restart within the same moment: one event per second.
+    const second = raw.slice(0, 14)
+    if (second === lastSecond) continue
+    lastSecond = second
+    restarts.push({ at: raw.slice(6, 18), test: [...running.values()].at(-1) ?? '(no test)' })
+  }
+
+  return { app, restarts, chromiumFontQueries }
 }
 
 /**
@@ -227,7 +319,7 @@ export function scanDir(dir: string, findingsDir?: string): SignalHit[] {
       const text = readFileSync(join(dir, n), 'utf8')
       const hits = scanLogcat(app, text)
       if (statSync(join(dir, n)).size === CAPTURE_LIMIT_BYTES) {
-        hits.push({ app, signal: 'capture-truncated', meaning: MEANING['capture-truncated']!, test: '(capture)', count: 1, first: `${n} is ${CAPTURE_LIMIT_BYTES} bytes`, pids: [] })
+        hits.push({ app, signal: 'capture-truncated', kind: 'infra', meaning: MEANING['capture-truncated']!, test: '(capture)', count: 1, first: `${n} is ${CAPTURE_LIMIT_BYTES} bytes`, pids: [] })
       }
       if (findingsDir && hits.length > 0) {
         // Private to the runner user: the excerpt is app logcat.
@@ -242,10 +334,39 @@ export function scanDir(dir: string, findingsDir?: string): SignalHit[] {
 const escapeAnnotation = (s: string): string =>
   s.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A')
 
-export function summary(hits: SignalHit[]): string {
-  if (hits.length === 0) return '### Android logcat signals\n\nNone (tests that end the renderer on purpose are excluded).\n'
-  const rows = hits.map((h) => `| ${h.app} | ${h.signal} | ${h.test} | ${h.count} | ${h.meaning} |`)
-  return ['### Android logcat signals', '', '| App | Signal | Test | Count | Meaning |', '| --- | --- | --- | --- | --- |', ...rows, ''].join('\n')
+export function summary(hits: SignalHit[], activity: PlayServicesActivity[] = []): string {
+  const out = ['### Android logcat signals', '']
+  if (hits.length === 0) out.push('None (tests that end the renderer on purpose are excluded).')
+  else {
+    out.push('| App | Kind | Signal | Test | Count | Meaning |', '| --- | --- | --- | --- | --- | --- |')
+    for (const h of hits) out.push(`| ${h.app} | ${h.kind} | ${h.signal} | ${h.test} | ${h.count} | ${h.meaning} |`)
+  }
+  if (activity.length > 0) {
+    out.push(
+      '',
+      '#### Google Play services in each capture',
+      '',
+      'It restarts itself once per emulator boot; an app holding one of its providers then dies (`app-killed-provider-died`). Chromium font queries should be 0 while WebView runs without its downloadable-font lookup (scripts/native-android-emulator-prep.sh); Chrome itself is not covered.',
+      '',
+      '| App | Restarts (time: test running then) | Chromium font queries |',
+      '| --- | --- | --- |',
+    )
+    for (const a of activity) {
+      const restarts = a.restarts.map((r) => `${r.at}: ${r.test}`).join('<br>') || 'none'
+      out.push(`| ${a.app} | ${restarts} | ${a.chromiumFontQueries} |`)
+    }
+  }
+  out.push('')
+  return out.join('\n')
+}
+
+/** [playServicesActivity] for every `<app>.txt` in [dir]. */
+export function scanPlayServices(dir: string): PlayServicesActivity[] {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
+    .filter((n) => n.endsWith('.txt'))
+    .sort()
+    .map((n) => playServicesActivity(basename(n, '.txt'), readFileSync(join(dir, n), 'utf8')))
 }
 
 if (import.meta.main) {
@@ -255,12 +376,12 @@ if (import.meta.main) {
   const hits = scanDir(dir, findings)
   for (const h of hits) {
     console.log(
-      `::warning title=Android logcat: ${h.signal}::${escapeAnnotation(`${h.app}, ${h.test}: ${h.count}× ${h.meaning}. First: ${h.first.slice(0, 300)}`)}`,
+      `::warning title=Android logcat${h.kind === 'infra' ? ' (infra)' : ''}: ${h.signal}::${escapeAnnotation(`${h.app}, ${h.test}: ${h.count}× ${h.meaning}. First: ${h.first.slice(0, 300)}`)}`,
     )
   }
   if (hits.length === 0) console.log(`no process-death signals in ${dir}`)
   const step = process.env.GITHUB_STEP_SUMMARY
-  if (step) appendFileSync(step, summary(hits))
+  if (step) appendFileSync(step, summary(hits, scanPlayServices(dir)))
   const out = process.env.GITHUB_OUTPUT
   if (out) appendFileSync(out, `found=${hits.length > 0}\n`)
 }
