@@ -1,8 +1,6 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
 import { _childText, _isStructuralChild } from '@pyreon/core/internal'
-import {
-  getContextOwner,
-} from '@pyreon/reactivity'
+import { getContextOwner } from '@pyreon/reactivity'
 import {
   _noopDispose,
   _rdCloseBindingFrame,
@@ -31,14 +29,7 @@ import {
   reportFirstText,
   reportTextWrite,
 } from './hydration-debug'
-import {
-  bindPolymorphicText,
-  createPolyTextCore,
-  mountChild,
-  mountChildAsUnit,
-  ownByScope,
-  type PolyTextCore,
-} from './mount'
+import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
