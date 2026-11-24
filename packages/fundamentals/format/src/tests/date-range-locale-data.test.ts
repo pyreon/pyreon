@@ -2,7 +2,8 @@
 // range as "21.10.2026 – 27.10.2026" because that is CLDR's `yMd` interval for Czech (its single dates read "21. 10. 2026"),
 // and engines ship different CLDR versions (Node and Bun disagree for sk and pl). So the contract is parity with the
 // running engine's `Intl.DateTimeFormat#formatRange` for every locale and shape: expected strings come from `Intl`.
-import { formatDateRange } from '../core'
+import { dateFormatter as coreDateFormatter, formatDateRange } from '../core'
+import { dateFormatter, formatDateRange as reactiveFormatDateRange } from '../index'
 
 const LOCALES = ['cs', 'sk', 'pl', 'de', 'fr', 'en-US', 'en-GB', 'ja', 'hu', 'ar', 'he', 'zh', 'ko', 'fi', 'pt-BR']
 
@@ -33,6 +34,10 @@ describe('formatDateRange is the platform interval pattern, in every locale (#48
         expect(formatDateRange(a, b, { ...shape, locale, timeZone: 'UTC' }), `${locale} ${JSON.stringify(shape)} ${a}..${b}`).toBe(expected)
         // Reversed input is ordered, not re-joined.
         expect(formatDateRange(b, a, { ...shape, locale, timeZone: 'UTC' })).toBe(expected)
+        // The reactive entry and the formatters' .range take the same path.
+        expect(reactiveFormatDateRange(a, b, { ...shape, locale, timeZone: 'UTC' })).toBe(expected)
+        expect(dateFormatter({ ...shape, locale, timeZone: 'UTC' }).range(b, a)).toBe(expected)
+        expect(coreDateFormatter({ ...shape, locale, timeZone: 'UTC' }).range(a, b)).toBe(expected)
       }
     }
   })

@@ -5,7 +5,7 @@ description: "Exact amounts of money as plain data: decimal-string amounts, bigi
 
 > **Generated** from `money`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [money](/docs/money).
 
-A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits are ISO 4217 minor units (a 27-entry table of the codes that are not 2, so they agree on every engine; `Intl` only says which codes exist); `defineCurrency` adds custom currencies or gives an ISO one the digits a payment provider uses. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `formatCurrency(m)` from `@pyreon/format` displays a Money exactly.
+A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits are ISO 4217 minor units (ISO 4217 list one is shipped, 178 codes and their minor units, so codes and digits agree on every engine; `Intl` is never asked); `defineCurrency` adds custom currencies or gives an ISO one the digits a payment provider uses. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `formatCurrency(m)` from `@pyreon/format` displays a Money exactly.
 
 ## Multiplatform
 
@@ -68,7 +68,7 @@ allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount)   // => ['33.34
 | [`round`](#round-function-experimental) | function | Round to fewer digits or to a multiple of an increment (cash rounding), by one of the nine modes named as… |
 | [`convert`](#convert-function-experimental) | function | Convert with a rate (`1 unit of m.currency = rate units of to`), rounded to the target's digits. |
 | [`currencyDigits`](#currencydigits-function-experimental) | function | The minor-unit digits of a currency: what `defineCurrency` gave it, else its ISO 4217 minor unit. |
-| [`isCurrency`](#iscurrency-function-experimental) | function | Whether `code` is an upper-case ISO 4217 code the platform knows, or a registered one. |
+| [`isCurrency`](#iscurrency-function-experimental) | function | Whether `code` is a current ISO 4217 code (list one as amended 2026-09-17, shipped: engines list different codes) or a… |
 | [`defineCurrency`](#definecurrency-function-experimental) | function | Register a currency the platform does not know (crypto, points, a test currency), or give an ISO currency the digits… |
 | [`Money`](#money-type-experimental) | type | Exact money as plain data. |
 | [`Decimal`](#decimal-type-experimental) | type | Canonical decimal text: optional `-`, digits, optional `.` and digits; no exponent, no `+`, no leading zeros, never… |
@@ -582,7 +582,7 @@ currencyDigits('HUF')                     // => 2
 (code: string) => boolean
 ```
 
-Whether `code` is an upper-case ISO 4217 code the platform knows, or a registered one. Never throws.
+Whether `code` is a current ISO 4217 code (list one as amended 2026-09-17, shipped: engines list different codes) or a registered one. Never throws.
 
 **Example**
 
@@ -599,7 +599,7 @@ isCurrency('eur')                         // => false
 (code: string, spec: { digits: number }) => void
 ```
 
-Register a currency the platform does not know (crypto, points, a test currency), or give an ISO currency the digits your payment provider uses (ISK in hundredths). The code is 2 to 12 upper-case letters or digits starting with a letter. A code is defined once, at startup: the same digits again is fine, different digits throw. At most 64 are registered.
+Register a currency the platform does not know (crypto, points, a test currency), or give an ISO currency the digits your payment provider uses (ISK in hundredths). The code is 2 to 12 upper-case letters or digits starting with a letter. A code is defined once, at startup, in a module both the server and client entries import (each realm has its own registry): the same digits again is fine, different digits throw. At most 64 are registered.
 
 **Example**
 

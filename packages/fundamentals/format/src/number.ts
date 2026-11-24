@@ -6,6 +6,7 @@
  * locale) so the hot path is one table lookup and one `format()` call.
  */
 import { clearTable, construct, createTable, guarded, resolve, tableStats, type Table } from './cache'
+import { exactRange, greater } from './exact'
 import type { Core, KindDef } from './formatter'
 import { describe, programmerError, quote, warnInvalid, warnOnce } from './warn'
 import type {
@@ -143,35 +144,6 @@ export function isUsable(value: unknown): value is number | bigint | `${number}`
   return typeof value === 'bigint' || (typeof value === 'number' && value === value) || (typeof value === 'string' && isDecimal(value))
 }
 
-/** Exact order of two usable values (decimal strings compare as numbers, not as text). */
-function greater(a: number | bigint | string, b: number | bigint | string): boolean {
-  if (typeof a !== 'string' && typeof b !== 'string') return a > b
-  // Number() is monotonic, so different numbers decide; equal ones are compared exactly as decimals when both are text.
-  const x = Number(a)
-  const y = Number(b)
-  if (x !== y) return x > y
-  if (typeof a === 'bigint' || typeof b === 'bigint' || typeof a === 'number' || typeof b === 'number') return false
-
-  return compareDecimal(a, b) > 0
-}
-
-/** Compare two decimal strings exactly. */
-function compareDecimal(a: string, b: string): number {
-  const negA = a.charCodeAt(0) === 45
-  const negB = b.charCodeAt(0) === 45
-  if (negA !== negB) return negA ? -1 : 1
-  const [ia = '', fa = ''] = (negA ? a.slice(1) : a).split('.')
-  const [ib = '', fb = ''] = (negB ? b.slice(1) : b).split('.')
-  const intA = ia.replace(/^0+(?=\d)/, '')
-  const intB = ib.replace(/^0+(?=\d)/, '')
-  const width = Math.max(fa.length, fb.length)
-  const x = `${intA.padStart(intB.length, '0')}.${fa.padEnd(width, '0')}`
-  const y = `${intB.padStart(intA.length, '0')}.${fb.padEnd(width, '0')}`
-  const order = x < y ? -1 : x > y ? 1 : 0
-
-  return negA ? -order : order
-}
-
 export function numberIn(locale: string, value: NumberInput, options: NumberOptions | NumberPreset | undefined): string {
   if (!isUsable(value)) return badNumber('formatNumber', value, fallbackOf(options))
   return resolve(numberTable, locale, '', options).format(value)
@@ -212,7 +184,7 @@ export function numberRangeIn(
   // A range picker mid-selection produces reversed pairs: order them.
   const range = resolve(rangeTable, locale, '', options)
 
-  return greater(start, end) ? range.formatRange(end, start) : range.formatRange(start, end)
+  return greater(start, end) ? exactRange(range, end, start) : exactRange(range, start, end)
 }
 
 // ─── formatCurrency ──────────────────────────────────────────────────────────
@@ -236,24 +208,36 @@ const currencyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, cu
 
 const DIGIT_OPTIONS = ['minimumFractionDigits', 'maximumFractionDigits', 'minimumSignificantDigits', 'maximumSignificantDigits', 'roundingIncrement'] as const
 
+/** The most fraction digits `Intl.NumberFormat` takes (ES2023; older engines stop at 20). */
+const MAX_SCALE = 100
+
 /**
- * A Money is shown with its own digits (the amount's scale), not the platform's display digits for the currency, so it is
- * never rounded: a currency given other digits with `defineCurrency` (ISK in hundredths) or a custom one shows them.
- * The variant is the currency code followed by the digit count (`"EUR2"`). Options that set digits themselves win.
+ * Currency formats with a variant of the code and, for a Money, its digits. A Money is shown with its own digits (the
+ * amount's scale), not the platform's display digits for the currency, so it is never rounded: a currency given other
+ * digits with `defineCurrency` (ISK in hundredths) shows them. Options that set digits themselves win.
+ *
+ * Variants: `"EUR2"` (ISO code, 2 digits), `"#2"` / `"#"` (a custom code such as `USDT`, which `Intl` rejects: formatted
+ * as the placeholder `XXX` shown as a code, which {@link relabel} replaces, so the locale's own pattern places the code).
  */
 const moneyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, variant, options) => {
   const own = optionsOf<Opts>(options, CURRENCY_PRESETS, 'formatCurrency')
-  const digits = Number(variant.slice(3))
-  const setsDigits = own !== undefined && DIGIT_OPTIONS.some((key) => (own as Record<string, unknown>)[key] !== undefined)
+  const custom = variant.charCodeAt(0) === 35
+  const digitText = custom ? variant.slice(1) : variant.slice(3)
+  const digits = Number(digitText)
+  const setsDigits = digitText === '' || (own !== undefined && DIGIT_OPTIONS.some((key) => (own as Record<string, unknown>)[key] !== undefined))
 
   return make('formatCurrency', locale, {
     signDisplay: 'negative',
     ...(setsDigits ? undefined : { minimumFractionDigits: digits, maximumFractionDigits: digits }),
     ...own,
+    ...(custom ? { currencyDisplay: 'code' } : undefined),
     style: 'currency',
-    currency: variant.slice(0, 3),
+    currency: custom ? PLACEHOLDER : variant.slice(0, 3),
   })
 })
+
+/** The ISO "no currency" code: the stand-in for a custom code, displayed as a code and then relabelled. */
+const PLACEHOLDER = 'XXX'
 
 /** A currency code is three ASCII letters (ISO 4217 shape); `Intl` rejects anything else. */
 export function isCurrencyCode(c: unknown): c is string {
@@ -264,6 +248,23 @@ export function isCurrencyCode(c: unknown): c is string {
   }
 
   return true
+}
+
+/**
+ * A custom currency code `Intl` cannot take: 2 to 12 upper-case letters or digits starting with a letter, not three
+ * letters (what `defineCurrency` in `@pyreon/money` registers: `USDT`, `PTS1`, `LOYALTY`).
+ */
+function isCustomCode(c: unknown): c is string {
+  return typeof c === 'string' && !isCurrencyCode(c) && /^[A-Z][A-Z0-9]{1,11}$/.test(c)
+}
+
+/** Text of a custom-code format: the placeholder code replaced by the real one. */
+function relabel(text: string, code: string): string {
+  return code === PLACEHOLDER ? text : text.replaceAll(PLACEHOLDER, code)
+}
+
+function relabelParts(parts: Intl.NumberFormatPart[], code: string): Intl.NumberFormatPart[] {
+  return parts.map((part) => (part.type === 'currency' && part.value === PLACEHOLDER ? { type: 'currency', value: code } : part))
 }
 
 /** The structural shape of a `@pyreon/money` Money: `{ amount: "9.99", currency: "EUR" }` (no dependency on that package). */
@@ -283,17 +284,47 @@ export function currencyOptions(value: unknown, a: unknown, b: unknown): Currenc
   return (isMoneyLike(value) ? a : b) as CurrencyOptions | CurrencyPreset | undefined
 }
 
+const EXPECTED_CODE = 'an ISO 4217 code such as "EUR", or a custom code of 2 to 12 upper-case letters or digits such as "USDT"'
+
 function badCurrency(fn: string, currency: unknown, fallback: string): string {
-  if (process.env.NODE_ENV !== 'production') warnInvalid(fn, currency, 'a three-letter ISO 4217 currency code such as "EUR"')
+  if (process.env.NODE_ENV !== 'production') warnInvalid(fn, currency, EXPECTED_CODE)
 
   return fallback
+}
+
+/** A known code shape: ISO (three letters) or custom. */
+function isCode(c: unknown): c is string {
+  return isCurrencyCode(c) || isCustomCode(c)
+}
+
+/**
+ * The format of `code` with `digits` forced (`undefined`: the currency's own), or `undefined` when the engine cannot show
+ * that many digits (more than {@link MAX_SCALE}, or more than 20 on an engine without ES2023 `Intl`): data never throws.
+ */
+function currencyFormat(fn: string, locale: string, code: string, digits: number | undefined, options: CurrencyOptions | CurrencyPreset | undefined): Intl.NumberFormat | undefined {
+  const custom = isCustomCode(code)
+  if (digits === undefined && !custom) return resolve(currencyTable, locale, code, options)
+  const variant = (custom ? '#' : code) + (digits === undefined ? '' : String(digits))
+  if (digits !== undefined && digits > 20) {
+    try {
+      if (digits > MAX_SCALE) throw new RangeError('too many digits')
+
+      return resolve(moneyTable, locale, variant, options)
+    } catch {
+      if (process.env.NODE_ENV !== 'production') warnInvalid(fn, digits, `an amount with at most ${MAX_SCALE} fraction digits (at most 20 on engines before ES2023 Intl)`)
+
+      return undefined
+    }
+  }
+
+  return resolve(moneyTable, locale, variant, options)
 }
 
 /** Format a Money with its own digits; `expected` (a currency formatter's code) must match its currency. */
 function moneyText(fn: string, locale: string, m: MoneyLike, options: CurrencyOptions | CurrencyPreset | undefined, expected: string | undefined): string {
   const fallback = fallbackOf(options)
   if (!isDecimal(m.amount)) return badNumber(fn, m.amount, fallback)
-  if (!isCurrencyCode(m.currency)) return badCurrency(fn, m.currency, fallback)
+  if (!isCode(m.currency)) return badCurrency(fn, m.currency, fallback)
   if (expected !== undefined && m.currency !== expected) {
     if (process.env.NODE_ENV !== 'production') {
       warnInvalid(fn, m, `a Money in ${expected} (this formatter is for ${expected}; use formatCurrency(m) for any currency)`)
@@ -301,13 +332,14 @@ function moneyText(fn: string, locale: string, m: MoneyLike, options: CurrencyOp
 
     return fallback
   }
+  const format = currencyFormat(fn, locale, m.currency, scaleOf(m.amount), options)
 
-  return resolve(moneyTable, locale, m.currency + scaleOf(m.amount), options).format(m.amount as `${number}`)
+  return format === undefined ? fallback : relabel(format.format(m.amount as `${number}`), m.currency)
 }
 
 export function currencyIn(locale: string, value: CurrencyInput, a: unknown, b: unknown): string {
   if (isMoneyLike(value)) {
-    if (typeof a === 'string' && isCurrencyCode(a)) {
+    if (typeof a === 'string' && isCode(a) && !Object.hasOwn(CURRENCY_PRESETS, a)) {
       throw programmerError('formatCurrency', `a Money carries its currency: call formatCurrency(m) or formatCurrency(m, options), not formatCurrency(m, ${quote(a)}).`)
     }
     const options = a as CurrencyOptions | CurrencyPreset | undefined
@@ -316,9 +348,9 @@ export function currencyIn(locale: string, value: CurrencyInput, a: unknown, b: 
   }
   const options = b as CurrencyOptions | CurrencyPreset | undefined
   if (!isUsable(value)) return badNumber('formatCurrency', value, fallbackOf(options))
-  if (!isCurrencyCode(a)) return badCurrency('formatCurrency', a, fallbackOf(options))
+  if (!isCode(a)) return badCurrency('formatCurrency', a, fallbackOf(options))
 
-  return resolve(currencyTable, locale, a, options).format(value)
+  return relabel((currencyFormat('formatCurrency', locale, a, undefined, options) as Intl.NumberFormat).format(value), a)
 }
 
 // ─── formatPercent ───────────────────────────────────────────────────────────
@@ -639,7 +671,7 @@ function numberCore(
       const l = locale()
       if (!isUsable(start) || !isUsable(end)) return fb
 
-      return greater(start, end) ? get(l).formatRange(end, start) : get(l).formatRange(start, end)
+      return greater(start, end) ? exactRange(get(l), end, start) : exactRange(get(l), start, end)
     },
   }
 }
@@ -651,43 +683,54 @@ export const numberKind: KindDef<'number'> = {
 export const currencyKind: KindDef<'currency'> = {
   create(spec, locale) {
     const fb = fallbackText(spec.fallback)
-    if (!isCurrencyCode(spec.currency)) {
+    const code = spec.currency
+    if (!isCode(code)) {
       return {
         call: () => {
           locale()
 
-          return badCurrency('currencyFormatter', spec.currency, fb)
+          return badCurrency('currencyFormatter', code, fb)
         },
         parts: () => [],
         range: () => fb,
       }
     }
-    const plain = numberCore(currencyTable, 'currencyFormatter', spec.currency, spec, locale)
+    const fn = 'currencyFormatter'
     /** A Money in another currency or with a malformed amount: warn (dev) and give the fallback. */
-    const wrong = (m: MoneyLike): boolean => m.currency !== spec.currency || !isDecimal(m.amount)
+    const wrong = (m: MoneyLike): boolean => m.currency !== code || !isDecimal(m.amount)
+    /** The format for a value (a Money uses its digits); `undefined` for too many digits. */
+    const formatFor = (l: string, digits: number | undefined): Intl.NumberFormat | undefined => currencyFormat(fn, l, code, digits, spec)
 
     return {
-      call: (v) => (isMoneyLike(v) ? moneyText('currencyFormatter', locale(), v, spec, spec.currency) : plain.call(v)),
-      parts: (v) => {
-        if (!isMoneyLike(v)) return (plain.parts as (x: NumberInput) => Intl.NumberFormatPart[])(v)
+      call: (v) => {
+        if (isMoneyLike(v)) return moneyText(fn, locale(), v, spec, code)
         const l = locale()
-        if (wrong(v)) return []
+        if (!isUsable(v)) return badNumber(fn, v, fb)
 
-        return resolve(moneyTable, l, v.currency + scaleOf(v.amount), spec).formatToParts(v.amount as `${number}`)
+        return relabel((formatFor(l, undefined) as Intl.NumberFormat).format(v), code)
+      },
+      parts: (v) => {
+        const l = locale()
+        const money = isMoneyLike(v)
+        if (money ? wrong(v) : !isUsable(v)) return []
+        const format = formatFor(l, money ? scaleOf(v.amount) : undefined)
+
+        return format === undefined ? [] : relabelParts(format.formatToParts((money ? v.amount : v) as `${number}`), code)
       },
       range: (start, end) => {
-        if (!isMoneyLike(start) && !isMoneyLike(end)) return (plain.range as (a: NumberInput, b: NumberInput) => string)(start, end)
         const l = locale()
-        if (isMoneyLike(start) && wrong(start)) return moneyText('currencyFormatter', l, start, spec, spec.currency)
-        if (isMoneyLike(end) && wrong(end)) return moneyText('currencyFormatter', l, end, spec, spec.currency)
+        if (isMoneyLike(start) && wrong(start)) return moneyText(fn, l, start, spec, code)
+        if (isMoneyLike(end) && wrong(end)) return moneyText(fn, l, end, spec, code)
         // A range with a Money shows the Money's digits (the larger scale when both are Money).
         const a = isMoneyLike(start) ? start.amount : start
         const b = isMoneyLike(end) ? end.amount : end
         if (!isUsable(a) || !isUsable(b)) return fb
+        const money = isMoneyLike(start) || isMoneyLike(end)
         const digits = Math.max(isMoneyLike(start) ? scaleOf(start.amount) : 0, isMoneyLike(end) ? scaleOf(end.amount) : 0)
-        const range = resolve(moneyTable, l, spec.currency + digits, spec)
+        const format = formatFor(l, money ? digits : undefined)
+        if (format === undefined) return fb
 
-        return greater(a, b) ? range.formatRange(b, a) : range.formatRange(a, b)
+        return relabel(greater(a, b) ? exactRange(format, b, a) : exactRange(format, a, b), code)
       },
     }
   },

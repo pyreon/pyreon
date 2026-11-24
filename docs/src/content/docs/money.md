@@ -49,7 +49,7 @@ allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount) // ['33.34', '3
 round(money('1.23', 'CHF'), { increment: '0.05' }) // { amount: '1.25', currency: 'CHF' }
 ```
 
-The amount of every Money this package produces has exactly the currency's minor digits (`"9.90"`, `"100"` for JPY, `"0.123"` for KWD), so two equal amounts are the same string. Digits are ISO 4217 minor units (2 for EUR and HUF, 0 for JPY, 3 for KWD), the same on every engine: the package ships the short list of codes whose minor unit is not 2, because `Intl` disagrees between engines (V8 reports CLDR display digits, 0 for HUF, IDR, COP and IQD, while JavaScriptCore reports ISO 4217), and a Money made on the server must be canonical in the browser. `defineCurrency('PTS', { digits: 0 })` adds a custom currency. When a payment provider counts an ISO currency in other units (ISK in hundredths), `defineCurrency('ISK', { digits: 2 })` at startup gives it those digits everywhere; a code is defined once, and defining it again with different digits throws.
+The amount of every Money this package produces has exactly the currency's minor digits (`"9.90"`, `"100"` for JPY, `"0.123"` for KWD), so two equal amounts are the same string. Digits are ISO 4217 minor units (2 for EUR and HUF, 0 for JPY, 3 for KWD), the same on every engine: the package ships ISO 4217's own minor units, because `Intl` disagrees between engines (V8 reports CLDR display digits, 0 for HUF, IDR, COP and IQD, while JavaScriptCore reports ISO 4217), and a Money made on the server must be canonical in the browser. `defineCurrency('PTS', { digits: 0 })` adds a custom currency. When a payment provider counts an ISO currency in other units (ISK in hundredths), `defineCurrency('ISK', { digits: 2 })` at startup gives it those digits everywhere; a code is defined once, and defining it again with different digits throws. The registry is per JavaScript realm: the server and the browser each have their own, so call `defineCurrency` in a module that BOTH the server entry and the client entry import (a shared `currencies.ts`), or a Money valid on one side is rejected on the other. Which codes exist is ISO 4217 list one (178 codes as amended on 2026-09-17), shipped with the package for the same reason: engines list different codes (`Intl.supportedValuesOf('currency')` has 162 in V8 and 307, including withdrawn ones, in JavaScriptCore). A withdrawn code such as `HRK`, for old records, is registered with `defineCurrency`.
 
 ## Building a Money, and the float-input rule
 
@@ -221,7 +221,7 @@ decimal.round('2.5', { mode: 'halfEven' }) // '2'
 
 ## Showing a Money
 
-This package formats nothing. `formatCurrency(m)` from `@pyreon/format` takes a Money directly: it formats the amount string exactly (no conversion to a number) and shows the Money's own digits, so a currency given other digits with `defineCurrency` displays them too. Avoid `formatCurrency(Number(m.amount), ...)`: a large amount loses precision as a number.
+This package formats nothing. `formatCurrency(m)` from `@pyreon/format` takes a Money directly: it formats the amount string exactly (no conversion to a number) and shows the Money's own digits, so a currency given other digits with `defineCurrency` displays them too, and a Money looks the same on every engine (a plain number with a code uses each engine's display digits, which differ for HUF and others). Avoid `formatCurrency(Number(m.amount), ...)`: a large amount loses precision as a number.
 
 ## API reference
 

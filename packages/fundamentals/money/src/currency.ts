@@ -6,24 +6,37 @@ export type CurrencyCode = string
 /** The most currencies `defineCurrency` registers. */
 const LIMIT = 64
 const registry = new Map<string, number>()
-let iso: Set<string> | null | undefined
+let iso: Set<string> | undefined
 
 /**
- * The ISO 4217 minor units of every code whose minor unit is not 2 (ISO 4217 list one; the funds and metals with no
- * minor unit count as 2, as `Intl` does). Shipped because the platforms disagree: V8 (Node, Chrome) reports the CLDR
- * display digits (0 for HUF, IDR, COP, PKR, IQD, ...), JavaScriptCore (Bun, Safari) the ISO 4217 ones, so a Money
- * made on one engine would not be canonical on the other.
+ * ISO 4217 list one (the current codes), as published by the maintenance agency (SIX) on 2026-09-17: 178 codes,
+ * three letters each, packed. Shipped because the platforms disagree on which codes exist (`Intl.supportedValuesOf`
+ * lists 162 in V8, 307 including withdrawn ones in JavaScriptCore), and a Money must be valid on every engine.
+ * Update it, and the table below, when ISO 4217 is amended.
+ */
+const ISO_CODES =
+  'AEDAFNALLAMDAOAARSAUDAWGAZNBAMBBDBDTBHDBIFBMDBNDBOBBOVBRLBSDBTNBWPBYNBZDCADCDFCHECHFCHWCLFCLPCNYCOPCOUCRC' +
+  'CUPCVECZKDJFDKKDOPDZDEGPERNETBEURFJDFKPGBPGELGHSGIPGMDGNFGTQGYDHKDHNLHTGHUFIDRILSINRIQDIRRISKJMDJODJPYKES' +
+  'KGSKHRKMFKPWKRWKWDKYDKZTLAKLBPLKRLRDLSLLYDMADMDLMGAMKDMMKMNTMOPMRUMURMVRMWKMXNMXVMYRMZNNADNGNNIONOKNPRNZD' +
+  'OMRPABPENPGKPHPPKRPLNPYGQARRONRSDRUBRWFSARSBDSCRSDGSEKSGDSHPSLESOSSRDSSPSTNSVCSYPSZLTHBTJSTMTTNDTOPTRYTTD' +
+  'TWDTZSUAHUGXUSDUSNUYIUYUUYWUZSVEDVESVNDVUVWSTXADXAFXAGXAUXBAXBBXBCXBDXCDXCGXDRXOFXPDXPFXPTXSUXTSXUAXXXYER' +
+  'ZARZMWZWG'
+
+/**
+ * The minor units of the ISO 4217 codes whose minor unit is not 2 (same list, same date). The codes ISO lists with no
+ * minor unit ("N.A.": gold, silver, the SDR, the test and no-currency codes) count as 2, as `Intl` counts them.
+ * Not asked of `Intl`: V8 (Node, Chrome) reports CLDR display digits (0 for HUF, IDR, COP, IQD, ...), JavaScriptCore
+ * (Bun, Safari) the ISO ones, so a Money made on one engine would not be canonical on the other.
  */
 const ISO_MINOR: Readonly<Record<string, number>> = {
-  BHD: 3, BIF: 0, BYR: 0, CLF: 4, CLP: 0, DJF: 0, GNF: 0, IQD: 3, ISK: 0, JOD: 3, JPY: 0, KMF: 0, KRW: 0, KWD: 3,
-  LYD: 3, OMR: 3, PYG: 0, RWF: 0, TND: 3, UGX: 0, UYI: 0, UYW: 4, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0,
+  BHD: 3, BIF: 0, CLF: 4, CLP: 0, DJF: 0, GNF: 0, IQD: 3, ISK: 0, JOD: 3, JPY: 0, KMF: 0, KRW: 0, KWD: 3, LYD: 3,
+  OMR: 3, PYG: 0, RWF: 0, TND: 3, UGX: 0, UYI: 0, UYW: 4, VND: 0, VUV: 0, XAF: 0, XOF: 0, XPF: 0,
 }
 
-function isoCodes(): Set<string> | null {
+function isoCodes(): Set<string> {
   if (iso === undefined) {
-    const list = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.('currency')
-
-    iso = list === undefined ? null : new Set(list)
+    iso = new Set()
+    for (let i = 0; i < ISO_CODES.length; i += 3) iso.add(ISO_CODES.slice(i, i + 3))
   }
 
   return iso
@@ -33,15 +46,11 @@ function wellFormed(code: string): boolean {
   return code.length === 3 && code.charCodeAt(0) - 65 >>> 0 < 26 && code.charCodeAt(1) - 65 >>> 0 < 26 && code.charCodeAt(2) - 65 >>> 0 < 26
 }
 
-/** The ISO 4217 minor units of a code the platform knows (or one in the table), else `undefined`. Same on every engine. */
+/** The ISO 4217 minor units of a current ISO code, else `undefined`. Same on every engine: `Intl` is never asked. */
 function isoDigits(code: string): number | undefined {
-  if (!wellFormed(code)) return undefined
-  const table = Object.hasOwn(ISO_MINOR, code) ? ISO_MINOR[code] : undefined
+  if (!wellFormed(code) || !isoCodes().has(code)) return undefined
 
-  if (table !== undefined) return table
-  const known = isoCodes()
-
-  return known === null || known.has(code) ? 2 : undefined
+  return Object.hasOwn(ISO_MINOR, code) ? ISO_MINOR[code] : 2
 }
 
 /** The digits of a code for a calling function: a registered code, else its ISO 4217 minor unit, else a `[Pyreon]` error. */
@@ -62,8 +71,8 @@ function unknownCurrency(fn: string, code: unknown): never {
 
 /**
  * The number of minor-unit digits of a currency: the one `defineCurrency` gave it, else its ISO 4217 minor unit
- * (2 for EUR and HUF, 0 for JPY, 3 for KWD). The same on every engine: `Intl` is asked only whether a code exists,
- * never for its digits, because V8 and JavaScriptCore disagree on about twenty currencies.
+ * (2 for EUR and HUF, 0 for JPY, 3 for KWD). The same on every engine: the ISO 4217 list is shipped (178 codes),
+ * because V8 and JavaScriptCore disagree on which codes exist and on the digits of about twenty.
  *
  * @example currencyDigits('EUR') // => 2
  * @example currencyDigits('JPY') // => 0
@@ -74,7 +83,7 @@ export function currencyDigits(code: CurrencyCode): number {
 }
 
 /**
- * Whether `code` is a known currency: an upper-case ISO 4217 code the platform knows, or one registered with
+ * Whether `code` is a known currency: a current upper-case ISO 4217 code (list one, shipped), or one registered with
  * `defineCurrency`. Never throws.
  *
  * @example isCurrency('EUR') // => true
@@ -86,7 +95,7 @@ export function isCurrency(code: string): boolean {
 }
 
 /**
- * Register a currency the platform does not know (crypto, loyalty points, a test currency): `defineCurrency('PTS', { digits: 0 })`,
+ * Register a currency ISO 4217 does not list (crypto, loyalty points, a withdrawn code such as `HRK` for old records): `defineCurrency('PTS', { digits: 0 })`,
  * or give an ISO currency the digits your payment provider uses instead of ISO 4217's (`defineCurrency('ISK', { digits: 2 })`
  * when the provider sends ISK in hundredths). The code is 2 to 12 upper-case letters or digits starting with a letter.
  * A code is defined once: defining it again with the same digits is fine, with different digits it throws. Define it at
@@ -119,7 +128,7 @@ export function _currencyStats(): { registered: number } {
   return { registered: registry.size }
 }
 
-/** Test hook: forget every registered currency and the platform's code list. */
+/** Test hook: forget every registered currency and the unpacked ISO code set. */
 export function _resetCurrencies(): void {
   registry.clear()
   iso = undefined

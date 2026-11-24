@@ -38,6 +38,6 @@ money(0.1 + 0.2, 'EUR') // throws: that is floating-point noise, not an amount
 
 The default rounding mode is `halfExpand` (round half away from zero); `halfEven` is banker's rounding. Rounding is verified against `Intl.NumberFormat` for all nine modes, arithmetic against an independent rational reference, and `allocate` by property tests.
 
-Currency digits are ISO 4217 minor units, identical on every engine (`Intl` disagrees between V8 and JavaScriptCore for about twenty currencies, so the package ships the short list of codes that are not 2). `defineCurrency('ISK', { digits: 2 })` gives an ISO currency the digits your payment provider uses.
+Currency digits are ISO 4217 minor units, identical on every engine (`Intl` disagrees between V8 and JavaScriptCore for about twenty currencies, so the package ships ISO 4217 list one, 178 codes as amended on 2026-09-17). `defineCurrency('ISK', { digits: 2 })` gives an ISO currency the digits your payment provider uses; call it in a module both your server and client entries import, because each has its own registry.
 
 Full guide with recipes: [docs/money](https://pyreon.dev/docs/money).

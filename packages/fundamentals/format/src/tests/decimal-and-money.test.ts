@@ -41,15 +41,30 @@ describe('decimal strings are formatted exactly by every number formatter', () =
     expect(warn.mock.calls).toEqual([])
   })
 
-  it('formatNumberRange orders decimal strings by value, not as text, and exactly beyond a float', () => {
-    const range = (a: string, b: string) => new Intl.NumberFormat('en-US', { signDisplay: 'negative' }).formatRange(a as `${number}`, b as `${number}`)
-    expect(core.formatNumberRange('10', '9.5', en)).toBe(range('9.5', '10'))
-    expect(core.formatNumberRange('-2', '-10', en)).toBe(range('-10', '-2'))
-    // Equal as floats, different as decimals.
-    expect(core.formatNumberRange('12345678901234567.89', '12345678901234567.8', { ...en, maximumFractionDigits: 2 })).toBe(
-      new Intl.NumberFormat('en-US', { signDisplay: 'negative', maximumFractionDigits: 2 }).formatRange('12345678901234567.8', '12345678901234567.89'),
+  // Literal expectations: V8's own formatRange turns string ends into doubles (`~12,345,678,901,234,567.11` for the first
+  // case), JavaScriptCore does not, so an expectation built from Intl in-process would pass on wrong output in Node.
+  it('formatNumberRange is exact beyond a float and orders by value, on every engine', () => {
+    const two = { ...en, maximumFractionDigits: 2 }
+    expect(core.formatNumberRange('12345678901234567.11', '12345678901234567.19', two)).toBe('12,345,678,901,234,567.11–12,345,678,901,234,567.19')
+    expect(core.formatNumberRange('12345678901234567.19', '12345678901234567.11', two)).toBe('12,345,678,901,234,567.11–12,345,678,901,234,567.19')
+    expect(core.formatNumberRange('12345678901234567.11', '12345678901234567.19', { locale: 'de', maximumFractionDigits: 2 })).toBe(
+      '12.345.678.901.234.567,11–12.345.678.901.234.567,19',
     )
-    expect(core.formatNumberRange('007.5', '7.25', en)).toBe(range('7.25', '007.5'))
+    // Equal at the formatter's precision: Intl's approximately form, with the exact digits.
+    expect(core.formatNumberRange('12345678901234567.11', '12345678901234567.19', { ...en, maximumFractionDigits: 0 })).toBe('~12,345,678,901,234,567')
+    expect(core.formatNumberRange('1.5', '12345678901234567.89', en)).toBe('1.5–12,345,678,901,234,567.89')
+    expect(core.formatNumberRange('10', '9.5', en)).toBe('9.5–10')
+    expect(core.formatNumberRange('-2', '-10', en)).toBe('-10 – -2')
+    expect(core.formatNumberRange('007.5', '7.25', en)).toBe('7.25–7.5')
+    expect(core.numberFormatter(two).range('12345678901234567.19', '12345678901234567.11')).toBe('12,345,678,901,234,567.11–12,345,678,901,234,567.19')
+    expect(reactive.formatNumberRange('12345678901234567.19', '12345678901234567.11', two)).toBe('12,345,678,901,234,567.11–12,345,678,901,234,567.19')
+  })
+
+  it('mixed number, bigint and string ends equal as doubles are ordered exactly', () => {
+    expect(core.formatNumberRange('9007199254740993', 9007199254740992, en)).toBe('9,007,199,254,740,992–9,007,199,254,740,993')
+    expect(core.formatNumberRange(9007199254740992, '9007199254740993', en)).toBe('9,007,199,254,740,992–9,007,199,254,740,993')
+    expect(core.formatNumberRange(9007199254740993n, '9007199254740992.5', { ...en, maximumFractionDigits: 1 })).toBe('9,007,199,254,740,992.5–9,007,199,254,740,993')
+    expect(core.formatNumberRange('0.1', 0.1, { ...en, maximumFractionDigits: 20 })).toBe(core.formatNumberRange(0.1, '0.1', { ...en, maximumFractionDigits: 20 }))
   })
 })
 
@@ -77,11 +92,42 @@ describe('a Money is formatted on its own, exactly, with its own digits', () => 
 
   it('a Money with a malformed amount or currency gives the fallback with a dev warning; a currency next to a Money is a mistake', () => {
     expect(core.formatCurrency({ amount: '9,99', currency: 'EUR' }, { ...en, fallback: '?' })).toBe('?')
-    expect(core.formatCurrency({ amount: '9.99', currency: 'EURO' }, { ...en, fallback: '?' })).toBe('?')
+    expect(core.formatCurrency({ amount: '9.99', currency: 'Euro' }, { ...en, fallback: '?' })).toBe('?')
     expect(warn.mock.calls.length).toBe(2)
     expect(() => (core.formatCurrency as (...args: unknown[]) => string)({ amount: '9.99', currency: 'EUR' }, 'EUR')).toThrow(
       /\[Pyreon\] formatCurrency.*a Money carries its currency/,
     )
+  })
+
+  it('a Money range is exact beyond a float, on every engine', () => {
+    const big = (amount: string) => ({ amount, currency: 'EUR' })
+    expect(core.currencyFormatter('EUR', en).range(big('12345678901234567.19'), big('12345678901234567.11'))).toBe(
+      '€12,345,678,901,234,567.11 – €12,345,678,901,234,567.19',
+    )
+    expect(core.currencyFormatter('EUR', { locale: 'de' }).range(big('12345678901234567.19'), big('12345678901234567.11'))).toBe(
+      '12.345.678.901.234.567,11–12.345.678.901.234.567,19 €',
+    )
+  })
+
+  it('a custom currency code (what defineCurrency registers, such as USDT) is placed by the locale\'s own code pattern', () => {
+    expect(core.formatCurrency({ amount: '1234.50', currency: 'USDT' }, en)).toBe('USDT 1,234.50')
+    expect(core.formatCurrency({ amount: '1234.50', currency: 'USDT' }, { locale: 'de' })).toBe('1.234,50 USDT')
+    expect(core.formatCurrency({ amount: '12345678901234567.891', currency: 'LOYALTY' }, en)).toBe('LOYALTY 12,345,678,901,234,567.891')
+    expect(core.formatCurrency(5, 'PTS1', en)).toBe('PTS1 5.00')
+    const usdt = core.currencyFormatter('USDT', en)
+    expect(usdt({ amount: '2.50', currency: 'USDT' })).toBe('USDT 2.50')
+    expect(usdt.parts({ amount: '2.50', currency: 'USDT' }).find((p) => p.type === 'currency')?.value).toBe('USDT')
+    expect(usdt.range({ amount: '1.00', currency: 'USDT' }, { amount: '2.50', currency: 'USDT' })).toBe('USDT 1.00–2.50')
+    expect(warn.mock.calls).toEqual([])
+  })
+
+  it('an amount with more fraction digits than the engine can show is the fallback with a dev warning, never a throw', () => {
+    const long = { amount: `1.${'1'.repeat(101)}`, currency: 'EUR' }
+    expect(core.formatCurrency(long, { ...en, fallback: '?' })).toBe('?')
+    expect(core.currencyFormatter('EUR', { ...en, fallback: '?' })(long)).toBe('?')
+    expect(core.currencyFormatter('EUR', en).parts(long)).toEqual([])
+    expect(warn.mock.calls[0]?.[0]).toMatch(/at most 100 fraction digits/)
+    expect(core.formatCurrency({ amount: `1.${'1'.repeat(30)}`, currency: 'EUR' }, en)).toBe(`€1.${'1'.repeat(30)}`)
   })
 
   it('currencyFormatter: a Money in its currency, with parts and ranges; another currency is the fallback', () => {

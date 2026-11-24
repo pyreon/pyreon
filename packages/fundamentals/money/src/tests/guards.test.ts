@@ -94,6 +94,21 @@ describe('currencies', () => {
     expect(isMoney({ amount: '100', currency: 'HUF' })).toBe(false)
   })
 
+  it('which codes exist is ISO 4217 list one on every engine, never the platform list', () => {
+    const spy = vi.spyOn(Intl, 'supportedValuesOf')
+    // V8 lists none of these; JavaScriptCore lists all, plus withdrawn codes.
+    for (const code of ['VED', 'XAU', 'XAG', 'XUA', 'XTS', 'XXX', 'CHE', 'CHW', 'BOV', 'COU', 'MXV', 'USN', 'XAD', 'XCG', 'ZWG', 'SLE'])
+      {expect(isCurrency(code), code).toBe(true)}
+    expect(money('1.00', 'VED')).toEqual({ amount: '1.00', currency: 'VED' })
+    expect(currencyDigits('XAU')).toBe(2)
+    // Withdrawn codes some engines still list are not current ISO 4217 codes.
+    for (const code of ['BYR', 'HRK', 'DEM', 'SLL', 'ZWL', 'CUC']) expect(isCurrency(code), code).toBe(false)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+    defineCurrency('HRK', { digits: 2 })
+    expect(money('7.53', 'HRK').amount).toBe('7.53')
+  })
+
   it('an engine reporting other digits does not change them', () => {
     const real = Intl.NumberFormat
     const spy = vi.spyOn(Intl, 'NumberFormat').mockImplementation(((locale: string, options: Intl.NumberFormatOptions) => {

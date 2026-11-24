@@ -168,7 +168,7 @@ formatNumber(null, { fallback: '-' }) // → "-"
 (value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string | (value: MoneyLike, options?: CurrencyOptions | CurrencyPreset) => string
 ```
 
-Format money: a number, bigint or decimal string with an ISO 4217 `currency` code, or a Money (`{ amount, currency }`, what `@pyreon/money` produces) on its own. A decimal string or a Money amount is formatted exactly, at any size (never converted to a float); a Money shows its own digits, so a currency given other digits with `defineCurrency` displays them. A malformed code or value returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`.
+Format money: a number, bigint or decimal string with an ISO 4217 `currency` code, or a Money (`{ amount, currency }`, what `@pyreon/money` produces) on its own. A decimal string or a Money amount is formatted exactly, at any size (never converted to a float); a Money shows its own digits, so a currency given other digits with `defineCurrency` displays them. A plain value with a code uses the engine's display digits for that currency (HUF: 0 in V8, 2 in JavaScriptCore), so format a Money when the digits must not depend on the engine. A custom code such as `USDT` (2 to 12 upper-case letters or digits) is placed where the locale puts a currency code. An amount with more than 100 fraction digits, or a malformed code or value, returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`.
 
 **Example**
 
@@ -176,6 +176,7 @@ Format money: a number, bigint or decimal string with an ISO 4217 `currency` cod
 formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // → "€9.99"
 formatCurrency('12345678901234567.89', 'EUR', { locale: 'en-US' }) // → "€12,345,678,901,234,567.89"
 formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // → "€9.99"
+formatCurrency({ amount: '1234.50', currency: 'USDT' }, { locale: 'de' }) // → "1.234,50 USDT"
 formatCurrency(1234.5, 'EUR', { locale: 'de' }) // → "1.234,50 €"
 formatCurrency(1234.5, 'CZK', { locale: 'cs' }) // → "1 234,50 Kč"
 formatCurrency(-5, 'USD', { locale: 'en-US', currencySign: 'accounting' }) // → "($5.00)"
@@ -1311,7 +1312,7 @@ A `<time>` that says how long ago (or how far ahead) a value is and keeps itself
 interface ConvertedUnitOptions extends UnitOptions { convertTo?: Unit; system?: 'auto' | 'metric' | 'us' | 'uk' }
 ```
 
-Options of `formatUnit` and `unitFormatter` from `@pyreon/format/units`: everything in `UnitOptions`, plus a conversion before formatting. `convertTo` names the unit; `system` picks the locale's own (`'auto'`, which follows the active locale in the reactive entry) or a fixed system. `convertTo` wins when both are given.
+Options of `formatUnit` and `unitFormatter` from `@pyreon/format/units`: everything in `UnitOptions`, plus a conversion before formatting. `convertTo` names the unit; `system` picks the locale's own (`'auto'`, which follows the active locale in the reactive entry) or a fixed system. `convertTo` wins when both are given. A conversion is arithmetic on a binary float (`Number(value)` times a factor), so a converted decimal string or bigint is no longer exact: `formatUnit('12345678901234567.89', 'meter', { convertTo: 'kilometer' })` shows about 17 significant digits. Without `convertTo` or `system`, a decimal string is formatted exactly.
 
 **Example**
 
