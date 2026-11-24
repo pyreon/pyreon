@@ -45,7 +45,10 @@ const DEPS: Record<string, unknown> = {
   For,
 }
 
-const SSR_DEPS = { ...DEPS, ...Object.fromEntries(Object.entries(server).filter(([k]) => k.startsWith('_'))) }
+const SSR_DEPS = {
+  ...DEPS,
+  ...Object.fromEntries(Object.entries(server).filter(([k]) => k.startsWith('_'))),
+}
 
 const lower = (code: string) =>
   transformSync(code.replace(/^import[^\n]*\n/gm, ''), {
@@ -70,7 +73,9 @@ function build(src: string, scope: Record<string, unknown>, side: Side): () => u
         }).code
   const deps = { ...(side.startsWith('server') ? SSR_DEPS : DEPS), ...scope }
 
-  return new Function(...Object.keys(deps), `${lower(code)}\nreturn App`)(...Object.values(deps)) as () => unknown
+  return new Function(...Object.keys(deps), `${lower(code)}\nreturn App`)(
+    ...Object.values(deps),
+  ) as () => unknown
 }
 
 /** The server a client pairs with: the SSR compile with the same options; h() with h(). */
@@ -87,6 +92,7 @@ function host(): HTMLElement {
   const el = document.createElement('div')
   document.body.appendChild(el)
   hosts.push(el)
+
   return el
 }
 
@@ -142,7 +148,12 @@ async function run(
 
 /** Apply the same write to both scopes and compare. */
 function flip(
-  r: { hydrated: HTMLElement; fresh: HTMLElement; hydratedScope: Record<string, unknown>; freshScope: Record<string, unknown> },
+  r: {
+    hydrated: HTMLElement
+    fresh: HTMLElement
+    hydratedScope: Record<string, unknown>
+    freshScope: Record<string, unknown>
+  },
   name: string,
   value: unknown,
 ): void {
@@ -154,7 +165,12 @@ function flip(
 const FOR_IN_RANGE = cases.FOR_IN_RANGE_SRC
 
 const divergentScope = () => ({ show: signal(true), rows: signal([1, 2]), v: [h('i', null, '1')] })
-const serverScope = { show: signal(true), rows: signal([1, 2]), v: [h('b', null, '1'), h('b', null, '2')] }
+
+const serverScope = {
+  show: signal(true),
+  rows: signal([1, 2]),
+  v: [h('b', null, '1'), h('b', null, '2')],
+}
 
 describe('#4764 (1): a <For> with no block at its cursor stays inside its range', () => {
   // The issue's repro: an h() client against the compiled server. The h()
@@ -163,7 +179,13 @@ describe('#4764 (1): a <For> with no block at its cursor stays inside its range'
   // the parent, the accessor's boundary included.
   for (const client of CLIENTS) {
     it(`${client} client, compiled server`, async () => {
-      const r = await run(FOR_IN_RANGE, client === 'compiled, tcc' ? 'server, tcc' : 'server', client, serverScope, divergentScope)
+      const r = await run(
+        FOR_IN_RANGE,
+        client === 'compiled, tcc' ? 'server, tcc' : 'server',
+        client,
+        serverScope,
+        divergentScope,
+      )
       expect(r.errors).toEqual([])
       expect(shape(r.hydrated)).toBe(shape(r.fresh))
       expect(shape(r.hydrated)).toBe('<div><i>1</i><li>1</li><li>2</li><span>after</span></div>')
@@ -190,7 +212,9 @@ describe('#4764 (1): a <For> with no block at its cursor stays inside its range'
     flip(r, 'on', true)
     // The accessor re-renders: everything it mounted is cleared first.
     flip(r, 'k', 1)
-    expect(shape(r.hydrated)).toBe('<div><b>b</b><i>i</i><u>u</u><li>1</li><span>after</span></div>')
+    expect(shape(r.hydrated)).toBe(
+      '<div><b>b</b><i>i</i><u>u</u><li>1</li><span>after</span></div>',
+    )
   })
 })
 
@@ -206,7 +230,9 @@ describe('#4764 (2): a sibling whose server output opens with a marker skips the
 
   it('keeps the identity of the server rows and of the trailing sibling', async () => {
     const el = host()
-    el.innerHTML = await renderToString(h(build(FOR_IN_RANGE, serverScope, 'h()') as never, null) as never)
+    el.innerHTML = await renderToString(
+      h(build(FOR_IN_RANGE, serverScope, 'h()') as never, null) as never,
+    )
     const lis = [...el.querySelectorAll('li')]
     const span = el.querySelector('span')
     const mismatches: string[] = []
@@ -251,9 +277,12 @@ describe('#4764 (2): a sibling whose server output opens with a marker skips the
   it('a divergent static text before an accessor', async () => {
     // The client renders text where the server has an element: the text
     // recovery refuses the element the same way.
-    const src = 'const App = () => <div>{v}{() => (on() ? <em>e</em> : null)}<span>after</span></div>'
+    const src =
+      'const App = () => <div>{v}{() => (on() ? <em>e</em> : null)}<span>after</span></div>'
     const el = host()
-    el.innerHTML = await renderToString(h(build(src, { on: signal(true), v: h('b', null, 'b') }, 'h()') as never, null) as never)
+    el.innerHTML = await renderToString(
+      h(build(src, { on: signal(true), v: h('b', null, 'b') }, 'h()') as never, null) as never,
+    )
     const em = el.querySelector('em')
     const span = el.querySelector('span')
     const on = signal(true)
@@ -350,9 +379,10 @@ const refScope = () => ({
   Comp: () => h('em', null, 'c'),
 })
 
-const refSrc = (ref: string, body: string) => `const App = () => <p><span ref={(el) => { if (el) ${ref} }}>${body}</span></p>`
+const refSrc = (ref: string, body: string) =>
+  `const App = () => <p><span ref={(el) => { if (el) ${ref} }}>${body}</span></p>`
 
-describe('#4764 (4): a ref that changes its element runs after the element\'s children, on every path', () => {
+describe("#4764 (4): a ref that changes its element runs after the element's children, on every path", () => {
   for (const [name, ref] of Object.entries(REFS)) {
     for (const body of BODIES) {
       it(`${name} ${body}`, () => {
@@ -400,20 +430,20 @@ describe('#4764 (5): a ref over adopted content sees what a fresh render gives i
     }
   }
 
-  it('stays live: a reactive range under an appending ref', async () => {
-    const src =
-      'const App = () => <p><span ref={(el) => { if (el) el.append(document.createElement("u")) }}><s/>{() => (on() ? <b>on</b> : <i>off</i>)}</span></p>'
-    for (const client of CLIENTS) {
-      const r = await run(src, serverFor(client), client, { on: signal(true) }, () => ({ on: signal(true) }))
+  const onScope = () => ({ on: signal(true) })
+
+  for (const client of CLIENTS) {
+    it(`${client}: stays live, a reactive range under an appending ref`, async () => {
+      const r = await run(cases.APPEND_REF_SRC, serverFor(client), client, onScope(), onScope)
       expect(r.mismatches).toEqual([])
       expect(shape(r.hydrated)).toBe('<p><span><s></s><b>on</b><u></u></span></p>')
       flip(r, 'on', false)
       flip(r, 'on', true)
-    }
-  })
+    })
+  }
 })
 
-describe('#4764: the Chromium twin\'s strings are the real pipeline\'s output', () => {
+describe("#4764: the Chromium twin's strings are the real pipeline's output", () => {
   const emit = (src: string) => lower(transformJSX(src, 'c.tsx', {}).code)
 
   it('client emit', () => {
@@ -425,8 +455,12 @@ describe('#4764: the Chromium twin\'s strings are the real pipeline\'s output', 
   it('server HTML', async () => {
     const html = async (src: string, side: Side, scope: Record<string, unknown>) =>
       renderToString(h(build(src, scope, side) as never, null) as never)
-    expect(await html(cases.FOR_IN_RANGE_SRC, 'server', serverScope)).toBe(cases.FOR_IN_RANGE_COMPILED_SERVER)
+    expect(await html(cases.FOR_IN_RANGE_SRC, 'server', serverScope)).toBe(
+      cases.FOR_IN_RANGE_COMPILED_SERVER,
+    )
     expect(await html(cases.FOR_IN_RANGE_SRC, 'h()', serverScope)).toBe(cases.FOR_IN_RANGE_H_SERVER)
-    expect(await html(cases.APPEND_REF_SRC, 'server', { on: signal(true) })).toBe(cases.APPEND_REF_SERVER)
+    expect(await html(cases.APPEND_REF_SRC, 'server', { on: signal(true) })).toBe(
+      cases.APPEND_REF_SERVER,
+    )
   })
 })

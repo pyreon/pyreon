@@ -34,22 +34,24 @@ const RUNTIME = { _dispose2, _mountSlot, _ref, _setChild, _setChildAt, _tpl, For
 
 function compiled(code: string, scope: Record<string, unknown>): () => unknown {
   const deps = { ...RUNTIME, ...scope }
-  return new Function(...Object.keys(deps), `${code}\nreturn App`)(...Object.values(deps)) as () => unknown
+  return new Function(...Object.keys(deps), `${code}\nreturn App`)(
+    ...Object.values(deps),
+  ) as () => unknown
 }
 
 /** `FOR_IN_RANGE_SRC` written for the h() path. */
-const forInRangeH =
-  (scope: { v: unknown; show: () => boolean; rows: () => number[] }) => () =>
-    h(
-      'div',
-      null,
-      scope.v as never,
-      () =>
-        scope.show()
-          ? h(For as never, { each: () => scope.rows(), by: (r: number) => r }, (r: number) => h('li', null, String(r)))
-          : null,
-      h('span', null, 'after'),
-    )
+const forInRangeH = (scope: { v: unknown; show: () => boolean; rows: () => number[] }) => () =>
+  h(
+    'div',
+    null,
+    scope.v as never,
+    () =>
+      scope.show()
+        ? h(For as never, { each: () => scope.rows(), by: (r: number) => r }, ((r: number) =>
+            h('li', null, String(r))) as never)
+        : null,
+    h('span', null, 'after'),
+  )
 
 const hosts: HTMLElement[] = []
 
@@ -62,6 +64,7 @@ function host(html = ''): HTMLElement {
   document.body.appendChild(el)
   hosts.push(el)
   el.innerHTML = html
+
   return el
 }
 
@@ -80,6 +83,7 @@ function hydrateQuiet(el: Element, vnode: unknown): string[] {
     enableHydrationWarnings()
     console.error = origError
   }
+
   return errors
 }
 
@@ -89,7 +93,10 @@ describe('#4764 in Chromium', () => {
     const el = host(FOR_IN_RANGE_COMPILED_SERVER)
     const show = signal(true)
     const rows = signal([1, 2])
-    const errors = hydrateQuiet(el, h(forInRangeH({ v: [h('i', null, '1')], show, rows }) as never, null))
+    const errors = hydrateQuiet(
+      el,
+      h(forInRangeH({ v: [h('i', null, '1')], show, rows }) as never, null),
+    )
     expect(errors).toEqual([])
     expect(shape(el)).toBe('<div><i>1</i><li>1</li><li>2</li><span>after</span></div>')
     rows.set([1, 2, 3])
@@ -103,7 +110,10 @@ describe('#4764 in Chromium', () => {
     const lis = [...el.querySelectorAll('li')]
     const span = el.querySelector('span')
     const rows = signal([1, 2])
-    const errors = hydrateQuiet(el, h(forInRangeH({ v: [h('i', null, '1')], show: () => true, rows }) as never, null))
+    const errors = hydrateQuiet(
+      el,
+      h(forInRangeH({ v: [h('i', null, '1')], show: () => true, rows }) as never, null),
+    )
     expect(errors).toEqual([])
     expect(shape(el)).toBe('<div><i>1</i><li>1</li><li>2</li><span>after</span></div>')
     const now = [...el.querySelectorAll('li')]
@@ -133,7 +143,13 @@ describe('#4764 in Chromium', () => {
       errors.push(a.map(String).join(' '))
     }
     try {
-      mount(h(compiled(CLEAR_REF_COMPILED, { vArr: [h('b', null, '1'), h('i', null, '2')] }) as never, null), el)
+      mount(
+        h(
+          compiled(CLEAR_REF_COMPILED, { vArr: [h('b', null, '1'), h('i', null, '2')] }) as never,
+          null,
+        ),
+        el,
+      )
     } finally {
       console.error = origError
     }
@@ -146,7 +162,9 @@ describe('#4764 in Chromium', () => {
     const b = el.querySelector('b')
     const on = signal(true)
     const reports: string[] = []
-    const off = onHydrationMismatch((m) => reports.push(`${m.type}: ${String(m.expected)} vs ${String(m.actual)}`))
+    const off = onHydrationMismatch((m) =>
+      reports.push(`${m.type}: ${String(m.expected)} vs ${String(m.actual)}`),
+    )
     try {
       hydrateRoot(el, h(compiled(APPEND_REF_COMPILED, { on }) as never, null))
     } finally {
