@@ -58,7 +58,7 @@ export function checkLlmsTxtShape(contents: string): string[] {
  * not that regex, which retries from every `[` and is quadratic on a line of
  * many `[` (CodeQL js/polynomial-redos).
  */
-function markdownLinkTargets(line: string): string[] {
+export function markdownLinkTargets(line: string): string[] {
   const targets: string[] = []
   let close = -1
   let i = line.indexOf('[')
@@ -83,13 +83,13 @@ function markdownLinkTargets(line: string): string[] {
 }
 
 /**
- * Whether one line matches Lighthouse's `/\[.+\]\(.+\)/` (`.` stops at a
- * newline, so the audit's test is per line): a `[`, at least one character,
+ * Whether one line matches Lighthouse's `/\[.+\]\(.+\)/` (`.` stops at any
+ * line terminator, so the audit's test is per line): a `[`, at least one character,
  * `](`, at least one character, `)`. The earliest `[`, then the earliest `](`
  * after it, leave the most room for the rest, so three `indexOf` calls decide
  * it in linear time.
  */
-function hasLinkLike(line: string): boolean {
+export function hasLinkLike(line: string): boolean {
   const open = line.indexOf('[')
   if (open === -1) return false
   const mid = line.indexOf('](', open + 2)
@@ -97,6 +97,13 @@ function hasLinkLike(line: string): boolean {
 
   return line.indexOf(')', mid + 3) !== -1
 }
+
+/**
+ * What `.` refuses to match without the `s` flag: `\n`, `\r`, U+2028 and
+ * U+2029. Splitting on `\n` alone let a `\r` (a classic-Mac line end, or one
+ * inside a link) join two lines the audit's regex keeps apart.
+ */
+const LINE_TERMINATORS = /[\n\r\u2028\u2029]/
 
 /**
  * The checks of Lighthouse 13.6's `llms-txt` audit, in the same order and with
@@ -110,7 +117,7 @@ function hasLinkLike(line: string): boolean {
 export function lighthouseLlmsTxtFailures(content: string): string[] {
   const errors: string[] = []
   if (!/^\s*#\s+.+/m.test(content)) errors.push('File is missing a required H1 header (e.g., "# Title").')
-  if (!content.split('\n').some(hasLinkLike)) errors.push('File does not appear to contain any links.')
+  if (!content.split(LINE_TERMINATORS).some(hasLinkLike)) errors.push('File does not appear to contain any links.')
   if (content.length < 50) errors.push('File is suspiciously short.')
 
   return errors
