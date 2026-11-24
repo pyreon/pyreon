@@ -79,7 +79,7 @@ import { resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
 import { writeServiceWorker } from './pwa'
-import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
+import { buildSsrBundle, materializeEntry, renderSsrEntrySource, syntheticEntryPath } from './ssr-build-shared'
 import { serializeServerConfig } from './server-config'
 import { computeClientStartPreload, type ViteManifest } from './ssg-modulepreload'
 import type { ZeroConfig } from './types'
@@ -293,7 +293,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       const userEntryExists = existsSync(userEntryPath)
       const entryPath = userEntryExists
         ? userEntryPath
-        : join(root, SSR_ENTRY_FILENAME)
+        : syntheticEntryPath(root, SSR_ENTRY_FILENAME)
 
       // Materialize the synthetic entry only when the user hasn't
       // authored one. The synthetic delegates to `createServer({

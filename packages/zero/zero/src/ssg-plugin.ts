@@ -54,6 +54,7 @@ import {
   buildSsrBundle,
   injectIntoTemplate,
   materializeEntry,
+  syntheticEntryPath,
   mkdirOnce,
   writeFileAtomic,
 } from './ssr-build-shared'
@@ -1558,7 +1559,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // semantics; placing it next to the user's routes lets zero's main
       // plugin pick it up identically to user code. Cleaned up after the
       // build.
-      const entryPath = join(root, SSR_ENTRY_FILENAME)
+      // Per-build name: two builds of one root must not share it (see
+      // `syntheticEntryPath`).
+      const entryPath = syntheticEntryPath(root, SSR_ENTRY_FILENAME)
       // PR K: bake the configured locales into the SSG entry source so the
       // per-locale 404 walker can detect which RouteRecord serves which
       // locale at module-eval time inside the SSR sub-build.

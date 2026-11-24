@@ -28,6 +28,9 @@ const GENERATED = [
   '.pyreon/context.json',
   '__pyreon-zero-ssg-entry.js',
   '__pyreon-zero-ssr-entry.js',
+  // The per-build name a build actually writes (see `syntheticEntryPath`).
+  '__pyreon-zero-ssg-entry-4242-0a1b2c3d.js',
+  '__pyreon-zero-ssr-entry-4242-0a1b2c3d.js',
 ]
 
 function config(targetDir: string, template: ProjectConfig['template']): ProjectConfig {

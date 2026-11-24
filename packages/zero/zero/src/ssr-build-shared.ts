@@ -23,7 +23,9 @@
  * for unit-test access, never re-exported from `@pyreon/zero/server`.
  */
 
+import { randomBytes } from 'node:crypto'
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { PyreonPluginOptions } from '@pyreon/vite-plugin'
 import type { BuildOptions, Plugin } from 'vite'
 import { _enterInnerBuild, _exitInnerBuild } from './build-flags'
@@ -500,6 +502,22 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
     _exitInnerBuild()
     delete process.env[options.envFlag]
   }
+}
+
+/**
+ * The path a synthetic entry is written to: `<root>/<name>` with a per-build
+ * suffix (`__pyreon-zero-ssg-entry-<pid>-<random>.js`).
+ *
+ * A fixed name made two builds of the SAME root collide: each writes the
+ * file, and the first to finish removes it from under the other, whose inner
+ * build then fails with `Cannot resolve entry module`. Two builds of one root
+ * at once are ordinary for a tool that ships its own app (two `atlas build`
+ * runs in one monorepo CI job, a test runner building in parallel). The
+ * stem is unchanged, so `__pyreon-zero-ss{g,r}-entry*.js` ignores both forms.
+ */
+export function syntheticEntryPath(root: string, filename: string): string {
+  const unique = `${process.pid}-${randomBytes(4).toString('hex')}`
+  return join(root, filename.replace(/\.js$/, `-${unique}.js`))
 }
 
 /**
