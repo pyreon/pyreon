@@ -209,7 +209,7 @@ const Admin = () => (
 <RouterLink to="https://github.com/pyreon">GitHub</RouterLink>{/* auto target=_blank + secure rel */}`,
       mistakes: [
         '`<a href="/about" onClick={() => router.push("/about")}>` — use `<RouterLink to="/about">` instead; it handles the anchor element, active class, and click interception',
-        'Plain internal `<a href="/about">` in a router app — triggers a FULL page reload (dev warns at the document level with the RouterLink replacement). Deliberate full-load links opt out via `target`, `download`, or `data-allow-reload`.',
+        'Plain internal `<a href="/about">` in a router app — triggers a FULL page reload (dev warns at the document level with the RouterLink replacement). Deliberate full-load links opt out via `target`, `download`, or `data-allow-reload` (on the anchor, or on an ancestor to opt out a whole region — embedded content, a component preview).',
         'Rendering `<RouterLink>` with no `<RouterProvider>` ancestor (and no `setActiveRouter`) — the link degrades to a plain anchor: plain-path `href`, full page load on click (dev warns once per `to`). Wrap the tree in `<RouterProvider router={…}>` for client-side navigation.',
         'Wrapping an external URL in a plain `<a>` to avoid router interception — unnecessary: `<RouterLink to="https://x.com">` already detects it as external, renders `target="_blank" rel="noopener noreferrer"`, and does NOT client-navigate. Override with `external` / `target` / `rel` props or the `createRouter({ links })` config.',
         '`<RouterLink to={dynamicPath}>` without calling the signal — must call: `<RouterLink to={dynamicPath()}>` (or let the compiler handle it via `_rp()`)',

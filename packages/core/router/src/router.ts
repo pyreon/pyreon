@@ -946,7 +946,7 @@ export function createRouter<TNames extends string = string>(
   // document bubble phase — `<RouterLink>` calls `preventDefault()` on the
   // internal clicks it handles, so `e.defaultPrevented` uniquely discriminates
   // framework-handled anchors from plain ones. Opt out via `target` / `download` /
-  // `data-allow-reload`. Applies in BOTH modes (a path-style href full-reloads a
+  // `data-allow-reload` (on the anchor or an ancestor region). Applies in BOTH modes (a path-style href full-reloads a
   // hash-mode app too; valid `#/x` hrefs classify as 'hash' and are skipped).
   // Registered ONCE per router and removed by identity in `destroy()` (leak D).
   // Not for a memory router: the page's anchors are its host's business.
@@ -961,7 +961,9 @@ export function createRouter<TNames extends string = string>(
             !a ||
             a.hasAttribute('download') ||
             a.hasAttribute('target') ||
-            a.hasAttribute('data-allow-reload')
+            // On the anchor or any ancestor: a host marks a REGION whose links
+            // are not this router's (embedded content, a component preview).
+            a.closest('[data-allow-reload]') !== null
           ) {
             return
           }

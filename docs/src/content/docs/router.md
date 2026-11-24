@@ -930,6 +930,12 @@ For a **deliberate** full-load link, opt out with any of:
 <a href="/print-view" target="_blank">Print view</a>
 ```
 
+`data-allow-reload` also works on an **ancestor**: every anchor inside the marked element is skipped. Use it for a region whose links are not your router's, such as embedded CMS HTML or a component preview:
+
+```html
+<div data-allow-reload>…third-party markup with its own links…</div>
+```
+
 #### External links
 
 `RouterLink` inspects `to` at runtime and only intercepts **internal** navigations. Anything else is left to the browser, with the right `<a>` attributes applied automatically:

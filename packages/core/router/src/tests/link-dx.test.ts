@@ -224,6 +224,25 @@ describe('internal <a href> full-reload dev warning (PZ-06)', () => {
     expect(warnsContaining(RELOAD_MSG)).toBe(0)
   })
 
+  test('data-allow-reload on an ANCESTOR opts out every anchor inside it', () => {
+    // A host marks a region whose links are not the router's — e.g. a
+    // component workbench's preview, where the anchors belong to the
+    // component under test, not to the workbench app.
+    clearRouterEnv()
+    makeRouter({ routes, mode: 'history', url: '/' })
+    const region = document.createElement('div')
+    region.setAttribute('data-allow-reload', '')
+    document.body.appendChild(region)
+    const inner = document.createElement('a')
+    inner.setAttribute('href', '/pz06-region')
+    region.appendChild(document.createElement('span')).appendChild(inner)
+    click(inner)
+    expect(warnsContaining(RELOAD_MSG)).toBe(0)
+    // The pair: the same href outside the region still warns.
+    click(plainAnchor('/pz06-region'))
+    expect(warnsContaining(RELOAD_MSG)).toBe(1)
+  })
+
   test('target / download attributes do not warn (deliberate full-load links)', () => {
     clearRouterEnv()
     makeRouter({ routes, mode: 'history', url: '/' })
