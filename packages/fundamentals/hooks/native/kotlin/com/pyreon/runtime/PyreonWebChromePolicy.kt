@@ -227,6 +227,75 @@ fun pyreonWebViewAssetPath(src: String): String? {
 private fun pyreonWebViewParserRewrites(s: String): Boolean =
     s.any { it < ' ' || it == '\u007f' } || s.first() == ' ' || s.last() == ' '
 
+/** Renderer crashes in one window after which a host stops reloading and stays empty. */
+internal const val PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS = 2
+
+/** Two renderer losses less than this apart are "in a row"; a longer gap starts a new count. */
+internal const val PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS = 60_000L
+
+/** Reload delay after the second loss in a row; it doubles per loss, up to the maximum. */
+internal const val PYREON_WEBVIEW_RENDERER_BACKOFF_BASE_MS = 1_000L
+internal const val PYREON_WEBVIEW_RENDERER_BACKOFF_MAX_MS = 30_000L
+
+/** One host's renderer losses in the current window (see [pyreonWebViewRendererGone]). */
+internal class PyreonRendererLossHistory {
+    /** The `html` / `src` the count belongs to; another one is a new page with a fresh count. */
+    var key: String? = null
+    /** Bumped per loss: a delayed reload whose generation is no longer current must not run. */
+    var generation: Int = 0
+    var lastAtMs: Long? = null
+    var crashes: Int = 0
+    var losses: Int = 0
+}
+
+/**
+ * What a host does after its renderer process is gone: the reload delay in
+ * milliseconds, or null to stay empty. The dead view is dropped either way:
+ * Android WebView kills the WHOLE app process when ANY WebView returns false
+ * from `onRenderProcessGone`, and a handled view can never be used again.
+ *
+ * - Losses less than [PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS] apart count as
+ *   in a row; a longer gap (the page stayed up) starts a new count. A count
+ *   does NOT restart on a finished load: a page that crashes its renderer
+ *   right after loading would otherwise reload forever.
+ * - A crash (`didCrash`) beyond [PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS]
+ *   in a row: stay empty. Every WebView of the app shares one renderer and
+ *   each is told it crashed, so this host's page is not necessarily the cause.
+ * - A system kill (it reclaimed memory) always reloads.
+ * - Either way the first loss reloads at once and each further one in a row
+ *   waits twice as long (from [PYREON_WEBVIEW_RENDERER_BACKOFF_BASE_MS] to
+ *   [PYREON_WEBVIEW_RENDERER_BACKOFF_MAX_MS]), so sustained memory pressure
+ *   cannot churn renderer starts.
+ * - A different [key] (the host was given another `html` / `src`) is a new
+ *   page: its count starts fresh, even after the cap emptied the old one. A
+ *   null [key] (no page known) never counts as a new page.
+ * - Each loss bumps `history.generation`; a reload scheduled by an earlier
+ *   loss must check [pyreonWebViewReloadStillDue] and not run, so a newer loss
+ *   (with its longer delay, or its "stay empty") always wins.
+ */
+internal fun pyreonWebViewRendererGone(history: PyreonRendererLossHistory, key: String?, didCrash: Boolean, nowMs: Long): Long? {
+    history.generation++
+    val last = history.lastAtMs
+    if ((key != null && key != history.key) || last == null || nowMs - last >= PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS) {
+        if (key != null) history.key = key
+        history.crashes = 0
+        history.losses = 0
+    }
+    history.lastAtMs = nowMs
+    history.losses++
+    if (didCrash) {
+        history.crashes++
+        if (history.crashes > PYREON_WEBVIEW_MAX_RENDERER_CRASH_RELOADS) return null
+    }
+    if (history.losses <= 1) return 0L
+    val doublings = (history.losses - 2).coerceAtMost(15)
+    return (PYREON_WEBVIEW_RENDERER_BACKOFF_BASE_MS shl doublings).coerceAtMost(PYREON_WEBVIEW_RENDERER_BACKOFF_MAX_MS)
+}
+
+/** Whether a reload scheduled at loss [generation] may still run (no newer loss since). */
+internal fun pyreonWebViewReloadStillDue(history: PyreonRendererLossHistory, generation: Int): Boolean =
+    history.generation == generation
+
 /** A `src` that names a remote page: `http(s)` with a host. */
 fun pyreonWebViewIsRemoteSrc(src: String): Boolean {
     val uri = try { java.net.URI(src) } catch (_: Exception) { return false }
