@@ -10,4 +10,4 @@
  * helpers that compiled code imports are the compiler ABI and stay on the main
  * `@pyreon/runtime-dom` entry.
  */
-export { _declareRootDecoration } from './template'
+export { _declareRootDecoration } from './root-decoration'
