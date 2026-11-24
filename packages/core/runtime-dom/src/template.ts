@@ -16,10 +16,11 @@ import {
   _adoptParkedText,
   _beginParkBatch,
   _endParkBatch,
-  _parkText,
+  _park,
+  _parkCloser,
   _parkedPending,
   _slotHydrator,
-  _takeParkedText,
+  _takeParked,
 } from './parked-text'
 import {
   _adoptingCompiledBind,
@@ -27,6 +28,7 @@ import {
   _markServerText,
   rangeText,
   reportFirstText,
+  devAdoptedTextWrite,
   reportTextWrite,
 } from './hydration-debug'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
@@ -162,6 +164,8 @@ export function _setChild(node: Element, value: unknown): void {
   // strength of a row whose cell held a string. Both kinds go to the
   // marker-less slot hydrator, which walks the value against the server's
   // child list and adopts it.
+  // A #4599 region is claimed there by identity (see `_park`, `regions.ts`),
+  // or mounted fresh where user code filled it.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
       ownByScope(_slotHydrator(value as never, node, null))
@@ -188,15 +192,11 @@ export function _setChild(node: Element, value: unknown): void {
     // call. A NUMBER is handed to the DOM unconverted (see `_replaceText`).
     const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
     // Dev, adopting: the same write, reported if it changed the server's text
-    // (#4419). A separate block so production keeps exactly the write below.
+    // (#4419). A separate block so production keeps exactly the write below:
+    // neither consumes a #4599 region's mark, so `_settleRegions` treats the
+    // region the same in both builds.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
-      const before = node.textContent ?? ''
-      if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-        ;(fc as Text).data = text as string
-      } else {
-        _replaceText(node, text)
-      }
-      reportTextWrite(node, before, 'text')
+      devAdoptedTextWrite(node, fc, text, _replaceText)
 
       return
     }
@@ -1002,7 +1002,7 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
  *
  * - `TPL_REMOUNTABLE` (1): a template emitted as a component's child. The
  *   returned item SURVIVES being torn down and mounted again — see
- *   {@link remountableTpl}.
+ *   {@link RemountableItem}.
  * - `TPL_SVG_ROOT` (2): the template is rooted at a bare SVG element (`<g>`,
  *   `<path>`, `<linearGradient>`, … not enclosed in an `<svg>`). Setting
  *   `innerHTML` runs the HTML parser, which enters SVG foreign content only at a
@@ -1014,13 +1014,22 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
  * The compiler decides the SVG root at build time from the tag (its table is
  * every SVG element name that is not also an HTML one), so the runtime carries
  * no tag list.
+ *
+ * `key` is the JSX `key` of a KEYED root (`<tr key={row.id}>`). The compiler
+ * passes it with `TPL_REMOUNTABLE` set, and the item carries it as `key`, the
+ * field a VNode's key is read from: the keyed list reconciler (`isKeyedArray`,
+ * `keyOfVNode`), hydration's keyed check and components reading their
+ * children's keys all see it unchanged. The item builds at its mount, so a
+ * keyed `.map()` that re-runs for every row and mounts only the new keys
+ * clones nothing for the rows it keeps.
  */
 export function _tpl(
   html: string,
   bind: (el: HTMLElement) => (() => void) | null,
   flags = 0,
+  key: string | number | null = null,
 ): NativeItem {
-  if ((flags & TPL_REMOUNTABLE) !== 0) return remountableTpl(html, bind, flags & TPL_SVG_ROOT)
+  if ((flags & TPL_REMOUNTABLE) !== 0) return new RemountableItem(html, bind, flags & TPL_SVG_ROOT, key)
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
@@ -1120,9 +1129,10 @@ export function _tpl(
  * revivals, which is what lets a boundary recognize "the same value" and skip an
  * unnecessary teardown.
  *
- * Cost is paid only by children emitted in a component-child position (one
- * object and two closures per mount); `<For>` rows and component roots stay on
- * the plain path.
+ * Cost is paid only by templates emitted in a component-child position and by
+ * keyed roots (one object per item, the disposer closure on first mount);
+ * `<For>` rows and unkeyed component roots stay on the plain path. The class is
+ * `RemountableItem`, below.
  */
 /**
  * A `_tpl` item built with the compiler's re-mountable flag. `__dead` is true once
@@ -1136,52 +1146,82 @@ export interface RemountableNativeItem extends NativeItem {
   __revive(): void
 }
 
-function remountableTpl(
-  html: string,
-  bind: (el: HTMLElement) => (() => void) | null,
-  flags: number,
-): RemountableNativeItem {
-  // Built on FIRST USE, not at creation. A compiled component child is created while its parent's JSX arguments are
-  // being evaluated — before the enclosing component (a context provider, say) has run its setup — so building here
-  // would mount every component the template holds (a `<RouterView />`, a routed page) under the wrong owner, where
-  // the provider's context does not reach. The first use is the mount, which runs inside the right owner.
-  let current: NativeItem | null = null
-  let dead = false
-  const built = (): NativeItem => (current ??= _tpl(html, bind, flags))
-  const dispose = (): void => {
-    dead = true
-    current?.cleanup?.()
-  }
-  const item = {
-    __isNative: true as const,
-    get el(): HTMLElement {
-      return built().el
-    },
-    // Always a function: even a bind with no disposers must mark the item dead.
-    get cleanup(): () => void {
-      return dispose
-    },
-    get __dead(): boolean {
-      return dead
-    },
-    __revive(): void {
-      dead = false
-      current = null
-    },
-    // Hydration hands a DEFERRED item its real cursor; forward to the item
-    // actually holding the build (the facade is transparent to that protocol).
-    get __deferred(): true | undefined {
-      return (built() as Partial<DeferredNativeItem>).__deferred
-    },
-    __adoptAt(domNode: Element): boolean {
-      const inner = built()
-      // A declaration made on this (outer) item belongs to the build it adopts.
-      if ((item as unknown as DecoratedItem)[ROOT_DECORATED] === true) _declareRootDecoration(inner)
-      return (inner as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
-    },
+/**
+ * The re-mountable item, as ONE object per call. Built on FIRST USE, not at
+ * creation: a compiled component child is created while its parent's JSX
+ * arguments are being evaluated — before the enclosing component (a context
+ * provider, say) has run its setup — so building here would mount every
+ * component the template holds (a `<RouterView />`, a routed page) under the
+ * wrong owner, where the provider's context does not reach. The first use is
+ * the mount, which runs inside the right owner.
+ *
+ * A class with prototype accessors, not an object literal with getters over
+ * closure state. Many of these items are created and never mounted: a keyed
+ * `.map()` re-runs its callback for EVERY row on every list change and keeps
+ * only the rows whose keys are new, so a swap of two rows in a 1,000-row list
+ * created 1,000 rows' items to throw away. The literal cost one object, two
+ * closures and six accessor closures per item and was 85% of that swap's
+ * on-CPU time; an instance is one allocation, and the disposer closure is
+ * made only when a mount first reads `cleanup`.
+ */
+class RemountableItem {
+  readonly __isNative = true as const
+  // One-letter fields: property names survive minification, and this class
+  // ships in every bundle that compiles a component child.
+  /** The current build, null until first use and after `__revive()`. */
+  private c: NativeItem | null = null
+  /** Dead: the cleanup ran, so a re-mount must rebuild first. */
+  private d = false
+  /** The stable disposer handed out by `cleanup`, made on first read. */
+  private x: (() => void) | null = null
+
+  constructor(
+    /** `_tpl`'s arguments, kept to (re)build. */
+    private h: string,
+    private b: (el: HTMLElement) => (() => void) | null,
+    private f: number,
+    /** The element's JSX `key` (see `_tpl`), null when it has none. */
+    readonly key: string | number | null,
+  ) {}
+
+  private built(): NativeItem {
+    return (this.c ??= _tpl(this.h, this.b, this.f))
   }
 
-  return item as unknown as RemountableNativeItem
+  get el(): HTMLElement {
+    return this.built().el
+  }
+
+  // Always a function: even a bind with no disposers must mark the item dead.
+  // The same function on every read — callers keep it as the row's cleanup.
+  get cleanup(): () => void {
+    return (this.x ??= () => {
+      this.d = true
+      this.c?.cleanup?.()
+    })
+  }
+
+  get __dead(): boolean {
+    return this.d
+  }
+
+  __revive(): void {
+    this.d = false
+    this.c = null
+  }
+
+  // Hydration hands a DEFERRED item its real cursor; forward to the item
+  // actually holding the build (the facade is transparent to that protocol).
+  get __deferred(): true | undefined {
+    return (this.built() as Partial<DeferredNativeItem>).__deferred
+  }
+
+  __adoptAt(domNode: Element): boolean {
+    const inner = this.built()
+    // A declaration made on this (outer) item belongs to the build it adopts.
+    if ((this as unknown as DecoratedItem)[ROOT_DECORATED] === true) _declareRootDecoration(inner)
+    return (inner as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
+  }
 }
 
 /**
@@ -1207,7 +1247,7 @@ function buildTpl(
     _tplAdoptAllowPlan = false
     _tplRootDecorated = false
     _tplPendingHoles = null
-    // Placeholders parked by this verify and this bind (#4385), swept after it.
+    // What this verify and this bind park (#4385, #4599), settled after it.
     const prevPark = _beginParkBatch()
     if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan, rootDecorated)) {
       const holes = _tplPendingHoles
@@ -1225,7 +1265,8 @@ function buildTpl(
         _tplHoleCursors = holes
         const prevFresh = _freshBind
         _freshBind = false // an ADOPTED node holds server content — keep every read
-        let cleanup: (() => void) | null
+        // Stays `undefined` when the bind throws.
+        let cleanup: (() => void) | null | undefined
         try {
           // Dev: the binders report the server text they correct (#4419).
           cleanup =
@@ -1236,7 +1277,8 @@ function buildTpl(
         } finally {
           _tplHoleCursors = prevHoles
           _freshBind = prevFresh
-          sweepParkedTexts(prevPark)
+          // Settle what this build parked; `cleanup` is unset when the bind threw.
+          sweepParkedTexts(prevPark, cleanup !== undefined)
         }
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
@@ -1245,8 +1287,8 @@ function buildTpl(
         return { __isNative: true, el: target as HTMLElement, cleanup }
       }
     }
-    // Not adopted: close this build's park batch (nothing it parked is bound).
-    sweepParkedTexts(prevPark)
+    // Not adopted: release what a failed verify parked; nothing is bound.
+    sweepParkedTexts(prevPark, false)
   }
   // (adoption falls through to a normal clone on any verification bail)
   const root = (tpl as CachedTemplate)._root
@@ -1739,7 +1781,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     // is PARKED against the range, so a polymorphic binding adopts the server's
     // nodes through the slot hydrator (which puts a parked range back) instead
     // of re-mounting them; a binding that cannot is swept after the bind.
-    if (parked || (first !== null && !isRangeClose(first))) _parkText(fresh, placeholder as Comment)
+    if (parked || (first !== null && !isRangeClose(first))) _park(fresh, placeholder as Comment)
     // EMPTY range (the accessor rendered ''): nothing to adopt, clear it.
     else clearSlotRange(placeholder as Comment)
 
@@ -1776,16 +1818,19 @@ function clearSlotRange(open: Comment): void {
 }
 
 /**
- * Close a build's park batch and sweep the placeholders no binding adopted
- * (see `_beginParkBatch`): the server content each one stands for is removed,
- * and in dev the rewrite is reported against it.
+ * Close a build's park batch and settle it: regions through the hydration side
+ * (`_parkCloser`), then every #4385 text placeholder no binding adopted. After a
+ * completed bind (`done`) the placeholder's server content is removed and dev
+ * reports the rewrite; after a bind that threw, the mark is only released.
  */
-function sweepParkedTexts(prev: Text[] | null): void {
+function sweepParkedTexts(prev: Node[] | null, done: boolean): void {
   const mine = _endParkBatch(prev)
   if (mine === null) return
+  // Regions first: what is left marked after that is text placeholders.
+  _parkCloser?.(mine, done)
   for (const text of mine) {
-    const open = _takeParkedText(text)
-    if (open === undefined) continue
+    const open = _takeParked(text) as Comment | null | undefined
+    if (open === undefined || !done) continue
     let server = ''
     if (open === null) {
       // Sole slot: every other child of the element is server content.
@@ -1798,7 +1843,7 @@ function sweepParkedTexts(prev: Text[] | null): void {
       if (process.env.NODE_ENV !== 'production') server = _serverTextOfRange(open)
       clearSlotRange(open)
     }
-    if (process.env.NODE_ENV !== 'production') reportTextWrite(text, server, 'reactive')
+    if (process.env.NODE_ENV !== 'production') reportTextWrite(text as Text, server, 'reactive')
   }
 }
 

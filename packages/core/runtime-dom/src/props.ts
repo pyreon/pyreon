@@ -4,6 +4,8 @@ import { cx, isElementEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normali
 import { _rdLabelBinding, _rdNoteTarget, _renderBind, batch, renderEffect } from '@pyreon/reactivity'
 import { _ref } from './compiled-ref'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
+import { _userCodeHook } from './parked-text'
+import { releaseRef } from './teardown'
 
 type Cleanup = () => void
 
@@ -157,6 +159,10 @@ export function applyPropsWithRef(el: Element, props: Props, deferRef?: 1): Defe
   // `{...(x ?? undefined)}`) — `applyProps(el, null)` is itself a no-op
   // (`for…in null`), but the `.ref` read below would throw. Bail early.
   if (props == null && !deferRef) return NOOP_CLEANUP
+  // A spread can write content (`dangerouslySetInnerHTML`) at its attribute
+  // position, before `_setChild` claims a #4599 region: user code (see
+  // `_userCodeHook`). Its ref runs later, from the ref tail (#4764).
+  _userCodeHook?.(el)
   const cleanup = props == null ? null : applyProps(el, props)
   const ref = (props as { ref?: RefCallback | RefObject } | null)?.ref
   // DEFERRED REF (#4764): the compiler passes `1` and calls `.r()` from the
@@ -178,8 +184,7 @@ export function applyPropsWithRef(el: Element, props: Props, deferRef?: 1): Defe
   else ref.current = el
   return () => {
     cleanup?.()
-    if (typeof ref === 'function') ref(null)
-    else ref.current = null
+    releaseRef(ref)
   }
 }
 
@@ -217,6 +222,7 @@ export function bindSpread(el: Element, getProps: () => Props, deferRef?: 1): De
   const stop = _renderBind(() => {
     inner?.()
     const props = getProps()
+    _userCodeHook?.(el)
     inner = applyProps(el, props)
     ref = (props as { ref?: unknown } | null)?.ref
     if (armed) wire()

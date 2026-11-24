@@ -8791,20 +8791,9 @@ fn brace_template_child(call: String, ctx: &mut Ctx) -> String {
     if !ctx.parent_is_jsx {
         return call;
     }
-    // A template in a CHILD position is built once and may be torn down then
-    // mounted again as the same object (`<Show>` re-showing). The third `_tpl`
-    // argument is a bit set; 1 marks it re-mountable, and it combines with the
-    // SVG-root flag 2 that `build_template_call` may already have written (a
-    // bind closure ends in `})` and a static one in `null)`, so a trailing
-    // `, 2)` can only be that flag). SSR `_ssr(…)` calls are left alone. Mirrors
-    // the JS backend's `buildTemplateCall`.
-    let call = if call.starts_with("_tpl(") && call.ends_with(", 2)") {
-        format!("{}, 3)", &call[..call.len() - 4])
-    } else if call.starts_with("_tpl(") && call.ends_with(')') {
-        format!("{}, 1)", &call[..call.len() - 1])
-    } else {
-        call
-    };
+    // The re-mountable `_tpl` flag a CHILD position needs is written by
+    // `build_template_call` (its `remountable` argument), as the JS backend's
+    // `buildTemplateCall` writes it.
     if !(ctx.parent_is_component_jsx_element && ctx.parent_component_has_sole_child) {
         return format!("{{{}}}", call);
     }
@@ -8835,7 +8824,10 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
         return false;
     }
     let mut holes: Vec<Span> = Vec::new();
-    let tpl_call = match build_template_call(el, ctx, &mut holes) {
+    // A template in a CHILD position is built once and may be torn down then
+    // mounted again as the same object (`<Show>` re-showing): re-mountable.
+    let remountable = ctx.parent_is_jsx;
+    let tpl_call = match build_template_call(el, ctx, &mut holes, remountable) {
         Some(s) => s,
         None => return false,
     };
@@ -8929,6 +8921,7 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
 
 fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
     let mut saw_spread = false;
+    let mut saw_key = false;
     for attr in &el.opening_element.attributes {
         match attr {
             JSXAttributeItem::SpreadAttribute(_) => {
@@ -8957,13 +8950,69 @@ fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
                 // in Chromium). The namespace is now resolved in the runtime, so
                 // both paths agree. Mirrors `hasBailAttr` in `src/jsx.ts`.
                 let name = jsx_attr_name(&a.name);
-                if name == "key" || is_tpl_property_only_attr(&name) {
+                if name == "key" {
+                    // KEYED ELEMENTS (see `template_key_text`). A nested
+                    // element's key has no reader — its parent is a DOM
+                    // element, which never reconciles its children — so it is
+                    // dropped, as SSR already drops it. A root's key rides on
+                    // the item (`_tpl`'s fourth argument) when it can be
+                    // emitted exactly; otherwise the element keeps the h()
+                    // path. Mirrors `hasBailAttr` in `src/jsx.ts`.
+                    if is_root && !key_attr_templatable(a) {
+                        return true;
+                    }
+                    saw_key = is_root;
+                    continue;
+                }
+                if is_tpl_property_only_attr(&name) {
                     return true;
                 }
             }
         }
     }
-    false
+    // A spread may carry its own `key`, and the JSX runtime's precedence
+    // between it and the written one is not something a template reproduces:
+    // a keyed root with any spread keeps the h() path.
+    saw_key && saw_spread
+}
+
+/// Can a template ROOT's `key` be emitted exactly as `_tpl`'s fourth argument?
+/// A JSX string carrying `&` cannot (oxc keeps entities literal, esbuild
+/// decodes them), nor can an expression holding JSX (the slice skips the walk
+/// it would need) or a valueless `key`. Mirrors `templateKeyText` in
+/// `src/jsx.ts`.
+fn key_attr_templatable(a: &JSXAttribute) -> bool {
+    match &a.value {
+        Some(JSXAttributeValue::StringLiteral(s)) => !js_text(s.value).contains('&'),
+        Some(JSXAttributeValue::ExpressionContainer(c)) => {
+            jsx_expr_as_expression(&c.expression).map_or(false, |e| !contains_jsx_in_expr(e))
+        }
+        _ => false,
+    }
+}
+
+/// The source text of a template root's `key` — copied VERBATIM, as the h()
+/// path leaves it (no signal auto-call, no prop inlining) and evaluated where
+/// the h() path evaluates it, when the item is created — or `None` for an
+/// unkeyed root. The LAST `key` wins, as in a JSX props object. Mirrors
+/// `rootKeyArg` / `templateKeyText` in `src/jsx.ts`.
+fn template_root_key_text(el: &JSXElement, ctx: &Ctx) -> Option<String> {
+    let mut text = None;
+    for attr in &el.opening_element.attributes {
+        let JSXAttributeItem::Attribute(a) = attr else { continue };
+        if jsx_attr_name(&a.name) != "key" {
+            continue;
+        }
+        text = match &a.value {
+            _ if !key_attr_templatable(a) => None,
+            Some(JSXAttributeValue::StringLiteral(s)) => Some(escape_js_string(&js_text(s.value))),
+            Some(JSXAttributeValue::ExpressionContainer(c)) => {
+                jsx_expr_as_expression(&c.expression).map(|e| ctx.slice(e.span()).to_string())
+            }
+            _ => None,
+        };
+    }
+    text
 }
 
 /// Props the h() path writes as a DOM PROPERTY with no content attribute under
@@ -9421,6 +9470,7 @@ fn build_template_call(
     el: &JSXElement,
     ctx: &mut Ctx,
     holes_out: &mut Vec<Span>,
+    remountable: bool,
 ) -> Option<String> {
     let mut tb = TemplateBuilder::new();
     let html = process_element(el, "__root", &mut tb, ctx)?;
@@ -9511,12 +9561,26 @@ fn build_template_call(
 
     holes_out.extend(tb.hole_spans.iter().copied());
 
-    // `_tpl` flag 2: rooted at a bare SVG element (see `is_svg_root_tag`).
-    // `brace_template_child` adds the re-mountable bit to it.
-    let svg_arg = if is_svg_root_tag(jsx_tag_name(el)) { ", 2" } else { "" };
+    // Third `_tpl` argument, a bit set: 1 = a component child that may be
+    // re-mounted, 2 = rooted at a bare SVG element (see `is_svg_root_tag`).
+    //
+    // A KEYED root passes its key as the fourth argument and is always
+    // re-mountable: the item is a value handed to a reconciler (a keyed
+    // `.map()`) or to a component reading child keys, and both decide WHEN it
+    // mounts. A keyed `.map()` re-runs its callback for every row on each
+    // change and mounts only the new keys, so the item must not clone until
+    // its mount — the re-mountable item builds on first use. Mirrors jsx.ts.
+    let key_text = template_root_key_text(el, ctx);
+    let tpl_flags = (if remountable || key_text.is_some() { 1 } else { 0 })
+        | (if is_svg_root_tag(jsx_tag_name(el)) { 2 } else { 0 });
+    let mut flags_arg = if tpl_flags != 0 { format!(", {}", tpl_flags) } else { String::new() };
+    if let Some(k) = key_text {
+        flags_arg.push_str(", ");
+        flags_arg.push_str(&k);
+    }
 
     if tb.ref_lines.is_empty() && tb.bind_lines.is_empty() && tb.disposer_names.is_empty() {
-        return Some(format!("_tpl(\"{}\", () => null{})", escaped, svg_arg));
+        return Some(format!("_tpl(\"{}\", () => null{})", escaped, flags_arg));
     }
 
     // Phase 1 (pristine-clone ref captures) BEFORE phase 2 (mutations/
@@ -9567,7 +9631,7 @@ fn build_template_call(
         body.push_str("\n  return null");
     }
 
-    Some(format!("_tpl(\"{}\", (__root) => {{\n{}\n}}{})", escaped, body, svg_arg))
+    Some(format!("_tpl(\"{}\", (__root) => {{\n{}\n}}{})", escaped, body, flags_arg))
 }
 
 fn resolve_element_var(
@@ -9595,6 +9659,11 @@ fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
             let attr_name_owned = jsx_attr_name(&a.name);
             let attr_name: &str = &attr_name_owned;
             {
+                // A key is never written to the element (the root's rides on
+                // the item), so it needs no element ref. Mirrors jsx.ts.
+                if attr_name == "key" {
+                    return false;
+                }
                 if attr_name == "ref" {
                     return true;
                 }

@@ -88,6 +88,7 @@ export {
   onCleanup,
   type ReactiveSnapshotCapture,
   renderEffect,
+  _effectOwned,
   _renderBind,
   _openOwnerFrame,
   _closeOwnerFrame,

@@ -25,6 +25,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { tplAdoptVerify } from '../hydration-plan'
+import { _beginParkBatch, _endParkBatch, _takeParked } from '../parked-text'
 
 type CountSink = { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }
 
@@ -613,9 +614,18 @@ describe('a bind-managed element has its stray server texts removed', () => {
     expect(tplAdoptVerify(tplOf(EMPTY_EL), EMPTY_EL, targetOf('<p></p>'))).toBe(true)
   })
 
-  it('REFUSES when the server put an ELEMENT in a bind-managed slot', () => {
-    // Element children are not something the text-removal relaxation covers:
-    // the template describes none, so this is a structural divergence.
-    expect(tplAdoptVerify(tplOf(EMPTY_EL), EMPTY_EL, targetOf('<p><b>x</b></p>'))).toBe(false)
+  it('PARKS server ELEMENTS in a bind-managed slot for `_setChild` to claim (#4599)', () => {
+    // A structural `_setChild` value (a VNode, an array, a fused mix) renders
+    // as elements, marker-less. The verify leaves the DOM as it is and marks
+    // the ELEMENT with its first server child; `_setChild` claims it by
+    // identity, and a build whose bind never claims it empties it
+    // (`setchild-empty-element-adoption`).
+    const el = targetOf('<p><b>x</b></p>')
+    const b = el.firstChild
+    const prev = _beginParkBatch()
+    expect(tplAdoptVerify(tplOf(EMPTY_EL), EMPTY_EL, el)).toBe(true)
+    expect(_endParkBatch(prev)).toEqual([el])
+    expect(_takeParked(el)).toBe(b)
+    expect([...el.childNodes]).toEqual([b])
   })
 })

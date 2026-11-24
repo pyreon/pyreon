@@ -295,7 +295,25 @@ describe('JS syntax and optional native parity — template emission', () => {
   test('component child bails', () => compare('<div><MyComponent /></div>'))
   test('root spread with _applyProps', () => compare('<div {...props}><span /></div>'))
   test('inner spread bails', () => compare('<div><span {...innerProps} /></div>'))
-  test('keyed element bails', () => compare('<div key={id}><span /></div>'))
+  // A keyed root is templated, its key verbatim as `_tpl`'s fourth argument
+  // (flag 1: the item builds at its mount). Every shape that keeps h() is here
+  // too, so the two backends cannot drift on the eligibility rule.
+  test('keyed root templates with its key', () => compare('<div key={id}><span /></div>'))
+  test('keyed root in a keyed .map hole', () =>
+    compare('<table><tbody>{rows().map((r) => <tr key={r.id}><td>{r.id}</td><td>{r.label()}</td><td>{r.done() ? <b>y</b> : <i>n</i>}</td></tr>)}</tbody></table>'))
+  test('keyed root: string key, escaped', () => compare('<ul>{xs().map((x) => <li key="a\\b">{x}</li>)}</ul>'))
+  test('keyed root: parenthesized key after non-ASCII text', () =>
+    compare('<ul><li>é ü</li>{xs().map((x) => <li key={(x.id)}>ž{x.n}</li>)}</ul>'))
+  test('keyed root: key with TS syntax and a comment', () =>
+    compare('<ul>{xs().map((x) => <li key={/* k */ `k-${x.id}` as string}>{x.n}</li>)}</ul>'))
+  test('keyed SVG root carries flags 3', () => compare('<svg>{xs().map((x) => <g key={x.id}><path d="M0" /></g>)}</svg>'))
+  test('last key wins', () => compare('<ul>{xs().map((x) => <li key={x.a} key={x.b}>x</li>)}</ul>'))
+  test('keyed root under a fragment', () => compare('<ul>{xs().map((x) => <><li key={x.id}>x</li></>)}</ul>'))
+  test('nested key is dropped, template kept', () => compare('<ul><li key="a">a</li><li key={b}>b</li></ul>'))
+  test('keyed root with a spread stays h() (either order)', () =>
+    compare('<ul>{xs().map((x) => <li key={x.id} {...x.p}>a</li>)}{xs().map((x) => <li {...x.p} key={x.id}>a</li>)}</ul>'))
+  test('keyed root whose key cannot be emitted exactly stays h()', () =>
+    compare('<ul>{xs().map((x) => <li key="a&amp;b">a</li>)}{xs().map((x) => <li key>a</li>)}{xs().map((x) => <li key={<b />}>a</li>)}</ul>'))
   // #4473: a property-only prop (no content attribute under its own name)
   // bails the element to h() in both backends.
   test.each([
@@ -1538,11 +1556,13 @@ describe('SSR compile-to-string fast path (ssrTemplate) syntax and optional nati
       `const Page = (p) => <main><Widget><span class="x">{p.t}</span></Widget></main>`,
     ],
     ['component child carrying key still bails', `const N = <div><Widget key="k" /></div>`],
-    // A KEYED ROOT is not templated (#4382): it is the value a parent component
-    // receives, and `_ssr` carries no key. Literal component children are the
-    // shape that reaches it; a keyed nested element still bakes, key dropped.
-    ['keyed literal children of a component stay h()', `const N = <K><li key="a">a</li><li>b</li></K>`],
-    ['keyed root element stays h()', `const N = <div key="k"><span>x</span></div>`],
+    // A KEYED ROOT is not lowered to `_ssr` (#4382): it is the value a parent
+    // component receives, and `_ssr` raw HTML carries no key, so the server
+    // keeps the VNode (the client's `_tpl` item carries the key instead).
+    // Literal component children are the shape that reaches it; a keyed nested
+    // element still bakes, key dropped.
+    ['keyed literal children of a component stay VNodes on the server', `const N = <K><li key="a">a</li><li>b</li></K>`],
+    ['keyed root element stays a VNode on the server', `const N = <div key="k"><span>x</span></div>`],
     ['keyed nested element still bakes', `const N = <ul><li key="a">a</li></ul>`],
     // The two backends reached statics quoting through two separately-written
     // functions until they were unified — exactly how an emit divergence starts.

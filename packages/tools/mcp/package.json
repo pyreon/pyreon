@@ -56,7 +56,7 @@
     "@pyreon/compiler": "workspace:^",
     "@pyreon/lathe": "workspace:^",
     "typescript": ">=5.0.0 <7.0.0",
-    "zod": "^4.5.4"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",

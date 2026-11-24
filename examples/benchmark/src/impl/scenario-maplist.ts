@@ -97,6 +97,7 @@ import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUn
 import { createApp, defineComponent, nextTick, shallowRef } from 'vue'
 import { render as vueMapListRender } from 'virtual:maplist-vue-render'
 import { makeRow as solidMakeRow, mountMapList as solidMountMapList } from 'virtual:rival-solid/maplist'
+import { makeRow as solid2MakeRow, mountMapList as solid2MountMapList } from 'virtual:solid2/maplist'
 import type { BenchSuite } from '../runner'
 import { resetRng } from '../runner'
 import MapList from './MapList.svelte'
@@ -343,6 +344,31 @@ function solidTarget(container: HTMLElement, initial: readonly PlainRow[]): MapL
   }
 }
 
+// ─── Solid 2.0 ───────────────────────────────────────────────────────────────
+// Idiomatic Solid 2 JSX compiled by `@solidjs/compiler`
+// (`SOLID2_SOURCES.maplist` in solid2-sources.ts): the Solid 1.9 source on
+// Solid 2 — `<For>` + a ternary per conditional slot, one signal per mutable
+// field. Every write (list or field) ends with one `flush()`.
+
+function solid2Target(container: HTMLElement, initial: readonly PlainRow[]): MapListTarget {
+  const toRows = (plain: readonly PlainRow[]) => {
+    const out = new Array<ReturnType<typeof solid2MakeRow>>(plain.length)
+    for (let i = 0; i < plain.length; i++) out[i] = solid2MakeRow(plain[i] as PlainRow)
+    return out
+  }
+  const list = solid2MountMapList(container)
+  list.setRows(toRows(initial))
+  return {
+    set: (next) => list.setRows(toRows(next)),
+    setLabel: (i, label) => list.rows()[i]?.setLabel(label),
+    setDone: (i, done) => list.rows()[i]?.setDone(done),
+    swap: (a, b) => list.setRows(swapped(list.rows(), a, b)),
+    remove: (i) => list.setRows(without(list.rows(), i)),
+    clear: () => list.setRows([]),
+    teardown: list.dispose,
+  }
+}
+
 // ─── Svelte ──────────────────────────────────────────────────────────────────
 
 function svelteTarget(container: HTMLElement, initial: readonly PlainRow[]): MapListTarget {
@@ -391,6 +417,7 @@ export const MAPLIST_FRAMEWORKS = [
   'Preact',
   'Vue 3',
   'SolidJS',
+  'SolidJS 2.0',
   'Svelte 5',
 ] as const
 
@@ -410,6 +437,8 @@ function makeTarget(framework: string, container: HTMLElement, initial: readonly
       return vueTarget(container, initial)
     case 'SolidJS':
       return solidTarget(container, initial)
+    case 'SolidJS 2.0':
+      return solid2Target(container, initial)
     case 'Svelte 5':
       return svelteTarget(container, initial)
     default:

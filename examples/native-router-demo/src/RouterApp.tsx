@@ -423,7 +423,7 @@ function MediaPage() {
   // Infra this page surfaced: iOS needed NSAllowsLocalNetworking (ATS
   // gates URLSession cleartext — the ws test never hit it because the
   // ws runtime rides Network.framework, outside ATS); Android needed
-  // the io.coil-kt:coil-compose ARTIFACT (the conditional import
+  // the Coil (io.coil-kt.coil3:coil-compose) ARTIFACT (the conditional import
   // resolved against nothing — the dep half of the stub-masked class).
   return (
     <Stack gap={3} padding={4} data-testid="media-page">

@@ -19,7 +19,7 @@ export interface FirstRun<T> {
 }
 
 import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
-import { _abortOwnerFrame, _closeOwnerFrame, _frameReads, _openOwnerFrame, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, _currentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+import { _abortOwnerFrame, _closeOwnerFrame, _currentScope, _effectOwned, _frameReads, _openOwnerFrame, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effectScope, getContextOwner, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 
 /**
@@ -30,9 +30,15 @@ import { _abortOwnerFrame, _closeOwnerFrame, _frameReads, _openOwnerFrame, _rdDr
  * `detachNode` skips the removal; cleanups still run, so effects are disposed
  * and refs cleared.
  *
- * Only `mountFor` opens the window, and only when it was mounted inside a
- * freshly built element (`_elementDepth > 0` at mount) — the same contract that
- * lets `mountChild` return a no-op remover there. A `<Portal>` inside the
+ * Only `mountFor` opens the window, in two places. On its own teardown, when
+ * it was mounted inside a freshly built element (`_elementDepth > 0` at
+ * mount) — the same contract that lets `mountChild` return a no-op remover
+ * there. And on an in-place CLEAR or REPLACE-ALL while it owns every child of
+ * its parent (`replaceChildren(start, tail)` follows the cleanups, so every
+ * node under the parent leaves in that one call): a row holding a reactive
+ * range (`{cond() ? <a/> : <b/>}` in a cell) used to pay two live
+ * `removeChild` calls per row there — its branch and its marker — half the
+ * on-CPU cost of clearing 1,000 such rows. A `<Portal>` inside the
  * subtree removes its own bracketed range directly, never through
  * `detachNode`, so a portaled node in a live target is still removed.
  *
@@ -45,15 +51,56 @@ import { _abortOwnerFrame, _closeOwnerFrame, _frameReads, _openOwnerFrame, _rdDr
  */
 let bulkDetachParent: Node | null = null
 
+/**
+ * Run `fn` (a teardown) with `parent` declared as leaving as a unit, so every
+ * removal of a node inside it through `detachNode` is skipped. Used by a
+ * claimed #4599 region (`claimRegion` in hydrate.ts): its element leaves with
+ * its template, and a bind that throws keeps its server markup.
+ */
+export function _detachAsUnit(parent: Node, fn: () => void): void {
+  const prev = bulkDetachParent
+  bulkDetachParent = parent
+  try {
+    fn()
+  } finally {
+    bulkDetachParent = prev
+  }
+}
+
 /** Remove `node` from its parent, unless a bulk detach makes it redundant. */
 export function detachNode(node: Node): void {
   const p = node.parentNode
   if (!p || p.nodeType === 11 /* DocumentFragment — FW-3 */) return
+  if (!leavesWithBulk(p)) p.removeChild(node)
+}
+
+/** Is `p` inside the parent an open bulk-detach window is about to empty? */
+function leavesWithBulk(p: Node): boolean {
   const bulk = bulkDetachParent
   // A row's own root sits directly in the parent (one compare); a node deeper
   // inside a row (a reactive text inside a cell) takes the `contains` walk.
-  if (bulk !== null && (p === bulk || bulk.contains(p))) return
-  p.removeChild(node)
+  return bulk !== null && (p === bulk || bulk.contains(p))
+}
+
+/**
+ * Run every entry's cleanup. With a `bulk` parent, inside that bulk-detach
+ * window (see BULK DETACH): the caller removes all of `bulk`'s children right
+ * after, so the cleanups' own removals inside it are skipped. Saves and
+ * RESTORES the outer window, like every window, so nested lists compose.
+ */
+function runEntryCleanups(cache: Map<ListKey, ForEntry>, bulk: Node | null): void {
+  const prevBulk = bulkDetachParent
+  if (bulk !== null) bulkDetachParent = bulk
+  try {
+    for (const entry of cache.values()) {
+      if (entry.cleanup) {
+        _emitCleanup()
+        entry.cleanup()
+      }
+    }
+  } finally {
+    bulkDetachParent = prevBulk
+  }
 }
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
@@ -154,7 +201,8 @@ export function mountReactive(
   // the skip below also compares the elements against this snapshot.
   let lastItems: unknown[] | null = null
 
-  const e = effect(() => {
+  // Owned by the cleanup returned below, not the ambient scope (`_effectOwned`).
+  const e = _effectOwned(() => {
     const myGen = ++generation
     // Read the accessor FIRST: the identity check needs the value, and the
     // read is what establishes this effect's dependencies either way. A
@@ -277,7 +325,11 @@ export function mountReactive(
     e.dispose()
     if (hasCleanup) _emitCleanup()
     currentCleanup()
-    marker.parentNode?.removeChild(marker)
+    // The marker goes like the content it bounds: skipped inside a bulk-detach
+    // window (the whole parent is emptied right after), removed otherwise —
+    // from a DocumentFragment too, unlike `detachNode`.
+    const p = marker.parentNode
+    if (p !== null && !leavesWithBulk(p)) p.removeChild(marker)
   }
 }
 
@@ -795,26 +847,42 @@ export function mountFor<T>(
     container: Node,
     before: Node | null,
   ) => {
-    const { result, scope: rowScope } = runRowCallback(() => renderItem(item))
-    // Optional-chained: `renderItem` may legitimately return null/undefined —
-    // `{(r) => r.visible ? <Row/> : null}` is how a row is conditionally
-    // hidden, and the empty-entry branch below exists precisely to give such a
-    // row a placeholder anchor. A bare property read on that null THREW inside
-    // the <For> effect, which is not a broken row but a broken LIST: the error
-    // escaped before any row was placed, so the whole list rendered as its two
-    // markers and nothing else, and the throw surfaced only as an unhandled
-    // effect error in the console. SSR renders the same source correctly, so it
-    // was also a guaranteed hydration divergence.
-    if ((result as import('@pyreon/core').NativeItem | null | undefined)?.__isNative === true) {
-      const native = result as import('@pyreon/core').NativeItem
-      container.insertBefore(native.el, before)
+    // The row is MOUNTED inside the callback's collector window, not only
+    // rendered: a keyed `.map()` reaches here with an identity callback and a
+    // row that builds lazily at its mount, so mounting after the window handed
+    // whatever the row's template gives the ambient scope (`ownByScope`) to the
+    // component's scope on the first render — kept with the removed row until
+    // the component unmounted — and to NO scope on a later run, never disposed.
+    // Typed by assertion: TS does not see the callback assign them, and would
+    // narrow each to `null` after it.
+    let native = null as import('@pyreon/core').NativeItem | null
+    let priorLast = null as Node | null
+    let mounted = null as Cleanup | null
+    const { scope: rowScope } = runRowCallback(() => {
+      const r = renderItem(item)
+      // Optional-chained: `renderItem` may legitimately return null/undefined —
+      // `{(r) => r.visible ? <Row/> : null}` is how a row is conditionally
+      // hidden, and the empty-entry branch below exists precisely to give such
+      // a row a placeholder anchor. A bare property read on that null THREW
+      // inside the <For> effect, which is not a broken row but a broken LIST:
+      // the error escaped before any row was placed, so the whole list
+      // rendered as its two markers and nothing else, and the throw surfaced
+      // only as an unhandled effect error in the console. SSR renders the same
+      // source correctly, so it was also a guaranteed hydration divergence.
+      if ((r as import('@pyreon/core').NativeItem | null | undefined)?.__isNative === true) {
+        native = r as import('@pyreon/core').NativeItem
+        container.insertBefore(native.el, before)
+      } else {
+        priorLast = before ? before.previousSibling : container.lastChild
+        mounted = mountChild(r as import('@pyreon/core').VNode, container, before)
+      }
+    })
+    if (native !== null) {
       const nativeCleanup = withRowScope(rowScope, native.cleanup ?? null)
       cache.set(key, { anchor: native.el, cleanup: nativeCleanup, pos, end: null, seen: 0 })
       if (nativeCleanup) cleanupCount++
       return
     }
-    const priorLast = before ? before.previousSibling : container.lastChild
-    const mounted = mountChild(result as import('@pyreon/core').VNode, container, before)
     const cl = withRowScope(rowScope, mounted) as Cleanup
     const firstMounted = priorLast ? priorLast.nextSibling : container.firstChild
     if (!firstMounted || firstMounted === before) {
@@ -923,21 +991,15 @@ export function mountFor<T>(
     newKeys: ListKey[],
     liveParent: Node,
   ) => {
-    if (cleanupCount > 0) {
-      for (const entry of cache.values()) {
-        if (entry.cleanup) {
-          _emitCleanup()
-          entry.cleanup()
-        }
-      }
-    }
-    cache = new Map()
-    cleanupCount = 0
-
     // For owns EVERY child of liveParent (markers are first+last) ⟺ wiping the
     // parent's children wipes exactly this For's block.
     const ownsParent =
       liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker
+    // Owns-parent: the rows leave in the one `replaceChildren` below, so
+    // their cleanups' own removals are skipped (see BULK DETACH).
+    if (cleanupCount > 0) runEntryCleanups(cache, ownsParent ? liveParent : null)
+    cache = new Map()
+    cleanupCount = 0
 
     // Direct insertion (see handleFreshRender): clear the old block first, then
     // mount every new row straight into the live parent. In the owns-parent
@@ -1209,15 +1271,12 @@ export function mountFor<T>(
 
   const handleFastClear = (liveParent: Node) => {
     if (cache.size === 0) return
-    if (cleanupCount > 0) {
-      for (const entry of cache.values()) {
-        if (entry.cleanup) {
-          _emitCleanup()
-          entry.cleanup()
-        }
-      }
-    }
-    if (liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker) {
+    const ownsParent =
+      liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker
+    // Owns-parent: the rows leave in the one `replaceChildren` below, so
+    // their cleanups' own removals are skipped (see BULK DETACH).
+    if (cleanupCount > 0) runEntryCleanups(cache, ownsParent ? liveParent : null)
+    if (ownsParent) {
       // For owns every child → ONE native remove-all + marker re-insert, IN
       // PLACE. See handleReplaceAll's ownsParent comment for the full measured
       // trade: the previous cloneNode+replaceChild swap was ~20µs/1000-rows
@@ -1307,7 +1366,8 @@ export function mountFor<T>(
     currentKeys = newKeys
   }
 
-  const e = effect(() => {
+  // Owned by the cleanup returned below, not the ambient scope (`_effectOwned`).
+  const e = _effectOwned(() => {
     const liveParent = startMarker.parentNode
     if (!liveParent) return
     const items = source()
@@ -1397,20 +1457,7 @@ export function mountFor<T>(
     if (unitParent !== null) {
       // The parent element leaves the document as a unit right after this, so
       // the rows' own removals are redundant (see `detachNode`).
-      const prevBulk = bulkDetachParent
-      bulkDetachParent = unitParent
-      try {
-        if (cleanupCount > 0) {
-          for (const entry of cache.values()) {
-            if (entry.cleanup) {
-              _emitCleanup()
-              entry.cleanup()
-            }
-          }
-        }
-      } finally {
-        bulkDetachParent = prevBulk
-      }
+      if (cleanupCount > 0) runEntryCleanups(cache, unitParent)
       cache = new Map()
       cleanupCount = 0
       return
@@ -1444,7 +1491,17 @@ let rowCollector: EffectScope | null = null
 
 function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null } {
   const prev = _currentScope()
-  const collector = rowCollector ?? (rowCollector = effectScope())
+  // CLAIM the pooled collector for this row before its callback runs. A row
+  // can build another `<For>` whose rows run their callbacks inside this one;
+  // reading the shared slot there handed THIS row's collector to the inner
+  // list's first row, which then stopped it on removal: whatever the outer row
+  // had registered (an `effect()` in its callback, in 0.54 the inner `<For>`'s
+  // own effect) was disposed with an unrelated row (#4800). Only a REUSABLE
+  // collector goes back to the pool: nothing registered, and nobody holds it
+  // (`getCurrentScope()` pins it; the holder may register later, e.g.
+  // `scope.runInScope(...)` after an await, so the row keeps it).
+  const collector = rowCollector ?? effectScope()
+  rowCollector = null
   setCurrentScope(collector)
   // Template bindings the row builds are owned by the row's cleanup, not the
   // collector; this frame owns them only if the callback throws.
@@ -1454,16 +1511,18 @@ function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null 
     result = fn()
   } catch (err) {
     _abortOwnerFrame(ownerFrame)
-    // A half-filled collector must never be handed to the next row.
+    // A half-filled collector must never be handed to the next row: it is
+    // stopped and not returned to the pool.
     collector.stop()
-    rowCollector = null
     throw err
   } finally {
     setCurrentScope(prev)
   }
   _closeOwnerFrame(ownerFrame)
-  if (collector._isEmpty()) return { result, scope: null }
-  rowCollector = null
+  if (collector._isDroppable()) {
+    rowCollector = collector
+    return { result, scope: null }
+  }
   return { result, scope: collector }
 }
 
