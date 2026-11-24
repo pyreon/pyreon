@@ -295,21 +295,64 @@ describe('for-stale-item-field — syntax variants of each half', () => {
     }
   })
 
-  it('a member-chain key covers its top-level field', () => {
-    const write = `const bump = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, meta: { rev: t.meta.rev + 1 } } : t)))`
-    const metaRow = `(t) => <li>{t.meta.rev}</li>`
-    expect(hits(L(`<For each={todos} by={(t) => \`\${t.id}:\${t.meta.rev}\`}>{${metaRow}}</For>`, write))).toEqual([])
-    expect(hits(L(`<For each={todos} by={(t) => t.id}>{${metaRow}}</For>`, write)).map((x) => x.current)).toEqual(['t.meta'])
+  it('a member-chain key covers only its exact path', () => {
+    const write = `const bump = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, meta: { rev: t.meta.rev + 1, title: 'x' } } : t)))`
+    const keyedBy = (by: string, read: string) => hits(L(`<For each={todos} by={${by}}>{(t) => <li>{${read}}</li>}</For>`, write))
+    expect(keyedBy('(t) => `${t.id}:${t.meta.rev}`', 't.meta.rev')).toEqual([])
+    // #4798 review: a key on `meta.rev` does not cover `meta.title`, and an
+    // object coerced in a template (`[object Object]`) covers none of its fields.
+    expect(keyedBy('(t) => `${t.id}:${t.meta.rev}`', 't.meta.title').map((x) => x.current)).toEqual(['t.meta'])
+    expect(keyedBy('(t) => `${t.id}:${t.meta}`', 't.meta.title').map((x) => x.current)).toEqual(['t.meta'])
+    expect(keyedBy('({ id, meta: { rev } }) => `${id}:${rev}`', 't.meta.title').map((x) => x.current)).toEqual(['t.meta'])
+    expect(keyedBy('(t) => t.id', 't.meta.rev').map((x) => x.current)).toEqual(['t.meta'])
   })
 
-  it('a same-file key function is read through; an opaque one may read any field', () => {
+  it('a key function in scope is read through; an opaque one keeps reporting, named', () => {
     const forEl = (by: string) => `<For each={todos} by={${by}}>{${row}}</For>`
     expect(hits(L(forEl('keyOf'), TOGGLE, 'const keyOf = (t: Todo) => `${t.id}:${t.done}`'))).toEqual([])
     expect(hits(L(forEl('keyOf'), TOGGLE, 'function keyOf(t: Todo) { return `${t.id}:${t.done}` }'))).toEqual([])
     expect(hits(L(forEl('keyOf'), TOGGLE, 'const keyOf = (t: Todo) => t.id')).map((x) => x.current)).toEqual(['t.done'])
-    // The whole item escapes into something the walk cannot see into.
-    for (const by of ['importedKeyOf', '(t) => keyOf(t)', '(t) => JSON.stringify(t)', '(t) => t', "keyBy('id')", 'keys.row']) {
+    // Changes on any replacement: every read is safe.
+    for (const by of ['(t) => t', '(t) => JSON.stringify(t)', '(t) => { return t }']) {
       expect(hits(L(forEl(by))), by).toEqual([])
+    }
+    // Opaque: still reported, and the message names what it could not see.
+    for (const [by, name] of [
+      ['importedKeyOf', 'importedKeyOf'],
+      ['(t) => keyOf(t)', 'keyOf'],
+      ["keyBy('id')", "keyBy('id')"],
+      ['keys.row', 'keys.row'],
+    ] as const) {
+      const d = hits(L(forEl(by)))
+      expect(d.map((x) => x.current), by).toEqual(['t.done'])
+      expect(d[0]!.message, by).toContain(`Safe only if \`${name}\` reads \`done\``)
+    }
+  })
+
+  it('a key function resolves by scope, not by the first name in the file', () => {
+    const code = (local: string, other: string) => `
+      const todos = signal<Todo[]>([])
+      ${TOGGLE}
+      function Other() { ${other}; return getKey }
+      export const L = () => { ${local}; return <For each={todos} by={getKey}>{${row}}</For> }
+    `
+    expect(hits(code('const getKey = (t) => t.id', 'const getKey = (x) => `${x.id}${x.done}`')).map((x) => x.current)).toEqual(['t.done'])
+    expect(hits(code('const getKey = (t) => `${t.id}${t.done}`', 'const getKey = (x) => x.id'))).toEqual([])
+    // A parameter shadows a file-level function of the same name.
+    const param = `const todos = signal<Todo[]>([])\n${TOGGLE}\nconst getKey = (t) => \`\${t.id}\${t.done}\`\nexport const L = (getKey) => <For each={todos} by={getKey}>{${row}}</For>`
+    expect(hits(param).map((x) => x.current)).toEqual(['t.done'])
+  })
+
+  it('reads through destructuring in the key body and ignores type positions', () => {
+    const forEl = (by: string) => `<For each={todos} by={${by}}>{${row}}</For>`
+    expect(hits(L(forEl('(t) => { const { id, done } = t; return id + done }')))).toEqual([])
+    for (const by of [
+      '(t) => { const { id } = t; return id }',
+      '({ id, ...rest }) => id',
+      '(t) => t.id as keyof typeof t',
+      '(t: typeof x) => { type K = typeof t; return t.id satisfies string }',
+    ]) {
+      expect(hits(L(forEl(by))).map((x) => x.current), by).toEqual(['t.done'])
     }
   })
 

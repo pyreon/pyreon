@@ -24,13 +24,21 @@
  *     whole item passed to a component defined in the same file that reads the
  *     field (`<Row todo={t} />` + `props.todo.done`).
  *
- * A field the `by` key reads never goes stale: when it changes the key changes,
- * so the row is rebuilt with the new item. `keyFieldsOf` collects every field
- * the key reads (`t.id`, a composite `${t.id}:${t.done}`, `[t.a, t.b].join()`,
- * `t.meta.rev`, `t['done']`, a destructured `({ id, done })`, a same-file
- * key function); a key that hands the whole item to something it cannot see
- * into (`keyOf(t)`, `by={importedKeyOf}`, `JSON.stringify(t)`) may read any
- * field, so the `<For>` is skipped.
+ * A value the `by` key reads never goes stale: when it changes the key changes,
+ * so the row is rebuilt with the new item. `keyInfoOf` records the exact PATH
+ * of every read (`t.id` → `id`, `${t.id}:${t.done}`, `[t.a, t.b].join()`,
+ * `t.node.id` → `node.id`, `t['done']`, a destructured `({ node: { id } })`,
+ * `const { id } = t`, a key function in scope), and a row read is safe only
+ * when its own path is one of them: a key on `t.node.id` does not cover a
+ * row's `t.node.title`, and `${t.meta}` (an object, `[object Object]`) does
+ * not cover `t.meta.title`. Precision over silence: a missed report is a row
+ * that stays wrong on the web.
+ *
+ * A key that changes on ANY replacement makes every read safe, so the `<For>`
+ * is skipped: the item itself (`(t) => t`) or `JSON.stringify(t)`. A key the
+ * walk cannot see into (an imported `keyOf`, `(t) => keyOf(t)`,
+ * `keyBy('id')`) keeps reporting, and the message names it (`opaqueKey`): the
+ * read is stale unless that function reads the field.
  * A `<For>` rebuilt by an accessor on every list change (`{() => … <For
  * each={list.data() ?? []}> …}`) has fresh rows, so it is skipped.
  * File-level pairing on purpose: the `each` list is often a derived view of the
@@ -45,14 +53,14 @@ export interface ReplacedFields {
   any: boolean
 }
 
-/**
- * The item fields a `<For>`'s `by` key reads. `all` when the key may read any
- * field (the item escapes into an opaque call, or the key function is not in
- * the file).
- */
-export interface KeyFields {
-  fields: Set<string>
-  all: boolean
+/** What a `<For>`'s `by` key reads off its item. */
+export interface KeyInfo {
+  /** Exact paths the key reads (`id`, `node.id`); a row read on one of them is safe. */
+  paths: Set<string>
+  /** The key changes on any replacement (`(t) => t`, `JSON.stringify(t)`): no read is stale. */
+  always: boolean
+  /** A function the walk cannot see into that receives the item (`keyOf`), for the message. */
+  opaque: string | undefined
 }
 
 export type StaleForItemKind = 'read' | 'destructure' | 'child-prop'
@@ -67,6 +75,8 @@ export interface StaleForItemHit {
   fields: string[]
   /** The `by` key field, when `by` is the simple `(x) => x.key` shape. */
   keyField: string | undefined
+  /** The `by` key hands the item to this function, which may read the field. */
+  opaqueKey?: string
   /** For `child-prop`: the component and the attribute that received the item. */
   component?: string
   attr?: string
@@ -194,8 +204,11 @@ export function collectReplacedFields(sf: ts.SourceFile): ReplacedFields {
   return out
 }
 
-function isReplaced(r: ReplacedFields, field: string, key: KeyFields): boolean {
-  if (key.all || key.fields.has(field)) return false
+/** `path` is the full read (`node.title`); its first segment is the field a replacement overrides. */
+function isReplaced(r: ReplacedFields, path: string, key: KeyInfo): boolean {
+  if (key.always || key.paths.has(path)) return false
+  const field = path.split('.')[0] as string
+
   return r.any || r.fields.has(field)
 }
 
@@ -240,109 +253,214 @@ function keyFieldOf(by: ts.Expression | undefined): string | undefined {
 
 type KeyFn = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration
 
-/** A same-file `const keyOf = (t) => …` / `function keyOf(t) { … }` by name. */
-function resolveLocalFunction(sf: ts.SourceFile, name: string): KeyFn | undefined {
-  let found: KeyFn | undefined
-  const visit = (n: ts.Node): void => {
-    if (found) return
-    if (ts.isFunctionDeclaration(n) && n.name?.text === name && n.body) found = n
-    else if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === name && n.initializer) {
-      const init = unwrap(n.initializer)
-      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) found = init
-    }
-    if (!found) ts.forEachChild(n, visit)
-  }
-  visit(sf)
+/**
+ * The function `name` refers to at `from`, by scope: the innermost block,
+ * module or function body that declares it (`const name = (t) => …`,
+ * `function name(t) { … }`). Undefined when the nearest binding is a
+ * parameter, an import, or anything that is not a function.
+ */
+function resolveInScope(from: ts.Node, name: string): KeyFn | undefined {
+  for (let n: ts.Node | undefined = from.parent; n; n = n.parent) {
+    if (isFunctionLike(n) && n.parameters.some((q) => bindsName(q.name, name))) return undefined
+    if (!(ts.isBlock(n) || ts.isSourceFile(n) || ts.isModuleBlock(n) || ts.isCaseClause(n))) continue
+    for (const st of n.statements) {
+      if (ts.isFunctionDeclaration(st) && st.name?.text === name) return st.body ? st : undefined
+      if (ts.isImportDeclaration(st) && importsName(st, name)) return undefined
+      if (!ts.isVariableStatement(st)) continue
+      for (const d of st.declarationList.declarations) {
+        if (!bindsName(d.name, name)) continue
+        const init = d.initializer && ts.isIdentifier(d.name) ? unwrap(d.initializer) : undefined
 
-  return found
+        return init && (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) ? init : undefined
+      }
+    }
+  }
+
+  return undefined
+}
+
+function importsName(decl: ts.ImportDeclaration, name: string): boolean {
+  const clause = decl.importClause
+  if (!clause) return false
+  if (clause.name?.text === name) return true
+  const b = clause.namedBindings
+  if (!b) return false
+  if (ts.isNamespaceImport(b)) return b.name.text === name
+
+  return b.elements.some((e) => e.name.text === name)
+}
+
+const shortText = (n: ts.Node): string => {
+  const text = n.getText().replace(/\s+/g, ' ')
+
+  return text.length > 40 ? `${text.slice(0, 37)}...` : text
 }
 
 /**
- * Every item field the `by` key reads. Any read counts, wherever it sits in
- * the key expression: `t.id`, `${t.id}:${t.done}`, `[t.a, t.b].join(':')`,
- * `t.meta.rev` (the field is `meta`), `t['done']`, `String(t.id)`. A
- * destructured key param (`({ id, done }) => …`) reads its keys. A use of the
- * whole item other than a field read (`keyOf(t)`, `JSON.stringify(t)`,
- * `t[k]`, `by={(t) => t}`) can see every field, and so can a key function
- * that is not an inline or same-file function: both give `all`.
+ * What the `by` key reads off its item (see `KeyInfo`). A key with no item
+ * reads at all (`() => 1`, a literal `<For>` would throw on) reads nothing, so
+ * every replaced field stays reportable.
  */
-function keyFieldsOf(by: ts.Expression | undefined, sf: ts.SourceFile): KeyFields {
-  const out: KeyFields = { fields: new Set(), all: false }
+function keyInfoOf(by: ts.Expression | undefined): KeyInfo {
+  const out: KeyInfo = { paths: new Set(), always: false, opaque: undefined }
   if (!by) return out
   let fn: ts.Expression | KeyFn = unwrap(by)
   if (ts.isIdentifier(fn)) {
-    const local = resolveLocalFunction(sf, fn.text)
+    const local = resolveInScope(by, fn.text)
     if (!local) {
-      out.all = true
+      out.opaque = fn.text
       return out
     }
     fn = local
   }
   if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn) || ts.isFunctionDeclaration(fn))) {
-    // A call (`by={keyBy('id')}`) or member (`by={keys.row}`) builds a key
-    // function the walk cannot see into. A literal is not a key function at
-    // all (`<For>` throws on it), so it gives no key fields.
-    if (!ts.isLiteralExpression(fn) && !ts.isTemplateExpression(fn)) out.all = true
+    // A call (`keyBy('id')`) or member (`keys.row`) builds a key function the
+    // walk cannot see into.
+    if (!ts.isLiteralExpression(fn) && !ts.isTemplateExpression(fn)) out.opaque = shortText(fn)
     return out
   }
   const p = fn.parameters[0]
   if (!p || !fn.body) return out
-  addParamKeyFields(p.name, fn.body, out)
+  if (ts.isIdentifier(p.name)) readsOfItem(p.name.text, fn.body, out)
+  else if (ts.isObjectBindingPattern(p.name)) patternPaths(p.name, [], fn.body, out)
+  else out.opaque = 'the key'
 
   return out
 }
 
-function addParamKeyFields(name: ts.BindingName, body: ts.Node, out: KeyFields): void {
-  if (ts.isObjectBindingPattern(name)) {
-    for (const el of name.elements) {
-      if (el.dotDotDotToken) {
-        out.all = true
-        continue
-      }
-      const key = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
-      if (key === undefined) out.all = true
-      else out.fields.add(key)
+/** Paths a destructuring pattern reads (`{ node: { id } }` → `node.id`). */
+function patternPaths(pattern: ts.ObjectBindingPattern, prefix: string[], body: ts.Node, out: KeyInfo): void {
+  for (const el of pattern.elements) {
+    if (el.dotDotDotToken) {
+      // `({ id, ...rest }) => id`: an unused rest reads nothing; a used one
+      // reads fields the walk cannot name.
+      if (ts.isIdentifier(el.name) && isUsed(body, el.name.text)) out.opaque ??= 'the key'
+      continue
     }
+    const key = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
+    if (key === undefined) {
+      out.opaque ??= 'the key'
+      continue
+    }
+    const path = [...prefix, key]
+    if (ts.isObjectBindingPattern(el.name)) patternPaths(el.name, path, body, out)
+    else if (ts.isIdentifier(el.name)) addValuePaths(el.name.text, path, body, out)
+    else out.opaque ??= 'the key'
+  }
+}
 
-    return
-  }
-  if (!ts.isIdentifier(name)) {
-    // `([a, b]) => …` on an item: indexes, not named fields.
-    out.all = true
-    return
-  }
-  const item = name.text
+/**
+ * A destructured key value (`({ node }) => node.id`): its own member reads
+ * extend the path, a bare use reads the whole value at `path`.
+ */
+function addValuePaths(name: string, path: string[], body: ts.Node, out: KeyInfo): void {
+  let bare = false
   const visit = (n: ts.Node): void => {
-    if (isFunctionLike(n) && n.parameters.some((q) => bindsName(q.name, item))) return
-    if (ts.isIdentifier(n) && n.text === item && isReference(n)) {
-      const field = fieldReadOf(n)
-      if (field === undefined) out.all = true
-      else out.fields.add(field)
+    if (ts.isTypeNode(n)) return
+    if (isFunctionLike(n) && n.parameters.some((q) => bindsName(q.name, name))) return
+    if (ts.isIdentifier(n) && n.text === name && isReference(n)) {
+      const chain = memberChain(n)
+      if (chain.path.length === 0) bare = true
+      else out.paths.add([...path, ...chain.path].join('.'))
     }
     ts.forEachChild(n, visit)
   }
   visit(body)
+  if (bare) out.paths.add(path.join('.'))
+}
+
+function isUsed(body: ts.Node, name: string): boolean {
+  let used = false
+  const visit = (n: ts.Node): void => {
+    if (used || ts.isTypeNode(n)) return
+    if (ts.isIdentifier(n) && n.text === name && isReference(n)) used = true
+    else ts.forEachChild(n, visit)
+  }
+  visit(body)
+
+  return used
+}
+
+/** Every read of the key's item param `item` in `body`. */
+function readsOfItem(item: string, body: ts.Node, out: KeyInfo): void {
+  const ret = ts.isBlock(body) ? body.statements.find(ts.isReturnStatement)?.expression : (body as ts.Expression)
+  const returned = ret && unwrap(ret)
+  if (returned && ts.isIdentifier(returned) && returned.text === item) {
+    out.always = true
+    return
+  }
+  const visit = (n: ts.Node): void => {
+    if (ts.isTypeNode(n)) return
+    if (isFunctionLike(n) && n.parameters.some((q) => bindsName(q.name, item))) return
+    if (ts.isIdentifier(n) && n.text === item && isReference(n)) itemUse(n, body, out)
+    ts.forEachChild(n, visit)
+  }
+  visit(body)
+}
+
+/** One use of the key's item: a member read, a destructuring, or the whole item. */
+function itemUse(use: ts.Identifier, body: ts.Node, out: KeyInfo): void {
+  const chain = memberChain(use)
+  if (chain.path.length > 0) {
+    out.paths.add(chain.path.join('.'))
+    return
+  }
+  const parent = chain.top.parent
+  // `const { id } = t`
+  if (ts.isVariableDeclaration(parent) && parent.initializer === chain.top && ts.isObjectBindingPattern(parent.name)) {
+    patternPaths(parent.name, [], body, out)
+    return
+  }
+  // `JSON.stringify(t)`: changes whenever any field does.
+  if (
+    ts.isCallExpression(parent) &&
+    parent.arguments[0] === chain.top &&
+    ts.isPropertyAccessExpression(parent.expression) &&
+    ts.isIdentifier(parent.expression.expression) &&
+    parent.expression.expression.text === 'JSON' &&
+    parent.expression.name.text === 'stringify'
+  ) {
+    out.always = true
+    return
+  }
+  if (ts.isCallExpression(parent) && parent.arguments.includes(chain.top as ts.Expression)) {
+    out.opaque ??= shortText(parent.expression)
+    return
+  }
+  out.opaque ??= 'the key'
 }
 
 const isTransparent = (n: ts.Node): boolean =>
   ts.isParenthesizedExpression(n) || ts.isNonNullExpression(n) || ts.isAsExpression(n) || ts.isSatisfiesExpression(n)
 
 /**
- * The field a use of the item reads (`t.done`, `(t as Row).done`, `t!.done`,
- * `t['done']`), or undefined when the use is anything else (the whole item).
+ * The member path read off `use` (`t.node.id` → `node.id`, through `as`, `!`,
+ * parentheses and `t['done']`), stopping before a method call (`t.id.trim()`
+ * reads `id`; `t.getKey()` reads nothing nameable). `top` is the outermost
+ * node of the read.
  */
-function fieldReadOf(use: ts.Identifier): string | undefined {
-  let child: ts.Node = use
-  let parent = use.parent
-  while (isTransparent(parent)) {
-    child = parent
-    parent = parent.parent
+function memberChain(use: ts.Node): { path: string[]; top: ts.Node } {
+  const path: string[] = []
+  let cur: ts.Node = use
+  for (;;) {
+    let parent = cur.parent
+    while (isTransparent(parent)) {
+      cur = parent
+      parent = parent.parent
+    }
+    let name: string | undefined
+    if (ts.isPropertyAccessExpression(parent) && parent.expression === cur) name = parent.name.text
+    else if (ts.isElementAccessExpression(parent) && parent.expression === cur) {
+      const arg = parent.argumentExpression
+      if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) name = arg.text
+    }
+    if (name === undefined) break
+    if (ts.isCallExpression(parent.parent) && parent.parent.expression === parent) break
+    path.push(name)
+    cur = parent
   }
-  if (ts.isPropertyAccessExpression(parent) && parent.expression === child) return parent.name.text
-  if (!ts.isElementAccessExpression(parent) || parent.expression !== child) return undefined
-  const arg = parent.argumentExpression
 
-  return ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg) ? arg.text : undefined
+  return { path, top: cur }
 }
 
 /** `n` names a binding in expression position (not a property name or a declaration). */
@@ -436,53 +554,57 @@ function componentFieldReads(
   comp: ComponentFn,
   attr: string | null,
   r: ReplacedFields,
-  keyFields: KeyFields,
+  key: KeyInfo,
 ): string[] {
   const p = comp.parameters[0]
   if (!p || !comp.body) return []
   const found = new Set<string>()
+  const check = (path: string[]): void => {
+    if (path.length > 0 && isReplaced(r, path.join('.'), key)) found.add(path[0] as string)
+  }
   if (ts.isIdentifier(p.name)) {
-    const propsName = p.name.text
-    for (const read of findFieldReads(comp.body, propsName)) {
-      if (attr === null) {
-        if (isReplaced(r, read.name.text, keyFields)) found.add(read.name.text)
-        continue
-      }
-      if (read.name.text !== attr) continue
-      // `props.todo.done`
-      const outer = read.parent
-      if (ts.isPropertyAccessExpression(outer) && outer.expression === read) {
-        const isCallee = ts.isCallExpression(outer.parent) && outer.parent.expression === outer
-        if (!isCallee && isReplaced(r, outer.name.text, keyFields)) found.add(outer.name.text)
-      }
+    for (const read of findFieldReads(comp.body, p.name.text)) {
+      const path = memberChain(read.expression).path
+      // `props.todo.done` for an attribute; `props.done` for a spread item.
+      if (attr === null) check(path)
+      else if (path[0] === attr) check(path.slice(1))
     }
   } else if (ts.isObjectBindingPattern(p.name)) {
     for (const el of p.name.elements) {
-      const key = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
-      if (key === undefined) continue
+      const k = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
+      if (k === undefined) continue
       if (attr === null) {
-        if (isReplaced(r, key, keyFields)) found.add(key)
+        for (const path of bindingPaths(el.name, comp.body)) check([k, ...path])
         continue
       }
-      if (key !== attr) continue
-      if (ts.isIdentifier(el.name)) {
-        for (const read of findFieldReads(comp.body, el.name.text)) {
-          if (isReplaced(r, read.name.text, keyFields)) found.add(read.name.text)
-        }
-      } else if (ts.isObjectBindingPattern(el.name)) {
-        for (const inner of el.name.elements) {
-          const k = inner.propertyName
-            ? propName(inner.propertyName)
-            : ts.isIdentifier(inner.name)
-              ? inner.name.text
-              : undefined
-          if (k !== undefined && isReplaced(r, k, keyFields)) found.add(k)
-        }
-      }
+      if (k !== attr) continue
+      for (const path of bindingPaths(el.name, comp.body)) check(path)
     }
   }
 
   return [...found]
+}
+
+/**
+ * The paths read through a binding: an identifier's member reads (`todo.done`
+ * → `done`; a bare use → the empty path), or a nested pattern's leaves.
+ */
+function bindingPaths(name: ts.BindingName, body: ts.Node): string[][] {
+  if (ts.isIdentifier(name)) {
+    const reads = findFieldReads(body, name.text).map((read) => memberChain(read.expression).path)
+
+    return reads.length > 0 ? reads : [[]]
+  }
+  if (!ts.isObjectBindingPattern(name)) return []
+  const out: string[][] = []
+  for (const el of name.elements) {
+    if (el.dotDotDotToken) continue
+    const k = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
+    if (k === undefined) continue
+    for (const path of ts.isObjectBindingPattern(el.name) ? bindingPaths(el.name, body) : [[]]) out.push([k, ...path])
+  }
+
+  return out
 }
 
 /**
@@ -538,32 +660,31 @@ export function findStaleForItemReads(sf: ts.SourceFile): StaleForItemHit[] {
       !remountsOnListChange(n, attrExpr(n.openingElement, 'each'))
     ) {
       const by = attrExpr(n.openingElement, 'by')
-      const keyFields = keyFieldsOf(by, sf)
-      if (!keyFields.all) {
+      const key = keyInfoOf(by)
+      if (!key.always) {
         const keyField = keyFieldOf(by)
         for (const child of n.children) {
           if (!ts.isJsxExpression(child) || !child.expression) continue
           const fn = unwrap(child.expression)
           if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) continue
-          checkRow(fn, keyFields, keyField)
+          checkRow(fn, key, keyField)
         }
       }
     }
     ts.forEachChild(n, visit)
   }
 
-  const checkRow = (
-    fn: ts.ArrowFunction | ts.FunctionExpression,
-    keyFields: KeyFields,
-    keyField: string | undefined,
-  ): void => {
+  const checkRow = (fn: ts.ArrowFunction | ts.FunctionExpression, key: KeyInfo, keyField: string | undefined): void => {
+    const extra = key.opaque !== undefined ? { opaqueKey: key.opaque } : {}
     const p = fn.parameters[0]
     if (!p) return
     if (ts.isObjectBindingPattern(p.name)) {
       for (const el of p.name.elements) {
-        const key = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
-        if (key !== undefined && isReplaced(replaced, key, keyFields)) {
-          hits.push({ node: el, kind: 'destructure', param: '{…}', fields: [key], keyField })
+        const k = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
+        if (k === undefined || el.dotDotDotToken) continue
+        const leaves = ts.isObjectBindingPattern(el.name) ? bindingPaths(el.name, fn.body) : [[]]
+        if (leaves.some((path) => isReplaced(replaced, [k, ...path].join('.'), key))) {
+          hits.push({ node: el, kind: 'destructure', param: '{…}', fields: [k], keyField, ...extra })
         }
       }
 
@@ -572,8 +693,8 @@ export function findStaleForItemReads(sf: ts.SourceFile): StaleForItemHit[] {
     if (!ts.isIdentifier(p.name)) return
     const item = p.name.text
     for (const read of findFieldReads(fn.body, item)) {
-      if (isReplaced(replaced, read.name.text, keyFields)) {
-        hits.push({ node: read, kind: 'read', param: item, fields: [read.name.text], keyField })
+      if (isReplaced(replaced, memberChain(read.expression).path.join('.'), key)) {
+        hits.push({ node: read, kind: 'read', param: item, fields: [read.name.text], keyField, ...extra })
       }
     }
     // The whole item handed to a same-file component that reads the field.
@@ -595,7 +716,7 @@ export function findStaleForItemReads(sf: ts.SourceFile): StaleForItemHit[] {
                 if (ts.isIdentifier(e) && e.text === item) attrName = null
               }
               if (attrName === undefined) continue
-              const fields = componentFieldReads(comp, attrName, replaced, keyFields)
+              const fields = componentFieldReads(comp, attrName, replaced, key)
               if (fields.length > 0) {
                 hits.push({
                   node: a,
@@ -603,6 +724,7 @@ export function findStaleForItemReads(sf: ts.SourceFile): StaleForItemHit[] {
                   param: item,
                   fields,
                   keyField,
+                  ...extra,
                   component: tag,
                   ...(attrName !== null ? { attr: attrName } : {}),
                 })

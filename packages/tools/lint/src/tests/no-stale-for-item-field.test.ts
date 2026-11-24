@@ -51,6 +51,24 @@ export const List = () => (
 )
 `
 
+/** `keyed`, with the key function declared inside the component and other code at file level. */
+const keyedIn = (by: string, local: string, fileLevel: string) => `
+const todos = signal<Todo[]>([])
+${TOGGLE}
+${fileLevel}
+export const List = () => {
+  ${local}
+  return <ul><For each={todos} by={${by}}>{(t) => <li class={t.done ? 'done' : ''}>{t.id}</li>}</For></ul>
+}
+`
+
+/** Edges whose `node` is replaced, keyed by `by`, with the row `row`. */
+const nested = (by: string, row: string) => `
+const edges = signal([])
+const rename = (id, title) => edges.set(edges().map((e) => (e.node.id === id ? { ...e, node: { ...e.node, title } } : e)))
+export const L = () => <For each={edges} by={${by}}>{${row}}</For>
+`
+
 const CASES: Array<[name: string, code: string, expected: number]> = [
   // ── fires ──────────────────────────────────────────────────────────────
   ['text child read', list(`(t) => <li>{t.done ? 'done' : 'todo'}</li>`), 1],
@@ -99,6 +117,32 @@ const CASES: Array<[name: string, code: string, expected: number]> = [
     1,
   ],
   // `by` keys that read some fields: only those are safe (#4798).
+  // Precision over silence: a key covers a read only by its exact path, and an
+  // opaque key keeps reporting with a qualified message.
+  ['opaque key: imported function', keyed('importedKeyOf'), 1],
+  ['opaque key: helper given the whole item', keyed('(t) => keyOf(t)'), 1],
+  ['opaque key: built by a call', keyed("keyBy('id', 'done')"), 1],
+  ['opaque key: a member function', keyed('keys.row'), 1],
+  ['opaque key: the item method', keyed('(t) => t.getKey?.()'), 1],
+  ['opaque key: the item in JSX', keyed('(t) => <span data-k={t} />'), 1],
+  ['opaque key: the item inside an object', keyed('(t) => ({ t }).t.id'), 1],
+  ['opaque key: the item as a fallback', keyed('(t) => t.id ?? t'), 1],
+  ['opaque key: a used rest', keyed('({ id, ...rest }) => id + JSON.stringify(rest)'), 1],
+  ['helper given only the id', keyed('(t) => keyOf(t.id)'), 1],
+  ['nested key path does not cover a sibling', nested('(e) => e.node.id', '(e) => <li>{e.node.title}</li>'), 1],
+  ['nested destructured key does not cover a sibling', nested('({ node: { id } }) => id', '(e) => <li>{e.node.title}</li>'), 1],
+  ['an object coerced in a template does not cover its fields', `const todos = signal([])\nconst bump = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, meta: { ...t.meta, title: 'x' } } : t)))\nexport const L = () => <For each={todos} by={(t) => \`\${t.id}:\${t.meta}\`}>{(t) => <li>{t.meta.title}</li>}</For>`, 1],
+  ['key destructuring only the id in the body', keyed('(t) => { const { id } = t; return id }'), 1],
+  ['unused rest in a destructured key', keyed('({ id, ...rest }) => id'), 1],
+  ['a const alias of an id read', keyed('(t) => { const k = t.id; return k }'), 1],
+  ['optional and default key params', keyed('(t = {}) => t?.id'), 1],
+  ['type positions in the key are not reads', keyed('(t) => t.id as keyof typeof t'), 1],
+  ['type annotation and type alias in the key', keyed('(t: typeof x) => { type K = typeof t; return t.id satisfies string }'), 1],
+  ['a tagged template key', keyed('(t) => tag`${t.id}`'), 1],
+  ['in-scope key function, not the first one in the file', keyedIn('getKey', 'const getKey = (t) => t.id', 'function Other() { const getKey = (x) => `${x.id}${x.done}`; return getKey }'), 1],
+  ['a parameter named like a file-level key function', `const todos = signal([])\n${TOGGLE}\nconst getKey = (t) => \`\${t.id}\${t.done}\`\nexport const L = (getKey) => <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['an imported name shadows nothing local', `import { getKey } from './k'\nconst todos = signal([])\n${TOGGLE}\nexport const L = () => <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>`, 1],
+  ['a non-function const key', keyed('keyOf', 'const keyOf = makeKey()'), 1],
   ['composite key without the read field', keyed('(t) => `${t.id}:${t.title}`'), 1],
   ['destructured key without the read field', keyed('({ id }) => id'), 1],
   ['same-file key function without the read field', keyed('keyOf', 'const keyOf = (t) => String(t.id)'), 1],
@@ -113,10 +157,11 @@ const CASES: Array<[name: string, code: string, expected: number]> = [
   ['block-bodied key', keyed("(t) => { const d = t.done ? 'd' : 'o'; return t.id + d }"), 0],
   ['destructured key param', keyed('({ id, done }) => `${id}:${done}`'), 0],
   ['same-file key function', keyed('keyOf', 'const keyOf = (t) => `${t.id}:${t.done}`'), 0],
-  ['key helper that sees the whole item', keyed('(t) => keyOf(t)'), 0],
-  ['imported key function', keyed('importedKeyOf'), 0],
   ['the item itself as the key', keyed('(t) => t'), 0],
-  ['key built by a call', keyed("keyBy('id', 'done')"), 0],
+  ['the serialised item as the key', keyed('(t) => JSON.stringify(t)'), 0],
+  ['in-scope key function wins over a same-named one elsewhere', keyedIn('getKey', 'const getKey = (t) => `${t.id}${t.done}`', 'function Other() { const getKey = (x) => x.id; return getKey }'), 0],
+  ['key destructuring in the body', keyed('(t) => { const { id, done } = t; return id + done }'), 0],
+  ['nested key path read in full', nested('(e) => e.node.title + e.node.id', '(e) => <li>{e.node.title}</li>'), 0],
   [
     'member-chain key covers its top-level field',
     `const todos = signal([])\nconst bump = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, meta: { rev: t.meta.rev + 1 } } : t)))\nexport const L = () => <For each={todos} by={(t) => \`\${t.id}:\${t.meta.rev}\`}>{(t) => <li>{t.meta.rev}</li>}</For>`,
@@ -165,6 +210,18 @@ describe(ID, () => {
 
   it.each(CASES)('detector parity: %s', (_name, code, expected) => {
     expect(detectorHits(code)).toHaveLength(expected)
+  })
+
+  it('an opaque key names the function it cannot see into, on both surfaces', () => {
+    const code = keyed('(t) => keyOf(t)')
+    const [l] = lintHits(code)
+    const [d] = detectorHits(code)
+    for (const message of [l?.message, d?.message]) {
+      expect(message).toContain('Safe only if `keyOf` reads `done` into the key')
+      expect(message).toContain('inline the key')
+    }
+    expect(lintHits(keyed('importedKeyOf'))[0]?.message).toContain('`importedKeyOf`')
+    expect(lintHits(keyed('(t) => t.id'))[0]?.message).not.toContain('Safe only if')
   })
 
   it('reports at the read and names the field and the fix', () => {
