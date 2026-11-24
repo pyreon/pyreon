@@ -13,6 +13,7 @@ import v8 from 'node:v8'
 import vm from 'node:vm'
 import { createContext, h, onMount, onUnmount, provide, Show, useContext } from '@pyreon/core'
 import {
+  _bind,
   _currentScope,
   effect,
   type EffectScope,
@@ -174,6 +175,39 @@ describe('dropped scopes', () => {
   })
 })
 
+describe('hydration owner frame', () => {
+  it('a component whose subtree throws while hydrating closes its owner frame (no binding is retained afterwards)', async () => {
+    // The contained render-throw path of hydrateComponent returned without
+    // closing the owner frame it opened. Every later owned binding built
+    // outside a frame was then recorded in the never-closed frame forever.
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    function Bad() {
+      return h('p', null, () => {
+        throw new Error('boom')
+      })
+    }
+    const host = document.createElement('div')
+    host.innerHTML = '<p>x</p>'
+    document.body.appendChild(host)
+    const dispose = hydrateRoot(host, h(Bad, null))
+    err.mockRestore()
+    let held: WeakRef<object> | null = null
+    const s = signal(0)
+    ;(() => {
+      const payload = { big: new Array(1000).fill(0) }
+      held = new WeakRef(payload)
+      const stop = _bind(() => {
+        s()
+        void payload
+      })
+      stop()
+    })()
+    await collect()
+    expect(held!.deref()).toBeUndefined()
+    dispose()
+  })
+})
+
 describe('lazy context owner', () => {
   const Ctx = createContext('default')
 
@@ -269,7 +303,7 @@ describe('lazy context owner', () => {
     }
     function Outer() {
       provide(Ctx, 'outer')
-      return h('div', null, h(AsyncProvider, null), h(AsyncPlain, null))
+      return h('div', null, h(AsyncProvider as never, null), h(AsyncPlain as never, null))
     }
     const unmount = mount(h(Outer, null), document.createElement('div'))
     await new Promise((r) => setTimeout(r, 0))
@@ -303,6 +337,63 @@ describe('lazy context owner', () => {
     write.set(true)
     later.set(true)
     expect(seen).toEqual(['from-effect'])
+    unmount()
+  })
+
+  it('production: a tree with no provider above it still restores its own owner on re-run (root owner)', () => {
+    // A component is an owner only once it provides, so without a ROOT owner a
+    // tree with no provider above it ran with NO owner in production (dev ran
+    // under an alias). Effects restore their captured owner only when it was
+    // non-null, so a re-run fired from inside another subtree's mount
+    // (Trigger's onMount, under Dark's provider) built Reader under Dark's
+    // owner: compiled `<Show>` children are built inside the accessor.
+    const Theme = createContext('default')
+    const open = signal(false)
+    const { exports } = compilePlainModule<{ App: () => unknown }>(
+      `import { onMount, provide, Show, useContext } from '@pyreon/core'
+      function Reader() { return <span>{useContext(Theme)}</span> }
+      function Outside() { return <Show when={() => open()}><div><Reader /></div></Show> }
+      function Trigger() { onMount(() => { open.set(true) }); return null }
+      function Dark() { provide(Theme, 'dark'); return <Trigger /> }
+      export function App() { return <><Outside /><Dark /></> }`,
+      ['App'],
+      { Theme, open },
+    )
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const unmount = mountProd(() => mount(h(exports.App as never, null), host))
+    expect(host.querySelector('span')?.textContent).toBe('default')
+    unmount()
+  })
+
+  it('a provide() in an effect re-run during ANOTHER component\'s setup writes onto the restored owner, never claims that component', () => {
+    const tick = signal(0)
+    const seen: string[] = []
+    function Reader(props: { tag: string }) {
+      seen.push(`${props.tag}:${useContext(Ctx)}`)
+      return null
+    }
+    function Late() {
+      return () => {
+        if (tick() > 0) provide(Ctx, 'late')
+        return null
+      }
+    }
+    function B() {
+      // Re-runs Late's accessor synchronously while B is still pending.
+      tick.set(1)
+      provide(Ctx, 'B')
+      return h(Reader, { tag: 'b-child' })
+    }
+    function P() {
+      provide(Ctx, 'P')
+      return h('div', null, h(Late, null), h(B, null), h(Reader, { tag: 'sibling' }))
+    }
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const unmount = mount(h(P, null), document.createElement('div'))
+    // B's own provide reaches its child; Late's re-run wrote onto the owner it
+    // restored (P's), which the later sibling reads — B's value never leaks there.
+    expect(seen).toEqual(['b-child:B', 'sibling:late'])
     unmount()
   })
 

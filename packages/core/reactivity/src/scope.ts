@@ -306,11 +306,18 @@ export function setContextOwner(owner: EffectScope | null): EffectScope | null {
 /** Run `fn` with `owner` as the current context owner, then restore. */
 export function runWithContextOwner<T>(owner: EffectScope | null, fn: () => T): T {
   const prev = _sc.o
+  // No component is pending inside `fn`: it runs under a RESTORED owner (an
+  // effect re-run, a deferred mount), so a `provide()` there must write onto
+  // `owner`, never claim whichever component happens to be mid-setup when the
+  // scheduler fires. A component mounted inside enters its own frame.
+  const prevPending = _sc.p
   _sc.o = owner
+  _sc.p = null
   try {
     return fn()
   } finally {
     _sc.o = prev
+    _sc.p = prevPending
   }
 }
 

@@ -2368,6 +2368,10 @@ function hydrateComponent(
       }
     }
   } catch (err) {
+    // Contained: no cleanup is handed out, so release what the frame recorded
+    // (and close it — left open, every later owned binding was recorded in it
+    // forever), exactly as `mountComponent`'s render catch does.
+    _abortOwnerFrame(ownerFrame)
     scope.stop()
     setContextOwner(prevOwner)
     exitPendingOwner(prevPending, prevLate)
@@ -2494,6 +2498,8 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // The context owner is ambient walk state too: restored with the flags, so
   // a throw that escapes the walk never leaves it pointing into the tree.
   const prevOwner = getContextOwner()
+  // A root owner when none is current, exactly as `mount()` installs one (see\n  // the ROOT OWNER note in index.ts).
+  if (prevOwner === null) setContextOwner(effectScope())
   // Dev: compiled mismatch paths are DOM ancestors up to this container.
   if (process.env.NODE_ENV !== 'production') _pushPathRoot(container)
   try {
