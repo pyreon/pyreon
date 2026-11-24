@@ -1914,13 +1914,24 @@ export function transformJSX_JS(
    */
   function wrapWalked(expr: N, open: string, close: string): void {
     replacements.push({ start: expr.start as number, end: expr.start as number, text: open })
+    walkHPath(expr)
+    replacements.push({ start: expr.end as number, end: expr.end as number, text: close })
+  }
+
+  /**
+   * Walk an expression in place with its JSX kept on the h() path
+   * (`wrappedJsxDepth`) — the walk `wrapWalked` runs, with no accessor around
+   * it. Used for a value that BUILDS JSX and is not itself an accessor: a
+   * render prop (`render={() => <Show when={open} />}`), a handler or ref that
+   * builds JSX. Mirrored by `walk_h_path` in the Rust backend.
+   */
+  function walkHPath(expr: N): void {
     wrappedJsxDepth++
     try {
       walkUnslicedExpr(expr)
     } finally {
       wrappedJsxDepth--
     }
-    replacements.push({ start: expr.end as number, end: expr.end as number, text: close })
   }
 
   /** A component prop value that builds JSX: walked, not sliced (see `wrapWalked`). */
@@ -3640,10 +3651,22 @@ export function transformJSX_JS(
    * rule (`initMintsState`) a handler there also read a prop-derived const's
    * SETUP value (`const label = props.label`) where the template element read
    * the live prop. One function for every element path, so they cannot drift.
-   * Nested JSX in the value stays as written (not walked), exactly as inside a
-   * template-path handler. Pushes nothing when the slice is the source text.
+   * A value that BUILDS JSX is walked instead of sliced (`walkHPath`), so the
+   * nested JSX gets the rules every other JSX element gets. A slice is raw
+   * source: inside it a component prop was never `_rp`-wrapped, and the
+   * auto-call turned `render={() => <For each={items}>…</For>}` into
+   * `each={items()}`, a one-time read (#4797). The walk makes the same
+   * identifier edits outside the JSX (`sliceUnsliced`). A template element
+   * never reaches this with JSX in an attribute value (`hasBailAttr`), so the
+   * two paths cannot disagree. Pushes nothing when the slice is the source
+   * text.
    */
   function sliceUnwrappedAttrValue(expr: N): void {
+    if (containsJsx(expr)) {
+      walkHPath(expr)
+
+      return
+    }
     const start = expr.start as number
     const end = expr.end as number
     const raw = code.slice(start, end)
@@ -5836,6 +5859,16 @@ export function transformJSX_JS(
       // agree; see `foreignAttrNamespace` in runtime-dom's props.ts.
       const attrName = jsxAttrName(attr)
       if (attrName === 'key' || TPL_PROPERTY_ONLY_ATTRS.has(attrName)) return true
+      // An attribute value that BUILDS JSX (`onClick={() => open(<Dialog
+      // show={visible} />)}`, a ref or function value returning JSX): the
+      // template emit slices the value into its bind code, and JSX in a slice
+      // never gets the JSX rules — a component prop there lost its `_rp` and a
+      // bare signal became a one-time read (#4797). The h() path walks the
+      // value (`sliceUnwrappedAttrValue` / `wrap`): bail to it.
+      if (attr.value?.type === 'JSXExpressionContainer') {
+        const e = attr.value.expression
+        if (e && e.type !== 'JSXEmptyExpression' && containsJsx(e)) return true
+      }
     }
 
     return false

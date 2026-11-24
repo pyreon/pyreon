@@ -5973,10 +5973,16 @@ fn handle_jsx_attribute(
 /// path slices the identical attribute (`emit_event_listener` / `emit_ref`):
 /// bare signals are auto-called and prop-derived consts inlined, so a handler
 /// reads the live prop on every element path, not the setup value on the h()
-/// path only. Nested JSX in the value stays as written (not walked), exactly
-/// as inside a template-path handler. Pushes nothing when the slice is the
-/// source text. Mirrors `sliceUnwrappedAttrValue` in jsx.ts.
+/// path only. A value that BUILDS JSX is walked instead (`walk_h_path`), so
+/// the nested JSX gets the JSX rules: in a slice a component prop lost its
+/// `_rp` and `each={items}` became a one-time `items()` read (#4797). Pushes
+/// nothing when the slice is the source text. Mirrors
+/// `sliceUnwrappedAttrValue` in jsx.ts.
 fn slice_unwrapped_attr_value(expr: &Expression, ctx: &mut Ctx) {
+    if contains_jsx_in_expr(expr) {
+        walk_h_path(expr, ctx);
+        return;
+    }
     let sp = expr.span();
     let sliced = slice_expr(expr, ctx);
     if sliced != ctx.source[sp.start as usize..sp.end as usize] {
@@ -6596,6 +6602,14 @@ fn wrap_expr(expr: &Expression, ctx: &mut Ctx) {
 fn wrap_walked(expr: &Expression, open: &str, close: &str, ctx: &mut Ctx) {
     let sp = expr.span();
     ctx.add_replacement(sp.start, sp.start, open.to_string());
+    walk_h_path(expr, ctx);
+    ctx.add_replacement(sp.end, sp.end, close.to_string());
+}
+
+/// Walk an expression in place with its JSX kept on the h() path — the walk
+/// `wrap_walked` runs, with no accessor around it (a render prop, a handler or
+/// ref that builds JSX). Mirrors `walkHPath` in jsx.ts.
+fn walk_h_path(expr: &Expression, ctx: &mut Ctx) {
     ctx.wrapped_jsx_depth += 1;
     let old = ctx.parent_is_jsx;
     let old_eager = ctx.parent_eager_mount;
@@ -6609,7 +6623,6 @@ fn wrap_walked(expr: &Expression, open: &str, close: &str, ctx: &mut Ctx) {
     ctx.parent_is_jsx = old;
     ctx.parent_eager_mount = old_eager;
     ctx.wrapped_jsx_depth -= 1;
-    ctx.add_replacement(sp.end, sp.end, close.to_string());
 }
 
 // ─── Compile-to-string SSR fast path (`options.ssrTemplate`) ─────────────────
@@ -8959,6 +8972,16 @@ fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
                 let name = jsx_attr_name(&a.name);
                 if name == "key" || is_tpl_property_only_attr(&name) {
                     return true;
+                }
+                // An attribute value that BUILDS JSX: the template emit slices
+                // it into its bind code, where the JSX gets no JSX rules (#4797).
+                // The h() path walks it. Mirrors `hasBailAttr` in `src/jsx.ts`.
+                if let Some(JSXAttributeValue::ExpressionContainer(c)) = &a.value {
+                    if let Some(e) = jsx_expr_as_expression(&c.expression) {
+                        if contains_jsx_in_expr(e) {
+                            return true;
+                        }
+                    }
                 }
             }
         }

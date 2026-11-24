@@ -182,6 +182,9 @@ function genNestedFn(c: Ctx): string {
     `(${s}) => use(${s} + 1)`,
     `() => ${s}.set`,
     `() => <i title={${s} + 1}>{${s}}</i>`,
+    // A component prop in JSX a function builds (#4797): walked, `_rp`-wrapped.
+    `() => <Show when={${s}}><b>x</b></Show>`,
+    `(k) => <For each={${s}} by={(x) => x}>{(x) => <li title={k}>{x}</li>}</For>`,
   ])
 }
 
@@ -298,6 +301,8 @@ function genPqSite(c: Ctx): string {
     '<ul>{[1].map((tag) => <li title={pq} onClick={() => use(pq, tag)}>x</li>)}</ul>',
     '<Comp9>{(tag) => use(pq, tag)}</Comp9>',
     '<Comp9 render={(tag) => <b>{pq}</b>} />',
+    '<Comp9 render={() => <Comp9 v={pq} />} />',
+    '<button onClick={() => use(<Comp9 v={pq} />)}>x</button>',
     '<p>{[1].map((props) => use(pq, props))}</p>',
   ])
 }

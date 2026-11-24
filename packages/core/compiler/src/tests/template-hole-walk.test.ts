@@ -249,6 +249,10 @@ describe('template-bail census over examples/', () => {
     // 350 → 331: 328 once other frameworks' projects are skipped (see above), + 3 from the
     // real-bench catalogue app's Pyreon arm (`examples/real-bench/app/arms/pyreon`), all
     // `child-of-h`: idiomatic arm code, not reshaped for the compiler (its contract forbids it).
-    expect(r.total).toBeLessThanOrEqual(331)
+    // 331 → 333 (#4797): an element whose attribute value BUILDS JSX bails to h(), whose
+    // walk compiles that JSX (the template emit sliced it as raw source, so a component prop
+    // in it was a one-time read). `examples/compat/preact/src/examples/RenderDemo.tsx`'s
+    // `<button onClick={() => { … render(<MiniApp />, el) … }}>` and its `<div class="row">` root.
+    expect(r.total).toBeLessThanOrEqual(333)
   })
 })
