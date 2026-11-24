@@ -133,6 +133,12 @@ interface UrlRouter {
 
 Any object satisfying it works (you don't strictly need `@pyreon/router`).
 
+A url-state write changes only the query, so `@pyreon/router` keeps the route
+component mounted through it (same matched route, same params): a search box
+bound to `useUrlState` keeps its focus and local state on every keystroke, and
+the write neither scrolls to the top nor starts a view transition. A route
+`loader` runs again only if its `loaderKey` includes the query.
+
 With `currentRoute` present (every `@pyreon/router` instance has it), a navigation
 made through the router — `router.push('/products?page=2')`, a `<RouterLink>`
 click — updates every live `useUrlState` signal. Without a registered router,

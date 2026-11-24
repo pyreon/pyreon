@@ -15,7 +15,7 @@ import {
 import { computed, isClient, signal } from '@pyreon/reactivity'
 import { announceRouteChange } from './announcer'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
-import { _setDefaultChromeLayout } from './match'
+import { _setDefaultChromeLayout, sameParams } from './match'
 import { getActiveRouter, isLazy, RouterContext, RouterTabContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
 import { type CheckHref, classifyHref, toRouterPath } from './typed-routes'
@@ -172,17 +172,12 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
      */
     errored: boolean
     /**
-     * The full ResolvedRoute reference at the time this entry was emitted.
-     * `currentRoute` is a `computed` keyed on `currentPath` — same path
-     * returns the same memoized reference, different path returns a new
-     * one. Tracking the reference in `equals` makes the depth re-emit on
-     * any real navigation (params change, query change, hash change) even
-     * when the matched record at this depth stays the same — required so
-     * `/user/42 → /user/99` re-renders the User component with new params
-     * — while NOT re-emitting on navigate-flow noise (`_loadingSignal`
-     * start/end ticks, lazy resolution writes that complete without
-     * changing currentPath). One emit per real navigation, not per
-     * within-navigation signal tick.
+     * The ResolvedRoute this entry was emitted for. `equals` compares its
+     * PARAMS at the leaf, so `/user/42 → /user/99` re-renders the User
+     * component with new params, while a query- or hash-only navigation
+     * (same records, same params) keeps the page mounted and only updates
+     * the live `query` prop (#4814). Navigate-flow noise (`_loadingSignal`
+     * ticks, lazy resolution writes) never re-emits.
      */
     route: ResolvedRoute
     /**
@@ -275,9 +270,16 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
         // First ARRIVAL is owned by PendingLoader only when a pending
         // component is configured. Otherwise the initial component received
         // an undefined context snapshot and must remount with the loaded data.
+        //
+        // The leaf is keyed on its PARAMS, not on the route object: a
+        // navigation that changes only the query or the hash (a search box
+        // written through `router.replace`, `useSearchParams().set`, url-state)
+        // keeps the page mounted and reaches it through the live `query` prop
+        // and `useRoute()`. Remounting there dropped focus and local state on
+        // every keystroke (#4814).
         if (isLeaf) {
           return (
-            a.route === b.route &&
+            sameParams(a.route.params, b.route.params) &&
             ((a.loaderData === undefined && !!b.rec?.pendingComponent) || a.loaderData === b.loaderData)
           )
         }
@@ -292,7 +294,7 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
     if (!rec) return null
 
     if (comp) {
-      return renderWithLoader(router, rec, comp, route)
+      return renderWithLoader(router, rec, comp, liveRouteProps(routeOf, rec, depth, route))
     }
 
     // Component not yet cached — kick off the lazy load. `renderLazyRoute`
@@ -696,13 +698,45 @@ function renderLazyRoute(
  * Wraps the route component with a LoaderDataProvider so `useLoaderData()` works
  * inside the component. If the record has no loader, renders the component directly.
  */
+type RouteProps = Pick<ResolvedRoute, 'params' | 'query' | 'meta'>
+
+/**
+ * The `params` / `query` / `meta` props a route component receives, as GETTERS
+ * over the live route. A query- or hash-only navigation keeps the component
+ * mounted (#4814), so a snapshot would go stale: `props.query` must read the
+ * current route, like any reactive prop. While the route at this depth is a
+ * different record (the view is about to swap this component out), the props
+ * keep the route the component was rendered for.
+ */
+function liveRouteProps(
+  routeOf: () => ResolvedRoute,
+  rec: RouteRecord,
+  depth: number,
+  rendered: ResolvedRoute,
+): RouteProps {
+  const live = (): ResolvedRoute => {
+    const r = routeOf()
+    return r.matched[depth] === rec ? r : rendered
+  }
+  return {
+    get params() {
+      return live().params
+    },
+    get query() {
+      return live().query
+    },
+    get meta() {
+      return live().meta
+    },
+  }
+}
+
 function renderWithLoader(
   router: RouterInstance,
   record: RouteRecord,
   Comp: ComponentFn,
-  route: Pick<ResolvedRoute, 'params' | 'query' | 'meta'>,
+  routeProps: RouteProps,
 ): VNodeChild {
-  const routeProps = { params: route.params, query: route.query, meta: route.meta }
 
   // Phase 5 — server-loader records carry data too (`serverLoader` is the
   // fn on the server graph; `hasServerLoader` is the client marker). Pre-

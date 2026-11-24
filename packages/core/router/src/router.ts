@@ -2,7 +2,14 @@ import { createContext, onUnmount, useContext } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { batch, computed, isClient, signal } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
-import { buildNameIndex, buildPath, resolveLoaderNotFound, resolveRoute, stringifyQuery } from './match'
+import {
+  buildNameIndex,
+  buildPath,
+  resolveLoaderNotFound,
+  resolveRoute,
+  isInPlaceReplace,
+  stringifyQuery,
+} from './match'
 import { isNotFoundError } from './not-found'
 import { classifyRedirectTarget, getRedirectInfo, redirect as throwRedirect } from './redirect'
 import { ScrollManager } from './scroll'
@@ -1395,6 +1402,13 @@ export function createRouter<TNames extends string = string>(
     tabPlan: TabPlan | null = null,
   ): Promise<void> {
     scrollManager.save(from.path)
+    // A programmatic `replace` that keeps the page — same matched records, same params, same
+    // hash; only the query moved — is an in-place edit of the current entry:
+    // a search box or a filter written through `router.replace`,
+    // `useSearchParams().set` or url-state's `setUrlRouter`. The view keeps the
+    // page mounted (RouterView keys on records + params, #4814), and the commit
+    // must not reset the scroll or run a view transition either.
+    const inPlace = isInPlaceReplace(replace, fromBrowser, to, from)
 
     const doCommit = () => {
       // Any committed navigation supersedes the initial one: the route on
@@ -1481,14 +1495,17 @@ export function createRouter<TNames extends string = string>(
     // `typeof matchMedia === 'function' && matchMedia(...)` is NOT — the rule
     // wants an early-return guard at the function entry).
     const prefersReducedMotion = (): boolean => {
-      if (typeof matchMedia === 'undefined') return false
+      if (!isClient || typeof matchMedia === 'undefined') return false
       return matchMedia('(prefers-reduced-motion: reduce)').matches
     }
-    const reducedMotion = isClient && prefersReducedMotion()
+    const reducedMotion = prefersReducedMotion()
     // Not in memory mode: a view transition snapshots the WHOLE document and
     // skips any other transition in flight — the page router's included.
+    // An in-place edit (see `inPlace`) keeps the page, so there is nothing to
+    // animate: a cross-fade per keystroke of a search box is a flicker.
     const useVT =
       ownsPage &&
+      !inPlace &&
       !reducedMotion &&
       to.meta.viewTransition !== false &&
       typeof (document as any).startViewTransition === 'function'
@@ -1567,7 +1584,7 @@ export function createRouter<TNames extends string = string>(
     //     behavior. With an explicit behavior, native restoration is switched
     //     to 'manual' at router creation so the two never fight.
     // A memory router scrolls only when `scrollBehavior` is set (`scrollOnPush`).
-    if (isClient && (fromBrowser ? scrollBehavior !== undefined : scrollOnPush)) {
+    if (isClient && !inPlace && (fromBrowser ? scrollBehavior !== undefined : scrollOnPush)) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
   }
