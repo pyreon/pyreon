@@ -1,4 +1,4 @@
-import { _enterCleanupFrame, _exitCleanupFrame } from './effect'
+import { _enterCleanupFrame, _errorHandler, _exitCleanupFrame } from './effect'
 import { _rdSetOwnerReader } from './reactive-devtools'
 export class EffectScope {
   // A registered node (an effect handle, a computed) or a BARE disposer
@@ -135,12 +135,20 @@ export class EffectScope {
   stop(): void {
     if (!this._active) return
     if (this._effects) {
+      // A registered cleanup is user code (an `onCleanup` in `onMount`, a
+      // `runInScope` callback's): one that throws is reported like any effect
+      // error and never stops the rest of the scope's teardown — nor the
+      // component unmount around it, which left a `<For>` row on screen.
       for (const e of this._effects) {
         // A bare disposer is called; a node (effect handle, or a computed —
         // itself callable, so told apart by its `_f` flags) is disposed.
-        if ((e as { _f?: number })._f !== undefined) (e as unknown as { _dispose(): void })._dispose()
-        else if (typeof e === 'function') e()
-        else e.dispose()
+        try {
+          if ((e as { _f?: number })._f !== undefined) (e as unknown as { _dispose(): void })._dispose()
+          else if (typeof e === 'function') e()
+          else e.dispose()
+        } catch (err) {
+          _errorHandler(err)
+        }
       }
     }
     this._effects = null

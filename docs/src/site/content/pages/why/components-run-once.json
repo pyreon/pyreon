@@ -17,8 +17,8 @@
       "title": "Skipping the work shows up on the clock.",
       "stats": [
         {
-          "stat": "2.6×",
-          "label": "faster than React 19 at creating 10,000 rows (72.6 ms vs 192.0 ms)",
+          "stat": "2.7×",
+          "label": "faster than React 19 at creating 10,000 rows (73.1 ms vs 195.9 ms)",
           "condition": "final pass, two runs · Apple M3 Max · real Chromium · synthetic, author-run",
           "source": "BENCHMARKS.md §1"
         },
@@ -199,7 +199,7 @@
     },
     {
       "kind": "note",
-      "text": "We publish where we lose, so you can trust where we win: in the same record Solid mounts a deep 2,047-component tree 1.15–1.18× faster, creating a signal is about 5× slower than in Preact Signals, and the same keyed-table app is 17.2 KB gzip against Solid's 7.5 KB.",
+      "text": "We publish where we lose, so you can trust where we win: in the same record a mounted 2,047-component tree holds about 2.6× the memory it takes in Solid 1.9, creating a signal is about 5× slower than in Preact Signals, and the same keyed-table app is 18.5 KB gzip against Solid's 7.7 KB.",
       "href": "/benchmarks"
     },
     {
@@ -265,12 +265,12 @@
   },
   "share": {
     "ogTitle": "Your component runs once. Ever.",
-    "ogSub": "Delete useMemo, useCallback and every dependency array. 2.6× faster than React at 10,000 rows (synthetic, author-run)."
+    "ogSub": "Delete useMemo, useCallback and every dependency array. 2.7× faster than React at 10,000 rows (synthetic, author-run)."
   },
   "sources": [
     {
-      "claim": "Create 10,000 rows: Pyreon 72.64 ms vs React 19 192.01 ms (2.64×), two runs",
-      "path": "BENCHMARKS.md §1 (record 2026-11-05)"
+      "claim": "Create 10,000 rows: Pyreon 73.09 ms vs React 19 195.91 ms (2.68×; 2.70× in run 2), two runs",
+      "path": "BENCHMARKS.md §1 (refreshed 2026-11-24)"
     },
     {
       "claim": "TodoMVC toggle-1000 4.60 vs 11.41 ms (2.48×), clear-1000 3–4×, one run",
@@ -281,8 +281,8 @@
       "path": "BENCHMARKS.md §8"
     },
     {
-      "claim": "Deep tree Solid 1.15–1.18×; bundle 17.2 vs Solid 7.5 KB",
-      "path": "BENCHMARKS.md §2, §7, §13"
+      "claim": "Deep-tree retained heap 531.7 vs Solid 1.9 202–207 KB; bundle 18.5 vs Solid 7.7 KB",
+      "path": "BENCHMARKS.md §2b, §7, §13 (refreshed 2026-11-24)"
     },
     {
       "claim": "Counter compiles to _tpl + _bindText(count, __t2)",

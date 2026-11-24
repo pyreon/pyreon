@@ -1,7 +1,7 @@
 # Pyreon Framework — Complete AI Reference
 
 > Signal-based UI framework for TypeScript. SSR, SSG, islands, SPA.
-> Standard JSX + TypeScript. Fast on the synthetic row-list benchmark, honestly reported (BENCHMARKS.md, 2026-11-05): wins clear rows outright, statistically tied with the fastest frameworks (Vue 3.6 Vapor RC, Octane, Vue 3) on create, replace, partial update, swap and remove; loses deep component-tree mount to Solid (1.15–1.18×); bundle larger than Solid, Preact and Svelte. The record withdraws its own claims when a harness bug is found. See /docs/benchmarks.
+> Standard JSX + TypeScript. Fast on the synthetic row-list benchmark, honestly reported (BENCHMARKS.md, refreshed 2026-11-24): wins clear rows outright, statistically tied with the fastest frameworks (Vue 3.6 Vapor RC, Octane, Vue 3) on create, replace, remove, create 10,000 and append; ties Solid 1.9 on deep component-tree mount; loses on memory (Preact's heap is lighter; a mounted component tree retains more than Solid 1.9 and 2.0) and bundle size (larger than Solid, Preact and Svelte). The record withdraws its own claims when a harness bug is found. See /docs/benchmarks.
 > All packages under @pyreon/* scope.
 
 ## Signals (reactivity)

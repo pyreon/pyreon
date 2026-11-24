@@ -708,9 +708,9 @@ describe('JSX transform — template emission', () => {
     expect(result).not.toContain('_tpl(')
   })
 
-  test('does NOT emit _tpl for keyed elements', () => {
+  test('a keyed element is templated, its key passed to _tpl as the fourth argument', () => {
     const result = t('<div key={id}><span /></div>')
-    expect(result).not.toContain('_tpl(')
+    expect(result).toContain('_tpl("<div><span></span></div>", () => null, 1, id)')
   })
 
   test('bakes static string attributes into HTML', () => {
@@ -3074,10 +3074,10 @@ describe('JSX transform — template style attribute combined _bind', () => {
 
 describe('JSX transform — template with key attribute on child element', () => {
   test('key attribute on child element is stripped in template', () => {
-    // key on inner child doesn't bail template (only root key bails)
-    // But templateElementCount bails on key attr on any element
+    // A nested key has no reader (its parent is a DOM element), so it is
+    // dropped and the template stays.
     const result = t('<div><span key="a">text</span></div>')
-    expect(result).not.toContain('_tpl(')
+    expect(result).toContain('_tpl("<div><span>text</span></div>", () => null)')
   })
 })
 

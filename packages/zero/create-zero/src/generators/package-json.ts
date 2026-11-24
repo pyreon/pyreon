@@ -33,8 +33,8 @@ const PYREON_VERSION = PYREON_DEP_RANGE
  * this repository runs, so the shipped `@pyreon/lint/oxlint/*.json` and
  * `@pyreon/lint/oxfmt` presets are exercised against them in CI.
  */
-export const OXLINT_RANGE = '^1.89.0'
-export const OXFMT_RANGE = '^0.74.0'
+export const OXLINT_RANGE = '^1.93.0'
+export const OXFMT_RANGE = '^0.78.0'
 
 function pyreonVersion(_pkg: string): string {
   return PYREON_VERSION
@@ -119,12 +119,12 @@ export function generatePackageJson(
       deps[dep] = pyreonVersion(dep)
     } else if (dep.startsWith('@tanstack/')) {
       deps[dep] = dep.includes('query')
-        ? '^5.101.2'
+        ? '^5.107.1'
         : dep.includes('table')
-          ? '^8.21.3'
-          : '^3.17.3'
+          ? '^9.3.1'
+          : '^3.19.11'
     } else if (dep === 'zod') {
-      deps[dep] = '^4.4.3'
+      deps[dep] = '^4.6.7'
     }
   }
 
@@ -165,7 +165,7 @@ export function generatePackageJson(
     '@pyreon/vite-plugin': pyreonVersion('@pyreon/vite-plugin'),
     '@pyreon/zero-cli': pyreonVersion('@pyreon/zero-cli'),
     typescript: '^6.0.3',
-    vite: '^8.0.16',
+    vite: '^8.3.7',
   }
   if (config.aiTools.includes('mcp')) {
     devDeps['@pyreon/mcp'] = pyreonVersion('@pyreon/mcp')

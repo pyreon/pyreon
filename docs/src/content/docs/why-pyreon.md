@@ -25,39 +25,40 @@ No VDOM, no reconciliation, no `useMemo` to stop re-renders you didn't want. The
 
 ## Is it fast? Honestly.
 
-**This section summarises the benchmark run of 2026-11-05** (`main` at `779a82f01`, Apple M3 Max, close cells measured twice). The complete, authoritative record is [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md) at the repo root; the [benchmarks page](/docs/benchmarks) summarises it with every number and caveat.
+**This section summarises the benchmark record as refreshed on 2026-11-24** (row board and core scenarios re-measured on `fcccee261`, two runs each, Apple M3 Max, Chromium 159; author-written suites, one machine, Chromium only). The complete, authoritative record is [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md) at the repo root; the [benchmarks page](/docs/benchmarks) summarises it with every number and caveat.
 
 On the krausest-style synthetic row-list suite (real Chromium via Playwright, production builds, 10 frameworks) Pyreon is **not alone at the front**. Read the numbers, not a headline. Wall-clock, lower is better, first of two runs:
 
-| Operation | **Pyreon** | Vue 3.6 Vapor (RC) | Octane 0.16 | Vue 3 | Solid | Svelte 5 | React 19 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Create 1,000 rows | 7.26 | 🤝 7.35 | 7.47 | 🤝 7.33 | 7.88 | 8.07 | 9.04 |
-| Create 10,000 rows | 72.64 | 74.83 | 74.31 | 🤝 73.99 | 78.75 | 87.51 | 192.01 |
-| Partial update (every 10th) | 705µs | 🤝 710µs | 🤝 735µs | 1.04 | 1.27 | 810µs | 885µs |
-| Swap rows | 805µs | 🤝 755µs | 🤝 765µs | 1.06 | 🤝 955µs | 1.50 | 6.06 |
-| Remove row | 5.70 | 🤝 5.76 | 🤝 5.74 | 5.89 | 🤝 5.76 | 6.35 | 🤝 5.78 |
-| Clear rows | **130µs** | 145µs | 150µs | 255µs | 460µs | 335µs | 920µs |
-| Append 1k→10k rows | 13.06 | 62.20 | 🤝 13.25 | 62.83 | 13.71 | 19.25 | 15.22 |
+| Operation | **Pyreon** | Vue 3.6 Vapor (RC) | Octane 0.19 | Vue 3 | Solid 1.9 | Solid 2.0 | Svelte 5 | React 19 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Create 1,000 rows | 7.29 | 🤝 7.25 | 🤝 7.39 | 🤝 7.33 | 8.02 | 8.02 | 8.16 | 9.13 |
+| Create 10,000 rows | 73.09 | 74.38 | 🤝 73.98 | 🤝 73.89 | 78.79 | 79.79 | 87.54 | 195.91 |
+| Partial update (every 10th) | 680µs | 🤝 680µs | 🤝 680µs | 1.04 | 1.19 | 1.28 | 785µs | 910µs |
+| Swap rows | 745µs | 🤝 750µs | 🤝 825µs | 1.06 | 🤝 965µs | 835µs | 1.49 | 5.92 |
+| Remove row | 5.70 | 🤝 5.64 | 🤝 5.52 | 🤝 5.90 | 🤝 5.79 | 🤝 5.73 | 6.38 | 6.01 |
+| Clear rows | **125µs** | 145µs | 140µs | 225µs | 525µs | 295µs | 345µs | 655µs |
+| Append 1k→10k rows | 13.00 | 62.12 | 🤝 13.24 | 62.88 | 13.87 | 13.98 | 19.68 | 15.62 |
 
 (ms unless noted. `🤝` = statistical tie with Pyreon in that run, cluster-bootstrap CI95 overlaps. Bold = Pyreon outright in both runs.)
 
 The honest read:
 
-- **Pyreon wins one op in both runs** — clear rows (1.11–1.12×). Create 10,000 and append win one run by 2% and tie the other. It **ties** the Vue 3.6 Vapor release candidate, Octane and Vue 3 on create 1,000, replace, partial update, swap and remove.
-- **The margins are small and the harness overstated its own precision**: its confidence intervals treated samples from the same page load as independent. These verdicts are recomputed with a bootstrap that resamples whole page loads; on the narrow intervals swap had read as a 1.07× loss and create 10,000 and append as wins.
-- **`select row` is resolved by a batch instrument.** Pyreon is flat at about 0.43µs against Octane's 0.83µs at every list size (1.86–2.04×), while Solid's select is O(n).
+- **Pyreon wins clear rows in both runs** (1.12×), plus the batch-timed select row (1.58× over Octane). It **ties** the Vue 3.6 Vapor release candidate, Octane and Vue 3 on create 1,000, replace, remove, create 10,000 and append. Partial update and swap split between the two runs (swap was a 1.11× loss to Vapor in one), so neither is claimed.
+- **Against Solid 1.9 and Solid 2.0** Pyreon is faster on create, replace, partial update, clear, create 10,000 and append in both runs.
+- **The margins are small.** Every interval here resamples whole page loads, because samples from one page load are not independent.
 - **Most of these ops are layout-bound.** Create, replace, remove and append are dominated by browser layout that every framework pays identically.
-- **Memory:** retained heap after the suite ties Pyreon (3.08MB) with Preact (3.09MB) as the lightest framework.
+- **Memory:** Preact has the lightest retained heap after the suite (3.14MB); Pyreon is 3.21MB, level with Solid 1.9.
 
 ### Where Pyreon does *not* win
 
-- **Deep component-tree mount is the clearest loss.** Mounting 2,047 components, Pyreon is **1.15–1.18× slower than Solid** (3.59ms vs 3.06ms); React ties Pyreon.
+- **Memory per component.** A mounted 2,047-component tree retains 531.7KB in Pyreon, against 410.2KB in Solid 2.0 and 202–207KB in Solid 1.9. Mounting that tree is now a statistical tie with Solid 1.9 (it was a 1.15–1.18× loss on 2026-11-05, before #4199), and faster than Solid 2.0 and React.
+- **A keyed list with conditional cells** (the `maplist` scenario): `<For>` loses clearing 1,000 rows (about 1.5× behind Vue 3 and Solid 2.0), and a plain `.map()` of JSX rows loses every op that creates, moves or removes rows.
 - **dbmon-style updates**, where every cell changes every tick, are a three-way tie with Octane and Svelte.
 - **Signal creation** is about 5× slower than Preact Signals, and Preact also leads deep unobserved computed chains. Pyreon wins the computed diamond, effect propagation and batching on both V8 and JavaScriptCore.
-- **Bundle size**: the same keyed-table app is 17.2KB gzipped in Pyreon against Solid's 7.5KB and Preact's 10.1KB.
-- **This is synthetic, and author-judged.** Real-app shapes are measured too — TodoMVC against `react-dom@19`, a 12-field form against six form libraries, compiled SSR against Vue, Svelte and React, where Pyreon leads — but Pyreon's authors wrote and judge every one of these benches, and no independent third-party run exists yet. Until one does, any performance claim stops at this evidence and does not extrapolate to your app.
+- **Bundle size**: the same keyed-table app is 18.5KB gzipped in Pyreon against Solid's 7.7KB and Preact's 10.1KB.
+- **This is synthetic, and author-judged.** Real-app shapes are measured too — TodoMVC against `react-dom@19`, a 12-field form against six form libraries, compiled SSR against Vue, Svelte and React, where Pyreon leads — but Pyreon's authors wrote and judge every one of these benches, on one machine in one browser engine, and no independent third-party run exists yet. Until one does, any performance claim stops at this evidence and does not extrapolate to your app.
 
-So: a tie at the front of the row-list suite with one outright win (clear rows), tied for lightest on memory, and behind on deep-tree mount, signal creation and bundle size.
+So: a tie at the front of the row-list suite with two outright wins (clear rows, batch-timed select), behind Preact and Solid on memory, and behind on signal creation and bundle size.
 
 ## Full-stack, not just a renderer
 
@@ -77,7 +78,7 @@ Pyreon ships `llms.txt`, `llms-full.txt`, and a real [MCP server](/docs/mcp) (`g
 ## When *not* to choose Pyreon
 
 - **You need a large, battle-tested ecosystem today.** React/Vue/Svelte/Solid have years of components, hiring pools, and corporate backing. Pyreon's ecosystem is young. Its compat layers (`@pyreon/react-compat` et al.) let you bring some existing code, but they're a migration aid, not a replacement for an ecosystem.
-- **Memory is your tightest constraint** (very large client-held lists). Virtualize, or measure first. Pyreon ties Preact for the lightest retained heap on the row-list suite — tied, not ahead — and, like Solid, it allocates a per-row signal that plain-object frameworks do not.
+- **Memory is your tightest constraint** (very large client-held lists or very large component trees). Virtualize, or measure first. Preact retains less heap than Pyreon on the row-list suite, a mounted component tree costs Pyreon more memory than Solid, and, like Solid, Pyreon allocates a per-row signal that plain-object frameworks do not.
 - **You need the proof before the promise.** Every benchmark here, including the real-app shapes, is written and judged by Pyreon's authors, and an independent upstream submission doesn't exist yet. If "trust, but verify" means you need third-party verification, it isn't here yet — and we'd rather tell you that than pretend.
 
 ## How it compares, in one table

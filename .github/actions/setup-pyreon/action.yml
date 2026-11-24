@@ -26,7 +26,7 @@ description: |
     - uses: ./.github/actions/setup-pyreon
       with:
         restore-bootstrap: 'false'  # optional
-        node-version: '24'          # optional
+        node-version: '26'          # optional
   ```
 
   ## Inputs
