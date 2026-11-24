@@ -39,10 +39,14 @@ export default function atlasDemo(): Plugin {
         const url = (req.url ?? '').split('?')[0] ?? ''
         if (!url.startsWith(ROUTE)) return next()
         if (!built) {
-          buildAtlasDemo(dir)
+          buildAtlasDemo(dir, ROUTE)
           built = true
         }
-        const rel = normalize(url.slice(ROUTE.length) || 'index.html')
+        // A directory URL (`/demos/atlas/`, `/demos/atlas/button/`) is its
+        // `index.html`, as a static host serves it: the build writes a page per
+        // component and the workbench writes those paths into the address bar.
+        const path = url.slice(ROUTE.length)
+        const rel = normalize(path === '' || path.endsWith('/') ? `${path}index.html` : path)
         const file = join(dir, rel)
         if (!file.startsWith(dir) || !existsSync(file) || !statSync(file).isFile()) return next()
         res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream')
@@ -52,7 +56,8 @@ export default function atlasDemo(): Plugin {
     closeBundle() {
       // The client build only: the SSR build writes elsewhere.
       if (!config || config.command !== 'build' || config.build.ssr) return
-      buildAtlasDemo(resolve(config.root, config.build.outDir, 'demos/atlas'))
+      // Under the site's own base: the workbench routes against it.
+      buildAtlasDemo(resolve(config.root, config.build.outDir, 'demos/atlas'), `${config.base}demos/atlas/`)
     },
   }
 }

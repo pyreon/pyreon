@@ -90,6 +90,32 @@ atlas init          # detects your packages, writes pyreon.config.ts
 atlas dev           # the workbench, against your real components
 ```
 
+`atlas scan` needs nothing else. `atlas dev` and `atlas build` run the workbench,
+which is a `@pyreon/zero` app shipped inside this package, so they need the web
+stack as dev dependencies:
+
+```bash
+bun add -d vite @pyreon/vite-plugin @pyreon/zero
+```
+
+### How the workbench runs
+
+The workbench is a small zero app in the package's `app/` directory: an `index.html`, a
+client entry, and two file routes (`/` and `/:component`) under one `_layout`
+that renders `<Workbench>`. `atlas dev` serves it with zero's dev mode; `atlas
+build` builds it with zero's SSG pass. Both commands run the SAME app with the
+same plugins — `@pyreon/vite-plugin`, `zero()`, and Atlas's own plugin, which
+supplies the derived catalog (`virtual:atlas/catalog`), the RPC channel the
+Docs source and Lens panels use, and the `<head>` lines. Your components are
+imported by absolute path, so the project's `src/routes` and `index.html` are
+never touched; the project keeps its `.env` files and its dependency cache
+(`node_modules/.cache/atlas-vite`).
+
+Every route is declared `renderMode = 'spa'`: the workbench mounts arbitrary
+components, many of which need a browser, so it is never server-rendered.
+Saving a scanned file re-derives the catalog in a child process and reloads the
+page; editing a component's body is an ordinary HMR update.
+
 `init` reads the workspace declaration you already have (`workspaces` in
 `package.json`, or `pnpm-workspace.yaml`), probes each package for components,
 and writes the config. It refuses to overwrite an existing one without
@@ -180,7 +206,11 @@ atlas build --base /my-repo/         # GitHub Pages project site
 ```
 
 Deploy the directory to Pages, Netlify, Cloudflare, S3 — anything that serves
-files. There is no server component.
+files. There is no server component. The site is the dev server's app built by
+zero's SSG pass: `/` plus one `/<component>/index.html` per component (each the
+client shell, so a component URL is a real page on a plain file server, with no
+rewrite rules), and a `404.html` shell for hosts that serve one. `--base` must
+be absolute (`/` or `/my-repo/`); a relative base is refused before any work.
 
 **What makes this more than `vite build`.** The workbench is not purely a client
 app: the Docs source block and the Reactivity Lens are answered by Node over the

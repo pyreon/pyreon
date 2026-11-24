@@ -104,7 +104,8 @@ npx @pyreon/loom dev`,
     usage: `# Derive the catalog (writes atlas-catalog.json — the machine surface):
 npx @pyreon/atlas scan
 
-# Serve the workbench:
+# Serve the workbench (a @pyreon/zero app; needs the web stack as dev deps):
+bun add -d vite @pyreon/vite-plugin @pyreon/zero
 npx @pyreon/atlas dev
 
 # Optional atlas.config.ts, or an \`atlas\` section in pyreon.config.*.`,
