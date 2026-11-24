@@ -2650,6 +2650,7 @@
       "devDependencies": {
         "@pyreon/ansi": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
+        "@pyreon/test-utils": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },

@@ -38,6 +38,17 @@ import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import { build, runBuild } from './build'
 
+// `build()` exits through `exitAfterFlush`, which flushes the real stdout and
+// stderr and then exits the process (#4799): never let it run in the worker.
+const exitAfterFlush = vi.hoisted(() =>
+  vi.fn((code: number): Promise<never> => Promise.reject(new Error(`exitAfterFlush(${code}) called`))),
+)
+
+vi.mock('@pyreon/ansi', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@pyreon/ansi')>()),
+  exitAfterFlush,
+}))
+
 const FIXTURE = resolve(import.meta.dirname, '__fixtures__', 'ssr-app')
 const DIST = join(FIXTURE, 'dist')
 
@@ -115,21 +126,18 @@ describe('zero build — single-owner SSR pipeline end invariants', () => {
     // report success. Pre-fix shape: per-step bare `catch {}` blocks
     // turned missing-artifact failures into a green "Build completed".
     const dir = await mkdtemp(join(tmpdir(), 'zero-cli-broken-'))
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('process.exit called')
-    }) as never)
+    exitAfterFlush.mockClear()
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
       await writeFile(join(dir, 'vite.config.ts'), 'throw new Error("broken config")\n')
-      await expect(build(dir)).rejects.toThrow('process.exit called')
-      expect(exitSpy).toHaveBeenCalledWith(1)
+      await expect(build(dir)).rejects.toThrow('exitAfterFlush(1) called')
+      expect(exitAfterFlush).toHaveBeenCalledWith(1)
       const logged = errorSpy.mock.calls.map((c) => String(c[0])).join('\n')
       expect(logged).toContain('✗ zero build · Build failed: ')
       expect(logged).toContain('broken config')
       // The stack is printed too, not just the message: it says WHERE.
       expect(logged).toMatch(/\n {3}at /)
     } finally {
-      exitSpy.mockRestore()
       errorSpy.mockRestore()
       await rm(dir, { recursive: true, force: true })
     }

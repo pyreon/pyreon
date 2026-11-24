@@ -145,6 +145,8 @@ A new tool or command that reports "clean" for source text must do the same.
 - `pyreon plain [paths] [--write] [--json]` — Plain Mode readiness report (per-file convertibility, each declined shape named, histogram). `--write` applies the classic → plain codemod. No paths → whole tree under cwd.
 - `pyreon lint` (forwards every `pyreon-lint` flag via `runCli`), `pyreon info` (env + `@pyreon/*` version skew), `pyreon upgrade` (align versions, then run the versioned codemods the upgrade crosses — `packages/tools/cli/src/codemods`; a `@pyreon/zero` minor changeset must carry `Upgrade: none | codemod <id> | manual — <reason>`, gated by `check-breaking-changeset-codemod`).
 - `pyreon atlas`, `pyreon lathe`, `pyreon loom` forward to those tools.
+- Every command exits through `exitAfterFlush(code)` (`@pyreon/ansi`), never a bare `process.exit` after printing: on a pipe that cut `--json` reports off at 64 KiB (#4799). Hand-written bins (`pyreon-lint`, `atlas`, `pyreon-native`) import it from their own `lib/`. Locked by `cli/src/tests/no-bare-exit-after-output.test.ts`.
+- The `pyreon` bin is `bin/pyreon.js`, which calls `runPyreonCli(argv)`. `lib/index.js` is the library entry (`doctor`, `generateContext`) and runs nothing on import: `zero doctor` imports `doctor` from it, and when it was also the bin it ran the whole CLI a second time (two reports; `zero doctor --json` was two JSON documents). `bun packages/tools/cli/src/index.ts …` still runs the CLI through an `import.meta.main` guard.
 
 ## `pyreon doctor`
 

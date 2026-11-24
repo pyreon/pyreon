@@ -2,7 +2,7 @@
 // Hand-written bin (never bundled) — invokes the CLI entry EXPLICITLY rather
 // than relying on an `import.meta.main` self-run guard, which does not survive
 // the library build (see .agents/rules/testing.md "Test the shipped ENTRY").
-import { runCli } from '../lib/cli.js'
+import { exitAfterFlush, runCli } from '../lib/cli.js'
 
 // `atlas verify --json | head` closes the pipe early. That is the reader's
 // choice, not a failure, so exit quietly instead of printing an EPIPE trace.
@@ -25,11 +25,13 @@ runCli(process.argv.slice(2))
     // reads to any caller as a timeout rather than as success. This timer is
     // `unref`ed so it cannot itself keep the loop alive: a clean drain exits
     // first and it never fires; a held-open loop force-exits with the right
-    // code, after the output is already written.
-    const bail = setTimeout(() => process.exit(process.exitCode ?? 0), 500)
+    // code. Through `exitAfterFlush`, not `process.exit`: a slow reader can
+    // still be draining stdout at 500 ms, and an immediate exit would cut the
+    // output off (#4799).
+    const bail = setTimeout(() => void exitAfterFlush(Number(process.exitCode ?? 0)), 500)
     bail.unref?.()
   })
   .catch((error) => {
     process.stderr.write(`atlas: ${error?.message ?? error}\n`)
-    process.exit(1)
+    void exitAfterFlush(1)
   })
