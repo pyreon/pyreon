@@ -165,7 +165,7 @@ const initial = isClient ? navigator.onLine : true`,
         description: 'A read-only callable — call to read the cached value; re-evaluates lazily, only when a dependency really changed, and an equal result stops propagation.',
       },
       summary:
-        'Create a derived value that caches its result and re-evaluates lazily. Dependencies are auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). A write only MARKS the computed as possibly stale; the next read re-evaluates it if (and only if) a value it read really changed, resolving its own dependencies bottom-up first. When the re-evaluated value equals the previous one (`Object.is` by default, like `signal.set`, Solid `createMemo`, Vue `computed`; or your `equals`), the computed keeps the previous value and nothing below it re-evaluates or re-runs. A computed nobody reads evaluates zero times. A read inside `batch()` is always fresh.',
+        'Create a derived value that caches its result and re-evaluates lazily. Dependencies are auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). A write only MARKS the computed as possibly stale; the next read re-evaluates it if (and only if) a value it read really changed, resolving its own dependencies bottom-up first. By default a computed gates on `Object.is`, like `signal.set`, Solid `createMemo` and Vue `computed`: when the re-evaluated value equals the previous one (or your `equals` says so), the computed keeps the previous value and nothing below it re-evaluates or re-runs. A computed nobody reads evaluates zero times. A read inside `batch()` is always fresh.',
       example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
 doubled()  // 0

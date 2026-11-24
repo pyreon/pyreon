@@ -11,7 +11,9 @@
  * mounted owner. The churn specs at the bottom pin that the count stays flat.
  */
 import {
+  _abortOwnerFrame,
   _bind,
+  _openOwnerFrame,
   _sampleReads,
   batch,
   computed,
@@ -242,6 +244,9 @@ describe('render bindings', () => {
     dispose()
     expect(edgeCount(a) + edgeCount(b)).toBe(0)
 
+    // Template-owned (#4682): a `_bind` binding is NOT registered with the
+    // ambient scope; its only owner is the returned disposer, and an open
+    // owner frame disposes it on a mount's error path.
     const scope = effectScope()
     scope.runInScope(() =>
       _bind(() => {
@@ -250,7 +255,16 @@ describe('render bindings', () => {
     )
     expect(edgeCount(a)).toBe(1)
     scope.stop()
-    expect(edgeCount(a)).toBe(0)
+    expect(edgeCount(a)).toBe(1)
+
+    const c = signal(0)
+    const mark = _openOwnerFrame()
+    _bind(() => {
+      c()
+    })
+    expect(edgeCount(c)).toBe(1)
+    _abortOwnerFrame(mark)
+    expect(edgeCount(c)).toBe(0)
   })
 
   test('a dead binding (tracked nothing) links nothing', () => {
