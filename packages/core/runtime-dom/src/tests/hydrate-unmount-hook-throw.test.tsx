@@ -135,8 +135,9 @@ const SOURCES: [string, () => unknown, string][] = [
   ],
 ]
 
-// The effect source throws only at teardown (a hydrated effect's first-run
-// handling may run a cleanup early; that is not this test's subject).
+// The effect source throws only at teardown: `renderToString` runs the same
+// component on the server and disposes its effects there, which runs the
+// cleanup once before the client ever hydrates.
 let live = true
 
 const ROWS_SRC =
@@ -191,6 +192,61 @@ describe('user code that throws during teardown', () => {
       const r = await run(src, { rows, R }, mode, () => rows.set(rows().slice(1)))
       expect(r.thrown).toBe(null)
       expect(r.html).toBe('<ul><li>x</li><li>x</li></ul>')
+      expect(r.errors).toEqual(['[Pyreon] Error in ref callback: Error: boom'])
+    })
+  }
+
+  // A falsy ref (`ref={cond && r}`, JS / h() / compat callers) is no ref:
+  // releasing it must not touch it, or the dispose throws a TypeError and the
+  // child's onUnmount never runs.
+  for (const mode of ['hydrate', 'mount'] as const) {
+    for (const falsy of [false, 0, ''] as const) {
+      it(`a falsy ref (${JSON.stringify(falsy)}) | ${mode} | the root disposes and the child unmounts`, async () => {
+        const ran: string[] = []
+        const Child = () => {
+          onUnmount(() => {
+            ran.push('child')
+          })
+
+          return h('b', null, 'x')
+        }
+        const r = await run('const App = () => h("div", { ref: F }, h(Child, null))', { F: falsy, Child }, mode, (dispose) => dispose())
+        expect(r.thrown).toBe(null)
+        expect(r.html).toBe('')
+        expect(ran).toEqual(['child'])
+        expect(r.errors).toEqual([])
+      })
+    }
+
+    // A behaviour lock: a row's element is released by the list, not through
+    // the element's ref cleanup, so this passes before the fix too.
+    it(`behaviour lock: a falsy ref in a <For> row | ${mode} | the removed row goes`, async () => {
+      const rows = signal([{ id: 1 }, { id: 2 }])
+      const src = 'const App = () => <ul><For each={() => rows()} by={(r) => r.id}>{(r) => h("li", { ref: false }, "x")}</For></ul>'
+      const r = await run(src, { rows }, mode, () => rows.set(rows().slice(1)))
+      expect(r.thrown).toBe(null)
+      expect(r.html).toBe('<ul><li>x</li></ul>')
+      expect(r.errors).toEqual([])
+    })
+
+    it(`an object ref whose current setter throws | ${mode} | reported, the root still disposes`, async () => {
+      const ran: string[] = []
+      const Child = () => {
+        onUnmount(() => {
+          ran.push('child')
+        })
+
+        return h('b', null, 'x')
+      }
+      const R = {
+        set current(el: Element | null) {
+          if (el === null) boom()
+        },
+      }
+      const r = await run('const App = () => h("div", { ref: R }, h(Child, null))', { R, Child }, mode, (dispose) => dispose())
+      expect(r.thrown).toBe(null)
+      expect(r.html).toBe('')
+      expect(ran).toEqual(['child'])
       expect(r.errors).toEqual(['[Pyreon] Error in ref callback: Error: boom'])
     })
   }

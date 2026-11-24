@@ -1,26 +1,37 @@
 import { reportError } from '@pyreon/core'
 
 /**
- * Run one teardown step that can reach USER code (an `onUnmount` hook, an
- * `onMount` cleanup, a ref callback receiving `null`, a `<For>` row's
- * cleanup), passing `arg`. A throw is logged as `[Pyreon] Error in <label>`
- * and reported (`phase: 'unmount'`), and never stops the teardown around it:
- * the next hook, the next row, the row's node removal, the rest of a root
- * dispose. Without it, one throwing callback escaped the `<For>` reconciler as
- * an unhandled effect error and left every row on screen, or threw out of a
- * root's unmount.
+ * Run one teardown step that can reach USER code, passing it `arg`: a
+ * component's `onUnmount` hook or `onMount` cleanup (`component` = its name),
+ * or a ref receiving `null` (`component` = null). A throw is logged as
+ * `[Pyreon] Error in onUnmount hook of <Name>` or `[Pyreon] Error in ref
+ * callback` and reported (`phase: 'unmount'`); the label is built only then.
+ * It never stops the teardown around it: the next hook, the rest of the
+ * component unmount, the `<For>` update or root dispose that triggered it.
+ * Without it, one throwing callback escaped a `<For>` update as an unhandled
+ * effect error and left every row on screen, or threw out of a root's unmount.
  */
-export function guardTeardown(fn: (arg?: null) => unknown, what: string, component = what, arg?: null): void {
+export function guardTeardown<A>(fn: (arg: A) => unknown, component: string | null, arg: A): void {
   try {
     fn(arg)
   } catch (err) {
-    console.error(`[Pyreon] Error in ${what}:`, err)
-    reportError({ component, phase: 'unmount', error: err, timestamp: Date.now() })
+    const name = component ?? 'ref callback'
+    console.error(`[Pyreon] Error in ${component === null ? name : `onUnmount hook of <${name}>`}:`, err)
+    reportError({ component: name, phase: 'unmount', error: err, timestamp: Date.now() })
   }
 }
 
-/** Hand a ref `null` at unmount (callback or object ref), guarded as above. */
+const clearCurrent = (ref: { current: unknown }): void => {
+  ref.current = null
+}
+
+/**
+ * Hand a ref `null` at unmount, guarded as above: a callback ref is called,
+ * an object ref's `current` is cleared (its setter can be user code: a
+ * signal-backed ref, a Proxy). A falsy ref (`ref={cond && r}`) is no ref.
+ */
 export function releaseRef(ref: unknown): void {
-  if (typeof ref === 'function') guardTeardown(ref as (el?: null) => void, 'ref callback', 'ref callback', null)
-  else if (ref != null) (ref as { current: unknown }).current = null
+  if (!ref) return
+  if (typeof ref === 'function') guardTeardown(ref as (el: null) => void, null, null)
+  else guardTeardown(clearCurrent, null, ref as { current: unknown })
 }

@@ -1,5 +1,4 @@
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { guardTeardown } from './teardown'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
@@ -928,7 +927,7 @@ export function mountFor<T>(
       for (const entry of cache.values()) {
         if (entry.cleanup) {
           _emitCleanup()
-          guardTeardown(entry.cleanup, '<For> row')
+          entry.cleanup()
         }
       }
     }
@@ -974,7 +973,7 @@ export function mountFor<T>(
       if (newKeySet.has(key)) continue
       if (entry.cleanup) {
         _emitCleanup()
-        guardTeardown(entry.cleanup, '<For> row')
+        entry.cleanup()
         cleanupCount--
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
@@ -1031,7 +1030,7 @@ export function mountFor<T>(
       if (!entry) continue
       if (entry.cleanup) {
         _emitCleanup()
-        guardTeardown(entry.cleanup, '<For> row')
+        entry.cleanup()
         cleanupCount--
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
@@ -1214,7 +1213,7 @@ export function mountFor<T>(
       for (const entry of cache.values()) {
         if (entry.cleanup) {
           _emitCleanup()
-          guardTeardown(entry.cleanup, '<For> row')
+          entry.cleanup()
         }
       }
     }
@@ -1405,7 +1404,7 @@ export function mountFor<T>(
           for (const entry of cache.values()) {
             if (entry.cleanup) {
               _emitCleanup()
-              guardTeardown(entry.cleanup, '<For> row')
+              entry.cleanup()
             }
           }
         }
@@ -1419,7 +1418,7 @@ export function mountFor<T>(
     for (const entry of cache.values()) {
       if (cleanupCount > 0 && entry.cleanup) {
         _emitCleanup()
-        guardTeardown(entry.cleanup, '<For> row')
+        entry.cleanup()
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
       entry.end?.parentNode?.removeChild(entry.end)

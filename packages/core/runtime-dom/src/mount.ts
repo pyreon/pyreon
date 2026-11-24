@@ -989,7 +989,7 @@ function mountComponent(
  */
 export function runUnmountHooks(fns: (() => unknown)[] | null, componentName: string): void {
   if (fns === null) return
-  for (const fn of fns) guardTeardown(fn, `onUnmount hook of <${componentName}>`, componentName)
+  for (const fn of fns) guardTeardown(fn, componentName, undefined)
 }
 
 /**
