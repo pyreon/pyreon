@@ -1,8 +1,8 @@
 /**
- * Real-Chromium proof that a keyed `.map()` row compiled as ONE template with
+ * Real-browser proof (Chromium; WebKit and Firefox via the engines config) that a keyed `.map()` row compiled as ONE template with
  * its key on the item (`_tpl(html, bind, 1, row.id)`, see
  * `fixtures/keyed-root.fixture.tsx`) is reconciled by key: a reorder MOVES the
- * live row nodes, so focus and a typed value survive it, and a removal takes
+ * live row nodes, so a typed value (and, where `moveBefore` exists, focus) survives it, and a removal takes
  * exactly the removed row. The node-level matrix (emit, clones, hydration, key
  * readers) is `keyed-root-template.test.tsx`.
  *
@@ -16,8 +16,10 @@ import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { flush } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
+import { server } from 'vitest/browser'
 import { KeyedTable, type KeyedRow } from './fixtures/keyed-root.fixture'
 
+const hasMoveBefore = typeof (Element.prototype as { moveBefore?: unknown }).moveBefore === 'function'
 const cleanups: (() => void)[] = []
 
 afterEach(() => {
@@ -44,7 +46,11 @@ function render(n: number) {
   return { rows, container, trs }
 }
 
-describe('keyed .map() rows compiled as one template (real Chromium)', () => {
+describe('keyed .map() rows compiled as one template (real browsers)', () => {
+  it.runIf(server.browser === 'chromium')('Chromium has moveBefore (so the focus assertion runs)', () => {
+    expect(hasMoveBefore).toBe(true)
+  })
+
   it('a reorder moves the live rows: focus and a typed value survive', async () => {
     const { rows, trs } = render(4)
     const input = trs()[0]!.querySelector('input')!
@@ -54,8 +60,10 @@ describe('keyed .map() rows compiled as one template (real Chromium)', () => {
     rows.set([r[1]!, r[2]!, r[3]!, r[0]!])
     await flush()
     expect(trs()[3]!.querySelector('input')).toBe(input)
-    expect(document.activeElement).toBe(input)
     expect(input.value).toBe('typed')
+    // Focus survives a move only where `moveBefore` exists (Chromium; WebKit
+    // does not ship it — see for-move-preserves-state.browser.test.tsx).
+    if (hasMoveBefore) expect(document.activeElement).toBe(input)
   })
 
   it('removal and append touch only their own rows; cells stay live', async () => {
