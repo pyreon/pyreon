@@ -98,14 +98,13 @@ describe('the page title', () => {
 })
 
 describe('the <head> lines', () => {
-  it('a dev page carries the theme boot, the fonts and the routes flag — never baked answers', () => {
+  it('a dev page carries the theme boot and the fonts — never baked answers', () => {
     const html = page('T')
     expect(html).toContain('pyreon-theme')
     expect(html).toContain('fonts.googleapis.com')
-    expect(html).toContain('globalThis.__ATLAS_ROUTES__ = true')
     expect(html).not.toContain('__ATLAS_STATIC_RPC__')
     // Inside the head, before the body the deferred module script lives in.
-    expect(html.indexOf('__ATLAS_ROUTES__')).toBeLessThan(html.indexOf('</head>'))
+    expect(html.indexOf('pyreon-theme')).toBeLessThan(html.indexOf('</head>'))
   })
 
   it('a build page carries the inline answers and where the per-component files live', () => {

@@ -817,3 +817,68 @@ test.describe('atlas dev — provenance, "added" and the Lens fix (#4440)', () =
     await expect(source('title')).toHaveText('prop type')
   })
 })
+
+/**
+ * zero's router owns the component URL in dev exactly as on the built site:
+ * a stale id or extra segments land on a working component, the trailing
+ * slash is kept, and a previewed component never sees the workbench router.
+ */
+test.describe('atlas dev — the route', () => {
+  test('a STALE component link lands on a component, never on "404 — Not Found"', async ({ page }) => {
+    await page.goto('/old-name/')
+    await expect(page.getByTestId('canvas-name')).toBeVisible()
+    await expect(page).not.toHaveURL(/old-name/)
+    await page.reload()
+    await expect(page.getByTestId('canvas-name')).toBeVisible()
+    await expect(page.getByText('404')).toHaveCount(0)
+  })
+
+  test('extra segments land on a component too', async ({ page }) => {
+    await page.goto('/card/extra/')
+    await expect(page.getByTestId('canvas-name')).toBeVisible()
+    // One segment — the component the router was sent to (waits for it).
+    await expect(page).toHaveURL(/^https?:\/\/[^/]+\/[a-z-]+\/(\?|$)/)
+  })
+
+  test('the trailing slash is kept when the selection changes', async ({ page }) => {
+    await page.goto('/chip/')
+    await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
+    await page.getByText('Button', { exact: true }).first().click()
+    await expect(page).toHaveURL(/\/button\/(\?|$)/)
+  })
+
+  test("a preview is a region whose plain links are not the workbench router's", async ({ page }) => {
+    // The router's dev warning for a plain internal <a href> skips anchors
+    // inside `[data-allow-reload]`; every preview container carries it, so a
+    // component's own links do not warn about the workbench's router.
+    await page.goto('/button/')
+    await expect(page.getByTestId('canvas-preview')).toHaveAttribute('data-allow-reload', '')
+    const warnedFor = (inPreview: boolean) =>
+      page.evaluate((inside) => {
+        const seen: string[] = []
+        const orig = console.warn
+        console.warn = (...args: unknown[]) => {
+          seen.push(String(args[0]))
+        }
+        const a = document.createElement('a')
+        a.setAttribute('href', '/somewhere-internal')
+        const host = inside ? document.querySelector('[data-testid="canvas-preview"]')! : document.body
+        host.appendChild(a)
+        // The router's listener is on `document` (bubble) and skips a click
+        // that is already default-prevented, so the navigation is cancelled
+        // only AFTER it, at `window`.
+        const stop = (e: Event) => e.preventDefault()
+        window.addEventListener('click', stop)
+        a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+        window.removeEventListener('click', stop)
+        a.remove()
+        console.warn = orig
+        return seen.filter((m) => m.includes('full page reload')).length
+      }, inPreview)
+    // The pair: outside the preview the same link DOES warn — so the check
+    // below cannot pass because nothing warns at all.
+    expect(await warnedFor(false)).toBe(1)
+    const warned = await warnedFor(true)
+    expect(warned).toBe(0)
+  })
+})

@@ -192,6 +192,39 @@ test.describe('atlas build — under a subdirectory base', () => {
     await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
   })
 
+  test('a STALE component link lands on a working page, and the reload keeps it', async ({ page }) => {
+    // The regression: the workbench guessed the base from the path and wrote
+    // `/sub/old-name/button/` for a renamed component's old link — a URL no
+    // page answers, so the reload (or a shared copy) was a blank 404.
+    await page.goto(`${SUB}old-name/`)
+    await expect(page.getByTestId('canvas-name')).toBeVisible()
+    await expect(page).not.toHaveURL(/old-name/)
+    await expect(page).toHaveURL(/\/sub\/[a-z-]+\/(\?|$)/)
+    const landed = new URL(page.url()).pathname
+    const reload = await page.reload()
+    expect(reload?.status()).toBe(200)
+    expect(new URL(page.url()).pathname).toBe(landed)
+    await expect(page.getByTestId('canvas-name')).toBeVisible()
+  })
+
+  test('a path with EXTRA segments lands on a working page instead of a blank one', async ({ page }) => {
+    await page.goto(`${SUB}card/extra/`)
+    await expect(page.getByTestId('canvas-name')).toBeVisible()
+    await expect(page).toHaveURL(/\/sub\/[a-z-]+\/(\?|$)/)
+    expect(new URL(page.url()).pathname.split('/').filter(Boolean)).toHaveLength(2)
+  })
+
+  test('the trailing slash is kept — the URL is the directory a static host serves', async ({ page }) => {
+    // The router stripped it (`/sub/chip`), the workbench wrote it back, and
+    // the address bar flipped between the two.
+    await page.goto(`${SUB}chip/`)
+    await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
+    await page.getByText('Button', { exact: true }).first().click()
+    await expect(page).toHaveURL(/\/sub\/button\/(\?|$)/)
+    await page.waitForTimeout(300)
+    expect(new URL(page.url()).pathname).toBe('/sub/button/')
+  })
+
   test('the baked Docs source is fetched from under the base', async ({ page }) => {
     await page.goto(SUB)
     await page.getByText('Docs', { exact: true }).first().click()

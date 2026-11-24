@@ -155,6 +155,7 @@ export function Canvas(props: { model: WorkbenchModel }) {
           <PreviewTheme model={m}>
           <C.PreviewSurface
             data-testid="canvas-preview"
+            data-allow-reload=""
             ref={m.previewRef}
             size={() => ('z' + ZOOM_PCT[m.zoomIdx()]) as never}
             variant={() => (BACKGROUND_VARIANT[m.background()] ?? 'bgTheme') as never}

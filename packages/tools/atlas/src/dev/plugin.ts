@@ -8,8 +8,8 @@
  *
  *   `virtual:atlas/catalog` — the derived catalog (see ./catalog-module)
  *   `virtual:atlas/shell`   — the site title
- *   `transformIndexHtml`    — the title, theme boot, fonts, the routes flag and,
- *                             in a build, the baked RPC answers
+ *   `transformIndexHtml`    — the title, theme boot, fonts and, in a build, the
+ *                             baked RPC answers
  *
  * ── The RPC channel, designed before its first payload ────────────────────
  *
@@ -240,6 +240,24 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
     ...options.methods,
   })
   let methods = buildMethods()
+  // The generated catalog, as last SERVED. A rescan whose catalog is
+  // byte-identical (a save that changed a component's body, not its props,
+  // variants or config) sends no reload of its own: the catalog did not
+  // change, so invalidating it would only add a second reload to whatever
+  // Vite does with the edited module. (Today that update still propagates to
+  // the app shell and reloads the page — a known gap, not an HMR update.)
+  const catalogCode = (): string => {
+    const o = catalogOptions
+    return generateCatalogModule(entries, {
+      root: options.scanRoot,
+      ...(o.configPath ? { configPath: o.configPath } : {}),
+      ...(o.presets ? { presets: o.presets } : {}),
+      ...(o.pages ? { pages: o.pages } : {}),
+      ...(o.parts ? { parts: o.parts } : {}),
+      ...(o.projects ? { projects: o.projects } : {}),
+      addedAt: history.addedAt,
+    })
+  }
   const title = options.title ?? 'Atlas'
 
   return {
@@ -251,18 +269,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
     },
 
     load(id) {
-      if (id === resolved(CATALOG_ID)) {
-        const o = catalogOptions
-        return generateCatalogModule(entries, {
-          root: options.scanRoot,
-          ...(o.configPath ? { configPath: o.configPath } : {}),
-          ...(o.presets ? { presets: o.presets } : {}),
-          ...(o.pages ? { pages: o.pages } : {}),
-          ...(o.parts ? { parts: o.parts } : {}),
-          ...(o.projects ? { projects: o.projects } : {}),
-          addedAt: history.addedAt,
-        })
-      }
+      if (id === resolved(CATALOG_ID)) return catalogCode()
       if (id === resolved(SHELL_ID)) {
         return `export const title = ${JSON.stringify(title)}\n`
       }
@@ -294,6 +301,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           }
           running = true
           try {
+            const before = catalogCode()
             const next = await rescan()
             if (Array.isArray(next)) {
               entries = next
@@ -317,6 +325,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
               Date.now(),
             )
             methods = buildMethods()
+            if (catalogCode() === before) return
             const mod = server.moduleGraph?.getModuleById(resolved(CATALOG_ID))
             if (mod) server.moduleGraph?.invalidateModule(mod as never)
             server.ws?.send({ type: 'full-reload', path: '*' })
@@ -405,7 +414,6 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           ...(options.baked
             ? [`    ${bakedRpcScript(options.baked.inline)}`, `    ${bakedRpcUrlScript(options.baked.base)}`]
             : []),
-          `    ${routesFlagScript()}`,
         ].join('\n')
         // FUNCTION replacers: a string replacement expands `$&`, `$'` and
         // friends, and both the title and the baked answers (component source)
@@ -467,17 +475,3 @@ export function themeHeadLines(): string[] {
   ]
 }
 
-/**
- * Tell the page that a directory exists for every component.
- *
- * The workbench writes `/atlas/button/` instead of `/atlas/?c=button` only
- * when this is set, because writing a path is safe only where a page answers
- * at it. Both `atlas dev` and `atlas build` run the workbench app, whose
- * `/:component` route answers at every component's path (the build writes a
- * page per component). A workbench embedded in someone else's app sets nothing and keeps the
- * query string — its host router has never heard of `/button/`, so a reload
- * there would 404.
- */
-export function routesFlagScript(): string {
-  return '<script>globalThis.__ATLAS_ROUTES__ = true</script>'
-}

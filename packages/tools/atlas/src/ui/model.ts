@@ -3,7 +3,8 @@
  * shell so each `views/*` file reads a single typed `model` instead of a dozen
  * threaded props. Everything here is signals + computeds + callbacks — no DOM.
  */
-import { h, type VNodeChildAtom } from '@pyreon/core'
+import { h, provide, type VNodeChild, type VNodeChildAtom } from '@pyreon/core'
+import { createRouter, RouterContext, type Router } from '@pyreon/router'
 import { PermissionsProvider } from '@pyreon/permissions'
 import {
   _rdNodeId,
@@ -31,11 +32,8 @@ import {
 } from './permission-sets'
 import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './query-states'
 import {
-  componentFromPath,
-  componentUrl,
   editedArgs,
   parseUrlState,
-  pathBase,
   serializeUrlState,
   urlStateChanged,
   type UrlDefaults,
@@ -362,9 +360,37 @@ function emptyScope(component: string): PreviewScope {
   }
 }
 
+/**
+ * The host router that OWNS the component URL (`/<base>/<component>/`).
+ *
+ * `atlas dev` and `atlas build` run the workbench as a zero app whose router
+ * matches `/` and `/:component`; its shell passes this. The workbench reads the
+ * selection from it and writes through it — it never parses or builds a path
+ * itself, so the base, the trailing slash and what counts as a page are the
+ * router's answers alone.
+ *
+ * Absent (a workbench embedded in someone else's app): the component travels
+ * in the query string (`?c=`), because the host's router has never heard of
+ * `/<component>/`.
+ */
+export interface WorkbenchRoute {
+  /**
+   * The component id the current route names, or `undefined` when it names
+   * none (the root, or a path no page answers). Reactive: a router navigation
+   * (back / forward) moves the selection.
+   */
+  id: () => string | undefined
+  /**
+   * Make the route name `id`, carrying `query` (no leading `?`; may be empty).
+   * Replaces the current entry — every keystroke in a control writes, and
+   * pushing would make Back walk through typing.
+   */
+  go: (id: string, query: string) => void
+}
+
 export function createModel(
   catalog: WorkbenchCatalog,
-  opts: { title?: string | undefined; subtitle?: string | undefined },
+  opts: { title?: string | undefined; subtitle?: string | undefined; route?: WorkbenchRoute | undefined },
 ): WorkbenchModel {
   const groups = groupComponents(catalog)
   // ONE index. The ranked dialog search and the id-only sidebar filter read
@@ -410,22 +436,21 @@ export function createModel(
     isClient && typeof matchMedia === 'function' && matchMedia(COMPACT_QUERY).matches
   const embed = initial.embed === true
 
-  // Path URLs — `/atlas/button/` rather than `/atlas/?c=button`.
-  //
-  // Opt-in via a global the HOST sets, not something inferred, because writing
-  // a path is only safe where a page actually exists at it. `atlas build`
-  // emits a directory per component and sets this; `atlas dev` sets it too
-  // (its middleware already serves the shell for any extensionless GET). A
-  // workbench EMBEDDED in someone else's app sets nothing and keeps the
-  // query-string behaviour — writing `/button/` there would 404 on reload,
-  // because that app's router has never heard of the route.
-  const hasRoutes = isClient && (globalThis as { __ATLAS_ROUTES__?: boolean }).__ATLAS_ROUTES__ === true
-  const catalogIds = catalog.components.map((c) => c.id)
-  const pathId = hasRoutes ? componentFromPath(location.pathname, catalogIds) : undefined
-  // The path WINS over `?c=`. Both are only ever present together on a link
-  // written before this existed, and the path is the more specific statement.
-  if (pathId !== undefined) initial.c = pathId
-  const routeBase = hasRoutes ? pathBase(location.pathname, pathId) : ''
+  // Path URLs — `/atlas/button/` rather than `/atlas/?c=button` — when a host
+  // ROUTER owns them (see `WorkbenchRoute`). The route wins over `?c=`: both
+  // are only ever present together on a link written before path URLs
+  // existed, and the route is the more specific statement. A route naming no
+  // catalog component (a renamed component's old link, a path with extra
+  // segments) selects the default, and the URL write below then navigates the
+  // router to that component — never to a URL built by hand.
+  const route = opts.route
+  const isKnownId = (id: string | undefined): id is string =>
+    id !== undefined && catalog.components.some((c) => c.id === id)
+  if (route) {
+    const routeId = untrack(route.id)
+    if (isKnownId(routeId)) initial.c = routeId
+    else if (routeId !== undefined) delete initial.c
+  }
 
   const brandId = signal(initial.brand ?? prefs.brand ?? 'ember')
   // The chrome AND the preview follow the SHARED Pyreon theme preference
@@ -896,14 +921,33 @@ export function createModel(
     if (id !== undefined) ignored.add(id)
     return id
   }
+  // The component under test gets a router of its OWN — an empty memory
+  // router — never the workbench's. The workbench is itself a routed app
+  // (`atlas dev` / `atlas build`), or is embedded in one, and a previewed
+  // component calling `useRoute()` read the WORKBENCH's route (`/button/`)
+  // while one calling `useRouter().push()` navigated the workbench away.
+  // A memory router has no listeners and no global slot: it lives and dies
+  // with this model. Created on first render, so a model that never previews
+  // (SSR, a unit test) builds none.
+  let ownRouter: Router | null = null
+  const previewRouter = (): Router =>
+    (ownRouter ??= createRouter({ routes: [], mode: 'memory' }))
+  const IsolatedRouter = (props: { children?: VNodeChild }): VNodeChild => {
+    provide(RouterContext, previewRouter() as never)
+    return props.children ?? null
+  }
+  const isolated = (node: VNodeChildAtom): VNodeChildAtom => h(IsolatedRouter, null, node)
+
   const preview = (appearance?: Appearance): VNodeChildAtom | VNodeChildAtom[] => {
     const entry = sel()
     if (!entry) return null
     if (appearance) {
-      return h(
-        PermissionsProvider,
-        { value: permissions().can },
-        entry.render(vals(), makeRenderCtx(appearance)) as VNodeChildAtom,
+      return isolated(
+        h(
+          PermissionsProvider,
+          { value: permissions().can },
+          entry.render(vals(), makeRenderCtx(appearance)) as VNodeChildAtom,
+        ),
       )
     }
     void mountEpoch()
@@ -937,13 +981,15 @@ export function createModel(
         context: scope.context,
       }
     }
-    return h(
-      PermissionsProvider,
-      { value: permissions().can },
-      h(MountMark, { at: () => (start = probe()) }),
-      out as VNodeChildAtom,
-      // Mounted LAST, after the component's whole subtree.
-      h(MountMark, { at: done }),
+    return isolated(
+      h(
+        PermissionsProvider,
+        { value: permissions().can },
+        h(MountMark, { at: () => (start = probe()) }),
+        out as VNodeChildAtom,
+        // Mounted LAST, after the component's whole subtree.
+        h(MountMark, { at: done }),
+      ),
     )
   }
   const previewMounts = signal(0)
@@ -997,10 +1043,12 @@ export function createModel(
     const recording = recordingPermissions(role)
     const entry = sel()
     const node: VNodeChildAtom = entry
-      ? h(
-          PermissionsProvider,
-          { value: recording.can },
-          entry.render(vals(), makeRenderCtx({}, recording)) as VNodeChildAtom,
+      ? isolated(
+          h(
+            PermissionsProvider,
+            { value: recording.can },
+            entry.render(vals(), makeRenderCtx({}, recording)) as VNodeChildAtom,
+          ),
         )
       : null
     return { node, recording }
@@ -1146,6 +1194,17 @@ export function createModel(
     hostObserver.observe(el, { childList: true })
   }
 
+  // The route moves the selection: Back / Forward, or any navigation the host
+  // router makes. An id the catalog does not have changes nothing here — the
+  // URL write below sends the router back to the selected component.
+  if (opts.route) {
+    const owner = opts.route
+    effect(() => {
+      const id = owner.id()
+      if (isKnownId(id) && id !== untrack(selId)) selId.set(id)
+    })
+  }
+
   // Keep the URL in step with the view, so a reload restores it and a link
   // shares it.
   //
@@ -1209,17 +1268,13 @@ export function createModel(
       // `exactOptionalPropertyTypes` an explicit `undefined` is not the same as
       // an absent optional property, and the spread does not typecheck.
       let forQuery: UrlState = next
-      if (hasRoutes) {
+      if (route) {
         forQuery = { ...next }
         delete forQuery.c
       }
       const nextQuery = serializeUrlState(forQuery, defaults)
-      if (hasRoutes) {
-        // An ABSOLUTE path, not the bare `?query` below. That form resolves
-        // against the current directory, so once the URL is `/atlas/button/`
-        // it would keep the stale segment and only swap the query — the exact
-        // disagreement this branch exists to prevent.
-        hist.replaceState(hist.state, '', componentUrl(routeBase, next.c ?? '', nextQuery))
+      if (route) {
+        route.go(next.c ?? '', nextQuery)
         return
       }
       hist.replaceState(hist.state, '', nextQuery ? `?${nextQuery}` : loc.pathname)

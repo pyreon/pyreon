@@ -17,10 +17,11 @@ export const renderMode = 'spa'
 const Shell = import.meta.env.SSR ? () => null : lazy(() => import('../shell'))
 
 /**
- * ONE layout owns the workbench; the leaf routes (`/` and `/:component`)
- * render nothing. Moving between components is a navigation between leaves of
- * this layout, so the workbench — and every edit in it — stays mounted. The
- * workbench reads and writes its own URL state (`?c=`, `/<component>/`).
+ * ONE layout owns the workbench; the leaf routes (`/`, `/:component` and the
+ * catch-all) render nothing. Moving between components is a navigation between
+ * leaves of this layout, so the workbench — and every edit in it — stays
+ * mounted. The router owns the component URL; the workbench reads and writes
+ * it through `../shell` (see `WorkbenchRoute`).
  */
 export function layout() {
   return (

@@ -11,4 +11,8 @@ import { installVerifyBridge } from './verify-bridge'
 
 if (import.meta.env.DEV) installVerifyBridge()
 
-startClient({ routes })
+// `add`: every page is a `<route>/index.html` directory, which a static host
+// serves at `/<route>/`. The router's default (`strip`) wrote `/<route>`, a URL
+// the host answers only with a redirect, and the address bar flipped between
+// the two forms as the workbench and the router each wrote their own.
+startClient({ routes, trailingSlash: 'add' })
