@@ -39,7 +39,7 @@ Things worth knowing before you rely on it:
 
 - A monthly rule on the 31st **skips** months without one (RFC 5545); `add` clamps. For "the last day" use `monthDays: [-1]`.
 - `count` counts the rule's own occurrences: a date in `except` still uses one up.
-- No holiday data is shipped: `holidays` is a list of dates or a predicate.
+- No holiday data is shipped: `holidays` is a list of dates or a predicate. `specialHours` gives a date its own windows (a shortened Christmas Eve, a Sunday opening, `[]` to close it); it wins over `hours`, `weekend` and `holidays`.
 - `freeSlots` starts slots on a grid from the start of each stretch of working time, so booking pages keep offering :00 and :30.
 
 Full guide with recipes, the DST cases, the table of differences from `rrule`, and a "coming from" table: [docs/schedule](https://pyreon.dev/docs/schedule).

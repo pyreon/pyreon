@@ -169,3 +169,64 @@ describe('business time', () => {
     expect(() => addBusinessTime('2026-11-18T10:00', { hours: 1 }, cal)).toThrow(/predicate threw/)
   })
 })
+
+describe('specialHours: a date with its own opening windows (#4806)', () => {
+  const shortDay = [{ from: '09:00', to: '13:00' }] as const
+  const xmas: BusinessCalendar = { ...office, holidays: ['2026-12-25'], specialHours: { '2026-12-24': shortDay } }
+
+  it('replaces the weekday hours for that date in isOpen, nextOpening and nextClosing', () => {
+    expect(isOpen('2026-12-24T15:00', xmas)).toBe(false)
+    expect(isOpen('2026-12-24T12:59', xmas)).toBe(true)
+    expect(nextClosing('2026-12-24T10:00', xmas)).toBe('2026-12-24T13:00')
+    expect(nextOpening('2026-12-24T13:00', xmas)).toBe('2026-12-28T09:00')
+    expect(nextClosing('2026-12-23T10:00', xmas)).toBe('2026-12-23T17:00')
+  })
+
+  it('counts only the special windows in addBusinessTime and businessTimeBetween', () => {
+    expect(businessTimeBetween('2026-12-23T09:00', '2026-12-28T09:00', xmas)).toEqual({ hours: 12, minutes: 0 })
+    expect(addBusinessTime('2026-12-24T12:00', { hours: 2 }, xmas)).toBe('2026-12-28T10:00')
+    expect(addBusinessTime('2026-12-28T10:00', { hours: -2 }, xmas)).toBe('2026-12-24T12:00')
+  })
+
+  it('opens a weekend day or a holiday, and an empty list closes a working day', () => {
+    const cal: BusinessCalendar = { ...office, holidays: ['2026-12-25'], specialHours: { '2026-12-26': shortDay, '2026-12-25': shortDay, '2026-12-23': [] } }
+
+    expect(isBusinessDay('2026-12-26', cal)).toBe(true)
+    expect(isBusinessDay('2026-12-25', cal)).toBe(true)
+    expect(isBusinessDay('2026-12-23', cal)).toBe(false)
+    expect(isOpen('2026-12-26T10:00', cal)).toBe(true)
+    expect(isOpen('2026-12-23T10:00', cal)).toBe(false)
+    expect(nextOpening('2026-12-22T18:00', cal)).toBe('2026-12-24T09:00')
+    expect(addBusinessDays('2026-12-22', 1, cal)).toBe('2026-12-24')
+    expect(addBusinessDays('2026-12-24', 2, cal)).toBe('2026-12-26')
+    expect(businessDaysBetween('2026-12-21', '2026-12-28', cal)).toBe(5)
+    expect(nextBusinessDay('2026-12-26', cal)).toBe('2026-12-28')
+    expect(previousBusinessDay('2026-12-24', cal)).toBe('2026-12-22')
+  })
+
+  it('takes a function, which returns a date\'s windows or undefined for the usual hours', () => {
+    const cal: BusinessCalendar = { ...office, specialHours: (d) => (d.endsWith('-12-24') || d.endsWith('-12-31') ? shortDay : undefined) }
+
+    expect(nextClosing('2027-12-31T09:30', cal)).toBe('2027-12-31T13:00')
+    expect(isOpen('2026-12-24T14:00', cal)).toBe(false)
+    expect(isOpen('2026-12-22T14:00', cal)).toBe(true)
+  })
+
+  it('needs no weekday hours, and handles overnight and split windows like hours do', () => {
+    const cal: BusinessCalendar = { specialHours: { '2026-12-31': [{ from: '22:00', to: '02:00' }, { from: '10:00', to: '12:00' }] } }
+
+    expect(isOpen('2027-01-01T01:00', cal)).toBe(true)
+    expect(isOpen('2026-12-31T13:00', cal)).toBe(false)
+    expect(businessTimeBetween('2026-12-31T00:00', '2027-01-02T00:00', cal)).toEqual({ hours: 6, minutes: 0 })
+    expect(nextOpening('2026-12-31T12:00', cal)).toBe('2026-12-31T22:00')
+  })
+
+  it('rejects malformed entries with a [Pyreon] error naming the problem', () => {
+    expect(() => isOpen('2026-12-24T10:00', { ...office, specialHours: { 'Dec 24': shortDay } as never })).toThrow(/\[Pyreon\] isOpen.*specialHours date/)
+    expect(() => isOpen('2026-12-24T10:00', { ...office, specialHours: { '2026-12-24': 'closed' } as never })).toThrow(/\[Pyreon\] isOpen.*specialHours\[2026-12-24\]/)
+    expect(() => isOpen('2026-12-24T10:00', { ...office, specialHours: { '2026-12-24': [{ from: '9am', to: '13:00' }] } as never })).toThrow(/\[Pyreon\] isOpen.*PlainTime/)
+    expect(() => isOpen('2026-12-24T10:00', { ...office, specialHours: (() => 'closed') as never })).toThrow(/\[Pyreon\] isOpen.*specialHours function returned "closed" for 2026-12-2[34]/)
+    expect(() => isOpen('2026-12-24T10:00', { ...office, specialHours: () => { throw new Error('offline') } })).toThrow(/specialHours function threw for 2026-12-2[34]: offline/)
+    expect(() => isOpen('2026-12-24T10:00', { ...office, specialHours: [shortDay] as never })).toThrow(/\[Pyreon\] isOpen.*specialHours to be an object/)
+  })
+})

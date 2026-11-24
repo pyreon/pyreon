@@ -74,6 +74,7 @@ addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00'
 | [`Recurrence`](#recurrence-type-experimental) | type | A repeating rule as plain data. |
 | [`Interval`](#interval-type-experimental) | type | A half-open interval `[start, end)` of date-times, dates or instants. |
 | [`BusinessCalendar`](#businesscalendar-type-experimental) | type | Business days and opening hours. |
+| [`SpecialHours`](#specialhours-type-experimental) | type | Opening windows of particular dates, as a map or a function (`undefined` = the usual hours). |
 | [`WorkingHours`](#workinghours-type-experimental) | type | Opening windows by ISO weekday; absent or empty is closed. |
 | [`CalendarEvent`](#calendarevent-type-experimental) | type | An event for `expandEvents`: one-off, or repeating when it has a `rule` that starts at the event's start. |
 | [`EventInstance`](#eventinstance-type-experimental) | type | One instance of an event inside the window. |
@@ -279,7 +280,7 @@ describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, star
 (date, calendar: BusinessCalendar) => boolean
 ```
 
-Not on the calendar's `weekend` (default Saturday and Sunday) and not a holiday.
+Not on the calendar's `weekend` (default Saturday and Sunday) and not a holiday. A date with its own `specialHours` entry is a business day when that entry has a window (even on a weekend or holiday), and not one when it is empty.
 
 **Example**
 
@@ -604,15 +605,31 @@ const slot: Interval = { start: '2026-11-18T09:00', end: '2026-11-18T09:30' }
 ### `BusinessCalendar` `type` — **experimental**
 
 ```ts
-interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); timeZone? }
+interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); specialHours?: SpecialHours; timeZone? }
 ```
 
-Business days and opening hours. No holiday data is shipped: pass a list or a predicate.
+Business days and opening hours. No holiday data is shipped: pass a list or a predicate. `specialHours` gives particular dates their own windows (a shortened day, a Sunday opening); they replace the weekday hours and decide the date over `weekend` and `holidays`.
 
 **Example**
 
 ```tsx
-const cal: BusinessCalendar = { holidays: ['2026-12-25'] }
+const cal: BusinessCalendar = { holidays: ['2026-12-25'], specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } }
+```
+
+---
+
+### `SpecialHours` `type` — **experimental**
+
+```ts
+type SpecialHours = { [date: PlainDate]: OpeningWindow[] } | ((date: PlainDate) => OpeningWindow[] | undefined)
+```
+
+Opening windows of particular dates, as a map or a function (`undefined` = the usual hours). An empty list closes the date. Used by every business-day and business-time function.
+
+**Example**
+
+```tsx
+const special: SpecialHours = { '2026-12-24': [{ from: '09:00', to: '13:00' }], '2026-12-31': [] }
 ```
 
 ---

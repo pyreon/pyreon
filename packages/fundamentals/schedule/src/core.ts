@@ -1,4 +1,4 @@
-export type { BusinessCalendar, Interval, OccurrenceRange, PlainValue, Recurrence, RecurrenceParts, Weekday, WeekdaySpec, WorkingHours } from './types'
+export type { BusinessCalendar, Interval, OccurrenceRange, OpeningWindow, PlainValue, Recurrence, RecurrenceParts, SpecialHours, Weekday, WeekdaySpec, WorkingHours } from './types'
 export type { InstantOptions, InstantRange } from './recurrence'
 export { nextOccurrence, occurrences, occurrencesBetween, occursOn, previousOccurrence, toInstants } from './recurrence'
 export { parseRRule, toRRule, tryParseRRule } from './rrule'

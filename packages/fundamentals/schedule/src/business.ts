@@ -10,11 +10,15 @@ import type { BusinessCalendar } from './types'
 const MAX_SCAN_DAYS = 3660
 const MAX_STEPS = 1_000_000
 
+type Windows = [number, number][]
+
 interface Cal {
   weekend: boolean[]
   holiday: (day: number) => boolean
   /** Opening windows by weekday, in ms from midnight; a window may end after `DAY` (overnight). `null` when there are no hours. */
-  windows: [number, number][][] | null
+  windows: Windows[] | null
+  /** A date's own windows from `specialHours` (they replace the weekday's and win over `weekend` and `holidays`), or `undefined`. */
+  special: (day: number) => Windows | undefined
   fn: string
 }
 
@@ -51,40 +55,81 @@ function todOf(fn: string, v: unknown): number {
   return t.hour * HOUR + t.minute * MINUTE + t.second * 1000 + t.millisecond
 }
 
-function windowsOf(fn: string, hours: NonNullable<BusinessCalendar['hours']>): [number, number][][] {
-  const out: [number, number][][] = [[], [], [], [], [], [], [], []]
+/** One list of `{ from, to }` windows as merged, sorted ms intervals from midnight (overnight windows end after `DAY`). */
+function windowList(fn: string, label: string, list: unknown): Windows {
+  if (!Array.isArray(list)) return badValue(fn, `${label} to be an array of { from, to }`, list)
+  const merged: Windows = []
+
+  for (const entry of list as { from: unknown; to: unknown }[]) {
+    const from = todOf(fn, entry?.from)
+    let to = todOf(fn, entry?.to)
+
+    if (to === from && from !== 0) return badRange(fn, `the window ${show(entry)} is empty (from equals to). Remove it; for a whole day use { from: "00:00", to: "00:00" }.`)
+    if (to <= from) to += DAY
+    merged.push([from, to])
+  }
+  merged.sort((a, b) => a[0] - b[0])
+  const joined: Windows = []
+
+  for (const m of merged) {
+    const last = joined[joined.length - 1]
+
+    if (last !== undefined && m[0] <= last[1]) last[1] = Math.max(last[1], m[1])
+    else joined.push([m[0], m[1]])
+  }
+
+  return joined
+}
+
+function windowsOf(fn: string, hours: NonNullable<BusinessCalendar['hours']>): Windows[] {
+  const out: Windows[] = [[], [], [], [], [], [], [], []]
 
   if (typeof hours !== 'object' || hours === null) return badValue(fn, 'hours to be an object { 1: [{ from, to }], ... }', hours)
   for (const key of Object.keys(hours)) {
     const w = Number(key)
 
     if (!Number.isInteger(w) || w < 1 || w > 7) return badRange(fn, `hours has the key ${show(key)}; keys are ISO weekdays 1 (Monday) to 7 (Sunday).`)
-    const list = (hours as Record<string, unknown>)[key]
-
-    if (!Array.isArray(list)) return badValue(fn, `hours[${key}] to be an array of { from, to }`, list)
-    const merged: [number, number][] = []
-
-    for (const entry of list as { from: unknown; to: unknown }[]) {
-      const from = todOf(fn, entry?.from)
-      let to = todOf(fn, entry?.to)
-
-      if (to === from && from !== 0) return badRange(fn, `the window ${show(entry)} is empty (from equals to). Remove it; for a whole day use { from: "00:00", to: "00:00" }.`)
-      if (to <= from) to += DAY
-      merged.push([from, to])
-    }
-    merged.sort((a, b) => a[0] - b[0])
-    const joined: [number, number][] = []
-
-    for (const m of merged) {
-      const last = joined[joined.length - 1]
-
-      if (last !== undefined && m[0] <= last[1]) last[1] = Math.max(last[1], m[1])
-      else joined.push([m[0], m[1]])
-    }
-    out[w] = joined
+    out[w] = windowList(fn, `hours[${key}]`, (hours as Record<string, unknown>)[key])
   }
 
   return out
+}
+
+const NO_SPECIAL = (): undefined => undefined
+
+function specialTest(fn: string, special: BusinessCalendar['specialHours']): (day: number) => Windows | undefined {
+  if (special === undefined) return NO_SPECIAL
+  if (typeof special === 'function') {
+    const seen = new Map<number, Windows | undefined>()
+
+    return (day) => {
+      if (seen.has(day)) return seen.get(day)
+      const date = writeDate(day)
+      let answer: unknown
+
+      try {
+        answer = special(date)
+      } catch (error) {
+        return badRange(fn, `the specialHours function threw for ${date}: ${error instanceof Error ? error.message : String(error)}. It must return the windows of a date, or undefined for the usual hours.`)
+      }
+      if (answer !== undefined && !Array.isArray(answer)) {
+        return badRange(fn, `the specialHours function returned ${show(answer)} for ${date}. It must return an array of { from, to } (empty = closed), or undefined for the usual hours.`)
+      }
+      const windows = answer === undefined ? undefined : windowList(fn, `specialHours(${date})`, answer)
+
+      seen.set(day, windows)
+
+      return windows
+    }
+  }
+  if (typeof special !== 'object' || special === null || Array.isArray(special)) {
+    return badValue(fn, 'specialHours to be an object { "2026-12-24": [{ from, to }] } or a function (date) => windows | undefined', special)
+  }
+  const map = new Map<number, Windows>()
+
+  for (const key of Object.keys(special)) map.set(readDay(fn, 'a specialHours date', key), windowList(fn, `specialHours[${key}]`, (special as Record<string, unknown>)[key]))
+
+  return (day) => map.get(day)
 }
 
 function calendarOf(fn: string, calendar: BusinessCalendar | undefined, needHours: boolean): Cal {
@@ -97,15 +142,30 @@ function calendarOf(fn: string, calendar: BusinessCalendar | undefined, needHour
     if (!Number.isInteger(w) || w < 1 || w > 7) return badRange(fn, `weekend entries are ISO weekdays 1 to 7, got ${show(w)}.`)
     weekend[w] = true
   }
-  if (needHours && c.hours === undefined) return badRange(fn, 'the calendar has no hours, so there is no working time to count. Add hours: { 1: [{ from: "09:00", to: "17:00" }], ... }.')
+  if (needHours && c.hours === undefined && c.specialHours === undefined) return badRange(fn, 'the calendar has no hours, so there is no working time to count. Add hours: { 1: [{ from: "09:00", to: "17:00" }], ... }.')
 
-  return { weekend, holiday: holidayTest(fn, c.holidays), windows: c.hours === undefined ? null : windowsOf(fn, c.hours), fn }
+  return { weekend, holiday: holidayTest(fn, c.holidays), windows: c.hours === undefined ? null : windowsOf(fn, c.hours), special: specialTest(fn, c.specialHours), fn }
 }
 
-const isOpenDay = (cal: Cal, day: number): boolean => !cal.weekend[weekdayOf(day)] && !cal.holiday(day)
+/** Whether a date is a business day: its own `specialHours` entry decides when it has one (empty = closed), else the weekend and holidays. */
+function isOpenDay(cal: Cal, day: number): boolean {
+  const own = cal.special(day)
+
+  return own !== undefined ? own.length > 0 : !cal.weekend[weekdayOf(day)] && !cal.holiday(day)
+}
+
+/** The opening windows of a date: its `specialHours` entry, else its weekday's hours on a business day, else none. The one place hours are read. */
+function windowsOn(cal: Cal, day: number): Windows {
+  const own = cal.special(day)
+
+  if (own !== undefined) return own
+
+  return !cal.weekend[weekdayOf(day)] && !cal.holiday(day) ? (cal.windows?.[weekdayOf(day)] ?? []) : []
+}
 
 /**
- * Is this date a business day: not on the calendar's `weekend` (default Saturday and Sunday) and not a holiday?
+ * Is this date a business day: not on the calendar's `weekend` (default Saturday and Sunday) and not a holiday? A date with
+ * its own `specialHours` entry is a business day when that entry has a window, whatever the weekend and holidays say.
  *
  * @example isBusinessDay('2026-11-18', {}) // => true
  * @example isBusinessDay('2026-11-21', {}) // => false
@@ -190,12 +250,10 @@ export const previousBusinessDay = /* @__PURE__ */ guard('previousBusinessDay', 
 
 /** The merged opening intervals (ms) that overlap `[lo, hi)`, not clipped: an interval may start before `lo` or end after `hi`. */
 function openIntervals(cal: Cal, lo: number, hi: number): [number, number][] {
-  const windows = cal.windows!
   const out: [number, number][] = []
 
   for (let day = Math.floor(lo / DAY) - 1; day <= Math.floor((hi - 1) / DAY); day++) {
-    if (!isOpenDay(cal, day)) continue
-    for (const [from, to] of windows[weekdayOf(day)]!) {
+    for (const [from, to] of windowsOn(cal, day)) {
       const s = day * DAY + from
       const e = day * DAY + to
 

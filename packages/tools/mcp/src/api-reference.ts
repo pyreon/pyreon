@@ -2559,7 +2559,7 @@ describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, star
     signature: '(date, calendar: BusinessCalendar) => boolean',
     example: `isBusinessDay('2026-11-18', {})   // => true
 isBusinessDay('2026-12-25', { holidays: ['2026-12-25'] })   // => false`,
-    notes: `[EXPERIMENTAL] Not on the calendar's \`weekend\` (default Saturday and Sunday) and not a holiday. Added in v0.53.0.`,
+    notes: `[EXPERIMENTAL] Not on the calendar's \`weekend\` (default Saturday and Sunday) and not a holiday. A date with its own \`specialHours\` entry is a business day when that entry has a window (even on a weekend or holiday), and not one when it is empty. Added in v0.53.0.`,
   },
 
   'schedule/addBusinessDays': {
@@ -2681,9 +2681,15 @@ overlaps({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-
   },
 
   'schedule/BusinessCalendar': {
-    signature: 'interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); timeZone? }',
-    example: `const cal: BusinessCalendar = { holidays: ['2026-12-25'] }`,
-    notes: '[EXPERIMENTAL] Business days and opening hours. No holiday data is shipped: pass a list or a predicate. Added in v0.53.0.',
+    signature: 'interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); specialHours?: SpecialHours; timeZone? }',
+    example: `const cal: BusinessCalendar = { holidays: ['2026-12-25'], specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } }`,
+    notes: '[EXPERIMENTAL] Business days and opening hours. No holiday data is shipped: pass a list or a predicate. `specialHours` gives particular dates their own windows (a shortened day, a Sunday opening); they replace the weekday hours and decide the date over `weekend` and `holidays`. Added in v0.53.0.',
+  },
+
+  'schedule/SpecialHours': {
+    signature: 'type SpecialHours = { [date: PlainDate]: OpeningWindow[] } | ((date: PlainDate) => OpeningWindow[] | undefined)',
+    example: `const special: SpecialHours = { '2026-12-24': [{ from: '09:00', to: '13:00' }], '2026-12-31': [] }`,
+    notes: '[EXPERIMENTAL] Opening windows of particular dates, as a map or a function (`undefined` = the usual hours). An empty list closes the date. Used by every business-day and business-time function. Added in v0.53.0.',
   },
 
   'schedule/WorkingHours': {
