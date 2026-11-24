@@ -8,7 +8,7 @@ import manifest from '../manifest'
 describe('gen-docs — document-primitives snapshot', () => {
   it('renders a llms.txt bullet starting with the package prefix', () => {
     const line = renderLlmsTxtLine(manifest)
-    expect(line.startsWith('- @pyreon/document-primitives —')).toBe(true)
+    expect(line.startsWith('- [@pyreon/document-primitives](https://pyreon.dev/docs/reference/document-primitives):')).toBe(true)
   })
 
   it('renders a llms-full.txt section with the right header', () => {

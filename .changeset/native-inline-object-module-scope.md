@@ -1,5 +1,0 @@
----
-'@pyreon/native-compiler': patch
----
-
-An inline object type outside every component is now one named `Codable` struct / `@Serializable` data class on both targets, named after its binding (`const config: { host: string }` declares `ConfigType`; a helper's `fmt(p: { … })` declares `FmtPType`, its `: { … }` return `MkResult`). This covers module `const`/`let` annotations (including `Readonly<…>`, `T[]` and `Array<T>`), module `signal<{ … }>` and `signal({ … })`, module `JSON.parse(…) as { … }`, helper parameters, returns and body locals, and nested shapes. Before, Swift spelled a multi-field shape as a labelled tuple (not `Codable`, so a decode into it failed) with no warning, and Kotlin spelled it `Any`. Also: `const x: T = JSON.parse(s)` at module scope and as a component const now decodes into `T` (it emitted `""`, at module scope without a warning), a module `computed` returning an object literal is typed as that literal's struct instead of `Any`, and a Swift labelled-tuple fallback now always warns.

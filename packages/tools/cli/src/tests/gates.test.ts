@@ -238,7 +238,7 @@ describe('runDocClaimsGate', () => {
       misses.map((f) => `${f.code} ${f.location?.relPath ?? ''}`),
       'a claim stopped matching its pattern — restore the text, or drop the entry from the doc-claims gate checks[]',
     ).toEqual([])
-  })
+  }, DOC_CLAIMS_REAL_REPO_TIMEOUT_MS)
 
   // Mark a tmp fixture as the Pyreon monorepo so the doc-claims gate
   // doesn't skip. The gate's monorepo guard keys on the presence of its

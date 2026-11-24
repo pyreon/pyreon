@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — sized-map snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/sized-map — Bounded Map<K, V> — evicts the oldest entry at a maxEntries cap; FIFO (default) or LRU-on-read mode. FIFO fits hot paths where a per-read recency bump (a \`delete\` + \`set\` pair) would dominate the real work (runtime-dom \`_tplCache\`, router loader/component caches). LRU-on-read fits caches where frequently-read entries must survive small caps (rocketstyle \`_rsMemo\`, \`@pyreon/lint\` AstCache, \`@pyreon/zero\` ISR \`createMemoryStore\`)."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/sized-map](https://pyreon.dev/docs/reference/sized-map): Bounded Map<K, V> — evicts the oldest entry at a maxEntries cap; FIFO (default) or LRU-on-read mode. FIFO fits hot paths where a per-read recency bump (a \`delete\` + \`set\` pair) would dominate the real work (runtime-dom \`_tplCache\`, router loader/component caches). LRU-on-read fits caches where frequently-read entries must survive small caps (rocketstyle \`_rsMemo\`, \`@pyreon/lint\` AstCache, \`@pyreon/zero\` ISR \`createMemoryStore\`)."`)
   })
 
   it('renders to llms-full.txt section', () => {

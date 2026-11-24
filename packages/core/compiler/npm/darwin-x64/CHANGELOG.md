@@ -1,5 +1,17 @@
 # @pyreon/compiler-darwin-x64
 
+## 0.54.0
+
+### Patch Changes
+
+- [#4563](https://github.com/pyreon/pyreon/pull/4563) [`327771b`](https://github.com/pyreon/pyreon/commit/327771b3abd8513416f324aa7b202bcca800463c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package now declares its tier in `package.json`: `"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`. From 1.0 the semver promise covers Stable packages only; Experimental packages, and the experimental subpaths of Stable packages (every `./native-plugin`, `@pyreon/core/plain`, `@pyreon/compiler/audits` and `/plain`, `@pyreon/charts/engine`, and the `./webview` subpaths of code, flow and rich-text), may break in a minor release. Each README opens with a status line generated from the field. The policy, including the compiler-helper ABI rule and deprecations, is at https://pyreon.dev/docs/stability-and-direction.
+
+  The `@pyreon/http` and `@pyreon/loom` READMEs no longer claim the packages are unpublished.
+
+  **Breaking (`@pyreon/meta`):** the barrel no longer re-exports `@pyreon/document-primitives` (the `Doc*` components, `createDocumentExport`, `documentTheme`, `extractDocNode`, `DocumentPreview`) or `@pyreon/connector-document` (`extractDocumentTree`, `resolveStyles`), because both are Experimental and meta is Stable. Upgrade: install those packages and import from them directly.
+
+  The ui-core, unistyle, rocketstyle, coolgrid and elements manifests no longer claim that the low-level `Provider` logs a dev warning; it has not warned for some time.
+
 ## 0.53.0
 
 No changes in this release.
