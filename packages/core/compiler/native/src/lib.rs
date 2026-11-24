@@ -2253,7 +2253,16 @@ fn expr_children_any_dynamic(expr: &Expression, ctx: &mut Ctx) -> bool {
         Expression::YieldExpression(y) => {
             y.argument.as_ref().map_or(false, |a| is_dynamic(a, ctx))
         }
-        Expression::NewExpression(_) => true,
+        // Like the JS generic recursion: dynamic only when the callee or an
+        // argument is. `client={new QueryClient()}` is a fixed value; wrapping
+        // it in `_rp` made every props read construct a new instance.
+        Expression::NewExpression(n) => {
+            is_dynamic(&n.callee, ctx)
+                || n.arguments.iter().any(|a| match a {
+                    Argument::SpreadElement(s) => is_dynamic(&s.argument, ctx),
+                    _ => a.as_expression().map_or(false, |e| is_dynamic(e, ctx)),
+                })
+        }
         // Don't recurse into function expressions
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
         // TypeScript expression wrappers — recurse through
@@ -5449,7 +5458,17 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
         Expression::JSXFragment(frag) => {
             let old = ctx.parent_is_jsx;
             let old_eager = ctx.parent_eager_mount;
+            // A fragment breaks the "direct parent is a component" relationship,
+            // as the JSX-child fragment arm of `walk_jsx_child` already says. An
+            // expression-position fragment (`{(r) => (<><dt/><dd/></>)}` under a
+            // `<For>` that is a component's sole child) inherited the outer
+            // component's flags, so each `<dt>` became `_lc(() => _tpl(…))`
+            // where JS `isSoleComponentChild` (parent is a fragment) says no.
+            let old_component = ctx.parent_is_component_jsx_element;
+            let old_sole_child = ctx.parent_component_has_sole_child;
             ctx.parent_is_jsx = true;
+            ctx.parent_is_component_jsx_element = false;
+            ctx.parent_component_has_sole_child = false;
             // A fragment parent is ALWAYS eager: its children are collected into
             // the array a `jsx(Fragment, …)` / component call receives.
             ctx.parent_eager_mount = true;
@@ -5457,6 +5476,8 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
                 walk_jsx_child(child, ctx);
             }
             ctx.parent_is_jsx = old;
+            ctx.parent_is_component_jsx_element = old_component;
+            ctx.parent_component_has_sole_child = old_sole_child;
             ctx.parent_eager_mount = old_eager;
         }
         Expression::ArrowFunctionExpression(arrow) => {
@@ -11328,8 +11349,8 @@ fn maybe_register_component_props_fn(func: &oxc_ast::ast::Function, ctx: &mut Ct
     }
     let first = &func.params.items[0];
     if let BindingPattern::BindingIdentifier(id) = &first.pattern {
-        if let Some(body) = &func.body {
-            if body_contains_jsx(body) {
+        if func.body.is_some() {
+            if function_contains_jsx(func) {
                 register_props_name(ctx, id.name.as_str());
                 let capitalized = if func.is_function_declaration() {
                     func.id.as_ref().is_some_and(|i| is_capitalized(i.name.as_str()))
@@ -11495,64 +11516,36 @@ fn fold_prop_emit(expr: &Expression, inner: &str, ctx: &mut Ctx) -> Option<Strin
     Some(format!("{} ? ({}) : _rp(() => {})", conds.join(" && "), inner, inner))
 }
 
-fn body_contains_jsx(body: &FunctionBody) -> bool {
-    body.statements.iter().any(|s| stmt_contains_jsx(s))
-}
-
-fn stmt_contains_jsx(stmt: &Statement) -> bool {
-    match stmt {
-        Statement::ReturnStatement(ret) => {
-            ret.argument.as_ref().map_or(false, |e| expr_contains_jsx(e))
-        }
-        Statement::ExpressionStatement(expr) => expr_contains_jsx(&expr.expression),
-        Statement::VariableDeclaration(decl) => decl
-            .declarations
-            .iter()
-            .any(|d| d.init.as_ref().map_or(false, |e| expr_contains_jsx(e))),
-        Statement::IfStatement(if_stmt) => {
-            stmt_contains_jsx(&if_stmt.consequent)
-                || if_stmt
-                    .alternate
-                    .as_ref()
-                    .map_or(false, |s| stmt_contains_jsx(s))
-        }
-        Statement::BlockStatement(block) => block.body.iter().any(|s| stmt_contains_jsx(s)),
-        Statement::TryStatement(t) => {
-            t.block.body.iter().any(|s| stmt_contains_jsx(s))
-                || t.handler.as_ref().map_or(false, |h| h.body.body.iter().any(|s| stmt_contains_jsx(s)))
-                || t.finalizer.as_ref().map_or(false, |f| f.body.iter().any(|s| stmt_contains_jsx(s)))
-        }
-        Statement::ForStatement(f) => stmt_contains_jsx(&f.body),
-        Statement::ForInStatement(f) => stmt_contains_jsx(&f.body),
-        Statement::ForOfStatement(f) => stmt_contains_jsx(&f.body),
-        Statement::WhileStatement(w) => stmt_contains_jsx(&w.body),
-        Statement::DoWhileStatement(d) => stmt_contains_jsx(&d.body),
-        Statement::SwitchStatement(s) => s.cases.iter().any(|c| c.consequent.iter().any(|s| stmt_contains_jsx(s))),
-        Statement::LabeledStatement(l) => stmt_contains_jsx(&l.body),
-        _ => false,
-    }
-}
-
-fn expr_contains_jsx(expr: &Expression) -> bool {
-    match expr {
-        Expression::JSXElement(_) | Expression::JSXFragment(_) => true,
-        Expression::ParenthesizedExpression(p) => expr_contains_jsx(&p.expression),
-        Expression::ConditionalExpression(c) => {
-            expr_contains_jsx(&c.consequent) || expr_contains_jsx(&c.alternate)
-        }
-        Expression::LogicalExpression(l) => {
-            expr_contains_jsx(&l.left) || expr_contains_jsx(&l.right)
-        }
-        Expression::ArrowFunctionExpression(a) => arrow_contains_jsx(a),
-        _ => false,
-    }
+/// Does a function contain JSX ANYWHERE — params, body, nested functions and
+/// callbacks included (`return items.map((i) => <li/>)`, `return { render: ()
+/// => <b/> }`)? Mirrors the JS `maybeRegisterComponentProps` `checkJSX` walk,
+/// which visits every child. The shape-by-shape statement/expression matcher
+/// this replaces missed calls, object literals and more, so a component whose
+/// JSX sat in a `.map` callback never had its props registered and a
+/// `title={p.x}` there compiled to a one-time read on the native backend only.
+fn function_contains_jsx(func: &oxc_ast::ast::Function) -> bool {
+    let mut finder = JsxAnywhere { found: false };
+    finder.visit_function(func, oxc_syntax::scope::ScopeFlags::empty());
+    finder.found
 }
 
 fn arrow_contains_jsx(arrow: &ArrowFunctionExpression) -> bool {
-    if let Some(expr) = arrow.get_expression() {
-        return expr_contains_jsx(expr);
+    let mut finder = JsxAnywhere { found: false };
+    finder.visit_arrow_function_expression(arrow);
+    finder.found
+}
+
+struct JsxAnywhere {
+    found: bool,
+}
+
+impl<'a> Visit<'a> for JsxAnywhere {
+    fn visit_jsx_element(&mut self, _it: &JSXElement<'a>) {
+        self.found = true;
     }
-    arrow.get_function_body().is_some_and(body_contains_jsx)
+    fn visit_jsx_fragment(&mut self, _it: &JSXFragment<'a>) {
+        self.found = true;
+    }
 }
 
 // ─── Prop-derived variable collection ────────────────────────────────────────
