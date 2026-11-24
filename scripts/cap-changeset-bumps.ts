@@ -65,7 +65,7 @@ const capping = import.meta.main && shouldCapMajors(readFixedGroupVersion(ROOT))
 if (import.meta.main && !capping) {
   // oxlint-disable-next-line no-console
   console.log(
-    `[cap-bumps] major release ${APPROVED_MAJOR} is approved in scripts/major-release.ts (group at ${readFixedGroupVersion(ROOT)}) — leaving \`major\` changesets as written`,
+    `[cap-bumps] major release ${String(APPROVED_MAJOR)} is approved in scripts/major-release.ts (group at ${readFixedGroupVersion(ROOT)}) — leaving \`major\` changesets as written`,
   )
 }
 const files = capping

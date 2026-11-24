@@ -277,7 +277,7 @@ if (unapprovedPrereleases.length > 0) {
 if (approvedMoves.length > 0) {
   // oxlint-disable-next-line no-console
   console.log(
-    `[cap-version] ${approvedMoves.length} package(s) take the approved major ${APPROVED_MAJOR} (scripts/major-release.ts) — not capped, e.g. ${approvedMoves[0]}`,
+    `[cap-version] ${approvedMoves.length} package(s) take the approved major ${String(APPROVED_MAJOR)} (scripts/major-release.ts) — not capped, e.g. ${approvedMoves[0]}`,
   )
 }
 
