@@ -1174,24 +1174,15 @@ class RemountableItem {
   private d = false
   /** The stable disposer handed out by `cleanup`, made on first read. */
   private x: (() => void) | null = null
-  /** `_tpl`'s arguments, kept to (re)build. */
-  private h: string
-  private b: (el: HTMLElement) => (() => void) | null
-  private f: number
-  /** The element's JSX `key` (see `_tpl`), null when it has none. */
-  readonly key: string | number | null
 
   constructor(
-    html: string,
-    bind: (el: HTMLElement) => (() => void) | null,
-    flags: number,
-    key: string | number | null,
-  ) {
-    this.h = html
-    this.b = bind
-    this.f = flags
-    this.key = key
-  }
+    /** `_tpl`'s arguments, kept to (re)build. */
+    private h: string,
+    private b: (el: HTMLElement) => (() => void) | null,
+    private f: number,
+    /** The element's JSX `key` (see `_tpl`), null when it has none. */
+    readonly key: string | number | null,
+  ) {}
 
   private built(): NativeItem {
     return (this.c ??= _tpl(this.h, this.b, this.f))
