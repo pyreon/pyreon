@@ -3,7 +3,7 @@
 '@pyreon/mcp': patch
 ---
 
-A new propagation core for `@pyreon/reactivity`, behind the same API. A write now only marks what may be stale; a read re-evaluates a computed only when a value it read really changed, resolving its dependencies bottom-up. Computeds, effects and render bindings are graph nodes with one small edge object per dependency, so they retain less memory: signal + computed 672 → 520 B, signal + effect 688 → 416 B, per effect in a 1 → 100 fan-out 565 → 266 B (node, `NODE_ENV=production`). A signal is unchanged at 152 B.
+A new propagation core for `@pyreon/reactivity`, behind the same API. A write now only marks what may be stale; a read re-evaluates a computed only when a value it read really changed, resolving its dependencies bottom-up. Computeds, effects and render bindings are graph nodes with one small edge object per dependency, so they retain less memory: signal + computed 672 → 520 B and signal + effect 689 → 417 B (node, `NODE_ENV=production`), and a mounted 2,047-component tree 353.5 → 313.1 KB (Chromium). A signal is unchanged at 152 B.
 
 A computed below one whose value did not change is no longer re-evaluated (before, every computed between an unchanged node and the effect above it evaluated once per write).
 
