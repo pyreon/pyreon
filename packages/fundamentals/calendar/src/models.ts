@@ -129,16 +129,28 @@ function minuteOf(date: PlainDate, wall: string): number {
   return wall.slice(0, 10) === date ? tod : 1440 + tod
 }
 
+/** A `specialHours` map whose every entry is an empty list (or that has none): it opens nothing. A function may open something. */
+function noWindows(special: NonNullable<BusinessCalendar['specialHours']>): boolean {
+  return typeof special === 'object' && special !== null && !Array.isArray(special) && Object.values(special).every((list) => Array.isArray(list) && list.length === 0)
+}
+
 /**
  * Opening hours of a day in minutes from its midnight (0 to 1440), or `null` when none are given. The windows come from
  * `@pyreon/schedule`'s `openingWindows`, so the grid shades and `constrainTo` allows exactly what `isOpen` says. A bare
  * `WorkingHours` is the calendar `{ hours, weekend: [] }` (every weekday it lists is open); a `BusinessCalendar` is read
- * as schedule reads it (default weekend Saturday and Sunday).
+ * as schedule reads it (default weekend Saturday and Sunday). Neither `hours` nor `specialHours`: nothing is shaded. Hours
+ * that open nothing (`{}`, `{ hours: {} }`, a `specialHours` map of empty lists): closed all day. Malformed hours throw
+ * schedule's `[Pyreon]` error.
  */
 function openMinutes(hours: WorkingHours | BusinessCalendar | undefined, date: PlainDate): { from: number; to: number }[] | null {
   if (hours === undefined) return null
   const calendar: BusinessCalendar = 'hours' in hours || 'weekend' in hours || 'holidays' in hours || 'specialHours' in hours ? (hours as BusinessCalendar) : { hours: hours as WorkingHours, weekend: [] }
-  if (calendar.hours === undefined && calendar.specialHours === undefined) return null
+  if (calendar.hours === undefined) {
+    if (calendar.specialHours === undefined) return null
+    // Hours were given but open nothing: closed all day, as `{ hours: {} }` is. schedule's business-time functions throw
+    // "no hours" here; a render does not throw on data it can read. Malformed entries still reach schedule and throw.
+    if (noWindows(calendar.specialHours)) return []
+  }
 
   return openingWindows(date, calendar).map((w) => ({ from: minuteOf(date, w.start), to: minuteOf(date, w.end) }))
 }
