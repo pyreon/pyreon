@@ -100,6 +100,7 @@ type Row = {
   label: ReturnType<typeof signal<string>>
   done: ReturnType<typeof signal<boolean>>
 }
+
 const mk = (id: number): Row => ({ id, label: signal(`row ${id}`), done: signal(id % 2 === 0) })
 
 // The maplist benchmark's row: a keyed root, a static cell, a reactive text

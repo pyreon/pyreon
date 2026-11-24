@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { KeyedTable, type KeyedRow } from './fixtures/keyed-root.fixture'
 
 const cleanups: (() => void)[] = []
+
 afterEach(() => {
   for (const c of cleanups.splice(0)) c()
 })
