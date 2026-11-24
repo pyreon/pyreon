@@ -65,6 +65,12 @@ The callback runs after the surrounding component's setup, when no scope is curr
 
 ---
 
+### [FIXED, 2026-11] A pooled module-level slot read without being claimed is shared by a re-entrant caller
+
+(#4800). `runRowCallback` read the pooled row collector and cleared the slot only AFTER the callback, when it knew the row kept it. A `<For>` inside an outer `<For>`'s row runs its rows' callbacks INSIDE the outer row's callback, so the inner list's first row got the collector the outer row was still filling, kept it, and stopped it on removal: whatever the outer row had registered was disposed with an unrelated row. In 0.54 that was the inner `<For>`'s own effect (the list stopped updating after it replaced or removed its first row); after `_effectOwned` (#4778) it was still an `effect()` in the outer row callback. Only the FIRST inner row was affected, because it emptied the slot for every later one. **Rule: a pooled object taken from a module-level slot is claimed (the slot cleared) before any user code runs, and goes back to the pool only when the taker is done and it is reusable: empty AND not handed out (`getCurrentScope()` pins a scope, and its holder may register later, so the pool checks `_isDroppable()`, not `_isEmpty()`). Same family as leak Class A: re-entrancy turns "the current one" into "someone else's".** Locked by `runtime-dom/src/tests/nested-for-row-collector.test.tsx` (real compiler; reverted: the outer-row effect cases fail, plus the report's repro with the inner `<For>`'s effect scope-registered as in 0.54).
+
+---
+
 ### [FIXED, 2026-11] Resetting the current effect scope to `null` instead of restoring it.
 
 `mountComponent` and `hydrateComponent` ended setup with `setCurrentScope(null)`. A component can mount while another scope is current: inside a parent's `onMount` (`runInScope`) when a signal write flips a `<Show>`, inside a `<For>` row's collector, inside a parent's compiled template. The reset left everything that owner created afterwards with no owner, so an effect created later in the same `onMount` kept running after the parent unmounted. **Rule: code that sets the current scope saves the previous one and restores it on every exit path (`runInScope`, `runRowCallback`), never a constant.** Reference: `runtime-dom/src/mount.ts`, `hydrate.ts`; locked by `mount-restores-scope.test.ts` (h(), hydration, and both compiler backends; bisect-verified).

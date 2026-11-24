@@ -5807,6 +5807,7 @@ export function transformJSX_JS(
 
   function hasBailAttr(node: N, isRoot = false): boolean {
     let sawSpread = false
+    let sawKey = false
     for (const attr of jsxAttrs(node)) {
       if (attr.type === 'JSXSpreadAttribute') {
         if (isRoot) {
@@ -5835,10 +5836,64 @@ export function transformJSX_JS(
       // Chromium). The namespace is now resolved in the runtime, so both paths
       // agree; see `foreignAttrNamespace` in runtime-dom's props.ts.
       const attrName = jsxAttrName(attr)
-      if (attrName === 'key' || TPL_PROPERTY_ONLY_ATTRS.has(attrName)) return true
+      if (attrName === 'key') {
+        // KEYED ELEMENTS (see `templateKeyText`). A nested element's key has no
+        // reader — its parent is a DOM element, which never reconciles its
+        // children — so it is dropped, as SSR already drops it. A root's key
+        // rides on the item (`_tpl`'s fourth argument) when it can be emitted
+        // exactly; otherwise the element keeps the h() path.
+        if (isRoot && templateKeyText(attr) === null) return true
+        sawKey = isRoot
+        continue
+      }
+      if (TPL_PROPERTY_ONLY_ATTRS.has(attrName)) return true
     }
+    // A spread may carry its own `key`, and the JSX runtime's precedence
+    // between it and the written one is not something a template reproduces:
+    // a keyed root with any spread keeps the h() path.
+    if (sawKey && sawSpread) return true
 
     return false
+  }
+
+  /**
+   * The source text of a template ROOT's `key`, emitted as `_tpl`'s fourth
+   * argument, or `null` when the key cannot be emitted exactly (the element
+   * then keeps the h() path).
+   *
+   * Evaluated where the h() path evaluates it — when the item is created — and
+   * copied VERBATIM, as the h() path leaves it (`handleJsxAttribute` skips
+   * `key`: no signal auto-call, no prop inlining). A JSX string keeps the h()
+   * path when it carries `&` (oxc keeps entities literal, esbuild decodes
+   * them), and an expression holding JSX would need the walk the slice skips.
+   * A valueless `key` is `true`, which no list uses as a key.
+   */
+  function templateKeyText(attr: N): string | null {
+    const v = attr.value
+    if (!v) return null
+    if (v.type === 'StringLiteral' || (v.type === 'Literal' && typeof v.value === 'string')) {
+      const s = v.value as string
+      return s.includes('&') ? null : escapeJsString(s)
+    }
+    if (v.type !== 'JSXExpressionContainer') return null
+    const expr = v.expression
+    if (!expr || expr.type === 'JSXEmptyExpression' || containsJSXInExpr(expr)) return null
+
+    return code.slice(expr.start as number, expr.end as number)
+  }
+
+  /**
+   * A template root's key argument (`, <key>`), or `''` for an unkeyed root.
+   * The LAST `key` wins, as in a JSX props object. `hasBailAttr` has already
+   * refused a root whose key `templateKeyText` cannot emit.
+   */
+  function rootKeyArg(node: N): string {
+    let text: string | null = null
+    for (const attr of jsxAttrs(node)) {
+      if (attr.type === 'JSXAttribute' && jsxAttrName(attr) === 'key') text = templateKeyText(attr)
+    }
+
+    return text === null ? '' : `, ${text}`
   }
 
   /**
@@ -7253,6 +7308,9 @@ export function transformJSX_JS(
     function attrIsDynamic(attr: N, tag: string): boolean {
       if (attr.type !== 'JSXAttribute') return false
       const name = jsxAttrName(attr)
+      // A key is never written to the element (the root's rides on the item),
+      // so it needs no element ref.
+      if (name === 'key') return false
       if (name === 'ref') return true
       if (EVENT_RE.test(name)) return true
       // `<select value="…">` (plain string form, PZ-09): always emitted as a
@@ -7734,8 +7792,17 @@ export function transformJSX_JS(
     // Third `_tpl` argument, a bit set: 1 = a component child that may be
     // re-mounted, 2 = rooted at a bare SVG element (parsed inside an `<svg>`
     // wrapper by the runtime — see `SVG_ROOT_TAGS`).
-    const tplFlags = (remountable ? 1 : 0) | (SVG_ROOT_TAGS.has(jsxTagName(node)) ? 2 : 0)
-    const remountArg = tplFlags !== 0 ? `, ${tplFlags}` : ''
+    //
+    // A KEYED root passes its key as the fourth argument and is always
+    // re-mountable: the item is a value handed to a reconciler (a keyed
+    // `.map()`) or to a component reading child keys, and both decide WHEN it
+    // mounts. A keyed `.map()` re-runs its callback for every row on each
+    // change and mounts only the new keys, so the item must not clone until
+    // its mount — the re-mountable item builds on first use.
+    const keyArg = rootKeyArg(node)
+    const tplFlags =
+      (remountable || keyArg !== '' ? 1 : 0) | (SVG_ROOT_TAGS.has(jsxTagName(node)) ? 2 : 0)
+    const remountArg = (tplFlags !== 0 ? `, ${tplFlags}` : '') + keyArg
     if (refLines.length === 0 && bindLines.length === 0 && disposerNames.length === 0) {
       return `_tpl("${escaped}", () => null${remountArg})`
     }

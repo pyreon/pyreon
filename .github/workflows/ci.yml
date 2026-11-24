@@ -60,20 +60,20 @@ permissions:
 # by every in-flight PR. Runner-minutes are unmetered (public repo); SLOTS
 # and DAG LEVELS are the whole constraint — measured 2026-09-01 an ordinary
 # code PR spent 641 min queued for 24 min of work. So the shape is: as few
-# jobs as the isolation genuinely needs, three stages deep, and a gate that
-# takes seconds is a STEP, never a job.
+# jobs as the isolation genuinely needs, as few stages deep as the preflight
+# allows, and a gate that takes seconds is a STEP, never a job.
 #
 #   level 1   Install            install + decide + lib/ (one job, one failure semantics)
-#   level 2   Fast Gates         every cheap/lib-free gate (lint, docs, policy, secrets)
-#   level 3   Build              every lib-needing gate (examples, modes, budgets, coverage, rust)
+#             Fast Gates         every cheap/lib-free gate (lint, docs, policy, secrets), beside Install
+#   level 2   Build              every lib-needing gate (examples, modes, budgets, coverage, rust)
 #             typecheck / test / e2e / scaffold cells   dynamic, batched by ci-batch.ts
 #             Test (browser)     vitest --browser (Playwright)
 #             Release Build      the literal next-release build + pack rehearsal
 #             bootstrap-exit-codes                      only when bootstrap.ts changed
-#             Test               final verdict for preflight + all four matrices
+#   level 3   Test               final verdict for preflight + all four matrices
 #
 # Fail-fast is intentionally TWO-LAYERED:
-#   1. Fast Gates finishes before any expensive level-3 runner is eligible.
+#   1. Fast Gates finishes before any expensive level-2 runner is eligible.
 #      A lint/docs/policy failure therefore spends one cheap runner, not the
 #      full matrix plus browser/release/scaffold capacity.
 #   2. Each expensive matrix uses fail-fast:true. Once a real cell fails,
@@ -629,8 +629,15 @@ jobs:
   # outage reds this ONE step and the other gates still report.
   fast-gates:
     name: Fast Gates
-    needs: install
-    if: ${{ !cancelled() && needs.install.result == 'success' }}
+    # Level 1, beside Install, not after it. Under load every DAG level costs
+    # a full queue round (a job is created when its `needs` finish and then
+    # waits for a runner): measured 2026-11-18 → 11-23, Fast Gates waited a
+    # median 35 min (p90 115) AFTER Install's own wait, on every run. It reads
+    # nothing from Install: its gates are lib-free, and setup-pyreon restores
+    # node_modules by the lockfile key (a lockfile-changing PR installs in its
+    # fallback, about a minute). Expensive jobs still need BOTH, so they stay
+    # idle until the cheap gates pass (check-ci-fail-fast). The cost: when
+    # Install fails, this job runs anyway (0 of 296 Install runs failed).
     runs-on: ubuntu-latest
     # Derived: ~90s of prior gates + lint 20s + doc examples 45s + secrets
     # scan 30s (+ up to 100s of pre-pull backoff) + audit/readiness/guard
@@ -644,7 +651,7 @@ jobs:
         id: setup
         with:
           restore-bootstrap: 'false' # every gate here is lib-free
-          node-version: '24' # Doc Examples typechecks under node
+          node-version: '26' # Doc Examples typechecks under node
       # ── repo policy ──────────────────────────────────────────────────────
       # Every PR must be gated by CI, and GitHub can only gate a PR whose base
       # is a PROTECTED branch. Protecting feature branches is structurally
@@ -1027,14 +1034,14 @@ jobs:
       # baked-in Node (currently 20) runs vitest; developers on Node 22+
       # hit interactions (e.g. the happy-dom localStorage shim trap fixed
       # in vitest.setup.ts) that ubuntu's stale Node masks. Pinning to
-      # active-LTS Node 24 makes the CI env reflect what modern consumers
+      # active-LTS Node 26 makes the CI env reflect what modern consumers
       # use, so bugs surface in CI instead of only at pre-push.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-pyreon
         with:
-          node-version: '24'
+          node-version: '26'
           # P3c — needs lib/ for bundle-size tests + nested-Vite-SSR
           # tests; default `restore-bootstrap: 'true'` is correct.
       # Compile-verdict cache for the batch containing `native-rest` (validate-cache.ts —
@@ -1450,7 +1457,14 @@ jobs:
   build:
     name: Build
     needs: [install, fast-gates]
-    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' && needs.install.outputs.pr-light != 'true' }}
+    # Runs on the pull request in light PR CI too: it is the job PRs fail
+    # most (46 of 191 PR runs red, 2026-11-18 → 11-23: coverage, size budget
+    # and Rust-binary compiler-suite steps, none green on a re-run),
+    # and its PR-only steps (`Coverage (changed packages)`, the size gates'
+    # own-growth rule) judge the PR's diff, which the queue cannot do. In
+    # the queue those failures would each eject a group (one full run, about
+    # 85 runner-minutes) instead of failing a 7-minute job on the PR.
+    if: ${{ needs.install.result == 'success' && needs.fast-gates.result == 'success' && needs.install.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     # Derived from the measured steps (2026-09-01): examples build 70s +
     # verify-modes 90s + budgets 55s + distribution 25s + bin-liveness 30s +
@@ -1466,12 +1480,40 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # coverage's affected.ts needs the merge-base
+      # ── native compiler binary (restore BEFORE setup-pyreon) ─────────────
+      # The binary is a pure function of build-native.ts and the crate
+      # directory it copies (every *.rs and *.toml, Cargo.lock), so restore
+      # it by their hash (`compiler-native-bin-`) before setup-pyreon: on a
+      # lib/ miss the bootstrap runs build-native.ts, and the touch makes that
+      # a no-op instead of a compile with the runner's cargo (it compares
+      # mtimes; checkout stamps the sources newer than a restored file).
+      # This job never SAVES it: the one writer is `Coverage (Full)` in
+      # ci-main.yml, which runs on every default-branch push and saves on a
+      # miss (check-cache-key-sync: one writer per path).
+      # Skipped on a default-branch push, which always compiles: that keeps
+      # the "compiles on the newest stable Rust" signal on every push (the
+      # toolchain is `stable`, not pinned, and not part of the key) and keeps
+      # this job the deterministic writer of the cargo registry cache there.
+      # The cargo build runs in a temp directory outside the tree
+      # (build-native.ts), so the `target/` cache this replaced never had a
+      # path to save: no `cargo-target-*` entry ever existed, and every run
+      # compiled Rust from scratch (37-47 s).
+      - name: Restore native compiler binary
+        id: native-bin
+        if: ${{ github.event_name != 'push' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/core/compiler/native/pyreon-compiler.node
+          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/**/*.toml', 'packages/core/compiler/native/**/*.rs', 'packages/core/compiler/scripts/build-native.ts') }}
+      - name: Mark restored binary fresh
+        if: ${{ steps.native-bin.outputs.cache-hit == 'true' }}
+        run: touch -d '+1 minute' packages/core/compiler/native/pyreon-compiler.node
       - uses: ./.github/actions/setup-pyreon
         id: setup
         with:
           # Coverage REQUIRES node (bun's inspector lacks the V8 coverage API);
           # check-coverage.ts spawns vitest under node explicitly.
-          node-version: '24'
+          node-version: '26'
       # ── examples ─────────────────────────────────────────────────────────
       # @pyreon/* is already built (lib/ restored from this run's cache); only
       # the example apps build here. Including @pyreon/* in the filter would
@@ -1574,12 +1616,15 @@ jobs:
       # with it loaded; the equivalence harness asserts every JS-path output
       # matches the Rust path. Without it only the JS fallback is exercised —
       # which is exactly what shipped the 6 divergences caught in #491.
+      # On a pull request or merge group the binary was usually restored by its
+      # inputs' hash before setup-pyreon (top of this job); then the
+      # toolchain, the registry and the cargo build below are skipped.
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master — pinned (OpenSSF Pinned-Dependencies)
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.native-bin.outputs.cache-hit != 'true' }}
         with:
           toolchain: stable
       - name: Cache cargo registry
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.native-bin.outputs.cache-hit != 'true' }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -1587,17 +1632,6 @@ jobs:
             ~/.cargo/git
           key: cargo-registry-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}
           restore-keys: cargo-registry-${{ runner.os }}-
-      # Keyed by Cargo.lock + every Rust source: cargo's own content hashing
-      # invalidates correctly, so a hit means the compiled output is exact.
-      - name: Cache cargo target/
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: packages/core/compiler/native/target
-          key: cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/src/**/*.rs') }}
-          restore-keys: |
-            cargo-target-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock') }}-
-            cargo-target-${{ runner.os }}-
       - name: Build native binary
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bun run --filter='@pyreon/compiler' build:native
@@ -1718,7 +1752,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
-          node-version: '24'
+          node-version: '26'
       # RESTORE always; SAVE only on main. The browser bundle is ~261 MB and
       # depends only on the Playwright version in bun.lock, so a per-branch save
       # stored the SAME bytes once per PR — four live copies, 783 MB of pure
@@ -1851,7 +1885,7 @@ jobs:
   bootstrap-exit-codes:
     name: bootstrap-exit-codes
     # Relevance is decided in Install — this job used to boot a runner on
-    # EVERY PR (checkout + setup + node 24, ~21–31s) just to conclude "not
+    # EVERY PR (checkout + setup + node 26, ~21–31s) just to conclude "not
     # relevant, skip" ~99% of the time. Now the job itself skips (no runner)
     # unless bootstrap.ts / the test / the workflow changed. A failed Install
     # or Fast Gates blocks it; the required Test aggregate
@@ -1864,7 +1898,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
-          node-version: '24'
+          node-version: '26'
           restore-bootstrap: 'false' # this test doesn't read lib/
       - name: Run bootstrap-exit-codes
         run: |

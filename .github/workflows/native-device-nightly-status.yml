@@ -14,11 +14,16 @@ name: Native Device Nightly Status
 # A `workflow_run` trigger runs it after the nightly instead, in the
 # default-branch context, so pull requests never see it. Runs for pull
 # request device builds are skipped at the job level (no runner).
+#
+# `branches: [main]`: the nightly runs on main, so a pull request device build
+# never needs to create a run here (they were 719 of 726 runs, all skipped,
+# 2026-11-16 → 11-23).
 on:
   workflow_run:
     workflows:
       - Native Device Build
     types: [completed]
+    branches: [main]
 
 # Nothing at the workflow level (Scorecard TokenPermissionsID): the one job
 # below gets exactly what it uses.

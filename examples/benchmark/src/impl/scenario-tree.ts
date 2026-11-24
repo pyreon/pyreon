@@ -66,6 +66,7 @@ import {
   useContext as solidUseContext,
 } from 'solid-js'
 import { insert, render as solidRender, template as solidTemplate } from 'solid-js/web'
+import { createTree as solid2CreateTree } from 'virtual:solid2/tree'
 import { flushSync as svelteFlushSync, mount as svelteMount, unmount as svelteUnmount } from 'svelte'
 import {
   createApp,
@@ -517,6 +518,16 @@ function solidTarget(eagerProps: boolean): TreeTarget {
   }
 }
 
+// ─── Solid 2.0 ───────────────────────────────────────────────────────────────
+// Idiomatic Solid 2 JSX compiled by `@solidjs/compiler` (`SOLID2_SOURCES.tree`
+// in solid2-sources.ts): the same component tree, context and leaf as the
+// Solid 1.9 arm above, but emitted by the real compiler rather than written at
+// its output level. `mount` and `setValue` each end with one `flush()`.
+
+function solid2Target(): TreeTarget {
+  return solid2CreateTree(TREE_DEPTH)
+}
+
 // ─── Svelte ──────────────────────────────────────────────────────────────────
 
 function svelteTarget(): TreeTarget {
@@ -553,6 +564,8 @@ export const TREE_FRAMEWORKS = [
   // Diagnostic only: the eager-object form Solid's compiler does NOT emit.
   // Published beside it so the getter-prop tax is visible as a shared cost.
   'SolidJS (eager props)',
+  // Solid 2.0 (`virtual:solid2/tree`), compiled by its own compiler. Ranked.
+  'SolidJS 2.0',
   'Svelte 5',
   // Diagnostic only: hand-written at compiler-output level, to size the
   // "templatize an element with COMPONENT children" lead before building it.
@@ -592,6 +605,9 @@ export async function runTree(frameworkName: string, container: HTMLElement): Pr
       break
     case 'SolidJS (eager props)':
       target = solidTarget(true)
+      break
+    case 'SolidJS 2.0':
+      target = solid2Target()
       break
     case 'Svelte 5':
       target = svelteTarget()
