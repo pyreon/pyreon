@@ -52,6 +52,7 @@ import {
   type RunCapture,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
+import { guardTeardown, releaseRef } from './teardown'
 import { _adoptParkedText, _parkedPending } from './parked-text'
 import { _adoptingCompiledBind, reportFirstText } from './hydration-debug'
 import { _devInspectable, registerComponent, unregisterComponent } from './devtools'
@@ -547,20 +548,14 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
     const refToClean = ref
 
     return () => {
-      if (refToClean) {
-        if (typeof refToClean === 'function') refToClean(null)
-        else refToClean.current = null
-      }
+      releaseRef(refToClean)
       if (propCleanup) propCleanup()
       childCleanup()
     }
   }
 
   return () => {
-    if (ref) {
-      if (typeof ref === 'function') ref(null)
-      else ref.current = null
-    }
+    releaseRef(ref)
     if (propCleanup) propCleanup()
     childCleanup()
     detachNode(el)
@@ -994,19 +989,7 @@ function mountComponent(
  */
 export function runUnmountHooks(fns: (() => unknown)[] | null, componentName: string): void {
   if (fns === null) return
-  for (const fn of fns) {
-    try {
-      fn()
-    } catch (err) {
-      console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
-      reportError({
-        component: componentName,
-        phase: 'unmount',
-        error: err,
-        timestamp: Date.now(),
-      })
-    }
-  }
+  for (const fn of fns) guardTeardown(fn, `onUnmount hook of <${componentName}>`, componentName)
 }
 
 /**

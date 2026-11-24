@@ -19,6 +19,7 @@ export interface FirstRun<T> {
 }
 
 import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
+import { guardTeardown } from './teardown'
 import { _abortOwnerFrame, _closeOwnerFrame, _frameReads, _openOwnerFrame, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, _currentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 
@@ -927,7 +928,7 @@ export function mountFor<T>(
       for (const entry of cache.values()) {
         if (entry.cleanup) {
           _emitCleanup()
-          entry.cleanup()
+          guardTeardown(entry.cleanup, '<For> row')
         }
       }
     }
@@ -973,7 +974,7 @@ export function mountFor<T>(
       if (newKeySet.has(key)) continue
       if (entry.cleanup) {
         _emitCleanup()
-        entry.cleanup()
+        guardTeardown(entry.cleanup, '<For> row')
         cleanupCount--
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
@@ -1030,7 +1031,7 @@ export function mountFor<T>(
       if (!entry) continue
       if (entry.cleanup) {
         _emitCleanup()
-        entry.cleanup()
+        guardTeardown(entry.cleanup, '<For> row')
         cleanupCount--
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
@@ -1213,7 +1214,7 @@ export function mountFor<T>(
       for (const entry of cache.values()) {
         if (entry.cleanup) {
           _emitCleanup()
-          entry.cleanup()
+          guardTeardown(entry.cleanup, '<For> row')
         }
       }
     }
@@ -1404,7 +1405,7 @@ export function mountFor<T>(
           for (const entry of cache.values()) {
             if (entry.cleanup) {
               _emitCleanup()
-              entry.cleanup()
+              guardTeardown(entry.cleanup, '<For> row')
             }
           }
         }
@@ -1418,7 +1419,7 @@ export function mountFor<T>(
     for (const entry of cache.values()) {
       if (cleanupCount > 0 && entry.cleanup) {
         _emitCleanup()
-        entry.cleanup()
+        guardTeardown(entry.cleanup, '<For> row')
       }
       entry.anchor.parentNode?.removeChild(entry.anchor)
       entry.end?.parentNode?.removeChild(entry.end)

@@ -1,16 +1,18 @@
 /**
- * A component's USER teardown callbacks (`onUnmount`, and the cleanup an
- * `onMount` callback returns) can throw. `mountComponent` logged and reported
- * such a throw and went on tearing down; `hydrateComponent` ran them bare, so
- * removing a hydrated `<For>` row whose component threw escaped as "Unhandled
- * effect error", and the rows stayed on screen. Both now share
- * `runUnmountHooks` (`mount.ts`). Real compiler, `renderToString` and
- * `hydrateRoot`, compared with a client `mount()`.
+ * USER code that runs during teardown can throw: an `onUnmount` hook, the
+ * cleanup an `onMount` callback returns, an `onCleanup` registered in `onMount`
+ * (a scope cleanup), a ref callback receiving `null`, an effect's cleanup. A
+ * throw must be logged and reported and must not stop the teardown around it:
+ * a removed `<For>` row goes, the other rows stay, a root dispose finishes and
+ * does not throw. On the mount AND the hydrate path. Before the fix several of
+ * these escaped the `<For>` reconciler as "Unhandled effect error" and left
+ * every row on screen, or threw out of the root's unmount. Real compiler,
+ * `renderToString` and `hydrateRoot`, compared with a client `mount()`.
  */
 import { transformJSX } from '@pyreon/compiler'
 import * as core from '@pyreon/core'
 import { For, Fragment, h, onMount, onUnmount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { effect, onCleanup, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -48,7 +50,7 @@ afterEach(() => {
 
 const strip = (s: string) => s.replace(/<!--[^>]*-->/g, '')
 
-/** Render `src` (hydrated over its SSR output, or mounted), run `act`, return the DOM and the logged errors. */
+/** Render `src` (hydrated over its SSR output, or mounted), run `act`, return the DOM, what `act` threw, and the errors it logged. */
 async function run(src: string, scope: Record<string, unknown>, mode: 'hydrate' | 'mount', act: (dispose: () => void) => void) {
   const host = document.createElement('div')
   document.body.appendChild(host)
@@ -57,6 +59,7 @@ async function run(src: string, scope: Record<string, unknown>, mode: 'hydrate' 
   const spy = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
     errors.push(a.map(String).join(' '))
   })
+  let thrown: unknown = null
   try {
     let dispose: () => void
     if (mode === 'hydrate') {
@@ -65,64 +68,134 @@ async function run(src: string, scope: Record<string, unknown>, mode: 'hydrate' 
     } else {
       dispose = mount(h(compile(src, scope, 'client') as never, null), host)
     }
-    expect(errors).toEqual([])
-    act(dispose)
+    // Only what the teardown logs is this test's business.
+    errors.length = 0
+    try {
+      act(dispose)
+    } catch (err) {
+      thrown = err
+    }
   } finally {
     spy.mockRestore()
   }
 
-  return { html: strip(host.innerHTML), errors }
+  return { html: strip(host.innerHTML), errors, thrown }
 }
+
+const boom = () => {
+  throw new Error('boom')
+}
+
+/** Each source of user teardown code, as a row component, and what it logs. */
+const SOURCES: [string, () => unknown, string][] = [
+  [
+    'onUnmount hook',
+    () => {
+      onUnmount(boom)
+      return h('b', null, 'x')
+    },
+    '[Pyreon] Error in onUnmount hook of <Boom>: Error: boom',
+  ],
+  [
+    'onMount cleanup',
+    () => {
+      onMount(() => boom)
+      return h('b', null, 'x')
+    },
+    '[Pyreon] Error in onUnmount hook of <Boom>: Error: boom',
+  ],
+  [
+    'onCleanup in onMount (a scope cleanup)',
+    () => {
+      onMount(() => {
+        onCleanup(boom)
+      })
+      return h('b', null, 'x')
+    },
+    '[pyreon] Unhandled effect error: Error: boom',
+  ],
+  [
+    'ref callback receiving null',
+    () => h('b', { ref: (el: Element | null) => el === null && boom() }, 'x'),
+    '[Pyreon] Error in ref callback: Error: boom',
+  ],
+  [
+    'onCleanup in an effect',
+    () => {
+      effect(() => {
+        onCleanup(() => {
+          if (!live) boom()
+        })
+      })
+      return h('b', null, 'x')
+    },
+    '[pyreon] Unhandled effect error: Error: boom',
+  ],
+]
+// The effect source throws only at teardown (a hydrated effect's first-run
+// handling may run a cleanup early; that is not this test's subject).
+let live = true
 
 const ROWS_SRC =
   'const App = () => <ul><For each={() => rows()} by={(r) => r.id}>{(r) => <li><Boom /></li>}</For></ul>'
 
-describe('a user teardown callback that throws, in a hydrated component', () => {
-  for (const kind of ['onUnmount', 'onMount cleanup'] as const) {
-    const Boom = () => {
-      if (kind === 'onUnmount') {
-        onUnmount(() => {
-          throw new Error('unmount-boom')
-        })
-      } else {
-        onMount(() => () => {
-          throw new Error('unmount-boom')
-        })
-      }
-
-      return h('b', null, 'x')
-    }
-
+describe('user code that throws during teardown', () => {
+  for (const [name, make, logged] of SOURCES) {
+    const Boom = Object.defineProperty(make, 'name', { value: 'Boom' })
     for (const mode of ['hydrate', 'mount'] as const) {
-      it(`${kind} | ${mode} | a removed <For> row goes, the throw is logged`, async () => {
+      it(`${name} | ${mode} | a removed <For> row goes, the others stay`, async () => {
         const rows = signal([{ id: 1 }, { id: 2 }, { id: 3 }])
-        const r = await run(ROWS_SRC, { rows, Boom }, mode, () => rows.set(rows().slice(1)))
+        live = true
+        const r = await run(ROWS_SRC, { rows, Boom }, mode, () => {
+          live = false
+          rows.set(rows().slice(1))
+        })
+        expect(r.thrown).toBe(null)
         expect(r.html).toBe('<ul><li><b>x</b></li><li><b>x</b></li></ul>')
-        expect(r.errors).toEqual(['[Pyreon] Error in onUnmount hook of <Boom>: Error: unmount-boom'])
+        expect(r.errors).toEqual([logged])
       })
 
-      it(`${kind} | ${mode} | a cleared <For> goes entirely`, async () => {
+      it(`${name} | ${mode} | a cleared <For> goes entirely`, async () => {
         const rows = signal([{ id: 1 }, { id: 2 }])
-        const r = await run(ROWS_SRC, { rows, Boom }, mode, () => rows.set([]))
+        live = true
+        const r = await run(ROWS_SRC, { rows, Boom }, mode, () => {
+          live = false
+          rows.set([])
+        })
+        expect(r.thrown).toBe(null)
         expect(r.html).toBe('<ul></ul>')
-        expect(r.errors.length).toBe(2)
-        expect(r.errors.every((e) => e.startsWith('[Pyreon] Error in onUnmount hook of <Boom>'))).toBe(true)
+        expect(r.errors).toEqual([logged, logged])
       })
 
-      it(`${kind} | ${mode} | the root disposed: the throw does not escape`, async () => {
-        const r = await run('const App = () => <div><Boom /></div>', { Boom }, mode, (dispose) => dispose())
+      it(`${name} | ${mode} | the root disposed: nothing escapes, nothing stays`, async () => {
+        live = true
+        const r = await run('const App = () => <div><Boom /></div>', { Boom }, mode, (dispose) => {
+          live = false
+          dispose()
+        })
+        expect(r.thrown).toBe(null)
         expect(r.html).toBe('')
-        expect(r.errors).toEqual(['[Pyreon] Error in onUnmount hook of <Boom>: Error: unmount-boom'])
+        expect(r.errors).toEqual([logged])
       })
     }
+  }
+
+  for (const mode of ['hydrate', 'mount'] as const) {
+    it(`a compiled template ref receiving null | ${mode} | a removed <For> row goes`, async () => {
+      const rows = signal([{ id: 1 }, { id: 2 }, { id: 3 }])
+      const R = (el: Element | null) => el === null && boom()
+      const src = 'const App = () => <ul><For each={() => rows()} by={(r) => r.id}>{(r) => <li ref={R}>x</li>}</For></ul>'
+      const r = await run(src, { rows, R }, mode, () => rows.set(rows().slice(1)))
+      expect(r.thrown).toBe(null)
+      expect(r.html).toBe('<ul><li>x</li><li>x</li></ul>')
+      expect(r.errors).toEqual(['[Pyreon] Error in ref callback: Error: boom'])
+    })
   }
 
   it('a later hook still runs after one that throws', async () => {
     const ran: string[] = []
     const Two = () => {
-      onUnmount(() => {
-        throw new Error('first')
-      })
+      onUnmount(boom)
       onUnmount(() => {
         ran.push('second')
       })
@@ -131,6 +204,6 @@ describe('a user teardown callback that throws, in a hydrated component', () => 
     }
     const r = await run('const App = () => <div><Two /></div>', { Two }, 'hydrate', (dispose) => dispose())
     expect(ran).toEqual(['second'])
-    expect(r.errors).toEqual(['[Pyreon] Error in onUnmount hook of <Two>: Error: first'])
+    expect(r.errors).toEqual(['[Pyreon] Error in onUnmount hook of <Two>: Error: boom'])
   })
 })
