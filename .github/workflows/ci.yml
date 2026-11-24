@@ -644,7 +644,7 @@ jobs:
         id: setup
         with:
           restore-bootstrap: 'false' # every gate here is lib-free
-          node-version: '24' # Doc Examples typechecks under node
+          node-version: '26' # Doc Examples typechecks under node
       # ── repo policy ──────────────────────────────────────────────────────
       # Every PR must be gated by CI, and GitHub can only gate a PR whose base
       # is a PROTECTED branch. Protecting feature branches is structurally
@@ -1027,14 +1027,14 @@ jobs:
       # baked-in Node (currently 20) runs vitest; developers on Node 22+
       # hit interactions (e.g. the happy-dom localStorage shim trap fixed
       # in vitest.setup.ts) that ubuntu's stale Node masks. Pinning to
-      # active-LTS Node 24 makes the CI env reflect what modern consumers
+      # active-LTS Node 26 makes the CI env reflect what modern consumers
       # use, so bugs surface in CI instead of only at pre-push.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup-pyreon
         with:
-          node-version: '24'
+          node-version: '26'
           # P3c — needs lib/ for bundle-size tests + nested-Vite-SSR
           # tests; default `restore-bootstrap: 'true'` is correct.
       # Compile-verdict cache for the batch containing `native-rest` (validate-cache.ts —
@@ -1471,7 +1471,7 @@ jobs:
         with:
           # Coverage REQUIRES node (bun's inspector lacks the V8 coverage API);
           # check-coverage.ts spawns vitest under node explicitly.
-          node-version: '24'
+          node-version: '26'
       # ── examples ─────────────────────────────────────────────────────────
       # @pyreon/* is already built (lib/ restored from this run's cache); only
       # the example apps build here. Including @pyreon/* in the filter would
@@ -1718,7 +1718,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
-          node-version: '24'
+          node-version: '26'
       # RESTORE always; SAVE only on main. The browser bundle is ~261 MB and
       # depends only on the Playwright version in bun.lock, so a per-branch save
       # stored the SAME bytes once per PR — four live copies, 783 MB of pure
@@ -1851,7 +1851,7 @@ jobs:
   bootstrap-exit-codes:
     name: bootstrap-exit-codes
     # Relevance is decided in Install — this job used to boot a runner on
-    # EVERY PR (checkout + setup + node 24, ~21–31s) just to conclude "not
+    # EVERY PR (checkout + setup + node 26, ~21–31s) just to conclude "not
     # relevant, skip" ~99% of the time. Now the job itself skips (no runner)
     # unless bootstrap.ts / the test / the workflow changed. A failed Install
     # or Fast Gates blocks it; the required Test aggregate
@@ -1864,7 +1864,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pyreon
         with:
-          node-version: '24'
+          node-version: '26'
           restore-bootstrap: 'false' # this test doesn't read lib/
       - name: Run bootstrap-exit-codes
         run: |
