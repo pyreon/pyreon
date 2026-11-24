@@ -21,6 +21,7 @@ import {
   PortalSymbol,
   propagateError,
   reportError,
+  _devMarkOwnerAlias,
   _runHooked,
   _takeHooks,
   SuspenseBoundaryContext,
@@ -33,7 +34,9 @@ import {
   batch,
   effectScope,
   getContextOwner,
-  getCurrentScope,
+  _currentScope,
+  _devOwner,
+  _swapPendingOwner,
   _abortOwnerFrame,
   _closeOwnerFrame,
   _openOwnerFrame,
@@ -101,7 +104,7 @@ if (process.env.NODE_ENV !== 'production') _devScopeIds = new WeakMap()
  * a mount made inside a template bind hands its cleanup to the scope.
  */
 export function ownByScope(cleanup: () => void): void {
-  if (cleanup !== noop && cleanup !== _noopDispose) getCurrentScope()?.add(cleanup)
+  if (cleanup !== noop && cleanup !== _noopDispose) _currentScope()?.add(cleanup)
 }
 
 /**
@@ -627,58 +630,38 @@ function mountComponent(
   parent: Node,
   anchor: Node | null,
 ): Cleanup {
-  // Owner chain: link this component's scope to its parent owner so
-  // `useContext()` resolves up the component tree. The owner stays `scope`
-  // through both `runWithHooks` (so `provide()` writes onto it) and `mountChild`
-  // (so children chain to it), restored on every exit path. Kept SEPARATE from
-  // `setCurrentScope` (effect tracking) so the two concerns don't interfere.
+  // Owner chain: this component's scope links to the parent owner so
+  // `useContext()` resolves up the tree once the scope becomes an owner (on
+  // its first `provide()`); the owner is restored on every exit path. Kept
+  // SEPARATE from `setCurrentScope` (effect tracking) so the two concerns
+  // don't interfere.
   //
-  // The per-component `EffectScope` allocation below is NOT an optimization
-  // target — measured + rejected (2026-08). Making it LAZY (allocate on first
-  // use, so the ~50% of components that register no effect, computed, template
-  // binding, cleanup or context never pay for one) is the obvious idea and it
-  // does not pay:
-  //
-  //  - CEILING. Adding a SECOND `EffectScope` and a second `LifecycleHooks` per
-  //    component — the correctness-preserving way to price them, since removing
-  //    them breaks disposal and would bias the run by leaking across iterations
-  //    — cost +0.59% on the 2,047-component deep-tree mount. In the same
-  //    interleaved session the `context → 1,024 consumers` op, which mounts
-  //    nothing and cannot be affected, moved ±2%. The allocations are below the
-  //    benchmark's own resolution.
-  //  - COST. A safe lazy design cannot be free. `getCurrentScope()` and
-  //    `getContextOwner()` would each need a materialize branch, and those run
-  //    far more often than once per component (every effect, computed, binding,
-  //    context read, deferred-boundary capture and effect snapshot-capture).
-  //    Per component it also needs two flags, a materialized slot, and
-  //    save/restore of three values — which cannot be packed into a frame object
-  //    without re-introducing exactly the allocation being removed. The same
-  //    bookkeeping applied to the (simpler) hooks object measured net zero.
-  //  - RISK. Every registration path would have to be routed through one
-  //    materializer or a disposable is silently dropped. `onScopeDispose` reads
-  //    the module variable directly rather than through `getCurrentScope()`, and
-  //    `EffectScope.runInScope` / `setCurrentScope` would each need to clear the
-  //    pending flag or `@pyreon/store`'s scope shielding silently re-parents its
-  //    computeds onto the component. `getCurrentScope()` is also public and is
-  //    what `@pyreon/solid-compat` returns from `getOwner()`.
-  //
-  // So: a leak-class risk surface across a public API, for a win that is not
-  // measurable. Re-open only with a measurement that clears ±2% on this
-  // benchmark. That verdict is about SPEED and the scope. The hooks object IS
-  // now lazy (`_runHooked` in `@pyreon/core`), for RETAINED HEAP: it lives as
-  // long as the component, and its lazy design needs no hot-path branch
-  // (registration is rare, unlike scope/owner reads).
+  // The per-component `EffectScope` is still allocated EAGERLY (lazy
+  // ALLOCATION was measured and rejected for speed in 2026-08: it needs a
+  // materialize branch in `getCurrentScope()` / `getContextOwner()`, which run
+  // far more often than once per component). What changed is RETENTION: the
+  // scope becomes the context owner only on the setup's first `provide()`, and
+  // a scope that is empty at the end of the mount, never an owner and never
+  // handed out through `getCurrentScope()` is dropped instead of being kept by
+  // the unmount closure (`_isDroppable` below). The hooks object is lazy too
+  // (`_runHooked` in `@pyreon/core`).
   const prevOwner = getContextOwner()
   // RESTORED on every exit, never reset to null: a component can mount while
   // another scope is current (inside a parent's onMount via a signal write
   // that flips a <Show>, inside a <For> row's collector, inside a parent's
   // compiled template), and nulling it there left everything that scope's
   // owner created afterwards with no owner — never disposed.
-  const prevScope = getCurrentScope()
+  const prevScope = _currentScope()
   const scope = effectScope()
   scope._parent = prevOwner
+  // LAZY CONTEXT OWNER: `scope` becomes the context owner only when the setup
+  // calls `provide()` (`_claimContextOwner`). Until then the owner stays the
+  // parent's, so this component's children chain straight to the nearest
+  // provider and nothing retains `scope` as their `_parent`. The pending frame
+  // is saved here and restored on every exit.
+  const prevPending = _swapPendingOwner(scope)
+  const prevLate = process.env.NODE_ENV !== 'production' ? _devEnterLate(prevPending) : false
   setCurrentScope(scope)
-  setContextOwner(scope)
   // Template bindings built by this setup and render are owned by the cleanups
   // they are returned to, not by `scope`. The frame is their owner on the
   // error paths below, where no cleanup is ever handed out (see
@@ -709,16 +692,25 @@ function mountComponent(
     _devScopeIds!.set(scope, compId)
     _mountingStack!.push(compId)
   }
+  // The owner during setup and render stays the parent's (already current —
+  // production writes nothing). Dev swaps in a contextless alias of it that
+  // devtools can map back to this component — see `devSetupOwner`.
+  if (process.env.NODE_ENV !== 'production') setContextOwner(devSetupOwner(prevOwner, compId!))
 
-  const mergedProps = componentProps(vnode)
-
+  // Built INSIDE the try: every frame above (scope, owner, pending owner, owner
+  // frame, dev mounting stack) is restored by the catch, so a props builder
+  // that throws (a Proxy props object, a throwing getter) is contained exactly
+  // like a throwing setup instead of leaving those frames set.
+  let mergedProps: Record<string, unknown> | undefined
   try {
+    mergedProps = componentProps(vnode)
     output = _runHooked(vnode.type, mergedProps)
     hooks = _takeHooks()
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') _mountingStack!.pop()
     setCurrentScope(prevScope)
     setContextOwner(prevOwner)
+    exitPendingOwner(prevPending, prevLate)
     _abortOwnerFrame(ownerFrame)
     scope.stop()
     reportError({
@@ -736,11 +728,8 @@ function mountComponent(
       // PZ-10: "props.X is not a function", caused by the reactive-prop
       // auto-unwrap. Printed even when an ErrorBoundary handled the throw — the
       // fallback can't explain the root cause. Fires at most once per mount.
-      const diagnosis = diagnoseReactivePropCall(
-        err,
-        mergedProps as Record<string, unknown>,
-        componentName,
-      )
+      const diagnosis =
+        mergedProps === undefined ? null : diagnoseReactivePropCall(err, mergedProps, componentName)
       if (diagnosis) console.error(diagnosis)
       if (!handled) {
         const overlay = document.createElement('pre')
@@ -760,6 +749,9 @@ function mountComponent(
   } finally {
     setCurrentScope(prevScope)
   }
+  // Setup returned: any `provide()` from here on runs after children chained
+  // past this component (dev warning in `provide`).
+  if (process.env.NODE_ENV !== 'production') _devOwner!.late = true
 
   if (process.env.NODE_ENV !== 'production' && output != null && typeof output === 'object') {
     if (!(output instanceof Promise) && !('type' in output) && !Array.isArray(output) && !(output as any).__isNative) {
@@ -787,6 +779,9 @@ function mountComponent(
     // boundary until it settles — the same contract `lazy()` follows. Resolved
     // with the component's own scope as owner, so the NEAREST boundary answers.
     useContext(SuspenseBoundaryContext)?.register(output)
+    // The owner the resolved subtree mounts under: this scope if the setup
+    // provided before its first await, the parent's otherwise.
+    const asyncOwner = getContextOwner()
     const placeholder = document.createComment('async')
     parent.insertBefore(placeholder, anchor)
     let resolvedCleanup: Cleanup = noop
@@ -814,7 +809,7 @@ function mountComponent(
             //    SYNCHRONOUSLY — taking `placeholder` out of `liveParent` halfway
             //    through this mount (`insertBefore` NotFoundError, empty page).
             batch(() => {
-              resolvedCleanup = runWithContextOwner(scope, () =>
+              resolvedCleanup = runWithContextOwner(asyncOwner, () =>
                 mountChild(resolved as VNodeChild, liveParent, placeholder),
               )
             })
@@ -847,6 +842,7 @@ function mountComponent(
     // owner pointing here for the rest of the parent's mount, and clobbered
     // whatever owner was current when the component later unmounted.)
     setContextOwner(prevOwner)
+    exitPendingOwner(prevPending, prevLate)
     _closeOwnerFrame(ownerFrame)
 
     return () => {
@@ -891,6 +887,7 @@ function mountComponent(
     _abortOwnerFrame(ownerFrame)
     scope.stop()
     setContextOwner(prevOwner)
+    exitPendingOwner(prevPending, prevLate)
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
     if (!handled) {
       reportError({
@@ -926,7 +923,7 @@ function mountComponent(
       }
     }
     registerComponent(compId!, componentName, firstEl, devParentId!)
-    _devInspectable(compId!, scope, mergedProps)
+    _devInspectable(compId!, scope, mergedProps!)
   }
 
   // Fire onMount hooks inline — effects created inside are tracked by the scope.
@@ -953,13 +950,27 @@ function mountComponent(
   // Subtree fully mounted (incl. onMount) — restore the parent owner so this
   // component's siblings resolve their own context, not this component's.
   setContextOwner(prevOwner)
+  exitPendingOwner(prevPending, prevLate)
 
-  // No unmount work beyond the scope and the subtree (the common case — no
-  // onUnmount / setup onCleanup / onMount cleanup): return a closure that
-  // captures only those two. The full closure below captures this function's
-  // whole context (parent, owner, hooks, name, …), which then lives as long
-  // as the component.
-  if (hooks.unmount === null && mountCleanups === null) return leanUnmount(scope, subtreeCleanup, compId)
+  if (hooks.unmount === null && mountCleanups === null) {
+    // Nothing registered with the scope, it never became a context owner and
+    // nobody was handed it: DROP it. The subtree's cleanup is the component's
+    // whole unmount, with no scope and no closure retained (the common case
+    // for a component whose bindings all live in its template).
+    if (scope._isDroppable()) {
+      return process.env.NODE_ENV !== 'production'
+        ? () => {
+            unregisterComponent(compId!)
+            subtreeCleanup()
+          }
+        : subtreeCleanup
+    }
+    // No unmount work beyond the scope and the subtree: a closure that
+    // captures only those two. The full closure below captures this
+    // function's whole context (parent, owner, hooks, name, …), which then
+    // lives as long as the component.
+    return leanUnmount(scope, subtreeCleanup, compId)
+  }
 
   return () => {
     if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
@@ -982,6 +993,52 @@ function mountComponent(
     }
     if (mountCleanups) for (const fn of mountCleanups) fn()
   }
+}
+
+/**
+ * @internal Dev only: entering a component's pending-owner frame. A component
+ * mounting while its PARENT is still pending (`prevPending`) makes any later
+ * `provide()` in that parent late, so the parent's flag is set first; it is
+ * then returned (for `exitPendingOwner`) and reset for the child.
+ */
+export function _devEnterLate(prevPending: EffectScope | null): boolean {
+  const d = _devOwner!
+  if (prevPending !== null) d.late = true
+  const prevLate = d.late
+  d.late = false
+
+  return prevLate
+}
+
+/** @internal Dev only: the devtools id `_devNameScope` gave `scope`. */
+export function _devScopeIdOf(scope: EffectScope): string {
+  return _devScopeIds!.get(scope)!
+}
+
+/** Restore the pending-owner frame a component's mount entered with `_swapPendingOwner`. */
+export function exitPendingOwner(prev: EffectScope | null, prevLate: boolean): void {
+  _swapPendingOwner(prev)
+  if (process.env.NODE_ENV !== 'production') _devOwner!.late = prevLate
+}
+
+/**
+ * Dev only: the context owner a component's setup and render run under while
+ * it has not provided. Production uses the parent's owner itself. Dev uses a
+ * contextless ALIAS of it, which devtools maps to this component's id, so a
+ * component that a boundary mounts later (a `<Show>` turning on, a `<For>`
+ * row) still finds its real parent in the devtools tree. The alias is
+ * transparent to context: reads walk `alias._parent` to the parent's owner,
+ * and a write (a `provide()` that runs under a restored alias, in an effect
+ * re-run) skips it (`_devMarkOwnerAlias` in `@pyreon/core`) — exactly where
+ * production writes it.
+ */
+export function devSetupOwner(parentOwner: EffectScope | null, compId: string): EffectScope {
+  const alias = effectScope()
+  alias._parent = parentOwner
+  _devMarkOwnerAlias(alias)
+  _devScopeIds!.set(alias, compId)
+
+  return alias
 }
 
 /** `mountComponent`'s unmount for a component with no hook cleanups — see the call site. */
@@ -1369,6 +1426,7 @@ function mountAccessorChild(
         core = createPolyTextCore(text, text.parentNode ?? parent, ownerAtSetup)
       }
       core.apply(v)
+
       return
     }
     // First (tracked) run — classify once. The try exists ONLY so a throwing

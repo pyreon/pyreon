@@ -7,7 +7,7 @@ import {
   _rdRegisterBinding,
   _rdTagHandle,
 } from './reactive-devtools'
-import { _ownerScope, getCurrentScope } from './scope'
+import { _currentScope, _ownerScope } from './scope'
 import {
   exactDeps,
   getInnerEffectCollector,
@@ -235,7 +235,8 @@ export function effect(
 
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
-  const scope = getCurrentScope()
+  // Not `getCurrentScope()`: that PINS the scope (see scope.ts).
+  const scope = _currentScope()
   // Capture the context owner + hook at SETUP; re-runs restore it before
   // invoking fn (see the module header).
   const cap = _c.s
