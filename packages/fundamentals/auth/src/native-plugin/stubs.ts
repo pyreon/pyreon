@@ -17,7 +17,7 @@ export const AUTH_SWIFT_STUBS = `public enum PyreonOidcStatus {
 public final class PyreonOidcAuth {
     public private(set) var status: String = PyreonOidcStatus.signedOut
     public private(set) var subject: String?
-    public private(set) var accessToken: String?
+    public var accessToken: String? { nil }
     public private(set) var expiresAt: Double?
     public private(set) var error: String?
     public var isAuthenticated: Bool { status == PyreonOidcStatus.signedIn }
@@ -26,6 +26,9 @@ public final class PyreonOidcAuth {
                 postLogoutRedirectUri: String? = nil, authorizationParams: [String: String] = [:]) {}
     public func signIn() {}
     public func refresh() {}
+    public func start() {}
+    public func freshAccessToken() async -> String? { nil }
+    public func dispose() {}
     public func signOut(endProviderSession: Bool = false) {}
     public func handleCallback(_ url: String) {}
 }
@@ -47,6 +50,10 @@ class PyreonOidcAuth {
   fun claim(name: String): String? = null
   fun signIn() {}
   fun refresh() {}
+  fun start() {}
+  fun activate() {}
+  fun freshAccessToken(): String? = null
+  fun dispose() {}
   fun signOut(endProviderSession: Boolean = false) {}
   fun handleCallback(url: String) {}
 }

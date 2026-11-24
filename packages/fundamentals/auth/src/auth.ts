@@ -9,6 +9,8 @@ import {
   exchangeCode,
   flowKey,
   parseCallback,
+  redirectTarget,
+  redirectUriProblem,
   refreshTokens,
 } from './oidc'
 import type { ClientConfig, FetchLike, OidcMetadata, PendingFlow, TokenResponse } from './oidc'
@@ -119,6 +121,9 @@ export function createAuth(opts: AuthOptions): Auth {
     )
   }
   // Explicit metadata says up front whether the provider sends RFC 9207 `iss`; discovery says so at sign-in.
+  if (redirectTarget(opts.client.redirectUri) === null) {
+    throw new Error(`[Pyreon] auth: ${redirectUriProblem(opts.client.redirectUri)}.`)
+  }
   const knownIss = opts.metadata ? opts.metadata.authorization_response_iss_parameter_supported === true : undefined
   let claim = claimRedirect(opts.client.redirectUri, issuerName, knownIss)
   let disposed = false
@@ -232,7 +237,18 @@ export function createAuth(opts: AuthOptions): Auth {
       if (!current_()) return
       commit(next, verified)
     } catch (e) {
-      if (current_()) fail(e)
+      if (!current_()) return
+      // A transient failure (offline, the provider down) keeps the session for a retry: status
+      // `error` with the code, tokens and refresh token kept, so `refresh()` can try again.
+      // Anything else (the refresh token refused or revoked, a bad ID token) ends the session.
+      if (e instanceof AuthError && TRANSIENT_REFRESH_ERRORS.has(e.code)) {
+        batch(() => {
+          error.set(e)
+          status.set('error')
+        })
+      } else {
+        fail(e)
+      }
     }
   }
 
@@ -349,6 +365,9 @@ function callbackHref(url: string, redirectUri: string): string {
     throw new AuthError('invalid_callback', 'the callback must be an absolute URL, or the path and query of the request (e.g. Node\'s req.url)')
   }
 }
+
+/** Refresh failures that keep the session for a retry: the provider could not be reached or was unavailable. */
+const TRANSIENT_REFRESH_ERRORS = new Set(['network_error', 'provider_unavailable', 'discovery_failed', 'jwks_failed'])
 
 /** Upper bound on pending flows a `memoryFlowStore` holds at once. */
 const MAX_PENDING_FLOWS = 1000

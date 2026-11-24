@@ -26,6 +26,11 @@ public data class PyreonAuthFlow(
  * carries — and is what the reactive container exposes as `error`.
  */
 public open class PyreonAuthError(public val code: String, message: String) : Exception("[Pyreon] auth: $message") {
+    public companion object {
+        /** Refresh failures that keep the session for a retry: the provider could not be reached or was unavailable. */
+        public val TRANSIENT_REFRESH_CODES: Set<String> = setOf("network_error", "provider_unavailable", "discovery_failed", "jwks_failed")
+    }
+
     public object InsecureUrl : PyreonAuthError("insecure_url", "endpoint must be https")
     public object InvalidUrl : PyreonAuthError("invalid_url", "not a valid URL")
     public object FlowExpired : PyreonAuthError("flow_expired", "authorization attempt expired")
@@ -35,6 +40,7 @@ public open class PyreonAuthError(public val code: String, message: String) : Ex
     public object IssuerMissing : PyreonAuthError("issuer_missing", "provider advertises iss but callback omitted it")
     public object MissingCode : PyreonAuthError("missing_code", "callback has no code")
     public object UnknownFlow : PyreonAuthError("unknown_flow", "no pending authorization for this state")
+    public object InvalidRedirectUri : PyreonAuthError("invalid_redirect_uri", "the redirect URI cannot be matched safely — write the host in punycode, and use no percent-encoded dots, backslash, whitespace or other non-ASCII character before the query")
     public object RedirectShared : PyreonAuthError("redirect_shared", "another provider shares this redirect URI and this one does not send RFC 9207 iss — give each provider its own redirect URI")
     public object RedirectMismatch : PyreonAuthError("redirect_mismatch", "callback did not arrive at this sign-in's redirect URI (mix-up)")
 }
@@ -106,6 +112,10 @@ public object PyreonRedirectClaims {
     private class Claim(var count: Int, var iss: Boolean?)
     private val claims = HashMap<String, HashMap<String, Claim>>()
 
+    /** A token for this target that holds no claim yet: [PyreonRedirectToken.reclaimIfReleased] takes it. */
+    public fun unclaimed(redirectUri: String, issuer: String): PyreonRedirectToken =
+        PyreonRedirectToken(PyreonRedirect.target(redirectUri) ?: redirectUri, issuer.removeSuffix("/"), released = true)
+
     /** Register one instance; the returned token releases it (idempotent). */
     public fun claim(redirectUri: String, issuer: String): PyreonRedirectToken {
         val target = PyreonRedirect.target(redirectUri) ?: redirectUri
@@ -139,8 +149,12 @@ public object PyreonRedirectClaims {
 }
 
 /** One instance's claim on its redirect target. */
-public class PyreonRedirectToken internal constructor(public val target: String, private val issuer: String) {
-    private val released = java.util.concurrent.atomic.AtomicBoolean(false)
+public class PyreonRedirectToken internal constructor(
+    public val target: String,
+    private val issuer: String,
+    released: Boolean = false,
+) {
+    private val released = java.util.concurrent.atomic.AtomicBoolean(released)
     public val isShared: Boolean get() = PyreonRedirectClaims.isShared(target)
     public fun advertise(iss: Boolean): Boolean = PyreonRedirectClaims.advertise(target, issuer, iss)
     public fun release() {

@@ -55,6 +55,11 @@ public class PyreonOidcAuth(
     private val transport: PyreonAuthTransport = PyreonUrlConnectionAuthTransport,
     private val executor: Executor = DEFAULT_EXECUTOR,
     private val clock: () -> Long = { System.currentTimeMillis() },
+    /**
+     * Claim the redirect URI now. `rememberPyreonOidcAuth` passes false and claims in its effect
+     * ([activate]), so a composition Compose abandons before the effect runs never leaks a claim.
+     */
+    claimOnCreate: Boolean = true,
 ) {
     public val status: MutableState<String> = mutableStateOf(PyreonOidcStatus.SIGNED_OUT)
     public val subject: MutableState<String?> = mutableStateOf(null)
@@ -81,7 +86,12 @@ public class PyreonOidcAuth(
 
     // Declared before `init`: rehydration may start a refresh while the object is constructed.
     // This instance's claim on its redirect target (see PyreonRedirectClaims); released by dispose().
-    private val redirectClaim: PyreonRedirectToken = PyreonRedirectClaims.claim(redirectUri, issuer)
+    private val redirectClaim: PyreonRedirectToken =
+        if (claimOnCreate) PyreonRedirectClaims.claim(redirectUri, issuer) else PyreonRedirectClaims.unclaimed(redirectUri, issuer)
+    // The redirect URI cannot be matched safely: every sign-in fails with `invalid_redirect_uri`.
+    private val redirectUriValid = PyreonRedirect.target(redirectUri) != null
+    // `signOut()` was called: a session another instance stores is not adopted into this one.
+    @Volatile private var signedOutExplicitly = false
     // Bumped whenever the session itself changes (commit or clear): a refresh applies its result
     // only to the session it started from.
     @Volatile private var sessionGen = 0
@@ -89,7 +99,13 @@ public class PyreonOidcAuth(
     @Volatile private var launchRefreshPending = false
 
     init {
-        rehydrate()
+        if (!redirectUriValid) {
+            // A misconfiguration fails at construction, visibly, not at every sign-in.
+            status.value = PyreonOidcStatus.ERROR
+            error.value = PyreonAuthError.InvalidRedirectUri.code
+        } else {
+            rehydrate()
+        }
     }
 
     // ---- actions (fire-and-forget for UI; the *Now forms block, for tests) ----
@@ -100,6 +116,10 @@ public class PyreonOidcAuth(
     public fun refresh() { val my = epoch.get(); executor.execute { refreshNow(my) } }
 
     public fun signInNow(my: Int = epoch.incrementAndGet()) {
+        if (!redirectUriValid) {
+            fail(PyreonAuthError.InvalidRedirectUri)
+            return
+        }
         launchRefreshPending = false
         status.value = PyreonOidcStatus.SIGNING_IN
         error.value = null
@@ -145,6 +165,30 @@ public class PyreonOidcAuth(
      * when the container enters the composition; it is not done in the constructor, which runs for
      * every Activity recreation.
      */
+    /**
+     * Claim the redirect URI (again, after [dispose] or when constructed with `claimOnCreate =
+     * false`) and run the launch refresh. `rememberPyreonOidcAuth` calls it when the container
+     * enters the composition.
+     */
+    public fun activate() {
+        redirectClaim.reclaimIfReleased()
+        start()
+    }
+
+    /**
+     * The access token, refreshed first when it has expired (or null: signed out, or the refresh
+     * failed — see [status] / [error]). Blocking: call it off the main thread, before a request.
+     * It never returns an expired token.
+     */
+    public fun freshAccessToken(): String? {
+        launchRefreshPending = false
+        val exp = expiresAt.value
+        val expired = exp != null && exp <= clock()
+        if ((accessToken.value == null || expired) && refreshToken != null) refreshNow()
+        val after = expiresAt.value
+        return if (after != null && after <= clock()) null else accessToken.value
+    }
+
     public fun start() {
         if (!launchRefreshPending) return
         launchRefreshPending = false
@@ -187,6 +231,9 @@ public class PyreonOidcAuth(
         val stored = r["refreshToken"] as? String ?: return
         val access = r["accessToken"] as? String
         if (r["issuer"] != issuer || stored == refreshToken || access.isNullOrEmpty()) return
+        // Only the SAME user's session (another instance refreshed it), never into an instance that
+        // was signed out: that would switch or resurrect a session silently.
+        if (signedOutExplicitly || (r["claims"] as? Map<*, *>)?.get("sub") != subject.value) return
         sessionGen++
         accessToken.value = access
         refreshToken = stored
@@ -222,7 +269,17 @@ public class PyreonOidcAuth(
             // Providers may rotate the refresh token; keep the old one when they do not.
             commit(t, t.refreshToken ?: current, verified ?: claims.value)
         } catch (e: Throwable) {
-            if (stillCurrent()) fail(e)
+            if (!stillCurrent()) return
+            // Offline or the provider unavailable: keep the session (and the stored record) for a
+            // retry — status `error` with the code, `refresh()` tries again. Only a refusal (the
+            // refresh token rejected or revoked, a bad ID token) ends the session.
+            val code = (e as? PyreonAuthError)?.code
+            if (code != null && code in PyreonAuthError.TRANSIENT_REFRESH_CODES) {
+                error.value = code
+                status.value = PyreonOidcStatus.ERROR
+            } else {
+                fail(e)
+            }
         }
     }
 
@@ -240,6 +297,7 @@ public class PyreonOidcAuth(
      * logout) — otherwise the next sign-in completes without a prompt.
      */
     public fun signOut(endProviderSession: Boolean = false) {
+        signedOutExplicitly = true
         epoch.incrementAndGet()
         val hint = idToken
         clear()
@@ -272,6 +330,7 @@ public class PyreonOidcAuth(
     }
 
     private fun commit(t: PyreonTokenSet, refresh: String?, verified: Map<String, String>?) {
+        signedOutExplicitly = false
         sessionGen++
         refreshToken = refresh
         // A refresh response may omit the ID token; the last one stays the logout hint.
@@ -329,14 +388,15 @@ public class PyreonOidcAuth(
             store.remove(sessionKey)
             return
         }
-        accessToken.value = access
+        // An expired access token is never exposed; the session waits for its refresh (`start()`).
+        accessToken.value = if (expired) null else access
         refreshToken = storedRefresh
         idToken = r["idToken"] as? String
         val c = (r["claims"] as? Map<String, Any?>)?.entries?.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }?.toMap() ?: emptyMap()
         claims.value = c
         subject.value = c["sub"]
         expiresAt.value = exp
-        status.value = PyreonOidcStatus.SIGNED_IN
+        status.value = if (expired) PyreonOidcStatus.SIGNING_IN else PyreonOidcStatus.SIGNED_IN
         // Not refreshed here: the constructor runs for every Activity recreation.
         launchRefreshPending = expired
     }

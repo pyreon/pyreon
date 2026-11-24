@@ -28,7 +28,7 @@ import {
   type SwiftEmitContext,
   type TypeIR,
 } from '@pyreon/native-compiler/plugin-api'
-import { redirectTarget } from '../oidc'
+import { redirectTarget, redirectUriProblem } from '../oidc'
 import { authStubs } from './stubs'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
@@ -142,6 +142,11 @@ const recognizeOidc: CallRecognizer = (_call, ctx) => {
   // is a warning, not a refusal: whether the providers send `iss` is only known at run time, where
   // `PyreonRedirectClaims` applies the rule (sharing only between providers that send `iss`). One
   // file at a time: providers in different files are left to the runtime.
+  if (redirectTarget(payload.redirectUri) === null) {
+    ctx.report(`${where}: ${redirectUriProblem(payload.redirectUri)}. The native session container is not emitted.`)
+
+    return null
+  }
   const claims = ctx.fileState('@pyreon/auth:redirect-claims', () => new Map<string, string>())
   const target = redirectTarget(payload.redirectUri) ?? payload.redirectUri
   const issuer = payload.issuer.replace(/\/$/, '')
@@ -164,6 +169,14 @@ const recognizeOidc: CallRecognizer = (_call, ctx) => {
 const payloadOf = (d: ExtDecl): OidcPayload => d.payload as unknown as OidcPayload
 
 const oidcDecl: DeclEmitter = {
+  lifecycle: {
+    // The launch refresh of a restored, expired session runs when the view first appears (Compose:
+    // `rememberPyreonOidcAuth`'s effect), not in the `@State` initializer SwiftUI re-evaluates.
+    // `start()` is idempotent, so a re-appearance costs nothing.
+    swift(d, ctx) {
+      return [`.onAppear { ${ctx.ident(d.name)}.start() }`]
+    },
+  },
   swift(d, ctx) {
     const p = payloadOf(d)
     const args = [`issuer: ${swiftStr(p.issuer)}`, `clientId: ${swiftStr(p.clientId)}`, `redirectUri: ${swiftStr(p.redirectUri)}`]

@@ -146,6 +146,9 @@ export async function beginAuthorization(
   binding: string,
   now: number = Date.now(),
 ): Promise<{ url: string; flow: PendingFlow }> {
+  if (redirectTarget(client.redirectUri) === null) {
+    throw new AuthError('invalid_redirect_uri', redirectUriProblem(client.redirectUri))
+  }
   if (!binding) {
     throw new AuthError('no_binding', 'a sign-in needs a browser binding — pass createFlowBinding(cookieHeader).value (server) or use useOidc')
   }
@@ -183,6 +186,11 @@ export async function beginAuthorization(
 
 /** How long a pending flow stays valid (and how long a flow store needs to keep it). */
 export const FLOW_TTL_MS = 10 * 60_000
+
+/** Why a redirect URI cannot be matched safely, phrased as the fix. */
+export function redirectUriProblem(uri: string): string {
+  return `redirect URI ${JSON.stringify(uri)} cannot be matched safely on every target — write the host in punycode (xn--…), and use no percent-encoded dots (%2e), backslash, whitespace, percent-encoded host or other non-ASCII character before the query`
+}
 
 /**
  * What a redirect URI is matched on — ONE rule on web, iOS and Android (shared vectors:
@@ -249,7 +257,10 @@ export function parseCallback(
   }
   // RFC 9700 §4.4 mix-up defence without `iss`: each provider has its own redirect URI, so a
   // callback that arrives anywhere but the flow's own redirect URI came from another provider.
-  if (redirectTarget(callback) !== redirectTarget(flow.redirectUri)) {
+  // Fail CLOSED: a spelling the matcher refuses (null) never matches anything, itself included.
+  const got = redirectTarget(callback)
+  const want = redirectTarget(flow.redirectUri)
+  if (got === null || want === null || got !== want) {
     throw new AuthError(
       'redirect_mismatch',
       "callback did not arrive at this sign-in's redirect URI (OAuth mix-up, or a server behind a proxy passing its internal URL — pass the public URL, or only the path and query to createAuth().handleCallback)",
@@ -320,6 +331,8 @@ async function postToken(
     headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
     body: new URLSearchParams(body),
   })
+  // 429 and 5xx are the provider being unavailable (retry later); anything else is a refusal.
+  if (res.status === 429 || res.status >= 500) throw new AuthError('provider_unavailable', `token endpoint returned ${res.status}`)
   if (!res.ok) throw new AuthError('token_exchange_failed', `token endpoint returned ${res.status}`)
   let tokens: TokenResponse
   try {

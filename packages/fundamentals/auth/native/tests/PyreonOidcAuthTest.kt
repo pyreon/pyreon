@@ -406,6 +406,81 @@ fun testDisposedInstanceReclaims() {
     PyreonRedirectClaims.reset()
 }
 
+fun testTransientRefreshKeepsSession() {
+    val p = FakeProvider()
+    val store = MemStore()
+    val auth = make(p, store, FakeBrowser(p))
+    auth.signIn()
+    p.refreshStatus = 503
+    auth.refresh()
+    check(auth.status.value == PyreonOidcStatus.ERROR && auth.error.value == "provider_unavailable") { "transient failure is an explicit error: ${auth.error.value}" }
+    check(store.entries["pyreon.auth.session.app|https://idp.example"] != null) { "a transient failure keeps the stored session" }
+    p.refreshStatus = 200
+    auth.refresh()
+    check(auth.status.value == PyreonOidcStatus.SIGNED_IN && auth.accessToken.value == "at-1") { "the kept refresh token retries: ${auth.error.value}" }
+    p.refreshStatus = 400
+    auth.refresh()
+    check(auth.error.value == "token_exchange_failed" && store.entries["pyreon.auth.session.app|https://idp.example"] == null) { "a refusal deletes the stored session" }
+}
+
+fun testExpiredSessionAndFreshToken() {
+    val p = FakeProvider()
+    val store = MemStore()
+    store.entries["pyreon.auth.session.app|https://idp.example"] =
+        """{"issuer":"https://idp.example","accessToken":"expired-token","expiresAt":1,"refreshToken":"rt-0","claims":{"sub":"user-1"}}"""
+    val auth = make(p, store, FakeBrowser(p))
+    check(auth.status.value == PyreonOidcStatus.SIGNING_IN) { "an expired restored session is signingIn: ${auth.status.value}" }
+    check(auth.accessToken.value == null) { "the expired token is never exposed" }
+    val fresh = auth.freshAccessToken()
+    check(fresh == "at-1" && auth.status.value == PyreonOidcStatus.SIGNED_IN) { "freshAccessToken awaits the refresh: $fresh" }
+}
+
+fun testAdoptOnlySameUser() {
+    val p = FakeProvider()
+    val store = MemStore()
+    val auth = make(p, store, FakeBrowser(p))
+    auth.signIn()
+    store.entries["pyreon.auth.session.app|https://idp.example"] =
+        """{"issuer":"https://idp.example","accessToken":"other","refreshToken":"rt-other","claims":{"sub":"user-2"}}"""
+    auth.refresh()
+    check(auth.subject.value == "user-1") { "another user's stored session is not adopted: ${auth.subject.value}" }
+    auth.signOut()
+    store.entries["pyreon.auth.session.app|https://idp.example"] =
+        """{"issuer":"https://idp.example","accessToken":"again","refreshToken":"rt-again","claims":{"sub":"user-1"}}"""
+    auth.refresh()
+    check(auth.status.value != PyreonOidcStatus.SIGNED_IN && auth.subject.value == null) { "a signed-out instance is not signed in by adoption" }
+}
+
+fun testInvalidRedirectUriRefusedAtConstruction() {
+    val p = FakeProvider()
+    val b = FakeBrowser(p)
+    val bad = PyreonOidcAuth(
+        issuer = ISS, clientId = "app", redirectUri = "https://bücher.example/cb",
+        store = MemStore(), browser = b, transport = p, executor = INLINE,
+    )
+    check(bad.status.value == PyreonOidcStatus.ERROR && bad.error.value == "invalid_redirect_uri") { "refused at construction: ${bad.error.value}" }
+    bad.signIn()
+    check(b.opened.isEmpty() && bad.error.value == "invalid_redirect_uri") { "sign-in never starts" }
+    bad.dispose()
+}
+
+fun testClaimTakenOnActivate() {
+    PyreonRedirectClaims.reset()
+    val p = FakeProvider()
+    val auth = PyreonOidcAuth(
+        issuer = ISS, clientId = "app", redirectUri = "com.example.app:/oauth",
+        store = MemStore(), browser = FakeBrowser(p), transport = p, executor = INLINE, claimOnCreate = false,
+    )
+    val observer = PyreonRedirectClaims.claim("com.example.app:/oauth", "https://observer.example")
+    check(!observer.isShared) { "a container built with claimOnCreate = false holds no claim (an abandoned composition leaks none)" }
+    auth.activate()
+    check(observer.isShared) { "activate() takes the claim" }
+    auth.dispose()
+    check(!observer.isShared) { "dispose() releases it" }
+    observer.release()
+    PyreonRedirectClaims.reset()
+}
+
 fun testKeyRotation() {
     val kp = FakeProvider()
     var t = 1_000_000L
@@ -467,7 +542,7 @@ fun testTokenEndpointHttpsAtUse() {
     // Loopback http stays allowed for local development.
     val local = meta.copy(tokenEndpoint = "http://127.0.0.1:8080/token")
     val e = runCatching { PyreonOidcClient.refresh(local, "app", "rt", transport) }.exceptionOrNull()
-    check(sent == 1 && (e as? PyreonAuthError)?.code == "token_exchange_failed") { "loopback reaches the transport: $e" }
+    check(sent == 1 && (e as? PyreonAuthError)?.code == "provider_unavailable") { "loopback reaches the transport (its 500 is provider_unavailable): $e" }
 }
 
 fun main() {
@@ -485,5 +560,10 @@ fun main() {
     testOneRefreshPerStoredSession()
     testStaleRefreshNotReused()
     testDisposedInstanceReclaims()
+    testTransientRefreshKeepsSession()
+    testExpiredSessionAndFreshToken()
+    testAdoptOnlySameUser()
+    testInvalidRedirectUriRefusedAtConstruction()
+    testClaimTakenOnActivate()
     println("[PyreonOidcAuthTest] all smoke tests passed")
 }

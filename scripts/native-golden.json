@@ -532,8 +532,8 @@
       "warnings": 1
     },
     "golden-fixture:auth-01.tsx|swift": {
-      "sha": "3c36fe83354ab29bf34ce87e41e28c2dc614bf5dc7772ac95b13aabc0da20d61",
-      "bytes": 1129,
+      "sha": "9c1bf87578cbd8ccc8d63b377a4a87fec1a212269b4cdc79581d016092d1cad4",
+      "bytes": 1162,
       "warnings": 0
     },
     "golden-fixture:auth-01.tsx|kotlin": {
@@ -542,8 +542,8 @@
       "warnings": 0
     },
     "golden-fixture:auth-02.tsx|swift": {
-      "sha": "10559b2396f7a91011fffd90b9d8111a7b220c3cc5c8b7af2fb6d10414ab8580",
-      "bytes": 584,
+      "sha": "c0f5c8e668a86e3e2844a458ecc522389d8bbd7c85ed4ec3eff452c9cb00dd77",
+      "bytes": 624,
       "warnings": 4
     },
     "golden-fixture:auth-02.tsx|kotlin": {
@@ -7522,8 +7522,8 @@
       "warnings": 0
     },
     "example:native-tasks/TasksApp.tsx|swift": {
-      "sha": "97e3eaa2912bcff096f49151d5ec5a877c0d5da2871c714cfbfd9445c33a503e",
-      "bytes": 182358,
+      "sha": "d0a767dda7b9a2d4aec2d84c0907655a1072e1020f41d52155021819ae5e332b",
+      "bytes": 182390,
       "warnings": 3
     },
     "example:native-tasks/TasksApp.tsx|kotlin": {
@@ -7762,8 +7762,8 @@
       "warnings": 0
     },
     "registry:@pyreon/auth|swift": {
-      "sha": "56b404d68876b328ebe7cbfcaa88a2d8fc423ac2e191fe56666a8ac0e4c2b9cf",
-      "bytes": 493,
+      "sha": "7592342b2b47affa9ef427387dba2381c52065ccb682b95f5f8eedb8c3fa7480",
+      "bytes": 526,
       "warnings": 0
     },
     "registry:@pyreon/auth|kotlin": {

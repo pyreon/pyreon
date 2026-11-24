@@ -71,6 +71,16 @@ when they issue a refresh token: request `offline_access` in `scope`, and pass p
 `client.authorizationParams` (Google: `{ access_type: 'offline', prompt: 'consent' }`). The parameters that carry the
 flow's security (`state`, `nonce`, PKCE, `redirect_uri`, …) cannot be overridden there.
 
+**When a refresh fails.** If the provider cannot be reached or is unavailable (`network_error`, `provider_unavailable`
+for 429 / 5xx, `discovery_failed`, `jwks_failed`), the session is kept for a retry: `status()` is `'error'` with that
+code, the refresh token stays (on iOS and Android the stored session stays too), and `refresh()` tries again. Any other
+failure (the refresh token refused or revoked, a bad ID token) ends the session.
+
+**Redirect URIs are checked when you configure them.** A redirect URI the matcher would refuse (a non-ASCII host —
+write it in punycode — a percent-encoded dot, a backslash or whitespace) throws in `createAuth` and fails
+`beginAuthorization` (`invalid_redirect_uri`); natively the container starts in `error` with that code, and the
+compiler refuses it. A callback whose URL the matcher refuses never matches.
+
 **Signing out.** `auth.signOut()` clears local state only, so the provider still has a session and the next sign-in
 completes without a prompt. `auth.signOut({ endProviderSession: true, postLogoutRedirectUri })` also sends the user to
 the provider's `end_session_endpoint` with an `id_token_hint`.
@@ -197,6 +207,13 @@ const auth = useOidc({
 // <Text>{auth.isAuthenticated() ? auth.claim('email') : auth.status()}</Text>
 ```
 
+**A restored session that has expired** is `signingIn` until its refresh completes: on iOS the refresh starts when the
+view appears (`.onAppear { auth.start() }`, emitted by the compiler) or on the first read of `accessToken`, on Android
+when the container enters the composition. An expired access token is never returned (`accessToken` is null until the
+refresh lands). In hand-written Swift or Kotlin, `await auth.freshAccessToken()` (Kotlin: blocking, off the main thread)
+returns a token refreshed first when needed. Refreshes are shared PROCESS-WIDE per stored session, adopt only the same
+user's stored session, and never sign a signed-out instance back in.
+
 Every member reads the same on all three targets, and the strings match: `status()` is `signedOut` / `signingIn` /
 `signedIn` / `error`, and `error()` is the same code everywhere (`network_error`, `bad_nonce`, `cancelled`, …). Options
 must be static (literals or module-level consts) because native bakes them in; anything else is reported by name and
@@ -254,7 +271,7 @@ ship it:
 - **Native sign-in is unverified on a device.** It has never completed against a real provider on a device (only the `network_error` path has run on a simulator and emulator), and the native redirect check has not been tested against real `ASWebAuthenticationSession` / Custom Tab callbacks.
 - **Android custom schemes.** Another installed app can claim the scheme and receive the redirect; PKCE is then the only defence. Any app can send the exported `PyreonAuthRedirectActivity` a fake redirect, which cancels a sign-in in progress. Prefer an App Link.
 - **Sign-out does not revoke tokens.** `signOut({ endProviderSession: true })` ends the provider session; tokens already issued stay valid until they expire (no RFC 7009 revocation).
-- **OAuth mix-up: one redirect URI per provider is the only complete defence.** The registry only sees providers alive at the same moment in one process: not a server or worker that builds only the requested provider, and not a browser page that builds only the chosen provider (the common single-page-app pattern). Where it sees them, two providers may share a redirect URI only if both send RFC 9207 `iss`; a provider known not to is refused (`redirect_shared`), and a callback on a shared URI must carry `iss`. The native compiler only warns, one file at a time. On Android the claim is released when `rememberPyreonOidcAuth` leaves the composition (that wiring is SDK code, verified only by a device build, which has not run).
+- **OAuth mix-up: one redirect URI per provider is the only complete defence.** The registry only sees providers alive at the same moment in one process: not a server or worker that builds only the requested provider, and not a browser page that builds only the chosen provider (the common single-page-app pattern). Where it sees them, two providers may share a redirect URI only if both send RFC 9207 `iss`; a provider known not to is refused (`redirect_shared`), and a callback on a shared URI must carry `iss`. The native compiler only warns, one file at a time. On Android the claim is taken and released by `rememberPyreonOidcAuth`'s effect (SDK code, verified only by a device build, which has not run).
 - **A leaked authorization request still allows login CSRF.** Someone who obtains the provider URL a victim's browser was sent to can sign in with it as themselves and send the resulting callback to that browser, whose binding matches. Pushed authorization requests (PAR) are not offered.
 - **Server sign-ins need the public callback path or URL, and HTTPS.** Pass `handleCallback` the request's path and query (or the public URL), never a proxy's internal URL. The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported.
 - **The first version is published by hand, without provenance**, from a release tag, after `package.json` is moved onto the group version (it is 0.53.0 in this change). Later versions publish through CI with provenance.

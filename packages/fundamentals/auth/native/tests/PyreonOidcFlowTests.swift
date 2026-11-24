@@ -352,6 +352,56 @@ enum PyreonOidcFlowTests {
         dcOther.dispose()
         PyreonRedirectClaims.shared.reset()
 
+        // N2: a transient refresh failure keeps the session (and the stored record) for a retry;
+        // a refusal ends it.
+        let trP = FakeProvider(), trB = FakeBrowser(trP), trStore = CountingStore()
+        let trAuth = make(trP, trStore, trB)
+        await trAuth.signInNow()
+        trP.refreshStatus = 503
+        await trAuth.refreshNow()
+        expect(trAuth.status == PyreonOidcStatus.error && trAuth.error == "provider_unavailable", "transient failure is an explicit error (\(trAuth.error ?? "nil"))")
+        expect(trStore.entries["pyreon.auth.session.app|https://idp.example"] != nil, "a transient failure keeps the stored session")
+        trP.refreshStatus = 200
+        await trAuth.refreshNow()
+        expect(trAuth.status == PyreonOidcStatus.signedIn && trAuth.accessToken == "at-1", "the kept refresh token retries (\(trAuth.error ?? "nil"))")
+        trP.refreshStatus = 400
+        await trAuth.refreshNow()
+        expect(trAuth.error == "token_exchange_failed" && trStore.entries["pyreon.auth.session.app|https://idp.example"] == nil, "a refusal deletes the stored session")
+
+        // N3: a restored, expired session never exposes its expired token, and freshAccessToken()
+        // awaits the refresh.
+        let exP = FakeProvider(), exB = FakeBrowser(exP), exStore = CountingStore()
+        exStore.entries["pyreon.auth.session.app|https://idp.example"] =
+            #"{"issuer":"https://idp.example","accessToken":"expired-token","expiresAt":1,"refreshToken":"rt-0","claims":{"sub":"user-1"}}"#
+        let exAuth = make(exP, exStore, exB)
+        expect(exAuth.status == PyreonOidcStatus.signingIn, "an expired restored session is signingIn, not signedIn (\(exAuth.status))")
+        expect(exAuth.accessToken == nil, "the expired token is never returned")
+        let exFresh = await exAuth.freshAccessToken()
+        expect(exFresh == "at-1" && exAuth.status == PyreonOidcStatus.signedIn, "freshAccessToken awaits the refresh (\(exFresh ?? "nil"))")
+
+        // N4: a stored session of ANOTHER user is not adopted, nor any into a signed-out instance.
+        let adP = FakeProvider(), adB = FakeBrowser(adP), adStore = CountingStore()
+        let adAuth = make(adP, adStore, adB)
+        await adAuth.signInNow()
+        adStore.entries["pyreon.auth.session.app|https://idp.example"] =
+            #"{"issuer":"https://idp.example","accessToken":"other","refreshToken":"rt-other","claims":{"sub":"user-2"}}"#
+        await adAuth.refreshNow()
+        expect(adAuth.subject == "user-1", "another user's stored session is not adopted (\(adAuth.subject ?? "nil"))")
+        adAuth.signOut()
+        adStore.entries["pyreon.auth.session.app|https://idp.example"] =
+            #"{"issuer":"https://idp.example","accessToken":"again","refreshToken":"rt-again","claims":{"sub":"user-1"}}"#
+        await adAuth.refreshNow()
+        expect(adAuth.status != PyreonOidcStatus.signedIn && adAuth.subject == nil, "a signed-out instance is not signed in by adoption")
+
+        // N1: a redirect URI the matcher refuses fails at construction, and sign-in never starts.
+        let badB = FakeBrowser(FakeProvider())
+        let bad = PyreonOidcAuth(issuer: "https://idp.example", clientId: "app", redirectUri: "https://bücher.example/cb",
+                                 store: CountingStore(), transport: FakeProvider(), browser: badB)
+        expect(bad.status == PyreonOidcStatus.error && bad.error == "invalid_redirect_uri", "refused at construction (\(bad.error ?? "nil"))")
+        await bad.signInNow()
+        expect(badB.opened.isEmpty && bad.error == "invalid_redirect_uri", "sign-in never starts")
+        bad.dispose()
+
         // An expired session with no refresh token is dropped on relaunch, not restored.
         let es = CountingStore()
         es.entries["pyreon.auth.session.app|https://idp.example"] = #"{"issuer":"https://idp.example","accessToken":"x","expiresAt":1,"claims":{"sub":"u"}}"#
