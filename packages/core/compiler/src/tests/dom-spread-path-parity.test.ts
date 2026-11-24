@@ -38,7 +38,7 @@ try {
 }
 
 const app = (jsx: string) =>
-  `import { signal } from '@pyreon/reactivity'\nconst count = signal(0)\nfunction App(props) {\n  const label = props.label\n  return ${jsx}\n}`
+  `import { computed, signal } from '@pyreon/reactivity'\nconst count = signal(0)\nconst pick = computed(() => count)\nfunction App(props) {\n  const label = props.label\n  return ${jsx}\n}`
 
 /** The element paths a DOM spread can take. */
 const PATHS: Record<string, (spread: string) => string> = {
@@ -69,6 +69,14 @@ const ARGS: Record<string, { spread: string; has: string[]; not?: string[] }> = 
     spread: '{...{ count }}',
     has: ['{ count }'],
     not: ['count()'],
+  },
+  'an on* or ref value is read: the computed returns the listener / ref': {
+    spread: '{...{ onClick: pick, ref: pick, "data-x": pick }}',
+    has: ['onClick: pick()', 'ref: pick()', '"data-x": pick }'],
+  },
+  'a computed key is read': {
+    spread: '{...{ ["title"]: count }}',
+    has: ['["title"]: count()'],
   },
   'parenthesized object literal: bare property stays bare': {
     spread: '{...({ title: count })}',

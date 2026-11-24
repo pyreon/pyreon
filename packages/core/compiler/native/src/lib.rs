@@ -4264,7 +4264,7 @@ fn collect_object_idents(
                     if p.shorthand {
                         continue; // { name } — can't auto-call
                     }
-                    if !(dom_spread && is_bare_active_signal(&p.value, ctx, shadows)) {
+                    if !(dom_spread && is_dom_spread_value_key(p) && is_bare_active_signal(&p.value, ctx, shadows)) {
                         collect_signal_idents(&p.value, ctx, out, range_start, range_end, shadows);
                     }
                     if p.computed {
@@ -4278,6 +4278,22 @@ fn collect_object_idents(
                 }
             }
         }
+}
+
+/// A DOM spread property whose exactly-bare signal value stays bare: a NAMED
+/// key that is not `ref` or an `on*` handler (that value is the listener or the
+/// ref itself, so a computed there must be read). Mirrors the key check in JS
+/// `isBareDomSpreadValue`.
+fn is_dom_spread_value_key(p: &ObjectProperty) -> bool {
+    if p.computed {
+        return false;
+    }
+    let name: &str = match &p.key {
+        PropertyKey::StaticIdentifier(id) => id.name.as_str(),
+        PropertyKey::StringLiteral(l) => l.value.as_str().unwrap_or(""),
+        _ => "",
+    };
+    !name.is_empty() && name != "ref" && !is_event_handler(name)
 }
 
 /// The generic recursion of `collect_signal_idents` (everything but the

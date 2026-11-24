@@ -8039,6 +8039,23 @@ export function transformJSX_JS(
    * both instead of a one-time read on h(). Mirrored by `dom_spread_obj` in
    * the Rust backend.
    */
+  /**
+   * A property whose exactly-bare signal value may stay bare in a DOM spread:
+   * a NAMED, non-shorthand key that is not `ref` or an `on*` handler. Those
+   * values are the listener or the ref itself, so a computed there must be read
+   * (a bare `onClick: handlerFor` made the computed the listener). A computed
+   * key's name is unknown, so it is read too. Mirrored by
+   * `is_dom_spread_value_key` in the Rust backend.
+   */
+  function isDomSpreadValueKey(prop: N): boolean {
+    if (prop.shorthand || prop.computed) return false
+    const key = prop.key
+    const name =
+      key.type === 'Identifier' ? (key.name as string) : typeof key.value === 'string' ? (key.value as string) : ''
+
+    return name !== '' && name !== 'ref' && !EVENT_RE.test(name)
+  }
+
   function isBareDomSpreadValue(node: N): boolean {
     let cur: N = node
     let parent = findParent(cur)
@@ -8046,7 +8063,7 @@ export function transformJSX_JS(
       cur = parent
       parent = findParent(cur)
     }
-    if (!parent || parent.type !== 'Property' || parent.value !== cur || parent.shorthand) return false
+    if (!parent || parent.type !== 'Property' || parent.value !== cur || !isDomSpreadValueKey(parent)) return false
     let obj: N = parent
     let up = findParent(obj)
     if (!up || up.type !== 'ObjectExpression') return false
