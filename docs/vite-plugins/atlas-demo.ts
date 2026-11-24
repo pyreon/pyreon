@@ -42,13 +42,30 @@ export default function atlasDemo(): Plugin {
           buildAtlasDemo(dir, ROUTE)
           built = true
         }
-        // A directory URL (`/demos/atlas/`, `/demos/atlas/button/`) is its
-        // `index.html`, as a static host serves it: the build writes a page per
-        // component and the workbench writes those paths into the address bar.
+        // Served the way a static host serves the built demo, so dev and the
+        // deployed site agree on every URL the workbench writes. The workbench
+        // router keeps the trailing slash (`/demos/atlas/button/`), because
+        // each component page is a `<id>/index.html` directory:
+        //   - a directory URL with the slash → its `index.html`;
+        //   - the same URL without it → 301 to the slash form (GitHub Pages,
+        //     Netlify and nginx all redirect a directory this way);
+        //   - a path with no page under it (a stale id, an extra segment) →
+        //     the build's `404.html` shell, whose router lands on the default
+        //     component, with a 404 status.
         const path = url.slice(ROUTE.length)
-        const rel = normalize(path === '' || path.endsWith('/') ? `${path}index.html` : path)
-        const file = join(dir, rel)
-        if (!file.startsWith(dir) || !existsSync(file) || !statSync(file).isFile()) return next()
+        const target = join(dir, normalize(path))
+        if (!target.startsWith(dir)) return next()
+        if (path !== '' && !path.endsWith('/') && existsSync(target) && statSync(target).isDirectory()) {
+          res.statusCode = 301
+          res.setHeader('Location', `${url}/`)
+          res.end()
+          return
+        }
+        const direct = path === '' || path.endsWith('/') ? join(target, 'index.html') : target
+        const notFound = !existsSync(direct) || !statSync(direct).isFile()
+        const file = notFound ? join(dir, '404.html') : direct
+        if (!existsSync(file)) return next()
+        if (notFound) res.statusCode = 404
         res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream')
         createReadStream(file).pipe(res)
       })

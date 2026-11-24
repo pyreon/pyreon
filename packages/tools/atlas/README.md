@@ -113,8 +113,22 @@ never touched; the project keeps its `.env` files and its dependency cache
 
 Every route is declared `renderMode = 'spa'`: the workbench mounts arbitrary
 components, many of which need a browser, so it is never server-rendered.
-Saving a scanned file re-derives the catalog in a child process and reloads the
-page; editing a component's body is an ordinary HMR update.
+zero's router owns the URL: `/<component>/` (the trailing slash is kept, since each
+page is a `<component>/index.html` directory), and a link naming a component that
+no longer exists, or a path with extra segments, lands on the first component.
+Your project's `public/`, `.env` files and PostCSS config apply as they do in your
+own app; your own Vite plugins do not (Atlas reads only `resolve.alias` from your
+Vite config).
+
+Saving a scanned file re-derives the catalog in a child process. When that changes
+the catalog (a prop, a variant, the config, a new component) Atlas reloads the
+page. An edit to a component's body leaves the catalog as it was, so Atlas adds
+no reload of its own, but Vite's update of the edited module currently travels up
+to the workbench shell and the page still reloads. Your control edits survive it,
+because they are in the URL.
+
+A previewed component gets an empty router of its own: `useRoute()` and
+`useRouter()` inside it never see the workbench's router.
 
 `init` reads the workspace declaration you already have (`workspaces` in
 `package.json`, or `pnpm-workspace.yaml`), probes each package for components,

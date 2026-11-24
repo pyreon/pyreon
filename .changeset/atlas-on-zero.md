@@ -4,10 +4,15 @@
 
 `atlas dev` and `atlas build` now run the workbench as a `@pyreon/zero` app that ships inside the package (`app/`: `/` and `/:component` file routes under one layout that renders `<Workbench>`). `atlas dev` serves it with zero's dev mode; `atlas build` builds it with zero's SSG pass and writes the client shell at `/` and at one path per component (plus a `404.html` shell), so a component URL is still a real page on a plain file server. The dev server and the built site are now one app with one plugin chain instead of a dev HTML shell and a separately generated build entry.
 
+zero's router owns the component URL. The workbench reads the selection from the route and navigates with `router.replace`; it no longer guesses a base from `location.pathname`, which wrote `/sub/old-name/button/` for a renamed component's old link (a blank page on reload). A stale id or a path with extra segments now lands on the default component. The trailing slash is kept (`/button/`, the directory a static host serves). A host that embeds `<Workbench>` keeps `?c=`; the app passes the new `route` prop (`WorkbenchRoute`).
+
+The project's `public/` is served by `atlas dev` and copied by `atlas build`, and its PostCSS config (Tailwind v3, autoprefixer) applies, as its `.env` files already did. A previewed component gets an empty router of its own: `useRoute()` / `useRouter()` inside it no longer see the workbench's, and its plain links no longer trigger the router's reload warning. `atlas dev` no longer writes `.pyreon/context.json` into the installed package.
+
 Breaking:
 
 - `atlas dev` and `atlas build` need `@pyreon/zero` installed next to `vite` and `@pyreon/vite-plugin` (all optional peers; `atlas scan` needs none): `bun add -d vite @pyreon/vite-plugin @pyreon/zero`.
 - `atlas build --base` must be absolute (`/` or `/my-repo/`). A relative base used to build a site that worked only at its root; it is now refused before any work.
+- The `__ATLAS_ROUTES__` global is gone: a host that wants path URLs passes `route` to `<Workbench>`.
 - `@pyreon/atlas/dev` no longer exports `devHtml` or `ENTRY_ID` (the page is the app's `index.html`; its head lines come from `atlasDevPlugin`'s `transformIndexHtml`). It exports `SHELL_ID` (`virtual:atlas/shell`, the site title).
 - The `pyreon` named export of `@pyreon/vite-plugin` is no longer accepted as an alias for its default export (the package has never exported one).
 
