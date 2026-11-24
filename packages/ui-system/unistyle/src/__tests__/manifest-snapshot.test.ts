@@ -8,7 +8,7 @@ import manifest from '../manifest'
 describe('gen-docs — unistyle snapshot', () => {
   it('renders a llms.txt bullet starting with the package prefix', () => {
     const line = renderLlmsTxtLine(manifest)
-    expect(line.startsWith('- @pyreon/unistyle —')).toBe(true)
+    expect(line.startsWith('- [@pyreon/unistyle](https://pyreon.dev/docs/reference/unistyle):')).toBe(true)
   })
 
   it('renders a llms-full.txt section with the right header', () => {

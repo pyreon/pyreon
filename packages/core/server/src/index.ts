@@ -99,6 +99,7 @@ export { ISLANDS_ONLY_MARKER, isIslandsOnlyMeta, renderPage } from './render-pag
 // the client-safe `/client` subentry; the fragment RENDERER is server-only.
 export type { FragmentResult } from './server-island-render'
 export { renderServerIslandFragment } from './server-island-render'
+export { isIslandName, isRoutePath } from './paths'
 export type { RegisteredServerIsland, ServerIslandMint, ServerIslandOptions } from './server-island'
 export {
   getRegisteredServerIslands,

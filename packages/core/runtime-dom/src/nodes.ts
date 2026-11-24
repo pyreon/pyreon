@@ -19,7 +19,7 @@ export interface FirstRun<T> {
 }
 
 import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
-import { _abortOwnerFrame, _closeOwnerFrame, _effectOwned, _frameReads, _openOwnerFrame, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+import { _abortOwnerFrame, _closeOwnerFrame, _currentScope, _effectOwned, _frameReads, _openOwnerFrame, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effectScope, getContextOwner, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 
 /**
@@ -1474,7 +1474,7 @@ export function mountFor<T>(
 let rowCollector: EffectScope | null = null
 
 function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null } {
-  const prev = getCurrentScope()
+  const prev = _currentScope()
   const collector = rowCollector ?? (rowCollector = effectScope())
   setCurrentScope(collector)
   // Template bindings the row builds are owned by the row's cleanup, not the

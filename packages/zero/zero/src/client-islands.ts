@@ -9,6 +9,7 @@
  */
 import type { ComponentFn } from '@pyreon/core'
 import { hydrateIslandsAuto } from '@pyreon/server/client'
+import { startServerIslands } from './client-server-islands'
 import type { IslandRootLoader, IslandsRegistry } from './client-marker'
 
 /**
@@ -16,7 +17,7 @@ import type { IslandRootLoader, IslandsRegistry } from './client-marker'
  * every island it scheduled (see `hydrateIslands`).
  */
 export function startIslands(
-  islands: IslandsRegistry,
+  islands: IslandsRegistry | undefined,
   islandRoot: IslandRootLoader | undefined,
 ): () => void {
   // Shared @pyreon/store state the server rendered with: seeded before any
@@ -32,6 +33,9 @@ export function startIslands(
     hydrateStores(storeState as Record<string, Record<string, unknown>>)
   }
 
+  startServerIslands()
+  if (!islands) return () => {}
+
   return hydrateIslandsAuto(
     islands,
     islandRoot
@@ -39,3 +43,4 @@ export function startIslands(
       : undefined,
   )
 }
+

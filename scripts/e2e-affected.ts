@@ -375,7 +375,7 @@ const SUITES: Suite[] = [
     // + spec are listed explicitly too.
     name: 'ssr-node',
     script: 'test:e2e:ssr-node',
-    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssr-node.spec.ts'],
+    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssr-node.spec.ts', 'e2e/ssr-base.spec.ts'],
   },
   {
     // ISR node-deploy artifact — shares the SSR staging/template path, wraps

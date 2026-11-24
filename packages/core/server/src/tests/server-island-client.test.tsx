@@ -27,10 +27,12 @@
  */
 import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import { createRouter, RouterProvider, setActiveRouter } from '@pyreon/router'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { activateServerIslands } from '../client'
-import { _resetServerIslands, activateServerIslandElement, serverIsland } from '../server-island'
+import { isIslandName } from '../island-name'
+import { _resetServerIslands, activateServerIslandElement, serverIsland, setServerIslandBase } from '../server-island'
 
 const Badge: ComponentFn = () => h('span', null, 'live')
 
@@ -41,10 +43,12 @@ function stubFetch(impl: (url: string) => Promise<Response> | Response): string[
     urls.push(url)
     return Promise.resolve(impl(url))
   })
+
   return urls
 }
 
 const ok = (html: string): Response => ({ ok: true, status: 200, text: async () => html }) as Response
+
 const httpError = (status: number): Response =>
   ({ ok: false, status, text: async () => '' }) as Response
 
@@ -71,6 +75,7 @@ function serverMarkup(attrs: Record<string, string>, fallback = '<span>fallback<
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v)
   el.innerHTML = fallback
   container.appendChild(el)
+
   return el
 }
 
@@ -183,6 +188,65 @@ describe('activation is idempotent across BOTH paths', () => {
     activateServerIslands('/app')
     await settle()
     expect(urls[0]).toBe('/app/_pyreon/fragment/Prefixed')
+  })
+
+  it('a self-activating marker under a router base fetches under that base', async () => {
+    // zero's `startClient` never calls the document scan; each marker
+    // activates itself on mount. It used to pass no base, so under
+    // `base: '/sub/'` it fetched `/_pyreon/fragment/…` at the host root.
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    const router = createRouter({ routes: [{ path: '/', component: () => null }], mode: 'history', base: '/sub/', url: '/' })
+    const Island = serverIsland(async () => Badge, { name: 'UnderBase' })
+    const unmount = mount(h(RouterProvider, { router }, h(Island, {} as never)), container)
+    try {
+      await settle()
+      expect(urls[0]).toBe('/sub/_pyreon/fragment/UnderBase')
+    } finally {
+      unmount()
+      setActiveRouter(null)
+    }
+  })
+
+  it('reads the base from ITS router, not whichever router is globally active', async () => {
+    // Two routers: the island's own (`/a/`) and a later one (`/b/`) that is
+    // the global active router by the time the ref fires. The base is read in
+    // the component body (context first), so the island uses `/a`.
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    const routerA = createRouter({ routes: [{ path: '/', component: () => null }], mode: 'history', base: '/a/', url: '/' })
+    const routerB = createRouter({ routes: [{ path: '/', component: () => null }], mode: 'history', base: '/b/', url: '/' })
+    const Island = serverIsland(async () => Badge, { name: 'OwnRouter' })
+    const other = document.createElement('div')
+    document.body.appendChild(other)
+    const Late: ComponentFn = () => {
+      setActiveRouter(routerB as never)
+      return null
+    }
+    const unmount = mount(h(RouterProvider, { router: routerA }, h(Late, {}), h(Island, {} as never)), container)
+    try {
+      await settle()
+      expect(urls[0]).toBe('/a/_pyreon/fragment/OwnRouter')
+    } finally {
+      unmount()
+      setActiveRouter(null)
+    }
+  })
+
+  it('with no router, a marker fetches under the base the app set (setServerIslandBase), never one from the page', async () => {
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    setServerIslandBase('/sub/')
+    serverMarkup({ 'data-name': 'Configured', 'data-base': '//evil.example' })
+    activateServerIslands()
+    await settle()
+    expect(urls).toEqual(['/sub/_pyreon/fragment/Configured'])
+  })
+
+  it('an explicit base overrides the configured one', async () => {
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    setServerIslandBase('/sub/')
+    serverMarkup({ 'data-name': 'Override' })
+    activateServerIslands('/other')
+    await settle()
+    expect(urls[0]).toBe('/other/_pyreon/fragment/Override')
   })
 
   it('a marker with NO name is stamped and never fetched', async () => {
@@ -307,5 +371,80 @@ describe('signed fragments', () => {
     await vi.waitFor(() => expect(el.getAttribute('data-island-error')).toBe('fragment-failed'))
     expect(urls.filter((u) => u.startsWith('/_pyreon/'))).toHaveLength(1)
     expect(el.innerHTML).toBe('<span>fallback</span>')
+  })
+})
+
+// The fragment response is inserted as HTML, so a crafted marker (markup an
+// attacker got past a sanitizer that allows custom elements and `data-*`) must
+// never choose where it is fetched from (#4768 review).
+describe('a crafted marker cannot steer the fragment request', () => {
+  const crafted: Array<[string, Record<string, string>]> = [
+    ['data-base //evil', { 'data-name': 'X', 'data-base': '//evil.example' }],
+    ['data-base /\\evil', { 'data-name': 'X', 'data-base': '/\\evil.example' }],
+    ['data-base https://evil', { 'data-name': 'X', 'data-base': 'https://evil.example' }],
+    ['data-base /a/../b', { 'data-name': 'X', 'data-base': '/a/../b' }],
+    ['data-name with a slash', { 'data-name': '../../evil' }],
+    ['data-name ..', { 'data-name': '..' }],
+    ['data-name .', { 'data-name': '.' }],
+    ['data-name with ?', { 'data-name': 'x?y=1' }],
+    ['data-name with #', { 'data-name': 'x#y' }],
+    ['data-name //evil', { 'data-name': '//evil.example/x' }],
+  ]
+  for (const [label, attrs] of crafted) {
+    it(`${label}: no cross-origin request, one encoded path segment, nothing from elsewhere`, async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const urls = stubFetch(() => ok('<img src=x onerror="window.__pwned = 1">'))
+      const el = serverMarkup(attrs)
+      activateServerIslands()
+      await settle()
+      const name = attrs['data-name']!
+      if (!isIslandName(name)) {
+        // Not a valid island name (a separator, `%`, all dots): refused before
+        // any fetch — a decoding proxy could turn it into another path.
+        expect(urls).toEqual([])
+        expect(el.getAttribute('data-island-error')).toBe('fragment-refused')
+        expect(el.innerHTML).toBe('<span>fallback</span>')
+
+        return
+      }
+      expect(urls).toHaveLength(1)
+      const url = new URL(urls[0]!, location.origin)
+      expect(url.origin).toBe(location.origin)
+      // The name is ONE encoded segment: it cannot add a segment, a query or a fragment.
+      const segments = url.pathname.split('/')
+      expect(segments.slice(0, 3)).toEqual(['', '_pyreon', 'fragment'])
+      expect(segments).toHaveLength(4)
+      expect(decodeURIComponent(segments[3]!)).toBe(name)
+      expect(url.search).toBe('')
+      expect(url.hash).toBe('')
+    })
+  }
+
+  it('a crafted base passed by a caller is refused, not "fixed"', async () => {
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    const el = serverMarkup({ 'data-name': 'X' })
+    activateServerIslandElement(el, '//evil.example')
+    await settle()
+    expect(urls).toEqual([])
+    expect(el.getAttribute('data-island-error')).toBe('fragment-refused')
+  })
+
+  it('setServerIslandBase refuses a non-path base', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    setServerIslandBase('//evil.example/')
+    const urls = stubFetch(() => ok('<b>x</b>'))
+    serverMarkup({ 'data-name': 'X' })
+    activateServerIslands()
+    await settle()
+    expect(urls).toEqual(['/_pyreon/fragment/X'])
+  })
+
+  it('a refused marker says why in dev', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    stubFetch(() => ok('<b>x</b>'))
+    serverMarkup({ 'data-name': '..' })
+    activateServerIslands()
+    await settle()
+    expect(String(warn.mock.calls[0]?.[0])).toMatch(/\[Pyreon\] server island "\.\.": not a valid island name/)
   })
 })

@@ -1,5 +1,339 @@
 # @pyreon/native-runtime-swift
 
+## 0.54.0
+
+### Minor Changes
+
+- [#4065](https://github.com/pyreon/pyreon/pull/4065) [`1cc7355`](https://github.com/pyreon/pyreon/commit/1cc7355def1b6470e1ac7961469e4608c819f79a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createHttp({ use: [...] })` middleware now crosses to iOS and Android.
+
+  Until now the client's `use` array was never read by the native compiler, so an endpoint call on a `use: [bearer(...)]` client lowered to a native request with no `Authorization` header, and a `retry()` client to one that never retried — on both targets, with no warning.
+
+  A literal `use` array now lowers when its entries are statically readable: `bearer(() => useSession().store.token(), { crossOrigin })`, `retry({ limit, methods, statuses, network, respectRetryAfter, maxDelay })` and `logger({ production })` become a `PyreonHttpMiddleware` list that the `useFetch` and `useQuery` harnesses pass to `PyreonHttp.send(…, middleware:)`. Both runtimes apply it as an onion with the web's semantics — array order, the same full-jitter backoff and `Retry-After` handling, the same header replacement and `baseUrl` origin boundary — and a differential test runs the web middleware and both native runtimes on 28 shared scenarios. `forwardHeaders` lowers to nothing, as it does in a browser.
+
+  Anything that cannot lower — `refresh`, `dedupe`, a custom middleware function, a `backoff` or `log` callback, a non-literal option, a token that reads a file-scope `signal()` — now keeps every call on that client on the web, with a warning naming the entry, instead of producing a request the web would never send. `useStream` refuses a client with middleware by name.
+
+  On Android, `logger()` cannot see the app's `BuildConfig`; set `PyreonHttpPipelineEnv.debugBuild = BuildConfig.DEBUG` at startup to silence it in release builds.
+
+- [#4064](https://github.com/pyreon/pyreon/pull/4064) [`1496a84`](https://github.com/pyreon/pyreon/commit/1496a84df5e8f51df9bca3decda388e0a75b427e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `<Canvas>` vector-drawing primitive ([#3985](https://github.com/pyreon/pyreon/issues/3985)).
+
+  `<Canvas width height>` is a fixed-size, clipped drawing surface. Its children are the shape primitives `CanvasRect`, `CanvasCircle`, `CanvasLine`, `CanvasPath` (full SVG path data, arcs included) and `CanvasText`, with `fill` / `stroke` / `strokeWidth` taking a colour token or a `#hex` literal. Shapes are ordinary JSX children, so `<For>`, `<Show>` and signal-driven props work inside a canvas.
+
+  On the web each shape is an absolutely positioned `<svg>` layer. On iOS the canvas is `PyreonCanvas` (a clipped `ZStack` of SwiftUI `Path`s, with a runtime SVG path parser). On Android it is `PyreonCanvas` (a clipped `Box` of Compose `Canvas` layers, using androidx's `PathParser`).
+
+- [#4057](https://github.com/pyreon/pyreon/pull/4057) [`4d8a3e0`](https://github.com/pyreon/pyreon/commit/4d8a3e07a94000d2cff9dff642b108cfc188879d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Field kind="date" | "time" | "datetime">` picks a date, a time or both, on the web, iOS and Android.
+
+  The value is the zone-free wall-clock string an `<input type="date" | "time" | "datetime-local">` produces: `YYYY-MM-DD`, `HH:mm` (24-hour) or `YYYY-MM-DDTHH:mm`. `''` means no value. `min` and `max` take strings in the same format and bound what can be picked.
+
+  On the web it renders the matching `<input>`. On iOS it is a `DatePicker`; on Android, Material 3's date picker and time picker dialogs. With no value the native field shows the placeholder (or the locale's date pattern), and a clear button returns it to `''`. Material's time picker cannot disable hours, so on Android a time bound is applied when the choice is confirmed.
+
+  A static `min` or `max` that is not in the kind's format, or is not a real date, is ignored by a browser; the compiler drops it on iOS and Android too and names it. `min` after `max` is kept and named. `onSubmit` is not allowed on a date kind, because a picker has no keyboard submit.
+
+- [#4154](https://github.com/pyreon/pyreon/pull/4154) [`bc42b74`](https://github.com/pyreon/pyreon/commit/bc42b74a245f60028028f264f5c3968a330a2fe0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - JavaScript `Date` now works on iOS and Android. Before, `new Date(…)` was dropped with a warning, and every date method such as `d.getFullYear()` broke the native build.
+
+  On native, a date is its epoch milliseconds: a number, or NaN for an invalid date. That is already how `Date.now()` and the `Intl` formatters represent it, and a `Date`-typed field or parameter becomes a number. New runtime functions (`pyreonDateFrom`, `pyreonDateMake`, `pyreonDateGet`, `pyreonDateTimezoneOffset`, `pyreonDateISO`) support:
+
+  - `new Date(x)`, from milliseconds or an ISO date string;
+  - `new Date(y, m, d, h, mi, s, ms)`, in local time, with the web's roll-over;
+  - `Date.parse` and `Date.UTC`;
+  - the local and UTC getters;
+  - `getTime`, `getTimezoneOffset` and `toISOString`.
+
+  Each follows the web's conventions: a 0-based month, Sunday = 0, and the device's time zone. Parsing accepts only the ISO date format, so other strings that browsers guess at give NaN.
+
+- [#4062](https://github.com/pyreon/pyreon/pull/4062) [`1ece4c0`](https://github.com/pyreon/pyreon/commit/1ece4c0cd31a8ed21b14ad41fe794969f2a80d18) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `<Gesture>` primitive and transform props ([#3985](https://github.com/pyreon/pyreon/issues/3985)).
+
+  `<Gesture onPan onPinch onRotate>` reports continuous gestures with cumulative values (`dx`/`dy`/`x`/`y`, `scale`/`centerX`/`centerY`, `degrees`) and a `start` / `change` / `end` phase. Pan, pinch and rotate run at the same time, and nothing is reported until the pointer passes the touch slop, so a button inside the region still receives taps. It lowers to pointer events on the web, simultaneous `DragGesture` / `MagnifyGesture` / `RotateGesture` on iOS (`PyreonGesture`), and one `pointerInput` loop on Android (`PyreonGesture`).
+
+  Every primitive now accepts `translateX`, `translateY`, `scale` and `rotate`. Values can be signal reads and update in place: CSS `transform` on the web, `.offset` / `.scaleEffect` / `.rotationEffect` on iOS, `Modifier.offset` / `.scale` / `.rotate` on Android. The order is the same on every target (rotate, then scale, then translate).
+
+  The native compiler now honours a closure parameter's declared type when it widens signals to `Double`, so `x.set(e.dx)` in a gesture handler no longer leaves `x` an `Int`.
+
+- [#4604](https://github.com/pyreon/pyreon/pull/4604) [`5556eb8`](https://github.com/pyreon/pyreon/commit/5556eb8612bfea2023320e382dc823ca19d41431) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native integer arithmetic gives the web's results. An integer `+ - *` that left the 64-bit range crashed iOS and wrapped silently on Android; it now gives the web's value, exactly up to 2^63 and saturated beyond. Integer `% 0` no longer crashes (it is 0, NaN's integer value). Bitwise operators are 32-bit as on the web (`3 << 31` is -2147483648), and `>>>` and `~` now lower. `Math.max(...xs)` / `Math.min(...xs)` return ±Infinity for an empty list, so their result is a Double on both targets.
+
+- [#4050](https://github.com/pyreon/pyreon/pull/4050) [`06621cc`](https://github.com/pyreon/pyreon/commit/06621cc7fc5c1c591cafc4a2f56fbaf6a90afcea) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `Intl.DateTimeFormat`, `Intl.NumberFormat` and `toLocaleString` now work on iOS and Android.
+
+  `new Intl.DateTimeFormat(locale, options).format(ms)`, `new Intl.NumberFormat(locale, options).format(n)`, `n.toLocaleString(locale, options)` and `new Date(ms).toLocaleDateString / toLocaleTimeString / toLocaleString(…)` lower to new runtime formatters: `PyreonDateTimeFormat` and `PyreonNumberFormat`, built on Foundation on iOS and `android.icu` on Android. A formatter can be bound to a `const` (in a component or at module scope) or used inline. The locale, the time zone, the currency and the digit counts can be runtime values. On native a date is its epoch milliseconds, so `format` takes `Date.now()`, a number, or `new Date(ms)` written at the call.
+
+  Supported options: `dateStyle`, `timeStyle`, `timeZone`, `weekday`, `year`, `month`, `day`, `hour`, `minute`, `second`, `hour12`, `hourCycle` and `timeZoneName` for dates. For numbers: `style` (decimal, currency or percent), `currency`, `currencyDisplay` (symbol, code or name), `minimumFractionDigits`, `maximumFractionDigits`, `minimumIntegerDigits` and `useGrouping`. Component options become the same ICU skeleton V8 builds, so the native platform picks its pattern the way the web does. Numbers round half away from zero, as on the web. Every other option, `Intl` member and formatter method gets a named warning.
+
+  The output agrees with the web except where each platform's locale data differs. On iOS it matched Safari's `Intl` on all 350 cases of the differential table. A curated set of cases matches Chrome/Node exactly on both platforms.
+
+  `n.toLocaleString()` with no arguments used to emit a plain `String(n)` with a warning. It now formats with the device locale, as on the web.
+
+  `toLocaleString()` on a non-number follows the web too: a string is returned unchanged and a boolean becomes `"true"` / `"false"`. On an array or an object it gets a named warning rather than a number format.
+
+- [#4101](https://github.com/pyreon/pyreon/pull/4101) [`adeaef9`](https://github.com/pyreon/pyreon/commit/adeaef94fdd962ccfd19558dbc91ef52b5b71cee) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `JSON.parse` now lowers to iOS and Android. It decodes into the type the source names — `JSON.parse(s) as T`, `const x: T = JSON.parse(s)`, or the return type of a helper that returns it — through the new runtime `PyreonJSON.parse` (Swift `JSONDecoder`) and `PyreonJson.parse` (kotlinx-serialization, unknown keys ignored as on the web). It throws on malformed input, so it rides the `try`/`catch` lowering. An untyped call or a reviver argument is named in a warning instead of being guessed. The native decode is stricter than the web: input whose shape does not match the type throws.
+
+- [#4061](https://github.com/pyreon/pyreon/pull/4061) [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native apps can upload picked images and files ([#3979](https://github.com/pyreon/pyreon/issues/3979)).
+
+  - New `fileFromUri(uri, { name, type })` in `@pyreon/hooks` turns the URI a picker or the camera returned into a file a request can send. On the web it returns the picker's own `File`, with its real name and type, or reads the URI through `fetch`. On iOS and Android it becomes a `PyreonUploadFile`. Android reads `content://` URIs through the app's `ContentResolver`. The file is streamed from disk when the request is sent, so a large video is never held in memory.
+  - An endpoint call's `multipart` body lowers to the new `PyreonMultipartBody`. Parts keep source order. A struct value is sent as a `JSON.stringify` text part, and an array sends one part per element. Names, filenames and text values are normalized and escaped the way `FormData` does it. An executed test checks the runtime writer byte for byte against the web's `FormData` on both targets.
+  - `body: file` sends the file's bytes as the whole body, typed by the file. A string `body` is a text body.
+  - A `form` body is encoded by the web's own `encodeForm` at compile time when every value is a literal. When a value is only known at runtime, `PyreonURL.query` encodes it when the request is sent.
+  - A `data:` URI is decoded the way `fetch` decodes it: percent escapes become raw bytes, `;base64` matches in any case, and a URI with no type defaults to `text/plain;charset=US-ASCII`.
+  - Named warnings: an unawaited `fileFromUri`, two body encodings in one call, a runtime array of objects in `multipart`, and a nested object in `form`.
+  - `useImagePicker().pick()`, `useFilePicker().pick()` and `useCamera().capture()` are now typed as `String?` natively. `if (uri === null) return` therefore narrows the URI for the code after it on iOS. Before, every later read was an optional and failed to compile.
+  - Fixed: an early `return` inside an event handler did not compile on Android. Kotlin forbids a bare `return` in a lambda. An async handler now emits `return@launch`, and a plain handler is labelled.
+  - Fixed: on iOS, a value of a type declared at file scope, such as `interface Meta { … }`, was not recognized as a struct inside a request. iOS and Android could therefore encode the same field differently.
+
+- [#4145](https://github.com/pyreon/pyreon/pull/4145) [`d73d237`](https://github.com/pyreon/pyreon/commit/d73d2370bc1ef349722eec6cdd73db686e733547) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `Map`, `Set` and `Record` now keep insertion order on iOS, as they do on the web and on Android.
+
+  Swift's `Dictionary` and `Set` order entries by a hash that changes on every launch. So the same `Record` rendered in a different order each time, and `Object.keys(r)` changed between runs. The iOS output now uses new runtime types, `PyreonMap` and `PyreonSet`. They use the same syntax as `Dictionary` and `Set`, and keep the web's rules:
+
+  - setting an existing key keeps its position;
+  - deleting a key and adding it again moves it to the end;
+  - a string-keyed map stringifies as a JSON object in insertion order.
+
+  Also new on both targets:
+
+  - `m.keys()` and `m.values()` now lower. Before, they were copied into the output as written and did not compile.
+  - `Object.keys(r)` and `Object.values(r)` on a map now lower. Before, they produced an empty array.
+  - `new Map(other)` now copies a map.
+
+- [#4133](https://github.com/pyreon/pyreon/pull/4133) [`544a762`](https://github.com/pyreon/pyreon/commit/544a762b866a2fd526f0e20636cc4c256ab9fc15) Thanks [@vitbokisch](https://github.com/vitbokisch)! - JavaScript globals in native code now either lower correctly or are named, instead of compiling with no warning and failing the native build.
+
+  - `parseInt`, `parseFloat` and `Number(text)` follow the web's rules on both targets, through new runtime functions `pyreonParseInt`, `pyreonParseFloat` and `pyreonToNumber`. A valid prefix now parses: `parseInt("3.5")` is 3 and `parseFloat("12px")` is 12 (both were 0 natively). `Number` trims whitespace and reads `""` as 0. A failed `parseFloat` or `Number` is `NaN`, as on the web (it was 0), and Swift prints it as `NaN`.
+  - `isNaN(parseInt(text))` checks whether the parse failed. A native integer cannot be NaN, so a NaN test on an integer variable now warns.
+  - `Number.isNaN`, `Number.isFinite`, `Number.parseInt`, `Number.parseFloat` and `isFinite` lower.
+  - `a.localeCompare(b)` and `crypto.randomUUID()` lower.
+  - `console.info`, `debug`, `warn` and `error` lower. On Kotlin, a `console.log` call with several arguments now compiles.
+  - Any other browser global (`setTimeout`, `fetch`, `Promise`, `localStorage`, `window`, …) or JavaScript-only method (`toISOString`, `toPrecision`, …) that reaches the emitted Swift or Kotlin is now named in a warning that says what to use instead.
+
+- [#4095](https://github.com/pyreon/pyreon/pull/4095) [`c0df87c`](https://github.com/pyreon/pyreon/commit/c0df87ca58a9c23fcc0035cb46c3db5f9f399c46) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A rocketstyle `active:` (or `pressed:`) style on a `Button` or `Press` base now lowers to iOS and Android, driven by the platform's own press state: a `PyreonPressStyle` ButtonStyle reading `configuration.isPressed` on iOS, and a hoisted interaction source with `collectIsPressedAsState()` on Android. `hover` / `focus` blocks are named in a warning instead of being dropped as a "non-literal value".
+
+- [#4061](https://github.com/pyreon/pyreon/pull/4061) [`fd8d8ec`](https://github.com/pyreon/pyreon/commit/fd8d8ec5b359691205defe02c7184f5a331ae155) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native requests can now carry what the user entered ([#3978](https://github.com/pyreon/pyreon/issues/3978)).
+
+  - `useMutation` lowers on iOS and Android. `useMutation<T>(endpoint.mutation())` and `useMutation({ mutationFn: (vars) => endpoint({ json: vars }) })` become a `PyreonMutation` container with `mutate`, `mutateAsync`, `reset` and `data` / `error` / `status` / `isPending` / `isSuccess` / `isError` / `isIdle`. Each request is built where `mutate` is called, so it carries the values of that moment. The latest call owns the state, and `onSuccess` / `onError` / `onSettled` run in TanStack Query's order at both layers. When the view goes away nothing is written and no callback runs; the request itself is not aborted. `invalidates`, `onMutate` and `retry` produce a named warning.
+  - An endpoint awaited in an `async` event handler (`await signIn({ json: { email: email() } })`) lowers to the new `PyreonHttp.call`. A non-2xx rejects and ends the handler there; the failure is reported to the log instead of crashing the app on Android. A call that is not awaited is sent fire-and-forget. Reading the awaited value has no decode type natively and gets a warning pointing at `useMutation<T>`.
+  - Endpoint calls accept runtime values: a `json` body (serialized byte for byte like the web's `JSON.stringify`), header values, and query values. Query values are serialized at request time by the new `PyreonURL.query`, which matches the web's `buildQuery`.
+  - `useFetch` and a `useQuery` `fetch` accept a runtime `body` (`JSON.stringify(draft)`).
+  - Per-call headers now merge over an endpoint's declared headers, as the web does. Before, they replaced them. A number or boolean header value is sent as its string, and a `null` one removes the header.
+  - A string body sent without a content type now gets `text/plain;charset=UTF-8`, the Fetch standard default. Before, iOS, Android and the web each sent something different.
+
+- [#4102](https://github.com/pyreon/pyreon/pull/4102) [`0dd9221`](https://github.com/pyreon/pyreon/commit/0dd9221e3e30019f57832e95fe76dd067655170f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A schema's `.parse(x)` now lowers to iOS and Android when called on a top-level binding (`const Pet = s.object({ … })`, or `zodSchema(z.object({ … }))`). It calls the emitted struct's own `parse`, which returns the validated value or throws, and goes through the same `try`/`catch` handling as a throwing helper: `try` inside a `try` block or a helper that becomes `throws`, and `try!` plus a "terminates the app" warning where nothing catches it. Before, the call was only warned about.
+
+  Plugins can now declare a synchronous throwing expression with `ExprEmitter.throwsSync`, which gives it that handling.
+
+  On Swift, `PyreonSchemaError` now reads as text (`Field 'sku' violated constraint 'min length 1'`), matching the message Kotlin's error already carried. The message is not the web validator's text. An inline schema's `.parse(x)` and `.parse` on a `discriminatedUnion` binding still warn by name.
+
+- [`7270e41`](https://github.com/pyreon/pyreon/commit/7270e41ba3cbb0597265129877c060f7d2a7b3d5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `<Select>` primitive: choose one value from a list with each platform's own picker.
+
+  ```tsx
+  <Select
+    value={fruit()}
+    options={[{ value: 'apple', label: 'Apple' }]}
+    onChange={(v) => fruit.set(v)}
+    placeholder="Pick a fruit"
+  />
+  ```
+
+  On the web it renders a `<select>`. On iOS it lowers to `PyreonSelect`, a menu-style `Picker`. On Android it lowers to `PyreonSelect`, a Material 3 `ExposedDropdownMenuBox`. `options` is `{ value, label, disabled? }[]`, exported as the `SelectOption` type. `value` is the chosen option's value. `''`, or any value no option has, selects nothing and shows the placeholder. A disabled option is listed but cannot be chosen, and the placeholder cannot be chosen once something is. Every user choice goes through `onChange`.
+
+  A list typed `SelectOption[]` is passed to the native runtime unchanged. A list of your own type is mapped to `SelectOption`, which reads `disabled` only when your type declares it. A type without `value` and `label` gets a named compiler warning.
+
+  Also fixed: a signal write is now typed by the signal. `xs.set([{ value, label }])` used to build its objects from whichever declared struct matched their fields first. In a file that also imports `@pyreon/charts`, that was the chart engine's `PolarTick`, so the assignment did not compile.
+
+- [#4136](https://github.com/pyreon/pyreon/pull/4136) [`be9720b`](https://github.com/pyreon/pyreon/commit/be9720b4d801e8f5aac8d5c2e400c179ca129984) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `setTimeout`, `setInterval`, `clearTimeout` and `clearInterval` now work in iOS and Android code. Before, each was copied into the Swift or Kotlin output as written, and the native build failed with no warning from the compiler.
+
+  They lower to a new runtime type, `PyreonTimers`, which behaves like the web. Callbacks run on the main thread. Ids are positive and never reused, so you can keep one in a signal and clear it later. Clearing an id that already fired or never existed does nothing. A timeout is forgotten once it has run. An interval keeps running until you clear it. On iOS, timers keep firing while the user scrolls.
+
+### Patch Changes
+
+- [#4476](https://github.com/pyreon/pyreon/pull/4476) [`e1c9e02`](https://github.com/pyreon/pyreon/commit/e1c9e0225bfc512e149840fa59a2b83ffe0f0bcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The labels at the ends of an x value axis are no longer cut off by the canvas, and `<Axis y format>` now overrides a chart-level `format` as documented.
+
+  An upright x tick label is centred on its tick, so the first and last ones hang past the plot by half their width. The right gutter was a fixed 12px and the left one held only the y labels, so a wide label was clipped: a horizontal bar chart in milliseconds showed `300.0 r` at its right edge. The layout now measures that overhang and widens the gutter to hold it with the usual 6px label gap, on the web and in the native chart engines. Category axes keep their slim gutter.
+
+  `<Chart format={a}><Axis y format={b} /></Chart>` used `a` for the axis, the tooltip and the description, although `ChartProps.format` says the axis format overrides it. It now uses `b`, on plot and family charts alike.
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Per-axis grid and minor lines in `@pyreon/charts`: `<Axis y grid={false}>` hides the value-axis lines, `<Axis x grid>` adds vertical lines at the x ticks (the category rows on a horizontal chart), and `<Axis y minor={4}>` / `<Axis x minor>` draw thin lines at equal steps between major ticks on linear axes. `showGrid` keeps meaning what it always did; a chart that sets none of these draws the same lines as before. They lower to iOS and Android as literals.
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A reversed value axis for `@pyreon/charts`: `<Axis y inverse>` and `<Axis y2 inverse>` (or `yInverse` / `y2Inverse` on `<PlotChart>`).
+
+  The high end of the axis goes to the bottom (the left, on a horizontal chart), so a rank chart reads 1 at the top and a depth profile reads depth going down. Bars and areas hang from the top (their baseline is the axis floor, now the top), their rounded ends move to the free end, and the ticks run the other way. It composes with log and time axes, dual axes (each reverses on its own), a zoom window, the crosshair, the tooltip and the hit targets, and with `rtl` (RTL mirrors x, inverse flips y, so they commute). Only the value-to-pixel mapping flips: the data, the tooltip rows and the accessible table keep their order. `yInverse` / `y2Inverse` lower to iOS and Android as literals; reversing the x (category) axis is not supported yet and warns by name.
+
+  Internally every value-to-pixel mapping now goes through one `yPx` / `xPx` seam over `Domain.inverse`; the refactor is behaviour-neutral (every existing draw-list golden and native-golden entry is unchanged).
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Axis x inverse>` for `@pyreon/charts`: reverse the DIRECTION of the x axis (first category, or the smallest x, at the right) without moving the y axis.
+
+  Only the picture reverses. Clicks, the tooltip, brush ranges and `onSelect` report data indices, the keyboard walk stays in data order, the accessible table keeps its order, and a zoom window stays in data fractions. Under `rtl` the two cancel (RTL mirrors the plot, `inverse` reverses the direction within it), so the plot reads left to right again. Works on category, numeric and time axes and on horizontal charts; lowers to iOS and Android as a literal `xInverse` field (the engine is handed the rows reversed through the same keep map `maxPoints` uses, so taps map back to data order).
+
+  Also fixes the keyboard pick on a thinned (`maxPoints`) chart, which reported the position in the thinned list instead of the datum's row.
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bars on a numeric or time x axis for `@pyreon/charts`. With `xValue` (and `<Axis x time>`), plain, grouped, stacked and waterfall bars sit at their own x instead of in an equal band: the slot is the smallest positive gap between two x values, or the new `barSpan` prop (in x units), bars are centred on x and the axis is padded by half a slot. `barWidth`, `barGap` and `barCategoryGap` work inside the slot. Horizontal charts tick the numeric axis down the y side; `<Axis x inverse>`, RTL, the hit rects, the tooltip, the keyed update morph (bars only), the focus ring and the server-rendered first frame follow. `barSpan` lowers to iOS and Android as a literal. `chartToSvg` gains `xTime`.
+
+  Also gates every dev-only warning at its call site (`process.env.NODE_ENV !== 'production'`), so the message strings no longer ship in production bundles (about 250 B gzip off a `PlotChart`, about 215 B off a `Chart` pie).
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bar thickness, per-datum colour and bridged gaps in `@pyreon/charts`.
+
+  - **Bar thickness.** `<Chart barWidth barGap barCategoryGap>` (and the same props on `<PlotChart>`). `barWidth` is a px ceiling on one bar, `barGap` the space between the bars of a group as a fraction of a bar, `barCategoryGap` the space between categories as a fraction of the band (0.25 by default, as before). They reach plain, stacked, grouped and waterfall bars in both orientations, and the hit target, the keyed morph and the server-rendered frame follow the drawn bar. They lower to iOS and Android as literals. A chart that sets none draws exactly as before.
+  - **Per-datum colour.** `fill={fillBy('tone')}` reads a colour off the row; `fill={shadeBy('margin', { ramp })}` maps a value through a ramp. Both are imported bindings, so a chart that does not use them does not bundle them, and `fill` is a descriptor rather than a string so it cannot be mistaken for the series colour (`color="#hex"`) or the long-format split (`<Chart color="field">`). A shaded chart draws a ramp legend above the plot (low and high values at its ends; also in server SVG and mirrored under `rtl`), and the value behind each colour is a `(shade)` row in the tooltip and a column in the accessible table. The default ramp follows the theme. Bars and dots. `fillBy('field')` / `shadeBy('field', { ramp, domain })` with a literal field name lower to iOS and Android (the engine colours from data); an accessor function, the legend and the `(shade)` rows are web-only and the compiler names each.
+  - **`connectNulls`** on `<Line>` and `<Area>` draws one stroke (or fill) through the finite points instead of breaking at each gap. The gap stays missing data in the tooltip and the table. Default off. Lowers to iOS and Android.
+
+  The generated native chart engine gains the bar-geometry parameters and the new `Series` fields; apps that do not use the options emit and draw the same as before.
+
+- [#3899](https://github.com/pyreon/pyreon/pull/3899) [`597cdf7`](https://github.com/pyreon/pyreon/commit/597cdf7d050ea8782625e360054787aaf5addb3e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Marks accept a column. `line(prices)`, `bars(values)` and the other single-channel marks take a `Float64Array` or `number[]` in place of an accessor, and `<PlotChart>`'s `data` is optional when every mark is a column (the chart has one row per index of the longest column). A column resolves with an indexed read rather than a function call per row, and a plain `number[]` of the chart's length whose entries are all numbers or `NaN` is used as the series without a copy (a typed array, a short array or one holding an infinity is copied once). Against uPlot 1.6 with the same `number[]` input, a 1M-point line now mounts in a statistical tie (14.9ms each, from 22.8ms), a 10k-point line is 1.14× behind (was 1.35×), and updates are 2–2.5× faster. New `Column` and `YChannel` types are exported from `@pyreon/charts/engine`. The native lowering does not read columns yet and warns on one.
+
+  Faster `<PlotChart>` mounts. For a chart over 200 rows, both the accessible table and the canvas's spoken description (`aria-label`) are now BUILT after the first paint rather than before it; the canvas carries its title until then, and a server render still describes in full. The y-extent scan runs as a seed pass plus a bare min/max loop (V8 1.48 → 0.53ms over 1M values). The M4 decimation scan reads the scale and band constants once instead of per point (same arithmetic, bit-identical output; 16–18% faster on V8, 35–40% on JavaScriptCore). The generated Swift and Kotlin engines carry both engine changes. Measured on a 1M-point line mount: 22.8ms → 19.6ms.
+
+  New `density` prop on `<PlotChart>` and `<Chart>`: `'fine'` (the default, two M4 decimation columns per CSS pixel) or `'device'` (one per device pixel, uPlot's trade: about half the points on a 1× display, a faster mount, and a measurably coarser noisy line). Web only; native warns and keeps the default.
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Consolidation of the cartesian-basics campaign in `@pyreon/charts`, with no change in behaviour: the grid lines share one builder (`tickLines`), the scale-view dispatch moves into the descriptors (`apply` skips an axis it already applied; the layout calls the descriptor's `ticks` directly), and the axis domains carry `inverse` without a helper. A chart that imports none of `fillBy`, `shadeBy`, `sqrt`, `symlog` or `log` bundles none of their code (locked by `plot-treeshake` for the `PlotChart`, `chartToSvg` and `<Chart>` entries).
+
+- [#3912](https://github.com/pyreon/pyreon/pull/3912) [`550ab23`](https://github.com/pyreon/pyreon/commit/550ab230b1e96bb8a5af6a418450df622d961ba6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Line decimation finds each pixel column's end once per column instead of testing every point, and checks for gaps inside that same pass instead of a separate scan first. The output is bit-identical. A 1,000,000-point line given as a column mounts in ~12.5 ms instead of ~14.6 ms in Chromium, now ahead of uPlot; the native chart engines carry the same change.
+
+- [#4132](https://github.com/pyreon/pyreon/pull/4132) [`b84bd09`](https://github.com/pyreon/pyreon/commit/b84bd0933dadfba3350e1128f9b0d9ef13186a03) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster M4 decimation for dense category lines. Within each pixel column, a value's y is now computed only when the value goes past the column's current lowest or highest value. A value between them cannot change either extreme, because y is monotone in the value. The chosen points are unchanged, bit for bit. The generated Swift and Kotlin chart engines are regenerated with the same loop.
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Maps in `@pyreon/charts`, first slice: correctness and a usable interaction model.
+
+  - **Holes.** GeoJSON inner rings (lakes, enclaves) are kept end to end and cut out of the fill and the hit test: South Africa has Lesotho cut out and a point in a lake is not in the country. The fill is one "keyhole" ring per outer ring (the holes are joined in along zero-width bridges), so every draw executor, the tween and the mirror, and both native runtimes draw it unchanged; borders stroke the outline and each hole, never the bridge. A shape without holes draws exactly as before.
+  - **Speed.** Region values are read into region order once per change (a roam frame reads one array slot per region), and the projected features of a GeoJSON or registry map are memoised, so a pan or zoom frame re-projects no vertex (asserted with counters).
+  - **Interaction.** Hover outlines the region (`emphasis`), `selectedMode` `'single'` / `'multiple'` keeps a selection (`onSelectionChange`) from a click or Enter / Space, and the canvas description and the accessible table name the selected regions. It is a wrapper over the shared canvas host (`withItemStates`), so no other family's bundle changes; pie, treemap and sankey can adopt it. Web-only: iOS and Android warn by name.
+  - **Join and properties.** `options.idProperty` joins `values` on the feature `id` or any property; `onSelect` and the new `tooltipFormatter` receive the region's key, label, value and the feature's GeoJSON properties.
+  - **`geoToSvg`** draws the same layers as the live host (points, paths, heat, pies) and accepts the value list as well as a record.
+
+  Breaking (0.x, minor): the older duplicate overlay module is removed. `geoPointsToSvg`, `renderGeoPoints`, `renderGeoPaths`, `hitGeoPoint`, `geoPointRadii` and the types `GeoPoint`, `GeoPath`, `GeoPointsOptions`, `GeoPointsToSvgOptions` are gone; use `geoToSvg` (now with `points`, `paths`, `heat`, `pies`) and `renderGeoOverlayPoints`, `renderGeoOverlayPaths`, `hitGeoOverlayPoint`, `geoOverlayPointRadii`. Nothing in this repository used them.
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Map layers for `@pyreon/charts`. `options.sphere` draws the outline of the whole sphere behind the regions and fits the box to it; `options.graticule` draws meridians and parallels. `flows` draw great-circle arcs (`flowOptions.progress` reveals each by arc length on the sphere; an arc crossing the seam is drawn as two runs, never a chord); `sizeLegend` adds a key of nested circles for sized point marks; Point, MultiPoint, LineString and MultiLineString features in a map's GeoJSON or TopoJSON become point marks and paths; `fitTo` zooms to named regions and `zoomOnClick` to a clicked one. Rings that cross the seam half a turn from the central meridian (Russia, Fiji, the Aleutians) are cut at it for Equal Earth, Natural Earth and Albers, for any central meridian, so no shape draws a chord across the map. `sphere`, `graticule` and the geometry lower to iOS and Android; `flows`, `sizeLegend`, `fitTo` and `zoomOnClick` are web-only (named warnings). A gallery for choropleth, bubble and flow maps uses `@pyreon/charts-maps`.
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Map projections for `@pyreon/charts`: `equalEarth` (Šavrič, Patterson and Jenny 2018), `naturalEarth1`, `albers` (equal-area conic with `parallel1`, `parallel2`, `centerLon`, `centerLat`) and `albersUsa` (the lower 48 with Alaska and Hawaii in insets; overlays project into the right inset), alongside `equirectangular` and `mercator`. Each has a forward and an inverse (`geoProject` / `geoUnproject`: a pointer back to lon/lat), with property tests (equal-area Jacobian, round trip, monotone along a parallel, published reference values). A central meridian rotates a world projection; a shape crossing the new seam is not clipped (stated in the docs). The arithmetic is engine code shared with iOS and Android, and `options={{ projection: 'equalEarth' }}` lowers (the compiler writes the enum case).
+
+  Also: a map's default colour ramp is the map's own, with each stop at least 3:1 against the dark page (the theme ramp's lowest stop WAS the dark page, so the lowest regions vanished), the lightest light stop at least 1.4:1 against white, and contrast rising with the value; a region with no value is hatched over the neutral fill (`options.hatchColor`) and a `visualMap` strip gets a "No data" swatch (web). Albers USA wraps longitude relative to each inset's own central meridian, so the Aleutians west of the antimeridian land in the Alaska inset instead of being thrown across the map; the composite's bounds drive the fit.
+
+- [#4738](https://github.com/pyreon/pyreon/pull/4738) [`e8fedbe`](https://github.com/pyreon/pyreon/commit/e8fedbe3ad940127ec9337b73ec9be1d2a3c9a04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Non-linear axes for `@pyreon/charts`: scale descriptors `sqrt()`, `symlog({ constant })` and `log()`, imported bindings accepted by `<Scale y|x>` and `<Axis y|x scale>` (a numeric `xValue` x axis takes a descriptor; `yScale="log"` stays a string for the value axis). A chart that never imports one bundles none of the scale code.
+
+  Each scale is a view of the data: the geometry stays linear over transformed values, ticks are nice in the real values (decades with 1-2-5 minors for log, the ordinary nice values for sqrt, zero and decades either side for symlog) and labelled with them. A value a scale cannot place (log: not above zero, sqrt: below zero) is a gap, never a NaN pixel; symlog places everything (`sign(v) * log10(1 + |v|)`). The tooltip, the table and the labels keep the real values, a time axis stays linear, and the spoken description names a non-linear scale. On iOS and Android the compiler recognises the imported descriptor with its literal `constant` (a non-literal one warns by name) and builds the engine's own view (the transform and ticks are the generated engine's); the native spoken description names the scale too.
+
+  Also fixes the nearest-point hit (tooltip, crosshair) on a numeric x axis, which found the nearest EVENLY SPACED slot instead of the nearest drawn point.
+
+- [#4604](https://github.com/pyreon/pyreon/pull/4604) [`5556eb8`](https://github.com/pyreon/pyreon/commit/5556eb8612bfea2023320e382dc823ca19d41431) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/feature`'s CRUD hooks now behave as the web does on iOS and Android, identically on both:
+
+  - A non-2xx answer rejects with the web helper's error, `PyreonHttpMessageError`: `error.message` is the body's non-empty string `message`, else `<METHOD> <url> failed: <status>`, plus `status` and the JSON text of a truthy `errors`. Every lowered request runs through a new `.reject` / `Reject` HTTP middleware that builds it.
+  - A 204 on `useCreate` / `useUpdate` resolves with no data (status `success`, `data` absent) instead of failing to decode. `PyreonMutation` gains `orEmpty` entry points (`mutate(_:orEmpty:)`, `mutateAsync(_:orEmpty:)`; Kotlin `runOrEmpty` / `runAsyncOrEmpty`) whose callbacks receive the optional value, so read the `onSuccess` data and an awaited `mutateAsync` result with `?.`.
+  - A record missing a schema field decodes that field to its `initialValues` default on Swift too, as Kotlin already did; Swift's synthesized decode used to fail the whole response.
+
+  `<error>.message` on a value typed `Error` (`q.error()?.message`, an `onError` parameter) now compiles on both targets and reads the error's message. Swift's `PyreonHttpError` reads `HTTP <status>` there, as the Kotlin twin does.
+
+- [#4207](https://github.com/pyreon/pyreon/pull/4207) [`606d713`](https://github.com/pyreon/pyreon/commit/606d713f5265a250b078fb7481fec9c6262cca40) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A path parameter whose value is exactly `.` or `..` is now encoded as `%252E` / `%252E%252E`. `encodeURIComponent` left it intact and the URL parser (fetch, OkHttp) resolves it — and `%2E` — as a dot segment, so the request, credentials included, reached a different endpoint. Applied identically by `@pyreon/http` (new export `encodePathParam`, used by `applyPathParams` and the native compile-time literal path), the iOS/Android `PyreonURL.encodePathParam`, and lathe's generated client runtime. Every other value is unchanged.
+
+- [#4110](https://github.com/pyreon/pyreon/pull/4110) [`52c9d4b`](https://github.com/pyreon/pyreon/commit/52c9d4bcde30760e12790f24c934083efcc575a7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Docs only: the `retry` middleware's default backoff is EQUAL jitter (a delay drawn uniformly from half to all of the exponential step), not "full jitter" as the comments, manifest and docs said. The algorithm is unchanged.
+
+- [#4604](https://github.com/pyreon/pyreon/pull/4604) [`5556eb8`](https://github.com/pyreon/pyreon/commit/5556eb8612bfea2023320e382dc823ca19d41431) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native: a struct field typed `Date` now decodes from the web's ISO string and encodes back to it.
+
+  A `Date` is still its epoch milliseconds (a `Double`) in emitted logic. Before this fix, a decoded struct with a `Date` field failed the whole decode on iOS and Android when the JSON held the ISO string a server sends. `JSON.stringify` wrote the milliseconds.
+
+  The field is now declared with an ISO-string codec:
+  - Swift: the `@PyreonISODate`, `@PyreonOptionalISODate` and `@PyreonISODates` property wrappers.
+  - Kotlin: `@Serializable(with = PyreonDateSerializer::class)` and its list twin.
+
+  The codec covers a `Date` field, an optional `Date` field and a `Date[]` field. A `Date` nested deeper, for example in `Record<string, Date>`, gets a warning.
+
+- [#4604](https://github.com/pyreon/pyreon/pull/4604) [`5556eb8`](https://github.com/pyreon/pyreon/commit/5556eb8612bfea2023320e382dc823ca19d41431) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native JSON decodes now accept what the web accepts:
+  - A quoted member name in a type (`'content-type': string`) is no longer dropped from the struct.
+  - Android accepts `3.0` for a field typed as an integer.
+  - iOS decodes and encodes `Record<number, T>` as a JSON object.
+
+  `@pyreon/validation`'s `number()` is a Double natively, so a fraction such as `1.5` passes, as it does on the web. Only `number().int()` is an integer.
+
+- [#4757](https://github.com/pyreon/pyreon/pull/4757) [`5496b3f`](https://github.com/pyreon/pyreon/commit/5496b3f079f3c60750b726b9bf4f8ff02ba9b606) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Emitted Swift and Kotlin compile without warnings, and an indexed read the code tests for absence no longer traps natively.
+
+  - **Behaviour fix:** `xs[i] ?? d`, `xs[i] === undefined` and `xs[i]?.x` on an array now read bounds-checked on both targets (`xs.indices.contains(i) ? xs[i] : nil` or the new runtime helper `pyreonAt(xs, i)` on Swift, `xs.getOrNull(i)` on Kotlin), so the guard runs instead of the subscript trapping first. A NUMBER index is absent unless whole and in range (`xs[0.5]`, `xs[NaN]`, `xs[Infinity]`), as on the web. A local `const v = xs[i]` tested later becomes optional only when every use of that binding (resolved by scope) is an absence test or flow-narrowed (an early-exit guard, `if (v !== undefined)`, the matching ternary branch); `let v = xs[i]; if (v === undefined) v = d` folds to `xs[i] ?? d`; any other use keeps the plain read it compiled to before and gets a named warning.
+  - `Number(n)` over a number is the documented int→double conversion: `Double(n)` / `(n).toDouble()` over an integer, the identity over a Double. Before it fell into the string lowering (`(Double(n) ?? 0)` on Swift, a compile error on Kotlin).
+  - `NaN`, `Infinity` and `Number.NaN` / `POSITIVE_INFINITY` / `NEGATIVE_INFINITY` / `MAX_VALUE` / `MIN_VALUE` / `EPSILON` lower to the Double constants; they used to be emitted verbatim and failed to compile.
+  - Warnings removed from every emit: an unused loop variable is bound as `_` (Swift); a `const` is no longer emitted `var` because a same-named binding elsewhere was reassigned (mutability is now resolved through block scopes); a keyword argument label is written bare (`Mark(repeat: true)`); Kotlin no longer converts a value already known to be a Double or Long (`.toDouble()` / `.toLong()`).
+  - Integer arithmetic in a callback whose parameters are now typed goes through the overflow-safe helpers, as integer arithmetic elsewhere already did (`x * 2` → `pyreonMul(x, 2)` in, for example, `xs.map((x: number) => x * 2)`).
+  - `x ?? null` over a non-optional `x` emits `Optional(x)` on Swift and `x` on Kotlin (a declared optional type is kept: `val m: String? = n`).
+  - **Visible on iOS / Android:** number formatting follows the web where a value's type was a `Double` alias or narrowed in a ternary: `String(v === undefined ? 0 : v)`, templates and `+` concatenation print `2`, not `2.0`. Native charts change with it: generated chart-engine labels that printed `2.0`, tick labels like `10.0`, and colours like `rgba(255.0, 0.0, 0.0, 0.5)` now print `2`, `10` and `rgba(255, 0, 0, 0.5)`, exactly as the web chart does.
+  - Swift: `v === undefined ? v : f(v)` where `f` returns an optional no longer turns `f`'s own `undefined` into `v`.
+  - Kotlin: a top-level function passed as a value is a function reference (`::measure`).
+  - Swift: a `try` whose body cannot throw drops its unreachable `catch`.
+  - A warning for a tested indexed read that stays a plain subscript names the file and line, one per binding.
+  - Inference: calls through a function-typed parameter or an annotated local arrow, a `let x: Double` declared without an initializer, a ternary of a struct and an object literal of that struct, annotated arrow parameters, and `Math.abs` / `min` / `max` over `Double`-alias values are now typed.
+  - The generated chart engine is regenerated with all of the above (and its counting loops replaced by `Number(n)`); `PyreonChartCanvas.swift` uses the two-parameter `onChange(of:)`. The Swift runtime packages build and the generated Kotlin engine compiles with zero warnings, locked by `native-chart-engine-generated.test.ts` (kotlinc's CLI does not report unused or never-mutated variables, so the Kotlin side covers what kotlinc reports); the engine functions whose source changed run the same on the web, Swift and Kotlin (`native-chart-engine-execution-parity.test.ts`).
+
+- [#4098](https://github.com/pyreon/pyreon/pull/4098) [`769d852`](https://github.com/pyreon/pyreon/commit/769d8524cbf4d4ac9627a039d0015a831a31151e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The early-exit null-check narrowing (`if (v === null) continue; use(v)` → Swift `guard let v else { continue }`) now applies in every statement list: loop bodies, `switch` cases, `onMount` bodies and closure bodies, not only function bodies and `if` branches. A local declared inside a nested list is now typed, and a `for … of` item carries its element type on both targets, so the guard can see that the value is optional. Kotlin binds a mutable member subject the same way inside a loop (`val tags = b.tags ?: run { continue }`).
+
+  Also, an integer literal beside a nullable or `Double`-aliased value now emits as a Double on Kotlin: `fmt(1)` for a `Double | null` parameter emits `fmt(1.0)` (was `1L`), and `x === 0` with `x: Double` emits `x == 0.0` (was `x == 0L`). Both were kotlinc type errors.
+
+  The generated native chart engine is regenerated with the new emit: Swift `rectCmd` binds its optional `grad`/`corners` with `guard let`, a band annotation's optional label is bound before use on both targets, a single-axis tick label prints a whole number without a trailing `.0` on Android, and a time-tick guard compares `target <= 0.0`.
+
+  Part of [#3956](https://github.com/pyreon/pyreon/issues/3956).
+
+- [#4157](https://github.com/pyreon/pyreon/pull/4157) [`817d232`](https://github.com/pyreon/pyreon/commit/817d23245ea8b00b1680a8d1fc6933d919cd0a0c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A whole-valued Double stored into an integer struct field (`{ id: Math.floor(x / d) }`) no longer crashes an iOS app when the value is NaN or ±Infinity at runtime. Swift now converts through the runtime's new `pyreonInt(_:)` instead of `Int(_:)`, which traps on non-finite values. `pyreonInt` has the same semantics as Kotlin's `Double.toLong()`, which the Android output already uses: NaN is 0, ±Infinity and out-of-range values saturate to the integer's max/min, and everything else truncates toward zero. Both targets now store the same value. `Date.now()` is always finite and keeps its direct integer spelling.
+
+- [#4296](https://github.com/pyreon/pyreon/pull/4296) [`bbac2d8`](https://github.com/pyreon/pyreon/commit/bbac2d834fe4be327ae31dfba2fa92ee3fb7d744) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native: `Math.round` now gives the same result on iOS and Android, matching the web. Both targets call a new runtime function, `pyreonRound`, which uses JavaScript's rule: a tie rounds toward +Infinity, and NaN, ±Infinity and values that are already whole are returned unchanged. Before this change, Android used `java.lang.Math.round`. Its `Long` result turned NaN into 0 and capped large values at `Long.MAX_VALUE`, so `{ id: Math.round(0 / 0) + 1 }` stored 1 on Android and 0 on iOS, and `Math.round(1e300)` displayed 9223372036854775807. iOS used `floor(x + 0.5)`, which returns 1 for `Math.round(0.49999999999999994)` and gives wrong results above 2^52.
+
+- [#4694](https://github.com/pyreon/pyreon/pull/4694) [`26a2a11`](https://github.com/pyreon/pyreon/commit/26a2a110695374f3ce00a045bc8a0d10541ad656) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A local declared inside a nested block (an `if` branch, a `try` body, a loop body, a `switch` case) is now typed for inference on iOS and Android. Before, only a nested local whose type was optional was recorded, so every type-gated lowering of such a local missed: `try { const r = rec(text); return Object.keys(r).join(',') } catch { … }` over a `Record` emitted an empty array with an "Object.keys(...) has no native equivalent" warning, where the same code at function level lowers to the record's keys.
+
+  The generated native chart engine is regenerated with the new emit: integer counters declared inside loops now add through the overflow-checked `pyreonAdd` / `pyreonSub` like function-level ones, and divisions between locals already known to be `Double` drop their redundant `Double(…)` / `.toDouble()` casts.
+
+- [#4532](https://github.com/pyreon/pyreon/pull/4532) [`4cf113d`](https://github.com/pyreon/pyreon/commit/4cf113d22a660b2168b4d62968647eb0517e8b5f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native number-to-text now prints exactly what the web prints. `String(x)` and `'text' + x` used a private helper that printed `1e15` as `1000000000000000.0` (iOS) / `1.0E15` (Android) and `0.000001` as `1e-06` / `1.0E-6`; template literals kept the native exponent form (`1e-07`, `1.0E-7`); and `x.toFixed(d)` rounded differently from the web (`(2.5).toFixed(0)` was `"2"` on iOS, `(1.005).toFixed(2)` was `"1.01"` on Android). All three now go through the runtimes' `pyreonNumberString` (ECMAScript `Number::toString`) and the new `pyreonToFixed` (the web's rounding of the exact value). A whole literal at or past 1e21 (`1e21 + x`) no longer emits the invalid `1e+21.0`.
+
+- [#4604](https://github.com/pyreon/pyreon/pull/4604) [`5556eb8`](https://github.com/pyreon/pyreon/commit/5556eb8612bfea2023320e382dc823ca19d41431) Thanks [@vitbokisch](https://github.com/vitbokisch)! - An optional value turned into text now reads as it does on the web. `` `Picked: ${xs.find(p)}` `` printed `Picked: Optional(2)` on iOS and, when absent, `nil` (iOS) / `null` (Android) where the web prints `undefined`; the same for optional fields, `.at`, `.findLast`, `map.get`, `?.` chains, `'text' + x` and `String(x)`. These positions now go through the runtimes' new `pyreonOptionalText(value, absent)`, which spells the absent value as the TypeScript type names it (`undefined` or `null`). The Swift typecheck gates also reject any emitted interpolation of an optional (swiftc's "debug description for an optional value" warning), so a position the emitters miss fails validation instead of shipping.
+
+- [#4541](https://github.com/pyreon/pyreon/pull/4541) [`634e91a`](https://github.com/pyreon/pyreon/commit/634e91ab406a374e8eb0881fdb964266320702d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - iOS: a `Map` / `Record` iterates in insertion order everywhere. A seeded `new Map([[k, v], …])` or a `Record` literal in an unannotated local was emitted as a Swift `Dictionary` (hash order, different on every launch; a repeated key crashed), and a `Record` decoded from JSON (`JSON.parse`, a fetch / query body) lost the document's key order. Map literals are now typed `PyreonMap` by themselves, and every emitted decode goes through `PyreonJSON.decode`, which keeps each object's key order.
+
+- [#4604](https://github.com/pyreon/pyreon/pull/4604) [`5556eb8`](https://github.com/pyreon/pyreon/commit/5556eb8612bfea2023320e382dc823ca19d41431) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native: a `Record` lists its keys in the web's own-property order, and a decoded JSON object keeps the web's rule for a repeated key.
+
+  - `Object.keys(record)`, `Object.values(record)` and `JSON.stringify(record)` list array-index keys (`"0"`, `"7"`, `"42"`) first in ascending order, then the other keys in insertion order. This now holds on iOS and Android for a literal, an assignment or a decode. A `Map` keeps plain insertion order.
+  - On iOS, a repeated key in decoded JSON keeps its last value at its first position, as `JSON.parse` does. Before, iOS kept the first value. This applies to records and to struct fields.
+  - On iOS, `useStream` payloads and `@PyreonAppStorage` / `PyreonStorage` values now decode in document order instead of hash order. Storage now writes the web's `JSON.stringify` bytes.
+  - On Swift, `const r: Record<…> = {}; r[k] = v` now compiles. The local is declared `var`.
+
+- [#4107](https://github.com/pyreon/pyreon/pull/4107) [`a9fe968`](https://github.com/pyreon/pyreon/commit/a9fe9688c142e1652513a74b293555d8ae40c1ac) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Four iOS/Android emit fixes, each of which shipped code that did not compile, or that crashed on one platform only, with no warning:
+
+  - **A zero-argument helper called from another helper keeps its call.** `function label() { return 'L' + String(k()) }` emitted `String(k)` — the bare function reference — on both targets, because module scope did not treat the file's own helpers as callable. Calls from a component body were unaffected.
+  - **`substring` behaves like JavaScript.** Kotlin's own `String.substring` throws for a bound past the end, a negative bound or `start > end`, where JavaScript clamps and swaps — so the everyday `title.substring(0, 10)` on a shorter title crashed an Android app. On iOS a negative or variable bound trapped or did not compile. Both now go through a new runtime helper, `pyreonSubstring`. This also fixes the generated chart engine's date formatter on Android, which read `pattern.substring(i, i + 4)` and threw `StringIndexOutOfBoundsException` near the end of every date pattern.
+  - **A fractional `slice` bound compiles on iOS.** `xs.slice(0, xs.length / 2)` passed a `Double` where `pyreonSlice` takes `Int`. It now converts through `pyreonSliceIndex`, which truncates like JavaScript and reads NaN as 0 (a bare `Int(x)` would trap).
+  - **A `throw` inside an array callback propagates on iOS.** `xs.map(s => { if (!s) throw new Error('bad'); … })` inside a helper became `fatalError` on iOS while the web and Android propagate it to the caller's `try`/`catch`. A callback of `map` / `filter` / `forEach` / `find` / `findIndex` / `some` / `every` / `reduce` / `flatMap` now keeps the enclosing throw context (Swift's own versions are `rethrows`), and the call is marked `try`.
+
+  The component-body destructuring warning also stopped claiming that nesting, holes and a trailing array rest do not lower (they have since [#4085](https://github.com/pyreon/pyreon/issues/4085)); it now names what still does not: a default value, an object rest and a computed key. The real-SDK Swift typecheck links `PyreonIntl.swift` for emits that use `Intl` formatting, which it previously could not type-check at all.
+
+- [#4111](https://github.com/pyreon/pyreon/pull/4111) [`d47fa5a`](https://github.com/pyreon/pyreon/commit/d47fa5a2ff23761f04a7f81a97bdf677ed55b9fe) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Native schema parsing now returns each library's own web result shape.** This CHANGES the fields native code reads — read it before upgrading an app that validates on iOS/Android.
+
+  The native lowering gave both schema libraries zod's shapes, which neither of them has:
+
+  - `@pyreon/validate` — on the web `s.object(…).parse(x)` and `.safeParse(x)` are the SAME method: both return `{ ok: true, value } | { ok: false, issues }` and neither throws. Natively `.safeParse` returned zod's `{ success, data }` (since 0.53.0) and `.parse` THREW. Both now return `{ ok, value, issues }` (an issue's `path` an array of keys), never throwing.
+  - `@pyreon/validation` — an adapter (`zodSchema(…)`, `valibotSchema(…)`, `arktypeSchema(…)`) is `{ _infer, validator, parse }`; its `parse` returns `{ ok, value } | { ok: false, issues }` (an issue's `path` a dot-string) and never throws, and it has NO `safeParse`. Natively `adapter.safeParse` returned `{ success, data }` and `adapter.parse` threw. `adapter.parse` now returns the adapter's own result (inline `zodSchema(z.object({ … })).parse(x)` lowers too), and `adapter.safeParse` is declined with a warning that names the fix — on the web it is `undefined`.
+
+  - `@pyreon/feature` — `Todo.schema` is the schema the author passed, but every `<ns>.object({ … })` feature schema was treated as zod. An `s.object` feature schema's `.safeParse` / `.parse` now return `{ ok, value, issues }`; a valibot `v.object` schema (which has no `.safeParse` method on the web) is reported by name instead of lowering to one; a zod schema keeps `{ success, data }`. The false "`s` has NO native lowering" warning on a `@pyreon/validate` feature schema is gone.
+
+  So code that compiled for native against the old shapes did not work on the web, and code written for the web did not compile for native. Shared source should read `r.ok` / `r.value` / `r.issues`. If you wrote `.success` / `.data` (validate) or wrapped `.parse` in `try`/`catch` for native, switch to `const r = X.parse(input); if (r.ok) use(r.value)`.
+
+  Two honest limits remain: a native parse stops at the first failing field, so `issues` has at most one entry; and the issue `message` is the platform's own text (`Field 'sku' violated constraint 'min length 1'`), not the web validator's, so branch on `ok` and read `path`. A RAW zod/valibot schema (`z.object(…)` with no adapter) does not lower and keeps its library's own `parse` (throws) / `safeParse` (`{ success, data, error }`) on the web.
+
+  The manifests and docs that described the old `{ success, data }` / throwing behaviour are corrected.
+
+- [#4047](https://github.com/pyreon/pyreon/pull/4047) [`6e1a7be`](https://github.com/pyreon/pyreon/commit/6e1a7be711eb7858ad5612df5c0062a2a427c194) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `slice` with a bound held in a variable now behaves like JavaScript on iOS and Android, instead of crashing when the value is negative.
+
+  Literal bounds still lower to the platform's own operations (`slice(-2)` → `suffix(2)` / `takeLast(2)`), because the sign is known at compile time. A variable bound took the same path, and `dropFirst` / `suffix` / `drop` / `takeLast` trap or throw on a negative count, while JavaScript reads a negative bound as counting from the end. `slice(n, -m)` did not lower at all. Any bound whose sign isn't known at compile time now goes through a new runtime helper, `pyreonSlice`, which has JavaScript's exact semantics: negative bounds count from the end, bounds clamp, and start ≥ end is empty.
+
+- [#4547](https://github.com/pyreon/pyreon/pull/4547) [`a4ff7c3`](https://github.com/pyreon/pyreon/commit/a4ff7c318127f246599fcc9541163b8a9990ac14) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native `str.split('')` splits into UTF-16 code units, as on the web. Before, iOS returned the whole string as one element, and Android added an empty string at each end. `[...str]` and `Array.from(str)` now give code points on both targets: Android had counted UTF-16 units and iOS grapheme clusters.
+
+- [#4126](https://github.com/pyreon/pyreon/pull/4126) [`15434f5`](https://github.com/pyreon/pyreon/commit/15434f55159337beada1cb7526aa956abcbd2de9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Five web↔native divergences in PMTC output, each now matching the web:
+
+  - A string `.length` inside an array callback (`names.map((n) => n.length)`) is a `Long` on Kotlin. The callback parameter was untyped, so the emit produced a `List<Int>` where a `List<Long>` is expected, which did not compile.
+  - A helper parameter typed `number` takes the storage its callers prove. `fmt(price())`, with a Double `price`, emitted `fmt(_ n: Int)` and did not compile on either target. A `number` return is re-inferred over the widened parameter.
+  - `throw 'plain'` followed by `String(e)` (or `` `${e}` ``) reads `plain`, not `Error: plain`.
+  - An array-destructured element that the code tests for absence (`const [first] = xs; first ?? 'none'`) reads nil-safely instead of trapping on an empty array.
+  - Swift `slice`, `substring`, `charAt`, `indexOf`, the positioned `includes`, `startsWith` and `endsWith`, and `padStart`/`padEnd` count UTF-16 units, as `.length` and the web do. They previously counted Characters. `charAt` out of range returns `""` on both targets instead of trapping.
+
+  Also fixed: a concise Kotlin helper whose returned text contained `=` (`'v=' + String(n)`) lost its `return` and failed with "missing return statement".
+
+- [#4563](https://github.com/pyreon/pyreon/pull/4563) [`327771b`](https://github.com/pyreon/pyreon/commit/327771b3abd8513416f324aa7b202bcca800463c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package now declares its tier in `package.json`: `"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`. From 1.0 the semver promise covers Stable packages only; Experimental packages, and the experimental subpaths of Stable packages (every `./native-plugin`, `@pyreon/core/plain`, `@pyreon/compiler/audits` and `/plain`, `@pyreon/charts/engine`, and the `./webview` subpaths of code, flow and rich-text), may break in a minor release. Each README opens with a status line generated from the field. The policy, including the compiler-helper ABI rule and deprecations, is at https://pyreon.dev/docs/stability-and-direction.
+
+  The `@pyreon/http` and `@pyreon/loom` READMEs no longer claim the packages are unpublished.
+
+  **Breaking (`@pyreon/meta`):** the barrel no longer re-exports `@pyreon/document-primitives` (the `Doc*` components, `createDocumentExport`, `documentTheme`, `extractDocNode`, `DocumentPreview`) or `@pyreon/connector-document` (`extractDocumentTree`, `resolveStyles`), because both are Experimental and meta is Stable. Upgrade: install those packages and import from them directly.
+
+  The ui-core, unistyle, rocketstyle, coolgrid and elements manifests no longer claim that the low-level `Provider` logs a dev warning; it has not warned for some time.
+
+- [#4105](https://github.com/pyreon/pyreon/pull/4105) [`28ec100`](https://github.com/pyreon/pyreon/commit/28ec10036dbbbd192b65c5503921d6e7fd1c5ccc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix four web↔native parity and accessibility gaps in the new primitives.
+
+  - `<Tabs>`: when `value` names no tab, the first tab is now tabbable. Before, every tab had `tabindex="-1"` and the tab bar could not be reached by keyboard.
+  - `<CanvasText>`: its web `<svg>` layer is no longer `aria-hidden`. Screen readers now read canvas text on the web, as VoiceOver and TalkBack already do natively. Shape layers stay decorative.
+  - iOS `<Field kind="date" | "time" | "datetime">`: an unpadded or short value (`"2026-2-3"`, `"26-02-03"`, `"9:30"`) now counts as "no value". `DateFormatter` accepted these even with `isLenient = false`, so iOS showed a date where the web and Android show an empty field.
+  - Android `<Select>`: choosing the option that is already selected no longer calls `onChange`. A web `<select>` fires no `change` event in that case.
+
 ## 0.53.0
 
 ### Patch Changes
@@ -272,7 +606,7 @@
 
   `map` now takes a third shape, `GeoShape[]`, which is that union already
   normalised to rings — and that shape crosses. A `<MapChart map={SHAPES}
-values={{ A: 5 }}>` emits `layoutGeoShapes` / `renderGeo` / `hitGeoIndex` /
+  values={{ A: 5 }}>` emits `layoutGeoShapes` / `renderGeo` / `hitGeoIndex` /
   `geoTip` over the generated engine on both targets, with the tap, the tooltip
   and the theme defaults every other family host already had. An inline `values`
   record becomes the crossing `[GeoValue]` at compile time (the shape
@@ -573,7 +907,7 @@ values={{ A: 5 }}>` emits `layoutGeoShapes` / `renderGeo` / `hitGeoIndex` /
 
 - [#2727](https://github.com/pyreon/pyreon/pull/2727) [`2b5be05`](https://github.com/pyreon/pyreon/commit/2b5be059737e000aa8ccd7d481242816f235075e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `repository` field npm provenance requires. All six packages were
   rejected from the 0.51.0 release with a 422 (`"repository.url" is "",
-expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
+  expected to match "https://github.com/pyreon/pyreon"`) — `--provenance`
   publishing validates the field against the OIDC attestation, so its absence
   is a publish blocker, not cosmetic metadata.
 

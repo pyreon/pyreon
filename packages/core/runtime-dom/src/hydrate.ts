@@ -40,7 +40,9 @@ import {
   type EffectScope,
   effectScope,
   getContextOwner,
-  getCurrentScope,
+  _currentScope,
+  _devOwner,
+  _swapPendingOwner,
   _abortOwnerFrame,
   _closeOwnerFrame,
   _openOwnerFrame,
@@ -64,8 +66,12 @@ import {
 import {
   _devFirstElementIn,
   _devNameScope,
+  _devEnterLate,
   _devRegisterScope,
+  _devScopeIdOf,
   _devUnregisterScope,
+  devSetupOwner,
+  exitPendingOwner,
   bindPolymorphicText,
   componentProps,
   mountChild,
@@ -2093,19 +2099,21 @@ function hydrateComponent(
   }
 
   // Owner chain — mirrors mount.ts so `useContext()` resolves up the tree
-  // during hydration too. Owner stays `scope` through `runWithHooks` +
-  // `hydrateChild` + onMount, restored to `prevOwner` on every exit.
+  // during hydration too, including the LAZY owner: `scope` becomes the owner
+  // only on the setup's first `provide()`; the owner is restored to
+  // `prevOwner` on every exit.
   const prevOwner = getContextOwner()
   // RESTORED on every exit, never reset to null: a component can mount while
   // another scope is current (inside a parent's onMount via a signal write
   // that flips a <Show>, inside a <For> row's collector, inside a parent's
   // compiled template), and nulling it there left everything that scope's
   // owner created afterwards with no owner — never disposed.
-  const prevScope = getCurrentScope()
+  const prevScope = _currentScope()
   const scope = effectScope()
   scope._parent = prevOwner
+  const prevPending = _swapPendingOwner(scope)
+  const prevLate = process.env.NODE_ENV !== 'production' ? _devEnterLate(prevPending) : false
   setCurrentScope(scope)
-  setContextOwner(scope)
   // Error-path owner of the template bindings this setup and hydration build —
   // see `mountComponent`.
   const ownerFrame = _openOwnerFrame()
@@ -2122,10 +2130,10 @@ function hydrateComponent(
   // Every devtools step below is a dev-gated statement or ternary with no
   // local, so production output is byte-identical to a build without them.
   if (process.env.NODE_ENV !== 'production') _devNameScope(scope, componentName)
+  // The owner stays the parent's (dev: its contextless alias — see `devSetupOwner`).
+  if (process.env.NODE_ENV !== 'production') setContextOwner(devSetupOwner(prevOwner, _devScopeIdOf(scope)))
   // Same builder as mountComponent — children merged by descriptor copy, then
   // `_rp` thunks become getters — so a forwarded getter prop stays live here too.
-  const mergedProps = componentProps(vnode)
-
   let output: VNodeChild
   let hooks: LifecycleHooks
   // Compiled-template ADOPTION (component-root fast path). A component whose
@@ -2140,12 +2148,15 @@ function hydrateComponent(
   const adoptTarget = domNode !== null && domNode.nodeType === 1 ? (domNode as Element) : null
   if (adoptTarget !== null) _setTplAdoptTarget(adoptTarget)
   try {
-    output = _runHooked(vnode.type as ComponentFn, mergedProps)
+    // Built inside the try, exactly as `mountComponent` does: the catch below
+    // restores every frame set above, so a throwing props builder is contained.
+    output = _runHooked(vnode.type as ComponentFn, componentProps(vnode))
     hooks = _takeHooks()
   } catch (err) {
     if (adoptTarget !== null) _setTplAdoptTarget(null)
     setCurrentScope(prevScope)
     setContextOwner(prevOwner)
+    exitPendingOwner(prevPending, prevLate)
     _abortOwnerFrame(ownerFrame)
     scope.stop()
 
@@ -2165,6 +2176,8 @@ function hydrateComponent(
   // leave a live target for an unrelated later call.
   if (adoptTarget !== null) _setTplAdoptTarget(null)
   setCurrentScope(prevScope)
+  // Setup returned: a `provide()` from here on is late (dev warning).
+  if (process.env.NODE_ENV !== 'production') _devOwner!.late = true
 
   try {
 
@@ -2181,6 +2194,8 @@ function hydrateComponent(
   // context owner pointing at this dead component.
   try {
     if (output instanceof Promise) {
+      // See `mountComponent`: this scope if the setup provided, else the parent's.
+      const asyncOwner = getContextOwner()
       // Async component hydration. SSR wraps the awaited output in `<!--$pas-->` /
       // `<!--$pae-->` sentinels, so we find the matching end marker (depth-tracked
       // for nesting), snapshot the bounded DOM range, advance the parent's sibling
@@ -2235,16 +2250,17 @@ function hydrateComponent(
             //
             // The microtask runs outside the synchronous walk, so re-enter the
             // walk's ambient state exactly as `hydrateDeferredLazy` does:
-            //  - the owner: this component's scope, so the subtree's
-            //    `useContext()` sees the ancestors' providers and what this
-            //    component provided before its first await (#4377);
+            //  - the owner the setup left (this component's scope if it
+            //    provided before its first await, else the parent's), so the
+            //    subtree's `useContext()` sees the ancestors' providers and
+            //    what this component provided (#4377);
             //  - the hydrating flag: without it a `<Suspense>` in the subtree
             //    renders its fallback over the server content of a still-loading
             //    lazy child (and later remounts it), and a compiled `_tpl` builds
             //    eagerly instead of adopting at its cursor.
             const prev = setHydrating(true)
             try {
-              const [childCleanup] = runWithContextOwner(scope, () =>
+              const [childCleanup] = runWithContextOwner(asyncOwner, () =>
                 hydrateChild(resolved as VNodeChild, rangeStart, parent, endMarker, `${path}:async`),
               )
               resolvedCleanup = childCleanup
@@ -2352,8 +2368,13 @@ function hydrateComponent(
       }
     }
   } catch (err) {
+    // Contained: no cleanup is handed out, so release what the frame recorded
+    // (and close it — left open, every later owned binding was recorded in it
+    // forever), exactly as `mountComponent`'s render catch does.
+    _abortOwnerFrame(ownerFrame)
     scope.stop()
     setContextOwner(prevOwner)
+    exitPendingOwner(prevPending, prevLate)
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
     if (!handled) {
       reportError({
@@ -2375,6 +2396,7 @@ function hydrateComponent(
     _abortOwnerFrame(ownerFrame)
     scope.stop()
     setContextOwner(prevOwner)
+    exitPendingOwner(prevPending, prevLate)
     throw err
   }
   _closeOwnerFrame(ownerFrame)
@@ -2401,6 +2423,20 @@ function hydrateComponent(
 
   // Subtree fully hydrated — restore the parent owner for siblings.
   setContextOwner(prevOwner)
+  exitPendingOwner(prevPending, prevLate)
+
+  // Drop an empty scope, exactly as `mountComponent` does.
+  if (hooks.unmount === null && mountCleanups.length === 0 && scope._isDroppable()) {
+    return [
+      process.env.NODE_ENV !== 'production'
+        ? () => {
+            _devUnregisterScope(scope)
+            subtreeCleanup()
+          }
+        : subtreeCleanup,
+      nextDom,
+    ]
+  }
 
   const cleanup: Cleanup = () => {
     if (process.env.NODE_ENV !== 'production') _devUnregisterScope(scope)
@@ -2462,6 +2498,8 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   // The context owner is ambient walk state too: restored with the flags, so
   // a throw that escapes the walk never leaves it pointing into the tree.
   const prevOwner = getContextOwner()
+  // A root owner when none is current, exactly as `mount()` installs one (see\n  // the ROOT OWNER note in index.ts).
+  if (prevOwner === null) setContextOwner(effectScope())
   // Dev: compiled mismatch paths are DOM ancestors up to this container.
   if (process.env.NODE_ENV !== 'production') _pushPathRoot(container)
   try {
