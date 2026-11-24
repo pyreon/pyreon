@@ -28,6 +28,7 @@ import { _bind, renderEffect, signal } from '@pyreon/reactivity'
 import * as server from '@pyreon/runtime-server'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as dom from '../index'
 import { bindPolymorphicText } from '../mount'
@@ -307,7 +308,7 @@ describe('#4764 (2): a sibling whose server output opens with a marker skips the
     el.innerHTML = await renderToString(
       h(build(src, { v: [h('b', null, '1'), h('b', null, '2')] }, 'h()') as never, null) as never,
     )
-    const input = el.querySelector('input') as HTMLInputElement
+    const input = query(el, 'input')
     const span = el.querySelector('span')
     input.value = 'typed'
     const mismatches: string[] = []
@@ -448,7 +449,7 @@ const refSrc = (form: keyof typeof FORMS, ref: string, body: string) =>
 const FORM_NAMES = Object.keys(FORMS) as (keyof typeof FORMS)[]
 
 describe("#4764 (4): a ref that changes its element runs after the element's children, on every path", () => {
-  for (const form of FORM_NAMES)
+  for (const form of FORM_NAMES) {
     for (const [name, ref] of Object.entries(REFS)) {
       for (const body of BODIES) {
         it(`${form}: ${name} ${body}`, () => {
@@ -477,10 +478,11 @@ describe("#4764 (4): a ref that changes its element runs after the element's chi
         })
       }
     }
+  }
 })
 
 describe('#4764 (5): a ref over adopted content sees what a fresh render gives it', () => {
-  for (const client of CLIENTS)
+  for (const client of CLIENTS) {
     for (const form of FORM_NAMES) {
       for (const [name, ref] of Object.entries(REFS)) {
         for (const body of BODIES) {
@@ -499,6 +501,7 @@ describe('#4764 (5): a ref over adopted content sees what a fresh render gives i
         }
       }
     }
+  }
 
   const onScope = () => ({ on: signal(true) })
 

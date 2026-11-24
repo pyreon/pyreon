@@ -7,6 +7,7 @@
  */
 import { For, Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { query } from '@pyreon/test-utils'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   _dispose2,
@@ -180,7 +181,7 @@ describe('#4764 in Chromium', () => {
 
   it('(2) a static element after a divergent static array keeps its server node: typed input survives', () => {
     const el = host(INPUT_AFTER_H_SERVER)
-    const input = el.querySelector('input') as HTMLInputElement
+    const input = query(el, 'input')
     input.value = 'typed'
     input.focus()
     const errors = hydrateQuiet(
