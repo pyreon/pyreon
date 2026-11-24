@@ -3,7 +3,7 @@ import { createRouter, RouterProvider, RouterView } from '@pyreon/router'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { UrlStateSignal } from '../types'
-import { setUrlRouter } from '../url'
+import { setUrlRouter, type UrlNavigateOptions } from '../url'
 import { useUrlState } from '../use-url-state'
 
 // With `setUrlRouter(router)` every `useUrlState().set()` is a `router.replace`
@@ -69,5 +69,26 @@ describe.each(['history', 'memory'] as const)('the real @pyreon/router (%s mode)
     expect(q!()).toBe('pyr')
     expect(counts).toEqual({ mounts: 1, unmounts: 0 })
     expect(el.querySelector('#search')).toBe(input) // the same DOM node
+  })
+})
+
+describe('every url-state write asks the router not to scroll or animate (#4814)', () => {
+  it('passes { scroll: false, viewTransition: false } to replace AND push', () => {
+    const calls: Array<[string, string, UrlNavigateOptions | undefined]> = []
+    setUrlRouter({
+      replace: (path, options) => {
+        calls.push(['replace', path, options])
+      },
+      push: (path, options) => {
+        calls.push(['push', path, options])
+      },
+    })
+    useUrlState('q', '').set('a')
+    useUrlState('page', 1, { replace: false }).set(2)
+
+    expect(calls).toEqual([
+      ['replace', '/search?q=a', { scroll: false, viewTransition: false }],
+      ['push', expect.stringContaining('page=2'), { scroll: false, viewTransition: false }],
+    ])
   })
 })

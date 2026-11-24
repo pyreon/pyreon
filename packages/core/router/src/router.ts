@@ -27,6 +27,7 @@ import {
   type LoaderContext,
   type NavigationGuard,
   type NavigationGuardResult,
+  type NavigateOptions,
   type NavigationResult,
   type ResolvedRoute,
   type RouteMiddlewareContext,
@@ -35,6 +36,39 @@ import {
   type RouterInstance,
   type RouterOptions,
 } from './types'
+
+/**
+ * A search-param setter edits the current page: no scroll reset, no view
+ * transition (#4814). Explicit, so it holds even when the setter's navigation
+ * is not detected as in place (e.g. a hash that differs).
+ */
+const QUERY_EDIT: NavigateOptions = { scroll: false, viewTransition: false }
+
+/**
+ * What a commit does besides moving the route. An explicit option wins;
+ * otherwise an in-place replace (same page, only the query moved) neither
+ * scrolls nor animates, and every other navigation does both.
+ */
+function navigationEffects(
+  replace: boolean,
+  fromBrowser: boolean,
+  to: ResolvedRoute,
+  from: ResolvedRoute,
+  options: NavigateOptions | undefined,
+): { scroll: boolean; viewTransition: boolean } {
+  const inPlace = isInPlaceReplace(replace, fromBrowser, to, from)
+  return {
+    scroll: options?.scroll ?? !inPlace,
+    viewTransition: options?.viewTransition ?? !inPlace,
+  }
+}
+
+/** The trailing, rarely-set arguments of one `navigate()` call. */
+interface NavigateCall {
+  fromBrowser?: boolean
+  tabPlan?: TabPlan
+  options?: NavigateOptions
+}
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -452,7 +486,7 @@ export function useSearchParams<T extends Record<string, string>>(
   }
   const set = (updates: Partial<T>): Promise<NavigationResult> => {
     const merged = { ...get(), ...updates }
-    return router.replace(currentUrlWithQuery(router, merged as Record<string, string>))
+    return router.replace(currentUrlWithQuery(router, merged as Record<string, string>), QUERY_EDIT)
   }
 
   return [get, set]
@@ -517,7 +551,7 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
       else merged[k] = String(v)
     }
 
-    return router.replace(currentUrlWithQuery(router, merged))
+    return router.replace(currentUrlWithQuery(router, merged), QUERY_EDIT)
   }
 
   return [get, set]
@@ -878,7 +912,7 @@ export function createRouter<TNames extends string = string>(
     if (sameTab && target === (_pendingBrowserTarget ?? currentPath.peek())) return false
     _pendingBrowserTarget = target
     _pendingBrowserTab = poppedTab?.tab ?? tabCtl?.active.peek()
-    void navigate(target, true, 0, true, poppedTab ?? undefined)
+    void navigate(target, true, 0, { fromBrowser: true, ...(poppedTab ? { tabPlan: poppedTab } : {}) })
       .finally(() => {
         // Identity-guarded: a NEWER browser traversal may own the field now.
         if (_pendingBrowserTarget === target) _pendingBrowserTarget = null
@@ -1400,15 +1434,13 @@ export function createRouter<TNames extends string = string>(
     from: ResolvedRoute,
     fromBrowser = false,
     tabPlan: TabPlan | null = null,
+    navOptions?: NavigateOptions,
   ): Promise<void> {
     scrollManager.save(from.path)
-    // A programmatic `replace` that keeps the page — same matched records, same params, same
-    // hash; only the query moved — is an in-place edit of the current entry:
-    // a search box or a filter written through `router.replace`,
-    // `useSearchParams().set` or url-state's `setUrlRouter`. The view keeps the
-    // page mounted (RouterView keys on records + params, #4814), and the commit
-    // must not reset the scroll or run a view transition either.
-    const inPlace = isInPlaceReplace(replace, fromBrowser, to, from)
+    // Scroll and view transition: an in-place replace (same page, only the
+    // query moved — a search box, a filter) does neither by default (#4814);
+    // `options` decides explicitly. See `navigationEffects`.
+    const effects = navigationEffects(replace, fromBrowser, to, from, navOptions)
 
     const doCommit = () => {
       // Any committed navigation supersedes the initial one: the route on
@@ -1501,11 +1533,11 @@ export function createRouter<TNames extends string = string>(
     const reducedMotion = prefersReducedMotion()
     // Not in memory mode: a view transition snapshots the WHOLE document and
     // skips any other transition in flight — the page router's included.
-    // An in-place edit (see `inPlace`) keeps the page, so there is nothing to
-    // animate: a cross-fade per keystroke of a search box is a flicker.
+    // An in-place edit keeps the page, so there is nothing to animate: a
+    // cross-fade per keystroke of a search box is a flicker.
     const useVT =
       ownsPage &&
-      !inPlace &&
+      effects.viewTransition &&
       !reducedMotion &&
       to.meta.viewTransition !== false &&
       typeof (document as any).startViewTransition === 'function'
@@ -1584,7 +1616,7 @@ export function createRouter<TNames extends string = string>(
     //     behavior. With an explicit behavior, native restoration is switched
     //     to 'manual' at router creation so the two never fight.
     // A memory router scrolls only when `scrollBehavior` is set (`scrollOnPush`).
-    if (isClient && !inPlace && (fromBrowser ? scrollBehavior !== undefined : scrollOnPush)) {
+    if (isClient && effects.scroll && (fromBrowser ? scrollBehavior !== undefined : scrollOnPush)) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
   }
@@ -1667,13 +1699,22 @@ export function createRouter<TNames extends string = string>(
     return navigate(c.url, replace, depth)
   }
 
+  /** A `push`/`replace` target (path or named location) as a sanitized path. */
+  function locationToPath(
+    location: string | { name: string; params?: Record<string, string>; query?: Record<string, string> },
+  ): string {
+    if (typeof location === 'string') return sanitizePath(resolveRelativePath(location, currentPath()))
+    return resolveNamedPath(location.name, location.params ?? {}, location.query ?? {}, nameIndex)
+  }
+
   async function navigate(
     rawPath: string,
     replace: boolean,
     redirectDepth = 0,
-    fromBrowser = false,
-    tabPlanIn?: TabPlan,
+    call: NavigateCall = {},
   ): Promise<NavigationResult> {
+    const fromBrowser = call.fromBrowser === true
+    const tabPlanIn = call.tabPlan
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.navigate')
     router._navigationStartTime = Date.now()
     if (redirectDepth > 10) {
@@ -1744,7 +1785,7 @@ export function createRouter<TNames extends string = string>(
       return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
-    await commitNavigation(path, replace, to, from, fromBrowser, tabPlan)
+    await commitNavigation(path, replace, to, from, fromBrowser, tabPlan, call.options)
     loadingSignal.update((n) => n - 1)
 
     return 'committed'
@@ -1930,6 +1971,7 @@ export function createRouter<TNames extends string = string>(
     _loaderCache: new SizedMap({ maxEntries: maxCacheSize }),
     _loaderInflight: new Map(),
     _executeLoader: (record, ctx) => executeLoader(record, ctx),
+    _loaderKeyOf: (record, route) => getCacheKey(record, route),
     _startInitialNavigation: startInitialNavigation,
     _initialGate: () => initialGate(),
 
@@ -1937,38 +1979,18 @@ export function createRouter<TNames extends string = string>(
       location:
         | string
         | { name: string; params?: Record<string, string>; query?: Record<string, string> },
+      navOptions?: NavigateOptions,
     ) {
-      if (typeof location === 'string') {
-        const resolved = resolveRelativePath(location, currentPath())
-        return navigate(sanitizePath(resolved), false)
-      }
-      const path = resolveNamedPath(
-        location.name,
-        location.params ?? {},
-        location.query ?? {},
-        nameIndex,
-      )
-
-      return navigate(path, false)
+      return navigate(locationToPath(location), false, 0, navOptions ? { options: navOptions } : {})
     },
 
     async replace(
       location:
         | string
         | { name: string; params?: Record<string, string>; query?: Record<string, string> },
+      navOptions?: NavigateOptions,
     ) {
-      if (typeof location === 'string') {
-        const resolved = resolveRelativePath(location, currentPath())
-        return navigate(sanitizePath(resolved), true)
-      }
-      const path = resolveNamedPath(
-        location.name,
-        location.params ?? {},
-        location.query ?? {},
-        nameIndex,
-      )
-
-      return navigate(path, true)
+      return navigate(locationToPath(location), true, 0, navOptions ? { options: navOptions } : {})
     },
 
     back() {
@@ -2095,7 +2117,7 @@ export function createRouter<TNames extends string = string>(
       if (next === null) return 'cancelled'
       if (next === 'committed') return 'committed'
 
-      return navigate(next[0], false, 0, false, next[1])
+      return navigate(next[0], false, 0, { tabPlan: next[1] })
     },
 
     tabStack: (name: string) => tabCtl?.stack(name) ?? [],

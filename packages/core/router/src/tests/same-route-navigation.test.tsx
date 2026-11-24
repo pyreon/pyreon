@@ -12,7 +12,15 @@ import { h, onMount, onUnmount } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { RouterProvider, RouterView, routerTabs, useRoute, useSearchParams } from '../index'
+import {
+  RouterProvider,
+  RouterView,
+  routerTabs,
+  useLoaderData,
+  useLoaderDataAccessor,
+  useRoute,
+  useSearchParams,
+} from '../index'
 import { createRouter, setActiveRouter } from '../router'
 import type { RouteRecord, Router } from '../types'
 
@@ -348,6 +356,276 @@ describe('an in-place replace (same page, only the query moved) (#4814)', () => 
       expect(start).toHaveBeenCalledTimes(1)
     } finally {
       Reflect.deleteProperty(document, 'startViewTransition')
+    }
+  })
+})
+
+describe('the page kept mounted still recovers, and never sees the next page early (#4814)', () => {
+  it('a route error boundary recovers on a query-only navigation', async () => {
+    const Page = (props: Record<string, unknown>) => {
+      if ((props.query as Record<string, string>).q === 'bad') throw new Error('bad q')
+
+      return h('p', null, 'PAGE')
+    }
+    window.history.replaceState(null, '', '/search?q=bad')
+    router = createRouter({
+      mode: 'history',
+      routes: [{ path: '/search', component: Page, errorComponent: () => h('p', null, 'ERR') }],
+    })
+    const el = mountRouter(router)
+    await settle()
+    expect(el.textContent).toBe('ERR')
+
+    await router.replace('/search?q=good')
+    await settle()
+    expect(el.textContent).toBe('PAGE')
+  })
+
+  it("the error page's query prop is live", async () => {
+    const Page = () => {
+      throw new Error('always')
+    }
+    const Err = (props: Record<string, unknown>) =>
+      h('p', null, () => `ERR ${(props.query as Record<string, string>).q}`)
+    window.history.replaceState(null, '', '/s?q=one')
+    router = createRouter({ mode: 'history', routes: [{ path: '/s', component: Page, errorComponent: Err }] })
+    const el = mountRouter(router)
+    await settle()
+    expect(el.textContent).toBe('ERR one')
+    await router.replace('/s?q=two')
+    await settle()
+    expect(el.textContent).toBe('ERR two')
+  })
+
+  it('the leaf being replaced on a param change never sees the new params', async () => {
+    const seen: string[] = []
+    let n = 0
+    const Page = (props: Record<string, unknown>) => {
+      const me = ++n
+      effect(() => {
+        seen.push(`inst${me}:${(props.params as Record<string, string>).id}`)
+      })
+
+      return h('p', null, 'u')
+    }
+    window.history.replaceState(null, '', '/user/1')
+    router = createRouter({ mode: 'history', routes: [{ path: '/user/:id', component: Page }] })
+    mountRouter(router)
+    await settle()
+    await router.push('/user/2')
+    await settle()
+    expect(seen).not.toContain('inst1:2')
+    expect(seen.at(-1)).toBe('inst2:2')
+  })
+})
+
+describe('loader data under the same loader key is delivered in place (#4814)', () => {
+  function loaderPage(counts: Counts, read: 'none' | 'accessor' | 'snapshot', shown: unknown[]) {
+    return () => {
+      onMount(() => {
+        counts.mounts++
+      })
+      if (read === 'accessor') {
+        const data = useLoaderDataAccessor<{ n: number }>()
+        effect(() => {
+          shown.push(data().n)
+        })
+      } else if (read === 'snapshot') {
+        shown.push(useLoaderData<{ n: number }>().n)
+      }
+
+      return h('input', null)
+    }
+  }
+
+  it.each([
+    ['gcTime: 0', { gcTime: 0 }],
+    ['staleWhileRevalidate', { staleWhileRevalidate: true }],
+  ] as const)('a %s loader re-run by a query-only replace keeps the page; the accessor follows', async (_n, extra) => {
+    const counts = { mounts: 0, unmounts: 0 }
+    const shown: unknown[] = []
+    let runs = 0
+    window.history.replaceState(null, '', '/')
+    router = createRouter({
+      mode: 'history',
+      routes: [
+        { path: '/', component: () => h('p', null, 'home') },
+        {
+          path: '/d',
+          component: loaderPage(counts, 'accessor', shown),
+          loader: async () => ({ n: ++runs }),
+          ...extra,
+        },
+      ],
+    })
+    const el = mountRouter(router)
+    await router.push('/d')
+    await settle(5)
+    const input = el.querySelector('input')
+    await router.replace('/d?q=a')
+    await settle(5)
+    await router.replace('/d?q=ab')
+    await settle(5)
+    expect(runs).toBe(3)
+    expect(counts.mounts).toBe(1)
+    expect(el.querySelector('input')).toBe(input)
+    expect(shown.at(-1)).toBe(3)
+  })
+
+  it('a server loader refetched by a query-only replace keeps the page', async () => {
+    const counts = { mounts: 0, unmounts: 0 }
+    const shown: unknown[] = []
+    let fetches = 0
+    vi.stubGlobal('fetch', async () => {
+      fetches++
+      return new Response(JSON.stringify({ data: { '0': { n: fetches } } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    try {
+      window.history.replaceState(null, '', '/')
+      router = createRouter({
+        mode: 'history',
+        routes: [
+          { path: '/', component: () => h('p', null, 'home') },
+          { path: '/d', component: loaderPage(counts, 'accessor', shown), hasServerLoader: true },
+        ],
+      })
+      mountRouter(router)
+      await router.push('/d')
+      await settle(5)
+      await router.replace('/d?q=a')
+      await settle(5)
+      await router.replace('/d?q=ab')
+      await settle(5)
+      expect(fetches).toBe(3)
+      expect(counts.mounts).toBe(1)
+      expect(shown.at(-1)).toBe(3)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('a page that took the useLoaderData() snapshot is remounted for new data, so it is never stale', async () => {
+    const counts = { mounts: 0, unmounts: 0 }
+    const shown: unknown[] = []
+    let runs = 0
+    window.history.replaceState(null, '', '/')
+    router = createRouter({
+      mode: 'history',
+      routes: [
+        { path: '/', component: () => h('p', null, 'home') },
+        { path: '/d', component: loaderPage(counts, 'snapshot', shown), gcTime: 0, loader: async () => ({ n: ++runs }) },
+      ],
+    })
+    mountRouter(router)
+    await router.push('/d')
+    await settle(5)
+    await router.replace('/d?q=a')
+    await settle(5)
+    expect(counts.mounts).toBe(2)
+    expect(shown).toEqual([1, 2])
+  })
+
+  it('a page that reads no loader data is never remounted for it', async () => {
+    const counts = { mounts: 0, unmounts: 0 }
+    let runs = 0
+    window.history.replaceState(null, '', '/')
+    router = createRouter({
+      mode: 'history',
+      routes: [
+        { path: '/', component: () => h('p', null, 'home') },
+        { path: '/d', component: loaderPage(counts, 'none', []), gcTime: 0, loader: async () => ({ n: ++runs }) },
+      ],
+    })
+    mountRouter(router)
+    await router.push('/d')
+    await router.replace('/d?q=a')
+    await settle(5)
+    expect(counts.mounts).toBe(1)
+  })
+})
+
+describe('per-navigation scroll / viewTransition options (#4814)', () => {
+  it('push(path, { scroll: false, viewTransition: false }) neither scrolls nor animates', async () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    const start = vi.fn((cb: () => void) => {
+      cb()
+      return undefined
+    })
+    Object.defineProperty(document, 'startViewTransition', { value: start, configurable: true })
+    try {
+      window.history.replaceState(null, '', '/list')
+      router = createRouter({ mode: 'history', routes: [{ path: '/list', component: () => h('p', null, 'l') }] })
+      mountRouter(router)
+      await settle()
+      scrollTo.mockClear()
+      await router.push('/list?page=2', { scroll: false, viewTransition: false })
+      await settle()
+      expect(scrollTo).not.toHaveBeenCalled()
+      expect(start).not.toHaveBeenCalled()
+
+      // An explicit `true` wins over the in-place default of a replace.
+      await router.replace('/list?page=3', { scroll: true, viewTransition: true })
+      await settle()
+      expect(scrollTo).toHaveBeenCalledTimes(1)
+      expect(start).toHaveBeenCalledTimes(1)
+    } finally {
+      scrollTo.mockRestore()
+      Reflect.deleteProperty(document, 'startViewTransition')
+    }
+  })
+
+  it('a useSearchParams() write does not scroll, even when the hash differs', async () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    let setter: ((u: Record<string, string>) => Promise<unknown>) | undefined
+    try {
+      window.history.replaceState(null, '', '/s')
+      router = createRouter({
+        mode: 'history',
+        routes: [
+          {
+            path: '/s',
+            component: () => {
+              setter = useSearchParams()[1] as never
+
+              return h('p', null, 's')
+            },
+          },
+        ],
+      })
+      mountRouter(router)
+      await settle()
+      scrollTo.mockClear()
+      await setter!({ q: 'x' })
+      await settle()
+      expect(scrollTo).not.toHaveBeenCalled()
+    } finally {
+      scrollTo.mockRestore()
+    }
+  })
+
+  it('a named-route push takes the options too', async () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    try {
+      window.history.replaceState(null, '', '/')
+      router = createRouter({
+        mode: 'history',
+        routes: [
+          { path: '/', component: () => h('p', null, 'h') },
+          { path: '/item/:id', name: 'item', component: () => h('p', null, 'i') },
+        ],
+      })
+      mountRouter(router)
+      await settle()
+      scrollTo.mockClear()
+      await router.push({ name: 'item', params: { id: '1' } }, { scroll: false })
+      await settle()
+      expect(router.currentRoute().path).toBe('/item/1')
+      expect(scrollTo).not.toHaveBeenCalled()
+    } finally {
+      scrollTo.mockRestore()
     }
   })
 })

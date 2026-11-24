@@ -8,7 +8,7 @@ import { h, onMount } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { userEvent } from 'vitest/browser'
-import { createRouter, RouterProvider, RouterView } from '../index'
+import { createRouter, RouterProvider, RouterView, useLoaderDataAccessor } from '../index'
 import { setActiveRouter } from '../router'
 import type { Router } from '../types'
 
@@ -77,5 +77,73 @@ describe('typing into a query-backed search box (#4814)', () => {
     expect(vtSpy).not.toHaveBeenCalled()
     vtSpy.mockRestore()
     unmount()
+  })
+})
+
+describe('a server-loader search page (the zero shape) while typing (#4814)', () => {
+  it('keeps the input and its focus; the refetched data arrives in place', async () => {
+    let mounts = 0
+    let fetches = 0
+    const realFetch = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      fetches++
+      const q = new URL(String(input), location.origin).searchParams.get('path') ?? ''
+      const hits = decodeURIComponent(q).split('q=')[1] ?? ''
+
+      return new Response(JSON.stringify({ data: { '0': { hits } } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as typeof fetch
+    try {
+      const r = createRouter({
+        mode: 'hash',
+        routes: [
+          { path: '/', component: () => h('p', null, 'home') },
+          {
+            path: '/search',
+            hasServerLoader: true,
+            errorComponent: () => h('p', null, 'ERR'),
+            component: () => {
+              onMount(() => {
+                mounts++
+              })
+              const data = useLoaderDataAccessor<{ hits: string }>()
+
+              return h(
+                'div',
+                null,
+                h('input', {
+                  id: 'q',
+                  onInput: (e: Event) => {
+                    void r.replace(`/search?q=${(e.target as HTMLInputElement).value}`)
+                  },
+                }),
+                h('output', { id: 'hits' }, () => data()?.hits ?? ''),
+              )
+            },
+          },
+        ],
+      })
+      router = r
+      const { container, unmount } = mountInBrowser(h(RouterProvider, { router: r }, h(RouterView, {})))
+      await r.push('/search')
+      await flush()
+      expect(mounts).toBe(1)
+
+      const input = container.querySelector<HTMLInputElement>('#q')!
+      await userEvent.click(input)
+      await userEvent.keyboard('abc')
+      for (let i = 0; i < 20 && container.querySelector('#hits')?.textContent !== 'abc'; i++) await flush()
+
+      expect(mounts).toBe(1)
+      expect(fetches).toBe(4) // the push + one per keystroke
+      expect(container.querySelector('#q')).toBe(input)
+      expect(document.activeElement).toBe(input)
+      expect(container.querySelector('#hits')?.textContent).toBe('abc')
+      unmount()
+    } finally {
+      globalThis.fetch = realFetch
+    }
   })
 })

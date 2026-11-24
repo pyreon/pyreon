@@ -81,6 +81,7 @@ export {
   stringifyLoaderData,
   stringifyLoaderDataForScript,
   useLoaderData,
+  useLoaderDataAccessor,
 } from './loader'
 // Server-side loader passes (free functions: client bundles that never call them drop them)
 export type { ServerLoadersResult } from './server-loaders'
@@ -127,6 +128,7 @@ export type {
   LoaderData,
   NavigationGuard,
   NavigationGuardResult,
+  NavigateOptions,
   NavigationResult,
   ResolvedRoute,
   RouteComponent,

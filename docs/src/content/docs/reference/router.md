@@ -110,6 +110,7 @@ const User = () => {
 | [`useTransition`](#usetransition-hook) | hook | Returns a reactive accessor for route transition state. |
 | [`useMiddlewareData`](#usemiddlewaredata-hook) | hook | Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. |
 | [`useLoaderData`](#useloaderdata-hook) | hook | Access the data returned by the current route's `loader` function. |
+| [`useLoaderDataAccessor`](#useloaderdataaccessor-hook) | hook | The current route's loader data as a reactive accessor. |
 | [`redirect`](#redirect-function) | function | Throw inside a route loader to redirect the navigation BEFORE the layout renders. |
 | [`isRedirectError`](#isredirecterror-function) | function | Type guard for errors thrown by `redirect()`. |
 | [`getRedirectInfo`](#getredirectinfo-function) | function | Extract the redirect URL and status from a thrown RedirectError. |
@@ -271,7 +272,7 @@ const App = () => (
 <RouterView />
 ```
 
-Render the matched route's component. For nested routes, the parent route component includes a `<RouterView />` that renders the matched child. Each `<RouterView>` renders one level of the route tree. The page component receives `params`, `query` and `meta` as live props. It is remounted when its matched record, its params or its loader data change, and kept mounted through a navigation that changes only the query or the hash, so a search box or a filter written to the URL with `router.replace`, `useSearchParams().set` or `@pyreon/url-state` keeps its focus and local state. A programmatic `replace()` that changes only the query also leaves the scroll position alone and starts no view transition.
+Render the matched route's component. For nested routes, the parent route component includes a `<RouterView />` that renders the matched child. Each `<RouterView>` renders one level of the route tree. The page component receives `params`, `query` and `meta` as live props (the page being replaced keeps its own params until it unmounts). It is remounted when its matched record, its params or its LOADER KEY (`loaderKey`, else path + params) change, and kept mounted through a navigation that changes only the query or the hash, so a search box or a filter written to the URL with `router.replace`, `useSearchParams().set` or `@pyreon/url-state` keeps its focus and local state. Loader data that changes under the same key (`revalidate()`, `staleWhileRevalidate`, `gcTime: 0`, a server loader) is delivered in place through `useLoaderDataAccessor()`; a page that read the `useLoaderData()` snapshot is remounted for it instead, so it never shows stale data. A route error boundary showing its `errorComponent` is remounted on any navigation, so it recovers. A `replace()` that changes only the query neither scrolls nor starts a view transition; pass `{ scroll, viewTransition }` to `push`/`replace` to decide explicitly.
 
 **Example**
 
@@ -292,7 +293,7 @@ const Admin = () => (
 
 - SSR renders a BLANK page for a lazy route when the handler only ran `prefetchLoaderData` — that runs LOADERS ONLY, it does NOT resolve `lazy()` route components. `renderToString` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must call `preloadRoute(router, path, req)` (resolves lazy components into `_componentCache` AND runs the loaders) before rendering.
 - Forgetting the inner `<RouterView />` inside a LAYOUT component — nested child routes render by placing a SECOND `<RouterView />` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).
-- Expecting a param-only navigation (`/user/1 → /user/2`) to re-run the layout body — it does NOT. Each depth is a single atomic `computed` keyed on (matched record, component, its own loader data); the leaf is ALSO keyed on the route params. It re-emits only when the matched RECORD or that depth's own loader data changes, plus a param change at the leaf. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders. A query- or hash-only navigation (same records, same params) remounts NOTHING: the page reads the new query through its live `props.query`, `useRoute()` or `useSearchParams()` (#4814). Do not put per-navigation side effects in a layout body expecting them to re-fire.
+- Expecting a param-only navigation (`/user/1 → /user/2`) to re-run the layout body — it does NOT. Each depth is a single atomic `computed` keyed on (matched record, component, its own loader data); the leaf is ALSO keyed on the route params. It re-emits only when the matched RECORD or that depth's own loader data changes, plus a param change at the leaf. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders. A query- or hash-only navigation (same records, same params) does not remount the page unless its loader key changes (a `loaderKey` that reads the query), its route error boundary is showing the error page, or new loader data arrives for a page that read the `useLoaderData()` snapshot. The page reads the new query through its live `props.query` (in an accessor or effect — a value read once in the body is NOT refreshed), `useRoute()` or `useSearchParams()` (#4814). Do not put per-navigation side effects in a layout body expecting them to re-fire.
 - Passing the route component as a prop or child to `<RouterView>` — it takes none except `router?` (explicit router override; defaults to the context/active router) and `announceRouteChanges` (a11y live-region opt-out). It reads the matched chain from `RouterContext`; configure routes in `createRouter`, never on RouterView.
 - In a `*-compat` app, wrapping `<RouterView>` in your OWN layout helper that uses `provide()`/`onMount()`/`effect()` at body scope without marking it `nativeCompat()` — the compat jsx runtime relocates its setup into a wrapper accessor. RouterView itself ships `nativeCompat`-marked; your helpers around it must be too.
 - Passing `layout` to `@pyreon/zero`'s `createApp`/`startClient` when fs-router already emits `_layout.tsx` — the layout is a parent route in the matched chain that RouterView renders, so the explicit `layout` mounts it a SECOND time (two navbars / two providers). Let `_layout.tsx` be the canonical registration; do not also pass `layout`.
@@ -344,6 +345,7 @@ const router = useRouter()
 router.push("/settings")
 router.push({ name: "user", params: { id: "42" } })
 router.replace("/login")
+router.push("/list?page=2", { scroll: false, viewTransition: false }) // edit in place
 router.back()
 router.forward()
 router.go(-2)
@@ -351,6 +353,7 @@ router.go(-2)
 
 **Common mistakes**
 
+- Expecting a query-only `push()` to keep the scroll position — a push is a new entry and scrolls to the top (`scrollBehavior`). Pass `router.push(path, { scroll: false })`; add `viewTransition: false` to skip the view transition. A `replace()` that changes only the query (same route, params and hash) defaults to both off; `{ scroll: true }` turns scrolling back on. With `scroll: false` the `scrollBehavior` option is not consulted.
 - `router.push("/path")` at the top level of a component body — this is synchronous imperative navigation during render, causing an infinite loop. Wrap in `onMount`, event handler, or `effect`
 - `await router.push("/path")` expecting animation completion — `push` resolves after DOM commit (`updateCallbackDone`), not after View Transition animation finishes. Use the returned transition object's `.finished` if you need to wait for animation
 - Calling `useRouter()` outside a `<RouterProvider>` — throws because no router context exists
@@ -515,12 +518,45 @@ const User = () => {
 **Common mistakes**
 
 - Getting `undefined` when the route has NO `loader` — it reads `LoaderDataContext` (default `undefined`). The `<T>` generic is an unchecked CAST, not validation; `data.name` then throws on the undefined.
-- Wrapping `useLoaderData()` in an `effect` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS the route component when the matched record, its params or its loader data change, which re-runs the body and re-reads the hook; there is no signal to subscribe to. A query-only navigation keeps the component mounted, so a loader that reads the query must key on it (`loaderKey`) to produce the new data that remounts it — the default key ignores the query.
+- Wrapping `useLoaderData()` in an `effect` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS a component that read it when the matched record, the params, the loader key or the data change, which re-runs the body and re-reads the hook. To follow data that changes while the page stays mounted (a search page whose server loader re-runs on every query edit, a revalidation) without losing local state, read `useLoaderDataAccessor()` instead.
 - SSR returning `undefined` at render time — loaders are async but `renderToString` is synchronous, so the handler must run loaders (`preloadRoute` or `prefetchLoaderData`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.
 - Calling it in a component NOT rendered by `<RouterView>` (a sibling inside `<RouterProvider>`, a portal outside the route tree) — no `LoaderDataProvider` wraps it, so the context is the default `undefined`.
 - Expecting a nested LAYOUT's `useLoaderData()` to return the child PAGE's data — each depth is wrapped with its OWN `LoaderDataProvider`, so a layout reads its own loader's data and the page reads the page's. The hook reads the nearest provider, not the leaf.
 
-**See also:** `useMiddlewareData` · `useRoute`
+**See also:** `useLoaderDataAccessor` · `useMiddlewareData` · `useRoute`
+
+---
+
+### `useLoaderDataAccessor` `hook`
+
+```ts
+useLoaderDataAccessor<T>(): () => T
+```
+
+The current route's loader data as a reactive accessor. It follows data that changes while the page stays mounted: `router.revalidate()`, a `staleWhileRevalidate` refresh, a `gcTime: 0` loader or a server loader re-run on a query-only navigation. A page that reads its data only this way is not remounted for new data under the same loader key, so inputs keep their focus and local state survives. `useLoaderData()` returns the value at mount instead, and RouterView remounts that page when the data changes. A different loader key (`loaderKey`, else path + params) is a different resource and always remounts the page.
+
+**Example**
+
+```tsx
+// Route: { path: "/search", component: Search, hasServerLoader: true } (a zero page + search.server.ts)
+const Search = () => {
+  const data = useLoaderDataAccessor<{ hits: Hit[] }>()
+  const q = useUrlState('q', '')
+  return (
+    <>
+      <input value={q()} onInput={(e) => q.set(e.currentTarget.value)} />
+      <For each={() => data().hits} by={(h) => h.id}>{(h) => <li>{h.title}</li>}</For>
+    </>
+  )
+}
+```
+
+**Common mistakes**
+
+- Calling the accessor once in the component body (`const hits = useLoaderDataAccessor()().hits`) — that is a snapshot again, and a page that only does this is not remounted for new data. Read it inside JSX, an `effect` or a `computed`.
+- Mixing it with `useLoaderData()` in the same page — a single snapshot read makes RouterView remount the page for every data change, which is the state loss the accessor avoids.
+
+**See also:** `useLoaderData` · `RouterView`
 
 ---
 

@@ -14,7 +14,7 @@ import {
 } from '@pyreon/core'
 import { computed, isClient, signal } from '@pyreon/reactivity'
 import { announceRouteChange } from './announcer'
-import { LoaderDataContext, prefetchLoaderData } from './loader'
+import { createLoaderDataCell, LoaderDataContext, type LoaderDataCell, prefetchLoaderData } from './loader'
 import { _setDefaultChromeLayout, sameParams } from './match'
 import { getActiveRouter, isLazy, RouterContext, RouterTabContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
@@ -86,6 +86,112 @@ export interface RouterViewProps extends Props {
  *   return <div><Sidebar /><RouterView /></div>
  * }
  */
+interface DepthEntry {
+  rec: RouteRecord | null
+  comp: ComponentFn | null
+  /**
+   * True when lazy resolution exhausted retries and the chunk is in
+   * `_erroredChunks`. Tracked structurally so the entry re-emits when
+   * the error state flips on — otherwise `equals` would block the
+   * { rec, comp: null } → { rec, comp: null, errored: true } transition
+   * (`comp` and `rec` are unchanged) and the error component would
+   * never render.
+   */
+  errored: boolean
+  /**
+   * The ResolvedRoute this entry was emitted for. `equals` compares its
+   * PARAMS at the leaf, so `/user/42 → /user/99` re-renders the User
+   * component with new params, while a query- or hash-only navigation
+   * (same records, same params) keeps the page mounted and only updates
+   * the live `query` prop (#4814). Navigate-flow noise (`_loadingSignal`
+   * ticks, lazy resolution writes) never re-emits.
+   */
+  route: ResolvedRoute
+  /**
+   * This depth's record's OWN loader data (only when the record carries a
+   * loader; `undefined` otherwise). Compared in `equals` for non-leaf depths
+   * so a parameterised parent LAYOUT with its own loader re-emits — and thus
+   * re-mounts, re-reading `useLoaderData()` in its body — when its data
+   * changes across a child navigation (`/users/42/… → /users/99/…`). A
+   * loader-LESS layout (the common chrome/sidebar case) keeps `loaderData`
+   * `undefined` on both sides → still mounts once (preserves the layout-
+   * persistence win). Read inside the computed so it tracks the `currentRoute`
+   * / `_loadingSignal` deps already subscribed above.
+   */
+  loaderData: unknown
+  /**
+   * This depth's loader cache key (`loaderKey`, else path + params);
+   * `undefined` for a loader-less record. A different key is a different
+   * resource, so the depth remounts. Data that changes under the SAME key is
+   * delivered in place (#4814).
+   */
+  loaderKey: string | undefined
+}
+
+/**
+ * What is on screen at one depth. `equals` consults it: a component that took
+ * the `useLoaderData()` snapshot must be remounted to see new data, and a route
+ * error boundary showing its fallback must be remounted to recover.
+ */
+interface ViewState {
+  cell: LoaderDataCell
+  /** The route's error boundary is showing its `errorComponent`. */
+  boundaryErrored: boolean
+  /**
+   * The subtree cannot follow new loader data in place (the route rendered its
+   * `errorComponent` while the data was missing).
+   */
+  needsRemountForData: boolean
+}
+
+function createViewState(
+  router: RouterInstance,
+  routeOf: () => ResolvedRoute,
+  rec: RouteRecord,
+  depth: number,
+): ViewState {
+  let last = router._loaderData.get(rec)
+  const cell = createLoaderDataCell(() => {
+    // Wakes on the navigation that writes the data (the route changes) and on
+    // a revalidation / SWR refresh (`_loadingSignal` ticks).
+    router._loadingSignal()
+    // While another record holds this depth the subtree is on its way out:
+    // keep the data it was showing.
+    if (routeOf().matched[depth] === rec) last = router._loaderData.get(rec)
+
+    return last
+  })
+
+  return { cell, boundaryErrored: false, needsRemountForData: false }
+}
+
+/**
+ * The remount rule (#4814): a depth keeps its subtree while its record,
+ * component, chunk-error state and (at the leaf) params are unchanged and its
+ * loader key is the same. Only the query or the hash moving never remounts.
+ * New loader data under the same key is delivered in place, unless the
+ * component on screen took the `useLoaderData()` snapshot (it could not see
+ * the update). An error boundary showing its fallback recovers on any
+ * navigation.
+ */
+function sameDepth(a: DepthEntry, b: DepthEntry, depth: number, shown: ViewState | null): boolean {
+  if (a.rec !== b.rec || a.comp !== b.comp || a.errored !== b.errored) return false
+  if (shown?.boundaryErrored && a.route !== b.route) return false
+  // A parent layout persists across child navigations and reads the leaf's
+  // params reactively (`useParams()`); the LEAF is the page, keyed on params.
+  const isLeaf = depth >= b.route.matched.length - 1
+  if (isLeaf && !sameParams(a.route.params, b.route.params)) return false
+  if (a.loaderKey !== b.loaderKey) return false
+  if (a.loaderData === b.loaderData) return true
+  // First arrival with a pending component: PendingLoader owns the swap.
+  if (a.loaderData === undefined && b.rec?.pendingComponent) return true
+  // Same key, new data (revalidate, SWR, gcTime 0, a server loader): in place
+  // unless the subtree on screen cannot follow it.
+  if (!shown) return false
+
+  return !shown.cell.snapshotRead && !shown.needsRemountForData
+}
+
 const RouterView: ComponentFn<RouterViewProps> = (props) => {
   const router = ((props.router as RouterInstance | undefined) ??
     useContext(RouterContext)) as RouterInstance | null
@@ -159,46 +265,19 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
   // it could read the new record paired with the OLD component (observed:
   // rec=/button with comp=HomePage, leaving the previous page rendered).
   // One computed forces atomic emission of the pair.
-  interface DepthEntry {
-    rec: RouteRecord | null
-    comp: ComponentFn | null
-    /**
-     * True when lazy resolution exhausted retries and the chunk is in
-     * `_erroredChunks`. Tracked structurally so the entry re-emits when
-     * the error state flips on — otherwise `equals` would block the
-     * { rec, comp: null } → { rec, comp: null, errored: true } transition
-     * (`comp` and `rec` are unchanged) and the error component would
-     * never render.
-     */
-    errored: boolean
-    /**
-     * The ResolvedRoute this entry was emitted for. `equals` compares its
-     * PARAMS at the leaf, so `/user/42 → /user/99` re-renders the User
-     * component with new params, while a query- or hash-only navigation
-     * (same records, same params) keeps the page mounted and only updates
-     * the live `query` prop (#4814). Navigate-flow noise (`_loadingSignal`
-     * ticks, lazy resolution writes) never re-emits.
-     */
-    route: ResolvedRoute
-    /**
-     * This depth's record's OWN loader data (only when the record carries a
-     * loader; `undefined` otherwise). Compared in `equals` for non-leaf depths
-     * so a parameterised parent LAYOUT with its own loader re-emits — and thus
-     * re-mounts, re-reading `useLoaderData()` in its body — when its data
-     * changes across a child navigation (`/users/42/… → /users/99/…`). A
-     * loader-LESS layout (the common chrome/sidebar case) keeps `loaderData`
-     * `undefined` on both sides → still mounts once (preserves the layout-
-     * persistence win). Read inside the computed so it tracks the `currentRoute`
-     * / `_loadingSignal` deps already subscribed above.
-     */
-    loaderData: unknown
-  }
+
+  // What is on screen at this depth, written by `child()` each time it renders
+  // a subtree and read by `equals` to decide whether a change needs a remount.
+  let shown: ViewState | null = null
+
   const depthEntry = computed<DepthEntry>(
     () => {
       const route = routeOf()
       // Initial navigation pending or not approved: render nothing.
       const rec = router._initialGate?.() ? null : (route.matched[depth] ?? null)
-      if (!rec) return { rec: null, comp: null, errored: false, route, loaderData: undefined }
+      if (!rec) {
+        return { rec: null, comp: null, errored: false, route, loaderData: undefined, loaderKey: undefined }
+      }
       // Subscribe to `_loadingSignal` so lazy resolution wakes this
       // computed up — when the cache fills, we re-emit with comp set.
       router._loadingSignal()
@@ -215,23 +294,22 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
       // flips `currentRoute`, and bumps `_loadingSignal` on async settle — both
       // subscribed above — so this read reflects the latest data and `equals`
       // re-emits a loader-bearing parent layout when its data changes.
-      const loaderData =
-        rec.loader || rec.serverLoader || rec.hasServerLoader
-          ? router._loaderData.get(rec)
-          : undefined
-      const errored = router._erroredChunks.has(rec)
-      if (errored) return { rec, comp: null, errored: true, route, loaderData }
+      const hasLoader = Boolean(rec.loader || rec.serverLoader || rec.hasServerLoader)
+      const loaderData = hasLoader ? router._loaderData.get(rec) : undefined
+      const loaderKey = hasLoader ? router._loaderKeyOf(rec, route) : undefined
+      const base = { rec, route, loaderData, loaderKey }
+      if (router._erroredChunks.has(rec)) return { ...base, comp: null, errored: true }
       const cached = router._componentCache.get(rec)
-      if (cached) return { rec, comp: cached, errored: false, route, loaderData }
+      if (cached) return { ...base, comp: cached, errored: false }
       const raw = rec.component
       if (!isLazy(raw)) {
         cacheSet(router, rec, raw)
-        return { rec, comp: raw, errored: false, route, loaderData }
+        return { ...base, comp: raw, errored: false }
       }
       // Lazy and not yet cached — `child()` below renders the lazy
       // fallback and triggers the load; once the load completes,
       // `_loadingSignal` ticks and this computed re-emits with `comp` set.
-      return { rec, comp: null, errored: false, route, loaderData }
+      return { ...base, comp: null, errored: false }
     },
     {
       // Re-emit (→ re-mount the subtree at this depth) when this depth's
@@ -258,43 +336,19 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
       // We re-emit (re-mount, re-reading `useLoaderData()` in the body) only when
       // THIS depth's own loader data changed. Loader-less layouts keep
       // `loaderData === undefined` on both sides → still mount once.
-      equals: (a, b) => {
-        if (a.rec !== b.rec || a.comp !== b.comp || a.errored !== b.errored) {
-          return false
-        }
-        const isLeaf = depth >= b.route.matched.length - 1
-        // The leaf ALSO re-emits when its loader data is REPLACED with the
-        // route unchanged — `router.revalidate()` (mutation-then-refresh)
-        // writes fresh data in place, and a leaf held only by `route`
-        // identity kept rendering the stale `useLoaderData()` snapshot.
-        // First ARRIVAL is owned by PendingLoader only when a pending
-        // component is configured. Otherwise the initial component received
-        // an undefined context snapshot and must remount with the loaded data.
-        //
-        // The leaf is keyed on its PARAMS, not on the route object: a
-        // navigation that changes only the query or the hash (a search box
-        // written through `router.replace`, `useSearchParams().set`, url-state)
-        // keeps the page mounted and reaches it through the live `query` prop
-        // and `useRoute()`. Remounting there dropped focus and local state on
-        // every keystroke (#4814).
-        if (isLeaf) {
-          return (
-            sameParams(a.route.params, b.route.params) &&
-            ((a.loaderData === undefined && !!b.rec?.pendingComponent) || a.loaderData === b.loaderData)
-          )
-        }
-
-        return a.loaderData === b.loaderData
-      },
+      equals: (a, b) => sameDepth(a, b, depth, shown),
     },
   )
 
   const child = (): VNodeChild => {
     const { rec, comp, route } = depthEntry()
+    shown = null
     if (!rec) return null
 
     if (comp) {
-      return renderWithLoader(router, rec, comp, liveRouteProps(routeOf, rec, depth, route))
+      const state = createViewState(router, routeOf, rec, depth)
+      shown = state
+      return renderWithLoader(router, rec, comp, liveRouteProps(routeOf, rec, depth, route), state)
     }
 
     // Component not yet cached — kick off the lazy load. `renderLazyRoute`
@@ -714,9 +768,16 @@ function liveRouteProps(
   depth: number,
   rendered: ResolvedRoute,
 ): RouteProps {
+  // At the LEAF a param change remounts the page, so the instance on screen
+  // must not see the next page's params before it is replaced (it would, say,
+  // refetch user 2 on its way out). A parent layout persists across child
+  // navigations and follows the params live.
+  const isLeaf = depth >= rendered.matched.length - 1
   const live = (): ResolvedRoute => {
     const r = routeOf()
-    return r.matched[depth] === rec ? r : rendered
+    if (r.matched[depth] !== rec) return rendered
+
+    return isLeaf && !sameParams(r.params, rendered.params) ? rendered : r
   }
   return {
     get params() {
@@ -736,6 +797,7 @@ function renderWithLoader(
   record: RouteRecord,
   Comp: ComponentFn,
   routeProps: RouteProps,
+  state: ViewState,
 ): VNodeChild {
 
   // Phase 5 — server-loader records carry data too (`serverLoader` is the
@@ -756,9 +818,15 @@ function renderWithLoader(
   // If route has an error component, wrap rendering in error boundary
   if (record.errorComponent) {
     return h(ErrorBoundary, {
-      fallback: (error: Error) => h(record.errorComponent!, { ...routeProps, error }),
+      fallback: (error: Error) => {
+        // The page stays mounted across a query-only navigation, so the
+        // boundary must be told to recover: RouterView remounts it on the
+        // next navigation (`sameDepth`).
+        state.boundaryErrored = true
+        return h(record.errorComponent!, withError(routeProps, error))
+      },
       children: carriesLoaderData
-        ? renderLoaderContent(router, record, Comp, routeProps)
+        ? renderLoaderContent(router, record, Comp, routeProps, state)
         : h(Comp, routeProps),
     })
   }
@@ -767,19 +835,27 @@ function renderWithLoader(
     return h(Comp, routeProps)
   }
 
-  return renderLoaderContent(router, record, Comp, routeProps)
+  return renderLoaderContent(router, record, Comp, routeProps, state)
+}
+
+/** The error page's props: the LIVE route props (descriptors, not a spread snapshot) plus `error`. */
+function withError(routeProps: RouteProps, error: Error): RouteProps & { error: Error } {
+  return Object.defineProperties({ error }, Object.getOwnPropertyDescriptors(routeProps)) as RouteProps & {
+    error: Error
+  }
 }
 
 function renderLoaderContent(
   router: RouterInstance,
   record: RouteRecord,
   Comp: ComponentFn,
-  routeProps: Record<string, unknown>,
+  routeProps: RouteProps,
+  state: ViewState,
 ): VNodeChild {
   const data = router._loaderData.get(record)
 
   if (data !== undefined) {
-    return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
+    return h(LoaderDataProvider, { cell: state.cell, children: h(Comp, routeProps) })
   }
 
   // Data not yet available — show pending component if configured
@@ -789,14 +865,18 @@ function renderLoaderContent(
       record,
       Comp,
       routeProps,
+      cell: state.cell,
     })
   }
 
+  // No data and no pending component: the error page stands in, and cannot
+  // turn into the page in place when the data arrives.
   if (record.errorComponent) {
+    state.needsRemountForData = true
     return h(record.errorComponent, routeProps)
   }
 
-  return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
+  return h(LoaderDataProvider, { cell: state.cell, children: h(Comp, routeProps) })
 }
 
 /**
@@ -811,9 +891,10 @@ function PendingLoader(props: {
   router: RouterInstance
   record: RouteRecord
   Comp: ComponentFn
-  routeProps: Record<string, unknown>
+  routeProps: RouteProps
+  cell: LoaderDataCell
 }): VNodeChild {
-  const { router, record, Comp, routeProps } = props
+  const { router, record, Comp, routeProps, cell } = props
   const pendingMs = record.pendingMs ?? 0
   const pendingMinMs = record.pendingMinMs ?? 200
 
@@ -885,9 +966,7 @@ function PendingLoader(props: {
     if (p === 'hidden') return null
     if (p === 'pending') return h(record.pendingComponent!, routeProps)
     // ready
-    const data = router._loaderData.get(record)
-
-    return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
+    return h(LoaderDataProvider, { cell, children: h(Comp, routeProps) })
   })
 }
 
@@ -895,8 +974,8 @@ function PendingLoader(props: {
  * Thin provider component that pushes LoaderDataContext before children mount.
  * Uses Pyreon's context stack so useLoaderData() reads it during child setup.
  */
-function LoaderDataProvider(props: { data: unknown; children: VNodeChild }): VNodeChild {
-  provide(LoaderDataContext, props.data)
+function LoaderDataProvider(props: { cell: LoaderDataCell; children: VNodeChild }): VNodeChild {
+  provide(LoaderDataContext, props.cell)
   return props.children
 }
 
