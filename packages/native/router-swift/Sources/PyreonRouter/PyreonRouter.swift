@@ -145,54 +145,81 @@ public final class PyreonRouter {
     /// binding inside RouterProvider's body. Mutating this array
     /// (push / pop / replace) triggers SwiftUI's navigation animation.
     ///
-    /// Each element is a ROUTE path WITHOUT its query (`/search`, never
-    /// `/search?q=cat`): the element is the pushed screen's identity in
+    /// Each element is a ROUTE path WITHOUT its query or fragment (`/search`,
+    /// never `/search?q=cat`): the element is the pushed screen's identity in
     /// `.navigationDestination(for: String.self)`, and a query-only change
     /// (`setQueryParam`, url-state, a same-route `replace`) must keep the
     /// screen and its `@State` — the native twin of web #4814. Each entry's
-    /// query lives in `entryQueries`; `currentPath` reassembles the URL.
+    /// tail (`?query#fragment`) lives in `entrySuffixes`; `currentPath`
+    /// reassembles the URL. The Kotlin router's `path` has the same shape.
     ///
-    /// A direct write keeps the queries of the unchanged leading entries and
-    /// gives every changed or new entry an empty query (see `didSet`), so
-    /// SwiftUI's back-swipe pop through the binding stays consistent.
+    /// A direct write is normalised (see `didSet`): an element carrying
+    /// `?…` / `#…` is split and its tail kept as that entry's suffix; a bare
+    /// element keeps its suffix when it is unchanged at the same position (so
+    /// SwiftUI's back-swipe pop through the binding stays consistent), else
+    /// starts with none.
     public var path: [String] {
-        didSet { entryQueries = Self.reconcileQueries(entryQueries, old: oldValue, new: path) }
-    }
-
-    /// The raw query of every entry of the ACTIVE stack: index 0 is the
-    /// stack's root view, index `i` is `path[i - 1]`. Always
-    /// `path.count + 1` long (kept so by `path`'s `didSet`).
-    private var entryQueries: [String] = [""]
-
-    /// Queries matching a rewritten stack: entries that kept their route at
-    /// the same position keep their query; a changed or new entry starts
-    /// with none; the root's query (index 0) is always kept.
-    static func reconcileQueries(_ queries: [String], old: [String], new: [String]) -> [String] {
-        var out: [String] = [queries.first ?? ""]
-        for (i, route) in new.enumerated() {
-            let keep = i < old.count && old[i] == route && i + 1 < queries.count
-            out.append(keep ? queries[i + 1] : "")
+        didSet {
+            let normalized = Self.normalizeStack(path, old: oldValue, suffixes: entrySuffixes)
+            // Re-entering the setter runs this `didSet` once more against the
+            // raw value, so the suffixes are written AFTER it.
+            if normalized.routes != path { path = normalized.routes }
+            entrySuffixes = normalized.suffixes
         }
-        return out
     }
 
-    /// Split a full URL into a stack element (route part) and its raw query.
-    static func splitEntry(_ full: String) -> (route: String, query: String) {
-        let parts = splitPathAndQuery(full)
-        return (parts.path, parts.query)
+    /// The URL tail (`?q=1#sec`, `#intro` or "") of every entry of the ACTIVE
+    /// stack: index 0 is the stack's root view, index `i` is `path[i - 1]`.
+    /// Always `path.count + 1` long (kept so by `path`'s `didSet`).
+    private var entrySuffixes: [String] = [""]
+
+    /// Normalise a stack write against the previous stack and its suffixes:
+    /// every element is split into route + tail; an element carrying a tail
+    /// stores it as its entry's suffix; a bare element keeps its old suffix
+    /// when it is unchanged at the same position, else starts with none; the
+    /// root's suffix (index 0) is always kept.
+    static func normalizeStack(
+        _ raw: [String], old: [String], suffixes: [String]
+    ) -> (routes: [String], suffixes: [String]) {
+        var routes: [String] = []
+        var out: [String] = [suffixes.first ?? ""]
+        for (i, element) in raw.enumerated() {
+            let entry = splitEntry(element)
+            routes.append(entry.route)
+            if !entry.suffix.isEmpty {
+                out.append(entry.suffix)
+            } else {
+                let keep = i < old.count && old[i] == entry.route && i + 1 < suffixes.count
+                out.append(keep ? suffixes[i + 1] : "")
+            }
+        }
+        return (routes, out)
     }
 
-    /// Reassemble a stack element and its raw query into a URL.
-    static func joinEntry(_ route: String, _ query: String) -> String {
-        query.isEmpty ? route : "\(route)?\(query)"
+    /// Split a URL into its route and its tail (`?query#fragment`, either part
+    /// optional). The fragment is KEPT: it belongs to the entry like the query.
+    static func splitEntry(_ full: String) -> (route: String, suffix: String) {
+        guard let cut = full.firstIndex(where: { $0 == "?" || $0 == "#" }) else { return (full, "") }
+        return (String(full[..<cut]), String(full[cut...]))
     }
 
-    /// The raw query of the visible entry (the root's when the stack is empty).
-    private var topQuery: String {
-        get { path.count < entryQueries.count ? entryQueries[path.count] : "" }
+    /// Reassemble a stack element and its tail into a URL.
+    static func joinEntry(_ route: String, _ suffix: String) -> String {
+        route + suffix
+    }
+
+    /// The `#fragment` part of an entry tail, `#` included, or "".
+    static func fragmentOf(_ suffix: String) -> String {
+        guard let hash = suffix.firstIndex(of: "#") else { return "" }
+        return String(suffix[hash...])
+    }
+
+    /// The URL tail of the visible entry (the root's when the stack is empty).
+    private var topSuffix: String {
+        get { path.count < entrySuffixes.count ? entrySuffixes[path.count] : "" }
         set {
-            while entryQueries.count <= path.count { entryQueries.append("") }
-            entryQueries[path.count] = newValue
+            while entrySuffixes.count <= path.count { entrySuffixes.append("") }
+            entrySuffixes[path.count] = newValue
         }
     }
 
@@ -217,7 +244,7 @@ public final class PyreonRouter {
     /// Convenience accessor for the top-of-stack URL, query included
     /// (`/search?q=cat`). Mirrors `router.currentRoute().fullPath` on the web.
     public var currentPath: String {
-        Self.joinEntry(routePath, topQuery)
+        Self.joinEntry(routePath, topSuffix)
     }
 
     /// The visible route WITHOUT its query (`/search`) — the screen's
@@ -238,11 +265,26 @@ public final class PyreonRouter {
 
     /// The pushed entries (root excluded — a tab's root is its stack's ROOT
     /// view) of every tab EXCEPT the active one, whose entries live in `path`.
-    /// Route parts only, like `path`.
-    public var tabPaths: [String: [String]] = [:]
+    /// Route parts only, like `path`; a write is normalised the same way.
+    public var tabPaths: [String: [String]] = [:] {
+        didSet {
+            var routes: [String: [String]] = [:]
+            var suffixes: [String: [String]] = [:]
+            for (name, stack) in tabPaths {
+                let normalized = Self.normalizeStack(
+                    stack, old: oldValue[name] ?? [], suffixes: tabSuffixes[name] ?? [""])
+                routes[name] = normalized.routes
+                suffixes[name] = normalized.suffixes
+            }
+            // Re-entering the setter runs this `didSet` again on the raw value,
+            // so the suffixes are written AFTER it.
+            if routes != tabPaths { tabPaths = routes }
+            tabSuffixes = suffixes
+        }
+    }
 
-    /// Each parked tab's `entryQueries` (root first), keyed like `tabPaths`.
-    private var tabQueries: [String: [String]] = [:]
+    /// Each parked tab's `entrySuffixes` (root first), keyed like `tabPaths`.
+    private var tabSuffixes: [String: [String]] = [:]
 
     /// The active tab's root path, when the router has tabs.
     public var activeTabRoot: String? {
@@ -266,9 +308,7 @@ public final class PyreonRouter {
                 if name == self.activeTab {
                     self.applyStackWrite(next)
                 } else {
-                    let old = self.tabPaths[name] ?? []
-                    self.tabQueries[name] = Self.reconcileQueries(
-                        self.tabQueries[name] ?? [""], old: old, new: next)
+                    // `tabPaths`' `didSet` reconciles the tab's suffixes.
                     self.tabPaths[name] = next
                 }
             }
@@ -301,7 +341,7 @@ public final class PyreonRouter {
         guard let tab = tabs.first(where: { $0.name == name }) else { return }
         if name == activeTab {
             guard !path.isEmpty else { return }
-            let rootURL = Self.joinEntry(tab.root, entryQueries.first ?? "")
+            let rootURL = Self.joinEntry(tab.root, entrySuffixes.first ?? "")
             if !allowNavigation(to: rootURL) { return }
             path = []
             _forwardStack.removeAll()
@@ -310,10 +350,10 @@ public final class PyreonRouter {
             return
         }
         let saved = tabPaths[name] ?? []
-        let savedQueries = tabQueries[name] ?? [""]
+        let savedSuffixes = tabSuffixes[name] ?? [""]
         let destination = Self.joinEntry(
             saved.last ?? tab.root,
-            saved.count < savedQueries.count ? savedQueries[saved.count] : "")
+            saved.count < savedSuffixes.count ? savedSuffixes[saved.count] : "")
         if !allowNavigation(to: destination) { return }
         activateTab(name)
         _forwardStack.removeAll()
@@ -325,17 +365,19 @@ public final class PyreonRouter {
     /// loading `name`'s. Ungated — callers run the guards first.
     private func activateTab(_ name: String) {
         guard name != activeTab else { return }
-        if let current = activeTab {
-            tabPaths[current] = path
-            tabQueries[current] = entryQueries
-        }
-        let incomingQueries = tabQueries[name] ?? [""]
-        path = tabPaths[name] ?? []
-        // After the `path` write: its `didSet` reconciled against the
-        // OUTGOING tab's stack, so restore the incoming tab's own queries.
-        entryQueries = Self.reconcileQueries(incomingQueries, old: path, new: path)
-        tabPaths[name] = nil
-        tabQueries[name] = nil
+        let incomingStack = tabPaths[name] ?? []
+        let incomingSuffixes = tabSuffixes[name] ?? [""]
+        let outgoingSuffixes = entrySuffixes
+        // Each write's `didSet` reconciles against the stack it replaced, so
+        // the suffixes are restored AFTER the matching stack write.
+        var parked = tabPaths
+        parked[name] = nil
+        if let current = activeTab { parked[current] = path }
+        tabPaths = parked
+        if let current = activeTab { tabSuffixes[current] = outgoingSuffixes }
+        tabSuffixes[name] = nil
+        path = incomingStack
+        entrySuffixes = incomingSuffixes
         activeTab = name
     }
 
@@ -375,7 +417,7 @@ public final class PyreonRouter {
         } else {
             path.append(entry.route)
         }
-        topQuery = entry.query
+        topSuffix = entry.suffix
         updateParamsFromPath(currentPath)
         return true
     }
@@ -570,22 +612,22 @@ public final class PyreonRouter {
             if let target, allowed, !Self.isTabRoot(tab, target) {
                 let entry = Self.splitEntry(target)
                 self.path = [entry.route]
-                self.entryQueries = ["", entry.query]
+                self.entrySuffixes = ["", entry.suffix]
             } else if let target, allowed {
                 // A deep link to the tab's root: the root entry carries its query.
                 self.path = []
-                self.entryQueries = [Self.splitEntry(target).query]
+                self.entrySuffixes = [Self.splitEntry(target).suffix]
             } else {
                 self.path = []
-                self.entryQueries = [""]
+                self.entrySuffixes = [""]
             }
         } else if allowed {
             let entries = initialPath.map(Self.splitEntry)
             self.path = entries.map(\.route)
-            self.entryQueries = [""] + entries.map(\.query)
+            self.entrySuffixes = [""] + entries.map(\.suffix)
         } else {
             self.path = []
-            self.entryQueries = [""]
+            self.entrySuffixes = [""]
         }
         // Resolve any params that the initial top-of-stack path produces,
         // so apps that start on `/users/42` have `params["id"] == "42"`
@@ -921,7 +963,7 @@ public final class PyreonRouter {
     private func commitPush(_ url: String) {
         let entry = Self.splitEntry(url)
         path.append(entry.route)
-        topQuery = entry.query
+        topSuffix = entry.suffix
         updateParamsFromPath(currentPath)
     }
 
@@ -938,7 +980,7 @@ public final class PyreonRouter {
         } else if path[path.count - 1] != entry.route {
             path[path.count - 1] = entry.route
         }
-        topQuery = entry.query
+        topSuffix = entry.suffix
         updateParamsFromPath(currentPath)
     }
 
@@ -983,9 +1025,9 @@ public final class PyreonRouter {
     /// undo/redo semantic.
     public func back() {
         guard !self.path.isEmpty else { return }
-        let poppedQuery = topQuery
+        let poppedSuffix = topSuffix
         let popped = self.path.removeLast()
-        _forwardStack.append(Self.joinEntry(popped, poppedQuery))
+        _forwardStack.append(Self.joinEntry(popped, poppedSuffix))
         updateParamsFromPath(currentPath)
     }
 
@@ -1072,7 +1114,7 @@ public final class PyreonRouter {
     /// after reset would be surprising.
     public func reset() {
         self.path.removeAll()
-        topQuery = ""
+        topSuffix = ""
         _forwardStack.removeAll()
         updateParamsFromPath(currentPath)
     }
@@ -1204,7 +1246,9 @@ public final class PyreonRouter {
         if let value { next[key] = value } else { next.removeValue(forKey: key) }
         guard next != query else { return }
         query = next
-        topQuery = Self.serializeQuery(next)
+        // The fragment stays with the entry.
+        let serialized = Self.serializeQuery(next)
+        topSuffix = (serialized.isEmpty ? "" : "?\(serialized)") + Self.fragmentOf(topSuffix)
     }
 
 }

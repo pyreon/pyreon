@@ -1308,6 +1308,107 @@ final class PyreonRouterQueryTests: XCTestCase {
         XCTAssertEqual(router.query, ["q": "dog"])
     }
 
+    /// A direct write to the public `path` (or `tabPaths`) with a query in an
+    /// element is normalised: the element keeps only the route and the query
+    /// becomes that entry's. Unnormalised, a later `setQueryParam` produced
+    /// `/search?q=x?q=y`.
+    @MainActor
+    func testDirectPathWriteWithAQueryIsNormalised() {
+        let router = PyreonRouter(initialPath: [])
+        router.path = ["/search?q=x"]
+        XCTAssertEqual(router.path, ["/search"])
+        XCTAssertEqual(router.currentPath, "/search?q=x")
+        router.setQueryParam("q", "y")
+        XCTAssertEqual(router.path, ["/search"])
+        XCTAssertEqual(router.currentPath, "/search?q=y")
+
+        let tabbed = PyreonRouter(
+            initialPath: [],
+            tabs: [PyreonRouterTab(name: "a", root: "/a"), PyreonRouterTab(name: "b", root: "/b")]
+        )
+        tabbed.tabPaths["b"] = ["/b/y?z=2"]
+        XCTAssertEqual(tabbed.tabPath("b"), ["/b/y"])
+        tabbed.selectTab("b")
+        XCTAssertEqual(tabbed.path, ["/b/y"])
+        XCTAssertEqual(tabbed.currentPath, "/b/y?z=2")
+    }
+
+    /// The fragment belongs to the entry like the query: it survives the
+    /// split, a query write, and never reaches the stack element.
+    @MainActor
+    func testFragmentIsKept() {
+        let router = PyreonRouter(initialPath: [])
+        router.push("/doc#intro")
+        XCTAssertEqual(router.path, ["/doc"])
+        XCTAssertEqual(router.currentPath, "/doc#intro")
+        router.push("/doc?x=1#sec")
+        XCTAssertEqual(router.path, ["/doc", "/doc"])
+        XCTAssertEqual(router.currentPath, "/doc?x=1#sec")
+        XCTAssertEqual(router.query, ["x": "1"])
+        router.setQueryParam("x", "2")
+        XCTAssertEqual(router.currentPath, "/doc?x=2#sec")
+        router.setQueryParam("x", nil)
+        XCTAssertEqual(router.currentPath, "/doc#sec")
+    }
+
+    /// Review probe scenarios: same-route pushes popped by SwiftUI, a query
+    /// write between back and forward, a tab round-trip, a cold link with a
+    /// query, reset, and the root query surviving a push + back.
+    @MainActor
+    func testQueryBookkeepingScenarios() {
+        let r2 = PyreonRouter(initialPath: [])
+        r2.push("/search?q=a")
+        r2.push("/search?q=b")
+        r2.stackBinding().wrappedValue = ["/search"]
+        XCTAssertEqual(r2.path, ["/search"])
+        XCTAssertEqual(r2.currentPath, "/search?q=a")
+        XCTAssertEqual(r2.query, ["q": "a"])
+
+        let r4 = PyreonRouter(initialPath: [])
+        r4.push("/a?x=1")
+        r4.push("/b?y=2")
+        r4.back()
+        r4.setQueryParam("x", "9")
+        XCTAssertEqual(r4.currentPath, "/a?x=9")
+        r4.forward()
+        XCTAssertEqual(r4.currentPath, "/b?y=2")
+        XCTAssertEqual(r4.path, ["/a", "/b"])
+        r4.back()
+        XCTAssertEqual(r4.currentPath, "/a?x=9")
+
+        let r5 = PyreonRouter(initialPath: [])
+        r5.push("/s?q=1")
+        r5.replace("/s?q=2")
+        XCTAssertEqual(r5.path, ["/s"])
+        XCTAssertEqual(r5.currentPath, "/s?q=2")
+
+        let r7 = PyreonRouter(
+            initialPath: [],
+            tabs: [PyreonRouterTab(name: "a", root: "/a"), PyreonRouterTab(name: "b", root: "/b")]
+        )
+        r7.push("/a/x?q=1")
+        r7.push("/b/y?z=2")
+        r7.selectTab("a")
+        XCTAssertEqual(r7.currentPath, "/a/x?q=1")
+        r7.selectTab("b")
+        XCTAssertEqual(r7.currentPath, "/b/y?z=2")
+
+        let r8 = PyreonRouter(initialPath: ["/list?page=2"])
+        XCTAssertEqual(r8.path, ["/list"])
+        XCTAssertEqual(r8.currentPath, "/list?page=2")
+        XCTAssertEqual(r8.query, ["page": "2"])
+        r8.reset()
+        XCTAssertEqual(r8.currentPath, "/")
+        XCTAssertTrue(r8.query.isEmpty)
+
+        let r9 = PyreonRouter(initialPath: [])
+        r9.setQueryParam("f", "open")
+        r9.push("/x")
+        r9.back()
+        XCTAssertEqual(r9.currentPath, "/?f=open")
+        XCTAssertEqual(r9.query, ["f": "open"])
+    }
+
     @MainActor
     func testLoaderKeyExcludesTheQuery() throws {
         struct Loaded { let n: Int }
