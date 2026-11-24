@@ -116,6 +116,10 @@ describe('check-main-red-watchlist — fails closed', () => {
     ])
     const filtered = unfiltered.replace('    types: [completed]\n', '    types: [completed]\n    branches: [main]\n')
     expect(checkWatchlist({ ...files, 'size.yml': filtered }, exempt)).toEqual([])
+    // A `push: branches: [main]` beside it filters a different event.
+    const pushFiltered = unfiltered.replace('on:\n', 'on:\n  push:\n    branches: [main]\n')
+    expect(pushFiltered).not.toBe(unfiltered)
+    expect(checkWatchlist({ ...files, 'size.yml': pushFiltered }, exempt)[0]).toContain('must declare `branches: [main]`')
   })
 
   it('only the alarm itself can be exempt as "self"', () => {

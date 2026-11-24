@@ -175,8 +175,8 @@ export function findLightPrCiViolations(workflows: Record<string, string>): stri
     for (const job of jobs) {
       if (!LIGHT.test(jobIf(job.body))) continue
       const name = jobName(job.body) ?? job.name
-      for (const m of job.body.matchAll(/^ {6}- name:\s*(.+)\n((?: {8}[^\n]*\n)*)/gm)) {
-        const stepIf = /^ {8}if:\s*(.+)$/m.exec(m[2]!)?.[1] ?? ''
+      for (const m of job.body.matchAll(/^ {6}- name:[ \t]*(\S[^\n]*)\n((?: {8}[^\n]*\n)*)/gm)) {
+        const stepIf = /^ {8}if:[ \t]*(\S.*)$/m.exec(m[2]!)?.[1] ?? ''
         if (/event_name == 'pull_request'/.test(stepIf) && !/merge_group/.test(stepIf)) {
           violations.push(
             `${file}: step "${m[1]!.trim()}" of "${name}" runs only on pull_request, but light mode skips "${name}" on the pull request, so it would run nowhere before merge; admit merge_group in its if:`,

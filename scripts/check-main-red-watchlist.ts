@@ -164,7 +164,13 @@ function unfilteredFollower(file: string, text: string, reason: ExemptReason | u
   } catch {
     return null // an unreadable `on:` block is reported by the exemption check
   }
-  if (/^ {4}branches: \[main\]\s*$/m.test(onBlock(text).join('\n'))) return null
+  // Only the `workflow_run:` sub-block counts: a `push: branches: [main]`
+  // beside it filters a different event.
+  const block = onBlock(text)
+  const start = block.findIndex((l) => /^ {2}workflow_run:/.test(l))
+  const end = block.findIndex((l, i) => i > start && /^ {2}\S/.test(l))
+  const sub = block.slice(start + 1, end < 0 ? block.length : end)
+  if (sub.some((l) => /^ {4}branches: \[main\]$/.test(l.trimEnd()))) return null
 
   return (
     `${file}: a \`workflow_run\` follower must declare \`branches: [main]\` under \`on.workflow_run\`, ` +
