@@ -110,7 +110,6 @@ export function DocsView(props: { model: WorkbenchModel }) {
           <C.DocsDesc>{c.desc ?? ''}</C.DocsDesc>
           <C.DocsPreview
             data-testid="docs-preview"
-            data-allow-reload=""
             ref={m.overlayHostRef}
             {...({
               // Same room-to-open rule as the canvas surface.

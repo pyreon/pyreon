@@ -49,7 +49,7 @@ export interface CreateAppOptions {
    * a plain static host can pass `'add'`, so the URL the router writes is the
    * URL the host serves without a redirect.
    */
-  trailingSlash?: 'strip' | 'add' | 'ignore'
+  trailingSlash?: 'strip' | 'add' | 'ignore' | undefined
 }
 
 /** Does this record (or a descendant) declare loader data? */

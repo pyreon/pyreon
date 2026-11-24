@@ -33,6 +33,7 @@ const CATALOG: WorkbenchCatalog = {
 }
 
 const cleanups: (() => void)[] = []
+
 afterEach(() => {
   for (const c of cleanups.splice(0)) c()
   seen.length = 0
@@ -41,7 +42,13 @@ afterEach(() => {
 
 function mountUnderWorkbenchRouter(child: () => VNodeChild): unknown {
   history.replaceState(null, '', '/probe')
-  const workbench = createRouter({ routes: [{ path: '/:component', component: () => null }], mode: 'history' })
+  const workbench = createRouter({
+    routes: [
+      { path: '/:component', component: () => null },
+      { path: '*', component: () => null },
+    ],
+    mode: 'history',
+  })
   const el = document.createElement('div')
   document.body.appendChild(el)
   const dispose = mount(h(RouterProvider, { router: workbench }, h(() => child(), null)), el)
@@ -49,6 +56,7 @@ function mountUnderWorkbenchRouter(child: () => VNodeChild): unknown {
     dispose()
     el.remove()
   })
+
   return workbench
 }
 

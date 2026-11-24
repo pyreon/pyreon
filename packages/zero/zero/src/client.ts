@@ -165,7 +165,7 @@ export function startClient(options: StartClientOptions) {
     routerMode: 'history',
     ...(options.layout ? { layout: options.layout } : {}),
     ...(base ? { base } : {}),
-    ...(options.trailingSlash ? { trailingSlash: options.trailingSlash } : {}),
+    trailingSlash: options.trailingSlash,
   })
 
   // A client-side navigation to an islands-only route becomes a full page

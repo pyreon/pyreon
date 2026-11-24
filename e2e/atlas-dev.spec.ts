@@ -853,6 +853,10 @@ test.describe('atlas dev — the route', () => {
     // component's own links do not warn about the workbench's router.
     await page.goto('/button/')
     await expect(page.getByTestId('canvas-preview')).toHaveAttribute('data-allow-reload', '')
+    await page.goto('/button/?view=docs')
+    await expect(page.getByTestId('docs-preview')).toHaveAttribute('data-allow-reload', '')
+    await page.goto('/button/')
+    await expect(page.getByTestId('canvas-preview')).toBeVisible()
     const warnedFor = (inPreview: boolean) =>
       page.evaluate((inside) => {
         const seen: string[] = []

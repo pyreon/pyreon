@@ -44,6 +44,7 @@ function fakeRoute(initialId: string | undefined, query = '') {
       id.set(next)
     },
   }
+
   return { route, writes, navigate: (next: string | undefined) => id.set(next) }
 }
 

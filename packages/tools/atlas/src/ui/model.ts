@@ -3,8 +3,7 @@
  * shell so each `views/*` file reads a single typed `model` instead of a dozen
  * threaded props. Everything here is signals + computeds + callbacks — no DOM.
  */
-import { h, provide, type VNodeChild, type VNodeChildAtom } from '@pyreon/core'
-import { createRouter, RouterContext, type Router } from '@pyreon/router'
+import { h, type VNodeChildAtom } from '@pyreon/core'
 import { PermissionsProvider } from '@pyreon/permissions'
 import {
   _rdNodeId,
@@ -19,6 +18,7 @@ import {
   type Signal,
 } from '@pyreon/reactivity'
 import { createLiveArgs, detached, type LiveArgs } from './live-args'
+import { previewRouterScope, type WorkbenchRoute } from './route'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundPreset, CanvasLayout, LocalePreset, PseudoId, ViewportPreset } from './addons'
@@ -55,6 +55,8 @@ import {
 } from './hierarchy'
 import type { BrandTheme, ThemeTokens } from './theme'
 import { readThemeMode, THEMES, tokens, writeThemeMode } from './theme'
+
+export type { WorkbenchRoute } from './route'
 
 export type View = 'canvas' | 'docs' | 'lab'
 /**
@@ -358,34 +360,6 @@ function emptyScope(component: string): PreviewScope {
     ignore: new Set(),
     context: new Map(),
   }
-}
-
-/**
- * The host router that OWNS the component URL (`/<base>/<component>/`).
- *
- * `atlas dev` and `atlas build` run the workbench as a zero app whose router
- * matches `/` and `/:component`; its shell passes this. The workbench reads the
- * selection from it and writes through it — it never parses or builds a path
- * itself, so the base, the trailing slash and what counts as a page are the
- * router's answers alone.
- *
- * Absent (a workbench embedded in someone else's app): the component travels
- * in the query string (`?c=`), because the host's router has never heard of
- * `/<component>/`.
- */
-export interface WorkbenchRoute {
-  /**
-   * The component id the current route names, or `undefined` when it names
-   * none (the root, or a path no page answers). Reactive: a router navigation
-   * (back / forward) moves the selection.
-   */
-  id: () => string | undefined
-  /**
-   * Make the route name `id`, carrying `query` (no leading `?`; may be empty).
-   * Replaces the current entry — every keystroke in a control writes, and
-   * pushing would make Back walk through typing.
-   */
-  go: (id: string, query: string) => void
 }
 
 export function createModel(
@@ -921,22 +895,8 @@ export function createModel(
     if (id !== undefined) ignored.add(id)
     return id
   }
-  // The component under test gets a router of its OWN — an empty memory
-  // router — never the workbench's. The workbench is itself a routed app
-  // (`atlas dev` / `atlas build`), or is embedded in one, and a previewed
-  // component calling `useRoute()` read the WORKBENCH's route (`/button/`)
-  // while one calling `useRouter().push()` navigated the workbench away.
-  // A memory router has no listeners and no global slot: it lives and dies
-  // with this model. Created on first render, so a model that never previews
-  // (SSR, a unit test) builds none.
-  let ownRouter: Router | null = null
-  const previewRouter = (): Router =>
-    (ownRouter ??= createRouter({ routes: [], mode: 'memory' }))
-  const IsolatedRouter = (props: { children?: VNodeChild }): VNodeChild => {
-    provide(RouterContext, previewRouter() as never)
-    return props.children ?? null
-  }
-  const isolated = (node: VNodeChildAtom): VNodeChildAtom => h(IsolatedRouter, null, node)
+  // Every preview renders under a router of its OWN (see ./route).
+  const isolated = previewRouterScope()
 
   const preview = (appearance?: Appearance): VNodeChildAtom | VNodeChildAtom[] => {
     const entry = sel()
