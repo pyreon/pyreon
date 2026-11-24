@@ -2,13 +2,13 @@
   "package": "@pyreon/format",
   "bundle": 16220,
   "imports": {
-    "core-all": 13494,
+    "core-all": 14764,
     "core-currencyFormatter": 3087,
-    "core-formatBytes": 2338,
+    "core-formatBytes": 2382,
     "core-formatCurrency": 2141,
     "core-formatDate": 2963,
     "core-formatDuration": 3064,
-    "core-formatNumber": 1306,
+    "core-formatNumber": 1358,
     "core-formatRelativeTo": 3437,
     "core-numberFormatter": 2340,
     "core-parseDate": 2500,
@@ -17,7 +17,7 @@
     "formatNumber": 1400,
     "formatNumber-and-setLocale": 1405,
     "units-convert": 2014,
-    "units-formatUnit": 3614,
+    "units-formatUnit": 3669,
     "useRelativeTime": 4944
   }
 }

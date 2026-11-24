@@ -126,17 +126,7 @@ export function badNumber(fn: string, value: unknown, fallback: string): string 
  * `" 12 "`, `"Infinity"`, `"0x1F"`) is rejected: such text is almost always a bug, never an amount.
  */
 export function isDecimal(value: string): boolean {
-  const len = value.length
-  let i = len > 0 && value.charCodeAt(0) === 45 ? 1 : 0
-  const intStart = i
-  while (i < len && value.charCodeAt(i) - 48 >>> 0 < 10) i++
-  if (i === intStart) return false
-  if (i === len) return true
-  if (value.charCodeAt(i) !== 46) return false
-  const fracStart = ++i
-  while (i < len && value.charCodeAt(i) - 48 >>> 0 < 10) i++
-
-  return i === len && i > fracStart
+  return /^-?\d+(?:\.\d+)?$/.test(value)
 }
 
 /**
