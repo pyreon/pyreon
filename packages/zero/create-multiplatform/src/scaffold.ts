@@ -324,10 +324,10 @@ __pyreon-zero-ssr-entry.js
           // The readable setup's other two halves: oxlint (size limits, via
           // `.oxlintrc.json` extending `@pyreon/lint/oxlint/readable.json`)
           // and oxfmt (formatting, via `oxfmt.config.ts`).
-          oxfmt: '^0.74.0',
-          oxlint: '^1.89.0',
-          typescript: '^6.0.0',
-          vite: '^8.0.0',
+          oxfmt: '^0.78.0',
+          oxlint: '^1.93.0',
+          typescript: '^6.0.3',
+          vite: '^8.3.7',
         },
       },
     ),
