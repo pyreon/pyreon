@@ -3,165 +3,165 @@
 import type { BenchmarksPage } from '../types-site'
 
 export const checked = {
-  "record": "BENCHMARKS.md 2026-11-05",
+  "record": "BENCHMARKS.md 2026-11-24",
   "frameworks": [
     "Vanilla",
     "Pyreon",
     "Vue 3.6 Vapor (RC)",
-    "Octane 0.16",
+    "Octane 0.19",
     "Vue 3",
-    "Solid",
-    "Solid 2.0 (RC)",
+    "Solid 1.9",
+    "Solid 2.0",
     "Svelte 5",
     "React 19",
     "Preact"
   ],
   "rowBoard": {
     "create 1,000 rows": [
-      6.78,
-      7.26,
-      7.35,
-      7.47,
+      6.62,
+      7.29,
+      7.25,
+      7.39,
       7.33,
-      7.88,
-      8.28,
-      8.07,
-      9.04,
-      9.87
+      8.02,
+      8.02,
+      8.16,
+      9.13,
+      10.37
     ],
     "replace all rows": [
-      6.69,
-      7.13,
-      7.11,
-      7.29,
-      7.38,
-      7.83,
-      8.24,
+      6.63,
+      7.14,
+      7.19,
+      7.09,
+      7.23,
+      8.01,
+      7.92,
       8.02,
-      8.89,
-      9.8
+      9.11,
+      10.35
     ],
     "partial update": [
-      0.71,
-      0.705,
-      0.71,
-      0.735,
+      0.695,
+      0.68,
+      0.68,
+      0.68,
       1.04,
-      1.27,
-      1.22,
-      0.81,
-      0.885,
-      0.92
+      1.19,
+      1.28,
+      0.785,
+      0.91,
+      0.935
     ],
     "select row": [
       0.005,
       0.01,
       0.025,
       0.025,
-      0.38,
-      0.03,
-      0.06,
-      0.325,
-      0.26,
-      0.28
+      0.355,
+      0.025,
+      0.07,
+      0.35,
+      0.27,
+      0.285
     ],
     "swap rows": [
-      0.79,
-      0.805,
-      0.755,
-      0.765,
+      0.745,
+      0.745,
+      0.75,
+      0.825,
       1.06,
-      0.955,
-      0.925,
-      1.5,
-      6.06,
+      0.965,
+      0.835,
+      1.49,
+      5.92,
       0.995
     ],
     "remove row": [
-      5.73,
+      5.75,
       5.7,
-      5.76,
-      5.74,
-      5.89,
-      5.76,
-      5.83,
-      6.35,
-      5.78,
-      5.9
+      5.64,
+      5.52,
+      5.9,
+      5.79,
+      5.73,
+      6.38,
+      6.01,
+      5.89
     ],
     "clear rows": [
-      0.09,
-      0.13,
+      0.095,
+      0.125,
       0.145,
-      0.15,
-      0.255,
-      0.46,
-      0.64,
-      0.335,
-      0.92,
+      0.14,
+      0.225,
+      0.525,
+      0.295,
+      0.345,
+      0.655,
       0.26
     ],
     "create 10,000 rows": [
-      67.56,
-      72.64,
-      74.83,
-      74.31,
-      73.99,
-      78.75,
-      82.99,
-      87.51,
-      192.01,
-      278.03
+      66.8,
+      73.09,
+      74.38,
+      73.98,
+      73.89,
+      78.79,
+      79.79,
+      87.54,
+      195.91,
+      283.66
     ],
     "append 1k → 10k": [
-      12,
-      13.06,
-      62.2,
-      13.25,
-      62.83,
-      13.71,
-      14.54,
-      19.25,
-      15.22,
-      16.35
+      11.84,
+      13,
+      62.12,
+      13.24,
+      62.88,
+      13.87,
+      13.98,
+      19.68,
+      15.62,
+      16.93
     ]
   },
   "rowVerdicts": {
     "create 1,000 rows": [
       "tie",
-      "tie with Vue 3 and Vapor in both runs, and with Octane in run 2"
+      "tie with Vapor, Vue 3 and Octane in both runs"
     ],
     "replace all rows": [
       "tie",
-      "tie with Vapor and Octane in both runs, and with Vue 3 in run 2"
+      "tie with Octane, Vapor and Vue 3 in both runs"
     ],
     "partial update": [
-      "tie",
-      "tie with Vapor and Octane (both runs)"
+      "split",
+      "tie in run 1, a 1.09× win over Vapor in run 2, so not claimed"
     ],
     "select row": [
       "info",
-      "below clock resolution here; batch-timed, Pyreon is 1.86–2.04× faster than Octane (one run)"
+      "below clock resolution here; batch-timed on the same board, Pyreon is 1.58× faster than Octane (both runs)"
     ],
     "swap rows": [
-      "tie",
-      "tie with Vapor, Octane and Solid (both runs)"
+      "split",
+      "tie in run 1, Vapor 1.11× ahead in run 2, so not claimed either way"
     ],
     "remove row": [
       "tie",
-      "tie with Octane, Vapor, Solid and React (both runs), and with Preact in run 1"
+      "tie with Octane, Vapor and both Solids in both runs"
     ],
     "clear rows": [
       "win",
-      "win, 1.11–1.12× vs Vapor (both runs)"
+      "win, 1.12× vs Octane and Vapor (both runs)"
     ],
     "create 10,000 rows": [
-      "split",
-      "tie in run 1, 1.02× win in run 2, so not claimed as a win · 2.6× faster than React 19, 3.8× than Preact (run 1 figures)"
+      "tie",
+      "tie with Vue 3 and Octane in both runs · 2.7× faster than React 19, 3.9× than Preact (run 1 figures)"
     ],
     "append 1k → 10k": [
-      "split",
-      "tie in run 1, 1.02× win in run 2 vs Octane, so not claimed as a win"
+      "tie",
+      "tie with Octane in both runs"
     ]
   },
   "scenarios": [
@@ -170,63 +170,77 @@ export const checked = {
       "pyreon": "1.71 ms",
       "rival": "Octane 1.74",
       "verdict": "tie",
-      "label": "three-way tie with Octane and Svelte (both runs); never quoted as a win"
+      "label": "three-way tie with Octane and Svelte (both runs, 2026-11-05); never quoted as a win"
     },
     {
       "op": "mount deep tree (2,047 components)",
-      "pyreon": "3.59 ms",
-      "rival": "Solid 3.06",
-      "verdict": "loss",
-      "label": "Solid 1.15–1.18× (both runs) · React ties Pyreon"
+      "pyreon": "3.09 ms",
+      "rival": "Solid 1.9 3.03",
+      "verdict": "tie",
+      "label": "tie with Solid 1.9 (both runs) · Solid 2.0 1.09–1.11× and React 1.12–1.15× slower"
     },
     {
       "op": "context → 1,024 consumers",
-      "pyreon": "1.87 ms",
-      "rival": "Solid 1.96",
-      "verdict": "split",
-      "label": "win 1.05× in run 1, tie in run 2"
+      "pyreon": "1.74 ms",
+      "rival": "Solid 2.0 1.84",
+      "verdict": "tie",
+      "label": "tie with both Solids (both runs)"
     },
     {
       "op": "effect list: update 500",
-      "pyreon": "835 µs",
-      "rival": "Solid 870",
-      "verdict": "split",
-      "label": "tie in run 1, 1.10× win in run 2"
+      "pyreon": "880 µs",
+      "rival": "Solid 2.0 875",
+      "verdict": "tie",
+      "label": "tie (both runs)"
     },
     {
       "op": "effect list: dispose 500",
-      "pyreon": "50 µs",
-      "rival": "Solid 45",
-      "verdict": "loss",
-      "label": "Solid 1.11–1.13× (both runs), one 5 µs clock quantum"
+      "pyreon": "45 µs",
+      "rival": "Solid 2.0 45",
+      "verdict": "info",
+      "label": "no verdict: Pyreon and both Solids read 35–50 µs, below 10 clock quanta"
     },
     {
       "op": "memo wall: blocked",
-      "pyreon": "11 µs",
-      "rival": "Vue 16",
-      "verdict": "win",
-      "label": "1.39–1.40× (both runs)"
+      "pyreon": "12.6 µs",
+      "rival": "Solid 2.0 13.0",
+      "verdict": "tie",
+      "label": "tie with Solid 2.0 (both runs); Vue 1.25× slower"
     },
     {
       "op": "memo wall: passthrough",
-      "pyreon": "450 µs",
-      "rival": "Svelte 487",
+      "pyreon": "410 µs",
+      "rival": "Svelte 438",
       "verdict": "win",
-      "label": "1.08× (both runs)"
+      "label": "1.07× (both runs)"
+    },
+    {
+      "op": "retained heap, one mounted deep tree",
+      "pyreon": "531.7 KB",
+      "rival": "Solid 1.9 202.0",
+      "verdict": "loss",
+      "label": "Solid 1.9 2.57–2.63×, Solid 2.0 1.30× lighter (both runs, no CI)"
+    },
+    {
+      "op": "keyed list: clear 1,000 rows (<For>)",
+      "pyreon": "490 µs",
+      "rival": "Vue 3 335",
+      "verdict": "loss",
+      "label": "Vue 3 1.46–1.58×, Solid 2.0 tied with Vue (both runs)"
     },
     {
       "op": "app page hydration (2,206 nodes)",
       "pyreon": "4.02 ms",
       "rival": "React 4.15",
       "verdict": "win",
-      "label": "1.03× · Preact 1.07× · Vue 1.11× (one run)"
+      "label": "1.03× · Preact 1.07× · Vue 1.11× (one run, 2026-11-05)"
     },
     {
       "op": "1,000-row table hydration",
       "pyreon": "6.07 ms",
       "rival": "Vue 6.02",
       "verdict": "split",
-      "label": "walk tied both runs; total Vue 1.01× in run 2"
+      "label": "walk tied both runs; total Vue 1.01× in run 2 (2026-11-05)"
     }
   ],
   "scaling": {
@@ -337,7 +351,7 @@ export const checked = {
     ],
     [
       "Solid",
-      7.5
+      7.7
     ],
     [
       "Preact",
@@ -349,15 +363,15 @@ export const checked = {
     ],
     [
       "Pyreon",
-      17.2
+      18.5
     ],
     [
       "Vue 3",
-      27.4
+      27.7
     ],
     [
       "Octane",
-      43.1
+      33.9
     ],
     [
       "React 19",
@@ -550,20 +564,20 @@ export const checked = {
   ],
   "losses": [
     [
-      "Deep component-tree mount",
-      "Solid is 1.15–1.18× faster (3.06 vs 3.59 ms). React ties us."
+      "Memory per component",
+      "A mounted 2,047-component tree retains 531.7 KB in Pyreon, 410.2 KB in Solid 2.0 and 202–207 KB in Solid 1.9 (both runs, no CI). On the row board Preact's retained heap is lighter too: 3.14 vs 3.21 MB."
+    ],
+    [
+      "A keyed list with conditional cells",
+      "With <For>, clearing 1,000 rows is 1.46–1.58× behind Vue 3 (Solid 2.0 and Preact are ahead too), replace 1.05–1.06× and create 1.03×. A plain .map() of JSX rows loses create, replace, swap, remove and clear (1.12–2.35×). Both runs."
     ],
     [
       "Most of the row board is a tie",
-      "Create, replace, partial update, swap and remove tie Vue 3.6 Vapor and Octane, and create also ties Vue 3. We win clear rows outright; create 10k and append win one run of two."
+      "Create 1,000, replace, remove, create 10,000 and append tie Vue 3.6 Vapor, Octane and Vue 3. Partial update and swap split between runs; swap was a 1.11× loss to Vapor in one. We win clear rows and the batch-timed select outright."
     ],
     [
       "Swap at 100 and 1,000 rows",
-      "Octane leads 1.12× and 1.10× on the batch instrument (one run), a result that moves with batch size. We report it as a loss."
-    ],
-    [
-      "Effect-list dispose",
-      "Solid by one 5 µs clock quantum, in both runs."
+      "Octane leads 1.12× and 1.10× on the batch instrument (one run, 2026-11-05), a result that moves with batch size. We report it as a loss."
     ],
     [
       "Hydrating a 1,000-row table",
@@ -579,7 +593,7 @@ export const checked = {
     ],
     [
       "Bundle size",
-      "17.2 KB for the same app. Solid ships 7.5 KB, Preact 10.1 KB, Svelte 16.1 KB."
+      "18.5 KB for the same app. Solid ships 7.7 KB, Preact 10.1 KB, Svelte 16.1 KB."
     ],
     [
       "Small route tables",
@@ -608,20 +622,32 @@ export const checked = {
   ],
   "withdrawn": [
     [
+      "\"Solid mounts a deep component tree 1.15–1.18× faster\"",
+      "Gone since #4199 (static component props folded at compile time), bisected. The mount now ties Solid 1.9 in both runs. Its memory is still a loss."
+    ],
+    [
+      "\"Pyreon ties Preact as the lightest framework\"",
+      "Preact is lighter: 3.14 vs 3.21 MB after the row board, in every pass."
+    ],
+    [
+      "\"Solid wins effect-list dispose by one clock quantum\"",
+      "Every close arm reads 35–50 µs, under 10 clock quanta, so it gets no verdict."
+    ],
+    [
       "\"~4.9× partial update lead over Solid\"",
-      "A table-layout harness bug inflated it. Re-measured at about 2.1×; partial update is now a tie in both runs."
+      "A table-layout harness bug inflated it. Re-measured at about 2.1×; today Pyreon is 1.75–2.02× faster than Solid 1.9 and 2.0 on partial update."
     ],
     [
       "\"Octane wins clear rows\"",
-      "Old. Pyreon now wins clear rows in both runs, 1.11–1.12× vs Vapor."
+      "Old. Pyreon now wins clear rows in both runs, 1.12× vs Octane and Vapor."
     ],
     [
       "\"Pyreon outright on create 1,000 / replace all / create 10,000\"",
-      "Create 1,000 and replace all tie in both runs. Create 10,000 ties in one run and wins by 1.02× in the other, so it is not claimed."
+      "Create 1,000, replace all and create 10,000 tie in both runs."
     ],
     [
       "\"Append 1k → 10k: Pyreon wins 1.02×\"",
-      "Page-load-aware intervals turned it into a split: a tie in run 1, a win in run 2. Not claimed."
+      "Page-load-aware intervals turned it into a split, and the 2026-11-24 runs tie in both. Not claimed."
     ],
     [
       "\"Vue 3.6 Vapor outright on replace all (1.02×) and swap rows (1.08×)\"",
@@ -661,18 +687,18 @@ export const checked = {
     ],
     [
       "Any figure older than 2026-11-05",
-      "This record supersedes every earlier run."
+      "This record supersedes every earlier run. Sections the 2026-11-24 refresh did not re-measure keep their 2026-11-05 figures and say so."
     ]
   ],
   "competitors": [
     "react 19.3.1",
-    "vue 3.5.44",
+    "vue 3.5.45",
     "Vue Vapor 3.6.0-rc.11",
     "svelte 5.57.3",
-    "solid-js 1.9.17",
-    "Solid 2.0.0-rc.15",
-    "preact 11.0.2",
-    "octane 0.16.0",
+    "solid-js 1.9.19",
+    "Solid 2.0.3",
+    "preact 11.2.0",
+    "octane 0.19.2",
     "@xyflow/react 12.12.0",
     "echarts 6.1.0",
     "uplot 1.6.32",
@@ -731,7 +757,7 @@ export const checked = {
     ],
     [
       "Intervals, not single numbers",
-      "Medians with bootstrap 95% confidence intervals. The row board resamples page loads, not just samples."
+      "Medians with bootstrap 95% confidence intervals that resample whole page loads, not just samples."
     ],
     [
       "Wins have to repeat",
@@ -743,21 +769,21 @@ export const checked = {
     ],
     [
       "Author-run, and we say so",
-      "We wrote these benchmarks and we judge them. A keyed implementation is staged for krausest/js-framework-benchmark, the independent venue (not yet submitted)."
+      "We wrote these benchmarks and we judge them, on one machine, in Chromium only. A keyed implementation is staged for krausest/js-framework-benchmark, the independent venue (not yet submitted)."
     ]
   ],
   "heroStats": [
     {
-      "stat": "2.6×",
+      "stat": "2.7×",
       "label": "faster than React 19 creating 10,000 rows",
-      "condition": "72.64 vs 192.01 ms, real Chromium, row board run twice (figures from run 1)",
-      "source": "BENCHMARKS.md 2026-11-05 §1, create 10,000 row"
+      "condition": "73.09 vs 195.91 ms, real Chromium, row board run twice (figures from run 1)",
+      "source": "BENCHMARKS.md 2026-11-24 §1, create 10,000 row"
     },
     {
-      "stat": "4×",
+      "stat": "3.8×",
       "label": "less JavaScript than React 19 for the same app",
-      "condition": "17.2 KB vs 69.6 KB gzip -9, the same keyed-table app per framework (sizes are deterministic)",
-      "source": "BENCHMARKS.md 2026-11-05 §7"
+      "condition": "18.5 KB vs 69.6 KB gzip -9, the same keyed-table app per framework (sizes are deterministic)",
+      "source": "BENCHMARKS.md 2026-11-24 §7"
     },
     {
       "stat": "6.5×",
@@ -772,7 +798,7 @@ export const checked = {
       "source": "BENCHMARKS.md 2026-11-05 §2, charts vs ECharts 6"
     }
   ],
-  "caveat": "Synthetic, author-run, Apple M3 Max, record of 2026-11-05. Reproduce: pyreon.dev/docs/benchmarks",
+  "caveat": "Synthetic, author-run, one machine (Apple M3 Max), Chromium only. Row board, core scenarios and bundle refreshed 2026-11-24; other sections 2026-11-05. Reproduce: pyreon.dev/docs/benchmarks",
   "lossesSection": {
     "title": "Every loss, in one list.",
     "intro": "Wins lead this page. Everything else is here too: every loss from §13 of the record, in one list. We publish where we lose, so you can trust where we win."
@@ -840,7 +866,7 @@ export const checked = {
     "hero": {
       "eyebrow": "Benchmarks · record of {date} · {count} competitor libraries",
       "title": "Every result, on the table.",
-      "lede": "Real Chromium, production builds, medians with 95% confidence intervals and a correctness check before anything is timed. The row board and the core scenarios run twice, and a win has to win both runs. Record of 2026-11-05, with Vue's Vapor mode and the Solid 2.0 release candidate on the board beside their stable versions. Every number on every Pyreon page comes from here.",
+      "lede": "Real Chromium, production builds, medians with 95% confidence intervals and a correctness check before anything is timed. The row board and the core scenarios run twice, and a win has to win both runs. Refreshed 2026-11-24 with Solid 2.0 stable and Vue's Vapor release candidate on the board beside Solid 1.9 and Vue 3; sections not re-run keep their 2026-11-05 figures. Every number on every Pyreon page comes from here.",
       "statsLabel": "Headline results",
       "jumpsLabel": "On this page"
     },
@@ -862,7 +888,7 @@ export const checked = {
     "method": {
       "label": "method",
       "title": "How we measure.",
-      "text": "Synthetic benchmarks can't predict your app. They can be run fairly. Apple M3 Max, Chromium 156, Node 26 (V8) and Bun 1.4 (JavaScriptCore).",
+      "text": "Synthetic benchmarks can't predict your app. They can be run fairly. Apple M3 Max, Chromium 159 (2026-11-24) and 156 (2026-11-05), Node 26 (V8) and Bun 1.4 (JavaScriptCore).",
       "guide": {
         "text": "The suites and how to run them are documented in the",
         "link": {
@@ -873,7 +899,7 @@ export const checked = {
     },
     "rows": {
       "label": "dom · 10 frameworks · real chromium",
-      "title": "The row board: level with the fastest, 2.6× ahead of React.",
+      "title": "The row board: level with the fastest, 2.7× ahead of React.",
       "text": "The classic keyed-table benchmark against nine other implementations, including hand-written vanilla JS. Pick an operation. Run 1 shown; verdicts cover both runs.",
       "chart": "Row board chart",
       "table": "Every operation and framework, as a table",
@@ -882,7 +908,7 @@ export const checked = {
         "op": "Operation",
         "verdict": "Verdict"
       },
-      "run": "Run 1 medians; real Chromium; the full board ranks each operation fastest first",
+      "run": "Run 1 medians, 2026-11-24; real Chromium; the full board ranks each operation fastest first",
       "initial": "create 10,000 rows",
       "fastestFirst": "{op}, fastest first: {list}",
       "live": {
@@ -895,14 +921,14 @@ export const checked = {
     "scenarios": {
       "label": "scenarios · real chromium",
       "title": "Real component shapes, not just rows.",
-      "text": "Deep trees, context fan-out, effect lists, memo walls and hydration. Two runs each unless marked.",
+      "text": "Deep trees, context fan-out, effect lists, memo walls, a keyed list and hydration. Two runs each unless marked.",
       "columns": {
         "op": "Scenario",
         "pyreon": "Pyreon",
         "rival": "Fastest rival",
         "verdict": "Verdict"
       },
-      "run": "Two runs each unless marked"
+      "run": "Two runs each unless marked; dbmon and hydration from 2026-11-05"
     },
     "scaling": {
       "label": "scaling · 100 → 20,000 rows",
@@ -915,7 +941,7 @@ export const checked = {
         "framework": "Framework",
         "size": "{size} rows"
       },
-      "run": "Batch-timed, one run",
+      "run": "Batch-timed, one run, 2026-11-05",
       "live": {
         "control": "Operation",
         "title": "{op}: µs per operation by row count, log scale",
@@ -936,7 +962,7 @@ export const checked = {
         "svelte": "Svelte 5",
         "react": "React 19"
       },
-      "run": "Overnight run, one run"
+      "run": "Overnight run, one run, 2026-11-05"
     },
     "apps": {
       "label": "real-app shapes",
@@ -963,7 +989,7 @@ export const checked = {
           "ratio": "Ratio"
         }
       },
-      "run": "One run each"
+      "run": "One run each, 2026-11-05"
     },
     "bundle": {
       "label": "bundle size · same app · gzip -9",
@@ -976,7 +1002,7 @@ export const checked = {
         "framework": "Framework",
         "kb": "KB gzip"
       },
-      "run": "Sizes are deterministic"
+      "run": "Sizes are deterministic · 2026-11-24"
     },
     "reactivity": {
       "label": "reactivity core · ns/op",
@@ -991,7 +1017,7 @@ export const checked = {
         "solid": "Solid",
         "verdict": "Verdict vs Preact"
       },
-      "run": "Two runs per engine"
+      "run": "Two runs per engine, 2026-11-05"
     },
     "products": {
       "label": "every product",

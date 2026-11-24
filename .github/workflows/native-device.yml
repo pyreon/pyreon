@@ -1028,7 +1028,7 @@ jobs:
       ANDROID_APPS: ${{ needs.fingerprint.outputs.android-apps || needs.changes.outputs.android-apps || 'all' }}
       # The pinned Gradle distribution (see "Install Gradle"). Job-level so the
       # distribution cache can key on it.
-      GRADLE_VERSION: '9.8.2'
+      GRADLE_VERSION: '9.9.1'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1042,7 +1042,7 @@ jobs:
         uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
 
       - name: Setup Android SDK
         # First-party action for the SDK command-line tools. Keep `packages`
@@ -1084,7 +1084,7 @@ jobs:
         # Bump GRADLE_SHA256 when bumping GRADLE_VERSION — the official `.sha256`
         # is at services.gradle.org/distributions/gradle-<V>-bin.zip.sha256.
         env:
-          GRADLE_SHA256: '21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607'
+          GRADLE_SHA256: 'd8a18a7a841dd5df825d35a685fad6f2d7f12ac0c280e57b67c27b4a520ba228'
         run: |
           set -euo pipefail
           ZIP="$HOME/.cache/pyreon-dl/gradle/gradle-${GRADLE_VERSION}-bin.zip"

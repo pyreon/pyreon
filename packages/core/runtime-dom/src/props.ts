@@ -3,6 +3,7 @@ import { cx, isElementEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normali
 
 import { _rdLabelBinding, _rdNoteTarget, _renderBind, batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
+import { releaseRef } from './teardown'
 
 type Cleanup = () => void
 
@@ -168,8 +169,7 @@ export function applyPropsWithRef(el: Element, props: Props): Cleanup {
   else ref.current = el
   return () => {
     cleanup?.()
-    if (typeof ref === 'function') ref(null)
-    else ref.current = null
+    releaseRef(ref)
   }
 }
 

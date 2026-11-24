@@ -76,7 +76,9 @@ import {
   componentProps,
   mountChild,
   mountOwned,
+  runUnmountHooks,
 } from './mount'
+import { releaseRef } from './teardown'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
@@ -1795,10 +1797,7 @@ function hydrateElement(
     }
 
     const cleanup = () => {
-      if (ref) {
-        if (typeof ref === 'function') ref(null)
-        else ref.current = null
-      }
+      releaseRef(ref)
       if (propCleanup) propCleanup()
       childCleanup()
       if (valueCleanup) valueCleanup()
@@ -2442,8 +2441,8 @@ function hydrateComponent(
     if (process.env.NODE_ENV !== 'production') _devUnregisterScope(scope)
     scope.stop()
     subtreeCleanup()
-    if (hooks.unmount) for (const fn of hooks.unmount) fn()
-    for (const fn of mountCleanups) fn()
+    runUnmountHooks(hooks.unmount, componentName)
+    runUnmountHooks(mountCleanups, componentName)
   }
 
   return [cleanup, nextDom]
