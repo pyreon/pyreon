@@ -84,6 +84,47 @@ function parse(raw: string): Line | null {
   return m ? { pid: Number(m[1]), tag: m[2]!, msg: m[3]!, raw } : null
 }
 
+/** A WebView signal logged by the process it happened in. */
+function webviewSignal(msg: string): string | null {
+  if (msg.includes('[Pyreon] <WebView>: the renderer process')) return 'webview-renderer-gone'
+  if (/Render process \(\d+\)'s crash wasn't handled by all associated webviews/.test(msg)) return 'webview-renderer-unhandled'
+  if (msg.includes('Using WebView from more than one process at once with the same data directory')) return 'webview-data-dir-lock'
+  return null
+}
+
+/**
+ * Whether this line completes an app `FATAL EXCEPTION`: AndroidRuntime logs
+ * `FATAL EXCEPTION`, then `Process: <name>, PID: <pid>` from the same pid.
+ */
+function fatalSignal(l: Line, pending: Set<number>): boolean {
+  if (l.tag !== 'AndroidRuntime') return false
+  if (/^FATAL EXCEPTION\b/.test(l.msg)) {
+    pending.add(l.pid)
+    return false
+  }
+  const proc = pending.has(l.pid) ? /^Process: ([^,\s]+)/.exec(l.msg) : null
+  if (!proc) return false
+  pending.delete(l.pid)
+  return APP.test(proc[1]!)
+}
+
+/** An ANR or kill the system logs about another process, named in the line. */
+function processSignal(l: Line): { signal: string; pid: number } | null {
+  // Event-log payloads: am_anr [user,pid,pkg,flags,reason], am_kill [user,pid,pkg,adj,reason].
+  const event = /^\[\d+,(\d+),([^,\]]+),[^,\]]*,(.*)\]$/.exec(l.msg)
+  if (event && (l.tag === 'am_anr' || l.tag === 'am_kill')) {
+    const [, pid, name, reason] = event
+    if (l.tag === 'am_anr') return APP.test(name!) ? { signal: 'app-anr', pid: Number(pid) } : null
+    if (ROUTINE_KILL.test(reason!)) return null
+    if (APP.test(name!)) return { signal: 'app-killed', pid: Number(pid) }
+    return RENDERER.test(name!) ? { signal: 'webview-renderer-killed', pid: Number(pid) } : null
+  }
+  const lmk = l.tag === 'lowmemorykiller' ? /Kill '([^']+)' \((\d+)\)/.exec(l.msg) : null
+  if (!lmk) return null
+  if (APP.test(lmk[1]!)) return { signal: 'app-killed', pid: Number(lmk[2]) }
+  return RENDERER.test(lmk[1]!) ? { signal: 'webview-renderer-killed', pid: Number(lmk[2]) } : null
+}
+
 /** The hits in one app's logcat text. */
 export function scanLogcat(app: string, text: string): SignalHit[] {
   const testOf = new Map<number, string>()
@@ -106,37 +147,15 @@ export function scanLogcat(app: string, text: string): SignalHit[] {
 
   for (const l of lines) {
     if (l.tag === 'TestRunner') {
-      const started = /^started: (.+)\((.+)\)$/.exec(l.msg)
-      if (started) testOf.set(l.pid, `${started[2]}#${started[1]}`)
+      const t = /^started: (.+)\((.+)\)$/.exec(l.msg)
+      if (t) testOf.set(l.pid, `${t[2]}#${t[1]}`)
       continue
     }
-    if (l.msg.includes('[Pyreon] <WebView>: the renderer process')) hit('webview-renderer-gone', l.pid, l)
-    else if (/Render process \(\d+\)'s crash wasn't handled by all associated webviews/.test(l.msg)) hit('webview-renderer-unhandled', l.pid, l)
-    else if (l.msg.includes('Using WebView from more than one process at once with the same data directory')) hit('webview-data-dir-lock', l.pid, l)
-
-    if (l.tag === 'AndroidRuntime') {
-      if (/^FATAL EXCEPTION\b/.test(l.msg)) pendingFatal.add(l.pid)
-      else if (pendingFatal.has(l.pid)) {
-        const proc = /^Process: ([^,\s]+)/.exec(l.msg)
-        if (proc) {
-          pendingFatal.delete(l.pid)
-          if (APP.test(proc[1]!)) hit('app-fatal-exception', l.pid, l)
-        }
-      }
-    }
-    // Event-log payloads name the process: am_anr [user,pid,pkg,flags,reason],
-    // am_kill [user,pid,pkg,adj,reason].
-    const event = /^\[\d+,(\d+),([^,\]]+),[^,\]]*,(.*)\]$/.exec(l.msg)
-    if (event && l.tag === 'am_kill' && RENDERER.test(event[2]!) && !ROUTINE_KILL.test(event[3]!)) {
-      hit('webview-renderer-killed', Number(event[1]), l)
-    }
-    if (event && APP.test(event[2]!)) {
-      if (l.tag === 'am_anr') hit('app-anr', Number(event[1]), l)
-      else if (l.tag === 'am_kill' && !ROUTINE_KILL.test(event[3]!)) hit('app-killed', Number(event[1]), l)
-    }
-    const lmk = /Kill '([^']+)' \((\d+)\)/.exec(l.msg)
-    if (l.tag === 'lowmemorykiller' && lmk && APP.test(lmk[1]!)) hit('app-killed', Number(lmk[2]), l)
-    if (l.tag === 'lowmemorykiller' && lmk && RENDERER.test(lmk[1]!)) hit('webview-renderer-killed', Number(lmk[2]), l)
+    const webview = webviewSignal(l.msg)
+    if (webview) hit(webview, l.pid, l)
+    if (fatalSignal(l, pendingFatal)) hit('app-fatal-exception', l.pid, l)
+    const killed = processSignal(l)
+    if (killed) hit(killed.signal, killed.pid, l)
   }
 
   return [...hits.values()].sort((a, b) => ORDER.indexOf(a.signal) - ORDER.indexOf(b.signal) || a.test.localeCompare(b.test))

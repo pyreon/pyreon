@@ -13,8 +13,10 @@ import { describe, expect, it } from 'vitest'
 import { EXCERPT_LIMIT_BYTES, excerpt, scanDir, scanLogcat, summary } from '../../../../../scripts/native-android-logcat-signals'
 
 const at = (s: number) => `11-23 21:16:${String(s).padStart(2, '0')}.100`
+
 const line = (s: number, pid: number, level: string, tag: string, msg: string) =>
   `${at(s)}  ${pid}  ${pid} ${level} ${tag}: ${msg}`
+
 const started = (s: number, pid: number, method: string, cls: string) =>
   line(s, pid, 'I', 'TestRunner', `started: ${method}(${cls})`)
 
