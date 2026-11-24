@@ -205,6 +205,8 @@ export function _currentScope(): EffectScope | null {
  * owner), so `_claimContextOwner` reports it and `provide()` warns. Set and
  * restored per component by runtime-dom's mount.
  */
+// The production arm (null) is taken only in a production build.
+/* v8 ignore next 2 */
 export const _devOwner: { late: boolean } | null =
   process.env.NODE_ENV !== 'production' ? { late: false } : null
 
