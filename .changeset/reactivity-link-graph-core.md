@@ -15,4 +15,6 @@ Changes you can observe:
 - **An effect whose first run writes a signal it already read re-runs right after that first run**, still before `effect()` returns, instead of nested inside it.
 - **Effects reached by a selection change run after the `createSelector` source effect**, not nested inside it.
 
+Fixed: an effect disposed during its own run now tears down what that run registered after the dispose (its `onCleanup` callbacks and returned cleanup run, its inner effects are disposed); they used to leak, and the inner effects kept running.
+
 Upgrade: nothing to change for documented API. Internal fields changed (`_s1`/`_s` → graph edges in `_subs`, `_dirty` → `_f`); code that read them (tests, devtools) must use `_hasSubscribers` or the public API.

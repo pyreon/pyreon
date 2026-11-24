@@ -584,9 +584,14 @@ export function checkDirty(root: Subscriber): boolean {
     }
     while (stack.length > base) {
       const pl = stack.pop() as Link
-      if (dirty) {
+      // A dependency evaluated in this walk may have WRITTEN a source `sub`
+      // read, upgrading `sub` to DIRTY. It is marked and (for a computed)
+      // unqueued, so later writes stop at it: it must resolve now, or it and
+      // everything above it stay stale for good.
+      if (dirty || (sub._f & F_DIRTY) !== 0) {
         if (updateComputed(sub as ComputedNode)) {
           computedChanged(sub as ComputedNode)
+          dirty = true
           sub = pl.sub
           continue
         }
@@ -600,7 +605,9 @@ export function checkDirty(root: Subscriber): boolean {
       }
     }
 
-    return dirty
+    // Same for the root: a write made by a dependency it just evaluated can
+    // upgrade it to DIRTY after its own check at the top of the walk.
+    return dirty || (root._f & F_DIRTY) !== 0
   }
 }
 

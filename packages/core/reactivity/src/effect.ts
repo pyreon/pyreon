@@ -252,6 +252,11 @@ class EffectNode implements WatcherNode, Effect {
       else if (ok) purgeDeps(this)
       else settleUnread(unconfirmed(this))
       this._closeWindows(prevCleanupWindow, prevCleanupCollector, outerCollector)
+      // Disposed by its own run: `_dispose` already ran the PREVIOUS run's
+      // teardown, and nothing will ever run this one's — so the inner effects,
+      // `onCleanup` callbacks and returned cleanup registered after the dispose
+      // are torn down now instead of leaking (the inner effects stay live).
+      if ((f & F_DISPOSED) !== 0) this._runCleanup()
     }
     // Notify scope after each reactive re-run (not the initial synchronous run)
     // so onUpdate hooks fire after the DOM has settled.

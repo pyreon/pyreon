@@ -229,3 +229,102 @@ describe('B2 — fan-out shapes', () => {
     }
   })
 })
+
+// B4 (found in review of the link-graph core, #4715): a computed that WRITES a
+// signal while `checkDirty` evaluates it upgrades the already-marked reader of
+// that signal from PENDING to DIRTY without re-queueing it (a marked node is
+// assumed queued). If the walk then concluded "not dirty", the reader kept the
+// DIRTY mark, unqueued — every later write stopped at it and it never ran again.
+describe('B4 — a write made by a dependency evaluated during a dirty check reaches the checker', () => {
+  test('B4: an effect whose last dependency writes a signal it reads keeps updating', () => {
+    const s = signal(0)
+    const t = signal(0)
+    const c = computed(() => {
+      t.set(s())
+      return 0
+    })
+    let runs = 0
+    const e = effect(() => {
+      runs++
+      t()
+      c()
+    })
+    s.set(1)
+    expect(runs).toBe(2)
+    t.set(5)
+    expect(runs).toBe(3)
+    e.dispose()
+  })
+
+  test('B4: a computed between them resolves too — the effect sees every settled value', () => {
+    const s = signal(0)
+    const t = signal(0)
+    const c1 = computed(() => {
+      t.set(s())
+      return 0
+    })
+    const c2 = computed(() => t() + c1())
+    const seen: number[] = []
+    const e = effect(() => {
+      seen.push(c2())
+    })
+    s.set(1)
+    t.set(5)
+    expect(seen).toEqual([0, 1, 5])
+    e.dispose()
+  })
+
+  test('B4: a re-entrant read during a computed\'s FIRST evaluation does not evaluate it again', () => {
+    const s = signal(0)
+    let evals = 0
+    let inner: unknown = 'unset'
+    const c: () => number = computed(() => {
+      evals++
+      if (evals === 1) inner = c()
+      return s()
+    })
+    expect(c()).toBe(0)
+    expect(evals).toBe(1)
+    expect(inner).toBeUndefined()
+  })
+})
+
+// B5 (present on main too): an effect disposed DURING its own run kept what
+// that run registered after the dispose — its `onCleanup` callbacks and
+// returned cleanup never ran, and its inner effects stayed live and kept
+// re-running on their sources.
+describe('B5 — an effect disposed during its own run tears down what that run registered', () => {
+  test('B5: onCleanup, the returned cleanup and inner effects of the disposing run are torn down', () => {
+    const log: string[] = []
+    const s = signal(0)
+    let handle: { dispose(): void } | undefined
+    handle = effect(() => {
+      s()
+      if (handle) handle.dispose()
+      onCleanup(() => log.push('onCleanup'))
+      effect(() => {
+        s()
+        log.push('inner run')
+        return () => log.push('inner cleanup')
+      })
+      return () => log.push('returned')
+    })
+    log.length = 0
+    s.set(1) // disposes itself mid-run, then registers again
+    expect(log).toEqual([
+      // the dispose tears down run 1
+      'inner cleanup',
+      'onCleanup',
+      'returned',
+      // run 2 registers after its own dispose …
+      'inner run',
+      // … and is torn down when the run ends
+      'inner cleanup',
+      'onCleanup',
+      'returned',
+    ])
+    log.length = 0
+    s.set(2)
+    expect(log).toEqual([]) // no leaked inner effect
+  })
+})

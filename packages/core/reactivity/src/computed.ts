@@ -146,9 +146,10 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
   const read = (() => {
     const f = read._f
     if ((f & (F_DIRTY | F_PENDING)) !== 0) refreshComputed(read)
-    // Unmarked without a value: only a computed disposed before it ever
-    // evaluated (a live one starts DIRTY and keeps a mark until it has a value).
-    else if ((f & F_HAS_VALUE) === 0) readDisposedFirst(read)
+    // Disposed before it ever evaluated: evaluate once, untracked. (A LIVE
+    // computed is also unmarked without a value DURING its first evaluation —
+    // a re-entrant read then returns `undefined`, it must not evaluate again.)
+    else if ((f & (F_HAS_VALUE | F_DISPOSED)) === F_DISPOSED) readDisposedFirst(read)
     const sub = _t.e
     if (sub !== null) link(read, sub)
     return read._value

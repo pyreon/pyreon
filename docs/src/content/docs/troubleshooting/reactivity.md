@@ -60,6 +60,20 @@ Marking stops at an already-marked node, so in the graph core a flush cut short 
 
 ---
 
+### Clearing a mark that was upgraded during its own resolution
+
+Resolving a node evaluates its dependencies, and an evaluated computed may WRITE a signal the node (or a computed between them) reads. That write upgrades the already-marked node from PENDING to DIRTY without queueing it, because a marked node is assumed queued. A walk that then concludes "not dirty" and clears only PENDING leaves the node DIRTY and unqueued, and since marking stops at marked nodes, it never runs again (B4).
+  - `graph.ts:checkDirty` re-reads `F_DIRTY` on every node it pops and on the root before deciding; any new resolution path must do the same.
+  - Test: `contract/bug-regressions.test.ts` (B4; bisect-verified).
+
+---
+
+### Registrations made after an effect disposed itself
+
+A run that disposes its own effect and then registers `onCleanup` callbacks, a returned cleanup or inner effects stores them on a node whose `dispose` already ran, so they leaked (inner effects kept re-running). `EffectNode._exec` runs `_runCleanup()` at the end of a run that ended disposed. Test: `contract/bug-regressions.test.ts` (B5; present on main before the graph core).
+
+---
+
 ### Notifying the reader that pulled the change
 
 A read that re-evaluates a changed computed propagates the change to the computed's subscribers. The reader doing the read is one of them, and it is reading the new value right now.
@@ -69,7 +83,7 @@ A read that re-evaluates a changed computed propagates the change to the compute
 
 ### Assigning per-run effect state that a re-entered run already set
 
-An effect that wrote a signal it read during its first run used to re-run NESTED inside that run, and the enclosing run overwrote what the inner run stored (inner effects, `onCleanup` callbacks, the returned cleanup), leaking inner effects that not even `scope.stop()` reached. Since design D9 a first run is serialised (it runs in its own batch window; `settleFirstRun` re-runs it right after), so runs never nest; `EffectNode._exec` still appends rather than assigns, as a defence.
+An effect that wrote a signal it read during its first run used to re-run NESTED inside that run, and the enclosing run overwrote what the inner run stored (inner effects, `onCleanup` callbacks, the returned cleanup), leaking inner effects that not even `scope.stop()` reached. Since design D9 a first run is serialised (it runs in its own batch window; `settleFirstRun` re-runs it right after), so runs never nest, and `EffectNode._exec` assigns the run's registrations (`_runCleanup` emptied them before the run). Reintroducing any path that re-enters a node's run must bring merging back.
   - `onCleanup` callbacks registered before a throw are kept the same way (they used to be dropped).
   - Test: `contract/bug-regressions.test.ts` (B3).
 
