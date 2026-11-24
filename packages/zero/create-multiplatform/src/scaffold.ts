@@ -908,7 +908,10 @@ dependencies {
     // <Icon> emit references Icons.Filled.* at compile time (core set).
     implementation("androidx.compose.material:material-icons-core")
     // Remote <Image src="http…"> → Coil's AsyncImage.
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    // Coil 3 has no network fetcher by default: without this an http(s)
+    // model renders nothing. Rides the okhttp artifact this file declares.
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
     // okhttp — PyreonWebSocketOkHttp.kt / PyreonHttpOkHttp.kt (runtime srcDir
     // above) import okhttp3; the srcDir compiles ALL runtime sources, so the
     // artifact is required whether the app uses websockets or not. Absent
