@@ -1,3 +1,4 @@
+/* oxlint-disable complexity, max-depth -- scanners moved verbatim out of index.ts (where the readable baseline covered them) to take them off the public entry; refactoring them is out of scope for that move */
 /**
  * Source-text scanners used by the transform passes: string/comment masking,
  * balanced-argument extraction, line/column mapping, import-name collection
@@ -20,6 +21,7 @@ export function _skipStringLiteral(code: string, start: number, quote: string): 
     if (code[j] === quote) break
     j++
   }
+
   return j
 }
 
@@ -35,6 +37,7 @@ export function _extractBalancedArgs(code: string, start: number): string | null
       i = _skipStringLiteral(code, i, ch)
     }
   }
+
   return null
 }
 
@@ -49,11 +52,9 @@ export function _extractBalancedArgs(code: string, start: number): string | null
 export function _reactiveCalleeStarts(code: string, moduleId: string): Set<number> | null {
   let program: ReturnType<typeof parseOxc>['program']
   try {
-    const lang = /\.tsx?(?:$|\?)/.test(moduleId)
-      ? moduleId.includes('.tsx')
-        ? 'tsx'
-        : 'ts'
-      : 'jsx'
+    const isTs = /\.tsx?(?:$|\?)/.test(moduleId)
+    const tsLang = moduleId.includes('.tsx') ? 'tsx' : 'ts'
+    const lang = isTs ? tsLang : 'jsx'
     const r = parseOxc(moduleId, code, { sourceType: 'module', lang })
     if (r.errors.length > 0) return null
     program = r.program
@@ -76,6 +77,7 @@ export function _reactiveCalleeStarts(code: string, moduleId: string): Set<numbe
       }
     },
   }).visit(program)
+
   return out
 }
 
@@ -226,6 +228,7 @@ export function _maskStringsAndComments(code: string): string {
     i = _nextMaskTrigger(code, i + 1)
   }
   if (last < n) parts.push(code.slice(last))
+
   return parts.join('')
 }
 
@@ -241,6 +244,7 @@ export function _computeLineStarts(code: string): number[] {
   for (let i = 0; i < code.length; i++) {
     if (code.charCodeAt(i) === 10) starts.push(i + 1) // \n
   }
+
   return starts
 }
 
@@ -264,6 +268,7 @@ export function _offsetToLineCol(
     else hi = mid - 1
   }
   const lineStart = lineStarts[lo] ?? 0
+
   return { line: lo + 1, col: offset - lineStart + 1 }
 }
 
@@ -408,6 +413,7 @@ function _maskSource(code: string, maskStrings: boolean): string {
     i = maskStrings ? _nextMaskTrigger(code, i + 1) : _indexOrEnd(code, '/', i + 1)
   }
   if (last < n) parts.push(code.slice(last))
+
   return parts.join('')
 }
 
@@ -458,5 +464,6 @@ export function _collectImportedNames(code: string): Set<string> {
   while ((m = nsRe.exec(code)) !== null) {
     out.add(m[1]!)
   }
+
   return out
 }

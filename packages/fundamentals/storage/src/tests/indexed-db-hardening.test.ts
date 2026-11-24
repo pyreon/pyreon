@@ -1,11 +1,11 @@
 // happy-dom stubs IDB object-store operations (their callbacks never fire), so
 // install a real in-memory IndexedDB. See coverage-gaps.test.ts for the why.
 import { IDBFactory } from 'fake-indexeddb'
+import { _resetDBCache, _resetRegistry, _resetStorageListener } from '../internal'
 globalThis.indexedDB = new IDBFactory()
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useIndexedDB } from '../index'
-import { _resetDBCache, _resetRegistry, _resetStorageListener } from '../internal'
 
 const tick = (ms: number) => new Promise((r) => setTimeout(r, ms))
 

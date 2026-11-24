@@ -12,6 +12,8 @@
  *   import { createRoot } from "react-dom/client"         // aliased by vite plugin
  */
 
+import { shallowEqualProps as shallowEqual } from '@pyreon/core/compat'
+
 export type { Props, VNode, VNodeChild } from '@pyreon/core'
 export { Fragment, createRef } from '@pyreon/core'
 // `createElement` / `h` route through the compat JSX runtime so a component
@@ -30,7 +32,6 @@ import {
   Suspense,
   useContext as pyreonUseContext,
 } from '@pyreon/core'
-import { shallowEqualProps as shallowEqual } from '@pyreon/core/compat'
 import { batch, isServer } from '@pyreon/reactivity'
 import type { EffectEntry } from './jsx-runtime'
 import { getCurrentCtx, getHookIndex, skipRemainingHooks, toCompatComponent } from './jsx-runtime'

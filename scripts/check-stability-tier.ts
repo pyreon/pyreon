@@ -453,6 +453,7 @@ const ENTRY_EXTS = ['.ts', '.tsx', '.mts', '/index.ts', '/index.tsx']
  * modules (a re-export of another package is that package's own entry's
  * concern). Type-only exports are skipped: they do not exist at runtime.
  */
+// oxlint-disable-next-line complexity -- one branch per export syntax form
 export function runtimeExportNames(file: string, seen: Set<string> = new Set()): Set<string> {
   const out = new Set<string>()
   if (seen.has(file) || !existsSync(file)) return out

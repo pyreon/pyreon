@@ -36,6 +36,7 @@ export function getActiveI18nInstances(): string[] {
   for (const [name, ref] of _activeInstances) {
     if (ref.deref() === undefined) _activeInstances.delete(name)
   }
+
   return [..._activeInstances.keys()]
 }
 
@@ -48,6 +49,7 @@ export function getI18nInstance(name: string): object | undefined {
     _activeInstances.delete(name)
     return undefined
   }
+
   return instance
 }
 
@@ -72,6 +74,7 @@ export function getI18nSnapshot(name: string): Record<string, unknown> | undefin
   const instance = getI18nInstance(name) as Record<string, unknown> | undefined
   if (!instance) return undefined
   const ns = safeRead(instance, 'loadedNamespaces', new Set())
+
   return {
     locale: safeRead(instance, 'locale'),
     availableLocales: safeRead(instance, 'availableLocales', []),

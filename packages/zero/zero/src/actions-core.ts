@@ -120,6 +120,7 @@ export function defineAction(
       console.warn(message)
     }
   }
+
   return _defineActionWithId(`action_${crypto.randomUUID()}`, schemaOrHandler as never, inputHandler as never)
 }
 
@@ -153,10 +154,12 @@ export function _defineActionWithId<T = unknown>(
         headers: new Headers({ 'Content-Type': 'application/json' }),
       })
     }
+
     return postAction<T>(id, data)
   }
 
   callable.actionId = id
+
   return callable as Action<T>
 }
 
@@ -188,6 +191,7 @@ async function postAction<T>(id: string, data: unknown): Promise<T> {
     const body = await response.json().catch(() => ({}))
     throw new Error((body as { error?: string }).error ?? `Action failed: ${response.statusText}`)
   }
+
   return response.json()
 }
 
@@ -240,6 +244,7 @@ function resolveHandler<T>(
           '(zod, valibot, arktype, @pyreon/validate) followed by the handler.',
       )
     }
+
     return schemaOrHandler
   }
   if (typeof inputHandler !== 'function') {
@@ -249,10 +254,12 @@ function resolveHandler<T>(
     )
   }
   const schema = schemaOrHandler
+
   return async (ctx) => {
     const raw = ctx.formData ? formDataToObject(ctx.formData) : ctx.json
     const result = await schema['~standard'].validate(raw)
     if (result.issues) return fail(422, toInputError(result.issues))
+
     return inputHandler(result.value, ctx)
   }
 }
@@ -264,6 +271,7 @@ function formDataToObject(formData: FormData): Record<string, FormDataEntryValue
     const all = formData.getAll(key)
     out[key] = all.length === 1 ? all[0]! : all
   }
+
   return out
 }
 
@@ -275,8 +283,10 @@ function toInputError(issues: ReadonlyArray<StandardSchemaV1.Issue>): ActionInpu
       .join('.')
     if (!Object.hasOwn(fields, path)) fields[path] = []
     fields[path]!.push(issue.message)
+
     return { message: issue.message, path }
   })
+
   return { error: 'Invalid input', issues: flat, fields }
 }
 
@@ -323,6 +333,7 @@ export function fail<D>(status: number, data: D): ActionFailure<D> {
         'Return plain data for a success, or throw redirect() to navigate.',
     )
   }
+
   return { [FAIL]: true, status, data }
 }
 
@@ -389,8 +400,10 @@ export function resolveActionOptions(options?: CreateActionMiddlewareOptions): R
         `[Pyreon] createActionMiddleware: ignoring corsOrigins entry ${JSON.stringify(entry)} — ` +
           'not a parseable origin. Write the full scheme + host (+ port), e.g. "https://admin.example.com".',
       )
+
       return []
     }
+
     return [origin]
   })
   const limit = options?.bodyLimit
@@ -399,6 +412,7 @@ export function resolveActionOptions(options?: CreateActionMiddlewareOptions): R
       `[Pyreon] actions.bodyLimit must be a non-negative number of bytes, got ${String(limit)}.`,
     )
   }
+
   return { corsOrigins, bodyLimit: limit ?? DEFAULT_ACTION_BODY_LIMIT }
 }
 
@@ -429,6 +443,7 @@ export function checkActionOrigin(req: Request, corsOrigins: readonly string[]):
   const origin = originOf(headerOrigin)
   const sameOrigin = origin !== null && origin === new URL(req.url).origin
   const allowedCrossOrigin = origin !== null && corsOrigins.includes(origin)
+
   return sameOrigin || allowedCrossOrigin ? null : headerOrigin
 }
 
@@ -497,6 +512,7 @@ export async function readActionPayload(
       const formData = await new Response(bytes, { headers: { 'Content-Type': contentType } }).formData()
       return { formData, json: null }
     }
+
     return { formData: null, json: null }
   } catch (err) {
     console.error('[Pyreon Action] failed to parse request body:', err)
@@ -531,6 +547,7 @@ export async function runActionHandler(
     if (isActionFailure(result)) return { kind: 'data', status: result.status, data: result.data }
     const returned = getRedirectInfo(result)
     if (returned) return { kind: 'redirect', status: returned.status, to: returned.url }
+
     return { kind: 'data', status: 200, data: result ?? null }
   } catch (err) {
     const info = getRedirectInfo(err)
@@ -540,6 +557,7 @@ export async function runActionHandler(
     // is caught here, so the handler's own catch never sees it.
     ctx?.reportError?.(err, 'action')
     const isProduction = process.env.NODE_ENV === 'production'
+
     return { kind: 'error', message: isProduction || !(err instanceof Error) ? 'Internal server error' : err.message }
   }
 }
@@ -610,6 +628,7 @@ export function createActionMiddleware(
         headers: { 'Content-Type': 'application/json', [ACTION_REDIRECT_HEADER]: safeRedirectLocation(outcome.to) },
       })
     }
+
     return Response.json(outcome.data, { status: outcome.status })
   }
 }
@@ -686,6 +705,7 @@ export async function _resolveAction(id: string): Promise<RegisteredAction | und
     console.error(`[Pyreon Action] failed to load the module defining ${id}:`, err)
     return undefined
   }
+
   return actionRegistry.get(id)
 }
 

@@ -192,6 +192,7 @@ export function _isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>):
         // Malformed package.json — treat as not-pyreon.
       }
       cache.set(dir, isPyreon)
+
       return isPyreon
     }
 
@@ -199,6 +200,7 @@ export function _isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>):
     if (parent === dir) break // reached filesystem root
     dir = parent
   }
+
   return false
 }
 
@@ -222,5 +224,6 @@ export function _getCompatTarget(
     if (compat === 'solid') return '@pyreon/solid-compat/jsx-runtime'
     if (compat === 'svelte') return '@pyreon/svelte-compat/jsx-runtime'
   }
+
   return undefined
 }

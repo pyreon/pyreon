@@ -1,3 +1,4 @@
+/* oxlint-disable complexity, max-lines-per-function -- a codemod is one AST pass over shared per-file state (imports, scoped declarations, references, edits); splitting it means threading all of that through helpers */
 import { createRequire } from 'node:module'
 import type { Codemod } from './types'
 
@@ -91,6 +92,7 @@ export const formUseFormFields: Codemod = {
       if (call.arguments.some((a) => ts.isSpreadElement(a))) return undefined
       const typeArg = call.typeArguments?.[1]
       const defaultText = typeArg === undefined ? text(defaultArg) : `${parenthesize(defaultArg)} as ${text(typeArg)}`
+
       return { name: nameArg.text, defaultText, validatorText: validatorArg === undefined ? undefined : text(validatorArg) }
     }
 
@@ -139,6 +141,7 @@ export const formUseFormFields: Codemod = {
           for (const d of st.declarationList.declarations) if (ts.isIdentifier(d.name) && d.name.text === id.text) return d
         }
       }
+
       return undefined
     }
 
@@ -270,5 +273,6 @@ function lineRange(source: string, start: number, end: number): Edit {
   let lineEnd = end
   while (lineEnd < source.length && (source[lineEnd] === ' ' || source[lineEnd] === '\t' || source[lineEnd] === ';')) lineEnd++
   if (source[lineEnd] === '\n') lineEnd++
+
   return { start: onlyIndentBefore ? lineStart : start, end: lineEnd, text: '' }
 }

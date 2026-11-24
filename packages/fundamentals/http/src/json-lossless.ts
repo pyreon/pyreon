@@ -27,6 +27,7 @@ function hasSourceText(): boolean {
     ;(JSON.parse as (text: string, reviver: SourceReviver) => unknown)('1', probe)
     sourceTextSupport = seen === '1'
   }
+
   return sourceTextSupport
 }
 
@@ -58,6 +59,7 @@ export function parseJsonLossless(text: string): unknown {
   if (hasSourceText()) {
     return (JSON.parse as (text: string, reviver: SourceReviver) => unknown)(text, reviveUnsafeIntegers)
   }
+
   return new Parser(text).parseDocument()
 }
 
@@ -81,6 +83,7 @@ class Parser {
     const value = this.value()
     this.ws()
     if (this.i !== this.s.length) this.fail('Unexpected non-whitespace character after JSON')
+
     return value
   }
 
@@ -123,6 +126,7 @@ class Parser {
       this.i += text.length
       return value
     }
+
     return this.fail(`Unexpected token '${this.s[this.i]}'`)
   }
 
@@ -158,6 +162,7 @@ class Parser {
         this.i++
         return out
       }
+
       return this.fail("Expected ',' or '}'")
     }
   }
@@ -183,6 +188,7 @@ class Parser {
         this.i++
         return out
       }
+
       return this.fail("Expected ',' or ']'")
     }
   }
@@ -277,6 +283,7 @@ class Parser {
       while (this.isDigit()) this.i++
     }
     const text = s.slice(start, this.i)
+
     return numberFromText(text, Number(text))
   }
 

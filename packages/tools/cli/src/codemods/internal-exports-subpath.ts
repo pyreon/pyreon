@@ -1,3 +1,4 @@
+/* oxlint-disable complexity -- one pass over import/export declarations; each branch is a syntax shape the rewrite must preserve */
 import { createRequire } from 'node:module'
 import type { Codemod } from './types'
 
@@ -210,6 +211,7 @@ function indexMoves(moves: readonly ExportMove[]): Map<string, Map<string, { to:
     for (const n of m.names ?? []) byName.set(n, { to: m.to, name: n })
     for (const [oldName, newName] of Object.entries(m.renames ?? {})) byName.set(oldName, { to: m.to, name: newName })
   }
+
   return out
 }
 

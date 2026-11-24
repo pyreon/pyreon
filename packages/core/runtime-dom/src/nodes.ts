@@ -1,4 +1,15 @@
 import type { VNode, VNodeChild } from '@pyreon/core'
+import {
+  _abortOwnerFrame,
+  _closeOwnerFrame,
+  _frameReads,
+  _openOwnerFrame,
+  _rdDropBinding,
+  _rdLabelBinding,
+  _releaseRun,
+  _replayReads,
+  _currentScope,
+} from '@pyreon/reactivity/internal'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
@@ -27,17 +38,6 @@ import {
   runWithContextOwner,
   setCurrentScope,
 } from '@pyreon/reactivity'
-import {
-  _abortOwnerFrame,
-  _closeOwnerFrame,
-  _frameReads,
-  _openOwnerFrame,
-  _rdDropBinding,
-  _rdLabelBinding,
-  _releaseRun,
-  _replayReads,
-  _currentScope,
-} from '@pyreon/reactivity/internal'
 
 
 /**

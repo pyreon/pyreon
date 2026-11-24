@@ -45,6 +45,7 @@ export function getActiveModels(): string[] {
   for (const [name, ref] of _activeModels) {
     if (ref.deref() === undefined) _activeModels.delete(name)
   }
+
   return [..._activeModels.keys()]
 }
 
@@ -59,6 +60,7 @@ export function getModelInstance(name: string): object | undefined {
     _activeModels.delete(name)
     return undefined
   }
+
   return instance
 }
 

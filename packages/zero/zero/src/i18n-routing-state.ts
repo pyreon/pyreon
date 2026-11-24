@@ -33,6 +33,7 @@ export interface LocaleStore {
   get(): string
   set(value: string): void
 }
+
 type LocaleStoreReader = () => LocaleStore | undefined
 let _readLocaleStore: LocaleStoreReader = () => undefined
 

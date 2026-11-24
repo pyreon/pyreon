@@ -1,3 +1,4 @@
+/* oxlint-disable max-params -- moved verbatim out of index.ts (where the readable baseline covered it) to take it off the public entry */
 /**
  * Dev-server SSR request handling: turns a Node request into a web `Request`,
  * runs the app's server entry through Vite's `ssrLoadModule`, and writes the

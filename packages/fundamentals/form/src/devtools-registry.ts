@@ -33,6 +33,7 @@ export function getActiveForms(): string[] {
   for (const [name, ref] of _activeForms) {
     if (ref.deref() === undefined) _activeForms.delete(name)
   }
+
   return [..._activeForms.keys()]
 }
 
@@ -45,6 +46,7 @@ export function getFormInstance(name: string): object | undefined {
     _activeForms.delete(name)
     return undefined
   }
+
   return instance
 }
 
