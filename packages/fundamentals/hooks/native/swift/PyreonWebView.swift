@@ -468,8 +468,8 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
             return
         }
         print("[Pyreon] <WebView>: the web content process ended; loading the page again\(delay > 0 ? " in \(Int(delay)) ms (losses in a row back off)" : "").")
-        Task { @MainActor [weak self, weak webView] in
-            if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000)) }
+        _Concurrency.Task { @MainActor [weak self, weak webView] in
+            if delay > 0 { try? await _Concurrency.Task.sleep(nanoseconds: UInt64(delay * 1_000_000)) }
             // Unless the host was released, loaded something else, or lost the process again meanwhile.
             guard let self, let webView, pyreonWebViewReloadStillDue(self.lossHistory, generation: generation), self.loadedKey == key else { return }
             self.initialLoadPending = _loadPyreonWebView(webView, html: self.html, src: self.src)

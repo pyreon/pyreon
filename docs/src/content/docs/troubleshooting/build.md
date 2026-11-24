@@ -519,6 +519,12 @@ WKWebView script-message handlers and Android `addJavascriptInterface` objects a
 
 ---
 
+### Package Swift compiled into an app must write `_Concurrency.Task`.
+
+A package's `native/swift/*.swift` is compiled into the app target beside generated code, and an app model named `Task` (native-tasks has one) shadows Swift's: `Task { … }` resolves to the model's `init(from:)` and the build fails, while the package's own Swift gate, compiling the file alone, passes. Lock: `test-utils/src/tests/native-swift-task-qualified.test.ts`.
+
+---
+
 ### Every Android WebView must survive its renderer's death.
 
 All WebViews of an app share one renderer process; when it dies (reclaimed, or crashed by a page) each gets `onRenderProcessGone`, and ANY one answering false (the `WebViewClient` default) kills the whole app. So a WebView is built only by `pyreonNewWebView` with a `PyreonWebViewClientBase` (final `onRenderProcessGone` → true), including throwaway ones such as the `window.open` sink (one per host, destroyed with it; post from a main-thread `Handler`: `View.post` on a never-attached view never runs). The handler must remove and destroy the view and never touch it again; the host recomposes a new one (`key(generation)`). Reload with a backoff and cap crashes in a row (`pyreonWebViewRendererGone`), because the shared renderer makes every sibling report a crash; a newer loss must cancel a reload an earlier one scheduled, and a new `html`/`src` starts a fresh count; iOS mirrors it in `webViewWebContentProcessDidTerminate`. Lock: `hooks/src/tests/webview-renderer-gone.test.ts`, `PyreonWebChromePolicyTest.kt`, device `PyreonWebViewRendererGoneTest`.
