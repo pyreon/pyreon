@@ -597,3 +597,9 @@ An MCP tool's arguments are written by a model that may be reading untrusted tex
 A fractional store/model field was unknown to its computed/view/action body, leaving an `Int` return around a `Double` expression. Seed inference from the declaration’s own fields, carry cumulative computed/view types, and restore emitter context in `finally`. Refine default parameter types before return inference and coerce integer callers against the known signature. Keep syntactic parameter guards independent of successful return inference; unsupported array/rest helper parameters still require a named decline. Validate with real Swift/Kotlin compilers; unchanged golden output can preserve invalid code. Reference: `native-compiler/src/tests/singleton-fractional-members.test.ts`.
 
 ---
+
+### `String(n)` on a number in a runtime text write
+
+JS-side Number→String (`String(n)`, `n + ''`, a template literal) of more than ~200 distinct integers grows V8's `smi_string_cache`, a GC-root cache, to its full ~64 KB, and the page never gets it back. The DOM's own conversion (`Text.data = n`, `createTextNode(n)`, `append(n)`, `replaceChildren(n)`; WebIDL `DOMString`, the same characters) does not touch it. #4560 routed `_setChild`/`_setChildAt` through `_childText` and the row board's retained heap rose 64 KB. A static text sink hands a number to the DOM as a number; never `textContent = n` (happy-dom writes `''` for `0`). Check a heap delta for a GC-root `smi_string_cache` entry before attributing it to framework objects. Code: `_replaceText` in `packages/core/runtime-dom/src/template.ts`; test `tests/number-text-unconverted.test.tsx`. The reactive text bindings still `String()` a number, because their dedupe and hydration read-back compare strings.
+
+---
