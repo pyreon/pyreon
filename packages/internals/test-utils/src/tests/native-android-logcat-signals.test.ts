@@ -15,6 +15,7 @@ import {
   EXCERPT_LIMIT_BYTES,
   excerpt,
   isSystemProcessTag,
+  activityLine,
   playServicesActivity,
   scanDir,
   scanLogcat,
@@ -208,6 +209,10 @@ describe('native-android-logcat-signals', () => {
     const table = summary([], scanPlayServices(dir))
     expect(table).toContain('None')
     expect(table).toContain('| tasks | 21:16:22.100: com.pyreon.PyreonWebViewOriginScopeTest#offOriginNavigationIsBlockedOrHandedToTheSystem | 1 |')
+    // The same counts in the job log, which a green run keeps (the summary is not readable through the API).
+    expect(activityLine(a)).toBe(
+      'play-services tasks: chromium-font-queries=1 restarts=1: 21:16:22.100 (com.pyreon.PyreonWebViewOriginScopeTest#offOriginNavigationIsBlockedOrHandedToTheSystem)',
+    )
   })
 
   it('runs the emulator prep script first in every emulator step, and the script disables both WebView font features', () => {

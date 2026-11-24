@@ -360,6 +360,16 @@ export function summary(hits: SignalHit[], activity: PlayServicesActivity[] = []
   return out.join('\n')
 }
 
+/**
+ * One job-log line per capture. The job summary is not readable through the
+ * API and a green run uploads no logcat, so this line is the only place a
+ * script (or a reviewer without the web UI) can read the counts from.
+ */
+export function activityLine(a: PlayServicesActivity): string {
+  const restarts = a.restarts.map((r) => `${r.at} (${r.test})`).join(', ') || 'none'
+  return `play-services ${a.app}: chromium-font-queries=${a.chromiumFontQueries} restarts=${a.restarts.length}: ${restarts}`
+}
+
 /** [playServicesActivity] for every `<app>.txt` in [dir]. */
 export function scanPlayServices(dir: string): PlayServicesActivity[] {
   if (!existsSync(dir)) return []
@@ -380,8 +390,10 @@ if (import.meta.main) {
     )
   }
   if (hits.length === 0) console.log(`no process-death signals in ${dir}`)
+  const activity = scanPlayServices(dir)
+  for (const a of activity) console.log(activityLine(a))
   const step = process.env.GITHUB_STEP_SUMMARY
-  if (step) appendFileSync(step, summary(hits, scanPlayServices(dir)))
+  if (step) appendFileSync(step, summary(hits, activity))
   const out = process.env.GITHUB_OUTPUT
   if (out) appendFileSync(out, `found=${hits.length > 0}\n`)
 }
