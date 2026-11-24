@@ -14,6 +14,9 @@
  * driver instead of failing. It now refuses to report in that state.
  *
  *   BENCH_PROFILE=1 bun run build && bun bench-clearprofile.ts [iterations] [rows]
+ *
+ * `CP_TARGET=maplist-for` / `maplist-map` profiles the `maplist` scenario's
+ * Pyreon arms instead of the row board's, and adds the swap and remove ops.
  */
 import { readFileSync, readdirSync } from 'node:fs'
 import { spawn } from 'node:child_process'
@@ -26,6 +29,8 @@ const INTERVAL_US = 10
 // taken port makes THIS preview exit rather than drift, and the served-bundle
 // check below then refuses to report — see the guard for why both are needed.
 const PORT = process.env.CP_PORT ?? '4181'
+const TARGET = process.env.CP_TARGET ?? '1'
+const EXTRA_OPS = TARGET !== '1'
 
 const preview = spawn('bunx', ['vite', 'preview', '--port', PORT, '--strictPort'], {
   cwd: import.meta.dir,
@@ -76,7 +81,7 @@ try {
     console.log(`[clearprofile] served bundle == on-disk ${probe} on :${PORT}`)
   }
 
-  await page.goto(`http://localhost:${PORT}/?profileClear=1`)
+  await page.goto(`http://localhost:${PORT}/?profileClear=${TARGET}`)
   await page.waitForFunction(() => '__clearBench' in globalThis, undefined, { timeout: 30_000 })
 
   // Warmup: JIT-stabilize both paths, verify DOM correctness both arms.
@@ -102,15 +107,21 @@ try {
   await cdp.send('Profiler.start')
 
   await page.evaluate(
-    ({ iter, rows }) => {
+    ({ iter, rows, extra }) => {
       const b = (globalThis as never as { __clearBench: Record<string, (n?: number) => void> })
         .__clearBench
       for (let i = 0; i < iter; i++) {
         b.create!(rows)
+        if (extra) {
+          b.replace!(rows)
+          b.swap!()
+          b.swap!()
+          b.remove!()
+        }
         b.clear!()
       }
     },
-    { iter: ITER, rows: ROWS },
+    { iter: ITER, rows: ROWS, extra: EXTRA_OPS },
   )
 
   const { profile } = await cdp.send('Profiler.stop')
@@ -163,7 +174,7 @@ try {
   // reading as an impossibly fast result rather than as broken. That is what
   // the documented `bun run build` (which minifies) produced. Refuse to report
   // instead: an empty attribution is a failure, never a pass.
-  const driverNames = ['__clearOnly', '__createOnly', '__replaceOnly']
+  const driverNames = ['__clearOnly', '__createOnly', '__replaceOnly', '__swapOnly', '__removeOnly']
   if (!nodes.some((n) => driverNames.includes(n.callFrame.functionName))) {
     throw new Error(
       `[clearprofile] not one driver frame appears in a ` +
@@ -175,6 +186,11 @@ try {
 
   subtreeReport('__clearOnly', ITER)
   subtreeReport('__createOnly', ITER)
+  if (EXTRA_OPS) {
+    subtreeReport('__replaceOnly', ITER)
+    subtreeReport('__swapOnly', ITER * 2)
+    subtreeReport('__removeOnly', ITER)
+  }
 
   // GC attribution across the whole profile (GC frames are not parented under
   // the driver frames — report separately so the subtree means are read

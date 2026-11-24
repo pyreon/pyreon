@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 import {
   runAuditTypesGate,
@@ -137,14 +137,20 @@ describe('runDistributionGate', () => {
   })
 })
 
-// The gate parses every published source file (about 2,600) with the
-// TypeScript parser. A few seconds alone; past vitest's 20 s default under
-// the coverage job's instrumented, 4-way parallel run.
+// The gate walks the whole repo and parses every published source file that
+// holds a runner word with the TypeScript parser; under the coverage job's
+// instrumented, 4-way parallel run that is past vitest's 20 s default. Both
+// real-repo assertions read ONE run of it.
 const DOC_CLAIMS_REAL_REPO_TIMEOUT_MS = 120_000
 
-describe('runDocClaimsGate', () => {
-  it('returns GateResult against real repo with expected shape', async () => {
-    const result = await runDocClaimsGate({ cwd: REPO_ROOT })
+describe('runDocClaimsGate against the real repo', () => {
+  let realRepo: GateResult
+  beforeAll(async () => {
+    realRepo = await runDocClaimsGate({ cwd: REPO_ROOT })
+  }, DOC_CLAIMS_REAL_REPO_TIMEOUT_MS)
+
+  it('returns GateResult against real repo with expected shape', () => {
+    const result = realRepo
     assertGateResultShape(result, 'doc-claims')
     expect(result.category).toBe('documentation')
     // Pins the number of claim SITES the scanner reached. The invariant is
@@ -215,9 +221,9 @@ describe('runDocClaimsGate', () => {
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
     expect(errs).toHaveLength(0)
-  }, DOC_CLAIMS_REAL_REPO_TIMEOUT_MS)
+  })
 
-  it('has no claim that silently STOPPED matching', async () => {
+  it('has no claim that silently STOPPED matching', () => {
     // A `pattern-miss` is ADVISORY, and that is the hole it opened: a claim
     // whose text drifted out of its pattern is not checked at all, so a stale
     // number sits behind a passing gate.
@@ -232,13 +238,15 @@ describe('runDocClaimsGate', () => {
     //
     // Pinned at zero rather than at a count: a pattern-miss is always either a
     // deliberate rephrasing (drop the claim from `checks[]`) or this bug.
-    const result = await runDocClaimsGate({ cwd: REPO_ROOT })
-    const misses = result.findings.filter((f) => f.code.endsWith('-pattern-miss'))
+    const misses = realRepo.findings.filter((f) => f.code.endsWith('-pattern-miss'))
     expect(
       misses.map((f) => `${f.code} ${f.location?.relPath ?? ''}`),
       'a claim stopped matching its pattern — restore the text, or drop the entry from the doc-claims gate checks[]',
     ).toEqual([])
-  }, DOC_CLAIMS_REAL_REPO_TIMEOUT_MS)
+  })
+})
+
+describe('runDocClaimsGate', () => {
 
   // Mark a tmp fixture as the Pyreon monorepo so the doc-claims gate
   // doesn't skip. The gate's monorepo guard keys on the presence of its
