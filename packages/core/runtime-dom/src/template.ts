@@ -1002,7 +1002,7 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
  *
  * - `TPL_REMOUNTABLE` (1): a template emitted as a component's child. The
  *   returned item SURVIVES being torn down and mounted again — see
- *   {@link remountableTpl}.
+ *   {@link RemountableItem}.
  * - `TPL_SVG_ROOT` (2): the template is rooted at a bare SVG element (`<g>`,
  *   `<path>`, `<linearGradient>`, … not enclosed in an `<svg>`). Setting
  *   `innerHTML` runs the HTML parser, which enters SVG foreign content only at a
@@ -1020,7 +1020,8 @@ export function _tpl(
   bind: (el: HTMLElement) => (() => void) | null,
   flags = 0,
 ): NativeItem {
-  if ((flags & TPL_REMOUNTABLE) !== 0) return remountableTpl(html, bind, flags & TPL_SVG_ROOT)
+  if ((flags & TPL_REMOUNTABLE) !== 0)
+    return new RemountableItem(html, bind, flags & TPL_SVG_ROOT) as unknown as RemountableNativeItem
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
@@ -1134,14 +1135,6 @@ export function _tpl(
 export interface RemountableNativeItem extends NativeItem {
   readonly __dead: boolean
   __revive(): void
-}
-
-function remountableTpl(
-  html: string,
-  bind: (el: HTMLElement) => (() => void) | null,
-  flags: number,
-): RemountableNativeItem {
-  return new RemountableItem(html, bind, flags) as unknown as RemountableNativeItem
 }
 
 /**
