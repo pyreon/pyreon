@@ -1348,6 +1348,16 @@ function toNativeCollapse(
 }
 
 /** JS fallback implementation — used when the native binary isn't available. */
+/** `<select … value=…>` (a plain `select` tag carrying a `value` attribute). Mirrors Rust `is_select_with_value`. */
+function isSelectWithValue(opening: N): boolean {
+  if (opening.name?.type !== 'JSXIdentifier' || opening.name.name !== 'select') return false
+  for (const a of opening.attributes ?? []) {
+    if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === 'value') return true
+  }
+
+  return false
+}
+
 /** `<input>`, `<textarea>`, `<select>`: their `value` goes through the runtime `_setValue`. Mirrors Rust `is_value_control_tag`. */
 function isValueControlTag(tag: string): boolean {
   return tag === 'input' || tag === 'textarea' || tag === 'select'
@@ -1458,8 +1468,14 @@ export function transformJSX_JS(
   const parentMap = new WeakMap<object, N>()
   const childrenMap = new WeakMap<object, N[]>()
 
+  // A `<select value>` anywhere in the module: the client emit turns on the
+  // runtime's late-option handling (`_selectWait()`, #4820), so apps without
+  // one never ship it. Mirrors Rust `has_select_value`.
+  let hasSelectValue = false
+
   /** Build parent pointers + cached children arrays for the entire AST. */
   function buildMaps(node: N): void {
+    if (node.type === 'JSXOpeningElement' && !hasSelectValue && isSelectWithValue(node)) hasSelectValue = true
     const kids: N[] = []
     const keys = Object.keys(node)
     for (let i = 0; i < keys.length; i++) {
@@ -5680,7 +5696,8 @@ export function transformJSX_JS(
 
   walkNode(program)
 
-  if (replacements.length === 0 && hoists.length === 0) {
+  const needsSelectWait = hasSelectValue && !ssr
+  if (replacements.length === 0 && hoists.length === 0 && !needsSelectWait) {
     return collectLens ? { code, warnings, reactivityLens } : { code, warnings }
   }
 
@@ -5709,6 +5726,10 @@ export function transformJSX_JS(
 
   if (hoists.length > 0) {
     preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text};\n`).join('') + preamble
+  }
+
+  if (needsSelectWait) {
+    preamble = `import { _selectWait } from "@pyreon/runtime-dom";\n_selectWait();\n` + preamble
   }
 
   if (needsTplImport) {

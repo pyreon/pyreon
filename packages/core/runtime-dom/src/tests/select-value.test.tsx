@@ -49,6 +49,7 @@ import {
   _setPropStatic,
   _setStyle,
   _setStyleOnce,
+  _selectWait,
   _setValue,
   _textSlot,
   bindPolymorphicText,
@@ -63,7 +64,9 @@ import {
 // walked hole, so it compiles to a template of its own (the binders below).
 
 function stripImports(code: string): string {
-  return code.replace(/^import\s+.*$/gm, '').trim()
+  // The module-level `_selectWait();` the compiler emits for `<select value>`
+  // runs here, chained ahead of the expression this harness returns (it returns undefined).
+  return code.replace(/^import\s+.*$/gm, '').replace(/^_selectWait\(\);$/m, '_selectWait() ||').trim()
 }
 
 const RUNTIME_DEPS = {
@@ -82,6 +85,7 @@ const RUNTIME_DEPS = {
   _setChildAt,
   _setPropStatic,
   _setValue,
+  _selectWait,
   bindPolymorphicText,
   _rp,
   _rpd,
@@ -112,6 +116,7 @@ function compileAndMount(source: string, globals: Record<string, unknown> = {}) 
   const container = document.createElement('div')
   document.body.appendChild(container)
   const cleanup = mountChild(result, container)
+
   return { container, cleanup, code }
 }
 

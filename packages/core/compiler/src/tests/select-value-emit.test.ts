@@ -13,6 +13,9 @@
  * Cross-backend parity for these shapes is locked in
  * native-equivalence.test.ts ("select value binding (PZ-09)" block).
  */
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { transformJSX_JS } from '../jsx'
 
 function compile(src: string): string {
@@ -129,5 +132,51 @@ describe('<select value> — bind lines are ordered AFTER the children lines', (
     expect(ev).toBeGreaterThan(-1)
     expect(ev).toBeLessThan(slot)
     expect(set).toBeGreaterThan(slot)
+  })
+})
+
+describe('<select value> turns on late-option handling for its module (#4820)', () => {
+  // The runtime's "apply the value once its option arrives" handler is kept out
+  // of plain `mount`; a client module that renders `<select value>` installs it
+  // with one module-level `_selectWait()` call. Both backends emit the same
+  // bytes (native parity below), and nothing else in the module changes.
+  const nativeRequire = createRequire(import.meta.url)
+  let native: ((src: string, ssr: boolean) => string) | null = null
+  try {
+    const addon = nativeRequire(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'native', 'pyreon-compiler.node')) as {
+      transformJsx: (c: string, f: string, ssr: boolean, k: null) => { code: string }
+    }
+    native = (src, ssr) => addon.transformJsx(src, 'test.tsx', ssr, null).code
+  } catch {
+    // Native parity runs when the addon is built.
+  }
+  const both = (src: string, ssr = false): string => {
+    const js = transformJSX_JS(src, 'test.tsx', { ssr }).code
+    if (native) expect(native(src, ssr)).toBe(js)
+    return js
+  }
+  const WAIT = 'import { _selectWait } from "@pyreon/runtime-dom";\n_selectWait();\n'
+
+  it.each([
+    ['a templated select', 'const A = () => <select value="b"><option value="b">b</option></select>'],
+    ['a select with a component child (h() path)', 'const A = () => <select value={v()}><For each={o()} by={(x) => x}>{(x) => <option value={x}>{x}</option>}</For></select>'],
+    ['a nested select', 'const A = () => <div><label>x<select value={v}><option /></select></label></div>'],
+  ])('%s', (_label, src) => {
+    expect(both(src).split(WAIT).length - 1).toBe(1)
+  })
+
+  it.each([
+    ['a select without value', 'const A = () => <select name="x"><option>a</option></select>'],
+    ['a component named Select', 'const A = () => <Select value="b" />'],
+    ['h() with a select', "const A = () => h('select', { value: 'b' })"],
+    ['no JSX at all', 'const x = 1'],
+  ])('not for %s', (_label, src) => {
+    expect(both(src)).not.toContain('_selectWait')
+  })
+
+  it('not in SSR output', () => {
+    expect(both('const A = () => <select value="b"><option value="b">b</option></select>', true)).not.toContain(
+      '_selectWait',
+    )
   })
 })

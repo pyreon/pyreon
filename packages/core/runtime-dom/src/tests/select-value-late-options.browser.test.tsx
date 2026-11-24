@@ -12,10 +12,14 @@
  */
 import { For, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { mount } from '@pyreon/runtime-dom'
+import { _selectWait, mount } from '@pyreon/runtime-dom'
 import { flush } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import { ForPicker, MapPicker } from './fixtures/select-late-options.fixture'
+
+// The h() specs below build `<select value>` without the compiler, which would
+// otherwise emit this call (the fixture module's own compile emits it too).
+_selectWait()
 
 const cleanups: (() => void)[] = []
 
@@ -81,6 +85,24 @@ describe('<select value> with options added after mount — real Chromium', () =
 describe('after the value applied, the selection is the user\'s — real Chromium', () => {
   const forOptions = (options: ReturnType<typeof signal<string[]>>) =>
     h(For, { each: () => options(), by: (o: string) => o, children: (o: string) => h('option', { value: o }, o) })
+
+  it('a value applied when its option arrived is not applied again after the user picks', async () => {
+    const options = signal<string[]>([])
+    const select = render(
+      h(
+        'select',
+        { value: 'b' },
+        h(For, { each: () => options(), by: (o: string) => o, children: (o: string) => h('option', { value: o }, o) }),
+      ),
+    )
+    options.set(['a', 'b'])
+    await flush()
+    expect(select.value).toBe('b')
+    select.value = 'a'
+    options.set(['a', 'b', 'c'])
+    await flush()
+    expect(select.value).toBe('a')
+  })
 
   it('a pick the app does not mirror into the signal survives option updates', async () => {
     const value = signal('a')

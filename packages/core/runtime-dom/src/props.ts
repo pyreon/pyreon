@@ -227,17 +227,12 @@ export function bindSpread(el: Element, getProps: () => Props): Cleanup {
  * an option's own `selected` attribute is never clobbered by an absent value.
  */
 export function applySelectValueProp(el: Element, props: Props): Cleanup | null {
-  const descriptor = Object.getOwnPropertyDescriptor(props, 'value')
-  if (descriptor?.get) {
-    const d = _renderBind(() =>
-      applyValueProp(el, (props as Record<string, unknown>).value),
-    )
-    // Dev: the setter names the binding; drop the creation site (this file).
-    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
-    return d
-  }
-
-  return applyProp(el, 'value', props.value)
+  // One binding for every shape: a compiler getter and an accessor are read
+  // (and tracked) inside it, a static value is applied once.
+  const d = _renderBind(() => applyValueProp(el, (props as Record<string, unknown>).value))
+  // Dev: the setter names the binding; drop the creation site (this file).
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
+  return d
 }
 
 /**
@@ -918,43 +913,16 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
 const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
 
 /**
- * A `<select value>` still waiting for its option (#4820), owned by the
- * element. Assigning `select.value` selects a matching `<option>` only if it
- * EXISTS at that moment, so options added later (a `<For>` over a list that
- * loads after mount) left the first option selected while the signal held a
- * valid value. A value with no matching option is recorded here, and each
- * reconciler that changes the select's children applies it once its option
- * arrives (`_resyncSelect`), then forgets it. It is never re-applied after it
- * matched: from then on the selection is the user's (a pick, an `onChange`
- * that declines the change, a removed option behave as without a framework).
- * Set the signal to select something else.
+ * `<select value>` whose option arrives after mount (#4820) — see
+ * `select-wait.ts`. Installed only by `_selectWait()`, which the compiler
+ * emits for a module that renders `<select value>`, so a plain `mount` carries
+ * just this slot and its call.
  */
-const SELECT_VALUE = Symbol('pyreon.selectValue')
-type SelectHost = Element & { [SELECT_VALUE]?: unknown }
+let selectWaitHook: ((sel: HTMLSelectElement, value: unknown) => void) | null = null
 
-/**
- * Whether any `<select value>` ever had to wait for its option. A one-way
- * switch: a page where that never happens pays one boolean read per reconcile.
- */
-export let _selectValueSeen = false
-
-/**
- * After a reconciler changed the children of `parent` (a select, or an
- * `<optgroup>` in one): apply the select's waiting value if its option now
- * exists. Called only when `_selectValueSeen`; a no-op for any other parent
- * and for a select with nothing waiting (the browser default stands).
- */
-export function _resyncSelect(parent: Node | null): void {
-  const name = parent?.nodeName
-  const host = (name === 'OPTGROUP' ? parent!.parentNode : name === 'SELECT' ? parent : null) as SelectHost | null
-  const value = host?.[SELECT_VALUE]
-  if (value === undefined) return
-  const sel = host as unknown as HTMLSelectElement
-  const prev = sel.selectedIndex
-  sel.value = value as string
-  // Matched: done waiting. Still no such option: keep what was selected.
-  if (sel.value === value) host![SELECT_VALUE] = undefined
-  else sel.selectedIndex = prev
+/** @internal Install the late-option handler (`select-wait.ts`). */
+export function _setSelectWaitHook(hook: (sel: HTMLSelectElement, value: unknown) => void): void {
+  selectWaitHook = hook
 }
 
 /**
@@ -975,17 +943,11 @@ export function _resyncSelect(parent: Node | null): void {
 export function applyDomProp(el: Element, key: string, value: unknown): void {
   if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'prop', key)
   if (typeof value === 'function') value = (value as () => unknown)()
-  if (key === 'value' && isValueControl(el)) {
+  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
     applyValueProp(el, value)
     return
   }
   ;(el as unknown as Record<string, unknown>)[key] = value
-}
-
-/** `<input>`, `<textarea>` and `<select>`: the elements whose `value` goes through `applyValueProp`. */
-function isValueControl(el: Element): boolean {
-  const tag = el.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
 }
 
 /**
@@ -1034,12 +996,11 @@ export function applyDomPropStatic(el: Element, key: string, value: unknown): vo
  * from the initial value, `updateInput` only ever follows an explicit
  * `defaultValue` prop.
  *
- * The `defaultValue` step is scoped to `input`/`textarea`, the only elements
- * with one. `select` (whose default lives in `<option selected>`) gets no
- * default; it only records the value it was given, so the reconcilers can
- * apply it when its option arrives later (`_resyncSelect`, #4820), and a nullish
- * value leaves the options' own `selected` alone. Media `muted` is not
- * normalized here — React, Preact and Solid all diverge identically on it.
+ * The default is scoped to `input`/`textarea`, the only elements with a
+ * `defaultValue`. A `select` (whose default lives in `<option selected>`) only
+ * gets its value assigned and, if no option matches yet, waits for one
+ * (`select-wait.ts`, #4820). Media `muted` is deliberately NOT normalized here — React, Preact and Solid all diverge
+ * identically on both, so matching them is the industry-normal behaviour.
  */
 export function applyValueProp(el: Element, value: unknown): void {
   if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'prop', 'value')
@@ -1050,6 +1011,11 @@ export function applyValueProp(el: Element, value: unknown): void {
   // wrote the closure SOURCE into the box. Inside the compiler's reactive
   // `_bind` wrapper this call is tracked, so the read stays live (#4086).
   if (typeof value === 'function') value = (value as () => unknown)()
+  if (el.tagName === 'SELECT') {
+    if (value != null) node.value = value as string
+    selectWaitHook?.(el as HTMLSelectElement, value)
+    return
+  }
   // Nullish FIRST — the branch `setStaticProp` runs before it ever reaches this
   // helper, and the one the compiled path skipped: `HTMLInputElement.value` is
   // `[LegacyNullToEmptyString]`, which maps `null` → '' but NOT `undefined`, so
@@ -1060,12 +1026,6 @@ export function applyValueProp(el: Element, value: unknown): void {
   // hydration mismatch, and a nullish FIRST application must not consume the
   // one-shot default establishment below (the real initial value may follow).
   if (value == null) {
-    // `<select>`: nullish leaves the selection to the options' own `selected`
-    // (the h() path's long-standing no-op) and stops waiting for a value.
-    if (el.tagName === 'SELECT') {
-      ;(el as SelectHost)[SELECT_VALUE] = undefined
-      return
-    }
     if (node.value !== '') node.value = ''
     return
   }
@@ -1075,17 +1035,7 @@ export function applyValueProp(el: Element, value: unknown): void {
   node.value = value as string
 
   const tag = el.tagName
-  if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
-    // A single-choice select whose option is not there yet waits for it (see
-    // SELECT_VALUE). A `multiple` select keeps the browser's own behaviour.
-    if (tag === 'SELECT') {
-      const v = String(value)
-      ;(el as SelectHost)[SELECT_VALUE] =
-        !(node as unknown as HTMLSelectElement).multiple && node.value !== v ? ((_selectValueSeen = true), v) : undefined
-    }
-
-    return
-  }
+  if (tag !== 'INPUT' && tag !== 'TEXTAREA') return
 
   const seen = el as unknown as Record<symbol, unknown>
   if (seen[DEFAULT_VALUE_INIT]) return
@@ -1234,7 +1184,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     // ordinary clear-the-field flow: `<input value={draft()} />` with `draft`
     // going `string | undefined`. Booleans deliberately stay on the generic
     // path below, where SSR also treats them as presence.
-    if (key === 'value' && isValueControl(el)) {
+    if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
       applyValueProp(el, value)
       return
     }
@@ -1305,7 +1255,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // after the nullish/boolean branches so those keep their existing attribute
   // semantics, and scoped to the two tags that own a `defaultValue` — every
   // other element keeps the generic (try/catch-guarded) property path below.
-  if (key === 'value' && isValueControl(el)) {
+  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
     applyValueProp(el, value)
     return
   }

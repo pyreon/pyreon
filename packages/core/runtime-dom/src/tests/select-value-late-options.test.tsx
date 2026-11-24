@@ -8,12 +8,11 @@
  * mount (PZ-09), and its binding tracked only the value — so the select showed
  * the first option while the signal held a valid value.
  *
- * Fix: a value with no matching option yet is recorded on the select
- * (`applyValueProp`, which the compiler now emits for `<select value>` as
- * `_setValue`), and the reconcilers that change a select's children
- * (`mountFor`, `mountReactive`) apply it once its option exists
- * (`_resyncSelect`), then forget it. After that the selection is the user's:
- * a pick, a declining `onChange`, a removed option and an unmatched value
+ * Fix: a select whose value matches no option yet watches its own children
+ * (`select-wait.ts`, turned on by the `_selectWait()` call the compiler emits
+ * for modules with `<select value>`), applies the value once its option exists
+ * and stops. After that the selection is the user's: a pick, a declining
+ * `onChange`, a removed option and an unmatched value
  * behave exactly as before (the maintainer decision: never fight the user).
  * A `multiple` select is left alone. Locked on the compiled path (both
  * compiler backends), the h() path and hydration; the real-Chromium cells are
@@ -25,7 +24,7 @@ import { transformJSX_JS } from '@pyreon/compiler'
 import * as reactivity from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import * as dom from '../index'
 import * as template from '../template'
 
@@ -185,6 +184,10 @@ return Picker`,
 for (const [backend, compile] of backends) compiledSuite(backend, compile)
 
 describe('h() path', () => {
+  // Without the compiler, an app turns the handling on itself (the compiler
+  // emits this call for every module that renders `<select value>`).
+  beforeAll(() => dom._selectWait())
+
   it('<For> options added after mount', async () => {
     const value = signal('b')
     const options = signal<string[]>([])
@@ -273,6 +276,24 @@ describe('h() path', () => {
     await tick()
     expect(select.value).toBe('z')
   })
+  it('a value applied when its option arrived is not applied again after the user picks', async () => {
+    const options = signal<string[]>([])
+    const select = mountApp(
+      h(
+        'select',
+        { value: 'b' },
+        h(For, { each: () => options(), by: (o: string) => o, children: (o: string) => h('option', { value: o }, o) }),
+      ),
+    )
+    options.set(['a', 'b'])
+    await tick()
+    expect(select.value).toBe('b')
+    select.value = 'a'
+    options.set(['a', 'b', 'c'])
+    await tick()
+    expect(select.value).toBe('a')
+  })
+
   it('once applied, a pick the app did not mirror into the signal survives option updates', async () => {
     const value = signal('a')
     const options = signal(['a', 'b'])
@@ -341,6 +362,8 @@ describe('h() path', () => {
 })
 
 describe('hydration', () => {
+  beforeAll(() => dom._selectWait())
+
   it('a hydrated select applies its value when its option loads later', async () => {
     const value = signal('b')
     const options = signal<string[]>([])
