@@ -94,9 +94,9 @@ describe('SCENARIOS', () => {
     }
   })
 
-  it('an entry override is a bare lib-relative .js filename (never a path escape)', () => {
+  it('an entry override is a lib-relative .js filename, at most one directory deep (never a path escape)', () => {
     for (const s of SCENARIOS) {
-      if (s.entry !== undefined) expect(s.entry).toMatch(/^[\w-]+\.js$/)
+      if (s.entry !== undefined) expect(s.entry).toMatch(/^(?:[\w-]+\/)?[\w-]+\.js$/)
     }
   })
 
@@ -106,6 +106,7 @@ describe('SCENARIOS', () => {
     // `/echarts`, so no scenario may measure it by accident.
     expect(Object.fromEntries(charts.map((s) => [s.id, s.entry ?? 'index.js']))).toEqual({
       '@pyreon/charts::chart-line': 'index.js',
+      '@pyreon/charts::chart-map': 'index.js',
       '@pyreon/charts::chart-pie': 'index.js',
       '@pyreon/charts::plot-minimal': 'engine.js',
       '@pyreon/charts::plot-svg': 'svg.js',

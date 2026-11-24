@@ -12,7 +12,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { findUnscopedRunnerCommands, pyreonBins, runDocClaimsGate } from '../doctor/gates/doc-claims'
+import {
+  findUnscopedRunnerCommands,
+  pyreonBins,
+  RUNNER_COMMAND_ALLOWANCES,
+  runDocClaimsGate,
+  stringLiteralText,
+} from '../doctor/gates/doc-claims'
 
 let root = ''
 const put = (rel: string, body: string): void => {
@@ -96,5 +102,98 @@ describe('the bin scan and the docs walk take the shapes real repos have', () =>
     expect(codes()).toEqual([
       'packages/tools/lathe/README.md:3: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
     ])
+  })
+})
+
+// The same command printed by a CLI, written into a diagnostic's `fix`, or
+// emitted into a generated README is read and run exactly like one on a docs
+// page — `pyreon add @pyreon/loom` printed `npx loom scan .`, and the
+// compiler's diagnostics told users to run `npx pyreon upgrade`. Only string
+// and template text counts: a source COMMENT is for maintainers.
+describe('unscoped runner commands in user-facing source strings', () => {
+  it('reports string and template text in published source', () => {
+    put('packages/tools/cli/src/recipes.ts', "export const usage = `# scan\nnpx lathe init`\n")
+    put('packages/core/compiler/src/diag.ts', "export const fix = 'Upgrade (`bunx pyreon upgrade`).'\n")
+    expect(codes().sort()).toEqual([
+      'packages/tools/cli/src/recipes.ts:2: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+      'packages/core/compiler/src/diag.ts:1: `bunx pyreon` runs the npm package named "pyreon", not @pyreon/cli, when it is not installed locally.',
+    ].sort())
+  })
+
+  it('ignores comments, code, tests, fixtures and type declarations', () => {
+    put('packages/tools/cli/src/a.ts', '// npx lathe init\n/* bunx pyreon doctor */\nconst npx = 1; npx lathe\n')
+    put('packages/tools/cli/src/tests/a.test.ts', "const s = 'npx lathe init'\n")
+    put('packages/tools/cli/src/b.test.ts', "const s = 'npx lathe init'\n")
+    put('packages/tools/cli/src/fixtures/c.ts', "const s = 'npx lathe init'\n")
+    put('packages/tools/cli/src/d.d.ts', "declare const s: 'npx lathe init'\n")
+    expect(codes()).toEqual([])
+  })
+
+  it('honours the narrow, reasoned allowance and nothing wider', () => {
+    const scaffold = 'packages/zero/create-multiplatform/src/scaffold.ts'
+    expect(RUNNER_COMMAND_ALLOWANCES.get(scaffold)?.reason).toMatch(/@pyreon\/native-cli/)
+    put('packages/native/cli/package.json', JSON.stringify({ name: '@pyreon/native-cli', bin: { 'pyreon-native': 'bin/cli.js' } }))
+    put(scaffold, 'const phase = `npx pyreon-native build --target=ios`\nconst other = `npx lathe init`\n')
+    // The allowed bin in the allowed file passes; another bin there does not.
+    expect(codes()).toEqual([
+      `${scaffold}:2: \`npx lathe\` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.`,
+    ])
+    // The same allowed bin in any other file is reported.
+    put('packages/zero/create-zero/src/x.ts', 'const s = `npx pyreon-native build`\n')
+    expect(codes()).toContain(
+      'packages/zero/create-zero/src/x.ts:1: `npx pyreon-native` runs the npm package named "pyreon-native", not @pyreon/native-cli, when it is not installed locally.',
+    )
+  })
+})
+
+describe('stringLiteralText', () => {
+  it('keeps string, template and JSX text at the same offsets, blanks comments and code', () => {
+    const src = "a('x') // c\nb(`t ${f('in')} u`) /* d */ \"q\\\"r\""
+    const out = stringLiteralText(src, 'a.ts')
+    expect(out).toHaveLength(src.length)
+    expect(out.split('\n')).toHaveLength(2)
+    expect(out.replace(/\s+/g, ' ').trim()).toBe("'x' `t ${ 'in' } u` \"q\\\"r\"")
+  })
+})
+
+// #4756 review: the hand-rolled scanner had four blind spots. The scanner is
+// now the TypeScript parser; each spot gets a spec.
+describe('unscoped runner commands — parser blind spots', () => {
+  it('an escaped // inside a regex literal does not hide a real string later on the line', () => {
+    put('packages/tools/cli/src/a.ts', "const r = /https:\\/\\//; const s = 'npx lathe init'\n")
+    expect(codes()).toEqual([
+      'packages/tools/cli/src/a.ts:1: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+    ])
+  })
+
+  it('a regex containing a backtick does not turn a later comment into a string', () => {
+    put('packages/tools/cli/src/b.ts', "const r = /`/\n// run npx lathe init by hand\nexport {}\n")
+    expect(codes()).toEqual([])
+  })
+
+  it('JSX text is user-facing and is scanned', () => {
+    put('packages/tools/cli/src/c.tsx', 'export const Hint = () => <p>Run npx lathe init first.</p>\n')
+    expect(codes()).toEqual([
+      'packages/tools/cli/src/c.tsx:1: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+    ])
+  })
+
+  it('the bin is found before an escaped newline, a full stop and a comma — not inside a file name', () => {
+    put(
+      'packages/tools/cli/src/d.ts',
+      [
+        "export const a = 'npx lathe\\nnext'",
+        "export const b = 'then run npx lathe.'",
+        "export const c = 'npx pyreon, then'",
+        "export const d = 'see npx lathe.js for the shim'",
+      ].join('\n'),
+    )
+    expect(codes().sort()).toEqual(
+      [
+        'packages/tools/cli/src/d.ts:1: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+        'packages/tools/cli/src/d.ts:2: `npx lathe` runs the npm package named "lathe", not @pyreon/lathe, when it is not installed locally.',
+        'packages/tools/cli/src/d.ts:3: `npx pyreon` runs the npm package named "pyreon", not @pyreon/cli, when it is not installed locally.',
+      ].sort(),
+    )
   })
 })

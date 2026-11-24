@@ -70,6 +70,7 @@ import {
 } from '../index'
 import { bindPolymorphicText } from '../mount'
 import { _setTplAdoptTarget, _setTplAdoptVerifier } from '../template'
+import { _dispose2, _dispose3, _dispose4, _disposeN } from '../dispose-helpers'
 
 // ─── Counter sink ────────────────────────────────────────────────────────────
 const g = globalThis as { __pyreon_count__?: ((name: string, n?: number) => void) | undefined }
@@ -89,7 +90,7 @@ afterEach(() => {
 
 // ─── Real-transform harness (same shape as hydrate-component-tpl-adoption) ───
 const RUNTIME_DEPS = {
-  _tpl,
+  _tpl, _dispose2, _dispose3, _dispose4, _disposeN,
   _bind,
   renderEffect,
   _bindText,
@@ -548,7 +549,8 @@ const App = () => <div class="a"><span class="s">s</span>{() => [1, 2].map((n) =
       )
     const off = await hydrateAndMeasure(tree(), src, {})
     expect(off.ssrHtml).toContain('<!--$-->')
-    expect(off.adopts).toBe(1)
+    // The `<div>`, and each `<b>`: the `.map` accessor is a walked hole.
+    expect(off.adopts).toBe(3)
     expect(off.retained).toBe(off.total)
 
     // The option is not what decides this shape: identical adoption, identical

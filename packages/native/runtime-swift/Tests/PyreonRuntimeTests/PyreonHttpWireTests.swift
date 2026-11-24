@@ -34,15 +34,16 @@ final class LoopbackServer: @unchecked Sendable {
     func start() async throws -> UInt16 {
         listener.newConnectionHandler = { [weak self] connection in self?.serve(connection) }
         return try await withCheckedThrowingContinuation { continuation in
-            var resumed = false
+            // The handler runs on `queue`, outside this task: a captured `var` flag is a data race (and an error in
+            // the Swift 6 language mode). A lock-guarded one-shot resumes the continuation exactly once.
+            let once = ResumeOnce()
             listener.stateUpdateHandler = { [weak self] state in
-                guard !resumed else { return }
                 switch state {
                 case .ready:
-                    resumed = true
+                    guard once.claim() else { return }
                     continuation.resume(returning: self?.listener.port?.rawValue ?? 0)
                 case .failed(let error):
-                    resumed = true
+                    guard once.claim() else { return }
                     continuation.resume(throwing: error)
                 default:
                     break
@@ -278,5 +279,19 @@ final class PyreonHttpWireTests: XCTestCase {
         XCTAssertEqual(PyreonURL.query("?", "a", nil as String?, "b", nil as Int?), "")
         XCTAssertEqual(PyreonURL.query("&", "tag", ["x", nil, "y z"] as [String?]), "&tag=x&tag=y+z")
         XCTAssertEqual(PyreonURL.query("?", "flag", false, "ninf", -Double.infinity), "?flag=false&ninf=-Infinity")
+    }
+}
+
+/// A thread-safe one-shot flag: `claim()` is true exactly once.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if done { return false }
+        done = true
+        return true
     }
 }

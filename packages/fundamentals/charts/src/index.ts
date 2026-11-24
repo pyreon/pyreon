@@ -59,8 +59,12 @@ export type { GraphChartProps } from './engine/GraphChart'
 export { MapChart } from './engine/MapChart'
 export type { MapChartProps, MapChartValues } from './engine/MapChart'
 export { geoShapes, registerMap } from './engine/geo-web'
+export { topoToGeo } from './engine/geo-topo'
+export type { Topology } from './engine/geo-topo'
+export { mapRamp } from './engine/geo'
 export type { GeoShape } from './engine/geo'
-export type { GeoJson } from './engine/geo-web'
+export type { GeoJson, MapDefinition } from './engine/geo-web'
+export type { GeoFlow, GeoFlowOptions, GeoSizeLegendOptions } from './engine/geo-layers'
 export { ParallelChart } from './engine/ParallelChart'
 export type { ParallelChartProps } from './engine/ParallelChart'
 export { PolarChart } from './engine/PolarChart'
@@ -106,6 +110,15 @@ export type { VisualMapOptions, VisualMapPiece, VisualMapSpec } from './engine/v
 export type { CandlestickZoom } from './engine/CandlestickChart'
 export type { ZoomWindow } from './engine/zoom'
 export type { Double } from './engine/types'
+
+// Per-datum colour for bars and dots — imported bindings, so a chart that never colours a datum does not bundle them.
+export { fillBy, shadeBy } from './engine/item-colors'
+export type { ItemChannel, ItemFill, ShadeOptions } from './engine/item-colors'
+
+// Non-linear axis scales — descriptors, so a chart that never imports one does not bundle any of it.
+export { log, sqrt, symlog } from './engine/scale-descriptors'
+export type { SymlogOptions } from './engine/scale-descriptors'
+export type { ScaleView } from './engine/render'
 
 // Line and area curves — functions, so an unused one tree-shakes: `<Line y curve={smooth} />`.
 export { smooth, step } from './engine/curve'

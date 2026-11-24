@@ -9,7 +9,7 @@ import manifest from '../manifest'
 describe('gen-docs — atlas snapshot', () => {
   it('renders to llms.txt bullet', () => {
     expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
-      `"- @pyreon/atlas — AI-native component workbench — derives, verifies, and serves a machine-readable component catalog"`,
+      `"- [@pyreon/atlas](https://pyreon.dev/docs/reference/atlas): AI-native component workbench — derives, verifies, and serves a machine-readable component catalog"`,
     )
   })
 

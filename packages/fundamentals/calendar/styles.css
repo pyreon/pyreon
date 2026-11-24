@@ -1,0 +1,1176 @@
+/*
+ * @pyreon/calendar: the default look of <Calendar>, <MonthView>, <WeekView>, <DayView> and <CalendarToolbar>. Import it once
+ * (`import '@pyreon/calendar/styles.css'`) or write your own: every part has a `pcal-*` class and state is on data attributes
+ * (`data-today`, `data-selected`, `data-outside`, `data-weekend`, `data-business`, `data-continues-before`, `data-continues-after`,
+ * `data-recurring`, `data-short`). Everything you may want to change is a custom property on `.pcal` (listed below); an event's
+ * `color` sets its `--pcal-event`. Logical properties throughout, so it mirrors in right-to-left text. Light and dark follow the
+ * page's `color-scheme` (the system colours Canvas and CanvasText); it animates only when the user has not asked for less
+ * motion, and in forced-colors (high contrast) events keep a border and the focus ring stays visible.
+ */
+.pcal {
+  /* type */
+  --pcal-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+  --pcal-font-size: 14px;
+  /* colours */
+  --pcal-bg: Canvas;
+  --pcal-fg: CanvasText;
+  --pcal-accent: #2563eb;
+  --pcal-accent-fg: #fff;
+  --pcal-border: color-mix(in srgb, var(--pcal-fg) 14%, var(--pcal-bg));
+  --pcal-border-soft: color-mix(in srgb, var(--pcal-fg) 8%, var(--pcal-bg));
+  --pcal-muted: color-mix(in srgb, var(--pcal-fg) 62%, var(--pcal-bg));
+  --pcal-today: color-mix(in srgb, var(--pcal-accent) 7%, var(--pcal-bg));
+  --pcal-selected: color-mix(in srgb, var(--pcal-accent) 16%, var(--pcal-bg));
+  --pcal-outside: color-mix(in srgb, var(--pcal-fg) 3%, var(--pcal-bg));
+  --pcal-weekend: color-mix(in srgb, var(--pcal-fg) 2.5%, var(--pcal-bg));
+  --pcal-closed: color-mix(in srgb, var(--pcal-fg) 5%, var(--pcal-bg));
+  --pcal-now: #e11d48;
+  --pcal-focus: #1d4ed8;
+  /* events: --pcal-event is the colour of one event (its edge); the chip tint and the text derive from it */
+  --pcal-event: #2563eb;
+  --pcal-event-tint: 16%;
+  --pcal-event-bg: color-mix(in srgb, var(--pcal-event) var(--pcal-event-tint), var(--pcal-bg));
+  --pcal-event-fg: color-mix(in srgb, var(--pcal-event) 42%, var(--pcal-fg));
+  --pcal-event-edge: 3px;
+  /* shape and size */
+  --pcal-radius: 8px;
+  --pcal-event-radius: 5px;
+  --pcal-lane-size: 22px;
+  --pcal-day-head: 28px;
+  --pcal-slot-n: 28;
+  --pcal-slot: calc(var(--pcal-slot-n) * 1px);
+  --pcal-gutter: 64px;
+  --pcal-col-min: 96px;
+  container-type: inline-size;
+
+  box-sizing: border-box;
+  color: var(--pcal-fg);
+  background: var(--pcal-bg);
+  color-scheme: light dark;
+  font-family: var(--pcal-font);
+  font-size: var(--pcal-font-size);
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  -webkit-text-size-adjust: 100%;
+}
+
+.pcal *,
+.pcal *::before,
+.pcal *::after {
+  box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pcal {
+    --pcal-accent: #60a5fa;
+    --pcal-accent-fg: #0b1220;
+    --pcal-border: color-mix(in srgb, var(--pcal-fg) 11%, var(--pcal-bg));
+    --pcal-border-soft: color-mix(in srgb, var(--pcal-fg) 6%, var(--pcal-bg));
+    --pcal-today: color-mix(in srgb, var(--pcal-accent) 10%, var(--pcal-bg));
+    --pcal-selected: color-mix(in srgb, var(--pcal-accent) 24%, var(--pcal-bg));
+    --pcal-event-tint: 26%;
+    --pcal-event-fg: color-mix(in srgb, var(--pcal-event) 40%, var(--pcal-fg));
+    --pcal-now: #fb7185;
+    --pcal-focus: #93c5fd;
+  }
+}
+
+/* ---- toolbar ---- */
+.pcal-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-block: 0 12px;
+}
+
+.pcal-nav,
+.pcal-views {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.pcal-title {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  margin: 0;
+  font-size: 1.25em;
+  font-weight: 650;
+  text-align: start;
+  text-wrap: balance;
+}
+
+.pcal-btn {
+  min-inline-size: 36px;
+  min-block-size: 36px;
+  padding-inline: 12px;
+  border: 1px solid var(--pcal-border);
+  border-radius: var(--pcal-radius);
+  background: var(--pcal-bg);
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pcal-btn:hover {
+  background: var(--pcal-outside);
+}
+
+.pcal-prev,
+.pcal-next {
+  padding-inline: 0;
+  font-size: 1.3em;
+  line-height: 1;
+}
+
+/* previous and next point the way the text reads: they flip in right-to-left */
+.pcal-prev span,
+.pcal-next span {
+  display: inline-block;
+}
+
+.pcal-prev:dir(rtl) span,
+.pcal-next:dir(rtl) span {
+  transform: scaleX(-1);
+}
+
+/* the view switch: one segmented control */
+.pcal-views {
+  gap: 0;
+}
+
+.pcal-views .pcal-btn {
+  border-radius: 0;
+}
+
+.pcal-views .pcal-btn + .pcal-btn {
+  margin-inline-start: -1px;
+}
+
+.pcal-views .pcal-btn:first-child {
+  border-start-start-radius: var(--pcal-radius);
+  border-end-start-radius: var(--pcal-radius);
+}
+
+.pcal-views .pcal-btn:last-child {
+  border-start-end-radius: var(--pcal-radius);
+  border-end-end-radius: var(--pcal-radius);
+}
+
+.pcal-btn[aria-pressed='true'] {
+  position: relative;
+  background: var(--pcal-selected);
+  border-color: color-mix(in srgb, var(--pcal-accent) 55%, var(--pcal-border));
+  color: color-mix(in srgb, var(--pcal-accent) 70%, var(--pcal-fg));
+  font-weight: 650;
+}
+
+.pcal-btn:focus-visible,
+.pcal-event:focus-visible,
+.pcal-more:focus-visible,
+[role='gridcell']:focus-visible {
+  outline: 3px solid var(--pcal-focus);
+  outline-offset: -3px;
+}
+
+.pcal-btn:focus-visible {
+  outline-offset: 1px;
+  z-index: 1;
+}
+
+/* ---- month ---- */
+.pcal-month {
+  border: 1px solid var(--pcal-border);
+  border-radius: var(--pcal-radius);
+  overflow: hidden;
+}
+
+.pcal-weekdays,
+.pcal-week {
+  display: grid;
+  grid-template-columns: repeat(var(--pcal-days, 7), minmax(0, 1fr));
+}
+
+/* every row is as tall as the lanes the month shows (the capacity) and a "+N more" line: rows do not jump */
+.pcal-week {
+  block-size: calc(var(--pcal-day-head) + (var(--pcal-capacity, 3) + 1) * var(--pcal-lane-size) + 6px);
+}
+
+.pcal-weekday {
+  padding: 8px;
+  color: var(--pcal-muted);
+  font-size: 0.8em;
+  font-weight: 600;
+  text-align: start;
+  text-transform: uppercase;
+  border-block-end: 1px solid var(--pcal-border);
+}
+
+.pcal-day {
+  position: relative;
+  min-inline-size: 0;
+  border-inline-end: 1px solid var(--pcal-border-soft);
+  border-block-end: 1px solid var(--pcal-border-soft);
+}
+
+.pcal-week:last-child .pcal-day {
+  border-block-end: 0;
+}
+
+.pcal-day:last-child {
+  border-inline-end: 0;
+}
+
+.pcal-day[data-weekend],
+.pcal-slot[data-weekend],
+.pcal-colhead[data-weekend] {
+  background: var(--pcal-weekend);
+}
+
+.pcal-day[data-outside] {
+  background: var(--pcal-outside);
+  color: var(--pcal-muted);
+}
+
+.pcal-day[data-today],
+.pcal-colhead[data-today] {
+  background: var(--pcal-today);
+}
+
+.pcal-day[data-selected],
+.pcal-slot[data-selected] {
+  background: var(--pcal-selected);
+}
+
+/* the day number; today's is a filled circle (the same in the month and in the column heads of the time grid) */
+.pcal-day-head,
+.pcal-colhead-date {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 24px;
+  block-size: 24px;
+  margin: 2px 4px 0;
+  padding-inline: 4px;
+  border-radius: 12px;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.pcal-day[data-today] .pcal-day-head,
+.pcal-colhead[data-today] .pcal-colhead-date {
+  background: var(--pcal-accent);
+  color: var(--pcal-accent-fg);
+  font-weight: 700;
+}
+
+/* ---- events ---- */
+.pcal-event {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-inline-size: 0;
+  padding: 0 6px;
+  border: 0;
+  border-inline-start: var(--pcal-event-edge) solid var(--pcal-event);
+  border-radius: var(--pcal-event-radius);
+  background: var(--pcal-event-bg);
+  color: var(--pcal-event-fg);
+  font: inherit;
+  font-size: 0.9em;
+  font-weight: 550;
+  text-align: start;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.pcal-event-title {
+  /* a title is read in its own direction, so an English title in an Arabic page still truncates at its end */
+  unicode-bidi: plaintext;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcal-event[data-continues-before] {
+  border-inline-start-width: 0;
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.pcal-event[data-continues-after] {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.pcal-month .pcal-event,
+.pcal-month /* the "+8" count is its own piece of text: its sign and digits keep their order inside right-to-left lines */
+.pcal-more {
+  unicode-bidi: isolate;
+  position: absolute;
+  z-index: 1;
+  inset-inline-start: 2px;
+  inline-size: calc(var(--pcal-span, 1) * 100% + (var(--pcal-span, 1) - 1) * 1px - 4px);
+  block-size: calc(var(--pcal-lane-size) - 2px);
+  inset-block-start: calc(var(--pcal-day-head) + var(--pcal-lane, 0) * var(--pcal-lane-size));
+}
+
+.pcal-more {
+  padding-inline: 6px;
+  border: 0;
+  border-radius: var(--pcal-event-radius);
+  background: transparent;
+  color: var(--pcal-muted);
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 600;
+  text-align: start;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pcal-more:hover {
+  background: var(--pcal-border-soft);
+  color: var(--pcal-fg);
+}
+
+/* ---- time grid ---- */
+.pcal-timegrid {
+  border: 1px solid var(--pcal-border);
+  border-radius: var(--pcal-radius);
+  overflow: auto;
+  max-block-size: 70vh;
+}
+
+.pcal-head,
+.pcal-allday,
+.pcal-row {
+  display: grid;
+  grid-template-columns: var(--pcal-gutter) repeat(var(--pcal-columns, 7), minmax(var(--pcal-col-min), 1fr));
+}
+
+.pcal-head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 4;
+  background: var(--pcal-bg);
+  border-block-end: 1px solid var(--pcal-border);
+}
+
+.pcal-colhead {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border-inline-start: 1px solid var(--pcal-border-soft);
+}
+
+.pcal-colhead-date {
+  margin: 0;
+}
+
+.pcal-colhead-weekday {
+  color: var(--pcal-muted);
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.pcal-colhead[data-today] .pcal-colhead-weekday {
+  color: var(--pcal-accent);
+}
+
+.pcal-allday {
+  border-block-end: 1px solid var(--pcal-border);
+}
+
+.pcal-allday-cell {
+  position: relative;
+  min-block-size: calc(var(--pcal-lanes, 1) * var(--pcal-lane-size) + 6px);
+  border-inline-start: 1px solid var(--pcal-border-soft);
+}
+
+.pcal-allday-event {
+  position: absolute;
+  z-index: 1;
+  inset-inline-start: 2px;
+  inline-size: calc(var(--pcal-span, 1) * 100% + (var(--pcal-span, 1) - 1) * 1px - 4px);
+  block-size: calc(var(--pcal-lane-size) - 2px);
+  inset-block-start: calc(3px + var(--pcal-lane, 0) * var(--pcal-lane-size));
+}
+
+.pcal-gutter-cell,
+.pcal-corner {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 3;
+  background: var(--pcal-bg);
+}
+
+.pcal-gutter-cell {
+  padding-inline: 8px;
+  color: var(--pcal-muted);
+  font-size: 0.75em;
+  text-align: end;
+  white-space: nowrap;
+}
+
+/* the hour is written at the line it belongs to; the half hours are for screen readers */
+.pcal-gutter-cell[data-hour] span {
+  position: relative;
+  inset-block-start: -0.7em;
+}
+
+.pcal-gutter-cell:not([data-hour]) span {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.pcal-slot {
+  position: relative;
+  block-size: var(--pcal-slot);
+  border-inline-start: 1px solid var(--pcal-border-soft);
+  border-block-start: 1px dotted var(--pcal-border-soft);
+}
+
+.pcal-row[data-hour] .pcal-slot {
+  border-block-start: 1px solid var(--pcal-border);
+}
+
+.pcal-slot[data-business='closed'] {
+  background: var(--pcal-closed);
+}
+
+.pcal-slot[data-business='closed'][data-selected] {
+  background: var(--pcal-selected);
+}
+
+/* a block: tinted, with a stronger edge in the event's colour; the title truncates with an ellipsis and the time goes first */
+.pcal-block {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  min-block-size: 20px;
+  padding: 2px 5px;
+  font-size: 0.85em;
+  line-height: 1.25;
+  box-shadow: 0 0 0 1px var(--pcal-bg);
+}
+
+.pcal-block-in {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  container-type: inline-size;
+  overflow: hidden;
+}
+
+.pcal-block .pcal-event-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--pcal-lines, 1);
+  line-clamp: var(--pcal-lines, 1);
+  white-space: normal;
+  overflow-wrap: break-word;
+  overflow: hidden;
+}
+
+.pcal-block {
+  /* the whole lines the block's height holds: the title takes them all, minus one for the time when that shows */
+  --pcal-lines: max(1, round(down, calc((var(--pcal-slots, 1) * var(--pcal-slot-n) - 8) / 15), 1));
+}
+
+.pcal-block:not([data-short]) .pcal-event-title {
+  -webkit-line-clamp: max(1, calc(var(--pcal-lines) - 1));
+  line-clamp: max(1, calc(var(--pcal-lines) - 1));
+}
+
+.pcal-block-time {
+  display: block;
+  font-size: 0.9em;
+  font-weight: 450;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.pcal-block-time::after {
+  /* drawn, not part of the text: the accessible name of the button has the time */
+  content: attr(data-time);
+}
+
+.pcal-block[data-short] .pcal-block-time {
+  display: none;
+}
+
+@container (max-inline-size: 80px) {
+  .pcal-block-time {
+    display: none;
+  }
+}
+
+/* a sliver (four events side by side): one line, cut with an ellipsis, never in the middle of a glyph */
+@container (max-inline-size: 72px) {
+  .pcal-block .pcal-event-title {
+    display: block;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+}
+
+/* a narrow block opens up on hover and focus so its title can be read over its neighbours */
+.pcal-block:hover,
+.pcal-block:focus-visible {
+  z-index: 5;
+  min-inline-size: min(160px, 100%);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--pcal-fg) 25%, transparent);
+}
+
+/* the now line: under the text of the events, with a dot at the start of today's column */
+.pcal-now {
+  position: absolute;
+  z-index: 0;
+  inset-inline: 0;
+  block-size: 0;
+  border-block-start: 2px solid var(--pcal-now);
+  pointer-events: none;
+}
+
+.pcal-now::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -5px;
+  inset-block-start: -6px;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  background: var(--pcal-now);
+}
+
+/* text for assistive technology only: the full date of a cell */
+.pcal-sr {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pcal-btn,
+  .pcal-more,
+  .pcal-block {
+    transition:
+      background-color 0.12s ease,
+      box-shadow 0.12s ease;
+  }
+}
+
+/* a narrow calendar (a phone): the month shows events as bars (their names stay in the markup; a tap on a day selects it), and the
+   time grid keeps readable columns and scrolls sideways with its time gutter and header fixed */
+@container (max-width: 560px) {
+  .pcal-month {
+    --pcal-lane-size: 10px;
+    --pcal-day-head: 26px;
+  }
+
+  .pcal-month .pcal-event {
+    padding: 0;
+    border-inline-start-width: 0;
+    font-size: 0;
+  }
+
+  .pcal-month .pcal-more {
+    padding-inline: 2px;
+    font-size: 0.65em;
+  }
+
+  .pcal-title {
+    flex-basis: 100%;
+    order: -1;
+  }
+}
+
+/* high contrast: the colours are the user's, so shape does the work: events keep a border, state is an outline */
+@media (forced-colors: active) {
+  .pcal-event {
+    border: 1px solid ButtonText;
+    border-inline-start-width: var(--pcal-event-edge);
+    background: ButtonFace;
+    color: ButtonText;
+    forced-color-adjust: none;
+  }
+
+  .pcal-day[data-today],
+  .pcal-colhead[data-today] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .pcal-day[data-today] .pcal-day-head,
+  .pcal-colhead[data-today] .pcal-colhead-date {
+    border: 2px solid Highlight;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .pcal-btn[aria-pressed='true'] {
+    border: 3px solid Highlight;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+
+  .pcal-day[data-selected],
+  .pcal-slot[data-selected] {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+
+  .pcal-btn:focus-visible,
+  .pcal-event:focus-visible,
+  .pcal-more:focus-visible,
+  [role='gridcell']:focus-visible {
+    outline: 3px solid Highlight;
+  }
+
+  .pcal-now {
+    border-block-start-color: Highlight;
+  }
+
+  .pcal-now::before {
+    background: Highlight;
+  }
+
+  .pcal-slot[data-business='closed'] {
+    background: repeating-linear-gradient(135deg, GrayText 0 1px, transparent 1px 7px);
+  }
+}
+
+/* ---- editing: moving and resizing ---- */
+.pcal-event[data-editable] {
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.pcal-event[data-dragging] {
+  z-index: 20;
+  cursor: grabbing;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--pcal-fg) 30%, transparent);
+  transition: none;
+}
+
+.pcal-event[data-pending] {
+  opacity: 0.6;
+}
+
+/* the edges of an event you can resize: a thin strip at each end (top and bottom of a block, the two ends of a bar) */
+.pcal-handle {
+  position: absolute;
+  z-index: 2;
+}
+
+.pcal-block .pcal-handle {
+  inset-inline: 0;
+  block-size: 8px;
+  cursor: ns-resize;
+}
+
+.pcal-block .pcal-handle[data-edge='start'] {
+  inset-block-start: 0;
+}
+
+.pcal-block .pcal-handle[data-edge='end'] {
+  inset-block-end: 0;
+}
+
+.pcal-month .pcal-handle,
+.pcal-allday-event .pcal-handle {
+  inset-block: 0;
+  inline-size: 8px;
+  cursor: ew-resize;
+}
+
+.pcal-month .pcal-handle[data-edge='start'],
+.pcal-allday-event .pcal-handle[data-edge='start'] {
+  inset-inline-start: 0;
+}
+
+.pcal-month .pcal-handle[data-edge='end'],
+.pcal-allday-event .pcal-handle[data-edge='end'] {
+  inset-inline-end: 0;
+}
+
+@container (max-width: 560px) {
+  .pcal-month .pcal-handle {
+    display: none;
+  }
+}
+
+/* ---- agenda ---- */
+.pcal-agenda {
+  position: relative;
+  border: 1px solid var(--pcal-border);
+  border-radius: var(--pcal-radius);
+  overflow: auto;
+  max-block-size: 70vh;
+  min-block-size: 160px;
+}
+
+.pcal-agenda-space {
+  position: relative;
+}
+
+.pcal-agenda-window {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+}
+
+.pcal-agenda-day {
+  box-sizing: border-box;
+  padding-inline: 12px;
+  overflow: hidden;
+}
+
+.pcal-agenda-head {
+  box-sizing: border-box;
+  block-size: 40px;
+  margin: 0;
+  padding-block: 12px 0;
+  font-size: 0.95em;
+  font-weight: 650;
+}
+
+.pcal-agenda-day[data-today] .pcal-agenda-head {
+  color: var(--pcal-accent);
+}
+
+.pcal-agenda-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pcal-agenda-item {
+  block-size: 44px;
+  padding-block: 2px;
+}
+
+.pcal-agenda-event {
+  inline-size: 100%;
+  block-size: 100%;
+  gap: 12px;
+}
+
+.pcal-agenda-event::before {
+  content: attr(data-time);
+  flex: none;
+  min-inline-size: 7.5em;
+  color: var(--pcal-muted);
+  font-weight: 450;
+  white-space: nowrap;
+}
+
+.pcal-agenda-empty {
+  margin: 0;
+  padding: 24px;
+  color: var(--pcal-muted);
+  text-align: center;
+}
+
+/* ---- year ---- */
+.pcal-year {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 20px 24px;
+}
+
+.pcal-year-title {
+  margin: 0 0 6px;
+  font-size: 0.95em;
+  font-weight: 650;
+}
+
+.pcal-year-weekdays,
+.pcal-year-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.pcal-year-weekdays span {
+  color: var(--pcal-muted);
+  font-size: 0.7em;
+  font-weight: 600;
+  text-align: center;
+}
+
+.pcal-year-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 28px;
+  border-radius: 14px;
+  font-size: 0.8em;
+  cursor: pointer;
+}
+
+.pcal-year-day[data-empty] {
+  cursor: default;
+}
+
+.pcal-year-day:hover:not([data-empty]) {
+  background: var(--pcal-border-soft);
+}
+
+.pcal-year-day[data-busy='1'] {
+  background: color-mix(in srgb, var(--pcal-accent) 14%, var(--pcal-bg));
+}
+
+.pcal-year-day[data-busy='2'] {
+  background: color-mix(in srgb, var(--pcal-accent) 28%, var(--pcal-bg));
+}
+
+.pcal-year-day[data-busy='3'] {
+  background: color-mix(in srgb, var(--pcal-accent) 44%, var(--pcal-bg));
+}
+
+.pcal-year-day[data-busy='4'] {
+  background: color-mix(in srgb, var(--pcal-accent) 62%, var(--pcal-bg));
+  color: var(--pcal-accent-fg);
+}
+
+.pcal-year-day[data-today] {
+  outline: 2px solid var(--pcal-accent);
+  outline-offset: -2px;
+  font-weight: 700;
+}
+
+.pcal-year-day:focus-visible {
+  outline: 3px solid var(--pcal-focus);
+  outline-offset: -3px;
+}
+
+/* ---- timeline ---- */
+.pcal-timeline {
+  --pcal-resource-w: 160px;
+  --pcal-tl-day-w: 280px;
+
+  position: relative;
+  border: 1px solid var(--pcal-border);
+  border-radius: var(--pcal-radius);
+  overflow: auto;
+  max-block-size: 70vh;
+  min-block-size: 200px;
+}
+
+.pcal-tl-head,
+.pcal-tl-row {
+  display: grid;
+  grid-template-columns: var(--pcal-resource-w) calc(var(--pcal-tl-days, 7) * var(--pcal-tl-day-w));
+  min-inline-size: calc(var(--pcal-resource-w) + var(--pcal-tl-days, 7) * var(--pcal-tl-day-w));
+}
+
+.pcal-tl-head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 4;
+  background: var(--pcal-bg);
+  border-block-end: 1px solid var(--pcal-border);
+}
+
+.pcal-tl-corner,
+.pcal-tl-name {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 3;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  background: var(--pcal-bg);
+  border-inline-end: 1px solid var(--pcal-border);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcal-tl-corner {
+  color: var(--pcal-muted);
+  font-size: 0.8em;
+  text-transform: uppercase;
+}
+
+.pcal-tl-days {
+  display: grid;
+  grid-template-columns: repeat(var(--pcal-tl-days, 7), 1fr);
+}
+
+.pcal-tl-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 4px;
+  border-inline-start: 1px solid var(--pcal-border-soft);
+}
+
+.pcal-tl-day[data-today] {
+  background: var(--pcal-today);
+  font-weight: 700;
+}
+
+.pcal-tl-axis {
+  position: relative;
+}
+
+.pcal-tl-hours {
+  position: relative;
+  block-size: 16px;
+  color: var(--pcal-muted);
+  font-size: 0.7em;
+}
+
+.pcal-tl-hours span {
+  position: absolute;
+}
+
+.pcal-tl-body {
+  position: relative;
+}
+
+.pcal-tl-window {
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0;
+}
+
+.pcal-tl-row {
+  border-block-end: 1px solid var(--pcal-border-soft);
+}
+
+.pcal-tl-lane {
+  position: relative;
+  background-image: linear-gradient(to right, var(--pcal-border-soft) 1px, transparent 1px);
+  background-size: calc(100% / var(--pcal-tl-days, 7)) 100%;
+}
+
+.pcal-timeline:dir(rtl) .pcal-tl-lane {
+  background-image: linear-gradient(to left, var(--pcal-border-soft) 1px, transparent 1px);
+}
+
+.pcal-tl-block {
+  position: absolute;
+  z-index: 1;
+  min-inline-size: 52px;
+}
+
+.pcal-tl-block .pcal-handle {
+  inset-block: 0;
+  inline-size: 8px;
+  cursor: ew-resize;
+}
+
+.pcal-tl-block .pcal-handle[data-edge='start'] {
+  inset-inline-start: 0;
+}
+
+.pcal-tl-block .pcal-handle[data-edge='end'] {
+  inset-inline-end: 0;
+}
+
+/* ---- the "+N more" popover ---- */
+.pcal {
+  position: relative;
+}
+
+.pcal-popover {
+  position: absolute;
+  z-index: 30;
+  box-sizing: border-box;
+  inline-size: 280px;
+  max-inline-size: 100%;
+  max-block-size: 60vh;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--pcal-border);
+  border-radius: var(--pcal-radius);
+  background: var(--pcal-bg);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--pcal-fg) 22%, transparent);
+}
+
+.pcal-popover:focus-visible {
+  outline: 3px solid var(--pcal-focus);
+}
+
+.pcal-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-block-end: 8px;
+}
+
+.pcal-popover-title {
+  margin: 0;
+  font-size: 0.95em;
+  font-weight: 650;
+}
+
+.pcal-popover-close {
+  min-inline-size: 32px;
+  min-block-size: 32px;
+  padding-inline: 0;
+}
+
+.pcal-popover-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pcal-popover-event {
+  inline-size: 100%;
+  block-size: 28px;
+}
+
+@container (max-width: 560px) {
+  .pcal-timeline {
+    --pcal-resource-w: 110px;
+    --pcal-tl-day-w: 160px;
+  }
+
+  .pcal-year {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px;
+  }
+}
+
+@media (forced-colors: active) {
+  .pcal-year-day[data-busy] {
+    border: 1px solid ButtonText;
+  }
+
+  .pcal-popover {
+    border: 2px solid CanvasText;
+  }
+}
+
+/* ---- printing: a week or a month on paper ---- */
+@media print {
+  .pcal {
+    --pcal-bg: #fff;
+    --pcal-fg: #000;
+    --pcal-border: #999;
+    --pcal-border-soft: #ccc;
+    --pcal-muted: #444;
+    --pcal-today: transparent;
+    --pcal-selected: transparent;
+    --pcal-outside: transparent;
+    --pcal-weekend: #f2f2f2;
+    --pcal-closed: #f2f2f2;
+    --pcal-event-tint: 22%;
+
+    color-scheme: light;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* everything shows, nothing scrolls, nothing is a control */
+  .pcal-timegrid,
+  .pcal-agenda,
+  .pcal-timeline {
+    max-block-size: none;
+    overflow: visible;
+  }
+
+  .pcal-head,
+  .pcal-tl-head {
+    position: static;
+  }
+
+  .pcal-nav,
+  .pcal-views,
+  .pcal-handle,
+  .pcal-popover,
+  .pcal-now,
+  .pcal-live {
+    display: none;
+  }
+
+  .pcal-row,
+  .pcal-week,
+  .pcal-agenda-day,
+  .pcal-tl-row,
+  .pcal-event {
+    break-inside: avoid;
+  }
+
+  .pcal-gutter-cell,
+  .pcal-corner,
+  .pcal-tl-corner,
+  .pcal-tl-name {
+    position: static;
+  }
+
+  .pcal-event {
+    box-shadow: none;
+  }
+}
+
+/* the now line of the timeline: along the axis, under the bars, with a dot at its head; and a range selected by dragging on a row */
+.pcal-tl-nowarea {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--pcal-resource-w);
+  inline-size: calc(var(--pcal-tl-days, 7) * var(--pcal-tl-day-w));
+  pointer-events: none;
+}
+
+.pcal-tl-now {
+  position: absolute;
+  inset-block: 0;
+  inline-size: 0;
+  border-inline-start: 2px solid var(--pcal-now);
+}
+
+.pcal-tl-now::before {
+  content: '';
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline-start: -6px;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  background: var(--pcal-now);
+}
+
+.pcal-tl-selection {
+  position: absolute;
+  inset-block: 0;
+  background: var(--pcal-selected);
+  pointer-events: none;
+}
+
+@media (forced-colors: active) {
+  .pcal-tl-now {
+    border-inline-start-color: Highlight;
+  }
+
+  .pcal-tl-selection {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+}

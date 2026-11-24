@@ -285,6 +285,16 @@ function withRoot(loader: IslandLoader, loadRoot: () => Promise<ComponentFn>): I
  *   // in the HTML — registering one would defeat the strategy.
  * })
  */
+/**
+ * The loader registered under `id`, own keys only. `data-component` comes
+ * from the page, and an inherited name (`constructor`, `toString`,
+ * `__proto__`) must not resolve to a prototype function and be called as a
+ * loader (anti-pattern: a DOM attribute never chooses code).
+ */
+function ownLoader<T>(registry: Record<string, T>, id: string): T | undefined {
+  return Object.hasOwn(registry, id) ? registry[id] : undefined
+}
+
 export function hydrateIslands(
   registry: Record<string, IslandLoader>,
   options?: HydrateIslandsOptions,
@@ -358,7 +368,7 @@ export function hydrateIslands(
       continue
     }
 
-    const registered = registry[componentId]
+    const registered = ownLoader(registry, componentId)
     if (!registered) {
       console.warn(`No loader registered for island "${componentId}"`)
       el.setAttribute('data-island-error', 'no-loader')
@@ -437,23 +447,11 @@ export function schedulePrefetch(
     prime()
     return null
   }
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          observer.disconnect()
-          prime()
-          return
-        }
-      }
-    },
-    { rootMargin: '200px' },
-  )
-  for (const target of visibilityTargets(el)) observer.observe(target)
+  const observer = observeNearViewport(el, prime)
 
   return () => {
     cancelled = true
-    observer.disconnect()
+    observer?.disconnect()
   }
 }
 
@@ -954,22 +952,54 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
     return null
   }
 
+  const observer = observeNearViewport(el, callback)
+
+  return () => observer?.disconnect()
+}
+
+/**
+ * Call `onNear` once, when the island comes within 200px of the viewport.
+ *
+ * The island element itself is observed first; what to observe instead of a
+ * box-less island (`visibilityTargets`) is decided in the observer's FIRST
+ * report, not here. Reading computed style here — during hydration startup,
+ * before the first paint — forced a synchronous style recalc and a layout of
+ * the whole document inside the islands module's evaluation task (measured on
+ * pyreon.dev's home page: 10 ms of the task's 17 ms, unthrottled). An
+ * IntersectionObserver reports after the browser's own style and layout pass,
+ * so by then the same reads cost nothing extra. A boxed island that is in view
+ * fires on that first report; a `display: contents` one is swapped to its
+ * targets and fires one report later.
+ */
+function observeNearViewport(el: HTMLElement, onNear: () => void): IntersectionObserver | null {
+  // Callers check for IntersectionObserver first; this keeps the helper safe on its own.
+  if (typeof IntersectionObserver === 'undefined') {
+    onNear()
+
+    return null
+  }
+  let resolved = false
   const observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
           observer.disconnect()
-          callback()
+          onNear()
           return
         }
       }
+      if (resolved) return
+      resolved = true
+      const targets = visibilityTargets(el)
+      if (targets.length === 1 && targets[0] === el) return
+      observer.unobserve(el)
+      for (const target of targets) observer.observe(target)
     },
     { rootMargin: '200px' },
   )
+  observer.observe(el)
 
-  for (const target of visibilityTargets(el)) observer.observe(target)
-
-  return () => observer.disconnect()
+  return observer
 }
 
 // ─── Server islands — client activation (Phase 4) ───────────────────────────
@@ -990,11 +1020,13 @@ import { activateServerIslandElement } from './server-island'
  * failures leave the fallback content in place and flag the marker
  * (`data-island-error="fragment-failed"`) — a personalized hole degrading
  * to its structural fallback is the designed failure mode, never a broken
- * page. In-flight fetches are not aborted on teardown — a swap to a
+ * page. `base` (`/sub`) is the sub-path the fragment endpoint lives under;
+ * without it the base set with `setServerIslandBase` applies. It is never
+ * read from the page (see `activateServerIslandElement`). In-flight fetches are not aborted on teardown — a swap to a
  * detached node is skipped via the `el.isConnected` guard in
  * `activateServerIslandElement`.
  */
-export function activateServerIslands(base = ''): () => void {
+export function activateServerIslands(base?: string): () => void {
   if (isServer) return () => {}
   const markers = document.querySelectorAll<HTMLElement>(
     'pyreon-server-island[data-name]:not([data-pyreon-si])',
@@ -1005,5 +1037,6 @@ export function activateServerIslands(base = ''): () => void {
   return () => {}
 }
 
-export { activateServerIslandElement, serverIsland } from './server-island'
+export { activateServerIslandElement, serverIsland, setServerIslandBase } from './server-island'
+export { isIslandName, isRoutePath } from './paths'
 export type { ServerIslandOptions } from './server-island'

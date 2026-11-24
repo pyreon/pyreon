@@ -7,7 +7,7 @@ import routerManifest from '../manifest'
 
 describe('gen-docs — router snapshot', () => {
   it('renders @pyreon/router to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(routerManifest)).toMatchInlineSnapshot(`"- @pyreon/router — hash+history+memory+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections."`)
+    expect(renderLlmsTxtLine(routerManifest)).toMatchInlineSnapshot(`"- [@pyreon/router](https://pyreon.dev/docs/reference/router): hash+history+memory+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections."`)
   })
 
   it('renders @pyreon/router to its expected llms-full.txt section — full body snapshot', () => {
@@ -87,8 +87,12 @@ describe('gen-docs — router snapshot', () => {
 
   it('renders @pyreon/router to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(routerManifest)
-    expect(Object.keys(record).length).toBe(30)
+    expect(Object.keys(record).length).toBe(32)
+    // The server-only loader passes are free functions (client bundles drop them).
+    expect(Object.keys(record)).toContain('router/preloadRoute')
+    expect(Object.keys(record)).toContain('router/runServerLoaders')
     expect(Object.keys(record)).toContain('router/createRouter')
+    expect(Object.keys(record)).toContain('router/routerTabs')
     // PR-B added redirect/isRedirectError/getRedirectInfo entries.
     expect(Object.keys(record)).toContain('router/redirect')
     expect(Object.keys(record)).toContain('router/isRedirectError')

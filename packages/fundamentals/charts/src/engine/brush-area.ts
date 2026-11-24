@@ -120,8 +120,7 @@ export function brushDatumPoints(raw: ChartSpec, l: PlotLayout, k: number): Pt[]
     return out
   }
   if (s.kind === 'stacked' || s.kind === 'grouped') {
-    let kf = 0.0
-    for (let i = 0; i < k; i++) kf = kf + 1.0
+    const kf: Double = k > 0 ? Number(k) : 0.0
     for (let i = 0; i < s.values.length; i++) {
       const at = markerAnchor(spec, kf, i, plot, yDomain)
       out.push(at.length > 0 ? at[0]! : { x: -1000000.0, y: -1000000.0 })
@@ -145,7 +144,7 @@ export function brushSelection(spec: ChartSpec, l: PlotLayout, areas: BrushArea[
       const pts = brushDatumPoints(spec, l, k)
       const values = spec.series[k]!.values
       for (let i = 0; i < pts.length; i++) {
-        const v = i < values.length ? values[i]! : 0.0 / 0.0
+        const v = i < values.length ? values[i]! : NaN
         if (v !== v) continue
         const p = pts[i]!
         let hit = false

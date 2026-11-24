@@ -10,6 +10,7 @@
  */
 import { isServer } from '@pyreon/reactivity'
 import { createRouter } from '../router'
+import { preloadRoute } from '../server-loaders'
 import type { RouteRecord, Router } from '../types'
 
 const Page = () => null
@@ -58,6 +59,6 @@ test('traversals run guards on the server too, and a cancel keeps the position',
 test('`url` seeds the single entry, exactly as it does for the server-side browser modes', async () => {
   const r = createRouter({ routes, mode: 'memory', url: '/b' })
   expect(r.currentRoute().path).toBe('/b')
-  await r.preload('/b')
+  await preloadRoute(r, '/b')
   r.destroy()
 })

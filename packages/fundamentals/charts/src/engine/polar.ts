@@ -153,8 +153,7 @@ export function layoutPolar(axes: PolarAxes, series: readonly PolarSeries[], box
   const categoryOn = axes.categoryOn ?? 'angle'
   const n = axes.categories.length
   // nF mirrors the category count as a Double for the slot/ring arithmetic.
-  let nF = 0.0
-  for (let i = 0; i < n; i++) nF = nF + 1.0
+  const nF: Double = Number(n)
   const fontSize = options?.fontSize ?? 11.0
   const gutter = options?.showLabels === false ? 4.0 : fontSize * 3.0
   const center: Pt = { x: box.x + box.w / 2.0, y: box.y + box.h / 2.0 }
@@ -177,8 +176,7 @@ export function layoutPolar(axes: PolarAxes, series: readonly PolarSeries[], box
     for (const c of columns) if (c === key) known = true
     if (!known) columns.push(key)
   }
-  let columnsF = 0.0
-  for (let i = 0; i < columns.length; i++) columnsF = columnsF + 1.0
+  const columnsF: Double = Number(columns.length)
   // Stacked totals decide the domain; a stack accumulates per category (one row of tops per column).
   const stackTop: Double[] = []
   for (let c = 0; c < columns.length; c++) for (let i = 0; i < n; i++) stackTop.push(0.0)
@@ -226,8 +224,7 @@ export function layoutPolar(axes: PolarAxes, series: readonly PolarSeries[], box
       for (let c = 0; c < columns.length; c++) {
         if (columns[c]! === key) {
           col = c
-          colF = 0.0
-          for (let k = 0; k < c; k++) colF = colF + 1.0
+          colF = Number(c)
         }
       }
       const color = s.color ?? paletteAt(palette, si)
@@ -293,8 +290,7 @@ export function layoutPolar(axes: PolarAxes, series: readonly PolarSeries[], box
       let colF = 0.0
       for (let c = 0; c < columns.length; c++) {
         if (columns[c]! === key) {
-          colF = 0.0
-          for (let k = 0; k < c; k++) colF = colF + 1.0
+          colF = Number(c)
         }
       }
       const color = s.color ?? paletteAt(palette, si)
@@ -398,8 +394,7 @@ export function renderPolar(layout: PolarLayout, options?: PolarOptions): DrawCm
   }
   for (const l of layout.lines) {
     // countF = progress >= 1 ? n : floor(n * progress), as a Double scan.
-    let lenF = 0.0
-    for (let i = 0; i < l.points.length; i++) lenF = lenF + 1.0
+    const lenF: Double = Number(l.points.length)
     let countF = 0.0
     if (progress >= 1.0) countF = lenF
     else while (countF + 1.0 <= lenF * progress) countF = countF + 1.0

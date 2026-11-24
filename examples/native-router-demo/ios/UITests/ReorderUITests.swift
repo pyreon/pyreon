@@ -31,7 +31,7 @@ final class ReorderUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(app.otherElements["home-page"].firstMatch.waitToExist(timeout: 30), "Home page did not render")
         XCUIDevice.shared.system.open(try XCTUnwrap(URL(string: "pyreondemo://reorder")))
         XCTAssertTrue(app.otherElements["reorder-page"].firstMatch.waitToExist(timeout: 20), "Reorder page did not open")

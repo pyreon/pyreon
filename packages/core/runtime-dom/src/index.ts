@@ -1,5 +1,5 @@
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
-import { registerSingleton } from '@pyreon/reactivity'
+import { effectScope, getContextOwner, registerSingleton, setContextOwner } from '@pyreon/reactivity'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/runtime-dom
 // instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
@@ -83,6 +83,7 @@ export {
   _tpl,
   createTemplate,
 } from './template'
+export { _dispose2, _dispose3, _dispose4, _disposeN } from './dispose-helpers'
 export type { TransitionProps } from './transition'
 export { Transition } from './transition'
 export type { TransitionGroupProps } from './transition-group'
@@ -134,7 +135,26 @@ export function mount(root: VNodeChild, container: Element): () => void {
   }
   setupDelegation(container)
   container.innerHTML = ''
-  const unmount = mountChild(root, container, null)
+  // ROOT OWNER: a component becomes a context owner only on its first
+  // `provide()`, so without one a tree with no provider above it would run
+  // with NO owner. Every effect and binding captures the owner at setup and
+  // restores it on re-run only when it was non-null, so such a re-run would
+  // resolve `useContext()` (and mount components) under whatever owner
+  // happened to be current when the scheduler fired — another subtree's
+  // provider. A contextless root owner keeps "inside a mounted tree the owner
+  // is never null" true. An owner that is already current (an island mounted
+  // under a captured owner) is kept. Set and restored directly, not through a
+  // callback: a closure over `root` would share this function's context with
+  // the returned unmount closure and keep the root vnode (and its props)
+  // alive for the app's lifetime.
+  const prevOwner = getContextOwner()
+  if (prevOwner === null) setContextOwner(effectScope())
+  let unmount: () => void
+  try {
+    unmount = mountChild(root, container, null)
+  } finally {
+    setContextOwner(prevOwner)
+  }
   return () => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.unmount')
     unmount()

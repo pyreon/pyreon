@@ -874,8 +874,7 @@ describe('JSX transform — template emission', () => {
 
   test('composes multiple disposers in cleanup', () => {
     const result = t('<div class={a()}><span>{b()}</span></div>')
-    expect(result).toContain('__d0()')
-    expect(result).toContain('__d1()')
+    expect(result).toContain('return _dispose2(__d0, __d1)')
   })
 
   test('maps className to class in HTML', () => {

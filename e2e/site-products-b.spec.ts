@@ -1,11 +1,11 @@
 import { expect, type Page, test } from '@playwright/test'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { hydrateIsland, replacedIslandRoots, trackIslandRoots, waitForIslands, waitForNav } from './site-islands'
+import { changedIslandClasses, hydrateIsland, replacedIslandRoots, trackIslandClasses, trackIslandRoots, waitForIslands, waitForNav } from './site-islands'
 import { SITE_WIDTHS } from './site-audit'
 
 /**
- * The app-building-blocks and visual-and-tools product pages (twenty), against
+ * The app-building-blocks and visual-and-tools product pages (twenty-two), against
  * the production SSG build: prerendered with their share tags and hero visual,
  * hydration adopts the server DOM with no console errors, no horizontal page
  * scroll at the seven site widths, the demo island hydrates when scrolled to
@@ -13,11 +13,11 @@ import { SITE_WIDTHS } from './site-audit'
  * demo passes WCAG AA in both themes. Per-demo interaction (keyboard and
  * pointer) lives in site-products-b-*.spec.ts.
  */
-const APP = ['feature', 'i18n', 'permissions', 'urlstate', 'hotkeys', 'rx', 'dnd', 'toast', 'table', 'virtual']
+const APP = ['feature', 'i18n', 'format', 'time', 'permissions', 'urlstate', 'hotkeys', 'rx', 'dnd', 'toast', 'table', 'virtual']
 const TOOLS = ['charts', 'editor', 'flow', 'document', 'atlas', 'lathe', 'loom', 'tooling', 'ai', 'migrate']
 const IDS = [...APP, ...TOOLS]
 const WIDTHS = SITE_WIDTHS
-/** Chunks of a heavy package, matched in a script URL. */
+/** Chunks of a heavy package, matched in a chunk's name (see `chunkName`). */
 const HEAVY: Record<string, RegExp> = {
   charts: /charts/i,
   flow: /flow/i,
@@ -25,6 +25,24 @@ const HEAVY: Record<string, RegExp> = {
   document: /document|pdf/i,
   table: /table/i,
   virtual: /virtual/i,
+}
+
+/**
+ * The name part of a built chunk's URL, without the directory and the content
+ * hash: `/assets/DemoI18n-Df3PdFBS.js` → `DemoI18n`. The hash is random letters,
+ * so matching the whole URL let a hash that spells a package (`Df3PdFBS` holds
+ * `pdf`) count as that package, and any unrelated change that moved the hash
+ * could fail this spec.
+ */
+function chunkName(url: string): string {
+  const file = new URL(url).pathname.split('/').pop() ?? ''
+  return file.replace(/-[\w-]{8}\.m?js$/, '')
+}
+
+/** The heavy-package chunks among `scripts`, matched by chunk name only. */
+function heavyScripts(scripts: string[], heavy: RegExp | RegExp[]): string[] {
+  const res = Array.isArray(heavy) ? heavy : [heavy]
+  return scripts.filter((u) => res.some((re) => re.test(chunkName(u))))
 }
 
 async function trackRemovals(page: Page): Promise<void> {
@@ -80,6 +98,7 @@ test.describe('hydration and the demo island', () => {
     test(`/products/${id}: adopts the server DOM, hydrates its demo on scroll, no errors`, async ({ page }) => {
       await trackRemovals(page)
       await trackIslandRoots(page)
+      await trackIslandClasses(page)
       const errors = collectErrors(page)
       const scripts: string[] = []
       page.on('request', (r) => {
@@ -91,14 +110,16 @@ test.describe('hydration and the demo island', () => {
       // Before the demo is near, only the shell's islands have run: nothing of the page was replaced.
       expect(await page.evaluate(() => (window as unknown as { __removed: number }).__removed)).toBe(0)
       const heavy = HEAVY[id]
-      if (heavy) expect(scripts.filter((u) => heavy.test(u)), 'heavy package before the demo is near').toEqual([])
+      if (heavy) expect(heavyScripts(scripts, heavy), 'heavy package before the demo is near').toEqual([])
       const island = page.locator('#demo pyreon-island')
       await hydrateIsland(page, '#demo pyreon-island')
       // The demo adopted its server HTML: its root elements are the ones the server sent.
       expect(await replacedIslandRoots(page)).toEqual([])
+      // ...and kept the classes the server sent: the server and the browser resolved the same styles.
+      expect(await changedIslandClasses(page)).toEqual([])
       await expect(island.locator('button, input, [tabindex="0"], select, iframe, canvas').first()).toBeVisible()
       await page.waitForLoadState('networkidle')
-      if (heavy) expect(scripts.some((u) => heavy.test(u)), 'heavy package loads with its demo').toBe(true)
+      if (heavy) expect(heavyScripts(scripts, heavy).length > 0, 'heavy package loads with its demo').toBe(true)
       expect(errors).toEqual([])
     })
   }
@@ -119,8 +140,7 @@ test.describe('hydration and the demo island', () => {
       })
       await page.waitForLoadState('networkidle')
     }
-    const all = Object.values(HEAVY)
-    expect(scripts.filter((u) => all.some((re) => re.test(u)))).toEqual([])
+    expect(heavyScripts(scripts, Object.values(HEAVY))).toEqual([])
   })
 })
 
@@ -137,6 +157,32 @@ test.describe('no horizontal page scroll', () => {
         const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
         expect(over, `/products/${id} at ${width}px`).toBeLessThanOrEqual(0)
       }
+    })
+  }
+})
+
+test.describe('the hero drawing on a phone', () => {
+  for (const id of ['format', 'time', 'urlstate', 'i18n']) {
+    test(`/products/${id}: keeps its size, scrolls in a labelled box, shows an edge fade, never scrolls the page`, async ({ page }) => {
+      await page.setViewportSize({ width: 320, height: 800 })
+      await page.goto(`/products/${id}`)
+      await waitForIslands(page)
+      const art = page.locator('main figure [data-art-fade]')
+      await expect(art).toHaveAttribute('tabindex', '0')
+      await expect(art).toHaveAttribute('role', 'region')
+      expect(((await art.getAttribute('aria-label')) ?? '').length).toBeGreaterThan(5)
+      const m = await art.evaluate((e) => ({ over: e.scrollWidth - e.clientWidth, svg: e.querySelector('svg')!.getBoundingClientRect().width, mask: getComputedStyle(e).maskImage }))
+      expect(m.svg, 'the drawing keeps a readable size').toBeGreaterThanOrEqual(500)
+      expect(m.over, 'it overflows its box, so the box scrolls').toBeGreaterThan(0)
+      expect(m.mask, 'the edge fade').not.toBe('none')
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await art.focus()
+      await page.keyboard.press('ArrowRight')
+      await page.keyboard.press('ArrowRight')
+      await expect.poll(() => art.evaluate((e) => e.scrollLeft)).toBeGreaterThan(0)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      await page.setViewportSize({ width: 1280, height: 800 })
+      expect(await art.evaluate((e) => getComputedStyle(e).maskImage), 'no fade where the drawing fits').toBe('none')
     })
   }
 })

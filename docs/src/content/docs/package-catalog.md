@@ -4,7 +4,7 @@ description: Public Pyreon framework packages, with links to their guides or sou
 generated_by: docs/scripts/gen-package-catalog.ts
 ---
 
-76 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
+85 public framework packages across 6 categories, discovered from `packages/<category>/<package>`. This inventory describes the current source tree; see each package on npm for the published version.
 
 The platform-specific compiler binaries under `packages/core/compiler/npm/` are optional dependencies of [@pyreon/compiler](/docs/compiler) and are not included in this framework package count.
 
@@ -25,33 +25,42 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/server](/docs/server) | SSR handler, SSG prerender, and island architecture for Pyreon |
 | [@pyreon/sized-map](/docs/sized-map) | Bounded `Map<K, V>` primitive — FIFO (default) or LRU-on-read mode. Used internally across Pyreon packages for sized cache eviction; safe to use directly. |
 
-## fundamentals (27)
+## fundamentals (36)
 
 | Package | Description |
 | --- | --- |
 | [@pyreon/a11y](/docs/a11y) | Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup |
+| [@pyreon/ambient](/docs/ambient) | The ambient values every formatted thing depends on for Pyreon: locale, time zone and a shared clock with self-updating tickers, SSR-safe and request-scoped |
+| [@pyreon/calendar](/docs/calendar) | An event calendar and scheduler for Pyreon: event model, recurrence and zones, month and time-grid layout, headless state and views |
 | [@pyreon/charts](/docs/charts) | Charts for Pyreon on the web, iOS and Android: &lt;Chart&gt; with mark children over a first-party engine (21 chart families, one flat draw list), canvas and SVG, tree-shakeable marks |
+| [@pyreon/charts-maps](https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts-maps) | Boundary data for @pyreon/charts maps: world and US-state TopoJSON, one lazy module per map, with the projection and join keys each one is meant for |
 | [@pyreon/code](/docs/code) | Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages |
+| [@pyreon/command](/docs/command) | A command palette for Pyreon: a fuzzy matcher, a registry of commands with shortcuts, recents and async sources |
 | [@pyreon/dnd](/docs/dnd) | Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop |
 | [@pyreon/document](/docs/document) | Universal document rendering for Pyreon — one template, every output format (HTML, PDF, DOCX, email, XLSX, Markdown, and more) |
 | [@pyreon/feature](/docs/feature) | Schema-driven feature primitives — define once, get CRUD hooks, forms, tables, and stores |
 | [@pyreon/flow](/docs/flow) | Reactive flow diagrams for Pyreon — signal-native nodes, edges, pan/zoom, auto-layout |
 | [@pyreon/form](/docs/form) | Signal-based form management for Pyreon |
+| [@pyreon/format](/docs/format) | Locale-aware formatting and parsing for Pyreon: numbers, currency, bytes, durations, lists, dates, relative time. Plain functions over Intl, reactive to the active locale and time zone, SSR-safe, bounded caches |
 | [@pyreon/hooks](/docs/hooks) | Signal-based reactive utilities for Pyreon |
 | [@pyreon/hotkeys](/docs/hotkeys) | Reactive keyboard shortcut management for Pyreon — scope-aware, conflict detection |
 | [@pyreon/http](/docs/http) | Pyreon HTTP client — onion middleware, typed errors, optional schema-validated responses. The transport layer under @pyreon/query. |
 | [@pyreon/i18n](/docs/i18n) | Reactive internationalization for Pyreon with async namespace loading |
 | [@pyreon/machine](/docs/machine) | Reactive state machines for Pyreon — constrained signals with type-safe transitions |
+| [@pyreon/money](/docs/money) | Exact amounts of money as plain data for Pyreon: decimal-string amounts, bigint math, rounding modes, allocation that never loses a cent |
 | [@pyreon/permissions](/docs/permissions) | Reactive permissions for Pyreon — type-safe, signal-driven, universal |
 | [@pyreon/query](/docs/query) | Pyreon adapter for TanStack Query |
 | [@pyreon/rich-text](/docs/rich-text) | Reactive WYSIWYG rich-text editor for Pyreon — signal-backed layer over TipTap (ProseMirror); collaboration composes with @pyreon/sync |
 | [@pyreon/rx](/docs/rx) | Signal-aware reactive transforms — filter, map, sort, group, pipe for Pyreon signals |
+| [@pyreon/schedule](/docs/schedule) | Recurrence, business time and availability as plain data for Pyreon: RFC 5545 rules, DST-correct wall-clock expansion, working hours, free slots |
 | [@pyreon/state-tree](/docs/state-tree) | Structured reactive state tree — composable models with snapshots, patches, and middleware |
 | [@pyreon/storage](/docs/storage) | Reactive client-side storage for Pyreon — localStorage, sessionStorage, cookies, IndexedDB |
 | [@pyreon/store](/docs/store) | Global state management for Pyreon — Pinia-inspired composition stores |
 | [@pyreon/sync](/docs/sync) | Local-first CRDT-backed sync for signals — a synced signal is just a signal, so remote ops drive surgical fine-grained updates |
 | [@pyreon/table](/docs/table) | Pyreon adapter for TanStack Table |
+| [@pyreon/time](/docs/time) | Dates and times as plain strings and numbers for Pyreon — ISO values, DST-correct zone math, calendar grids, no classes |
 | [@pyreon/toast](/docs/toast) | Imperative toast notifications for Pyreon — no provider needed |
+| [@pyreon/upload](/docs/upload) | File selection, validation, preview and upload with progress as signals for Pyreon: a queue with retry and pause, XHR progress, drop and picker state |
 | [@pyreon/url-state](/docs/url-state) | Reactive URL search-param state for Pyreon — signal-backed, type-coerced, SSR-safe |
 | [@pyreon/validate](/docs/validate) | Pyreon's own validator (the `s` schema runtime, with mini, JIT and JSON Schema subpaths) plus a Standard Schema DX layer — withField metadata, reactive parse, i18n-aware error formatting. The DX layer also works with Zod, Valibot, ArkType, or any Standard Schema-compliant validator. |
 | [@pyreon/validation](/docs/validation) | Schema validation adapters for Pyreon forms (Zod, Valibot, ArkType) |
@@ -76,7 +85,7 @@ Explore the [live examples](/docs/examples) and the [UI component workbench](/at
 | [@pyreon/cli](/docs/cli) | CLI tools for Pyreon — doctor, generate, context |
 | [@pyreon/config](https://github.com/pyreon/pyreon/tree/main/packages/tools/config) | One pyreon.config.ts for the whole ecosystem — a typed section per package. |
 | [@pyreon/lathe](/docs/lathe) | Spec-to-Pyreon code generator — OpenAPI in, typed schemas / endpoints / queries out, with a multiplatform mode that proves its own output lowers to Swift and Kotlin. |
-| [@pyreon/lint](/docs/lint) | Pyreon-specific linter — 141 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices, and a readable style preset |
+| [@pyreon/lint](/docs/lint) | Pyreon-specific linter — 144 rules across 26 categories for signals, JSX, lifecycle, SSR, performance, architecture, routing, SSG, opt-in best practices, and a readable style preset |
 | [@pyreon/loom](/docs/loom) | Monorepo dependency observatory — workspace graph, version-sync drift, cycles, phantom deps, and blast radius, as data. |
 | [@pyreon/mcp](/docs/mcp) | MCP server for Pyreon — AI-powered framework assistance |
 | [@pyreon/preact-compat](/docs/preact-compat) | Preact-compatible API shim for Pyreon — write Preact-style code that runs on Pyreon's reactive engine |

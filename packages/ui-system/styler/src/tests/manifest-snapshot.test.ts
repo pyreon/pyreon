@@ -8,7 +8,7 @@ import manifest from '../manifest'
 describe('gen-docs — styler snapshot', () => {
   it('renders a llms.txt bullet starting with the package prefix', () => {
     const line = renderLlmsTxtLine(manifest)
-    expect(line.startsWith('- @pyreon/styler —')).toBe(true)
+    expect(line.startsWith('- [@pyreon/styler](https://pyreon.dev/docs/reference/styler):')).toBe(true)
   })
 
   it('renders a llms-full.txt section with the right header', () => {

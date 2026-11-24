@@ -3231,17 +3231,27 @@ describe('SSR brackets a fixed child on a client placeholder (#4385 D)', () => {
     const src = 'const A = () => <span><Comp />{v}<i /></span>'
     expect(ssrH(src, true)).not.toContain('_slot')
   })
-  test('JSX inside a placeholder child is raw on the client, so its children take no range', () => {
+  test('JSX inside a placeholder child is walked on the client, so its own placeholders take a range', () => {
+    // The hole is preserved and walked: `<b>` is a template of its own on the
+    // client, whose `{v}` is a `<!>` placeholder that needs a server range.
     const out = ssrH('const A = () => <span>{flag ? <b><i />{v}<u /></b> : null}<s /></span>')
-    expect(out.match(/_slot\(/g)?.length).toBe(1)
+    expect(out).toContain('<span>{_slot(flag ? <b><i />{_slot(v)}<u /></b> : null)}<s /></span>')
   })
   test('a <For> row the client templates brackets its fixed field', () => {
     const src = 'const A = () => <ul><For each={rows} by={(r) => r.id}>{(r) => <li><b />{r.name}<i /></li>}</For></ul>'
     expect(ssrH(src)).toContain('<li><b />{_slot(r.name)}<i /></li>')
     expect(ssrT(src)).toContain('"<li><b></b><!--$-->" + _h0 + "<!--/$--><i></i></li>"')
   })
-  test('a `.map` item is sliced on the client, so it takes no range', () => {
-    expect(ssrH('const A = () => <ul><b />{xs.map((x) => <li><b />{x}<i /></li>)}</ul>')).not.toContain('_slot')
+  test('a `.map` item the client templates brackets its fixed field', () => {
+    const src = 'const A = () => <ul><b />{xs.map((x) => <li><b />{x}<i /></li>)}</ul>'
+    expect(ssrH(src)).toContain('{() => (xs.map((x) => <li><b />{_slot(x)}<i /></li>))}')
+    // `_ssr` keeps its `.map` fast path, with a `<For>` row's item semantics.
+    expect(ssrT(src)).toContain('_ssrChildren(xs.map((x) => {')
+    expect(ssrT(src)).toContain('"<li><b></b><!--$-->" + _h0 + "<!--/$--><i></i></li>"')
+  })
+  test('a `.map` item under an h() parent is a slice on both sides, so it takes no range', () => {
+    // A component parent wraps the child as a slice: nothing in it is a template.
+    expect(ssrH('const A = () => <List><b />{xs.map((x) => <li><b />{x}<i /></li>)}</List>')).not.toContain('_slot')
   })
   test('an element the client templates only with templatizeComponentChildren', () => {
     // `<p>` absorbs `<Comp />` only with the option; without it `<div>` holds a
@@ -3274,5 +3284,42 @@ describe('SSR brackets a fixed child on a client placeholder (#4385 D)', () => {
       'const A = () => <p><b />{<span><b />{v}<i /></span>}</p>',
     ]
     for (const src of corpus) test(src, () => compareSsrAllModes(src))
+  })
+})
+
+// Template cleanup helpers (`_dispose2/3/4/N`). A multi-disposer template
+// returns its combined cleanup through a runtime helper instead of an arrow
+// built inside the bind function, whose context chained to the component's and
+// kept its props and captured locals alive. Both backends must emit the same
+// helper, the same argument order and the same import list.
+describeNative('native equivalence — template cleanup helpers', () => {
+  const SIGS = 'const a = signal(0); const b = signal(0); const c = signal(0); const d = signal(0); const e = signal(0)\n'
+  const cases: [number, string, string][] = [
+    [2, '<div><b>{a()}</b><i>{b()}</i></div>', 'return _dispose2(__d0, __d1)'],
+    [3, '<div><b>{a()}</b><i>{b()}</i><u>{c()}</u></div>', 'return _dispose3(__d0, __d1, __d2)'],
+    [4, '<div><b>{a()}</b><i>{b()}</i><u>{c()}</u><s>{d()}</s></div>', 'return _dispose4(__d0, __d1, __d2, __d3)'],
+    [
+      5,
+      '<div><b>{a()}</b><i>{b()}</i><u>{c()}</u><s>{d()}</s><em>{e()}</em></div>',
+      'return _disposeN([__d0, __d1, __d2, __d3, __d4])',
+    ],
+  ]
+  for (const [n, jsx, expected] of cases) {
+    test(`${n} disposers`, () => {
+      const input = `import { signal } from '@pyreon/reactivity'\n${SIGS}export const X = () => ${jsx}`
+      compare(input)
+      const out = transformJSX_JS(input, 'test.tsx').code
+      expect(out).toContain(expected)
+      expect(out).not.toMatch(/return \(\) => \{ __d0\(\)/)
+      const helper = expected.slice('return '.length, expected.indexOf('('))
+      expect(out).toMatch(new RegExp(`import \\{[^}]*\\b${helper}\\b[^}]*\\} from "@pyreon/runtime-dom"`))
+    })
+  }
+
+  test('two templates in one file import each helper once', () => {
+    const input = `import { signal } from '@pyreon/reactivity'\n${SIGS}export const X = () => <div><b>{a()}</b><i>{b()}</i></div>\nexport const Y = () => <p><b>{c()}</b><i>{d()}</i></p>`
+    compare(input)
+    const out = transformJSX_JS(input, 'test.tsx').code
+    expect(out.match(/_dispose2\b/g)?.length).toBe(3)
   })
 })

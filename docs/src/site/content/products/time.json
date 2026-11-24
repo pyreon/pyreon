@@ -1,0 +1,399 @@
+{
+ "id": "time",
+ "route": "/products/time",
+ "name": "Time",
+ "package": "@pyreon/time",
+ "category": "fundamentals · dates",
+ "hero": {
+  "title": "A date is a string. Date math should be too.",
+  "emberWord": "string.",
+  "lede": "A date is `'2026-11-18'`, a time is `'14:30'`, an instant is the number `Date.now()` returns. `add`, `diff`, `startOf` and `toInstant` are plain functions over those values, with daylight-saving rules that follow Temporal's, and no `Date` object on the calendar path.",
+  "install": "bun add @pyreon/time",
+  "ctaShort": "Install",
+  "facts": [
+   {
+    "key": "status",
+    "value": "{dot:warn}Experimental<small>The value layer is complete and checked against `Temporal`. The API may change in a minor release before it is promoted to Stable.</small>"
+   },
+   {
+    "key": "values",
+    "value": "strings and numbers<small>`'2026-11-18'`, `'14:30'`, `Date.now()`. Nothing to construct with `new`.</small>"
+   },
+   {
+    "key": "checked against",
+    "value": "`Temporal`<small>Seeded randomized tests compare arithmetic, weeks, grids and zones with it, plus hand-verified DST cases.</small>"
+   },
+   {
+    "key": "size",
+    "value": "5.9 kB gzip for ten operations<small>From `@pyreon/time/core`, DST rules included. Day.js with three plugins is 5.4 kB, date-fns 8.5 kB, Luxon 21.9 kB.</small>"
+   }
+  ]
+ },
+ "proof": [
+  {
+   "stat": "0",
+   "label": "`Date` objects on the calendar arithmetic path, and no dependencies in `@pyreon/time/core` or `/fp`",
+   "source": "packages/fundamentals/time/README.md (\"no Date object on the path\"; \"core and /fp have no dependencies\")"
+  },
+  {
+   "stat": "5.9 kB",
+   "label": "gzip for ten operations with DST disambiguation, ISO weeks and strict validation; Day.js with three plugins is 5.4 kB, date-fns 8.5 kB and Luxon 21.9 kB",
+   "source": "BENCHMARKS.md, \"@pyreon/time vs Date, Temporal, date-fns, Day.js, Luxon: bundle size (2026-11-18)\"; re-run 2026-11-18 with `bun run bench:bundle` in packages/fundamentals/time: Pyreon 5.90, Day.js 5.42, date-fns 8.53, Luxon 21.89 kB · Bun.build, minify, browser target, NODE_ENV=production, gzip -9"
+  }
+ ],
+ "why": {
+  "title": "Calendar math that does what the calendar does.",
+  "items": [
+   {
+    "title": "Plain values, plain functions",
+    "text": "`add('2026-01-31', { months: 1 })` is `'2026-02-28'`: the day clamps, and the result is a string of the same shape. No wrapper object, no clone, no `.toString()` to remember."
+   },
+   {
+    "title": "Strings compare as strings",
+    "text": "Values this package produces are canonical (`14:30`, not `14:30:00`), so `===`, a `Map` key and plain string sorting are all correct. `normalize` brings in a value typed by hand."
+   },
+   {
+    "title": "Zones without the traps",
+    "text": "`toInstant('2026-03-29T02:30', 'Europe/Prague')` falls in a gap that does not exist. It resolves to `03:30` the way Temporal does, and you can ask for `earlier`, `later` or `reject` instead."
+   },
+   {
+    "title": "Calendars and clocks included",
+    "text": "`monthGrid` starts weeks on the locale's first weekday (`weekStartOf`), `quarterOf` and `startOf(..., 'quarter')` read quarters, and `useToday`, `useCountdown` and `useRelative` keep a label current on shared timers."
+   }
+  ]
+ },
+ "difference": {
+  "title": "The same month, two answers.",
+  "before": {
+   "label": "Date",
+   "caption": "Month math overflows, and the result depends on the machine's time zone.",
+   "code": "const d = new Date(2026, 0, 31)\nd.setMonth(d.getMonth() + 1)\n\n// d is March 3: February 31 rolled over."
+  },
+  "after": {
+   "label": "with @pyreon/time",
+   "caption": "A string in, a string out. The day clamps.",
+   "code": "import { add, diff } from '@pyreon/time/core'\n\nadd('2026-01-31', { months: 1 })        // '2026-02-28'\ndiff('2026-11-18', '2026-12-24', 'day') // 36"
+  }
+ },
+ "comingFrom": [
+  {
+   "lib": "date-fns",
+   "title": "Strings in and out, no Date in between.",
+   "before": "import { addMonths, differenceInCalendarDays, format, startOfWeek } from 'date-fns'\n\nformat(addMonths(new Date(2026, 0, 31), 1), 'yyyy-MM-dd')        // '2026-02-28'\ndifferenceInCalendarDays(new Date(2026, 11, 24), new Date(2026, 10, 18)) // 36\nformat(startOfWeek(new Date(2026, 10, 18), { weekStartsOn: 1 }), 'yyyy-MM-dd') // '2026-11-16'",
+   "after": "import { add, diff, startOf } from '@pyreon/time/core'\n\nadd('2026-01-31', { months: 1 })        // '2026-02-28'\ndiff('2026-11-18', '2026-12-24', 'day') // 36\nstartOf('2026-11-18', 'week')           // '2026-11-16'",
+   "note": "Same answers. date-fns works on `Date` objects in the machine's zone and needs `@date-fns/tz` for named zones; here a date is the string you already have. For the ten-operation set the bundle is 5.9 kB gzip against 8.5 kB for date-fns with its zone package, and printing in a language stays in `@pyreon/format`."
+  },
+  {
+   "lib": "Day.js",
+   "title": "The same calls without the wrapper.",
+   "before": "import dayjs from 'dayjs'\n\ndayjs('2026-01-31').add(1, 'month').format('YYYY-MM-DD')   // '2026-02-28'\ndayjs('2026-12-24').diff('2026-11-18', 'day')              // 36",
+   "after": "import { add, diff } from '@pyreon/time/core'\n\nadd('2026-01-31', { months: 1 })        // '2026-02-28'\ndiff('2026-11-18', '2026-12-24', 'day') // 36",
+   "note": "Same answers. Day.js is the smaller of the two for the ten-operation set with its `utc`, `timezone` and `isoWeek` plugins: 5.4 kB gzip against 5.9 kB. The difference is that these are plain functions over strings (no wrapper object, no plugin to register) and the zone rules follow Temporal's disambiguation, with a fix-it error when a time does not exist."
+  },
+  {
+   "lib": "Luxon",
+   "title": "Zone conversion without a DateTime.",
+   "before": "import { DateTime } from 'luxon'\n\nDateTime.fromISO('2026-11-18T09:00', { zone: 'America/New_York' })\n  .setZone('Asia/Tokyo')\n  .toFormat(\"yyyy-MM-dd'T'HH:mm\")   // '2026-11-18T23:00'",
+   "after": "import { toInstant, toPlainDateTime } from '@pyreon/time/core'\n\nconst at = toInstant('2026-11-18T09:00', 'America/New_York')\ntoPlainDateTime(at, 'Asia/Tokyo')   // '2026-11-18T23:00'",
+   "note": "Same answer. Luxon is the largest of the group for this task set: 21.9 kB gzip against 5.9 kB. The result here is a string you can compare, sort and store as it is."
+  },
+  {
+   "lib": "Temporal",
+   "title": "The same model, as plain strings.",
+   "before": "Temporal.PlainDate.from('2026-01-31').add({ months: 1 }).toString()   // '2026-02-28'\nTemporal.PlainDate.from('2026-11-18').until('2026-12-24', { largestUnit: 'day' }).days   // 36\nTemporal.ZonedDateTime.from('2026-11-18T09:00[America/New_York]')\n  .withTimeZone('Asia/Tokyo').toPlainDateTime().toString()   // '2026-11-18T23:00:00'",
+   "after": "import { add, diff, toInstant, toPlainDateTime } from '@pyreon/time/core'\n\nadd('2026-01-31', { months: 1 })        // '2026-02-28'\ndiff('2026-11-18', '2026-12-24', 'day') // 36\ntoPlainDateTime(toInstant('2026-11-18T09:00', 'America/New_York'), 'Asia/Tokyo')   // '2026-11-18T23:00'",
+   "note": "Temporal is the standard, and native Temporal is far smaller than any library (0.41 kB for the adapter code in the size test): use it where every runtime you ship to has it. This package follows its model (plain dates, DST disambiguation) without depending on it, runs in any engine today, and its tests compare every arithmetic, week, grid and zone function with Temporal where Temporal exists. Output differs in one detail: canonical times drop zero seconds (`23:00`, not `23:00:00`)."
+  }
+ ],
+ "extraSectionsHtml": null,
+ "demo": {
+  "title": "A calendar, a planner and live clocks.",
+  "text": "Everything below is `@pyreon/time`. The calendar is `monthGrid` with the week starting where the language says (`weekStartOf`); click a day or use the arrow, Home, End and Page keys. The strip shows month math clamping on the 31st. The planner converts one wall-clock time between three zones, including days when the clocks skip an hour. The clocks tick on shared timers.",
+  "component": "DemoTime",
+  "reference": "built against the real package in the site repository; no canvas prototype",
+  "referenceHtml": "",
+  "referenceCss": "",
+  "referenceJs": ""
+ },
+ "features": {
+  "title": "Plain functions, the whole calendar.",
+  "items": [
+   {
+    "name": "Values you can read",
+    "text": "`PlainDate`, `PlainTime`, `PlainDateTime` and `PlainYearMonth` are string types with template-literal shapes, so a literal type-checks without a cast."
+   },
+   {
+    "name": "`add` and `subtract`",
+    "text": "Years, months, weeks, days and time units. Month and year math clamps the day; the result has the same shape as the input."
+   },
+   {
+    "name": "`diff` and `between`",
+    "text": "Whole units from one value to another, truncated toward zero; `between` gives the largest-unit breakdown, ready for a duration formatter."
+   },
+   {
+    "name": "`startOf` and `endOf`",
+    "text": "From a millisecond to a year, quarters included, with a configurable week start."
+   },
+   {
+    "name": "Compare and clamp",
+    "text": "`compare`, `isBefore`, `isAfter`, `isSame`, `min`, `max` and `clamp` on same-shape values."
+   },
+   {
+    "name": "Canonical output",
+    "text": "Produced values are the shortest exact form, so `===` and string sorting are correct; `normalize` and `parseISO` bring outside values to the same form."
+   },
+   {
+    "name": "Calendar queries",
+    "text": "`dayOfWeek`, `weekOfYear`, `quarterOf`, `daysInMonth`, `isLeapYear`, `eachDay`, `iterateDays`, `weekStartOf` and `weekendOf`."
+   },
+   {
+    "name": "`monthGrid`",
+    "text": "Weeks of dates for a month view, starting on any weekday, padded with the neighbouring months, four to six rows or always six."
+   },
+   {
+    "name": "Zones and instants",
+    "text": "`toInstant`, `toPlainDateTime`, `offsetAt` and `addInstant`, with four disambiguation modes for gaps and overlaps and one cached `Intl` formatter per zone."
+   },
+   {
+    "name": "Clock hooks",
+    "text": "`useToday` flips at local midnight, `useCountdown` and `useElapsed` tick every second, `useRelative` adapts its cadence to the distance. Many readers share one timer."
+   },
+   {
+    "name": "Composable",
+    "text": "`@pyreon/time/fp` has the value-last form of each operation, so you can name and chain them with `pipe`, and `inZone` applies a zone once."
+   },
+   {
+    "name": "Strict checks",
+    "text": "`isPlainDate('2026-02-30')` is `false`: the shape and the calendar must both be real, and errors say how to fix the call."
+   }
+  ]
+ },
+ "recipes": [
+  {
+   "title": "A deadline that clamps",
+   "text": "Add a month to the last day of January and land on the last day of February, not on March.",
+   "code": "import { add, diff } from '@pyreon/time/core'\n\nconst due = add('2026-01-31', { months: 1 })   // '2026-02-28'\ndiff('2026-01-31', due, 'day')                 // 28"
+  },
+  {
+   "title": "One meeting, three time zones",
+   "text": "Resolve the wall-clock time once to an instant, then read it back in each zone.",
+   "code": "import { toInstant, toPlainDateTime } from '@pyreon/time/core'\n\nconst at = toInstant('2026-11-18T09:00', 'America/New_York')\ntoPlainDateTime(at, 'America/New_York')  // '2026-11-18T09:00'\ntoPlainDateTime(at, 'Europe/Prague')     // '2026-11-18T15:00'\ntoPlainDateTime(at, 'Asia/Tokyo')        // '2026-11-18T23:00'"
+  },
+  {
+   "title": "A time that does not exist",
+   "text": "Prague skips 02:00 to 03:00 on 2026-03-29. Say what you want when someone asks for 02:30 that day, or let `reject` fail with a message that names the options.",
+   "code": "import { toInstant, toPlainDateTime } from '@pyreon/time/core'\n\nconst ask = (disambiguation: 'earlier' | 'later') =>\n  toPlainDateTime(toInstant('2026-03-29T02:30', 'Europe/Prague', { disambiguation }), 'Europe/Prague')\n\ntoPlainDateTime(toInstant('2026-03-29T02:30', 'Europe/Prague'), 'Europe/Prague')  // '2026-03-29T03:30' (compatible, the default)\nask('earlier')                                                                    // '2026-03-29T01:30'\nask('later')                                                                      // '2026-03-29T03:30'\n// { disambiguation: 'reject' } throws: \"[Pyreon] toInstant: 2026-03-29T02:30 does not exist in Europe/Prague ...\""
+  },
+  {
+   "title": "A day is not 24 hours",
+   "text": "A day later and 24 hours later are different times on the day the clocks change.",
+   "code": "import { addInstant, toInstant, toPlainDateTime } from '@pyreon/time/core'\n\nconst noon = toInstant('2026-03-28T12:00', 'Europe/Prague')\ntoPlainDateTime(addInstant(noon, { days: 1 }, 'Europe/Prague'), 'Europe/Prague')   // '2026-03-29T12:00'\ntoPlainDateTime(addInstant(noon, { hours: 24 }, 'Europe/Prague'), 'Europe/Prague') // '2026-03-29T13:00'"
+  },
+  {
+   "title": "A month view that starts where the language does",
+   "text": "`weekStartOf` reads the week's first day from the locale data; `monthGrid` takes it as `weekStart`.",
+   "code": "import { monthGrid, weekStartOf } from '@pyreon/time/core'\n\nweekStartOf('en-US')   // 7  (Sunday)\nweekStartOf('cs')      // 1  (Monday)\nweekStartOf('ar')      // 6  (Saturday)\n\nmonthGrid('2026-11', { weekStart: weekStartOf('cs') })[0]\n// ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01']\nmonthGrid('2026-11', { weekStart: weekStartOf('en-US') })[0]\n// ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07']"
+  }
+ ],
+ "api": {
+  "title": "Plain functions, three entries.",
+  "groups": [
+   {
+    "name": "build and check",
+    "items": [
+     "plainDate",
+     "plainYearMonth",
+     "plainTime",
+     "isPlainDate",
+     "isPlainTime",
+     "isPlainDateTime",
+     "isPlainYearMonth",
+     "dateParts",
+     "timeParts",
+     "normalize",
+     "parseISO"
+    ]
+   },
+   {
+    "name": "arithmetic",
+    "items": [
+     "add",
+     "subtract",
+     "diff",
+     "between",
+     "startOf",
+     "endOf",
+     "toMilliseconds"
+    ]
+   },
+   {
+    "name": "compare",
+    "items": [
+     "compare",
+     "isBefore",
+     "isAfter",
+     "isSame",
+     "min",
+     "max",
+     "clamp"
+    ]
+   },
+   {
+    "name": "calendar",
+    "items": [
+     "dayOfWeek",
+     "dayOfYear",
+     "weekOfYear",
+     "quarterOf",
+     "daysInMonth",
+     "isLeapYear",
+     "eachDay",
+     "iterateDays",
+     "monthGrid",
+     "weekStartOf",
+     "weekendOf"
+    ]
+   },
+   {
+    "name": "zones and instants",
+    "items": [
+     "toInstant",
+     "toPlainDateTime",
+     "toPlainDate",
+     "toPlainTime",
+     "offsetAt",
+     "addInstant",
+     "isTimeZone",
+     "inZone"
+    ]
+   },
+   {
+    "name": "clocks",
+    "items": [
+     "now",
+     "today",
+     "setClock",
+     "useToday",
+     "useCountdown",
+     "useElapsed",
+     "useRelative",
+     "relativeDistance"
+    ]
+   },
+   {
+    "name": "entry points",
+    "items": [
+     "@pyreon/time",
+     "@pyreon/time/core",
+     "@pyreon/time/fp"
+    ]
+   }
+  ]
+ },
+ "limits": [
+  {
+   "title": "Experimental",
+   "text": "The API may change in a minor release before it is promoted to Stable. Pin the version while you build on it."
+  },
+  {
+   "title": "Clock hooks print the request clock on the server",
+   "text": "`useToday`, `useCountdown`, `useElapsed` and `useRelative` start no timer on a server and read the request's clock. Render `clockScript()` from `@pyreon/ambient` so the first client render reads the same instant, or show the value after mount."
+  },
+  {
+   "title": "Months and years are not milliseconds",
+   "text": "`toMilliseconds` throws for months and years, because their length depends on the date. Use `diff`, or `addInstant` with a zone."
+  },
+  {
+   "title": "The proleptic Gregorian calendar",
+   "text": "Years run from 0001 to 9999. Months are 1 to 12 and weekdays are ISO 1 (Monday) to 7 (Sunday): unlike `Date`, nothing is zero-based."
+  },
+  {
+   "title": "Strings are checked at the boundary",
+   "text": "A plain `string` does not type-check as a `PlainDate`; `isPlainDate` is the guard. The types are looser than the runtime check, because template literal types cannot count digits."
+  },
+  {
+   "title": "iOS and Android are not covered yet",
+   "text": "The package is web-only today."
+  }
+ ],
+ "faq": [
+  {
+   "q": "Why not use Temporal?",
+   "a": "Use it where every runtime you ship to has it: native Temporal is far smaller than any library. This package follows Temporal's model (plain dates, four disambiguation modes for gaps and overlaps) without depending on it, works in any engine today as plain strings and numbers, and its test suite compares its answers with Temporal wherever Temporal exists."
+  },
+  {
+   "q": "How big is it?",
+   "a": "For ten operations (add days and months, diff in days, compare, start of week and month, a month grid, parse ISO, an instant to wall time and back in a zone), `@pyreon/time/core` is 5.90 kB gzip. Day.js with `utc`, `timezone` and `isoWeek` is 5.42 kB, so Day.js is smaller. date-fns with `@date-fns/tz` is 8.53 kB and Luxon 21.89 kB. Hand-written UTC code with `Date` is 0.58 kB and native Temporal 0.41 kB, without DST disambiguation, ISO weeks or validation. `add` alone is 2.65 kB. Measured with Bun's bundler, minified, gzip -9."
+  },
+  {
+   "q": "How fast is it?",
+   "a": "We have not published timing numbers, so this page makes no speed claim. The benchmarks are written and gate-checked against Temporal on every input, but they have not been run on a quiet machine."
+  },
+  {
+   "q": "Where do the clock and the time zone come from?",
+   "a": "From `@pyreon/ambient`, which holds the locale, the time zone and the clock and is shared with `@pyreon/format`. `setTimeZone` changes the zone every reader of the clock hooks uses, and `setClock` pins the clock in tests. The Ambient docs page, linked below, covers the server hand-over."
+  },
+  {
+   "q": "Does it work with @pyreon/format?",
+   "a": "Yes. A `PlainDate` is a calendar value there and never shifts with the time zone, `between(a, b)` returns the duration shape `formatDuration` takes, and `useRelative` returns the `{ value, unit }` that `@pyreon/format` turns into words."
+  },
+  {
+   "q": "Does it run on iOS and Android?",
+   "a": "Not yet; the package is web-only today."
+  }
+ ],
+ "related": [
+  {
+   "href": "/products/format",
+   "category": "fundamentals",
+   "name": "Format",
+   "text": "Print these values in the reader's language, with calendar dates that never shift.",
+   "package": "@pyreon/format"
+  },
+  {
+   "href": "/docs/ambient",
+   "category": "plumbing",
+   "name": "Ambient",
+   "text": "The locale, time zone and clock that time and format share. It has no product page; its docs page covers it.",
+   "package": "@pyreon/ambient"
+  },
+  {
+   "href": "/products/rx",
+   "category": "fundamentals",
+   "name": "RX",
+   "text": "Use the value-last functions as `map` and `groupBy` callbacks.",
+   "package": "@pyreon/rx"
+  },
+  {
+   "href": "/products/table",
+   "category": "fundamentals",
+   "name": "Table",
+   "text": "Sort and filter columns of ISO dates as plain strings.",
+   "package": "@pyreon/table"
+  }
+ ],
+ "end": {
+  "title": "Count the days the way the calendar does.",
+  "cta": "Read the Time guide"
+ },
+ "benchmarks": null,
+ "glyphSvg": "<rect x=\"18\" y=\"26\" width=\"84\" height=\"76\" rx=\"12\" stroke=\"currentColor\" stroke-width=\"10\" fill=\"none\"/><path d=\"M18 52 H102\" stroke=\"currentColor\" stroke-width=\"8\"/><path d=\"M40 14 V36 M80 14 V36\" stroke=\"currentColor\" stroke-width=\"9\" stroke-linecap=\"round\"/><circle cx=\"76\" cy=\"78\" r=\"10\" fill=\"url(#eg)\"/>",
+ "sources": [
+  {
+   "claim": "every snippet output evaluated against packages/fundamentals/time on the merged tree of #4681, #4686, #4689, #4690 (Bun 1.4.0, TZ=America/New_York); date-fns 4.4.0, dayjs 1.11.23, luxon 3.7.2 and Temporal were run in the same process",
+   "path": "packages/fundamentals/time/src; scratch run 2026-11-18"
+  },
+  {
+   "claim": "size table: Pyreon 5.90, Day.js 5.42, date-fns 8.53, Luxon 21.89, Date 0.58, Temporal 0.41 kB gzip; add 2.65 kB",
+   "path": "BENCHMARKS.md \"@pyreon/time vs ... bundle size\"; re-run with bench/time-bundle.ts"
+  },
+  {
+   "claim": "status, scope, checked against Temporal, entries, fp, no dependencies in core and fp",
+   "path": "packages/fundamentals/time/README.md; docs/src/content/docs/time.md"
+  },
+  {
+   "claim": "no timing claim: benchmarks written, not run",
+   "path": "BENCHMARKS.md \"Timing is not recorded here\""
+  }
+ ]
+}

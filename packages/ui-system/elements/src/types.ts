@@ -36,7 +36,16 @@ export type InnerRef = HTMLElement | ((el: HTMLElement | null) => void) | null
 
 export type CssCallback = (css: typeof config.css) => ReturnType<typeof css>
 
-export type Css = CssCallback | ReturnType<typeof config.css> | string
+/**
+ * The `css` escape hatch: a `css\`…\`` result or a `(css) => css\`…\``
+ * callback. A raw CSS string is NOT accepted. A one-off look belongs on the
+ * component as a named modifier (`.multiple({ threeUp: { … } })`, applied as
+ * `multiple={['threeUp']}` or `<Grid threeUp />` under `useBooleans`), typed
+ * and resolved through the theme pipeline; `css` is for what a theme value
+ * cannot express (a selector, an at-rule), and has to be written as an
+ * explicit tagged template so it reads as an escape hatch.
+ */
+export type Css = CssCallback | ReturnType<typeof config.css>
 
 export type Content = Parameters<typeof render>['0']
 

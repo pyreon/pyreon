@@ -7,7 +7,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createFsStore, createISRHandler } from '../isr'
+import { createISRHandler } from '../isr'
+import { createFsStore } from '../isr-fs-store'
 import {
   extractStylerStyleTag,
   hashCss,

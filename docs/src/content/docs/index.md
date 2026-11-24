@@ -5,7 +5,7 @@ description: A signal-based UI framework with fine-grained reactivity and a rich
 
 Pyreon is a signal-based UI framework that renders directly to the DOM without a virtual DOM. It provides fine-grained reactivity, streaming SSR, a JSX compiler, and compatibility layers for React, Preact, Vue, Solid, and Svelte.
 
-The tables below group the 76 published packages by area; the [package catalog](/docs/package-catalog) lists every one of them.
+The tables below group the 85 published packages by area; the [package catalog](/docs/package-catalog) lists every one of them.
 
 <div class="flex flex-wrap gap-2 my-6">
   <PackageBadge name="@pyreon/core" href="/docs/core" />
@@ -144,7 +144,7 @@ Specialized packages for rich application features.
 
 | Package                            | Description                                                        |
 | ---------------------------------- | ------------------------------------------------------------------ |
-| [@pyreon/lint](/docs/lint)         | Pyreon-specific linter — 141 rules across 26 categories            |
+| [@pyreon/lint](/docs/lint)         | Pyreon-specific linter — 144 rules across 26 categories            |
 | [@pyreon/testing](/docs/guides/testing) | Testing-Library-style render/screen/fireEvent plus reactive matchers |
 | [@pyreon/atlas](/docs/atlas)       | Component workbench — derives and verifies a component catalog     |
 | [@pyreon/loom](/docs/loom)         | Monorepo dependency observatory                                    |

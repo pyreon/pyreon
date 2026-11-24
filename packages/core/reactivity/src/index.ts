@@ -88,6 +88,10 @@ export {
   onCleanup,
   type ReactiveSnapshotCapture,
   renderEffect,
+  _renderBind,
+  _openOwnerFrame,
+  _closeOwnerFrame,
+  _abortOwnerFrame,
   setErrorHandler,
   setSnapshotCapture,
 } from './effect'
@@ -100,6 +104,11 @@ export {
 } from './linked'
 export { createResource, type Resource } from './resource'
 export {
+  _claimContextOwner,
+  _currentScope,
+  _devOwner,
+  _swapPendingOwner,
+  _setRequestOwnerReader,
   EffectScope,
   effectScope,
   getContextOwner,

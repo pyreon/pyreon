@@ -718,7 +718,7 @@ zero({
 await isrHandler.revalidateTag('posts') // drops every page that rendered posts
 ```
 
-`tagsForRequest` records tags at cache-set time; `revalidateTag(tag)` drops every entry carrying the tag — the webhook-ergonomic unit (no path enumeration). Both shipped stores (`createMemoryStore`, `createFsStore`) implement the tag index; custom stores add `setTags`/`keysByTag`. `createFsStore(dir)` persists entries (and the tag index) as JSON files so a restart doesn't cold-start the cache — multi-instance deploys still want a shared external store (Redis/KV).
+`tagsForRequest` records tags at cache-set time; `revalidateTag(tag)` drops every entry carrying the tag — the webhook-ergonomic unit (no path enumeration). Both shipped stores (`createMemoryStore`, `createFsStore`) implement the tag index; custom stores add `setTags`/`keysByTag`. `createFsStore(dir, { maxEntries })` persists entries (and their tags) as JSON files so a restart doesn't cold-start the cache, and keeps at most `maxEntries` of them on disk (default `1000`, least recently used evicted first, also across restarts) — multi-instance deploys still want a shared external store (Redis/KV).
 
 ## Server Loaders
 
@@ -1527,6 +1527,8 @@ registerServiceWorker({
 - **Private pages** — navigation responses are retained only with `Cache-Control: public`, no `private`/`no-store`/`no-cache`, and no user-dependent `Vary`. Session and preview responses stay online-only. Updating the worker deletes the older runtime cache that did not enforce this policy.
 - **Updates** — safe by default: a new worker **waits** until the old version's tabs close, so a running page never has its asset set swapped underneath it. `onUpdate(activate)` lets you ask the user; `activate()` activates the waiting worker and reloads once it takes control. `pwa.skipWaiting: true` opts into immediate activation.
 - **Caching of the worker itself** — never immutable: the node/bun adapters serve `sw.js` and `*.webmanifest` with `max-age=0, must-revalidate`, the platform adapters only mark `<base><assetsDir>/*` immutable, and registration uses `updateViaCache: 'none'`.
+- **Offline navigation** — a visited public page wins, then a precached prerendered page (`mode: 'ssg'`). Beyond that it depends on the mode: **SPA** precaches the app shell and answers every failed navigation with it (any route loads, the client router takes over); **SSG** can set `pwa.offlineFallback: '/'` (a prerendered page used as the shell for routes never prerendered or visited; the router then renders the route matching the address); **SSR/ISR** HTML is per-request, so an unvisited route shows the browser's offline error.
+- **Install and update UI** — `useInstallPrompt()` and `useServiceWorkerUpdate()` (from `@pyreon/zero/client`) turn the install prompt and the "new version" banner into a few lines; `unregisterServiceWorkers()` clears a stale worker left on a dev origin. See [Offline and installable apps](/docs/patterns/offline-and-installable-apps) for the recipes and the limits.
 - `registerServiceWorker()` resolves `null` and registers nothing during SSR, outside production builds (a caching worker in dev fights HMR), and where service workers are unsupported.
 
 ## Environment Variables
@@ -1821,6 +1823,8 @@ import { ogImagePlugin } from '@pyreon/zero/og-image'
 faviconPlugin({ source: './icon.svg', locales: { de: { source: './icon-de.svg' } } })
 ogImagePlugin({ templates: { default: './og-template.tsx' }, locales: { en: { title: 'My App' } } })
 ```
+
+`aiPlugin` writes `llms.txt` in the [llmstxt.org](https://llmstxt.org/) shape for every app: `# name`, a `> description` summary, the dynamic routes and API endpoints as plain lists (they are not fetchable URLs, and the format's `##` sections are link lists), a `## Pages` list of `- [path](url): description` links, then an `## Optional` link to the `llms-full.txt` it also writes. That last link means the file always holds at least one Markdown link, so it passes Lighthouse's **Agentic Browsing** `llms-txt` audit (an H1 and a link) even for an app with no static page. `llmsExtra` is appended as written: keep it to `##` sections of links to stay in the shape. Both files are served as `text/plain; charset=utf-8`, the type llms.txt readers expect.
 
 ## HTTPS in Development
 

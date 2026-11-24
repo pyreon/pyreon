@@ -19,6 +19,13 @@ export class EffectScope {
   _parent: EffectScope | null = null
   /** Contexts provided at this scope, keyed by context id. */
   _contexts: Map<symbol, unknown> | null = null
+  /**
+   * Something outside this scope's own registrations holds it: the public
+   * `getCurrentScope()` handed it out, or it became a context owner. A
+   * component scope that is empty at the end of its mount is DROPPED (never
+   * retained) unless pinned, because a holder could still register into it.
+   */
+  _pinned = false
 
   /** Provide a context value at this owner. */
   provideContext(id: symbol, value: unknown): void {
@@ -36,6 +43,7 @@ export class EffectScope {
       const c = s._contexts
       if (c !== null && c.has(id)) return { found: true, value: c.get(id) }
     }
+
     return { found: false, value: undefined }
   }
 
@@ -46,6 +54,15 @@ export class EffectScope {
    */
   _isEmpty(): boolean {
     return this._effects === null
+  }
+
+  /**
+   * @internal Whether a component may drop this scope once its mount finished:
+   * nothing registered (effects, disposers, onUpdate hooks), it never became a
+   * context owner, and nobody was handed it through `getCurrentScope()`.
+   */
+  _isDroppable(): boolean {
+    return this._effects === null && this._updateHooks === null && !this._pinned
   }
 
   /** Register an effect/computed to be disposed when this scope stops. */
@@ -141,23 +158,129 @@ interface ScopeFrame {
   s: EffectScope | null
   /** The active context owner (see `getContextOwner`). */
   o: EffectScope | null
+  /** The server request-owner reader (see `_setRequestOwnerReader`). */
+  r: (() => EffectScope | undefined) | null
+  /**
+   * The scope of the component whose setup (or onMount) is running and that
+   * has NOT become a context owner yet — `provide()` claims it (see
+   * `_claimContextOwner`). Null outside a component, or once claimed.
+   */
+  p: EffectScope | null
 }
+
 const _sc: ScopeFrame = {
   s: null,
   o: null,
+  r: null,
+  p: null,
 }
 
+/**
+ * The current `EffectScope`. Handing the scope out PINS it: a component scope
+ * is otherwise dropped at the end of its mount when nothing registered with it,
+ * and a caller holding it could register later (`runWithOwner`, a deferred
+ * `scope.add`). Framework code that only registers synchronously reads
+ * `_currentScope()` instead.
+ */
 export function getCurrentScope(): EffectScope | null {
+  const s = _sc.s
+  if (s !== null) s._pinned = true
+  return s
+}
+
+/** @internal The current scope WITHOUT pinning it — see `getCurrentScope`. */
+export function _currentScope(): EffectScope | null {
   return _sc.s
+}
+
+// ─── Lazy context owner ──────────────────────────────────────────────────────
+// A component's scope becomes its children's context owner only when the
+// component calls `provide()`. Until then the owner stays the parent's, so a
+// non-providing component's children chain straight to the nearest PROVIDER
+// and nothing retains the component's scope as `_parent`.
+
+/**
+ * @internal Dev only (null in production): `late` — a claim of the pending
+ * scope now would be LATE (its children already mounted under the parent's
+ * owner), so `_claimContextOwner` reports it and `provide()` warns. Set and
+ * restored per component by runtime-dom's mount.
+ */
+// The production arm (null) is taken only in a production build.
+/* v8 ignore next 2 */
+export const _devOwner: { late: boolean } | null =
+  process.env.NODE_ENV !== 'production' ? { late: false } : null
+
+/**
+ * @internal Enter a component's pending-owner frame (see `ScopeFrame.p`):
+ * set it to `scope` (null to clear) and return the previous one, which the
+ * caller restores with `_swapPendingOwner(prev)` on every exit. One call, so
+ * the mount hot path pays a single cross-module call per component.
+ */
+export function _swapPendingOwner(scope: EffectScope | null): EffectScope | null {
+  const prev = _sc.p
+  _sc.p = scope
+
+  return prev
+}
+
+/**
+ * @internal Called by `provide()`: make the pending component scope the
+ * context owner. Returns 0 when nothing was pending (already the owner, or no
+ * component setup running), 1 for a claim, 2 (dev only) for a LATE claim —
+ * children were already mounted under the parent's owner and will not see
+ * the value through their deferred lookups.
+ */
+export function _claimContextOwner(): 0 | 1 | 2 {
+  const s = _sc.p
+  if (s === null) return 0
+  _sc.p = null
+  s._pinned = true
+  _sc.o = s
+
+  return process.env.NODE_ENV !== 'production' && _devOwner!.late ? 2 : 1
 }
 
 export function setCurrentScope(scope: EffectScope | null): void {
   _sc.s = scope
 }
 
+// ─── Request owner (server rendering) ───────────────────────────────────────
+// On a client every component setup runs under its own scope, so an effect or
+// computed always has an owner that disposes it. A server render never mounts:
+// nothing sets `_sc.s`, and without an owner each node a component creates over
+// a signal that outlives the request (module state, `systemColorMode()`) kept
+// one subscriber — and everything its closure held — per request, forever.
+//
+// `@pyreon/runtime-server` installs a reader that returns the scope of the
+// request in the current ASYNC context (AsyncLocalStorage), and stops that scope
+// when the request ends. It is consulted only where a node REGISTERS and only
+// when no scope is current, so the client path pays one null check on the
+// already-rare ownerless branch. It is deliberately not a module-level "current
+// scope" a renderer sets: renders interleave across `await`s, and a slot held
+// over an await hands one request's nodes to another. Nor does it change
+// `getCurrentScope()`, which save/restore pairs read — returning the request
+// scope there would let a restore park it in `_sc.s` past its synchronous
+// section.
+/** @internal Installed once by `@pyreon/runtime-server`. */
+export function _setRequestOwnerReader(fn: (() => EffectScope | undefined) | null): void {
+  _sc.r = fn
+}
+
+/**
+ * @internal The scope a node created NOW registers with: the current scope, or
+ * else the active server request's scope (see `_setRequestOwnerReader`).
+ */
+export function _ownerScope(): EffectScope | null {
+  const s = _sc.s
+  if (s !== null) return s
+  const r = _sc.r
+
+  return r === null ? null : (r() ?? null)
+}
+
 // Dev only: the reactive devtools record which scope created each node (a
 // component's owned signals / computeds / effects) through this reader.
-if (process.env.NODE_ENV !== 'production') _rdSetOwnerReader(getCurrentScope)
+if (process.env.NODE_ENV !== 'production') _rdSetOwnerReader(_currentScope)
 
 export function effectScope(): EffectScope {
   return new EffectScope()
@@ -185,11 +308,18 @@ export function setContextOwner(owner: EffectScope | null): EffectScope | null {
 /** Run `fn` with `owner` as the current context owner, then restore. */
 export function runWithContextOwner<T>(owner: EffectScope | null, fn: () => T): T {
   const prev = _sc.o
+  // No component is pending inside `fn`: it runs under a RESTORED owner (an
+  // effect re-run, a deferred mount), so a `provide()` there must write onto
+  // `owner`, never claim whichever component happens to be mid-setup when the
+  // scheduler fires. A component mounted inside enters its own frame.
+  const prevPending = _sc.p
   _sc.o = owner
+  _sc.p = null
   try {
     return fn()
   } finally {
     _sc.o = prev
+    _sc.p = prevPending
   }
 }
 
@@ -220,6 +350,7 @@ export function onScopeDispose(fn: () => void): void {
           'Wrap the call in `scope.runInScope(() => { ... })` or check `getCurrentScope()` before calling.',
       )
     }
+
     return
   }
   scope.add(fn)

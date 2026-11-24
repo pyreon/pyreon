@@ -51,6 +51,7 @@ import { availableParallelism } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { planServices } from './services'
+import { resolveJava } from './java-runtime'
 import { smokeSkipped } from './smoke-marker'
 import { cacheDisabled, readVerdict, verdictKey, writeVerdict } from './verdict-cache'
 
@@ -95,21 +96,23 @@ if (import.meta.main) {
 
   // Availability is a precondition, including on a cache hit. A prior local
   // compile-only success cannot satisfy a request to RUN the smoke tests.
-  const javaProbe = spawnSync('java', ['-version'], { encoding: 'utf8' })
-  const javaRuns = javaProbe.status === 0
+  // Never a bare `java` (see `resolveJava`): kotlinc can run on a JDK that PATH does not name.
+  const javaPath = resolveJava()
+  const javaProbe = javaPath === null ? undefined : spawnSync(javaPath, ['-version'], { encoding: 'utf8' })
+  const javaRuns = javaProbe?.status === 0
   // kotlinc can use JAVA_HOME while smoke execution uses a different PATH
   // java. Its runtime version is an independent input to a behaviour verdict.
-  const javaVersion = javaRuns ? `${javaProbe.stdout ?? ''}\0${javaProbe.stderr ?? ''}` : ''
+  const javaVersion = javaRuns ? `${javaProbe?.stdout ?? ''}\0${javaProbe?.stderr ?? ''}` : ''
   const smokeCount = plan.filter(({ typecheckOnly }) => !typecheckOnly).length
   if (smokeCount > 0 && !javaRuns) {
     if (required) {
       console.error(
-        '[verify-all] FAILED — no working JDK on PATH, and PYREON_REQUIRE_NATIVE_VALIDATE=1.',
+        '[verify-all] FAILED — no working JDK (tried PYREON_JAVA, JAVACMD, JAVA_HOME, PATH, Homebrew openjdk / java_home and the JVM kotlinc runs on), and PYREON_REQUIRE_NATIVE_VALIDATE=1.',
       )
       process.exit(1)
     }
     console.warn(
-      `[verify-all] ${smokeCount} smoke SKIPPED, no working JDK — typecheck only (including cached verdicts).`,
+      `[verify-all] ${smokeCount} smoke SKIPPED, no working JDK (tried PYREON_JAVA, JAVACMD, JAVA_HOME, PATH, Homebrew openjdk / java_home and the JVM kotlinc runs on) — typecheck only (including cached verdicts). Install one (\`brew install openjdk\`) or set JAVA_HOME to run the behaviour tests.`,
     )
   }
 

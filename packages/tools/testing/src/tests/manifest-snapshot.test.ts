@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — @pyreon/testing snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/testing — Testing-Library-compatible test kit for Pyreon — render/cleanup/renderHook + the full @testing-library/dom surface + reactive-graph matchers (peer: @pyreon/runtime-dom, @pyreon/reactivity). The main \`@pyreon/testing\` entry does NOT auto-register \`afterEach(cleanup)\`. Add \`@pyreon/testing/vitest\` to your vitest \`setupFiles\` to wire auto-cleanup AND extend \`expect\` with jest-dom matchers; otherwise call \`cleanup()\` manually in \`afterEach\`."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/testing](https://pyreon.dev/docs/reference/testing): Testing-Library-compatible test kit for Pyreon — render/cleanup/renderHook + the full @testing-library/dom surface + reactive-graph matchers (peer: @pyreon/runtime-dom, @pyreon/reactivity). The main \`@pyreon/testing\` entry does NOT auto-register \`afterEach(cleanup)\`. Add \`@pyreon/testing/vitest\` to your vitest \`setupFiles\` to wire auto-cleanup AND extend \`expect\` with jest-dom matchers; otherwise call \`cleanup()\` manually in \`afterEach\`."`)
   })
 
   it('renders to llms-full.txt section', () => {

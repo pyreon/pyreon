@@ -108,8 +108,7 @@ export function rampColor(stops: readonly string[], t: Double): string {
     return `rgb(${Math.round(heatChannel(s0, o0))}, ${Math.round(heatChannel(s0, o0 + 2))}, ${Math.round(heatChannel(s0, o0 + 4))})`
   }
   const clamped = t >= 1.0 ? 1.0 : t
-  let spanF = 0.0
-  for (let i = 1; i < n; i++) spanF = spanF + 1.0
+  const spanF: Double = Number(n - 1)
   const pos = clamped * spanF
   const rawIdx = Math.floor(pos)
   const idx = rawIdx > spanF - 1.0 ? spanF - 1.0 : rawIdx
@@ -190,10 +189,8 @@ export function renderHeat(options: HeatmapOptions): DrawCmd[] {
   const nc = grid.cols.length
   const nr = grid.rows.length
   if (nc === 0 || nr === 0) return out
-  let ncF = 0.0
-  for (let i = 0; i < nc; i++) ncF = ncF + 1.0
-  let nrF = 0.0
-  for (let i = 0; i < nr; i++) nrF = nrF + 1.0
+  const ncF: Double = Number(nc)
+  const nrF: Double = Number(nr)
   const cw = plot.w / ncF
   const ch = plot.h / nrF
   const lo = options.domain?.min ?? grid.min
@@ -226,10 +223,8 @@ export function hitHeatCell(grid: HeatGrid, plot: Rect, gap: Double, px: Double,
   const nr = grid.rows.length
   if (nc === 0 || nr === 0) return -1
   if (px < plot.x || px > plot.x + plot.w || py < plot.y || py > plot.y + plot.h) return -1
-  let ncF = 0.0
-  for (let i = 0; i < nc; i++) ncF = ncF + 1.0
-  let nrF = 0.0
-  for (let i = 0; i < nr; i++) nrF = nrF + 1.0
+  const ncF: Double = Number(nc)
+  const nrF: Double = Number(nr)
   const cw = plot.w / ncF
   const ch = plot.h / nrF
   const rawCol = Math.floor((px - plot.x) / cw)

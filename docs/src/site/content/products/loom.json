@@ -102,8 +102,8 @@
     "text": "dependencies and peers drive cycles, depth and reach; devDependencies are tracked on their own."
    },
    {
-    "name": "8 finding codes",
-    "text": "`version-drift`, `internal-range`, `cycle`, `phantom-dep`, `phantom-type-dep`, `prod-import-of-dev-dep`, `peer-mismatch`, `unused-dep`."
+    "name": "9 finding codes",
+    "text": "`version-drift`, `internal-range`, `cycle`, `phantom-dep`, `phantom-type-dep`, `prod-import-of-dev-dep`, `peer-mismatch`, `unused-dep`, `stale-ignore`."
    },
    {
     "name": "Type-aware import scan",
@@ -323,7 +323,7 @@
    "path": "00-brief/BENCHMARKS-2026-11-05.md §11; harness scripts/bench/tools/loom.ts (median of 7 warmed rounds by default)"
   },
   {
-   "claim": "8 finding codes",
+   "claim": "9 finding codes",
    "path": "packages/tools/loom/src/core/config.ts ISSUE_CODES; src/core/types.ts IssueCode"
   },
   {

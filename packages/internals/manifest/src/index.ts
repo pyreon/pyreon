@@ -3,7 +3,10 @@ export { defineManifest } from './define'
 export { findManifests, getPackageCategories, type LoadedManifest } from './discovery'
 export {
   formatLineDiff,
+  LLMS_SITE_ORIGIN,
+  llmsTxtBulletPrefix,
   type McpApiReferenceEntry,
+  packageDocsUrl,
   renderApiReferenceBlock,
   renderApiReferenceEntries,
   renderLlmsFullSection,

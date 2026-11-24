@@ -139,6 +139,10 @@ const GATES: Gate[] = [
   // "license": "MIT". A published package without either ships with no stated
   // terms; an example without either is code people copy with none.
   { name: 'check-license-coverage', cmd: 'bun scripts/check-license-coverage.ts' },
+  // Every tracked stylesheet closes the blocks it opens. A `}` lost in a merge
+  // shipped @pyreon/calendar's styles.css with its timeline rules print-only,
+  // and broke `vite build` for any app importing CSS after it.
+  { name: 'check-css-balanced', cmd: 'bun scripts/check-css-balanced.ts' },
   // examples/README.md is the index of every example (curated, fixture,
   // native host, benchmark); an add, move or removal updates it in the same PR.
   { name: 'check-examples-index', cmd: 'bun scripts/check-examples-index.ts' },
@@ -175,6 +179,9 @@ const GATES: Gate[] = [
   { name: 'check-no-major-changesets', cmd: 'bun scripts/check-no-major-changesets.ts' },
   { name: 'check-bundle-budgets', cmd: 'bun scripts/check-bundle-budgets.ts' },
   { name: 'check-distribution', cmd: 'bun scripts/check-distribution.ts' },
+  // Every bare import a published entry reaches (through its built lib) must be declared: an optional peer imported by the root
+  // entry crashes a clean install on load (the @pyreon/ambient / @pyreon/core failure). Reads lib/, like check-bundle-budgets.
+  { name: 'check-declared-imports', cmd: 'bun scripts/check-declared-imports.ts' },
   { name: 'check-declarations', cmd: 'bun scripts/check-declarations.ts' },
   { name: 'check-esm-only', cmd: 'bun scripts/check-esm-only.ts' },
   { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },

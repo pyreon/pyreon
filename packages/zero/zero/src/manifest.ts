@@ -425,25 +425,28 @@ createISRHandler(handler, { revalidate: 60, store: redisStore })`,
       kind: 'function',
       signature: 'function createMemoryStore<E = ISRCacheEntry>(opts?: { maxEntries?: number }): ISRStore<E>',
       summary:
-        'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index prunes evicted keys lazily). Per-process — fine for single-instance deploys; multi-instance wants a shared external store.',
+        'The default in-memory ISR store: insertion-order LRU capped at `maxEntries` (default 1000), with `get` bumping recency so hot paths survive eviction. Implements the full optional surface (`delete`/`clear`/`setTags`/`keysByTag` — the tag index drops a key the moment it is deleted, evicted or cleared). Per-process — fine for single-instance deploys; multi-instance wants a shared external store.',
       example: `createISRHandler(handler, { revalidate: 60, store: createMemoryStore({ maxEntries: 5000 }) })`,
       seeAlso: ['createISRHandler', 'ISRStore', 'createFsStore'],
     },
     {
       name: 'createFsStore',
       kind: 'function',
-      signature: 'function createFsStore<E = ISRCacheEntry>(dir: string): ISRStore<E>',
+      signature:
+        'function createFsStore<E = ISRCacheEntry>(dir: string, opts?: { maxEntries?: number }): ISRStore<E>',
       summary:
-        "Filesystem-backed ISR store for self-hosted node/bun: cache entries (and the tag index) persist as JSON files under `dir`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). One file per key (fs-safe encoded; over-length keys hash to a fixed name so long query strings can't silently ENAMETOOLONG-drop), `_tags.json` sidecar written atomically (tmp+rename). EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV.",
+        "Filesystem-backed ISR store for self-hosted node/bun: cache entries (and their tags) persist as JSON files under `dir`, so a server restart does NOT cold-start the cache (no thundering herd on the origin). Bounded like `createMemoryStore`: at most `maxEntries` entries (default 1000) on disk, least recently written or read evicted first (its file AND its tags); the cap holds across restarts because a new store counts what is already in `dir` and trims it. One file per entry (fs-safe encoded; a long key or one with upper-case letters gets a SHA-256 name, so a long query string cannot ENAMETOOLONG-drop and `/About` never shares a file with `/about` on a case-insensitive file system) plus a small per-entry tags sidecar, so a tagged miss writes O(1) bytes. Writes go through tmp+rename (a crash never leaves a torn entry; leftover temp files are removed at start), run in call order per key, and an older `_tags.json` index is migrated. EVERY fs error degrades to cache-miss behavior — never a request-path throw. Per-BOX — multi-instance deploys still want Redis/KV.",
       mistakes: [
         'Using it across multiple instances — each box has its own directory; tag invalidation on one box does not reach the others',
         'Pointing `dir` at a tmpfs that clears on reboot — defeats the restart-survival purpose',
+        'Keeping the default `pathname + search` cache key on pages that ignore their query string — every distinct query string is its own entry, so random `?x=` requests evict real pages (the disk stays bounded by `maxEntries`); supply a `cacheKey` that keeps only the parameters the page reads',
+        'Sharing one `dir` between processes and expecting one cap — the index and `maxEntries` are per process (each adopts entries it reads), and a tag recorded by another process is only seen after a restart',
       ],
       example: `import { createFsStore } from '@pyreon/zero/server'
 
 createISRHandler(handler, {
   revalidate: 60,
-  store: createFsStore('./.isr-cache'),
+  store: createFsStore('./.isr-cache', { maxEntries: 5000 }),
   tagsForRequest: (req) => (new URL(req.url).pathname.startsWith('/posts/') ? ['posts'] : []),
 })`,
       seeAlso: ['createISRHandler', 'ISRStore', 'createMemoryStore'],
@@ -502,7 +505,7 @@ createISRHandler(handler, {
       kind: 'function',
       signature: 'function aiPlugin(config?: AiPluginConfig): Plugin // server-only',
       summary:
-        'AI integration plugin — generates `llms.txt`, `llms-full.txt`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon\'s on-publish artifacts; the plugin runs `inferJsonLd` per route to extract structured data from `meta` exports.',
+        'AI integration plugin — generates `llms.txt`, `llms-full.txt`, and JSON-LD inference metadata at build time. Designed for sites that want to be AI-readable (search engines, model trainers, agentic crawlers). The generated files are themselves Pyreon\'s on-publish artifacts; the plugin runs `inferJsonLd` per route to extract structured data from `meta` exports. `llms.txt` follows the llmstxt.org shape for every app (H1, `>` summary, dynamic routes and API endpoints as plain lists before the `##` link lists) and always ends with an `## Optional` link to `llms-full.txt`, so it passes Lighthouse\'s Agentic Browsing `llms-txt` audit (an H1 and at least one Markdown link) even for an app with no static page.',
       example: 'plugins: [pyreon(), zero(), seoPlugin({ ... }), aiPlugin()]',
       seeAlso: ['seoPlugin', 'zero'],
     },
@@ -535,7 +538,7 @@ export const og: OgImage<{ title: string }> = ({ data }) => (
       signature:
         'function registerServiceWorker(options?: { url?: string; scope?: string; onUpdate?: (activate: () => void) => void }): Promise<ServiceWorkerRegistration | null>',
       summary:
-        'Registers the worker generated by `zero({ pwa })` (`<base>sw.js`, `updateViaCache: \'none\'`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under `mode: \'ssg\'`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit `Cache-Control: public` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. New versions WAIT by default; `onUpdate(activate)` fires when one is installed so the app can ask, and `activate()` switches + reloads. Resolves `null` during SSR, outside production builds, and without service-worker support.',
+        'Registers the worker generated by `zero({ pwa })` (`<base>sw.js`, `updateViaCache: \'none\'`). The worker precaches exactly the emitted hashed assets (+ prerendered pages under `mode: \'ssg\'`), serves navigations network-first and hashed assets cache-first. Runtime navigation caching requires explicit `Cache-Control: public` HTML without private/no-store/no-cache directives, state-dependent Vary, or CSP nonces; activation removes the legacy runtime cache. SPA output also precaches the app shell and answers every failed navigation with it; `pwa.offlineFallback` (SSG) names a prerendered page used as the shell for routes never prerendered or visited. New versions WAIT by default; `onUpdate(activate)` fires when one is installed so the app can ask, and `activate()` switches + reloads. Resolves `null` during SSR, outside production builds, and without service-worker support.',
       example: `import { registerServiceWorker } from '@pyreon/zero'
 
 registerServiceWorker({
@@ -549,6 +552,60 @@ registerServiceWorker({
         'Serving `sw.js` with a long or immutable Cache-Control from a custom host — the worker script is the update channel; zero\'s adapters serve it must-revalidate',
       ],
       seeAlso: ['zero'],
+    },
+    {
+      name: 'useServiceWorkerUpdate',
+      kind: 'hook',
+      signature:
+        'function useServiceWorkerUpdate(): { updateReady: () => boolean; apply: () => void }',
+      summary:
+        'Reactive "a new version is waiting" state over `registerServiceWorker()`: `updateReady()` flips once a new worker finished installing (only when `pwa.skipWaiting` is off); `apply()` activates it and reloads into the new version. Always `false` on the server and in development. Needs `registerServiceWorker()` called once in the client entry; works with or without its `onUpdate` option. Exported from `@pyreon/zero` and `@pyreon/zero/client`.',
+      example: `import { useServiceWorkerUpdate } from '@pyreon/zero/client'
+
+const update = useServiceWorkerUpdate()
+<Show when={() => update.updateReady()}>
+  <button onClick={() => update.apply()}>New version available. Reload</button>
+</Show>`,
+      mistakes: [
+        'Using it without calling `registerServiceWorker()` — nothing ever sets `updateReady`',
+        'Reading `update.updateReady` without calling it in JSX — it is an accessor; use `() => update.updateReady()`',
+        'Expecting other open tabs to reload on `apply()` — only the calling tab reloads; the others keep running the old page until closed or reloaded',
+      ],
+      seeAlso: ['registerServiceWorker', 'useInstallPrompt'],
+    },
+    {
+      name: 'useInstallPrompt',
+      kind: 'hook',
+      signature:
+        "function useInstallPrompt(): { canInstall: () => boolean; prompt: () => Promise<'accepted' | 'dismissed' | 'unavailable'>; isInstalled: () => boolean }",
+      summary:
+        "Install-prompt state for an installable PWA (Chromium: Chrome, Edge, Samsung Internet). ONE shared, refcounted set of `beforeinstallprompt` / `appinstalled` / `display-mode: standalone` listeners regardless of how many callers; the event is held (and the browser's own infobar suppressed) until the app calls `prompt()` from its own button. `prompt()` resolves `'unavailable'` when the browser offered nothing (iOS Safari and Firefox never do), and the event is single-use. `isInstalled()` is true in standalone display mode, iOS `navigator.standalone`, or after `appinstalled`. Inert on the server. Call it early (root layout): the browser fires `beforeinstallprompt` once per page load and an event fired while no caller is mounted is missed. Lives in `@pyreon/zero` (not `@pyreon/hooks`) because it is the install half of the same PWA client surface as `registerServiceWorker`.",
+      example: `import { useInstallPrompt } from '@pyreon/zero/client'
+
+const install = useInstallPrompt()
+<Show when={() => install.canInstall() && !install.isInstalled()}>
+  <button onClick={() => install.prompt()}>Install app</button>
+</Show>`,
+      mistakes: [
+        'Mounting it only on a settings page — `beforeinstallprompt` fires early, once per page load; call it in the root layout',
+        'Expecting `canInstall()` on iOS Safari — it never fires there; document "Share, Add to Home Screen" instead',
+        'Calling `prompt()` outside a user gesture — the browser rejects it; call it from a click handler',
+      ],
+      seeAlso: ['registerServiceWorker', 'useServiceWorkerUpdate'],
+    },
+    {
+      name: 'unregisterServiceWorkers',
+      kind: 'function',
+      signature: 'function unregisterServiceWorkers(cacheName?: string): Promise<number>',
+      summary:
+        "Unregisters every service worker of the origin and deletes this app's caches (names starting with `cacheName`, default `'pyreon'`); resolves the number of workers removed. The escape hatch for the stale-worker trap: a production build previewed on the same origin (`localhost:PORT`) as a later dev server leaves the old worker serving cached modules over HMR. Dev never registers a worker but cannot remove one it did not install.",
+      example: `import { unregisterServiceWorkers } from '@pyreon/zero/client'
+
+if (import.meta.env.DEV) void unregisterServiceWorkers()`,
+      mistakes: [
+        'Calling it in production code paths — it removes the offline cache; use it from a dev entry or a "reset app" action',
+      ],
+      seeAlso: ['registerServiceWorker'],
     },
     {
       name: 'i18nRouting',

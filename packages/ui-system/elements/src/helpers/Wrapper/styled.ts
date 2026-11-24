@@ -6,7 +6,8 @@
  * elements where a single flex container is insufficient.
  */
 import { config } from '@pyreon/ui-core'
-import { alignContent, extendCss, makeItResponsive, value } from '@pyreon/unistyle'
+import { alignContent, makeItResponsive, value } from '@pyreon/unistyle'
+import { instanceCss } from '../instanceCss'
 import type { ResponsiveStylesCallback } from '../../types'
 import type { StyledProps, ThemeProps } from './types'
 
@@ -53,7 +54,8 @@ export const styles: ResponsiveStylesCallback<ThemeProps> = ({ theme: t, css: cs
    */
   ${t.gap != null && `gap: ${value(t.gap, rootSize)};`};
 
-  ${t.extraStyles && extendCss(t.extraStyles as Parameters<typeof extendCss>[0])};
+  /* The instance \`css\` prop: its own cascade layer, above the theme (#4354). */
+  ${t.extraStyles && instanceCss(cssFn, t.extraStyles)};
 `
 
 const platformCSS = `box-sizing: border-box;`

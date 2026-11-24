@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 224,
+  "pageCount": 250,
   "pages": [
    {
     "path": "a11y.md",
@@ -16,6 +16,11 @@
     "path": "accessibility.md",
     "title": "Accessibility",
     "href": "/docs/accessibility"
+   },
+   {
+    "path": "ambient.md",
+    "title": "Ambient values",
+    "href": "/docs/ambient"
    },
    {
     "path": "architecture-and-prior-art.md",
@@ -43,6 +48,11 @@
     "href": "/docs/benchmarks-full-stack"
    },
    {
+    "path": "benchmarks-real-app.md",
+    "title": "Real-app benchmark method",
+    "href": "/docs/benchmarks-real-app"
+   },
+   {
     "path": "benchmarks.md",
     "title": "Benchmarks",
     "href": "/docs/benchmarks"
@@ -56,6 +66,11 @@
     "path": "build-an-app.md",
     "title": "Build a Real App in 30 Minutes",
     "href": "/docs/build-an-app"
+   },
+   {
+    "path": "calendar.md",
+    "title": "Calendar",
+    "href": "/docs/calendar"
    },
    {
     "path": "charts-gallery.md",
@@ -76,6 +91,11 @@
     "path": "code.md",
     "title": "Code Editor",
     "href": "/docs/code"
+   },
+   {
+    "path": "command.md",
+    "title": "Command",
+    "href": "/docs/command"
    },
    {
     "path": "compare-app-frameworks.md",
@@ -243,6 +263,11 @@
     "href": "/docs/hotkeys"
    },
    {
+    "path": "format.md",
+    "title": "Format",
+    "href": "/docs/format"
+   },
+   {
     "path": "http.md",
     "title": "HTTP",
     "href": "/docs/http"
@@ -408,6 +433,16 @@
     "href": "/docs/package-catalog"
    },
    {
+    "path": "patterns/calendar.md",
+    "title": "Event calendar",
+    "href": "/docs/patterns/calendar"
+   },
+   {
+    "path": "patterns/command.md",
+    "title": "Command palette",
+    "href": "/docs/patterns/command"
+   },
+   {
     "path": "patterns/controllable-state.md",
     "title": "Controlled / uncontrolled components",
     "href": "/docs/patterns/controllable-state"
@@ -416,6 +451,21 @@
     "path": "patterns/data-fetching.md",
     "title": "Data fetching — useQuery + useMutation",
     "href": "/docs/patterns/data-fetching"
+   },
+   {
+    "path": "patterns/dates-and-times.md",
+    "title": "Dates and times",
+    "href": "/docs/patterns/dates-and-times"
+   },
+   {
+    "path": "patterns/money.md",
+    "title": "Money",
+    "href": "/docs/patterns/money"
+   },
+   {
+    "path": "patterns/schedule.md",
+    "title": "Schedule",
+    "href": "/docs/patterns/schedule"
    },
    {
     "path": "patterns/dev-warnings.md",
@@ -438,9 +488,19 @@
     "href": "/docs/patterns/form-fields"
    },
    {
+    "path": "patterns/formatting.md",
+    "title": "Formatting numbers, dates and money",
+    "href": "/docs/patterns/formatting"
+   },
+   {
     "path": "patterns/imperative-toasts.md",
     "title": "Imperative notifications — toasts",
     "href": "/docs/patterns/imperative-toasts"
+   },
+   {
+    "path": "patterns/upload.md",
+    "title": "Upload",
+    "href": "/docs/patterns/upload"
    },
    {
     "path": "patterns/islands.md",
@@ -456,6 +516,11 @@
     "path": "patterns/multiplatform.md",
     "title": "Multiplatform app (one source → web + iOS + Android)",
     "href": "/docs/patterns/multiplatform"
+   },
+   {
+    "path": "patterns/offline-and-installable-apps.md",
+    "title": "Offline and installable apps",
+    "href": "/docs/patterns/offline-and-installable-apps"
    },
    {
     "path": "patterns/reactive-context.md",
@@ -563,6 +628,11 @@
     "href": "/docs/reference/a11y"
    },
    {
+    "path": "reference/ambient.md",
+    "title": "Ambient values — API Reference",
+    "href": "/docs/reference/ambient"
+   },
+   {
     "path": "reference/atlas.md",
     "title": "Component Workbench — API Reference",
     "href": "/docs/reference/atlas"
@@ -578,14 +648,29 @@
     "href": "/docs/reference/auth"
    },
    {
+    "path": "reference/calendar.md",
+    "title": "@pyreon/calendar — API Reference",
+    "href": "/docs/reference/calendar"
+   },
+   {
     "path": "reference/charts.md",
     "title": "Charts on web, iOS and Android — API Reference",
     "href": "/docs/reference/charts"
    },
    {
+    "path": "reference/charts-maps.md",
+    "title": "@pyreon/charts-maps — API Reference",
+    "href": "/docs/reference/charts-maps"
+   },
+   {
     "path": "reference/code.md",
     "title": "Code Editor — API Reference",
     "href": "/docs/reference/code"
+   },
+   {
+    "path": "reference/command.md",
+    "title": "@pyreon/command — API Reference",
+    "href": "/docs/reference/command"
    },
    {
     "path": "reference/compiler.md",
@@ -661,6 +746,11 @@
     "path": "reference/hotkeys.md",
     "title": "Keyboard Shortcuts — API Reference",
     "href": "/docs/reference/hotkeys"
+   },
+   {
+    "path": "reference/format.md",
+    "title": "Formatting and Parsing — API Reference",
+    "href": "/docs/reference/format"
    },
    {
     "path": "reference/http.md",
@@ -803,9 +893,29 @@
     "href": "/docs/reference/testing"
    },
    {
+    "path": "reference/time.md",
+    "title": "Dates and Times — API Reference",
+    "href": "/docs/reference/time"
+   },
+   {
+    "path": "reference/money.md",
+    "title": "Money",
+    "href": "/docs/reference/money"
+   },
+   {
+    "path": "reference/schedule.md",
+    "title": "Schedule",
+    "href": "/docs/reference/schedule"
+   },
+   {
     "path": "reference/toast.md",
     "title": "Toast Notifications — API Reference",
     "href": "/docs/reference/toast"
+   },
+   {
+    "path": "reference/upload.md",
+    "title": "Upload",
+    "href": "/docs/reference/upload"
    },
    {
     "path": "reference/ui-core.md",
@@ -948,9 +1058,29 @@
     "href": "/docs/table"
    },
    {
+    "path": "time.md",
+    "title": "Time",
+    "href": "/docs/time"
+   },
+   {
+    "path": "money.md",
+    "title": "Money",
+    "href": "/docs/money"
+   },
+   {
+    "path": "schedule.md",
+    "title": "Schedule",
+    "href": "/docs/schedule"
+   },
+   {
     "path": "toast.md",
     "title": "Toast",
     "href": "/docs/toast"
+   },
+   {
+    "path": "upload.md",
+    "title": "Upload",
+    "href": "/docs/upload"
    },
    {
     "path": "troubleshooting.md",
@@ -1184,12 +1314,20 @@
       "patterns/dynamic-fields",
       "patterns/routing-setup",
       "patterns/data-fetching",
+      "patterns/dates-and-times",
+      "patterns/money",
+      "patterns/schedule",
+      "patterns/calendar",
       "patterns/styler-theming",
       "patterns/ssr-safe-hooks",
       "patterns/islands",
       "patterns/event-listeners",
       "patterns/imperative-toasts",
+      "patterns/formatting",
+      "patterns/command",
+      "patterns/upload",
       "patterns/multiplatform",
+      "patterns/offline-and-installable-apps",
       "accessibility"
      ],
      "source": "docs/src/sidebar-config.ts"
@@ -1305,7 +1443,14 @@
       "permissions",
       "auth",
       "hotkeys",
+      "format",
+      "time",
+      "money",
+      "schedule",
+      "calendar",
+      "command",
       "toast",
+      "upload",
       "rx",
       "url-state",
       "dnd"
@@ -1344,7 +1489,8 @@
       "rich-text",
       "flow",
       "feature",
-      "a11y"
+      "a11y",
+      "ambient"
      ],
      "source": "docs/src/sidebar-config.ts"
     },
@@ -1407,6 +1553,11 @@
       "reference/form",
       "reference/hooks",
       "reference/hotkeys",
+      "reference/format",
+      "reference/time",
+      "reference/money",
+      "reference/schedule",
+      "reference/calendar",
       "reference/http",
       "reference/i18n",
       "reference/kinetic-presets",
@@ -1436,8 +1587,11 @@
      "collapsed": true,
      "slugs": [
       "reference/a11y",
+      "reference/ambient",
       "reference/charts",
+      "reference/charts-maps",
       "reference/code",
+      "reference/command",
       "reference/connector-document",
       "reference/coolgrid",
       "reference/dnd",
@@ -1454,6 +1608,7 @@
       "reference/styler",
       "reference/testing",
       "reference/toast",
+      "reference/upload",
       "reference/ui-core",
       "reference/unistyle"
      ],
@@ -1577,6 +1732,10 @@
     {
      "title": "Full-stack benchmark method",
      "href": "/docs/benchmarks-full-stack"
+    },
+    {
+     "title": "Real-app benchmark method",
+     "href": "/docs/benchmarks-real-app"
     }
    ]
   },
@@ -1787,6 +1946,10 @@
      "title": "Accessibility",
      "href": "/docs/a11y",
      "productId": "a11y"
+    },
+    {
+     "title": "Ambient values",
+     "href": "/docs/ambient"
     }
    ]
   },
@@ -1966,6 +2129,32 @@
      "productId": "hotkeys"
     },
     {
+     "title": "Format",
+     "href": "/docs/format",
+     "productId": "format"
+    },
+    {
+     "title": "Time",
+     "href": "/docs/time",
+     "productId": "time"
+    },
+    {
+     "title": "Money",
+     "href": "/docs/money"
+    },
+    {
+     "title": "Schedule",
+     "href": "/docs/schedule"
+    },
+    {
+     "title": "Calendar",
+     "href": "/docs/calendar"
+    },
+    {
+     "title": "Command",
+     "href": "/docs/command"
+    },
+    {
      "title": "Drag and Drop",
      "href": "/docs/dnd",
      "productId": "dnd"
@@ -1974,6 +2163,10 @@
      "title": "Toast",
      "href": "/docs/toast",
      "productId": "toast"
+    },
+    {
+     "title": "Upload",
+     "href": "/docs/upload"
     },
     {
      "title": "RX",
@@ -2138,6 +2331,22 @@
      "href": "/docs/patterns/data-fetching"
     },
     {
+     "title": "Dates and times",
+     "href": "/docs/patterns/dates-and-times"
+    },
+    {
+     "title": "Money",
+     "href": "/docs/patterns/money"
+    },
+    {
+     "title": "Schedule",
+     "href": "/docs/patterns/schedule"
+    },
+    {
+     "title": "Event calendar",
+     "href": "/docs/patterns/calendar"
+    },
+    {
      "title": "Forms and validation",
      "href": "/docs/guides/forms"
     },
@@ -2182,8 +2391,24 @@
      "href": "/docs/patterns/imperative-toasts"
     },
     {
+     "title": "Formatting",
+     "href": "/docs/patterns/formatting"
+    },
+    {
+     "title": "Command palette",
+     "href": "/docs/patterns/command"
+    },
+    {
+     "title": "File uploads",
+     "href": "/docs/patterns/upload"
+    },
+    {
      "title": "One source, web + iOS + Android",
      "href": "/docs/patterns/multiplatform"
+    },
+    {
+     "title": "Offline and installable apps",
+     "href": "/docs/patterns/offline-and-installable-apps"
     },
     {
      "title": "Performance",
@@ -2311,6 +2536,10 @@
        "href": "/docs/reference/a11y"
       },
       {
+       "title": "Ambient values",
+       "href": "/docs/reference/ambient"
+      },
+      {
        "title": "Component Workbench",
        "href": "/docs/reference/atlas"
       },
@@ -2327,8 +2556,16 @@
        "href": "/docs/reference/charts"
       },
       {
+       "title": "Chart Maps (boundary data)",
+       "href": "/docs/reference/charts-maps"
+      },
+      {
        "title": "Code Editor",
        "href": "/docs/reference/code"
+      },
+      {
+       "title": "Command",
+       "href": "/docs/reference/command"
       },
       {
        "title": "JSX Reactive Transform",
@@ -2389,6 +2626,26 @@
       {
        "title": "Keyboard Shortcuts",
        "href": "/docs/reference/hotkeys"
+      },
+      {
+       "title": "Formatting and Parsing",
+       "href": "/docs/reference/format"
+      },
+      {
+       "title": "Dates and Times",
+       "href": "/docs/reference/time"
+      },
+      {
+       "title": "Money",
+       "href": "/docs/reference/money"
+      },
+      {
+       "title": "Schedule",
+       "href": "/docs/reference/schedule"
+      },
+      {
+       "title": "Calendar",
+       "href": "/docs/reference/calendar"
       },
       {
        "title": "HTTP Client",
@@ -2505,6 +2762,10 @@
       {
        "title": "Toast Notifications",
        "href": "/docs/reference/toast"
+      },
+      {
+       "title": "File uploads",
+       "href": "/docs/reference/upload"
       },
       {
        "title": "UI Provider + Config",
@@ -3240,6 +3501,48 @@
     "validation",
     "content",
     "a11y"
+   ]
+  },
+  {
+   "productId": "format",
+   "name": "Format",
+   "docsPage": null,
+   "docsHref": "/docs/format",
+   "gapNote": "The Format docs page (format.md) is a guide and carries none of the six selling slots yet; the product page's call to action links to it.",
+   "closestPage": "format.md",
+   "pitch": "content/format.json#hero",
+   "demo": "content/format.json#demo",
+   "bench": "content/format.json#benchmarks",
+   "benchNote": "No benchmark has been run for @pyreon/format (benchmarks written, not run): no figure may be added until a recorded result exists.",
+   "comingFrom": {
+    "lib": "Intl",
+    "ref": "content/format.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "i18n",
+    "time",
+    "table"
+   ]
+  },
+  {
+   "productId": "time",
+   "name": "Time",
+   "docsPage": null,
+   "docsHref": "/docs/time",
+   "gapNote": "The Time docs page (time.md) is a guide and carries none of the six selling slots yet; the product page's call to action links to it.",
+   "closestPage": "time.md",
+   "pitch": "content/time.json#hero",
+   "demo": "content/time.json#demo",
+   "bench": "content/time.json#benchmarks",
+   "benchNote": "Only a bundle-size row exists (BENCHMARKS.md, 2026-11-18): Pyreon 5.90 kB vs Day.js 5.42 kB gzip, a loss to Day.js that the page states plainly. No timing has been run: no speed figure may be added until a recorded result exists.",
+   "comingFrom": {
+    "lib": "date-fns",
+    "ref": "content/time.json#comingFrom[0]"
+   },
+   "crossSell": [
+    "format",
+    "rx",
+    "table"
    ]
   },
   {

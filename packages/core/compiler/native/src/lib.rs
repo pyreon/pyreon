@@ -671,6 +671,9 @@ struct Ctx<'a> {
     needs_set_prop_static_import: bool,
     needs_set_html_import: bool,
     needs_ref_import: bool,
+    /// Template cleanup helpers used in the file: `_dispose2`, `_dispose3`,
+    /// `_dispose4`, `_disposeN` (in that index order).
+    needs_dispose_import: [bool; 4],
     needs_bind_text_import: bool,
     needs_bind_prop_import: bool,
     needs_bind_direct_import: bool,
@@ -778,6 +781,9 @@ struct Ctx<'a> {
     /// to work out which elements the client lowers to templates (see
     /// `ssr_enter_element`). `templatize_component_children` is `false` under SSR.
     client_tpl_components: bool,
+    /// Child expressions (raw span start) a client template never walks: their
+    /// element is in SVG/MathML content (`collect_foreign_holes`).
+    foreign_holes: FxHashSet<u32>,
     /// SSR walk: the client-template state at this point (`SSR_CLIENT_*`).
     /// Mirrors the JS backend's `ssrClient`.
     ssr_client: u8,
@@ -802,6 +808,14 @@ struct Ctx<'a> {
     /// Attribute-value arrows (`component={(p) => …}`) take a different path
     /// and are NOT affected — they can be real inline components.
     in_jsx_child_callback: bool,
+    /// > 0 while walking JSX inside an accessor the emit wraps (`wrap_walked`):
+    /// that JSX keeps the h() path. Mirrors JS `wrappedJsxDepth`.
+    wrapped_jsx_depth: u32,
+    /// Span starts of preserved template holes in SVG/MathML content that build
+    /// JSX: walked like every hole, but under `wrapped_jsx_depth` so the JSX
+    /// keeps the h() path (mounted in its parent's namespace). Mirrors JS
+    /// `hPathHoles`.
+    h_path_holes: FxHashSet<u32>,
 
     /// Whether the expression currently being walked is a DIRECT
     /// argument-position arrow/function of a CallExpression
@@ -946,6 +960,7 @@ impl<'a> Ctx<'a> {
             needs_set_prop_static_import: false,
             needs_set_html_import: false,
             needs_ref_import: false,
+            needs_dispose_import: [false; 4],
             needs_bind_text_import: false,
             needs_bind_prop_import: false,
             needs_bind_direct_import: false,
@@ -977,11 +992,14 @@ impl<'a> Ctx<'a> {
             parent_component_has_sole_child: false,
             parent_eager_mount: false,
             client_tpl_components: false,
+            foreign_holes: FxHashSet::default(),
             ssr_client: SSR_CLIENT_NONE,
             ssr_owner: None,
             ssr_next_eager: false,
             needs_slot_import: false,
             in_jsx_child_callback: false,
+            wrapped_jsx_depth: 0,
+            h_path_holes: FxHashSet::default(),
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
@@ -1142,6 +1160,11 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_ref_import {
                 imports.push("_ref");
+            }
+            for (i, name) in ["_dispose2", "_dispose3", "_dispose4", "_disposeN"].iter().enumerate() {
+                if self.needs_dispose_import[i] {
+                    imports.push(name);
+                }
             }
             let mut reactivity_specs: Vec<&str> = Vec::new();
             if self.needs_bind_import {
@@ -4834,6 +4857,7 @@ pub fn transform_jsx(
         collapse,
     );
     ctx.client_tpl_components = client_tpl_components;
+    ctx.foreign_holes = collect_foreign_holes(&ret.program);
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
     if let Some(signals) = known_signals {
@@ -5458,37 +5482,7 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
         }
         Expression::CallExpression(call) => {
             walk_expression(&call.callee, ctx);
-            // Track callback depth for arguments that are functions
-            for arg in &call.arguments {
-                match arg {
-                    Argument::SpreadElement(spread) => walk_expression(&spread.argument, ctx),
-                    _ => {
-                        if let Some(e) = arg.as_expression() {
-                            let is_fn = matches!(
-                                e,
-                                Expression::ArrowFunctionExpression(_)
-                                    | Expression::FunctionExpression(_)
-                            );
-                            // A DIRECT argument-position arrow/function is a
-                            // callback whose param is a runtime value, NOT
-                            // reactive props (`.map`/`.filter`/any callback).
-                            // The arrow/function arm consumes+clears this flag,
-                            // so nested arrows inside the body still register
-                            // their own props. Mirrors JS jsx.ts:1801.
-                            let old_cb_arg = ctx.in_callback_argument;
-                            if is_fn {
-                                ctx.callback_depth += 1;
-                                ctx.in_callback_argument = true;
-                            }
-                            walk_expression(e, ctx);
-                            if is_fn {
-                                ctx.callback_depth -= 1;
-                            }
-                            ctx.in_callback_argument = old_cb_arg;
-                        }
-                    }
-                }
-            }
+            walk_call_arguments(&call.arguments, ctx);
         }
         Expression::ConditionalExpression(cond) => {
             walk_expression(&cond.test, ctx);
@@ -5583,18 +5577,14 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
             }
         }
         Expression::ChainExpression(c) => match &c.expression {
+            // An optional call (`rows()?.map((r) => …)`) is a call like any
+            // other: its function arguments are callbacks, not components. The
+            // JS backend's parent check sees the same CallExpression either
+            // way; this arm skipped the callback flags, so a `?.map` item param
+            // was registered as reactive props and its reads were wrapped.
             ChainElement::CallExpression(call) => {
                 walk_expression(&call.callee, ctx);
-                for arg in &call.arguments {
-                    match arg {
-                        Argument::SpreadElement(spread) => walk_expression(&spread.argument, ctx),
-                        _ => {
-                            if let Some(e) = arg.as_expression() {
-                                walk_expression(e, ctx);
-                            }
-                        }
-                    }
-                }
+                walk_call_arguments(&call.arguments, ctx);
             }
             ChainElement::StaticMemberExpression(m) => walk_expression(&m.object, ctx),
             ChainElement::ComputedMemberExpression(m) => {
@@ -5611,6 +5601,64 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
         Expression::TSInstantiationExpression(e) => walk_expression(&e.expression, ctx),
         _ => {}
     }
+}
+
+/// Walk a call's arguments, flagging each DIRECT function argument as a
+/// callback: its param is a runtime value, NOT reactive props
+/// (`.map`/`.filter`/any callback). The arrow/function arm consumes and clears
+/// the flag, so nested arrows inside the body still register their own props.
+/// Mirrors the JS `isCallbackArg` parent check in `walkNode`.
+fn walk_call_arguments(arguments: &[Argument], ctx: &mut Ctx) {
+    for arg in arguments {
+        match arg {
+            Argument::SpreadElement(spread) => walk_expression(&spread.argument, ctx),
+            _ => {
+                if let Some(e) = arg.as_expression() {
+                    let is_fn = matches!(
+                        e,
+                        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+                    );
+                    let old_cb_arg = ctx.in_callback_argument;
+                    if is_fn {
+                        ctx.callback_depth += 1;
+                        ctx.in_callback_argument = true;
+                    }
+                    walk_expression(e, ctx);
+                    if is_fn {
+                        ctx.callback_depth -= 1;
+                    }
+                    ctx.in_callback_argument = old_cb_arg;
+                }
+            }
+        }
+    }
+}
+
+/// Run `f` with a callback's parameters in scope, as the walk has them on
+/// entering the arrow: a parameter shadows a signal of its name (no auto-call)
+/// and hides a prop-derived alias it re-binds (no inlining). For the `_ssr`
+/// item builders, which slice the callback body's holes without walking the
+/// callback itself. Mirrors jsx.ts `inCallbackScope`.
+fn in_callback_scope<T>(
+    cb: &ArrowFunctionExpression,
+    ctx: &mut Ctx,
+    f: impl FnOnce(&mut Ctx) -> T,
+) -> T {
+    let mark = ctx.prop_derived_log.len();
+    let mut names = Vec::new();
+    fn_param_names(&cb.params, &mut names);
+    pd_hide(ctx, &names);
+    let shadows =
+        if !ctx.signal_vars.is_empty() { find_shadowing_names_arrow(cb, ctx) } else { vec![] };
+    for name in &shadows {
+        ctx.shadowed_signals.insert(name.clone());
+    }
+    let r = f(ctx);
+    for name in &shadows {
+        ctx.shadowed_signals.remove(name);
+    }
+    pop_prop_derived_scope(ctx, mark);
+    r
 }
 
 fn walk_arrow_body(arrow: &ArrowFunctionExpression, ctx: &mut Ctx) {
@@ -5865,6 +5913,19 @@ fn handle_jsx_attribute(
             return;
         }
 
+        // A prop value that builds JSX: walked, not sliced (see `wrap_walked`).
+        if should_wrap(expr, ctx) && contains_jsx_in_expr(expr) {
+            ctx.needs_rp_import = true;
+            wrap_walked(expr, "_rp(() => (", "))", ctx);
+            let sp = expr.span();
+            ctx.lens(
+                sp.start,
+                sp.end,
+                "reactive-prop",
+                "live prop — signal reads here are tracked into the component".to_string(),
+            );
+            return;
+        }
         // Wrap with _rp() if dynamic
         if should_wrap(expr, ctx) {
             let sliced = slice_expr(expr, ctx);
@@ -6027,18 +6088,121 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
             None => false,
         };
         // The client slices a template's expression children into the bind as
-        // raw source, so nothing inside one is a template. Mirrors JS.
-        ctx.ssr_client = SSR_CLIENT_RAW;
-        handle_jsx_expression_child_inner(container, marks, ctx);
+        // raw source, so nothing inside one is a template — except a child that
+        // builds JSX, which the client preserves and walks (`client_walks_hole`).
+        // Mirror that: walk it, under no template. Mirrors JS.
+        let walked = client_walks_hole(container, ctx);
+        ctx.ssr_client = if walked { SSR_CLIENT_NONE } else { SSR_CLIENT_RAW };
+        handle_jsx_expression_child_inner(container, marks, walked, ctx);
         ctx.ssr_client = SSR_CLIENT_IN;
         return;
     }
-    handle_jsx_expression_child_inner(container, false, ctx);
+    handle_jsx_expression_child_inner(container, false, false, ctx);
+}
+
+/// SVG element names that are NOT also HTML element names — an element with one
+/// is SVG content wherever it is written. Mirrors JS `SVG_ONLY_TAGS`.
+fn is_svg_only_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "altGlyph" | "altGlyphDef" | "altGlyphItem" | "animate" | "animateColor"
+            | "animateMotion" | "animateTransform" | "circle" | "clipPath" | "color-profile"
+            | "cursor" | "defs" | "desc" | "discard" | "ellipse" | "feBlend" | "feColorMatrix"
+            | "feComponentTransfer" | "feComposite" | "feConvolveMatrix" | "feDiffuseLighting"
+            | "feDisplacementMap" | "feDistantLight" | "feDropShadow" | "feFlood" | "feFuncA"
+            | "feFuncB" | "feFuncG" | "feFuncR" | "feGaussianBlur" | "feImage" | "feMerge"
+            | "feMergeNode" | "feMorphology" | "feOffset" | "fePointLight"
+            | "feSpecularLighting" | "feSpotLight" | "feTile" | "feTurbulence" | "filter"
+            | "font-face" | "font-face-format" | "font-face-name" | "font-face-src"
+            | "font-face-uri" | "foreignObject" | "g" | "glyph" | "glyphRef" | "hkern" | "image"
+            | "line" | "linearGradient" | "marker" | "mask" | "metadata" | "missing-glyph"
+            | "mpath" | "path" | "pattern" | "polygon" | "polyline" | "radialGradient" | "rect"
+            | "set" | "stop" | "switch" | "symbol" | "text" | "textPath" | "tref" | "tspan"
+            | "use" | "view" | "vkern"
+    )
+}
+
+/// The raw-expression span starts of every JSX child expression whose holding
+/// element sits in SVG or MathML content by its JSX ancestry: the chain runs
+/// through elements (components included) and fragments up to the first
+/// non-JSX parent; `svg`, `math` or an SVG-only tag enter foreign content and
+/// `foreignObject` returns to HTML. A hole there is never walked WITH templates
+/// (`client_walks_hole`), because each element it builds would be a template
+/// root namespaced by its own tag alone; it is walked with its JSX kept on the
+/// h() path instead (`h_path_holes`). A pre-pass because the walk has no
+/// parent pointers. Mirrors jsx.ts `inForeignContent`.
+fn collect_foreign_holes(program: &Program) -> FxHashSet<u32> {
+    struct F {
+        inherited: bool,
+        out: FxHashSet<u32>,
+    }
+    fn children<'a>(f: &mut F, kids: &[JSXChild<'a>], state: bool) {
+        for child in kids {
+            match child {
+                JSXChild::Element(c) => {
+                    f.inherited = state;
+                    f.visit_jsx_element(c);
+                }
+                JSXChild::Fragment(frag) => children(f, &frag.children, state),
+                JSXChild::ExpressionContainer(c) => {
+                    if state {
+                        if let Some(e) = jsx_expr_as_expression(&c.expression) {
+                            f.out.insert(e.span().start);
+                        }
+                    }
+                    f.inherited = false;
+                    f.visit_jsx_expression_container(c);
+                }
+                other => {
+                    f.inherited = false;
+                    f.visit_jsx_child(other);
+                }
+            }
+        }
+    }
+    impl<'a> Visit<'a> for F {
+        fn visit_jsx_element(&mut self, el: &JSXElement<'a>) {
+            let inherited = std::mem::replace(&mut self.inherited, false);
+            let tag = jsx_tag_name(el);
+            let state = if tag == "foreignObject" {
+                false
+            } else if tag == "svg" || tag == "math" || is_svg_only_tag(tag) {
+                true
+            } else {
+                inherited
+            };
+            self.visit_jsx_opening_element(&el.opening_element);
+            self.inherited = false;
+            children(self, &el.children, state);
+        }
+        fn visit_jsx_fragment(&mut self, frag: &JSXFragment<'a>) {
+            let inherited = std::mem::replace(&mut self.inherited, false);
+            children(self, &frag.children, inherited);
+        }
+    }
+    let mut f = F { inherited: false, out: FxHashSet::default() };
+    f.visit_program(program);
+    f.out
+}
+
+/// Does the client PRESERVE this expression child of a templated element as a
+/// hole and walk it (`process_one_child`), rather than slice it into the bind?
+/// True exactly when the expression builds JSX. The caller guarantees the
+/// child's element is client-templated. The one predicate the client emit, the
+/// SSR h()-path emit and the `_ssr` emit share. Mirrors jsx.ts `clientWalksHole`.
+fn client_walks_hole(container: &JSXExpressionContainer, ctx: &Ctx) -> bool {
+    match jsx_expr_as_expression(&container.expression) {
+        Some(e) => {
+            contains_jsx_in_expr(unwrap_type_layers(e)) && !ctx.foreign_holes.contains(&e.span().start)
+        }
+        None => false,
+    }
 }
 
 fn handle_jsx_expression_child_inner(
     container: &JSXExpressionContainer,
     marks: bool,
+    walked: bool,
     ctx: &mut Ctx,
 ) {
     let expr = match &container.expression {
@@ -6124,6 +6288,23 @@ fn handle_jsx_expression_child_inner(
             ctx.add_replacement(sp.start, sp.end, sliced);
             return;
         }
+        if walked {
+            // `wrap_expr` would slice the JSX away from the walk. Bracket the
+            // untouched range instead (the `() => (…)` the client's `_mountSlot`
+            // takes) and walk it; the closer goes after the walk so an edit the
+            // walk inserts at the end lands inside. Mirrors JS.
+            let sp = expr.span();
+            ctx.add_replacement(sp.start, sp.start, "() => (".to_string());
+            walk_expr_child_unsliced(expr, ctx);
+            ctx.add_replacement(sp.end, sp.end, ")".to_string());
+            ctx.lens(
+                sp.start,
+                sp.end,
+                "reactive",
+                "live — re-evaluates whenever its signals change".to_string(),
+            );
+            return;
+        }
         wrap_expr(expr, ctx);
         return;
     }
@@ -6136,8 +6317,17 @@ fn handle_jsx_expression_child_inner(
         ctx.needs_slot_import = true;
         ctx.add_replacement(expr.span().start, expr.span().start, "_slot(".to_string());
     }
-    // Otherwise just recurse — but reset parent_is_jsx since we're already
-    // inside a JSX expression container `{...}`.
+    walk_expr_child_unsliced(expr, ctx);
+    if marks {
+        ctx.add_replacement(expr.span().end, expr.span().end, ")".to_string());
+    }
+}
+
+/// Walk an expression child the emit does NOT slice, with the flags its
+/// container position implies. Mirrors jsx.ts `walkUnslicedExpr`.
+fn walk_expr_child_unsliced(expr: &Expression, ctx: &mut Ctx) {
+    // Reset parent_is_jsx since we're already inside a JSX expression
+    // container `{...}`.
     let old = ctx.parent_is_jsx;
     let old_eager = ctx.parent_eager_mount;
     ctx.parent_is_jsx = false;
@@ -6162,9 +6352,6 @@ fn handle_jsx_expression_child_inner(
     ctx.in_jsx_child_callback = old_cb;
     ctx.parent_is_jsx = old;
     ctx.parent_eager_mount = old_eager;
-    if marks {
-        ctx.add_replacement(expr.span().end, expr.span().end, ")".to_string());
-    }
 }
 
 // ── SSR range markers for client placeholders (#4385 case D) ────────────────
@@ -6186,7 +6373,7 @@ const SSR_CLIENT_RAW: u8 = 2;
 /// Would the client's `try_template_emit` lower this element to a template root?
 /// `eager` is the client's `parent_eager_mount` verdict for it.
 fn client_templates_root(el: &JSXElement, eager: bool, ctx: &Ctx) -> bool {
-    if is_self_closing(el) {
+    if is_self_closing(el) || ctx.wrapped_jsx_depth > 0 {
         return false;
     }
     if ctx.client_tpl_components && eager && template_absorbs_component(&el.children) {
@@ -6373,6 +6560,17 @@ fn unwrap_type_layers<'a>(expr: &'a Expression<'a>) -> &'a Expression<'a> {
 }
 
 fn wrap_expr(expr: &Expression, ctx: &mut Ctx) {
+    if contains_jsx_in_expr(expr) {
+        wrap_walked(expr, "() => (", ")", ctx);
+        let sp = expr.span();
+        ctx.lens(
+            sp.start,
+            sp.end,
+            "reactive",
+            "live — re-evaluates whenever its signals change".to_string(),
+        );
+        return;
+    }
     let sliced = slice_expr(expr, ctx);
     // Parenthesize an expression that STARTS with `{` (see jsx.ts wrap).
     let text = if sliced.starts_with('{') {
@@ -6388,6 +6586,30 @@ fn wrap_expr(expr: &Expression, ctx: &mut Ctx) {
         "reactive",
         "live — re-evaluates whenever its signals change".to_string(),
     );
+}
+
+/// Wrap an accessor around an expression that BUILDS JSX, walking it in place
+/// instead of slicing it, so the JSX inside gets the reactivity rules every
+/// other JSX element gets (a keyed `.map` row's `{row.label()}` becomes the
+/// row's own binding). The JSX stays on the h() path. Mirrors JS `wrapWalked`
+/// — see its doc comment.
+fn wrap_walked(expr: &Expression, open: &str, close: &str, ctx: &mut Ctx) {
+    let sp = expr.span();
+    ctx.add_replacement(sp.start, sp.start, open.to_string());
+    ctx.wrapped_jsx_depth += 1;
+    let old = ctx.parent_is_jsx;
+    let old_eager = ctx.parent_eager_mount;
+    let old_cb = ctx.in_jsx_child_callback;
+    ctx.parent_is_jsx = false;
+    ctx.parent_eager_mount = false;
+    ctx.in_jsx_child_callback = false;
+    slice_unsliced(expr, ctx);
+    walk_expression(expr, ctx);
+    ctx.in_jsx_child_callback = old_cb;
+    ctx.parent_is_jsx = old;
+    ctx.parent_eager_mount = old_eager;
+    ctx.wrapped_jsx_depth -= 1;
+    ctx.add_replacement(sp.end, sp.end, close.to_string());
 }
 
 // ─── Compile-to-string SSR fast path (`options.ssrTemplate`) ─────────────────
@@ -7290,7 +7512,7 @@ fn ssr_serialize_attr(
 
 /// `.map(item => <eligibleEl>)` fast path (recursed mode only). Mirrors JS
 /// `ssrTryMap`. Returns false to fall back to the general wrapped-hole path.
-fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, sole: bool, ctx: &mut Ctx) -> bool {
+fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, sole: bool, walked: bool, ctx: &mut Ctx) -> bool {
     let call = match expr {
         Expression::CallExpression(c) => c,
         _ => return false,
@@ -7320,7 +7542,22 @@ fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, sole: bool, ctx: &mut Ctx) -
     };
     // A self-closing item body is eligible (`items.map(i => <img src={i.src}/>)`
     // is an image gallery). Mirrors the JS backend.
-    let item_buf = match build_ssr_buf(body_el, SsrMode::MapItem, ctx) {
+    // A WALKED `.map` (`client_walks_hole`) builds its item with recursed child
+    // semantics and a plain-string return (a `<For>` row's `ForItem` mode),
+    // under the client-template reset `ssr_try_for_keyed` does; an unwalked
+    // one keeps `MapItem`. Mirrors the JS backend.
+    let item_mode = if walked { SsrMode::ForItem } else { SsrMode::MapItem };
+    let outer_client = ctx.ssr_client;
+    let outer_owner = ctx.ssr_owner;
+    if walked {
+        ctx.ssr_client = SSR_CLIENT_NONE;
+        ctx.ssr_owner = None;
+    }
+    ctx.ssr_next_eager = false;
+    let built = in_callback_scope(cb, ctx, |ctx| build_ssr_buf(body_el, item_mode, ctx));
+    ctx.ssr_client = outer_client;
+    ctx.ssr_owner = outer_owner;
+    let item_buf = match built {
         Some(s) => s,
         None => return false,
     };
@@ -7347,7 +7584,7 @@ fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, sole: bool, ctx: &mut Ctx) -
     // The compiler re-emits this whole `.map` call, so it owns the item arrow's
     // body — fuse it exactly like a `<For>` row. Mirrors the JS backend.
     let item_body = build_ssr_for_item_body(&item_buf, &param_text, ctx)
-        .unwrap_or_else(|| ssr_call_text(&item_buf, SsrMode::MapItem, ctx));
+        .unwrap_or_else(|| ssr_call_text(&item_buf, item_mode, ctx));
     // A SOLE `.map` child needs no markers — the element's tag boundary is the
     // extent (h() wraps the call, so `renderElement` elides it there too).
     if !sole {
@@ -7601,6 +7838,66 @@ fn fuse_text_children_impl(
     Some(format!("_fuse({})", rendered.join(", ")))
 }
 
+/// A PRESERVED expression hole (see `ssr_serialize_expr_child`), bracketed like
+/// the generated one. Mirrors jsx.ts `ssrEmitPreservedExprHole`.
+fn ssr_emit_preserved_expr_hole(
+    buf: &mut SsrBuf,
+    expr: &Expression,
+    sole: bool,
+    marks: bool,
+    inner: u8,
+    raw_is_jsx: bool,
+    ctx: &mut Ctx,
+) {
+    let sp = expr.span();
+    if sole {
+        ctx.needs_esc_sole_import = true;
+        buf.emit_source_hole_wrapped(
+            sp.start,
+            sp.end,
+            "_escSole(",
+            ")",
+            true,
+            ctx.ssr_ns_path.clone(),
+            inner,
+            raw_is_jsx,
+        );
+    } else if marks {
+        ctx.needs_esc_sole_import = true;
+        buf.emit_static("<!--$-->");
+        buf.emit_source_hole_wrapped(
+            sp.start,
+            sp.end,
+            "_escSole(",
+            ")",
+            true,
+            ctx.ssr_ns_path.clone(),
+            inner,
+            raw_is_jsx,
+        );
+        buf.emit_static("<!--/$-->");
+    } else {
+        let wrapped = should_wrap(expr, ctx);
+        ctx.needs_esc_import = true;
+        if wrapped {
+            buf.emit_static("<!--$-->");
+        }
+        buf.emit_source_hole_wrapped(
+            sp.start,
+            sp.end,
+            "_esc(",
+            ")",
+            true,
+            ctx.ssr_ns_path.clone(),
+            inner,
+            raw_is_jsx,
+        );
+        if wrapped {
+            buf.emit_static("<!--/$-->");
+        }
+    }
+}
+
 fn ssr_serialize_expr_child(
     buf: &mut SsrBuf,
     container: &JSXExpressionContainer,
@@ -7635,9 +7932,9 @@ fn ssr_serialize_expr_child(
     // A client `<!>` placeholder whose value is not an accessor: bracket it
     // (see `ssr_enter_element`). Byte-identical to the h() path's `_slot(x)`.
     let marks = ssr_slot_needs_markers(container, expr, ctx);
-    // What the client does with JSX inside this expression: a templated
-    // element slices it into its bind and an accessor child is sliced, so
-    // neither is walked (RAW); anything else is walked as on the h() path.
+    // What the client does with JSX inside this expression: an accessor child
+    // is sliced, so it is not walked (RAW); anything else is walked as on the
+    // h() path.
     let inner = if ctx.ssr_client == SSR_CLIENT_NONE && !should_wrap(expr, ctx) {
         SSR_CLIENT_NONE
     } else {
@@ -7646,8 +7943,46 @@ fn ssr_serialize_expr_child(
     // The client's `parent_eager_mount` for JSX that IS the container's
     // expression (`{<div/>}`), and so for a preserved or lowered one.
     let raw_is_jsx = matches!(raw, Expression::JSXElement(_) | Expression::JSXFragment(_));
+    // A client-templated element PRESERVES an expression child that builds JSX
+    // and walks it (`client_walks_hole`), so its JSX compiles like the h()
+    // path's: a `.map` item takes a `<For>` row's semantics, and anything else
+    // lowers or is kept as a range and walked under no template. Mirrors
+    // jsx.ts `ssrSerializeExprChild`.
+    if ctx.ssr_client == SSR_CLIENT_IN && client_walks_hole(container, ctx) {
+        if ssr_try_map(buf, expr, sole, true, ctx) {
+            return true;
+        }
+        // The walked JSX lowered to strings with nothing left as source: the
+        // lowering an h()-path child the walk visits gets. Mirrors JS.
+        let outer_client = ctx.ssr_client;
+        let outer_owner = ctx.ssr_owner;
+        ctx.ssr_client = SSR_CLIENT_NONE;
+        ctx.ssr_owner = None;
+        ctx.ssr_next_eager = false;
+        let lowered = ssr_lower_nested_elements(expr, ctx);
+        ctx.ssr_next_eager = false;
+        ctx.ssr_client = outer_client;
+        ctx.ssr_owner = outer_owner;
+        if let Some(text) = lowered {
+            if !ctx.ssr_lower_residual_jsx {
+                ssr_emit_expr_hole(buf, text, expr, sole, marks, ctx);
+                return true;
+            }
+        }
+        // Generated item bodies have nowhere to keep a range, and a preserved
+        // hole's own templates are built when this call's arguments evaluate —
+        // before `_esc(…, ns)` enters a baked foreign namespace — so under one
+        // they would escape for HTML. Bail in both cases; the h() walk keeps
+        // the range and evaluates the hole inside the element's render.
+        // Mirrors JS.
+        if mode != SsrMode::Recursed || !ctx.ssr_ns_path.is_empty() {
+            return false;
+        }
+        ssr_emit_preserved_expr_hole(buf, expr, sole, marks, SSR_CLIENT_NONE, false, ctx);
+        return true;
+    }
     // recursed mode: matches handleJsxExpression's wrap decision.
-    if ssr_try_map(buf, expr, sole, ctx) {
+    if ssr_try_map(buf, expr, sole, false, ctx) {
         return true;
     }
     // Lower an eligible DOM element nested in a conditional (`cond && <el>`,
@@ -7674,52 +8009,7 @@ fn ssr_serialize_expr_child(
         if mode == SsrMode::Recursed
             && slice_expr(expr, ctx) == ctx.source[sp.start as usize..sp.end as usize]
         {
-            if sole {
-                ctx.needs_esc_sole_import = true;
-                buf.emit_source_hole_wrapped(
-                    sp.start,
-                    sp.end,
-                    "_escSole(",
-                    ")",
-                    true,
-                    ctx.ssr_ns_path.clone(),
-                    inner,
-                    raw_is_jsx,
-                );
-            } else if marks {
-                ctx.needs_esc_sole_import = true;
-                buf.emit_static("<!--$-->");
-                buf.emit_source_hole_wrapped(
-                    sp.start,
-                    sp.end,
-                    "_escSole(",
-                    ")",
-                    true,
-                    ctx.ssr_ns_path.clone(),
-                    inner,
-                    raw_is_jsx,
-                );
-                buf.emit_static("<!--/$-->");
-            } else {
-                let wrapped = should_wrap(expr, ctx);
-                ctx.needs_esc_import = true;
-                if wrapped {
-                    buf.emit_static("<!--$-->");
-                }
-                buf.emit_source_hole_wrapped(
-                    sp.start,
-                    sp.end,
-                    "_esc(",
-                    ")",
-                    true,
-                    ctx.ssr_ns_path.clone(),
-                    inner,
-                    raw_is_jsx,
-                );
-                if wrapped {
-                    buf.emit_static("<!--/$-->");
-                }
-            }
+            ssr_emit_preserved_expr_hole(buf, expr, sole, marks, inner, raw_is_jsx, ctx);
             return true;
         }
         // Kept as generated text: the hole renders the VNodes it builds as soon
@@ -7729,11 +8019,25 @@ fn ssr_serialize_expr_child(
         buf.defer_jsx = true;
     }
     let expr_text = lowered.unwrap_or_else(|| slice_expr(expr, ctx));
+    ssr_emit_expr_hole(buf, expr_text, expr, sole, marks, ctx);
+    true
+}
+
+/// A GENERATED expression hole and the range markers its position takes.
+/// Mirrors jsx.ts `ssrEmitExprHole`.
+fn ssr_emit_expr_hole(
+    buf: &mut SsrBuf,
+    expr_text: String,
+    expr: &Expression,
+    sole: bool,
+    marks: bool,
+    ctx: &mut Ctx,
+) {
     // SOLE child of this element → no markers on EITHER side, whatever the
     // expression's static shape; `_escSole` decides from the runtime value kind.
     if sole {
         emit_esc_sole_hole(buf, expr_text, ctx);
-        return true;
+        return;
     }
     if should_wrap(expr, ctx) {
         // The h() path wraps a dynamic child in `() => expr` → `<!--$-->…<!--/$-->`
@@ -7751,7 +8055,6 @@ fn ssr_serialize_expr_child(
     } else {
         emit_esc_hole(buf, expr_text, true, ctx);
     }
-    true
 }
 
 /// Serialize one child (text / element / expression). False = bail. Mirrors JS
@@ -7836,7 +8139,7 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
     }
     ctx.ssr_owner = None;
     ctx.ssr_next_eager = false;
-    let built = build_ssr_buf(body_el, SsrMode::ForItem, ctx);
+    let built = in_callback_scope(cb, ctx, |ctx| build_ssr_buf(body_el, SsrMode::ForItem, ctx));
     ctx.ssr_client = outer_client;
     ctx.ssr_owner = outer_owner;
     let item_buf = match built {
@@ -8309,6 +8612,9 @@ fn find_jsx_element_by_span_in<'a>(
 }
 
 fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
+    if ctx.wrapped_jsx_depth > 0 {
+        return false;
+    }
     // A KEYED root stays a JSX element, as the client compile keeps it on the
     // h() path. The root is the value a parent component receives as a child,
     // and `_ssr` carries no key (#4382). Mirrors the JS `trySsrTemplateEmit`.
@@ -8507,7 +8813,7 @@ fn brace_template_child(call: String, ctx: &mut Ctx) -> String {
 }
 
 fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
-    if ctx.ssr {
+    if ctx.ssr || ctx.wrapped_jsx_depth > 0 {
         return false;
     }
     if is_self_closing(el) {
@@ -8555,6 +8861,10 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     // revisits the subtree.
     let parts: Vec<&str> = braced.split(HOLE_SENTINEL).collect();
     // parts = [seg0, idx0, seg1, idx1, …, segN] — odd entries are hole indices.
+    // Holes must appear in source order, each once, for the bracketing to be
+    // well-formed. Checked BEFORE any edit is added, so a bail leaves no
+    // half-emitted template behind. Mirrors jsx.ts.
+    let mut order: Vec<Span> = Vec::new();
     let mut cursor = start;
     let mut i = 1;
     while i < parts.len() {
@@ -8566,13 +8876,17 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
             Some(h) => *h,
             None => return false,
         };
-        // Holes must be in source order for the bracketing to be well-formed.
         if hole.start < cursor {
             return false;
         }
-        ctx.add_replacement(cursor, hole.start, parts[i - 1].to_string());
+        order.push(hole);
         cursor = hole.end;
         i += 2;
+    }
+    cursor = start;
+    for (k, hole) in order.iter().enumerate() {
+        ctx.add_replacement(cursor, hole.start, parts[2 * k].to_string());
+        cursor = hole.end;
     }
     ctx.add_replacement(cursor, end, parts[parts.len() - 1].to_string());
 
@@ -8593,6 +8907,20 @@ fn try_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
     for hole in &holes {
         if let Some(child) = find_jsx_element_by_span(el, hole.start, hole.end) {
             handle_jsx_element(child, ctx);
+        } else if let Some(e) = find_jsx_child_expr_by_span(&el.children, hole.start, hole.end) {
+            // An expression child that builds JSX (`process_one_child`): walked
+            // like the h() path's unsliced expression child. Its JSX is never
+            // the container's direct expression (that bails the template), so
+            // no root inside it is eagerly ordered. Mirrors jsx.ts
+            // `walkUnslicedExpr(hole)`.
+            let h_path = ctx.h_path_holes.contains(&hole.start);
+            if h_path {
+                ctx.wrapped_jsx_depth += 1;
+            }
+            walk_preserved_child_expr(e, false, ctx);
+            if h_path {
+                ctx.wrapped_jsx_depth -= 1;
+            }
         }
     }
     ctx.parent_is_jsx = old_parent_is_jsx;
@@ -9213,13 +9541,19 @@ fn build_template_call(
         // instance (per row under `<For>` for the dominant reactive-text shape).
         body.push_str(&format!("\n  return {}", tb.disposer_names[0]));
     } else if !tb.disposer_names.is_empty() {
-        let disposers = tb
-            .disposer_names
-            .iter()
-            .map(|d| format!("{}()", d))
-            .collect::<Vec<_>>()
-            .join("; ");
-        body.push_str(&format!("\n  return () => {{ {} }}", disposers));
+        // A runtime helper builds the combined cleanup, NOT an arrow here: an
+        // arrow created inside the bind function chains its context to the
+        // component function's, so it kept the component's props and captured
+        // locals alive for the template's lifetime (runtime-dom `_dispose2`).
+        let n = tb.disposer_names.len();
+        let names = tb.disposer_names.join(", ");
+        if n <= 4 {
+            ctx.needs_dispose_import[n - 2] = true;
+            body.push_str(&format!("\n  return _dispose{}({})", n, names));
+        } else {
+            ctx.needs_dispose_import[3] = true;
+            body.push_str(&format!("\n  return _disposeN([{}])", names));
+        }
     } else {
         body.push_str("\n  return null");
     }
@@ -10606,11 +10940,35 @@ fn process_one_child(
             let expr = unwrap_type_layers(raw_expr);
             let was_type_wrapped = !std::ptr::eq(expr as *const _, *raw_expr as *const _);
             let (expr_text, is_reactive) = unwrap_accessor(expr, ctx);
+            // An expression child that BUILDS JSX is a PRESERVED hole, walked in
+            // place by `try_template_emit` like an absorbed component child —
+            // never a source slice the walk cannot see. A function child IS the
+            // slot's accessor and is preserved whole. Mirrors jsx.ts
+            // `processOneChild` (`holdsJsx` / `holeArg`) and `client_walks_hole`.
+            // A hole in SVG/MathML content is preserved and walked too, but its
+            // JSX keeps the h() path (`h_path_holes`), as `wrap_walked` keeps an
+            // h()-path child's. Mirrors jsx.ts `hPathHoles`.
+            let walk = contains_jsx_in_expr(expr);
+            if walk && ctx.foreign_holes.contains(&raw_expr.span().start) {
+                ctx.h_path_holes.insert(expr.span().start);
+            }
+            let is_fn_child = matches!(
+                expr,
+                Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+            );
+            let hole_arg = |tb: &mut TemplateBuilder, accessor: bool| -> String {
+                let h = tb.register_hole(expr.span());
+                if accessor && !is_fn_child {
+                    format!("() => ({})", h)
+                } else {
+                    h
+                }
+            };
             let is_element_valued_ident = matches!(
                 expr,
                 Expression::Identifier(id) if ctx.element_vars.contains(id.name.as_str())
             );
-            if is_children_expression(expr, &expr_text) || is_element_valued_ident {
+            if (!walk && is_children_expression(expr, &expr_text)) || is_element_valued_ident {
                 tb.needs_mount_slot = true;
                 let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
@@ -10640,9 +10998,14 @@ fn process_one_child(
                 tb.needs_mount_slot = true;
                 let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
+                let slot_arg = if walk {
+                    hole_arg(tb, true)
+                } else {
+                    format!("() => ({})", expr_text)
+                };
                 tb.bind_lines.push(format!(
-                    "const {} = _mountSlot(() => ({}), {}, {}{})",
-                    d, expr_text, parent_ref, placeholder, sole_arg
+                    "const {} = _mountSlot({}, {}, {}{})",
+                    d, slot_arg, parent_ref, placeholder, sole_arg
                 ));
                 return Some("<!>".to_string());
             }
@@ -10663,7 +11026,9 @@ fn process_one_child(
                 tb.needs_mount_slot = true;
                 let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
-                let slot_arg = if is_reactive {
+                let slot_arg = if walk {
+                    hole_arg(tb, is_reactive)
+                } else if is_reactive {
                     format!("() => ({})", expr_text)
                 } else {
                     expr_text.clone()
@@ -11558,7 +11923,7 @@ fn detect_collapsible_shape(
 /// PR-1 scope: full collapse only — a non-full shape keeps the normal mount
 /// (the partial / dynamic / element-child fallthrough is a follow-on PR).
 fn try_rocketstyle_collapse(el: &JSXElement, ctx: &mut Ctx) -> bool {
-    if ctx.collapse.is_none() {
+    if ctx.collapse.is_none() || ctx.wrapped_jsx_depth > 0 {
         return false;
     }
     let tag = jsx_tag_name(el);

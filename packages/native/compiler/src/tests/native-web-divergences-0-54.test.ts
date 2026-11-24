@@ -18,6 +18,10 @@ import { describe, expect, it } from 'vitest'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
 import { KOTLIN_THROWN_PREAMBLE, SWIFT_THROWN_PREAMBLE } from '../throw-lowering'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const head = `import { signal } from '@pyreon/reactivity'
 import { Stack, Text, Button } from '@pyreon/primitives'
@@ -27,7 +31,7 @@ const swiftOk = isSwiftcAvailable()
 const kotlincOk = isKotlincAvailable()
 function javaOk(): boolean {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
     return true
   } catch {
     return false
@@ -77,7 +81,7 @@ function runKotlin(program: string): string {
   const jar = join(dir, 'p.jar')
   writeFileSync(file, program)
   execFileSync('kotlinc', [file, '-include-runtime', '-d', jar], { stdio: 'pipe' })
-  return execFileSync('java', ['-jar', jar], { encoding: 'utf8' }).trim()
+  return execFileSync(JAVA, ['-jar', jar], { encoding: 'utf8' }).trim()
 }
 
 // ── 1. Kotlin `.length` in an array callback ────────────────────────────────────────────────────────────────────

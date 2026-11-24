@@ -653,6 +653,14 @@ export async function emitSeoOutputs(
       sections,
     }
     if (llmsOpts.description) llmsArgs.description = llmsOpts.description
+    // No published page in any collection: an llms.txt would be a bare title
+    // with no link, which Lighthouse's `llms-txt` audit fails ("File does not
+    // appear to contain any links."). A missing llms.txt is "not applicable"
+    // to that audit, so leave it out and say why.
+    if (sections.length === 0) {
+      warn('[Pyreon] seo.llms: no published entry in any collection, so llms.txt was not written. It is written once a collection has a published entry.')
+      return
+    }
     const text = generateLlmsTxt(llmsArgs)
     await fs.writeFile(path.join(outDir, 'llms.txt'), text, 'utf8')
   }

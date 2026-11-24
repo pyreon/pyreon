@@ -23,10 +23,23 @@
 import { transformSync } from 'esbuild'
 import { transformJSX } from '@pyreon/compiler'
 import { query } from '@pyreon/test-utils'
-import { Fragment, h, _rp, _rpd, cx } from '@pyreon/core'
-import { _bind, signal } from '@pyreon/reactivity'
+import { Fragment, h, _fuse, _rp, _rpd, cx } from '@pyreon/core'
+import { _bind, renderEffect, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, _setStyle, _setStyleOnce, mountChild, _mountSlot, _textSlot, _bindProp} from '../index'
+import {
+  _applyProps,
+  _bindProp,
+  _mountSlot,
+  _setAttr,
+  _setChild,
+  _setChildAt,
+  _setClass,
+  _setStyle,
+  _setStyleOnce,
+  _textSlot,
+  bindPolymorphicText,
+  mountChild,
+} from '../index'
 
 function stripImports(code: string): string {
   return code.replace(/^import\s+.*$/gm, '').trim()
@@ -53,6 +66,15 @@ const RUNTIME_DEPS = {
   _setStyleOnce,
   _mountSlot,
   _textSlot,
+  // Holes that build JSX are walked, so their elements compile to templates
+  // with the full binder set (`template-hole-walk.test.ts`).
+  _setAttr,
+  _setChild,
+  _setChildAt,
+  _setClass,
+  bindPolymorphicText,
+  renderEffect,
+  _fuse,
   _rp,
   _rpd,
   _cx: cx,

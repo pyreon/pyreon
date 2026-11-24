@@ -1,0 +1,68 @@
+{
+  "name": "@pyreon/charts-maps",
+  "version": "0.54.0",
+  "description": "Boundary data for @pyreon/charts maps: world and US-state TopoJSON, one lazy module per map, with the projection and join keys each one is meant for",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts-maps#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/charts-maps"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./world-110m": {
+      "bun": "./src/world-110m.ts",
+      "import": "./lib/world-110m.js",
+      "types": "./lib/types/world-110m.d.ts"
+    },
+    "./us-states": {
+      "bun": "./src/us-states.ts",
+      "import": "./lib/us-states.js",
+      "types": "./lib/types/us-states.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "README.md",
+    "SOURCES.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint .",
+    "build:data": "bun scripts/build-data.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@pyreon/charts": "workspace:*",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "shapefile": "^0.6.6",
+    "topojson-server": "^3.0.1",
+    "typescript": "^6.0.3"
+  },
+  "pyreon": {
+    "stability": "experimental"
+  }
+}

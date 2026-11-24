@@ -82,6 +82,13 @@ Most-used primitive. Renders an outer container with optional `beforeContent` / 
 
 Per-section overrides: `contentDirection`, `contentAlignX`, `beforeContentAlignY`, `afterContentDirection`, etc. — every section accepts the same axis props prefixed with the section name.
 
+**No styles through props.** A one-off look of a rocketstyle component built on `Element` is a named modifier on the component, applied by name; `css` is only the escape hatch for a selector or an at-rule, written as a tagged template (``css={css`…`}`` or ``css={(css) => css`…`}``), and a raw CSS string does not type-check. `css` renders into `@layer instance`, after the component's theme.
+
+```tsx
+const Grid = BaseGrid.multiple({ threeUp: { gridTemplateColumns: { md: 'repeat(3, minmax(0, 1fr))' } } })
+<Grid multiple={['threeUp', compact() && 'dense']} />
+```
+
 **Simple-path fast path**: when there's no `beforeContent` / `afterContent` and the tag doesn't need the button/fieldset/legend two-layer flex fix, Element inlines the wrapper helper into ONE styled invocation. Saves one component invocation + one `splitProps` + one `mountChild` per Element. Real-Chromium benchmark drops a 500-child mount from 2.9ms to 1.6ms (-45%).
 
 ## `Text` — semantic typography
@@ -97,7 +104,7 @@ Per-section overrides: `contentDirection`, `contentAlignX`, `beforeContentAlignY
 | `tag` | `'h1'`-`'h6'` / `'p'` / `'span'` / `'strong'` / `'em'` / `'small'` / … | Inline-by-default |
 | `paragraph` | `boolean` | Shorthand for `tag="p"` |
 | `children` / `label` | `VNodeChild` | Text content |
-| `css` | `ExtendCss` | Extend styling |
+| `css` | `ExtendCss` | Escape hatch for a selector or an at-rule: a tagged `css` template or a `(css) => …` callback (no raw string) |
 
 ## `List` — data-driven children with positional metadata
 

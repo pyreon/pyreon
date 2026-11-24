@@ -4,6 +4,7 @@
 // `collectPatterns`, which is the surface a backend composing its own document
 // actually calls.
 import { describe, expect, it } from 'vitest'
+import { patternMarks } from './pattern'
 import { collectPatterns, svgCommand } from './svg'
 import type { ChartPattern, DrawCmd } from './types'
 
@@ -60,6 +61,21 @@ describe('collectPatterns — one <pattern> def per pattern-bearing command', ()
     }
     expect([...slope(collectPatterns([rect({ pattern: pattern({ kind: 'diagonal' }) })], 'p').defs)]).toEqual(['-1'])
     expect([...slope(collectPatterns([rect({ pattern: pattern({ kind: 'cross' }) })], 'p').defs)].sort()).toEqual(['-1', '1'])
+  })
+
+  it('tiled symbol shapes are the engine polygon marks, point for point (a triangle, a diamond)', () => {
+    for (const symbol of ['triangle', 'diamond']) {
+      const p = pattern({ kind: 'symbols', symbol, spacing: 10, width: 4 })
+      const shape = rect({ pattern: p })
+      const box = shape.kind === 'rect' ? shape.rect : { x: 0, y: 0, w: 0, h: 0 }
+      const marks = patternMarks(p, box).filter((m) => m.kind === 'polygon')
+      expect(marks.length).toBeGreaterThan(0)
+      const drawn = [...collectPatterns([shape], 'p').defs.matchAll(/<polygon points="([^"]*)" fill="#fff"\/>/g)].map((m) => m[1])
+      const fmt = (v: number) => String(Math.round(v * 100) / 100)
+      expect(drawn.map((s) => s!.split(' ').map((xy) => xy.split(',').map(Number).map(fmt).join(',')))).toEqual(
+        marks.map((m) => (m.kind === 'polygon' ? m.points.map((q) => `${fmt(q.x)},${fmt(q.y)}`) : [])),
+      )
+    }
   })
 
   it('clamps spacing to a 2-unit minimum and width to 0.5 — a 0 would paint nothing', () => {

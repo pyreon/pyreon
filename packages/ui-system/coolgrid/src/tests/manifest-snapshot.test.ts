@@ -8,7 +8,7 @@ import manifest from '../manifest'
 describe('gen-docs — coolgrid snapshot', () => {
   it('renders to llms.txt bullet', () => {
     expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(
-      `"- @pyreon/coolgrid — Context-cascading responsive grid — Container, Row, Col with custom columns and breakpoints. Every numeric grid prop (size/gap/gutter/padding/columns) is responsive — a single number, a mobile-first array ([12, 6, 4]), or a breakpoint-keyed object ({ xs: 12, md: 6 }); size 0 hides the column at that breakpoint."`,
+      `"- [@pyreon/coolgrid](https://pyreon.dev/docs/reference/coolgrid): Context-cascading responsive grid — Container, Row, Col with custom columns and breakpoints. Every numeric grid prop (size/gap/gutter/padding/columns) is responsive — a single number, a mobile-first array ([12, 6, 4]), or a breakpoint-keyed object ({ xs: 12, md: 6 }); size 0 hides the column at that breakpoint."`,
     )
   })
 

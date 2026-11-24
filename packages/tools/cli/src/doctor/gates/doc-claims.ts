@@ -18,11 +18,20 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join } from 'node:path'
 import type { Finding, GateResult } from '../types'
-import { type ClaimSpec, SITE_LINT_CATEGORY_CLAIMS, SITE_LINT_RULE_CLAIMS } from './doc-claims-site'
+import { type ClaimSpec, SITE_LINT_CATEGORY_CLAIMS, SITE_HOOK_CLAIMS, SITE_LINT_RULE_CLAIMS, SITE_MCP_TOOL_CLAIMS } from './doc-claims-site'
+import { derivedClaimFindings, findUnknownPlaceholders, SITE_COUNT_CHECKS } from './doc-claims-site-counts'
+import { findUnscopedRunnerCommands } from './doc-claims-runner-commands'
 
-interface ClaimCheck {
+export {
+  findUnscopedRunnerCommands,
+  pyreonBins,
+  RUNNER_COMMAND_ALLOWANCES,
+  stringLiteralText,
+} from './doc-claims-runner-commands'
+
+export interface ClaimCheck {
   /** Human-readable name shown in findings */
   name: string
   /** Stable code suffix used in `Finding.code` */
@@ -43,8 +52,10 @@ const chartHostNames = (repoRoot: string): string[] => {
   for (const [, list] of readFileSync(plotPath, 'utf8').matchAll(/^export \{([^}]*)\} from/gm)) {
     for (const [, name] of (list ?? '').matchAll(/\b([A-Z]\w*Chart)\b(?!\w)/g)) if (name) names.add(name)
   }
+
   return [...names]
 }
+
 const countChartHosts = (repoRoot: string): number => chartHostNames(repoRoot).length
 /** The family hosts — every chart host but `PlotChart`, which has its own host. */
 const countChartFamilyHosts = (repoRoot: string): number => chartHostNames(repoRoot).filter((n) => n !== 'PlotChart').length
@@ -60,6 +71,7 @@ const countHookExports = (repoRoot: string): number => {
   for (const [, name] of matched) {
     if (name) names.add(name)
   }
+
   return names.size
 }
 
@@ -99,6 +111,7 @@ const countDocPages = (repoRoot: string): number => {
     }
   }
   walk(docsDir)
+
   return count
 }
 
@@ -144,6 +157,7 @@ const countLintCategories = (repoRoot: string): number => {
       if (m?.[1]) cats.add(m[1])
     }
   }
+
   return cats.size
 }
 
@@ -155,6 +169,7 @@ const countDetectorCodes = (repoRoot: string): number => {
     /export type PyreonDiagnosticCode =\n((?:\s*\|\s*'[a-z0-9-]+'\n?)+)/,
   )
   if (!m?.[1]) return 0
+
   return (m[1].match(/\|\s*'[a-z0-9-]+'/g) ?? []).length
 }
 
@@ -167,6 +182,7 @@ const countReactDetectorCodes = (repoRoot: string): number => {
   const src = readFileSync(file, 'utf8')
   const m = src.match(/export type ReactDiagnosticCode =\n((?:\s*\|\s*'[a-z0-9-]+'\n?)+)/)
   if (!m?.[1]) return 0
+
   return (m[1].match(/\|\s*'[a-z0-9-]+'/g) ?? []).length
 }
 
@@ -181,6 +197,7 @@ const countDocumentFormats = (repoRoot: string): number => {
     /export type OutputFormat\s*=\s*([\s\S]*?)(?:\n\n|\nexport |\ntype )/,
   )
   if (!m?.[1]) return 0
+
   return (m[1].match(/'[a-z0-9-]+'/gi) ?? []).length
 }
 
@@ -211,6 +228,7 @@ const countMcpTools = (repoRoot: string): number => {
   for (const [, , signature] of src.matchAll(entry)) {
     if (signature?.startsWith('tool: ')) count++
   }
+
   return count
 }
 
@@ -246,6 +264,7 @@ const countCanonicalPrimitives = (repoRoot: string): number => {
   if (!existsSync(file)) return 0
   const m = /CANONICAL_PRIMITIVES = new Set\(\[([\s\S]*?)\]\)/.exec(readFileSync(file, 'utf8'))
   if (!m) return 0
+
   return [...m[1]!.matchAll(/^\s*'[A-Za-z]+',?\s*$/gm)].length
 }
 
@@ -270,6 +289,7 @@ const workspacePackages = (repoRoot: string): Array<{ dir: string; isPrivate: bo
       }
     }
   }
+
   return out
 }
 
@@ -342,6 +362,7 @@ const checks: ClaimCheck[] = [
         pattern: /\| (\d+) hooks — useHover/,
         rejectHedged: /\| (\d+)\+ hooks — useHover/,
       },
+      ...SITE_HOOK_CLAIMS,
     ],
   },
   {
@@ -380,6 +401,7 @@ const checks: ClaimCheck[] = [
       if (!existsSync(p)) return -1
       const block = readFileSync(p, 'utf8').match(/export const rx[^=]*=\s*(?:Object\.freeze\()?\{([\s\S]*?)\}/)?.[1] ?? ''
       const names = block.split(/[,\n]/).map((s) => s.trim().split(':')[0]!.trim()).filter((n) => /^\w+$/.test(n))
+
       return names.filter((n) => n !== 'pipe').length
     },
     claims: [
@@ -667,6 +689,7 @@ const checks: ClaimCheck[] = [
         file: 'AGENTS.md',
         pattern: /MCP server \(`@pyreon\/mcp`\), which exposes (\d+) tools/,
       },
+      ...SITE_MCP_TOOL_CLAIMS,
     ],
   },
   {
@@ -720,102 +743,6 @@ const checks: ClaimCheck[] = [
   },
 ]
 
-// ─── Unscoped package-runner commands ───────────────────────────────────────
-
-/**
- * Every bin a PUBLISHED `@pyreon/*` package ships, with the package. Read from
- * the package.json files, so a new CLI is covered the day it ships.
- */
-export function pyreonBins(repoRoot: string): Map<string, string> {
-  const bins = new Map<string, string>()
-  const packagesDir = join(repoRoot, 'packages')
-  if (!existsSync(packagesDir)) return bins
-  for (const group of readdirSync(packagesDir)) {
-    const groupDir = join(packagesDir, group)
-    if (!statSync(groupDir).isDirectory()) continue
-    for (const pkg of readdirSync(groupDir)) {
-      const manifestPath = join(groupDir, pkg, 'package.json')
-      if (!existsSync(manifestPath)) continue
-      let manifest: { name?: string; private?: boolean; bin?: string | Record<string, string> }
-      try {
-        manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-      } catch {
-        continue
-      }
-      if (manifest.private === true || !manifest.name?.startsWith('@pyreon/') || !manifest.bin) continue
-      const names =
-        typeof manifest.bin === 'string' ? [manifest.name.slice('@pyreon/'.length)] : Object.keys(manifest.bin)
-      for (const name of names) bins.set(name, manifest.name)
-    }
-  }
-  return bins
-}
-
-/** The pages a reader copies commands from: the docs site's content and every README. */
-function commandDocFiles(repoRoot: string): string[] {
-  const out: string[] = []
-  const walk = (dir: string, accept: (file: string) => boolean): void => {
-    if (!existsSync(dir)) return
-    for (const entry of readdirSync(dir)) {
-      if (entry === 'node_modules' || entry === 'lib' || entry.startsWith('.')) continue
-      const full = join(dir, entry)
-      if (statSync(full).isDirectory()) walk(full, accept)
-      else if (accept(entry)) out.push(full)
-    }
-  }
-  walk(join(repoRoot, 'docs', 'src', 'content'), (f) => /\.mdx?$/.test(f))
-  walk(join(repoRoot, 'packages'), (f) => f === 'README.md')
-  if (existsSync(join(repoRoot, 'README.md'))) out.push(join(repoRoot, 'README.md'))
-  return out
-}
-
-/**
- * A docs page that tells the reader to run `npx atlas …` / `bunx lathe …` with
- * the UNSCOPED name of one of our binaries. Without a local install, the
- * package runner fetches the npm package of that name, which for `atlas`,
- * `lathe`, `loom`, `zero` and others is someone else's project (`npx lathe
- * init` ran a solid modeller). The scoped form (`npx @pyreon/lathe init`)
- * runs our CLI whether or not it is installed.
- */
-export function findUnscopedRunnerCommands(repoRoot: string): Finding[] {
-  const bins = pyreonBins(repoRoot)
-  if (bins.size === 0) return []
-  const names = [...bins.keys()].sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  const re = new RegExp(
-    String.raw`\b(npx|bunx|pnpx|pnpm dlx|yarn dlx)\s+(?:(?:-y|--yes)\s+)?(${names.join('|')})(?=$|[\s` + '`' + String.raw`'")\]])`,
-    'gm',
-  )
-  const findings: Finding[] = []
-  for (const filePath of commandDocFiles(repoRoot)) {
-    const content = readFileSync(filePath, 'utf8')
-    const relPath = relative(repoRoot, filePath)
-    for (const m of content.matchAll(re)) {
-      const runner = m[1] ?? 'npx'
-      const bin = m[2] ?? ''
-      const pkg = bins.get(bin) ?? `@pyreon/${bin}`
-      // A line that also names the package (`… use \`bunx @pyreon/mcp\`; an
-      // unscoped \`npx pyreon-mcp\` resolves another package`) is contrasting
-      // the two on purpose, or saying the bin comes from the installed
-      // package. Only a bare instruction is reported.
-      const lineStart = content.lastIndexOf('\n', m.index) + 1
-      const lineEnd = content.indexOf('\n', m.index)
-      const lineText = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd)
-      if (lineText.includes(pkg)) continue
-      const line = content.slice(0, m.index).split('\n').length
-      findings.push({
-        category: 'documentation',
-        severity: 'error',
-        code: 'doc-claims/unscoped-runner-command',
-        gate: 'doc-claims',
-        message: `${relPath}:${line}: \`${runner} ${bin}\` runs the npm package named "${bin}", not ${pkg}, when it is not installed locally.`,
-        location: { path: filePath, relPath },
-        fix: `Write \`${runner} ${pkg}\` (the package's ${bin} binary).`,
-      })
-    }
-  }
-  return findings
-}
-
 /** The repository's own counts, as the claims above measure them. */
 export interface RepoCounts {
   publishedPackages: number
@@ -864,6 +791,7 @@ export function hedgedVariant(pattern: RegExp): RegExp | undefined {
   const at = pattern.source.indexOf('(\\d+)')
   if (at < 0) return undefined
   const source = `${pattern.source.slice(0, at)}(\\d+)\\+${pattern.source.slice(at + '(\\d+)'.length)}`
+
   return new RegExp(source, pattern.flags.replace('g', ''))
 }
 
@@ -936,12 +864,13 @@ export const runDocClaimsGate = async (
     }
   }
 
-  for (const check of checks) {
+  findings.push(...findUnknownPlaceholders(opts.cwd))
+  for (const check of [...checks, ...SITE_COUNT_CHECKS]) {
     const actual = check.actual(opts.cwd)
     for (const claim of check.claims) {
       const filePath = join(opts.cwd, claim.file)
       const relPath = claim.file
-
+      if (claim.derived) { findings.push(...derivedClaimFindings(filePath, claim, check, actual)); continue }
       if (!existsSync(filePath)) {
         findings.push({
           category: 'documentation',

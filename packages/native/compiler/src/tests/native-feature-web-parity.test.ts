@@ -21,6 +21,10 @@ import { describe, expect, it } from 'vitest'
 import { ERROR_API, ERROR_CASES } from '../../../../fundamentals/feature/src/tests/native-error-corpus'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 import { transform, validateKotlin, validateSwiftWithStubs } from './first-party-plugins'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 const SWIFT_RUNTIME = join(__dirname, '../../../runtime-swift/Sources/PyreonRuntime')
 const KOTLIN_RUNTIME = join(__dirname, '../../../runtime-kotlin/src/main/kotlin/com/pyreon/runtime')
@@ -152,8 +156,8 @@ function jvmPath(): string | undefined {
     if (existsSync(c)) return c
   }
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     return undefined
   }

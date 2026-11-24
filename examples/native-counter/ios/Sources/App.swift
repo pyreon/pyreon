@@ -9,6 +9,11 @@ import SwiftUI
 
 @main
 struct PyreonCounterApp: App {
+    init() {
+        // UI tests launch from a fresh-install state (see UITestAppState.swift).
+        UITestAppState.resetIfRequested()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

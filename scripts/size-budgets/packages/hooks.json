@@ -2,7 +2,7 @@
   "package": "@pyreon/hooks",
   "bundle": 11776,
   "imports": {
-    "useAuth": 731,
+    "useAuth": 816,
     "useEventListener": 768
   }
 }

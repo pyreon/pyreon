@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="pxa pq-format" viewBox="0 0 640 400" width="640" height="400" role="img" aria-labelledby="pq-format-t pq-format-d" fill="none">
+<title id="pq-format-t">One locale signal, every value rewrites itself</title>
+<desc id="pq-format-d">Schematic: setLocale switches the language from en-US to German to Czech. A price (€1,234.50, then 1.234,50 €, then 1 234,50 €), a file size, a date (November 18, 2026, then 18. November 2026, then 18. listopadu 2026) and a relative time (yesterday, gestern, včera) each rewrite in place. A panel lists the four function calls, none of which takes a locale.</desc>
+<style>
+.pxa{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+@media (prefers-color-scheme: light){.pxa{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}}
+[data-theme="dark"] .pxa,.pxa[data-theme="dark"]{--px-bg:#0A0A0E;--px-card:#111118;--px-raised:#181822;--px-line:#23232E;--px-line2:#2E2E3B;--px-text:#F4EFE6;--px-strong:#FFFCF5;--px-mist:#C9C4B8;--px-fog:#8A8696;--px-hint:#8A8696;--px-dim:#5C5867;--px-accent:#FF5E1A;--px-accent-text:#FF8A4C;--px-warm:#FFC83D;--px-plasma:#FF1F8C;--px-ok:#4ADE80;--px-warn:#FACC15;--px-err:#F87171;--px-link:#22D3EE;--px-violet:#A78BFA;--px-bar:#3A3846;--px-g1:#FF1F8C;--px-g2:#FF5E1A;--px-g3:#FFC83D;--px-glow:rgba(255,94,26,.16)}
+[data-theme="light"] .pxa,.pxa[data-theme="light"]{--px-bg:#FAF5EB;--px-card:#FFFFFF;--px-raised:#F4EFE6;--px-line:#E6DFD2;--px-line2:#D6CFC2;--px-text:#14141C;--px-strong:#0A0A0E;--px-mist:#45414F;--px-fog:#67637A;--px-hint:#8E8A9A;--px-dim:#B5AFA3;--px-accent:#E84A0F;--px-accent-text:#A8380A;--px-warm:#8A5A00;--px-plasma:#E40C70;--px-ok:#11692F;--px-warn:#8A5A00;--px-err:#B91C1C;--px-link:#0A6E89;--px-violet:#6D28D9;--px-bar:#D9D2C4;--px-g1:#D1106F;--px-g2:#C2410C;--px-g3:#9A6200;--px-glow:rgba(232,74,15,.10)}
+.pq-format{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+.pq-format .m{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}
+.pq-format .pq-format-rm{opacity:0}
+@media (prefers-reduced-motion: reduce){.pq-format *{animation:none!important;transition:none!important}.pq-format .pq-format-rm{opacity:1}.pq-format .pq-format-am{opacity:0}}
+
+.pq-format .ln{stroke:var(--px-hint);stroke-width:1.5}
+.pq-format .dash{stroke:var(--px-hint);stroke-width:1.5;stroke-dasharray:4 6}
+.pq-format .bx{fill:var(--px-card);stroke:var(--px-bar);stroke-width:1.5}
+.pq-format .bx2{fill:var(--px-raised);stroke:var(--px-bar);stroke-width:1.5}
+.pq-format .act{fill:none;stroke:var(--px-text);stroke-width:2}
+.pq-format .lab{fill:var(--px-fog);font-size:14px;letter-spacing:.02em}
+.pq-format .eb{fill:var(--px-fog);font-size:13px;letter-spacing:.16em}
+.pq-format .val{fill:var(--px-text);font-size:20px;font-weight:500}
+.pq-format .big{fill:var(--px-strong);font-size:30px;font-weight:600;letter-spacing:-.02em}
+.pq-format .txt{fill:var(--px-text);font-size:16px}
+.pq-format .mt{fill:var(--px-mist);font-size:14px}
+.pq-format .hint{fill:var(--px-fog);font-size:13px}
+.pq-format .ember{stroke:url(#pq-format-eg);stroke-width:2.5;stroke-linecap:round;stroke-dasharray:36 2000;fill:none}
+.pq-format .emS{stroke:url(#pq-format-eg);stroke-width:2.5;fill:none}
+.pq-format .ring{fill:none;stroke:var(--px-accent);stroke-width:2}
+.pq-format .ok{fill:var(--px-ok)} .pq-format .warm{fill:var(--px-warm)} .pq-format .hot{fill:var(--px-accent)} .pq-format .err{fill:var(--px-err)}
+.pq-format .okT{fill:var(--px-ok)} .pq-format .warmT{fill:var(--px-warm)} .pq-format .hotT{fill:var(--px-accent-text)} .pq-format .errT{fill:var(--px-err)} .pq-format .linkT{fill:var(--px-link)}
+.pq-format .focus{fill:none;stroke:var(--px-link);stroke-width:2;stroke-dasharray:3 3}
+@keyframes pq-format-k0{0.0000%{opacity:1;animation-timing-function:step-end}33.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-format-k1{0.0000%{opacity:1;animation-timing-function:step-end}33.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-format-k2{0.0000%{opacity:0;animation-timing-function:step-end}33.3333%{opacity:1;animation-timing-function:step-end}66.6667%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-format-k3{0.0000%{opacity:0;animation-timing-function:step-end}33.3333%{opacity:1;animation-timing-function:step-end}66.6667%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-format-k4{0.0000%{opacity:0;animation-timing-function:step-end}66.6667%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-format-k5{0.0000%{opacity:0;animation-timing-function:step-end}66.6667%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-format-k6{0.0000%{opacity:1;animation-timing-function:step-end}33.3333%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-format-k7{0.0000%{opacity:0;animation-timing-function:step-end}33.3333%{opacity:1;animation-timing-function:step-end}66.6667%{opacity:0;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-format-k8{0.0000%{opacity:0;animation-timing-function:step-end}66.6667%{opacity:1;animation-timing-function:step-end}100.0000%{opacity:0;animation-timing-function:step-end}}
+@keyframes pq-format-k9{0%{opacity:0}33.3333%{opacity:0}34.2222%{opacity:1}35.5556%{opacity:0}66.6667%{opacity:0}67.5556%{opacity:1}68.8889%{opacity:0}100%{opacity:0}}
+.pq-format .k0{animation:pq-format-k0 9000ms linear infinite}
+.pq-format .k1{animation:pq-format-k1 9000ms linear infinite}
+.pq-format .k2{animation:pq-format-k2 9000ms linear infinite}
+.pq-format .k3{animation:pq-format-k3 9000ms linear infinite}
+.pq-format .k4{animation:pq-format-k4 9000ms linear infinite}
+.pq-format .k5{animation:pq-format-k5 9000ms linear infinite}
+.pq-format .k6{animation:pq-format-k6 9000ms linear infinite}
+.pq-format .k7{animation:pq-format-k7 9000ms linear infinite}
+.pq-format .k8{animation:pq-format-k8 9000ms linear infinite}
+.pq-format .k9{animation:pq-format-k9 9000ms linear infinite}
+@media (prefers-reduced-motion: reduce){.pq-format .k0{opacity:0}.pq-format .k1{opacity:0}.pq-format .k2{opacity:1}.pq-format .k3{opacity:1}.pq-format .k4{opacity:0}.pq-format .k5{opacity:0}.pq-format .k6{opacity:0}.pq-format .k7{opacity:1}.pq-format .k8{opacity:0}.pq-format .k9{opacity:0}}
+</style>
+<defs><linearGradient id="pq-format-eg" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-format-egu" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="640" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-format-egv" x1="0" y1="1" x2="0" y2="0"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient><linearGradient id="pq-format-egd" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--px-g1)"/><stop offset=".55" style="stop-color:var(--px-g2)"/><stop offset="1" style="stop-color:var(--px-g3)"/></linearGradient></defs>
+
+<text class="m eb" x="24" y="34">ONE LOCALE SIGNAL · EVERY VALUE FOLLOWS</text>
+<rect class="bx" x="24" y="92" width="352" height="222" rx="16"/>
+<text class="m lab" x="48" y="134">price</text><text class="m lab" x="48" y="174">file size</text><text class="m lab" x="48" y="214">date</text><text class="m lab" x="48" y="254">relative</text>
+<g class="k0"><text class="val" x="176" y="134">€1,234.50</text><text class="val" x="176" y="174">7.3 MB</text><text class="val" x="176" y="214">November 18, 2026</text><text class="val" x="176" y="254">yesterday</text></g><g class="k2"><text class="val" x="176" y="134">1.234,50 €</text><text class="val" x="176" y="174">7,3 MB</text><text class="val" x="176" y="214">18. November 2026</text><text class="val" x="176" y="254">gestern</text></g><g class="k4"><text class="val" x="176" y="134">1 234,50 €</text><text class="val" x="176" y="174">7,3 MB</text><text class="val" x="176" y="214">18. listopadu 2026</text><text class="val" x="176" y="254">včera</text></g>
+<rect class="ring k9" x="40" y="108" width="320" height="152" rx="12"/>
+<rect class="bx2" x="48" y="274" width="62" height="30" rx="15"/><g class="k6"><rect class="act" x="48" y="274" width="62" height="30" rx="15"/></g><text class="m mt" x="79" y="294" text-anchor="middle">en-US</text><rect class="bx2" x="118" y="274" width="62" height="30" rx="15"/><g class="k7"><rect class="act" x="118" y="274" width="62" height="30" rx="15"/></g><text class="m mt" x="149" y="294" text-anchor="middle">de</text><rect class="bx2" x="188" y="274" width="62" height="30" rx="15"/><g class="k8"><rect class="act" x="188" y="274" width="62" height="30" rx="15"/></g><text class="m mt" x="219" y="294" text-anchor="middle">cs</text>
+<rect class="bx" x="392" y="92" width="232" height="262" rx="16"/>
+<text class="m lab" x="416" y="118">no locale argument</text>
+<text class="m txt" x="416" y="160" style="font-size:13px">formatCurrency(n, 'EUR')</text><text class="m txt" x="416" y="196" style="font-size:13px">formatBytes(bytes)</text><text class="m txt" x="416" y="232" style="font-size:13px">formatDate(day, 'long')</text><text class="m txt" x="416" y="268" style="font-size:13px">formatRelativeTo(day, now)</text>
+<g class="k1"><text class="m hotT m" x="416" y="322" style="font-size:14px">setLocale('en-US')</text></g><g class="k3"><text class="m hotT m" x="416" y="322" style="font-size:14px">setLocale('de')</text></g><g class="k5"><text class="m hotT m" x="416" y="322" style="font-size:14px">setLocale('cs')</text></g>
+<text class="m hint" x="24" y="390">plain functions over Intl · the active locale is a signal</text>
+</svg>

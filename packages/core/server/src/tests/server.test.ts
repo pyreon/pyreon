@@ -187,10 +187,10 @@ describe('createHandler', () => {
   test('renders a LAZY route component through RouterView (SSR empty-page regression)', async () => {
     // zero's fs-router emits every route as `lazy(() => import(...))`. The
     // handler must resolve those into the component cache BEFORE the
-    // synchronous render (it calls `router.preload`), or `RouterView` hits its
+    // synchronous render (it calls `preloadRoute`), or `RouterView` hits its
     // empty lazy fallback and ships a BLANK page wrapped in the layout (status
     // 200, template shell) — the 0.30.0 `mode: 'ssr'`/`'isr'` regression. SSG
-    // was unaffected because it already used `router.preload`. Bisect: revert
+    // was unaffected because it already used `router.preload` (now `preloadRoute`). Bisect: revert
     // the handler to `prefetchLoaderData` (loaders-only) → the lazy component
     // is never resolved → the rendered HTML lacks the page content → fails.
     const LazyPage: ComponentFn = () =>

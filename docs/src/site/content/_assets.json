@@ -3745,7 +3745,7 @@
     "/docs/cli"
    ],
    "slot": "og",
-   "alt": "Tooling documentation: pyreon doctor runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to 141 lint rules, pyreon check, a test kit and devtools for the reactive graph.",
+   "alt": "Tooling documentation: pyreon doctor runs up to ten gates over your app and scores it 0–100 with the fixes inline, next to 144 lint rules, pyreon check, a test kit and devtools for the reactive graph.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -4382,7 +4382,7 @@
     "/products"
    ],
    "slot": "og",
-   "alt": "40 products. One reactive core. The glyphs of all 40 Pyreon products.",
+   "alt": "42 products. One reactive core. The glyphs of all 42 Pyreon products.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -4539,6 +4539,18 @@
    ],
    "slot": "og",
    "alt": "Forms: Type in one field. The other eleven never notice. 210 µs to mount a 12-field form. React Hook Form: 640 µs. TanStack Form: 680 µs.",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/products/format.png",
+   "kind": "image",
+   "pages": [
+    "/products/format"
+   ],
+   "slot": "og",
+   "alt": "Format (@pyreon/format): Change the language once. Every price and date follows.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -4791,6 +4803,18 @@
    ],
    "slot": "og",
    "alt": "Table: Edit one cell. One cell updates. No React.memo. 1.42–1.45× faster unmount than @tanstack/react-table with memoized rows, 1,000 × 6",
+   "theme": "dark",
+   "width": 1200,
+   "height": 630
+  },
+  {
+   "file": "og/products/time.png",
+   "kind": "image",
+   "pages": [
+    "/products/time"
+   ],
+   "slot": "og",
+   "alt": "Time (@pyreon/time): A date is a string. Date math should be too.",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -6334,6 +6358,89 @@
    "motion": {
     "loop": true,
     "ms": 8000,
+    "reduced": "static end state with the ember ring on the part that changed"
+   }
+  },
+  {
+   "file": "products/format/hero.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/products/format"
+   ],
+   "slot": "hero-visual",
+   "alt": "Schematic: setLocale switches the language from en-US to German to Czech. A price (€1,234.50, then 1.234,50 €, then 1 234,50 €), a file size, a date (November 18, 2026, then 18. November 2026, then 18. listopadu 2026) and a relative time (yesterday, gestern, včera) each rewrite in place. A panel lists the four function calls, none of which takes a locale.",
+   "theme": "both",
+   "poster": {
+    "dark": "products/format/hero.poster-dark.png",
+    "light": "products/format/hero.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "products/format/hero.poster-dark-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 16164,
+      "format": "webp"
+     },
+     {
+      "file": "products/format/hero.poster-dark-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 12793,
+      "format": "avif"
+     },
+     {
+      "file": "products/format/hero.poster-dark.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 34092,
+      "format": "webp"
+     },
+     {
+      "file": "products/format/hero.poster-dark.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 21253,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "products/format/hero.poster-light-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 16416,
+      "format": "webp"
+     },
+     {
+      "file": "products/format/hero.poster-light-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 12210,
+      "format": "avif"
+     },
+     {
+      "file": "products/format/hero.poster-light.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 34720,
+      "format": "webp"
+     },
+     {
+      "file": "products/format/hero.poster-light.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 21990,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 640,
+   "height": 400,
+   "motion": {
+    "loop": true,
+    "ms": 9000,
     "reduced": "static end state with the ember ring on the part that changed"
    }
   },
@@ -8551,6 +8658,89 @@
    ],
    "width": 2560,
    "height": 1600
+  },
+  {
+   "file": "products/time/hero.svg",
+   "kind": "animated-svg",
+   "pages": [
+    "/products/time"
+   ],
+   "slot": "hero-visual",
+   "alt": "Schematic: three calls cycle. add('2026-01-31', { months: 1 }) returns '2026-02-28', because the day clamps to the end of February. diff('2026-11-18', '2026-12-24', 'day') returns 36. toPlainDateTime at an instant for 09:00 in New York, read in Asia/Tokyo, returns '2026-11-18T23:00'. A panel lists the four value shapes: PlainDate, PlainTime, PlainDateTime and Instant, all strings or numbers.",
+   "theme": "both",
+   "poster": {
+    "dark": "products/time/hero.poster-dark.png",
+    "light": "products/time/hero.poster-light.png"
+   },
+   "posterVariants": {
+    "dark": [
+     {
+      "file": "products/time/hero.poster-dark-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 14472,
+      "format": "webp"
+     },
+     {
+      "file": "products/time/hero.poster-dark-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 11106,
+      "format": "avif"
+     },
+     {
+      "file": "products/time/hero.poster-dark.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 29296,
+      "format": "webp"
+     },
+     {
+      "file": "products/time/hero.poster-dark.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 19031,
+      "format": "avif"
+     }
+    ],
+    "light": [
+     {
+      "file": "products/time/hero.poster-light-640.webp",
+      "width": 640,
+      "height": 400,
+      "bytes": 15092,
+      "format": "webp"
+     },
+     {
+      "file": "products/time/hero.poster-light-640.avif",
+      "width": 640,
+      "height": 400,
+      "bytes": 10880,
+      "format": "avif"
+     },
+     {
+      "file": "products/time/hero.poster-light.webp",
+      "width": 1280,
+      "height": 800,
+      "bytes": 30774,
+      "format": "webp"
+     },
+     {
+      "file": "products/time/hero.poster-light.avif",
+      "width": 1280,
+      "height": 800,
+      "bytes": 19909,
+      "format": "avif"
+     }
+    ]
+   },
+   "width": 640,
+   "height": 400,
+   "motion": {
+    "loop": true,
+    "ms": 9000,
+    "reduced": "static end state with the ember ring on the part that changed"
+   }
   },
   {
    "file": "products/toast/hero.svg",

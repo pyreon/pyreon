@@ -144,6 +144,7 @@ const Card = () => {
 | [`Dynamic`](#dynamic-component) | component | Renders a component by reference or string tag name. |
 | [`cx`](#cx-function) | function | Combine a class value into a single string. |
 | [`useControllableState`](#usecontrollablestate-function) | function | The controlled/uncontrolled state pattern, as one primitive. |
+| [`lockScroll`](#lockscroll-function) | function | The ONE scroll lock every package shares. |
 | [`useColorMode`](#usecolormode-function) | function | The framework-wide light/dark mode, as an accessor — the ONE source every package reads, so `<PyreonUI>`, charts, flow… |
 | [`splitProps`](#splitprops-function) | function | Split a props object into two parts: the picked keys and the rest. |
 | [`mergeProps`](#mergeprops-function) | function | Merge multiple props objects with last-source-wins semantics. |
@@ -403,7 +404,7 @@ function App() {
 **Common mistakes**
 
 - `provide(ctx, "static")` for a value that changes — use `createReactiveContext` + `provide(ctx, () => signal())`
-- Calling `provide` inside `onMount` or `effect` — it must run during synchronous component setup
+- Calling `provide` inside `onMount` or `effect`, or after the component already mounted a child — a component becomes its children's context owner on its FIRST `provide()`, so children mounted before it resolve through the parent and never see the value (dev warns). Call it before building or returning children
 - Providing the same context twice in one component — the second `provide` shadows the first for that subtree
 
 **See also:** `createContext` · `createReactiveContext` · `useContext`
@@ -756,6 +757,34 @@ const Switch = (props: { checked?: boolean; onChange?: (v: boolean) => void }) =
 - Assuming `defaultValue` still applies once `value` is supplied — controlled wins for the whole lifetime of the component
 
 **See also:** `splitProps` · `mergeProps`
+
+---
+
+### `lockScroll` `function`
+
+```ts
+lockScroll(element?: HTMLElement | null): () => void
+```
+
+The ONE scroll lock every package shares. `lockScroll()` takes a hold on the PAGE (`overflow: hidden` on `<body>` and `<html>`, `<body>` padded by the scrollbar width); `lockScroll(el)` holds one element's `overflow`. Holds are counted per target: the first saves the target's inline styles, the last release restores them, and each returned release function releases its own hold once. `@pyreon/hooks` `useScrollLock` and `@pyreon/elements` `useOverlay({ type: 'modal' })` both go through it, so a closing modal never unlocks the page under another dialog. No-op on the server.
+
+**Example**
+
+```tsx
+import { lockScroll } from '@pyreon/core'
+
+let release: (() => void) | null = null
+const open = () => { release ??= lockScroll() }
+const close = () => { release?.(); release = null }
+```
+
+**Common mistakes**
+
+- Writing `document.body.style.overflow = 'hidden'` / `''` by hand — it clobbers every other owner's lock and the value the page had; take a hold instead
+- Taking the hold when a modal MOUNTS rather than when it OPENS — a closed modal then blocks page scrolling for as long as it is on the page
+- Dropping the release function — the page stays locked; release it on close AND on unmount
+
+**See also:** `useScrollLock`
 
 ---
 

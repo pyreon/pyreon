@@ -98,8 +98,19 @@ const chartHandleDispatch: MemberCallLowering = Object.freeze({
       ctx.warn(dispatchWarning(call.receiver.name))
       return 'Unit'
     }
-    const int = (x: ExprIR | undefined): string => (x === undefined ? '-1L' : `(${ctx.expr(x)}).toLong()`)
-    const dbl = (x: ExprIR | undefined, d: string): string => (x === undefined ? d : `(${ctx.expr(x)}).toDouble()`)
+    const kind = (x: ExprIR): string => {
+      const t = ctx.inferType(x)
+      if (t.kind === 'typeRef' && t.name === 'Double') return 'double'
+      if (t.kind === 'typeRef' && t.name === 'Int') return 'int'
+      if (t.kind !== 'number') return 'other'
+
+      return t.float === true ? 'double' : 'int'
+    }
+    // A value already of the target type is not converted again (kotlinc: "redundant call of conversion method").
+    const int = (x: ExprIR | undefined): string =>
+      x === undefined ? '-1L' : kind(x) === 'int' ? ctx.expr(x) : `(${ctx.expr(x)}).toLong()`
+    const dbl = (x: ExprIR | undefined, d: string): string =>
+      x === undefined ? d : kind(x) === 'double' ? ctx.expr(x) : `(${ctx.expr(x)}).toDouble()`
     const areas = f.areas === undefined ? 'listOf()' : ctx.exprAs({ kind: 'array', element: { kind: 'typeRef', name: 'BrushArea', args: [] } }, f.areas)
     return `${ctx.ident(call.receiver.name)}.dispatch(ChartActionInput(type = ${ctx.expr(f.type!)}, index = ${int(f.index)}, series = ${int(f.series)}, start = ${dbl(f.start, '0.0')}, end = ${dbl(f.end, '1.0')}, brushType = ${f.brushType === undefined ? '""' : ctx.expr(f.brushType)}, areas = ${areas}))`
   },
@@ -262,6 +273,10 @@ export const chartsPlugin: CompilerPlugin<never> = Object.freeze({
         'Band',
         'smooth',
         'step',
+        // Scale descriptors: `<Axis scale={sqrt()}>` / `<Scale x={log()}>` desugar (hosts.ts `scaleAttr`) to the engine's `ScaleView`, built from the compile-time literal.
+        'sqrt',
+        'symlog',
+        'log',
         // Engine arithmetic that crosses verbatim (bin.ts is in ENGINE_FILES).
         'binValues',
         // Decimation, same shape (decimate-values.ts is in ENGINE_FILES). NOT

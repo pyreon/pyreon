@@ -50,6 +50,25 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
 
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Context ownership is LAZY: a component becomes its children's context
+    // owner on its first provide(), so a provide() after children mounted is
+    // invisible to them (dev warns from @pyreon/core's context.ts).
+    pattern: /\b(?:provide|withContext)\(\) ran after this component had already mounted children/,
+    diagnose: () => ({
+      cause:
+        "`provide()` ran after the component's children had already mounted: late in the setup body (after a child component was built or mounted), in `onMount`, or in an effect. A component becomes its children's context owner on its FIRST `provide()`, so those children resolve context through the parent's owner and never see the value.",
+      fix: 'Call `provide()` at the top of the component body, before it builds or returns any children. For a value that changes later, provide a reactive context once (`createReactiveContext` + `provide(ctx, () => value())`) and update the signal instead of providing again.',
+      fixCode: `const ThemeCtx = createReactiveContext('light')
+
+function ThemeProvider(props) {
+  const theme = signal('light')
+  provide(ThemeCtx, () => theme())   // first, before children
+  onMount(() => theme.set(readSavedTheme()))   // later changes go through the signal
+  return props.children
+}`,
+    }),
+  },
+  {
     // A loader's notFound() answered HTTP 500: on router versions
     // before the loader-not-found fix, every path that ran loaders (SSR
     // preload, the /_pyreon/data endpoint) treated the branded error like any
@@ -69,6 +88,40 @@ export async function serverLoader({ params }) {
   if (!item) notFound()   // -> HTTP 404 with _404.tsx, not a 500
   return item
 }`,
+    }),
+  },
+  {
+    // Router 0.54 moved its server-only loader passes off the router object
+    // (client bundles stop carrying them): `router.preload` and
+    // `router.runServerLoaders` are gone. Old call sites throw a TypeError.
+    pattern: /\b(?:[\w$]+\.)*[\w$]*router\.(preload|runServerLoaders) is not a function/i,
+    diagnose: (m) =>
+      m[1] === 'runServerLoaders'
+        ? {
+            cause:
+              '`router.runServerLoaders` was removed in router 0.54: the single-fetch data endpoint\'s worker is a free function now, so client bundles do not carry it.',
+            fix: 'Call `runServerLoaders(router, path, request)`, exported next to `createRouter`. `pyreon upgrade` rewrites it (codemod `router-server-loader-functions`).',
+            fixCode: `const result = await runServerLoaders(router, path, request)`,
+          }
+        : {
+            cause:
+              '`router.preload` was removed in router 0.54. Its server half (running loaders) became the free function `preloadRoute`, and its components-only form became `router.preloadComponents`, so client bundles do not carry the loader pass.',
+            fix: 'In an SSR/SSG host (components AND loaders, with the request): `await preloadRoute(router, path, request)`. To warm only the route\'s lazy components (hydration, link prefetch, the former `{ skipLoaders: true }`): `await router.preloadComponents(path)`. `pyreon upgrade` rewrites both (codemod `router-server-loader-functions`).',
+            fixCode: `// server render
+await preloadRoute(router, path, request)
+// code only (client)
+await router.preloadComponents(path)`,
+          },
+  },
+  {
+    // Dev-only warning: `preloadComponents` received the old `preload`
+    // arguments (a request / `{ skipLoaders }`) — usually a mechanical rename.
+    pattern: /\[Pyreon Router\] router\.preloadComponents\(path\) takes one argument and never runs loaders/,
+    diagnose: () => ({
+      cause:
+        '`router.preloadComponents(path)` was called with extra arguments, typically the request from a renamed `router.preload(path, request)` call. It only loads the route\'s lazy components and never runs loaders, so a server render built on it would have no loader data.',
+      fix: 'For a server render call `preloadRoute(router, path, request)` (components AND loaders). Keep `router.preloadComponents(path)`, with the path only, for code-only warming on the client.',
+      fixCode: `await preloadRoute(router, path, request)`,
     }),
   },
   {
@@ -98,6 +151,38 @@ const router = createRouter({
     return false
   }
 }`,
+    }),
+  },
+  {
+    pattern: /An effect cleanup threw while a request ended/,
+    diagnose: () => ({
+      cause:
+        "A cleanup registered during a server render threw when the request ended. The server stops every `effect()` and `computed()` a component created once the response is done, and runs their cleanups (`onCleanup`, the function an effect returns). The HTML was already produced, so the response is unaffected; the error is logged because a cleanup that throws may have left a listener, a timer or a connection behind.",
+      fix: 'Find the cleanup from the stack that follows this line and make it safe to run on the server: guard browser-only teardown (`removeEventListener`, `observer.disconnect()`), and do not assume the setup half ran. Work that only makes sense in the browser belongs in `onMount`, which never runs during a server render.',
+      fixCode: `effect(() => {
+  const id = setInterval(tick, 1000)
+  onCleanup(() => clearInterval(id)) // safe on the server and the client
+})
+
+onMount(() => {
+  window.addEventListener('resize', onResize)
+  return () => window.removeEventListener('resize', onResize) // browser only
+})`,
+    }),
+  },
+  {
+    pattern: /Disposing the request registry \([^)]*\) threw/,
+    diagnose: () => ({
+      cause:
+        "When a server render ends, each per-request registry (stores from `defineStore`, state-tree models, and other packages that keep per-request instances) is disposed so nothing created for one request outlives it. One instance's `dispose` threw. The response is unaffected, but the rest of that registry may not have been released.",
+      fix: 'Look at the store or model named in the stack that follows this line. A `dispose` (or an effect cleanup inside the store setup) must not throw and must be safe when the setup only partly ran. Wrap teardown of external resources so one failure cannot stop the others.',
+      fixCode: `defineStore('session', () => {
+  const socket = isClient ? connect() : null
+  onCleanup(() => {
+    try { socket?.close() } catch { /* already closed */ }
+  })
+  return { socket }
+})`,
     }),
   },
   {
@@ -326,7 +411,7 @@ try { load() } catch (err) { return <p>{err.message}</p> }`,
         'The Pyreon compiler emitted `_fuse` (text fusion: a static-text run around an interpolation such as `<p>Hello {name}!</p>` is lowered to ONE accessor child so it renders and hydrates without `<!--$-->` range markers), but the `@pyreon/core` your build resolved is older than the compiler and does not export it. The two packages are released as a fixed group, so this is a version skew: a partial upgrade, a second copy of `@pyreon/core` in the dependency tree, or — inside the Pyreon monorepo — a stale `packages/core/core/lib` that Vite reads through the `node` condition.',
       fix: 'Align `@pyreon/core` and `@pyreon/compiler` (and `@pyreon/vite-plugin`) to the same version — `pyreon upgrade` does this — and make sure only ONE `@pyreon/core` resolves (`pyreon info` reports version skew and duplicates). In the monorepo, run `bun scripts/bootstrap.ts` so the built `lib/` catches up with source.',
       fixCode:
-        '// every @pyreon/* package on ONE version — the compiler\'s emit and core\'s exports move together\n// package.json\n"@pyreon/core": "0.52.0",\n"@pyreon/compiler": "0.52.0",\n"@pyreon/vite-plugin": "0.52.0"\n\n// or, in one step:\n// npx pyreon upgrade',
+        '// every @pyreon/* package on ONE version — the compiler\'s emit and core\'s exports move together\n// package.json\n"@pyreon/core": "0.52.0",\n"@pyreon/compiler": "0.52.0",\n"@pyreon/vite-plugin": "0.52.0"\n\n// or, in one step:\n// npx @pyreon/cli upgrade',
     }),
   },
   {
@@ -626,7 +711,7 @@ function Panel() {
   {
     // A one-character unauthenticated 500: `GET /?q=%`. Every decode in the
     // matcher runs on attacker-supplied text, and the matcher is reached
-    // pre-auth from `router.preload` inside the SSR handler — so this needed
+    // pre-auth from `preloadRoute` inside the SSR handler — so this needed
     // no dynamic route and no session, because the QUERY parser decodes too.
     pattern: /URIError|URI malformed|malformed URI sequence/i,
     diagnose: () => ({
@@ -1605,16 +1690,16 @@ const Page = lazy(() => import('./Page'))`,
         ? {
             cause:
               '`@pyreon/runtime-dom/transition` in `@pyreon/runtime-dom` 0.53.0 was built from the wrong source file: its `lib/transition-entry.js` holds `Transition` but not `TransitionGroup`. Tests inside the Pyreon repo read `src/` and never saw it; an app on the published package does.',
-            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx pyreon upgrade`). On 0.53.0, import `TransitionGroup` from the `@pyreon/runtime-dom` root instead of the `/transition` subpath.',
+            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx @pyreon/cli upgrade`). On 0.53.0, import `TransitionGroup` from the `@pyreon/runtime-dom` root instead of the `/transition` subpath.',
             fixCode: `// on @pyreon/runtime-dom 0.53.0 — the /transition subpath lacks it:
 import { TransitionGroup } from '@pyreon/runtime-dom'`,
           }
         : {
             cause:
               'The JSX runtime your dev server resolved has no `jsxDEV`. In development the JSX transform imports `jsxDEV` from `@pyreon/core/jsx-dev-runtime`, and `pyreon({ compat })` redirects that to the compat package\'s `jsx-runtime`. In 0.53.0 every compat package (`react-`, `preact-`, `vue-`, `solid-`, `svelte-compat`) shipped a `lib/jsx-runtime.js` built from its dev-runtime entry, which exports only `Fragment`, `jsx` and `jsxs`. So `vite` dev renders a blank page while `vite build` works.',
-            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx pyreon upgrade`). There is no app-side workaround in dev; `vite build` + `vite preview` are unaffected. If you see this inside the Pyreon monorepo, a stale `lib/` is the likelier cause: run `bun scripts/bootstrap.ts`.',
+            fix: 'Upgrade every `@pyreon/*` package to a release newer than 0.53.0 (`npx @pyreon/cli upgrade`). There is no app-side workaround in dev; `vite build` + `vite preview` are unaffected. If you see this inside the Pyreon monorepo, a stale `lib/` is the likelier cause: run `bun scripts/bootstrap.ts`.',
             fixCode: `// every @pyreon/* package on one version newer than 0.53.0
-// npx pyreon upgrade`,
+// npx @pyreon/cli upgrade`,
           },
   },
   {
@@ -2038,7 +2123,7 @@ const html = renderToString(<App />).replace('<!--x-->', head)
 // RIGHT — correct for both the sync and the async-promoted path
 const html = (await renderToString(<App />)).replace('<!--x-->', head)`,
       related:
-        'Same for `renderToStream`. A `lazy()` component whose chunk has not loaded yet is WAITED for exactly like an async component, so it promotes the subtree too; under `renderToStream` a lazy inside `<Suspense>` resolves inside the boundary without holding up the shell. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and preload lazy chunks before rendering (`router.preload`). The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
+        'Same for `renderToStream`. A `lazy()` component whose chunk has not loaded yet is WAITED for exactly like an async component, so it promotes the subtree too; under `renderToStream` a lazy inside `<Suspense>` resolves inside the boundary without holding up the shell. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and preload lazy chunks before rendering (`preloadRoute(router, path)` or `router.preloadComponents(path)`). The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
     }),
   },
   {
@@ -2570,24 +2655,38 @@ console.log(JSON.stringify(src.slice(offset - 40, offset + 40)))`,
   },
   {
     // Per-tab back stacks (#4060). `router.selectTab(name)` / `<Tabs router>`
-    // need `createRouter({ tabs })`, and each `<Tab value>` must name a
+    // need `createRouter({ tabs: routerTabs([...]) })`, and each `<Tab value>` must name a
     // configured tab. Both failures used to read as "the tab bar does nothing":
     // the router warns and the navigation is cancelled.
     pattern:
-      /\[Pyreon Router\] selectTab\("([^"\n]*)"\): (?:no tab with that name \(configured: ([^)\n]*)\)|this router has no `tabs`)|<Tabs router=\{router\}>: this router has no `tabs`/,
+      // The name is JSON-quoted at runtime (`selectTab("feed")`); the quotes are
+      // optional so the pattern also matches the message as written in source.
+      /\[Pyreon Router\] selectTab\("?([^"\n)]*)"?\): (?:no tab with that name \(configured: ([^)\n]*)\)|this router has no `tabs`)|<Tabs router=\{router\}>: this router has no `tabs`/,
     diagnose: (m) =>
       m[2] !== undefined
         ? {
-            cause: `\`selectTab("${m[1]}")\` names no tab of this router (configured: ${m[2]}). A \`<Tab value>\` inside \`<Tabs router>\` is the tab's NAME, so a typo or a tab missing from \`createRouter({ tabs })\` makes that tab unselectable — the navigation is cancelled.`,
-            fix: `Make the \`<Tab value>\` match a \`tabs[].name\`, or add \`{ name: "${m[1]}", root: "/${m[1]}" }\` to \`createRouter({ tabs })\` (with a route at that root).`,
-            fixCode: `createRouter({ routes, tabs: [{ name: '${m[1]}', root: '/${m[1]}' }] })`,
+            cause: `\`selectTab("${m[1]}")\` names no tab of this router (configured: ${m[2]}). A \`<Tab value>\` inside \`<Tabs router>\` is the tab's NAME, so a typo or a tab missing from \`routerTabs([...])\` makes that tab unselectable — the navigation is cancelled.`,
+            fix: `Make the \`<Tab value>\` match a \`tabs[].name\`, or add \`{ name: "${m[1]}", root: "/${m[1]}" }\` to \`routerTabs([...])\` (with a route at that root).`,
+            fixCode: `createRouter({ routes, tabs: routerTabs([{ name: '${m[1]}', root: '/${m[1]}' }]) })`,
           }
         : {
             cause:
               'The router passed to `<Tabs router>` / `selectTab()` was created WITHOUT `tabs`, so it has one stack and no tabs to select: the tab bar never switches and a push from inside a tab is not kept per tab.',
-            fix: 'Configure the tabs on the router — `createRouter({ routes, tabs: [{ name, root }] })` — with one entry per `<Tab value>`, and put a `<RouterView />` in each `<Tab>`. For a tab bar whose selection is your own signal, use `<Tabs value onChange>` instead.',
-            fixCode: `createRouter({ routes, tabs: [{ name: 'feed', root: '/feed' }, { name: 'me', root: '/me' }] })`,
+            fix: 'Configure the tabs on the router — `createRouter({ routes, tabs: routerTabs([{ name, root }]) })` — with one entry per `<Tab value>`, and put a `<RouterView />` in each `<Tab>`. For a tab bar whose selection is your own signal, use `<Tabs value onChange>` instead.',
+            fixCode: `createRouter({ routes, tabs: routerTabs([{ name: 'feed', root: '/feed' }, { name: 'me', root: '/me' }]) })`,
           },
+  },
+  {
+    // `createRouter({ tabs })` takes the value `routerTabs([...])` returns (0.54):
+    // the tab engine is reached only through it, so apps without tabs do not
+    // bundle it. A plain array (the pre-0.54 shape) throws at createRouter.
+    pattern: /\[Pyreon Router\] createRouter\(\{ tabs \}\) takes routerTabs\(\[\.\.\.\]\)/,
+    diagnose: () => ({
+      cause:
+        '`createRouter({ tabs })` was given a plain array of `{ name, root }`. Since router 0.54 the option takes the value `routerTabs([...])` returns, so the per-tab back-stack engine is bundled only by apps that use tabs.',
+      fix: 'Wrap the array in `routerTabs(...)`, exported next to `createRouter`. The tabs themselves and every router method (`activeTab`, `selectTab`, `tabStack`, `withTab`) are unchanged. `pyreon upgrade` rewrites it (codemod `router-tabs-function`).',
+      fixCode: `createRouter({ routes, tabs: routerTabs([{ name: 'feed', root: '/feed' }, { name: 'me', root: '/me' }]) })`,
+    }),
   },
   {
     pattern: /Plugin "([^"\n]+)" recognized a declaration of type "([^"\n]+)" but declares no/,
@@ -2619,7 +2718,7 @@ console.log(JSON.stringify(src.slice(offset - 40, offset + 40)))`,
     diagnose: () => ({
       cause:
         "The content audit found a markdown file under `src/content/` that no declared collection claims. Either it really is outside every collection's directory (the runtime ignores it), or the collection that holds it is declared in a way an older `@pyreon/compiler` could not read: before 0.54 the audit only understood a literal `defineCollection({ ... })`, so a `blogCollection()` preset, a factory call or a collection held in a variable left its whole directory looking orphaned.",
-      fix: "If the file's collection is declared with `blogCollection()`, a factory or a variable, upgrade `@pyreon/compiler` (`npx pyreon upgrade`); the audit now treats any value in `collections` as a collection, using its literal `path` or `src/content/<name>`. Otherwise move the file into a collection's directory, declare a collection whose `path` includes it, or delete it.",
+      fix: "If the file's collection is declared with `blogCollection()`, a factory or a variable, upgrade `@pyreon/compiler` (`npx @pyreon/cli upgrade`); the audit now treats any value in `collections` as a collection, using its literal `path` or `src/content/<name>`. Otherwise move the file into a collection's directory, declare a collection whose `path` includes it, or delete it.",
       fixCode: `// content.config.ts — every value here is a collection; a non-literal one
 // reads from src/content/<name> unless it passes a literal path
 export const collections = {
@@ -2650,6 +2749,16 @@ export const collections = {
       cause: `\`${m[1]}\` ran detached from its signal. Signal methods live on a shared prototype and read \`this\`; a reference such as \`promise.then(sig.${m[1]})\` or \`ref={props.sig.${m[1]}}\` loses it. Inside JSX the compiler binds a reference to a signal it knows (\`ref={el.set}\` works), but not one reached through props, an object or code outside JSX.`,
       fix: `Call the method on the signal: \`(v) => sig.${m[1]}(v)\`, or bind it: \`sig.${m[1]}.bind(sig)\`.`,
       fixCode: `(v) => sig.${m[1]}(v)`,
+    }),
+  },
+  {
+    // @pyreon/runtime-dom `hydrateComponent`: a throw while hydrating a
+    // component's subtree, contained exactly like a mount-time render throw.
+    pattern: /<([\w$.]+)> threw during hydration/,
+    diagnose: (m) => ({
+      cause: `\`<${m[1]}>\` threw while its server-rendered subtree was being hydrated: in a reactive accessor, a child component or a compiled template binding. Hydration contained it like a mount-time throw: the component's effects were disposed, the error went to the nearest <ErrorBoundary> (or this log), and the rest of the page hydrated. The component's server HTML stays in place but is not interactive.`,
+      fix: 'Read the logged error and its stack: it names the accessor or child that threw. A value that exists on the server but not yet on the client (a browser-only API, data loaded after hydration) is the usual cause; guard it, or wrap the subtree in <ErrorBoundary> to show a fallback.',
+      fixCode: '<ErrorBoundary fallback={(err) => <p>Could not load: {String(err)}</p>}>\n  <Widget />\n</ErrorBoundary>',
     }),
   },
 ]

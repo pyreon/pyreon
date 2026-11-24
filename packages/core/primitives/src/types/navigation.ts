@@ -42,13 +42,13 @@ export interface TabsSignalProps extends TabsBaseProps {
 
 /**
  * `<Tabs router={router}>` — the selection is the router's active tab, and
- * each tab has its own back stack (`createRouter({ tabs })` from
+ * each tab has its own back stack (`createRouter({ tabs: routerTabs([...]) })` from
  * `@pyreon/router`). Each `<Tab value>` names a configured tab; put a
  * `<RouterView />` inside it to show that tab's stack. Selecting the tab that
  * is already active pops it to its root.
  */
 export interface TabsRouterProps extends TabsBaseProps {
-  /** A router created with `tabs` — `createRouter({ routes, tabs })`. */
+  /** A router created with `tabs` — `createRouter({ routes, tabs: routerTabs([...]) })`. */
   router: TabsRouter
   value?: undefined
   onChange?: undefined

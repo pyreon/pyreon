@@ -14,6 +14,10 @@ import {
 } from '@pyreon/http/stream'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * `useStream` over `@pyreon/http/stream` lowers to a native runtime on both
@@ -339,8 +343,8 @@ function jvmPath(): string | undefined {
     if (existsSync(c)) return c
   }
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     return undefined
   }

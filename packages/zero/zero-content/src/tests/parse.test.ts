@@ -3,7 +3,7 @@
  * module string. Asserts the module exports the right shape and the
  * body JSX is wrapped correctly.
  */
-import { expectSubQuadratic } from '@pyreon/test-utils'
+import { countStringOps } from '@pyreon/test-utils'
 import { describe, expect, it } from 'vitest'
 import { compileMarkdown, deriveSlug } from '../pipeline/parse'
 
@@ -162,11 +162,18 @@ describe('deriveSlug', () => {
     // The first /content/ match wins by design.
     expect(result.endsWith('.md')).toBe(false)
     expect(result.startsWith('a/content/')).toBe(true)
-    // Scaling, not wall-clock: a "loose budget for CI noise" still flakes under
-    // load, and still passes a quadratic scanner on fast hardware. Growth is
-    // what linearity actually claims, and a ratio is load-immune.
-    expectSubQuadratic((n) => void deriveSlug('/abs' + segment.repeat(n) + '.md'), 500, {
-      label: 'deriveSlug vs segment count',
-    })
+    // Proved by COUNTING, not timing (a wall-clock growth ratio of the same
+    // shape went red under Coverage (Full)'s 4-way load for isMarkdownId):
+    // the only regex that runs is the end-anchored, quantifier-free
+    // extension matcher in slugFromPath, once per call, and the number of
+    // string-method calls does not grow with the segment count. The old
+    // `/[/]content[/](.+?)\.(md|mdx)$/i` would show up as a second pattern.
+    const trace = (n: number) =>
+      countStringOps(() => deriveSlug('/abs' + segment.repeat(n) + '.md'))
+    const small = trace(50)
+    const large = trace(50_000)
+    expect(large.result.startsWith('a/content/')).toBe(true)
+    for (const t of [small, large]) expect(t.regexSources).toEqual(['/\\.(md|mdx)$/i'])
+    expect(large.stringCalls).toBe(small.stringCalls)
   })
 })

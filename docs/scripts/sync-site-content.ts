@@ -70,6 +70,7 @@ for (const { file, type, from: typeFrom } of CHECKED) {
   )
 }
 copy(join(from, 'content/_sitemap.json'), join(app, '_sitemap.json'))
+copy(join(from, 'content/_counts.json'), join(app, '_counts.json'))
 
 const wanted = ids.length > 0 ? ids : readdirSync(products).filter((f) => !f.startsWith('_') && f.endsWith('.json')).map((f) => f.slice(0, -5))
 for (const id of wanted) copy(join(from, `content/${id}.json`), join(products, `${id}.json`))

@@ -1,7 +1,7 @@
-// Tab-bar router (#4060): createRouter({ tabs }) + <Tabs router> + a <RouterView /> per tab.
+// Tab-bar router (#4060): createRouter({ tabs: routerTabs([...]) }) + <Tabs router> + a <RouterView /> per tab.
 // Compiled against the REAL iOS SDK + router-swift by real-runtime-typecheck.test.ts.
 import { Stack, Text, Button, Tabs, Tab } from '@pyreon/primitives'
-import { createRouter, useNavigate, RouterProvider, RouterView } from '@pyreon/router'
+import { createRouter, useNavigate, RouterProvider, RouterView, routerTabs } from '@pyreon/router'
 function FeedHome() {
   const navigate = useNavigate()
   return <Stack><Text>Feed</Text><Button onPress={() => navigate('/feed/post')}>Open</Button></Stack>
@@ -15,10 +15,10 @@ export function TabsApp() {
       { path: '/feed/post', component: FeedPost },
       { path: '/me', component: MeHome },
     ],
-    tabs: [
+    tabs: routerTabs([
       { name: 'feed', root: '/feed' },
       { name: 'me', root: '/me' },
-    ],
+    ]),
   })
   return (
     <RouterProvider router={router}>

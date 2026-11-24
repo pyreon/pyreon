@@ -3,7 +3,7 @@
  *
  * `decodeURIComponent` throws `URIError` on a lone `%`, `%zz`, or a truncated
  * multi-byte escape. Every decode in `match.ts` is applied to attacker-supplied
- * text, and the matcher is reached PRE-AUTH from `router.preload` inside the SSR
+ * text, and the matcher is reached PRE-AUTH from `preloadRoute` inside the SSR
  * handler — so `GET /?q=%` was an unauthenticated 500 on every server-rendered
  * Pyreon app. One character, no auth, and a STATIC route: no dynamic parameter
  * is needed, because the QUERY parser decodes too.

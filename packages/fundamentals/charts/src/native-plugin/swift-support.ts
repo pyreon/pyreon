@@ -1,4 +1,4 @@
-import { CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
+import { describeInput, plotFillAccessor, plotFillSpec, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
 import type { ChartHostTarget, ChartThemeText } from './hosts'
 import { substituteIdentifier, swiftIdent, swiftStr, type ExprIR, type TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './swift-facade'
@@ -203,7 +203,7 @@ export function swiftChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, desc
   // DATA: an AXChartDescriptor over the same A11yInput the description reads —
   // the Audio Graph and a per-point explorer, the native twin of the web
   // host's hidden table.
-  const descriptor = describe === undefined ? '' : `.accessibilityChartDescriptor(PyreonChartDescriptor(${describe.slice('describeChart('.length, -1)}))`
+  const descriptor = describe === undefined ? '' : `.accessibilityChartDescriptor(PyreonChartDescriptor(${describeInput(describe)}))`
   const explicit = host.stringAttr(e, 'accessibilityLabel', indent)
   if (explicit !== undefined) return `.accessibilityLabel(${explicit})${descriptor}`
   if (describe !== undefined) return `.accessibilityLabel(${describe})${descriptor}`
@@ -578,6 +578,39 @@ export function swiftMarkErrorArgs(
   lets.push(`let ${namePrefix}ErrLow${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${lowBody})`, 'Double', windowed, decimated)}`)
   lets.push(`let ${namePrefix}ErrHigh${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${highBody})`, 'Double', windowed, decimated)}`)
   return [`errLow: ${namePrefix}ErrLow${seriesIndex}`, `errHigh: ${namePrefix}ErrHigh${seriesIndex}`]
+}
+
+/**
+ * A mark's per-datum `fill` (`fillBy` / `shadeBy` over a literal field) as the
+ * trailing `Series` arguments: `itemColors` (and `shades`), the last fields of
+ * the struct. Empty when the mark has none; see `plotFillSpec` for what is declined.
+ */
+// oxlint-disable-next-line max-params -- same positional shape as the sibling `*MarkErrorArgs`, which every plot emit already calls
+export function swiftMarkFillArgs(
+  opts: ExprIR | undefined,
+  tag: string,
+  seriesIndex: number,
+  rows: string,
+  windowed: boolean,
+  indent: number,
+  lets: string[],
+  decimated = false,
+): string[] | 'unsupported' {
+  const spec = plotFillSpec(opts, tag, seriesIndex, (m) => host.warn(m))
+  if (spec === undefined) return []
+  const body = swiftAccessorExpr(plotFillAccessor(spec.field), tag, `mark ${seriesIndex + 1} fill`, indent)
+  if (body === 'unsupported') return 'unsupported'
+  if (!spec.shade) {
+    lets.push(`let pyreonFill${seriesIndex}: [String] = ${swiftPlotRowMap(rows, body, 'String', windowed, decimated)}`)
+
+    return [`itemColors: pyreonFill${seriesIndex}`]
+  }
+  lets.push(`let pyreonShade${seriesIndex}: [Double] = ${swiftPlotRowMap(rows, `pyreonChartDouble(${body})`, 'Double', windowed, decimated)}`)
+  const lo = spec.domain === undefined ? `shadeExtent(pyreonShade${seriesIndex}).min` : chartDouble(spec.domain.min)
+  const hi = spec.domain === undefined ? `shadeExtent(pyreonShade${seriesIndex}).max` : chartDouble(spec.domain.max)
+  lets.push(`let pyreonFill${seriesIndex}: [String] = shadeColors(pyreonShade${seriesIndex}, [${spec.ramp.map((r) => swiftStr(r)).join(', ')}], ${lo}, ${hi})`)
+
+  return [`itemColors: pyreonFill${seriesIndex}`, `shades: pyreonShade${seriesIndex}`]
 }
 
 /** `[minRadius, maxRadius]` of a bubble's options literal, the web defaults (3, 18) when absent. */

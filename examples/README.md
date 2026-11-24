@@ -61,6 +61,7 @@ Apps in `examples/fixtures/` exist for a test suite. They are not written to be 
 | [fixtures/playground](./fixtures/playground/) | The root `bun run test:e2e` core-runtime suites and `verify-modes` |
 | [fixtures/ssr-showcase](./fixtures/ssr-showcase/) | The Zero render-mode matrix: `verify-modes`, SSR/ISR/SSG/HMR/islands e2e suites, `zero-app-budgets.json` |
 | [fixtures/edge-runtimes](./fixtures/edge-runtimes/) | `bun run test:e2e:edge-runtimes`, one build per edge adapter |
+| [fixtures/pwa-offline](./fixtures/pwa-offline/) | `bun run test:e2e:pwa-offline`: an SSG build with `zero({ pwa })`, a persisted query cache and an offline mutation, driven through offline reloads and a simulated deploy |
 | [fixtures/cssvars](./fixtures/cssvars/) | The CSS-variables theming e2e suite and `scripts/bench-cssvars.ts` |
 | [fixtures/perf-dashboard](./fixtures/perf-dashboard/) | `@pyreon/perf-harness` journeys (`perf.yml`) and the leak sweep (`leak-sweep.yml`) |
 | [fixtures/sync-yjs](./fixtures/sync-yjs/) | The `@pyreon/sync` CRDT e2e suites (surgical update, merge, state-vector catch-up) |
@@ -73,6 +74,6 @@ Harnesses behind the numbers in [`BENCHMARKS.md`](../BENCHMARKS.md). Read `.agen
 | Harness | Measures |
 | --- | --- |
 | [benchmark](./benchmark/) | The DOM, SSR, hydration, bundle and charts suites, plus probe scripts |
-| [real-bench](./real-bench/) | A TodoMVC-shaped app against real React DOM |
+| [real-bench](./real-bench/) | A catalogue app in six frameworks (bundle, time to interactive, memory) and a TodoMVC-shaped app against real React DOM |
 | [form-bench](./form-bench/) | A 12-field form against six form libraries |
 | [stacks-bench](./stacks-bench/) | Zero against eight meta-frameworks, each on its own server |

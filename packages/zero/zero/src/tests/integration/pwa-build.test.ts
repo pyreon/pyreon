@@ -98,10 +98,15 @@ describe('zero({ pwa }) — real builds', () => {
     await buildWith({ mode: 'spa', pwa })
     const cfg = readCfg(join(DIST, 'sw.js'))
     const expected = walk(DIST)
-      .filter((f) => f.startsWith('assets/') && !f.endsWith('.map'))
+      .filter(
+        (f) => (f.startsWith('assets/') && !f.endsWith('.map')) || f === 'index.html',
+      )
       .map((f) => `/${f}`)
       .sort()
+    // The app shell is precached too: it answers every offline navigation.
     expect(cfg.precache).toEqual(expected)
+    expect(cfg.precache).toContain('/index.html')
+    expect(readFileSync(join(DIST, 'sw.js'), 'utf-8')).toContain('"shell":"/index.html"')
     expect(existsSync(join(DIST, 'manifest.webmanifest'))).toBe(true)
   }, 180_000)
 })

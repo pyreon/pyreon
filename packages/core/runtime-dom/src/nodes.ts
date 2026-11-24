@@ -19,7 +19,7 @@ export interface FirstRun<T> {
 }
 
 import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
-import { _frameReads, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, getCurrentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+import { _abortOwnerFrame, _closeOwnerFrame, _frameReads, _openOwnerFrame, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, _currentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 
 /**
@@ -361,8 +361,10 @@ function markStayingEntries(lis: LisState, lisLen: number): void {
  * for it is replace: it gets a fresh key on every run (a new `Symbol`, which
  * can never collide with a user key), so it is mounted anew and the previous
  * run's keyless entry is removed as stale. Keyed siblings keep their rows.
- * (Classification is pinned at the first run — see `mountAccessorChild` — so
- * a list that later loses keys cannot hand itself back to the general path.)
+ * (Classification is pinned once the dispatcher decides — see
+ * `mountAccessorChild` — so a list that later loses keys cannot hand itself
+ * back to the general path. It decides on the first value that is not empty
+ * or nullish, `isUndecidedChild`.)
  */
 export function mountKeyedList(
   accessor: () => VNode[],
@@ -372,19 +374,25 @@ export function mountKeyedList(
   first?: FirstRun<VNode[]>,
 ): Cleanup {
   return mountFor<VNode>(
-    first === undefined
-      ? accessor
-      : () => {
-          // First run: the caller already called the accessor. Mount that value
-          // and replay its reads into this effect's frame instead of calling
-          // again (see `FirstRun`).
-          if (first === undefined) return accessor()
-          const f = first
-          first = undefined
-          _replayReads(f.reads)
-          _releaseRun(f.run)
-          return f.value
-        },
+    () => {
+      let value: unknown
+      if (first === undefined) value = accessor()
+      else {
+        // First run: the caller already called the accessor. Mount that value
+        // and replay its reads into this effect's frame instead of calling
+        // again (see `FirstRun`).
+        const f = first
+        first = undefined
+        _replayReads(f.reads)
+        _releaseRun(f.run)
+        value = f.value
+      }
+      // The binding stays keyed for life, but the accessor may stop returning
+      // an array (`cond() ? rows.map(…) : null`, a lone vnode, a string). Such a
+      // value is a list of one item, nothing for nullish — before, `null`
+      // threw inside the effect and a lone vnode rendered nothing.
+      return Array.isArray(value) ? value : value == null || value === false ? [] : [value as VNode]
+    },
     keyOfVNode,
     identityVNode,
     parent,
@@ -1435,13 +1443,17 @@ export function mountFor<T>(
 let rowCollector: EffectScope | null = null
 
 function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null } {
-  const prev = getCurrentScope()
+  const prev = _currentScope()
   const collector = rowCollector ?? (rowCollector = effectScope())
   setCurrentScope(collector)
+  // Template bindings the row builds are owned by the row's cleanup, not the
+  // collector; this frame owns them only if the callback throws.
+  const ownerFrame = _openOwnerFrame()
   let result: R
   try {
     result = fn()
   } catch (err) {
+    _abortOwnerFrame(ownerFrame)
     // A half-filled collector must never be handed to the next row.
     collector.stop()
     rowCollector = null
@@ -1449,6 +1461,7 @@ function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null 
   } finally {
     setCurrentScope(prev)
   }
+  _closeOwnerFrame(ownerFrame)
   if (collector._isEmpty()) return { result, scope: null }
   rowCollector = null
   return { result, scope: collector }

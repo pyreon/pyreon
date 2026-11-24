@@ -7,6 +7,10 @@ import { describe, expect, it } from 'vitest'
 import { fileFromUri } from '../../../../fundamentals/hooks/src/fileFromUri'
 import { encodeMultipart } from '../../../../fundamentals/http/src/body'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { resolveJava } from '../../../runtime-kotlin/scripts/java-runtime'
+
+/** The `java` that runs jars here (never a bare `java` — see `resolveJava`). */
+const JAVA = resolveJava() ?? 'java'
 
 /**
  * A `multipart` body (#3979) is built by the RUNTIME: `PyreonMultipartBody` on each target writes the
@@ -167,8 +171,8 @@ function withTempDir<T>(prefix: string, fn: (dir: string) => T): T {
 
 function jvmPath(): string | undefined {
   try {
-    execFileSync('java', ['-version'], { stdio: 'ignore' })
-    return 'java'
+    execFileSync(JAVA, ['-version'], { stdio: 'ignore' })
+    return JAVA
   } catch {
     // fall through to the off-PATH locations
   }

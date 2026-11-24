@@ -9,9 +9,9 @@
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { RouterLink, RouterProvider, RouterView, useBlocker } from '../index'
+import { RouterLink, RouterProvider, RouterView, routerTabs, useBlocker } from '../index'
 import { createRouter, setActiveRouter } from '../router'
-import type { RouteRecord, Router, RouterInstance, RouterTab } from '../types'
+import type { RouteRecord, Router, RouterInstance } from '../types'
 
 const flush = (ms = 0): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
@@ -356,10 +356,10 @@ describe('memory mode — RouterLink', () => {
 })
 
 describe('memory mode — tabs', () => {
-  const tabs: RouterTab[] = [
+  const tabs = routerTabs([
     { name: 'a', root: '/a' },
     { name: 'b', root: '/b' },
-  ]
+  ])
 
   it('back restores the tab and its stack', async () => {
     const r = createRouter({

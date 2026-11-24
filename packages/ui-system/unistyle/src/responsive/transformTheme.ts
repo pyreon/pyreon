@@ -1,4 +1,5 @@
 import { isEmpty, set } from '@pyreon/ui-core'
+import { isBreakpointMap } from './isBreakpointMap'
 
 const removeUnexpectedKeys = (obj: Record<string, unknown>, keys: string[]) => {
   const result: Record<string, unknown> = {}
@@ -37,7 +38,7 @@ const transformTheme: TransformTheme = ({ theme, breakpoints }) => {
         if (indexBreakpoint == null) continue
         set(result, [indexBreakpoint, key], value[i])
       }
-    } else if (typeof value === 'object' && value !== null) {
+    } else if (typeof value === 'object' && value !== null && isBreakpointMap(value)) {
       const obj = value as Record<string, unknown>
       for (const childKey in obj) {
         set(result, [childKey, key], obj[childKey])

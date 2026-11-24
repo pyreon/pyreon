@@ -1,5 +1,5 @@
 import { mount } from '@pyreon/runtime-dom'
-import { QueryClient } from '@tanstack/query-core'
+import { onlineManager, QueryClient } from '@tanstack/query-core'
 import { dehydrate, QueryClientProvider, useIsRestoring, useQuery } from '../index'
 import * as PersistEntry from '../persist'
 import {
@@ -134,6 +134,7 @@ describe('PersistQueryClientProvider', () => {
             },
             staleTime: Infinity,
           }))
+
           return null
         }}
       </PersistQueryClientProvider>,
@@ -169,6 +170,7 @@ describe('PersistQueryClientProvider', () => {
               return 'data'
             },
           }))
+
           return null
         }}
       </PersistQueryClientProvider>,
@@ -300,6 +302,47 @@ describe('PersistQueryClientProvider', () => {
     await expect(tick(45)).resolves.toBeUndefined()
   })
 
+  it('resumes a persisted PAUSED mutation once restored (offline write survives a reload)', async () => {
+    // Session 1 (offline): a mutation with a mutationKey pauses and is dehydrated.
+    const first = makeClient()
+    const lost = vi.fn(async (_v: string) => 'session-1')
+    first.setMutationDefaults(['todo-add'], { mutationFn: lost })
+    onlineManager.setOnline(false)
+    void first
+      .getMutationCache()
+      .build(first, { mutationKey: ['todo-add'] })
+      .execute('buy milk')
+      .catch(() => undefined)
+    await tick()
+    const clientState = dehydrate(first)
+    expect(clientState.mutations).toHaveLength(1)
+    expect(clientState.mutations[0]!.state.isPaused).toBe(true)
+    first.clear()
+
+    // Session 2 (page reload while ONLINE: no offline -> online transition
+    // will ever fire, so only the provider can resume it).
+    onlineManager.setOnline(true)
+    const second = makeClient()
+    const sent = vi.fn(async (_v: string) => 'sent')
+    second.setMutationDefaults(['todo-add'], { mutationFn: sent })
+    const persister = memoryPersister({ seed: { timestamp: Date.now(), buster: '', clientState } })
+
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const unmount = mount(
+      <PersistQueryClientProvider client={second} persistOptions={{ persister, maxAge: Infinity }}>
+        {() => null}
+      </PersistQueryClientProvider>,
+      el,
+    )
+    await tick(30)
+    expect(sent).toHaveBeenCalledTimes(1)
+    expect(sent.mock.calls[0]![0]).toBe('buy milk')
+    expect(lost).not.toHaveBeenCalled()
+    unmount()
+    el.remove()
+  })
+
   it('calls onSuccess after restoration', async () => {
     const client = makeClient()
     const persister = memoryPersister({ delayMs: 10 })
@@ -386,7 +429,10 @@ describe('useIsRestoring', () => {
   it('IsRestoringProvider renders a non-function (static) child', () => {
     const el = document.createElement('div')
     document.body.appendChild(el)
-    const unmount = mount(<IsRestoringProvider value={false}>restoring-child</IsRestoringProvider>, el)
+    const unmount = mount(
+      <IsRestoringProvider value={false}>restoring-child</IsRestoringProvider>,
+      el,
+    )
     expect(el.textContent).toContain('restoring-child')
     unmount()
     el.remove()

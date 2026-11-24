@@ -1,0 +1,26 @@
+{
+  "id": "svelte",
+  "label": "Svelte 5 + SvelteKit (SPA mode) + runes",
+  "docs": [
+    "https://svelte.dev/docs/kit/single-page-apps",
+    "https://svelte.dev/docs/kit/adapter-static",
+    "https://svelte.dev/docs/svelte/$state#Classes",
+    "https://svelte.dev/docs/svelte/svelte-reactivity",
+    "https://svelte.dev/docs/svelte/bind#Function-bindings",
+    "https://svelte.dev/docs/kit/$app-state"
+  ],
+  "packages": ["svelte", "@sveltejs/kit", "@sveltejs/adapter-static", "@sveltejs/vite-plugin-svelte", "vite"],
+  "router": "SvelteKit filesystem routing in SPA mode (root layout `ssr = false`, adapter-static with a 200.html fallback); plain <a href>, goto(), page.params from $app/state",
+  "state": "a class with $state fields and $derived values in src/lib/catalog.svelte.ts, one module-level instance; favourites in a SvelteSet; filter inputs use function bindings",
+  "codeSplitting": "SvelteKit splits by itself: one entry plus a node chunk per route and layout; first load fetches the entry, the root layout and the matched route",
+  "build": ["npm", "run", "build"],
+  "outDir": "build",
+  "fallback": "200.html",
+  "dataFile": "src/lib/data.ts",
+  "cssFile": "src/lib/app.css",
+  "notes": [
+    "Svelte's docs recommend SvelteKit for an app with routing; SvelteKit has no client-only mode without its own runtime, so the arm ships SvelteKit's client (router, data loading, preloading) as React Router ships its own.",
+    "app.html is the sv-create template's minus the favicon link; it keeps data-sveltekit-preload-data=\"hover\" (no hover happens in the scripted session).",
+    "products is $state (deeply reactive, proxied lazily), as the docs write shared state; $state.raw would be a size-specific optimisation the contract excludes."
+  ]
+}

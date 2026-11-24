@@ -46,7 +46,7 @@ const Value = txt
   }))
   .states((_t, m) => ({
     default: {},
-    missing: { fontSize: text.ui.size, lineHeight: 1.5, letterSpacing: 0, fontFamily: font.mono, color: tone(m, 'fog') },
+    missing: { fontSize: text.ui.size, lineHeight: 1.5, letterSpacing: '0', fontFamily: font.mono, color: tone(m, 'fog') },
   }))
 
 

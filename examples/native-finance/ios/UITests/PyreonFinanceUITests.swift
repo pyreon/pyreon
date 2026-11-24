@@ -90,7 +90,7 @@ final class PyreonFinanceUITests: XCTestCase {
         file: StaticString = #filePath, line: UInt = #line,
     ) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launch()
+        app.launchFresh()
         XCTAssertTrue(
             app.otherElements["login-page"].waitToExist(timeout: 30)
                 || app.otherElements["dashboard-page"].exists,
@@ -344,8 +344,7 @@ final class PyreonFinanceUITests: XCTestCase {
             "Sign-in did not reach the dashboard"
         )
 
-        app.terminate()
-        app.launch()
+        app.relaunchKeepingState()
 
         XCTAssertTrue(
             app.otherElements["dashboard-page"].waitToExist(timeout: 20),
@@ -360,8 +359,7 @@ final class PyreonFinanceUITests: XCTestCase {
             "Sign-out did not return to the login screen"
         )
 
-        app.terminate()
-        app.launch()
+        app.relaunchKeepingState()
         XCTAssertTrue(
             app.otherElements["login-page"].waitToExist(timeout: 20),
             "Login screen did not render after signing out and relaunching"

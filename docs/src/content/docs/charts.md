@@ -249,6 +249,84 @@ export const Curves = () => (
 )
 ```
 
+### Bar thickness
+
+`<Chart barWidth barGap barCategoryGap>` sets how thick the bars are. Unset, a bar
+takes 75% of its band, as it always did.
+
+| Prop | Meaning |
+| --- | --- |
+| `barWidth` | The thickness of one bar in px, across its band: width on a vertical chart, height on a horizontal one. A **ceiling**, not a stretch: a bar is never wider than the slot its band leaves, so a narrow chart cannot overflow. |
+| `barGap` | The space between the bars of a group (`<Bar group>`), as a fraction of one bar. `0` (the default) means the bars abut. |
+| `barCategoryGap` | The space between categories, as a fraction of the band: `0.25` by default, clamped to `0`..`0.9`. |
+
+They reach plain, stacked, grouped and waterfall bars in both orientations, and the
+hit target, the keyed update morph and the server-rendered first frame follow the
+drawn bar. `barWidth` is px and the two gaps are fractions on purpose: a pixel
+width is what a designer asks for, and a fraction survives a resize. On iOS and
+Android all three lower as literals (a computed value warns by name).
+
+### Bars on a time or numeric axis
+
+With `xValue` (and `<Axis x time>` for dates) each bar sits at its own x instead of in an
+equal band. Its **slot** is the smallest positive gap between two x values, or `barSpan` (in
+x units; a day is `86_400_000` on a time axis). Bars are centred on x, the axis is padded by
+half a slot so the first and last bar are whole, and `barWidth` / `barGap` / `barCategoryGap`
+work inside the slot as they do inside a band. Plain, grouped, stacked and waterfall bars,
+horizontal charts (the numeric axis runs down the y side), `<Axis x inverse>` and RTL all
+follow. A missing day is an empty stretch, not a squeezed bar. The hit rects, the tooltip,
+the keyed update morph (give the chart `by`; a series with a line keeps the plain update)
+and the server-rendered first frame use the same rects; the accessible table is unchanged.
+Zoom and brush windows are fractions of the DATA INDEX, as for every numeric axis, so on
+an irregular series the window edge is not at the same x as the pointer. On iOS and Android
+`barSpan` lowers as a literal (a computed value warns by name). A non-linear x scale lays
+the slots out in the scale's view, so their widths follow it.
+
+### Colouring a datum
+
+`color` is one colour for the whole series, and `<Chart color="field">` splits
+long-format rows into a series per value. Colouring each **datum** is a third job
+with a third spelling, so it cannot be confused with either: `fill` takes a
+descriptor made by an imported binding.
+
+```tsx
+// @check
+import { Bar, Chart, Tooltip, fillBy, shadeBy } from '@pyreon/charts'
+
+interface Region { name: string; revenue: number; margin: number; status: string }
+const regions: Region[] = [
+  { name: 'North', revenue: 420, margin: 12, status: '#16a34a' },
+  { name: 'South', revenue: 310, margin: 4, status: '#dc2626' },
+]
+
+export const Colours = () => (
+  <Chart<Region> data={regions} x="name">
+    {/* a colour carried by the row */}
+    <Bar<Region> y="revenue" label="Revenue" fill={fillBy<Region>('status')} />
+    {/* a value mapped through a ramp: low = first stop, high = last */}
+    <Bar<Region> y="revenue" label="Revenue" fill={shadeBy<Region>('margin', { ramp: ['#fde68a', '#b45309'] })} />
+    <Tooltip />
+  </Chart>
+)
+```
+
+> **Zoom and streaming.** `shadeBy` maps over the rows in view, so its default domain is the extent of those rows: zoom or append data and the colours shift with the window. Pin the domain when a colour must keep its meaning: `shadeBy('margin', { domain: { min: 0, max: 30 } })`.
+
+- `fillBy(field | (d, i) => colour)`: a datum whose colour is missing keeps the series colour.
+- `shadeBy(field | (d, i) => number, { ramp?, domain? })`: the ramp defaults to the theme's value ramp (the one the heatmap uses, with its own light and dark stops) and the domain to the finite extent of the values. A missing value is a gap and keeps the series colour. On a zoomed or decimated chart the extent is that of the rows in view, so **pin `domain`** when colours must stay put as the window moves.
+- **The value is data, and the ramp is a legend.** A colour is the one thing a reader who cannot see it can never recover, so a `shadeBy` chart draws a compact ramp strip above the plot (the low and high values at its ends; it is part of the server-rendered SVG and mirrors under `rtl`), the tooltip gets a `Revenue (shade)` row and the accessible table a `Revenue (shade)` column.
+- Works on `<Bar>` (plain, stacked, grouped, waterfall) and `<Dot>`. Both bindings are imported, so a chart that never colours a datum does not bundle them.
+- **iOS and Android.** `fillBy('field')` and `shadeBy('field', { ramp, domain })` with a **literal field name** and literal options lower: the engine's `shadeColors` colours the bars, the same function the web uses. Three things stay web-only and the compiler names each: an accessor function (`(d) => …`, a closure over a row), the ramp legend with the `(shade)` table and tooltip rows, and the theme-following default ramp (natively a shade with no `ramp` uses the light theme ramp; pass one to match across modes).
+
+### Gaps in a line
+
+A missing value breaks a line or an area into separate runs, which is the honest
+reading of a measurement that is absent. `<Line connectNulls>` and
+`<Area connectNulls>` draw one continuous stroke (or fill) through the finite points
+instead. The bridge is straight between the neighbours, and the gap is still
+missing data: it has no tooltip row and its table cell stays empty. It lowers to
+iOS and Android as a literal.
+
 ## Axes
 
 - **Categorical x** — pass `x={(d) => d.label}`; points are spaced evenly.
@@ -276,6 +354,57 @@ export const Curves = () => (
   2× and 5× minors under two decades), non-positive values as gaps, bars
   growing from the axis floor. Tooltip, table and value labels keep the real
   values — the view is geometry, not a data edit. A right axis stays linear.
+- **Grid and minor lines per axis** — `showGrid` has always meant the value-axis
+  lines. `<Axis y grid={false}>` hides just those; `<Axis x grid>` adds vertical
+  lines at the x ticks (on a horizontal chart, the category rows); `<Axis y minor={4}>`
+  draws three thin lines between each pair of major ticks, and `<Axis x minor>` does
+  the same on a numeric (`xValue`) axis. Minor lines are for linear axes: a log or
+  time axis already ticks its own way and is left alone. They compose with a
+  reversed axis (the lines move with the ticks) and lower to iOS and Android as
+  literals.
+- **Reversed value axis** — `<Axis y inverse>` (and `<Axis y2 inverse>` for the
+  right axis, independently) puts the high end at the bottom, the left on a
+  horizontal chart: a rank chart reads 1 at the top, a depth profile reads depth
+  going down. Bars and areas hang from the top (their baseline is the axis floor,
+  which is now the top), the rounded ends move to the free end, the ticks run the
+  other way, and it composes with log and time axes, dual axes, a zoom window, the
+  crosshair, the tooltip and the hit targets. Only the mapping from a value to a
+  pixel flips: **the data, the tooltip rows and the accessible table keep their
+  order**. Under `rtl` the two commute: RTL mirrors x, a reversed axis flips y.
+  On iOS and Android `yInverse` and `y2Inverse` lower as literals (a computed value
+  warns by name).
+- **Reversed x axis** — `<Axis x inverse>` reverses the DIRECTION of the x axis: the
+  first category (or the smallest x) at the right. It does not move the y axis; where
+  an axis sits is a separate concern. Only the picture reverses: clicks, the tooltip,
+  brush ranges and `onSelect` report DATA indices, the keyboard walk stays in data
+  order (the right arrow steps to the next datum, which now sits to the left), the
+  accessible table keeps its order, a zoom window stays in data fractions, and the
+  navigator strip keeps showing the data in data order. Under `rtl` the two cancel:
+  RTL mirrors the whole plot and `inverse` reverses the direction within it, so
+  RTL plus an x-inverse reads left to right again. Works on category axes, numeric and
+  time (`xValue`) axes, horizontal charts (the category rows run bottom to top), and
+  lowers to iOS and Android as a literal.
+- **`sqrt` and `symlog` scales, and a scaled x axis** — import a scale **descriptor**:
+  `<Scale y={sqrt()} />`, `<Axis y scale={symlog()} />`, and for a numeric `xValue` axis
+  `<Scale x={log()} />` (`sqrt()`, `symlog({ constant })` and `log()` all work on either
+  axis; `yScale="log"` stays a plain string for the value axis). They are imported bindings
+  like `fillBy`, so a chart that never imports one bundles none of this code. Each draws
+  every mark in a view of the data, the way the log y axis always has. The rules are fixed so a
+  value is never silently moved: **log** places only values above zero, **sqrt** only values
+  from zero up (a value the scale cannot place is a gap, drawn as nothing, never a NaN pixel;
+  on an x axis the whole datum becomes a gap), **symlog** places everything
+  (`sign(v) * log10(1 + |v| / c)`: it reads linearly near zero and logarithmically far from it;
+  `c` is `symlog({ constant })`, 1 by default). Ticks are nice in the REAL values and labelled with
+  them: decades with 1-2-5 minors when the span is short for log, the ordinary nice values
+  (spaced by the square root, so denser near zero) for sqrt, zero and decades either side of
+  it for symlog. Bars on a `sqrt` or `symlog` axis grow from the axis floor or from zero,
+  zoom and the brush work in rows (so they are untouched by the scale), the tooltip, the
+  table and the value labels keep the real values, hits and the crosshair find a datum where
+  it was drawn, and the spoken description says which scale an axis is on. A time axis stays
+  linear (the scale is ignored with `xTime`). On iOS and Android the compiler recognises the
+  imported descriptor with its literal `constant` (a non-literal one warns by name) and builds the
+  engine's own view, so the transform and the ticks are the same code; the native spoken
+  description names the scale too.
 - **Time y axis** — `yTime` (or `<Scale y="time">`), the twin of `xTime`.
 - **Axis titles** — `xTitle` / `yTitle` / `y2Title` (or `<Axis x title>`), each
   in a line of its own outside the tick labels, the y titles running along
@@ -509,7 +638,7 @@ Relations use node/link lists: `<SankeyChart nodes links>` lays flows out by lon
 
 ## Coordinates
 
-Beyond the cartesian grid the engine ships further coordinate systems as families of their own: `<CalendarChart start end values>` (the contribution-graph grid, strict ISO dates), `<ParallelChart axes rows>` (parallel coordinates with category or value axes and highlighted rows), `<PolarChart axes series>` (radial or concentric bars and polar lines), `<RiverChart series>` (a silhouette streamgraph), a single axis (`layoutSingleAxis`), and `<MapChart map values>` over GeoJSON registered with `registerMap`, passed inline, or projected first with `geoShapes(json)` into a `GeoShape[]` (the form that crosses to iOS and Android) — regions filled by value through the same colour ramp the heatmap uses, with `renderGeoPoints` / `renderGeoPaths` for scatter and flight paths on top.
+Beyond the cartesian grid the engine ships further coordinate systems as families of their own: `<CalendarChart start end values>` (the contribution-graph grid, strict ISO dates), `<ParallelChart axes rows>` (parallel coordinates with category or value axes and highlighted rows), `<PolarChart axes series>` (radial or concentric bars and polar lines), `<RiverChart series>` (a silhouette streamgraph), a single axis (`layoutSingleAxis`), and `<MapChart map values>` over GeoJSON registered with `registerMap`, passed inline, or projected first with `geoShapes(json)` into a `GeoShape[]` (the form that crosses to iOS and Android) — regions filled by value through the same colour ramp the heatmap uses, with `points`, `paths`, `heat` and `pies` on top and `geoToSvg` drawing the same layers on the server. Inner rings (lakes, enclaves such as Lesotho inside South Africa) are cut out of the fill and the hit test; hovering outlines the region, `selectedMode` keeps a selection, and `idProperty` / `tooltipFormatter` join values and read the feature's properties (see the map gallery). **Layers:** `options.sphere` draws the outline of the whole sphere behind the regions and fits the box to it, `options.graticule` (degrees) draws meridians and parallels behind the land; `flows={[{ from, to, value }]}` draws great-circle arcs (`flowOptions.progress` reveals each by arc length on the sphere; an arc crossing the seam is two runs); `sizeLegend` adds a key of nested circles for sized point marks; Point, MultiPoint, LineString and MultiLineString features in the map's own GeoJSON or TopoJSON become point marks and paths; `fitTo="Brazil"` zooms to named regions and `zoomOnClick` zooms to a clicked region (a click on empty ground returns to the whole map). Labels follow the zoom: a name is drawn only where it fits inside its region, so more appear as you zoom in. Rings that cross the seam half a turn from the central meridian (Russia, Fiji, the Aleutians) are cut there for the wrapping projections (Equal Earth, Natural Earth, Albers), whatever the central meridian; what is still NOT handled is a hole that straddles the seam, and clipping of a line (a flow or a path) other than splitting it into runs where it crosses. `sphere`, `graticule` and the Point/Line features lower to iOS and Android; `flows`, `sizeLegend`, `fitTo` and `zoomOnClick` are web-only for now (named warnings). **Data:** `@pyreon/charts-maps/world-110m` and `/us-states` (Puerto Rico is left out: Albers USA has no inset for it), one lazy module each, about 30 KB gzip. **Colour:** a map's default ramp is its own (not the theme's): every stop keeps at least 3:1 against the dark page and the lightest light stop 1.4:1 against white, with contrast rising with the value (a test locks the numbers), so the lowest regions never vanish into the ground. A region with no value is hatched over the neutral fill, and a map with a `visualMap` strip adds a hatched "No data" swatch beside it. **Projections:** `options.projection` takes `equirectangular`, `mercator`, `equalEarth` (Šavrič et al. 2018, equal-area), `naturalEarth1`, `albers` (equal-area conic; `parallel1`, `parallel2`, `centerLon`, `centerLat`) and `albersUsa` (the lower 48 plus Alaska and Hawaii in insets; overlay points project into the right inset). `geoProject(transform, lon, lat)` maps to pixels and `geoUnproject(transform, x, y)` maps a pointer back to lon/lat. Each projects a vertex on its own relative to the central meridian; a shape already cut at the antimeridian (as Natural Earth ships Russia and Fiji) draws whole with a central meridian of 0, but moving the central meridian puts a seam elsewhere that is NOT clipped, so a shape crossing it draws a chord. The projection arithmetic is shared with iOS and Android. **TopoJSON and map defaults:** `map` and `registerMap(name, source, { projection, nameProperty, idProperty, object })` also take TopoJSON (arcs, transform and stitching decoded with no dependency, by `topoToGeo(topology, object)`) and a `MapDefinition` (`{ data, object, projection, nameProperty, idProperty }`) that carries the choices a map was prepared for; `<MapChart options>` overrides them. **Hover emphasis, selection (`selectedMode`, `onSelectionChange`) and `tooltipFormatter` are web-only for now:** on iOS and Android the compiler warns about each by name and the map renders without them (a native map selects through `onSelectIndex`).
 
 ## Themes
 

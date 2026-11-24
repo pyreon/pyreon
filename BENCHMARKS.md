@@ -288,7 +288,7 @@ Pyreon was 16.6 KB on 2026-10-20 and 17.1 KB in the overnight run. The bundle-bu
 
 *Overnight run (`d47fa5a2f`), not re-measured:*
 
-**Charts (`bench:charts-bundle`, gzip, beyond an 11.2 KB Pyreon runtime baseline):** line chart 38.0 KB vs ECharts tree-shaken 155.9 KB (4.10×) / whole package 361.0 KB; bar + line + tooltip + legend 38.0 vs 176.7 KB (4.65×); pie 19.1 vs 117.2 KB (6.12×).
+**Charts (`bench:charts-bundle`, gzip, beyond a 12.1 KB Pyreon runtime baseline; re-measured 2026-11-19 for the cartesian-basics PR, a size build on a loaded machine, not the overnight run):** line chart 40.3 KB vs ECharts tree-shaken 155.9 KB (3.87×) / whole package 361.0 KB; bar + line + tooltip + legend 40.4 vs 176.8 KB (4.38×); pie 19.8 vs 117.2 KB (5.94×). Main at the same commit before that PR measured 38.8 KB for the line chart, so that PR moved the figure by +0.4 KB and the whole cartesian-basics campaign (bar width and gap, per-datum colour, `connectNulls`, the axis seam, `inverse`, grid, non-linear scales; consolidated, with the scale kinds as imported descriptors) by +1.5 KB (38.8 to 40.3 KB, with bars on a numeric x axis); the 38.0 / 19.1 / 11.2 KB of the 2026-11-05 record had already drifted on main.
 
 **`@pyreon/code`:** core editor 131.0 KB gz vs `@uiw/react-codemirror` 126.4 KB (4% larger; both wrap CodeMirror 6). The monaco-editor row still fails to bundle.
 
@@ -382,6 +382,23 @@ The `run` column says which run each row comes from. Final-pass rows are one run
 ⚠ happy-dom rows time a JavaScript DOM implementation, not a browser: counts and relative work are meaningful, absolute times are not. The table bench prints `table-core@9.0.0`; 9.3.1 is installed and measured (§14).
 
 **Animation — `@pyreon/kinetic` vs Motion (real Chromium, 25 samples, overnight run) — PROVISIONAL, not a published claim:** enter 500 kinetic 2.42 / Motion 11.40 / CSS baseline 6.51 ms; enter 2,000 7.10 / 40.01 / 21.22; stagger 300 2.62 / 10.19 / 4.93; stagger 1,000 11.72 / 38.70 / 13.57. Still withheld: kinetic measures **below** the hand-written CSS baseline in every cell, which the same work cannot do.
+
+### `@pyreon/time` vs Date, Temporal, date-fns, Day.js, Luxon: bundle size (2026-11-18, `main` + the time PR)
+
+*Separate run from the 2026-11-05 record above; bun 1.4.0, one machine (Apple M3 Max). Bundle size does not depend on machine load.* Same ten operations in every arm (add days and months, diff in days, compare, start of week and month, month grid, parse ISO, instant to wall time and back in a zone), tree-shaken by the same Bun bundler settings (`minify`, `target: browser`, `NODE_ENV=production`), gzip -9. `cd packages/fundamentals/time && bun run bench:bundle`. date-fns 4.4.0 (+ `@date-fns/tz` 1.5.0), dayjs 1.11.23, luxon 3.7.2.
+
+| arm | minified | gzip |
+| --- | ---: | ---: |
+| Temporal (native, adapter code only) | 0.9 kB | 0.41 kB |
+| Date (hand-written UTC code) | 1.3 kB | 0.58 kB |
+| Day.js + utc, timezone, isoWeek | 13.7 kB | 5.42 kB |
+| **Pyreon (`@pyreon/time/core`)** | 15.7 kB | **5.90 kB** |
+| date-fns + `@date-fns/tz` | 28.6 kB | 8.53 kB |
+| Luxon | 71.4 kB | 21.89 kB |
+
+**Loss:** Day.js is 8% smaller than Pyreon for this task set (5.42 vs 5.90 kB gzip), and the platform (`Date`, `Temporal`) is far smaller than any library. Pyreon is 1.4× smaller than date-fns and 3.7× smaller than Luxon. The Pyreon figure includes full DST disambiguation, ISO weeks and strict validation with fix-it error messages. One function alone: `add` is 2.65 kB gzip, a five-function typical set (`add`, `diff`, `startOf`, `monthGrid`, `toInstant`) 5.47 kB (locked in `scripts/size-budgets/packages/time.json`).
+
+**Timing is not recorded here.** The head-to-head timing bench (`bun run bench:rivals`, and `bun run bench:fp` for the composition overhead) was written, gate-checked against Temporal on every input, and run during development while other sessions held the machine at a 1-minute load of 5 to 35 (the record's rule is below 4), so no timing figure is entered in this file. Run both on a quiet machine and replace this paragraph with the result.
 
 ## 11. Pyreon-only throughput (no competitor)
 
@@ -520,3 +537,5 @@ Every fundamentals package: `cd packages/fundamentals/<pkg> && NODE_ENV=producti
 Multi-library head-to-heads (shared harness `scripts/bench/rivals-harness.ts`: one process per op × arm × round, cluster-bootstrap CI95 over processes; not yet in the tables above): `bun run bench:rivals` in `packages/fundamentals/{i18n,machine,query,dnd}` (i18n vs i18next / FormatJS / vue-i18n / Lingui / Paraglide; machine vs XState / Robot; query vs react-query / SWR / Apollo, happy-dom; dnd vs dnd-kit, happy-dom), and `bun run bench:styler-floors` from the root (styler vs Emotion / goober with vanilla-extract, StyleX and Tailwind as non-ranking zero-runtime floors).
 
 Full-stack meta-frameworks (`@pyreon/zero` vs React Router framework mode, Next.js App Router, SvelteKit, SolidStart, Nuxt, Astro, TanStack Start, Qwik City — the same list/detail/form/counter app, production builds on each framework's own Node server; SSR throughput and latency, TTFB, cold start, HTML and first-load JS bytes, hydration window and first click in Chromium): `cd examples/stacks-bench && bun setup.ts && bun bench-stacks.ts --wait-quiet 4 && bun bench-stacks.ts --report` (`bun run bench:stacks`; a subset: `bun bench-stacks.ts <id>`). `bun setup.ts` installs the zero arm from npm at the version its lockfile pins; `--zero=workspace` measures the workspace build instead, and each run records which. Method, known biases and per-arm audit notes: `examples/stacks-bench/README.md` and the docs page `docs/src/content/docs/benchmarks-full-stack.md`. Raw-output schema and the conditions a publishable run must meet: `examples/stacks-bench/results/README.md`. No result from it is published in this file yet.
+
+Realistic client app across frameworks (one catalogue app — a filtered, sorted, paginated list over 5,000 records, a detail view, a validated form, client-side routing and app-wide state — in Pyreon, React, Vue, Solid, Svelte and Preact, each with its own router, state approach and production build; first-load bundle bytes, time to interactive under a 4× CPU / slow-network throttle, retained JS heap after load and after scripted sessions): `cd examples/real-bench/app && bun setup.ts && bun gate.ts && bun bench.ts --wait-quiet 4` (`bun run app:bench` from `examples/real-bench`). Method, metric definitions and known biases: `examples/real-bench/README.md`; the contract every arm implements: `examples/real-bench/app/CONTRACT.md`; raw-output schema and publishing conditions: `examples/real-bench/app/results/README.md`. No result from it is published in this file yet, and none can be until the pyreon arm's npm pin moves past 0.53.0, which fails the app's correctness gate (its header `RouterLink`s mount before `RouterProvider` runs; fixed by #4174, unreleased).

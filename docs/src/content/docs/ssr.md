@@ -345,6 +345,8 @@ createServer({
 
 Both shipped stores (`createMemoryStore`, `createFsStore`) implement the full surface including tag support; `createFsStore` is per-box, so multi-instance deploys still want a shared Redis / KV store.
 
+`createFsStore` is bounded like the memory store: at most `maxEntries` entries (default `1000`, `createFsStore(dir, { maxEntries: 5000 })` to change it), least recently used evicted first together with its tags. The cap survives restarts: a new store counts what is already in the directory. Under the default cache key every distinct query string is a separate entry, so an unbounded set of `?x=` values churns the cache (the disk stays bounded) — see the `cacheKey` advice below.
+
 ### Imperative invalidation
 
 When you construct the ISR handler yourself with `createISRHandler(handler, config)`, the returned callable carries methods for webhook / CMS-driven cache busting — strictly more responsive than waiting for the TTL cycle:

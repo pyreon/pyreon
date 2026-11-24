@@ -74,19 +74,19 @@ describe('sheet.flushSSRPending — streaming SSR watermark', () => {
   it('emits @layer ordering on the first flush when layered rules are present', () => {
     s.injectRules(['@layer elements{.foo{color:red}}'], 'k1')
     const first = s.flushSSRPending()
-    expect(first).toContain('@layer elements, rocketstyle;')
+    expect(first).toContain('@layer elements, rocketstyle, instance;')
 
     s.injectRules(['@layer elements{.bar{color:blue}}'], 'k2')
     const second = s.flushSSRPending()
     // Second flush must NOT re-emit the ordering declaration.
-    expect(second).not.toContain('@layer elements, rocketstyle;')
+    expect(second).not.toContain('@layer elements, rocketstyle, instance;')
     expect(second).toContain('.bar')
   })
 
   it('does NOT emit @layer ordering when no layered rules are present', () => {
     s.insert('color: red;')
     const out = s.flushSSRPending()
-    expect(out).not.toContain('@layer elements, rocketstyle;')
+    expect(out).not.toContain('@layer elements, rocketstyle, instance;')
     expect(out).toContain('color: red')
   })
 
@@ -95,7 +95,7 @@ describe('sheet.flushSSRPending — streaming SSR watermark', () => {
     // keyframe-style) rule — nothing to order yet.
     s.insert('color: red;')
     const first = s.flushSSRPending()
-    expect(first).not.toContain('@layer elements, rocketstyle;')
+    expect(first).not.toContain('@layer elements, rocketstyle, instance;')
     expect(first).toContain('color: red')
 
     // A LATER boundary carries the first layered rule. The ordering statement
@@ -104,15 +104,15 @@ describe('sheet.flushSSRPending — streaming SSR watermark', () => {
     // dropped it and later layered rules fell to stream first-appearance order.
     s.injectRules(['@layer elements{.foo{color:blue}}'], 'k1')
     const second = s.flushSSRPending()
-    expect(second).toContain('@layer elements, rocketstyle;')
-    expect(second.indexOf('@layer elements, rocketstyle;')).toBeLessThan(
+    expect(second).toContain('@layer elements, rocketstyle, instance;')
+    expect(second.indexOf('@layer elements, rocketstyle, instance;')).toBeLessThan(
       second.indexOf('@layer elements{'),
     )
 
     // A third flush must NOT re-emit the (already-emitted) ordering statement.
     s.injectRules(['@layer elements{.bar{color:green}}'], 'k2')
     const third = s.flushSSRPending()
-    expect(third).not.toContain('@layer elements, rocketstyle;')
+    expect(third).not.toContain('@layer elements, rocketstyle, instance;')
     expect(third).toContain('.bar')
   })
 

@@ -4,7 +4,7 @@
  *   await renderWithRouter(<App/>, { routes, route: '/posts/1' })
  *
  * Creates a router pinned to `route`, PRE-RESOLVES the initial navigation
- * (`router.preload` — lazy components into the cache + loaders into the data
+ * (`preloadRoute` — lazy components into the cache + loaders into the data
  * map, the exact SSR-handler contract), mounts `ui` inside a
  * `<RouterProvider>`, and returns the render result plus the live `router`
  * and a `navigate()` that resolves when the navigation has SETTLED
@@ -15,7 +15,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import type { NavigationResult, RouteRecord, Router } from '@pyreon/router'
-import { createRouter, RouterProvider, RouterView } from '@pyreon/router'
+import { createRouter, preloadRoute, RouterProvider, RouterView } from '@pyreon/router'
 import type { RenderOptions, RenderResult } from '@pyreon/testing'
 import { render } from '@pyreon/testing'
 
@@ -73,7 +73,7 @@ export async function renderWithRouter(
   // render shows final content (no loading fallbacks, `useLoaderData()`
   // populated). See `.agents/guides/internals/README.md` "SSR"
   // (resolve lazy route components before rendering).
-  await router.preload(route)
+  await preloadRoute(router, route)
 
   const tree = h(RouterProvider, { router }, ui ?? h(RouterView, {}))
   const result = render(wrapper ? wrapper(tree) : tree, renderOptions)
