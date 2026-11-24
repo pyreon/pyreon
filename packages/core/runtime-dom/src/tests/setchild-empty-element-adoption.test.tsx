@@ -607,7 +607,7 @@ describe('user code sees only the regions inside its own element', () => {
     let seen: string | null = null
     const R = (el: Element | null) => {
       // The first call is the hydrating one; the fresh comparison mount follows.
-      if (el !== null && seen === null) seen = (el.parentNode?.lastChild as Element).innerHTML
+      if (el !== null && seen === null) seen = (el.nextElementSibling as Element).innerHTML
     }
     const s = { ...scope(), R }
     const src = 'const App = () => <div><em ref={R} /><span>{vNode}</span></div>'
