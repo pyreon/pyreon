@@ -4332,13 +4332,13 @@
       "warnings": 0
     },
     "golden-fixture:query-06.tsx|swift": {
-      "sha": "31192190e281475fdf190e87a0c1abd0d844c0e3966058a286d8fe0c4ccab0a5",
-      "bytes": 3715,
+      "sha": "21adba749e824526ec267a6f7f8e6dae6031a3ecc24d01b8aa37470b1c2a0bba",
+      "bytes": 3879,
       "warnings": 0
     },
     "golden-fixture:query-06.tsx|kotlin": {
-      "sha": "9ba97ec1dd76057206f4a0ff39b320ceaf4c854485e31dc6ed4f4a8d1cd646a9",
-      "bytes": 3554,
+      "sha": "4eec335dabed9d84eb0e9cf91c6ac63200c73c8095a7ae7fbd51850d35a523ac",
+      "bytes": 3754,
       "warnings": 0
     },
     "golden-fixture:query-07.tsx|swift": {
@@ -6692,13 +6692,13 @@
       "warnings": 0
     },
     "golden-fixture:validate-05.tsx|swift": {
-      "sha": "ed39833bfafb599ca02f37a64fe80d44b77cb368538815ef76a7fbf13dd3648e",
-      "bytes": 4813,
+      "sha": "6551df700753b98be66c1477857ec166676659b4039b70bcc154757490a02e68",
+      "bytes": 4977,
       "warnings": 0
     },
     "golden-fixture:validate-05.tsx|kotlin": {
-      "sha": "cc615ac0da1b4063ca18f98b5882cfd4b49d8ad5028f2bb3a82205731b956563",
-      "bytes": 4795,
+      "sha": "54dc1e4a875b9097a37d2babd161e4fcfb331eaa9ab4ca328f7247d44e69a293",
+      "bytes": 4993,
       "warnings": 0
     },
     "golden-fixture:validate-06.tsx|swift": {
@@ -6832,13 +6832,13 @@
       "warnings": 0
     },
     "golden-fixture:validate-19.tsx|swift": {
-      "sha": "65d1ea57205203b8ec033d9066128ad51b0aaae078ee7ee938fdad8ac11b8ca3",
-      "bytes": 1871,
+      "sha": "04297fd8506864a25ee8d2ddaa3affa7d782f564bc43f6b31c0e1a3d8a46bf56",
+      "bytes": 2035,
       "warnings": 0
     },
     "golden-fixture:validate-19.tsx|kotlin": {
-      "sha": "48c5ce8398ffa94c77b8e61ca356223a51e8f3374511077b07626d8f5b432b96",
-      "bytes": 1890,
+      "sha": "1c69e429394be77d424fff073f89c114d86c20c9ddb3eb5bf2177b5384f38216",
+      "bytes": 2088,
       "warnings": 0
     },
     "golden-fixture:validate-20.tsx|swift": {
@@ -7372,13 +7372,13 @@
       "warnings": 3
     },
     "golden-fixture:validate-73.tsx|swift": {
-      "sha": "67781325cdaf38ae8a42dec98a32191baf93038d1a20ac643efce585ea769290",
-      "bytes": 5750,
+      "sha": "6035e16d00d13cd9b5fa3965f4a0975f6ee727fe9e0e01f111a47a2fd8d450b6",
+      "bytes": 5914,
       "warnings": 1
     },
     "golden-fixture:validate-73.tsx|kotlin": {
-      "sha": "8c7410d5108439bc6744f003741cd8b54a241716a4b522558d22fc9c96034e68",
-      "bytes": 5243,
+      "sha": "6c8c7ab2e7d4c54e5c84c03499b652c446b41907886653537e7e3295e398ba7f",
+      "bytes": 5441,
       "warnings": 1
     },
     "golden-fixture:validate-74.tsx|swift": {

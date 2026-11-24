@@ -26,6 +26,18 @@
  * `@pyreon/validate` itself (`native-email-rule-parity.test.ts`).
  */
 
+import {
+  dynamicKeyText,
+  hasDynamicKey,
+  staticPropKey,
+  unwrapTypeLayers,
+  type ModuleParseContext,
+} from '@pyreon/native-compiler/plugin-api'
+import type { EmailRule } from './ir'
+
+// biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
+type AnyNode = any
+
 /** A domain label's first char (no hyphen, no combining mark). */
 const LABEL_START = String.raw`\p{L}\p{Nd}`
 /** Any domain label char. */
@@ -56,4 +68,62 @@ export function emailPattern(precision: 'html5' | 'standard' | 'rfc5322'): strin
     : precision === 'rfc5322'
       ? EMAIL_RFC5322_PATTERN
       : EMAIL_STANDARD_PATTERN
+}
+
+const EMAIL_PRECISIONS: ReadonlySet<string> = new Set(['html5', 'standard', 'rfc5322'])
+
+/**
+ * The email rule a `.email(...)` call lowers to -- or null, with a warning, when
+ * it cannot lower faithfully (see `EmailRule`).
+ *
+ * zod's `.email(...)` keeps its rule whatever the options (they carry only a
+ * message). `@pyreon/validate`'s `precision` CHANGES what the web accepts, so it
+ * must be read: an inline string literal lowers; anything else DECLINES by name
+ * rather than guessing a tier, which would make the device accept or reject
+ * what the web does not.
+ */
+export function emailRule(
+  arg: AnyNode | undefined,
+  pyreonValidate: boolean,
+  label: string,
+  ctx: ModuleParseContext,
+): EmailRule | null {
+  if (!pyreonValidate) return { kind: 'zod' }
+  if (!arg) return { kind: 'pyreon', precision: 'standard' }
+  const opts = unwrapTypeLayers(arg) as AnyNode | undefined
+  if (opts?.type !== 'ObjectExpression') {
+    ctx.report(
+      `${label}: the options argument is not an inline object, so whether it sets \`precision\` cannot be read — the field is NOT email-validated on device. Write the options inline: \`.email({ precision: 'html5' })\`.`,
+    )
+
+    return null
+  }
+  let precision: AnyNode | undefined
+  for (const p of (opts.properties as AnyNode[] | undefined) ?? []) {
+    if (p?.type !== 'Property' && p?.type !== 'ObjectProperty') {
+      ctx.report(
+        `${label}: a spread in the options cannot be read, so whether it sets \`precision\` is unknown — the field is NOT email-validated on device. Write \`precision\` inline.`,
+      )
+
+      return null
+    }
+    if (hasDynamicKey(p)) {
+      ctx.report(
+        `${label}: the computed key \`${dynamicKeyText(p, ctx)}\` in the options cannot be read, so whether it sets \`precision\` is unknown — the field is NOT email-validated on device. Write \`precision\` inline.`,
+      )
+
+      return null
+    }
+    if (staticPropKey(p) === 'precision') precision = p.value as AnyNode | undefined
+  }
+  if (precision === undefined) return { kind: 'pyreon', precision: 'standard' }
+  const lit = unwrapTypeLayers(precision) as AnyNode | undefined
+  if (lit?.type === 'Literal' && typeof lit.value === 'string' && EMAIL_PRECISIONS.has(lit.value)) {
+    return { kind: 'pyreon', precision: lit.value as 'html5' | 'standard' | 'rfc5322' }
+  }
+  ctx.report(
+    `${label}: \`precision\` is not one of the string literals 'html5' / 'standard' / 'rfc5322', so the tier cannot be read — the field is NOT email-validated on device. Write the precision as a literal.`,
+  )
+
+  return null
 }

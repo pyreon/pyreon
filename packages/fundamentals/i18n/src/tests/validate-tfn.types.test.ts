@@ -4,14 +4,22 @@
  * so under `strictFunctionTypes` the plain function type refused it (TS2345)
  * and every app needed a cast wrapper. These are compile-time assertions:
  * `tsc --noEmit` (the package `typecheck`) fails if any line regresses; the
- * runtime bodies also run under vitest.
+ * runtime bodies also run under vitest. Lives in @pyreon/i18n (which takes
+ * @pyreon/validate as a devDependency) rather than the other way round: a
+ * devDependency of validate would be walked by `pyreon-native wire` and add
+ * i18n's Swift/Kotlin sources to every native app that uses validate.
  */
-import { createI18n } from '@pyreon/i18n'
+import {
+  formatError,
+  formatErrors,
+  formatErrorsByPath,
+  resolveMetaField,
+  s,
+  type TFn,
+  toFormValidator,
+} from '@pyreon/validate'
 import { describe, expect, expectTypeOf, it } from 'vitest'
-import { formatError, formatErrors, formatErrorsByPath, toFormValidator } from '../format'
-import { resolveMetaField } from '../meta'
-import type { TFn } from '../types'
-import { s } from '../v1'
+import { createI18n } from '../create-i18n'
 
 const messages = { en: { v: { email: 'Type an e-mail address' } } }
 

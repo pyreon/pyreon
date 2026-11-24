@@ -961,6 +961,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   function getValuesPublic<K extends keyof TValues>(field: K): TValues[K]
   function getValuesPublic<K extends keyof TValues>(field?: K): TValues | TValues[K] {
     if (field === undefined) return valuesTracked()
+
     // Tracked like `fields[field].value()` — a computed/effect over
     // `getValues('x')` re-runs when `x` changes.
     return fields[field].value()
@@ -988,6 +989,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       if (!stale && !Object.is((cached as Record<string, unknown>)[name], v)) stale = true
     }
     if (stale) _valuesEpoch++
+
     return getValues()
   }
 
@@ -998,12 +1000,14 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     _fieldsVersion() // track the field SET (registerField / unregisterField)
     const out = {} as Partial<Record<keyof TValues, boolean>>
     for (const [name] of fieldEntries) if (fields[name].dirty()) out[name] = true
+
     return out
   }
   const touchedFields = (): Partial<Record<keyof TValues, boolean>> => {
     _fieldsVersion()
     const out = {} as Partial<Record<keyof TValues, boolean>>
     for (const [name] of fieldEntries) if (fields[name].touched()) out[name] = true
+
     return out
   }
 
@@ -1033,6 +1037,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       const err = fields[name].error()
       if (isRealError(err)) errors[name] = err
     }
+
     return errors
   }
 

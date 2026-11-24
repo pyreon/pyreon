@@ -89,7 +89,9 @@ const web = {
   html: s.string().email({ precision: 'html5' }),
   rfc: s.string().email({ precision: 'rfc5322' }),
 }
+
 const FIELDS = ['std', 'html', 'rfc'] as const
+
 const expected = (): string[] =>
   CORPUS.map((v) => FIELDS.map((f) => (web[f].safeParse(v).ok ? '1' : '0')).join(''))
 
@@ -100,13 +102,16 @@ function swiftCondition(code: string, field: string): string {
   expect(i, `no email check for ${field}`).toBeGreaterThan(0)
   const m = /^\s*if (.*) \{$/.exec(lines[i - 1] as string)
   expect(m, lines[i - 1]).not.toBeNull()
+
   return (m as RegExpExecArray)[1] as string
 }
+
 function kotlinCondition(code: string, field: string): string {
   const line = code.split('\n').find((l) => l.includes(`("${field}", "email`))
   expect(line, `no email check for ${field}`).toBeDefined()
   const m = /if \((.*)\) throw PyreonSchemaError/.exec(line as string)
   expect(m, line).not.toBeNull()
+
   return (m as RegExpExecArray)[1] as string
 }
 
@@ -127,6 +132,7 @@ function jvmPath(): string | undefined {
   ]) {
     if (existsSync(c)) return c
   }
+
   return undefined
 }
 
@@ -205,6 +211,7 @@ print(out.joined(separator: "\\n"))
       execFileSync('swiftc', ['-O', join(dir, 'main.swift'), '-o', join(dir, 'run')], {
         stdio: 'pipe',
       })
+
       return execFileSync(join(dir, 'run'), { encoding: 'utf8' }).split('\n')
     })
     const want = expected()
@@ -245,6 +252,7 @@ fun main() {
             stdio: 'pipe',
           },
         )
+
         return execFileSync(jvmPath() as string, ['-jar', join(dir, 'out.jar')], {
           encoding: 'utf8',
         }).split('\n')

@@ -13,7 +13,8 @@ import {
   unwrapTypeLayers,
   type ModuleParseContext,
 } from '@pyreon/native-compiler/plugin-api'
-import type { EmailRule, ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
+import { emailRule } from './email-rule'
+import type { ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
@@ -46,6 +47,7 @@ function numericLiteral(node: AnyNode | undefined): number | undefined {
     const inner = numericLiteral(n.argument as AnyNode | undefined)
     return inner === undefined ? undefined : -inner
   }
+
   return undefined
 }
 
@@ -102,6 +104,7 @@ function tryPortableRegexLiteral(
     ctx.report(
       `${fieldLabel}: .regex() needs an inline regular-expression literal to lower natively — this argument is not one, so the field is NOT validated on device.`,
     )
+
     return null
   }
   const flags = re.flags ?? ''
@@ -113,6 +116,7 @@ function tryPortableRegexLiteral(
     ctx.report(
       `${fieldLabel}: .regex() flag(s) \`${unportableFlags.join('')}\` do not port to NSRegularExpression / java.util.regex, so the field is NOT validated on device. Only the \`i\` flag lowers.`,
     )
+
     return null
   }
   // JS-only constructs. Named groups and lookbehind exist in the newer
@@ -128,6 +132,7 @@ function tryPortableRegexLiteral(
     ctx.report(
       `${fieldLabel}: .regex() uses lookbehind, a named group or a Unicode property escape, which do not port identically to NSRegularExpression / java.util.regex — the field is NOT validated on device.`,
     )
+
     return null
   }
   // No character is refused here: both emitters embed the source through the
@@ -160,6 +165,7 @@ function urlRule(
     ctx.report(
       `${label}: the options argument is not an inline object, so whether it sets \`protocol\` cannot be read — the field is NOT URL-validated on device. Write the options inline: \`.url({ protocol: /^https?$/ })\`.`,
     )
+
     return null
   }
   let protocol: AnyNode | undefined
@@ -168,12 +174,14 @@ function urlRule(
       ctx.report(
         `${label}: a spread in the options cannot be read, so whether it sets \`protocol\` is unknown — the field is NOT URL-validated on device. Write \`protocol\` inline.`,
       )
+
       return null
     }
     if (hasDynamicKey(p)) {
       ctx.report(
         `${label}: the computed key \`${dynamicKeyText(p, ctx)}\` in the options cannot be read, so whether it sets \`protocol\` is unknown — the field is NOT URL-validated on device. Write \`protocol\` inline.`,
       )
+
       return null
     }
     if (staticPropKey(p) === 'protocol') protocol = p.value as AnyNode | undefined
@@ -181,61 +189,8 @@ function urlRule(
   if (protocol === undefined) return { kind: 'http' }
   const re = tryPortableRegexLiteral(protocol, `${label} protocol`, ctx)
   if (!re) return null
+
   return { kind: 'protocol', source: re.source, ignoreCase: re.ignoreCase }
-}
-
-const EMAIL_PRECISIONS: ReadonlySet<string> = new Set(['html5', 'standard', 'rfc5322'])
-
-/**
- * The email rule a `.email(...)` call lowers to -- or null, with a warning, when
- * it cannot lower faithfully (see `EmailRule`).
- *
- * zod's `.email(...)` keeps its rule whatever the options (they carry only a
- * message). `@pyreon/validate`'s `precision` CHANGES what the web accepts, so it
- * must be read: an inline string literal lowers; anything else DECLINES by name
- * rather than guessing a tier, which would make the device accept or reject
- * what the web does not.
- */
-function emailRule(
-  arg: AnyNode | undefined,
-  pyreonValidate: boolean,
-  label: string,
-  ctx: ModuleParseContext,
-): EmailRule | null {
-  if (!pyreonValidate) return { kind: 'zod' }
-  if (!arg) return { kind: 'pyreon', precision: 'standard' }
-  const opts = unwrapTypeLayers(arg) as AnyNode | undefined
-  if (opts?.type !== 'ObjectExpression') {
-    ctx.report(
-      `${label}: the options argument is not an inline object, so whether it sets \`precision\` cannot be read — the field is NOT email-validated on device. Write the options inline: \`.email({ precision: 'html5' })\`.`,
-    )
-    return null
-  }
-  let precision: AnyNode | undefined
-  for (const p of (opts.properties as AnyNode[] | undefined) ?? []) {
-    if (p?.type !== 'Property' && p?.type !== 'ObjectProperty') {
-      ctx.report(
-        `${label}: a spread in the options cannot be read, so whether it sets \`precision\` is unknown — the field is NOT email-validated on device. Write \`precision\` inline.`,
-      )
-      return null
-    }
-    if (hasDynamicKey(p)) {
-      ctx.report(
-        `${label}: the computed key \`${dynamicKeyText(p, ctx)}\` in the options cannot be read, so whether it sets \`precision\` is unknown — the field is NOT email-validated on device. Write \`precision\` inline.`,
-      )
-      return null
-    }
-    if (staticPropKey(p) === 'precision') precision = p.value as AnyNode | undefined
-  }
-  if (precision === undefined) return { kind: 'pyreon', precision: 'standard' }
-  const lit = unwrapTypeLayers(precision) as AnyNode | undefined
-  if (lit?.type === 'Literal' && typeof lit.value === 'string' && EMAIL_PRECISIONS.has(lit.value)) {
-    return { kind: 'pyreon', precision: lit.value as 'html5' | 'standard' | 'rfc5322' }
-  }
-  ctx.report(
-    `${label}: \`precision\` is not one of the string literals 'html5' / 'standard' / 'rfc5322', so the tier cannot be read — the field is NOT email-validated on device. Write the precision as a literal.`,
-  )
-  return null
 }
 
 /**
@@ -313,6 +268,7 @@ function extractTypeAndConstraints(
   ) {
     return null
   }
+
   return {
     method: baseCallee.property.name as string,
     constraints,
@@ -374,6 +330,7 @@ function parseNestedObjectShape(
       },
     ],
   }
+
   return tryNamespacedSchemaDefnFromTopLevel(
     wrapped,
     ctx,
@@ -405,6 +362,7 @@ function tryParseInnerObjectElement(
   if ((callee.object.name as string) !== prefix) return null
   if (callee.property?.type !== 'Identifier') return null
   if ((callee.property.name as string) !== 'object') return null
+
   return parseNestedObjectShape(innerArg, name, ctx, prefix, schemaFn)
 }
 
@@ -435,6 +393,7 @@ function parseDiscriminatedUnion(
     ctx.report(
       `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() first arg must be a string literal field name — dropping.`,
     )
+
     return null
   }
   const discrField = discrArg.value
@@ -447,6 +406,7 @@ function parseDiscriminatedUnion(
     ctx.report(
       `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() second arg must be a literal array of ${prefix}.object() variants — dropping.`,
     )
+
     return null
   }
   const variantNodes = (variantsArg.elements as AnyNode[] | undefined) ?? []
@@ -454,6 +414,7 @@ function parseDiscriminatedUnion(
     ctx.report(
       `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() needs at least one variant — dropping.`,
     )
+
     return null
   }
   const auxSchemas: ZodSchemaDefnIR[] = []
@@ -464,6 +425,7 @@ function parseDiscriminatedUnion(
       ctx.report(
         `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} is not a ${prefix}.object() call — dropping.`,
       )
+
       return null
     }
     // Detect the literal value of the discriminator field BEFORE
@@ -473,6 +435,7 @@ function parseDiscriminatedUnion(
       ctx.report(
         `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} doesn't expose ${prefix}.literal() at "${discrField}" — dropping.`,
       )
+
       return null
     }
     const caseName = capitalizeFirst(literal.replace(/[^a-zA-Z0-9_]/g, '_'))
@@ -488,6 +451,7 @@ function parseDiscriminatedUnion(
       ctx.report(
         `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.discriminatedUnion() variant ${i} has an unparseable ${prefix}.object() shape — dropping.`,
       )
+
       return null
     }
     auxSchemas.push(variantSchema)
@@ -499,6 +463,7 @@ function parseDiscriminatedUnion(
     discriminator: { field: discrField, variants },
   }
   if (auxSchemas.length > 0) result.auxSchemas = auxSchemas
+
   return result
 }
 
@@ -544,8 +509,10 @@ function extractDiscriminatorLiteral(
     ) {
       return null
     }
+
     return litArg.value
   }
+
   return null
 }
 
@@ -624,6 +591,7 @@ export function tryNamespacedSchemaDefnFromTopLevel(
     ctx.report(
       `${schemaFn ?? prefix} declaration \`${bindingName}\`: ${prefix}.object() argument must be a literal shape — v1 emit needs the literal { field: ${prefix}.X() } map. Falling back to silent-drop.`,
     )
+
     return null
   }
 
@@ -863,11 +831,13 @@ export function tryNamespacedSchemaDefnFromTopLevel(
     ctx.report(
       `${schemaFn ?? prefix} declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
     )
+
     return null
   }
 
   const result: ZodSchemaDefnIR = { bindingName, fields }
   if (auxSchemas.length > 0) result.auxSchemas = auxSchemas
+
   return result
 }
 
@@ -983,6 +953,7 @@ export function tryArktypeSchemaDefnFromTopLevel(
     ctx.report(
       `arktypeSchema declaration \`${bindingName}\`: type() argument must be a literal shape. Falling back to silent-drop.`,
     )
+
     return null
   }
 
@@ -1020,6 +991,7 @@ export function tryArktypeSchemaDefnFromTopLevel(
     ctx.report(
       `arktypeSchema declaration \`${bindingName}\`: no recognized fields. Falling back to silent-drop.`,
     )
+
     return null
   }
 
@@ -1067,6 +1039,7 @@ export function warnUnloweredSchemaAdapter(node: AnyNode, ctx: ModuleParseContex
         `the native build then fails on a symbol that exists only in JS. Remove the object-level modifier ` +
         `(\`${adapter}(z.object({ … }))\`) and enforce that rule in a web-only helper, or validate per field.`,
     )
+
     return
   }
   ctx.report(
