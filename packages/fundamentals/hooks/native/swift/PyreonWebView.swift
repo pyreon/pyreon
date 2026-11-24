@@ -328,6 +328,10 @@ let pyreonWebViewRendererBackoffMaxMs: Double = 30_000
 
 /// One host's content-process losses in the current window.
 struct PyreonRendererLossHistory {
+    /// The html / src the count belongs to; another one is a new page with a fresh count.
+    var key: String?
+    /// Bumped per loss: a delayed reload whose generation is no longer current must not run.
+    var generation = 0
     var lastAtMs: Double?
     var crashes = 0
     var losses = 0
@@ -338,11 +342,15 @@ struct PyreonRendererLossHistory {
 /// waits twice as long (1 s up to 30 s), and a crash beyond
 /// `pyreonWebViewMaxRendererCrashReloads` in a row stays empty. A finished load
 /// does not restart the count: a page that crashes right after loading would
-/// otherwise reload forever; a gap of the window does.
-func pyreonWebViewRendererGone(_ history: inout PyreonRendererLossHistory, didCrash: Bool, nowMs: Double) -> Double? {
-    if let last = history.lastAtMs, nowMs - last < pyreonWebViewRendererLossWindowMs {
+/// otherwise reload forever; a gap of the window does. A different `key` (another
+/// html / src) is a new page with a fresh count. Each loss bumps `generation`, and a
+/// reload an earlier loss scheduled must check `pyreonWebViewReloadStillDue`.
+func pyreonWebViewRendererGone(_ history: inout PyreonRendererLossHistory, key: String?, didCrash: Bool, nowMs: Double) -> Double? {
+    history.generation += 1
+    if key == history.key, let last = history.lastAtMs, nowMs - last < pyreonWebViewRendererLossWindowMs {
         // in a row
     } else {
+        history.key = key
         history.crashes = 0
         history.losses = 0
     }
@@ -355,6 +363,11 @@ func pyreonWebViewRendererGone(_ history: inout PyreonRendererLossHistory, didCr
     if history.losses <= 1 { return 0 }
     let doublings = min(history.losses - 2, 15)
     return min(pyreonWebViewRendererBackoffBaseMs * Double(1 << doublings), pyreonWebViewRendererBackoffMaxMs)
+}
+
+/// Whether a reload scheduled at loss `generation` may still run (no newer loss since).
+func pyreonWebViewReloadStillDue(_ history: PyreonRendererLossHistory, generation: Int) -> Bool {
+    history.generation == generation
 }
 
 /// The script-message handler name the injected `window.pyreonPostMessage`
@@ -395,8 +408,6 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     var src: String?
     /// Content-process losses in a row (see `pyreonWebViewRendererGone`).
     var lossHistory = PyreonRendererLossHistory()
-    /// Bumped per loss so a delayed reload that a newer one replaced does nothing.
-    var lossGeneration = 0
 
     /// Whether the main frame currently shows the allowed origin.
     func mainFrameAllowed(_ webView: WKWebView) -> Bool {
@@ -447,12 +458,11 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     @MainActor
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         let key = loadedKey
-        let delay = pyreonWebViewRendererGone(&lossHistory, didCrash: true, nowMs: ProcessInfo.processInfo.systemUptime * 1000)
+        let delay = pyreonWebViewRendererGone(&lossHistory, key: key, didCrash: true, nowMs: ProcessInfo.processInfo.systemUptime * 1000)
         loaded = false
         allowedOrigin = nil
         initialLoadPending = false
-        lossGeneration += 1
-        let generation = lossGeneration
+        let generation = lossHistory.generation
         guard let delay else {
             print("[Pyreon] <WebView>: the web content process ended \(lossHistory.crashes) times in a row, so this view stays empty until its html / src changes. The process may serve other WebViews in the app, so the page that ended it may be another one.")
             return
@@ -461,7 +471,7 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
         Task { @MainActor [weak self, weak webView] in
             if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000)) }
             // Unless the host was released, loaded something else, or lost the process again meanwhile.
-            guard let self, let webView, self.lossGeneration == generation, self.loadedKey == key else { return }
+            guard let self, let webView, pyreonWebViewReloadStillDue(self.lossHistory, generation: generation), self.loadedKey == key else { return }
             self.initialLoadPending = _loadPyreonWebView(webView, html: self.html, src: self.src)
         }
     }

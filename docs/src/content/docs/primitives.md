@@ -1201,9 +1201,14 @@ export function ChartHost() {
   `[Pyreon] <WebView>` warning. On Android every WebView in the app shares the
   renderer, so that can empty several views at once, including ones whose
   page did not cause it. An empty view stays empty until its `html` or `src`
-  changes (a new value loads it); the app gets no callback (a follow-up may
-  add one). iOS does not say whether its process crashed or was reclaimed, so
-  every termination counts towards the cap there.
+  changes: a new value loads it and starts a fresh count. The app gets no
+  callback (a follow-up may add one). iOS does not say whether its process
+  crashed or was reclaimed, so every termination counts towards the cap there.
+- **`window.open` (Android)**: a user-tapped `window.open(url)` hands `url` to
+  the system browser. `w = window.open('')` followed later by
+  `w.location = url` works too, however long it takes, until the page opens
+  another window or the host goes away; a window that never named a URL is
+  then discarded with a `[Pyreon] <WebView>` warning.
 - **Sizing**: without `grow` a web view is what an `<iframe>` with no CSS is,
   on every target: as wide as its parent and **150 high**. With `grow` it takes
   the free space of its parent `<Stack>` (height) or `<Inline>` (width) after

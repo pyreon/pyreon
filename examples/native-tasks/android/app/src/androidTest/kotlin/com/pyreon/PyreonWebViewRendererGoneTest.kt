@@ -158,7 +158,7 @@ class PyreonWebViewRendererGoneTest {
         // A real tap: window.open needs a user gesture to reach onCreateWindow.
         assertTrue(UiDevice.getInstance(instrumentation).click(loc[0] + size[0] / 2, loc[1] + size[1] / 2))
         rule.waitUntil(15_000) { messages.contains("opened") }
-        // The sink is alive (no URL yet, its 10 s timeout not reached).
+        // The sink is alive: its page has named no URL, and it has no timeout.
         loseRenderer("chrome://kill")
         rule.waitUntil(30_000) { messages.contains("ready") }
     }

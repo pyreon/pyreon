@@ -356,7 +356,10 @@ private fun pyreonHostClient(state: PyreonWebViewState, chrome: PyreonWebChrome)
         // renderer keeps crashing (pyreonWebViewRendererGone).
         override fun rendererGone(view: WebView, detail: RenderProcessGoneDetail) {
             val key = state.loadedKey
-            val delay = pyreonWebViewRendererGone(state.lossHistory, detail.didCrash(), SystemClock.uptimeMillis())
+            // A reload an earlier loss scheduled is superseded by this one.
+            pyreonWebViewMainHandler.removeCallbacksAndMessages(state)
+            val delay = pyreonWebViewRendererGone(state.lossHistory, key, detail.didCrash(), SystemClock.uptimeMillis())
+            val generation = state.lossHistory.generation
             android.util.Log.w(
                 "PyreonWebView",
                 "[Pyreon] <WebView>: the renderer process " +
@@ -376,8 +379,8 @@ private fun pyreonHostClient(state: PyreonWebViewState, chrome: PyreonWebChrome)
             if (delay != null && delay > 0L) {
                 pyreonWebViewMainHandler.postAtTime(
                     {
-                        // Unless the host has loaded something else meanwhile.
-                        if (state.loadedKey == key) {
+                        // Unless the host has loaded something else, or lost the renderer again, meanwhile.
+                        if (state.loadedKey == key && pyreonWebViewReloadStillDue(state.lossHistory, generation)) {
                             state.loadedKey = null
                             state.reloadTick.intValue++
                         }

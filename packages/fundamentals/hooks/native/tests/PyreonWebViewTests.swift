@@ -37,21 +37,39 @@ enum PyreonWebViewTests {
     #if canImport(WebKit)
     /// Content-process loss: the same backoff and cap as the Android host.
     static func rendererGone() {
+        let page = "bridge.html"
         var kills = PyreonRendererLossHistory()
-        let killDelays = (0..<8).map { pyreonWebViewRendererGone(&kills, didCrash: false, nowMs: Double($0) * 1000) }
+        let killDelays = (0..<8).map { pyreonWebViewRendererGone(&kills, key: page, didCrash: false, nowMs: Double($0) * 1000) }
         check(killDelays == [0, 1000, 2000, 4000, 8000, 16000, 30000, 30000], "kill backoff: \(killDelays)")
         var crashes = PyreonRendererLossHistory()
-        check(pyreonWebViewRendererGone(&crashes, didCrash: true, nowMs: 0) == 0, "first crash reloads at once")
-        check(pyreonWebViewRendererGone(&crashes, didCrash: true, nowMs: 5000) == 1000, "second crash reloads after 1 s")
-        check(pyreonWebViewRendererGone(&crashes, didCrash: true, nowMs: 10000) == nil, "third crash in a row stays empty")
+        check(pyreonWebViewRendererGone(&crashes, key: page, didCrash: true, nowMs: 0) == 0, "first crash reloads at once")
+        check(pyreonWebViewRendererGone(&crashes, key: page, didCrash: true, nowMs: 5000) == 1000, "second crash reloads after 1 s")
+        check(pyreonWebViewRendererGone(&crashes, key: page, didCrash: true, nowMs: 10000) == nil, "third crash in a row stays empty")
         var spaced = PyreonRendererLossHistory()
         for i in 0..<5 {
-            check(pyreonWebViewRendererGone(&spaced, didCrash: true, nowMs: Double(i) * pyreonWebViewRendererLossWindowMs) == 0, "crash \(i), a window apart, reloads at once")
+            check(pyreonWebViewRendererGone(&spaced, key: page, didCrash: true, nowMs: Double(i) * pyreonWebViewRendererLossWindowMs) == 0, "crash \(i), a window apart, reloads at once")
         }
+        // Just inside the window still counts as in a row.
+        var tight = PyreonRendererLossHistory()
+        _ = pyreonWebViewRendererGone(&tight, key: page, didCrash: true, nowMs: 0)
+        _ = pyreonWebViewRendererGone(&tight, key: page, didCrash: true, nowMs: pyreonWebViewRendererLossWindowMs - 1)
+        check(pyreonWebViewRendererGone(&tight, key: page, didCrash: true, nowMs: 2 * pyreonWebViewRendererLossWindowMs - 2) == nil, "a chain of gaps under the window is one run")
+        // Kills in between do not spend the crash budget, but do lengthen the delay.
         var mixed = PyreonRendererLossHistory()
-        _ = pyreonWebViewRendererGone(&mixed, didCrash: true, nowMs: 0)
-        _ = pyreonWebViewRendererGone(&mixed, didCrash: false, nowMs: 1)
-        check(pyreonWebViewRendererGone(&mixed, didCrash: true, nowMs: 2) == 2000, "crash, kill, crash: reload after 2 s")
+        _ = pyreonWebViewRendererGone(&mixed, key: page, didCrash: true, nowMs: 0)
+        _ = pyreonWebViewRendererGone(&mixed, key: page, didCrash: false, nowMs: 1)
+        check(pyreonWebViewRendererGone(&mixed, key: page, didCrash: true, nowMs: 2) == 2000, "crash, kill, crash: reload after 2 s")
+
+        // A newer loss supersedes a pending reload (same as the Kotlin test).
+        var pending = PyreonRendererLossHistory()
+        _ = pyreonWebViewRendererGone(&pending, key: page, didCrash: true, nowMs: 0)
+        check(pyreonWebViewRendererGone(&pending, key: page, didCrash: true, nowMs: 100) == 1000, "crash 2 schedules a reload")
+        let scheduled = pending.generation
+        check(pyreonWebViewReloadStillDue(pending, generation: scheduled), "a reload with no newer loss runs")
+        check(pyreonWebViewRendererGone(&pending, key: page, didCrash: true, nowMs: 500) == nil, "crash 3 stays empty")
+        check(!pyreonWebViewReloadStillDue(pending, generation: scheduled), "crash 2's reload is superseded")
+        // A different html / src is a new page: a fresh count, even after the cap.
+        check(pyreonWebViewRendererGone(&pending, key: "other.html", didCrash: true, nowMs: 600) == 0, "a new page's first crash reloads")
     }
 
     /// Origin scope: data and the bridge belong to the page the app loaded.

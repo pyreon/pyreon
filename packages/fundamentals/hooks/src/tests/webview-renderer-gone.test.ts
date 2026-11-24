@@ -25,19 +25,19 @@ const packages = join(repo, 'packages')
 const code = (src: string): string =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 
-function kotlinFiles(dir: string): string[] {
+function sourceFiles(dir: string): string[] {
   const out: string[] = []
   for (const name of readdirSync(dir)) {
     if (name === 'node_modules' || name === 'build' || name === 'lib' || name.startsWith('.')) continue
     const p = join(dir, name)
-    if (statSync(p).isDirectory()) out.push(...kotlinFiles(p))
-    else if (name.endsWith('.kt')) out.push(p)
+    if (statSync(p).isDirectory()) out.push(...sourceFiles(p))
+    else if (name.endsWith('.kt') || name.endsWith('.java')) out.push(p)
   }
 
   return out
 }
 
-const runtime = kotlinFiles(packages)
+const runtime = sourceFiles(packages)
   .filter((p) => !p.includes('/tests/') && !p.includes('/androidTest/') && !p.includes('/test/'))
   .map((p) => ({ path: p.slice(repo.length), src: code(readFileSync(p, 'utf8')) }))
 
@@ -75,6 +75,18 @@ describe('Android WebViews survive a renderer loss', () => {
       [...f.src.matchAll(/\bwebViewClient\s*=(?!=)/g)].map(() => f.path),
     )
     expect(assignments).toEqual(['packages/fundamentals/hooks/native/kotlin/com/pyreon/runtime/PyreonWebView.kt'])
+  })
+
+  it('leaves no other way to build a WebView or install a client', () => {
+    const bypasses: Array<[RegExp, string]> = [
+      [/\bsetWebViewClient\s*\(/, 'setWebViewClient('],
+      [/\bWebViewClientCompat\b/, 'WebViewClientCompat'],
+      [/import\s+android\.webkit\.WebView(?:Client)?\s+as\b/, 'an aliased WebView / WebViewClient import'],
+      [/\bnew\s+(?:android\.webkit\.)?WebView\s*\(/, 'new WebView( (Java)'],
+      [/\bextends\s+(?:android\.webkit\.)?WebViewClient\b/, 'extends WebViewClient (Java)'],
+    ]
+    const found = runtime.flatMap((f) => bypasses.filter(([re]) => re.test(f.src)).map(([, what]) => `${f.path}: ${what}`))
+    expect(found).toEqual([])
   })
 
   it('the iOS host recovers from a terminated content process', () => {

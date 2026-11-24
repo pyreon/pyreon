@@ -1280,9 +1280,9 @@ jobs:
             # logcat FATAL and from the app's window never appearing, neither of
             # which depends on a dialog being drawn.
             adb shell settings put global hide_error_dialogs 1 || true
-            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
             mkdir -p /tmp/android-logcat
-            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/todomvc.txt 2>&1 &
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/todomvc.txt' < /dev/null > /dev/null 2>&1 &
             gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/todomvc-media || true; exit 1; }
             bash ../scripts/ensure-release-keystore.sh
             # Debug→release signature transition: installing the
@@ -1348,9 +1348,9 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
-            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
             mkdir -p /tmp/android-logcat
-            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/finance.txt 2>&1 &
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/finance.txt' < /dev/null > /dev/null 2>&1 &
             gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/finance-media || true; exit 1; }
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
@@ -1402,9 +1402,9 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
-            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
             mkdir -p /tmp/android-logcat
-            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/counter.txt 2>&1 &
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/counter.txt' < /dev/null > /dev/null 2>&1 &
             gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/counter-media || true; exit 1; }
             # useBiometrics through a real BiometricPrompt: enrols a fingerprint, unlocks with it, rejects another, un-enrols.
             bash ../scripts/biometric-device-test.sh
@@ -1473,9 +1473,9 @@ jobs:
             adb shell settings put global hide_error_dialogs 1 || true
             nohup bun ../scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
             adb reverse tcp:8790 tcp:8790
-            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
             mkdir -p /tmp/android-logcat
-            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/router-demo.txt 2>&1 &
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/router-demo.txt' < /dev/null > /dev/null 2>&1 &
             gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/router-demo-media || true; exit 1; }
             bash ../scripts/process-death-android.sh
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
@@ -1575,9 +1575,9 @@ jobs:
             adb reverse tcp:8791 tcp:8791
             # /webhost geolocation proof: give the emulator a fix (the test also accepts an answered-but-unavailable position).
             adb emu geo fix -122.0090 37.3349 || true
-            # Logcat (FATAL EXCEPTION, am_anr, am_kill, WebView renderer loss) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
+            # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
             mkdir -p /tmp/android-logcat
-            nohup adb logcat -v threadtime -b main,system,crash,events < /dev/null > /tmp/android-logcat/tasks.txt 2>&1 &
+            nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/tasks.txt' < /dev/null > /dev/null 2>&1 &
             gradle connectedCheck --stacktrace || { adb pull /sdcard/Android/media /tmp/android-logcat/tasks-media || true; exit 1; }
             adb -s emulator-5554 emu kill || true; sleep 5; pkill -9 -f '[q]emu-system' || true
 
@@ -1608,24 +1608,29 @@ jobs:
         run: bun scripts/native-android-connected-failures.ts
 
       # Green runs too. PyreonWebView now RECOVERS when a WebView renderer
-      # process dies, so the suspected cause of the 2026-11-23 instrumentation
+      # process dies, so a suspected cause of the 2026-11-23 instrumentation
       # crashes would leave a green run and no artifact. This counts renderer
-      # losses, FATAL EXCEPTIONs, ANRs, kills and WebView data-dir lock errors in
-      # each emulator step's logcat: one ::warning:: and a job-summary row per
-      # app and signal. Diagnostic only (always exits 0).
+      # losses, app FATAL EXCEPTIONs, ANRs, kills and WebView data-dir lock
+      # errors in each emulator step's logcat, attributed to the test whose
+      # process logged them (PyreonWebViewRendererGoneTest, which ends the
+      # renderer on purpose, other packages and the orchestrator's own
+      # force-stops are excluded): one ::warning:: and a job-summary row per
+      # app, signal and test. Diagnostic only (always exits 0).
       - name: Count process-death signals in the Android logcat
         id: logcat-signals
         if: always()
-        run: bun scripts/native-android-logcat-signals.ts /tmp/android-logcat
+        run: bun scripts/native-android-logcat-signals.ts /tmp/android-logcat /tmp/android-logcat-findings
 
-      # A failed run uploads the logcat with the reports below.
-      - name: Upload Android logcat (signals on a green run)
+      # Only the implicated processes' lines (2 MB per app at most), and only
+      # when a signal was attributed to a test that does not cause it on
+      # purpose. A failed run uploads the whole logcat with the reports below.
+      - name: Upload Android logcat findings (green run)
         if: success() && steps.logcat-signals.outputs.found == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: android-logcat
-          path: /tmp/android-logcat/
-          retention-days: 14
+          name: android-logcat-findings
+          path: /tmp/android-logcat-findings/
+          retention-days: 7
           if-no-files-found: ignore
 
       # The connected-test HTML/XML reports are the ONLY place the

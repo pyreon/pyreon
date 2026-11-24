@@ -239,6 +239,10 @@ internal const val PYREON_WEBVIEW_RENDERER_BACKOFF_MAX_MS = 30_000L
 
 /** One host's renderer losses in the current window (see [pyreonWebViewRendererGone]). */
 internal class PyreonRendererLossHistory {
+    /** The `html` / `src` the count belongs to; another one is a new page with a fresh count. */
+    var key: String? = null
+    /** Bumped per loss: a delayed reload whose generation is no longer current must not run. */
+    var generation: Int = 0
     var lastAtMs: Long? = null
     var crashes: Int = 0
     var losses: Int = 0
@@ -262,10 +266,17 @@ internal class PyreonRendererLossHistory {
  *   waits twice as long (from [PYREON_WEBVIEW_RENDERER_BACKOFF_BASE_MS] to
  *   [PYREON_WEBVIEW_RENDERER_BACKOFF_MAX_MS]), so sustained memory pressure
  *   cannot churn renderer starts.
+ * - A different [key] (the host was given another `html` / `src`) is a new
+ *   page: its count starts fresh, even after the cap emptied the old one.
+ * - Each loss bumps `history.generation`; a reload scheduled by an earlier
+ *   loss must check [pyreonWebViewReloadStillDue] and not run, so a newer loss
+ *   (with its longer delay, or its "stay empty") always wins.
  */
-internal fun pyreonWebViewRendererGone(history: PyreonRendererLossHistory, didCrash: Boolean, nowMs: Long): Long? {
+internal fun pyreonWebViewRendererGone(history: PyreonRendererLossHistory, key: String?, didCrash: Boolean, nowMs: Long): Long? {
+    history.generation++
     val last = history.lastAtMs
-    if (last == null || nowMs - last >= PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS) {
+    if (key != history.key || last == null || nowMs - last >= PYREON_WEBVIEW_RENDERER_LOSS_WINDOW_MS) {
+        history.key = key
         history.crashes = 0
         history.losses = 0
     }
@@ -279,6 +290,10 @@ internal fun pyreonWebViewRendererGone(history: PyreonRendererLossHistory, didCr
     val doublings = (history.losses - 2).coerceAtMost(15)
     return (PYREON_WEBVIEW_RENDERER_BACKOFF_BASE_MS shl doublings).coerceAtMost(PYREON_WEBVIEW_RENDERER_BACKOFF_MAX_MS)
 }
+
+/** Whether a reload scheduled at loss [generation] may still run (no newer loss since). */
+internal fun pyreonWebViewReloadStillDue(history: PyreonRendererLossHistory, generation: Int): Boolean =
+    history.generation == generation
 
 /** A `src` that names a remote page: `http(s)` with a host. */
 fun pyreonWebViewIsRemoteSrc(src: String): Boolean {
