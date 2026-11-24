@@ -259,16 +259,101 @@ describe('for-stale-item-field — syntax variants of each half', () => {
     expect(hits(L(titleRow, twoSpreads)).map((x) => x.current)).toEqual(['t.title'])
   })
 
-  it('a `by` the detector cannot read as `x => x.key` treats every replaced field as stale', () => {
-    // Without a known key field the replaced `id` is reported too.
+  it('a `by` with no field reads treats every replaced field as stale', () => {
+    // Without a key field the replaced `id` is reported too. A literal is not
+    // a key function at all, and a key that returns nothing reads nothing.
     const write = `const swap = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, id: id + 1 } : t)))`
     const idRow = `(t) => <li>{t.id}</li>`
-    for (const by of ['keyOf', '({ id }) => id', '(t) => String(t.id)', '(t) => { log(t) }', '"id"']) {
+    for (const by of ['() => 1', '(t) => { log() }', '"id"']) {
       const attr = by.startsWith('"') ? `by=${by}` : `by={${by}}`
       expect(hits(L(`<For each={todos} ${attr}>{${idRow}}</For>`, write)).map((x) => x.current)).toEqual(['t.id'])
     }
     // A block-bodied `by` that returns the key is read like the expression form.
     expect(hits(L(`<For each={todos} by={(t) => { return t.id }}>{${idRow}}</For>`, write))).toEqual([])
+  })
+
+  // #4798: a field the key reads changes the key when it changes, so the row
+  // is rebuilt with the new item and the read cannot go stale.
+  it('every field the `by` key reads is a key field, whatever the key expression', () => {
+    for (const by of [
+      '(t) => `${t.id}:${t.done}`',
+      "(t) => t.id + ':' + t.done",
+      "(t) => [t.id, t.done].join(':')",
+      '(t) => `${(t as Todo).id}:${t!.done}`',
+      "(t) => `${t['id']}:${t['done']}`",
+      "(t) => { const d = t.done ? 'd' : 'o'; return t.id + d }",
+      '({ id, done }) => `${id}:${done}`',
+      'function (t) { return `${t.id}:${t.done}` }',
+    ]) {
+      expect(hits(L(`<For each={todos} by={${by}}>{${row}}</For>`)), by).toEqual([])
+    }
+  })
+
+  it('a key that reads other fields still reports the field it does not read', () => {
+    for (const by of ['(t) => `${t.id}:${t.title}`', '({ id }) => id', '(t) => String(t.id)']) {
+      expect(hits(L(`<For each={todos} by={${by}}>{${row}}</For>`)).map((x) => x.current), by).toEqual(['t.done'])
+    }
+  })
+
+  it('a member-chain key covers only its exact path', () => {
+    const write = `const bump = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, meta: { rev: t.meta.rev + 1, title: 'x' } } : t)))`
+    const keyedBy = (by: string, read: string) => hits(L(`<For each={todos} by={${by}}>{(t) => <li>{${read}}</li>}</For>`, write))
+    expect(keyedBy('(t) => `${t.id}:${t.meta.rev}`', 't.meta.rev')).toEqual([])
+    // #4798 review: a key on `meta.rev` does not cover `meta.title`, and an
+    // object coerced in a template (`[object Object]`) covers none of its fields.
+    expect(keyedBy('(t) => `${t.id}:${t.meta.rev}`', 't.meta.title').map((x) => x.current)).toEqual(['t.meta'])
+    expect(keyedBy('(t) => `${t.id}:${t.meta}`', 't.meta.title').map((x) => x.current)).toEqual(['t.meta'])
+    expect(keyedBy('({ id, meta: { rev } }) => `${id}:${rev}`', 't.meta.title').map((x) => x.current)).toEqual(['t.meta'])
+    expect(keyedBy('(t) => t.id', 't.meta.rev').map((x) => x.current)).toEqual(['t.meta'])
+  })
+
+  it('a key function in scope is read through; an opaque one keeps reporting, named', () => {
+    const forEl = (by: string) => `<For each={todos} by={${by}}>{${row}}</For>`
+    expect(hits(L(forEl('keyOf'), TOGGLE, 'const keyOf = (t: Todo) => `${t.id}:${t.done}`'))).toEqual([])
+    expect(hits(L(forEl('keyOf'), TOGGLE, 'function keyOf(t: Todo) { return `${t.id}:${t.done}` }'))).toEqual([])
+    expect(hits(L(forEl('keyOf'), TOGGLE, 'const keyOf = (t: Todo) => t.id')).map((x) => x.current)).toEqual(['t.done'])
+    // Changes on any replacement: every read is safe.
+    for (const by of ['(t) => t', '(t) => JSON.stringify(t)', '(t) => { return t }']) {
+      expect(hits(L(forEl(by))), by).toEqual([])
+    }
+    // Opaque: still reported, and the message names what it could not see.
+    for (const [by, name] of [
+      ['importedKeyOf', 'importedKeyOf'],
+      ['(t) => keyOf(t)', 'keyOf'],
+      ["keyBy('id')", "keyBy('id')"],
+      ['keys.row', 'keys.row'],
+    ] as const) {
+      const d = hits(L(forEl(by)))
+      expect(d.map((x) => x.current), by).toEqual(['t.done'])
+      expect(d[0]!.message, by).toContain(`Safe only if \`${name}\` reads \`done\``)
+    }
+  })
+
+  it('a key function resolves by scope, not by the first name in the file', () => {
+    const code = (local: string, other: string) => `
+      const todos = signal<Todo[]>([])
+      ${TOGGLE}
+      function Other() { ${other}; return getKey }
+      export const L = () => { ${local}; return <For each={todos} by={getKey}>{${row}}</For> }
+    `
+    expect(hits(code('const getKey = (t) => t.id', 'const getKey = (x) => `${x.id}${x.done}`')).map((x) => x.current)).toEqual(['t.done'])
+    expect(hits(code('const getKey = (t) => `${t.id}${t.done}`', 'const getKey = (x) => x.id'))).toEqual([])
+    // A parameter shadows a file-level function of the same name.
+    const param = `const todos = signal<Todo[]>([])\n${TOGGLE}\nconst getKey = (t) => \`\${t.id}\${t.done}\`\nexport const L = (getKey) => <For each={todos} by={getKey}>{${row}}</For>`
+    expect(hits(param).map((x) => x.current)).toEqual(['t.done'])
+  })
+
+  it('reads through destructuring in the key body and ignores type positions', () => {
+    const forEl = (by: string) => `<For each={todos} by={${by}}>{${row}}</For>`
+    expect(hits(L(forEl('(t) => { const { id, done } = t; return id + done }')))).toEqual([])
+    for (const by of [
+      '(t) => { const { id } = t; return id }',
+      '({ id, ...rest }) => id',
+      '(t) => t.id as keyof typeof t',
+      '(t: typeof x) => { type K = typeof t; return t.id satisfies string }',
+    ]) {
+      expect(hits(L(forEl(by))).map((x) => x.current), by).toEqual(['t.done'])
+    }
   })
 
   it('a row that rebinds the item name, by declaration or a destructured nested param', () => {
@@ -308,6 +393,60 @@ describe('for-stale-item-field — syntax variants of each half', () => {
     expect(hits(L(forEl(`<Other label="x" todo={t} />`), TOGGLE, comps)).map((x) => x.current)).toEqual(['todo={t}'])
     expect(hits(L(forEl(`<Computed todo={t} />`), TOGGLE, comps))).toEqual([])
     expect(hits(L(forEl(`<NoProps todo={t} />`), TOGGLE, comps))).toEqual([])
+  })
+})
+
+describe('for-stale-item-field — key shapes (#4809 review)', () => {
+  // Each case walks a branch of `keyInfoOf`; the lint rule runs the same
+  // shapes through its own walker (`no-stale-for-item-field.test.ts`).
+  const keyed = (by: string, pre = '') => `${pre}
+    const todos = signal<Todo[]>([])
+    ${TOGGLE}
+    export const L = () => <For each={todos} by={${by}}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>
+  `
+  const edges = (by: string, rowAndComp: string, comp = '') => `
+    const edges = signal([])
+    const rename = (id, title) => edges.set(edges().map((e) => (e.node.id === id ? { ...e, node: { ...e.node, title } } : e)))
+    ${comp}
+    export const L = () => <For each={edges} by={${by}}>{${rowAndComp}}</For>
+  `
+  it.each([
+    ['dynamic member', keyed('(t) => t[k]'), 1],
+    ['no parameter', keyed('() => 1'), 1],
+    ['array-pattern param', keyed('([id]) => id'), 1],
+    ['computed key in a destructured param', keyed('({ [k]: v }) => v'), 1],
+    ['array pattern inside a destructured key', keyed('({ ids: [a] }) => a'), 1],
+    ['nested function rebinding the item', keyed('(t) => [t.id].map((t) => t).join()'), 1],
+    ['a method call ends the path', keyed('(t) => t.id.trim()'), 1],
+    ['default import', keyed('getKey', "import getKey from './k'"), 1],
+    ['namespace import', keyed('getKey', "import * as getKey from './k'"), 1],
+    ['named import under another name', keyed('getKey', "import { other as getKey } from './k'"), 1],
+    ['side-effect import and an unrelated import', keyed('getKey', "import './x'\nimport { other } from './k'\nconst getKey = (t) => `${t.id}${t.done}`"), 0],
+    ['exported key function reading only the id', keyed('getKey', 'export function getKey(t) { return t.id }'), 1],
+    ['a declared but bodiless key function', keyed('getKey', 'declare function getKey(t: Todo): string'), 1],
+    ['a key function in a switch case', `
+      const todos = signal<Todo[]>([])
+      ${TOGGLE}
+      export const L = (m) => { switch (m) { case 1: { const getKey = (t) => t.id; return <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For> } } }
+    `, 1],
+    ['literal template members', keyed('(t) => t[`id`] + t[`done`]'), 0],
+    ['a method call after the key field', keyed('(t) => t.id + t.done.toString()'), 0],
+    ['default values in a destructured key', keyed('({ id = 0, done = false }) => `${id}${done}`'), 0],
+    ['destructured key value read by member', edges('({ node }) => node.id + node.title', '(e) => <li>{e.node.title}</li>'), 0],
+    ['destructured key value with types and a shadowing callback', edges('({ node }) => [1].map((node) => node).join() + (node.title as typeof node.title)', '(e) => <li>{e.node.title}</li>'), 0],
+    ['a used rest with a type position', keyed('({ id, ...rest }) => id + (rest as typeof rest).x'), 1],
+    ['row destructuring a nested replaced field', edges('(e) => e.node.id', '({ node: { title, ...more }, [k]: v }) => <li>{title}</li>'), 1],
+    ['spread item into a component reading a nested field', edges('(e) => e.node.id', '(e) => <Cell {...e} />', 'const Cell = ({ node: { title }, [k]: v }) => <b>{title}</b>'), 1],
+    ['spread item into a component reading only key paths', edges('(e) => e.node.title', '(e) => <Cell {...e} />', 'const Cell = ({ node: { title } }) => <b>{title}</b>'), 0],
+    ['item passed to a component destructuring a nested pattern', edges('(e) => e.node.id', '(e) => <Cell edge={e} />', 'const Cell = ({ edge: { node: { title } } }) => <b>{title}</b>'), 1],
+    ['a JSX attribute named like the item is not a read', keyed('(t) => <K t="x" k={t.id} />'), 1],
+    ['an item name in non-read positions', keyed("(t) => { const o = { t: 1, t() { return 0 } }; const { t: a } = o; class C { t = 1 }; function f() { const t = 2; return t }; return <K t=\"x\" k={t.id} /> }"), 1],
+    ['a bare by attribute', keyed('').replace('by={}', 'by'), 1],
+    ['a used rest read twice', keyed('({ id, ...rest }) => id + rest.a + rest.b'), 1],
+    ['a key resolved past other statements', keyed('getKey', "console.log('start')\nif (ready) init()\nconst getKey = (t) => t.id"), 1],
+    ['component destructuring other props and an array', edges('(e) => e.node.id', '(e) => <Other label="x" edge={e} />', 'const Other = ({ label, edge: [first], [key]: v }) => <b>{label}{first}</b>'), 0],
+  ] as const)('%s', (_name, code, expected) => {
+    expect(hits(code)).toHaveLength(expected)
   })
 })
 
