@@ -146,6 +146,7 @@ describe('dropped scopes', () => {
         s()
         runs++
       })
+
       return h('i', null, 'live')
     }
     const host = document.createElement('div')
@@ -327,6 +328,7 @@ describe('lazy context owner', () => {
       effect(() => {
         if (write()) provide(Ctx, 'from-effect')
       })
+
       return null
     }
     function Root() {
