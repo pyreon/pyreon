@@ -3610,9 +3610,25 @@ export function transformJSX_JS(
    * wrap there.
    */
   function handleJsxSpreadAttribute(attr: N, parentElement: N): void {
-    if (!isComponentElement(parentElement)) return
     const arg = attr.argument
     if (!arg) return
+    if (!isComponentElement(parentElement)) {
+      // A DOM element's spread on the h() path is sliced exactly as the
+      // template path slices it (`_applyProps(el, sliceExpr(arg))`): signals
+      // auto-called (a bare signal property stays bare, `isBareDomSpreadValue`),
+      // prop-derived consts inlined. Left verbatim, a handler in it set the
+      // signal to its own source text (`count.set(count + 1)`) and a
+      // prop-derived const read its setup value. JSX in the argument is left
+      // to the JSX walk (nothing sliced across it).
+      if (!containsJsx(arg)) {
+        const sliced = sliceExpr(arg)
+        if (sliced !== code.slice(arg.start as number, arg.end as number)) {
+          replacements.push({ start: arg.start as number, end: arg.end as number, text: sliced })
+        }
+      }
+
+      return
+    }
     // Skip already-wrapped sources (idempotent compilation guard).
     if (
       arg.type === 'CallExpression' &&
@@ -8080,6 +8096,58 @@ export function transformJSX_JS(
     return false
   }
 
+  /**
+   * Exactly-bare signal as a property VALUE of an object literal spread onto a
+   * DOM element (`<div {...{ title: count }} />`) stays BARE, for the same
+   * reason as `isBareDomBinding`: a DOM prop treats a function as a live
+   * accessor. One rule for both element paths — the template's
+   * `_applyProps` / `_bindSpread` and the h() path's spread both slice the
+   * argument through `sliceExpr`, and this keeps the bare property live on
+   * both instead of a one-time read on h(). Mirrored by `dom_spread_obj` in
+   * the Rust backend.
+   */
+  /**
+   * A property whose exactly-bare signal value may stay bare in a DOM spread:
+   * a NAMED, non-shorthand key that is not `ref` or an `on*` handler. Those
+   * values are the listener or the ref itself, so a computed there must be read
+   * (a bare `onClick: handlerFor` made the computed the listener). A computed
+   * key's name is unknown, so it is read too. Mirrored by
+   * `is_dom_spread_value_key` in the Rust backend.
+   */
+  function isDomSpreadValueKey(prop: N): boolean {
+    if (prop.shorthand || prop.computed) return false
+    const key = prop.key
+    const name =
+      key.type === 'Identifier' ? (key.name as string) : typeof key.value === 'string' ? (key.value as string) : ''
+
+    return name !== '' && name !== 'ref' && !EVENT_RE.test(name)
+  }
+
+  function isBareDomSpreadValue(node: N): boolean {
+    let cur: N = node
+    let parent = findParent(cur)
+    while (parent && TYPE_LAYERS.has(parent.type as string)) {
+      cur = parent
+      parent = findParent(cur)
+    }
+    if (!parent || parent.type !== 'Property' || parent.value !== cur || !isDomSpreadValueKey(parent)) return false
+    let obj: N = parent
+    let up = findParent(obj)
+    if (!up || up.type !== 'ObjectExpression') return false
+    obj = up
+    up = findParent(obj)
+    while (up && TYPE_LAYERS.has(up.type as string)) {
+      obj = up
+      up = findParent(obj)
+    }
+    if (!up || up.type !== 'JSXSpreadAttribute') return false
+    const opening = findParent(up)
+    const name = opening?.type === 'JSXOpeningElement' ? opening.name : null
+    const tag = name?.type === 'JSXIdentifier' ? (name.name as string) : ''
+
+    return tag.length > 0 && !isComponentTag(tag)
+  }
+
   function collectSignalCallIdents(expr: N): { start: number; end: number }[] {
     const start = expr.start as number
     const end = expr.end as number
@@ -8186,6 +8254,7 @@ export function transformJSX_JS(
         // Exactly-bare DOM attr/child — leave bare for the runtimes'
         // fine-grained accessor treatment (see isBareDomBinding).
         if (isBareDomBinding(node, start, end)) return
+        if (isBareDomSpreadValue(node)) return
         idents.push({ start: node.start as number, end: node.end as number })
       }
       if (node.type === 'SwitchStatement') {
@@ -8321,6 +8390,15 @@ export function transformJSX_JS(
  * serialization is correct. `<textarea>`/`<title>` are ESCAPABLE raw text
  * (entities decode) and are unaffected.
  */
+/** Value-transparent wrappers (parens and TS type layers). */
+const TYPE_LAYERS = new Set([
+  'ParenthesizedExpression',
+  'TSAsExpression',
+  'TSSatisfiesExpression',
+  'TSNonNullExpression',
+  'TSTypeAssertion',
+])
+
 const RAW_TEXT_ELEMENTS = new Set([
   'script',
   'style',
