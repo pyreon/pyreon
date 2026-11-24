@@ -1,4 +1,5 @@
 import type { VNode, VNodeChild } from '@pyreon/core'
+import { _resyncSelect, _selectValueSeen } from './props'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
@@ -261,6 +262,7 @@ export function mountReactive(
       if (process.env.NODE_ENV !== 'production') {
         _countSink.__pyreon_count__?.('runtime.mountReactive.identitySkip')
       }
+
       return
     }
 
@@ -313,6 +315,8 @@ export function mountReactive(
         lastValue = NEVER_RAN
       }
     }
+    // Options swapped in or out of a controlled `<select value>` (#4820).
+    if (_selectValueSeen) _resyncSelect(marker.parentNode)
   })
   // Dev: name this boundary's graph node; its creation site is this file.
   if (process.env.NODE_ENV !== 'production') {
@@ -517,6 +521,7 @@ function trySmallKReorder(
     const cached = cache.get(newKeys[i] as ListKey)
     if (cached) cached.pos = i
   }
+
   return true
 }
 
@@ -573,6 +578,7 @@ function trySmallKPermutation(
     const cached = cache.get(newKeys[i] as ListKey)
     if (cached) cached.pos = i
   }
+
   return 'done'
 }
 
@@ -635,6 +641,7 @@ function computeForLis(lis: LisState, n: number): number {
   }
   if (process.env.NODE_ENV !== 'production' && ops > 0)
     _countSink.__pyreon_count__?.('runtime.mountFor.lisOps', ops)
+
   return lisLen
 }
 
@@ -749,9 +756,11 @@ export interface ForAdoption {
 // same synchronous dispatch. Never survives past a single mountFor call — not
 // a registry, no cleanup contract (always cleared on read).
 let _pendingForAdoption: ForAdoption | null = null
+
 export function _setPendingForAdoption(a: ForAdoption): void {
   _pendingForAdoption = a
 }
+
 export function _takePendingForAdoption(): ForAdoption | null {
   const a = _pendingForAdoption
   _pendingForAdoption = null
@@ -813,6 +822,7 @@ export function mountFor<T>(
       return true
     }
     seen.add(key)
+
     return false
   }
 
@@ -836,6 +846,7 @@ export function mountFor<T>(
       // In production: skip duplicate — use first occurrence only.
       return true
     }
+
     return false
   }
 
@@ -881,6 +892,7 @@ export function mountFor<T>(
       const nativeCleanup = withRowScope(rowScope, native.cleanup ?? null)
       cache.set(key, { anchor: native.el, cleanup: nativeCleanup, pos, end: null, seen: 0 })
       if (nativeCleanup) cleanupCount++
+
       return
     }
     const cl = withRowScope(rowScope, mounted) as Cleanup
@@ -982,6 +994,7 @@ export function mountFor<T>(
       const _seenUpdate = new Set<ListKey>()
       for (let i = 0; i < n; i++) warnForKey(_seenUpdate, newKeys[i] as ListKey)
     }
+
     return newKeys
   }
 
@@ -1109,6 +1122,7 @@ export function mountFor<T>(
     }
     if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('runtime.mountFor.removeFast')
+
     return true
   }
 
@@ -1207,6 +1221,7 @@ export function mountFor<T>(
     }
     if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('runtime.mountFor.insertFast')
+
     return true
   }
 
@@ -1266,6 +1281,7 @@ export function mountFor<T>(
       renderInto(items[i] as T, key, pos, liveParent, tailMarker)
       added++
     }
+
     return added
   }
 
@@ -1297,6 +1313,7 @@ export function mountFor<T>(
     for (let i = 0; i < n; i++) {
       if (cache.has(newKeys[i] as ListKey)) return true
     }
+
     return false
   }
 
@@ -1418,6 +1435,7 @@ export function mountFor<T>(
             currentKeys = keys
             if (process.env.NODE_ENV !== 'production')
               _countSink.__pyreon_count__?.('runtime.mountFor.hydrateAdopt')
+
             return
           }
         }
@@ -1443,6 +1461,9 @@ export function mountFor<T>(
 
       handleIncrementalUpdate(items, n, newKeys, liveParent)
     })
+    // A controlled `<select value>` whose options this list renders: the value
+    // is re-applied now that the matching option may exist (#4820).
+    if (_selectValueSeen) _resyncSelect(liveParent)
   })
   // Dev: name this boundary's graph node; its creation site is this file.
   if (process.env.NODE_ENV !== 'production') {
@@ -1460,6 +1481,7 @@ export function mountFor<T>(
       if (cleanupCount > 0) runEntryCleanups(cache, unitParent)
       cache = new Map()
       cleanupCount = 0
+
       return
     }
     for (const entry of cache.values()) {
@@ -1523,6 +1545,7 @@ function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null 
     rowCollector = collector
     return { result, scope: null }
   }
+
   return { result, scope: collector }
 }
 

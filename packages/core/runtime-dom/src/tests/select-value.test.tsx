@@ -49,6 +49,7 @@ import {
   _setPropStatic,
   _setStyle,
   _setStyleOnce,
+  _setValue,
   _textSlot,
   bindPolymorphicText,
   hydrateRoot,
@@ -80,6 +81,7 @@ const RUNTIME_DEPS = {
   _setChild,
   _setChildAt,
   _setPropStatic,
+  _setValue,
   bindPolymorphicText,
   _rp,
   _rpd,
@@ -130,8 +132,9 @@ describe('<select value> — compiled template path', () => {
     )
     // The dead content attribute must NOT be in the template HTML…
     expect(code).not.toContain('<select value=')
-    // …the property set is emitted instead…
-    expect(code).toContain('.value = "b"')
+    // …the property set is emitted instead (through `_setValue`, which also
+    // records the controlled value for a later options change, #4820)…
+    expect(code).toContain('_setValue(__root, "b")')
     // …and the select actually shows b.
     expect(sel(container).value).toBe('b')
   })

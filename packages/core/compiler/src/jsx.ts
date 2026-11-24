@@ -1348,6 +1348,11 @@ function toNativeCollapse(
 }
 
 /** JS fallback implementation — used when the native binary isn't available. */
+/** `<input>`, `<textarea>`, `<select>`: their `value` goes through the runtime `_setValue`. Mirrors Rust `is_value_control_tag`. */
+function isValueControlTag(tag: string): boolean {
+  return tag === 'input' || tag === 'textarea' || tag === 'select'
+}
+
 export function transformJSX_JS(
   code: string,
   filename = 'input.tsx',
@@ -6724,15 +6729,15 @@ export function transformJSX_JS(
         needsSetHtml = true
         return `_setHtml(${varName}, ${expr})`
       }
-      // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
-      // (= applyValueProp), which assigns the property AND establishes
-      // `defaultValue` on the first application. A bare `el.value = v` sets only
-      // the property, and a property assignment never creates the `value`
-      // ATTRIBUTE that `form.reset()` restores from — so a client-mounted form
-      // cleared fields a hydrated one restored. Scoped by TAG: every other
-      // element that owns a `value` property (`<progress>`, `<option>`,
-      // `<select>`, custom elements) keeps the plain property assignment.
-      if (htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea')) {
+      // `<input>`/`<textarea>`/`<select>` `value`: delegate to the runtime
+      // `_setValue` (= applyValueProp). On input/textarea it assigns the
+      // property AND establishes `defaultValue` on the first application (a
+      // bare `el.value = v` never creates the `value` ATTRIBUTE that
+      // `form.reset()` restores from). On a select it records the controlled
+      // value, which the reconcilers re-apply when the options change (#4820).
+      // Scoped by TAG: every other element that owns a `value` property
+      // (`<progress>`, `<option>`, custom elements) keeps the plain assignment.
+      if (htmlAttrName === 'value' && isValueControlTag(tag)) {
         needsSetValue = true
         return `_setValue(${varName}, ${expr})`
       }
@@ -6817,7 +6822,7 @@ export function transformJSX_JS(
               ? ((needsSetStyle = true), `(v) => _setStyle(${varName}, v)`)
               : htmlAttrName === 'dangerouslySetInnerHTML'
                 ? ((needsSetHtml = true), `(v) => _setHtml(${varName}, v)`)
-                : htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea')
+                : htmlAttrName === 'value' && isValueControlTag(tag)
                   ? ((needsSetValue = true), `(v) => _setValue(${varName}, v)`)
                   : DOM_PROPS.has(htmlAttrName)
                     ? `(v) => { ${varName}.${htmlAttrName} = v }`

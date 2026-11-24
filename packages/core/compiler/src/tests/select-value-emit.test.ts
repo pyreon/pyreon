@@ -4,7 +4,7 @@
  * <select> has NO `value` CONTENT attribute — the HTML parser ignores
  * `value="…"` on <select>, so baking it into the `_tpl` HTML is a dead
  * attribute (the select silently shows its first option). The compiler must
- * (a) NEVER bake select/value statically — emit a one-time `el.value = …`
+ * (a) NEVER bake select/value statically — emit a one-time `_setValue(el, …)`
  * PROPERTY set instead, and (b) order every select-value bind line (static
  * set AND `_bindDirect`) AFTER the element's children lines, so
  * `_bindDirect`'s eager initial update / the property assignment run with
@@ -25,21 +25,21 @@ describe('<select value> — static bake is skipped (dead content attribute)', (
       '<select value="b"><option value="a">A</option><option value="b">B</option></select>',
     )
     expect(code).not.toContain('<select value=')
-    expect(code).toContain('__root.value = "b"')
+    expect(code).toContain('_setValue(__root, "b")')
     // Options are still baked into the template HTML.
     expect(code).toContain('<option value=\\"a\\">A</option>')
   })
 
   it('expression-container static forms all route to the property set', () => {
-    expect(compile('<select value={"b"}><option/></select>')).toContain('__root.value = "b"')
-    expect(compile('<select value={3}><option/></select>')).toContain('__root.value = 3')
-    expect(compile('<select value={`b`}><option/></select>')).toContain('__root.value = `b`')
-    expect(compile('<select value={-1}><option/></select>')).toContain('__root.value = -1')
+    expect(compile('<select value={"b"}><option/></select>')).toContain('_setValue(__root, "b")')
+    expect(compile('<select value={3}><option/></select>')).toContain('_setValue(__root, 3)')
+    expect(compile('<select value={`b`}><option/></select>')).toContain('_setValue(__root, `b`)')
+    expect(compile('<select value={-1}><option/></select>')).toContain('_setValue(__root, -1)')
     // PZ-05: TS type-layers unwrap at the attr classification seam, so the
     // cast form emits byte-identically to the bare literal (the cast is
     // runtime-erased anyway) — still the property set, never a baked attr.
     expect(compile('<select value={"b" as const}><option/></select>')).toContain(
-      '__root.value = "b"',
+      '_setValue(__root, "b")',
     )
     expect(compile('<select value={"b" as const}><option/></select>')).not.toContain('as const')
     for (const c of [
@@ -55,12 +55,12 @@ describe('<select value> — static bake is skipped (dead content attribute)', (
     // Single-quoted JSX attr whose value CONTAINS a double quote — the
     // JSON-style serializer escapes it regardless of the JSX quote style.
     const code = compile(`<select value='a"b'><option/></select>`)
-    expect(code).toContain('__root.value = "a\\"b"')
+    expect(code).toContain('_setValue(__root, "a\\"b")')
     // Entity handling follows the parser's `.value` (oxc does not decode
     // JSX entities) — identical treatment to the attribute BAKE path, just
     // routed through the property set.
     const entity = compile('<select value="a&amp;b"><option/></select>')
-    expect(entity).toContain('__root.value = "a&amp;b"')
+    expect(entity).toContain('_setValue(__root, "a&amp;b")')
   })
 
   it('omit-semantic shapes (undefined/null/false) emit NOTHING — no clobbering of option selected attrs', () => {
@@ -83,7 +83,7 @@ describe('<select value> — static bake is skipped (dead content attribute)', (
   it('a nested select gets a phase-1 element ref for the deferred property set', () => {
     const code = compile('<div><span>x</span><select value="b"><option/></select></div>')
     expect(code).toContain('const __e0 = __root.firstElementChild.nextElementSibling')
-    expect(code).toContain('__e0.value = "b"')
+    expect(code).toContain('_setValue(__e0, "b")')
   })
 })
 
@@ -103,7 +103,7 @@ describe('<select value> — bind lines are ordered AFTER the children lines', (
       '<select value="b">{items.map((i) => <option value={i}>{i}</option>)}</select>',
     )
     const slot = code.indexOf('_mountSlot(')
-    const set = code.indexOf('__root.value = "b"')
+    const set = code.indexOf('_setValue(__root, "b")')
     expect(slot).toBeGreaterThan(-1)
     expect(set).toBeGreaterThan(slot)
   })
@@ -113,7 +113,7 @@ describe('<select value> — bind lines are ordered AFTER the children lines', (
       'const sig = signal("b"); const x = <select value={() => sig()}><option value="a">A</option></select>',
     )
     // No children bind lines → the deferred move is a byte-level no-op.
-    expect(code).toContain('const __d0 = _bindDirect(sig, (v) => { __root.value = v })')
+    expect(code).toContain('const __d0 = _bindDirect(sig, (v) => _setValue(__root, v))')
     expect(code).toContain('return __d0')
   })
 
@@ -125,7 +125,7 @@ describe('<select value> — bind lines are ordered AFTER the children lines', (
     expect(code).toContain('<select id=\\"s\\">')
     const ev = code.indexOf('__ev_change')
     const slot = code.indexOf('_mountSlot(')
-    const set = code.indexOf('__root.value = "b"')
+    const set = code.indexOf('_setValue(__root, "b")')
     expect(ev).toBeGreaterThan(-1)
     expect(ev).toBeLessThan(slot)
     expect(set).toBeGreaterThan(slot)

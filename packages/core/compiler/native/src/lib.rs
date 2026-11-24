@@ -165,6 +165,12 @@ fn is_svg_root_tag(tag: &str) -> bool {
     )
 }
 
+/// `<input>`, `<textarea>`, `<select>`: their `value` goes through the runtime
+/// `_setValue`. Mirrors jsx.ts `isValueControlTag`.
+fn is_value_control_tag(tag: &str) -> bool {
+    tag == "input" || tag == "textarea" || tag == "select"
+}
+
 fn is_void_element(tag: &str) -> bool {
     matches!(
         tag,
@@ -10427,15 +10433,15 @@ fn attr_setter(
         // Mirrors the JS backend's attrSetter (jsx.ts).
         tb.needs_set_html = true;
         format!("_setHtml({}, {})", var_name, expr)
-    } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
-        // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
-        // (= applyValueProp), which assigns the property AND establishes
-        // `defaultValue` on the first application. A bare `el.value = v` sets
-        // only the property, and a property assignment never creates the
-        // `value` ATTRIBUTE that `form.reset()` restores from. Scoped by TAG so
-        // every other element owning a `value` property (`<progress>`,
-        // `<option>`, `<select>`, custom elements) keeps the plain property
-        // assignment. Mirrors the JS backend's attrSetter (jsx.ts).
+    } else if html_attr_name == "value" && is_value_control_tag(tag) {
+        // `<input>`/`<textarea>`/`<select>` `value`: delegate to the runtime
+        // `_setValue` (= applyValueProp). On input/textarea it assigns the
+        // property AND establishes `defaultValue` on the first application; on
+        // a select it records the controlled value the reconcilers re-apply
+        // when the options change (#4820). Scoped by TAG so every other element
+        // owning a `value` property (`<progress>`, `<option>`, custom elements)
+        // keeps the plain property assignment. Mirrors the JS backend's
+        // attrSetter (jsx.ts).
         tb.needs_set_value = true;
         format!("_setValue({}, {})", var_name, expr)
     } else if is_dom_prop(html_attr_name) && !resolve {
@@ -10525,7 +10531,7 @@ fn emit_dynamic_attr(
         } else if html_attr_name == "dangerouslySetInnerHTML" {
             tb.needs_set_html = true;
             format!("(v) => _setHtml({}, v)", var_name)
-        } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
+        } else if html_attr_name == "value" && is_value_control_tag(tag) {
             tb.needs_set_value = true;
             format!("(v) => _setValue({}, v)", var_name)
         } else if is_dom_prop(html_attr_name) {
