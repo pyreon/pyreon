@@ -76,6 +76,7 @@ import {
   componentProps,
   mountChild,
   mountOwned,
+  runUnmountHooks,
 } from './mount'
 import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import type { RowPlan } from './hydration-plan'
@@ -2442,8 +2443,8 @@ function hydrateComponent(
     if (process.env.NODE_ENV !== 'production') _devUnregisterScope(scope)
     scope.stop()
     subtreeCleanup()
-    if (hooks.unmount) for (const fn of hooks.unmount) fn()
-    for (const fn of mountCleanups) fn()
+    runUnmountHooks(hooks.unmount, componentName)
+    runUnmountHooks(mountCleanups, componentName)
   }
 
   return [cleanup, nextDom]

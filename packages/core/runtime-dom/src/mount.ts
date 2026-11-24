@@ -979,22 +979,33 @@ function mountComponent(
     if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
     scope.stop()
     subtreeCleanup()
-    if (hooks.unmount) {
-      for (const fn of hooks.unmount) {
-        try {
-          fn()
-        } catch (err) {
-          console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
-          reportError({
-            component: componentName,
-            phase: 'unmount',
-            error: err,
-            timestamp: Date.now(),
-          })
-        }
-      }
+    runUnmountHooks(hooks.unmount, componentName)
+    runUnmountHooks(mountCleanups, componentName)
+  }
+}
+
+/**
+ * Run a component's USER teardown callbacks: its `onUnmount` hooks, or the
+ * cleanups its `onMount` callbacks returned. One that throws is logged and
+ * reported (`phase: 'unmount'`) and never stops the others or the teardown
+ * around it. Shared by `mountComponent` and `hydrateComponent`: a hydrated
+ * component ran them bare, so a throwing hook escaped the `<For>` row removal
+ * that unmounted it ("Unhandled effect error") and left the rows on screen.
+ */
+export function runUnmountHooks(fns: (() => unknown)[] | null, componentName: string): void {
+  if (fns === null) return
+  for (const fn of fns) {
+    try {
+      fn()
+    } catch (err) {
+      console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
+      reportError({
+        component: componentName,
+        phase: 'unmount',
+        error: err,
+        timestamp: Date.now(),
+      })
     }
-    if (mountCleanups) for (const fn of mountCleanups) fn()
   }
 }
 
