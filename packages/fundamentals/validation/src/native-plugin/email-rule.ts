@@ -17,8 +17,10 @@
  *
  * `\p{L}` / `\p{M}` / `\p{Nd}` mean the same Unicode general categories in
  * JS (`u` flag), ICU and Java, and all three match a supplementary code point
- * as one unit. The rfc5322 tier's limits are: local part ≤ 64 (ASCII-only, so
- * a lookahead counts it exactly) and total ≤ 254 UTF-16 units, which the
+ * as one unit (so do `\uXXXX` escapes). The rfc5322 tier's limits are: local
+ * part ≤ 64 (ASCII-only, so a lookahead counts it exactly), every domain label
+ * ≤ 63 code points (a negative lookahead; the web counts code points too), and
+ * total ≤ 254 UTF-16 units, which the
  * emitter checks as `utf16.count` / `length` — the web's `value.length`. The
  * web's domain ≤ 255 limit is implied by total ≤ 254, so it needs no check.
  *
@@ -38,25 +40,33 @@ import type { EmailRule } from './ir'
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
 
-/** A domain label's first char (no hyphen, no combining mark). */
+/** A domain label's first char (no hyphen, no combining mark, no joiner). */
 const LABEL_START = String.raw`\p{L}\p{Nd}`
-/** Any domain label char. */
-const LABEL_CHAR = String.raw`\p{L}\p{M}\p{Nd}\-`
+/** Any domain label char — marks and the joiners ZWNJ / ZWJ after the first. */
+const LABEL_CHAR = String.raw`\p{L}\p{M}\p{Nd}‌‍\-`
+/** The IDNA label separators: `.`, U+3002, U+FF0E, U+FF61. */
+const SEP = String.raw`\.。．｡`
+/** A TLD: 2+ letters (marks after the first), or a punycode A-label. */
+const TLD = String.raw`(?:\p{L}[\p{L}\p{M}]+|[Xx][Nn]\-\-[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?)`
 
 const LOCAL_STD = String.raw`(?!\.)(?!.*\.\.)[A-Za-z0-9\_\'\+\.\-]*[A-Za-z0-9\_\+\-]`
-const DOMAIN_STD = String.raw`(?:[${LABEL_START}][${LABEL_CHAR}]*\.)+\p{L}[\p{L}\p{M}]+`
+const DOMAIN_STD = `(?:[${LABEL_START}][${LABEL_CHAR}]*[${SEP}])+${TLD}`
 
 /** `.email()` / `.email({ precision: 'standard' })` — `EMAIL_RE`. */
 export const EMAIL_STANDARD_PATTERN = `^${LOCAL_STD}@${DOMAIN_STD}\\z`
 
-/** `.email({ precision: 'rfc5322' })` — `EMAIL_RE` + local ≤ 64 (total ≤ 254 is checked by the emitter). */
-export const EMAIL_RFC5322_PATTERN = `^(?=[^@]{1,64}@)${LOCAL_STD}@${DOMAIN_STD}\\z`
+/**
+ * `.email({ precision: 'rfc5322' })` — `EMAIL_RE` + local ≤ 64 + every domain
+ * label ≤ 63 code points (the web's check; total ≤ 254 is checked by the emitter).
+ */
+export const EMAIL_RFC5322_PATTERN =
+  `^(?=[^@]{1,64}@)(?![^@]*@(?:[^${SEP}]*[${SEP}])*[^${SEP}]{64})${LOCAL_STD}@${DOMAIN_STD}\\z`
 
 const HTML5_LABEL = String.raw`[${LABEL_START}](?:[${LABEL_CHAR}]{0,61}[\p{L}\p{M}\p{Nd}])?`
 
 /** `.email({ precision: 'html5' })` — `EMAIL_HTML5_RE`. */
 export const EMAIL_HTML5_PATTERN =
-  String.raw`^[a-zA-Z0-9\.\!\#\$\%\&\'\*\+\/\=\?\^\_\`\{\|\}\~\-]+@` + `${HTML5_LABEL}(?:\\.${HTML5_LABEL})*\\z`
+  String.raw`^[a-zA-Z0-9\.\!\#\$\%\&\'\*\+\/\=\?\^\_\`\{\|\}\~\-]+@` + `${HTML5_LABEL}(?:[${SEP}]${HTML5_LABEL})*\\z`
 
 /** The rfc5322 tier's total-length limit (UTF-16 units, as the web's `value.length`). */
 export const EMAIL_RFC5322_MAX_LENGTH = 254

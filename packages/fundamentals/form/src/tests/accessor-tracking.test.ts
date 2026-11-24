@@ -108,3 +108,74 @@ describe('useForm read accessors track', () => {
     expect(dirty()).toBe('late')
   })
 })
+
+describe('values() is a memoised snapshot (no per-read field scan)', () => {
+  it('a clean read returns the same object and reads no field signal', () => {
+    const form = useForm({ initialValues: { a: '', b: '' }, onSubmit: () => {} })
+    const first = form.values()
+    // Spy: a clean read must not touch the value signals at all.
+    let reads = 0
+    const orig = form.fields.a.value
+    const spy = Object.assign(() => {
+      reads++
+      return orig()
+    }, orig)
+    ;(form.fields as Record<string, unknown>).a = { ...form.fields.a, value: spy }
+    expect(form.values()).toBe(first)
+    expect(reads).toBe(0)
+  })
+
+  it('unregisterField re-runs a values() effect ONCE, with no in-between snapshot', () => {
+    const form = useForm({ initialValues: { a: 'x' }, onSubmit: () => {} })
+    form.registerField('extra', 'v')
+    form.setFieldValue('extra' as 'a', 'changed')
+    const seen: string[] = []
+    const e = effect(() => {
+      seen.push(JSON.stringify(form.values()))
+    })
+    form.unregisterField('extra')
+    e.dispose()
+    expect(seen).toEqual(['{"a":"x","extra":"changed"}', '{"a":"x"}'])
+  })
+})
+
+describe('reset({ keepDirty, keepTouched }) does not subscribe the caller', () => {
+  it('an effect calling reset re-runs only on what IT read', () => {
+    const form = useForm({ initialValues: { a: '' }, onSubmit: () => {} })
+    let runs = 0
+    const e = effect(() => {
+      runs++
+      form.reset(undefined, { keepDirty: true, keepTouched: true })
+    })
+    form.fields.a.touched.set(true)
+    form.setFieldValue('a', 'x')
+    e.dispose()
+    expect(runs).toBe(1)
+  })
+})
+
+describe('useFormState agrees with the form accessors', () => {
+  it('sees a field registered after the state was created', async () => {
+    const { useFormState } = await import('../use-form-state')
+    const form = useForm({ initialValues: { a: '' }, onSubmit: () => {} })
+    const state = useFormState(form)
+    expect(Object.keys(state().dirtyFields)).toEqual([])
+    form.registerField('late', '')
+    form.setFieldValue('late' as 'a', 'changed')
+    form.getFieldState('late' as 'a')!.touched.set(true)
+    form.setFieldError('late' as 'a', 'bad')
+    expect(Object.keys(state().dirtyFields)).toEqual(['late'])
+    expect(Object.keys(state().touchedFields)).toEqual(['late'])
+    expect(state().errors).toEqual({ late: 'bad' })
+  })
+
+  it('drops an empty-string error, like form.errors() and isValid()', async () => {
+    const { useFormState } = await import('../use-form-state')
+    const form = useForm({ initialValues: { a: '' }, onSubmit: () => {} })
+    const state = useFormState(form)
+    form.setFieldError('a', '' as never)
+    expect(form.errors()).toEqual({})
+    expect(state().errors).toEqual({})
+    expect(state().isValid).toBe(form.isValid())
+  })
+})

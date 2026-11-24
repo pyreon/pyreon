@@ -100,6 +100,11 @@ describe('email — internationalised domains (IDN), every tier', () => {
     'a@école.fr', // a combining mark after the first char of a label
     'a@ไทย.ไทย', // Thai: letters + non-spacing marks, also in the TLD
     'a@١٢٣.مصر', // Arabic-Indic digits in a label
+    'a@xn--e1afmkfd.xn--p1ai', // the punycode form Chromium's <input type=email>.value returns
+    'a@пример。рф', // U+3002 ideographic full stop as the separator
+    'a@пример．рф', // U+FF0E
+    'a@пример｡рф', // U+FF61
+    'a@b\u200Cc.de', // ZWNJ inside a label
   ]
   const reject = [
     'jän@müller.de', // non-ASCII local part
@@ -112,6 +117,10 @@ describe('email — internationalised domains (IDN), every tier', () => {
     'jan@😀.de', // emoji is not a letter
     'jan@müller.d€', // symbol in the TLD
     'jan@@müller.de',
+    'a@b.xn--', // empty A-label
+    'a@b.xn--p1ai-', // trailing hyphen
+    'a@\u200Cb.de', // a joiner cannot start a label
+    'a@пример。。рф', // empty label between separators
   ]
   for (const precision of PRECISIONS) {
     const schema = s.string().email({ precision })
@@ -147,5 +156,13 @@ describe('email — internationalised domains (IDN), every tier', () => {
     const mini = miniString().check(email())
     expect(mini.parse('jan@müller.de').ok).toBe(true)
     expect(mini.parse('jän@müller.de').ok).toBe(false)
+  })
+})
+
+describe('the compiled validator emit uses the SAME grammar', () => {
+  it('validate-emit.ts EMAIL_RE source and flags equal EMAIL_RE', async () => {
+    const { emitValidator } = await import('@pyreon/compiler/validate')
+    const code = emitValidator({ kind: 'string', checks: [{ kind: 'email' }] } as never)
+    expect(code).toContain(`new RegExp(${JSON.stringify(EMAIL_RE.source)}, ${JSON.stringify(EMAIL_RE.flags)})`)
   })
 })

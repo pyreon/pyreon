@@ -1,6 +1,6 @@
 import { createUniqueId, onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, computed, effect, isServer, signal } from '@pyreon/reactivity'
+import { batch, computed, effect, isServer, signal, untrack } from '@pyreon/reactivity'
 import type { SchemaValidateFn } from '@pyreon/validation'
 import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
 import type { FieldDefinition, InferFieldValues } from './field'
@@ -376,7 +376,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   //
   // STATIC-BY-DEFAULT FIELD MODEL. `fieldEntries` starts from `initialValues`
   // and is the shape the whole form is built on: `values()`/`getValues()`
-  // iterate it (epoch-cached), the submit payload is assembled from it, and
+  // iterate it (memoised / epoch-cached), the submit payload is assembled from it, and
   // dirty/touched aggregation keys on it. There is NO lazy AUTO-registration
   // (a field first seen by `useField`/`register` would NOT be in `fieldEntries`,
   // so its value would never reach `onSubmit` — a silent data-loss bug), which
@@ -453,22 +453,21 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // immediately, reusing the exact same validation path as auto-validation.
   const fieldRunValidation: Partial<Record<keyof TValues, (v: unknown) => Promise<ValidationError>>> = {}
 
-  // Epoch-cached snapshot of all values. Rebuilding the object on every
-  // `values()` / `getValues()` read was O(N) (~109ns for 12 fields vs a plain
-  // store's ~7ns property read). Instead we keep a monotonically-bumped
-  // `_valuesEpoch` (incremented by every value-mutation METHOD — setValue,
-  // field.reset, setInitialValues) and rebuild the snapshot only when the
-  // epoch advanced since the last read. A clean read is then an integer
-  // compare + cached-object return (~store speed), and the write path pays
-  // only one integer increment (no signal/subscriber → no Set promotion on
-  // the value signals → the 46ns keystroke path is untouched).
+  // Two snapshots of all values, for two kinds of reader:
   //
-  // Contract: the snapshot reflects mutations through the form's methods.
-  // A direct `form.fields.x.value.set(...)` (bypassing `setValue`) bypasses
-  // the epoch — same as it already bypasses dirty-tracking + auto-validation;
-  // use `setFieldValue` for tracked updates. This matches the live-store
-  // model of TanStack/RHF (their values object is equally "stale" if you
-  // mutate underlying state out-of-band).
+  // - INTERNAL reads (validators' `allValues`, the schema input, submit) use
+  //   the epoch cache below: rebuilt only when a value-mutation METHOD
+  //   (setValue, field.reset, setInitialValues, register/unregister) bumped
+  //   `_valuesEpoch`, so a clean read is an integer compare + cached-object
+  //   return and nothing subscribes to the value signals. A direct
+  //   `form.fields.x.value.set(...)` bypasses the epoch (as it bypasses
+  //   dirty-tracking + auto-validation).
+  // - The PUBLIC `values()` / `getValues()` read `valuesComputed` (declared
+  //   after the field state): a lazy computed over every value signal and the
+  //   field set. A clean read returns its cached object; it re-derives only
+  //   after a change, including a direct `value.set(...)`, and a computed /
+  //   effect over it tracks every field (#4824). It subscribes to the value
+  //   signals only once something has read it.
   let _valuesEpoch = 0
   let _valuesCache: TValues | undefined
   let _valuesCacheEpoch = -1
@@ -952,6 +951,21 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // count signals. Pre-fix these iterated all N fields on every recompute
   // (and re-allocated the `fieldEntries.map` array). Post-fix they're
   // pure scalar reads. See `_invalidCount` / `_dirtyCount` setup above.
+  // The PUBLIC values snapshot — see the note on the epoch cache above.
+  // Lazy: allocated per form, but it reads (and so subscribes to) the value
+  // signals only once `values()` / `getValues()` is first called.
+  const valuesComputed = computed((): TValues => {
+    _fieldsVersion()
+    const values = {} as TValues
+    for (const [name] of fieldEntries) {
+      const f = fields[name]
+      ;(values as Record<string, unknown>)[name] = f
+        ? f.value()
+        : (currentInitials as Record<string, unknown>)[name]
+    }
+
+    return values
+  })
   const isValid = computed(() => _invalidCount() === 0)
   const isDirty = computed(() => _dirtyCount() > 0)
   const isSubmitted = computed(() => submitCount() > 0)
@@ -960,37 +974,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   function getValuesPublic(): TValues
   function getValuesPublic<K extends keyof TValues>(field: K): TValues[K]
   function getValuesPublic<K extends keyof TValues>(field?: K): TValues | TValues[K] {
-    if (field === undefined) return valuesTracked()
+    if (field === undefined) return valuesComputed()
 
     // Tracked like `fields[field].value()` — a computed/effect over
     // `getValues('x')` re-runs when `x` changes.
     return fields[field].value()
-  }
-
-  // PUBLIC `values()` / `getValues()`: TRACKED. Reads the field set and every
-  // field's value signal through the tracking call, so a `computed`/`effect`/
-  // JSX accessor over `form.values()` re-runs on any field change (and on
-  // `registerField` / `unregisterField`). The snapshot object still comes from
-  // the epoch cache (referentially stable between mutations); the tracked read
-  // also catches a value written straight to `form.fields.x.value.set(...)`,
-  // which bypasses the epoch — a mismatch against the cached snapshot
-  // invalidates it, so a consumer re-run never sees the stale object.
-  // Internal callers (validators, the schema input, submit) keep the
-  // untracked `getValues` so the form never subscribes a caller's effect.
-  const valuesTracked = (): TValues => {
-    _fieldsVersion()
-    const cached =
-      _valuesCacheEpoch === _valuesEpoch ? (_valuesCache as Record<string, unknown> | undefined) : undefined
-    let stale = cached === undefined
-    for (const [name] of fieldEntries) {
-      const f = fields[name]
-      if (f === undefined) continue
-      const v = f.value()
-      if (!stale && !Object.is((cached as Record<string, unknown>)[name], v)) stale = true
-    }
-    if (stale) _valuesEpoch++
-
-    return getValues()
   }
 
   // Aggregate dirty/touched records (only the dirty/touched fields present).
@@ -1301,8 +1289,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     abortController = null
     // Snapshot any state the caller asked to preserve, BEFORE the reset wipes it.
     const keepErrors = resetOptions?.keepErrors ? { ...getErrors() } : undefined
-    const keepTouched = resetOptions?.keepTouched ? { ...touchedFields() } : undefined
-    const keepDirty = resetOptions?.keepDirty ? { ...dirtyFields() } : undefined
+    // Untracked: `reset()` called inside a caller's effect must not subscribe it.
+    const keepTouched = resetOptions?.keepTouched ? { ...untrack(touchedFields) } : undefined
+    const keepDirty = resetOptions?.keepDirty ? { ...untrack(dirtyFields) } : undefined
     // Batch the reset writes: every field's reset() touches multiple
     // signals (value/error/touched/dirty), then submitCount + submitError.
     // Without batch(), N-field form fires 4N+2 separate notify cycles.
@@ -1659,6 +1648,14 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const key = name as keyof TValues & string
     const fieldState = fields[key]
     if (!fieldState) return
+    // One batch: the reset below writes the field's signals and the removal
+    // bumps the field set — a `values()` consumer must see ONE change (the
+    // field gone), never an in-between snapshot with the reset value.
+    batch(() => removeField(key, fieldState))
+  }
+
+  const removeField = (key: keyof TValues & string, fieldState: FieldState<TValues[keyof TValues & string]>): void => {
+    const name = key as string
     // Reset FIRST so the field's error/dirty subscribers fire and cleanly
     // zero its contribution to `_invalidCount` / `_dirtyCount` before removal.
     fieldState.reset()
@@ -1706,7 +1703,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     isSubmitted,
     isSubmitSuccessful,
     submitError,
-    values: valuesTracked,
+    // The computed itself (no wrapper call): `values()` is the hottest read.
+    values: valuesComputed as () => TValues,
     getValues: getValuesPublic,
     errors: errorsTracked,
     dirtyFields,

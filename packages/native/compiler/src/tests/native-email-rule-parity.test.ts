@@ -67,6 +67,24 @@ const CORPUS: string[] = [
   'jan@😀.de',
   'jan@𝒜bc.de', // a supplementary-plane letter
   'jan@müller.d€',
+  // punycode (what Chromium's <input type=email>.value returns), IDNA
+  // separators, joiners, malformed A-labels.
+  'a@xn--e1afmkfd.xn--p1ai',
+  'a@b.XN--P1AI',
+  'a@b.xn--',
+  'a@b.xn---a',
+  'a@b.xn--a-',
+  'a@пример\u3002рф',
+  'a@пример\uFF0Eрф',
+  'a@пример\uFF61рф',
+  'a@пример\u3002\u3002рф',
+  'a@b\u200Cc.de',
+  'a@b\u200Dc.de',
+  'a@\u200Cb.de',
+  // DNS label length (rfc5322): 63 passes, 64 does not — ASCII and Unicode.
+  `a@${'b'.repeat(63)}.co`,
+  `a@${'b'.repeat(64)}.co`,
+  `a@x.${'ü'.repeat(64)}.de`,
   // A trailing line terminator: ICU and Java `$` match BEFORE it.
   'a@b.co\n',
   'jan@müller.de\n',
