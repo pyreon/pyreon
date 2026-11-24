@@ -37,6 +37,28 @@ describe('countStringOps', () => {
     expect(countStringOps(() => fixed(`${'a'.repeat(100_000)}?`)).stringCalls).toBe(3)
   })
 
+  it('measures the stretch every indexOf reads, so a re-scan from each position shows as quadratic', () => {
+    expect(countStringOps(() => 'abcdef'.indexOf('cd')).indexOfScanned).toBe(4)
+    expect(countStringOps(() => 'abcdef'.indexOf('cd', 1)).indexOfScanned).toBe(3)
+    expect(countStringOps(() => 'abcdef'.indexOf('z', 2)).indexOfScanned).toBe(4)
+    expect(countStringOps(() => 'abc'.indexOf('a', -5)).indexOfScanned).toBe(1)
+    expect(countStringOps(() => 'abc'.indexOf('a', 99)).indexOfScanned).toBe(0)
+    expect(countStringOps(() => 'abc'.includes('c')).indexOfScanned).toBe(0)
+
+    // One forward cursor vs. a fresh search from every position: both make n
+    // calls, only the scanned count tells them apart.
+    const s = `${'a'.repeat(1000)}b`
+    const forward = countStringOps(() => {
+      let at = -1
+      for (let i = 0; i < 1000; i++) if (at < i) at = s.indexOf('b', i)
+    })
+    const rescan = countStringOps(() => {
+      for (let i = 0; i < 1000; i++) s.indexOf('b', i)
+    })
+    expect(forward.indexOfScanned).toBe(1001)
+    expect(rescan.indexOfScanned).toBe(1001 * 1002 / 2 - 1)
+  })
+
   it('restores the real methods, also when the function throws', () => {
     const indexOf = String.prototype.indexOf
     const exec = RegExp.prototype.exec

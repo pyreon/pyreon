@@ -58,7 +58,9 @@ export function stringLiteralText(source: string, fileName = 'source.tsx'): stri
   const keep = (from: number, to: number): void => {
     for (let i = from; i < to; i++) out[i] = source[i] as string
   }
-  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, scriptKindOf(ts, fileName))
+  // No parent pointers: nothing below walks up the tree, and `getStart` gets
+  // the source file passed in.
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, scriptKindOf(ts, fileName))
   const visit = (node: import('typescript').Node): void => {
     switch (node.kind) {
       case ts.SyntaxKind.StringLiteral:
@@ -159,6 +161,18 @@ function commandDocFiles(repoRoot: string): string[] {
 }
 
 /**
+ * Whether `raw` can hold a runner command at all: every runner the pattern
+ * below names contains `npx`, `bunx` or `dlx`, and `stringLiteralText` only
+ * blanks characters, so a file without one of the three can match nothing.
+ * Checked on the raw text BEFORE parsing: a few dozen of the ~2,600 source
+ * files contain one, and the TypeScript parse is what this scan costs, most of
+ * all under coverage instrumentation (#4774).
+ */
+function mayHoldRunnerCommand(raw: string): boolean {
+  return raw.includes('npx') || raw.includes('bunx') || raw.includes('dlx')
+}
+
+/**
  * A docs page — or a user-facing string in published source (CLI output, a
  * diagnostic's fix text, a generated README) — that tells the reader to run
  * `npx atlas …` / `bunx lathe …` with the UNSCOPED name of one of our binaries. Without a local install, the
@@ -187,6 +201,7 @@ export function findUnscopedRunnerCommands(repoRoot: string): Finding[] {
   ]
   for (const [filePath, isSource] of sources) {
     const raw = readFileSync(filePath, 'utf8')
+    if (!mayHoldRunnerCommand(raw)) continue
     const content = isSource ? stringLiteralText(raw, filePath) : raw
     const relPath = relative(repoRoot, filePath)
     const allowed = RUNNER_COMMAND_ALLOWANCES.get(relPath.split('\\').join('/'))

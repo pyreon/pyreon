@@ -372,6 +372,35 @@ describe('signed fragments', () => {
     expect(urls.filter((u) => u.startsWith('/_pyreon/'))).toHaveLength(1)
     expect(el.innerHTML).toBe('<span>fallback</span>')
   })
+
+  it('a page re-fetch that fails is not retried with an empty signature → the fallback stays, flagged', async () => {
+    const urls = stubFetch((url) => (url.startsWith('/_pyreon/') ? httpError(403) : httpError(500)))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const el = serverMarkup({ 'data-name': 'PageDown' })
+    activateServerIslandElement(el)
+    await vi.waitFor(() => expect(el.getAttribute('data-island-error')).toBe('fragment-failed'))
+    expect(urls).toEqual(['/_pyreon/fragment/PageDown', location.pathname + location.search])
+    expect(el.innerHTML).toBe('<span>fallback</span>')
+  })
+
+  it('a host without DOMParser cannot read the page render, so it never fetches the page', async () => {
+    vi.stubGlobal('DOMParser', undefined)
+    const urls = stubFetch(() => httpError(403))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const el = serverMarkup({ 'data-name': 'NoParser' })
+    activateServerIslandElement(el)
+    await vi.waitFor(() => expect(el.getAttribute('data-island-error')).toBe('fragment-failed'))
+    expect(urls).toEqual(['/_pyreon/fragment/NoParser'])
+  })
+
+  it('a host without location requests the validated fragment path as-is (no origin to leave)', async () => {
+    vi.stubGlobal('location', undefined)
+    const urls = stubFetch(() => ok('<b>here</b>'))
+    const el = serverMarkup({ 'data-name': 'NoLocation', 'data-props': '{"a":1}' })
+    activateServerIslandElement(el, '/sub/')
+    await vi.waitFor(() => expect(el.innerHTML).toBe('<b>here</b>'))
+    expect(urls).toEqual([`/sub/_pyreon/fragment/NoLocation?props=${encodeURIComponent('{"a":1}')}`])
+  })
 })
 
 // The fragment response is inserted as HTML, so a crafted marker (markup an
