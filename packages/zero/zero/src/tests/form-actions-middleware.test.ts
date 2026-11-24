@@ -7,7 +7,8 @@
 import { redirect } from '@pyreon/router'
 import type { MiddlewareContext } from '@pyreon/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { _defineActionWithId, _resetActions, resolveActionOptions } from '../actions'
+import { _defineActionWithId, _resetActions } from '../internal'
+import { resolveActionOptions } from '../actions'
 import { createFormActionMiddleware } from '../form-actions-server'
 
 function ctx(url: string, init: RequestInit = {}): MiddlewareContext {

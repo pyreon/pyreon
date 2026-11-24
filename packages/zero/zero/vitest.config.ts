@@ -30,6 +30,7 @@ export default defineNodeConfig({
     'src/i18n-routing.ts',
     'src/ai.ts',
     'src/actions.ts',
+    'src/actions-core.ts', // the implementation behind the actions.ts barrel
     'src/logger.ts',
     'src/seo.ts',
     // JSX components (browser-tested):

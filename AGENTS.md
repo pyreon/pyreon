@@ -114,6 +114,7 @@ What is reactive depends on where a signal is read:
 - Error messages start with `[Pyreon]` and say how to fix the problem.
 - `exactOptionalPropertyTypes` is on: optional properties assigned a possibly-undefined value need an explicit `| undefined`.
 - A `node:*` import must never be reachable from a client-safe entry — not even through a lazy `import()`. Put server-only code behind a server-only module or subpath.
+- A `_`-prefixed export (test-reset helper, cross-package internal) goes on the package's `./internal` subpath (`src/internal.ts`), never a public entry; compat-layer plumbing goes on `@pyreon/core/compat`. Only the compiler-emitted helpers (`COMPILER_ABI` in `scripts/check-stability-tier.ts`) stay on the main entries. Enforced by `check-stability-tier`.
 - Pyreon ships ESM only: no published package declares a `require` or `default` export condition (`check-esm-only`; only `@pyreon/storybook` is exempt, because Storybook loads presets through CJS).
 - Browser-running packages need a real-Chromium smoke test (`*.browser.test.tsx`, listed in `.agents/rules/browser-packages.json`).
 

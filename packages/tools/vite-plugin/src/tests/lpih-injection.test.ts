@@ -11,11 +11,12 @@
  * "expected to include __sourceLocation".
  */
 import { describe, expect, it } from 'vitest'
-import pyreonPlugin, {
+import pyreonPlugin from '../index'
+import {
   _computeLineStarts,
   _maskStringsAndComments,
   _offsetToLineCol,
-} from '../index'
+} from '../internal'
 
 type ConfigHook = (
   userConfig: Record<string, unknown>,

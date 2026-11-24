@@ -37,6 +37,11 @@
       "bun": "./src/sanitizer.ts",
       "import": "./lib/sanitizer.js",
       "types": "./lib/types/sanitizer.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [

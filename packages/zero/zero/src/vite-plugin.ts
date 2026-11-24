@@ -400,7 +400,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// derive the locale from the URL in production SSR, SSG and on
 			// the client — not only under the dev middleware's ALS store.
 			return config.i18n
-				? `${routeModule}\nimport { _registerI18nConfig as __zeroRegisterI18n } from "@pyreon/zero";\n__zeroRegisterI18n(${JSON.stringify(config.i18n)});\n`
+				? `${routeModule}\nimport { _registerI18nConfig as __zeroRegisterI18n } from "@pyreon/zero/internal";\n__zeroRegisterI18n(${JSON.stringify(config.i18n)});\n`
 				: routeModule;
 		} catch (err) {
 			// A [Pyreon] diagnostic (invalid route file, loader + server

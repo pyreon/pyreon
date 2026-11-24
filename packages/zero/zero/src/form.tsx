@@ -27,7 +27,7 @@ import { h, mergeProps, splitProps } from '@pyreon/core'
 import { batch, isServer, signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
 import { useRouter } from '@pyreon/router'
-import type { Action, ActionData } from './actions'
+import type { Action, ActionData } from './actions-core'
 
 /** Query parameter that names the action a page form post targets. @internal */
 export const ACTION_QUERY_PARAM = '_action'

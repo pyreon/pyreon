@@ -1,4 +1,5 @@
-import { _mergePropsOmit, mergeProps } from '@pyreon/core'
+import { mergeProps } from '@pyreon/core'
+import { _mergePropsOmit } from '@pyreon/core/internal'
 import { SizedMap } from '@pyreon/sized-map'
 import {
   compose,

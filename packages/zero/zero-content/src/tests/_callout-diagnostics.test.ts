@@ -133,7 +133,8 @@ describe('PR-A H5 — path label in error messages', () => {
     // spec locks the shape of the path string the Vite layer renders
     // — `reportPath` returns a leading `./` path WHEN root is set,
     // falling back to the legacy `shortId` suffix otherwise.
-    const { reportPath, _setResolvedRootForPaths } = await import('../plugin')
+    const { reportPath } = await import('../plugin')
+    const { _setResolvedRootForPaths } = await import('../internal-server')
     try {
       _setResolvedRootForPaths('/abs/project')
       expect(reportPath('/abs/project/packages/foo/src/content/docs/zero.md')).toBe(
@@ -149,13 +150,15 @@ describe('PR-A H5 — path label in error messages', () => {
   })
 
   it('reportPath without root captured uses shortId fallback', async () => {
-    const { reportPath, _setResolvedRootForPaths } = await import('../plugin')
+    const { reportPath } = await import('../plugin')
+    const { _setResolvedRootForPaths } = await import('../internal-server')
     _setResolvedRootForPaths(null)
     expect(reportPath('/abs/p/src/content/docs/zero.md')).toBe('src/content/docs/zero.md')
   })
 
   it('reportPath normalises Windows-style paths against a Unix root', async () => {
-    const { reportPath, _setResolvedRootForPaths } = await import('../plugin')
+    const { reportPath } = await import('../plugin')
+    const { _setResolvedRootForPaths } = await import('../internal-server')
     try {
       _setResolvedRootForPaths('/abs/project')
       expect(

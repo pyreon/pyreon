@@ -53,10 +53,7 @@ export { createFsStore } from "./isr-fs-store";
 // ─── Vercel revalidate handler (M3.1) ───────────────────────────────────────
 
 export type { VercelRevalidateHandlerOptions } from "./vercel-revalidate-handler";
-export {
-	_resetVercelRevalidateHandlerCache,
-	vercelRevalidateHandler,
-} from "./vercel-revalidate-handler";
+export { vercelRevalidateHandler } from "./vercel-revalidate-handler";
 
 // ─── Adapters ───────────────────────────────────────────────────────────────
 
@@ -100,7 +97,14 @@ export { zeroPlugin as default, getZeroPluginConfig } from "./vite-plugin";
 export type { FaviconPluginConfig, FaviconLocaleConfig } from "./favicon";
 export { faviconPlugin, faviconLinks } from "./favicon";
 export type { IconsPluginConfig, IconSetConfig, NamedSetInput } from "./icons-plugin";
-export { iconsPlugin, iconNameFromFile, scanIconDir, generateIconSetSource, generateNamedIconSetsSource, componentNameFromSetKey } from "./icons-plugin";
+export {
+  iconsPlugin,
+  iconNameFromFile,
+  scanIconDir,
+  generateIconSetSource,
+  generateNamedIconSetsSource,
+  componentNameFromSetKey,
+} from "./icons-plugin";
 export type { SeoPluginConfig, SitemapConfig, RobotsConfig, RssConfig, RssItem } from "./seo";
 export { seoPlugin, generateSitemap, generateRobots, generateRssFeed, toRfc822, jsonLd, seoMiddleware } from "./seo";
 export type { OgImagePluginConfig, OgImageTemplate, OgImageLayer } from "./og-image";

@@ -1,4 +1,4 @@
-import { _enterCleanupFrame, _exitCleanupFrame } from '@pyreon/reactivity'
+import { _enterCleanupFrame, _exitCleanupFrame } from '@pyreon/reactivity/internal'
 import { _peekCurrentHooks, EMPTY_HOOKS, PENDING_HOOKS, setCurrentHooks } from './lifecycle'
 import type { ComponentFn, LifecycleHooks, VNodeChild } from './types'
 

@@ -4,7 +4,8 @@
  * interleaved requests never see each other's instant. NODE environment deliberately: under happy-dom `isServer` is false.
  */
 import { clockAttributes, provideClock, provideLocale, provideTimeZone } from '@pyreon/ambient'
-import { _resetClockState, _tickerStats } from '@pyreon/ambient/testing'
+import { _tickerStats } from '@pyreon/ambient/internal'
+import { resetClockState } from '@pyreon/ambient/testing'
 import { h } from '@pyreon/core'
 import { effectScope } from '@pyreon/reactivity'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
@@ -16,7 +17,7 @@ const SERVER_AT = Date.UTC(2026, 10, 18, 12, 0, 0)
 const MIN = 60_000
 
 afterEach(() => {
-  _resetClockState()
+  resetClockState()
   _resetLocaleState()
   vi.useRealTimers()
 })

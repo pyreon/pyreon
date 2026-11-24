@@ -77,8 +77,8 @@
   "title": "Everything a real form needs.",
   "items": [
    {
-    "name": "Two ways to declare",
-    "text": "`useForm({ initialValues })`, or reusable `field('email', '', validator)` definitions passed as `useForm({ fields })`, with the value type inferred either way."
+    "name": "Typed from one declaration",
+    "text": "`useForm({ initialValues, validators })` infers the value type of every field, validator and `useField('name')` read from `initialValues`."
    },
    {
     "name": "Validate on blur, change or submit",

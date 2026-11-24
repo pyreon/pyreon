@@ -4,7 +4,7 @@
 
 Signal-based form management — fields, validation, arrays, and context.
 
-Every field on a Pyreon form is its own `Signal<T>` (one each for `value`, `error`, `touched`, `dirty`), so templates only re-run for the slice they read. Two complementary APIs: the classic `useForm({ initialValues, validators, onSubmit })`, and the composable `field('name', default, validator) → useForm({ fields }) + useField('name')` that infers `FormState` from a field array and skips prop drilling via `<Form of={form}>` / `FormProvider`. Pairs with `@pyreon/validation` for Zod/Valibot/ArkType schema integration.
+Every field on a Pyreon form is its own `Signal<T>` (one each for `value`, `error`, `touched`, `dirty`), so templates only re-run for the slice they read. One option shape, `useForm({ initialValues, validators, onSubmit })`, which infers `FormState` from `initialValues`; `useField('name')` reads a field from context and skips prop drilling via `<Form of={form}>` / `FormProvider`. Pairs with `@pyreon/validation` for Zod/Valibot/ArkType schema integration.
 
 ## Native compiler plugin
 
@@ -18,9 +18,9 @@ const compiler = createCompiler({ plugins: [formPlugin] })
 const result = compiler.transform(source, { target: 'swift' })
 ```
 
-The current native subset accepts classic `useForm({ initialValues, validators, schema, onSubmit })` with literal string defaults, single-parameter expression validators, and schema declarations in the same file. It preserves `<Field>` bindings, map/accessor reads, submit callback field reads, and `useForm` result destructuring. `useFieldArray` accepts a literal string array or no initial argument; `<For>` scopes its row accessors and restores the enclosing row when nested.
+The current native subset accepts `useForm({ initialValues, validators, schema, onSubmit })` with literal string defaults, single-parameter expression validators, and schema declarations in the same file. It preserves `<Field>` bindings, map/accessor reads, submit callback field reads, and `useForm` result destructuring. `useFieldArray` accepts a literal string array or no initial argument; `<For>` scopes its row accessors and restores the enclosing row when nested.
 
-Composable `field()`/`useField()` forms and the rest of the web form API still need native lowerings. This plugin move preserves the existing native capability and emitted output.
+Context-based `useField()` reads and the rest of the web form API still need native lowerings. This plugin move preserves the existing native capability and emitted output.
 
 ## Install
 
@@ -57,21 +57,20 @@ function LoginForm() {
 }
 ```
 
-## Composable fields + `<Form>` (recommended)
+## `<Form>` + `useField` (no prop drilling)
 
-Define fields once, infer the form shape automatically, and read from context instead of prop drilling:
+Declare the form once and read each field from context instead of passing it down:
 
 ```tsx
-import { field, useForm, useField, Form, Submit } from '@pyreon/form'
-
-const email = field('email', '', (v) => (!v.includes('@') ? 'Invalid' : undefined))
-const password = field('password', '', (v) => (v.length < 8 ? 'Too short' : undefined))
-const confirm = field('confirmPassword', '', (v, all) =>
-  v !== all.password ? 'Mismatch' : undefined,
-)
+import { useForm, useField, Form, Submit } from '@pyreon/form'
 
 const form = useForm({
-  fields: [email, password, confirm],
+  initialValues: { email: '', password: '', confirmPassword: '' },
+  validators: {
+    email: (v) => (!v.includes('@') ? 'Invalid' : undefined),
+    password: (v) => (v.length < 8 ? 'Too short' : undefined),
+    confirmPassword: (v, all) => (v !== all.password ? 'Mismatch' : undefined),
+  },
   onSubmit: (values) => {
     /* { email: string; password: string; confirmPassword: string } */
   },

@@ -24,9 +24,8 @@
 //         the captured `slug` field.
 
 import { describe, expect, it } from 'vitest'
+import { _resetRegistryForTesting, _setRegistry } from '../internal'
 import {
-  _resetRegistryForTesting,
-  _setRegistry,
   getCollection,
   isReference,
   reference,

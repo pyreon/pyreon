@@ -8,7 +8,8 @@ import { IDBFactory } from 'fake-indexeddb'
 globalThis.indexedDB = new IDBFactory()
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { _resetDBCache, _resetRegistry, useCookie, useIndexedDB } from '../index'
+import { useCookie, useIndexedDB } from '../index'
+import { _resetDBCache, _resetRegistry } from '../internal'
 
 afterEach(() => {
   _resetRegistry()

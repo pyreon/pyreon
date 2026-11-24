@@ -9,4 +9,4 @@
  * provided accessor) is validated there: it warns once and falls back to the runtime default (`construct` in `cache.ts`).
  */
 export { activeZone, locale, provideLocale, provideTimeZone, setLocale, setTimeZone, timeZone } from '@pyreon/ambient'
-export { _resetLocaleState } from '@pyreon/ambient/testing'
+export { resetLocaleState as _resetLocaleState } from '@pyreon/ambient/testing'

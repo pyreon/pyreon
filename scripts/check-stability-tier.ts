@@ -31,6 +31,13 @@
  *      in `DEPRECATED_ALLOWLIST` with a reason (stale allowlist entries fail);
  *   6. a docs page passes a hand-written `status=` to `<PackageBadge>` (the
  *      badge reads the tier generated from this field);
+ *   8. a public entry of a published package exports a `_`-prefixed runtime
+ *      name that is not compiler ABI (`COMPILER_ABI`). Test-reset helpers and
+ *      cross-package internals belong on the package's `./internal` subpath
+ *      (`./internal-server` for Node-only ones; `@pyreon/core/compat` for the
+ *      compat layers' plumbing), which carries no semver promise. A
+ *      `COMPILER_ABI` name its entry no longer exports fails too, so the list
+ *      cannot outlive the helpers it names;
  *   7. a PRIVATE package (`"private": true`, e.g. `@pyreon/auth` until it is
  *      published) declares a tier or carries a README status line. An
  *      unpublished package makes no semver promise, the generated table and
@@ -378,6 +385,148 @@ export function metaFailures(metaSource: string, fields: Map<string, StabilityFi
   return failures
 }
 
+// ─── `_` exports ────────────────────────────────────────────────────────────
+
+/**
+ * The `_` helpers code compiled by `@pyreon/compiler` imports, per entry. They
+ * are the compiler ABI: additive-only within a major, because a library
+ * compiled with one 1.x release runs against any later 1.x runtime. Every
+ * other `_` export is internal and lives on an internal subpath.
+ */
+export const COMPILER_ABI: Record<string, readonly string[]> = {
+  '@pyreon/core': ['_fuse', '_lc', '_pk', '_pp', '_rp', '_rpd', '_slot', '_wrapSpread'],
+  '@pyreon/reactivity': ['_bind'],
+  '@pyreon/runtime-dom': [
+    '_applyProps',
+    '_bindDirect',
+    '_bindProp',
+    '_bindSpread',
+    '_bindText',
+    '_dispose2',
+    '_dispose3',
+    '_dispose4',
+    '_disposeN',
+    '_mountChild',
+    '_mountSlot',
+    '_ref',
+    '_rsCollapse',
+    '_rsCollapseDyn',
+    '_rsCollapseDynH',
+    '_rsCollapseH',
+    '_setAttr',
+    '_setChild',
+    '_setChildAt',
+    '_setClass',
+    '_setHtml',
+    '_setProp',
+    '_setPropStatic',
+    '_setStyle',
+    '_setStyleOnce',
+    '_setValue',
+    '_textSlot',
+    '_tpl',
+  ],
+  '@pyreon/runtime-server': [
+    '_esc',
+    '_escSole',
+    '_ssr',
+    '_ssrAttr',
+    '_ssrAttrGen',
+    '_ssrAttrUrl',
+    '_ssrChildren',
+    '_ssrDeferred',
+    '_ssrForKeyed',
+    '_ssrItem',
+    '_ssrNode',
+  ],
+}
+
+/** Entries that hold internals by design: no semver promise, `_` names allowed. */
+export function isInternalEntry(pkg: string, subpath: string): boolean {
+  return /^\.\/internal(?:-server)?$/.test(subpath) || (pkg === '@pyreon/core' && subpath === './compat')
+}
+
+const ENTRY_EXTS = ['.ts', '.tsx', '.mts', '/index.ts', '/index.tsx']
+
+/**
+ * Runtime names a module exports, following `export *` through relative
+ * modules (a re-export of another package is that package's own entry's
+ * concern). Type-only exports are skipped: they do not exist at runtime.
+ */
+export function runtimeExportNames(file: string, seen: Set<string> = new Set()): Set<string> {
+  const out = new Set<string>()
+  if (seen.has(file) || !existsSync(file)) return out
+  seen.add(file)
+  const sf = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true)
+  const exported = (n: ts.Node): boolean =>
+    ts.canHaveModifiers(n) && (ts.getModifiers(n) ?? []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+  for (const st of sf.statements) {
+    if (ts.isExportDeclaration(st)) {
+      if (st.isTypeOnly) continue
+      const spec = st.moduleSpecifier !== undefined && ts.isStringLiteral(st.moduleSpecifier) ? st.moduleSpecifier.text : undefined
+      if (st.exportClause === undefined) {
+        if (spec === undefined || !spec.startsWith('.')) continue
+        const base = resolve(dirname(file), spec).replace(/\.[cm]?[jt]sx?$/, '')
+        const target = ENTRY_EXTS.map((e) => base + e).find((f) => existsSync(f))
+        if (target !== undefined) for (const n of runtimeExportNames(target, seen)) out.add(n)
+      } else if (ts.isNamespaceExport(st.exportClause)) {
+        out.add(st.exportClause.name.text)
+      } else {
+        for (const el of st.exportClause.elements) if (!el.isTypeOnly) out.add(el.name.text)
+      }
+    } else if (ts.isVariableStatement(st) && exported(st)) {
+      for (const d of st.declarationList.declarations) if (ts.isIdentifier(d.name)) out.add(d.name.text)
+    } else if ((ts.isFunctionDeclaration(st) || ts.isClassDeclaration(st) || ts.isEnumDeclaration(st)) && exported(st)) {
+      if (st.name !== undefined) out.add(st.name.text)
+    }
+  }
+
+  return out
+}
+
+/** Public entries of a package as `[subpath, source file]`, from the `bun` condition. */
+function publicEntries(p: PublishedPackage): Array<[string, string]> {
+  const out: Array<[string, string]> = []
+  for (const [subpath, value] of Object.entries(p.pkg.exports ?? {})) {
+    if (isInternalEntry(p.name, subpath) || value === null || typeof value !== 'object') continue
+    const src = (value as Record<string, unknown>)['bun']
+    if (typeof src === 'string' && /\.[cm]?tsx?$/.test(src)) out.push([subpath, join(p.dir, src)])
+  }
+
+  return out
+}
+
+/** Rule 8: `_` names on public entries must be compiler ABI. */
+export function underscoreExportFailures(
+  pkgs: readonly PublishedPackage[],
+  abi: Record<string, readonly string[]> = COMPILER_ABI,
+): string[] {
+  const failures: string[] = []
+  for (const p of pkgs) {
+    const allowed = new Set(abi[p.name] ?? [])
+    const onMain = new Set<string>()
+    for (const [subpath, file] of publicEntries(p)) {
+      const names = runtimeExportNames(file)
+      for (const n of names) {
+        if (subpath === '.') onMain.add(n)
+        if (!n.startsWith('_')) continue
+        if (subpath === '.' && allowed.has(n)) continue
+        const spec = subpath === '.' ? p.name : `${p.name}${subpath.slice(1)}`
+        failures.push(
+          `${spec} exports \`${n}\`, a \`_\` internal on a public entry. Move it to ${p.name}/internal ` +
+            '(an `./internal` subpath export; see "What counts as public API" on the stability page), ' +
+            'or, if @pyreon/compiler emits imports of it, add it to COMPILER_ABI.',
+        )
+      }
+    }
+    for (const n of allowed) {
+      if (!onMain.has(n)) failures.push(`COMPILER_ABI lists \`${n}\` for ${p.name}, which its main entry no longer exports. Remove the stale entry.`)
+    }
+  }
+
+  return failures
+}
+
 // ─── @deprecated ────────────────────────────────────────────────────────────
 
 export interface DeprecatedTag {
@@ -612,6 +761,9 @@ export async function runGate(repoRoot: string, write: boolean): Promise<string[
 
   // 6. docs badge
   failures.push(...badgeStatusFailures(join(repoRoot, 'docs/src/content'), repoRoot))
+
+  // 8. `_` exports on public entries are compiler ABI only
+  failures.push(...underscoreExportFailures(pkgs))
 
   // 7. private packages carry no tier
   for (const p of listPrivatePackages(repoRoot)) {

@@ -1,4 +1,4 @@
-import { _noopDispose } from '@pyreon/reactivity'
+import { _noopDispose } from '@pyreon/reactivity/internal'
 
 /**
  * Compiler-emitted `ref` application for a template element: the h() path's

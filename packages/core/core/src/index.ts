@@ -8,14 +8,12 @@ import { registerSingleton } from '@pyreon/reactivity'
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export {
-  _runHooked,
-  _takeHooks,
   defineComponent,
   dispatchToErrorBoundary,
   propagateError,
   runWithHooks,
 } from './component'
-export { isNativeCompat, NATIVE_COMPAT_MARKER, nativeCompat } from './compat-marker'
+export { nativeCompat } from './compat-marker'
 // Re-exported from @pyreon/reactivity so existing imports from @pyreon/core
 // keep working AND every package below core in the dep chain can still reach
 // it directly via @pyreon/reactivity. See `cross-module-state.ts` in
@@ -28,10 +26,8 @@ export { useControllableState, type UseControllableState } from './controllable-
 export { lockScroll } from './scroll-lock'
 export { ColorModeProvider, provideColorMode, systemColorMode, useColorMode, useProvidedColorMode } from './color-mode'
 export type { ColorMode, ColorModeInput, ColorModeProviderProps } from './color-mode'
-export { mapCompatDomProps, shallowEqualProps } from './compat-shared'
 export type { Context, ReactiveContext } from './context'
 export {
-  _devMarkOwnerAlias,
   createContext,
   createReactiveContext,
   getContextStackLength,
@@ -76,21 +72,20 @@ export type {
 } from './jsx-runtime'
 export type { DeferProps } from './defer'
 export { Defer } from './defer'
-export { _childText, _isStructuralChild, _isVNodeLike } from './child-text'
 export { lazy } from './lazy'
 export { onErrorCaptured, onMount, onUnmount, onUpdate } from './lifecycle'
 export { mapArray } from './map-array'
 export type { PortalProps } from './portal'
 export { Portal, PortalSymbol } from './portal'
+// Compiler ABI: `_lc`, `_fuse`, `_slot`, `_pk`, `_pp`, `_rp`, `_rpd` and
+// `_wrapSpread` are imported by code `@pyreon/compiler` emits, so they stay on
+// this entry and are additive-only within a major (see the stability page,
+// "What counts as public API"). Every other `_` helper lives on
+// `@pyreon/core/internal`; compat-layer plumbing lives on `@pyreon/core/compat`.
 export {
-  _copyProp,
-  _mergePropsExcept,
-  _mergePropsOmit,
-  _pickProps,
   _lc,
   _fuse,
   _slot,
-  _compatProps,
   _pk,
   _pp,
   _rp,
@@ -102,29 +97,33 @@ export {
   removeUndefinedProps,
   splitProps,
 } from './props'
-export {
-  _IslandIds,
-  _nextIslandIdPrefix,
-  _requestIdFrame,
-  _resetIdCounter,
-  createUniqueId,
-} from './unique-id'
+export { createUniqueId } from './unique-id'
 export type { ElementRef, Ref, RefCallback, RefProp } from './ref'
 export { createRef, elementRef } from './ref'
 export type { Directive, DirectiveEntry } from './directive'
 export { use } from './directive'
 export type { AsyncLike, AsyncProps } from './async'
-export { _resetAsyncWarning, Async } from './async'
+export { Async } from './async'
 export { escapeJsonForScript } from './script-json'
 export type { MatchProps, ShowProps, SwitchProps } from './show'
 export { Match, MatchSymbol, Show, Switch } from './show'
 export type { ClassValue } from './style'
 export { CSS_UNITLESS, cx, normalizeStyleValue, toKebabCase } from './style'
 export type { LazyComponent } from './suspense'
-export { _setSuspenseHydrating, Suspense } from './suspense'
+export { Suspense } from './suspense'
 export type { SuspenseBoundary } from './suspense-context'
 export { SuspenseBoundaryContext } from './suspense-context'
-export { EVENT_HANDLER_ATTRS, isElementEventHandlerAttr, isEventHandlerAttr, UNSAFE_ATTR_NAME_RE, isSafeImageDataUri, isUnsafeUrl, isUrlAttr, UNSAFE_URL_RE, URL_ATTRS } from './url-guard'
+export {
+  EVENT_HANDLER_ATTRS,
+  isElementEventHandlerAttr,
+  isEventHandlerAttr,
+  UNSAFE_ATTR_NAME_RE,
+  isSafeImageDataUri,
+  isUnsafeUrl,
+  isUrlAttr,
+  UNSAFE_URL_RE,
+  URL_ATTRS,
+} from './url-guard'
 export type { ErrorContext, ErrorHandler, ReactiveTraceEntry } from './telemetry'
 export { registerErrorHandler, reportError } from './telemetry'
 export type {

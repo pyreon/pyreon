@@ -7,11 +7,22 @@
  * in Chromium, and where a test below needs a size it sets it on the element and says so.
  */
 import type { VNodeChild } from '@pyreon/core'
-import { _resetHotkeys, getRegisteredHotkeys } from '@pyreon/hotkeys'
+import { getRegisteredHotkeys } from '@pyreon/hotkeys'
+import { _resetHotkeys } from '@pyreon/hotkeys/internal'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCommands } from '../commands'
-import { CommandEmpty, CommandInput, CommandItem, CommandList, CommandLoading, CommandPalette, CommandShortcut, Highlight, usePalette } from '../components'
+import {
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandLoading,
+  CommandPalette,
+  CommandShortcut,
+  Highlight,
+  usePalette,
+} from '../components'
 import { lockScroll, showModal, trapTab } from '../dialog'
 import { createPalette } from '../palette'
 import type { Palette } from '../palette-types'

@@ -52,15 +52,8 @@ export type { DetailsProps } from './components/Details'
 // via `registerExamples(import.meta.glob('./examples/**/*.tsx'))`.
 export { Example } from './components/Example'
 export type { ExampleProps } from './components/Example'
+export { registerExamples } from './components/example-registry'
 export {
-  _exampleCount,
-  _exampleKeys,
-  _resetExampleRegistry,
-  registerExamples,
-} from './components/example-registry'
-export {
-  _hasSharedSignal,
-  _sharedSignalCount,
   clearAllSharedSignals,
   getOrCreateSharedSignal,
 } from './components/shared-signal-registry'
@@ -132,7 +125,6 @@ export type {
 // ─── Search ────────────────────────────────────────────────────────────────
 
 export {
-  _resetSearchForTesting,
   loadSearchIndex,
   Search,
   useSearch,
@@ -147,14 +139,11 @@ export type {
 // ─── Runtime queries (getCollection / getEntry / getEntries) ──────────────
 //
 // Read from the plugin-emitted `virtual:zero-content/collections`
-// module — the virtual module imports `_setRegistry` from here at app
-// boot.
+// module — the virtual module imports `_setRegistry` from
+// `@pyreon/zero-content/internal` at app boot. The `_`-prefixed internals
+// and test-reset helpers live on that `./internal` subpath, not here.
 
 export {
-  _getRegistry,
-  _listCollections,
-  _resetRegistryForTesting,
-  _setRegistry,
   getCollection,
   getEntries,
   getEntry,

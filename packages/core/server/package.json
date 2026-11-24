@@ -32,6 +32,11 @@
       "bun": "./src/paths.ts",
       "import": "./lib/paths.js",
       "types": "./lib/types/paths.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [

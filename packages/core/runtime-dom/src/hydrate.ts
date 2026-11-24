@@ -18,40 +18,38 @@
 
 import type { ComponentFn, LazyComponent, LifecycleHooks, RefProp, VNode, VNodeChild } from '@pyreon/core'
 import {
-  _childText,
-  _isVNodeLike,
-  _setSuspenseHydrating,
   dispatchToErrorBoundary,
   ForSymbol,
   Fragment,
   PortalSymbol,
   propagateError,
   reportError,
-  _runHooked,
-  _takeHooks,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
+import { _childText, _isVNodeLike, _setSuspenseHydrating, _runHooked, _takeHooks } from '@pyreon/core/internal'
 import {
-  _captureRun,
-  _releaseRun,
-  _replayReads,
-  _sampleReads,
   type EffectScope,
   effectScope,
   getContextOwner,
-  _currentScope,
-  _devOwner,
-  _swapPendingOwner,
-  _abortOwnerFrame,
-  _closeOwnerFrame,
-  _openOwnerFrame,
   type RunCapture,
   type SubscriberHost,
   runWithContextOwner,
   setContextOwner,
   setCurrentScope,
 } from '@pyreon/reactivity'
+import {
+  _captureRun,
+  _releaseRun,
+  _replayReads,
+  _sampleReads,
+  _currentScope,
+  _devOwner,
+  _swapPendingOwner,
+  _abortOwnerFrame,
+  _closeOwnerFrame,
+  _openOwnerFrame,
+} from '@pyreon/reactivity/internal'
 import { setupDelegation } from './delegate'
 import { suspenseAttachOf } from './suspense-boundary'
 import { installDevTools } from './devtools'

@@ -33,14 +33,11 @@ yarn add @pyreon/form
 
 :::
 
-## Two API styles
+## One option shape
 
-`@pyreon/form` exposes two complementary shapes — both are first-class and supported. Pick by team taste:
+`useForm({ initialValues, validators, onSubmit })` declares a form; `initialValues` types it end to end. To read fields from context instead of passing the form down, render it through `<Form of={form}>` (or `<FormProvider>`) and call `useField('name')` in the input components — see the [Form fields pattern](/docs/patterns/form-fields).
 
-1. **Object-config (this page's primary)** — `useForm({ initialValues, validators, onSubmit })`. Best for forms that already have a single source of truth for the values shape (e.g. backed by a schema type or a server DTO).
-2. **Composable fields (recommended for new forms)** — `field('email', '', validator)` declarations + `useForm({ fields: [...] })` + `useField('name')` inside `<Form>` / `<FormProvider>`. Best for forms reused across layouts, deeply-nested form trees that benefit from context-based reads (no prop drilling), and apps that prefer co-locating each field's name + default + validator into a single value.
-
-The composable shape lives in the dedicated [Form fields pattern](/docs/patterns/form-fields). Examples below use the object-config style; everything documented here (validation timing, async validators, field arrays, `useFormState`, `useWatch`, ...) works identically against either shape.
+Earlier versions also accepted `useForm({ fields: [field('email', '', validator), …] })`, a translation to the same options. It was removed in 0.55 together with `field()`; `pyreon upgrade` rewrites it (codemod `form-use-form-fields`).
 
 ## Basic Usage
 
@@ -1693,8 +1690,6 @@ Create a signal-based form.
 <APICard name="labelProps" type="function" signature="labelProps(field): FieldLabelProps" description="Props for a <label> ({ for }) that pair with register()'s input id." />
 <APICard name="errorProps" type="function" signature="errorProps(field): FieldErrorProps" description="Props for an error element (id, role) that register()'s aria-describedby points at." />
 
-`useForm` also accepts a field-definition form, `useForm({ fields: [email, password], onSubmit, schema?, validateOn?, debounceMs?, focusOnError? })` (`UseFormFieldsOptions`), where the value types are inferred from `field()` definitions — see [Form fields](/docs/patterns/form-fields).
-
 ### `useFieldArray(initial?)`
 
 Create a dynamic array of form fields with stable keys.
@@ -1760,7 +1755,6 @@ function useFormContext<TValues>(): FormState<TValues>
 | --- | --- |
 | `<Form of={form} disabled? readOnly?>` | Renders a `<form>` wired to `form.handleSubmit` and provides the form to descendants (so `useField(name)` works). `disabled` / `readOnly` sync to the form-level signals. |
 | `<Submit>` | A submit button disabled while the form is validating, submitting, or disabled. Must be inside `<Form>` / `<FormProvider>`. |
-| `field(name, defaultValue, validator?)` | Declare a typed field definition for `useForm({ fields })` — see [Form fields](/docs/patterns/form-fields). |
 | `nestValues(flat)` | Convert flat dot-path values (`{ 'address.city': 'x' }`) to a nested object. |
 | `flattenValues(nested)` | The inverse — flatten a nested object to dot-path keys. |
 

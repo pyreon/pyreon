@@ -5,7 +5,7 @@
 import { h } from '@pyreon/core'
 import { effect } from '@pyreon/reactivity'
 import { hydrateRoot, mount, onHydrationMismatch } from '@pyreon/runtime-dom'
-import { _resetClockState, now, setClock, useNow } from '../clock'
+import { resetClockState, now, setClock, useNow } from '../clock'
 
 const MINUTE = 60_000
 const SERVER_AT = Date.now() - 5 * MINUTE
@@ -31,7 +31,7 @@ function serverHtml(): string {
 
   unmount()
   scratch.remove()
-  _resetClockState()
+  resetClockState()
 
   return html
 }
@@ -39,7 +39,7 @@ function serverHtml(): string {
 const text = (el: Element): string => el.querySelector('p')?.textContent ?? ''
 
 afterEach(() => {
-  _resetClockState()
+  resetClockState()
   delete (globalThis as Record<string, unknown>).__PYREON_CLOCK__
 })
 

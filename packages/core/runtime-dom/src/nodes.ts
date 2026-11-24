@@ -19,7 +19,25 @@ export interface FirstRun<T> {
 }
 
 import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
-import { _abortOwnerFrame, _closeOwnerFrame, _frameReads, _openOwnerFrame, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effect, effectScope, getContextOwner, _currentScope, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+import {
+  effect,
+  effectScope,
+  getContextOwner,
+  runUntracked,
+  runWithContextOwner,
+  setCurrentScope,
+} from '@pyreon/reactivity'
+import {
+  _abortOwnerFrame,
+  _closeOwnerFrame,
+  _frameReads,
+  _openOwnerFrame,
+  _rdDropBinding,
+  _rdLabelBinding,
+  _releaseRun,
+  _replayReads,
+  _currentScope,
+} from '@pyreon/reactivity/internal'
 
 
 /**

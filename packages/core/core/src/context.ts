@@ -23,12 +23,12 @@
  */
 
 import {
-  _claimContextOwner,
   type EffectScope,
   getContextOwner,
   runWithContextOwner,
   setSnapshotCapture,
 } from '@pyreon/reactivity'
+import { _claimContextOwner } from '@pyreon/reactivity/internal'
 
 export interface Context<T> {
   readonly id: symbol

@@ -146,14 +146,19 @@ Fully custom toast content IS supported — `message`, `description`, and `icon`
 
 ## Testing
 
+Use the helpers in `@pyreon/testing/toast`:
+
 ```ts
-import { _reset, _toasts } from '@pyreon/toast'
+import { clearToasts, expectToast, findToast } from '@pyreon/testing/toast'
 import { afterEach } from 'vitest'
 
-afterEach(_reset)
+afterEach(clearToasts)
+
+expectToast(/saved/) // a matching toast exists now
+await findToast(/saved/) // wait for one to appear
 ```
 
-`_reset()` clears the queue and timers; `_toasts` is the raw `Signal<Toast[]>` for assertions.
+`clearToasts()` clears the queue and timers. They wrap `_reset` and `_toasts` from `@pyreon/toast/internal`, which is internal and carries no semver promise.
 
 ## Gotchas
 

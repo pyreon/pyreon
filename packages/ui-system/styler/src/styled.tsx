@@ -17,7 +17,8 @@
  */
 import type { ComponentFn, Ref, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { _rdLabelSubscribers, _rdNoteTarget, computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
+import { computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
+import { _rdLabelSubscribers, _rdNoteTarget } from '@pyreon/reactivity/internal'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'

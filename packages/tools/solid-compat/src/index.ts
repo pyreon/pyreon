@@ -41,7 +41,6 @@ import {
   Switch,
 } from '@pyreon/core'
 import {
-  _hasSubscribers,
   type EffectScope,
   effectScope,
   getCurrentScope,
@@ -55,8 +54,10 @@ import {
   runUntracked,
   setCurrentScope,
 } from '@pyreon/reactivity'
+import { _hasSubscribers } from '@pyreon/reactivity/internal'
 import { hydrateRoot, mount as pyreonMount } from '@pyreon/runtime-dom'
 import { getCurrentCtx, getHookIndex, toCompatComponent } from './jsx-runtime'
+import { _STORE_SIGNAL_CACHE } from './store-signal-cache'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -947,17 +948,6 @@ export type SetStoreFunction<_T> = {
  * intact.
  */
 const STORE_SIGNAL_SWEEP_THRESHOLD = 256
-
-/**
- * Symbol used to attach an `@internal` debug view of the per-path
- * signal cache to the store proxy. Tests reach in via this to assert
- * on cache size — production consumers never see it (string-keyed
- * proxy traps short-circuit on symbol props in the existing `get`
- * trap; the symbol is exported for test access only).
- *
- * @internal
- */
-export const _STORE_SIGNAL_CACHE = Symbol.for('pyreon/solid-compat:store-signal-cache')
 
 /**
  * Brand for store updaters that return the COMPLETE next value (`produce`,

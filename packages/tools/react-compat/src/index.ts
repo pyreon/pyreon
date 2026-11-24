@@ -27,10 +27,10 @@ import {
   nativeCompat,
   Portal,
   provide as pyreonProvide,
-  shallowEqualProps as shallowEqual,
   Suspense,
   useContext as pyreonUseContext,
 } from '@pyreon/core'
+import { shallowEqualProps as shallowEqual } from '@pyreon/core/compat'
 import { batch, isServer } from '@pyreon/reactivity'
 import type { EffectEntry } from './jsx-runtime'
 import { getCurrentCtx, getHookIndex, skipRemainingHooks, toCompatComponent } from './jsx-runtime'

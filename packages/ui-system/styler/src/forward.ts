@@ -3,7 +3,7 @@
  * elements (which causes warnings). Props starting with `$` are
  * transient (styling-only) and are always filtered out.
  */
-import { _copyProp } from '@pyreon/core'
+import { _copyProp } from '@pyreon/core/internal'
 
 // Common HTML attributes, event handlers, and ARIA/data attributes.
 //

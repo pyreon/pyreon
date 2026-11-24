@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { setTimeZone } from '@pyreon/ambient'
-import { _resetClockState, _resetLocaleState } from '@pyreon/ambient/testing'
+import { resetClockState, resetLocaleState } from '@pyreon/ambient/testing'
 import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
@@ -27,8 +27,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  _resetClockState()
-  _resetLocaleState()
+  resetClockState()
+  resetLocaleState()
   vi.useRealTimers()
 })
 

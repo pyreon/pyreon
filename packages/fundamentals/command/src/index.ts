@@ -9,8 +9,28 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export * from './core'
 export { createCommands, isCommandEnabled } from './commands'
-export { _resetDefaultCommands, provideCommands, useCommand, useCommands } from './context'
+export { provideCommands, useCommand, useCommands } from './context'
 export { createPalette } from './palette'
-export type { Palette, PaletteMessages, PaletteMove, PaletteOptions, PaletteStatus, Props, ResultGroup, ResultItem } from './palette-types'
+export type {
+  Palette,
+  PaletteMessages,
+  PaletteMove,
+  PaletteOptions,
+  PaletteStatus,
+  Props,
+  ResultGroup,
+  ResultItem,
+} from './palette-types'
 export { formatShortcut, hasCommandModifier, shortcutKeys } from './shortcuts'
-export type { Command, CommandGroup, Commands, CreateCommandsOptions, Match, RecentsStorage, RunContext, RunOptions, SearchOptions, Text } from './types'
+export type {
+  Command,
+  CommandGroup,
+  Commands,
+  CreateCommandsOptions,
+  Match,
+  RecentsStorage,
+  RunContext,
+  RunOptions,
+  SearchOptions,
+  Text,
+} from './types'

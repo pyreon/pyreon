@@ -4,7 +4,8 @@ import { IDBFactory } from 'fake-indexeddb'
 globalThis.indexedDB = new IDBFactory()
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _resetDBCache, _resetRegistry, _resetStorageListener, useIndexedDB } from '../index'
+import { useIndexedDB } from '../index'
+import { _resetDBCache, _resetRegistry, _resetStorageListener } from '../internal'
 
 const tick = (ms: number) => new Promise((r) => setTimeout(r, ms))
 

@@ -7,16 +7,28 @@
 import { h } from '@pyreon/core'
 import { effectScope } from '@pyreon/reactivity'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
-import { _resetClockState } from '../clock'
-import { _resetLocaleState } from '../locale'
-import { clockAttributes, clockScript, locale, now, provideClock, provideLocale, provideTimeZone, setLocale, setTimeZone, timeZone, useNow } from '../index'
+import { resetClockState } from '../clock'
+import { resetLocaleState } from '../locale'
+import {
+  clockAttributes,
+  clockScript,
+  locale,
+  now,
+  provideClock,
+  provideLocale,
+  provideTimeZone,
+  setLocale,
+  setTimeZone,
+  timeZone,
+  useNow,
+} from '../index'
 import { _resetWarnings } from '../warn'
 
 const tick = (ms = 1) => new Promise<void>((r) => setTimeout(r, ms))
 
 afterEach(() => {
-  _resetLocaleState()
-  _resetClockState()
+  resetLocaleState()
+  resetClockState()
 })
 
 describe('request isolation (server)', () => {

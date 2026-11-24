@@ -1,6 +1,7 @@
 import { onMount, onUnmount } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
-import { _toasts, toast, Toaster } from '@pyreon/toast'
+import { toast, Toaster } from '@pyreon/toast'
+import { _toasts } from '@pyreon/toast/internal'
 import { font, paper } from '../theme'
 import { el } from '../kit/bases'
 import { CodeBlock } from '../kit/code'

@@ -25,7 +25,8 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import content, { _resetCompileCacheForTesting, hasMarkdownInContentDir } from '../plugin'
+import { _resetCompileCacheForTesting } from '../internal-server'
+import content, { hasMarkdownInContentDir } from '../plugin'
 
 const TMP = path.join(process.cwd(), 'src', 'tests', '__cache_tmp__')
 let root: string

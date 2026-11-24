@@ -132,11 +132,11 @@ Today `provideClock` and the script are wired by the app. Automating them in `@p
 Pin the clock with `setClock` and reset between tests with the test hooks:
 
 ```ts
-import { _resetClockState, _resetLocaleState } from '@pyreon/ambient/testing'
+import { resetClockState, resetLocaleState } from '@pyreon/ambient/testing'
 
 afterEach(() => {
-  _resetClockState() // drops tickers, the pin and any hand-over
-  _resetLocaleState()
+  resetClockState() // drops tickers, the pin and any hand-over
+  resetLocaleState()
 })
 ```
 

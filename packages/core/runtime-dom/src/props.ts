@@ -1,7 +1,16 @@
 import type { ClassValue, Props } from '@pyreon/core'
-import { cx, isElementEventHandlerAttr, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, isUrlAttr } from '@pyreon/core'
+import {
+  cx,
+  isElementEventHandlerAttr,
+  isSafeImageDataUri,
+  isUnsafeUrl,
+  normalizeStyleValue,
+  toKebabCase,
+  isUrlAttr,
+} from '@pyreon/core'
 
-import { _rdLabelBinding, _rdNoteTarget, _renderBind, batch, renderEffect } from '@pyreon/reactivity'
+import { batch, renderEffect } from '@pyreon/reactivity'
+import { _rdLabelBinding, _rdNoteTarget, _renderBind } from '@pyreon/reactivity/internal'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
 
 type Cleanup = () => void

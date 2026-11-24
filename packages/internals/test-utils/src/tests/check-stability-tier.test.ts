@@ -24,6 +24,7 @@ import {
   runGate,
   type PublishedPackage,
   type StabilityField,
+  underscoreExportFailures,
   writeStatusLine,
 } from '../../../../../scripts/check-stability-tier'
 
@@ -287,6 +288,46 @@ describe('private packages', () => {
     expect(names).toContain('@pyreon/auth')
     expect(names).toContain('@pyreon/test-utils')
     expect(names).not.toContain('@pyreon/core')
+  })
+})
+
+describe('underscoreExportFailures (rule 8)', () => {
+  let dir: string
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const setup = (files: Record<string, string>) => {
+    dir = mkdtempSync(join(tmpdir(), 'stability-underscore-'))
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(join(dir, rel, '..'), { recursive: true })
+      writeFileSync(join(dir, rel), body)
+    }
+  }
+  const exportsMap = {
+    '.': { bun: './src/index.ts' },
+    './sub': { bun: './src/sub.ts' },
+    './internal': { bun: './src/internal.ts' },
+  }
+
+  it('fails a `_` name on a public entry, through `export *` and declarations', () => {
+    setup({
+      'src/index.ts': "export * from './a'\nexport function _direct() {}\nexport type { _T } from './a'\n",
+      'src/a.ts': 'export const _viaStar = 1\nexport const fine = 2\nexport type _T = 1\n',
+      'src/sub.ts': "export { _reset as _reset } from './a'\n",
+      'src/internal.ts': "export { _hidden } from './a'\n",
+    })
+    const out = underscoreExportFailures([pkg('@pyreon/x', { exports: exportsMap }, dir)], {})
+    expect(out.map((f) => f.split(' ').slice(0, 3).join(' '))).toEqual([
+      '@pyreon/x exports `_viaStar`,',
+      '@pyreon/x exports `_direct`,',
+      '@pyreon/x/sub exports `_reset`,',
+    ])
+  })
+
+  it('allows compiler ABI on the main entry and fails a stale ABI entry', () => {
+    setup({ 'src/index.ts': 'export const _tpl = 1\n', 'src/sub.ts': '', 'src/internal.ts': '' })
+    const p = pkg('@pyreon/x', { exports: exportsMap }, dir)
+    expect(underscoreExportFailures([p], { '@pyreon/x': ['_tpl'] })).toEqual([])
+    expect(underscoreExportFailures([p], { '@pyreon/x': ['_tpl', '_gone'] })[0]).toMatch(/`_gone`.*stale/)
   })
 })
 

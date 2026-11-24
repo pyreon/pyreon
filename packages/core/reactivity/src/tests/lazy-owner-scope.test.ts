@@ -5,10 +5,6 @@
  * runtime-dom's `lazy-context-owner.test.tsx` covers the mounted behaviour.
  */
 import {
-  _claimContextOwner,
-  _currentScope,
-  _devOwner,
-  _swapPendingOwner,
   effect,
   effectScope,
   getContextOwner,
@@ -18,6 +14,12 @@ import {
   setCurrentScope,
   signal,
 } from '../index'
+import {
+  _claimContextOwner,
+  _currentScope,
+  _devOwner,
+  _swapPendingOwner,
+} from '../internal'
 
 afterEach(() => {
   _swapPendingOwner(null)

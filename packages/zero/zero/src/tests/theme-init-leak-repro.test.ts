@@ -26,7 +26,8 @@ import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { _resetInitThemeForTests, ThemeToggle } from '../theme'
+import { _resetInitThemeForTests } from '../internal'
+import { ThemeToggle } from '../theme'
 
 interface MockMediaQueryList {
   matches: boolean

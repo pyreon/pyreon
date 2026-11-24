@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { _resetRateLimitWarning, rateLimitMiddleware } from '../rate-limit'
+import { _resetRateLimitWarning } from '../internal'
+import { rateLimitMiddleware } from '../rate-limit'
 
 beforeEach(() => {
   _resetRateLimitWarning()
