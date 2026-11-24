@@ -17,6 +17,9 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
     /// Issue a fresh refresh token per sign-in (a real provider does), and delay refresh responses.
     var uniqueRefreshTokens = false
     var refreshDelayNanos: UInt64 = 0
+    var jwksStatus = 200
+    var refreshExpiresIn = 3600
+    var presentedRefreshTokens: [String] = []
     private var codeCount = 0
     var rotateRefresh = false
     var refreshStatus = 200
@@ -39,6 +42,7 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
             return ok(m)
         }
         if r.url.hasSuffix("/jwks") {
+            if jwksStatus != 200 { return PyreonAuthResponse(status: jwksStatus) }
             jwksFetches += 1
             let raw = key.publicKey.rawRepresentation
             return ok(["keys": [["kty": "EC", "crv": "P-256", "kid": kid, "alg": "ES256", "use": "sig",
@@ -56,10 +60,11 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
                        "id_token": idToken(nonce: nonceOverride ?? grant.nonce)])
         }
         if form["grant_type"] == "refresh_token" {
+            presentedRefreshTokens.append(form["refresh_token"] ?? "")
             if refreshStatus != 200 { return PyreonAuthResponse(status: refreshStatus) }
             if refreshDelayNanos > 0 { try? await _Concurrency.Task.sleep(nanoseconds: refreshDelayNanos) }
             refreshCount += 1
-            var t: [String: Any] = ["access_token": "at-\(refreshCount)", "token_type": "Bearer", "expires_in": 3600,
+            var t: [String: Any] = ["access_token": "at-\(refreshCount)", "token_type": "Bearer", "expires_in": refreshExpiresIn,
                                     "id_token": idToken(nonce: nil)]
             if rotateRefresh { t["refresh_token"] = "rt-\(refreshCount)" }
             return ok(t)
@@ -401,6 +406,47 @@ enum PyreonOidcFlowTests {
         await bad.signInNow()
         expect(badB.opened.isEmpty && bad.error == "invalid_redirect_uri", "sign-in never starts")
         bad.dispose()
+
+        // R1: the token endpoint rotated the refresh token but the key set is down — the NEW
+        // refresh token is kept (and stored), so the retry does not present the spent one.
+        let rjP = FakeProvider(), rjB = FakeBrowser(rjP), rjStore = CountingStore()
+        rjP.rotateRefresh = true
+        rjStore.entries["pyreon.auth.session.app|https://idp.example"] =
+            #"{"issuer":"https://idp.example","accessToken":"a0","expiresAt":99999999999999,"refreshToken":"rt-0","claims":{"sub":"user-1"}}"#
+        let rj = make(rjP, rjStore, rjB)
+        rjP.jwksStatus = 503
+        await rj.refreshNow()
+        expect(rj.error == "jwks_failed", "the key set outage is reported (\(rj.error ?? "nil"))")
+        rjP.jwksStatus = 200
+        await rj.refreshNow()
+        expect(rjP.presentedRefreshTokens == ["rt-0", "rt-1"], "the retry presents the rotated token (\(rjP.presentedRefreshTokens))")
+
+        // R4a: two sessions without a subject cannot be told apart, so they are never adopted.
+        let nsP = FakeProvider(), nsB = FakeBrowser(nsP), nsStore = CountingStore()
+        nsStore.entries["pyreon.auth.session.app|https://idp.example"] =
+            #"{"issuer":"https://idp.example","accessToken":"a0","expiresAt":99999999999999,"refreshToken":"rt-mine","claims":{}}"#
+        let ns = make(nsP, nsStore, nsB)
+        nsStore.entries["pyreon.auth.session.app|https://idp.example"] =
+            #"{"issuer":"https://idp.example","accessToken":"a1","expiresAt":99999999999999,"refreshToken":"rt-theirs","claims":{}}"#
+        await ns.refreshNow()
+        expect(nsP.presentedRefreshTokens == ["rt-mine"], "no adoption without a known subject (\(nsP.presentedRefreshTokens))")
+
+        // R4b: a provider issuing already-expired tokens does not turn every read into a refresh.
+        let boClock = Clock()
+        boClock.now = Date().timeIntervalSince1970
+        let boP = FakeProvider(), boB = FakeBrowser(boP)
+        let bo = PyreonOidcAuth(issuer: "https://idp.example", clientId: "app", redirectUri: "com.example.app:/oauth",
+                                store: CountingStore(), transport: boP, browser: boB, clock: { boClock.now })
+        await bo.signInNow()
+        boP.refreshExpiresIn = 0
+        await bo.refreshNow()
+        let boBefore = boP.presentedRefreshTokens.count
+        for _ in 0..<5 {
+            _ = bo.accessToken
+            for _ in 0..<50 { await _Concurrency.Task.yield() }
+        }
+        expect(boP.presentedRefreshTokens.count - boBefore <= 1, "reads of an expired token start at most one refresh per 30 s (\(boP.presentedRefreshTokens.count - boBefore))")
+        bo.dispose()
 
         // An expired session with no refresh token is dropped on relaunch, not restored.
         let es = CountingStore()

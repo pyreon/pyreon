@@ -74,7 +74,9 @@ flow's security (`state`, `nonce`, PKCE, `redirect_uri`, …) cannot be overridd
 **When a refresh fails.** If the provider cannot be reached or is unavailable (`network_error`, `provider_unavailable`
 for 429 / 5xx, `discovery_failed`, `jwks_failed`), the session is kept for a retry: `status()` is `'error'` with that
 code, the refresh token stays (on iOS and Android the stored session stays too), and `refresh()` tries again. Any other
-failure (the refresh token refused or revoked, a bad ID token) ends the session.
+failure (the refresh token refused or revoked, a bad ID token) ends the session. When the token endpoint answered but
+the new ID token cannot be verified yet (key set unreachable), the new tokens — including a rotated refresh token — are
+kept, so the retry never presents a spent one.
 
 **Redirect URIs are checked when you configure them.** A redirect URI the matcher would refuse (a non-ASCII host —
 write it in punycode — a percent-encoded dot, a backslash or whitespace) throws in `createAuth` and fails
@@ -209,9 +211,11 @@ const auth = useOidc({
 
 **A restored session that has expired** is `signingIn` until its refresh completes: on iOS the refresh starts when the
 view appears (`.onAppear { auth.start() }`, emitted by the compiler) or on the first read of `accessToken`, on Android
-when the container enters the composition. An expired access token is never returned (`accessToken` is null until the
-refresh lands). In hand-written Swift or Kotlin, `await auth.freshAccessToken()` (Kotlin: blocking, off the main thread)
-returns a token refreshed first when needed. Refreshes are shared PROCESS-WIDE per stored session, adopt only the same
+when the container enters the composition. `accessToken` never returns an expired token, on any target
+(`useOidc().accessToken()` on the web, `accessToken` on iOS and Android): it is null once `expiresAt` has passed, until a
+refresh lands. The web's lower-level `createAuth().tokens()` is the raw token response and is not gated. In hand-written
+Swift or Kotlin, `freshAccessToken()` returns a token refreshed first when needed (Swift: `await`; Kotlin: blocking, and
+it throws on the Android main thread). Refreshes are shared PROCESS-WIDE per stored session, adopt only the same
 user's stored session, and never sign a signed-out instance back in.
 
 Every member reads the same on all three targets, and the strings match: `status()` is `signedOut` / `signingIn` /
@@ -265,16 +269,17 @@ and pass it down.
 `@pyreon/auth` is **Experimental**: its API may change in a minor release. These are the limits to accept before you
 ship it:
 
-- **L1 — iOS Keychain backups.** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not `…ThisDeviceOnly`: the refresh token can move to another device through an encrypted backup, and Keychain items survive an uninstall.
-- **L2 — no verified identity without an ID token.** A sign-in with an OAuth2-only provider (GitHub, Facebook) has no verified identity until a refresh brings an ID token.
+- **L1 — iOS Keychain backups.** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not `…ThisDeviceOnly`: an encrypted backup moves it to another device, and Keychain items survive an uninstall.
+- **L2 — OAuth2-only sign-in.** A sign-in with a provider that returns no ID token (GitHub, Facebook) has no verified identity until a refresh brings an ID token, and two such sessions in one app cannot be told apart, so native instances never adopt each other's refresh of one.
 - **L3 — callback parsing.** Duplicated callback parameters are read differently on Android (last value) than on the web and iOS (first). On native, a flow started for another provider is refused but consumed, so that sign-in has to be retried.
-- **Native sign-in is unverified on a device.** It has never completed against a real provider on a device (only the `network_error` path has run on a simulator and emulator), and the native redirect check has not been tested against real `ASWebAuthenticationSession` / Custom Tab callbacks.
-- **Android custom schemes.** Another installed app can claim the scheme and receive the redirect; PKCE is then the only defence. Any app can send the exported `PyreonAuthRedirectActivity` a fake redirect, which cancels a sign-in in progress. Prefer an App Link.
-- **Sign-out does not revoke tokens.** `signOut({ endProviderSession: true })` ends the provider session; tokens already issued stay valid until they expire (no RFC 7009 revocation).
-- **OAuth mix-up: one redirect URI per provider is the only complete defence.** The registry only sees providers alive at the same moment in one process: not a server or worker that builds only the requested provider, and not a browser page that builds only the chosen provider (the common single-page-app pattern). Where it sees them, two providers may share a redirect URI only if both send RFC 9207 `iss`; a provider known not to is refused (`redirect_shared`), and a callback on a shared URI must carry `iss`. The native compiler only warns, one file at a time. On Android the claim is taken and released by `rememberPyreonOidcAuth`'s effect (SDK code, verified only by a device build, which has not run).
-- **A leaked authorization request still allows login CSRF.** Someone who obtains the provider URL a victim's browser was sent to can sign in with it as themselves and send the resulting callback to that browser, whose binding matches. Pushed authorization requests (PAR) are not offered.
-- **Server sign-ins need the public callback path or URL, and HTTPS.** Pass `handleCallback` the request's path and query (or the public URL), never a proxy's internal URL. The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported.
-- **The first version is published by hand, without provenance**, from a release tag, after `package.json` is moved onto the group version (it is 0.53.0 in this change). Later versions publish through CI with provenance.
+- **Native is unverified on a device.** Native sign-in has never completed against a real provider on a device, and none of the following has run on a device or been compiled against the Android SDK: the native redirect check, Android `activate()` / `dispose()` and the process-wide refresh, and the iOS `.onAppear` emit.
+- **Android custom schemes.** Another installed app can claim the scheme and receive the redirect (PKCE is then the only defence), and any app can cancel a sign-in in progress through the exported `PyreonAuthRedirectActivity`. Prefer an App Link.
+- **Sign-out does not revoke tokens** (no RFC 7009), and a sign-out in one native instance does not sign out the others.
+- **OAuth mix-up: one redirect URI per provider is the only complete defence.** The registry sees only providers alive together in one process — not per-request servers, separate workers, or a page that builds only the chosen provider. The compiler only warns, one file at a time.
+- **A leaked authorization request still allows login CSRF.** Pushed authorization requests (PAR) are not offered.
+- **Server sign-ins need the public callback path or URL, and HTTPS.** The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported. Redirect URIs must be ASCII (punycode hosts), with no `%2e`, backslash or whitespace.
+- **A refresh that cannot reach the provider** keeps the session in `error` until `refresh()` succeeds or the app relaunches. If the response to a rotating refresh is lost in transit, the new refresh token is lost with it and a provider with reuse detection may revoke the family — inherent to rotation.
+- **The first version is published by hand**, from a release tag, after `package.json` moves onto the group version (it says 0.53.0 now), without provenance. Later versions publish through CI with provenance.
 - **TOTP secrets under 128 bits throw** unless `allowShortSecret: true` is set. Existing 80-bit enrolments need the flag: a behaviour change to announce.
 
 MIT

@@ -54,6 +54,7 @@ export interface UseOidcResult {
   subject(): string | null
   /** A verified string claim (`email`, `name`, …) of the signed-in user, or null. */
   claim(name: string): string | null
+  /** The access token, or null — also once it has expired (see `expiresAt()`); `refresh()` gets a new one. */
   accessToken(): string | null
   /** When the access token expires (epoch milliseconds), or null. */
   expiresAt(): number | null
@@ -241,7 +242,12 @@ export function useOidc(opts: UseOidcOptions): UseOidcResult {
       const v = auth.claims()?.[name]
       return typeof v === 'string' ? v : null
     },
-    accessToken: () => auth.tokens()?.access_token ?? null,
+    // Never an expired token: once `expiresAt` has passed this is null — call `refresh()` for a new one.
+    accessToken: () => {
+      const exp = auth.expiresAt()
+
+      return exp !== null && exp <= Date.now() ? null : (auth.tokens()?.access_token ?? null)
+    },
     expiresAt: () => auth.expiresAt(),
     error: () => errorCode(),
     signIn: () => auth.signIn(),

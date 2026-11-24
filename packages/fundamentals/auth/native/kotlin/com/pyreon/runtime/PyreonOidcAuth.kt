@@ -43,6 +43,11 @@ public fun interface PyreonAuthBrowser {
 /** Thrown by a browser when the user closes it — a cancellation, not an error state. */
 public class PyreonAuthCancelled : PyreonAuthError("cancelled", "sign-in was cancelled")
 
+/** A read-only value that is recomputed on every read (reads of Compose state inside it subscribe). */
+public class PyreonTokenValue internal constructor(private val read: () -> String?) {
+    public val value: String? get() = read()
+}
+
 public class PyreonOidcAuth(
     public val issuer: String,
     public val clientId: String,
@@ -63,7 +68,18 @@ public class PyreonOidcAuth(
 ) {
     public val status: MutableState<String> = mutableStateOf(PyreonOidcStatus.SIGNED_OUT)
     public val subject: MutableState<String?> = mutableStateOf(null)
-    public val accessToken: MutableState<String?> = mutableStateOf(null)
+    private val rawAccessToken: MutableState<String?> = mutableStateOf(null)
+
+    /**
+     * The current access token, or null — also once it has EXPIRED (`expiresAt` passed): an expired
+     * token is never handed out. Read inside a composable it recomposes like Compose state.
+     * [freshAccessToken] (off the main thread) or [refresh] gets a new one.
+     */
+    public val accessToken: PyreonTokenValue = PyreonTokenValue {
+        val exp = expiresAt.value
+        val token = rawAccessToken.value
+        if (exp != null && exp <= clock()) null else token
+    }
     public val expiresAt: MutableState<Double?> = mutableStateOf(null)
     public val error: MutableState<String?> = mutableStateOf(null)
     private val claims: MutableState<Map<String, String>> = mutableStateOf(emptyMap())
@@ -177,16 +193,20 @@ public class PyreonOidcAuth(
 
     /**
      * The access token, refreshed first when it has expired (or null: signed out, or the refresh
-     * failed — see [status] / [error]). Blocking: call it off the main thread, before a request.
-     * It never returns an expired token.
+     * failed — see [status] / [error]). It never returns an expired token. Blocking: it throws
+     * `IllegalStateException` when called on the Android main thread.
      */
     public fun freshAccessToken(): String? {
+        // On the main thread this would block the UI on a network request (and on another
+        // instance's refresh): refuse it instead of risking an ANR.
+        check(!isMainThread()) {
+            "[Pyreon] auth: freshAccessToken() blocks on the network — call it off the main thread (a coroutine on Dispatchers.IO, an executor), or read accessToken and call refresh()."
+        }
         launchRefreshPending = false
         val exp = expiresAt.value
         val expired = exp != null && exp <= clock()
-        if ((accessToken.value == null || expired) && refreshToken != null) refreshNow()
-        val after = expiresAt.value
-        return if (after != null && after <= clock()) null else accessToken.value
+        if ((rawAccessToken.value == null || expired) && refreshToken != null) refreshNow()
+        return accessToken.value
     }
 
     public fun start() {
@@ -233,9 +253,12 @@ public class PyreonOidcAuth(
         if (r["issuer"] != issuer || stored == refreshToken || access.isNullOrEmpty()) return
         // Only the SAME user's session (another instance refreshed it), never into an instance that
         // was signed out: that would switch or resurrect a session silently.
-        if (signedOutExplicitly || (r["claims"] as? Map<*, *>)?.get("sub") != subject.value) return
+        // Both subjects must be KNOWN and equal: two sessions without an ID token (OAuth2 only)
+        // cannot be told apart, so they are never adopted.
+        val storedSub = (r["claims"] as? Map<*, *>)?.get("sub") as? String
+        if (signedOutExplicitly || storedSub == null || storedSub != subject.value) return
         sessionGen++
-        accessToken.value = access
+        rawAccessToken.value = access
         refreshToken = stored
         (r["idToken"] as? String)?.let { idToken = it }
         @Suppress("UNCHECKED_CAST")
@@ -260,7 +283,16 @@ public class PyreonOidcAuth(
             val m = metadata()
             val t = PyreonOidcClient.refresh(m, clientId, current, transport)
             // A refreshed ID token carries no nonce (OIDC Core §12.2) but must name the same user.
-            val verified = verify(m, t.idToken, null)
+            val verified = try {
+                verify(m, t.idToken, null)
+            } catch (e: PyreonAuthError) {
+                // The token endpoint already ROTATED the refresh token: keep (and store) the new one
+                // even though the new ID token cannot be checked right now, or the retry would
+                // present the spent token and a provider with reuse detection would revoke the family.
+                if (e.code !in PyreonAuthError.TRANSIENT_REFRESH_CODES) throw e
+                if (stillCurrent()) keepRotated(t, t.refreshToken ?: current, e.code)
+                return
+            }
             val sub = subject.value
             if (verified != null && sub != null && verified["sub"] != sub) {
                 throw PyreonAuthError("subject_changed", "refreshed id_token is for a different user")
@@ -329,6 +361,17 @@ public class PyreonOidcAuth(
         return c.entries.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
     }
 
+    /** The token response succeeded but its ID token could not be verified yet: keep the new tokens, report the error. */
+    private fun keepRotated(t: PyreonTokenSet, refresh: String?, code: String) {
+        sessionGen++
+        rawAccessToken.value = t.accessToken
+        refreshToken = refresh
+        expiresAt.value = t.expiresIn?.let { clock() + it * 1000 }
+        error.value = code
+        status.value = PyreonOidcStatus.ERROR
+        persist()
+    }
+
     private fun commit(t: PyreonTokenSet, refresh: String?, verified: Map<String, String>?) {
         signedOutExplicitly = false
         sessionGen++
@@ -337,7 +380,7 @@ public class PyreonOidcAuth(
         if (t.idToken != null) idToken = t.idToken else if (status.value != PyreonOidcStatus.SIGNED_IN) idToken = null
         claims.value = verified ?: emptyMap()
         subject.value = verified?.get("sub")
-        accessToken.value = t.accessToken
+        rawAccessToken.value = t.accessToken
         expiresAt.value = t.expiresIn?.let { clock() + it * 1000 }
         error.value = null
         status.value = PyreonOidcStatus.SIGNED_IN
@@ -353,7 +396,7 @@ public class PyreonOidcAuth(
 
     private fun clear() {
         sessionGen++
-        accessToken.value = null
+        rawAccessToken.value = null
         refreshToken = null
         idToken = null
         claims.value = emptyMap()
@@ -365,7 +408,7 @@ public class PyreonOidcAuth(
     // The session record. Claims were verified before they were stored, and the store is the
     // Keystore-backed one, so restoring them does not re-verify an ID token that may have expired.
     private fun persist() {
-        val record = linkedMapOf<String, Any?>("issuer" to issuer, "accessToken" to (accessToken.value ?: ""), "claims" to claims.value)
+        val record = linkedMapOf<String, Any?>("issuer" to issuer, "accessToken" to (rawAccessToken.value ?: ""), "claims" to claims.value)
         refreshToken?.let { record["refreshToken"] = it }
         idToken?.let { record["idToken"] = it }
         expiresAt.value?.let { record["expiresAt"] = it }
@@ -389,7 +432,7 @@ public class PyreonOidcAuth(
             return
         }
         // An expired access token is never exposed; the session waits for its refresh (`start()`).
-        accessToken.value = if (expired) null else access
+        rawAccessToken.value = if (expired) null else access
         refreshToken = storedRefresh
         idToken = r["idToken"] as? String
         val c = (r["claims"] as? Map<String, Any?>)?.entries?.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }?.toMap() ?: emptyMap()
@@ -405,6 +448,16 @@ public class PyreonOidcAuth(
         /** One background thread for auth work: requests are sequential per session anyway. */
         private val DEFAULT_EXECUTOR: Executor by lazy {
             Executors.newSingleThreadExecutor { r -> Thread(r, "pyreon-auth").apply { isDaemon = true } }
+        }
+
+        /** Whether the caller is on the Android main thread (false on a plain JVM). Replaceable in tests. */
+        @Volatile internal var isMainThread: () -> Boolean = {
+            try {
+                val looper = Class.forName("android.os.Looper")
+                looper.getMethod("myLooper").invoke(null) == looper.getMethod("getMainLooper").invoke(null)
+            } catch (_: Throwable) {
+                false
+            }
         }
 
         /** Refreshes in flight, process-wide, by session key and the refresh token presented. */

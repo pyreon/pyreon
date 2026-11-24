@@ -7047,6 +7047,7 @@ function dispatch(e: EventOf<typeof light>) { light.send(e) }`,
 - Reading \`auth.status\` without calling it — every member is a call on the web
 - Expecting a refresh token without \`offline_access\` in \`scope\` (and, for Google, \`authorizationParams: { access_type: "offline", prompt: "consent" }\`)
 - Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app
+- Reading \`auth.tokens()?.access_token\` from the lower-level \`createAuth\` for a request — that is the raw response; \`useOidc().accessToken()\` (and native \`accessToken\`) return null once the token has expired
 - Expecting the web session to survive a reload like native does — web tokens live in memory only; re-run \`signIn()\` on load or keep the session server-side behind an HttpOnly cookie, never in \`localStorage\``,
   },
 

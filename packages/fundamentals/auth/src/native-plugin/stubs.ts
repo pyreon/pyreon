@@ -40,10 +40,13 @@ export const AUTH_KOTLIN_STUBS = `object PyreonOidcStatus {
   const val SIGNED_IN: String = "signedIn"
   const val ERROR: String = "error"
 }
+class PyreonTokenValue {
+  val value: String? get() = null
+}
 class PyreonOidcAuth {
   val status: MutableState<String> = mutableStateOf(PyreonOidcStatus.SIGNED_OUT)
   val subject: MutableState<String?> = mutableStateOf(null)
-  val accessToken: MutableState<String?> = mutableStateOf(null)
+  val accessToken: PyreonTokenValue = PyreonTokenValue()
   val expiresAt: MutableState<Double?> = mutableStateOf(null)
   val error: MutableState<String?> = mutableStateOf(null)
   val isAuthenticated: Boolean get() = status.value == PyreonOidcStatus.SIGNED_IN

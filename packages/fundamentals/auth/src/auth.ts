@@ -228,7 +228,27 @@ export function createAuth(opts: AuthOptions): Auth {
       if (t.id_token) {
         // A refreshed ID token carries no new nonce (OIDC Core §12.2) but must be
         // for the same user: a different `sub` means the session changed hands.
-        const c = await verify(m, t.id_token, undefined)
+        let c: IdTokenClaims
+        try {
+          c = await verify(m, t.id_token, undefined)
+        } catch (e) {
+          // The token endpoint already ROTATED the refresh token: keep the new one even though the
+          // new ID token cannot be checked right now (key set unreachable), or the retry would
+          // present the spent token and a provider with reuse detection would revoke the family.
+          if (e instanceof AuthError && TRANSIENT_REFRESH_ERRORS.has(e.code) && current_()) {
+            batch(() => {
+              // The new ID token is unverified: keep the previous one (the logout hint), or none.
+              const { id_token: _unverified, ...rest } = next
+              tokens.set(current.id_token === undefined ? rest : { ...rest, id_token: current.id_token })
+              expiresAt.set(typeof next.expires_in === 'number' ? Date.now() + next.expires_in * 1000 : null)
+              error.set(e)
+              status.set('error')
+            })
+
+            return
+          }
+          throw e
+        }
         if (verified !== null && c.sub !== verified.sub) {
           throw new AuthError('subject_changed', 'refreshed id_token is for a different user')
         }

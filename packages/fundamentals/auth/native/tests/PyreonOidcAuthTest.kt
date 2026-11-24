@@ -55,6 +55,8 @@ class FakeProvider : PyreonAuthTransport {
     var rotateRefresh = false
     var refreshStatus = 200
     @Volatile var refreshDelayMs = 0L
+    var jwksStatus = 200
+    val presentedRefreshTokens = ArrayList<String>()
     var jwksFetches = 0
     val requests = ArrayList<String>()
     private val codes = HashMap<String, Pair<String, String>>()
@@ -76,6 +78,7 @@ class FakeProvider : PyreonAuthTransport {
             return ok(m)
         }
         if (url.endsWith("/jwks")) {
+            if (jwksStatus != 200) return PyreonAuthResponse(jwksStatus)
             jwksFetches++
             val w = (keys.public as ECPublicKey).w
             return ok(mapOf("keys" to listOf(mapOf("kty" to "EC", "crv" to "P-256", "kid" to kid, "alg" to "ES256", "use" to "sig",
@@ -91,6 +94,7 @@ class FakeProvider : PyreonAuthTransport {
                 "id_token" to idToken(nonceOverride ?: grant.second)))
         }
         if (form["grant_type"] == "refresh_token") {
+            presentedRefreshTokens.add(form["refresh_token"] ?: "")
             if (refreshStatus != 200) return PyreonAuthResponse(refreshStatus)
             if (refreshDelayMs > 0) Thread.sleep(refreshDelayMs)
             refreshCount++
@@ -481,6 +485,60 @@ fun testClaimTakenOnActivate() {
     PyreonRedirectClaims.reset()
 }
 
+fun testRotatedTokenKeptWhenKeysUnavailable() {
+    val p = FakeProvider()
+    p.rotateRefresh = true
+    val store = MemStore()
+    store.entries["pyreon.auth.session.app|https://idp.example"] =
+        """{"issuer":"https://idp.example","accessToken":"a0","expiresAt":99999999999999,"refreshToken":"rt-0","claims":{"sub":"user-1"}}"""
+    val auth = make(p, store, FakeBrowser(p))
+    p.jwksStatus = 503
+    auth.refresh()
+    check(auth.error.value == "jwks_failed") { "the key set outage is reported: ${auth.error.value}" }
+    p.jwksStatus = 200
+    auth.refresh()
+    check(p.presentedRefreshTokens == listOf("rt-0", "rt-1")) { "the retry presents the rotated token: ${p.presentedRefreshTokens}" }
+}
+
+fun testNoAdoptionWithoutSubject() {
+    val p = FakeProvider()
+    val store = MemStore()
+    store.entries["pyreon.auth.session.app|https://idp.example"] =
+        """{"issuer":"https://idp.example","accessToken":"a0","expiresAt":99999999999999,"refreshToken":"rt-mine","claims":{}}"""
+    val auth = make(p, store, FakeBrowser(p))
+    store.entries["pyreon.auth.session.app|https://idp.example"] =
+        """{"issuer":"https://idp.example","accessToken":"a1","expiresAt":99999999999999,"refreshToken":"rt-theirs","claims":{}}"""
+    auth.refresh()
+    check(p.presentedRefreshTokens == listOf("rt-mine")) { "no adoption without a known subject: ${p.presentedRefreshTokens}" }
+}
+
+fun testExpiredTokenNeverExposed() {
+    var now = System.currentTimeMillis()
+    val p = FakeProvider()
+    val auth = PyreonOidcAuth(
+        issuer = ISS, clientId = "app", redirectUri = "com.example.app:/oauth",
+        store = MemStore(), browser = FakeBrowser(p), transport = p, executor = INLINE, clock = { now },
+    )
+    auth.signIn()
+    check(auth.accessToken.value == "at-0") { "a live token is returned" }
+    now += 3_700_000
+    check(auth.accessToken.value == null) { "an expired token is never returned" }
+    auth.dispose()
+}
+
+fun testFreshAccessTokenRefusesMainThread() {
+    val p = FakeProvider()
+    val auth = make(p, MemStore(), FakeBrowser(p))
+    val before = PyreonOidcAuth.isMainThread
+    PyreonOidcAuth.isMainThread = { true }
+    try {
+        val e = runCatching { auth.freshAccessToken() }.exceptionOrNull()
+        check(e is IllegalStateException && e.message!!.startsWith("[Pyreon] auth:")) { "freshAccessToken refuses the main thread: $e" }
+    } finally {
+        PyreonOidcAuth.isMainThread = before
+    }
+}
+
 fun testKeyRotation() {
     val kp = FakeProvider()
     var t = 1_000_000L
@@ -565,5 +623,9 @@ fun main() {
     testAdoptOnlySameUser()
     testInvalidRedirectUriRefusedAtConstruction()
     testClaimTakenOnActivate()
+    testRotatedTokenKeptWhenKeysUnavailable()
+    testNoAdoptionWithoutSubject()
+    testExpiredTokenNeverExposed()
+    testFreshAccessTokenRefusesMainThread()
     println("[PyreonOidcAuthTest] all smoke tests passed")
 }
