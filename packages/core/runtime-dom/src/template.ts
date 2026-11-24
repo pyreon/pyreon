@@ -20,6 +20,7 @@ import {
   _parkCloser,
   _parkedPending,
   _slotHydrator,
+  _takeHidden,
   _takeParked,
 } from './parked-text'
 import {
@@ -191,12 +192,14 @@ export function _setChild(node: Element, value: unknown): void {
     // (happy-dom writes `''` for `0`). A string, the dominant value, skips the
     // call. A NUMBER is handed to the DOM unconverted (see `_replaceText`).
     const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
+    // A #4599 region hidden from user code is replaced by this write, as on a
+    // fresh render: its mark goes (both builds), so a bind that throws later
+    // leaves the client's text, as it does for a region no ref hid.
+    const hidden = _parkedPending > 0 ? _takeHidden(node) : null
     // Dev, adopting: the same write, reported if it changed the server's text
-    // (#4419). A separate block so production keeps exactly the write below:
-    // neither consumes a #4599 region's mark, so `_settleRegions` treats the
-    // region the same in both builds.
+    // (#4419). A separate block so production keeps exactly the write below.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
-      devAdoptedTextWrite(node, fc, text, _replaceText)
+      devAdoptedTextWrite(node, fc, text, _replaceText, hidden)
 
       return
     }

@@ -603,10 +603,11 @@ describe('a throwing bind keeps the server content', () => {
 })
 
 /**
- * A text write into a region consumes its mark in neither build (dev used to,
- * production did not, so a later throw left different DOM). A HIDDEN region
- * gets its server nodes back on the throw, ahead of the client's text; a
- * region whose nodes the write itself replaced has nothing left to restore.
+ * A text write replaces a region, as on a fresh render, and a bind that throws
+ * afterwards leaves the client's text. Dev and production make the same call
+ * (dev used to consume the mark where production did not), and so do a region
+ * a ref hid and one no ref touched (a ref on an ancestor used to decide the
+ * DOM: `<b>n</b>str` with it, `str` without).
  */
 describe('a text write over a region, then a throw: dev and production agree', () => {
   const okC = { cell: h('i', null, 'c') }
@@ -617,9 +618,10 @@ describe('a text write over a region, then a throw: dev and production agree', (
   }
   const R = () => {}
   const CASES: [string, string, unknown, string][] = [
-    ['hidden region, text value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', 'str', '<div><span><b>n</b>str</span><em><i>c</i></em></div>'],
+    ['hidden region, text value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', 'str', '<div><span>str</span><em><i>c</i></em></div>'],
     ['unhidden region, text value', 'const App = () => <div><span>{c.v}</span><em>{bad.cell}</em></div>', 'str', '<div><span>str</span><em><i>c</i></em></div>'],
-    ['hidden region, null value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', null, '<div><span><b>n</b></span><em><i>c</i></em></div>'],
+    ['unhidden region, null value', 'const App = () => <div><span>{c.v}</span><em>{bad.cell}</em></div>', null, '<div><span></span><em><i>c</i></em></div>'],
+    ['hidden region, null value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', null, '<div><span></span><em><i>c</i></em></div>'],
   ]
   for (const [name, src, v, want] of CASES) {
     for (const mode of ['development', 'production']) {
@@ -714,7 +716,10 @@ describe('unmounting a claimed region detaches each node once', () => {
     expect(r).toMatchObject({ log: 'd', inserted: 0 })
   })
 
-  it('a <Show> branch switched off (the reactive-boundary path an HMR remount takes)', async () => {
+  // A BEHAVIOUR LOCK, not a regression test: it passes on every head of this
+  // PR (a `<Show>` branch never churned). It holds the reactive-boundary path
+  // an HMR remount takes to one disconnect.
+  it('behaviour lock: a <Show> branch switched off (the reactive-boundary path an HMR remount takes)', async () => {
     const on = signal(true)
     const s = { ...scope(), on, cell: h('x-region', null, 'k') }
     const r = await teardown('const App = () => <section><Show when={() => on()}><div>{cell}</div></Show></section>', s, () => on.set(false))

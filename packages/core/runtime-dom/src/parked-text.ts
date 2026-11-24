@@ -37,6 +37,17 @@ export function _park(node: Node, server: Node | null): void {
 }
 
 /**
+ * Take `node`'s mark only when it is a HIDDEN #4599 region (a fragment): a text
+ * write replaces it, as on a fresh render, so a later throw must not put the
+ * server nodes back beside the client's text. `null` otherwise.
+ */
+export function _takeHidden(node: Node): Node | null {
+  const s = (node as Parked)[PARKED]
+
+  return s != null && s.nodeType === 11 ? (_takeParked(node) as Node) : null
+}
+
+/**
  * Consume `node`'s mark: what it records (see above), or `undefined` when the
  * node is not (or no longer) parked.
  */
