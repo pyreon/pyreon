@@ -655,6 +655,7 @@ describe('unmounting a claimed region detaches each node once', () => {
     connectedCallback() {
       log.push('c')
     }
+
     disconnectedCallback() {
       log.push('d')
     }

@@ -122,6 +122,7 @@ describe('an empty `_setChild` element adopts the server structure in Chromium (
       connectedCallback() {
         log.push('c')
       }
+
       disconnectedCallback() {
         log.push('d')
       }
