@@ -504,22 +504,15 @@ export function unconfirmed(sub: Subscriber): Link | null {
   return tail !== null ? tail.nextDep : sub._deps
 }
 
-/** After a computed's value changed: upgrade its readers, and its direct updaters. */
-function computedChanged(c: ComputedNode): void {
-  const subs = c._subs
-  if (subs !== null) shallowPropagate(subs)
-  if ((c._f & F_HAS_DIRECT) !== 0) directChanged(c)
-}
-
 /**
- * `computedChanged` for a dependency `checkDirty` just evaluated on behalf of
- * the reader it is checking. A SOLE subscriber is that reader, and the walk
- * records the change itself (`dirty`), so it is not re-marked.
+ * After a computed's value changed: upgrade its readers, and its direct
+ * updaters. `inCheck`: `checkDirty` evaluated it on behalf of the reader it is
+ * checking — a SOLE subscriber is that reader, and the walk records the change
+ * itself (`dirty`), so it is not re-marked.
  */
-function changedInCheck(c: ComputedNode): void {
-  // The walk reached `c` through an edge, so it has a subscriber.
-  const subs = c._subs as Link
-  if (subs.nextSub !== null) shallowPropagate(subs)
+function computedChanged(c: ComputedNode, inCheck: boolean): void {
+  const subs = c._subs
+  if (subs !== null && (!inCheck || subs.nextSub !== null)) shallowPropagate(subs)
   if ((c._f & F_HAS_DIRECT) !== 0) directChanged(c)
 }
 
@@ -546,7 +539,7 @@ function directChanged(c: ComputedNode): void {
  */
 export function refreshComputed(c: ComputedNode): void {
   if ((c._f & F_DIRTY) !== 0 || checkDirty(c)) {
-    if (updateComputed(c)) computedChanged(c)
+    if (updateComputed(c)) computedChanged(c, false)
   } else c._f &= ~F_PENDING
 }
 
@@ -581,7 +574,7 @@ export function checkDirty(root: Subscriber): boolean {
       if (df !== undefined && (df & F_DISPOSED) === 0) {
         if ((df & F_DIRTY) !== 0) {
           if (updateComputed(dep as ComputedNode)) {
-            changedInCheck(dep as ComputedNode)
+            computedChanged(dep as ComputedNode, true)
             dirty = true
           }
         } else if ((df & F_PENDING) !== 0) {
@@ -607,7 +600,7 @@ export function checkDirty(root: Subscriber): boolean {
       // everything above it stay stale for good.
       if (dirty || (sub._f & F_DIRTY) !== 0) {
         if (updateComputed(sub as ComputedNode)) {
-          changedInCheck(sub as ComputedNode)
+          computedChanged(sub as ComputedNode, true)
           dirty = true
           sub = pl.sub
           continue

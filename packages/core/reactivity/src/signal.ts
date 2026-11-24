@@ -134,15 +134,15 @@ function _peek(this: SignalFn<unknown>) {
 
 /**
  * Deliver a change of a signal (a write or `trigger()`) whose DIRECT tier is
- * not empty: the direct tier first, then mark the tracked subscribers
+ * not empty (or any `trigger()`): the direct tier first, then mark the tracked subscribers
  * (`propagate`). Inside a batch window everything is queued for the outermost
  * close. Outside one, a SOLE direct entry fires synchronously inside a window
  * of its own (the historical fast path — no queue round-trip); a Set is
  * queued ahead of the marked watchers and flushed.
  *
- * A signal with tracked subscribers only is marked (`propagate`) or, outside a
- * batch, delivered (`deliver`, graph.ts) directly by `_set` /
- * `notifySignalChange`.
+ * `_set` marks / delivers a signal with tracked subscribers only itself
+ * (`propagate`, or `deliver` in graph.ts); `trigger()` comes here for every
+ * shape (with both direct slots empty it just marks and flushes).
  */
 function notifyDirectTier(d1: (() => void) | null, d: Set<() => void> | null, subs: Link | null): void {
   if (_b.d > 0) {
@@ -154,7 +154,7 @@ function notifyDirectTier(d1: (() => void) | null, d: Set<() => void> | null, su
   if (d1 === null) {
     // Nothing runs before the flush (queueing and marking run no user code),
     // so no window is needed around them.
-    for (const fn of d as Set<() => void>) enqueueFn(fn)
+    if (d !== null) for (const fn of d) enqueueFn(fn)
     if (subs !== null) propagate(subs)
     _b.d = 1
     drain()
@@ -170,22 +170,6 @@ function notifyDirectTier(d1: (() => void) | null, d: Set<() => void> | null, su
   } finally {
     endBatch()
   }
-}
-
-/**
- * Deliver a change of `s` (`trigger()`). `_set` carries the same sequence
- * inline — keep the two in step.
- */
-function notifySignalChange(s: SignalFn<unknown>): void {
-  const d1 = s._d1
-  const d = s._d
-  const subs = s._subs
-  if (d1 === null && d === null) {
-    if (subs === null) return
-    if (_b.d > 0) {
-      if (subs.nextSub !== null || (subs.sub._f & F_DIRTY) === 0) propagate(subs)
-    } else deliver(subs)
-  } else notifyDirectTier(d1, d, subs)
 }
 
 function _set(this: SignalFn<unknown>, newValue: unknown) {
@@ -219,8 +203,8 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
       }
     }
   }
-  // `notifySignalChange`, inlined: as a call it measured ~10% of an
-  // unbatched write → effect on JSC and V8 (neither engine inlined it here).
+  // Delivery is inlined here: as a call it measured ~10% of an unbatched
+  // write → effect on JSC and V8 (neither engine inlined it).
   const d1 = this._d1
   const d = this._d
   const subs = this._subs
@@ -244,7 +228,8 @@ function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
 function _trigger(this: SignalFn<unknown>) {
   if (process.env.NODE_ENV !== 'production' && this == null) _detached('trigger')
   if (process.env.NODE_ENV !== 'production') _rdRecordFire(this)
-  notifySignalChange(this)
+  // Cold path: the general delivery (an empty direct tier just marks and flushes).
+  if (this._d1 !== null || this._d !== null || this._subs !== null) notifyDirectTier(this._d1, this._d, this._subs)
 }
 
 /** Add `fn` to a source's direct tier (idempotent). */
