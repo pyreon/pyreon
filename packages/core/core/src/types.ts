@@ -115,6 +115,12 @@ export interface NativeItem {
   readonly __isNative: true
   el: HTMLElement
   cleanup: (() => void) | null
+  /**
+   * The JSX `key` of a compiled keyed element (`<tr key={row.id}>`), read the
+   * way a VNode's `key` is: by the keyed list reconciler and by components
+   * that read their children's keys. Absent or null when the element has none.
+   */
+  readonly key?: string | number | null
 }
 
 export interface LifecycleHooks {

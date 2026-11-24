@@ -66,7 +66,7 @@ The scaffolder **never installs dependencies itself** — it prints `cd`, `insta
 A `--yes` run, captured with `NO_COLOR=1` (the first line names the command and its version; the last line is the verdict — what was created, how many files it holds, and how long writing them took):
 
 ```text
-┌  create-zero · 0.53.0
+┌  create-zero · 0.54.0
 │
 ◒  Scaffolding project...
 ◇  Project scaffolded
@@ -76,7 +76,7 @@ A `--yes` run, captured with `NO_COLOR=1` (the first line names the command and 
 │  bun install
 │  bun run dev
 │
-└  ✓ created my-app · 27 files · 35 ms
+└  ✓ created my-app · 31 files · 15 ms
 ```
 
 Colour follows the shared Pyreon terminal theme: `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` and `PYREON_CLI_THEME=light|dark` are honoured, and `PYREON_CLI_SYMBOLS=ascii` (or a non-UTF-8 locale) swaps every glyph for an ASCII fallback.
