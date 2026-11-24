@@ -1,6 +1,7 @@
 node_modules
 dist
 dist-cdn
+dist-ssr-base
 lib
 # Template + example src/lib/ directories are real source content
 # (scaffolded into user projects, or committed as runtime test fixtures),

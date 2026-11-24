@@ -89,9 +89,14 @@ export function startIslandsOnlyPage(options: IslandsOnlyOptions): () => void {
   // pyreon-lint-disable-next-line pyreon/prefer-isserver -- importing isServer costs every page a request (see the module comment)
   if (typeof document === 'undefined') return () => {}
   watchServerModules()
-  if (document.querySelector('pyreon-island') === null) return () => {}
+  const hasIslands = document.querySelector('pyreon-island') !== null
+  // A server island outside every client island is activated by the islands
+  // runtime's scan: no router or app runs on this page to mount it, so it
+  // stayed on its fallback forever.
+  const hasServerIslands = document.querySelector('pyreon-server-island') !== null
+  if (!hasIslands && !hasServerIslands) return () => {}
   const islands = options.islands
-  if (!islands) {
+  if (hasIslands && !islands) {
     // A wiring mistake every islands-only page shows in dev; its text stays
     // out of the production entry, which every page downloads.
     if (process.env.NODE_ENV !== 'production') {
@@ -103,6 +108,18 @@ export function startIslandsOnlyPage(options: IslandsOnlyOptions): () => void {
           "  startClientLazy({ routes: () => import('virtual:zero/routes'), islands })",
       )
     }
+
+    if (!hasServerIslands) return () => {}
+  }
+  if (!hasIslands) {
+    // Server islands only: the small activator, not the client-island runtime.
+    import('./client-server-islands').then(
+      (m) => m.startServerIslands(),
+      (err: unknown) => {
+        // oxlint-disable-next-line no-console
+        console.error('[Pyreon] Could not load the server-islands runtime for this page:', err)
+      },
+    )
 
     return () => {}
   }

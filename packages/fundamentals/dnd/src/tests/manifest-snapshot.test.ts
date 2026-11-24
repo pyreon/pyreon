@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — dnd snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/dnd — Signal-driven drag and drop over @atlaskit/pragmatic-drag-and-drop — draggable, droppable, sortable, file drop, monitor. The element-bound hooks (\`useDraggable\` / \`useDroppable\` / \`useFileDrop\`) defer pdnd registration to the next microtask so \`ref\` callbacks are populated first — call the hook in the component body and let the ref land. \`useDragMonitor\` registers immediately (it has no element to wait for)."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- [@pyreon/dnd](https://pyreon.dev/docs/reference/dnd): Signal-driven drag and drop over @atlaskit/pragmatic-drag-and-drop — draggable, droppable, sortable, file drop, monitor. The element-bound hooks (\`useDraggable\` / \`useDroppable\` / \`useFileDrop\`) defer pdnd registration to the next microtask so \`ref\` callbacks are populated first — call the hook in the component body and let the ref land. \`useDragMonitor\` registers immediately (it has no element to wait for)."`)
   })
 
   it('renders to llms-full.txt section', () => {

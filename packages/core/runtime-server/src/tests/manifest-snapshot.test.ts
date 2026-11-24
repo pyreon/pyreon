@@ -8,7 +8,7 @@ import manifest from '../manifest'
 describe('gen-docs — runtime-server snapshot', () => {
   it('renders a llms.txt bullet starting with the package prefix', () => {
     const line = renderLlmsTxtLine(manifest)
-    expect(line.startsWith('- @pyreon/runtime-server —')).toBe(true)
+    expect(line.startsWith('- [@pyreon/runtime-server](https://pyreon.dev/docs/reference/runtime-server):')).toBe(true)
   })
 
   it('renders a llms-full.txt section with the right header', () => {

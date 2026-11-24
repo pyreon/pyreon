@@ -8,7 +8,7 @@ import manifest from '../manifest'
 describe('gen-docs — mcp snapshot', () => {
   it('renders a llms.txt bullet starting with the package prefix', () => {
     const line = renderLlmsTxtLine(manifest)
-    expect(line.startsWith('- @pyreon/mcp —')).toBe(true)
+    expect(line.startsWith('- [@pyreon/mcp](https://pyreon.dev/docs/reference/mcp):')).toBe(true)
   })
 
   it('renders a llms-full.txt section with the right header', () => {

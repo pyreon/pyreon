@@ -29,12 +29,27 @@ process.env.PYREON_E2E_SERVER_STDERR = STDERR_LOG
 export default definePlaywrightConfig({
   testDir: '../e2e',
   timeout: 60_000,
-  projects: [{ name: 'ssr-node', testMatch: /ssr-node\.spec\.ts$/, port: 5203 }],
+  projects: [
+    { name: 'ssr-node', testMatch: /ssr-node\.spec\.ts$/, port: 5203 },
+    // The same fixture under `/sub/` (`vite.config.ssr-base.ts`, port 5237):
+    // server islands signed, served and verified under a base.
+    { name: 'ssr-base', testMatch: /ssr-base\.spec\.ts$/, port: 5237 },
+  ],
+  // One webServer per port, each starting the server it waits for (a
+  // placeholder waiting on another entry's port fails in CI, where Playwright
+  // refuses a taken port). Playwright starts them one after another, so the
+  // two builds of the same fixture never overlap.
   webServer: [
     {
       command:
         'bun run --filter=@pyreon/example-ssr-showcase build:ssr && node ../examples/fixtures/ssr-showcase/dist/index.js 2> ' + JSON.stringify(STDERR_LOG),
       port: 5203,
+      timeout: 180_000,
+    },
+    {
+      command:
+        'bun run --filter=@pyreon/example-ssr-showcase build:ssr-base && node ../examples/fixtures/ssr-showcase/dist-ssr-base/index.js',
+      port: 5237,
       timeout: 180_000,
     },
   ],

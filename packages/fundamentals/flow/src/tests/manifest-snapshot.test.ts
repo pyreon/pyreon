@@ -16,7 +16,7 @@ import flowManifest from '../manifest'
 describe('gen-docs — flow snapshot', () => {
   it('renders @pyreon/flow to its expected llms.txt bullet', () => {
     expect(renderLlmsTxtLine(flowManifest)).toMatchInlineSnapshot(
-      `"- @pyreon/flow — Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout with its own engine (no layout dependency) (peer: @pyreon/runtime-dom). LayoutOptions.direction / layerSpacing / edgeRouting apply to layered/tree only — force/stress/radial/box/rectpacking silently ignore them. nodeSpacing is the only field respected by every algorithm. Dev-mode console.warn fires when an option is set on an algorithm that ignores it."`,
+      `"- [@pyreon/flow](https://pyreon.dev/docs/reference/flow): Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout with its own engine (no layout dependency) (peer: @pyreon/runtime-dom). LayoutOptions.direction / layerSpacing / edgeRouting apply to layered/tree only — force/stress/radial/box/rectpacking silently ignore them. nodeSpacing is the only field respected by every algorithm. Dev-mode console.warn fires when an option is set on an algorithm that ignores it."`,
     )
   })
 

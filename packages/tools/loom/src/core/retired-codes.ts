@@ -6,7 +6,7 @@
  */
 export const RETIRED_CODES: Readonly<Record<string, string>> = {
   'peer-mismatch':
-    '`peer-mismatch` was retired in 0.54: `internal-range` covers that edge. A bare internal peer range that also misses the workspace major is one `internal-range` finding, at least a warning, with `details.peerMajorMismatch: true`. Rename the key to `internal-range`, or delete it.',
+    '`peer-mismatch` was retired in 0.55: `internal-range` covers that edge. A bare internal peer range that also misses the workspace major is one `internal-range` finding, at least a warning, with `details.peerMajorMismatch: true`. Rename the key to `internal-range`, or delete it.',
 }
 
 /** The retirement message for `code`, or undefined when it is not retired. */

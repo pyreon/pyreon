@@ -1,17 +1,9 @@
 /**
- * Whether `base` is a ROUTE path: a root-relative path on this origin, the
- * only kind of base pages can live under (see `routeBaseOf` in config.ts).
- *
- * The one predicate every base decision uses — `validateZeroConfig`,
- * `routeBaseOf`, the inner build's zero config, the PWA check and the dev
- * router — so no site can accept a base another rejects (#4751 review: a bare
- * `startsWith('/')` took `//cdn.example.com/x/`, a protocol-relative URL, as a
- * route base, and the inner build then failed validation).
- *
- * Rejected: no leading `/`; `//host` and `/\host` (browsers read `/\` as `//`,
- * so links would leave the origin); a query, a fragment or whitespace; a `..`
- * segment.
+ * zero's route-path predicate IS `@pyreon/server`'s — one rule for every base
+ * decision on both sides (the server-island fragment URL in `@pyreon/server`,
+ * every base check in zero). Re-exported, never copied, from the runtime-free
+ * `@pyreon/server/paths` (zero's Node-side importers must not load the client
+ * runtime);
+ * `tests/route-path-drift.test.ts` fails if a copy reappears and diverges.
  */
-export function isRoutePath(base: string): boolean {
-  return /^\/(?![/\\])[^?#\\\s]*$/.test(base) && !/(^|\/)\.\.(\/|$)/.test(base)
-}
+export { isRoutePath } from '@pyreon/server/paths'

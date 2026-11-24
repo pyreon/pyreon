@@ -114,7 +114,7 @@ describe('validateLoomSection — one validator for both homes', () => {
     // A targeted message, not the generic unknown-code list: the user's key
     // was valid until 0.54 and needs to know what replaced it.
     expect(() => validateLoomSection({ severity: { 'peer-mismatch': 'warning' } }, 'test')).toThrow(
-      /`peer-mismatch` was retired in 0\.54: `internal-range` covers that edge/,
+      /`peer-mismatch` was retired in 0\.55: `internal-range` covers that edge/,
     )
     expect(() =>
       validateLoomSection({ ignore: [{ code: 'peer-mismatch', reason: 'x' }] }, 'test'),
