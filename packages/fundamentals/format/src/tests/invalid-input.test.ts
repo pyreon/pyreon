@@ -55,9 +55,10 @@ describe('nullish input returns the fallback, silently', () => {
 })
 
 describe('invalid input returns the fallback with a dev warning, once', () => {
-  it.each(CALLS)('%s(NaN / a string / an object)', (name, call) => {
+  it.each(CALLS)('%s(NaN / a non-decimal string / an object)', (name, call) => {
     expect(call(NaN, '?')).toBe('?')
-    expect(call('12', '?')).toBe('?')
+    // Intl would read these as numbers (" 12 " as 12, "" as 0); only a plain decimal string is an amount.
+    for (const text of ['1e3', ' 12 ', '', '+5', '12.', '.5', 'Infinity', '0x1F', '1,5']) expect(call(text, '?'), text).toBe('?')
     expect(call({}, '?')).toBe('?')
     // one warning per (function, kind of bad value, expectation), however many calls
     expect(warn.mock.calls.filter((c) => String(c[0]).includes(`${name}()`)).length).toBeLessThanOrEqual(3)
@@ -79,7 +80,7 @@ describe('invalid input returns the fallback with a dev warning, once', () => {
 
   it('the warning says how to fix it', () => {
     core.formatNumber(NaN)
-    expect(warn.mock.calls[0]?.[0]).toMatch(/^\[Pyreon\] formatNumber\(\): expected a number or bigint .* got NaN; returning the fallback/)
+    expect(warn.mock.calls[0]?.[0]).toMatch(/^\[Pyreon\] formatNumber\(\): expected a number, a bigint or a decimal string .* got NaN; returning the fallback/)
   })
 
   it('the warning set is itself bounded', () => {

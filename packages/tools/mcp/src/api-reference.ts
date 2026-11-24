@@ -4039,8 +4039,9 @@ convert(money('100.00', 'EUR'), 'JPY', '162.5')     // => { amount: '16250', cur
     signature: '(code: CurrencyCode) => number',
     example: `currencyDigits('EUR')                     // => 2
 currencyDigits('JPY')                     // => 0
-currencyDigits('KWD')                     // => 3`,
-    notes: '[EXPERIMENTAL] The minor-unit digits of a currency from the platform (`Intl`; no table is shipped) or `defineCurrency`. Added in v0.53.0.',
+currencyDigits('KWD')                     // => 3
+currencyDigits('HUF')                     // => 2`,
+    notes: '[EXPERIMENTAL] The minor-unit digits of a currency: what `defineCurrency` gave it, else its ISO 4217 minor unit. The same on every engine (`Intl` is never asked for digits: V8 reports CLDR display digits, 0 for HUF, IDR, COP, IQD and others, while JavaScriptCore reports ISO 4217). Added in v0.53.0.',
   },
 
   'money/isCurrency': {
@@ -4053,8 +4054,10 @@ isCurrency('eur')                         // => false`,
   'money/defineCurrency': {
     signature: '(code: string, spec: { digits: number }) => void',
     example: `defineCurrency('PTS', { digits: 0 })
-currencyDigits('PTS')                     // => 0`,
-    notes: '[EXPERIMENTAL] Register a currency the platform does not know (crypto, points, a test currency). The code is 2 to 12 upper-case letters or digits starting with a letter. Re-registering with the same digits is fine; different digits throw, as does changing an ISO currency. At most 64 are registered. Added in v0.53.0.',
+currencyDigits('PTS')                     // => 0
+defineCurrency('ISK', { digits: 2 })
+fromMinor(12345, 'ISK')                   // => { amount: '123.45', currency: 'ISK' }`,
+    notes: '[EXPERIMENTAL] Register a currency the platform does not know (crypto, points, a test currency), or give an ISO currency the digits your payment provider uses (ISK in hundredths). The code is 2 to 12 upper-case letters or digits starting with a letter. A code is defined once, at startup: the same digits again is fine, different digits throw. At most 64 are registered. Added in v0.53.0.',
   },
 
   'money/Money': {
@@ -8620,15 +8623,19 @@ formatNumber(null, { fallback: '-' }) // → "-"`,
   },
 
   'format/formatCurrency': {
-    signature: '(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string',
+    signature: '(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string | (value: MoneyLike, options?: CurrencyOptions | CurrencyPreset) => string',
     example: `formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // → "€9.99"
+formatCurrency('12345678901234567.89', 'EUR', { locale: 'en-US' }) // → "€12,345,678,901,234,567.89"
+formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // → "€9.99"
 formatCurrency(1234.5, 'EUR', { locale: 'de' }) // → "1.234,50 €"
 formatCurrency(1234.5, 'CZK', { locale: 'cs' }) // → "1 234,50 Kč"
 formatCurrency(-5, 'USD', { locale: 'en-US', currencySign: 'accounting' }) // → "($5.00)"
 formatCurrency(5, 'USD', { locale: 'en-US', currencyDisplay: 'name' }) // → "5.00 US dollars"`,
-    notes: 'Format money. `currency` is an ISO 4217 code; a malformed code returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`. See also: formatNumber, defineFormats.',
+    notes: 'Format money: a number, bigint or decimal string with an ISO 4217 `currency` code, or a Money (`{ amount, currency }`, what `@pyreon/money` produces) on its own. A decimal string or a Money amount is formatted exactly, at any size (never converted to a float); a Money shows its own digits, so a currency given other digits with `defineCurrency` displays them. A malformed code or value returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`. See also: formatNumber, defineFormats, MoneyLike.',
     mistakes: `- Formatting an amount in minor units (cents) without dividing: \`formatCurrency(999, 'EUR')\` is 999 euros
-- Passing the symbol (\`'€'\`) instead of the code (\`'EUR'\`)`,
+- Passing the symbol (\`'€'\`) instead of the code (\`'EUR'\`)
+- Formatting a Money as \`formatCurrency(Number(m.amount), m.currency)\`: a large amount loses precision; pass the Money (\`formatCurrency(m)\`)
+- Passing a currency next to a Money (\`formatCurrency(m, 'EUR')\`): a Money carries its currency, and this throws`,
   },
 
   'format/formatPercent': {
@@ -8759,8 +8766,10 @@ formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "heute"`,
     example: `formatDateRange('2026-11-12', '2026-11-15', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
 formatDateRange('2026-11-15', '2026-11-12', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
 formatDateRange('2026-11-28', '2026-12-02', { locale: 'en-US' }) // → "Nov 28 – Dec 2, 2026"
-formatDateRange('2026-11-12', '2026-11-15', { locale: 'de' }) // → "12.–15.11.2026"`,
-    notes: 'Format a range with the shared parts collapsed. Two calendar strings are a range of calendar days in every zone. A reversed pair (a range picker mid-selection) is ordered first, so the earlier date always comes first; equal ends give the single value where Intl does. See also: formatDate.',
+formatDateRange('2026-11-12', '2026-11-15', { locale: 'de' }) // → "12.–15.11.2026"
+formatDateRange('2026-10-21', '2026-10-27', { locale: 'cs', dateStyle: 'long' }) // → "21.–27. 10. 2026"`,
+    notes: `Format a range with the shared parts collapsed, by the locale's CLDR interval pattern (\`Intl.DateTimeFormat#formatRange\`; Pyreon joins no text itself). Two calendar strings are a range of calendar days in every zone. A reversed pair (a range picker mid-selection) is ordered first, so the earlier date always comes first; equal ends give the single value where Intl does. What is collapsed is locale data and differs between engines' CLDR versions: Czech numeric dates give \`21.10.2026 – 27.10.2026\` (no year collapse), while \`dateStyle: 'long'\` gives \`21.–27. 10. 2026\`. See also: formatDate.`,
+    mistakes: `- Comparing a range with a typed literal: the text is the engine's CLDR data (thin spaces, and some locales such as sk and pl differ between V8 and JavaScriptCore); compare with \`Intl\`'s own \`formatRange\` output`,
   },
 
   'format/formatNumberRange': {
@@ -8849,7 +8858,7 @@ n.parts(1.5).map((p) => p.type) // → ["integer","decimal","fraction"]`,
   },
 
   'format/currencyFormatter': {
-    signature: `(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<NumberInput, 'currency'>`,
+    signature: `(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<CurrencyInput, 'currency'>`,
     example: `const price = currencyFormatter('EUR', { locale: 'en-US' })
 price(9.99) // → "€9.99"
 price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
@@ -8857,7 +8866,7 @@ price.from((cents) => cents / 100)(999) // → "€9.99"
 ;[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
 price.range(10, 20) // → "€10.00 – €20.00"
 price.parts(9.99).map((p) => p.type) // → ["currency","integer","decimal","fraction"]`,
-    notes: 'A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. A malformed code returns the fallback with a dev warning. See also: formatCurrency, numberFormatter.',
+    notes: 'A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. It takes numbers, decimal strings and Money values in its currency (a Money in another currency is the fallback with a dev warning). A malformed code returns the fallback with a dev warning. See also: formatCurrency, numberFormatter.',
     mistakes: `- Building "€9.99 per month" by concatenation: the platform has no locale data for a currency "per" pattern; format the value and put it in a translated message
 - Passing cents without \`.from\`: \`price(999)\` is nine hundred ninety-nine euros`,
   },
@@ -9121,9 +9130,16 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
   },
 
   'format/NumberInput': {
-    signature: 'type NumberInput = number | bigint | null | undefined',
-    example: '// formatNumber(null) // → ""',
-    notes: 'A number-like input. Nullish formats as the `fallback`. See also: DateInput.',
+    signature: 'type NumberInput = number | bigint | string | null | undefined',
+    example: `// formatNumber(null) // → ""
+// formatNumber('12345678901234567890.5', { locale: 'en-US' }) // → "12,345,678,901,234,567,890.5"`,
+    notes: 'A number-like input: a number, a bigint, or a decimal string (an optional `-`, digits, an optional `.` and digits), which is formatted exactly at any size. Nullish formats as the `fallback`; any other string (`"1e3"`, `" 12 "`, `""`) is invalid. See also: DateInput, MoneyLike.',
+  },
+
+  'format/MoneyLike': {
+    signature: 'interface MoneyLike { readonly amount: string; readonly currency: string }',
+    example: `// formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // → "€9.99"`,
+    notes: 'The structural shape of a `@pyreon/money` Money, which `formatCurrency` and `currencyFormatter` take. No dependency on that package. `CurrencyInput = NumberInput | MoneyLike`. See also: formatCurrency, NumberInput.',
   },
 
   'format/DateInput': {

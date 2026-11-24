@@ -4,7 +4,7 @@
 
 Exact amounts of money as plain data. A `Money` is `{ amount: "9.99", currency: "EUR" }`: JSON-safe, comparable field by field, and never computed in binary floating point (all arithmetic is on `bigint` scaled integers).
 
-> Zero dependencies. It formats nothing; `@pyreon/format` displays a Money.
+> Zero dependencies. It formats nothing; `formatCurrency(m)` from `@pyreon/format` displays a Money exactly.
 
 ## Install
 
@@ -37,5 +37,7 @@ money(0.1 + 0.2, 'EUR') // throws: that is floating-point noise, not an amount
 | Currencies | `currencyDigits`, `isCurrency`, `defineCurrency` |
 
 The default rounding mode is `halfExpand` (round half away from zero); `halfEven` is banker's rounding. Rounding is verified against `Intl.NumberFormat` for all nine modes, arithmetic against an independent rational reference, and `allocate` by property tests.
+
+Currency digits are ISO 4217 minor units, identical on every engine (`Intl` disagrees between V8 and JavaScriptCore for about twenty currencies, so the package ships the short list of codes that are not 2). `defineCurrency('ISK', { digits: 2 })` gives an ISO currency the digits your payment provider uses.
 
 Full guide with recipes: [docs/money](https://pyreon.dev/docs/money).

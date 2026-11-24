@@ -49,7 +49,7 @@ allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount) // ['33.34', '3
 round(money('1.23', 'CHF'), { increment: '0.05' }) // { amount: '1.25', currency: 'CHF' }
 ```
 
-The amount of every Money this package produces has exactly the currency's minor digits (`"9.90"`, `"100"` for JPY, `"0.123"` for KWD), so two equal amounts are the same string. Digits come from `Intl`, so no currency table is shipped; `defineCurrency('PTS', { digits: 0 })` adds a custom one.
+The amount of every Money this package produces has exactly the currency's minor digits (`"9.90"`, `"100"` for JPY, `"0.123"` for KWD), so two equal amounts are the same string. Digits are ISO 4217 minor units (2 for EUR and HUF, 0 for JPY, 3 for KWD), the same on every engine: the package ships the short list of codes whose minor unit is not 2, because `Intl` disagrees between engines (V8 reports CLDR display digits, 0 for HUF, IDR, COP and IQD, while JavaScriptCore reports ISO 4217), and a Money made on the server must be canonical in the browser. `defineCurrency('PTS', { digits: 0 })` adds a custom currency. When a payment provider counts an ISO currency in other units (ISK in hundredths), `defineCurrency('ISK', { digits: 2 })` at startup gives it those digits everywhere; a code is defined once, and defining it again with different digits throws.
 
 ## Building a Money, and the float-input rule
 
@@ -221,7 +221,7 @@ decimal.round('2.5', { mode: 'halfEven' }) // '2'
 
 ## Showing a Money
 
-This package formats nothing. `@pyreon/format` takes a `{ amount, currency }` directly in a follow-up. Until then, format the amount string with `Intl`, which formats decimal strings exactly: `new Intl.NumberFormat('en', { style: 'currency', currency: m.currency }).format(m.amount)`. Avoid `formatCurrency(Number(m.amount), ...)`: a large amount loses precision as a number.
+This package formats nothing. `formatCurrency(m)` from `@pyreon/format` takes a Money directly: it formats the amount string exactly (no conversion to a number) and shows the Money's own digits, so a currency given other digits with `defineCurrency` displays them too. Avoid `formatCurrency(Number(m.amount), ...)`: a large amount loses precision as a number.
 
 ## API reference
 

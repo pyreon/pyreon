@@ -69,7 +69,7 @@ parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`formatNumber`](#formatnumber-function) | function | Format a number with `Intl.NumberFormat`. |
-| [`formatCurrency`](#formatcurrency-function) | function | Format money. |
+| [`formatCurrency`](#formatcurrency-function) | function | Format money: a number, bigint or decimal string with an ISO 4217 `currency` code, or a Money (`{ amount, currency }`,… |
 | [`formatPercent`](#formatpercent-function) | function | Format a ratio as a percentage: `0.42` is `42%`. |
 | [`formatCompact`](#formatcompact-function) | function | Compact notation: `1_240_000` is `1.2M`. |
 | [`formatUnit`](#formatunit-function) | function | Format a measurement with a sanctioned `Intl` unit (`Unit` is a union of them, plus `<unit>-per-<unit>` compounds). |
@@ -81,7 +81,7 @@ parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
 | [`formatDateTime`](#formatdatetime-function) | function | Format date and time together. |
 | [`formatRelative`](#formatrelative-function) | function | Format a relative amount in a given unit: `(-3, 'day')` is `3 days ago`. |
 | [`formatRelativeTo`](#formatrelativeto-function) | function | Describe `target` relative to an explicit `base`. |
-| [`formatDateRange`](#formatdaterange-function) | function | Format a range with the shared parts collapsed. |
+| [`formatDateRange`](#formatdaterange-function) | function | Format a range with the shared parts collapsed, by the locale's CLDR interval pattern… |
 | [`formatNumberRange`](#formatnumberrange-function) | function | Format a numeric range with the shared parts collapsed. |
 | [`formatNumberToParts`](#formatnumbertoparts-function) | function | The parts of a formatted number (for custom markup). |
 | [`formatDateToParts`](#formatdatetoparts-function) | function | The parts of a formatted date and time (default: date and time, medium and short). |
@@ -120,7 +120,8 @@ parseDate('18. 11. 2026', { locale: 'cs' }) // → "2026-11-18"
 | [`ConvertedUnitOptions`](#convertedunitoptions-type) | type | Options of `formatUnit` and `unitFormatter` from `@pyreon/format/units`: everything in `UnitOptions`, plus a conversion… |
 | [`MeasurementSystem`](#measurementsystem-type) | type | A system of measurement: `us` (US customary), `uk` (metric with road miles) or `metric`. |
 | [`UnitDimension`](#unitdimension-type) | type | What `unitDimension` returns: a simple dimension, a named compound (`speed`, `pace`, `fuel-economy`, ...) or… |
-| [`NumberInput`](#numberinput-type) | type | A number-like input. |
+| [`NumberInput`](#numberinput-type) | type | A number-like input: a number, a bigint, or a decimal string (an optional `-`, digits, an optional `.` and digits),… |
+| [`MoneyLike`](#moneylike-type) | type | The structural shape of a `@pyreon/money` Money, which `formatCurrency` and `currencyFormatter` take. |
 | [`DateInput`](#dateinput-type) | type | A date-like input. |
 | [`PlainDateString`](#plaindatestring-type) | type | The `YYYY-MM-DD` string `parseDate` returns. |
 | [`PlainTimeString`](#plaintimestring-type) | type | A time of day (`14:30`, `14:30:05`, `14:30:05.250`): a wall-clock value that never shifts with the zone. |
@@ -164,15 +165,17 @@ formatNumber(null, { fallback: '-' }) // → "-"
 ### `formatCurrency` `function`
 
 ```ts
-(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string
+(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string | (value: MoneyLike, options?: CurrencyOptions | CurrencyPreset) => string
 ```
 
-Format money. `currency` is an ISO 4217 code; a malformed code returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`.
+Format money: a number, bigint or decimal string with an ISO 4217 `currency` code, or a Money (`{ amount, currency }`, what `@pyreon/money` produces) on its own. A decimal string or a Money amount is formatted exactly, at any size (never converted to a float); a Money shows its own digits, so a currency given other digits with `defineCurrency` displays them. A malformed code or value returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`.
 
 **Example**
 
 ```tsx
 formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // → "€9.99"
+formatCurrency('12345678901234567.89', 'EUR', { locale: 'en-US' }) // → "€12,345,678,901,234,567.89"
+formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // → "€9.99"
 formatCurrency(1234.5, 'EUR', { locale: 'de' }) // → "1.234,50 €"
 formatCurrency(1234.5, 'CZK', { locale: 'cs' }) // → "1 234,50 Kč"
 formatCurrency(-5, 'USD', { locale: 'en-US', currencySign: 'accounting' }) // → "($5.00)"
@@ -183,8 +186,10 @@ formatCurrency(5, 'USD', { locale: 'en-US', currencyDisplay: 'name' }) // → "5
 
 - Formatting an amount in minor units (cents) without dividing: `formatCurrency(999, 'EUR')` is 999 euros
 - Passing the symbol (`'€'`) instead of the code (`'EUR'`)
+- Formatting a Money as `formatCurrency(Number(m.amount), m.currency)`: a large amount loses precision; pass the Money (`formatCurrency(m)`)
+- Passing a currency next to a Money (`formatCurrency(m, 'EUR')`): a Money carries its currency, and this throws
 
-**See also:** `formatNumber` · `defineFormats`
+**See also:** `formatNumber` · `defineFormats` · `MoneyLike`
 
 ---
 
@@ -473,7 +478,7 @@ formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "heute"
 (start: DateInput, end: DateInput, options?: DateRangeOptions | DateStylePreset) => string
 ```
 
-Format a range with the shared parts collapsed. Two calendar strings are a range of calendar days in every zone. A reversed pair (a range picker mid-selection) is ordered first, so the earlier date always comes first; equal ends give the single value where Intl does.
+Format a range with the shared parts collapsed, by the locale's CLDR interval pattern (`Intl.DateTimeFormat#formatRange`; Pyreon joins no text itself). Two calendar strings are a range of calendar days in every zone. A reversed pair (a range picker mid-selection) is ordered first, so the earlier date always comes first; equal ends give the single value where Intl does. What is collapsed is locale data and differs between engines' CLDR versions: Czech numeric dates give `21.10.2026 – 27.10.2026` (no year collapse), while `dateStyle: 'long'` gives `21.–27. 10. 2026`.
 
 **Example**
 
@@ -482,7 +487,12 @@ formatDateRange('2026-11-12', '2026-11-15', { locale: 'en-US' }) // → "Nov 12 
 formatDateRange('2026-11-15', '2026-11-12', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
 formatDateRange('2026-11-28', '2026-12-02', { locale: 'en-US' }) // → "Nov 28 – Dec 2, 2026"
 formatDateRange('2026-11-12', '2026-11-15', { locale: 'de' }) // → "12.–15.11.2026"
+formatDateRange('2026-10-21', '2026-10-27', { locale: 'cs', dateStyle: 'long' }) // → "21.–27. 10. 2026"
 ```
+
+**Common mistakes**
+
+- Comparing a range with a typed literal: the text is the engine's CLDR data (thin spaces, and some locales such as sk and pl differ between V8 and JavaScriptCore); compare with `Intl`'s own `formatRange` output
 
 **See also:** `formatDate`
 
@@ -687,10 +697,10 @@ n.parts(1.5).map((p) => p.type) // → ["integer","decimal","fraction"]
 ### `currencyFormatter` `function`
 
 ```ts
-(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<NumberInput, 'currency'>
+(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<CurrencyInput, 'currency'>
 ```
 
-A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. A malformed code returns the fallback with a dev warning.
+A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. It takes numbers, decimal strings and Money values in its currency (a Money in another currency is the fallback with a dev warning). A malformed code returns the fallback with a dev warning.
 
 **Example**
 
@@ -1352,18 +1362,37 @@ What `unitDimension` returns: a simple dimension, a named compound (`speed`, `pa
 ### `NumberInput` `type`
 
 ```ts
-type NumberInput = number | bigint | null | undefined
+type NumberInput = number | bigint | string | null | undefined
 ```
 
-A number-like input. Nullish formats as the `fallback`.
+A number-like input: a number, a bigint, or a decimal string (an optional `-`, digits, an optional `.` and digits), which is formatted exactly at any size. Nullish formats as the `fallback`; any other string (`"1e3"`, `" 12 "`, `""`) is invalid.
 
 **Example**
 
 ```tsx
 // formatNumber(null) // → ""
+// formatNumber('12345678901234567890.5', { locale: 'en-US' }) // → "12,345,678,901,234,567,890.5"
 ```
 
-**See also:** `DateInput`
+**See also:** `DateInput` · `MoneyLike`
+
+---
+
+### `MoneyLike` `type`
+
+```ts
+interface MoneyLike { readonly amount: string; readonly currency: string }
+```
+
+The structural shape of a `@pyreon/money` Money, which `formatCurrency` and `currencyFormatter` take. No dependency on that package. `CurrencyInput = NumberInput | MoneyLike`.
+
+**Example**
+
+```tsx
+// formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // → "€9.99"
+```
+
+**See also:** `formatCurrency` · `NumberInput`
 
 ---
 
