@@ -156,9 +156,9 @@ export function applyPropsWithRef(el: Element, props: Props, deferRef?: 1): Defe
   // A nullish spread source is legal JSX (`{...(cond ? obj : null)}`,
   // `{...(x ?? undefined)}`) — `applyProps(el, null)` is itself a no-op
   // (`for…in null`), but the `.ref` read below would throw. Bail early.
-  if (props == null) return NOOP_CLEANUP
-  const cleanup = applyProps(el, props)
-  const ref = (props as { ref?: RefCallback | RefObject }).ref
+  if (props == null && !deferRef) return NOOP_CLEANUP
+  const cleanup = props == null ? null : applyProps(el, props)
+  const ref = (props as { ref?: RefCallback | RefObject } | null)?.ref
   // DEFERRED REF (#4764): the compiler passes `1` and calls `.r()` from the
   // template's ref tail, after the element's children and the template's
   // attribute effects, where a literal `ref` runs too, as on the h() path.
@@ -186,7 +186,6 @@ export function applyPropsWithRef(el: Element, props: Props, deferRef?: 1): Defe
 /** A spread's cleanup; with a deferred ref, `.r()` applies the ref (#4764). */
 type DeferredRefCleanup = Cleanup & { r?: () => Cleanup }
 const NOOP_CLEANUP: DeferredRefCleanup = () => {}
-NOOP_CLEANUP.r = () => NOOP_CLEANUP
 type RefCallback = (el: Element | null) => void
 type RefObject = { current: Element | null }
 
