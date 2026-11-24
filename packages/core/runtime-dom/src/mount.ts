@@ -187,7 +187,10 @@ export function mountChild(
 
   // Primitive — text node (static, no reactive effects to tear down).
   if (typeof child !== 'object') {
-    const tn = document.createTextNode(String(child))
+    // A number reaches the DOM unconverted: JS-side Number→String grows V8's
+    // Number→String cache to ~64 KB for good (see `_replaceText` in template.ts);
+    // `createTextNode` converts it per the spec without touching that cache.
+    const tn = document.createTextNode(typeof child === 'number' ? (child as unknown as string) : String(child))
     parent.insertBefore(tn, anchor)
     // `_elementDepth > 0` → this text is a child of a freshly-built element
     // removed as a unit, so a per-node remover is redundant (noop). BUT at depth 0
@@ -1555,7 +1558,10 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
         (typeof c === 'string' || typeof c === 'number') &&
         parent.firstChild === null
       ) {
-        ;(parent as HTMLElement).textContent = String(c)
+        // A number is appended unconverted (see the primitive branch of
+        // `mountChild`); `textContent = 0` writes `''` in happy-dom.
+        if (typeof c === 'number') (parent as ParentNode).append(c as unknown as string)
+        else (parent as HTMLElement).textContent = c
         return noop
       }
 
