@@ -1,5 +1,5 @@
 /** Value-last forms: configure first, apply to the value last, so they compose in `pipe`. */
-import { addBusinessDays as coreAddBusinessDays, addBusinessTime as coreAddBusinessTime, businessDaysBetween as coreBusinessDaysBetween, isBusinessDay as coreIsBusinessDay, isOpen as coreIsOpen, nextBusinessDay as coreNextBusinessDay, nextClosing as coreNextClosing, nextOpening as coreNextOpening, previousBusinessDay as corePreviousBusinessDay } from './business'
+import { addBusinessDays as coreAddBusinessDays, addBusinessTime as coreAddBusinessTime, businessDaysBetween as coreBusinessDaysBetween, isBusinessDay as coreIsBusinessDay, isOpen as coreIsOpen, nextBusinessDay as coreNextBusinessDay, nextClosing as coreNextClosing, nextOpening as coreNextOpening, openingWindows as coreOpeningWindows, previousBusinessDay as corePreviousBusinessDay } from './business'
 import { describeRule as coreDescribeRule, type RuleMessages } from './describe'
 import { expandEvents as coreExpandEvents, type CalendarEvent, type EventInstance } from './events'
 import { intersection as coreIntersection, overlaps as coreOverlaps, subtractIntervals as coreSubtractIntervals } from './intervals'
@@ -98,6 +98,13 @@ export const isOpen = (calendar: BusinessCalendar) => (at: PlainDateTime): boole
  * @example nextOpening({ hours: { 4: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00') // => '2026-11-19T09:00'
  */
 export const nextOpening = (calendar: BusinessCalendar) => (at: PlainDateTime): PlainDateTime | null => coreNextOpening(at, calendar)
+
+/**
+ * `openingWindows` with the date last.
+ *
+ * @example openingWindows({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18') // => [{ start: '2026-11-18T09:00', end: '2026-11-18T17:00' }]
+ */
+export const openingWindows = (calendar: BusinessCalendar) => (date: PlainDate): Interval[] => coreOpeningWindows(date, calendar)
 
 /**
  * `nextClosing` with the moment last.
