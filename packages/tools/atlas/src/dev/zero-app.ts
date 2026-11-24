@@ -115,6 +115,7 @@ export async function loadZeroStack(command: 'dev' | 'build'): Promise<ZeroStack
   if (typeof zero !== 'function') {
     throw new Error(`[Pyreon] atlas ${command}: @pyreon/zero/server did not export a plugin factory`)
   }
+
   return { pyreon, zero }
 }
 
