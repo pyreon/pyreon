@@ -3,6 +3,11 @@
 
 package com.pyreon.runtime
 
+// The shared redirect-matching vectors (native/tests/redirect-vectors.json); vectors.test.ts checks this copy.
+// <redirect-vectors:begin>
+private const val REDIRECT_VECTORS = """[["https://app.example/cb","https app.example /cb"],["HTTPS://App.Example:443/cb?x=1#f","https app.example /cb"],["https://app.example:8443/cb","https app.example:8443 /cb"],["http://localhost:80/cb","http localhost /cb"],["https://app.example","https app.example /"],["com.example.app:/oauth","com.example.app  /oauth"],["com.example.app:///oauth","com.example.app  /oauth"],["Com.Example.App:/oauth?code=1&state=s","com.example.app  /oauth"],["com.example.app:/oauth/google","com.example.app  /oauth/google"],["app:cb","app  cb"],["app://cb","app cb "],["app://Host/x","app host /x"],["https://app.example/a%2Fb","https app.example /a%2Fb"],["https://app.example/a/b","https app.example /a/b"],["custom://h:443/x","custom h:443 /x"],["https://app.example/cb/","https app.example /cb/"],["https://app.example/./cb","https app.example /cb"],["https://app.example/a/../cb","https app.example /cb"],["https://app.example/a/b/../../cb/.","https app.example /cb/"],["https://app.example/c%62","https app.example /c%62"],["https://app.example:0443/cb","https app.example /cb"],["https://user:pw@app.example/cb","https app.example /cb"],["http://[::1]:8080/cb","http [::1]:8080 /cb"],["com.example.app:/oauth/","com.example.app  /oauth/"],["com.example.app:oauth?x=1","com.example.app  oauth"],["COM.EXAMPLE.APP:/OAUTH","com.example.app  /OAUTH"],["https://app.example//cb","https app.example //cb"],["https://xn--bcher-kva.example/cb","https xn--bcher-kva.example /cb"],["https://bücher.example/cb",""],["https://b%C3%BCcher.example/cb",""],["https://app.example\\cb",""],["https://app.example/c b",""],["https://app.example/%2e%2e/cb",""],["https://app.example/cb?next=/a b\\c","https app.example /cb"]]"""
+// <redirect-vectors:end>
+
 private const val ISS = "https://idp.example"
 private const val EP = "https://idp.example/auth"
 
@@ -40,6 +45,10 @@ fun testOidcHappyPathAndReplay() {
 fun testOidcRejections() {
     val core = PyreonAuthCore(CountingStore())
     raises<PyreonAuthError.IssuerMismatch>("mix-up") { core.complete(cb(begin(core), "&code=a&iss=https://evil.example"), ISS) }
+    raises<PyreonAuthError.IssuerMismatch>("flow of another issuer") { core.complete(cb(begin(core), "&code=a"), "https://other.example") }
+    raises<PyreonAuthError.RedirectMismatch>("callback at another redirect URI") {
+        core.complete(cb(begin(core), "&code=a").replace("https://app.example/cb", "https://app.example/other"), ISS)
+    }
     raises<PyreonAuthError.IssuerMissing>("iss missing") { core.complete(cb(begin(core), "&code=a"), ISS, issuerParamSupported = true) }
     raises<PyreonAuthError.FlowExpired>("expired") { core.complete(cb(begin(core, System.currentTimeMillis() - 700_000), "&code=a"), ISS) }
     raises<PyreonAuthError.InsecureUrl>("http") { core.begin("http://idp.example/auth", ISS, "a", "r") }
@@ -52,7 +61,21 @@ fun testOidcRejections() {
     raises<PyreonAuthError.UnknownFlow>("unknown state") { core.complete("https://app.example/cb?state=zzz&code=a", ISS) }
 }
 
+fun testRedirectVectors() {
+    @Suppress("UNCHECKED_CAST")
+    val vectors = PyreonAuthJson.parse(REDIRECT_VECTORS) as List<List<String>>
+    for (v in vectors) {
+        val got = PyreonRedirect.target(v[0])
+        check((got ?: "") == v[1]) { // "" = refused
+            "redirect target of ${v[0]}: got $got, want ${v[1]}" }
+    }
+    raises<PyreonAuthError>("response_mode is reserved") {
+        PyreonAuthCore(CountingStore()).begin(EP, ISS, "a", "r", authorizationParams = mapOf("response_mode" to "form_post"))
+    }
+}
+
 fun main() {
+    testRedirectVectors()
     testOidcRfc7636Vector()
     testOidcHappyPathAndReplay()
     testOidcRejections()
