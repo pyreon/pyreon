@@ -1028,6 +1028,33 @@ fun main() {
         expectEq(router.params.value["id"], "7", "and the path param survives")
     }
 
+    // Native twin of web #4814: a query-only navigation (every url-state write)
+    // must not re-run the route's loader or hide its data. The emitted
+    // `PyreonRouteLoader(path = currentPath)` and `useLoaderData()` keyed
+    // `loaderData` by the full URL, so `/search?q=dog` missed `/search?q=cat`.
+    runTest("loader key excludes the query") {
+        val router = PyreonRouter()
+        router.push("/search?q=cat")
+        router.setLoaderData(router.currentPath, "results")
+        expectEq(router.loaderData.value.keys.toList(), listOf("/search"), "stored under the route")
+        router.setQueryParam("q", "dog")
+        expectEq(router.currentPath, "/search?q=dog", "url still rewritten")
+        expectEq(router.routePath, "/search", "route part unchanged")
+        expectEq(router.loaderData.value[router.routePath], "results", "data still found after the write")
+        expectEq(PyreonRouter.loaderKey("/search?q=dog#top"), "/search", "loaderKey drops query + fragment")
+    }
+
+    runTest("setQueryParam on the root is reflected in currentPath") {
+        val router = PyreonRouter()
+        router.setQueryParam("filter", "open")
+        expectEq(router.path.value, emptyList(), "no stack entry for the root")
+        expectEq(router.currentPath, "/?filter=open", "root query reflected")
+        router.push("/about")
+        expectEq(router.query.value.isEmpty(), true, "cleared on navigate away")
+        router.back()
+        expectEq(router.query.value["filter"], "open", "root query restored on back")
+    }
+
     runTest("query survives an unmatched path") {
         val router = PyreonRouter(routes = listOf(RouteRecord("/known") {}))
         router.push("/unknown?ref=email")

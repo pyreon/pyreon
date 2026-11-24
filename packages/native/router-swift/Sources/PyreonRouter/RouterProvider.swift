@@ -81,7 +81,9 @@ public struct RouterProvider<Content: View>: View {
         // would wrap the `TabView`, so a push from inside a tab would cover the
         // tab bar — and SwiftUI does not support a stack nested in a stack.
         if router.tabs.isEmpty {
-            NavigationStack(path: $router.path) {
+            // Through `stackBinding()`, not `$router.path`: a swipe-back pop
+            // must re-resolve `params` / `query` like `back()` does.
+            NavigationStack(path: router.stackBinding()) {
                 content()
             }
             .environment(\.pyreonRouter, router)

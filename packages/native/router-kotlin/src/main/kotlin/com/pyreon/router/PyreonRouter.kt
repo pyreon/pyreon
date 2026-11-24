@@ -200,6 +200,24 @@ public class PyreonRouter(
     /** The active tab's name; `null` for a single-stack router. */
     public val activeTab: MutableState<String?> = mutableStateOf(initialTab?.name)
 
+    /** The raw query of each stack's ROOT view (the empty stack), keyed by tab
+     *  name (`""` for a single-stack router). A `setQueryParam` on the root had
+     *  nowhere to go — the root is not a [path] entry — so [currentPath] never
+     *  reflected it. A deep link to a tab's root seeds that tab's entry. */
+    private val rootQueries: MutableState<Map<String, String>> = mutableStateOf(
+        if (initialPathAllowed && initialTab != null) {
+            initialPath.lastOrNull()
+                ?.takeIf { isTabRoot(initialTab, it) }
+                ?.let { mapOf(initialTab.name to splitPathAndQuery(it).second) }
+                ?: emptyMap()
+        } else {
+            emptyMap()
+        },
+    )
+
+    private val rootKey: String
+        get() = activeTab.value ?: ""
+
     /** The pushed entries of every tab EXCEPT the active one (whose entries
      *  are [path]). */
     public val tabPaths: MutableState<Map<String, List<String>>> = mutableStateOf(emptyMap())
@@ -264,6 +282,7 @@ public class PyreonRouter(
         if (target.name == activeTab.value && !isRoot) return false
         activateTab(target.name)
         path.value = if (isRoot) emptyList() else path.value + candidate
+        if (isRoot) rootQueries.value = rootQueries.value + (rootKey to splitPathAndQuery(candidate).second)
         updateParamsFromPath(candidate)
         return true
     }
@@ -348,15 +367,28 @@ public class PyreonRouter(
     public val notFoundComponent: MutableState<(@Composable () -> Unit)?> =
         mutableStateOf(notFoundComponent)
 
-    /** Phase 3 (loaders) — per-route loaded data, keyed by full path. A
+    /** Phase 3 (loaders) — per-route loaded data, keyed by the ROUTE path
+     *  with the query dropped ([loaderKey]), the web's default loader key. A
      *  route's loader stores its result here on navigation; `useLoaderData()`
-     *  reads the current path's entry. Type-erased (`Any?`) because payloads
+     *  reads the current route's entry. Type-erased (`Any?`) because payloads
      *  are per-route. Empty until a loader harness populates it. */
     public val loaderData: MutableState<Map<String, Any?>> = mutableStateOf(emptyMap())
 
-    /** Top-of-stack path. Mirrors `router.currentRoute().path` on the web side. */
+    /** Top-of-stack URL, query included. Mirrors `router.currentRoute().fullPath`
+     *  on the web side. On the root view (empty stack) it carries the root's
+     *  query, so a url-state write there is reflected. */
     public val currentPath: String
-        get() = path.value.lastOrNull() ?: activeTabRoot ?: "/"
+        get() = path.value.lastOrNull() ?: run {
+            val root = activeTabRoot ?: "/"
+            val q = rootQueries.value[rootKey].orEmpty()
+            if (q.isEmpty()) root else "$root?$q"
+        }
+
+    /** The visible route WITHOUT its query — the key route loaders and
+     *  `useLoaderData()` use, so a query-only navigation neither re-runs a
+     *  loader nor loses its data. */
+    public val routePath: String
+        get() = loaderKey(currentPath)
 
     init {
         // Resolve any params that the initial top-of-stack path produces,
@@ -452,9 +484,14 @@ public class PyreonRouter(
         if (next == query.value) return
         query.value = next
         val stack = path.value
-        val top = stack.lastOrNull() ?: return
-        val base = splitPathAndQuery(top).first
         val serialized = serializeQuery(next)
+        val top = stack.lastOrNull()
+        if (top == null) {
+            // The root view is not a stack entry: keep its query beside it.
+            rootQueries.value = rootQueries.value + (rootKey to serialized)
+            return
+        }
+        val base = splitPathAndQuery(top).first
         path.value =
             stack.dropLast(1) + if (serialized.isEmpty()) base else "$base?$serialized"
     }
@@ -492,6 +529,9 @@ public class PyreonRouter(
      *  entry (the `+` operator on a `mapOf`-backed Map preserves
      *  insertion order via the default LinkedHashMap impl) is dropped. */
     public fun setLoaderData(path: String, value: Any?) {
+        // The route, query excluded: a url-state write is a query-only
+        // navigation and must not re-run the loader or hide its data.
+        val path = loaderKey(path)
         val current = loaderData.value
         if (path !in current && current.size >= MAX_LOADER_ENTRIES) {
             val oldest = current.keys.first()
@@ -797,11 +837,16 @@ public class PyreonRouter(
      */
     public fun reset() {
         this.path.value = emptyList()
+        rootQueries.value = rootQueries.value - rootKey
         // Phase B8: reset is "blow-away"; clear forward history too.
         _forwardStack.clear()
     }
 
     public companion object {
+        /** The [loaderData] key for a URL: its route part, query and fragment
+         *  dropped (`/search?q=cat` → `/search`). */
+        public fun loaderKey(url: String): String = splitPathAndQuery(url).first
+
         /** The tab whose root is the longest segment-prefix of [candidate]. */
         public fun tabFor(candidate: String, tabs: List<PyreonRouterTab>): PyreonRouterTab? {
             val segs = splitPathAndQuery(candidate).first.split('/').filter { it.isNotEmpty() }

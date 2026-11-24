@@ -1226,6 +1226,105 @@ final class PyreonRouterQueryTests: XCTestCase {
         XCTAssertTrue(router.params.isEmpty)
     }
 
+    // MARK: - A query-only navigation keeps the screen (native twin of #4814)
+    //
+    // Each `path` element is the pushed screen's identity in
+    // `.navigationDestination(for: String.self)`. `setQueryParam` (every
+    // url-state write) and a same-route `replace` rewrote that element to
+    // `"/search?q=…"`, so SwiftUI saw a new destination, rebuilt the screen
+    // and dropped its `@State`.
+
+    @MainActor
+    func testQueryWriteLeavesTheStackElementUnchanged() {
+        let router = PyreonRouter()
+        router.push("/search?q=cat")
+        XCTAssertEqual(router.path, ["/search"])
+        XCTAssertEqual(router.currentPath, "/search?q=cat")
+
+        router.setQueryParam("q", "dog")
+        XCTAssertEqual(router.path, ["/search"])
+        XCTAssertEqual(router.query["q"], "dog")
+        XCTAssertEqual(router.currentPath, "/search?q=dog")
+
+        router.replace("/search?q=bird")
+        XCTAssertEqual(router.path, ["/search"])
+        XCTAssertEqual(router.query["q"], "bird")
+        XCTAssertEqual(router.currentPath, "/search?q=bird")
+    }
+
+    @MainActor
+    func testEachEntryKeepsItsOwnQueryAcrossBackAndForward() {
+        let router = PyreonRouter()
+        router.push("/search?q=cat")
+        router.push("/item/1?tab=specs")
+        XCTAssertEqual(router.path, ["/search", "/item/1"])
+        router.back()
+        XCTAssertEqual(router.currentPath, "/search?q=cat")
+        XCTAssertEqual(router.query, ["q": "cat"])
+        router.forward()
+        XCTAssertEqual(router.currentPath, "/item/1?tab=specs")
+        XCTAssertEqual(router.path, ["/search", "/item/1"])
+        // A SwiftUI pop through the binding restores the entry below's query.
+        router.stackBinding().wrappedValue = ["/search"]
+        XCTAssertEqual(router.currentPath, "/search?q=cat")
+        XCTAssertEqual(router.query, ["q": "cat"])
+    }
+
+    @MainActor
+    func testRootQueryIsReflectedInCurrentPath() {
+        let router = PyreonRouter()
+        router.setQueryParam("filter", "open")
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.currentPath, "/?filter=open")
+        // A same-route replace on the root updates the root's query instead of
+        // pushing a second copy of the root over it.
+        router.replace("/?filter=done")
+        XCTAssertEqual(router.path, [])
+        XCTAssertEqual(router.currentPath, "/?filter=done")
+        // Going back to the root restores the root's own query.
+        router.push("/about")
+        XCTAssertTrue(router.query.isEmpty)
+        router.back()
+        XCTAssertEqual(router.query, ["filter": "done"])
+    }
+
+    @MainActor
+    func testTabSwitchKeepsEachEntrysQuery() {
+        let router = PyreonRouter(
+            initialPath: [],
+            tabs: [
+                PyreonRouterTab(name: "feed", root: "/feed"),
+                PyreonRouterTab(name: "me", root: "/me"),
+            ]
+        )
+        router.push("/feed/search?q=cat")
+        router.setQueryParam("q", "dog")
+        router.selectTab("me")
+        XCTAssertTrue(router.query.isEmpty)
+        XCTAssertEqual(router.tabPath("feed"), ["/feed/search"])
+        router.selectTab("feed")
+        XCTAssertEqual(router.path, ["/feed/search"])
+        XCTAssertEqual(router.currentPath, "/feed/search?q=dog")
+        XCTAssertEqual(router.query, ["q": "dog"])
+    }
+
+    @MainActor
+    func testLoaderKeyExcludesTheQuery() throws {
+        struct Loaded { let n: Int }
+        let router = PyreonRouter()
+        router.push("/search?q=cat")
+        // The emitted loader host stores under the destination value.
+        router.setLoaderData("/search?q=cat", Loaded(n: 1))
+        XCTAssertEqual(Array(router.loaderData.keys), ["/search"])
+        // A url-state write must not hide the route's data (content gate) or
+        // make the loader run again (no data under the new key).
+        router.setQueryParam("q", "dog")
+        let loaded: Loaded? = useLoaderData(router: router)
+        XCTAssertEqual(loaded?.n, 1)
+        XCTAssertNotNil(router.loaderData(for: router.currentPath))
+        XCTAssertEqual(PyreonRouter.loaderKey("/search?q=dog#top"), "/search")
+    }
+
     // MARK: - A COLD deep link is gated (2026-08 security audit)
     //
     // `init` assigned `initialPath` straight to `path`, and `allowNavigation`
