@@ -17,8 +17,14 @@ import { isPathExempt } from '../../utils/exempt-paths'
  * overrides the field (`{ ...t, done }` in a `.map` callback, `.with(i, {…})`,
  * `.splice(i, 1, {…})`, `xs[i] = {…}`) and a keyed row reading that field. A
  * read with no replacement in sight is fine (items never change identity), and
- * the field-name intersection keeps unrelated spreads quiet. The `by` key field
- * never goes stale; calls (`t.done()`, a per-item signal) are not stale reads.
+ * the field-name intersection keeps unrelated spreads quiet. A field the `by`
+ * key reads never goes stale (a change to it changes the key, so the row is
+ * rebuilt): every read counts, in a composite template (`${t.id}:${t.done}`),
+ * an array `join`, a member chain (`t.meta.rev` → `meta`), `t['done']`, a
+ * destructured key param, or a same-file key function. A key that hands the
+ * whole item to something the rule cannot see into (`keyOf(t)`, an imported
+ * `by={keyOf}`) may read any field, so that `<For>` is skipped. Calls
+ * (`t.done()`, a per-item signal) are not stale reads.
  *
  * Mirror of the `for-stale-item-field` code in `detectPyreonPatterns`
  * (`@pyreon/compiler`, `stale-for-item.ts`), which feeds `pyreon check`, MCP
@@ -33,6 +39,12 @@ interface Replaced {
   any: boolean
 }
 
+/** The item fields a `by` key reads; `all` when it may read any of them. */
+interface KeyFields {
+  fields: Set<string>
+  all: boolean
+}
+
 function unwrap(n: Node): Node {
   let e = n
   while (
@@ -45,6 +57,7 @@ function unwrap(n: Node): Node {
   ) {
     e = e.expression
   }
+
   return e
 }
 
@@ -73,6 +86,7 @@ function keyName(key: Node, computed: boolean): string | undefined {
   if (key.type === 'Literal' && (typeof key.value === 'string' || typeof key.value === 'number')) {
     return String(key.value)
   }
+
   return undefined
 }
 
@@ -138,11 +152,12 @@ function collectReplaced(program: Node): Replaced {
       if (lit?.type === 'ObjectExpression') recordLiteral(lit, out)
     }
   })
+
   return out
 }
 
-const replacedHas = (r: Replaced, field: string, keyField: string | undefined): boolean =>
-  field !== keyField && (r.any || r.fields.has(field))
+const replacedHas = (r: Replaced, field: string, key: KeyFields): boolean =>
+  !key.all && !key.fields.has(field) && (r.any || r.fields.has(field))
 
 function bindsName(pattern: Node, name: string): boolean {
   if (!pattern) return false
@@ -204,6 +219,7 @@ function fieldReads(root: Node, rootParent: Node, name: string): Node[] {
       if (!isCallee && !isWrite && !isMethodCallee) out.push(n)
     }
   })
+
   return out
 }
 
@@ -221,10 +237,11 @@ function collectComponents(program: Node): Map<string, Node> {
       if (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression') out.set(n.id.name, init)
     }
   })
+
   return out
 }
 
-function componentFields(comp: Node, attr: string | null, r: Replaced, keyField: string | undefined): string[] {
+function componentFields(comp: Node, attr: string | null, r: Replaced, keyFields: KeyFields): string[] {
   const p = paramIdentifier(comp.params?.[0])
   if (!p || !comp.body) return []
   const found = new Set<string>()
@@ -233,7 +250,7 @@ function componentFields(comp: Node, attr: string | null, r: Replaced, keyField:
     const reads = fieldReads(comp.body, comp, p.name)
     const readSet = new Set(reads)
     if (attr === null) {
-      for (const m of reads) if (replacedHas(r, m.property.name, keyField)) found.add(m.property.name)
+      for (const m of reads) if (replacedHas(r, m.property.name, keyFields)) found.add(m.property.name)
     } else {
       walk(comp.body, comp, (n, parent) => {
         if (
@@ -244,7 +261,7 @@ function componentFields(comp: Node, attr: string | null, r: Replaced, keyField:
           n.property?.type === 'Identifier'
         ) {
           const isCallee = parent?.type === 'CallExpression' && parent.callee === n
-          if (!isCallee && replacedHas(r, n.property.name, keyField)) found.add(n.property.name)
+          if (!isCallee && replacedHas(r, n.property.name, keyFields)) found.add(n.property.name)
         }
       })
     }
@@ -253,23 +270,24 @@ function componentFields(comp: Node, attr: string | null, r: Replaced, keyField:
       const key = patternKey(el)
       if (key === undefined) continue
       if (attr === null) {
-        if (replacedHas(r, key, keyField)) found.add(key)
+        if (replacedHas(r, key, keyFields)) found.add(key)
         continue
       }
       if (key !== attr) continue
       const value = paramIdentifier(el.value)
       if (value?.type === 'Identifier') {
         for (const m of fieldReads(comp.body, comp, value.name)) {
-          if (replacedHas(r, m.property.name, keyField)) found.add(m.property.name)
+          if (replacedHas(r, m.property.name, keyFields)) found.add(m.property.name)
         }
       } else if (value?.type === 'ObjectPattern') {
         for (const inner of value.properties ?? []) {
           const k = patternKey(inner)
-          if (k !== undefined && replacedHas(r, k, keyField)) found.add(k)
+          if (k !== undefined && replacedHas(r, k, keyFields)) found.add(k)
         }
       }
     }
   }
+
   return [...found]
 }
 
@@ -279,26 +297,109 @@ function jsxAttr(opening: Node, name: string): Node | undefined {
   )
 }
 
-function keyFieldOf(byAttr: Node | undefined): string | undefined {
-  const expr = byAttr?.value?.type === 'JSXExpressionContainer' ? unwrap(byAttr.value.expression) : undefined
-  if (!expr || (expr.type !== 'ArrowFunctionExpression' && expr.type !== 'FunctionExpression')) return undefined
-  const p = expr.params?.[0]
-  if (p?.type !== 'Identifier') return undefined
-  let body = expr.body
-  if (body?.type === 'BlockStatement') {
-    body = body.body?.find((s: Node) => s.type === 'ReturnStatement')?.argument
+const WRAPPERS = new Set(['ParenthesizedExpression', 'TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression'])
+
+/** A same-file `const keyOf = (t) => …` / `function keyOf(t) { … }` by name. */
+function resolveLocalFunction(program: Node, name: string): Node | undefined {
+  let found: Node | undefined
+  walk(program, null, (n) => {
+    if (found) return false
+    if (n.type === 'FunctionDeclaration' && n.id?.name === name && n.body) found = n
+    else if (n.type === 'VariableDeclarator' && n.id?.type === 'Identifier' && n.id.name === name && n.init) {
+      const init = unwrap(n.init)
+      if (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression') found = init
+    }
+  })
+
+  return found
+}
+
+/** `n` (an Identifier) sits in expression position: not a property key, a declaration or a type. */
+function isReference(n: Node, parent: Node): boolean {
+  if (!parent) return true
+  if (parent.type === 'MemberExpression' && parent.property === n && !parent.computed) return false
+  if (parent.type === 'Property' && parent.key === n && !parent.computed && !parent.shorthand) return false
+  if (parent.type === 'VariableDeclarator' && parent.id === n) return false
+  if (isFn(parent) && (parent.id === n || (parent.params ?? []).includes(n))) return false
+  if (typeof parent.type === 'string' && parent.type.startsWith('TS') && !WRAPPERS.has(parent.type)) return false
+
+  return true
+}
+
+/**
+ * Every item field the `by` key reads, wherever it sits in the key expression:
+ * `t.id`, `${t.id}:${t.done}`, `[t.a, t.b].join(':')`, `t.meta.rev` (the field
+ * is `meta`), `t['done']`, `String(t.id)`. A destructured key param reads its
+ * keys. A use of the whole item other than a field read (`keyOf(t)`,
+ * `JSON.stringify(t)`, `t[k]`, `by={(t) => t}`) can see every field, and so can
+ * a key function that is not inline or in the same file: both give `all`.
+ * Mirror of `keyFieldsOf` in `@pyreon/compiler`'s `stale-for-item.ts`.
+ */
+function keyFieldsOf(byAttr: Node | undefined, program: Node): KeyFields {
+  const out: KeyFields = { fields: new Set(), all: false }
+  let fn = byAttr?.value?.type === 'JSXExpressionContainer' ? unwrap(byAttr.value.expression) : undefined
+  if (!fn || fn.type === 'JSXEmptyExpression') return out
+  if (fn.type === 'Identifier') {
+    fn = resolveLocalFunction(program, fn.name)
+    if (!fn) {
+      out.all = true
+      return out
+    }
   }
-  const e = unwrap(body)
-  if (
-    e?.type === 'MemberExpression' &&
-    !e.computed &&
-    e.object?.type === 'Identifier' &&
-    e.object.name === p.name &&
-    e.property?.type === 'Identifier'
-  ) {
-    return e.property.name
+  if (!isFn(fn)) {
+    // A call (`by={keyBy('id')}`) or member (`by={keys.row}`) builds a key
+    // function the walk cannot see into. A literal is not a key function at
+    // all (`<For>` throws on it), so it gives no key fields.
+    if (fn.type !== 'Literal' && fn.type !== 'TemplateLiteral') out.all = true
+    return out
   }
-  return undefined
+  const p = paramIdentifier(fn.params?.[0])
+  if (!p || !fn.body) return out
+  if (p.type === 'ObjectPattern') {
+    for (const el of p.properties ?? []) {
+      const key = patternKey(el)
+      if (key === undefined) out.all = true
+      else out.fields.add(key)
+    }
+
+    return out
+  }
+  if (p.type !== 'Identifier') {
+    out.all = true
+    return out
+  }
+  const item = p.name
+  const parentOf = new Map<Node, Node>()
+  walk(fn.body, fn, (n, parent) => {
+    parentOf.set(n, parent)
+    if (isFn(n) && (n.params ?? []).some((q: Node) => bindsName(q, item))) return false
+    if (n.type !== 'Identifier' || n.name !== item || !isReference(n, parent)) return
+    // Read through `(t as Row).done` / `t!.done`.
+    let child = n
+    let outer = parent
+    while (outer && WRAPPERS.has(outer.type)) {
+      child = outer
+      outer = parentOf.get(outer)
+    }
+    if (outer?.type === 'MemberExpression' && outer.object === child) {
+      if (!outer.computed && outer.property?.type === 'Identifier') {
+        out.fields.add(outer.property.name)
+        return
+      }
+      const k = outer.computed ? outer.property : undefined
+      if (k?.type === 'Literal' && typeof k.value === 'string') {
+        out.fields.add(k.value)
+        return
+      }
+      if (k?.type === 'TemplateLiteral' && (k.expressions ?? []).length === 0) {
+        out.fields.add(k.quasis?.[0]?.value?.cooked ?? '')
+        return
+      }
+    }
+    out.all = true
+  })
+
+  return out
 }
 
 /**
@@ -319,10 +420,12 @@ function remountsOnListChange(forEl: Node, eachAttr: Node, parentOf: Map<Node, N
       if (holder?.type !== 'JSXExpressionContainer') return false
       const owner = parentOf.get(holder)
       const tag = owner?.type === 'JSXElement' ? owner.openingElement?.name?.name : undefined
+
       return !(tag === 'For' || tag === 'Index')
     }
     n = parentOf.get(n)
   }
+
   return false
 }
 
@@ -358,22 +461,23 @@ export const noStaleForItemField: Rule = {
         const tail = (fields: string[]): string =>
           ` — but this file replaces items under the same \`by\` key (\`{ ...item, ${fields.join(', ')}: … }\`). On the web a keyed <For> keeps that row and runs its callback once per key, so the item is the object the row mounted with and this read keeps the FIRST value (iOS and Android redraw the row). Read the live value by key through a call (\`isDone(t.id)\`), which stays reactive on web and lowers to a lookup on native, or give the field its own signal.`
 
-        const checkRow = (fn: Node, keyField: string | undefined): void => {
+        const checkRow = (fn: Node, keyFields: KeyFields): void => {
           const p = paramIdentifier(fn.params?.[0])
           if (!p) return
           if (p.type === 'ObjectPattern') {
             for (const el of p.properties ?? []) {
               const key = patternKey(el)
-              if (key !== undefined && replacedHas(replaced, key, keyField)) {
+              if (key !== undefined && replacedHas(replaced, key, keyFields)) {
                 report(el, `<For> row destructures \`${key}\` from its item${tail([key])}`)
               }
             }
+
             return
           }
           if (p.type !== 'Identifier') return
           const item = p.name
           for (const m of fieldReads(fn.body, fn, item)) {
-            if (replacedHas(replaced, m.property.name, keyField)) {
+            if (replacedHas(replaced, m.property.name, keyFields)) {
               report(m, `<For> row reads \`${item}.${m.property.name}\`${tail([m.property.name])}`)
             }
           }
@@ -397,7 +501,7 @@ export const noStaleForItemField: Rule = {
                 if (e?.type === 'Identifier' && e.name === item) attrName = null
               }
               if (attrName === undefined) continue
-              const fields = componentFields(comp, attrName, replaced, keyField)
+              const fields = componentFields(comp, attrName, replaced, keyFields)
               if (fields.length > 0) {
                 report(
                   a,
@@ -419,15 +523,17 @@ export const noStaleForItemField: Rule = {
           const byAttr = jsxAttr(opening, 'by')
           if (!byAttr) return
           if (remountsOnListChange(n, eachAttr, parentOf)) return
-          const keyField = keyFieldOf(byAttr)
+          const keyFields = keyFieldsOf(byAttr, program)
+          if (keyFields.all) return
           for (const child of n.children ?? []) {
             if (child.type !== 'JSXExpressionContainer') continue
             const fn = unwrap(child.expression)
-            if (fn?.type === 'ArrowFunctionExpression' || fn?.type === 'FunctionExpression') checkRow(fn, keyField)
+            if (fn?.type === 'ArrowFunctionExpression' || fn?.type === 'FunctionExpression') checkRow(fn, keyFields)
           }
         })
       },
     }
+
     return callbacks
   },
 }

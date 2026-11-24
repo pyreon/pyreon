@@ -259,16 +259,58 @@ describe('for-stale-item-field — syntax variants of each half', () => {
     expect(hits(L(titleRow, twoSpreads)).map((x) => x.current)).toEqual(['t.title'])
   })
 
-  it('a `by` the detector cannot read as `x => x.key` treats every replaced field as stale', () => {
-    // Without a known key field the replaced `id` is reported too.
+  it('a `by` with no field reads treats every replaced field as stale', () => {
+    // Without a key field the replaced `id` is reported too. A literal is not
+    // a key function at all, and a key that returns nothing reads nothing.
     const write = `const swap = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, id: id + 1 } : t)))`
     const idRow = `(t) => <li>{t.id}</li>`
-    for (const by of ['keyOf', '({ id }) => id', '(t) => String(t.id)', '(t) => { log(t) }', '"id"']) {
+    for (const by of ['() => 1', '(t) => { log() }', '"id"']) {
       const attr = by.startsWith('"') ? `by=${by}` : `by={${by}}`
       expect(hits(L(`<For each={todos} ${attr}>{${idRow}}</For>`, write)).map((x) => x.current)).toEqual(['t.id'])
     }
     // A block-bodied `by` that returns the key is read like the expression form.
     expect(hits(L(`<For each={todos} by={(t) => { return t.id }}>{${idRow}}</For>`, write))).toEqual([])
+  })
+
+  // #4798: a field the key reads changes the key when it changes, so the row
+  // is rebuilt with the new item and the read cannot go stale.
+  it('every field the `by` key reads is a key field, whatever the key expression', () => {
+    for (const by of [
+      '(t) => `${t.id}:${t.done}`',
+      "(t) => t.id + ':' + t.done",
+      "(t) => [t.id, t.done].join(':')",
+      '(t) => `${(t as Todo).id}:${t!.done}`',
+      "(t) => `${t['id']}:${t['done']}`",
+      "(t) => { const d = t.done ? 'd' : 'o'; return t.id + d }",
+      '({ id, done }) => `${id}:${done}`',
+      'function (t) { return `${t.id}:${t.done}` }',
+    ]) {
+      expect(hits(L(`<For each={todos} by={${by}}>{${row}}</For>`)), by).toEqual([])
+    }
+  })
+
+  it('a key that reads other fields still reports the field it does not read', () => {
+    for (const by of ['(t) => `${t.id}:${t.title}`', '({ id }) => id', '(t) => String(t.id)']) {
+      expect(hits(L(`<For each={todos} by={${by}}>{${row}}</For>`)).map((x) => x.current), by).toEqual(['t.done'])
+    }
+  })
+
+  it('a member-chain key covers its top-level field', () => {
+    const write = `const bump = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, meta: { rev: t.meta.rev + 1 } } : t)))`
+    const metaRow = `(t) => <li>{t.meta.rev}</li>`
+    expect(hits(L(`<For each={todos} by={(t) => \`\${t.id}:\${t.meta.rev}\`}>{${metaRow}}</For>`, write))).toEqual([])
+    expect(hits(L(`<For each={todos} by={(t) => t.id}>{${metaRow}}</For>`, write)).map((x) => x.current)).toEqual(['t.meta'])
+  })
+
+  it('a same-file key function is read through; an opaque one may read any field', () => {
+    const forEl = (by: string) => `<For each={todos} by={${by}}>{${row}}</For>`
+    expect(hits(L(forEl('keyOf'), TOGGLE, 'const keyOf = (t: Todo) => `${t.id}:${t.done}`'))).toEqual([])
+    expect(hits(L(forEl('keyOf'), TOGGLE, 'function keyOf(t: Todo) { return `${t.id}:${t.done}` }'))).toEqual([])
+    expect(hits(L(forEl('keyOf'), TOGGLE, 'const keyOf = (t: Todo) => t.id')).map((x) => x.current)).toEqual(['t.done'])
+    // The whole item escapes into something the walk cannot see into.
+    for (const by of ['importedKeyOf', '(t) => keyOf(t)', '(t) => JSON.stringify(t)', '(t) => t', "keyBy('id')", 'keys.row']) {
+      expect(hits(L(forEl(by))), by).toEqual([])
+    }
   })
 
   it('a row that rebinds the item name, by declaration or a destructured nested param', () => {

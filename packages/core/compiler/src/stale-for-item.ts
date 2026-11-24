@@ -24,7 +24,13 @@
  *     whole item passed to a component defined in the same file that reads the
  *     field (`<Row todo={t} />` + `props.todo.done`).
  *
- * The `by` key field itself never goes stale (the row exists because of it).
+ * A field the `by` key reads never goes stale: when it changes the key changes,
+ * so the row is rebuilt with the new item. `keyFieldsOf` collects every field
+ * the key reads (`t.id`, a composite `${t.id}:${t.done}`, `[t.a, t.b].join()`,
+ * `t.meta.rev`, `t['done']`, a destructured `({ id, done })`, a same-file
+ * key function); a key that hands the whole item to something it cannot see
+ * into (`keyOf(t)`, `by={importedKeyOf}`, `JSON.stringify(t)`) may read any
+ * field, so the `<For>` is skipped.
  * A `<For>` rebuilt by an accessor on every list change (`{() => … <For
  * each={list.data() ?? []}> …}`) has fresh rows, so it is skipped.
  * File-level pairing on purpose: the `each` list is often a derived view of the
@@ -37,6 +43,16 @@ import ts from 'typescript'
 export interface ReplacedFields {
   fields: Set<string>
   any: boolean
+}
+
+/**
+ * The item fields a `<For>`'s `by` key reads. `all` when the key may read any
+ * field (the item escapes into an opaque call, or the key function is not in
+ * the file).
+ */
+export interface KeyFields {
+  fields: Set<string>
+  all: boolean
 }
 
 export type StaleForItemKind = 'read' | 'destructure' | 'child-prop'
@@ -67,6 +83,7 @@ function unwrap(expr: ts.Expression): ts.Expression {
   ) {
     e = e.expression
   }
+
   return e
 }
 
@@ -118,6 +135,7 @@ function recordLiteral(lit: ts.ObjectLiteralExpression, out: ReplacedFields, ite
       out.fields.add(p.name.text)
     }
   }
+
   return true
 }
 
@@ -172,11 +190,12 @@ export function collectReplacedFields(sf: ts.SourceFile): ReplacedFields {
     ts.forEachChild(n, visit)
   }
   visit(sf)
+
   return out
 }
 
-function isReplaced(r: ReplacedFields, field: string, keyField: string | undefined): boolean {
-  if (field === keyField) return false
+function isReplaced(r: ReplacedFields, field: string, key: KeyFields): boolean {
+  if (key.all || key.fields.has(field)) return false
   return r.any || r.fields.has(field)
 }
 
@@ -188,6 +207,7 @@ function attrExpr(opening: ts.JsxOpeningLikeElement, name: string): ts.Expressio
       return undefined
     }
   }
+
   return undefined
 }
 
@@ -197,7 +217,7 @@ function hasAttr(opening: ts.JsxOpeningLikeElement, name: string): boolean {
   )
 }
 
-/** `by={(x) => x.id}` → `id`. */
+/** `by={(x) => x.id}` → `id`; undefined for any other shape. Used for the fix text. */
 function keyFieldOf(by: ts.Expression | undefined): string | undefined {
   if (!by) return undefined
   const fn = unwrap(by)
@@ -214,7 +234,130 @@ function keyFieldOf(by: ts.Expression | undefined): string | undefined {
   if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression) && e.expression.text === p.name.text) {
     return e.name.text
   }
+
   return undefined
+}
+
+type KeyFn = ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration
+
+/** A same-file `const keyOf = (t) => …` / `function keyOf(t) { … }` by name. */
+function resolveLocalFunction(sf: ts.SourceFile, name: string): KeyFn | undefined {
+  let found: KeyFn | undefined
+  const visit = (n: ts.Node): void => {
+    if (found) return
+    if (ts.isFunctionDeclaration(n) && n.name?.text === name && n.body) found = n
+    else if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === name && n.initializer) {
+      const init = unwrap(n.initializer)
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) found = init
+    }
+    if (!found) ts.forEachChild(n, visit)
+  }
+  visit(sf)
+
+  return found
+}
+
+/**
+ * Every item field the `by` key reads. Any read counts, wherever it sits in
+ * the key expression: `t.id`, `${t.id}:${t.done}`, `[t.a, t.b].join(':')`,
+ * `t.meta.rev` (the field is `meta`), `t['done']`, `String(t.id)`. A
+ * destructured key param (`({ id, done }) => …`) reads its keys. A use of the
+ * whole item other than a field read (`keyOf(t)`, `JSON.stringify(t)`,
+ * `t[k]`, `by={(t) => t}`) can see every field, and so can a key function
+ * that is not an inline or same-file function: both give `all`.
+ */
+function keyFieldsOf(by: ts.Expression | undefined, sf: ts.SourceFile): KeyFields {
+  const out: KeyFields = { fields: new Set(), all: false }
+  if (!by) return out
+  let fn: ts.Expression | KeyFn = unwrap(by)
+  if (ts.isIdentifier(fn)) {
+    const local = resolveLocalFunction(sf, fn.text)
+    if (!local) {
+      out.all = true
+      return out
+    }
+    fn = local
+  }
+  if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn) || ts.isFunctionDeclaration(fn))) {
+    // A call (`by={keyBy('id')}`) or member (`by={keys.row}`) builds a key
+    // function the walk cannot see into. A literal is not a key function at
+    // all (`<For>` throws on it), so it gives no key fields.
+    if (!ts.isLiteralExpression(fn) && !ts.isTemplateExpression(fn)) out.all = true
+    return out
+  }
+  const p = fn.parameters[0]
+  if (!p || !fn.body) return out
+  addParamKeyFields(p.name, fn.body, out)
+
+  return out
+}
+
+function addParamKeyFields(name: ts.BindingName, body: ts.Node, out: KeyFields): void {
+  if (ts.isObjectBindingPattern(name)) {
+    for (const el of name.elements) {
+      if (el.dotDotDotToken) {
+        out.all = true
+        continue
+      }
+      const key = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
+      if (key === undefined) out.all = true
+      else out.fields.add(key)
+    }
+
+    return
+  }
+  if (!ts.isIdentifier(name)) {
+    // `([a, b]) => …` on an item: indexes, not named fields.
+    out.all = true
+    return
+  }
+  const item = name.text
+  const visit = (n: ts.Node): void => {
+    if (isFunctionLike(n) && n.parameters.some((q) => bindsName(q.name, item))) return
+    if (ts.isIdentifier(n) && n.text === item && isReference(n)) {
+      const field = fieldReadOf(n)
+      if (field === undefined) out.all = true
+      else out.fields.add(field)
+    }
+    ts.forEachChild(n, visit)
+  }
+  visit(body)
+}
+
+const isTransparent = (n: ts.Node): boolean =>
+  ts.isParenthesizedExpression(n) || ts.isNonNullExpression(n) || ts.isAsExpression(n) || ts.isSatisfiesExpression(n)
+
+/**
+ * The field a use of the item reads (`t.done`, `(t as Row).done`, `t!.done`,
+ * `t['done']`), or undefined when the use is anything else (the whole item).
+ */
+function fieldReadOf(use: ts.Identifier): string | undefined {
+  let child: ts.Node = use
+  let parent = use.parent
+  while (isTransparent(parent)) {
+    child = parent
+    parent = parent.parent
+  }
+  if (ts.isPropertyAccessExpression(parent) && parent.expression === child) return parent.name.text
+  if (!ts.isElementAccessExpression(parent) || parent.expression !== child) return undefined
+  const arg = parent.argumentExpression
+
+  return ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg) ? arg.text : undefined
+}
+
+/** `n` names a binding in expression position (not a property name or a declaration). */
+function isReference(n: ts.Identifier): boolean {
+  const parent = n.parent
+  if (ts.isPropertyAccessExpression(parent) && parent.name === n) return false
+  if (ts.isPropertyAssignment(parent) && parent.name === n) return false
+  if (ts.isBindingElement(parent) && parent.propertyName === n) return false
+  if (ts.isVariableDeclaration(parent) && parent.name === n) return false
+  if (ts.isParameter(parent) && parent.name === n) return false
+  if (ts.isTypeReferenceNode(parent) || ts.isQualifiedName(parent)) return false
+  if (ts.isPropertySignature(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) return false
+  if (ts.isJsxAttribute(parent)) return false
+
+  return true
 }
 
 function bindsName(name: ts.BindingName, target: string): boolean {
@@ -223,6 +366,7 @@ function bindsName(name: ts.BindingName, target: string): boolean {
     if (ts.isOmittedExpression(el)) continue
     if (bindsName(el.name, target)) return true
   }
+
   return false
 }
 
@@ -263,6 +407,7 @@ function findFieldReads(root: ts.Node, name: string): ts.PropertyAccessExpressio
     ts.forEachChild(n, visit)
   }
   visit(root)
+
   return out
 }
 
@@ -279,6 +424,7 @@ function collectComponents(sf: ts.SourceFile): Map<string, ComponentFn> {
     ts.forEachChild(n, visit)
   }
   visit(sf)
+
   return out
 }
 
@@ -290,7 +436,7 @@ function componentFieldReads(
   comp: ComponentFn,
   attr: string | null,
   r: ReplacedFields,
-  keyField: string | undefined,
+  keyFields: KeyFields,
 ): string[] {
   const p = comp.parameters[0]
   if (!p || !comp.body) return []
@@ -299,7 +445,7 @@ function componentFieldReads(
     const propsName = p.name.text
     for (const read of findFieldReads(comp.body, propsName)) {
       if (attr === null) {
-        if (isReplaced(r, read.name.text, keyField)) found.add(read.name.text)
+        if (isReplaced(r, read.name.text, keyFields)) found.add(read.name.text)
         continue
       }
       if (read.name.text !== attr) continue
@@ -307,7 +453,7 @@ function componentFieldReads(
       const outer = read.parent
       if (ts.isPropertyAccessExpression(outer) && outer.expression === read) {
         const isCallee = ts.isCallExpression(outer.parent) && outer.parent.expression === outer
-        if (!isCallee && isReplaced(r, outer.name.text, keyField)) found.add(outer.name.text)
+        if (!isCallee && isReplaced(r, outer.name.text, keyFields)) found.add(outer.name.text)
       }
     }
   } else if (ts.isObjectBindingPattern(p.name)) {
@@ -315,13 +461,13 @@ function componentFieldReads(
       const key = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
       if (key === undefined) continue
       if (attr === null) {
-        if (isReplaced(r, key, keyField)) found.add(key)
+        if (isReplaced(r, key, keyFields)) found.add(key)
         continue
       }
       if (key !== attr) continue
       if (ts.isIdentifier(el.name)) {
         for (const read of findFieldReads(comp.body, el.name.text)) {
-          if (isReplaced(r, read.name.text, keyField)) found.add(read.name.text)
+          if (isReplaced(r, read.name.text, keyFields)) found.add(read.name.text)
         }
       } else if (ts.isObjectBindingPattern(el.name)) {
         for (const inner of el.name.elements) {
@@ -330,11 +476,12 @@ function componentFieldReads(
             : ts.isIdentifier(inner.name)
               ? inner.name.text
               : undefined
-          if (k !== undefined && isReplaced(r, k, keyField)) found.add(k)
+          if (k !== undefined && isReplaced(r, k, keyFields)) found.add(k)
         }
       }
     }
   }
+
   return [...found]
 }
 
@@ -365,10 +512,12 @@ function remountsOnListChange(forEl: ts.JsxElement, each: ts.Expression | undefi
         const tag = owner.openingElement.tagName.text
         if (tag === 'For' || tag === 'Index') return false
       }
+
       return true
     }
     n = n.parent
   }
+
   return false
 }
 
@@ -388,33 +537,42 @@ export function findStaleForItemReads(sf: ts.SourceFile): StaleForItemHit[] {
       hasAttr(n.openingElement, 'by') &&
       !remountsOnListChange(n, attrExpr(n.openingElement, 'each'))
     ) {
-      const keyField = keyFieldOf(attrExpr(n.openingElement, 'by'))
-      for (const child of n.children) {
-        if (!ts.isJsxExpression(child) || !child.expression) continue
-        const fn = unwrap(child.expression)
-        if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) continue
-        checkRow(fn, keyField)
+      const by = attrExpr(n.openingElement, 'by')
+      const keyFields = keyFieldsOf(by, sf)
+      if (!keyFields.all) {
+        const keyField = keyFieldOf(by)
+        for (const child of n.children) {
+          if (!ts.isJsxExpression(child) || !child.expression) continue
+          const fn = unwrap(child.expression)
+          if (!(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) continue
+          checkRow(fn, keyFields, keyField)
+        }
       }
     }
     ts.forEachChild(n, visit)
   }
 
-  const checkRow = (fn: ts.ArrowFunction | ts.FunctionExpression, keyField: string | undefined): void => {
+  const checkRow = (
+    fn: ts.ArrowFunction | ts.FunctionExpression,
+    keyFields: KeyFields,
+    keyField: string | undefined,
+  ): void => {
     const p = fn.parameters[0]
     if (!p) return
     if (ts.isObjectBindingPattern(p.name)) {
       for (const el of p.name.elements) {
         const key = el.propertyName ? propName(el.propertyName) : ts.isIdentifier(el.name) ? el.name.text : undefined
-        if (key !== undefined && isReplaced(replaced, key, keyField)) {
+        if (key !== undefined && isReplaced(replaced, key, keyFields)) {
           hits.push({ node: el, kind: 'destructure', param: '{…}', fields: [key], keyField })
         }
       }
+
       return
     }
     if (!ts.isIdentifier(p.name)) return
     const item = p.name.text
     for (const read of findFieldReads(fn.body, item)) {
-      if (isReplaced(replaced, read.name.text, keyField)) {
+      if (isReplaced(replaced, read.name.text, keyFields)) {
         hits.push({ node: read, kind: 'read', param: item, fields: [read.name.text], keyField })
       }
     }
@@ -437,7 +595,7 @@ export function findStaleForItemReads(sf: ts.SourceFile): StaleForItemHit[] {
                 if (ts.isIdentifier(e) && e.text === item) attrName = null
               }
               if (attrName === undefined) continue
-              const fields = componentFieldReads(comp, attrName, replaced, keyField)
+              const fields = componentFieldReads(comp, attrName, replaced, keyFields)
               if (fields.length > 0) {
                 hits.push({
                   node: a,
@@ -459,5 +617,6 @@ export function findStaleForItemReads(sf: ts.SourceFile): StaleForItemHit[] {
   }
 
   visit(sf)
+
   return hits
 }

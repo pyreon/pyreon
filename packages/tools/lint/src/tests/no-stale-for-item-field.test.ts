@@ -37,6 +37,20 @@ export const List = () => (
 )
 `
 
+/** The toggle write plus a `<For>` keyed by `by`, whose row reads `t.done`. */
+const keyed = (by: string, extra = '') => `
+const todos = signal<Todo[]>([])
+${TOGGLE}
+${extra}
+export const List = () => (
+  <ul>
+    <For each={todos} by={${by}}>
+      {(t) => <li class={t.done ? 'done' : ''}>{t.id}</li>}
+    </For>
+  </ul>
+)
+`
+
 const CASES: Array<[name: string, code: string, expected: number]> = [
   // ── fires ──────────────────────────────────────────────────────────────
   ['text child read', list(`(t) => <li>{t.done ? 'done' : 'todo'}</li>`), 1],
@@ -84,7 +98,35 @@ const CASES: Array<[name: string, code: string, expected: number]> = [
     `const todos = signal([])\n${TOGGLE}\nexport const L = () => <For each={groups} by={(g) => g.id}>{(g) => <For each={todos()} by={(t) => t.id}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>}</For>`,
     1,
   ],
+  // `by` keys that read some fields: only those are safe (#4798).
+  ['composite key without the read field', keyed('(t) => `${t.id}:${t.title}`'), 1],
+  ['destructured key without the read field', keyed('({ id }) => id'), 1],
+  ['same-file key function without the read field', keyed('keyOf', 'const keyOf = (t) => String(t.id)'), 1],
+  ['same-file key function declaration without the read field', keyed('keyOf', 'function keyOf(t) { return t.id }'), 1],
   // ── quiet ──────────────────────────────────────────────────────────────
+  // A field the `by` key reads changes the key, so the row is rebuilt (#4798).
+  ['composite template key', keyed('(t) => `${t.id}:${t.done}`'), 0],
+  ['concatenated key', keyed("(t) => t.id + ':' + t.done"), 0],
+  ['array join key', keyed("(t) => [t.id, t.done].join(':')"), 0],
+  ['wrapped and optional key reads', keyed('(t) => `${(t as Todo).id}:${t!.done}:${t?.title}`'), 0],
+  ['element-access key', keyed("(t) => `${t['id']}:${t['done']}`"), 0],
+  ['block-bodied key', keyed("(t) => { const d = t.done ? 'd' : 'o'; return t.id + d }"), 0],
+  ['destructured key param', keyed('({ id, done }) => `${id}:${done}`'), 0],
+  ['same-file key function', keyed('keyOf', 'const keyOf = (t) => `${t.id}:${t.done}`'), 0],
+  ['key helper that sees the whole item', keyed('(t) => keyOf(t)'), 0],
+  ['imported key function', keyed('importedKeyOf'), 0],
+  ['the item itself as the key', keyed('(t) => t'), 0],
+  ['key built by a call', keyed("keyBy('id', 'done')"), 0],
+  [
+    'member-chain key covers its top-level field',
+    `const todos = signal([])\nconst bump = (id) => todos.set(todos().map((t) => (t.id === id ? { ...t, meta: { rev: t.meta.rev + 1 } } : t)))\nexport const L = () => <For each={todos} by={(t) => \`\${t.id}:\${t.meta.rev}\`}>{(t) => <li>{t.meta.rev}</li>}</For>`,
+    0,
+  ],
+  [
+    'the #4798 repro',
+    `import { For } from '@pyreon/core'\nimport { signal } from '@pyreon/reactivity'\ntype Row = { id: string; done: boolean }\nexport function List() {\n  const rows = signal<Row[]>([{ id: 'a', done: false }])\n  const toggle = (id: string) => rows.set(rows().map((r) => (r.id === id ? { ...r, done: !r.done } : r)))\n  return (\n    <ul>\n      <For each={rows} by={(r) => \`\${r.id}:\${r.done}\`}>\n        {(r) => <li class={r.done ? 'done' : ''} onClick={() => toggle(r.id)}>{r.id}</li>}\n      </For>\n    </ul>\n  )\n}`,
+    0,
+  ],
   [
     'per-item signals',
     `const todos = signal([])\nconst rename = (id, title) => todos.set(todos().map((t) => (t.id === id ? { ...t, title } : t)))\nexport const L = () => <For each={todos} by={(t) => t.id}>{(t) => <li onClick={() => t.done.set(!t.done())}>{t.done() ? 'y' : 'n'}</li>}</For>`,
