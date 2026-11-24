@@ -101,7 +101,10 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
   // container around whatever keyed list it wraps (e.g. a `<For>`), which owns
   // reconciliation. This is the shape PMTC lowers on native, so the SAME .tsx
   // renders on web + iOS + Android. Per-item enter/leave CSS is a no-op here.
-  if (props.items === undefined) {
+  // The mode is decided by whether `items` was PASSED, not by its first value:
+  // `items={query.data()?.rows}` is undefined until the data loads, and must
+  // still animate the rows once it does.
+  if (!('items' in props)) {
     return h(tag, {}, props.children)
   }
   // Read through `props` on every run: a compiler-wrapped prop is a getter, so

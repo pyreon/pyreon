@@ -170,9 +170,13 @@ export function Defer<P extends object>(props: DeferProps<P>): VNode {
   // that point could not find the boundary (#4831).
   const boundary = nearestErrorBoundary()
   let unmounted = false
-  onUnmount(() => {
-    unmounted = true
-  })
+  // Only a Defer inside a boundary needs to know it unmounted (a late rejection
+  // must not flip a boundary that is still mounted); the rest register nothing.
+  if (boundary !== null) {
+    onUnmount(() => {
+      unmounted = true
+    })
+  }
 
   // A failed load goes to the enclosing boundary like any other render error
   // (the boundary reports it). Without one it is handled like an uncaught

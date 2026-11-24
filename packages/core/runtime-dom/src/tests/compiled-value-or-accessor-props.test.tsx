@@ -235,3 +235,24 @@ return Page`,
     })
   })
 }
+
+describe('<TransitionGroup items> that is undefined at first', () => {
+  // `items={query.data()?.rows}` is undefined until the data loads. The mode
+  // used to be decided from that first value, which locked the plain-container
+  // shape (an empty wrapper, no warning) for good.
+  it('renders the rows once items become an array', async () => {
+    const rows = reactivity.signal<{ id: number }[] | undefined>(undefined)
+    const props = {
+      tag: 'ul',
+      keyFn: (r: { id: number }) => r.id,
+      render: (r: { id: number }) => core.h('li', { class: 'row' }, String(r.id)),
+    } as Record<string, unknown>
+    Object.defineProperty(props, 'items', { get: () => rows(), enumerable: true, configurable: true })
+    const container = mountApp(() => core.h(dom.TransitionGroup as never, props))
+    await tick()
+    expect(container.querySelectorAll('li.row').length).toBe(0)
+    rows.set([{ id: 1 }, { id: 2 }])
+    await tick()
+    expect(container.querySelectorAll('li.row').length).toBe(2)
+  })
+})

@@ -63,6 +63,7 @@ function ErrorBoundary(props: {
     // that run swaps to the fallback subtree.
     error.set(err)
     reportError({ component: 'ErrorBoundary', phase: 'render', error: err, timestamp: Date.now() })
+
     return true
   }
 
@@ -71,16 +72,29 @@ function ErrorBoundary(props: {
   // handler through the owner chain. Disposed with the boundary's scope.
   provide(ErrorBoundaryContext, handler)
 
+  // The boundary's own render runs in a reactive accessor, so a throw from it
+  // never reaches a component catch. Contain it here: a throw from the
+  // children expression (`{() => data.items.length}`) is this boundary's
+  // error; a throw from `fallback` itself (a boundary that rethrows what it
+  // does not handle, like `NotFoundBoundary`) goes to the boundary outside.
   return (): VNodeChildAtom => {
     const err = error()
-    // The error signal is set only by `handler`, fired from mountComponent's
-    // catch during a child mount — so the fallback branch is reachable only
-    // under a renderer (exercised by @pyreon/runtime-dom's ErrorBoundary mount
-    // tests), never from a bare node-side `ErrorBoundary()` call.
-    /* v8 ignore next */
-    if (err != null) return props.fallback(err, reset) as VNodeChildAtom
+    if (err != null) {
+      try {
+        return props.fallback(err, reset) as VNodeChildAtom
+      } catch (fallbackErr) {
+        if (outer?.(fallbackErr)) return null
+        throw fallbackErr
+      }
+    }
     const ch = props.children
-    return (typeof ch === 'function' ? ch() : ch) as VNodeChildAtom
+    if (typeof ch !== 'function') return ch as VNodeChildAtom
+    try {
+      return ch() as VNodeChildAtom
+    } catch (childErr) {
+      handler(childErr)
+      return null
+    }
   }
 }
 

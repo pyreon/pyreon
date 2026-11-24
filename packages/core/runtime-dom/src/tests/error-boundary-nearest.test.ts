@@ -213,3 +213,35 @@ describe('the nearest boundary is the ENCLOSING one, not the last one mounted', 
     expect(container.querySelector('#outer')?.textContent).toBe('Error: inner')
   })
 })
+
+describe("the boundary's own render is contained", () => {
+  it('a throw from the children expression itself goes to this boundary', () => {
+    const items = signal<string[] | null>(['a'])
+    unmount = mount(
+      boundary('own', () => (items() as string[]).length),
+      container,
+    )
+    expect(container.textContent).toBe('1')
+    items.set(null)
+    expect(container.querySelector('#own')?.textContent).toContain('TypeError')
+  })
+
+  it('a fallback that rethrows (NotFoundBoundary-style) goes to the outer boundary', () => {
+    const Thrower = () => {
+      throw new Error('real bug')
+    }
+    unmount = mount(
+      boundary(
+        'outer',
+        h(ErrorBoundary, {
+          fallback: (err: unknown) => {
+            throw err
+          },
+          children: h(Thrower, null),
+        }),
+      ),
+      container,
+    )
+    expect(container.querySelector('#outer')?.textContent).toBe('Error: real bug')
+  })
+})

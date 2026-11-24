@@ -1,24 +1,14 @@
 /**
- * REPRODUCTION + REGRESSION: the `_errorBoundaryStack.pop()` cleanup is
- * position-based — same bug class as the `popContext()` bug fixed in #725.
+ * REGRESSION: sibling `<ErrorBoundary>`s that unmount in any order keep
+ * catching their own children's errors.
  *
- * Scenario: two or more sibling `<ErrorBoundary>` boundaries. When a NON-LAST
- * boundary unmounts (keyed `<For>` removing the first item, `<Show>` flipping
- * the first of several siblings, route nav unmounting the outer of nested
- * routes, etc.), its `onUnmount` calls `popErrorBoundary()` → `stack.pop()`
- * → pops the LAST (innermost) boundary's handler — the wrong one.
- *
- * Outcome:
- *   - Subsequent errors in the SURVIVING boundary's children route to whatever
- *     handler is now at `stack[length-1]`, which is the stale handler of an
- *     ALREADY-UNMOUNTED boundary. Calling `error.set(err)` on that handler's
- *     captured signal is a no-op → the error is silently swallowed AND the
- *     surviving boundary's fallback never renders.
- *
- * Fix (#725-class): `popErrorBoundary(handler)` uses `lastIndexOf + splice`
- * to remove by IDENTITY. Each ErrorBoundary's `onUnmount` passes its own
- * handler reference, so unmount in any order correctly removes the right
- * handler.
+ * History (#725 class): boundaries used to live on a module-level stack, and
+ * `onUnmount` popped it by POSITION, so unmounting a non-last sibling removed
+ * the wrong handler and later errors went to a disposed boundary and vanished.
+ * Identity removal fixed that; since #4831 a boundary is not on a stack at all:
+ * it `provide()`s its handler, which dies with its owner scope, and errors
+ * resolve through the owner chain. These specs still lock the observable
+ * contract: unmount order never steals or orphans a surviving boundary.
  */
 import type { VNodeChild } from '@pyreon/core'
 import { ErrorBoundary, h, Show } from '@pyreon/core'
