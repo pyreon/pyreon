@@ -50,6 +50,25 @@ function compilerExportSubpath(name: string): 'analyze' | 'audits' | 'validate' 
 
 export const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Context ownership is LAZY: a component becomes its children's context
+    // owner on its first provide(), so a provide() after children mounted is
+    // invisible to them (dev warns from @pyreon/core's context.ts).
+    pattern: /\b(?:provide|withContext)\(\) ran after this component had already mounted children/,
+    diagnose: () => ({
+      cause:
+        "`provide()` ran after the component's children had already mounted: late in the setup body (after a child component was built or mounted), in `onMount`, or in an effect. A component becomes its children's context owner on its FIRST `provide()`, so those children resolve context through the parent's owner and never see the value.",
+      fix: 'Call `provide()` at the top of the component body, before it builds or returns any children. For a value that changes later, provide a reactive context once (`createReactiveContext` + `provide(ctx, () => value())`) and update the signal instead of providing again.',
+      fixCode: `const ThemeCtx = createReactiveContext('light')
+
+function ThemeProvider(props) {
+  const theme = signal('light')
+  provide(ThemeCtx, () => theme())   // first, before children
+  onMount(() => theme.set(readSavedTheme()))   // later changes go through the signal
+  return props.children
+}`,
+    }),
+  },
+  {
     // A loader's notFound() answered HTTP 500: on router versions
     // before the loader-not-found fix, every path that ran loaders (SSR
     // preload, the /_pyreon/data endpoint) treated the branded error like any
