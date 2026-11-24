@@ -52,6 +52,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "app",
     "bin",
     "lib",
     "!lib/analysis",
