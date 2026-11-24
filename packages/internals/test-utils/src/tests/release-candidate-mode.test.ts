@@ -270,7 +270,9 @@ describe('wiring — the workflows and publish.ts use the channel', () => {
     const src = read('scripts/publish.ts')
     expect(src).toContain('resolvePublishTag(pkg.version, explicitTag, preState)')
     expect(src).toContain("args.push('--tag', distTag)")
-    // Internal lockstep edges go through the exact-pin rule (publish-ranges.test.ts).
+    // Internal lockstep edges go through the range rule (publish-ranges.test.ts),
+    // which needs the pre-mode state to tell a release candidate from a stable cut.
     expect(src).toContain('lockstep: fixedGroup.has(pkgName) && fixedGroup.has(name)')
+    expect(src).toContain('pre: preState,')
   })
 })

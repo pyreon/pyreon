@@ -1,8 +1,9 @@
 /**
  * Publish all @pyreon/* packages via `npm publish --provenance`.
- * Resolves `workspace:` ranges before publish, restores after: an edge
- * between two fixed-group members is published EXACT (`X.Y.Z`), everything
- * else keeps its range (scripts/publish-ranges.ts).
+ * Resolves `workspace:` ranges before publish, restores after. A stable
+ * version keeps the range each manifest asks for (`workspace:^` → `^X.Y.Z`);
+ * a release candidate (changesets pre mode) publishes an edge between two
+ * fixed-group members EXACT (scripts/publish-ranges.ts).
  * Skips already-published versions.
  *
  * Usage: bun run scripts/publish.ts [--dry-run] [--tag <tag>] [--otp=<code>] [--only=<pkg>]
@@ -138,8 +139,9 @@ try {
 // below resolves the whole set first and aborts as a batch before any
 // `npm publish`, so a pre-detectable manifest problem can never leave a
 // partial release.
-// The lockstep set: members of the changesets `fixed` group. An edge between
-// two of them is published exact — see scripts/publish-ranges.ts.
+// The lockstep set: members of the changesets `fixed` group. In a release
+// candidate an edge between two of them is published exact — see
+// scripts/publish-ranges.ts.
 const fixedGroup = new Set<string>(
   (
     JSON.parse(await readFile(join(import.meta.dirname, '..', '.changeset', 'config.json'), 'utf-8')) as {
@@ -169,6 +171,7 @@ function resolveWorkspaceDeps(
       resolved[name] = publishedRange(range, version, {
         field,
         lockstep: fixedGroup.has(pkgName) && fixedGroup.has(name),
+        pre: preState,
       })
     }
   }
