@@ -25,7 +25,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { PyreonPluginOptions } from '@pyreon/vite-plugin'
 import type { BuildOptions, Plugin } from 'vite'
 import { _enterInnerBuild, _exitInnerBuild } from './build-flags'
@@ -476,6 +476,7 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       // as a total Record.
       plugins: [
         ...(options.edge ? [edgeNodeBuiltinsPlugin()] : []),
+        syntheticEntryResolvePlugin(options.entryPath, options.root),
         pyreon(innerPyreonOptions(options.userPlugins)),
         zeroPlugin(innerZeroConfig),
         ...userPlugins,
@@ -505,19 +506,45 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
 }
 
 /**
- * The path a synthetic entry is written to: `<root>/<name>` with a per-build
- * suffix (`__pyreon-zero-ssg-entry-<pid>-<random>.js`).
+ * The path a synthetic entry is written to: `<dir>/<name>` with a per-build
+ * suffix (`__pyreon-zero-ssg-entry-<pid>-<random>.js`). `dir` is Vite's
+ * resolved `cacheDir`, never the app root.
  *
- * A fixed name made two builds of the SAME root collide: each writes the
- * file, and the first to finish removes it from under the other, whose inner
- * build then fails with `Cannot resolve entry module`. Two builds of one root
- * at once are ordinary for a tool that ships its own app (two `atlas build`
- * runs in one monorepo CI job, a test runner building in parallel). The
- * stem is unchanged, so `__pyreon-zero-ss{g,r}-entry*.js` ignores both forms.
+ * - Per build: a fixed name made two builds of the SAME root collide — the
+ *   first to finish removed the file under the other (`Cannot resolve entry
+ *   module`). Ordinary for a tool that ships its own app (two `atlas build`
+ *   runs in one CI job, test files building in parallel).
+ * - In the cache dir: the root can be read-only (an app shipped inside an
+ *   installed package under Yarn PnP or a Nix store) and is the user's
+ *   working tree; a cache dir is writable scratch by definition. The entry's
+ *   bare imports still resolve from the root (`syntheticEntryResolvePlugin`).
+ *
+ * The stem is unchanged, so `__pyreon-zero-ss{g,r}-entry*.js` gitignores an
+ * entry an older zero left in the root.
  */
-export function syntheticEntryPath(root: string, filename: string): string {
+export function syntheticEntryPath(dir: string, filename: string): string {
   const unique = `${process.pid}-${randomBytes(4).toString('hex')}`
-  return join(root, filename.replace(/\.js$/, `-${unique}.js`))
+  return join(dir, filename.replace(/\.js$/, `-${unique}.js`))
+}
+
+/**
+ * Resolve the synthetic entry's bare imports (`@pyreon/zero/server`,
+ * `@pyreon/head/ssr`, …) as if it sat in the app root, where it used to be
+ * written. It now lives in the cache dir (see `syntheticEntryPath`), and a
+ * node_modules walk from there can reach a different copy — or none.
+ * Relative, absolute, virtual and `\0` ids pass through untouched.
+ */
+export function syntheticEntryResolvePlugin(entryPath: string, root: string): Plugin {
+  const stand_in = join(root, '__pyreon-zero-entry.js')
+  return {
+    name: 'pyreon-zero:synthetic-entry-resolve',
+    enforce: 'pre',
+    resolveId(id, importer, opts) {
+      if (importer !== entryPath) return null
+      if (id.startsWith('.') || id.startsWith('/') || id.startsWith('\0') || id.startsWith('virtual:')) return null
+      return this.resolve(id, stand_in, { ...opts, skipSelf: true })
+    },
+  }
 }
 
 /**
@@ -530,6 +557,8 @@ export function syntheticEntryPath(root: string, filename: string): string {
  * block at the call site). The helper just writes the file.
  */
 export async function materializeEntry(entryPath: string, source: string): Promise<void> {
+  // The cache dir may not exist yet (a cold project, a custom `cacheDir`).
+  await mkdir(dirname(entryPath), { recursive: true })
   await writeFile(entryPath, source, 'utf-8')
 }
 

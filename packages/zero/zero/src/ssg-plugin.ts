@@ -1377,6 +1377,8 @@ function renderErrorArtifact(entries: { path: string; error: unknown }[]): strin
 export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   const config = resolveConfig(userConfig)
   let root = ''
+  // Vite's resolved cacheDir — where the synthetic entry is written.
+  let cacheDir = ''
   let distDir = ''
   // Captured from the OUTER build's resolved config so the inner SSR
   // sub-build (which runs `configFile: false`) emits assets identically —
@@ -1468,6 +1470,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
 
     configResolved(resolved) {
       root = resolved.root
+      cacheDir = resolved.cacheDir
       distDir = resolve(root, resolved.build.outDir)
       isSsrTargetBuild = Boolean(resolved.build.ssr)
       assetsInlineLimit = resolved.build.assetsInlineLimit
@@ -1559,9 +1562,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // semantics; placing it next to the user's routes lets zero's main
       // plugin pick it up identically to user code. Cleaned up after the
       // build.
-      // Per-build name: two builds of one root must not share it (see
-      // `syntheticEntryPath`).
-      const entryPath = syntheticEntryPath(root, SSR_ENTRY_FILENAME)
+      // In Vite's cache dir, under a per-build name — never the app root,
+      // which may be read-only or another build's (see `syntheticEntryPath`).
+      const entryPath = syntheticEntryPath(cacheDir, SSR_ENTRY_FILENAME)
       // PR K: bake the configured locales into the SSG entry source so the
       // per-locale 404 walker can detect which RouteRecord serves which
       // locale at module-eval time inside the SSR sub-build.

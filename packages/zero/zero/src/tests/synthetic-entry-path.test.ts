@@ -12,7 +12,7 @@
  */
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { syntheticEntryPath } from '../ssr-build-shared'
+import { syntheticEntryPath, syntheticEntryResolvePlugin } from '../ssr-build-shared'
 
 describe('syntheticEntryPath', () => {
   it('names a different file for every build, in the root, under the same stem', () => {
@@ -30,5 +30,39 @@ describe('syntheticEntryPath', () => {
     // `__pyreon-zero-ssr-entry*.js` in create-zero / create-multiplatform.
     expect(name).toMatch(/^__pyreon-zero-ssr-entry.*\.js$/)
     expect(name).not.toBe('__pyreon-zero-ssr-entry.js')
+  })
+})
+
+describe('syntheticEntryResolvePlugin', () => {
+  // The entry now lives in the cache dir; its bare imports must still resolve
+  // as if from the app root, where every other module resolves them.
+  const plugin = syntheticEntryResolvePlugin('/cache/__pyreon-zero-ssg-entry-1-a.js', '/app')
+  const calls: { id: string; importer: string | undefined }[] = []
+  const ctx = {
+    resolve: async (id: string, importer?: string) => {
+      calls.push({ id, importer })
+      return { id: `/resolved/${id}` }
+    },
+  }
+  const run = (id: string, importer: string) =>
+    (plugin.resolveId as unknown as (this: typeof ctx, i: string, im: string, o: object) => unknown).call(
+      ctx,
+      id,
+      importer,
+      {},
+    )
+
+  it("resolves the entry's bare imports from the app root", async () => {
+    calls.length = 0
+    await run('@pyreon/head/ssr', '/cache/__pyreon-zero-ssg-entry-1-a.js')
+    expect(calls).toEqual([{ id: '@pyreon/head/ssr', importer: '/app/__pyreon-zero-entry.js' }])
+  })
+
+  it('leaves every other importer, and relative / virtual ids, alone', async () => {
+    calls.length = 0
+    expect(await run('@pyreon/core', '/app/src/page.tsx')).toBeNull()
+    expect(await run('virtual:zero/routes', '/cache/__pyreon-zero-ssg-entry-1-a.js')).toBeNull()
+    expect(await run('./x', '/cache/__pyreon-zero-ssg-entry-1-a.js')).toBeNull()
+    expect(calls).toEqual([])
   })
 })
