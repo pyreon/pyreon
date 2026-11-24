@@ -1785,7 +1785,7 @@ function detectStaleForItemFields(ctx: DetectContext): void {
       ctx,
       hit.node,
       'for-stale-item-field',
-      `${what}, but this file replaces items under the same \`by\` key (\`{ ...item, ${hit.fields.join(', ')}: … }\`). On the web a keyed <For> keeps that row and runs its callback once per key, so the item is the object the row mounted with and this read shows the FIRST value forever (iOS and Android redraw the row, so only the web goes stale). Read the live value by key through a call, which stays reactive on web and lowers to a lookup on native, or give the field its own signal.`,
+      `${what}, but this file replaces items under the same \`by\` key (\`{ ...item, ${hit.fields.join(', ')}: … }\`). On the web a keyed <For> keeps that row and runs its callback once per key, so the item is the object the row mounted with and this read shows the FIRST value forever (iOS and Android redraw the row, so only the web goes stale). Read the live value by key through a call, which stays reactive on web and lowers to a lookup on native, or give the field its own signal.${hit.opaqueKey !== undefined ? ` (Safe only if \`${hit.opaqueKey}\` reads \`${hit.fields.join('`, `')}\` into the key, which this check cannot see: inline the key so it can, or disable this line if it does.)` : ''}`,
       getNodeText(ctx, hit.node),
       hit.kind === 'child-prop'
         ? `// pass the live value instead of reading it off the item: ${hit.fields.map((f) => `${f}={live${f.charAt(0).toUpperCase()}${f.slice(1)}(${hit.param}.${key})}`).join(' ')}\n// const ${live} = (${key}) => items().find((x) => x.${key} === ${key})?.${field}`
