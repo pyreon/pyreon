@@ -136,6 +136,17 @@ describe('serverIsland — signed markers', () => {
   })
 })
 
+describe('serverIsland — one registry across module instances', () => {
+  it('a second instance of the module reads the islands the first registered (a bundle can emit two)', async () => {
+    serverIsland(async () => Badge, { name: 'FromFirstInstance' })
+    vi.resetModules()
+    const second = await import('../server-island')
+    expect(second.getRegisteredServerIslands()).toBe(getRegisteredServerIslands())
+    second.serverIsland(async () => Badge, { name: 'FromSecondInstance' })
+    expect([...getRegisteredServerIslands().keys()]).toEqual(['FromFirstInstance', 'FromSecondInstance'])
+  })
+})
+
 describe('renderServerIslandFragment', () => {
   it('renders the registered component with decoded props', async () => {
     serverIsland(async () => Badge, { name: 'Frag' })

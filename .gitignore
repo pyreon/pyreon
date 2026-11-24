@@ -121,3 +121,6 @@ publish-result.json
 # after each cell; ignored so an interrupted or --keep run never shows up as
 # untracked source).
 examples/cpa-smoke-*/
+
+# scripts/native-android-logcat-signals.ts default output (CI writes it in the workspace)
+android-logcat-findings/
