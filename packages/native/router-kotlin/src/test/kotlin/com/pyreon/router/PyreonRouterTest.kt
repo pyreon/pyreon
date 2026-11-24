@@ -21,9 +21,14 @@ private fun <T> expectEq(actual: T, expected: T, message: String) {
     if (actual != expected) error("EXPECT FAILED: $message (expected=$expected, actual=$actual)")
 }
 
+// Counted, never typed: the banner below printed a hard-coded `${80}`, so it
+// stayed at 80 however many tests were added or silently skipped.
+private var passedTests = 0
+
 private fun runTest(name: String, block: () -> Unit) {
     try {
         block()
+        passedTests++
         println("✓ $name")
     } catch (e: Throwable) {
         println("✗ $name: ${e.message}")
@@ -1028,6 +1033,80 @@ fun main() {
         expectEq(router.params.value["id"], "7", "and the path param survives")
     }
 
+    // Native twin of web #4814: a query-only navigation (every url-state write)
+    // must not re-run the route's loader or hide its data. The emitted
+    // `PyreonRouteLoader(path = currentPath)` and `useLoaderData()` keyed
+    // `loaderData` by the full URL, so `/search?q=dog` missed `/search?q=cat`.
+    runTest("loader key excludes the query") {
+        val router = PyreonRouter()
+        router.push("/search?q=cat")
+        router.setLoaderData(router.currentPath, "results")
+        expectEq(router.loaderData.value.keys.toList(), listOf("/search"), "stored under the route")
+        router.setQueryParam("q", "dog")
+        expectEq(router.currentPath, "/search?q=dog", "url still rewritten")
+        expectEq(router.routePath, "/search", "route part unchanged")
+        expectEq(router.loaderData.value[router.routePath], "results", "data still found after the write")
+        expectEq(PyreonRouter.loaderKey("/search?q=dog#top"), "/search", "loaderKey drops query + fragment")
+    }
+
+    runTest("setQueryParam on the root is reflected in currentPath") {
+        val router = PyreonRouter()
+        router.setQueryParam("filter", "open")
+        expectEq(router.path.value, emptyList(), "no stack entry for the root")
+        expectEq(router.currentPath, "/?filter=open", "root query reflected")
+        router.push("/about")
+        expectEq(router.query.value.isEmpty(), true, "cleared on navigate away")
+        router.back()
+        expectEq(router.query.value["filter"], "open", "root query restored on back")
+    }
+
+    // Same shape as the Swift router: `path` / `tabPaths` hold routes only, the
+    // query lives beside each entry, and a same-route replace on the root does
+    // not push a duplicate root entry.
+    runTest("path holds routes only; a query write keeps the element") {
+        val router = PyreonRouter()
+        router.push("/search?q=cat")
+        expectEq(router.path.value, listOf("/search"), "route only")
+        router.setQueryParam("q", "dog")
+        router.replace("/search?q=bird")
+        expectEq(router.path.value, listOf("/search"), "element unchanged")
+        expectEq(router.currentPath, "/search?q=bird", "url reassembled")
+    }
+
+    runTest("same-route replace on the root does not push a duplicate root") {
+        val router = PyreonRouter()
+        router.replace("/?filter=done")
+        expectEq(router.path.value, emptyList(), "no root copy pushed")
+        expectEq(router.currentPath, "/?filter=done", "root query updated")
+        expectEq(router.query.value["filter"], "done", "query parsed")
+    }
+
+    runTest("a direct path / tabPaths write with a query is normalised") {
+        val router = PyreonRouter()
+        router.path.value = listOf("/search?q=x")
+        expectEq(router.path.value, listOf("/search"), "element split")
+        expectEq(router.currentPath, "/search?q=x", "query kept on the entry")
+        router.setQueryParam("q", "y")
+        expectEq(router.currentPath, "/search?q=y", "no doubled query")
+        val tabbed = PyreonRouter(
+            tabs = listOf(PyreonRouterTab("a", "/a"), PyreonRouterTab("b", "/b")),
+        )
+        tabbed.tabPaths.value = mapOf("b" to listOf("/b/y?z=2"))
+        expectEq(tabbed.tabPath("b"), listOf("/b/y"), "tab element split")
+        expectEq(tabbed.tabTop("b"), "/b/y?z=2", "tab top carries the query")
+        tabbed.selectTab("b")
+        expectEq(tabbed.currentPath, "/b/y?z=2", "restored on activation")
+    }
+
+    runTest("the fragment is kept") {
+        val router = PyreonRouter()
+        router.push("/doc?x=1#sec")
+        expectEq(router.path.value, listOf("/doc"), "route only")
+        expectEq(router.currentPath, "/doc?x=1#sec", "fragment kept")
+        router.setQueryParam("x", "2")
+        expectEq(router.currentPath, "/doc?x=2#sec", "fragment survives a query write")
+    }
+
     runTest("query survives an unmatched path") {
         val router = PyreonRouter(routes = listOf(RouteRecord("/known") {}))
         router.push("/unknown?ref=email")
@@ -1198,5 +1277,5 @@ fun main() {
         expectEq(r.path.value, listOf("/home"), "next transition blocked")
     }
 
-    println("[verify-kotlin] ✓ PyreonRouter smoke ${80} test(s) passed")
+    println("[verify-kotlin] ✓ PyreonRouter smoke $passedTests test(s) passed")
 }
