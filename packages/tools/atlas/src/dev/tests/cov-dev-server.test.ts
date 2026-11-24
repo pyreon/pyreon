@@ -22,8 +22,12 @@ import { createServer } from 'node:net'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { realpathSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { startDevServer, type DevServerHandle } from '../server'
+
+/** What only the workbench app's page carries: its client entry. */
+const SHELL = '/src/entry-client.ts'
 
 /** A component with no imports at all — discoverable, and cheap to load. */
 const HELLO = [
@@ -96,7 +100,7 @@ afterEach(() => {
   roots = []
 })
 
-describe('the workbench shell middleware', () => {
+describe('the workbench app page', () => {
   it('serves the shell for a navigation and passes through everything else', async () => {
     const root = fixture()
     const port = await freePort()
@@ -105,27 +109,33 @@ describe('the workbench shell middleware', () => {
       handle = await startDevServer({ cwd: root, port })
       const base = `http://localhost:${port}`
 
-      // The claim: a GET navigation gets the workbench, transformed by Vite
-      // (the client script is injected by `transformIndexHtml`, so its presence
-      // proves the middleware went through Vite rather than returning a string).
+      // The claim: a GET navigation gets the workbench app's shell, transformed
+      // by Vite (the client script is injected by `transformIndexHtml`, so its
+      // presence proves the page went through Vite rather than a string).
       const page = await fetch(`${base}/`)
       expect(page.status).toBe(200)
       expect(page.headers.get('content-type')).toContain('text/html')
       const html = await page.text()
-      expect(html).toContain('<div id="atlas-root">')
+      expect(html).toContain(SHELL)
       expect(html).toContain('/@vite/client')
+      // The `<head>` lines atlasDevPlugin adds: the theme boot runs before
+      // first paint, and the routes flag lets the workbench write `/<id>/`.
+      expect(html).toContain('__ATLAS_ROUTES__ = true')
+      expect(html).toContain('pyreon-theme')
 
-      // A deep navigation is the same shell — this is what makes the built
-      // site's `/<component>/` URLs work in dev too.
+      // A deep navigation is the same shell — the app's `/:component` route,
+      // which is what makes the built site's `/<component>/` URLs work in dev.
       const deep = await fetch(`${base}/fixture-hello/`)
       expect(deep.status).toBe(200)
-      expect(await deep.text()).toContain('<div id="atlas-root">')
+      expect(await deep.text()).toContain(SHELL)
 
-      // The pairs. Each is a shape the middleware must NOT claim, and each
-      // would be claimed by a middleware that only checked the method.
-      const dotted = await fetch(`${base}/nothing-here.txt`)
+      // The pairs: shapes that must NOT get the page.
+      // A missing RESOURCE (a non-HTML Accept, as a fetch for data or an
+      // asset sends) is a 404, never the page — an HTML answer there reads as
+      // "the file exists and is broken".
+      const dotted = await fetch(`${base}/nothing-here.txt`, { headers: { accept: 'application/json' } })
       expect(dotted.status).toBe(404)
-      expect(await dotted.text()).not.toContain('atlas-root')
+      expect(await dotted.text()).not.toContain(SHELL)
 
       // Vite's own namespace: served by Vite as a module, not as the shell.
       const internal = await fetch(`${base}/@vite/client`)
@@ -135,7 +145,7 @@ describe('the workbench shell middleware', () => {
       // Not a GET: passed through, so a POST to an unknown path 404s rather
       // than answering with a page.
       const posted = await fetch(`${base}/`, { method: 'POST' })
-      expect(await posted.text()).not.toContain('atlas-root')
+      expect(await posted.text()).not.toContain(SHELL)
 
       // The handle describes what it actually started.
       expect(handle.url).toBe(`http://localhost:${port}/`)
@@ -155,7 +165,7 @@ describe('the workbench shell middleware', () => {
       handle = await startDevServer({ cwd: root, port })
       const res = await fetch(`http://localhost:${port}/?c=some.component`)
       expect(res.status).toBe(200)
-      expect(await res.text()).toContain('<div id="atlas-root">')
+      expect(await res.text()).toContain(SHELL)
     } finally {
       await handle?.close()
     }
@@ -189,7 +199,9 @@ describe('the title, and what the config contributes', () => {
       const html = await (await fetch(`http://localhost:${port}/`)).text()
       expect(html).toContain('<title>Fixture Design System</title>')
 
-      const aliased = await fetch(`http://localhost:${port}/src/aliased.ts`)
+      // The project is served from outside the Vite root (the root is the
+      // workbench app), so its files are `/@fs/` URLs.
+      const aliased = await fetch(`http://localhost:${port}/@fs${realpathSync(root)}/src/aliased.ts`)
       expect(aliased.status).toBe(200)
       // Rewritten to a real path rather than left as a bare `~/…` specifier.
       expect(await aliased.text()).toContain('/src/widgets/Hello.tsx')
@@ -283,7 +295,7 @@ describe('a config that could not be used', () => {
       // a reason to have no server.
       const res = await fetch(`http://localhost:${port}/`)
       expect(res.status).toBe(200)
-      expect(await res.text()).toContain('<div id="atlas-root">')
+      expect(await res.text()).toContain(SHELL)
     } finally {
       await handle?.close()
     }

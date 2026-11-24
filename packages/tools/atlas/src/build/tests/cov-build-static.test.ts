@@ -5,11 +5,10 @@
  * itself had none. That is the function whose OUTPUT someone deploys, and the
  * things it decides are not observable from the pieces:
  *
- *   * **`--base` reaches two different consumers.** Vite rewrites the shell's
- *     asset URLs with it, and `emitComponentPages` refuses to fan out
- *     directories for a relative one — because those pages would resolve
- *     `./assets/…` against their own directory and silently fail to load
- *     their own JavaScript.
+ *   * **`--base` reaches every consumer.** Vite rewrites the shell's asset
+ *     URLs with it and zero's router and per-component pages resolve against
+ *     it, so a relative one is refused before any work rather than building a
+ *     site whose component pages silently fail to load their own JavaScript.
  *   * **The catalog the site ships is the SCAN's catalog**, config and all.
  *     A `pages`/`projects` entry that never reaches the plugin produces a site
  *     whose sidebar disagrees with the dev server's for the same project —
@@ -43,9 +42,8 @@ let roots: string[] = []
 /**
  * A throwaway project that can actually be bundled.
  *
- * `node_modules` is a real directory of symlinks rather than a symlink to one:
- * the build writes its generated entry into `<root>/node_modules/.atlas-build`,
- * and a symlinked tree would put that inside the borrowed project.
+ * `node_modules` is a real directory of symlinks rather than a symlink to one,
+ * so the build's dependency cache never lands inside the borrowed project.
  */
 function fixture(options: { config?: string; components?: boolean } = {}): string {
   const root = mkdtempSync(join(tmpdir(), 'atlas-build-'))
@@ -111,6 +109,23 @@ describe('the emitted site', () => {
     expect(logs).toEqual([])
   }, 300_000)
 
+  it("applies the project's resolve.alias, as atlas dev does", async () => {
+    // A component importing through an alias the CONFIG declares. Without the
+    // alias in the build's resolve, the bundler cannot resolve `~/…` and the
+    // build fails on a project `atlas dev` serves fine.
+    const root = fixture({ components: false, config: "export const alias = { '~': './src' }\n" })
+    mkdirSync(join(root, 'src', 'shared'), { recursive: true })
+    writeFileSync(join(root, 'src', 'shared', 'greet.ts'), "export const greet = (n?: string) => `hi ${n ?? ''}`\n", 'utf8')
+    writeFileSync(
+      join(root, 'src', 'widgets', 'Hello.tsx'),
+      "import { greet } from '~/shared/greet'\nexport function Hello(props: { name?: string }) {\n  return greet(props.name)\n}\n",
+      'utf8',
+    )
+    const result = await buildStatic({ cwd: root, out: 'dist' })
+    expect(result.components).toBe(1)
+    expect(result.routedPages).toBe(1)
+  }, 300_000)
+
   it('builds for production and restores a caller who had NODE_ENV unset', async () => {
     // `vite build` only sets production when NODE_ENV is unset, so the build
     // forces it — and must hand the caller's environment back unchanged,
@@ -140,19 +155,15 @@ describe('the emitted site', () => {
     expect(result.routedPages).toBe(1)
   }, 300_000)
 
-  it('emits NO component pages for a relative base, and says why', async () => {
-    // Their assets would resolve against their own directory. Emitting pages
-    // that silently fail to load their own JavaScript is worse than not
-    // emitting them.
+  it('refuses a relative base before any work, and says what to pass', async () => {
+    // A relative base resolves `./assets/…` against each page's own
+    // directory, and the workbench router cannot route under it. Refused up
+    // front: nothing is scanned and no output directory is created.
     const root = fixture()
-    const logs: string[] = []
-    const result = await buildStatic({ cwd: root, out: 'dist', base: './', onLog: (m) => logs.push(m) })
-
-    expect(result.routedPages).toBe(0)
-    expect(readdirSync(join(root, 'dist'))).not.toContain('fixture-hello')
-    expect(logs.join('\n')).toContain('per-component pages were NOT emitted')
-    // The site itself still works at its root.
-    expect(readFileSync(join(root, 'dist', 'index.html'), 'utf8')).toMatch(/src="\.\/assets\//)
+    await expect(buildStatic({ cwd: root, out: 'dist', base: './' })).rejects.toThrow(
+      /--base \.\/ is relative\. Pass an absolute path/,
+    )
+    expect(readdirSync(root)).not.toContain('dist')
   }, 300_000)
 })
 
@@ -170,7 +181,10 @@ describe('what the defaults are', () => {
       const here = process.cwd()
       const result = await buildStatic({})
       expect(result.outDir).toBe(join(here, 'atlas-dist'))
-      expect(readFileSync(join(root, 'atlas-dist', 'index.html'), 'utf8')).toContain('atlas-root')
+      // The workbench app's client shell: zero's mount point plus the
+      // marker that lets the next build empty the directory.
+      expect(readFileSync(join(root, 'atlas-dist', 'index.html'), 'utf8')).toContain('<div id="app">')
+      expect(readdirSync(join(root, 'atlas-dist'))).toContain('.atlas-build-output')
       expect(result.components).toBe(1)
     } finally {
       process.chdir(before)

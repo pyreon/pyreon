@@ -154,3 +154,48 @@ test.describe('atlas build — static site', () => {
     await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
   })
 })
+
+/**
+ * A SUBDIRECTORY deploy (`--base /sub/`, served from the parent directory).
+ *
+ * The base reaches Vite's asset URLs, zero's router (which must route
+ * `/sub/<component>/` to the component route rather than to nothing) and the
+ * per-component pages. Each half can be wrong while the others are right, and
+ * the failure is a blank page with no error a unit test would see.
+ */
+test.describe('atlas build — under a subdirectory base', () => {
+  const SUB = 'http://localhost:5219/sub/'
+
+  test('the root and a component page both boot under the base', async ({ page }) => {
+    const errors: string[] = []
+    page.on('pageerror', (error) => errors.push(String(error)))
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text())
+    })
+
+    const root = await page.goto(SUB)
+    expect(root?.status()).toBe(200)
+    await expect(page.getByText('Button', { exact: true }).first()).toBeVisible()
+
+    const deep = await page.goto(`${SUB}chip/`)
+    expect(deep?.status()).toBe(200)
+    await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
+    await expect(page.getByTestId('canvas-preview')).toHaveText('Chip')
+    expect(errors).toEqual([])
+  })
+
+  test('navigating keeps the base, and the reload lands on the component', async ({ page }) => {
+    await page.goto(`${SUB}button/`)
+    await page.getByText('Chip', { exact: true }).first().click()
+    await expect(page).toHaveURL(/\/sub\/chip\/(\?|$)/)
+    await page.reload()
+    await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
+  })
+
+  test('the baked Docs source is fetched from under the base', async ({ page }) => {
+    await page.goto(SUB)
+    await page.getByText('Docs', { exact: true }).first().click()
+    await page.getByTestId('docs-source-load').click()
+    await expect(page.getByTestId('docs-source')).toContainText('export')
+  })
+})

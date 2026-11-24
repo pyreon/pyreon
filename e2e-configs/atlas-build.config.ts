@@ -29,5 +29,18 @@ export default definePlaywrightConfig({
       // plus a lens pass per component; 120s is not enough on a cold CI runner.
       timeout: 240_000,
     },
+    {
+      // The same site built for a SUBDIRECTORY (--base /sub/), served from
+      // the parent so it answers at /sub/... the way pyreon.dev/atlas does.
+      // The base reaches three consumers (Vite's asset URLs, zero's router
+      // and the per-component pages), and a site built with it rendered blank
+      // before in another zero-built tool (#4391).
+      command:
+        'bun packages/tools/atlas/bin/atlas.js build examples/atlas-workshop --out atlas-dist-e2e-base/sub --base /sub/ --title "Atlas E2E" && ' +
+        'bun scripts/serve-ssg.ts examples/atlas-workshop/atlas-dist-e2e-base 5219',
+      cwd: '..',
+      port: 5219,
+      timeout: 240_000,
+    },
   ],
 })

@@ -67,6 +67,7 @@
     }
   },
   "files": [
+    "app",
     "bin",
     "lib",
     "!lib/analysis",
@@ -104,13 +105,16 @@
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/head": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/server": "workspace:*",
     "@pyreon/store": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "@pyreon/zero": "workspace:*",
     "happy-dom": "^21.0.4",
     "playwright-core": ">=1.40",
     "vite": "^8.3.8",
@@ -118,8 +122,12 @@
   },
   "peerDependencies": {
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/server": "workspace:*",
     "@pyreon/store": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
+    "@pyreon/zero": "workspace:*",
     "happy-dom": ">=15",
     "playwright-core": ">=1.40",
     "vite": ">=6"
@@ -128,10 +136,22 @@
     "@pyreon/compiler": {
       "optional": true
     },
+    "@pyreon/head": {
+      "optional": true
+    },
+    "@pyreon/runtime-server": {
+      "optional": true
+    },
+    "@pyreon/server": {
+      "optional": true
+    },
     "@pyreon/store": {
       "optional": true
     },
     "@pyreon/vite-plugin": {
+      "optional": true
+    },
+    "@pyreon/zero": {
       "optional": true
     },
     "happy-dom": {

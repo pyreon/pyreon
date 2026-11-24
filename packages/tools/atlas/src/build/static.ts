@@ -15,29 +15,28 @@
  * source block and Reactivity Lens are permanently dark — the silent-degradation
  * class. So the build BAKES those answers (see `./bake`) and ships them as data.
  *
- * ── Vite is optional, and this is where it stops being optional ───────────
+ * ── It is the dev server's app, built ─────────────────────────────────────
  *
- * Same contract as `atlas dev`: imported dynamically, with a written-out message
- * when it is missing, so `atlas scan` keeps working in a project that has no
- * bundler at all.
+ * The workbench is a `@pyreon/zero` app shipped in this package (see
+ * `../dev/zero-app`). `atlas dev` serves it; this builds it with zero's SSG
+ * pass, every route declared `spa`, and `ssg.paths` naming `/` plus one path
+ * per component. zero writes the client shell at each of them, which is what
+ * makes `/button/` a real page on a plain file server.
+ *
+ * Same optional-peer contract as `atlas dev`: Vite, `@pyreon/vite-plugin` and
+ * `@pyreon/zero` are imported dynamically, with a written-out message when one
+ * is missing, so `atlas scan` keeps working in a project with no bundler.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { relative, resolve, sep } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { runScan } from '../cli/run'
 import { discoverComponents } from '../discover'
 import { workspaceResolvePlugin } from '../discover/workspace-packages'
 import { componentKey, type ComponentIntelligence } from '../core'
-import {
-  atlasDevPlugin,
-  builtinMethods,
-  CATALOG_ID,
-  fontLinks,
-  themeHeadLines,
-  routesFlagScript,
-  type RpcMethod,
-} from '../dev/plugin'
+import { atlasDevPlugin, builtinMethods, type RpcMethod } from '../dev/plugin'
 import { catalogIds, type CatalogEntrySource } from '../dev/catalog-module'
-import { BAKED_RPC_DIR, bakedRpcScript, bakedRpcUrlScript, bakeRpc, splitBakedRpc, type BakedRpc } from './bake'
+import { appDir, loadZeroStack, missingStackMessage, PYREON_OPTIONS, zeroOptions } from '../dev/zero-app'
+import { BAKED_RPC_DIR, bakeRpc, splitBakedRpc } from './bake'
 import { collectEntries } from './entries'
 
 export interface BuildOptions {
@@ -52,6 +51,8 @@ export interface BuildOptions {
   /**
    * Public base path, for a site served from a subdirectory (GitHub Pages
    * project sites are the common case: `--base /my-repo/`). Defaults to `/`.
+   * Must be absolute: the workbench's router and its per-component pages
+   * resolve against it.
    */
   base?: string
   /** Receives progress + warning lines (defaults to silence). */
@@ -67,28 +68,13 @@ export interface BuildResult {
   warnings: readonly string[]
   /** The resolved site title. */
   title: string
-  /** Per-component `<id>/index.html` pages emitted (0 for a relative base). */
+  /** Per-component `<id>/index.html` pages emitted. */
   routedPages: number
 }
 
-const NO_VITE =
-  '[Pyreon] atlas build needs Vite, which is not installed in this project.\n' +
-  '  Install it as a dev dependency:\n\n' +
-  '    bun add -d vite @pyreon/vite-plugin\n\n' +
-  '  `atlas scan` does not need Vite and keeps working without it.'
-
-/**
- * Where the generated entry lives.
- *
- * Under `node_modules/` on purpose: it is the conventional home for generated
- * build inputs (`.vite`, `.cache`), every project already ignores it, and it
- * disappears with a `rm -rf node_modules`. Writing to the project root instead
- * would leave a stray directory in someone's working tree when a build crashes.
- */
-const WORK_DIR = 'node_modules/.atlas-build'
-
 /** Written into every build output; lets a later build empty the directory. */
 export const OUT_MARKER = '.atlas-build-output'
+const MARKER_TEXT = 'Written by atlas build. Safe to delete.\n'
 
 /**
  * Refuse an output directory whose emptying would destroy the user's work.
@@ -150,6 +136,16 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   const scanRoot = resolve(root, scanDir)
   const outDir = resolve(root, options.out ?? 'atlas-dist')
   const log = options.onLog ?? (() => {})
+  const base = options.base ?? '/'
+  // Before any work, like the out-dir check below. A relative base used to
+  // build a site that worked only at its root; the router and the
+  // per-component pages both need an absolute one.
+  if (!base.startsWith('/')) {
+    throw new Error(
+      `[Pyreon] atlas build: --base ${base} is relative. Pass an absolute path — \`/\` or \`/my-repo/\` — ` +
+        'the workbench router and its per-component pages resolve against it.',
+    )
+  }
   // Before any work: the build EMPTIES this directory, so a wrong `--out`
   // would delete whatever is there.
   assertSafeOutDir(outDir, { root, scanRoot, isDefault: options.out === undefined })
@@ -170,10 +166,14 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   let parts: Record<string, string> | undefined
   let projects: readonly { name: string; dir: string }[] | undefined
   let configProblem: string | undefined
+  // Same set the scan resolved with — see `ScanResult.alias`, and `atlas dev`,
+  // which puts it back after `configFile: false` for the same reason.
+  let alias: readonly { find: string | RegExp; replacement: string }[] = []
 
   try {
     const scan = await runScan({ cwd: root, dir: scanDir, write: false })
     components = scan.graph.list()
+    alias = scan.alias ?? []
     configPath = scan.configPath
     presets = scan.presets
     configTitle = scan.title
@@ -232,27 +232,33 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
     },
   })
 
-  // ── 3. Generate the build input ─────────────────────────────────────────
-  const workDir = resolve(root, WORK_DIR)
-  rmSync(workDir, { recursive: true, force: true })
-  mkdirSync(workDir, { recursive: true })
-
-  writeFileSync(resolve(workDir, 'entry.js'), staticEntry(title), 'utf8')
+  // ── 3. Build the workbench app ──────────────────────────────────────────
+  // The SAME ids the catalog module generates — `catalogIds` is the one owner.
+  // These are slugs (`core-button`), not identity keys (`Core/Button`): the key
+  // carries a `/`, so a path derived from it would neither be one page nor
+  // match what the workbench looks itself up by.
+  const allIds = catalogIds(entries, {
+    root: scanRoot,
+    ...(pages ? { pages } : {}),
+    ...(projects ? { projects } : {}),
+  })
+  const ids = pageIds(allIds, log)
   const split = splitBakedRpc(baked, root)
-  const base = options.base ?? '/'
-  writeFileSync(resolve(workDir, 'index.html'), staticHtml(title, split.inline, base), 'utf8')
 
-  // ── 4. Build ────────────────────────────────────────────────────────────
   type ViteBuild = (config: Record<string, unknown>) => Promise<unknown>
   let build: ViteBuild
   try {
-    const mod = (await import('vite')) as unknown as { build: ViteBuild }
-    build = mod.build
+    build = ((await import('vite')) as unknown as { build: ViteBuild }).build
   } catch {
-    throw new Error(NO_VITE)
+    throw new Error(missingStackMessage('build', 'Vite'))
   }
-
-  const factory = await loadPyreonPlugin()
+  const stack = await loadZeroStack('build')
+  const app = appDir()
+  // Realpath'd like the app root (see `appDir`): the html plugin relativizes
+  // the output against the root, and a symlinked half escapes upward. The
+  // leaf may not exist yet, so its existing parent is the one resolved.
+  mkdirSync(dirname(outDir), { recursive: true })
+  const realOutDir = join(realpathSync(dirname(outDir)), basename(outDir))
 
   // `vite build` sets NODE_ENV=production only when it is UNSET, and the scan
   // above ran a Vite server, which sets it to `development`. So every built
@@ -264,34 +270,27 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
   process.env.NODE_ENV = 'production'
   try {
     await build({
-      // Root is the GENERATED directory, not the project.
-      //
-      // Vite derives an html output's path from its location relative to the
-      // root, so building the project as root would emit the page at
-      // `dist/node_modules/.atlas-build/index.html`. Rooting at the generated
-      // directory puts it at `dist/index.html`, which is the only path a static
-      // host will serve as the site. Component imports are absolute and node
-      // resolution walks UP into the project's own `node_modules`, so nothing
-      // else depends on the root being the project.
-      root: workDir,
-      base: options.base ?? '/',
+      // The workbench APP is the root — see `../dev/zero-app`. Component
+      // imports are absolute, so nothing depends on the root being the project.
+      root: app,
+      base,
       configFile: false,
+      // The project's `.env*` files, as `atlas dev` reads them.
+      envDir: root,
+      // The project's own `resolve.alias`: without it a `~/…` import in a
+      // component fails the build that `atlas dev` serves fine.
+      ...(alias.length > 0 ? { resolve: { alias: [...alias] } } : {}),
       logLevel: 'warn',
       plugins: [
+        // Resolve the framework for Atlas's generated modules. They are
+        // virtual, so the bundler has no file location to walk up from — and
+        // in a monorepo the walk from the project lands on a root that
+        // declares none of the framework. Same lookup the module loader uses.
         workspaceResolvePlugin(root),
-        // Resolve the framework for the GENERATED entry.
-        //
-        // `entry.js` is written into `<project>/node_modules/.atlas-build/`, so
-        // the bundler resolves its imports by walking up from there — and in a
-        // monorepo that lands on the repo root, which declares none of the
-        // framework. The build then died with `Rolldown failed to resolve
-        // import "@pyreon/runtime-dom"`, on an ordinary installed project.
-        //
-        // Same lookup the module loader uses, and the same argument: the
-        // workspace declares where its packages are, so this is not a guess.
-        // Atlas's own directory is included because the entry is Atlas's UI
-        // code — in a matched install both answers are the same copy anyway.
-        factory({ devErrorPrinter: false }),
+        stack.pyreon(PYREON_OPTIONS),
+        // `/` plus one page per component, each the client shell (every route
+        // is `spa`, see `app/src/routes/_layout.tsx`).
+        stack.zero(zeroOptions({ base, paths: ['/', ...ids.map((id) => `/${id}`)] })),
         atlasDevPlugin({
           root,
           // The SCANNED directory, not the project root — groups are derived
@@ -307,10 +306,23 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
           ...(parts ? { parts } : {}),
           ...(projects ? { projects } : {}),
           title,
+          // The inline answers go into the page head — before the deferred
+          // module script, which is what reads them.
+          baked: { inline: split.inline, base },
         }),
+        {
+          // The marker that lets a later build empty this directory, emitted
+          // WITH the client bundle rather than after the whole build: a build
+          // that fails in the SSG pass has already replaced the directory's
+          // contents, and without the marker the retry refused to touch it.
+          name: 'atlas:build-marker',
+          generateBundle(this: { emitFile: (file: Record<string, unknown>) => unknown }) {
+            this.emitFile({ type: 'asset', fileName: OUT_MARKER, source: MARKER_TEXT })
+          },
+        },
       ],
       build: {
-        outDir,
+        outDir: realOutDir,
         emptyOutDir: true,
         // The workbench is a tool, not a page in a bundle-size budget. Keeping
         // the report quiet avoids a scary warning about a chunk nobody ships
@@ -318,13 +330,14 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
         chunkSizeWarningLimit: 4000,
       },
     })
+    // zero leaves two build-internal files for deploy adapters: Vite's
+    // `.vite/` manifest directory and `_pyreon-ssg-paths.json`. A static site
+    // has no adapter, so neither belongs in what the user deploys.
+    rmSync(join(realOutDir, '.vite'), { recursive: true, force: true })
+    rmSync(join(realOutDir, '_pyreon-ssg-paths.json'), { force: true })
   } finally {
     if (prevNodeEnv === undefined) delete process.env.NODE_ENV
     else process.env.NODE_ENV = prevNodeEnv
-    // The generated input has served its purpose. Left behind it would be
-    // picked up by the next `vite dev` glob in some projects, and it is
-    // regenerated from scratch on every build anyway.
-    rmSync(workDir, { recursive: true, force: true })
   }
 
   // The per-component answers, fetched on demand (see `splitBakedRpc`).
@@ -335,174 +348,33 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
     writeFileSync(resolve(rpcDir, file), JSON.stringify(content), 'utf8')
   }
   // Marks the directory as atlas's own, so the next build may empty it.
-  writeFileSync(resolve(outDir, OUT_MARKER), 'Written by atlas build. Safe to delete.\n', 'utf8')
+  writeFileSync(resolve(outDir, OUT_MARKER), MARKER_TEXT, 'utf8')
 
-  // ── 5. A directory per component ────────────────────────────────────────
-  // The SAME ids the catalog module generates — `catalogIds` is the one owner.
-  // These are slugs (`core-button`), not identity keys (`Core/Button`): the key
-  // carries a `/`, so deriving directories from it would both write outside the
-  // component's folder and never match what the page looks itself up by.
-  const routed = emitComponentPages(
-    outDir,
-    catalogIds(entries, {
-      root: scanRoot,
-      ...(pages ? { pages } : {}),
-      ...(projects ? { projects } : {}),
-    }),
-    options.base ?? '/',
-    log,
-  )
+  // ── 4. Count what was actually written ──────────────────────────────────
+  // From the artifact, not from the list handed to zero: a page that was
+  // asked for and not written is exactly what this number exists to expose.
+  const routed = ids.filter((id) => existsSync(resolve(outDir, id, 'index.html'))).length
+  if (routed < ids.length) {
+    log(`atlas build: ${ids.length - routed} of ${ids.length} component page(s) were not written.`)
+  }
 
   return { outDir, components: entries.length, warnings, title, routedPages: routed }
 }
 
 /**
- * Emit `<outDir>/<id>/index.html` for every component.
+ * The component ids that may become a page path.
  *
- * Why a copy of the shell rather than anything cleverer: the workbench is
- * client-rendered, so every component page IS the same document — what differs
- * is which component it selects, and it learns that from its own path (see
- * `componentFromPath`). Copying costs a few hundred KB of identical HTML and
- * buys a URL you can paste into a chat, bookmark, or link from a design doc,
- * on a plain file server with no rewrite rules.
- *
- * What this does NOT buy, and the comment exists so nobody assumes it does:
- * the emitted HTML has an EMPTY body until JavaScript runs. These are real
- * URLs, not prerendered pages — a crawler sees the shell's title and nothing
- * else. Rendering the component into the HTML needs SSR, which is a different
- * and much larger change.
- *
- * Skipped for a RELATIVE base. Vite rewrites the shell's asset URLs against
- * the base, and a relative one (`./assets/…`) resolves against the DIRECTORY
- * the document is in — correct at the root, broken one level down. Rather than
- * emit pages that silently fail to load their own JavaScript, this says so and
- * emits none.
+ * Each becomes a DIRECTORY NAME (`<out>/<id>/index.html`), so a separator or a
+ * parent reference would write outside the output. The ids come from
+ * `componentKey`, which slugifies, so in practice they are safe — checked
+ * rather than trusted anyway: the cost is a string test and the failure mode
+ * is arbitrary file placement on a CI machine with write access to more than
+ * the output directory.
  */
-export function emitComponentPages(
-  outDir: string,
-  ids: readonly string[],
-  base: string,
-  log: (message: string) => void,
-): number {
-  if (!base.startsWith('/')) {
-    log(
-      `atlas build: --base ${base} is relative, so per-component pages were NOT emitted ` +
-        `(their assets would resolve against the wrong directory). The site works at its ` +
-        `root; use an absolute --base to get /<component>/ URLs.`,
-    )
-    return 0
-  }
-
-  let shell: string
-  try {
-    shell = readFileSync(resolve(outDir, 'index.html'), 'utf8')
-  } catch {
-    // The build just wrote it, so this is a genuinely broken state rather than
-    // a case to paper over.
-    log('atlas build: could not read the built index.html — per-component pages were not emitted.')
-    return 0
-  }
-
-  let written = 0
-  for (const id of ids) {
-    // The ids come from `componentKey`, which slugifies — but this value
-    // becomes a DIRECTORY NAME, so a separator or a parent reference would
-    // write outside `outDir`. Checked rather than trusted: the cost is a
-    // string test and the failure mode is arbitrary file placement.
-    if (id.length === 0 || id.includes('/') || id.includes('\\') || id === '.' || id === '..') {
-      log(`atlas build: skipped a component page for the unsafe id ${JSON.stringify(id)}`)
-      continue
-    }
-    const dir = resolve(outDir, id)
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(resolve(dir, 'index.html'), shell, 'utf8')
-    written += 1
-  }
-  return written
-}
-
-/** Resolve `@pyreon/vite-plugin`'s factory, with a written-out failure. */
-async function loadPyreonPlugin(): Promise<(options?: unknown) => unknown> {
-  let mod: { default?: (o?: unknown) => unknown; pyreon?: (o?: unknown) => unknown }
-  try {
-    mod = (await import('@pyreon/vite-plugin')) as unknown as typeof mod
-  } catch {
-    throw new Error(
-      NO_VITE.replace(
-        'atlas build needs Vite, which is not installed',
-        '@pyreon/vite-plugin is not installed',
-      ),
-    )
-  }
-  const factory = mod.default ?? mod.pyreon
-  if (typeof factory !== 'function') {
-    throw new Error('[Pyreon] atlas build: @pyreon/vite-plugin did not export a plugin factory')
-  }
-  return factory
-}
-
-/**
- * The built site's entry.
- *
- * A REAL file rather than the dev server's virtual module: an html `<script
- * src>` is resolved by Vite's html plugin as a path relative to the page, and a
- * virtual id has no path to be relative to. The catalog it imports stays
- * virtual — that one is reached by a normal import specifier, which the plugin
- * resolves in build exactly as it does in dev.
- */
-export function staticEntry(title: string): string {
-  return [
-    `import { mount } from '@pyreon/runtime-dom'`,
-    `import { h } from '@pyreon/core'`,
-    `import { Workbench } from '@pyreon/atlas/ui'`,
-    `import { catalog } from ${JSON.stringify(CATALOG_ID)}`,
-    '',
-    `const root = document.getElementById('atlas-root')`,
-    `if (root) {`,
-    `  mount(h(Workbench, { catalog, title: ${JSON.stringify(title)} }), root)`,
-    `}`,
-    '',
-  ].join('\n')
-}
-
-/** The five characters that matter in an HTML text/attribute context. */
-function escapeHtml(text: string): string {
-  return text
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-/**
- * The built site's shell.
- *
- * Deliberately NOT `devHtml`: that one points at a Vite-internal `/@id/` URL
- * that exists only while a dev server is running, and it has no baked payload.
- * Sharing them would mean one of the two is always carrying the other's
- * accidents.
- */
-export function staticHtml(title: string, baked: BakedRpc, base = '/'): string {
-  return [
-    '<!doctype html>',
-    '<html lang="en">',
-    '  <head>',
-    '    <meta charset="utf-8" />',
-    '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
-    `    <title>${escapeHtml(title)}</title>`,
-    ...themeHeadLines(),
-    ...fontLinks(),
-    // Before the module script, which is deferred — see `bakedRpcScript`.
-    `    ${bakedRpcScript(baked)}`,
-    `    ${bakedRpcUrlScript(base)}`,
-    `    ${routesFlagScript()}`,
-    '  </head>',
-    '  <body>',
-    '    <div id="atlas-root"></div>',
-    '    <script type="module" src="./entry.js"></script>',
-    '  </body>',
-    '</html>',
-    '',
-  ].join('\n')
+export function pageIds(ids: readonly string[], log: (message: string) => void): string[] {
+  return ids.filter((id) => {
+    const safe = id.length > 0 && !id.includes('/') && !id.includes('\\') && id !== '.' && id !== '..'
+    if (!safe) log(`atlas build: skipped a component page for the unsafe id ${JSON.stringify(id)}`)
+    return safe
+  })
 }
