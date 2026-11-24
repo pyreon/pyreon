@@ -28,6 +28,15 @@
  * read: `checkDirty` evaluates bottom-up, so each getter's inner reads hit
  * clean caches.
  *
+ * Two invariants the walks rely on instead of re-checking:
+ *   - A watcher (effect, render binding) is QUEUED only together with a mark:
+ *     marking sets both at once, and both are cleared before or as it runs (the
+ *     flush and `settleFirstRun` take the queue flag off, then the run clears
+ *     the marks; `settleDropped` clears both).
+ *   - A marked, live subscriber holds a dependency edge: marking reaches it
+ *     through one, a running subscriber is marked only through an edge its
+ *     run already confirmed, and a completed run drops only unconfirmed edges.
+ *
  * Signals carry no flags (a signal stays at its pre-graph size). A source
  * change is recorded only as DIRTY on its direct subscribers, which is why
  * `propagate` upgrades an already-PENDING direct subscriber to DIRTY.
@@ -284,12 +293,16 @@ export function unlinkAllDeps(sub: Subscriber): void {
 function isConfirmed(l: Link, sub: Subscriber): boolean {
   const tail = sub._depsTail
   if (tail === null) return false
-  for (let x = sub._deps; x !== null; x = x.nextDep) {
-    if (x === l) return true
+  // A non-null cursor is always an edge of `sub`'s own list (`link` sets it to
+  // an edge it inserted or advanced to; `purgeDeps` keeps it), so this walk
+  // meets `tail` before running off the end.
+  let x = sub._deps as Link
+  while (x !== l) {
     if (x === tail) return false
+    x = x.nextDep as Link
   }
 
-  return false
+  return true
 }
 
 // ─── Queue ──────────────────────────────────────────────────────────────────
@@ -339,10 +352,11 @@ export function propagate(head: Link): void {
           if (c._d1 !== null || c._d !== null) enqueueNode(c)
           const s = c._subs
           if (s !== null) propagateDeep(s)
-        } else if ((f & F_QUEUED) === 0) {
+        } else {
+          // An unmarked watcher is never queued (see "Marks" in the header).
           sub._f = f | F_DIRTY | F_QUEUED
           _q.push(sub as QueueEntry)
-        } else sub._f = f | F_DIRTY
+        }
       }
     } else if ((f & (F_DIRTY | F_DISPOSED)) === 0) {
       // Already PENDING (reached through another path, its subtree already
@@ -378,10 +392,10 @@ function propagateDeep(head: Link): void {
           l = s
           continue
         }
-      } else if ((f & F_QUEUED) === 0) {
+      } else {
         sub._f = f | F_PENDING | F_QUEUED
         _q.push(sub as QueueEntry)
-      } else sub._f = f | F_PENDING
+      }
     }
     l = next
   }
@@ -509,15 +523,12 @@ function computedChanged(c: ComputedNode): void {
 
 /**
  * Resolve a marked computed: re-evaluate it if a source it read changed, else
- * clear the mark without running it.
+ * clear the mark without running it. Never reached for a disposed computed:
+ * disposal clears the marks, nothing marks a disposed node, and every caller
+ * acts only on a marked one.
  */
 export function refreshComputed(c: ComputedNode): void {
-  const f = c._f
-  if ((f & F_DISPOSED) !== 0) {
-    c._f = f & ~F_MARKED
-    return
-  }
-  if ((f & F_DIRTY) !== 0 || checkDirty(c)) {
+  if ((c._f & F_DIRTY) !== 0 || checkDirty(c)) {
     if (updateComputed(c)) computedChanged(c)
   } else c._f &= ~F_PENDING
 }
@@ -538,9 +549,9 @@ export function refreshComputed(c: ComputedNode): void {
  * their own errors).
  */
 export function checkDirty(root: Subscriber): boolean {
-  const first = root._deps
-  if (first === null) return false
-  let l: Link = first
+  // Every node this walk visits is marked PENDING, so it holds a dependency
+  // edge (see "Marks" in the module header).
+  let l = root._deps as Link
   let sub: Subscriber = root
   const stack = _st.c
   const base = stack.length
@@ -557,14 +568,10 @@ export function checkDirty(root: Subscriber): boolean {
             dirty = true
           }
         } else if ((df & F_PENDING) !== 0) {
-          const dl = dep._deps as Link | null
-          if (dl !== null) {
-            stack.push(l)
-            l = dl
-            sub = dep as ComputedNode
-            continue
-          }
-          dep._f = df & ~F_PENDING
+          stack.push(l)
+          l = dep._deps as Link
+          sub = dep as ComputedNode
+          continue
         }
       }
     }
@@ -711,9 +718,10 @@ export function drain(): void {
     // MAX_PASSES dropped the rest. The length is re-read: settling can append.
     for (let k = i; k < q.length; k++) settleDropped(q[k] as QueueEntry)
     // A one-entry flush (one write, one effect) empties with `pop()`, which
-    // keeps the backing store; `length = 0` on a non-empty array drops it.
+    // keeps the backing store; `length = 0` drops it. The queue is never empty
+    // here: a drain starts with an entry and nothing removes the entry it runs.
     if (q.length === 1) q.pop()
-    else if (q.length !== 0) q.length = 0
+    else q.length = 0
     _t.e = prevSub
     _b.d = 0
   }
@@ -757,14 +765,6 @@ export function endBatch(): void {
 }
 
 // ─── Untracked reads, frame helpers ─────────────────────────────────────────
-
-export function getInnerEffectCollector(): unknown[] | null {
-  return _t.n
-}
-
-export function setInnerEffectCollector(c: unknown[] | null): void {
-  _t.n = c
-}
 
 /** Read signals without subscribing AND prevent auto-registration of new
  * effects with the surrounding outer effect's inner-effect collector.

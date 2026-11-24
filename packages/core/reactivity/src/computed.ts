@@ -146,7 +146,9 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
   const read = (() => {
     const f = read._f
     if ((f & (F_DIRTY | F_PENDING)) !== 0) refreshComputed(read)
-    else if ((f & F_HAS_VALUE) === 0) readCold(read)
+    // Unmarked without a value: only a computed disposed before it ever
+    // evaluated (a live one starts DIRTY and keeps a mark until it has a value).
+    else if ((f & F_HAS_VALUE) === 0) readDisposedFirst(read)
     const sub = _t.e
     if (sub !== null) link(read, sub)
     return read._value
@@ -181,9 +183,4 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
   // request's scope.
   _ownerScope()?.add(read)
   return read as unknown as Computed<T>
-}
-
-/** A disposed computed that never evaluated (no marks, no value). */
-function readCold(c: ComputedFn<unknown>): void {
-  if ((c._f & F_DISPOSED) !== 0) readDisposedFirst(c)
 }

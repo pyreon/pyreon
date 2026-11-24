@@ -240,12 +240,9 @@ export function _addDirect(host: DirectHost, fn: () => void): void {
 
     return
   }
-  if (d1 !== null) {
-    // A Set exists AND the inline slot is occupied (a sole-suspension resumed
-    // around a newcomer): fold the slot in.
-    host._d1 = null
-    d.add(d1)
-  }
+  // A Set exists, so the inline slot is empty: `_d1` is filled only while `_d`
+  // is null (above), and `_d` becomes a Set only with `_d1` null (the
+  // promotion above, `_resumeSoleSubscriber`).
   d.add(fn)
 }
 
@@ -338,7 +335,7 @@ export function _suspendSoleSubscriber<T>(sig: Signal<T>): SoleSubscriberToken |
   const d = s._d
   const d1 = s._d1
   if (d1 !== null) {
-    if (d !== null && d.size > 0) return null
+    // The inline slot is filled only while `_d` is null (see `_addDirect`).
     s._d1 = null
     return d1
   }

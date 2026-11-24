@@ -2,8 +2,7 @@
  * Tracking-frame helpers over the graph core (`graph.ts`).
  *
  * Kept as its own module for the names other packages and tests import:
- * `runUntracked`, `trackSubscriber`, the inner-effect collector accessors, the
- * `SubscriberHost` type and the read-replay trio `runtime-dom` uses to hand an
+ * `runUntracked`, `trackSubscriber`, the `SubscriberHost` type and the read-replay trio `runtime-dom` uses to hand an
  * evaluated accessor's dependencies to the binding that owns it.
  */
 import {
@@ -12,15 +11,13 @@ import {
   type Source,
   type Subscriber,
   _t,
-  getInnerEffectCollector,
   link,
   runUntracked,
-  setInnerEffectCollector,
   trackSubscriber,
   unlinkAllDeps,
 } from './graph'
 
-export { _t, getInnerEffectCollector, runUntracked, setInnerEffectCollector, trackSubscriber }
+export { _t, runUntracked, trackSubscriber }
 
 /**
  * Subscriber host — any reactive source that can have downstream subscribers:

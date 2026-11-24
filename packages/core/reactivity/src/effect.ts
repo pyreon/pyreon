@@ -167,20 +167,8 @@ export function _exitCleanupFrame(token: CleanupFrameToken): (() => void)[] | nu
 // no-nested-effects case allocates nothing.
 const LAZY_INNER: unknown[] = []
 
-// Inner-effect collector state lives in tracking.ts so `runUntracked` can
+// Inner-effect collector state lives on `_t` (graph.ts) so `runUntracked` can
 // suspend it in lock-step with `_t.e`.
-
-/** Two returned cleanups of one effect: run both. */
-function chainCleanup(first: () => void, second: () => void): () => void {
-  return () => {
-    try {
-      first()
-    } catch (err) {
-      _errorHandler(err)
-    }
-    second()
-  }
-}
 
 /**
  * An `effect()`: the node in the graph, the handle `effect()` returns, and
@@ -247,7 +235,10 @@ class EffectNode implements WatcherNode, Effect {
       const fn = this._fn
       const ret = !first && snap !== null && cap !== null ? cap.restore(snap, fn) : fn()
       ok = true
-      if (typeof ret === 'function') this._cleanup = this._cleanup === undefined ? ret : chainCleanup(this._cleanup, ret)
+      // `_runCleanup` above emptied `_cleanup`, `_cleanups` and `_inner`, and a
+      // node's run never re-enters (a re-queue waits for the flush or
+      // `settleFirstRun`), so this run's registrations are assigned, not merged.
+      if (typeof ret === 'function') this._cleanup = ret
     } catch (err) {
       _errorHandler(err)
     } finally {
@@ -269,18 +260,16 @@ class EffectNode implements WatcherNode, Effect {
 
   /**
    * Close the run's `onCleanup` and inner-effect windows and restore the
-   * caller's. What this run registered is APPENDED, never assigned (cleanups
-   * registered before a throw are kept too).
+   * caller's, keeping what the run registered (cleanups registered before a
+   * throw are kept too). Both fields are empty here (see `_exec`).
    */
   _closeWindows(prevOpen: boolean, prevCollector: (() => void)[] | null, outerCollector: unknown[] | null): void {
     const own = _c.c
     _c.o = prevOpen
     _c.c = prevCollector
-    if (own !== null) this._cleanups = this._cleanups === null ? own : this._cleanups.concat(own)
+    if (own !== null) this._cleanups = own
     const mine = _t.n
-    if (mine !== LAZY_INNER && mine !== null) {
-      this._inner = this._inner === null ? (mine as Effect[]) : this._inner.concat(mine as Effect[])
-    }
+    if (mine !== LAZY_INNER && mine !== null) this._inner = mine as Effect[]
     _t.n = outerCollector
   }
 
@@ -288,13 +277,9 @@ class EffectNode implements WatcherNode, Effect {
     const inner = this._inner
     if (inner !== null) {
       this._inner = null
-      for (const ie of inner) {
-        try {
-          ;(ie as EffectNode)._dispose()
-        } catch (err) {
-          _errorHandler(err)
-        }
-      }
+      // Inner entries are EffectNodes (only `effect()` registers into a run's
+      // window), and `_dispose` reports its cleanups' errors itself.
+      for (const ie of inner) (ie as EffectNode)._dispose()
     }
     const cleanups = this._cleanups
     if (cleanups !== null) {
