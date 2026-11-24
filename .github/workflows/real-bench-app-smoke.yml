@@ -10,19 +10,18 @@ name: Real Bench App Smoke
 #
 # What it does, on Linux:
 #
-#   1. `bun setup.ts <arm>…`: `npm ci` from each competitor arm's committed
-#      lockfile and a production build.
-#   2. The pyreon arm from the WORKSPACE (`--pyreon=workspace`, the monorepo's
-#      built lib/). Its npm source (the published packages arms/pyreon's
-#      lockfile pins) is not built here: the pinned 0.53.0 fails the gate
-#      (its header RouterLinks mount before RouterProvider runs and do full
-#      page loads), which #4174 fixed on `main`. Add the
-#      npm build back when the pin moves to a release that passes.
-#   3. `bun gate.ts`: the correctness gate (harness/gate.ts) on every arm,
+#   1. `bun setup.ts <arm>…`: `npm ci` from each arm's committed lockfile
+#      and a production build, the pyreon arm included: its npm source is the
+#      published `@pyreon/*` its lockfile pins, the only source a published
+#      result may use, so this proves the published packages pass.
+#   2. `bun gate.ts`: the correctness gate (harness/gate.ts) on every arm,
 #      served by the harness's static server: deep links, not-found, and two
 #      scripted sessions (search, filter, sort, paginate, favourites, detail,
 #      form validation, create) whose expectations come from shared/data.ts.
 #      It prints no timing.
+#   3. The pyreon arm again from the WORKSPACE (`--pyreon=workspace`, the
+#      monorepo's built lib/), then the gate on it alone, so a change on the
+#      default branch that breaks the app is caught before it is released.
 #
 # Advisory, not a required check. Path scoping is therefore a TRIGGER-level
 # `paths:` filter (a required check would deadlock on it; see
@@ -67,17 +66,20 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-      # Also builds every workspace package's lib/, which step 2 resolves.
+      # Also builds every workspace package's lib/, which step 3 resolves.
       - name: Install the workspace
         run: bun install --frozen-lockfile
       - name: Install Playwright Chromium
         run: bash scripts/install-playwright.sh chromium
-      - name: Build the competitor arms from their lockfiles
+      - name: Build every arm from its lockfile (pyreon from npm)
         working-directory: examples/real-bench/app
-        run: bun setup.ts preact react solid svelte vue
-      - name: Build the pyreon arm from the workspace
-        working-directory: examples/real-bench/app
-        run: bun setup.ts pyreon --pyreon=workspace
+        run: bun setup.ts
       - name: Correctness gate, every arm
         working-directory: examples/real-bench/app
         run: bun gate.ts
+      - name: Build the pyreon arm from the workspace
+        working-directory: examples/real-bench/app
+        run: bun setup.ts pyreon --pyreon=workspace
+      - name: Correctness gate, the pyreon arm from the workspace
+        working-directory: examples/real-bench/app
+        run: bun gate.ts pyreon
