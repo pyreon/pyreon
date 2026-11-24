@@ -6933,6 +6933,14 @@ export function transformJSX_JS(
         if (nm) lastPlainIdx.set(nm, i)
       }
       let htmlAttrs = ''
+      // `ref` lines, deferred LAST: after this element's children lines and
+      // after a deferred `<select value>` (#4764). The h() path calls a ref
+      // once the element's children are mounted (`mountElement`), so a ref
+      // that clears or fills its element runs over the same content in both
+      // renderers. Run first, it removed the `<!>` / `' '` placeholders the
+      // children lines then wrote against (a client mount threw), and a static
+      // `_setChild` overwrote what the ref added.
+      const refDeferred: string[] = []
       for (let i = 0; i < attrs.length; i++) {
         const a = attrs[i]!
         if (a.type === 'JSXAttribute' && jsxAttrName(a)) {
@@ -6963,9 +6971,16 @@ export function transformJSX_JS(
             if (bindLines.length > before) deferredLines.push(...bindLines.splice(before))
             continue
           }
+          if (name === 'ref') {
+            const before = bindLines.length
+            htmlAttrs += processOneAttr(a, varName, tag)
+            if (bindLines.length > before) refDeferred.push(...bindLines.splice(before))
+            continue
+          }
         }
         htmlAttrs += processOneAttr(a, varName, tag)
       }
+      if (refDeferred.length > 0) deferredLines.push(...refDeferred)
 
       return htmlAttrs
     }

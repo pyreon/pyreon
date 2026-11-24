@@ -9787,6 +9787,9 @@ fn process_attrs(
         }
     }
     let mut html_attrs = String::new();
+    // `ref` lines, deferred LAST: after this element's children lines and
+    // after a deferred `<select value>` (#4764). Mirrors jsx.ts:processAttrs.
+    let mut ref_deferred: Vec<String> = Vec::new();
     for (i, attr) in attrs.iter().enumerate() {
         if let JSXAttributeItem::Attribute(a) = attr {
             {
@@ -9824,10 +9827,19 @@ fn process_attrs(
                     }
                     continue;
                 }
+                if attr_name.as_ref() == "ref" {
+                    let before = tb.bind_lines.len();
+                    html_attrs.push_str(&process_one_attr(attr, var_name, tag, tb, ctx));
+                    if tb.bind_lines.len() > before {
+                        ref_deferred.extend(tb.bind_lines.drain(before..));
+                    }
+                    continue;
+                }
             }
         }
         html_attrs.push_str(&process_one_attr(attr, var_name, tag, tb, ctx));
     }
+    deferred_lines.append(&mut ref_deferred);
     html_attrs
 }
 

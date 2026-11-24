@@ -1133,6 +1133,33 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('_ref(__root, (el) => { myEl = el })')
   })
 
+  test('a ref runs after its element\'s children lines, children refs first (#4764)', () => {
+    // The h() path calls a ref once the element's children are mounted
+    // (`mountElement`). Emitted first, a ref that cleared its element removed
+    // the `<!>` placeholder `_setChildAt` then wrote against (a client mount
+    // threw), and a static `_setChild` overwrote what the ref added.
+    const result = t('<p ref={a}><s ref={b} />{v}{() => vn}<i ref={c} /></p>')
+    const at = (s: string) => {
+      const i = result.indexOf(s)
+      expect(i, s).toBeGreaterThan(-1)
+      return i
+    }
+    const slotAt = at('_setChildAt(')
+    const textAt = at('bindPolymorphicText(')
+    const refB = at('_ref(__e0, b)')
+    const refC = at('_ref(__e2, c)')
+    const refA = at('_ref(__root, a)')
+    expect(refA).toBeGreaterThan(Math.max(slotAt, textAt, refB, refC))
+    // Post-order, as h(): a child's ref before its later siblings' lines.
+    expect(refB).toBeLessThan(slotAt)
+    expect(refC).toBeGreaterThan(textAt)
+  })
+
+  test('a ref runs after a deferred <select value> (#4764)', () => {
+    const result = t('<select ref={r} value={sel()}>{opts()}</select>')
+    expect(result.indexOf('_ref(__root, r)')).toBeGreaterThan(result.indexOf('__root.value = v'))
+  })
+
   test('block-arrow ref on a child element with adjacent reactive props compiles cleanly', () => {
     // Regression: a child element (NOT __root) with `hasDynamic=true`
     // used to emit `const __e0 = __root.children[N]` followed by an
