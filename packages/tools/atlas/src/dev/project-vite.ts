@@ -155,6 +155,7 @@ export function tailwindSourcePlugin(projectRoot: string): {
       if (!file.endsWith('.css') || file.includes(`${sep}node_modules${sep}`)) return null
       if (!TAILWIND_IMPORT.test(code) || /@source\s/.test(code)) return null
       const rel = relative(dirname(file), projectRoot).split(sep).join('/') || '.'
+
       return `${code}\n@source "${rel}";\n`
     },
   }

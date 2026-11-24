@@ -109,6 +109,7 @@ export function renderSsrEntrySource(options: RenderSsrEntryOptions): string {
         '[Pyreon] SSG entry renderer not registered. Import ssg-plugin before calling renderSsrEntrySource({ kind: "ssg" }).',
       )
     }
+
     return _ssgEntryRenderer(options.locales)
   }
   // SSR / ISR: canonical createServer body. Same module shape as
@@ -273,6 +274,7 @@ export function buildInnerBuildOptions(options: BuildSsrBundleOptions): BuildOpt
   }
   if (options.assetsInlineLimit !== undefined) build.assetsInlineLimit = options.assetsInlineLimit
   if (options.assetsDir !== undefined) build.assetsDir = options.assetsDir
+
   return build
 }
 
@@ -313,6 +315,7 @@ export function edgeNodeBuiltinsPlugin(): Plugin {
       }
       const bare = id.startsWith('node:') ? id.slice(5) : id
       if (!id.startsWith('node:') && !builtins.has(bare)) return null
+
       return EDGE_BUILTIN_PREFIX + bare
     },
     async load(id) {
@@ -342,6 +345,7 @@ export default { AsyncLocalStorage }
       // carry any request-derived value into executable source.
       const stub =
         '() => { throw new Error("[Pyreon] A Node builtin is not available on the edge runtime. Remove `export const runtime = \'edge\'` from the route that reaches it (it will run on Node), or use a web API instead.") }'
+
       return [
         ...names.map((n) => `export const ${n} = ${stub}`),
         `export default new Proxy({}, { get: (_t, k) => typeof k === "string" ? (${stub}) : undefined })`,
@@ -583,6 +587,7 @@ export async function materializeEntry(entryPath: string, source: string): Promi
  * @internal
  */
 let _atomicSeq = 0
+
 export async function writeFileAtomic(target: string, content: string | Uint8Array): Promise<void> {
   const tmp = `${target}.tmp.${process.pid}.${++_atomicSeq}`
   try {
@@ -646,6 +651,7 @@ export function injectIntoTemplate(
         const i = s.indexOf(c)
         if (i !== -1 && (best === -1 || i < best)) best = i
       }
+
       return best
     }
     const openIdx = findOpenAppDiv(html)
@@ -669,6 +675,7 @@ export function injectIntoTemplate(
   } else if (result.loaderScript) {
     html = html.replace('</body>', () => `${result.loaderScript}</body>`)
   }
+
   return html
 }
 
@@ -689,6 +696,7 @@ export function injectIntoTemplate(
  * @internal
  */
 const _mkdirCache = new Map<string, Promise<void>>()
+
 export async function mkdirOnce(dir: string): Promise<void> {
   let p = _mkdirCache.get(dir)
   if (!p) {
@@ -697,9 +705,11 @@ export async function mkdirOnce(dir: string): Promise<void> {
   }
   await p
 }
+
 export function _resetMkdirCache(): void {
   _mkdirCache.clear()
 }
+
 export function _peekMkdirCacheSize(): number {
   return _mkdirCache.size
 }

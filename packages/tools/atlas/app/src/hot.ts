@@ -30,6 +30,7 @@ export function installComponentHmr(): void {
     swap(mod)
     // Re-mount ONLY the preview: the theme provider and the chrome stay.
     host.__ATLAS_MODEL__?.restartPreview({ theme: false })
+
     return true
   }
 }
