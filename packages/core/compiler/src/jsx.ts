@@ -1348,10 +1348,15 @@ function toNativeCollapse(
 }
 
 /** JS fallback implementation — used when the native binary isn't available. */
-/** `<select … value=…>` (a plain `select` tag carrying a `value` attribute). Mirrors Rust `is_select_with_value`. */
+/**
+ * `<select … value=…>` or `<select {...spread}>` (a plain `select` tag with a
+ * `value` attribute, or a spread that may carry one — the compiler cannot see
+ * inside it). Mirrors Rust `has_select_value`.
+ */
 function isSelectWithValue(opening: N): boolean {
   if (opening.name?.type !== 'JSXIdentifier' || opening.name.name !== 'select') return false
   for (const a of opening.attributes ?? []) {
+    if (a.type === 'JSXSpreadAttribute') return true
     if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === 'value') return true
   }
 
@@ -1468,7 +1473,7 @@ export function transformJSX_JS(
   const parentMap = new WeakMap<object, N>()
   const childrenMap = new WeakMap<object, N[]>()
 
-  // A `<select value>` anywhere in the module: the client emit turns on the
+  // A `<select value>` (or `<select {...spread}>`) anywhere in the module: the client emit turns on the
   // runtime's late-option handling (`_selectWait()`, #4820), so apps without
   // one never ship it. Mirrors Rust `has_select_value`.
   let hasSelectValue = false

@@ -161,6 +161,9 @@ describe('<select value> turns on late-option handling for its module (#4820)', 
     ['a templated select', 'const A = () => <select value="b"><option value="b">b</option></select>'],
     ['a select with a component child (h() path)', 'const A = () => <select value={v()}><For each={o()} by={(x) => x}>{(x) => <option value={x}>{x}</option>}</For></select>'],
     ['a nested select', 'const A = () => <div><label>x<select value={v}><option /></select></label></div>'],
+    // The compiler cannot see whether a spread carries `value`, so a spread counts.
+    ['a select with a spread', 'const A = (p) => <select {...p}><option value="b">b</option></select>'],
+    ['a select with a spread and component children', 'const A = (p) => <select {...p}><For each={o()} by={(x) => x}>{(x) => <option value={x}>{x}</option>}</For></select>'],
   ])('%s', (_label, src) => {
     expect(both(src).split(WAIT).length - 1).toBe(1)
   })
@@ -168,6 +171,8 @@ describe('<select value> turns on late-option handling for its module (#4820)', 
   it.each([
     ['a select without value', 'const A = () => <select name="x"><option>a</option></select>'],
     ['a component named Select', 'const A = () => <Select value="b" />'],
+    ['a component named Select with a spread', 'const A = (p) => <Select {...p} />'],
+    ['a spread on another element', 'const A = (p) => <input {...p} />'],
     ['h() with a select', "const A = () => h('select', { value: 'b' })"],
     ['no JSX at all', 'const x = 1'],
   ])('not for %s', (_label, src) => {

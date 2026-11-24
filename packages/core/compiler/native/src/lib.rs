@@ -2830,6 +2830,38 @@ fn is_self_closing(el: &JSXElement) -> bool {
     el.closing_element.is_none()
 }
 
+/// A `<select … value=…>` or `<select {...spread}>` anywhere in the program (a
+/// plain `select` tag with a `value` attribute or a spread that may carry one).
+/// Mirrors the JS `isSelectWithValue` check in `buildMaps`.
+fn has_select_value(program: &Program) -> bool {
+    struct SelectFinder {
+        found: bool,
+    }
+    impl<'a> Visit<'a> for SelectFinder {
+        fn visit_jsx_opening_element(&mut self, it: &JSXOpeningElement<'a>) {
+            if let JSXElementName::Identifier(name) = &it.name {
+                if name.name.as_str() == "select"
+                    && it.attributes.iter().any(|a| match a {
+                        // A spread may carry `value`; the compiler cannot see inside it.
+                        JSXAttributeItem::SpreadAttribute(_) => true,
+                        JSXAttributeItem::Attribute(attr) => {
+                            matches!(&attr.name, JSXAttributeName::Identifier(n) if n.name.as_str() == "value")
+                        }
+                    })
+                {
+                    self.found = true;
+                }
+            }
+            if !self.found {
+                oxc_ast_visit::walk::walk_jsx_opening_element(self, it);
+            }
+        }
+    }
+    let mut finder = SelectFinder { found: false };
+    finder.visit_program(program);
+    finder.found
+}
+
 /// Does expr contain JSX (element or fragment)?
 /// Does this expression subtree contain a JSX element/fragment anywhere?
 ///
@@ -2846,34 +2878,6 @@ fn is_self_closing(el: &JSXElement) -> bool {
 /// "RS misses a nested-JSX shape" class instead of patching shapes one at a
 /// time. Finding ANY JSX is sufficient, so the visitor short-circuits descent
 /// into a matched element's own children.
-/// A `<select … value=…>` anywhere in the program (a plain `select` tag with a
-/// `value` attribute). Mirrors the JS `isSelectWithValue` check in `buildMaps`.
-fn has_select_value(program: &Program) -> bool {
-    struct SelectFinder {
-        found: bool,
-    }
-    impl<'a> Visit<'a> for SelectFinder {
-        fn visit_jsx_opening_element(&mut self, it: &JSXOpeningElement<'a>) {
-            if let JSXElementName::Identifier(name) = &it.name {
-                if name.name.as_str() == "select"
-                    && it.attributes.iter().any(|a| {
-                        matches!(a, JSXAttributeItem::Attribute(attr)
-                            if matches!(&attr.name, JSXAttributeName::Identifier(n) if n.name.as_str() == "value"))
-                    })
-                {
-                    self.found = true;
-                }
-            }
-            if !self.found {
-                oxc_ast_visit::walk::walk_jsx_opening_element(self, it);
-            }
-        }
-    }
-    let mut finder = SelectFinder { found: false };
-    finder.visit_program(program);
-    finder.found
-}
-
 fn contains_jsx_in_expr(expr: &Expression) -> bool {
     struct JsxFinder {
         found: bool,

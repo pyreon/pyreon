@@ -1184,7 +1184,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     // ordinary clear-the-field flow: `<input value={draft()} />` with `draft`
     // going `string | undefined`. Booleans deliberately stay on the generic
     // path below, where SSR also treats them as presence.
-    if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+    if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
       applyValueProp(el, value)
       return
     }
@@ -1255,7 +1255,9 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // after the nullish/boolean branches so those keep their existing attribute
   // semantics, and scoped to the two tags that own a `defaultValue` — every
   // other element keeps the generic (try/catch-guarded) property path below.
-  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+  // A `<select>` too: it reaches here from a spread or `applyProps`, and its
+  // value may need to wait for its option (`select-wait.ts`).
+  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
     applyValueProp(el, value)
     return
   }

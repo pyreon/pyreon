@@ -153,6 +153,45 @@ return Picker`,
       expect(select.value, out).toBe('b')
     })
 
+    it('a spread carrying value (`<select {...p}>`), set before the options arrive', async () => {
+      const value = signal('b')
+      const options = signal<string[]>([])
+      const p = { name: 'pick' } as Record<string, unknown>
+      Object.defineProperty(p, 'value', { get: () => value(), enumerable: true, configurable: true })
+      const { App, out } = load(
+        compile,
+        `function Picker() {
+  return <div><select {...p}>{options().map((o) => <option value={o}>{o}</option>)}</select></div>
+}
+return Picker`,
+        { options, p },
+      )
+      expect(out).toContain('_selectWait()')
+      const select = mountApp(h(App as core.ComponentFn, null))
+      options.set(['a', 'b', 'c'])
+      await tick()
+      expect(select.value, out).toBe('b')
+    })
+
+    it('a spread with <For> children (h() path)', async () => {
+      const options = signal<string[]>([])
+      const p = { value: 'c' }
+      const { App, out } = load(
+        compile,
+        `import { For } from '@pyreon/core'
+function Picker() {
+  return <select {...p}><For each={options()} by={(o) => o}>{(o) => <option value={o}>{o}</option>}</For></select>
+}
+return Picker`,
+        { options, p },
+      )
+      expect(out).toContain('_selectWait()')
+      const select = mountApp(h(App as core.ComponentFn, null))
+      options.set(['a', 'b', 'c'])
+      await tick()
+      expect(select.value, out).toBe('c')
+    })
+
     it('options in an <optgroup>', async () => {
       const value = signal('y')
       const options = signal<string[]>([])
