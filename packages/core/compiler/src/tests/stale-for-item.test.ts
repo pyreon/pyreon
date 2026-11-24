@@ -396,6 +396,60 @@ describe('for-stale-item-field — syntax variants of each half', () => {
   })
 })
 
+describe('for-stale-item-field — key shapes (#4809 review)', () => {
+  // Each case walks a branch of `keyInfoOf`; the lint rule runs the same
+  // shapes through its own walker (`no-stale-for-item-field.test.ts`).
+  const keyed = (by: string, pre = '') => `${pre}
+    const todos = signal<Todo[]>([])
+    ${TOGGLE}
+    export const L = () => <For each={todos} by={${by}}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For>
+  `
+  const edges = (by: string, rowAndComp: string, comp = '') => `
+    const edges = signal([])
+    const rename = (id, title) => edges.set(edges().map((e) => (e.node.id === id ? { ...e, node: { ...e.node, title } } : e)))
+    ${comp}
+    export const L = () => <For each={edges} by={${by}}>{${rowAndComp}}</For>
+  `
+  it.each([
+    ['dynamic member', keyed('(t) => t[k]'), 1],
+    ['no parameter', keyed('() => 1'), 1],
+    ['array-pattern param', keyed('([id]) => id'), 1],
+    ['computed key in a destructured param', keyed('({ [k]: v }) => v'), 1],
+    ['array pattern inside a destructured key', keyed('({ ids: [a] }) => a'), 1],
+    ['nested function rebinding the item', keyed('(t) => [t.id].map((t) => t).join()'), 1],
+    ['a method call ends the path', keyed('(t) => t.id.trim()'), 1],
+    ['default import', keyed('getKey', "import getKey from './k'"), 1],
+    ['namespace import', keyed('getKey', "import * as getKey from './k'"), 1],
+    ['named import under another name', keyed('getKey', "import { other as getKey } from './k'"), 1],
+    ['side-effect import and an unrelated import', keyed('getKey', "import './x'\nimport { other } from './k'\nconst getKey = (t) => `${t.id}${t.done}`"), 0],
+    ['exported key function reading only the id', keyed('getKey', 'export function getKey(t) { return t.id }'), 1],
+    ['a declared but bodiless key function', keyed('getKey', 'declare function getKey(t: Todo): string'), 1],
+    ['a key function in a switch case', `
+      const todos = signal<Todo[]>([])
+      ${TOGGLE}
+      export const L = (m) => { switch (m) { case 1: { const getKey = (t) => t.id; return <For each={todos} by={getKey}>{(t) => <li>{t.done ? 'y' : 'n'}</li>}</For> } } }
+    `, 1],
+    ['literal template members', keyed('(t) => t[`id`] + t[`done`]'), 0],
+    ['a method call after the key field', keyed('(t) => t.id + t.done.toString()'), 0],
+    ['default values in a destructured key', keyed('({ id = 0, done = false }) => `${id}${done}`'), 0],
+    ['destructured key value read by member', edges('({ node }) => node.id + node.title', '(e) => <li>{e.node.title}</li>'), 0],
+    ['destructured key value with types and a shadowing callback', edges('({ node }) => [1].map((node) => node).join() + (node.title as typeof node.title)', '(e) => <li>{e.node.title}</li>'), 0],
+    ['a used rest with a type position', keyed('({ id, ...rest }) => id + (rest as typeof rest).x'), 1],
+    ['row destructuring a nested replaced field', edges('(e) => e.node.id', '({ node: { title, ...more }, [k]: v }) => <li>{title}</li>'), 1],
+    ['spread item into a component reading a nested field', edges('(e) => e.node.id', '(e) => <Cell {...e} />', 'const Cell = ({ node: { title }, [k]: v }) => <b>{title}</b>'), 1],
+    ['spread item into a component reading only key paths', edges('(e) => e.node.title', '(e) => <Cell {...e} />', 'const Cell = ({ node: { title } }) => <b>{title}</b>'), 0],
+    ['item passed to a component destructuring a nested pattern', edges('(e) => e.node.id', '(e) => <Cell edge={e} />', 'const Cell = ({ edge: { node: { title } } }) => <b>{title}</b>'), 1],
+    ['a JSX attribute named like the item is not a read', keyed('(t) => <K t="x" k={t.id} />'), 1],
+    ['an item name in non-read positions', keyed("(t) => { const o = { t: 1, t() { return 0 } }; const { t: a } = o; class C { t = 1 }; function f() { const t = 2; return t }; return <K t=\"x\" k={t.id} /> }"), 1],
+    ['a bare by attribute', keyed('').replace('by={}', 'by'), 1],
+    ['a used rest read twice', keyed('({ id, ...rest }) => id + rest.a + rest.b'), 1],
+    ['a key resolved past other statements', keyed('getKey', "console.log('start')\nif (ready) init()\nconst getKey = (t) => t.id"), 1],
+    ['component destructuring other props and an array', edges('(e) => e.node.id', '(e) => <Other label="x" edge={e} />', 'const Other = ({ label, edge: [first], [key]: v }) => <b>{label}{first}</b>'), 0],
+  ] as const)('%s', (_name, code, expected) => {
+    expect(hits(code)).toHaveLength(expected)
+  })
+})
+
 describe('for-stale-item-field — the shipped native-todomvc source', () => {
   const HERE = dirname(fileURLToPath(import.meta.url))
   const SRC = resolve(HERE, '../../../../../examples/native-todomvc/src/TodoApp.tsx')

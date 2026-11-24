@@ -358,8 +358,8 @@ function isReference(n: Node, parent: Node): boolean {
   if (parent.type === 'Property' && parent.key === n && !parent.computed && !parent.shorthand) return false
   if (parent.type === 'VariableDeclarator' && parent.id === n) return false
   if (isFn(parent) && (parent.id === n || (parent.params ?? []).includes(n))) return false
-  if (isTypeNode(parent)) return false
 
+  // Type positions never get here: every walker skips type nodes first.
   return true
 }
 
@@ -411,7 +411,8 @@ function keyInfoOf(byAttr: Node | undefined, forEl: Node, parents: Parents, sour
     return t.length > 40 ? `${t.slice(0, 37)}...` : t
   }
   let fn = byAttr?.value?.type === 'JSXExpressionContainer' ? unwrap(byAttr.value.expression) : undefined
-  if (!fn || fn.type === 'JSXEmptyExpression') return out
+  // `by={}` is a parse error, so a missing expression is a bare `by` attribute.
+  if (!fn) return out
   if (fn.type === 'Identifier') {
     const name = fn.name
     fn = resolveInScope(forEl, name, parents)

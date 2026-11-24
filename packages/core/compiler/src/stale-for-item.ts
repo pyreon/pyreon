@@ -471,8 +471,8 @@ function isReference(n: ts.Identifier): boolean {
   if (ts.isBindingElement(parent) && parent.propertyName === n) return false
   if (ts.isVariableDeclaration(parent) && parent.name === n) return false
   if (ts.isParameter(parent) && parent.name === n) return false
-  if (ts.isTypeReferenceNode(parent) || ts.isQualifiedName(parent)) return false
-  if (ts.isPropertySignature(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) return false
+  // Type positions never get here: every walker skips type nodes first.
+  if (ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) return false
   if (ts.isJsxAttribute(parent)) return false
 
   return true
