@@ -1,4 +1,5 @@
 import { _noopDispose } from '@pyreon/reactivity'
+import { _userCodeHook } from './parked-text'
 import { releaseRef } from './teardown'
 
 /**
@@ -18,6 +19,7 @@ import { releaseRef } from './teardown'
  * `null`.
  */
 export function _ref(el: Element, ref: unknown): () => void {
+  _userCodeHook?.(el)
   if (typeof ref === 'function') {
     ;(ref as (el: Element | null) => void)(el)
     return () => releaseRef(ref)

@@ -1,7 +1,7 @@
 {
   "site": "docs",
   "routes": {
-    "(shell)": 49664,
+    "(shell)": 54731,
     "/": 52736,
     "/404.html": 50688,
     "/benchmarks": 50688,

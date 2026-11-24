@@ -51,6 +51,22 @@ import { _abortOwnerFrame, _closeOwnerFrame, _currentScope, _effectOwned, _frame
  */
 let bulkDetachParent: Node | null = null
 
+/**
+ * Run `fn` (a teardown) with `parent` declared as leaving as a unit, so every
+ * removal of a node inside it through `detachNode` is skipped. Used by a
+ * claimed #4599 region (`claimRegion` in hydrate.ts): its element leaves with
+ * its template, and a bind that throws keeps its server markup.
+ */
+export function _detachAsUnit(parent: Node, fn: () => void): void {
+  const prev = bulkDetachParent
+  bulkDetachParent = parent
+  try {
+    fn()
+  } finally {
+    bulkDetachParent = prev
+  }
+}
+
 /** Remove `node` from its parent, unless a bulk detach makes it redundant. */
 export function detachNode(node: Node): void {
   const p = node.parentNode
