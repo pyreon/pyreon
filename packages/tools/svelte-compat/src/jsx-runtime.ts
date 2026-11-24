@@ -40,7 +40,7 @@ import {
   Suspense,
   Switch,
 } from '@pyreon/core'
-import { runUntracked, signal } from '@pyreon/reactivity'
+import { _claimContextOwner, runUntracked, signal } from '@pyreon/reactivity'
 
 export { Fragment }
 
@@ -123,6 +123,7 @@ interface ChildInstance {
 
 // Internal prop keys for passing parent context info to child wrappers
 const _CHILD_INSTANCE = Symbol.for('pyreon.childInstance')
+
 const noop = () => {
   /* noop */
 }
@@ -150,6 +151,12 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
   // The wrapper returns a reactive accessor (() => VNodeChild) which Pyreon's
   // mountChild treats as a reactive expression via mountReactive.
   wrapped = ((props: Props) => {
+    // Own the context EAGERLY. A Pyreon component becomes its children's
+    // context owner on its first `provide()`, but this body runs later, inside
+    // the accessor's render effect, so Svelte's `setContext` would land on the
+    // parent's owner (leaking to siblings). Claiming here keeps the historical
+    // shape: this wrapper's scope is the owner its render effect restores.
+    _claimContextOwner()
     // Check for a preserved child instance from the parent's hooks
     const existing = (props as Record<symbol, unknown>)[_CHILD_INSTANCE] as
       | ChildInstance
@@ -239,6 +246,7 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
   }
 
   _wrapperCache.set(solidComponent, wrapped)
+
   return wrapped
 }
 
@@ -273,6 +281,7 @@ function resolveChildInstance(): ChildInstance | undefined {
   }
   const instance = createChildInstance()
   parentCtx.hooks[idx] = instance
+
   return instance
 }
 
