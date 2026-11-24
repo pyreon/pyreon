@@ -316,6 +316,60 @@ func pyreonWebViewRemoteURL(_ src: String) -> URL? {
     return url
 }
 
+/// Content-process losses in a row after which a host stops reloading and
+/// stays empty. Same rule as the Android host (`pyreonWebViewRendererGone` in
+/// PyreonWebChromePolicy.kt); WebKit does not say whether the process crashed
+/// or was reclaimed, so every termination counts as a crash here.
+let pyreonWebViewMaxRendererCrashReloads = 2
+/// Two losses less than this apart are "in a row"; a longer gap starts a new count.
+let pyreonWebViewRendererLossWindowMs: Double = 60_000
+let pyreonWebViewRendererBackoffBaseMs: Double = 1_000
+let pyreonWebViewRendererBackoffMaxMs: Double = 30_000
+
+/// One host's content-process losses in the current window.
+struct PyreonRendererLossHistory {
+    /// The html / src the count belongs to; another one is a new page with a fresh count.
+    var key: String?
+    /// Bumped per loss: a delayed reload whose generation is no longer current must not run.
+    var generation = 0
+    var lastAtMs: Double?
+    var crashes = 0
+    var losses = 0
+}
+
+/// The reload delay in milliseconds after the content process is gone, or nil
+/// to stay empty. The first loss reloads at once, each further one in a row
+/// waits twice as long (1 s up to 30 s), and a crash beyond
+/// `pyreonWebViewMaxRendererCrashReloads` in a row stays empty. A finished load
+/// does not restart the count: a page that crashes right after loading would
+/// otherwise reload forever; a gap of the window does. A different `key` (another
+/// html / src) is a new page with a fresh count. Each loss bumps `generation`, and a
+/// reload an earlier loss scheduled must check `pyreonWebViewReloadStillDue`.
+func pyreonWebViewRendererGone(_ history: inout PyreonRendererLossHistory, key: String?, didCrash: Bool, nowMs: Double) -> Double? {
+    history.generation += 1
+    if key == nil || key == history.key, let last = history.lastAtMs, nowMs - last < pyreonWebViewRendererLossWindowMs {
+        // in a row (a nil key, no page known, is never a new page)
+    } else {
+        if let key { history.key = key }
+        history.crashes = 0
+        history.losses = 0
+    }
+    history.lastAtMs = nowMs
+    history.losses += 1
+    if didCrash {
+        history.crashes += 1
+        if history.crashes > pyreonWebViewMaxRendererCrashReloads { return nil }
+    }
+    if history.losses <= 1 { return 0 }
+    let doublings = min(history.losses - 2, 15)
+    return min(pyreonWebViewRendererBackoffBaseMs * Double(1 << doublings), pyreonWebViewRendererBackoffMaxMs)
+}
+
+/// Whether a reload scheduled at loss `generation` may still run (no newer loss since).
+func pyreonWebViewReloadStillDue(_ history: PyreonRendererLossHistory, generation: Int) -> Bool {
+    history.generation == generation
+}
+
 /// The script-message handler name the injected `window.pyreonPostMessage`
 /// shim forwards to (`window.webkit.messageHandlers.pyreonNative`).
 private let _pyreonMessageHandlerName = "pyreonNative"
@@ -349,6 +403,11 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     /// True from the host starting a load until that load commits: its server
     /// redirects are part of the load, so they are followed wherever they go.
     var initialLoadPending = false
+    /// The html / src last asked for, to load again after the content process is gone.
+    var html: String?
+    var src: String?
+    /// Content-process losses in a row (see `pyreonWebViewRendererGone`).
+    var lossHistory = PyreonRendererLossHistory()
 
     /// Whether the main frame currently shows the allowed origin.
     func mainFrameAllowed(_ webView: WKWebView) -> Bool {
@@ -391,6 +450,30 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     /// shown is not the one the host asked for, so nothing is allowed.
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         initialLoadPending = false
+    }
+
+    /// The web content process is gone (WebKit reclaimed it, or the page
+    /// crashed it). The WKWebView stays usable but blank, so load the page
+    /// again, with the same backoff and cap as the Android host.
+    @MainActor
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        let key = loadedKey
+        let delay = pyreonWebViewRendererGone(&lossHistory, key: key, didCrash: true, nowMs: ProcessInfo.processInfo.systemUptime * 1000)
+        loaded = false
+        allowedOrigin = nil
+        initialLoadPending = false
+        let generation = lossHistory.generation
+        guard let delay else {
+            print("[Pyreon] <WebView>: the web content process ended \(lossHistory.crashes) times in a row, so this view stays empty until its html / src changes. The process may serve other WebViews in the app, so the page that ended it may be another one.")
+            return
+        }
+        print("[Pyreon] <WebView>: the web content process ended; loading the page again\(delay > 0 ? " in \(Int(delay)) ms (losses in a row back off)" : "").")
+        _Concurrency.Task { @MainActor [weak self, weak webView] in
+            if delay > 0 { try? await _Concurrency.Task.sleep(nanoseconds: UInt64(delay * 1_000_000)) }
+            // Unless the host was released, loaded something else, or lost the process again meanwhile.
+            guard let self, let webView, pyreonWebViewReloadStillDue(self.lossHistory, generation: generation), self.loadedKey == key else { return }
+            self.initialLoadPending = _loadPyreonWebView(webView, html: self.html, src: self.src)
+        }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -603,6 +686,8 @@ private func _syncPyreonWebView(
     data: String?
 ) {
     coordinator.latestData = data
+    coordinator.html = html
+    coordinator.src = src
     let key = (html ?? "") + "\u{0001}" + (src ?? "")
     if coordinator.loadedKey != key {
         coordinator.loadedKey = key
