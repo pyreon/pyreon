@@ -271,15 +271,20 @@ export function devAdoptedTextWrite(
   fc: ChildNode | null,
   text: string | number,
   write: (node: Element, text: string | number) => void,
-  hidden: Node | null,
 ): void {
   const before = node.textContent ?? ''
-  // A hidden region's fragment (taken by `_setChild`, as in production), or a
-  // pending region's mark, read and left for `_settleRegions`.
-  const region = hidden ?? (node as Parked)[PARKED]
-  const server = region == null ? null : region.nodeType === 11 ? region : node.cloneNode(true)
-  if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) (fc as Text).data = text as string
-  else write(node, text)
+  if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
+    ;(fc as Text).data = text as string
+    reportTextWrite(node, before, 'text')
+
+    return
+  }
+  // Read, never consumed: production does not consume it either. A HIDDEN
+  // region (a fragment) is reported by `_settleRegions` once the bind is done.
+  const region = (node as Parked)[PARKED]
+  if (region != null && region.nodeType === 11) return write(node, text)
+  const server = region == null ? null : node.cloneNode(true)
+  write(node, text)
   if (server === null) reportTextWrite(node, before, 'text')
   else reportRegionLost(node, server, node.textContent ?? '')
 }

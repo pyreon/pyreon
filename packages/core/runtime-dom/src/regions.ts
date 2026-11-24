@@ -60,8 +60,7 @@ export function _settleRegions(parked: Node[], done: boolean): void {
     const s = _takeParked(el)
     if (s == null) continue
     if (s.nodeType === 11) {
-      // Server nodes first; nodes user code inserted follow them. (A text
-      // write took its region's fragment already: `_takeHidden`.)
+      // Server nodes first; nodes user code inserted follow them.
       if (!done) el.insertBefore(s, el.firstChild)
       else if (process.env.NODE_ENV !== 'production' && !(s as { _fellBack?: true })._fellBack) {
         reportRegionLost(el, s, el.textContent ?? '')
