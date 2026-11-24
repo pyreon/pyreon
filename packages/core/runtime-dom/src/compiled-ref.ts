@@ -18,7 +18,7 @@ import { _userCodeHook } from './parked-text'
  * `null`.
  */
 export function _ref(el: Element, ref: unknown): () => void {
-  _userCodeHook?.()
+  _userCodeHook?.(el)
   if (typeof ref === 'function') {
     ;(ref as (el: Element | null) => void)(el)
     return () => (ref as (el: Element | null) => void)(null)

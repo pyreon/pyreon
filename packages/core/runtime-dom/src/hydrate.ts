@@ -81,7 +81,7 @@ import { buildRowPlan, findMatchingClose, replayRowPlan, tplAdoptVerify } from '
 import type { RowPlan } from './hydration-plan'
 import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
 import { _hideRegions, _settleRegions } from './regions'
-import { _setParkHooks, _takeParked } from './parked-text'
+import { _park, _setParkHooks, _takeParked } from './parked-text'
 import {
   _holdTplDeferral,
   _setHydrationActive,
@@ -1378,6 +1378,92 @@ function hydrateMountHole(
     : hydrateChild(child, start, parent, start)
 }
 
+/** A slot whose extent is its parent's whole child list (see `hydrateMountSlot`). */
+function hydrateWholeList(
+  children: VNodeChild | VNodeChild[],
+  parent: Node,
+  slotPath: string,
+  sweep: boolean,
+): Cleanup {
+  const first = parent.firstChild
+  if (typeof children === 'function') {
+    // SSR rendered nothing into the slot, so there is no region to adopt —
+    // install the boundary a cold mount would have built, at the end of the
+    // (empty) child list.
+    if (first === null) {
+      return mountOverEmpty(children as () => VNodeChild, parent, null, slotPath)
+    }
+    // Synthesize the close SSR elided so the shared adoption core runs on
+    // exactly the shape it gets for a marked range — including the removal
+    // contract, which a direct `hydrateChild` call does NOT carry: its
+    // cleanups dispose bindings only, so the server nodes would survive every
+    // future flip and the region would DUPLICATE on the first re-render.
+    const end = document.createComment('pyreon')
+    parent.appendChild(end)
+    const primed = primeAccessor(children as () => VNodeChild)
+    const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, end, slotPath)
+    end.remove()
+
+    return cleanup
+  }
+  // A literal (non-accessor) value installs no reactive boundary, so it is
+  // walked against the region directly — there is no later render whose
+  // cleanup would have to remove these nodes.
+  const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
+  const [cleanup, rest] = hydrateChild(children, cursor, parent, null, slotPath)
+  // A claimed `_setChild` region (#4599) holds nothing but server nodes, and
+  // the walk inserts its repairs BEFORE its cursor: everything from the cursor
+  // on is server content the value did not claim (`sweepUnclaimed`, which
+  // keeps it when nothing was claimed at all). An unrecorded parent may hold
+  // client nodes there, so it keeps them.
+  if (sweep) sweepUnclaimed(parent, rest)
+
+  return cleanup
+}
+
+/**
+ * `_setChild`'s claim of a #4599 region. A region hidden from user code gets
+ * its nodes back when that code left the element empty. When it did not, the
+ * value mounts fresh after that code's nodes, as on a fresh render, and the
+ * hidden nodes stay marked so a bind that throws later still puts them back.
+ *
+ * The region's cleanup disposes effects and keeps the nodes: the element leaves
+ * with its template, as the fresh path's `mountChildAsUnit` content does. A
+ * hydration cleanup removes what it adopted, which on a bind that throws
+ * (`hydrateComponent` stops the scope and keeps the server markup) deleted the
+ * adopted server nodes.
+ */
+function claimRegion(children: VNodeChild | VNodeChild[], el: Element, region: Node, slotPath: string): Cleanup {
+  if (region.nodeType === 11) {
+    if (el.firstChild !== null) {
+      if (process.env.NODE_ENV !== 'production') (region as { _fellBack?: true })._fellBack = true
+      _park(el, region)
+
+      return mountChild(children, el, null)
+    }
+    el.appendChild(region)
+  }
+  const cleanup = hydrateWholeList(children, el, slotPath, true)
+
+  return () => {
+    // Effect-only, as a hydration cleanup cannot be told not to remove: note
+    // every node of the region (parent, node; pre-order), dispose, then put
+    // each back. Appending in pre-order rebuilds every parent's child order.
+    const kept: Node[] = []
+    keepTree(el, kept)
+    cleanup()
+    for (let i = 0; i < kept.length; i += 2) (kept[i] as Node).appendChild(kept[i + 1] as Node)
+  }
+}
+
+/** Record `(parent, child)` pairs below `p`, in pre-order (see `claimRegion`). */
+function keepTree(p: Node, kept: Node[]): void {
+  for (let n = p.firstChild; n !== null; n = n.nextSibling) {
+    kept.push(p, n)
+    keepTree(n, kept)
+  }
+}
+
 /**
  * Hydrate a compiled `_mountSlot` against the SSR range its adopted container
  * already holds (see `_mountSlot`). `open` is the live `<!--$-->` marker the
@@ -1402,49 +1488,11 @@ function hydrateMountSlot(children: VNodeChild | VNodeChild[], parent: Node, ope
   // SOLE rather than merely last.
   if (open === null) {
     // A `_setChild` region (#4599) is claimed by identity: only `_setChild`
-    // hands over an element the verifier marked (a template-empty one). One
-    // hidden from user code gets its nodes back when that code left it empty;
-    // when it did not, they stay dropped and the value mounts after that
-    // code's nodes, as on a fresh render.
+    // hands over an element the verifier marked (a template-empty one).
     const region = _takeParked(parent)
-    if (region?.nodeType === 11) {
-      if (parent.firstChild !== null) return mountChild(children, parent, null)
-      parent.appendChild(region)
-    }
-    const first = parent.firstChild
-    if (typeof children === 'function') {
-      // SSR rendered nothing into the slot, so there is no region to adopt —
-      // install the boundary a cold mount would have built, at the end of the
-      // (empty) child list.
-      if (first === null) {
-        return mountOverEmpty(children as () => VNodeChild, parent, null, slotPath)
-      }
-      // Synthesize the close SSR elided so the shared adoption core runs on
-      // exactly the shape it gets for a marked range — including the removal
-      // contract, which a direct `hydrateChild` call does NOT carry: its
-      // cleanups dispose bindings only, so the server nodes would survive every
-      // future flip and the region would DUPLICATE on the first re-render.
-      const end = document.createComment('pyreon')
-      parent.appendChild(end)
-      const primed = primeAccessor(children as () => VNodeChild)
-      const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, end, slotPath)
-      end.remove()
-
-      return cleanup
-    }
-    // A literal (non-accessor) value installs no reactive boundary, so it is
-    // walked against the region directly — there is no later render whose
-    // cleanup would have to remove these nodes.
-    const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
-    const [cleanup, rest] = hydrateChild(children, cursor, parent, null, slotPath)
-    // A recorded `_setChild` region (#4599) holds nothing but server nodes, and
-    // the walk inserts its repairs BEFORE its cursor: everything from the cursor
-    // on is server content the value did not claim (`sweepUnclaimed`, which
-    // keeps it when nothing was claimed at all). An unrecorded parent may hold
-    // client nodes there, so it keeps them.
-    if (region !== undefined) sweepUnclaimed(parent, rest)
-
-    return cleanup
+    return region === undefined
+      ? hydrateWholeList(children, parent, slotPath, false)
+      : claimRegion(children, parent as Element, region as Node, slotPath)
   }
   // A PARKED mid range (see `PARKED_RANGE` in template.ts): the verifier moved
   // this slot's server content out so the compiled refs after it resolved

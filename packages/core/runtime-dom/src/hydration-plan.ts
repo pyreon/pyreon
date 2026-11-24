@@ -920,6 +920,14 @@ interface AdoptPlan {
   soleTextSpots: number[][]
   /** domPaths of elements whose EXTRA bare texts get removed (template 0, >1 texts). */
   removalSpots: number[][]
+  /**
+   * Paths of the template's EMPTY elements, read off the template (so a plan
+   * recorded from a text row covers a later structural row). A replayed row
+   * whose server content there holds anything but text is a #4599 region,
+   * which only the full verify marks: the SAME predicate as the verify's
+   * region branch, so a replayed row never carries an unmarked region.
+   */
+  emptySpots: number[][]
 }
 
 const _tplAdoptPlan = new WeakMap<HTMLTemplateElement, AdoptPlan | null>()
@@ -936,7 +944,7 @@ function elByPath(root: Element, path: number[], upto: number): Element | null {
 }
 
 /** Record element paths (element-index hops) alongside a full verify. */
-function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPlan {
+function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch, troot: Element): AdoptPlan {
   const tripletSpots: TripletSpot[] = []
   const removalSpots: number[][] = []
   const pathOf = (el: Element): number[] => {
@@ -966,7 +974,15 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
   const soleTextSpots: number[][] = []
   if (match.soles) for (const el of match.soles) soleTextSpots.push(pathOf(el))
 
-  return { sig, tripletSpots, soleTextSpots, removalSpots }
+  const emptySpots: number[][] = []
+  const walkEmpty = (el: Element, path: number[]): void => {
+    if (el.firstChild === null) emptySpots.push(path)
+    let i = 0
+    for (let c = el.firstElementChild; c !== null; c = c.nextElementSibling) walkEmpty(c, path.concat(i++))
+  }
+  walkEmpty(troot, [])
+
+  return { sig, tripletSpots, soleTextSpots, removalSpots, emptySpots }
 }
 
 /**
@@ -977,12 +993,16 @@ function buildAdoptPlan(root: Element, sig: TplSig, match: AdoptMatch): AdoptPla
  * loop per row.
  */
 function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
-  // First, before anything below normalizes the row: a replayable template has
-  // no slot, so a row whose element count is not the template's holds content
-  // the plan says nothing about. That includes a #4599 region (a structural
-  // value in an empty element), which only the full verify records: a replayed
-  // row records nothing, and an unrecorded region is never hidden from a ref.
-  if (countElements(root) !== plan.sig.tags.length - 1) return false
+  // First, before anything below normalizes the row: a template-empty element
+  // holding anything but text is a #4599 region (see `emptySpots`), which only
+  // the full verify marks. An unmarked region would never be hidden from a ref.
+  const empties = plan.emptySpots
+  for (let s = 0; s < empties.length; s++) {
+    const spot = empties[s] as number[]
+    const el = elByPath(root, spot, spot.length)
+    if (!el) return false
+    for (let c = el.firstChild; c !== null; c = c.nextSibling) if (c.nodeType !== 3) return false
+  }
   const spots = plan.tripletSpots
   for (let s = 0; s < spots.length; s++) {
     const spot = spots[s] as TripletSpot
@@ -1038,14 +1058,6 @@ function replayAdoptPlan(root: Element, plan: AdoptPlan): boolean {
   }
 
   return true
-}
-
-/** The number of elements below `el`. */
-function countElements(el: Element): number {
-  let n = 0
-  for (let c = el.firstElementChild; c !== null; c = c.nextElementSibling) n += 1 + countElements(c)
-
-  return n
 }
 
 /** The element's ONLY child is the compiler's dynamic-text placeholder `' '`. */
@@ -1594,7 +1606,7 @@ export function tplAdoptVerify(
     const built =
       (sig as TplSig).slots.includes(true) || (sig as TplSig).midSlotCount > 0
         ? null
-        : buildAdoptPlan(target, sig as TplSig, match)
+        : buildAdoptPlan(target, sig as TplSig, match, troot)
     _tplAdoptPlan.set(tpl, built)
     _lastVerifyTpl = tpl
     _lastVerifyPlan = built

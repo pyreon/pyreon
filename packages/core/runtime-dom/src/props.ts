@@ -159,7 +159,7 @@ export function applyPropsWithRef(el: Element, props: Props): Cleanup {
   if (props == null) return NOOP_CLEANUP
   // A spread can write content (`dangerouslySetInnerHTML`) and carry a ref:
   // user code, as for `_ref` (see `_userCodeHook`).
-  _userCodeHook?.()
+  _userCodeHook?.(el)
   const cleanup = applyProps(el, props)
   const ref = (props as { ref?: RefCallback | RefObject }).ref
   // ALWAYS return a function (never null): the compiler CAPTURES this as a

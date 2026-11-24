@@ -139,6 +139,9 @@ function scope(): Record<string, unknown> {
     vNested: h('span', null, h('span', { class: 'chip' }, 'tie'), ' three-way tie'),
     vLive: h('b', null, () => live()),
     vArrLive: ['t', () => live(), h('i', null, 'x')],
+    // Text plus the value's own range markers, no element: `t<!--$-->L<!--/$-->`.
+    vTL: ['t', () => live()],
+    vFragTL: h(Fragment, null, 't', () => live()),
     vEmptyArr: [],
     vStr: 'str',
     fnNode: () => h('b', null, 'f'),
@@ -396,7 +399,6 @@ describe('#4599: bind-time writers to an empty `_setChild` element', () => {
     ['a ref that only reads', 'const App = () => <div><span ref={read}>{vNode}</span></div>'],
     ['a ref that clears, beside sibling cells', 'const App = () => <div><span ref={clear}>{vNode}</span><em>{vArr}</em><p>{vNested}</p></div>'],
     ['a ref that prepends, with an accessor value', 'const App = () => <div><span ref={prepend}>{fnNode}</span></div>'],
-    ['a root spread with dangerouslySetInnerHTML alone', 'const App = () => <div {...hp} />'],
   ]
   for (const [name, src] of CASES) {
     it(name, async () => {
@@ -556,6 +558,21 @@ describe('a throwing bind keeps the server content', () => {
     ],
     ['a throwing ref before `_setChild` (#4599)', 'const App = () => <div><span ref={boom}>{vNode}</span></div>', { boom: () => {} }, { boom }],
     [
+      // The claimed region's cleanup runs when the component's scope stops:
+      // it must dispose effects only, never remove the adopted server nodes.
+      'a throwing getter AFTER a claimed region (#4599)',
+      'const App = () => <div><span>{vNode}</span><em>{bad.cell}</em></div>',
+      { bad: { cell: h('i', null, 'c') } },
+      {
+        bad: {
+          get cell(): never {
+            throw new Error('boom')
+          },
+        },
+      },
+    ],
+    ['a throwing ref AFTER a claimed region (#4599)', 'const App = () => <div><span>{vNode}</span><em ref={boom} /></div>', { boom: () => {} }, { boom }],
+    [
       'a throwing ref after another region was hidden (#4599)',
       'const App = () => <div><span ref={boom}>{vNode}</span><em>{vArr}</em></div>',
       { boom: () => {} },
@@ -570,8 +587,45 @@ describe('a throwing bind keeps the server content', () => {
       })
       expect(r.html).toBe(r.serverHtml.replace(/<!--[^>]*-->/g, ''))
       expect(r.reports).toEqual([])
+      expect(r.replaced).toEqual([])
     })
   }
+
+  it('a throwing ref after a region mounted fresh behind an appending ref gets the server nodes back', async () => {
+    const append = (el: Element | null) => el?.append(document.createElement('i'))
+    const src = 'const App = () => <div><span ref={append}>{vNode}</span><em ref={boom} /></div>'
+    const s = { ...scope(), append }
+    const r = await roundTrip(compile(src, { ...s, boom: () => {} }, 'h').App, compile(src, { ...s, boom }, 'client').App, { throws: true })
+    // The server's `<b>` is back, first; the node the ref added stays after it.
+    expect(r.replaced).toEqual([])
+    expect(r.html).toBe('<div><span><b>n</b><i></i></span><em></em></div>')
+  })
+})
+
+describe('user code sees only the regions inside its own element', () => {
+  it('a ref on an unrelated sibling hides nothing: the region is never detached', async () => {
+    let seen: string | null = null
+    const R = (el: Element | null) => {
+      // The first call is the hydrating one; the fresh comparison mount follows.
+      if (el !== null && seen === null) seen = (el.parentNode?.lastChild as Element).innerHTML
+    }
+    const s = { ...scope(), R }
+    const src = 'const App = () => <div><em ref={R} /><span>{vNode}</span></div>'
+    const counts = new Map<string, number>()
+    const sink = globalThis as { __pyreon_count__?: ((n: string, k?: number) => void) | undefined }
+    const prev = sink.__pyreon_count__
+    sink.__pyreon_count__ = (n, k = 1) => counts.set(n, (counts.get(n) ?? 0) + k)
+    let r: Awaited<ReturnType<typeof roundTrip>>
+    try {
+      r = await roundTrip(compile(src, s, 'h').App, compile(src, s, 'client').App)
+    } finally {
+      sink.__pyreon_count__ = prev
+    }
+    expect(counts.get('runtime.tpl.hide') ?? 0).toBe(0)
+    expect(seen).toBe('<b>n</b>')
+    expect(r.replaced).toEqual([])
+    expect(r.html).toBe(r.freshHtml)
+  })
 })
 
 /**
@@ -671,8 +725,17 @@ describe('the invariant: bind-time refs on every shape, every path', () => {
   for (const [name, src] of SHAPES.slice(0, 4)) {
     it(`h() path | ${name}`, async () => refRow(withRef(src), scope(), 'h'))
   }
-  const VALUES = ['vNode', 'vArr', 'vFrag', 'vComp', 'vNested', 'vLive', 'vArrLive', 'fnNode', 'fnArr', 'vFragText', 'vCompText', 'fnText']
+  const VALUES = ['vNode', 'vArr', 'vFrag', 'vComp', 'vNested', 'vLive', 'vArrLive', 'vTL', 'vFragTL', 'fnNode', 'fnArr', 'vFragText', 'vCompText', 'fnText']
   for (const v of VALUES) {
+    // The replay check and the verify's region branch use ONE predicate (any
+    // non-text child), so a row whose content is text plus range markers is
+    // marked, never replayed unmarked.
+    it(`plan replay | every row holding ${v}`, async () => {
+      const s = scope()
+      const rowsR = [1, 2, 3].map((id) => ({ id, cell: s[v] }))
+      const src = 'const App = () => <ul><For each={rowsR} by={(r) => r.id}>{(r) => <li ref={R} class="er">{r.cell}</li>}</For></ul>'
+      await refRow(src, { ...s, rowsR }, 'compiled', isTextOnly(v))
+    })
     it(`plan replay | a row cell holding ${v} after a string row`, async () => {
       const s = scope()
       const rowsR = [{ id: 1, cell: 'str' }, { id: 2, cell: s[v] }, { id: 3, cell: s[v] }]

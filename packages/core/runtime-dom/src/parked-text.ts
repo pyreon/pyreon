@@ -88,10 +88,10 @@ export let _parkCloser: ((parked: Node[], done: boolean) => void) | null = null
  * content of the running build's regions, so that code sees each element as a
  * fresh render's clone has it, empty.
  */
-export let _userCodeHook: (() => void) | null = null
+export let _userCodeHook: ((el: Element) => void) | null = null
 
 /** Both registered by `hydrateRoot`, so a client-only bundle carries neither. */
-export function _setParkHooks(hide: () => void, settle: (parked: Node[], done: boolean) => void): void {
+export function _setParkHooks(hide: (el: Element) => void, settle: (parked: Node[], done: boolean) => void): void {
   _userCodeHook = hide
   _parkCloser = settle
 }
