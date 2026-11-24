@@ -166,7 +166,7 @@ export function scanLogcat(app: string, text: string): SignalHit[] {
     if (l.tag === 'TestRunner') {
       const t = /^started: (.+)\((.+)\)$/.exec(l.msg)
       if (t) testOf.set(l.pid, `${t[2]}#${t[1]}`)
-      if (/^finished: /.test(l.msg)) finished.add(l.pid)
+      if (l.msg.startsWith('finished: ')) finished.add(l.pid)
       continue
     }
     const webview = webviewSignal(l.msg)
