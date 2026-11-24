@@ -55,6 +55,33 @@ describe('check-light-pr-ci', () => {
     expect(findLightPrCiViolations(wf)).toEqual([])
   })
 
+  // Shapes a line scan missed: the step is read structurally and its `if:`
+  // evaluated for pull_request and merge_group.
+  const probe = (step: string) => mutate('ci.yml', '      - run: bun run test:browser\n', `${step}        run: bun run test:browser\n`)
+  it.each([
+    ['`- uses:` first', "      - uses: ./.github/actions/x\n        if: ${{ github.event_name == 'pull_request' }}\n", './.github/actions/x'],
+    ['`- if:` first', "      - if: github.event_name == 'pull_request'\n        name: If-first probe\n", 'If-first probe'],
+    ['a double-quoted YAML value', '      - name: "Dq probe"\n        if: "${{ github.event_name == \'pull_request\' }}"\n', 'Dq probe'],
+    [
+      'a negation that mentions merge_group but excludes it',
+      "      - name: Negated probe\n        if: ${{ !cancelled() && github.event_name != 'push' && github.event_name != 'merge_group' }}\n",
+      'Negated probe',
+    ],
+  ])('rejects a PR-only step written with %s', (_, step, label) => {
+    const v = findLightPrCiViolations(probe(step))
+    expect(v.some((m) => m.includes(`"${label}" of "Test (browser)"`)), v.join('\n')).toBe(true)
+  })
+
+  it('does not flag a step whose condition it cannot decide, or one that runs in the queue', () => {
+    expect(findLightPrCiViolations(probe("      - name: Output probe\n        if: steps.x.outputs.run == 'true'\n"))).toEqual([])
+    expect(
+      findLightPrCiViolations(probe("      - name: Push-only probe\n        if: ${{ github.event_name == 'push' }}\n")),
+    ).toEqual([])
+    expect(
+      findLightPrCiViolations(probe("      - name: Not-push probe\n        if: ${{ github.event_name != 'push' }}\n")),
+    ).toEqual([])
+  })
+
   it('rejects Build taking the light-mode condition (it must stay on the PR)', () => {
     const wf = mutate(
       'ci.yml',

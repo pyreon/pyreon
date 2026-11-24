@@ -188,6 +188,9 @@ function jobIf(): (wr: Record<string, unknown>) => boolean {
   const js = line!
     .replace(/^ {4}if: /, '')
     .replaceAll('github.event.workflow_run', 'wr')
+    // GitHub's object filter `a.*.b` maps over the array; `contains(array, x)`
+    // is membership.
+    .replace(/contains\(wr\.pull_requests\.\*\.head\.sha, wr\.head_sha\)/g, '(wr.pull_requests ?? []).map((p) => p?.head?.sha).includes(wr.head_sha)')
     .replaceAll('[0].head.sha', '?.[0]?.head?.sha')
     .replaceAll(' == ', ' === ')
     .replaceAll(' != ', ' !== ')
@@ -200,6 +203,15 @@ describe('required-check-autoheal — runner-free skip of superseded runs', () =
 
   it('skips a run whose PR head (from the event payload) is a newer commit', () => {
     expect(jobIf()({ ...base, pull_requests: [{ number: 5, head: { sha: 'new' } }] })).toBe(false)
+  })
+
+  it('runs when ANY associated PR has the run as its head, like the script (not only the first)', () => {
+    const prs = [
+      { number: 4, head: { sha: 'other' } },
+      { number: 5, head: { sha: 'old' } },
+    ]
+    expect(jobIf()({ ...base, pull_requests: prs })).toBe(true)
+    expect(jobIf()({ ...base, pull_requests: [prs[0], { number: 6, head: { sha: 'newer' } }] })).toBe(false)
   })
 
   it('runs for the current head, and fails safe (runs) when the payload names no PR', () => {

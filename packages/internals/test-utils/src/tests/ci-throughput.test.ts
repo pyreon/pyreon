@@ -75,6 +75,9 @@ describe('ci-throughput — job classification', () => {
     expect(jobFamily('e2e (batch-2)')).toBe('e2e (…)')
     expect(jobFamily('Test (browser)')).toBe('Test (browser)')
     expect(jobFamily('Analyze (javascript-typescript)')).toBe('Analyze (javascript-typescript)')
+    expect(jobFamily('Scaffold Smoke  (cpa-1) ')).toBe('Scaffold Smoke (…)')
+    expect(jobFamily('test (a) b')).toBe('test (a) b')
+    expect(jobFamily('test')).toBe('test')
     expect(workflowFamily('Code Quality: PR #4752')).toBe('Code Quality (dynamic)')
   })
 

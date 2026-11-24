@@ -6,9 +6,15 @@
  * pull request, so a run that keeps going after a newer push, or a run that
  * never happens when it should, costs every other PR. This gate fails when:
  *
- *  1. a workflow triggered by `pull_request` has no workflow-level
- *     `concurrency` whose `cancel-in-progress` can be true for a pull request
- *     (a superseded run would hold its runners to the end). Exempt a workflow
+ *  1. a workflow triggered by `pull_request` or `pull_request_target` has no
+ *     workflow-level `concurrency` that cancels a superseded run of the SAME
+ *     pull request: the group must contain a per-PR or per-ref part
+ *     (`github.ref`, `github.head_ref`, `github.event.pull_request.number`,
+ *     …; a constant group such as `lint` would cancel OTHER PRs' runs), and
+ *     `cancel-in-progress` must evaluate to true for that event (it is
+ *     evaluated, not pattern-matched: `${{ github.event_name !=
+ *     'pull_request' }}` is false for a PR; an expression the gate cannot
+ *     decide fails closed). Exempt a workflow
  *     whose pull_request `types:` leave out `synchronize` (`[closed]`,
  *     `[opened]`, `[labeled]`): no push supersedes its run, and cancelling a
  *     label-driven run on the next label would drop work.
@@ -16,10 +22,13 @@
  *     `github.event.pull_request.number` without a `|| …` fallback: the number
  *     is empty in a merge group, so every group would share one key and cancel
  *     or queue behind each other.
- *  3. a job's `if:` reads `github.event.pull_request.draft`, but the
- *     pull_request trigger does not list `ready_for_review`: the default types
+ *  3. a job's or a step's `if:` reads `github.event.pull_request.draft`, but
+ *     the pull_request trigger does not list `ready_for_review`: the default types
  *     (opened, synchronize, reopened) never fire when a draft is marked ready,
  *     so the job skipped on the draft stays skipped until the next push.
+ *
+ * The files are read structurally (`scripts/workflow-yaml.ts`), so flow and
+ * block lists, comments and quoting do not change the verdict.
  *
  * Run: `bun scripts/check-workflow-triggers.ts`
  */
@@ -27,90 +36,101 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { workflowTriggers } from './check-main-red-watchlist'
+import {
+  type YamlValue,
+  evaluate,
+  isMap,
+  parseWorkflowYaml,
+  stringList,
+  triggersOf,
+  truthOf,
+  UNKNOWN,
+} from './workflow-yaml'
 
 const WORKFLOWS_DIR = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), '.github/workflows')
 
-/** Lines of a top-level block (`on:`, `concurrency:`), comments and blank lines dropped. */
-function topBlock(text: string, key: string): string[] {
+const PR_EVENTS = ['pull_request', 'pull_request_target'] as const
+
+/** A context path that differs between pull requests (and between refs). */
+const PER_PR_OR_REF =
+  /\$\{\{[^}]*\bgithub\.(ref|ref_name|head_ref|event\.number|event\.pull_request\.(number|head\.ref))\b/
+
+/** Every `if:` of every job and step. */
+function conditions(doc: YamlValue): string[] {
   const out: string[] = []
-  let inside = false
-  for (const raw of text.split('\n')) {
-    const line = raw.replace(/\s+#.*$/, '').trimEnd()
-    if (new RegExp(`^${key}:`).test(line)) {
-      inside = true
-      const inline = line.slice(key.length + 1).trim()
-      if (inline) out.push(`  group: ${inline}`)
-      continue
+  const jobs = isMap(doc) ? doc.jobs : undefined
+  if (!isMap(jobs)) return out
+  for (const job of Object.values(jobs)) {
+    if (!isMap(job)) continue
+    if (typeof job.if === 'string') out.push(job.if)
+    for (const step of Array.isArray(job.steps) ? job.steps : []) {
+      if (isMap(step) && typeof step.if === 'string') out.push(step.if)
     }
-    if (!inside || line.trim() === '' || /^\s*#/.test(line)) continue
-    if (/^\S/.test(line)) break
-    out.push(line)
   }
   return out
 }
 
-/** `types:` of the pull_request trigger (flow list form), or null when absent. */
-function pullRequestTypes(text: string): string[] | null {
-  const on = topBlock(text, 'on')
-  const i = on.findIndex((l) => /^ {2}pull_request:/.test(l))
-  if (i < 0) return null
-  for (const line of on.slice(i + 1)) {
-    if (/^ {2}\S/.test(line)) break
-    const m = /^ {4}types:\s*\[(.*)\]/.exec(line)
-    if (m) return m[1]!.split(',').map((t) => t.trim().replace(/^['"]|['"]$/g, ''))
-  }
-  return null
-}
+const FIX =
+  'add `concurrency: { group: <name>-${{ github.event.pull_request.number || github.ref }}, cancel-in-progress: true }`'
 
-/** Every job-level `if:` (single line or folded continuation lines). */
-function jobIfs(text: string): string[] {
-  const lines = text.split('\n')
-  const out: string[] = []
-  for (let i = 0; i < lines.length; i++) {
-    if (!/^ {4}if:/.test(lines[i]!)) continue
-    const parts = [lines[i]!.replace(/^ {4}if:\s*/, '')]
-    for (let j = i + 1; j < lines.length && /^ {6,}\S/.test(lines[j]!); j++) parts.push(lines[j]!.trim())
-    out.push(parts.join(' '))
+/** Rule 1 for one pull-request event: a per-PR group that cancels for that event. */
+function concurrencyFindings(file: string, event: string, group: string, cancel: string): string[] {
+  if (!group) return [`${file}: triggered by ${event} but has no workflow-level concurrency group (${FIX})`]
+  if (!PER_PR_OR_REF.test(group)) {
+    return [
+      `${file}: the concurrency group "${group}" has no per-PR or per-ref part, so one PR's run cancels or queues behind every other PR's (${FIX})`,
+    ]
   }
-  return out
+  let verdict: boolean | typeof UNKNOWN
+  try {
+    // A pull request's ref is `refs/pull/<n>/merge`, so a
+    // `github.ref != 'refs/heads/main'` condition decides too.
+    verdict = truthOf(evaluate(cancel, { 'github.event_name': event, 'github.ref': 'refs/pull/1/merge' }))
+  } catch (error) {
+    return [`${file}: cannot read cancel-in-progress "${cancel}": ${(error as Error).message}`]
+  }
+  if (verdict === false) {
+    return [`${file}: cancel-in-progress "${cancel}" is false for ${event}, so a superseded PR run holds its runners to the end (${FIX})`]
+  }
+  if (verdict === UNKNOWN) {
+    return [`${file}: cannot decide cancel-in-progress "${cancel}" for ${event}; write it as \`true\` or in terms of github.event_name`]
+  }
+  return []
 }
 
 /** Findings for one workflow file (pure: tested on fixtures). */
 export function checkWorkflow(file: string, text: string): string[] {
-  let on: string[]
+  let doc: YamlValue
   try {
-    on = workflowTriggers(text)
+    doc = parseWorkflowYaml(text)
   } catch (error) {
-    return [`${file}: ${(error as Error).message}`]
+    return [`${file}: cannot be read: ${(error as Error).message}`]
   }
+  const on = triggersOf(doc)
   const findings: string[] = []
-  if (!on.includes('pull_request')) return findings
-  const types = pullRequestTypes(text)
-
-  const conc = topBlock(text, 'concurrency')
-  const group = conc.find((l) => /^ {2}group:/.test(l))?.replace(/^ {2}group:\s*/, '') ?? ''
-  const cancel = conc.find((l) => /^ {2}cancel-in-progress:/.test(l))?.replace(/^ {2}cancel-in-progress:\s*/, '') ?? ''
-  // Only a push to the PR (`synchronize`, part of the default types) makes an
-  // earlier run stale. A trigger that lists types without it (`[closed]`,
-  // `[opened]`, `[labeled]`) has nothing to supersede, and cancelling there
-  // would be wrong: a second label would cancel the first label's run.
-  const pushDriven = types === null || types.includes('synchronize')
-  if (pushDriven && (!group || !/true|pull_request/.test(cancel))) {
-    findings.push(
-      `${file}: triggered by pull_request but has no workflow-level concurrency that cancels a superseded PR run ` +
-        '(add `concurrency: { group: <name>-${{ github.event.pull_request.number || github.ref }}, cancel-in-progress: true }`)',
-    )
+  const concurrency = isMap(doc) ? doc.concurrency : undefined
+  const group = typeof concurrency === 'string' ? concurrency : isMap(concurrency) && typeof concurrency.group === 'string' ? concurrency.group : ''
+  const cancel = isMap(concurrency) && typeof concurrency['cancel-in-progress'] === 'string' ? concurrency['cancel-in-progress'] : 'false'
+  for (const event of PR_EVENTS) {
+    if (!(event in on)) continue
+    const config = on[event]
+    const types = isMap(config) ? stringList(config.types) : null
+    // Only a push to the PR (`synchronize`, part of the default types) makes an
+    // earlier run stale. A trigger that lists types without it (`[closed]`,
+    // `[opened]`, `[labeled]`) has nothing to supersede, and cancelling there
+    // would be wrong: a second label would cancel the first label's run.
+    const pushDriven = types === null || types.includes('synchronize')
+    if (pushDriven) findings.push(...concurrencyFindings(file, event, group, cancel))
+    if (conditions(doc).some((c) => /pull_request\.draft/.test(c)) && !(types ?? []).includes('ready_for_review')) {
+      findings.push(
+        `${file}: an if: reads pull_request.draft, but the ${event} trigger does not list ready_for_review, ` +
+          'so a draft marked ready never runs it until the next push',
+      )
+    }
   }
-  if (on.includes('merge_group') && /github\.event\.pull_request\.number/.test(group) && !/pull_request\.number\s*\|\|/.test(group)) {
+  if ('merge_group' in on && /github\.event\.pull_request\.number/.test(group) && !/pull_request\.number\s*\|\|/.test(group)) {
     findings.push(
       `${file}: the concurrency group uses github.event.pull_request.number with no \`|| github.ref\` fallback; it is empty in a merge group`,
-    )
-  }
-  if (jobIfs(text).some((c) => /pull_request\.draft/.test(c)) && !(types ?? []).includes('ready_for_review')) {
-    findings.push(
-      `${file}: a job's if: reads pull_request.draft, but the pull_request trigger does not list ready_for_review, ` +
-        'so a draft marked ready never runs it until the next push',
     )
   }
   return findings

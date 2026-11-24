@@ -55,3 +55,39 @@ describe('check-workflow-triggers — draft skips', () => {
     expect(checkWorkflow('a.yml', draftJob('[opened, synchronize, reopened, ready_for_review]'))).toEqual([])
   })
 })
+
+describe('check-workflow-triggers — read structurally, evaluated', () => {
+  const conc = (group: string, cancel: string) => `concurrency:\n  group: ${group}\n  cancel-in-progress: ${cancel}\n`
+
+  it('fails a constant group: it would cancel OTHER pull requests\' runs', () => {
+    expect(checkWorkflow('a.yml', pr('  pull_request:', conc('lint', 'true')))[0]).toContain('no per-PR or per-ref part')
+    expect(checkWorkflow('a.yml', pr('  pull_request:', conc('lint-${{ github.workflow }}', 'true')))[0]).toContain(
+      'no per-PR or per-ref part',
+    )
+    expect(checkWorkflow('a.yml', pr('  pull_request:', conc('lint-${{ github.head_ref || github.run_id }}', 'true')))).toEqual([])
+  })
+
+  it('evaluates cancel-in-progress instead of matching its text', () => {
+    const inverted = conc('x-${{ github.ref }}', "${{ github.event_name != 'pull_request' }}")
+    expect(checkWorkflow('a.yml', pr('  pull_request:', inverted))[0]).toContain('is false for pull_request')
+    const notMain = conc('x-${{ github.ref }}', "${{ github.ref != 'refs/heads/main' }}")
+    expect(checkWorkflow('a.yml', pr('  pull_request:', notMain))).toEqual([])
+    const undecidable = conc('x-${{ github.ref }}', '${{ vars.CANCEL }}')
+    expect(checkWorkflow('a.yml', pr('  pull_request:', undecidable))[0]).toContain('cannot decide')
+  })
+
+  it('checks pull_request_target like pull_request', () => {
+    expect(checkWorkflow('a.yml', pr('  pull_request_target:'))[0]).toContain('pull_request_target')
+    expect(checkWorkflow('a.yml', pr('  pull_request_target:', cancelling))).toEqual([])
+  })
+
+  it('sees a draft check in a step-level if:', () => {
+    const stepDraft = `name: X\non:\n  pull_request:\n    types: [opened, synchronize]\n${cancelling}jobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - if: \${{ !github.event.pull_request.draft }}\n        run: echo\n`
+    expect(checkWorkflow('a.yml', stepDraft)[0]).toContain('ready_for_review')
+  })
+
+  it('reads block-list types (no false positive) and inline comments', () => {
+    const blockTypes = `name: X\non:\n  pull_request:\n    types:\n      - opened\n      - synchronize # pushes\n      - ready_for_review\n${cancelling}jobs:\n  a:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps: []\n`
+    expect(checkWorkflow('a.yml', blockTypes)).toEqual([])
+  })
+})

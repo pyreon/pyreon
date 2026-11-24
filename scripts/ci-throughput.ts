@@ -35,7 +35,7 @@
  *   when every one of those runs concluded success (attempt 1 or later).
  */
 import { execFile } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -126,8 +126,13 @@ const MATRIX_PREFIXES = ['typecheck', 'test', 'e2e', 'Scaffold Smoke', 'Record',
  * `Analyze (javascript-typescript)`) keep their own row.
  */
 export function jobFamily(name: string): string {
-  const m = /^(.*?)\s*\((.*)\)\s*$/.exec(name)
-  if (m && MATRIX_PREFIXES.includes(m[1]!)) return `${m[1]} (…)`
+  // A scan, not a regex with overlapping whitespace runs: the prefix is the
+  // text before the first ` (`, and the name must end with `)`.
+  const trimmed = name.trimEnd()
+  const open = trimmed.indexOf('(')
+  if (open < 0 || !trimmed.endsWith(')')) return name
+  const prefix = trimmed.slice(0, open).trimEnd()
+  if (MATRIX_PREFIXES.includes(prefix)) return `${prefix} (…)`
   return name
 }
 
@@ -461,6 +466,13 @@ async function listRuns(from: number, to: number, opts: Options, out: Map<number
     await listRuns(mid, to, opts, out)
     return
   }
+  if (first.total_count > 1000) {
+    // The listing API returns at most 1,000 runs per query, and a window this
+    // short is not split further: the runs beyond the cap are missing.
+    process.stderr.write(
+      `[ci-throughput] warning: ${range} has ${first.total_count} runs; only the first 1000 are listed (the API cap), so this window is incomplete\n`,
+    )
+  }
   for (const r of first.workflow_runs) out.set(r.id, r)
   const pages = Math.ceil(Math.min(first.total_count, 1000) / 100)
   const rest = Array.from({ length: Math.max(0, pages - 1) }, (_, k) => k + 2)
@@ -468,6 +480,18 @@ async function listRuns(from: number, to: number, opts: Options, out: Map<number
     const res = await gh<{ workflow_runs: Run[] }>(`${base}&page=${page}`)
     for (const r of res.workflow_runs) out.set(r.id, r)
   })
+}
+
+/**
+ * Write a cache file so a reader never sees half of it: write a sibling temp
+ * file, then rename it over the target (atomic on one filesystem). An
+ * interrupted run leaves at most a stray `.tmp-*` file, never a truncated
+ * JSON that a later run would fail to parse.
+ */
+function writeAtomic(file: string, data: string): void {
+  const tmp = `${file}.tmp-${process.pid}`
+  writeFileSync(tmp, data, { mode: 0o600 })
+  renameSync(tmp, file)
 }
 
 function jobsFile(run: Run, opts: Options): string {
@@ -523,7 +547,7 @@ async function fetchJobs(run: Run, opts: Options): Promise<Job[] | null> {
       completed_at: s.completed_at,
     })),
   }))
-  if (run.status === 'completed') writeFileSync(file, JSON.stringify(slim))
+  if (run.status === 'completed') writeAtomic(file, JSON.stringify(slim))
   return slim
 }
 
@@ -696,7 +720,7 @@ async function main(): Promise<void> {
     const runMap = new Map<number, Run>()
     await listRuns(Date.parse(opts.since), Date.parse(opts.until), opts, runMap)
     runList = [...runMap.values()]
-    writeFileSync(join(opts.cache, 'runs.json'), JSON.stringify(runList))
+    writeAtomic(join(opts.cache, 'runs.json'), JSON.stringify(runList))
   }
   // Housekeeping workflow_run runs have one tiny job. Their jobs are fetched only
   // with --include-workflow-run, and only for runs whose job was not skipped

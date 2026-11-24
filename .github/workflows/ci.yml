@@ -1480,6 +1480,34 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # coverage's affected.ts needs the merge-base
+      # ── native compiler binary (restore BEFORE setup-pyreon) ─────────────
+      # The binary is a pure function of build-native.ts and the crate
+      # directory it copies (every *.rs and *.toml, Cargo.lock), so restore
+      # it by their hash (`compiler-native-bin-`) before setup-pyreon: on a
+      # lib/ miss the bootstrap runs build-native.ts, and the touch makes that
+      # a no-op instead of a compile with the runner's cargo (it compares
+      # mtimes; checkout stamps the sources newer than a restored file).
+      # This job never SAVES it: the one writer is `Coverage (Full)` in
+      # ci-main.yml, which runs on every default-branch push and saves on a
+      # miss (check-cache-key-sync: one writer per path).
+      # Skipped on a default-branch push, which always compiles: that keeps
+      # the "compiles on the newest stable Rust" signal on every push (the
+      # toolchain is `stable`, not pinned, and not part of the key) and keeps
+      # this job the deterministic writer of the cargo registry cache there.
+      # The cargo build runs in a temp directory outside the tree
+      # (build-native.ts), so the `target/` cache this replaced never had a
+      # path to save: no `cargo-target-*` entry ever existed, and every run
+      # compiled Rust from scratch (37-47 s).
+      - name: Restore native compiler binary
+        id: native-bin
+        if: ${{ github.event_name != 'push' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/core/compiler/native/pyreon-compiler.node
+          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/**/*.toml', 'packages/core/compiler/native/**/*.rs', 'packages/core/compiler/scripts/build-native.ts') }}
+      - name: Mark restored binary fresh
+        if: ${{ steps.native-bin.outputs.cache-hit == 'true' }}
+        run: touch -d '+1 minute' packages/core/compiler/native/pyreon-compiler.node
       - uses: ./.github/actions/setup-pyreon
         id: setup
         with:
@@ -1588,29 +1616,9 @@ jobs:
       # with it loaded; the equivalence harness asserts every JS-path output
       # matches the Rust path. Without it only the JS fallback is exercised —
       # which is exactly what shipped the 6 divergences caught in #491.
-      # The binary is a pure function of the crate's sources, so restore it by
-      # their hash first (`compiler-native-bin-`). This job only RESTORES:
-      # the one writer is `Coverage (Full)` in ci-main.yml, which runs on
-      # every default-branch push and saves on a miss, so every ref reads one
-      # entry per source hash (check-cache-key-sync: one writer per path). A
-      # PR that changes Rust sources misses here and builds, as before.
-      # On a hit the toolchain, the registry and the
-      # cargo build are skipped and the touch makes build-native.ts's mtime
-      # check a no-op (checkout stamps the sources newer than a restored file).
-      # The cargo build runs in a temp directory outside the tree
-      # (build-native.ts), so the `target/` cache this step replaced never had
-      # a path to save: no `cargo-target-*` entry ever existed, and every run
-      # compiled Rust from scratch (37-47 s).
-      - name: Restore native compiler binary
-        id: native-bin
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: packages/core/compiler/native/pyreon-compiler.node
-          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/Cargo.toml', 'packages/core/compiler/native/**/*.rs') }}
-      - name: Mark restored binary fresh
-        if: ${{ !cancelled() && steps.native-bin.outputs.cache-hit == 'true' }}
-        run: touch -d '+1 minute' packages/core/compiler/native/pyreon-compiler.node
+      # On a pull request or merge group the binary was usually restored by its
+      # inputs' hash before setup-pyreon (top of this job); then the
+      # toolchain, the registry and the cargo build below are skipped.
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master — pinned (OpenSSF Pinned-Dependencies)
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && steps.native-bin.outputs.cache-hit != 'true' }}
         with:

@@ -96,7 +96,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/core/compiler/native/pyreon-compiler.node
-          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/Cargo.toml', 'packages/core/compiler/native/**/*.rs') }}
+          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/**/*.toml', 'packages/core/compiler/native/**/*.rs', 'packages/core/compiler/scripts/build-native.ts') }}
       - name: Mark restored binary fresh
         if: steps.native-bin.outputs.cache-hit == 'true'
         run: touch -d '+1 minute' packages/core/compiler/native/pyreon-compiler.node
@@ -134,7 +134,7 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/core/compiler/native/pyreon-compiler.node
-          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/Cargo.toml', 'packages/core/compiler/native/**/*.rs') }}
+          key: compiler-native-bin-${{ runner.os }}-${{ hashFiles('packages/core/compiler/native/Cargo.lock', 'packages/core/compiler/native/**/*.toml', 'packages/core/compiler/native/**/*.rs', 'packages/core/compiler/scripts/build-native.ts') }}
       - name: Run full per-package coverage
         timeout-minutes: 25
         shell: bash
