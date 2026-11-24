@@ -32,7 +32,7 @@ import { encodeForm } from '../body'
 // on every platform. Encoding at COMPILE time is free for a literal, so the
 // emitted URL is a fully-encoded constant. Un-encoded substitution was not
 // cosmetic: `#` truncated the URL, `?` / `&` injected query structure.
-import { encodePathParam } from '../url'
+import { encodePathParam, pathPartEnd, pathTemplateTail } from '../url'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
@@ -497,8 +497,10 @@ function collectEndpointDefs(body: AnyNode[], facts: HttpFacts): void {
       const pathTemplate = raw.slice(sp + 1).trim()
       const paramNames: string[] = []
       const re = pathParamPattern()
+      // Placeholders live in the PATH part only — the web's `pathPartEnd` cut.
+      const pathPart = pathTemplate.slice(0, pathPartEnd(pathTemplate))
       let m: RegExpExecArray | null
-      while ((m = re.exec(pathTemplate)) !== null) {
+      while ((m = re.exec(pathPart)) !== null) {
         if (m[1]) paramNames.push(m[1])
       }
       // The DECLARATION's second argument — `{ response, headers, timeout,
@@ -664,8 +666,13 @@ function resolveEndpointParts(
   let bailed = false
   const PARAM_RE = pathParamPattern()
   let cursor = 0
-  for (let m = PARAM_RE.exec(def.pathTemplate); m; m = PARAM_RE.exec(def.pathTemplate)) {
-    const before = def.pathTemplate.slice(cursor, m.index)
+  // Placeholders are read in the PATH part only (the web's `pathPartEnd`): a
+  // `:` in a written query string or fragment is sent as written, so the two
+  // targets never disagree about which parameters a template declares.
+  const pathEnd = pathPartEnd(def.pathTemplate)
+  const pathPart = def.pathTemplate.slice(0, pathEnd)
+  for (let m = PARAM_RE.exec(pathPart); m; m = PARAM_RE.exec(pathPart)) {
+    const before = pathPart.slice(cursor, m.index)
     cursor = m.index + m[0].length
     literalPath += before
     quasis[quasis.length - 1] += before
@@ -720,7 +727,7 @@ function resolveEndpointParts(
     quasis.push('')
   }
   if (bailed) return null
-  const tail = def.pathTemplate.slice(cursor)
+  const tail = pathPart.slice(cursor) + pathTemplateTail(def.pathTemplate, pathEnd)
   literalPath += tail
   quasis[quasis.length - 1] += tail
   const path = literalPath

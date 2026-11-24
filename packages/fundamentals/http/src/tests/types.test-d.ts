@@ -103,6 +103,11 @@ describe('endpoint typing', () => {
     expectTypeOf<PathParamNames<'/f/:a-:b'>>().toEqualTypeOf<'a' | 'b'>()
     // A parameter need not start its segment; `:8080` is not one.
     expectTypeOf<PathParamNames<'/f/file:id'>>().toEqualTypeOf<'id'>()
+    // #4816: a colon after `?` / `#` declares nothing — the runtime sends it as written.
+    expectTypeOf<PathParamNames<'/search?tag=a:b'>>().toEqualTypeOf<never>()
+    expectTypeOf<PathParamNames<'/search#x:y'>>().toEqualTypeOf<never>()
+    expectTypeOf<PathParamNames<'/users/:id/search?tag=a:b'>>().toEqualTypeOf<'id'>()
+    expectTypeOf<PathParamNames<'/u/:id#frag:x?q=:y'>>().toEqualTypeOf<'id'>()
     expectTypeOf<PathParamNames<'/f/x:8080'>>().toEqualTypeOf<never>()
   })
 

@@ -425,6 +425,21 @@ describe('runtime-configurable baseUrl and validate', () => {
     expect(urls).toEqual(['https://one.test/x', 'https://two.test/v2/x'])
   })
 
+  it('a colon in a literal query string or fragment is sent as written (#4816)', async () => {
+    const urls: string[] = []
+    const api = createHttp({
+      transport: async (req) => {
+        urls.push(req.url)
+        return ok('{}')(req)
+      },
+    })
+    await api.get('/search?tag=a:b')
+    await api.get('/search?filter=type:open')
+    await api.request('GET', '/search#x:y')
+    await api.endpoint('GET /items/:id?view=a:b')({ params: { id: 7 } })
+    expect(urls).toEqual(['/search?tag=a:b', '/search?filter=type:open', '/search#x:y', '/items/7?view=a:b'])
+  })
+
   it('an accessor validate is read per request', async () => {
     let mode: 'strict' | 'warn' = 'strict'
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

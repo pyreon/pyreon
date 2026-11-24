@@ -72,6 +72,38 @@ export function encodePathParam(value: string): string {
 }
 
 /**
+ * Where a URL's PATH part ends: the index of the first `?` (query) or `#`
+ * (fragment), or the length when it has neither. `:name` placeholders are read
+ * ONLY before this point, so a colon in a hand-written query string or
+ * fragment (`/search?at=10:30`, `/search?tag=a:b`, `/doc#x:y`) is passed
+ * through as written instead of being read as a parameter the caller never
+ * declared. The type-level `PathParamNames` and the native lowering (the
+ * `@pyreon/http/native-plugin` resolver) cut at the same point — one source
+ * file must produce one URL on every target.
+ */
+export function pathPartEnd(url: string): number {
+  const q = url.indexOf('?')
+  const h = url.indexOf('#')
+  if (q === -1) return h === -1 ? url.length : h
+
+  return h === -1 || q < h ? q : h
+}
+
+/** The `\\:` escape — the only token the query/fragment tail still reads. */
+const ESCAPED_COLON = /\\:/g
+
+/**
+ * The query/fragment tail of a path template (from `end`, see
+ * {@link pathPartEnd}) as it is SENT: written as-is, except that the `\\:`
+ * escape still reads as a colon — so a template built with every colon escaped
+ * (the workaround callers used before placeholders stopped at the path) keeps
+ * producing the same URL. Shared with the native lowering.
+ */
+export function pathTemplateTail(template: string, end: number): string {
+  return end >= template.length ? '' : template.slice(end).replace(ESCAPED_COLON, ':')
+}
+
+/**
  * Substitute `:name` placeholders. Values go through {@link encodePathParam}
  * (`encodeURIComponent`, with `.` / `..` made inert), so an id containing
  * `/` or `?` — or an id that IS a dot segment — can never break out of its
@@ -82,12 +114,19 @@ export function encodePathParam(value: string): string {
  * second parameter. The type-level `PathParamNames` honours the same
  * escape, so the two can never disagree about what the caller must supply.
  *
+ * Only the PATH part is read (see {@link pathPartEnd}): a `:` in the query
+ * string or fragment is never a placeholder, so `/search?tag=a:b` is sent as
+ * written. Structured query values belong in the `query` option.
+ *
  * Throws on a missing param rather than leaving a literal `:id` in the URL
  * — a silently-malformed request is far harder to diagnose than a throw.
  */
 export function applyPathParams(path: string, params: PathParams | undefined): string {
   if (!path.includes(':')) return path
-  return path.replace(PATH_TOKEN, (_match, name: string | undefined) => {
+  const end = pathPartEnd(path)
+  const tail = pathTemplateTail(path, end)
+
+  return path.slice(0, end).replace(PATH_TOKEN, (_match, name: string | undefined) => {
     if (name === undefined) return ':'
     const value = params?.[name]
     if (value === undefined || value === null) {
@@ -97,7 +136,7 @@ export function applyPathParams(path: string, params: PathParams | undefined): s
       )
     }
     return encodePathParam(String(value))
-  })
+  }) + tail
 }
 
 /**

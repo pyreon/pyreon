@@ -87,8 +87,19 @@ type SegmentParams<S extends string> = S extends `${infer Before}:${infer After}
  * (`TS2589`). A segment walk gives TypeScript exactly one split point per
  * level; the per-segment colon scan only ever sees one short segment.
  */
-export type PathParamNames<S extends string> = S extends `${infer Head}/${infer Rest}`
-  ? SegmentParams<Head> | PathParamNames<Rest>
+export type PathParamNames<S extends string> = PathSegmentsParams<PathPart<S>>
+
+/**
+ * The PATH part of a path template: everything before the first `?` (query)
+ * or `#` (fragment), exactly the runtime's `pathPartEnd` cut. A `:` after it
+ * (`/search?tag=a:b`, `/doc#x:y`) declares nothing — the runtime sends it as
+ * written — so neither side asks the caller for a parameter the other ignores.
+ */
+type PathPart<S extends string> = S extends `${infer P}?${string}` ? BeforeHash<P> : BeforeHash<S>
+type BeforeHash<S extends string> = S extends `${infer P}#${string}` ? P : S
+
+type PathSegmentsParams<S extends string> = S extends `${infer Head}/${infer Rest}`
+  ? SegmentParams<Head> | PathSegmentsParams<Rest>
   : SegmentParams<S>
 
 /** `'GET /users/:id'` — method and path in one literal. */

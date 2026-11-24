@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createHttp } from '../client'
 import { bearer } from '../middleware'
 import { createFetchTransport } from '../transport'
-import { applyPathParams, buildQuery, buildUrl, encodePathParam, isAbsoluteUrl, joinUrl } from '../url'
+import { applyPathParams, buildQuery, buildUrl, encodePathParam, isAbsoluteUrl, joinUrl, pathPartEnd } from '../url'
 
 describe('isAbsoluteUrl', () => {
   it('recognises schemes', () => {
@@ -195,5 +195,40 @@ describe('query styles', () => {
     expect(dec(buildUrl('https://a.test', '/x', undefined, { ids: [1, 2] }, { ids: { style: 'form', explode: false } }))).toBe(
       'https://a.test/x?ids=1,2',
     )
+  })
+})
+
+// #4816: placeholders are read in the PATH part only — a colon in the query
+// string or fragment is sent as written, never demanded as a parameter.
+describe('applyPathParams — path part only', () => {
+  it('passes a colon in the query string / fragment through as written', () => {
+    expect(applyPathParams('/search?tag=a:b', undefined)).toBe('/search?tag=a:b')
+    expect(applyPathParams('/search?at=10:30', undefined)).toBe('/search?at=10:30')
+    expect(applyPathParams('/search?filter=type:open&q=x:y', undefined)).toBe('/search?filter=type:open&q=x:y')
+    expect(applyPathParams('/search#x:y', undefined)).toBe('/search#x:y')
+    expect(applyPathParams('/doc#a?b:c', undefined)).toBe('/doc#a?b:c')
+  })
+
+  it('still substitutes and requires placeholders BEFORE the query', () => {
+    expect(applyPathParams('/users/:id/search?tag=a:b', { id: 'u/1' })).toBe('/users/u%2F1/search?tag=a:b')
+    expect(() => applyPathParams('/users/:id?tag=a:b', undefined)).toThrow(/needs the parameter "id"/)
+  })
+
+  it('keeps reading the `\\:` escape after the cut (the pre-fix workaround still works)', () => {
+    expect(applyPathParams('/search?tag=a\\:b', undefined)).toBe('/search?tag=a:b')
+    expect(applyPathParams('/v1/:name\\:cancel?x=1:2', { name: 'n' })).toBe('/v1/n:cancel?x=1:2')
+  })
+
+  it('buildUrl sends the literal query and merges the `query` option after it', () => {
+    expect(buildUrl('https://api.test', '/search?tag=a:b', undefined, { page: 2 })).toBe(
+      'https://api.test/search?tag=a:b&page=2',
+    )
+  })
+
+  it('pathPartEnd cuts at the first `?` or `#`', () => {
+    expect(pathPartEnd('/a/b')).toBe(4)
+    expect(pathPartEnd('/a?b#c')).toBe(2)
+    expect(pathPartEnd('/a#b?c')).toBe(2)
+    expect(pathPartEnd('https://h.io:8080/a?x')).toBe(19)
   })
 })
