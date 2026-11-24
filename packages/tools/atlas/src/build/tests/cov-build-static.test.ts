@@ -109,6 +109,16 @@ describe('the emitted site', () => {
     expect(logs).toEqual([])
   }, 300_000)
 
+  it("copies the PROJECT's public/ into the site", async () => {
+    // The Vite root is the workbench app, so the default publicDir pointed
+    // into the Atlas install and the project's static files never shipped.
+    const root = fixture()
+    mkdirSync(join(root, 'public'), { recursive: true })
+    writeFileSync(join(root, 'public', 'brand.txt'), 'from the project public dir\n', 'utf8')
+    await buildStatic({ cwd: root, out: 'dist' })
+    expect(readFileSync(join(root, 'dist', 'brand.txt'), 'utf8')).toBe('from the project public dir\n')
+  }, 300_000)
+
   it("applies the project's resolve.alias, as atlas dev does", async () => {
     // A component importing through an alias the CONFIG declares. Without the
     // alias in the build's resolve, the bundler cannot resolve `~/…` and the

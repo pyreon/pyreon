@@ -126,8 +126,35 @@ export async function loadZeroStack(command: 'dev' | 'build'): Promise<ZeroStack
  * `@pyreon/compiler/diagnose` into the served app. It is aimed at a user's OWN
  * app; the workbench surfaces component errors in its own canvas, and the
  * resulting Vite overlay would cover the whole workbench.
+ *
+ * `projectContext: false` — the dev server writes `<root>/.pyreon/context.json`,
+ * and the root here is the workbench app inside the Atlas install: the map
+ * would describe Atlas, land in `node_modules`, and ship with the package.
  */
-export const PYREON_OPTIONS = { devErrorPrinter: false } as const
+export const PYREON_OPTIONS = { devErrorPrinter: false, projectContext: false } as const
+
+/**
+ * The Vite options that are ROOT-RELATIVE by default and belong to the
+ * PROJECT, not to the workbench app that is the root (see the module comment).
+ *
+ * - `envDir`: the project's `.env*` files.
+ * - `publicDir`: the project's `public/` — a component referencing
+ *   `/logo.svg` must find it in `atlas dev` and in the built site.
+ * - `css.postcss`: where the PostCSS config (Tailwind v3, autoprefixer, …) is
+ *   searched from; a string is a directory, searched upward.
+ *
+ * Not here, because they are not root-relative: `json`, `assetsInclude`, the
+ * per-file tsconfig lookup. Not inherited at all: the project's own Vite
+ * PLUGINS (a Tailwind v4 `@tailwindcss/vite`, say) — Atlas reads only
+ * `resolve.alias` from the project's vite config (see `ScanResult.alias`).
+ */
+export function projectDirs(projectRoot: string): Record<string, unknown> {
+  return {
+    envDir: projectRoot,
+    publicDir: join(projectRoot, 'public'),
+    css: { postcss: projectRoot },
+  }
+}
 
 /**
  * zero's options. `base` and `port` go to zero as well as to Vite: zero's own

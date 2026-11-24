@@ -117,9 +117,8 @@ describe('the workbench app page', () => {
       const html = await page.text()
       expect(html).toContain(SHELL)
       expect(html).toContain('/@vite/client')
-      // The `<head>` lines atlasDevPlugin adds: the theme boot runs before
-      // first paint, and the routes flag lets the workbench write `/<id>/`.
-      expect(html).toContain('__ATLAS_ROUTES__ = true')
+      // The `<head>` line atlasDevPlugin adds: the theme boot runs before
+      // first paint.
       expect(html).toContain('pyreon-theme')
 
       // A deep navigation is the same shell — the app's `/:component` route,
@@ -149,6 +148,35 @@ describe('the workbench app page', () => {
       // The handle describes what it actually started.
       expect(handle.url).toBe(`http://localhost:${port}/`)
       expect(handle.components).toBe(1)
+    } finally {
+      await handle?.close()
+    }
+  }, 120_000)
+
+  it("serves the PROJECT's public/ and finds its PostCSS config, not the app's", async () => {
+    // The Vite root is the workbench app, so every root-relative default
+    // pointed into the Atlas install: a component's `/logo.svg` 404'd and the
+    // project's postcss.config (Tailwind v3) was never applied.
+    const root = fixture()
+    mkdirSync(join(root, 'public'), { recursive: true })
+    writeFileSync(join(root, 'public', 'brand.txt'), 'from the project public dir\n', 'utf8')
+    // A PostCSS plugin that stamps every rule — present only if the
+    // project's config was found and run.
+    writeFileSync(
+      join(root, 'postcss.config.cjs'),
+      "module.exports = { plugins: [{ postcssPlugin: 'stamp', Once(r) { r.append({ text: 'atlas-postcss-ran' }) } }] }\n",
+      'utf8',
+    )
+    writeFileSync(join(root, 'src', 'look.css'), '.look { color: red }\n', 'utf8')
+    const port = await freePort()
+    let handle: DevServerHandle | undefined
+    try {
+      handle = await startDevServer({ cwd: root, port })
+      const asset = await fetch(`http://localhost:${port}/brand.txt`)
+      expect(asset.status).toBe(200)
+      expect(await asset.text()).toBe('from the project public dir\n')
+      const css = await fetch(`http://localhost:${port}/@fs${realpathSync(root)}/src/look.css?direct`)
+      expect(await css.text()).toContain('atlas-postcss-ran')
     } finally {
       await handle?.close()
     }

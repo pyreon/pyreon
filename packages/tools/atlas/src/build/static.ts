@@ -35,7 +35,7 @@ import { workspaceResolvePlugin } from '../discover/workspace-packages'
 import { componentKey, type ComponentIntelligence } from '../core'
 import { atlasDevPlugin, builtinMethods, type RpcMethod } from '../dev/plugin'
 import { catalogIds, type CatalogEntrySource } from '../dev/catalog-module'
-import { appDir, loadZeroStack, missingStackMessage, PYREON_OPTIONS, zeroOptions } from '../dev/zero-app'
+import { appDir, loadZeroStack, missingStackMessage, projectDirs, PYREON_OPTIONS, zeroOptions } from '../dev/zero-app'
 import { BAKED_RPC_DIR, bakeRpc, splitBakedRpc } from './bake'
 import { collectEntries } from './entries'
 
@@ -275,8 +275,9 @@ export async function buildStatic(options: BuildOptions = {}): Promise<BuildResu
       root: app,
       base,
       configFile: false,
-      // The project's `.env*` files, as `atlas dev` reads them.
-      envDir: root,
+      // The project's `.env*`, `public/` (copied into the site) and PostCSS
+      // config, as `atlas dev` reads them — see `projectDirs`.
+      ...projectDirs(root),
       // The project's own `resolve.alias`: without it a `~/…` import in a
       // component fails the build that `atlas dev` serves fine.
       ...(alias.length > 0 ? { resolve: { alias: [...alias] } } : {}),

@@ -1,0 +1,7 @@
+{
+  "extends": "@pyreon/tsconfig/lib-jsx.json",
+  // The app imports Atlas's own source (`../../src/ui`), so the program spans
+  // the package; `rootDir` widens to it. Typecheck only (`tsc -p app`), never
+  // an emit.
+  "compilerOptions": { "rootDir": "..", "noEmit": true, "tsBuildInfoFile": "../.cache/app.tsbuildinfo" }
+}

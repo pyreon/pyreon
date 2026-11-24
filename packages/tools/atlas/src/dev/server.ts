@@ -28,7 +28,7 @@ import { configCandidatePaths } from '../discover/config'
 import { scanInChild } from './rescan'
 import type { ComponentIntelligence } from '../core'
 import { atlasDevPlugin, type RpcMethod } from './plugin'
-import { appDir, loadZeroStack, missingStackMessage, PYREON_OPTIONS, zeroOptions } from './zero-app'
+import { appDir, loadZeroStack, missingStackMessage, projectDirs, PYREON_OPTIONS, zeroOptions } from './zero-app'
 import type { CatalogEntrySource } from './catalog-module'
 
 export interface DevServerOptions {
@@ -164,8 +164,8 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
     // project is reached by absolute path — see `./zero-app`.
     root: app,
     configFile: false,
-    // The project's `.env*` files, as when the project was the root.
-    envDir: root,
+    // The project's `.env*`, `public/` and PostCSS config — see `projectDirs`.
+    ...projectDirs(root),
     // The project's own `resolve.alias`, put back after `configFile: false`
     // removed it. Without this a single `~/components/…` import fails to
     // resolve and the dev overlay covers the WHOLE workbench, not just that

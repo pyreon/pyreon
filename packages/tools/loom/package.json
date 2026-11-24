@@ -53,6 +53,7 @@
   },
   "files": [
     "app",
+    "!app/.pyreon",
     "bin",
     "lib",
     "!lib/analysis",

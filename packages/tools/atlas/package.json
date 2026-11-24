@@ -68,6 +68,7 @@
   },
   "files": [
     "app",
+    "!app/.pyreon",
     "bin",
     "lib",
     "!lib/analysis",
@@ -80,7 +81,7 @@
     "dev": "vl_rolldown_build-watch",
     "demo": "bun scripts/demo.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p app",
     "lint": "oxlint ."
   },
   "dependencies": {
