@@ -42,7 +42,8 @@ describe('control-flow statement lowering', () => {
     }`),
       { target: 'swift' },
     ).code
-    expect(out).toContain('for it in items {')
+    // The body never reads `it`: Swift binds `_` (an unused binding is a swiftc warning).
+    expect(out).toContain('for _ in items {')
     expect(out).toContain('while count > 0 {')
     expect(out).toContain('switch status {')
     expect(out).toContain('case "active":')
@@ -93,7 +94,7 @@ describe('control-flow statement lowering', () => {
       { target: 'swift' },
     ).code
     expect(sw).toContain('case "active":')
-    expect(sw).toContain('for it in items {')
+    expect(sw).toContain('for _ in items {')
   })
 
   it.skipIf(!isSwiftcAvailable())('Swift: for / while / switch handler typechecks via swiftc', () => {

@@ -8,6 +8,7 @@
  * accidentally allocating signals on the hot mount path.
  */
 import { __resetReactiveDevtoolsForTesting, signal } from '@pyreon/reactivity'
+import { cpuClock } from '@pyreon/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _disable, _reset } from '../counters'
 import { install, perfHarness, uninstall } from '../harness'
@@ -32,12 +33,12 @@ afterEach(() => {
 
 describe('signal creation cost', () => {
   it('creating 10000 signals completes quickly (no allocation-pathology)', async () => {
-    const t0 = performance.now()
+    const t0 = cpuClock()
     const outcome = await perfHarness.record('create-10k', () => {
       const all: unknown[] = []
       for (let i = 0; i < 10_000; i++) all.push(signal(i))
     })
-    const elapsed = performance.now() - t0
+    const elapsed = cpuClock() - t0
     expect(outcome.after['reactivity.signalCreate']).toBe(10_000)
     // oxlint-disable-next-line no-console
     console.log(`[signal-create] 10k signals in ${elapsed.toFixed(1)}ms`)
@@ -53,7 +54,10 @@ describe('signal creation cost', () => {
     //   - local Bun: ~40ms
     //   - CI parallel-load (60+ concurrent vitest workers, contended
     //     happy-dom + GC): observed up to 993ms across 3 retries
-    // Threshold gives 3× headroom over the CI worst case so a real
+    // Those are WALL times; the budget is now this process's CPU time
+    // (cpuClock), which does not count the time a saturated runner spends
+    // waiting for a core — most of that 993ms. The 3x headroom over the CI
+    // worst case therefore holds with margin to spare, so a real
     // allocation pathology (e.g. `.stack` reverted to eager,
     // FinalizationRegistry GC pressure that's super-linear, or NodeRec
     // grew with a heavy field) trips while normal CI noise doesn't.
@@ -74,13 +78,13 @@ describe('signal creation cost', () => {
     //   - CI parallel-load (worst observed across retries): ~497ms
     // Threshold gives 3× headroom over CI worst case.
     const injected = { file: '/fake/build/path.ts', line: 1, col: 1 }
-    const t0 = performance.now()
+    const t0 = cpuClock()
     const outcome = await perfHarness.record('create-10k-injected', () => {
       const all: unknown[] = []
       for (let i = 0; i < 10_000; i++)
         all.push(signal(i, { __sourceLocation: injected }))
     })
-    const elapsed = performance.now() - t0
+    const elapsed = cpuClock() - t0
     expect(outcome.after['reactivity.signalCreate']).toBe(10_000)
     // oxlint-disable-next-line no-console
     console.log(`[signal-create] 10k vite-injected signals in ${elapsed.toFixed(1)}ms`)

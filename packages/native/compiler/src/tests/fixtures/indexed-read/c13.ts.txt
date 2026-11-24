@@ -1,0 +1,12 @@
+type Double = number
+const XS: Double[] = [1.0, 2.0]
+function nt3(xs: Double[], i: number): string { const v = xs[i]; return String(v === undefined ? 0.0 : v) }
+function nt4(xs: Double[], i: number): string { const v = xs[i]; return `${v !== undefined ? v : -1.0}` }
+function nt5(xs: Double[], i: number): string { const v = xs[i]; const t = v === undefined ? 0.0 : v * 2.0; return String(t) }
+function nt6(xs: Double[], i: number): string { return String(xs[i] ?? 0.0) }
+function nt7(xs: Double[], i: number): Double { const v = xs[i]; return v === undefined ? 0.0 : v + 1.0 }
+export function c_nt3(): string { return nt3(XS, 1) }
+export function c_nt4(): string { return nt4(XS, 1) }
+export function c_nt5(): string { return nt5(XS, 1) }
+export function c_nt6(): string { return nt6(XS, 1) }
+export function c_nt7(): string { return String(nt7(XS, 1)) }

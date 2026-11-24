@@ -9,6 +9,9 @@
   "include": [
     "src",
     "bench.ts",
-    "vite.config.ts"
+    "vite.config.ts",
+    "app/*.ts",
+    "app/harness",
+    "app/shared"
   ]
 }

@@ -156,6 +156,58 @@ const timeoutFor = (pkg: string): number =>
 const VITEST_ENTRY = join(import.meta.dirname, '..', 'node_modules', 'vitest', 'vitest.mjs')
 
 /**
+ * Packages whose coverage floor was set with a NATIVE BINARY loaded, so a run
+ * without it measures a different suite rather than the same suite worse.
+ *
+ * `@pyreon/compiler`'s JS≡Rust differential suites (`describeNative` in
+ * fuzz-equivalence, native-equivalence, plain-native-equivalence, …) skip when
+ * the binary is absent, and they are what drive most of `jsx.ts` through the
+ * JS backend. The binary is built by `build-native.ts`, which SOFT-FAILS when
+ * `cargo` is missing (correct for `bun install`). So the floor verdict used to
+ * depend on whether the runner happened to have cargo on PATH: PR #4752's
+ * `Coverage (Full)` logged `cargo not found — skipping native build` and
+ * measured 96.77% against the 97% floor, while the default branch's run on the
+ * same image built the binary and measured 97.11%.
+ *
+ * A binary the floor depends on is therefore REQUIRED, never optional: a run
+ * that selects one of these packages without its binary fails here, once, with
+ * the fix — and the suite is told to fail if the binary exists but does not
+ * LOAD (`PYREON_REQUIRE_NATIVE_COMPILER`, honoured by the compiler's specs).
+ */
+export const NATIVE_BINARY_REQUIREMENTS: Readonly<
+  Record<string, { readonly binary: string; readonly env: Readonly<Record<string, string>> }>
+> = {
+  '@pyreon/compiler': {
+    binary: 'packages/core/compiler/native/pyreon-compiler.node',
+    env: { PYREON_REQUIRE_NATIVE_COMPILER: '1' },
+  },
+}
+
+/**
+ * The selected packages whose required native binary is missing, as one
+ * message per package naming the fix. Pure over `exists` so it is testable
+ * without touching the real tree.
+ */
+export function missingNativeBinaries(
+  selected: readonly string[],
+  exists: (relPath: string) => boolean,
+): string[] {
+  const out: string[] = []
+  for (const name of selected) {
+    const req = NATIVE_BINARY_REQUIREMENTS[name]
+    if (!req || exists(req.binary)) continue
+    out.push(
+      `${name}: its coverage floor is measured with the native binary loaded, and ${req.binary} ` +
+        `is missing (build-native.ts skips silently without cargo). Build it with ` +
+        `\`bun run --filter='${name}' build:native\` (needs Rust: https://rustup.rs; in CI, ` +
+        `restore or build it before this step as ci-main.yml's Coverage (Full) does), ` +
+        `or leave the package out with --skip=${name}.`,
+    )
+  }
+  return out
+}
+
+/**
  * Packages that legitimately have NO instrumentable source, so a coverage run
  * measuring zero files is the correct outcome rather than a misconfiguration.
  *
@@ -923,6 +975,9 @@ export async function runCoverage(
           // starts one JVM per worker on top of V8 instrumentation, and
           // that stampede is what pinned `Coverage (Full)` at its cap.
           ...(pkgName === '@pyreon/native-compiler' ? { PYREON_NATIVE_COMPILER_SERIAL: '1' } : {}),
+          // A required binary that exists but fails to LOAD must fail the
+          // suite, not quietly shrink it (see NATIVE_BINARY_REQUIREMENTS).
+          ...NATIVE_BINARY_REQUIREMENTS[pkgName]?.env,
         },
       },
     )
@@ -1572,6 +1627,15 @@ const nodeVersion = (() => {
   }
   return nodeCheck.stdout.trim()
 })()
+
+const missingBinaries = missingNativeBinaries(
+  packages.map((p) => p.name),
+  (rel) => existsSync(join(import.meta.dirname, '..', rel)),
+)
+if (missingBinaries.length > 0) {
+  for (const msg of missingBinaries) console.error(`[check-coverage] FAILED — ${msg}`)
+  process.exit(1)
+}
 
 console.log(
   `\nRunning coverage for ${packages.length} packages (${CONCURRENCY} parallel, vitest under node ${nodeVersion})...\n`,

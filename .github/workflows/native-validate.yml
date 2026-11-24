@@ -994,14 +994,23 @@ jobs:
           chmod +x "$RUNNER_TEMP/no-kotlinc/kotlinc"
           export PATH="$RUNNER_TEMP/no-kotlinc:$PATH"
           cd packages/native/compiler
-          if [ "$EVENT" = "schedule" ] || [ "$EVENT" = "workflow_dispatch" ]; then
-            bunx vitest run
-          else
+          # The zero-warning gates write advisory swiftc diagnostics (a class not validated on this Xcode) to this
+          # file; it is printed after vitest, from the step itself, so the `::warning::` lines become annotations
+          # (vitest reprints captured test output, which is not guaranteed to).
+          export PYREON_ANNOTATIONS_FILE="$RUNNER_TEMP/pyreon-annotations.txt"
+          FILES=""
+          if [ "$EVENT" != "schedule" ] && [ "$EVENT" != "workflow_dispatch" ]; then
+            # Outside `set +e`: a failing selector must stop the step, never fall through to running everything.
             FILES=$(bun ../../../scripts/native-macos-test-files.ts)
             echo "Running $(echo "$FILES" | wc -l | tr -d ' ') macOS-specific test files in parallel"
-            # shellcheck disable=SC2086 # one path per word, by construction
-            bunx vitest run $FILES
           fi
+          set +e
+          # shellcheck disable=SC2086 # one path per word, by construction (empty = the whole suite, nightly)
+          bunx vitest run $FILES
+          status=$?
+          set -e
+          if [ -f "$PYREON_ANNOTATIONS_FILE" ]; then cat "$PYREON_ANNOTATIONS_FILE"; fi
+          exit "$status"
 
       - name: Native coverage — COMPILE every registry snippet
         # The coverage gate normally judges a package by transform WARNINGS and

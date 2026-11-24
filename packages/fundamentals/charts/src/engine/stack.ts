@@ -39,16 +39,16 @@ export function stackLevels(seriesValues: Double[][]): StackLevels {
   const flatBase: Double[] = []
   const flatTop: Double[] = []
   for (let c = 0; c < k * n; c++) {
-    flatBase.push(0.0 / 0.0)
-    flatTop.push(0.0 / 0.0)
+    flatBase.push(NaN)
+    flatTop.push(NaN)
   }
   for (let s = 0; s < k; s++) {
     const own = seriesValues[s]!
     for (let i = 0; i < n; i++) {
-      const v = i < own.length ? own[i]! : 0.0 / 0.0
+      const v = i < own.length ? own[i]! : NaN
       if (!isFiniteNumber(v)) continue
       let sum = v
-      let base = 0.0 / 0.0
+      let base = NaN
       for (let q = s - 1; q >= 0; q--) {
         const val = flatTop[q * n + i]!
         if ((sum >= 0.0 && val > 0.0) || (sum <= 0.0 && val < 0.0)) {
@@ -155,11 +155,9 @@ export function layoutStackLevelsH(levels: StackLevels, values: Double[][], plot
   return out
 }
 
-/** A count as a Double, for pixel arithmetic (the native targets will not mix Int into Double math). */
+/** A count as a Double, for pixel arithmetic (the native targets will not mix Int into Double math). A negative count is 0. */
 function countOf(n: number): Double {
-  let f = 0.0
-  for (let i = 0; i < n; i++) f = f + 1.0
-  return f
+  return n > 0 ? Number(n) : 0.0
 }
 
 /**

@@ -235,7 +235,10 @@ describe('template-bail census over examples/', () => {
     // roots that bail for those reasons. None of them is unvisited. (78 + 1: the
     // keyed-list benchmark `examples/benchmark/src/impl/scenario-maplist-pyreon.tsx`,
     // #4734, whose row is a keyed `.map` item root: that is what it measures.)
-    expect(r.buckets['in-template'] ?? 0).toBeLessThanOrEqual(79)
+    // 79 → 74: the corpus no longer counts other frameworks' JSX (`collectTsx` skips a
+    // project whose package.json declares no `@pyreon/*` package, e.g. the rival apps of
+    // `examples/stacks-bench/apps`), which had been compiled here as if it were Pyreon.
+    expect(r.buckets['in-template'] ?? 0).toBeLessThanOrEqual(74)
   })
 
   it('element jsx() calls in total stay at or below the walked level', () => {
@@ -243,6 +246,9 @@ describe('template-bail census over examples/', () => {
     // (#4722): its `<main>` root has component children (`<Show>`, `<For>`) that are not in a
     // trailing run (`root:other`), and one child element of that `h()` root (`child-of-h`);
     // + 1 from the keyed-list benchmark row of #4734 (see the in-template ceiling above).
-    expect(r.total).toBeLessThanOrEqual(350)
+    // 350 → 331: 328 once other frameworks' projects are skipped (see above), + 3 from the
+    // real-bench catalogue app's Pyreon arm (`examples/real-bench/app/arms/pyreon`), all
+    // `child-of-h`: idiomatic arm code, not reshaped for the compiler (its contract forbids it).
+    expect(r.total).toBeLessThanOrEqual(331)
   })
 })
