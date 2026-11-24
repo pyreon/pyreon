@@ -291,7 +291,7 @@ The path is the issue's path segments joined with `.`. Path-less issues land und
 `toFormValidator(schema, t?)` adapts any `@pyreon/validate` schema into the `(values) => Record<field, errorMessage>` function `@pyreon/form` expects as its `schema` option. It runs `schema.safeParse`, maps each issue's path to a per-field error via `formatErrorsByPath` (so i18n keys resolve through `t`), and returns `{}` on success.
 
 ```ts
-import { useForm, field } from '@pyreon/form'
+import { useForm } from '@pyreon/form'
 import { s } from '@pyreon/validate'
 import { toFormValidator } from '@pyreon/validate'
 import { useI18n } from '@pyreon/i18n'
@@ -304,7 +304,7 @@ const schema = s.object({
 })
 
 const form = useForm({
-  fields: [field('email', ''), field('age', 0)],
+  initialValues: { email: '', age: 0 },
   schema: toFormValidator(schema, t),
   onSubmit: (values) => save(values),
 })

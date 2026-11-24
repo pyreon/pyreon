@@ -1774,7 +1774,6 @@ function useFormContext<TValues>(): FormState<TValues>
 <APICard name="FormStateSummary" type="type" signature={"FormStateSummary<TValues>"} description="Shape returned by useFormState containing isSubmitting, isValid, isDirty, errors, and more." />
 <APICard name="SubmitOptions" type="type" signature={"SubmitOptions = { rethrow?: boolean }"} description="Options for a programmatic handleSubmit(options) call." />
 <APICard name="FormProps / SubmitProps" type="type" signature="FormProps, SubmitProps" description="Props of the <Form> and <Submit> components." />
-<APICard name="FieldDefinition / InferFieldValues / UseFormFieldsOptions" type="type" signature="FieldDefinition, InferFieldValues<TDefs>, UseFormFieldsOptions<TDefs>" description="Types for the field-definition form of useForm." />
 <APICard name="FieldNames / FieldValue / FormValues / NestValues" type="type" signature="FieldNames, FieldValue, FormValues, NestValues" description="Helper types for field names, per-field values, and nested value shapes." />
 
 <BenchCallout id="form" />

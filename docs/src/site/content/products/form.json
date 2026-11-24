@@ -162,8 +162,7 @@
      "FormValues",
      "FieldNames",
      "FieldValue",
-     "NestValues",
-     "InferFieldValues"
+     "NestValues"
     ]
    }
   ]
