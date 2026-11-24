@@ -32,9 +32,9 @@ import type { Writable } from 'node:stream'
  * bare `process.exit(code)` after a write (locked by the CLI's
  * `no-bare-exit-after-output.test.ts`).
  *
- * Not covered, because no exit is involved: under Bun, a `console.log` larger
- * than the pipe buffer loses its tail once `process.stdout` has been touched,
- * even when the process ends on its own. The bins run on Node.
+ * Print large reports with `writeOut` (`output.ts`), not `console.log`: under
+ * Bun a `console.log` larger than the pipe buffer loses its tail once
+ * `process.stdout` has been touched, with or without an exit.
  */
 export function exitAfterFlush(code: number): Promise<never> {
   process.exitCode = code

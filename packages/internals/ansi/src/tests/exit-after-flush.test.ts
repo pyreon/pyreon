@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path'
 import { PassThrough, Writable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { afterStreamsFlush, exitAfterFlush } from '../exit'
+import { writeOut } from '../output'
 
 const CHILD = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'flush-child.ts')
 const TOTAL = 3_000_000
@@ -177,5 +178,52 @@ describe('afterStreamsFlush', () => {
       for (const e of ends) e.mockRestore()
       process.exitCode = previous
     }
+  })
+})
+
+describe('writeOut', () => {
+  it('writes the text plus a newline and resolves at once when the buffer has room', async () => {
+    const chunks: string[] = []
+    const sink = new Writable({
+      write(chunk, _enc, cb) {
+        chunks.push(String(chunk))
+        cb()
+      },
+    })
+    await writeOut('report', sink)
+    expect(chunks).toEqual(['report\n'])
+  })
+
+  it('waits for drain when the write reports a full buffer', async () => {
+    let release: (() => void) | undefined
+    const slow = new Writable({
+      highWaterMark: 4,
+      write(_chunk, _enc, cb) {
+        release = cb
+      },
+    })
+    let settled = false
+    const pending = writeOut('more than four bytes', slow).then(() => {
+      settled = true
+    })
+    await new Promise((r) => setTimeout(r, 10))
+    expect(settled).toBe(false)
+    release?.()
+    await pending
+    expect(settled).toBe(true)
+  })
+
+  it('resolves on a closed or failing stream instead of hanging', async () => {
+    const destroyed = new PassThrough()
+    destroyed.destroy()
+    await writeOut('x', destroyed)
+    const failing = new Writable({
+      highWaterMark: 1,
+      write(_chunk, _enc, cb) {
+        setTimeout(() => cb(Object.assign(new Error('write EPIPE'), { code: 'EPIPE' })), 5)
+      },
+    })
+    failing.on('error', () => {})
+    await writeOut('long enough', failing)
   })
 })

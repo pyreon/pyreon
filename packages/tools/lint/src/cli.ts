@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import {
   createTerm,
   exitAfterFlush as flushThenExit,
+  writeOut,
   finding,
   formatElapsed,
   header,
@@ -126,8 +127,8 @@ export function formatRuleList(opts: TermChoice = {}): string {
   return lines.join('\n')
 }
 
-function printList() {
-  console.log(formatRuleList())
+function printList(): Promise<void> {
+  return writeOut(formatRuleList())
 }
 
 /** A usage problem on stderr in the shared theme: `✗ pyreon-lint · problem`, then `fix:`. */
@@ -341,7 +342,7 @@ export async function runCli(argv: string[]): Promise<number | null> {
   }
 
   if (args.showList) {
-    printList()
+    await printList()
     return 0
   }
 
@@ -421,18 +422,18 @@ export async function runCli(argv: string[]): Promise<number | null> {
   }
 
   if (args.format === 'json') {
-    console.log(formatJSON(result))
+    await writeOut(formatJSON(result))
   } else if (args.format === 'gha') {
     const gha = formatGha(result)
-    if (gha) console.log(gha)
+    if (gha) await writeOut(gha)
   } else if (args.format === 'compact') {
-    console.log(formatCompact(result))
+    await writeOut(formatCompact(result))
   } else {
     const output = formatText(result, {
       elapsedMs: performance.now() - startedAt,
       fixApplied: args.fix,
     })
-    if (output) console.log(output)
+    if (output) await writeOut(output)
   }
 
   return result.totalErrors > 0 ? 1 : 0

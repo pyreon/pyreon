@@ -22,7 +22,7 @@
  *   - --ci: exit non-zero on any error finding
  */
 
-import { createTerm, finding } from '@pyreon/ansi'
+import { createTerm, finding, writeOut } from '@pyreon/ansi'
 import {
   runDoctor,
   type GateName,
@@ -82,11 +82,11 @@ export const doctor = async (options: DoctorOptions): Promise<number> => {
   const format = resolveFormat(options)
 
   if (format === 'json') {
-    console.log(renderJson(report))
+    await writeOut(renderJson(report))
   } else if (format === 'gha') {
-    console.log(renderGha(report))
+    await writeOut(renderGha(report))
   } else {
-    console.log(renderText(report, { cwd: options.cwd }))
+    await writeOut(renderText(report, { cwd: options.cwd }))
   }
 
   // Exit code: in --ci mode, the count of NON-ADVISORY error findings is
