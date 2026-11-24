@@ -7,7 +7,8 @@
 // These tests run in the `node` environment (per the directive above), unlike
 // the rest of the styler suite which runs in happy-dom (client path).
 import { describe, expect, it } from 'vitest'
-import { setStyleExtraction, styled } from '../styled'
+import { setStyleExtraction } from '../cpse-state'
+import { styled } from '../styled'
 
 describe('styled — SSR fast path (node env)', () => {
   it('runs in a server environment (document undefined → IS_SERVER true)', () => {

@@ -10,4 +10,4 @@
  * `setStyleExtraction` turns on Custom-Property Style Extraction; `@pyreon/ui-core`
  * calls it for `init({ styleExtraction: true })`.
  */
-export { setStyleExtraction } from './styled'
+export { setStyleExtraction } from './cpse-state'

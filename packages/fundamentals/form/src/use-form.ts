@@ -1229,7 +1229,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     if (!fields[field]) {
       throw new Error(
         `[Pyreon] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
+          `Declare it in useForm({ initialValues }) — @pyreon/form does not auto-register fields.`,
       )
     }
     fields[field].setValue(value)
@@ -1239,7 +1239,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     if (!fields[field]) {
       throw new Error(
         `[Pyreon] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
+          `Declare it in useForm({ initialValues }) — @pyreon/form does not auto-register fields.`,
       )
     }
     fields[field].error.set(error)
@@ -1341,7 +1341,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       throw new Error(
         `[Pyreon] register("${field}"): field "${field}" does not exist. ` +
           `Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array), or add it at runtime via ` +
+          `Declare it in useForm({ initialValues }), or add it at runtime via ` +
           `registerField("${field}", initialValue) — @pyreon/form does not auto-register fields.`,
       )
     }

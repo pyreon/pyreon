@@ -19,6 +19,7 @@ import type { ComponentFn, Ref, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { computed, isServer, renderEffect, runUntracked } from '@pyreon/reactivity'
 import { _rdLabelSubscribers, _rdNoteTarget } from '@pyreon/reactivity/internal'
+import { cpseEnabled, cpseRewrite } from './cpse-state'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
@@ -53,31 +54,15 @@ function aliasInnerRef(rawProps: Record<string, any>): Record<string, any> {
 // ── Custom-Property Style Extraction (CPSE) — opt-in default-pipeline hook ──
 // `@pyreon/ui-core`'s `init({ styleExtraction: true })` calls `setStyleExtraction`
 // to enable + inject `cpseRewrite` (it lives in `@pyreon/unistyle`, which styler
-// cannot import — dep direction). EVERY branch below is gated on `_cpseEnabled`,
+// cannot import — dep direction). EVERY branch below is gated on `cpseEnabled`,
 // so with the flag off (the default) this is byte-identical to the classic path.
 // Scope: the NON-reactive (static + SSR) resolve — plain `styled` + `Element`
 // ($element path). The reactive (rocketstyle accessor) path stays classic.
 // Win: O(1) CSS rules (the value lives in an inline custom property); the styler
 // still resolves per distinct $element, so resolve stays O(N) (documented).
-let _cpseEnabled = false
-let _cpseRewrite: ((cssText: string, varsOut: Record<string, string>) => string) | null = null
-
-/**
- * Turn Custom-Property Style Extraction on or off and inject its rewrite.
- * `@pyreon/ui-core` calls it for `init({ styleExtraction: true })`, passing
- * `@pyreon/unistyle`'s `cpseRewrite`; apps enable CPSE through that flag.
- * Reached through `@pyreon/styler/internal`.
- *
- * @internal
- */
-export const setStyleExtraction = (
-  enabled: boolean,
-  rewrite?: (cssText: string, varsOut: Record<string, string>) => string,
-): void => {
-  _cpseEnabled = enabled
-  if (rewrite) _cpseRewrite = rewrite
-}
-
+// The flag and the rewrite live in `./cpse-state` so the `./internal` entry
+// (which exports `setStyleExtraction`) shares only that module with the main
+// entry, not the whole styled engine.
 // Theme key for the per-definition `$element` cache when no theme object is
 // provided (WeakMap keys must be objects).
 const NO_THEME = {}
@@ -547,9 +532,9 @@ const createStyledComponent = (
       // (`prop: var(--u-…)`) and collect the per-instance values. The agnostic
       // text dedups across distinct values → ONE shared CSS rule (O(1) rules);
       // the value rides as an inline custom property. Flag-off → skipped.
-      if (_cpseEnabled && _cpseRewrite && !bypassElCacheAndCpse && !rsCacheable) {
+      if (cpseEnabled && cpseRewrite && !bypassElCacheAndCpse && !rsCacheable) {
         const vars: Record<string, string> = {}
-        const agnostic = _cpseRewrite(cssText, vars)
+        const agnostic = cpseRewrite(cssText, vars)
         if (Object.keys(vars).length > 0) {
           cssText = agnostic
           pendingCpseVars = vars
