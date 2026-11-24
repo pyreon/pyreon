@@ -1,7 +1,8 @@
 // /items — follows docs/src/content/docs/zero.md:
 //   "Server Loaders" (index.server.ts sibling), "Server Actions" (route `action` export + <Form>),
 //   "Link" (https://pyreon.dev/docs/zero#link), and the create-zero posts/index.tsx list shape.
-import { redirect, useLoaderData } from '@pyreon/router'
+import { redirect } from '@pyreon/router'
+import { useArmLoaderData } from '../../loader-data'
 import { Link } from '@pyreon/zero/link'
 import { defineAction, fail, Form, useSubmission } from '@pyreon/zero/actions'
 import { Counter } from '../../components/Counter'
@@ -15,7 +16,7 @@ export const action = defineAction(async ({ formData }) => {
 })
 
 export default function ItemsPage() {
-  const data = useLoaderData<{ items: ItemSummary[] }>()
+  const data = useArmLoaderData<{ items: ItemSummary[] }>()
   const submission = useSubmission(action)
   return (
     <main>
