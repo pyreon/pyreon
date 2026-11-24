@@ -46,12 +46,12 @@ npx @pyreon/create-multiplatform my-app --dir ./apps/my-app
 A successful run, captured with `NO_COLOR=1`:
 
 ```text
-create-multiplatform · 0.53.0
+create-multiplatform · 0.54.0
 
   next    cd my-app && npm install && npm run dev
   native  npm run build:ios (Xcode) · npm run build:android (Android SDK)
 
-✓ scaffolded my-app → my-app/ · 30 files · 6 ms
+✓ scaffolded my-app → my-app/ · 35 files · 6 ms
 ```
 
 A refused name or directory goes to stderr as `✗ error: <message>`, wrapped at 100 columns, and exits 1. Colour honours `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` and `PYREON_CLI_THEME`.

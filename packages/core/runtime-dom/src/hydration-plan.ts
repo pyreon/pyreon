@@ -33,6 +33,7 @@ import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
 import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
 import { _parkText } from './parked-text'
+import { releaseRef } from './teardown'
 
 type Cleanup = () => void
 
@@ -407,8 +408,7 @@ function wireRef(ref: RefProp, el: Element, c: Cleanup | null): Cleanup | null {
   const prev = c
 
   return () => {
-    if (typeof ref === 'function') ref(null)
-    else ref.current = null
+    releaseRef(ref)
     prev?.()
   }
 }

@@ -60,7 +60,7 @@
     "@pyreon/store": "workspace:^",
     "@pyreon/table": "workspace:^",
     "@pyreon/validation": "workspace:^",
-    "@tanstack/table-core": "^9.1.2"
+    "@tanstack/table-core": "^9.3.1"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "21.0.4",

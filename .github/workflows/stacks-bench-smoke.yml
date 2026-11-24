@@ -71,7 +71,7 @@ jobs:
       # major every arm's `engines` accepts (lib/run.ts MIN_NODE).
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version: '26'
       # The harness's own dependencies (autocannon is unused here; Playwright
       # drives the gate). No lib/ build yet: steps 1 and 2 do not read it.
       - name: Install the harness

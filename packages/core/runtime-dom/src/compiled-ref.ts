@@ -1,4 +1,5 @@
 import { _noopDispose } from '@pyreon/reactivity/internal'
+import { releaseRef } from './teardown'
 
 /**
  * Compiler-emitted `ref` application for a template element: the h() path's
@@ -19,13 +20,11 @@ import { _noopDispose } from '@pyreon/reactivity/internal'
 export function _ref(el: Element, ref: unknown): () => void {
   if (typeof ref === 'function') {
     ;(ref as (el: Element | null) => void)(el)
-    return () => (ref as (el: Element | null) => void)(null)
+    return () => releaseRef(ref)
   }
   if (ref != null && typeof ref === 'object') {
     ;(ref as { current: Element | null }).current = el
-    return () => {
-      ;(ref as { current: Element | null }).current = null
-    }
+    return () => releaseRef(ref)
   }
 
   return _noopDispose

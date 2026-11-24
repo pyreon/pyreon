@@ -2,18 +2,18 @@
   "id": "vue",
   "route": "/compare/vue",
   "rival": "Vue",
-  "rivalMeasured": "vue 3.5.44 and Vue 3.6 Vapor 3.6.0-rc.11",
+  "rivalMeasured": "vue 3.5.45 and Vue 3.6 Vapor 3.6.0-rc.11 on the row board, memo wall and bundle (2026-11-24); vue 3.5.44 for SSR, hydration and forms (2026-11-05)",
   "hook": {
     "eyebrow": "Pyreon vs Vue",
-    "title": "Vue's reactivity without `.value`. In 1.6× less JavaScript.",
-    "lede": "Pyreon signals are refs you call: `count()` reads, `count.set()` writes. Components are plain TSX, the same keyed-table app ships 17.2 KB against Vue's 27.4 KB, and compiled SSR came out ahead of Vue 3 at every size we measured."
+    "title": "Vue's reactivity without `.value`. In 1.5× less JavaScript.",
+    "lede": "Pyreon signals are refs you call: `count()` reads, `count.set()` writes. Components are plain TSX, the same keyed-table app ships 18.5 KB against Vue's 27.7 KB, and compiled SSR came out ahead of Vue 3 at every size we measured."
   },
   "proof": [
     {
-      "stat": "1.6×",
-      "label": "less JavaScript: 17.2 KB against Vue's 27.4 KB for the same keyed-table app (gzip)",
-      "condition": "final pass, sizes are deterministic",
-      "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+      "stat": "1.5×",
+      "label": "less JavaScript: 18.5 KB against Vue's 27.7 KB for the same keyed-table app (gzip)",
+      "condition": "2026-11-24 refresh, sizes are deterministic",
+      "source": "BENCHMARKS.md 2026-11-24 §7"
     },
     {
       "stat": "1.68×",
@@ -22,10 +22,10 @@
       "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–245"
     },
     {
-      "stat": "1.4×",
-      "label": "faster when a memoised value blocks an update (memo wall): 11 µs against 16 µs",
-      "condition": "real Chromium, both runs",
-      "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 123"
+      "stat": "1.25×",
+      "label": "faster when a memoised value blocks an update (memo wall): 12.6 µs against 15.8 µs",
+      "condition": "real Chromium, both runs (2026-11-24); Solid 2.0 ties Pyreon here",
+      "source": "BENCHMARKS.md 2026-11-24 §2a"
     }
   ],
   "table": {
@@ -34,10 +34,10 @@
     "rows": [
       {
         "topic": "Bundle, same keyed-table app (gzip)",
-        "pyreon": "17.2 KB",
-        "rival": "27.4 KB",
+        "pyreon": "18.5 KB",
+        "rival": "27.7 KB",
         "verdict": "pyreon",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+        "source": "BENCHMARKS.md 2026-11-24 §7"
       },
       {
         "topic": "Compiled SSR, 10 / 100 / 1,000 rows",
@@ -48,10 +48,10 @@
       },
       {
         "topic": "Memo wall: blocked update",
-        "pyreon": "11 / 11 µs",
-        "rival": "16 / 16 µs (Vue was the fastest rival)",
+        "pyreon": "12.6 / 12.8 µs",
+        "rival": "15.8 / 15.9 µs (Pyreon 1.25×; Solid 2.0, now the fastest rival, ties Pyreon)",
         "verdict": "pyreon",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 123 (both runs)"
+        "source": "BENCHMARKS.md 2026-11-24 §2a"
       },
       {
         "topic": "Hydration, 320-component page",
@@ -62,10 +62,10 @@
       },
       {
         "topic": "Row board vs Vue 3: partial update / clear rows",
-        "pyreon": "705 µs / 130 µs",
-        "rival": "1.04 ms / 255 µs",
+        "pyreon": "680 µs / 125 µs",
+        "rival": "1.04 ms / 225 µs",
         "verdict": "pyreon",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 85 and 89 (run 1)"
+        "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
       },
       {
         "topic": "12-field form, keystroke with validation",
@@ -76,10 +76,10 @@
       },
       {
         "topic": "Row board vs Vue 3.6 Vapor (RC)",
-        "pyreon": "Clear rows 1.11–1.12× faster.",
-        "rival": "Create 1,000, replace, partial update, swap and remove: ties in both runs.",
+        "pyreon": "Clear rows 1.12× faster in both runs.",
+        "rival": "Create 1,000, replace, remove, create 10,000 and append: ties in both runs. Partial update and swap split; Vapor was 1.11× ahead on swap in run 2.",
         "verdict": "tie",
-        "source": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 99–101"
+        "source": "BENCHMARKS.md 2026-11-24 §1 (verdicts)"
       },
       {
         "topic": "Hydration, 1,000-row keyed table",
@@ -164,16 +164,16 @@
   },
   "sources": [
     {
-      "claim": "Bundle Vue 27.4 KB vs Pyreon 17.2 KB (1.59× → 1.6×)",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+      "claim": "Bundle Vue 27.7 KB vs Pyreon 18.5 KB (1.50× → 1.5×)",
+      "path": "BENCHMARKS.md 2026-11-24 §7"
     },
     {
       "claim": "Compiled SSR vs Vue 3: 1.68× / 1.35× / 1.14×, one run, Vue awaited",
       "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–245"
     },
     {
-      "claim": "Memo wall blocked 11 vs Vue 16 µs, win 1.39–1.40× both runs",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 123"
+      "claim": "Memo wall blocked 12.6 / 12.8 vs Vue 15.8 / 15.9 µs, 1.25× both runs; Solid 2.0 ties",
+      "path": "BENCHMARKS.md 2026-11-24 §2a"
     },
     {
       "claim": "App page hydration 4.02 vs Vue 4.47 ms, one run",
@@ -184,12 +184,12 @@
       "path": "00-brief/BENCHMARKS-2026-11-05.md §4, lines 224–229"
     },
     {
-      "claim": "Vue 3 partial update 1.04 ms, clear 255 µs vs Pyreon 705 / 130 µs (run 1)",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 85, 89"
+      "claim": "Vue 3 partial update 1.04 ms, clear 225 µs vs Pyreon 680 / 125 µs (run 1); CIs disjoint in both runs",
+      "path": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
     },
     {
-      "claim": "Vapor RC ties create 1,000 / replace / partial / swap / remove; Pyreon clear 1.11–1.12×",
-      "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 99–101"
+      "claim": "Vapor RC ties create 1,000 / replace / remove / create 10,000 / append; partial and swap split; Pyreon clear 1.12×",
+      "path": "BENCHMARKS.md 2026-11-24 §1 (verdicts)"
     },
     {
       "claim": "vee-validate keystroke (change mode) 2,260 vs 460 µs, one run",
