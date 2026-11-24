@@ -114,7 +114,7 @@ Returns `FormState<TValues>` with per-field `Signal`s (`value`, `error`, `touche
 react-hook-form-parity accessors (all strictly typed against `TValues`):
 
 - `trigger(name?)` — validate one field, a subset (array), or — no argument — the whole form, on demand. Runs validators immediately (bypassing `debounceMs`); returns whether the validated set is valid.
-- `getValues(name?)` — one field's value (`getValues('email')`) or all (`getValues()`).
+- `getValues(name?)` — one field's value (`getValues('email')`) or all (`getValues()`). Reactive, like `values()` and `errors()`: a `computed` / effect / JSX accessor over any of them re-runs when a field it read changes (and on `registerField` / `unregisterField`). `values()` returns a cached object that stays the same reference until a value changes.
 - `dirtyFields()` / `touchedFields()` — the changed / visited fields as a record (`{ email: true }`). Reactive.
 - `getFieldState(name)` — a field's live `FieldState` (same object as `form.fields[name]`).
 - `isSubmitted` — `Accessor<boolean>`, true once `submitCount > 0`.
@@ -177,10 +177,12 @@ tags.swap(0, 1)
 tags.update(0, 'updated')
 tags.remove(0)
 tags.replace(['a', 'b', 'c'])
-tags.values() // string[]
+tags.values() // string[] — reactive: tracks the list and every item's value
 tags.length() // number
 tags.items() // FieldArrayItem<string>[] — { key: number, value: Signal<T> }
 ```
+
+`values()` reads `items()` and each `item.value()`, so `computed(() => tags.values().length > 0 && …)` re-derives on any add, remove, reorder or item edit. Inside an effect that also writes the array, read it with `untrack(() => tags.values())`.
 
 Each item carries a `key: number` — monotonically increasing, assigned at insert time. Render with `<For each={tags.items()} by={(i) => i.key}>` so reordering / insertion preserves component identity (and input focus). **Index-based keys defeat the stable-key design.**
 

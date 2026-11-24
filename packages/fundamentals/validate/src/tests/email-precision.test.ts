@@ -84,3 +84,68 @@ describe('validateEmail — exported helper', () => {
     }
   })
 })
+
+// #4821 — an internationalised domain written in its own letters passes at
+// every precision, exactly like its DNS/punycode form; invalid SHAPES are still
+// refused with Unicode labels, and the local part stays ASCII.
+describe('email — internationalised domains (IDN), every tier', () => {
+  const PRECISIONS = ['html5', 'standard', 'rfc5322'] as const
+  const accept = [
+    'jan@müller.de',
+    'jan@xn--mller-kva.de',
+    'a@пример.рф',
+    'user@例え.jp',
+    'x@中国.中国',
+    'n1@bü-cher.example.com',
+    'a@école.fr', // a combining mark after the first char of a label
+    'a@ไทย.ไทย', // Thai: letters + non-spacing marks, also in the TLD
+    'a@١٢٣.مصر', // Arabic-Indic digits in a label
+  ]
+  const reject = [
+    'jän@müller.de', // non-ASCII local part
+    'jan@-müller.de', // label starts with a hyphen
+    'jan@́müller.de', // label starts with a combining mark
+    'jan@müller..de', // empty label
+    'jan@.müller.de',
+    'jan@müller.de.', // trailing dot
+    'jan@mü ller.de', // space
+    'jan@😀.de', // emoji is not a letter
+    'jan@müller.d€', // symbol in the TLD
+    'jan@@müller.de',
+  ]
+  for (const precision of PRECISIONS) {
+    const schema = s.string().email({ precision })
+    it.each(accept)(`${precision} accepts %s`, (e) => {
+      expect(schema.parse(e).ok).toBe(true)
+      expect(validateEmail(e, precision)).toBe(true)
+    })
+    it.each(reject)(`${precision} rejects %s`, (e) => {
+      expect(schema.parse(e).ok).toBe(false)
+      expect(validateEmail(e, precision)).toBe(false)
+    })
+  }
+
+  it('standard / rfc5322 keep the 2+ char TLD rule with Unicode letters', () => {
+    expect(validateEmail('a@b.ü', 'standard')).toBe(false)
+    expect(validateEmail('a@b.ü', 'rfc5322')).toBe(false)
+    expect(validateEmail('a@b.ü', 'html5')).toBe(true) // html5 allows a 1-char TLD
+    expect(validateEmail('a@b.1ü', 'standard')).toBe(false) // TLD letters only
+    expect(validateEmail('jan@müller', 'standard')).toBe(false) // a dot is required
+    expect(validateEmail('jan@müller', 'html5')).toBe(true) // html5 admits a dotless host, as for ASCII
+  })
+
+  it('rfc5322 still enforces the length limits on an IDN address', () => {
+    expect(validateEmail('a'.repeat(65) + '@müller.de', 'rfc5322')).toBe(false)
+    const long = 'a@' + 'ü'.repeat(250) + '.de'
+    expect(long.length).toBeGreaterThan(254)
+    expect(validateEmail(long, 'rfc5322')).toBe(false)
+    expect(validateEmail(long, 'standard')).toBe(true)
+  })
+
+  it('the mini `email()` action and the main chain agree', async () => {
+    const { email, string: miniString } = await import('../mini')
+    const mini = miniString().check(email())
+    expect(mini.parse('jan@müller.de').ok).toBe(true)
+    expect(mini.parse('jän@müller.de').ok).toBe(false)
+  })
+})

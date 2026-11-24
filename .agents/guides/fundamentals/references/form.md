@@ -31,3 +31,4 @@
 ## Performance
 
 - The keystroke path has no per-field `effect()`: validation runs inline from `setValue`. `values()`/`getValues()` are epoch-cached.
+- Every PUBLIC read accessor tracks (`values()`, `getValues()`, `getValues(name)`, `errors()`, `dirtyFields()`, `touchedFields()`, `useFieldArray().values()`), including the registered field set via `_fieldsVersion`. Internal callers (validators, schema input, submit payload, `reset({ keepErrors })`) use the untracked `getValues`/`getErrors` so the form never subscribes a caller's effect. Never `.peek()` inside a public accessor (#4824). The public `values()` also compares its tracked reads with the cached snapshot, so a direct `fields.x.value.set()` cannot leave it stale.

@@ -30,19 +30,36 @@ import { Schema as SchemaBase, attachCheck, makeCheckIssue, type Schema } from '
 //                  consecutive dots.
 //   - 'rfc5322'  — 'standard' + RFC 5321 length limits (local <=64,
 //                  domain <=255, total <=254). For server-authoritative checks.
+//
+// INTERNATIONALISED DOMAINS (IDN) pass at every tier: a domain label may be
+// written in its own letters (`jan@müller.de`, `a@пример.рф`), not only in its
+// DNS/punycode form (`jan@xn--mller-kva.de`) — a browser's <input type=email>
+// accepts both. Wherever a tier's ASCII grammar admits a letter or digit, the
+// domain also admits any Unicode letter (`\p{L}`) or decimal digit (`\p{Nd}`),
+// and a combining mark (`\p{M}`) anywhere except the start of a label. The
+// label/TLD SHAPE rules are unchanged, so every invalid shape is still refused,
+// and an all-ASCII address gets exactly the verdict it always did. The LOCAL
+// part stays ASCII (an SMTPUTF8 mailbox name is out of scope). The same
+// grammar is lowered verbatim to Swift and Kotlin (`@pyreon/validation`'s
+// native plugin, `email-rule.ts`) and to the compiled validator emit.
 export type EmailPrecision = 'html5' | 'standard' | 'rfc5322'
 
-/** HTML5 `<input type=email>` WHATWG pattern — lenient (allows 1-char TLD). */
+/**
+ * HTML5 `<input type=email>` WHATWG pattern — lenient (allows 1-char TLD) —
+ * with Unicode domain labels (see the IDN note above).
+ */
 export const EMAIL_HTML5_RE =
-  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[\p{L}\p{Nd}](?:[\p{L}\p{M}\p{Nd}-]{0,61}[\p{L}\p{M}\p{Nd}])?(?:\.[\p{L}\p{Nd}](?:[\p{L}\p{M}\p{Nd}-]{0,61}[\p{L}\p{M}\p{Nd}])?)*$/u
 
 // Email RFC 5322 isn't fully parseable by regex; the 'standard' default
 // below is the modern consensus (Zod 4 / Valibot) — requires a 2+ char
 // alpha TLD, forbids leading / consecutive dots. Replaces the pre-2026-06
 // loose `^[^\s@]+@[^\s@]+\.[^\s@]+$`, which wrongly accepted `a@b.c` (and
-// most garbage) — looser than every other major validator.
+// most garbage) — looser than every other major validator. Domain labels and
+// the TLD admit Unicode letters (see the IDN note above): on ASCII input the
+// verdict is exactly the pre-IDN `[A-Za-z0-9]` / `[A-Za-z]{2,}` grammar.
 export const EMAIL_RE =
-  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
+  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([\p{L}\p{Nd}][\p{L}\p{M}\p{Nd}-]*\.)+\p{L}[\p{L}\p{M}]+$/u
 
 // ─── Table-driven email scanner (the hot 'standard' path) ─────────────────
 // Byte-identical verdict to EMAIL_RE (locked by the exhaustive + fuzz
@@ -68,8 +85,10 @@ EMAIL_CT[39] = 1 // '
  * local part = `[A-Za-z0-9_'+-.]` runs with no leading/consecutive dots,
  * last char before `@` in `[A-Za-z0-9_+-]`; domain = 1+ labels
  * (`[A-Za-z0-9][A-Za-z0-9-]*` + `.`) then an alpha TLD of 2+ chars.
- * A charcode > 127 indexes past the table -> `undefined & flag` is falsy ->
- * reject (matches the regex: no non-ASCII anywhere).
+ * A charcode > 127 indexes past the table -> `undefined & flag` is falsy: in
+ * the LOCAL part that rejects (the local part is ASCII-only, as in the regex);
+ * in the DOMAIN it hands the whole verdict to EMAIL_RE, whose Unicode label
+ * classes decide an internationalised domain.
  */
 function isEmailStandard(v: string): boolean {
   const len = v.length
@@ -103,7 +122,13 @@ function isEmailStandard(v: string): boolean {
       seg = 4
     } else {
       const f = EMAIL_CT[c]! as number
-      if (!(f & 16)) return false // label char: alnum | -
+      if (!(f & 16)) {
+        // A non-ASCII domain char: an internationalised label (`müller.de`).
+        // The Unicode grammar lives in EMAIL_RE; the ASCII hot path above
+        // never reaches this branch, so it pays nothing for IDN support.
+        if (c > 127) return EMAIL_RE.test(v)
+        return false // label char: alnum | -
+      }
       if (i === segStart && !(f & 8)) return false // label starts alnum
       seg &= f
     }

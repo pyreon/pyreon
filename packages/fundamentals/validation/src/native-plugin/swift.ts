@@ -4,6 +4,7 @@
 
 import { localBase, swiftCodingKeysLines, swiftIdent, swiftStr } from '@pyreon/native-compiler/plugin-api'
 import type { ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
+import { EMAIL_RFC5322_MAX_LENGTH, emailPattern } from './email-rule'
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 
 /** zod's `.email()` rule, case-insensitive (see the options at the use site). */
@@ -119,9 +120,19 @@ function emitSwiftScalarConstraints(
       lines.push(`${ind}}`)
     }
     if (c.email) {
-      lines.push(
-        `${ind}if ${targetName}.range(of: ${swiftStr(EMAIL_PATTERN)}, options: [.regularExpression, .caseInsensitive]) == nil {`,
-      )
+      // The AUTHORING library's rule (see `EmailRule`), not one rule for all.
+      if (c.email.kind === 'zod') {
+        lines.push(
+          `${ind}if ${targetName}.range(of: ${swiftStr(EMAIL_PATTERN)}, options: [.regularExpression, .caseInsensitive]) == nil {`,
+        )
+      } else {
+        // `@pyreon/validate`'s grammar at its precision, IDN domains included.
+        const len =
+          c.email.precision === 'rfc5322' ? `${targetName}.utf16.count > ${EMAIL_RFC5322_MAX_LENGTH} || ` : ''
+        lines.push(
+          `${ind}if ${len}${targetName}.range(of: ${swiftStr(emailPattern(c.email.precision))}, options: [.regularExpression]) == nil {`,
+        )
+      }
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "email${ruleSuffix}")`,
       )

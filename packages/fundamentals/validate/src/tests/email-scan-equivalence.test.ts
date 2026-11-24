@@ -71,6 +71,20 @@ describe('email scanner ≡ EMAIL_RE', () => {
       '-a@x.com',
       '+a@x.com',
       '_@x.com',
+      // IDN (#4821): the scanner hands a non-ASCII domain to EMAIL_RE.
+      'jan@müller.de',
+      'jan@-müller.de',
+      'jan@mü-.de',
+      'jan@müller..de',
+      'jan@müller.d',
+      'jan@müller.dé',
+      'jan@x.中国',
+      'jan@e\u0301cole.fr',
+      'jan@\u0301cole.fr',
+      'jan@😀.de',
+      'jän@müller.de',
+      'a-@ü.de',
+      '.a@ü.de',
     ]
     for (const c of CASES) {
       expect(scan(c), JSON.stringify(c)).toBe(EMAIL_RE.test(c))
@@ -83,12 +97,40 @@ describe('email scanner ≡ EMAIL_RE', () => {
       seed = (seed * 1664525 + 1013904223) >>> 0
       return seed / 4294967296
     }
-    const CH = "aB0.'@-_+ !zZ9é"
+    const CH = "aB0.'@-_+ !zZ9éü\u0301中😀"
     for (let n = 0; n < 100_000; n++) {
       const len = 1 + Math.floor(rnd() * 24)
       let str = ''
       for (let k = 0; k < len; k++) str += CH[Math.floor(rnd() * CH.length)]
       expect(scan(str), JSON.stringify(str)).toBe(EMAIL_RE.test(str))
+    }
+  })
+})
+
+// The IDN grammar is an EXTENSION: on all-ASCII input EMAIL_RE gives exactly the
+// verdict of the pre-IDN grammar (frozen here), so no ASCII address changed.
+describe('EMAIL_RE on ASCII ≡ the pre-IDN grammar', () => {
+  const PRE_IDN =
+    /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
+  it('exhaustive to length 4 + 50k fuzz', () => {
+    const ALPHABET = ['a', 'B', '0', '.', "'", '@', '-', '_', '+', ' ', '!']
+    const queue = ['']
+    while (queue.length > 0) {
+      const cur = queue.shift()!
+      expect(EMAIL_RE.test(cur), JSON.stringify(cur)).toBe(PRE_IDN.test(cur))
+      if (cur.length < 4) for (const ch of ALPHABET) queue.push(cur + ch)
+    }
+    let seed = 0xbeef >>> 0
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0
+      return seed / 4294967296
+    }
+    const CH = "aB0.'@-_+ !zZ9"
+    for (let n = 0; n < 50_000; n++) {
+      const len = 1 + Math.floor(rnd() * 24)
+      let str = ''
+      for (let k = 0; k < len; k++) str += CH[Math.floor(rnd() * CH.length)]
+      expect(EMAIL_RE.test(str), JSON.stringify(str)).toBe(PRE_IDN.test(str))
     }
   })
 })

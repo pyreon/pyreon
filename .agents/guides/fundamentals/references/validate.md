@@ -9,6 +9,8 @@
 - `.catch` runs against a private child context, so it can never swallow a sibling field's issues under `parseAsync`.
 - `toJsonSchema(schema)` (`@pyreon/validate/json-schema`) emits draft 2020-12 for the input shape. Unrepresentable kinds throw or become `{ unrepresentable: 'any' }`; a cyclic lazy schema throws (no `$defs`).
 - Subpaths: `/mini` (tree-shakeable functional form), `/json-schema`, `/server`.
+- `email()`: one grammar per `precision` on every target. Domain labels admit Unicode letters/digits (`\p{L}`/`\p{Nd}`, marks after the first char), so `jan@müller.de` passes at every tier; on all-ASCII input the verdict is the pre-IDN grammar (frozen in `email-scan-equivalence.test.ts`). The hot `standard` scanner stays ASCII and hands a non-ASCII domain to `EMAIL_RE` (`u` flag). Copies that must move together: `EMAIL_RE` in `@pyreon/compiler`'s `validate-emit.ts`, and the ICU/Java spelling in `@pyreon/validation`'s `native-plugin/email-rule.ts` (`EmailRule` in the IR; zod keeps its own rule). Native parity is executed on `swiftc`/`kotlinc` in `native-email-rule-parity.test.ts`.
+- `TFn` is a method-signature type on purpose (bivariant parameters), so `@pyreon/i18n`'s `t` (`InterpolationValues`, key-typed instances) is assignable without a cast. Do not turn it back into a plain function type.
 
 ## Build options (`@pyreon/vite-plugin`)
 

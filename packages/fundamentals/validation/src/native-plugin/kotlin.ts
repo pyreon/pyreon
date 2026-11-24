@@ -4,6 +4,7 @@
 
 import { KOTLIN_INT, kotlinMember, kotlinStr, localBase } from '@pyreon/native-compiler/plugin-api'
 import type { ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
+import { EMAIL_RFC5322_MAX_LENGTH, emailPattern } from './email-rule'
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 
 /**
@@ -103,10 +104,21 @@ function emitKotlinScalarConstraints(
       }
     }
     if (c.email) {
-      const guard = nullableTarget ? `${targetName} != null && ` : ''
-      lines.push(
-        `${ind}if (${guard}!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "email${ruleSuffix}")`,
-      )
+      // The AUTHORING library's rule (see `EmailRule`), not one rule for all.
+      if (c.email.kind === 'zod') {
+        const guard = nullableTarget ? `${targetName} != null && ` : ''
+        lines.push(
+          `${ind}if (${guard}!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "email${ruleSuffix}")`,
+        )
+      } else {
+        // `@pyreon/validate`'s grammar at its precision, IDN domains included.
+        const guard = nullableTarget ? `if (${targetName} != null) ` : ''
+        const v = `${targetName}${nullableTarget ? '!!' : ''}`
+        const len = c.email.precision === 'rfc5322' ? `${v}.length > ${EMAIL_RFC5322_MAX_LENGTH} || ` : ''
+        lines.push(
+          `${ind}${guard}if (${len}!Regex(${kotlinStr(emailPattern(c.email.precision))}).containsMatchIn(${v})) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "email${ruleSuffix}")`,
+        )
+      }
     }
     if (c.url) {
       const guard = nullableTarget ? `if (${targetName} != null) ` : ''

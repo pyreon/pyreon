@@ -100,10 +100,12 @@ export interface ValidateSchemaInfo {
 
 // Regexes copied VERBATIM from `@pyreon/validate`'s `string.ts` so the emitted
 // verdict is byte-identical to the runtime (`email` is the strict standard
-// default — 2+ char TLD, no leading/consecutive dots). Emitted via `reExpr`
-// (`new RegExp(re.source, re.flags)`) so a literal can't drift in transcription.
+// default — 2+ char TLD, no leading/consecutive dots, Unicode domain labels so
+// an internationalised domain like `jan@müller.de` passes). Emitted via `reExpr`
+// (`new RegExp(re.source, re.flags)`) so a literal can't drift in transcription
+// — the `u` flag travels with it.
 const EMAIL_RE =
-  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
+  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([\p{L}\p{Nd}][\p{L}\p{M}\p{Nd}-]*\.)+\p{L}[\p{L}\p{M}]+$/u
 const URL_RE = /^https?:\/\/[^\s/$.?#][^\s]*$/i
 const UUID_RE =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/i

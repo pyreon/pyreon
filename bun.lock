@@ -2370,6 +2370,7 @@
       },
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",
+        "@pyreon/i18n": "workspace:*",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",

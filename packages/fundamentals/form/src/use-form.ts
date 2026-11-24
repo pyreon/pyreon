@@ -960,19 +960,48 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   function getValuesPublic(): TValues
   function getValuesPublic<K extends keyof TValues>(field: K): TValues[K]
   function getValuesPublic<K extends keyof TValues>(field?: K): TValues | TValues[K] {
-    if (field === undefined) return getValues()
-    return fields[field].value.peek()
+    if (field === undefined) return valuesTracked()
+    // Tracked like `fields[field].value()` — a computed/effect over
+    // `getValues('x')` re-runs when `x` changes.
+    return fields[field].value()
+  }
+
+  // PUBLIC `values()` / `getValues()`: TRACKED. Reads the field set and every
+  // field's value signal through the tracking call, so a `computed`/`effect`/
+  // JSX accessor over `form.values()` re-runs on any field change (and on
+  // `registerField` / `unregisterField`). The snapshot object still comes from
+  // the epoch cache (referentially stable between mutations); the tracked read
+  // also catches a value written straight to `form.fields.x.value.set(...)`,
+  // which bypasses the epoch — a mismatch against the cached snapshot
+  // invalidates it, so a consumer re-run never sees the stale object.
+  // Internal callers (validators, the schema input, submit) keep the
+  // untracked `getValues` so the form never subscribes a caller's effect.
+  const valuesTracked = (): TValues => {
+    _fieldsVersion()
+    const cached =
+      _valuesCacheEpoch === _valuesEpoch ? (_valuesCache as Record<string, unknown> | undefined) : undefined
+    let stale = cached === undefined
+    for (const [name] of fieldEntries) {
+      const f = fields[name]
+      if (f === undefined) continue
+      const v = f.value()
+      if (!stale && !Object.is((cached as Record<string, unknown>)[name], v)) stale = true
+    }
+    if (stale) _valuesEpoch++
+    return getValues()
   }
 
   // Aggregate dirty/touched records (only the dirty/touched fields present).
   // Reactive: reads each field's signal, so calling inside a reactive scope
   // tracks the set (matching react-hook-form's reactive dirtyFields/touchedFields).
   const dirtyFields = (): Partial<Record<keyof TValues, boolean>> => {
+    _fieldsVersion() // track the field SET (registerField / unregisterField)
     const out = {} as Partial<Record<keyof TValues, boolean>>
     for (const [name] of fieldEntries) if (fields[name].dirty()) out[name] = true
     return out
   }
   const touchedFields = (): Partial<Record<keyof TValues, boolean>> => {
+    _fieldsVersion()
     const out = {} as Partial<Record<keyof TValues, boolean>>
     for (const [name] of fieldEntries) if (fields[name].touched()) out[name] = true
     return out
@@ -986,10 +1015,22 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     field: K,
   ): FieldState<TValues[K]> | undefined => fields[field]
 
+  // Internal (untracked) — `reset({ keepErrors })` snapshots through it.
   const getErrors = (): Partial<Record<keyof TValues, ValidationError>> => {
     const errors = {} as Partial<Record<keyof TValues, ValidationError>>
     for (const [name] of fieldEntries) {
       const err = fields[name].error.peek()
+      if (isRealError(err)) errors[name] = err
+    }
+    return errors
+  }
+  // PUBLIC `errors()`: tracked, like `dirtyFields()` / `touchedFields()` — a
+  // computed over it re-runs when any field's error (or the field set) changes.
+  const errorsTracked = (): Partial<Record<keyof TValues, ValidationError>> => {
+    _fieldsVersion()
+    const errors = {} as Partial<Record<keyof TValues, ValidationError>>
+    for (const [name] of fieldEntries) {
+      const err = fields[name].error()
       if (isRealError(err)) errors[name] = err
     }
     return errors
@@ -1660,9 +1701,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     isSubmitted,
     isSubmitSuccessful,
     submitError,
-    values: getValues,
+    values: valuesTracked,
     getValues: getValuesPublic,
-    errors: getErrors,
+    errors: errorsTracked,
     dirtyFields,
     touchedFields,
     setFieldValue,
