@@ -189,6 +189,42 @@ export interface ChartMessages {
   daysLabel?: string | undefined
   /** `<MapChart>`'s legend entry for a region with no value. Default `No data`. */
   noDataLabel?: string | undefined
+  // The descriptions the family `*ToSvg` exports derive. Every count, value and range slot is already in the locale's
+  // digits; unset, the English sentence (`{title}: 3 stages, …`) is kept.
+  /** `{title}`, `{count}`, `{list}` (`label value` pairs). `funnelToSvg`. */
+  funnelDescription?: string | undefined
+  /** `{title}`, `{leaves}`, `{largest}`. `treemapToSvg`. */
+  treemapDescription?: string | undefined
+  /** `treemapDescription`'s `{largest}` when there is no leaf. Default `none`. */
+  noneLabel?: string | undefined
+  /** `{title}`, `{levels}`, `{leaves}`. `sunburstToSvg`. */
+  sunburstDescription?: string | undefined
+  /** `{title}`, `{nodes}`, `{leaves}`. `treeToSvg`. */
+  treeDescription?: string | undefined
+  /** `{title}`, `{categories}`, `{flows}`. `chordToSvg`. */
+  chordDescription?: string | undefined
+  /** `{title}`, `{streams}`, `{points}`, `{list}`. `riverToSvg`. */
+  riverDescription?: string | undefined
+  /** `{title}`, `{series}`, `{count}`, `{min}`, `{max}`. `polarToSvg`. */
+  polarDescription?: string | undefined
+  /** `{title}`, `{nodes}`, `{flows}`, `{total}`. `sankeyToSvg`. */
+  sankeyDescription?: string | undefined
+  /** `{title}`, `{nodes}`, `{links}`. `graphToSvg`. */
+  graphDescription?: string | undefined
+  /** `{title}`, `{days}`, `{start}`, `{end}`, `{filled}`, `{min}`, `{max}`. `calendarToSvg`. */
+  calendarDescription?: string | undefined
+  /** `{title}`, `{tasks}`, `{start}`, `{end}`. `ganttToSvg`. */
+  ganttDescription?: string | undefined
+  /** `{title}`, `{rows}`, `{axes}`, `{list}`. `parallelToSvg`. */
+  parallelDescription?: string | undefined
+  /** `{title}`, `{count}`, `{list}` (the medians). `boxplotToSvg`. */
+  boxplotDescription?: string | undefined
+  /** `{title}`, `{regions}`, `{filled}`, `{min}`, `{max}`, `{overlays}` (`mapOverlays`, or empty). `geoToSvg`. */
+  mapDescription?: string | undefined
+  /** `{n}`: the points and paths over a map. Default `, {n} points and paths`. */
+  mapOverlays?: string | undefined
+  /** `{title}`, `{points}`, `{axis}` (the axis type). `singleAxisToSvg`. */
+  singleAxisDescription?: string | undefined
 }
 
 /**

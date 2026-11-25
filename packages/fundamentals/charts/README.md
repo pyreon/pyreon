@@ -375,7 +375,13 @@ the map legend's `noDataLabel`) and the sign of a change (`percent: '{n}%'`,
 `multiple: '{n}×'`) are messages too. With `locale` the figures the sentences
 write themselves (a change of `3,2×`, the counts) come in that locale's digits,
 on the web and natively; the family charts take `locale` as well, for their
-pack's words and their numbers when no `format` is given.
+pack's words and their numbers when no `format` is given: the description and
+table, and what they draw (tooltips, the gauge's value, the candlestick and
+boxplot axes, polar / parallel / single-axis ticks, the visualMap strip), with
+the platform's number formatter on iOS and Android. Every `*ToSvg` export takes
+`locale` too (the pack's words under its own `messages`, and the locale's
+digits); the family exports' derived descriptions are messages
+(`funnelDescription`, `treemapDescription`, … `singleAxisDescription`).
 
 ### Families and coordinates
 

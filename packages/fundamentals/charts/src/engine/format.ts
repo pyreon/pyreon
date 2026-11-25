@@ -15,6 +15,17 @@ export function isFiniteChartNumber(v: Double): boolean {
 export type Formatter = (value: Double) => string
 
 /**
+ * `v` through `fmt` when the chart has one (its `format`, or its `locale`'s
+ * digits), else `plain`. The one call the family charts' drawn numbers and
+ * tooltips go through, so a locale reaches every one of them on every target.
+ */
+export function formatNumber(v: Double, fmt?: Formatter): string {
+  if (fmt === undefined) return plain(v)
+
+  return fmt(v)
+}
+
+/**
  * Trims float noise; the engine's default.
  *
  * Integers print as integers and ordinary fractions keep three decimals — but

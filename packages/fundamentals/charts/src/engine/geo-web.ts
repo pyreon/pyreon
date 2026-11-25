@@ -25,6 +25,8 @@ import { isTopology, topoToGeo } from './geo-topo'
 import type { Topology } from './geo-topo'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
+import { svgLocale, svgNumber, svgSentence } from './svg-locale'
+import type { ChartMessages } from './a11y'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 
 export interface GeoFeature {
@@ -348,6 +350,10 @@ export interface GeoToSvgOptions {
   measure?: MeasureText
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -374,7 +380,11 @@ export function geoToSvg(o: GeoToSvgOptions): string {
   const dom = geoDomainAligned(aligned)
   const filled = aligned.filter((v) => Number.isFinite(v)).length
   const overlays = (o.points?.length ?? 0) + (o.paths?.length ?? 0)
-  const description = o.description ?? (o.title !== undefined ? `${o.title}: ${layout.regions.length} regions, ${filled} with values from ${dom.min} to ${dom.max}${overlays > 0 ? `, ${overlays} points and paths` : ''}.` : undefined)
+  const loc = svgLocale(o)
+  const n = (x: number): string => svgNumber(x, loc.number)
+  const v = (x: number): string => (loc.format === undefined ? `${x}` : loc.format(x))
+  const overlayText = overlays > 0 ? (loc.messages?.mapOverlays ?? ', {n} points and paths').split('{n}').join(n(overlays)) : ''
+  const description = o.description ?? (o.title !== undefined ? svgSentence(loc.messages?.mapDescription, () => `${o.title}: ${n(layout.regions.length)} regions, ${n(filled)} with values from ${v(dom.min)} to ${v(dom.max)}${overlayText}.`, { title: o.title, regions: n(layout.regions.length), filled: n(filled), min: v(dom.min), max: v(dom.max), overlays: overlayText }) : undefined)
 
   return renderSvg(cmds, width, height, {
     ...o.svg,

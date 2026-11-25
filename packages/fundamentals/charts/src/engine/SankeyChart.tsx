@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { sankeyLegend, sankeyTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import type { ChartTheme } from './render'
@@ -29,6 +30,8 @@ export function SankeyChart(props: SankeyChartProps): VNode {
   const readNodes = (): readonly SankeyNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): readonly SankeyLink[] => (typeof props.links === 'function' ? props.links() : props.links)
   const opts = (t: ChartTheme): SankeyOptions => ({ palette: t.palette, labelColor: t.label, ...props.sankey })
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
   return canvasHost<SankeyLayout>({
     props,
     transpose: () => props.orient === 'vertical',
@@ -49,7 +52,7 @@ export function SankeyChart(props: SankeyChartProps): VNode {
       props.onSelect?.(hitSankey(layout, px, py))
       props.onSelectIndex?.(hitSankeyIndex(layout, px, py))
     },
-    tooltip: (layout, px, py) => orNull(sankeyTip(layout, px, py)),
+    tooltip: (layout, px, py) => orNull(sankeyTip(layout, px, py, num())),
     // ECharts reports a node or an edge; an edge is named "source > target".
     item: (layout, px, py) => {
       const hit = hitSankeyIndex(layout, px, py)

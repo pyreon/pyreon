@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { funnelLegend, funnelTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { hitFunnel, renderFunnel } from './funnel'
@@ -30,6 +31,8 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
   const readData = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
   const stages = (palette: readonly string[]): FunnelStage[] =>
     readData().map((d, i) => ({ value: props.value(d, i), label: props.label(d, i), color: props.color !== undefined ? props.color(d, i) : paletteAt(palette, i) }))
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
   return canvasHost<Geometry>({
     props,
     defaultHeight: 240,
@@ -48,7 +51,7 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
       props.onSelectIndex?.(i)
     },
     tooltip: (g, px, py) => {
-      return orNull(funnelTip(g.stages, g.plot, px, py, props.funnel))
+      return orNull(funnelTip(g.stages, g.plot, px, py, props.funnel, num()))
     },
     item: (g, px, py) => funnelItem(g.stages, hitAt(g, px, py)),
     pick: (_g, i) => {

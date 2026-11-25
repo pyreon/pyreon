@@ -4,6 +4,7 @@
 // serves every family that colours by value.
 
 import { signal } from '@pyreon/reactivity'
+import type { Formatter } from './format'
 import type { DrawCmd, Double, Domain, Rect } from './types'
 import { visualSelectionOptions, visualStripOf } from './visual-map'
 import type { VisualMapSpec } from './visual-map'
@@ -45,6 +46,7 @@ export interface VisualMapHost {
 export function visualMapHost(
   read: () => VisualMapSpec | undefined,
   onChange?: (selection: VisualMapSelection) => void,
+  format?: () => Formatter | undefined,
 ): VisualMapHost {
   const range = signal<[Double, Double] | null>(null)
   const selected = signal<boolean[] | null>(null)
@@ -70,7 +72,7 @@ export function visualMapHost(
     cmds: (box) => {
       const spec = current()
       if (spec === undefined) return []
-      return renderVisualStrip(visualStripOf(spec), stripAt(spec, box), { min: spec.range[0], max: spec.range[1] }, spec.selected)
+      return renderVisualStrip(visualStripOf(spec), stripAt(spec, box), { min: spec.range[0], max: spec.range[1] }, spec.selected, format?.())
     },
     selection: () => {
       const spec = current()

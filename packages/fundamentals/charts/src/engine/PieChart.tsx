@@ -8,6 +8,7 @@
 
 import { describeGauge } from './a11y'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { pieHitWith, pieLegend, pieTipAt } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { pieItem } from './host-item'
@@ -18,7 +19,7 @@ import type { ArcConfig, GaugeOptions, Slice } from './arc'
 import type { PieLabelOptions } from './pie-labels'
 import { renderDialIn } from './gauge-dial'
 import type { DialSpec } from './gauge-dial'
-import { plain } from './format'
+import { formatNumber, plain } from './format'
 import type { Double, Rect } from './types'
 import { themedDial } from './dial'
 
@@ -51,6 +52,8 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
   const readData = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
   const slices = (palette: readonly string[]): Slice[] =>
     readData().map((d, i) => ({ value: props.value(d, i), label: props.label(d, i), color: props.color?.(d, i) ?? paletteAt(palette, i) }))
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
   return canvasHost<PieGeometry>({
     props,
     defaultHeight: 240,
@@ -82,7 +85,7 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
     },
-    tooltip: (g, px, py) => orNull(pieTipAt(g.slices, hitAt(g, px, py, props.innerRadius ?? 0, arcsOf(props)))),
+    tooltip: (g, px, py) => orNull(pieTipAt(g.slices, hitAt(g, px, py, props.innerRadius ?? 0, arcsOf(props)), num())),
     item: (g, px, py) => pieItem(g.slices, hitAt(g, px, py, props.innerRadius ?? 0, arcsOf(props))),
     pick: (_g, i) => {
       props.onSelect?.(i)
@@ -140,6 +143,8 @@ export function GaugeChart(props: GaugeChartProps): VNode {
     const v = props.value
     return typeof v === 'function' ? (v as () => Double)() : v
   }
+  // The value's digits: the gauge's `locale` (the dial's own labels keep their `formatter`).
+  const num = chartNumber(props)
   return canvasHost<GaugeGeometry>({
     props,
     defaultHeight: 140,
@@ -168,7 +173,7 @@ export function GaugeChart(props: GaugeChartProps): VNode {
       if (props.showValue !== false) {
         cmds.push({
           kind: 'text',
-          text: plain(g.value),
+          text: formatNumber(g.value, num()),
           at: { x: g.box.x + g.box.w / 2, y: g.box.y + g.box.h - 6 },
           fill: theme.text,
           size: 20,

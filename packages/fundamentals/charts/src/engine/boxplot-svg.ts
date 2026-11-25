@@ -9,6 +9,8 @@ import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
 import { measureApprox, renderSvg } from './svg'
 import type { SvgOptions } from './svg'
+import { svgLocale, svgNumber, svgSentence } from './svg-locale'
+import type { ChartMessages } from './a11y'
 import type { Double, MeasureText } from './types'
 
 export interface BoxplotToSvgOptions<T> {
@@ -24,6 +26,10 @@ export interface BoxplotToSvgOptions<T> {
   measure?: MeasureText
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
   /** Precomputed summaries (index-aligned with `data`) — skips `fiveNumber`. */
   summaries?: readonly FiveNumber[]
@@ -37,10 +43,14 @@ export function boxplotToSvg<T>(options: BoxplotToSvgOptions<T>): string {
   const rows = options.summaries ?? options.data.map((d, i) => fiveNumber(options.values(d, i)))
   const measure = options.measure ?? measureApprox()
   const categories = options.x !== undefined ? options.data.map((d, i) => options.x!(d, i)) : []
-  const cmds = renderBoxplotChart(rows, width, height, categories, t, options.box ?? {}, measure, options.format)
+  const loc = svgLocale(options)
+  const cmds = renderBoxplotChart(rows, width, height, categories, t, options.box ?? {}, measure, loc.format)
+  const medians = rows.map((r) => (loc.format === undefined ? `${r.median}` : loc.format(r.median))).join(', ')
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${rows.length === 1 ? '1 box, median' : `${rows.length} boxes, medians`} ${rows.map((r) => r.median).join(', ')}.` : undefined)
+    (options.title !== undefined
+      ? svgSentence(loc.messages?.boxplotDescription, () => `${options.title}: ${rows.length === 1 ? `${svgNumber(1, loc.number)} box, median` : `${svgNumber(rows.length, loc.number)} boxes, medians`} ${medians}.`, { title: options.title, count: svgNumber(rows.length, loc.number), list: medians })
+      : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),

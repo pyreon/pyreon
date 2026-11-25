@@ -9,6 +9,7 @@
 // discriminated union lives in polar-hit.ts), and the svg half in family-svg.ts.
 
 import { arcPolygon, pointOnCircle } from './arc'
+import type { Formatter } from './format'
 import { DEFAULT_PALETTE, paletteAt } from './palette'
 import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
 import { isFiniteNumber } from './scale'
@@ -148,7 +149,7 @@ function polarColumnKey(s: PolarSeries, i: number): string {
 }
 
 /** Lay out the series into `box`. */
-export function layoutPolar(axes: PolarAxes, series: readonly PolarSeries[], box: Rect, options?: PolarOptions): PolarLayout {
+export function layoutPolar(axes: PolarAxes, series: readonly PolarSeries[], box: Rect, options?: PolarOptions, fmt?: Formatter): PolarLayout {
   const palette = options?.palette ?? DEFAULT_PALETTE
   const categoryOn = axes.categoryOn ?? 'angle'
   const n = axes.categories.length
@@ -343,7 +344,7 @@ export function layoutPolar(axes: PolarAxes, series: readonly PolarSeries[], box
     }
   }
   const ticks: PolarTick[] = []
-  for (const v of polarTicks(domainLo, domainHi)) ticks.push({ value: v, label: `${v}` })
+  for (const v of polarTicks(domainLo, domainHi)) ticks.push({ value: v, label: fmt === undefined ? `${v}` : fmt(v) })
   return { center, innerR, outerR, domain: { min: domainLo, max: domainHi }, categoryOn, sectors, lines, categoryLabels, ticks }
 }
 

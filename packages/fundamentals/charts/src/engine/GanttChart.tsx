@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { ganttTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import type { ChartTheme } from './render'
@@ -21,6 +22,8 @@ export interface GanttChartProps extends CanvasHostProps {
 export function GanttChart(props: GanttChartProps): VNode {
   const readTasks = (): readonly GanttTask[] => (typeof props.tasks === 'function' ? props.tasks() : props.tasks)
   const opts = (t: ChartTheme): GanttOptions => ({ palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, todayColor: t.negative, ...props.gantt })
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
   return canvasHost<GanttLayout>({
     props,
     defaultHeight: 320,
@@ -35,7 +38,7 @@ export function GanttChart(props: GanttChartProps): VNode {
       props.onSelect?.(hitGantt(layout, px, py))
       props.onSelectIndex?.(hitGanttIndex(layout, px, py))
     },
-    tooltip: (layout, px, py) => orNull(ganttTip(layout, px, py)),
+    tooltip: (layout, px, py) => orNull(ganttTip(layout, px, py, num())),
     pick: (layout, i) => {
       const row = layout.rows[i]
       if (row === undefined) return

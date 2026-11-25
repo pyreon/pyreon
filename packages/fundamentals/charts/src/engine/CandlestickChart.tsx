@@ -4,6 +4,7 @@ import { describeCandles } from './a11y'
 import type { VNode } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { canvasHost, shiftCmds } from './canvas-host'
+import { chartNumber } from './locale'
 import type { CanvasHostProps } from './canvas-host'
 import { hitCandle, ohlcExtent } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
@@ -112,6 +113,8 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
     if (span < zoom.minSpan || span > zoom.maxSpan) return win.peek()
     return next
   }
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
   return canvasHost<Geometry>({
     props,
     defaultHeight: 200,
@@ -129,7 +132,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       const categories = categoriesOf(rows)
       // The slider takes its band off the bottom; the candles lay out above it.
       const chartH = zoom?.slider === true ? Math.max(0.0, box.h - SLIDER_BAND) : box.h
-      const plot = candlestickFrame(candles, box.w, chartH, categories, theme.fontSize, measure).layout.plot
+      const plot = candlestickFrame(candles, box.w, chartH, categories, theme.fontSize, measure, num()).layout.plot
       const strip =
         zoom?.slider === true
           ? (() => {
@@ -142,7 +145,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
     },
     render: (g, measure, theme) => {
       lastFrame = g
-      const cmds: DrawCmd[] = shiftCmds(renderCandlestickChart(g.candles, g.box.w, g.box.h, g.categories, theme, props.candle ?? {}, measure), g.box.x, g.box.y)
+      const cmds: DrawCmd[] = shiftCmds(renderCandlestickChart(g.candles, g.box.w, g.box.h, g.categories, theme, props.candle ?? {}, measure, num()), g.box.x, g.box.y)
       if (g.strip !== null) for (const c of renderSliderZoom(g.allCloses, g.win, g.strip, true)) cmds.push(c)
       return cmds
     },
@@ -204,7 +207,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       const idx = hitAt(g, px, py)
       const c = g.candles[idx]
       if (c === undefined) return null
-      const fmt = props.format ?? groupThousands
+      const fmt = num() ?? groupThousands
       const label = g.categories[idx] ?? `#${idx + 1}`
       return [label, `O ${fmt(c.open)}`, `H ${fmt(c.high)}`, `L ${fmt(c.low)}`, `C ${fmt(c.close)}`]
     },

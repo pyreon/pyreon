@@ -48,6 +48,23 @@ export function numberFormatter(tag: string): Formatter {
 }
 
 /**
+ * A family chart's number format for what it draws and its tooltips: its own
+ * `format`, else its `locale`'s (`3,5` in Czech), else none (`plain`). The
+ * locale's formatter is built once per tag for the chart that reads it.
+ */
+export function chartNumber(props: { readonly locale?: string | undefined; readonly format?: Formatter | undefined }): () => Formatter | undefined {
+  let memo: { tag: string; fmt: Formatter } | null = null
+  return () => {
+    if (props.format !== undefined) return props.format
+    const tag = props.locale
+    if (tag === undefined) return undefined
+    if (memo === null || memo.tag !== tag) memo = { tag, fmt: numberFormatter(tag) }
+
+    return memo.fmt
+  }
+}
+
+/**
  * The PLAIN number format of `tag` (up to 2 decimals, grouped), for the
  * figures an accessible sentence says itself: a change of `3,2×`, a count.
  * Not the pack's `number` options, which style the axis (a currency, a unit)

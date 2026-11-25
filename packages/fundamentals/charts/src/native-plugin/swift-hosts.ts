@@ -1,4 +1,4 @@
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartThemeFields, desugarChartGrammar, UNLOWERED_CHART_HOSTS, chartDouble, chartRichSelectWarning, chartOrientVertical, chartRoamConfig, chartVisualMap, geoProjectionEnum } from './hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartThemeFields, desugarChartGrammar, UNLOWERED_CHART_HOSTS, chartDouble, chartRichSelectWarning, chartOrientVertical, chartRoamConfig, chartVisualMap, geoProjectionEnum, fmtArg } from './hosts'
 import type { ChartHostArgs } from './hosts'
 import { swiftStr, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './swift-facade'
@@ -76,6 +76,18 @@ function emitSwiftChartHostInner(e: Extract<ExprIR, { kind: 'jsx-element' }>, in
     return `PyreonChartClock { pyreonClock in\n${pad}${swiftChartEntrance(e, tag, indent + 2, (i) => emitSwiftGenericChartHost(e, i))}\n${' '.repeat(indent)}}`
   }
   return swiftChartEntrance(e, tag, indent, (i) => emitSwiftGenericChartHost(e, i))
+}
+
+
+/**
+ * The chart's `locale` as the platform number formatter (`NumberFormatter` /
+ * `java.text.NumberFormat`), the `fmt` every family engine call takes for its
+ * drawn numbers and tooltip: the web host's `Intl` digits. Undefined without a
+ * `locale` (the engine's `plain`).
+ */
+function swiftChartNumber(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string | undefined {
+  const locale = chartAttrExpr(e, 'locale')
+  return locale === undefined ? undefined : `pyreonLocaleNumberFormatter(${host.expr(locale, indent)})`
 }
 
 /** The table-driven hosts (`CHART_HOSTS`): data + options → layout → render, with the crossing chrome and the tap. */
@@ -164,6 +176,8 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
     gutter: swiftChartDouble(e, 'gutter', spec.gutterDefault ?? 80, indent),
     innerRatio: swiftChartDouble(e, 'innerRatio', 0.2, indent),
   }
+  const fmt = swiftChartNumber(e, indent)
+  if (fmt !== undefined) args.fmt = fmt
   // Chrome — the title block, the legend and the tap tooltip — comes from the
   // crossing `chrome.ts`, the same functions the web canvas host calls, so
   // "what does the legend list" and "what does a tap say" cannot disagree by
@@ -209,7 +223,7 @@ function emitSwiftGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
-  const stripCmds = vm === null ? '' : ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
+  const stripCmds = vm === null ? '' : ` + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected${fmtArg(args)})`
   const canvas = swiftChartCanvas(e, `${chrome.mirror(chrome.wrap(`${transpose(spec.render(layout, renderArgs, SWIFT_CHART_TARGET))}${stripCmds}`))}${tipCmds}`, indent)
   // `onSelectIndex` → a tap (a zero-distance drag, which reports its location)
   // over the engine's index hit, computed against the same layout the canvas
@@ -305,6 +319,8 @@ function emitSwiftAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const lets = hoist ? [`let pyreonItems: [${spec.struct}] = ${mapped}`, ...chrome.lets] : []
   if (animating) lets.push(`let pyreonOpts: ${spec.optionsStruct} = ${SWIFT_CHART_TARGET.withProgress(options, spec.optionsStruct!, 'pyreonEntrance')}`)
   const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: swiftChartDouble(e, 'innerRadius', 0, indent), showLabels: host.staticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize }
+  const fmt = swiftChartNumber(e, indent)
+  if (fmt !== undefined) args.fmt = fmt
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${SWIFT_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${SWIFT_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, pyreonChartMeasure)`
     : ''
@@ -343,8 +359,10 @@ function emitSwiftGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
   const W = hasWidth ? swiftChartDouble(e, 'width', 240, indent) : 'Double(pyreonGeo.size.width)'
   const opts = `GaugeOptions(min: ${swiftChartDouble(e, 'min', 0, indent)}, max: ${swiftChartDouble(e, 'max', 100, indent)}, sweep: Double.pi, thickness: ${swiftChartDouble(e, 'thickness', 22, indent)}, trackColor: ${host.stringAttr(e, 'trackColor', indent) ?? '"rgba(132,150,165,0.22)"'}, valueColor: ${host.stringAttr(e, 'valueColor', indent) ?? '"#0f766e"'})`
   const showValue = host.staticAttr(e, 'showValue') !== false
+  const gaugeFmt = swiftChartNumber(e, indent)
+  const gaugeText = gaugeFmt === undefined ? `plain(${value})` : `formatNumber(${value}, ${gaugeFmt})`
   const text = showValue
-    ? ` + [PyreonDrawCmd(kind: "text", fill: "#10161d", text: plain(${value}), at: PyreonChartPt(x: ${W} / 2.0, y: ${H} - 6.0), size: 20.0, align: "middle", baseline: "bottom")]`
+    ? ` + [PyreonDrawCmd(kind: "text", fill: "#10161d", text: ${gaugeText}, at: PyreonChartPt(x: ${W} / 2.0, y: ${H} - 6.0), size: 20.0, align: "middle", baseline: "bottom")]`
     : ''
   // A full `dial` (built on the web by `gaugeDial()`) is a runtime value with no native form: named, and the half-circle track drawn.
   if (chartAttrExpr(e, 'dial') !== undefined) host.warn('<GaugeChart dial>: the full dial is web-only; native draws the half-circle gauge track.')
@@ -357,6 +375,7 @@ function emitSwiftGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent:
 
 /** `<CandlestickChart data open high low close x? candle? height width title>` → the shared frame over the mapped candles. */
 function emitSwiftCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const candleFmt = ((f: string | undefined): string => (f === undefined ? '' : `, ${f}`))(swiftChartNumber(e, indent))
   const tag = 'CandlestickChart'
   const dataV = chartAttrExpr(e, 'data')
   if (dataV === undefined) {
@@ -386,13 +405,14 @@ function emitSwiftCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, i
   const hasWidth = chartAttrExpr(e, 'width') !== undefined
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   const rtlC = swiftRtl(e, W)
-  const canvas = swiftChartCanvas(e, rtlC.mirror(`renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure)`), indent)
-  const gesture = swiftChartGesture(e, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y})`, indent, ['selectindex', 'select'], rtlC.tapX)
+  const canvas = swiftChartCanvas(e, rtlC.mirror(`renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure${candleFmt})`), indent)
+  const gesture = swiftChartGesture(e, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y}${candleFmt})`, indent, ['selectindex', 'select'], rtlC.tapX)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
 /** `<BoxplotChart data values x? box? format? height width title onSelect? onSelectIndex?>` → five-number summaries per row + the shared frame (`renderBoxplotChart`). */
 function emitSwiftBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const boxFmt = swiftChartNumber(e, indent)
   const tag = 'BoxplotChart'
   const dataV = chartAttrExpr(e, 'data')
   if (dataV === undefined) {
@@ -423,13 +443,14 @@ function emitSwiftBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
   const W = hasWidth ? swiftChartDouble(e, 'width', 300, indent) : 'Double(pyreonGeo.size.width)'
   // The entrance reaches the RENDER only (its trailing `progress`, as the heat host's); the hit reads the frame without it.
   const rtlB = swiftRtl(e, W)
-  const canvas = swiftChartCanvas(e, rtlB.mirror(`renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? ', nil, pyreonEntrance' : ''})`), indent)
-  const gesture = swiftChartGesture(e, (x, y) => `hitBoxplotChart(pyreonBoxes.count, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, indent, ['selectindex', 'select'], rtlB.tapX)
+  const canvas = swiftChartCanvas(e, rtlB.mirror(`renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, pyreonChartMeasure${swiftChartAnimating(e, tag) ? `, ${boxFmt ?? 'nil'}, pyreonEntrance` : boxFmt === undefined ? '' : `, ${boxFmt}`})`), indent)
+  const gesture = swiftChartGesture(e, (x, y) => `hitBoxplotChart(pyreonBoxes.count, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, pyreonChartMeasure, ${x}, ${y}, pyreonBoxes${boxFmt === undefined ? '' : `, ${boxFmt}`})`, indent, ['selectindex', 'select'], rtlB.tapX)
   return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent)
 }
 
 /** `<HeatmapChart data x y value colors? gap? height width title onSelectIndex?>` → heatGridFrom over the mapped rows + the shared frame. */
 function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const heatFmt = swiftChartNumber(e, indent)
   const tag = 'HeatmapChart'
   const dataV = chartAttrExpr(e, 'data')
   if (dataV === undefined) {
@@ -484,7 +505,7 @@ function emitSwiftHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inden
     gH = 'pyreonVmPlace.chartH'
     if (colorsV === undefined) cellStops = 'pyreonStrip.stops'
     selection = ', HeatSelection(domain: pyreonStrip.domain, inRange: pyreonStrip.piecewise ? nil : pyreonVmRange, outBands: visualOutBands(pyreonStrip, pyreonVmSelected), outColor: pyreonStrip.outColor)'
-    stripCmds = ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
+    stripCmds = ` + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected${heatFmt === undefined ? '' : `, ${heatFmt}`})`
   }
   const progress = swiftChartAnimating(e, tag) ? ', pyreonEntrance' : selection === '' ? '' : ', 1.0'
   const canvas = swiftChartCanvas(e, rtlH.mirror(`renderHeatChart(pyreonGrid, ${gW}, ${gH}, pyreonTheme, ${cellStops}, ${gap}, pyreonChartMeasure${progress}${selection})${stripCmds}`), indent)

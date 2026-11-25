@@ -16,7 +16,7 @@ import { withItemStates } from './host-states'
 import type { ItemStateProps } from './host-states'
 import { fillMessage } from './a11y'
 import { plain } from './format'
-import { chartMessagesFor } from './locale'
+import { chartMessagesFor, chartNumber } from './locale'
 import { GEO_RAMP_DARK, GEO_RAMP_LIGHT, geoDomainAligned, geoOptionParams, geoRoamPan, geoRoamZoom, hitGeoIndex, layoutGeoShapes, renderGeoAligned } from './geo'
 import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoTrails, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
 import { alignGeoValues, geoFeatures, getMapDefinition, resolveMapSource } from './geo-web'
@@ -220,6 +220,8 @@ export function MapChart(props: MapChartProps): VNode {
   const vm = visualMapHost(
     () => (typeof props.visualMap === 'function' ? props.visualMap() : props.visualMap),
     (sel) => props.onVisualMapChange?.(sel),
+    // The strip's numbers: `format`, else the chart's `locale` digits.
+    chartNumber(props),
   )
   let outer: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }
   const dragSpec = {

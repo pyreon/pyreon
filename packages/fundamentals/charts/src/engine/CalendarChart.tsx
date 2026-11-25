@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost } from './canvas-host'
+import { chartNumber } from './locale'
 import type { CanvasHostProps } from './canvas-host'
 import { calendarDomain, hitCalendarIndex, layoutCalendar, renderCalendar } from './calendar'
 import { calendarValues, hitCalendar } from './calendar-web'
@@ -40,6 +41,8 @@ export function CalendarChart(props: CalendarChartProps): VNode {
   const vm = visualMapHost(
     () => (typeof props.visualMap === 'function' ? props.visualMap() : props.visualMap),
     (sel) => props.onVisualMapChange?.(sel),
+    // The strip's numbers: `format`, else the chart's `locale` digits.
+    chartNumber(props),
   )
   let outer: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }
   const dragSpec = {

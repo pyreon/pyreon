@@ -3,6 +3,7 @@
 // native canvas paint the SAME command list from the same inputs.
 
 import { hitCandle, ohlcExtent, renderCandles } from './candlestick'
+import type { Formatter } from './format'
 import type { CandleOptions, Ohlc } from './candlestick'
 import { computeLayout, valueTickTarget } from './layout'
 import type { LayoutConfig, PlotLayout } from './layout'
@@ -29,6 +30,7 @@ export function candlestickFrame(
   categories: string[],
   fontSize: Double,
   measure: MeasureText,
+  format?: Formatter,
 ): CandlestickFrame {
   const ticks = valueTickTarget(w, h, fontSize, false)
   const domain = niceDomain(ohlcExtent(candles), ticks)
@@ -44,6 +46,9 @@ export function candlestickFrame(
     yTickCount: ticks,
     showXAxis: true,
     showYAxis: true,
+    yFormat: format,
+    // An x axis with no period labels counts periods: the same digits.
+    xFormat: format,
   }
   const layout = computeLayout(cfg, measure)
   return { candles, domain, layout }
@@ -58,8 +63,9 @@ export function renderCandlestickChart(
   theme: ChartTheme,
   options: CandleOptions | undefined,
   measure: MeasureText,
+  format?: Formatter,
 ): DrawCmd[] {
-  const f = candlestickFrame(candles, w, h, categories, theme.fontSize, measure)
+  const f = candlestickFrame(candles, w, h, categories, theme.fontSize, measure, format)
   const l = f.layout
   const cmds: DrawCmd[] = []
   for (const tick of l.yTicks) {
@@ -135,7 +141,8 @@ export function hitCandlestickChart(
   measure: MeasureText,
   px: Double,
   py: Double,
+  format?: Formatter,
 ): number {
-  const f = candlestickFrame(candles, w, h, categories, fontSize, measure)
+  const f = candlestickFrame(candles, w, h, categories, fontSize, measure, format)
   return hitCandle(candles.length, f.layout.plot, px, py)
 }

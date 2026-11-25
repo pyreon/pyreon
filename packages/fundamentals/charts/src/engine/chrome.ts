@@ -20,7 +20,8 @@ import { fitCircle, hitArc, layoutArcs, layoutArcsWith } from './arc'
 import type { ArcConfig, Slice } from './arc'
 import { hitCalendarIndex } from './calendar'
 import type { CalendarLayout, CalendarValue } from './calendar'
-import { plain } from './format'
+import { formatNumber } from './format'
+import type { Formatter } from './format'
 import { geoValueOf, hitGeoIndex } from './geo'
 import type { GeoLayout, GeoValue } from './geo'
 import { hitFunnel } from './funnel'
@@ -153,21 +154,21 @@ export function pieLegend(slices: Slice[]): LegendEntry[] {
 
 // ---- tooltips (empty = miss) -----------------------------------------------
 
-export function treemapTip(cells: TreemapCell[], px: Double, py: Double): string[] {
+export function treemapTip(cells: TreemapCell[], px: Double, py: Double, fmt?: Formatter): string[] {
   const i = hitTreemapIndex(cells, px, py)
   if (i < 0) return []
   const c = cells[i]!
-  return [c.name, plain(c.value)]
+  return [c.name, formatNumber(c.value, fmt)]
 }
 
-export function sunburstTip(arcs: SunburstArc[], center: Pt, px: Double, py: Double): string[] {
+export function sunburstTip(arcs: SunburstArc[], center: Pt, px: Double, py: Double, fmt?: Formatter): string[] {
   const i = hitSunburstIndex(arcs, center, px, py)
   if (i < 0) return []
   const a = arcs[i]!
-  return [a.name, plain(a.value)]
+  return [a.name, formatNumber(a.value, fmt)]
 }
 
-export function treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize?: Double): string[] {
+export function treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize?: Double, fmt?: Formatter): string[] {
   const i = hitTreeIndex(layout, px, py, symbolSize)
   if (i < 0) return []
   const n = layout.nodes[i]!
@@ -178,7 +179,7 @@ export function treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize?:
   /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the guard
      above already returned for undefined. It exists to unwrap the optional
      natively, where a `=== undefined` ternary does not narrow. */
-  return [n.name, plain(n.value ?? 0.0)]
+  return [n.name, formatNumber(n.value ?? 0.0, fmt)]
 }
 
 export function riverTip(layout: RiverLayout, px: Double, py: Double, curve?: 'smooth' | 'linear'): string[] {
@@ -186,18 +187,18 @@ export function riverTip(layout: RiverLayout, px: Double, py: Double, curve?: 's
   return i < 0 ? [] : [layout.layers[i]!.name]
 }
 
-export function chordTip(layout: ChordLayout, px: Double, py: Double): string[] {
+export function chordTip(layout: ChordLayout, px: Double, py: Double, fmt?: Formatter): string[] {
   const i = hitChordIndex(layout, px, py)
   if (i < 0) return []
   const a = layout.arcs[i]!
-  return [a.name, plain(a.total)]
+  return [a.name, formatNumber(a.total, fmt)]
 }
 
-export function sankeyTip(layout: SankeyLayout, px: Double, py: Double): string[] {
+export function sankeyTip(layout: SankeyLayout, px: Double, py: Double, fmt?: Formatter): string[] {
   const hit = hitSankeyIndex(layout, px, py)
   if (hit.node >= 0) {
     const n = layout.nodes[hit.node]!
-    return [n.name, plain(n.value)]
+    return [n.name, formatNumber(n.value, fmt)]
   }
   if (hit.link < 0) return []
   const l = layout.links[hit.link]!
@@ -205,10 +206,10 @@ export function sankeyTip(layout: SankeyLayout, px: Double, py: Double): string[
   const to = layout.nodes[l.target]
   const fromName = from === undefined ? `${l.source}` : from.name
   const toName = to === undefined ? `${l.target}` : to.name
-  return [`${fromName} → ${toName}`, plain(l.value)]
+  return [`${fromName} → ${toName}`, formatNumber(l.value, fmt)]
 }
 
-export function graphTip(layout: GraphLayout, px: Double, py: Double): string[] {
+export function graphTip(layout: GraphLayout, px: Double, py: Double, fmt?: Formatter): string[] {
   const i = hitGraphIndex(layout, px, py)
   if (i < 0) return []
   const n = layout.nodes[i]!
@@ -219,23 +220,23 @@ export function graphTip(layout: GraphLayout, px: Double, py: Double): string[] 
   /* v8 ignore next — the `?? 0.0` arm is unreachable on the web: the guard
      above already returned for undefined. It exists to unwrap the optional
      natively, where a `=== undefined` ternary does not narrow. */
-  return [n.name, plain(n.value ?? 0.0)]
+  return [n.name, formatNumber(n.value ?? 0.0, fmt)]
 }
 
-export function ganttTip(layout: GanttLayout, px: Double, py: Double): string[] {
+export function ganttTip(layout: GanttLayout, px: Double, py: Double, fmt?: Formatter): string[] {
   const i = hitGanttIndex(layout, px, py)
   if (i < 0) return []
   const r = layout.rows[i]!
-  return [r.task.name, `${plain(ganttDurationDays(r))} days`]
+  return [r.task.name, `${formatNumber(ganttDurationDays(r), fmt)} days`]
 }
 
-export function polarTip(layout: PolarLayout, series: readonly PolarSeries[], px: Double, py: Double): string[] {
+export function polarTip(layout: PolarLayout, series: readonly PolarSeries[], px: Double, py: Double, fmt?: Formatter): string[] {
   const hit = hitPolarIndex(layout, px, py)
   if (hit.sector >= 0) {
     const sec = layout.sectors[hit.sector]!
     const s = series[sec.series]
     const name = s === undefined ? `Series ${sec.series + 1}` : s.name
-    return [name, plain(sec.value)]
+    return [name, formatNumber(sec.value, fmt)]
   }
   if (hit.line < 0) return []
   const line = layout.lines[hit.line]!
@@ -245,11 +246,11 @@ export function polarTip(layout: PolarLayout, series: readonly PolarSeries[], px
 }
 
 /** The cell's date, and its value when one was recorded for that day. */
-export function calendarTip(layout: CalendarLayout, values: CalendarValue[], px: Double, py: Double): string[] {
+export function calendarTip(layout: CalendarLayout, values: CalendarValue[], px: Double, py: Double, fmt?: Formatter): string[] {
   const i = hitCalendarIndex(layout, px, py)
   if (i < 0) return []
   const date = layout.cells[i]!.date
-  for (const v of values) if (v.date === date) return [date, plain(v.value)]
+  for (const v of values) if (v.date === date) return [date, formatNumber(v.value, fmt)]
   return [date]
 }
 
@@ -260,7 +261,7 @@ export function calendarTip(layout: CalendarLayout, values: CalendarValue[], px:
  * where it was drawn — so the caller's own points supply the value, the way
  * `calendarTip` and `geoTip` take theirs.
  */
-export function singleAxisTip(layout: SingleAxisLayout, points: readonly SingleAxisPoint[], px: Double, py: Double): string[] {
+export function singleAxisTip(layout: SingleAxisLayout, points: readonly SingleAxisPoint[], px: Double, py: Double, fmt?: Formatter): string[] {
   const i = hitSingleAxis(layout, px, py)
   // A BOUNDS test, not an `=== undefined` test on the indexed value: this file
   // crosses to Swift and Kotlin, where `points[i]` is a subscript that TRAPS
@@ -268,31 +269,31 @@ export function singleAxisTip(layout: SingleAxisLayout, points: readonly SingleA
   if (i < 0 || i >= points.length) return []
   const point = points[i]!
   const name = point.name
-  return name === undefined ? [plain(point.x)] : [name, plain(point.x)]
+  return name === undefined ? [formatNumber(point.x, fmt)] : [name, formatNumber(point.x, fmt)]
 }
 
 /** The region's name, and its value when one was recorded for that region. */
-export function geoTip(layout: GeoLayout, values: readonly GeoValue[], px: Double, py: Double): string[] {
+export function geoTip(layout: GeoLayout, values: readonly GeoValue[], px: Double, py: Double, fmt?: Formatter): string[] {
   const i = hitGeoIndex(layout, px, py)
   if (i < 0) return []
   const region = layout.regions[i]!
   const v = geoValueOf(values, region.name)
-  return v === v ? [region.label, plain(v)] : [region.label]
+  return v === v ? [region.label, formatNumber(v, fmt)] : [region.label]
 }
 
-export function funnelTip(stages: FunnelStage[], plot: Rect, px: Double, py: Double, options?: FunnelOptions): string[] {
+export function funnelTip(stages: FunnelStage[], plot: Rect, px: Double, py: Double, options?: FunnelOptions, fmt?: Formatter): string[] {
   const i = hitFunnel(stages, plot, px, py, options)
   if (i < 0) return []
   const s = stages[i]!
-  return [s.label, plain(s.value)]
+  return [s.label, formatNumber(s.value, fmt)]
 }
 
 /** The slice's label, value and share of the whole. */
-export function pieTip(slices: Slice[], box: Rect, innerRatio: Double, px: Double, py: Double): string[] {
+export function pieTip(slices: Slice[], box: Rect, innerRatio: Double, px: Double, py: Double, fmt?: Formatter): string[] {
   const fit = fitCircle(box)
   const arcs = layoutArcs(slices)
   const i = hitArc(arcs, fit.center, fit.radius, fit.radius * innerRatio, { x: px, y: py })
-  return i < 0 ? [] : pieTipAt(slices, arcs[i]!.index)
+  return i < 0 ? [] : pieTipAt(slices, arcs[i]!.index, fmt)
 }
 
 /**
@@ -307,14 +308,14 @@ export function pieHitWith(slices: Slice[], box: Rect, innerRatio: Double, arcs:
   return i < 0 ? -1 : laid[i]!.index
 }
 
-export function pieTipAt(slices: Slice[], i: number): string[] {
+export function pieTipAt(slices: Slice[], i: number, fmt?: Formatter): string[] {
   if (i < 0 || i >= slices.length) return []
   const s = slices[i]!
   let total = 0.0
   for (const x of slices) total += x.value
   // `floor(x + 0.5)` rather than `Math.round`: both native targets keep floor a Double, while round returns an integer type.
   const pct = total > 0.0 ? Math.floor((s.value / total) * 100.0 + 0.5) : 0.0
-  return [s.label, `${plain(s.value)} (${plain(pct)}%)`]
+  return [s.label, `${formatNumber(s.value, fmt)} (${formatNumber(pct, fmt)}%)`]
 }
 
 // ---- the tooltip box, drawn into the list -----------------------------------

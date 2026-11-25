@@ -10,7 +10,8 @@
 // piece take `outColor`. `visualColorFor` is the colouring rule the series
 // renderers apply, so the strip and the data can never disagree.
 
-import { plain } from './format'
+import { formatNumber } from './format'
+import type { Formatter } from './format'
 import { rampColor } from './heat'
 import type { Domain, Double, DrawCmd, Pt } from './types'
 
@@ -139,7 +140,7 @@ export function visualColorFor(s: VisualStrip, v: Double, range: Domain, selecte
 }
 
 /** The strip's draw commands with its top-left at `at`. */
-export function renderVisualStrip(s: VisualStrip, at: Pt, range: Domain, selected: boolean[]): DrawCmd[] {
+export function renderVisualStrip(s: VisualStrip, at: Pt, range: Domain, selected: boolean[], fmt?: Formatter): DrawCmd[] {
   const out: DrawCmd[] = []
   const fs = s.fontSize
   if (s.piecewise) {
@@ -156,8 +157,8 @@ export function renderVisualStrip(s: VisualStrip, at: Pt, range: Domain, selecte
     return out
   }
   const o = barOrigin(s, at)
-  const high = s.highText === '' ? plain(s.domain.max) : s.highText
-  const low = s.lowText === '' ? plain(s.domain.min) : s.lowText
+  const high = s.highText === '' ? formatNumber(s.domain.max, fmt) : s.highText
+  const low = s.lowText === '' ? formatNumber(s.domain.min, fmt) : s.lowText
   let i = 0.0
   while (i < STRIP_COUNT) {
     // Vertical runs top-down (high first, like a thermometer); horizontal left to right.
@@ -187,10 +188,10 @@ export function renderVisualStrip(s: VisualStrip, at: Pt, range: Domain, selecte
     if (s.vertical) {
       // A triangle pointing at the bar from its right, the value beside it.
       out.push({ kind: 'polygon', points: [{ x: p.x, y: p.y }, { x: p.x + STRIP_HANDLE, y: p.y - STRIP_HANDLE / 2.0 }, { x: p.x + STRIP_HANDLE, y: p.y + STRIP_HANDLE / 2.0 }], fill: color })
-      out.push({ kind: 'text', text: plain(v), at: { x: p.x + STRIP_HANDLE + STRIP_GAP, y: p.y }, fill: s.labelColor, size: fs, align: 'start', baseline: 'middle' })
+      out.push({ kind: 'text', text: formatNumber(v, fmt), at: { x: p.x + STRIP_HANDLE + STRIP_GAP, y: p.y }, fill: s.labelColor, size: fs, align: 'start', baseline: 'middle' })
     } else {
       out.push({ kind: 'polygon', points: [{ x: p.x, y: p.y }, { x: p.x - STRIP_HANDLE / 2.0, y: p.y + STRIP_HANDLE }, { x: p.x + STRIP_HANDLE / 2.0, y: p.y + STRIP_HANDLE }], fill: color })
-      out.push({ kind: 'text', text: plain(v), at: { x: p.x, y: p.y + STRIP_HANDLE + STRIP_GAP }, fill: s.labelColor, size: fs, align: 'middle', baseline: 'top' })
+      out.push({ kind: 'text', text: formatNumber(v, fmt), at: { x: p.x, y: p.y + STRIP_HANDLE + STRIP_GAP }, fill: s.labelColor, size: fs, align: 'middle', baseline: 'top' })
     }
   }
   return out

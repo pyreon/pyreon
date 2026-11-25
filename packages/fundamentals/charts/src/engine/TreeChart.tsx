@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { treeLegend, treeTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import type { ChartTheme } from './render'
@@ -21,6 +22,8 @@ export interface TreeChartProps extends CanvasHostProps {
 export function TreeChart(props: TreeChartProps): VNode {
   const readData = (): readonly TreeNode[] => (typeof props.data === 'function' ? (props.data as () => readonly TreeNode[])() : props.data)
   const opts = (t: ChartTheme): TreeOptions => ({ palette: t.palette, labelColor: t.label, linkColor: t.label, ...props.tree })
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
   return canvasHost<TreeLayout>({
     props,
     defaultHeight: 300,
@@ -36,7 +39,7 @@ export function TreeChart(props: TreeChartProps): VNode {
       props.onSelect?.(hitTree(layout, px, py, props.tree?.symbolSize))
       props.onSelectIndex?.(hitTreeIndex(layout, px, py, props.tree?.symbolSize))
     },
-    tooltip: (layout, px, py) => orNull(treeTip(layout, px, py, props.tree?.symbolSize)),
+    tooltip: (layout, px, py) => orNull(treeTip(layout, px, py, props.tree?.symbolSize, num())),
     item: (layout, px, py) => {
       const i = hitTreeIndex(layout, px, py, props.tree?.symbolSize)
       const n = layout.nodes[i]

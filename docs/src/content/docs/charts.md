@@ -853,7 +853,13 @@ description take it too. The mark kind in the sentence (`kindBars`, `kindLine`,
 `closeLabel`, `medianLabel`, `seriesLabel`, `funnelLabel`, …), the map
 legend's `noDataLabel` and the sign of a change (`percent`, `multiple`) are
 fields too. With `locale`, the figures a sentence writes itself (a change of
-`3,2×`, a count) use that locale's digits; family charts take `locale` as well.
+`3,2×`, a count) use that locale's digits; family charts take `locale` as well,
+for their pack's words and every number they say or draw (tooltips, the gauge's
+value, axes, ticks, the visualMap strip), on the web and natively (the platform
+number formatter). Every `*ToSvg` export takes `locale` too, and the
+descriptions the family exports derive are messages (`funnelDescription`,
+`treemapDescription`, … `singleAxisDescription`, each slot already in the
+locale's digits).
 
 ```tsx
 import { Bar, Chart, registerLocale } from '@pyreon/charts'

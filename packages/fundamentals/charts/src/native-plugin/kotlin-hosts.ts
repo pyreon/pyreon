@@ -1,4 +1,4 @@
-import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartThemeFields, desugarChartGrammar, UNLOWERED_CHART_HOSTS, chartDouble, chartRichSelectWarning, chartOrientVertical, chartRoamConfig, chartVisualMap, geoProjectionEnum } from './hosts'
+import { ACCESSOR_CHART_HOSTS, CHART_HOSTS, CHART_HOST_PALETTE, chartThemeDefaultFields, chartTooltipFields, GRAMMAR_CHART_HOST, GRAMMAR_CONFIG_TAGS, GRAMMAR_FAMILY_TAGS, GRAMMAR_MARK_TAGS, chartChromeUnlowered, chartChromeWarning, chartThemeFields, desugarChartGrammar, UNLOWERED_CHART_HOSTS, chartDouble, chartRichSelectWarning, chartOrientVertical, chartRoamConfig, chartVisualMap, geoProjectionEnum, fmtArg } from './hosts'
 import type { ChartHostArgs } from './hosts'
 import { kotlinStr, substituteIdentifier, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './kotlin-facade'
@@ -130,6 +130,8 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
     gutter: kotlinChartDouble(e, 'gutter', spec.gutterDefault ?? 80, indent),
     innerRatio: kotlinChartDouble(e, 'innerRatio', 0.2, indent),
   }
+  const fmt = kotlinChartNumber(e, indent)
+  if (fmt !== undefined) args.fmt = fmt
   // Chrome from the crossing `chrome.ts` — mirror of the Swift generic host:
   // a probe layout for the legend's entries, the chrome measured, the plot
   // laid out in what is left.
@@ -171,7 +173,7 @@ function emitKotlinGenericChartHost(e: Extract<ExprIR, { kind: 'jsx-element' }>,
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
-  const stripCmds = vm === null ? '' : ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
+  const stripCmds = vm === null ? '' : ` + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected${fmtArg(args)})`
   const cmds = `${chrome.mirror(chrome.wrap(`${transpose(spec.render(layout, renderArgs, KOTLIN_CHART_TARGET))}${stripCmds}`))}${tipCmds}`
   // `onSelectIndex` → a tap over the engine's index hit. The tap position is
   // in pixels while the draw list is laid out in dp (PyreonChartCanvas scales
@@ -303,6 +305,8 @@ function emitKotlinAccessorHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     lets.push('var pyreonTipAt by remember { mutableStateOf(PyreonChartPt(0.0, 0.0)) }')
   }
   const args: ChartHostArgs = { data: [], options, W: chrome.width(W), H: chrome.height(H), gutter: '0.0', innerRatio: kotlinChartDouble(e, 'innerRadius', 0, indent), showLabels: host.staticAttr(e, 'showLabels') === false ? 'false' : 'true', fontSize: tf.fontSize }
+  const fmt = kotlinChartNumber(e, indent)
+  if (fmt !== undefined) args.fmt = fmt
   const tipCmds = tooltip
     ? ` + renderTooltip(pyreonTip, pyreonTipAt, ${KOTLIN_CHART_TARGET.rect('0.0', '0.0', W, H)}, ${KOTLIN_CHART_TARGET.struct('TooltipOptions', chartTooltipFields(tf))}, ::pyreonChartMeasure)`
     : ''
@@ -345,8 +349,10 @@ function emitKotlinGaugeHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
   const valueColor = host.staticAttr(e, 'valueColor')
   const opts = `GaugeOptions(min = ${kotlinChartDouble(e, 'min', 0, indent)}, max = ${kotlinChartDouble(e, 'max', 100, indent)}, sweep = Math.PI, thickness = ${kotlinChartDouble(e, 'thickness', 22, indent)}, trackColor = ${typeof track === 'string' ? kotlinStr(track) : '"rgba(132,150,165,0.22)"'}, valueColor = ${typeof valueColor === 'string' ? kotlinStr(valueColor) : '"#0f766e"'})`
   const showValue = host.staticAttr(e, 'showValue') !== false
+  const gaugeFmt = kotlinChartNumber(e, indent)
+  const gaugeText = gaugeFmt === undefined ? `plain(${value})` : `formatNumber(${value}, ${gaugeFmt})`
   const text = showValue
-    ? ` + listOf(PyreonDrawCmd(kind = "text", fill = "#10161d", text = plain(${value}), at = PyreonChartPt(${W} / 2.0, ${H} - 6.0), size = 20.0, align = "middle", baseline = "bottom"))`
+    ? ` + listOf(PyreonDrawCmd(kind = "text", fill = "#10161d", text = ${gaugeText}, at = PyreonChartPt(${W} / 2.0, ${H} - 6.0), size = 20.0, align = "middle", baseline = "bottom"))`
     : ''
   // A full `dial` (built on the web by `gaugeDial()`) is a runtime value with no native form: named, and the half-circle track drawn.
   if (chartAttrExprKotlin(e, 'dial') !== undefined) host.warn('<GaugeChart dial>: the full dial is web-only; native draws the half-circle gauge track.')
@@ -376,6 +382,7 @@ function kotlinChartMap(
 }
 
 function emitKotlinCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const candleFmt = ((f: string | undefined): string => (f === undefined ? '' : `, ${f}`))(kotlinChartNumber(e, indent))
   const tag = 'CandlestickChart'
   const dataV = chartAttrExprKotlin(e, 'data')
   if (dataV === undefined) {
@@ -403,12 +410,13 @@ function emitKotlinCandlestickHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, 
   const H = kotlinChartDouble(e, 'height', 200, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
-  const cmds = `renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, ::pyreonChartMeasure)`
-  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y})`, W, H, hasWidth, indent)
+  const cmds = `renderCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, ::pyreonChartMeasure${candleFmt})`
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitCandlestickChart(pyreonCandles, ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y}${candleFmt})`, W, H, hasWidth, indent)
 }
 
 /** `<BoxplotChart data values x? box? height width title onSelect? onSelectIndex?>` → five-number summaries per row + the shared frame (mirror of the Swift emitter). */
 function emitKotlinBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const boxFmt = kotlinChartNumber(e, indent)
   const tag = 'BoxplotChart'
   const dataV = chartAttrExprKotlin(e, 'data')
   if (dataV === undefined) {
@@ -436,11 +444,12 @@ function emitKotlinBoxplotHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const H = kotlinChartDouble(e, 'height', 240, indent)
   const hasWidth = chartAttrExprKotlin(e, 'width') !== undefined
   const W = hasWidth ? kotlinChartDouble(e, 'width', 300, indent) : 'pyreonW'
-  const cmds = `renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, ::pyreonChartMeasure${kotlinChartAnimating(e, tag) ? ', null, pyreonEntrance' : ''})`
-  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitBoxplotChart(pyreonBoxes.size.toLong(), ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y}, pyreonBoxes)`, W, H, hasWidth, indent)
+  const cmds = `renderBoxplotChart(pyreonBoxes, ${W}, ${H}, pyreonCats, pyreonTheme, ${options}, ::pyreonChartMeasure${kotlinChartAnimating(e, tag) ? `, ${boxFmt ?? 'null'}, pyreonEntrance` : boxFmt === undefined ? '' : `, ${boxFmt}`})`
+  return kotlinFrameHostLets(e, lets, cmds, (x, y) => `hitBoxplotChart(pyreonBoxes.size.toLong(), ${W}, ${H}, pyreonCats, pyreonTheme.fontSize, ::pyreonChartMeasure, ${x}, ${y}, pyreonBoxes${boxFmt === undefined ? '' : `, ${boxFmt}`})`, W, H, hasWidth, indent)
 }
 
 function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
+  const heatFmt = kotlinChartNumber(e, indent)
   const tag = 'HeatmapChart'
   const dataV = chartAttrExprKotlin(e, 'data')
   if (dataV === undefined) {
@@ -490,7 +499,7 @@ function emitKotlinHeatmapHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     gH = 'pyreonVmPlace.chartH'
     if (colorsV === undefined) cellStops = 'pyreonStrip.stops'
     selection = ', HeatSelection(domain = pyreonStrip.domain, inRange = if (pyreonStrip.piecewise) null else pyreonVmRange, outBands = visualOutBands(pyreonStrip, pyreonVmSelected), outColor = pyreonStrip.outColor)'
-    stripCmds = ' + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected)'
+    stripCmds = ` + renderVisualStrip(pyreonStrip, pyreonVmPlace.at, pyreonVmRange, pyreonVmSelected${heatFmt === undefined ? '' : `, ${heatFmt}`})`
     const { tapX } = kotlinRtl(e, W)
     extra = kotlinVisualMapGesture((o) => [tapX(`(${o}.x / pyreonDensity).toDouble()`), `(${o}.y / pyreonDensity).toDouble()`])
   }
@@ -557,3 +566,15 @@ function emitKotlinRadarHost(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent
     `hitRadarIndex(${host.expr(axesV, indent)}, pyreonSeries, ${box}, ${opts}, ${chrome.left === '0.0' ? x : `${x} - ${chrome.left}`}, ${chrome.top === '0.0' ? y : `${y} - ${chrome.top}`}, 8.0)`
   return kotlinFrameHostLets(e, lets, cmds, hit, W, H, hasWidth, indent)
 }
+
+/**
+ * The chart's `locale` as the platform number formatter (`NumberFormatter` /
+ * `java.text.NumberFormat`), the `fmt` every family engine call takes for its
+ * drawn numbers and tooltip: the web host's `Intl` digits. Undefined without a
+ * `locale` (the engine's `plain`).
+ */
+function kotlinChartNumber(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string | undefined {
+  const locale = chartAttrExprKotlin(e, 'locale')
+  return locale === undefined ? undefined : `pyreonLocaleNumberFormatter(${host.expr(locale, indent)})`
+}
+

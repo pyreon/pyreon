@@ -61,6 +61,7 @@ import type { ChartMessages } from './a11y'
 import { groupThousands } from './format'
 import type { Formatter } from './format'
 import { measureApprox, renderSvg } from './svg'
+import { svgLocale, svgNumber, svgSentence } from './svg-locale'
 import type { SvgOptions } from './svg'
 import type { Double, DrawCmd, MeasureText, Pt, Rect } from './types'
 import { themedDial } from './dial'
@@ -108,8 +109,8 @@ function taskExtent(layout: GanttLayout): { min: Double; max: Double } {
  * kind of thing that makes a screen reader sound like a debug log. The plot
  * description already pluralised its series count; the families did not.
  */
-function count(n: Double, one: string, many: string): string {
-  return n === 1 ? `1 ${one}` : `${n} ${many}`
+function count(n: Double, one: string, many: string, number?: Formatter): string {
+  return n === 1 ? `${svgNumber(1, number)} ${one}` : `${svgNumber(n, number)} ${many}`
 }
 
 /** The a11y tail every helper shares: explicit wins, else derive from data. */
@@ -148,6 +149,8 @@ export interface PieToSvgOptions<T> {
   title?: string
   /** Explicit long description; derived from the data when a title is given. */
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
   /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
   messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -198,12 +201,15 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
   })
   for (const c of body) cmds.push(c)
 
+  const loc = svgLocale(options)
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () =>
     describeChart({
       title: options.title,
-      messages: options.messages,
+      messages: loc.messages,
+      number: loc.number,
+      format: loc.format,
       categories: slices.map((s) => s.label),
-      series: [{ label: options.messages?.valueLabel ?? 'Value', values: slices.map((s) => s.value), kind: 'pie' }],
+      series: [{ label: loc.messages?.valueLabel ?? 'Value', values: slices.map((s) => s.value), kind: 'pie' }],
     }),
   ))
 }
@@ -224,6 +230,8 @@ export interface GaugeToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
   /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
   messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -239,7 +247,8 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
   const height = options.height ?? 140
   const min = options.min ?? 0
   const max = options.max ?? 100
-  const fmt = options.format ?? groupThousands
+  const loc = svgLocale(options)
+  const fmt = loc.format ?? groupThousands
   const t = themeOf(options.theme)
   const opts: GaugeOptions = {
     min,
@@ -273,7 +282,7 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
      `svgTail` only calls this deriver when `title` is defined. They are
      kept as a guard rather than removed, but an UNTITLED chart derives no
      description at all today, which is worth closing on its own.  */
-    describeGauge(options.title ?? options.messages?.untitled ?? 'Gauge', fmt(options.value), fmt(max), options.messages),
+    describeGauge(options.title ?? loc.messages?.untitled ?? loc.messages?.gaugeLabel ?? 'Gauge', fmt(options.value), fmt(max), loc.messages),
   ))
 }
 
@@ -298,6 +307,8 @@ export interface RadarToSvgOptions<T> {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
   /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
   messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -342,10 +353,13 @@ export function radarToSvg<T>(options: RadarToSvgOptions<T>): string {
   )
   for (const c of body) cmds.push(c)
 
+  const loc = svgLocale(options)
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () =>
     describeChart({
       title: options.title,
-      messages: options.messages,
+      messages: loc.messages,
+      number: loc.number,
+      format: loc.format,
       categories: options.axes.map((a) => a.label),
       series: options.data.map((d, i) => ({
         label: options.label(d, i),
@@ -372,6 +386,8 @@ export interface CandlestickToSvgOptions<T> {
   measure?: MeasureText
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
   /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
   messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -392,6 +408,7 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
   const ticks = valueTickTarget(width, height, t.fontSize, false)
   const domain = niceDomain(ohlcExtent(candles), ticks)
   const measure = options.measure ?? measureApprox()
+  const loc = svgLocale(options)
   const l = computeLayout(
     {
       width,
@@ -404,7 +421,8 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
       yTickCount: ticks,
       showXAxis: true,
       showYAxis: true,
-      yFormat: options.format,
+      yFormat: loc.format,
+      xFormat: loc.format,
     },
     measure,
   )
@@ -440,16 +458,16 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
   }
   for (const c of renderCandles(candles, l.plot, domain, { upColor: t.positive, downColor: t.negative, ...options.candle })) cmds.push(c)
 
-  const fmt = options.format ?? groupThousands
+  const fmt = loc.format ?? groupThousands
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () => {
     /* v8 ignore next 2 — the `?? '<name>'` fallbacks here are unreachable:
        `svgTail` only calls this deriver when `title` is defined. Kept as a
        guard; that an UNTITLED chart derives no description at all is a
        separate a11y gap worth closing on its own. */
-    const title = options.title ?? options.messages?.untitled ?? 'Candlestick chart'
-    if (candles.length === 0) return describeCandles({ title, count: 0, min: '', max: '', close: '' }, options.messages)
+    const title = options.title ?? loc.messages?.untitled ?? 'Candlestick chart'
+    if (candles.length === 0) return describeCandles({ title, count: 0, min: '', max: '', close: '' }, loc.messages, loc.number)
     const ext = ohlcExtent(candles)
-    return describeCandles({ title, count: candles.length, min: fmt(ext.min), max: fmt(ext.max), close: fmt(candles[candles.length - 1]!.close) }, options.messages)
+    return describeCandles({ title, count: candles.length, min: fmt(ext.min), max: fmt(ext.max), close: fmt(candles[candles.length - 1]!.close) }, loc.messages, loc.number)
   }))
 }
 
@@ -472,6 +490,8 @@ export interface HeatmapToSvgOptions<T> {
   measure?: MeasureText
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
   /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
   messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
@@ -567,7 +587,9 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
        `svgTail` only calls this deriver when `title` is defined. Kept as a
        guard; that an UNTITLED chart derives no description at all is a
        separate a11y gap worth closing on its own. */
-    return describeHeatmap({ title: options.title ?? options.messages?.untitled ?? 'Heatmap', columns: nc, rows: nr, cells: grid.cells.length, min: String(grid.min), max: String(grid.max) }, options.messages)
+    const loc = svgLocale(options)
+    const v = loc.format ?? String
+    return describeHeatmap({ title: options.title ?? loc.messages?.untitled ?? 'Heatmap', columns: nc, rows: nr, cells: grid.cells.length, min: v(grid.min), max: v(grid.max) }, loc.messages, loc.number)
   }))
 }
 
@@ -592,6 +614,10 @@ export interface FunnelToSvgOptions<T> {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -609,10 +635,13 @@ export function funnelToSvg<T>(options: FunnelToSvgOptions<T>): string {
   const pad = 8.0
   const cmds = renderFunnel(stages, { x: pad, y: pad, w: width - pad * 2.0, h: height - pad * 2.0 }, options.funnel)
   void (options.measure ?? measureApprox())
+  const loc = svgLocale(options)
+  const n = (v: number): string => svgNumber(v, loc.number)
+  const list = stages.map((s) => `${s.label} ${loc.format === undefined ? `${s.value}` : loc.format(s.value)}`).join(', ')
   const description =
     options.description ??
     (options.title !== undefined
-      ? `${options.title}: ${stages.length} stages, ${stages.map((s) => `${s.label} ${s.value}`).join(', ')}.`
+      ? svgSentence(loc.messages?.funnelDescription, () => `${options.title}: ${n(stages.length)} stages, ${list}.`, { title: options.title, count: n(stages.length), list })
       : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
@@ -633,6 +662,10 @@ export interface TreemapToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -644,10 +677,13 @@ export function treemapToSvg(options: TreemapToSvgOptions): string {
   const cells = layoutTreemap(options.data, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, ...options.treemap })
   const cmds = renderTreemap(cells, { palette: t.palette, ...options.treemap }, options.measure ?? measureApprox())
   const leaves = cells.filter((c) => c.leaf)
+  const loc = svgLocale(options)
+  const n = (v: number): string => svgNumber(v, loc.number)
+  const largest = leaves.length > 0 ? leaves.reduce((a, b) => (b.value > a.value ? b : a)).name : (loc.messages?.noneLabel ?? 'none')
   const description =
     options.description ??
     (options.title !== undefined
-      ? `${options.title}: ${leaves.length} leaves, largest ${leaves.length > 0 ? leaves.reduce((a, b) => (b.value > a.value ? b : a)).name : 'none'}.`
+      ? svgSentence(loc.messages?.treemapDescription, () => `${options.title}: ${n(leaves.length)} leaves, largest ${largest}.`, { title: options.title, leaves: n(leaves.length), largest })
       : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
@@ -668,6 +704,10 @@ export interface SunburstToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -682,10 +722,12 @@ export function sunburstToSvg(options: SunburstToSvgOptions): string {
   const arcs = layoutSunburst(options.data, innerR, outerR, { palette: t.palette, ...options.sunburst })
   const cmds = renderSunburst(arcs, center, { palette: t.palette, ...options.sunburst }, options.measure ?? measureApprox())
   const leaves = arcs.filter((a) => a.leaf)
+  const loc = svgLocale(options)
+  const n = (v: number): string => svgNumber(v, loc.number)
   const description =
     options.description ??
     (options.title !== undefined
-      ? `${options.title}: ${treeDepth(options.data)} levels, ${leaves.length} leaves.`
+      ? svgSentence(loc.messages?.sunburstDescription, () => `${options.title}: ${n(treeDepth(options.data))} levels, ${n(leaves.length)} leaves.`, { title: options.title, levels: n(treeDepth(options.data)), leaves: n(leaves.length) })
       : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
@@ -706,6 +748,10 @@ export interface TreeToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -718,9 +764,11 @@ export function treeToSvg(options: TreeToSvgOptions): string {
   const cmds = renderTree(layout, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.tree })
   void (options.measure ?? measureApprox())
   const leaves = layout.nodes.filter((n) => n.leaf).length
+  const loc = svgLocale(options)
+  const n = (v: number): string => svgNumber(v, loc.number)
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${layout.nodes.length} nodes, ${leaves} leaves.` : undefined)
+    (options.title !== undefined ? svgSentence(loc.messages?.treeDescription, () => `${options.title}: ${n(layout.nodes.length)} nodes, ${n(leaves)} leaves.`, { title: options.title, nodes: n(layout.nodes.length), leaves: n(leaves) }) : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
@@ -739,6 +787,10 @@ export interface ChordToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -752,10 +804,12 @@ export function chordToSvg(options: ChordToSvgOptions): string {
   const chordOpts: ChordOptions = { palette: t.palette, labelColor: t.label, ...options.chord }
   const layout = layoutChord(options.nodes, options.links, box, chordOpts, measure)
   const cmds = renderChord(layout, chordOpts, measure)
+  const loc = svgLocale(options)
+  const n = (v: number): string => svgNumber(v, loc.number)
   const description =
     options.description ??
     (options.title !== undefined
-      ? `${options.title}: ${layout.arcs.length} categories, ${layout.ribbons.length} flows.`
+      ? svgSentence(loc.messages?.chordDescription, () => `${options.title}: ${n(layout.arcs.length)} categories, ${n(layout.ribbons.length)} flows.`, { title: options.title, categories: n(layout.arcs.length), flows: n(layout.ribbons.length) })
       : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
@@ -774,6 +828,10 @@ export interface RiverToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -784,9 +842,12 @@ export function riverToSvg(options: RiverToSvgOptions): string {
   const height = options.height ?? 320.0
   const layout = layoutRiver(options.series, { x: 8.0, y: 8.0, w: Math.max(0.0, width - 16.0), h: Math.max(0.0, height - 16.0) }, { palette: t.palette, ...options.river })
   const cmds = renderRiver(layout, { palette: t.palette, axisColor: t.axis, tickColor: t.label, ...options.river }, options.measure ?? measureApprox())
+  const loc = svgLocale(options)
+  const n = (v: number): string => svgNumber(v, loc.number)
+  const names = options.series.map((s) => s.name).join(', ')
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${options.series.length} streams over ${layout.xs.length} points (${options.series.map((s) => s.name).join(', ')}).` : undefined)
+    (options.title !== undefined ? svgSentence(loc.messages?.riverDescription, () => `${options.title}: ${n(options.series.length)} streams over ${n(layout.xs.length)} points (${names}).`, { title: options.title, streams: n(options.series.length), points: n(layout.xs.length), list: names }) : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
@@ -807,6 +868,10 @@ export interface PolarToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -815,13 +880,16 @@ export function polarToSvg(options: PolarToSvgOptions): string {
   const t = themeOf(options.theme)
   const width = options.width ?? 480.0
   const height = options.height ?? 480.0
-  const layout = layoutPolar(options.axes, options.series, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, labelColor: t.label, gridColor: t.grid, ...options.polar })
+  const loc = svgLocale(options)
+  const layout = layoutPolar(options.axes, options.series, { x: 0.0, y: 0.0, w: width, h: height }, { palette: t.palette, labelColor: t.label, gridColor: t.grid, ...options.polar }, loc.format)
   const cmds = renderPolar(layout, { palette: t.palette, labelColor: t.label, gridColor: t.grid, ...options.polar })
   void (options.measure ?? measureApprox())
+  const n = (v: number): string => svgNumber(v, loc.number)
+  const v = (x: number): string => (loc.format === undefined ? `${x}` : loc.format(x))
   const description =
     options.description ??
     (options.title !== undefined
-      ? `${options.title}: ${options.series.length} series over ${options.axes.categories.length} categories, values ${layout.domain.min} to ${layout.domain.max}.`
+      ? svgSentence(loc.messages?.polarDescription, () => `${options.title}: ${n(options.series.length)} series over ${n(options.axes.categories.length)} categories, values ${v(layout.domain.min)} to ${v(layout.domain.max)}.`, { title: options.title, series: n(options.series.length), count: n(options.axes.categories.length), min: v(layout.domain.min), max: v(layout.domain.max) })
       : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
@@ -845,6 +913,10 @@ export interface SankeyToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -862,9 +934,12 @@ export function sankeyToSvg(options: SankeyToSvgOptions): string {
   void (options.measure ?? measureApprox())
   let total = 0.0
   for (const l of layout.links) total = total + l.value
+  const loc = svgLocale(options)
+  const n = (x: number): string => svgNumber(x, loc.number)
+  const totalText = loc.format === undefined ? `${total}` : loc.format(total)
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${count(layout.nodes.length, 'node', 'nodes')}, ${count(layout.links.length, 'flow', 'flows')} totalling ${total}.` : undefined)
+    (options.title !== undefined ? svgSentence(loc.messages?.sankeyDescription, () => `${options.title}: ${count(layout.nodes.length, 'node', 'nodes', loc.number)}, ${count(layout.links.length, 'flow', 'flows', loc.number)} totalling ${totalText}.`, { title: options.title, nodes: n(layout.nodes.length), flows: n(layout.links.length), total: totalText }) : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
@@ -885,6 +960,10 @@ export interface GraphToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -897,9 +976,11 @@ export function graphToSvg(options: GraphToSvgOptions): string {
   const layout = layoutGraph(options.nodes, options.links, box, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.graph })
   const cmds = renderGraph(layout, box, { palette: t.palette, labelColor: t.label, linkColor: t.label, ...options.graph })
   void (options.measure ?? measureApprox())
+  const loc = svgLocale(options)
+  const n = (x: number): string => svgNumber(x, loc.number)
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${count(layout.nodes.length, 'node', 'nodes')}, ${count(layout.links.length, 'link', 'links')}.` : undefined)
+    (options.title !== undefined ? svgSentence(loc.messages?.graphDescription, () => `${options.title}: ${count(layout.nodes.length, 'node', 'nodes', loc.number)}, ${count(layout.links.length, 'link', 'links', loc.number)}.`, { title: options.title, nodes: n(layout.nodes.length), links: n(layout.links.length) }) : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
@@ -923,6 +1004,10 @@ export interface CalendarToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -941,9 +1026,12 @@ export function calendarToSvg(options: CalendarToSvgOptions): string {
   let filled = 0
   for (const c of layout.cells) if (options.values[c.date] !== undefined) filled++
   const dom = calendarDomain(layout, vals)
+  const loc = svgLocale(options)
+  const n = (x: number): string => svgNumber(x, loc.number)
+  const v = (x: number): string => (loc.format === undefined ? `${x}` : loc.format(x))
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${layout.cells.length} days from ${options.start} to ${options.end}, ${filled} with values from ${dom.min} to ${dom.max}.` : undefined)
+    (options.title !== undefined ? svgSentence(loc.messages?.calendarDescription, () => `${options.title}: ${n(layout.cells.length)} days from ${options.start} to ${options.end}, ${n(filled)} with values from ${v(dom.min)} to ${v(dom.max)}.`, { title: options.title, days: n(layout.cells.length), start: options.start, end: options.end, filled: n(filled), min: v(dom.min), max: v(dom.max) }) : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
@@ -963,6 +1051,10 @@ export interface GanttToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -974,10 +1066,13 @@ export function ganttToSvg(options: GanttToSvgOptions): string {
   const measure = options.measure ?? measureApprox()
   const layout = layoutGantt(options.tasks, { x: 4.0, y: 4.0, w: width - 8.0, h: height - 8.0 }, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, todayColor: t.negative, ...options.gantt }, measure)
   const cmds = renderGantt(layout, { palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, todayColor: t.negative, ...options.gantt })
+  const loc = svgLocale(options)
+  const start = formatIsoDays(Math.floor(taskExtent(layout).min))
+  const end = formatIsoDays(Math.floor(taskExtent(layout).max))
   const description =
     options.description ??
     (options.title !== undefined
-      ? `${options.title}: ${count(layout.rows.length, 'task', 'tasks')} from ${formatIsoDays(Math.floor(taskExtent(layout).min))} to ${formatIsoDays(Math.floor(taskExtent(layout).max))}.`
+      ? svgSentence(loc.messages?.ganttDescription, () => `${options.title}: ${count(layout.rows.length, 'task', 'tasks', loc.number)} from ${start} to ${end}.`, { title: options.title, tasks: svgNumber(layout.rows.length, loc.number), start, end })
       : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
@@ -1001,6 +1096,10 @@ export interface ParallelToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** BCP 47 tag: the registered pack's words (under `messages`) and the locale's digits, as the component's `locale`. */
+  locale?: string | undefined
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -1012,13 +1111,16 @@ export function parallelToSvg(options: ParallelToSvgOptions): string {
   const gutter = 40.0
   const vertical = options.orient === 'vertical'
   const box = vertical ? transposeRect({ x: 0.0, y: 0.0, w: width, h: height }) : { x: 0.0, y: 0.0, w: width, h: height }
-  const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: box.x + gutter, y: box.y + 8.0, w: Math.max(0.0, box.w - gutter * 2.0), h: Math.max(0.0, box.h - 16.0) }, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel })
+  const loc = svgLocale(options)
+  const layout = layoutParallel(options.axes, parallelRows(options.axes, options.rows), { x: box.x + gutter, y: box.y + 8.0, w: Math.max(0.0, box.w - gutter * 2.0), h: Math.max(0.0, box.h - 16.0) }, { palette: t.palette, labelColor: t.label, axisColor: t.axis, ...options.parallel }, loc.format)
   const drawnPar = renderParallel(layout, { palette: t.palette, labelColor: t.label, axisColor: t.axis, highlightColor: t.negative, ...options.parallel })
   const cmds = vertical ? transposeCmds(drawnPar) : drawnPar
   void (options.measure ?? measureApprox())
+  const n = (x: number): string => svgNumber(x, loc.number)
+  const axisNames = options.axes.map((a) => a.name).join(', ')
   const description =
     options.description ??
-    (options.title !== undefined ? `${options.title}: ${options.rows.length} rows across ${options.axes.length} axes (${options.axes.map((a) => a.name).join(', ')}).` : undefined)
+    (options.title !== undefined ? svgSentence(loc.messages?.parallelDescription, () => `${options.title}: ${n(options.rows.length)} rows across ${n(options.axes.length)} axes (${axisNames}).`, { title: options.title, rows: n(options.rows.length), axes: n(options.axes.length), list: axisNames }) : undefined)
   return renderSvg(cmds, width, height, {
     ...options.svg,
     ...(options.title !== undefined ? { title: options.title } : {}),
