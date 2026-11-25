@@ -8,7 +8,7 @@ import { runSolid } from './impl/solid'
 import { runSvelte } from './impl/svelte'
 import { runVanilla } from './impl/vanilla'
 import { runVue } from './impl/vue'
-import type { BenchSuite } from './runner'
+import { configureScenarioRun, type BenchSuite } from './runner'
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
@@ -322,6 +322,10 @@ if (__profileClear !== null) {
       return
     }
     setStatus(`Running ${scenarioId}: ${__frameworkParam}…`)
+    configureScenarioRun({
+      captureDomShapes: __url.searchParams.get('domShapes') === '1',
+      gateOnly: __url.searchParams.get('gateOnly') === '1',
+    })
     const container = makeContainer()
     try {
       const suite = await scenario.run(__frameworkParam, container)

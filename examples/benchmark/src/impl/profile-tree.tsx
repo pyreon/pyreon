@@ -49,9 +49,18 @@ import {
   useContext as solidUseContext,
 } from 'solid-js'
 import { insert, render as solidRender, template as solidTemplate } from 'solid-js/web'
+import { TREE_INITIAL_VALUE } from './scenario-shared'
 
 /** Same depth `scenario-tree.ts` uses: 2,047 components, 1,024 leaves. */
 const TREE_DEPTH = 11
+
+/**
+ * Same non-empty initial value `scenario-tree.ts` mounts with
+ * (`TREE_INITIAL_VALUE`): with `''` the Solid arms (G, S) created no leaf text
+ * node while the Pyreon arms and V created 1,024 empty ones, so the rungs and
+ * the heap figure compared different DOMs.
+ */
+const INITIAL = TREE_INITIAL_VALUE
 
 // ─── A: byte-for-byte the components `scenario-tree.ts` benches ──────────────
 
@@ -171,7 +180,7 @@ function PyreonNodeGet(props: { depth: number }): VNodeChild {
 
 // ─── F: leaf reads a plain signal (direct tier) instead of the context ───────
 
-const leafSig = signal('')
+const leafSig = signal(INITIAL)
 
 function PyreonNodeSig(props: { depth: number }): VNodeChild {
   if (props.depth <= 1) return <span class="leaf">{leafSig()}</span>
@@ -259,7 +268,7 @@ function vanillaBuild(depth: number): Node {
   if (vLeafProto === null) {
     vLeafProto = document.createElement('span')
     vLeafProto.className = 'leaf'
-    vLeafProto.appendChild(document.createTextNode(''))
+    vLeafProto.appendChild(document.createTextNode(INITIAL))
     vBranchProto = document.createElement('div')
     vBranchProto.className = 'branch'
   }
@@ -276,9 +285,9 @@ export type TreeArm = (typeof TREE_ARMS)[number]
 export function setupTreeProfile(makeHost: () => HTMLElement): void {
   const hosts: Record<string, HTMLElement> = {}
   for (const a of TREE_ARMS) hosts[a] = makeHost()
-  const pValue = signal('')
-  const [sValue] = createSignal('')
-  const solid2Tree = solid2CreateTree(TREE_DEPTH)
+  const pValue = signal(INITIAL)
+  const [sValue] = createSignal(INITIAL)
+  const solid2Tree = solid2CreateTree(TREE_DEPTH, INITIAL)
   const disposers: Record<string, (() => void) | null> = {}
 
   const mountPyreon = (arm: string, vnode: unknown) => {

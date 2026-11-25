@@ -77,8 +77,8 @@ function TreeNode(props) {
   )
 }
 
-export function createTree(depth) {
-  const [value, setValue] = createSignal('')
+export function createTree(depth, initial) {
+  const [value, setValue] = createSignal(initial)
   return {
     mount(host) {
       const dispose = render(

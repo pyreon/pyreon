@@ -23,10 +23,13 @@
   const slots = Array.from({ length: MEMO_CONSUMERS }, (_, i) => i)
 </script>
 
-<div class="memo-root">
-  <span class="memo-source">{getSource()}</span>
-  <span class="memo-bucket">{bucket}</span>
-  <div class="memo-consumers">
+<!--
+  No whitespace between the root's children: Svelte keeps whitespace between
+  sibling elements as a " " text node, which gave this arm two text nodes no
+  other arm renders (caught by the DOM-shape gate in bench-scenarios.ts).
+-->
+<div class="memo-root"><span class="memo-source">{getSource()}</span><span class="memo-bucket">{bucket}</span><div
+    class="memo-consumers">
     {#each slots as _slot}
       <MemoConsumer {bucket} />
     {/each}

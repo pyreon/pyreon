@@ -8,6 +8,11 @@
   import { getMapRows } from './maplist-state.svelte'
 </script>
 
+<!--
+  No whitespace between </table> and the empty-state block: Svelte keeps it as a
+  " " text node no other arm renders (caught by the DOM-shape gate in
+  bench-scenarios.ts).
+-->
 <div class="ml">
   <table>
     <tbody>
@@ -19,6 +24,5 @@
         </tr>
       {/each}
     </tbody>
-  </table>
-  {#if getMapRows().length === 0}<p class="empty">No rows</p>{/if}
+  </table>{#if getMapRows().length === 0}<p class="empty">No rows</p>{/if}
 </div>
