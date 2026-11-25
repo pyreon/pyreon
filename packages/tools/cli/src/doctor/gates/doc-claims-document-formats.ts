@@ -45,6 +45,11 @@ function formatDocFiles(repoRoot: string): string[] {
   return out
 }
 
+/** A string literal, or a template literal without `${…}` (which is computed at runtime, not a format id). */
+function isStaticLiteral(quote: string, value: string): boolean {
+  return quote !== '`' || !value.includes('${')
+}
+
 /**
  * The second argument of the call whose `(` is at `open`, when it starts with
  * a string literal: its value and offset. Walks brackets and quotes so a first
@@ -69,8 +74,7 @@ function secondStringArg(text: string, open: number): { value: string; at: numbe
     } else if (c === ',' && depth === 0) {
       const rest = text.slice(i + 1, i + 200)
       const m = rest.match(/^\s*(['"`])([^'"`\n]*)\1/)
-      // A template literal with `${…}` is computed at runtime, not a format id.
-      if (!m || (m[1] === '`' && (m[2] ?? '').includes('${'))) return undefined
+      if (!m || !isStaticLiteral(m[1] as string, m[2] as string)) return undefined
 
       return { value: m[2] as string, at: i + 1 + (m.index ?? 0) + m[0].indexOf(m[1] as string) }
     }
