@@ -1,4 +1,5 @@
 import { PARKED, type Parked } from './parked-text'
+import { domNumberText, type TextValue } from './text-value'
 
 
 /**
@@ -225,12 +226,13 @@ export function rangeText(open: Comment): string {
  * accessor is mounted, not written as text, and is not this report's
  * business); `next` is the string the binder writes.
  */
-export function reportFirstText(node: Text, value: unknown, next: string, leaf: 'text' | 'reactive'): void {
+export function reportFirstText(node: Text, value: unknown, next: TextValue, leaf: 'text' | 'reactive'): void {
   if (value !== null && (typeof value === 'object' || typeof value === 'function')) return
   const branded = (node as BrandedText)[SERVER_TEXT]
   const server = branded !== undefined ? branded : node.data
-  if (server !== next) {
-    warnHydrationMismatch('text', next, server, compiledMismatchPath(node.parentNode, leaf))
+  const text = typeof next === 'number' ? domNumberText(next) : next
+  if (server !== text) {
+    warnHydrationMismatch('text', text, server, compiledMismatchPath(node.parentNode, leaf))
   }
 }
 

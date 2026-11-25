@@ -28,7 +28,6 @@ import {
 import {
   dispatchToErrorBoundary,
   propagateError,
-  _childText,
   _isVNodeLike,
   _setSuspenseHydrating,
   _runHooked,
@@ -82,6 +81,7 @@ import {
   mountOwned,
   runUnmountHooks,
 } from './mount'
+import { domChildText } from './text-value'
 import { buildRowPlan, findMatchingClose, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import { releaseRef } from './teardown'
 import type { RowPlan } from './hydration-plan'
@@ -380,8 +380,9 @@ function hydrateSoleAccessorChild(
     first.nextSibling === null
   ) {
     const bound = first as Text
-    if (bound.data !== _childText(initial)) {
-      warnHydrationMismatch('text', _childText(initial), bound.data, `${path} > reactive`)
+    const expected = domChildText(initial)
+    if (bound.data !== expected) {
+      warnHydrationMismatch('text', expected, bound.data, `${path} > reactive`)
     }
     // The BARE binder is correct here, and this is the one hydrate site where
     // it is. `bindOwnedText` exists because a node adopted into a live parent
@@ -767,7 +768,7 @@ function hydrateReactiveChild(
       const after = end.nextSibling
       // Single-text-node range + text-ish initial → ADOPT the node and bind
       // directly (the dominant reactive-text case, no remount). Deliberately NOT
-      // gated on `data === _childText(initial)`: a genuine server/client divergence
+      // gated on `data === domChildText(initial)`: a genuine server/client divergence
       // still adopts the SAME text node and the renderEffect writes the client
       // value on its first run, so recovery is in-place rather than a
       // double-mount. Only the value is corrected; the mismatch is reported.
@@ -779,8 +780,9 @@ function hydrateReactiveChild(
         only.nextSibling === end
       ) {
         const bound = only as Text
-        if (bound.data !== _childText(initial)) {
-          warnHydrationMismatch('text', _childText(initial), bound.data, `${path} > reactive`)
+        const expected = domChildText(initial)
+        if (bound.data !== expected) {
+          warnHydrationMismatch('text', expected, bound.data, `${path} > reactive`)
         }
         // Polymorphic binding: the accessor may later yield a VNode
         // (`() => loading() ? 'Loading…' : <Table/>`) — the shared helper
@@ -972,7 +974,7 @@ function hydrateReactiveText(
   // The caller's sampled value; `child` is its primed accessor (`primeAccessor`).
   initial: string | number | boolean | null | undefined,
 ): [Cleanup, ChildNode | null] {
-  const expected = _childText(initial)
+  const expected = domChildText(initial)
 
   // Empty initial value: SSR emitted NOTHING, so there is no text node to adopt.
   // Bind a fresh text node inserted at the CURSOR (client parity), consuming
@@ -1550,7 +1552,7 @@ function hydrateChild(
   // fell through to the VNode walk, claimed nothing, and its server text was
   // swept) and any object that is not a VNode/NativeItem (a `Date`).
   if (typeof child !== 'object' || !_isVNodeLike(child)) {
-    const expected = typeof child === 'string' ? child : _childText(child)
+    const expected = typeof child === 'string' ? child : domChildText(child)
     // Empty static text: SSR emitted NOTHING for it, so there is no node to
     // adopt. Insert the empty text node the client renderer would have
     // created (DOM parity) at the CURSOR — consuming nothing keeps every

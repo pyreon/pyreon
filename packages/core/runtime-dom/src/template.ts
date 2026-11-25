@@ -1,5 +1,5 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { _childText, _isStructuralChild } from '@pyreon/core/internal'
+import { _isStructuralChild } from '@pyreon/core/internal'
 import { getContextOwner } from '@pyreon/reactivity'
 import {
   _noopDispose,
@@ -11,6 +11,7 @@ import {
   _renderBind,
 } from '@pyreon/reactivity/internal'
 import { _tagTextBinding } from './binding-registry'
+import { textChanged, textValue, type TextValue } from './text-value'
 import { _takeParkedRange, hasParkedRange, isMidSlotText, peekParkedRange } from './slot-brands'
 import {
   _adoptParkedText,
@@ -191,7 +192,7 @@ export function _setChild(node: Element, value: unknown): void {
     // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`. A
     // string, the dominant value, skips the call. A NUMBER is handed to the DOM
     // unconverted (see `_replaceText`).
-    const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
+    const text = textValue(value)
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below:
     // neither consumes a #4599 region's mark, so `_settleRegions` treats the
@@ -265,7 +266,7 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // "null" (and "false", and `a,b` for an array) on the page where SSR
     // renders nothing / `ab`. A number reaches the DOM unconverted (see
     // `_replaceText`); `createTextNode` and `Text.data` convert it per the spec.
-    const text = (typeof value === 'string' || typeof value === 'number' ? value : _childText(value)) as string
+    const text = textValue(value) as string
     if (!isMidSlotText(placeholder)) {
       parent.replaceChild(document.createTextNode(text), placeholder)
     } else if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
@@ -407,16 +408,17 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
     // functions (a VNode, an accessor) keep the general path below.
     const v = d.value as unknown
     if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
-      // A number on a FRESH clone goes to the DOM unconverted (see
-      // `_replaceText`); an adopted node keeps the string read-back below.
-      if (typeof v === 'number' && _freshBind) {
-        node.data = v as unknown as string
+      // A number goes to the DOM unconverted (see `text-value.ts`). A FRESH
+      // clone is written outright; an adopted node only when its server text
+      // differs.
+      const next = textValue(v)
+      if (_freshBind) {
+        node.data = next as string
         return _noopDispose
       }
-      const next = v == null || typeof v === 'boolean' ? '' : String(v as string | number)
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
-      if (node.data !== next) node.data = next
+      if (textChanged(next, node.data)) node.data = next as string
 
       return _noopDispose
     }
@@ -436,27 +438,22 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
  */
 function bindTextTracked(fn: () => unknown, node: Text, ownerAtSetup: ReturnType<typeof getContextOwner>): () => void {
   let core: PolyTextCore | null = null
-  // Last string written — same read-back saving as the fast path above.
-  let written: string | null | undefined = null
+  // Last value written, raw — same read-back saving as the fast path above.
+  let written: TextValue | null | undefined = null
   const disposeEffect = _renderBind(() => {
     const v = fn()
     if (core !== null) {
       core.apply(v as VNodeChild)
       return
     }
-    const next =
-      v == null || typeof v === 'boolean'
-        ? ''
-        : typeof v === 'object'
-          ? _childText(v)
-          : String(v as string | number)
+    const next = textValue(v)
     if (written === null) {
       written = _freshBind ? undefined : node.data
       // Dev: the first write into ADOPTED server text (#4419).
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
     }
-    if (next !== written) {
+    if (textChanged(next, written)) {
       if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
         const parent = node.parentNode
         if (parent !== null) {
@@ -466,7 +463,8 @@ function bindTextTracked(fn: () => unknown, node: Text, ownerAtSetup: ReturnType
         }
       }
       if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
-      node.data = next
+      // A number goes to the DOM unconverted (see `text-value.ts`).
+      node.data = next as string
       written = next
     }
   })
@@ -504,29 +502,30 @@ export function _bindText(
     // an upgrade, the combined cleanup after one. The returned disposer reads it
     // late so ONE stable function survives the subscriber swap.
     let disposer: (() => void) | null = null
-    // The string this binding last wrote. Comparing against it instead of
-    // reading `node.data` back saves a DOM read (and the string it returns) on
-    // every update. `null` until the first call, which reads the node once so a
-    // hydration-adopted node whose server text already matches is not rewritten.
+    // The value this binding last wrote, RAW (a number stays a number, see
+    // `text-value.ts`). Comparing against it instead of reading `node.data`
+    // back saves a DOM read (and the string it returns) on every update.
+    // `null` until the first call, which reads the node once so a
+    // hydration-adopted node whose server text already matches is not
+    // rewritten (`textChanged` compares a number with that text by the DOM's
+    // own conversion).
     // `undefined` = the first call ran on a FRESH clone, where the current text
     // is the template placeholder and nothing needs preserving: write
     // unconditionally instead of reading the node back.
-    let written: string | null | undefined = null
+    let written: TextValue | null | undefined = null
     const textUpdate = () => {
       const v = source._v
-      const next =
-      v == null || typeof v === 'boolean'
-        ? ''
-        : typeof v === 'object'
-          ? _childText(v)
-          : String(v as string | number)
+      const next = typeof v === 'string' || typeof v === 'number' ? v : textValue(v)
       if (written === null) {
         written = _freshBind ? undefined : node.data
         // Dev: the first write into ADOPTED server text (#4419).
         if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
           reportFirstText(node, v, next, 'reactive')
       }
-      if (next !== written) {
+      // Two strings, the dominant case, are compared inline; anything else
+      // (a number, or a number against an adopted node's server string) goes
+      // through `textChanged`.
+      if (next !== written && ((typeof next === 'string' && typeof written === 'string') || textChanged(next, written))) {
         // Value actually changed — the ONLY place the upgrade check runs, never
         // on the no-change hot path. Strings and numbers short-circuit on typeof.
         if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
@@ -552,7 +551,7 @@ export function _bindText(
           // through to the historical String() coercion + dev warning.
         }
         if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
-        node.data = next
+        node.data = next as string
         written = next
       }
     }

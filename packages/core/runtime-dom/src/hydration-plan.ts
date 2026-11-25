@@ -243,7 +243,7 @@ function walkPlan(vnode: VNode, domPath: number[], plan: RowPlan): boolean {
     }
     if (typeof child === 'string' || typeof child === 'number' || typeof child === 'bigint') {
       if (prevWasText) return false // parser merges adjacent text — interpretive owns splitText
-      if (String(child).length === 0) return false // empty text: no DOM node
+      if (child === '') return false // empty text: no DOM node
       plan.sigKinds.push(K_TEXT)
       prevWasText = true
       domIdx++
