@@ -427,6 +427,7 @@ export const COMPILER_ABI: Record<string, readonly string[]> = {
     '_rsCollapseDyn',
     '_rsCollapseDynH',
     '_rsCollapseH',
+    '_selectWait',
     '_setAttr',
     '_setChild',
     '_setChildAt',
