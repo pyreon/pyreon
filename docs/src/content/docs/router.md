@@ -2666,6 +2666,8 @@ For focus management on route change (moving keyboard focus to the new content),
 
 Route navigations are automatically wrapped in `document.startViewTransition()` when the browser supports the View Transitions API. This provides smooth CSS-driven transitions between pages with zero configuration.
 
+**Only when the page changes.** A navigation that moves only the query or the hash (`/products?page=2` → `/products?page=3`) is not animated: it is state bookkeeping — `@pyreon/url-state` through `setUrlRouter`, a filter, a form synced to the URL — that often runs per keystroke, and a transition would snapshot and cross-fade the whole document each time.
+
 **Reduced motion is respected automatically.** When the user's OS is set to *reduce motion* (`@media (prefers-reduced-motion: reduce)`), the router skips the View Transition and swaps the DOM synchronously instead — the navigation still happens, only the fade/slide animation is suppressed. This satisfies [WCAG 2.3.3 "Animation from Interactions"](https://www.w3.org/WAI/WCAG21/Understanding/animation-from-interactions.html) with no configuration. The preference is read per-navigation, so toggling it mid-session takes effect on the next route change.
 
 To opt out for a specific route, set `meta.viewTransition: false`:

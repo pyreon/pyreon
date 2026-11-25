@@ -330,7 +330,7 @@ setTyped({ page: 2 }) // other query params and the hash are kept
 
 ## View Transitions
 
-Route changes auto-wrap in `document.startViewTransition()` when supported. Opt out per-route with `meta: { viewTransition: false }`.
+Route changes auto-wrap in `document.startViewTransition()` when supported. A navigation that moves only the query or hash is not animated (it is state bookkeeping, often per keystroke). Opt out per-route with `meta: { viewTransition: false }`.
 
 **`await router.push()` / `.replace()` resolves on `updateCallbackDone`** — the DOM commit, NOT the full animation:
 

@@ -1234,7 +1234,10 @@ export function createModel(
       }
       const nextQuery = serializeUrlState(forQuery, defaults)
       if (route) {
-        route.go(next.c ?? '', nextQuery)
+        // Untracked: `go` is a router navigation, which reads the router's
+        // own state (`currentRoute()`) — tracked here, every navigation
+        // re-ran this effect.
+        untrack(() => route.go(next.c ?? '', nextQuery))
         return
       }
       hist.replaceState(hist.state, '', nextQuery ? `?${nextQuery}` : loc.pathname)

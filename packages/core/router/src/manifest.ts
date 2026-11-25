@@ -77,7 +77,7 @@ const User = () => {
     'useTransition — reactive signal for route transition state',
     'useMiddlewareData — read data set by route middleware chain',
     'useLoaderData — access route loader results',
-    'View Transitions API — auto-enabled, awaits updateCallbackDone',
+    'View Transitions API — auto-enabled for path changes (not query/hash-only), awaits updateCallbackDone',
     'Named routes — typed navigation via { name, params }',
     'Nested routes — recursive matching with child RouterView',
     'Navigation guards — per-route and global beforeEnter/afterEach hooks',

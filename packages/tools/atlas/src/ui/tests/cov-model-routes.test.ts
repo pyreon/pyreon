@@ -132,6 +132,33 @@ describe('writing through the route', () => {
     expect(new URLSearchParams(location.search).get('c')).toBe('badge')
   })
 
+  // `go` is a ROUTER navigation, and a router reads its own state while it
+  // navigates (`currentRoute()`). Called bare inside the URL-sync effect, those
+  // reads subscribed the effect to the router: every navigation re-ran it.
+  it('does not subscribe the URL sync to whatever the router reads in `go`', () => {
+    const routerState = signal(0)
+    let scenarioReads = 0
+    const counted: WorkbenchComponent = {
+      ...comp('button'),
+      get scenarios() {
+        scenarioReads++
+        return []
+      },
+    }
+    const route: WorkbenchRoute = {
+      id: () => 'button',
+      go: () => {
+        routerState()
+      },
+    }
+    const m = createModel({ components: [counted] }, { route })
+    m.setValue('button', 'label', 'Edited')
+    const before = scenarioReads
+    routerState.set(1)
+    routerState.set(2)
+    expect(scenarioReads).toBe(before)
+  })
+
   it('an empty catalog navigates to the root, never to `//`', () => {
     const { route, writes } = fakeRoute(undefined)
     const m = createModel({ components: [] }, { route })

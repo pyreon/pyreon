@@ -4686,6 +4686,37 @@ describe('View Transitions API', () => {
     router.destroy()
   })
 
+  // A query- or hash-only navigation is state bookkeeping (url-state, a
+  // filter, Atlas syncing its controls — per keystroke), not a page change.
+  // Animating it snapshotted the whole document each time, and in a
+  // same-origin iframe it crashed the Chromium renderer (Atlas embedded in
+  // pyreon.dev: `Target crashed` on the A11y tab).
+  it('does NOT call startViewTransition when only the query or hash changes', async () => {
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const vtRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/about', component: About },
+    ]
+    const router = createRouter({ routes: vtRoutes, url: '/about', mode: 'history' })
+    await router.replace('/about?p=a11y')
+    await router.replace('/about?p=a11y&args=x')
+    await router.push('/about?p=a11y#top')
+    expect(router.currentRoute().query).toEqual({ p: 'a11y' })
+    expect(router.currentRoute().hash).toBe('top')
+    expect(startViewTransition).not.toHaveBeenCalled()
+
+    // A real page change still animates.
+    await router.push('/')
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
   // WCAG 2.3.3 — respect `prefers-reduced-motion: reduce`. The route still
   // navigates (DOM swaps via the non-VT path); only the animation is skipped.
   const mockMatchMedia = (prefersReduce: boolean) => {

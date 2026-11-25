@@ -1489,8 +1489,16 @@ export function createRouter<TNames extends string = string>(
     const reducedMotion = isClient && prefersReducedMotion()
     // Not in memory mode: a view transition snapshots the WHOLE document and
     // skips any other transition in flight — the page router's included.
+    //
+    // Not when only the query or hash moves (`to.path === from.path`): the
+    // page did not change, and a query write is state bookkeeping that runs
+    // per keystroke — `@pyreon/url-state` through `setUrlRouter`, a filter, a
+    // component workbench syncing its controls. Each one snapshotted and
+    // cross-faded the whole document, and in a same-origin iframe it crashed
+    // the Chromium renderer outright (Atlas embedded in pyreon.dev).
     const useVT =
       ownsPage &&
+      to.path !== from.path &&
       !reducedMotion &&
       to.meta.viewTransition !== false &&
       typeof (document as any).startViewTransition === 'function'
