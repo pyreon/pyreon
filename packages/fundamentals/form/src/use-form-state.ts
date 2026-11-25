@@ -170,34 +170,29 @@ function getOrCreateAtoms<TValues extends Record<string, unknown>>(
   const cached = _atomsCache.get(form as unknown as object)
   if (cached) return cached as unknown as FormAtoms<TValues>
 
+  // Each atom DELEGATES to the form's own reactive accessor rather than
+  // re-implementing the scan, so the two can never disagree: they track the
+  // registered field SET (a field added by `registerField()` after this atom
+  // was created is seen), and `errors` drops a non-error value (`''`) exactly
+  // as `form.errors()` / `isValid()` do (`isRealError`).
   const atoms: FormAtoms<TValues> = {
     touchedFields: computed(() => {
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('form.formStateScan.fieldsRead', countFields(form))
-      const map = {} as Partial<Record<keyof TValues, boolean>>
-      for (const key of Object.keys(form.fields) as (keyof TValues & string)[]) {
-        if (form.fields[key].touched()) map[key] = true
-      }
-      return map
+
+      return form.touchedFields()
     }),
     dirtyFields: computed(() => {
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('form.formStateScan.fieldsRead', countFields(form))
-      const map = {} as Partial<Record<keyof TValues, boolean>>
-      for (const key of Object.keys(form.fields) as (keyof TValues & string)[]) {
-        if (form.fields[key].dirty()) map[key] = true
-      }
-      return map
+
+      return form.dirtyFields()
     }),
     errors: computed(() => {
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('form.formStateScan.fieldsRead', countFields(form))
-      const map = {} as Partial<Record<keyof TValues, ValidationError>>
-      for (const key of Object.keys(form.fields) as (keyof TValues & string)[]) {
-        const err = form.fields[key].error()
-        if (err !== undefined) map[key] = err
-      }
-      return map
+
+      return form.errors()
     }),
   }
   _atomsCache.set(form as unknown as object, atoms as unknown as FormAtoms<Record<string, unknown>>)
