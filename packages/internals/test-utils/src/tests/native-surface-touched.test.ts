@@ -35,7 +35,7 @@ describe('classifyNativeSurface — skips', () => {
   })
   it('does not run for ordinary web-only source', () => {
     expect(
-      classifyNativeSurface(['packages/core/runtime-dom/src/mount.ts', 'docs/x.md'], noFs).run,
+      classifyNativeSurface(['packages/core/runtime-dom/src/mount.ts', 'docs/x.md', 'packages/tools/lathe/src/cli/main.ts'], noFs).run,
     ).toBe(false)
   })
 })
@@ -53,6 +53,8 @@ describe('classifyNativeSurface — runs', () => {
     ['packages/core/reactivity/src/native-plugin.ts'],
     ['bun.lock'],
     ['.bun-version'],
+    ['packages/tools/lathe/src/emit/client.ts'],
+    ['packages/tools/lathe/src/tests/native-mutations.test.ts'],
   ])('%s forces the lanes', (file) => {
     const d = classifyNativeSurface([file], noFs)
     expect(d.run).toBe(true)

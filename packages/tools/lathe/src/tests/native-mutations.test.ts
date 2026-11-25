@@ -15,7 +15,8 @@
  * the SHIPPED mutation runtime.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { validateKotlinFiles } from '@pyreon/native-compiler'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -124,7 +125,7 @@ describe('a write is a native MUTATION component', () => {
     expect(notes).toContain(
       'export function CreateNoteMutation(props: { json: NoteInput; children: (mutate: () => void, data: Note | undefined, isPending: boolean, error: Error | null) => unknown })',
     )
-    expect(notes).toContain('const __m = useMutation<Note, Error, { json: NoteInput }>(createNote.mutation())')
+    expect(notes).toContain('const __m = useMutation<Note, Error, { json: NoteInput }>(createNote.mutation({ invalidates: [listNotes] }))')
     expect(notes).toContain('return () => props.children(() => __m.mutate({ json: props.json }), __m.data(), __m.isPending(), __m.error())')
     // Inline body and response are named once; the optional body is still a required prop.
     expect(notes).toContain('export type RenameNoteBody = {')
@@ -135,7 +136,7 @@ describe('a write is a native MUTATION component', () => {
     expect(notes).toContain(
       'export function DeleteNoteMutation(props: { id: string; children: (mutate: () => void, isPending: boolean, error: Error | null) => unknown })',
     )
-    expect(notes).toContain('useMutation<unknown, Error, { params: { id: string } }>(deleteNote.mutation())')
+    expect(notes).toContain('useMutation<unknown, Error, { params: { id: string } }>(deleteNote.mutation({ invalidates: [listNotes] }))')
     const ops = mod('ops.native.tsx')
     expect(ops).toContain('useMutation<unknown, Error, {}>(logout.mutation())')
     expect(ops).toContain('props.children(() => __m.mutate({}), __m.isPending(), __m.error())')
@@ -175,7 +176,33 @@ describe('a write is a native MUTATION component', () => {
     }
   })
 
+  it('invalidates what the web hook does, on both platforms', () => {
+    const notes = mod('notes.native.tsx')
+    // The same targets as `useCreateNote` (every GET at or below `/notes`).
+    expect(notes).toContain('(createNote.mutation({ invalidates: [listNotes] }))')
+    expect(notes).toContain('(deleteNote.mutation({ invalidates: [listNotes] }))')
+    // Natively: the URL root, which also covers the paths below it.
+    expect(transform(notes, { target: 'swift' }).code).toContain('PyreonQueryCache.shared.settleMutation(invalidating: "GET:https://notes.test/v1/notes")')
+    expect(transform(notes, { target: 'kotlin' }).code).toContain('PyreonQueryCache.settleMutation("GET:https://notes.test/v1/notes")')
+  })
+
   const QUERY_RUNTIME = join(__dirname, '../../../../fundamentals/query/native')
+
+  // CI runs this file with PYREON_REQUIRE_NATIVE_VALIDATE=1 on the runner that
+  // installs kotlinc (native-validate.yml), where a missing toolchain FAILS.
+  const REQUIRED = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
+  it.skipIf(!REQUIRED && !isKotlincAvailable())('Kotlin: compiles against the SHIPPED PyreonMutation.kt and PyreonQuery.kt', () => {
+    if (!isKotlincAvailable()) expect.fail('kotlinc is not on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).')
+    // The shipped files stand in for their stubs (no `augment`): a signature the
+    // stub got wrong fails here even though every stub gate passes.
+    const real = (file: string) =>
+      readFileSync(join(QUERY_RUNTIME, 'kotlin/com/pyreon/runtime', file), 'utf8')
+        .replace(/^package .*$/m, '')
+        .replace(/^import androidx\.compose\.runtime\..*$/gm, '')
+    const modules = MODULES.map((path) => transform(mod(path), { target: 'kotlin' }).code)
+    const r = validateKotlinFiles([...modules, real('PyreonQuery.kt'), real('PyreonMutation.kt')], { augment: [] })
+    expect(r.error ?? '').toBe('')
+  }, 600_000)
   const CORE_SWIFT = join(__dirname, '../../../../native/runtime-swift/Sources/PyreonRuntime')
 
   it.skipIf(!isSwiftUIAvailable())('Swift: compiles against the real SDK and the SHIPPED mutation runtime', () => {

@@ -103,7 +103,7 @@
    "note": "`@hey-api/sdk` maps to `plugins: client`, `@tanstack/react-query` to `queries`, `zod` to `validator: 'zod'`. A mutation already invalidates the reads it can change (`createBook` refetches `getBook` and `listBooks`); pass `invalidates` to change that."
   }
  ],
- "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">real output</div><h2>Delete one enum value from the spec. Here is what CI sees.</h2><p>The repo's <code>examples/lathe-bookshelf</code>, with <code>lost</code> removed from <code>Book.status</code> and the client not regenerated. Every line below is what the command printed.</p></div><div class=\"card\"><div class=\"in\"><pre>$ lathe check\nlathe / Bookshelf 1.2.0\n  4 models  4 operations  target=multiplatform\n  plugins: schemas, client, queries, mocks, faker, atlas, docs (+components - required by them)\n\n  (25 unchanged files, one \"·\" line each, omitted)\n  ~ src/gen/schemas/Book.ts\n  ~ src/gen/faker.ts\n  ~ src/gen/docs/models.md\n  ~ src/gen/api-surface.json\n\n  0 of 29 file(s) written\n\n  contract  1 breaking  0 additive\n    ! [field-type-changed] Book.status enum(\"available\"|\"borrowed\"|\"lost\") → enum(\"available\"|\"borrowed\")\n\n  native reach  3/4 operations\n    web-only 1 op(s): createBook\n      `POST` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.\n\n  lowers authors.native.tsx swift  [PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError]  compiled\n  lowers authors.native.tsx kotlin  [PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError]  compiled\n  lowers books.native.tsx swift  [PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError]  compiled\n  lowers books.native.tsx kotlin  [PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError]  compiled\n  all modules together swift  compiled\n  all modules together kotlin  compiled\n\n  STALE: 4 generated file(s) differ from the spec:\n    schemas/Book.ts\n    faker.ts\n    docs/models.md\n    api-surface.json\n\n  Fix: run `lathe generate` and commit the result.\n$ echo $?\n1</pre></div></div></div></section>",
+ "extraSectionsHtml": "<section class=\"p-sec tight\"><div class=\"wrap\"><div class=\"head\"><div class=\"label\">real output</div><h2>Delete one enum value from the spec. Here is what CI sees.</h2><p>The repo's <code>examples/lathe-bookshelf</code>, with <code>lost</code> removed from <code>Book.status</code> and the client not regenerated. Every line below is what the command printed.</p></div><div class=\"card\"><div class=\"in\"><pre>$ lathe check\nlathe check · 1 project\n\n  ✗ Bookshelf  1.2.0 · openapi.yaml · 4 models · 4 operations · multiplatform · stale\n    plugins        schemas, client, queries, mocks, faker, atlas, docs (+components, required by\n                   them)\n    files          4 of 29 files differ from the spec\n      ~ stale  src/gen/schemas/Book.ts\n      ~ stale  src/gen/faker.ts\n      ~ stale  src/gen/docs/models.md\n      ~ stale  src/gen/api-surface.json\n    contract       1 breaking · 0 additive\n      ~ breaking  field-type-changed  Book.status  enum(\"available\"|\"borrowed\"|\"lost\") →\n        enum(\"available\"|\"borrowed\")\n    native reach   4 of 4 operations\n    native verify  4 of 4 files lower\n      ✓ lowers    authors.native.tsx    swift   compiled\n          PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError\n      ✓ lowers    authors.native.tsx    kotlin  compiled\n          PyreonQuery&lt; PyreonZodSchema_ PyreonSchemaError\n      ✓ lowers    books.native.tsx      swift   compiled\n          PyreonQuery&lt; PyreonMutation&lt; PyreonHttpRequest( PyreonZodSchema_ PyreonSchemaError\n      ✓ lowers    books.native.tsx      kotlin  compiled\n          PyreonQuery&lt; PyreonMutation&lt; PyreonHttpRequest( PyreonZodSchema_ PyreonSchemaError\n      ✓ compiled  all modules together  swift\n      ✓ compiled  all modules together  kotlin\n\n  fix: run lathe generate and commit the result\n\n✗ 1 project stale · 1 breaking change · 87 ms\n$ echo $?\n1</pre></div></div></div></section>",
  "demo": {
   "title": "Pick what to generate.",
   "text": "Choose plugins. Lathe adds whatever they import and tells you what came along. The file list is what `lathe generate` writes for the Bookshelf example spec.",
@@ -264,8 +264,8 @@
    "text": "They are reported as a `response-headers` loss note. Header and cookie parameters are typed call arguments."
   },
   {
-   "title": "Mutations stay on the web",
-   "text": "The native compiler lowers reads, not mutations, so each `POST` is reported `web-only` with that reason. GET operations and typed streams reach native, and only with an absolute `baseUrl`."
+   "title": "Native writes send JSON and path parameters",
+   "text": "A `POST`, `PUT`, `PATCH` or `DELETE` reaches iOS and Android as a mutation component when it sends a JSON body (or none) and returns typed JSON (or nothing). A form or multipart body, a non-JSON response, or a required query or header parameter keeps that write `web-only`, with the reason in the report. Nothing reaches native without an absolute `baseUrl`."
   },
   {
    "title": "No surprise network calls",
@@ -331,7 +331,7 @@
   },
   {
    "q": "Which operations reach iOS and Android?",
-   "a": "With `target: 'multiplatform'` and an absolute `baseUrl`: GET operations (path parameters become component props) and typed SSE or NDJSON streams. Mutations stay web-only. Lathe runs the native compiler over its own output, checks for the lowering markers, and type-checks with `swiftc` and `kotlinc` when they are installed; without the compiler it says the check was skipped. The native targets are experimental."
+   "a": "With `target: 'multiplatform'` and an absolute `baseUrl`: GET operations (path parameters and required query parameters become component props), writes with a JSON body (a mutation component that refreshes the same reads the web hook does), and typed SSE or NDJSON streams. Lathe runs the native compiler over its own output, checks for the lowering markers, and type-checks with `swiftc` and `kotlinc` when they are installed; without the compiler it says the check was skipped. The native targets are experimental."
   },
   {
    "q": "Can I add my own output?",
@@ -398,8 +398,8 @@
    "path": ".agents/guides/tools/README.md \"Output layout\"; examples/lathe-bookshelf/README.md"
   },
   {
-   "claim": "Native reach rules: absolute baseUrl, GET with path params, typed streams, mutations web-only",
-   "path": "packages/tools/lathe/src/core/generate.ts lines 575-610 (hasNativeStreamComponent)"
+   "claim": "Native reach rules: absolute baseUrl, GET with path and required query params, JSON writes as mutation components, typed streams",
+   "path": "packages/tools/lathe/src/core/generate.ts (decide) and src/emit/client.ts (nativeDataBlocker, nativeMutationBlocker, hasNativeStreamComponent)"
   },
   {
    "claim": "Typed SSE stream reaches native (PyreonStream< marker, compiled)",

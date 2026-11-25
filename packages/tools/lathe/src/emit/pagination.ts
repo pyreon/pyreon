@@ -15,7 +15,7 @@
 import type { IrOperation, IrPagination, IrType } from '../core/ir'
 import { hookOf, propKey } from '../core/naming'
 import type { ModelTypes } from './operation-types'
-import { errorTypeOf, QUERY_HOOK_KEY_OPTION, resolve as resolveRef } from './operation-types'
+import { errorTypeOf, HELD_KEY, QUERY_HOOK_KEY_OPTION, resolve as resolveRef } from './operation-types'
 import { tsType } from './schema'
 import type { SourceFile } from './writer'
 
@@ -185,11 +185,13 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   f.doc(
     `Infinite-query options for \`${op.id}\` — ${describe}${p.hasMore ? `, until \`${p.hasMore}\` is false` : ''}.`,
     '',
-    'Pure: hand it to `queryClient.prefetchInfiniteQuery` in a loader.',
+    'Pure: hand it to `queryClient.prefetchInfiniteQuery` in a loader. Pass the',
+    "hook's `key` too, so the prefetch lands where the hook reads.",
   )
-  f.line(`export function ${name}(args: ${input}): ${opts} {`)
+  f.line(`export function ${name}(args: ${input}, options?: ${QUERY_HOOK_KEY_OPTION}): ${opts} {`)
+  f.line(`  const base: readonly unknown[] = [...${op.id}.key(args), 'infinite']`)
   f.line('  return {')
-  f.line(`    queryKey: [...${op.id}.key(args), 'infinite'],`)
+  f.line('    queryKey: options?.key ? options.key(base) : base,')
   f.line(
     `    queryFn: ({ pageParam, signal }) => ${op.id}({ ...args, query: { ...args?.query, ${propKey(p.param)}: pageParam }, signal }),`,
   )
@@ -220,7 +222,7 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   f.line('    const { key, ...extra } = options?.() ?? {}')
   f.line('    if (a === undefined) {')
   f.line('      return {')
-  f.line(`        queryKey: [...${op.id}.key.prefix, 'infinite'],`)
+  f.line(`        queryKey: [...${op.id}.key.prefix, ${HELD_KEY}, 'infinite'],`)
   f.line(`        queryFn: ${disabledFn},`)
   f.line(`        initialPageParam: ${initial(p)},`)
   f.line('        getNextPageParam: () => undefined,')
@@ -228,8 +230,7 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   f.line('        enabled: false,')
   f.line('      }')
   f.line('    }')
-  f.line(`    const q = ${name}(a)`)
-  f.line('    return { ...q, queryKey: key ? key(q.queryKey) : q.queryKey, ...extra, enabled: extra.enabled !== false }')
+  f.line(`    return { ...${name}(a, { key }), ...extra, enabled: extra.enabled !== false }`)
   f.line('  })')
   f.line('}')
 }

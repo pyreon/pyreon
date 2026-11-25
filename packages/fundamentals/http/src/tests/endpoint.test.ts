@@ -127,6 +127,22 @@ describe('endpoint — query adapter', () => {
     expect(handle.calls).toHaveLength(1)
   })
 
+  it('`key` extends the cache key from the endpoint key, with or without args', () => {
+    const { api } = makeApi()
+    const getUser = api.endpoint('GET /users/:id')
+    const listUsers = api.endpoint('GET /users')
+    const tenant = (base: readonly unknown[]) => [...base, { tenant: 'a' }]
+    expect(getUser.query({ params: { id: '1' } }, { key: tenant }).queryKey).toEqual([
+      'GET',
+      '/users/:id',
+      { params: { id: '1' } },
+      { tenant: 'a' },
+    ])
+    expect(listUsers.query(undefined, { key: tenant }).queryKey).toEqual(['GET', '/users', { tenant: 'a' }])
+    // @ts-expect-error -- `params` is required, so the options cannot come first
+    getUser.query(undefined, { key: tenant })
+  })
+
   it('actually cancels through the forwarded signal', async () => {
     const handle = createMock([{ path: '/slow', delay: 200, json: {} }])
     const api = createHttp({ use: [handle.middleware] })

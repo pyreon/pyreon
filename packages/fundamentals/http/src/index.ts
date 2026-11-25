@@ -80,6 +80,7 @@ export {
   type EndpointCallOptions,
   type EndpointError,
   type EndpointInput,
+  type EndpointQueryOptions,
   type EndpointKey,
   type EndpointOptions,
   type EndpointSpec,

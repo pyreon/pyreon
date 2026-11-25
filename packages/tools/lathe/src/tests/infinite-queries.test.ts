@@ -88,12 +88,25 @@ export function use() {
   const o = listPagesInfiniteOptions({})
   const start: number = o.initialPageParam
   void start
+  // A loader prefetch with the hook's \`key\` lands where the hook reads.
+  const tenant = (base: readonly unknown[]) => [...base, { tenant: 'a' }]
+  const keyed: readonly unknown[] = listPagesInfiniteOptions({}, { key: tenant }).queryKey
+  void keyed
+  useListEventsInfinite(() => ({}), () => ({ key: tenant }))
   // @ts-expect-error — options are typed
   useListEventsInfinite(() => ({}), () => ({ staleTimeTypo: 1 }))
 }
 `
     const { errors } = typecheckSpec('e3', SPEC, { plugins: ['schemas', 'client', 'queries'], pagination: PAGINATION }, { extra: { 'consumer.ts': consumer } })
     expect(errors, errors.join('\n')).toEqual([])
+  })
+
+  it('the factory takes the hook\'s `key`, so a prefetch matches the hook', async () => {
+    const e = emitToDisk('e3-key', SPEC, { plugins: ['schemas', 'client', 'queries'], pagination: PAGINATION })
+    const q = await e.load<{ listPagesInfiniteOptions(a: unknown, o?: unknown): { queryKey: readonly unknown[] } }>('queries/index.ts')
+    const plain = q.listPagesInfiniteOptions({}).queryKey
+    expect(q.listPagesInfiniteOptions({}, { key: (b: readonly unknown[]) => [...b, 't'] }).queryKey).toEqual([...plain, 't'])
+    cleanEmitted('e3-key')
   })
 
   it('pages through the generated mocks, with the next param taken from the page', async () => {

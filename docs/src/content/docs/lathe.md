@@ -998,7 +998,14 @@ invalidating the endpoint still matches:
 
 ```ts
 useListThings(() => ({ headers: { 'x-tenant': tenant() } }), () => ({ key: (base) => [...base, { tenant: tenant() }] }))
+// A loader prefetch with the same `key` lands where that hook reads:
+queryClient.prefetchQuery(listThings.query({ headers: { 'x-tenant': t } }, { key: (base) => [...base, { tenant: t }] }))
 ```
+
+`<op>InfiniteOptions(args, { key })` takes it too. Query options passed as the
+first argument (the order before this release) are ignored there and named once in a
+`console.warn`; `meta` is valid in both places, and in the first it is the
+REQUEST's meta (what a middleware reads), not TanStack's.
 
 ### Mutations invalidate what they change
 

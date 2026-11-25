@@ -154,6 +154,12 @@ export type EndpointInput<P extends string> = ([PathParamNames<P>] extends [neve
   cookies?: EndpointCallOptions['cookies']
 }
 
+/** The second argument of `endpoint.query(args, options)`. */
+export interface EndpointQueryOptions {
+  /** The endpoint's key in, the key to cache under out. */
+  key?: ((base: EndpointKey) => EndpointKey) | undefined
+}
+
 /** Per-call options every endpoint accepts, whatever its input type. */
 export interface EndpointCallOptions {
   headers?: HeadersInit | HeaderValues | undefined
@@ -393,8 +399,15 @@ export interface Endpoint<
   readonly key: ((...args: CallArgs<I & EndpointCallOptions>) => EndpointKey) & {
     readonly prefix: EndpointKey
   }
-  /** Options for `useQuery` — key, fetcher and cancellation all wired. */
-  query(...args: CallArgs<I & EndpointCallOptions>): QueryOptionsLike<TResponse>
+  /**
+   * Options for `useQuery` — key, fetcher and cancellation all wired.
+   *
+   * `options.key` receives the endpoint's key and returns the one to cache
+   * under — `(base) => [...base, { tenant }]` when headers or the caller
+   * change the result. Start from `base`, so invalidating the endpoint still
+   * matches; a loader that prefetches with the same `key` hits the hook's cache.
+   */
+  query(...args: [...CallArgs<I & EndpointCallOptions>, options?: EndpointQueryOptions]): QueryOptionsLike<TResponse>
   /**
    * Options for `useMutation`.
    *
@@ -552,8 +565,8 @@ export function defineEndpoint<
     path,
     errors: options.errors,
     key,
-    query: (args?: RawArgs) => ({
-      queryKey: buildKey(args),
+    query: (args?: RawArgs, queryOptions?: EndpointQueryOptions) => ({
+      queryKey: queryOptions?.key ? queryOptions.key(buildKey(args)) : buildKey(args),
       queryFn: ({ signal }: { signal: AbortSignal }) => call({ ...args, signal }),
     }),
     mutation: (mutationOptions?: {

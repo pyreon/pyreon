@@ -197,7 +197,8 @@ describe('generate', () => {
     expect(src).toContain('args: () => Parameters<typeof getBook>[0] | undefined')
     expect(src).toContain('if (a === undefined) {')
     // Keyed on the endpoint's own prefix, so an invalidation still matches it.
-    expect(src).toContain('queryKey: getBook.key.prefix')
+    // Held: a key under the prefix that no real request produces.
+    expect(src).toContain('queryKey: [...getBook.key.prefix, { held: true }]')
     // `enabled` AFTER the caller's options in the disabled branch: a caller's
     // `enabled: true` must not be able to fire a request with a missing path
     // parameter. In the ready branch it respects an explicit `false`.
@@ -212,14 +213,14 @@ describe('generate', () => {
     // in TanStack's query meta and `headers` were dropped.
     expect(src).toContain('export function useListBooks<TData = Awaited<ReturnType<typeof listBooks>>>(\n  args?: () => Parameters<typeof listBooks>[0] | undefined,')
     expect(src).toContain('    const a = args ? args() : {}')
-    expect(src).toContain('    const q = listBooks.query(a)')
+    expect(src).toContain('return { ...listBooks.query(a, { key }), ...extra')
   })
 
   it('lets every read hook extend its key through `key`, starting from the endpoint key (#4841)', () => {
     const src = file(generate(SPEC, web), 'queries/books.ts')
     expect(src).toContain("'queryKey' | 'queryFn'> & { key?: ((base: readonly unknown[]) => readonly unknown[]) | undefined },")
     expect(src).toContain('    const { key, ...extra } = options?.() ?? {}')
-    expect(src).toContain('return { ...q, queryKey: key ? key(q.queryKey) : q.queryKey, ...extra, enabled: extra.enabled !== false }')
+    expect(src).toContain('return { ...listBooks.query(a, { key }), ...extra, enabled: extra.enabled !== false }')
   })
 
   it('reports per-operation reach with a reason', () => {

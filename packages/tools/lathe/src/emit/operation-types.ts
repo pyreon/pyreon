@@ -25,6 +25,19 @@ export type ModelTypes = ReadonlyMap<string, IrType>
  * `queryKey`, so this is the one way to extend it, and starting from `base`
  * keeps invalidation by the endpoint's prefix matching.
  */
+/**
+ * The key segment of a HELD query (args accessor returned `undefined`).
+ *
+ * It used to key on the endpoint's bare prefix — the SAME key a live call with
+ * no arguments produces. TanStack keeps one query per key and its last
+ * observer's options win, so a held hook mounted beside a live
+ * `useListBooks()` handed the live one the disabled `queryFn`: after an
+ * invalidation it "refetched" into the disabled error. No real request has this
+ * segment (a real key is the prefix, then at most `{ params, query }`), and it
+ * still starts with the prefix, so invalidating the endpoint matches it.
+ */
+export const HELD_KEY = '{ held: true }';
+
 export const QUERY_HOOK_KEY_OPTION = '{ key?: ((base: readonly unknown[]) => readonly unknown[]) | undefined }'
 
 /** Does the operation SEND anything (params, query or a body)? */

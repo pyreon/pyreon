@@ -51,6 +51,7 @@ import {
   hasInput,
   inputType,
   type ModelTypes,
+  HELD_KEY,
   QUERY_HOOK_KEY_OPTION,
   resolve as resolveType,
   responseTypeOf,
@@ -1225,6 +1226,7 @@ function resolvedKind(
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
 export function emitWebQueries(doc: IrDocument): SourceFile[] {
   const files: SourceFile[] = [];
+  const warned = new Set<SourceFile>();
   // A stream is never cached, so it is never an invalidation target.
   const queryOps = doc.operations.filter(
     (o) => !isMutation(o) && !isStreamOnly(o),
@@ -1361,6 +1363,12 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
           hook,
         ),
       );
+      if (!args && !warned.has(f)) {
+        warned.add(f);
+        f.line();
+        f.lines(...QUERY_OPTIONS_IN_ARGS);
+        f.line();
+      }
       const extra = `options?: () => ${QUERY_HOOK_OPTIONS(data, err)}`;
       f.line(`export function ${hook}<TData = ${data}>(`);
       f.line(`  args${args ? "" : "?"}: () => ${input} | undefined,`);
@@ -1368,6 +1376,14 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       f.line(") {");
       f.line(`  return useQuery<${data}, ${err}, TData>(() => {`);
       f.line(args ? "    const a = args()" : "    const a = args ? args() : {}");
+      // A parameterless hook used to take its QUERY options first (#4841), so
+      // `useListThings(() => ({ staleTime }))` from before still compiles when
+      // the object is not a literal — and the option silently does nothing.
+      if (!args) {
+        f.line(
+          `    if (a !== undefined) lathe$queryOptionsInArgs(${q(hook)}, a)`,
+        );
+      }
       f.line("    const { key, ...extra } = options?.() ?? {}");
       // The disabled branch keys on the endpoint's own PREFIX — the same key
       // `keys` exposes — so an invalidation of the endpoint still matches it.
@@ -1375,13 +1391,10 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
       // fire a request whose path parameter is missing.
       f.line("    if (a === undefined) {");
       f.line(
-        `      return { queryKey: ${op.id}.key.prefix, queryFn: ${DISABLED_FN}, ...extra, enabled: false }`,
+        `      return { queryKey: [...${op.id}.key.prefix, ${HELD_KEY}], queryFn: ${DISABLED_FN}, ...extra, enabled: false }`,
       );
       f.line("    }");
-      f.line(`    const q = ${op.id}.query(a)`);
-      f.line(
-        "    return { ...q, queryKey: key ? key(q.queryKey) : q.queryKey, ...extra, enabled: extra.enabled !== false }",
-      );
+      f.line(`    return { ...${op.id}.query(a, { key }), ...extra, enabled: extra.enabled !== false }`);
       f.line("  })");
       f.line("}");
       emitInfinite(f, op, DISABLED_FN);
@@ -1757,7 +1770,14 @@ export function emitNativeModules(
     // built where `mutate(…)` is CALLED, so the component calls it and hands
     // the trigger to `children`; path params and the JSON body are props, read
     // when the trigger fires (the same props a triggered stream takes).
+    // The queries a write refreshes: the web hook's set (`invalidationTargets`),
+    // limited to this module's endpoints — PMTC reads one file, so the
+    // component can name only its own tag's. Natively each target becomes a
+    // URL root (`GET:<url up to its first path param>`), which also covers the
+    // paths below it.
+    const queryOps = doc.operations.filter((o) => !isMutation(o) && !isStreamOnly(o));
     for (const op of mutationOps) {
+      const targets = invalidationTargets(op, queryOps).filter((t) => ops.includes(t));
       const response = typedResponse(op);
       let data: string | undefined;
       if (response !== undefined) {
@@ -1824,7 +1844,7 @@ export function emitNativeModules(
       // `unknown` for a write with no typed response: PMTC reads it as "decode
       // nothing", and it is what the endpoint resolves to.
       f.line(
-        `  const __m = useMutation<${data ?? "unknown"}, Error, ${vars.length > 0 ? `{ ${vars.join("; ")} }` : "{}"}>(${op.id}.mutation())`,
+        `  const __m = useMutation<${data ?? "unknown"}, Error, ${vars.length > 0 ? `{ ${vars.join("; ")} }` : "{}"}>(${op.id}.mutation(${targets.length > 0 ? `{ invalidates: [${targets.map((t) => t.id).join(", ")}] }` : ""}))`,
       );
       // An ACCESSOR, for the reason the data component returns one.
       f.line(
@@ -1846,11 +1866,33 @@ export function emitNativeModules(
  * path ever reaches it.
  */
 /**
+ * Name a QUERY option passed where the request options go, once per hook. Not
+ * dev-gated: generated code cannot assume `process` (or Vite's `import.meta.env`)
+ * is typed in the consumer, and the check is a few `in` tests on misuse-only
+ * input. `$` in the names, so no operation or model can collide with them.
+ */
+const QUERY_OPTIONS_IN_ARGS = [
+  "const lathe$QUERY_ONLY = ['enabled', 'staleTime', 'gcTime', 'select', 'refetchInterval', 'refetchOnWindowFocus', 'refetchOnMount', 'refetchOnReconnect', 'retry', 'retryDelay', 'placeholderData', 'initialData', 'queryKey', 'queryFn', 'key']",
+  "const lathe$warned = new Set<string>()",
+  "function lathe$queryOptionsInArgs(hook: string, args: object): void {",
+  "  if (lathe$warned.has(hook)) return",
+  "  const misplaced = lathe$QUERY_ONLY.filter((k) => k in args)",
+  "  if (misplaced.length === 0) return",
+  "  lathe$warned.add(hook)",
+  "  console.warn(",
+  "    `[Pyreon] lathe: ${hook}(args) got ${misplaced.map((k) => `\\`${k}\\``).join(', ')}, which ${misplaced.length === 1 ? 'is a query option' : 'are query options'} and ${misplaced.length === 1 ? 'is' : 'are'} ignored there. ` +",
+  "      `The first argument is the request options (meta, headers, timeout); pass query options second: ${hook}(undefined, () => ({ ${misplaced[0]}: … })).`,",
+  "  )",
+  "}",
+];
+
+/**
  * The options a generated query hook takes: TanStack's, minus what the
  * endpoint owns (`queryKey`, `queryFn`), plus `key` (#4841).
  */
 const QUERY_HOOK_OPTIONS = (data: string, err: string): string =>
   `Omit<UseQueryOptions<${data}, ${err}, TData>, 'queryKey' | 'queryFn'> & ${QUERY_HOOK_KEY_OPTION}`;
+
 
 const DISABLED_FN =
   "() => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready'))";

@@ -106,6 +106,99 @@ describe('a parameterless read hook', () => {
   })
 })
 
+describe('a held hook beside a live one', () => {
+  it('does not hand the live query its disabled fetcher (one key per query in TanStack, last observer wins)', async () => {
+    const e = emitToDisk('query-hook-args-held', SPEC, PLUGINS)
+    const client = await e.load<{ setDevTransport(m: HttpMiddleware | null): void }>('client.ts')
+    const queries = await e.load<{ useListThings: (args?: () => unknown) => { data: () => unknown; error: () => unknown } }>('queries/index.ts')
+    const eps = await e.load<{ listThings: { key: { prefix: readonly unknown[] } } }>('endpoints/index.ts')
+    let calls = 0
+    client.setDevTransport((req) => {
+      calls++
+      return Promise.resolve({
+        raw: new Response(JSON.stringify([{ id: String(calls) }]), { headers: { 'content-type': 'application/json' } }),
+        status: 200,
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        request: req,
+      })
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    let live: { data: () => unknown; error: () => unknown } | undefined
+    const Live = () => {
+      live = queries.useListThings()
+      return null
+    }
+    // Mounted AFTER the live one, so its options are the last observer's.
+    const Held = () => {
+      queries.useListThings(() => undefined)
+      return null
+    }
+    const dispose = mount(h(QueryClientProvider, { client: qc }, () => [h(Live, null), h(Held, null)]), host)
+    try {
+      await settle()
+      expect(live?.data()).toEqual([{ id: '1' }])
+      // What a generated mutation's `invalidates` does after a write.
+      await qc.invalidateQueries({ queryKey: eps.listThings.key.prefix })
+      await settle()
+      expect(live?.error()).toBeNull()
+      expect(live?.data()).toEqual([{ id: '2' }])
+      expect(calls).toBe(2)
+    } finally {
+      dispose()
+      host.remove()
+      client.setDevTransport(null)
+      cleanEmitted('query-hook-args-held')
+    }
+  })
+})
+
+describe('query options passed where the request options go', () => {
+  it('are named in a warning, once per hook (the pre-#4841 call order compiles for a non-literal object)', async () => {
+    const e = emitToDisk('query-hook-args-misplaced', SPEC, PLUGINS)
+    const client = await e.load<{ setDevTransport(m: HttpMiddleware | null): void }>('client.ts')
+    const queries = await e.load<{ useListThings: (args?: () => unknown) => unknown }>('queries/index.ts')
+    client.setDevTransport((req) =>
+      Promise.resolve({ raw: new Response('[]', { headers: { 'content-type': 'application/json' } }), status: 200, ok: true, headers: new Headers({ 'content-type': 'application/json' }), request: req }),
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const legacy: Record<string, unknown> = { staleTime: 5_000, enabled: true }
+    const Probe = () => {
+      queries.useListThings(() => legacy)
+      queries.useListThings(() => legacy)
+      return null
+    }
+    const dispose = mount(h(QueryClientProvider, { client: new QueryClient() }, () => h(Probe, null)), host)
+    try {
+      await settle()
+      const calls = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('useListThings(args)'))
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toContain('`enabled`, `staleTime`')
+      expect(calls[0]).toContain('useListThings(undefined, () => ({ enabled: … }))')
+    } finally {
+      warn.mockRestore()
+      dispose()
+      host.remove()
+      client.setDevTransport(null)
+      cleanEmitted('query-hook-args-misplaced')
+    }
+  })
+})
+
+describe('a loader prefetch', () => {
+  it('lands where a hook with an extended key reads, through `query(args, { key })`', async () => {
+    const e = emitToDisk('query-hook-args-prefetch', SPEC, PLUGINS)
+    const eps = await e.load<{ listThings: { query(a?: unknown, o?: unknown): { queryKey: readonly unknown[] } } }>('endpoints/index.ts')
+    const key = (base: readonly unknown[]) => [...base, { tenant: 'a' }]
+    expect(eps.listThings.query(undefined, { key }).queryKey).toEqual(['https://things.test', 'GET', '/things', { tenant: 'a' }])
+    cleanEmitted('query-hook-args-prefetch')
+  })
+})
+
 describe('the hook types', () => {
   it('accept request options on a parameterless hook and refuse query options in their place', TYPECHECK_BUDGET, () => {
     const consumer = `

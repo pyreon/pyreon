@@ -184,15 +184,26 @@ public final class PyreonQueryCache: @unchecked Sendable {
     }
 
     /// `queryClient.invalidateQueries({ queryKey: [root] })`: every cached
-    /// entry under `root` (the key `root`, or one starting with `root:`) is
+    /// entry under `root` (the key `root`, or one continuing it with `:`, `/`
+    /// or `?` — a scoped key, a path below a URL root, its query strings) is
     /// marked stale — still served, refetched on its next check — and every
     /// LIVE query under it refetches now. Callable from any thread; the
     /// refetches start on the main actor. The returned task settles when
     /// they all have (the emitted code ignores it).
+    /// Is `key` under `root`? The root itself, or the root followed by `:`
+    /// (a scoped key), `/` (a path below a URL root: `GET:https://h/books`
+    /// covers `…/books/1`) or `?` (its query strings). Segment-safe: `/books`
+    /// never covers `/bookshelf`.
+    static func under(_ root: String, _ key: String) -> Bool {
+        guard key.hasPrefix(root) else { return false }
+        if key.count == root.count { return true }
+        let next = key[key.index(key.startIndex, offsetBy: root.count)]
+        return next == ":" || next == "/" || next == "?"
+    }
+
     @discardableResult
     public func invalidateQueries(_ root: String) -> _Concurrency.Task<Void, Never> {
-        let prefix = root + ":"
-        let matches: (String) -> Bool = { $0 == root || $0.hasPrefix(prefix) }
+        let matches: (String) -> Bool = { PyreonQueryCache.under(root, $0) }
         lock.lock()
         for key in store.keys where matches(key) { store[key]?.invalidated = true }
         let queries = liveLocked(matches)

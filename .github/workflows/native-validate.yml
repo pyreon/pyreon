@@ -586,6 +586,26 @@ jobs:
           }
           bun run --filter='@pyreon/native-*-kotlin' test
 
+      # lathe's generated native modules, compiled with this runner's pinned
+      # kotlinc against the SHIPPED Kotlin runtimes (PyreonMutation.kt,
+      # PyreonQuery.kt) — not just the stubs. Everywhere else the lathe suite runs
+      # without kotlinc and these cases self-skip; here
+      # PYREON_REQUIRE_NATIVE_VALIDATE=1 turns a missing toolchain into a failure.
+      # A lathe native-emit change reaches this job through
+      # scripts/native-surface-touched.ts (`lathe native emitter`).
+      - name: Compile lathe's native modules against the shipped Kotlin runtimes
+        env:
+          PYREON_REQUIRE_NATIVE_VALIDATE: '1'
+          PYREON_VALIDATE_CACHE_DIR: ${{ github.workspace }}/.cache/pyreon-native-validate
+          PYREON_VALIDATE_NO_CACHE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+        working-directory: packages/tools/lathe
+        run: |
+          command -v kotlinc >/dev/null 2>&1 || {
+            echo "::error::kotlinc is not on PATH; the lathe real-runtime Kotlin compile would not run"
+            exit 1
+          }
+          bunx vitest run src/tests/native-mutations.test.ts src/tests/native-required-query.test.ts src/tests/native-triggered-streams.test.ts
+
       - name: Verify co-located native runtime sources
         # Each cross-platform package ships its native runtime beside its src/
         # (`@pyreon/<pkg>/native/{swift,kotlin}/`, the co-location architecture).

@@ -31,9 +31,8 @@ export function useListAuthors<TData = Awaited<ReturnType<typeof listAuthors>>>(
     const a = args()
     const { key, ...extra } = options?.() ?? {}
     if (a === undefined) {
-      return { queryKey: listAuthors.key.prefix, queryFn: () => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready')), ...extra, enabled: false }
+      return { queryKey: [...listAuthors.key.prefix, { held: true }], queryFn: () => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready')), ...extra, enabled: false }
     }
-    const q = listAuthors.query(a)
-    return { ...q, queryKey: key ? key(q.queryKey) : q.queryKey, ...extra, enabled: extra.enabled !== false }
+    return { ...listAuthors.query(a, { key }), ...extra, enabled: extra.enabled !== false }
   })
 }

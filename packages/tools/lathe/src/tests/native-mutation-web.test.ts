@@ -109,3 +109,66 @@ describe('generated <Op>Mutation components on the web', () => {
     }
   })
 })
+
+const LIST_SPEC = JSON.stringify({
+  ...JSON.parse(SPEC),
+  paths: {
+    ...JSON.parse(SPEC).paths,
+    '/notes': {
+      get: {
+        operationId: 'listNotes',
+        tags: ['notes'],
+        responses: { 200: { description: 'ok', content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Note' } } } } } },
+      },
+    },
+  },
+})
+
+describe('a generated <Op>Mutation refreshes what the web hook refreshes', () => {
+  it('a successful write refetches the mounted list (`invalidates`, as `useRenameNote` does)', async () => {
+    const e = emitToDisk('native-mutation-web-list', LIST_SPEC, { target: 'multiplatform', plugins: ['schemas', 'client', 'queries'] })
+    const mod = await e.load<{
+      RenameNoteMutation: MutationComponent
+      ListNotesData: (props: { children: (data: Note[] | undefined) => VNodeChild }) => VNodeChild
+    }>('notes.native.tsx')
+    let lists = 0
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = input instanceof Request ? input : new Request(String(input), init)
+      if (req.method === 'GET') {
+        lists++
+        return new Response(JSON.stringify([{ id: 'n1', title: `v${lists}` }]), { headers: { 'content-type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({ id: 'n1', title: 'x' }), { headers: { 'content-type': 'application/json' } })
+    }) as typeof fetch
+    let trigger: (() => void) | undefined
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } } })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const dispose = mount(
+      h(QueryClientProvider, { client }, () => [
+        h(mod.ListNotesData, { children: (data) => h('p', null, data?.[0]?.title ?? '…') }),
+        h(mod.RenameNoteMutation, {
+          id: 'n1',
+          json: { title: 'x' },
+          children: (mutate) => {
+            trigger = mutate
+            return null
+          },
+        }),
+      ]),
+      host,
+    )
+    try {
+      await settle()
+      expect(host.textContent).toBe('v1')
+      trigger?.()
+      await settle()
+      expect(lists).toBe(2)
+      expect(host.textContent).toBe('v2')
+    } finally {
+      dispose()
+      host.remove()
+      cleanEmitted('native-mutation-web-list')
+    }
+  })
+})

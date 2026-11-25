@@ -246,6 +246,21 @@ fun testSettleMutationInvalidatesOnSuccessOnly() {
     check(calls == 2 && list.data.value == 2) { "a successful mutation refetches the live `todo` query" }
 }
 
+fun testUrlRootCoversPathsBelowAndQueryStrings() {
+    PyreonQueryCache.clearAll()
+    val root = "GET:https://h/books"
+    check(PyreonQueryCache.under(root, root)) { "a root covers itself" }
+    check(PyreonQueryCache.under(root, "$root/1")) { "a URL root covers a path below it" }
+    check(PyreonQueryCache.under(root, "$root?q=a")) { "a URL root covers its query strings" }
+    check(!PyreonQueryCache.under(root, "GET:https://h/bookshelf")) { "segment-safe" }
+    check(PyreonQueryCache.under("todo", "todo:8") && !PyreonQueryCache.under("todo", "todos")) { "`:` scoping unchanged" }
+    var calls = 0
+    val detail = PyreonQuery<Int>("$root/7", staleMillis = 60_000)
+    detail.runNow { calls++; calls }
+    start { PyreonQueryCache.settleMutation(root) { 1 } }
+    check(calls == 2) { "a mutation invalidating the list root refetches a live detail query" }
+}
+
 fun testSettleMutationCancelledRollsBackAndInvalidates() {
     PyreonQueryCache.clearAll()
     PyreonQueryCache.write("todo:1", 10)
@@ -294,6 +309,7 @@ fun testSetQueryDataIsOptimisticAndRollsBack() {
 }
 
 fun main() {
+    testUrlRootCoversPathsBelowAndQueryStrings()
     testQueryFetchesOnMissThenServesFromCache()
     testQueryStaleServesCachedThenRefetches()
     testQueryBackgroundRefreshDoesNotBlankUI()

@@ -84,6 +84,8 @@ interface MutationBinding {
   readonly type: TypeIR
   readonly source: MutationSource
   readonly options: Callbacks
+  /** Native query-key roots a success invalidates — read from `ep.mutation({ invalidates: [getX, listX] })`. */
+  readonly invalidates: readonly string[]
 }
 
 interface MutationFacts {
@@ -131,7 +133,7 @@ export function scanMutations(scan: ModuleScan): void {
 const UNLOWERED_OPTIONS: ReadonlyMap<string, string> = new Map([
   [
     'invalidates',
-    'native queries are self-contained containers with no shared client to invalidate — a mounted query does not re-fetch. Call its `refetch()` from `onSuccess` instead',
+    'on the `useMutation` options it is web-only. Pass it to the endpoint instead, `useMutation(ep.mutation({ invalidates: [listX, getX] }))`, which lowers: each target becomes a native key root that a successful mutation refetches',
   ],
   ['onMutate', 'an optimistic-update context has no native carrier'],
   ['retry', 'native mutations run once (the web default is no retry, too)'],
@@ -254,9 +256,16 @@ export function recognizeMutation(_call: CallSite, ctx: ParseContext): ExtDeclSp
   const arg = unwrapTypeLayers(ctx.args[0] as AnyNode) as AnyNode
   let source: MutationSource | undefined
   let options: Callbacks = {}
+  let invalidates: string[] = []
   const endpointOptions = (opts: AnyNode | undefined): void => {
     for (const prop of (opts?.type === 'ObjectExpression' ? (opts.properties as AnyNode[]) : []) ?? []) {
       const key = prop.type === 'SpreadElement' ? undefined : propName(prop)
+      if (key === 'invalidates') {
+        const roots = invalidationRoots(prop.value as AnyNode, ctx)
+        if (typeof roots === 'string') report(`\`.mutation({ invalidates })\` is IGNORED on iOS and Android: ${roots}`)
+        else invalidates = roots
+        continue
+      }
       if (key !== undefined) report(`\`.mutation({ ${key} })\` is IGNORED on iOS and Android (${UNLOWERED_OPTIONS.get(key) ?? 'it has no native counterpart'}).`)
     }
   }
@@ -320,7 +329,7 @@ export function recognizeMutation(_call: CallSite, ctx: ParseContext): ExtDeclSp
     return null
   }
   const type = ctx.typeArg()
-  mutationFacts(ctx).bindings.set(name, { type, source, options })
+  mutationFacts(ctx).bindings.set(name, { type, source, options, invalidates })
 
   return { type: MUTATION_TYPE, payload: { type } as never }
 }
@@ -373,8 +382,8 @@ interface MutateCallPayload {
   readonly noContent?: boolean
   readonly options: Callbacks
   readonly call: Callbacks
-  /** The query-key root a success invalidates (see {@link MutateQueryEffects}). */
-  readonly invalidates?: string
+  /** The query-key roots a success invalidates (see {@link MutateQueryEffects}). */
+  readonly invalidates?: readonly string[]
   /** The optimistic patch's fields; its key and their values are the LAST args, in that order. */
   readonly optimistic?: readonly { readonly name: string; readonly type: TypeIR }[]
 }
@@ -415,7 +424,46 @@ export const recognizeMutateCall: MethodCallRecognizer = (site, ctx) => {
   // schema an integer-default field is named (#3956).
   if (!isVoid(binding.type)) ctx.recordDecode(binding.type, resolved.response)
 
-  return mutateCallSpec(site, ctx, { name, type: binding.type, options: binding.options }, resolved)
+  const effects = binding.invalidates.length > 0 ? { invalidates: binding.invalidates } : undefined
+
+  return mutateCallSpec(site, ctx, { name, type: binding.type, options: binding.options }, resolved, effects)
+}
+
+/**
+ * `ep.mutation({ invalidates: [getX, listX] })` → the native query-key ROOT of each target: `GET:` + its URL up to
+ * the first path parameter. A native query is keyed on `GET:<url>`, and `PyreonQueryCache` invalidates a root, every
+ * key under it as a path segment (`/…`), its query strings (`?…`) and the `:`-scoped keys — so `GET:https://h/books`
+ * refreshes the list AND every `/books/:id`, the same set the web's key prefixes match. A message when a target
+ * cannot be read (not a same-file GET endpoint).
+ */
+const ROOT_SENTINEL = 'pyreon-invalidation-root'
+
+function invalidationRoots(node: AnyNode, ctx: ParseContext): string[] | string {
+  const list = unwrapTypeLayers(node) as AnyNode
+  if (list?.type !== 'ArrayExpression') return 'pass an array literal of same-file endpoints, `[listX, getX]`.'
+  const roots: string[] = []
+  for (const el of (list.elements as AnyNode[] | undefined) ?? []) {
+    const target = unwrapTypeLayers(el) as AnyNode
+    const name = target?.type === 'Identifier' ? (target.name as string) : undefined
+    if (name === undefined || !ctx.requests.has(name)) return 'each entry must name a same-file `@pyreon/http` endpoint.'
+    const decl = ctx.unwrap(ctx.resolveStatic(target)) as AnyNode
+    const spec = decl?.type === 'CallExpression' ? ctx.staticString((decl.arguments as AnyNode[] | undefined)?.[0]) : null
+    const [method, path] = spec === null ? [] : [spec.slice(0, spec.indexOf(' ')), spec.slice(spec.indexOf(' ') + 1)]
+    if (method !== 'GET' || path === undefined) return `\`${name}\` is not a \`GET\` endpoint — only queries are cached natively.`
+    // A sentinel for each path parameter: the root is the URL up to the first one.
+    const names = [...path.matchAll(/(?<!\\):([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1] as string)
+    const prop = (key: string, value: AnyNode): AnyNode => ({ type: 'Property', key: { type: 'Identifier', name: key }, value, kind: 'init', computed: false, shorthand: false, method: false })
+    const arg: AnyNode | undefined =
+      names.length === 0
+        ? undefined
+        : { type: 'ObjectExpression', properties: [prop('params', { type: 'ObjectExpression', properties: names.map((n) => prop(n, { type: 'Literal', value: ROOT_SENTINEL })) })] }
+    const resolved = ctx.requests.resolve(name, arg, { allowRuntimeParams: true, streaming: false })
+    if (resolved === null) return `\`${name}\` does not resolve to a native request.`
+    const cut = resolved.url.indexOf(`/${ROOT_SENTINEL}`)
+    roots.push(`GET:${cut === -1 ? resolved.url : resolved.url.slice(0, cut)}`)
+  }
+
+  return [...new Set(roots)]
 }
 
 /** The request one `mutate` call site sends — a resolved endpoint call, or a request another plugin built itself. */
@@ -462,7 +510,8 @@ export interface MutateBinding {
  *   type differs drops the optimistic write for that call, NAMED, and the request and invalidation still lower.
  */
 export interface MutateQueryEffects {
-  readonly invalidates: string
+  /** One key root, or several (each invalidated on success). */
+  readonly invalidates: string | readonly string[]
   readonly optimistic?: {
     readonly key: ExprIR
     readonly fields: readonly { readonly name: string; readonly type: TypeIR; readonly value: ExprIR }[]
@@ -529,7 +578,7 @@ export function mutateCallSpec(
     ...(noContent ? { noContent: true } : {}),
     options: binding.options,
     call,
-    ...(effects !== undefined ? { invalidates: effects.invalidates } : {}),
+    ...(effects !== undefined ? { invalidates: typeof effects.invalidates === 'string' ? [effects.invalidates] : effects.invalidates } : {}),
     ...(optimistic !== undefined ? { optimistic: optimistic.fields.map((f) => ({ name: f.name, type: f.type })) } : {}),
   }
   // Only an AWAITED `mutateAsync` is the throwing, value-returning form; an un-awaited one is a fire-and-forget
@@ -683,13 +732,17 @@ function swiftSend(e: ExtExprIR, ctx: EmitContext, request: string): string {
  */
 function swiftOperation(e: ExtExprIR, ctx: EmitContext, optimistic: boolean): string {
   const p = payloadOf(e)
-  if (p.invalidates === undefined) return `{ __request in ${swiftSend(e, ctx, '__request')} }`
-  const root = ctx.stringLiteral(p.invalidates)
-  if (!optimistic) {
-    return `{ __request in try await PyreonQueryCache.shared.settleMutation(invalidating: ${root}) { ${swiftSend(e, ctx, '__request')} } }`
-  }
+  if (p.invalidates === undefined || p.invalidates.length === 0) return `{ __request in ${swiftSend(e, ctx, '__request')} }`
+  // Several roots nest: the innermost settle runs the send, and each one invalidates its root on success.
+  const settle = (inner: string, rollback: string | undefined): string =>
+    (p.invalidates as readonly string[]).reduceRight(
+      (body, root, i) =>
+        `try await PyreonQueryCache.shared.settleMutation(invalidating: ${ctx.stringLiteral(root)}${i === 0 && rollback !== undefined ? `, rollback: ${rollback}` : ''}) { ${body} }`,
+      inner,
+    )
+  if (!optimistic) return `{ __request in ${settle(swiftSend(e, ctx, '__request'), undefined)} }`
 
-  return `{ __input in try await PyreonQueryCache.shared.settleMutation(invalidating: ${root}, rollback: __input.1) { ${swiftSend(e, ctx, '__input.0')} } }`
+  return `{ __input in ${settle(swiftSend(e, ctx, '__input.0'), '__input.1')} }`
 }
 
 /** The Kotlin statements: the blocking send off the main thread (through the middleware), then the decode (`null` on a 204 for `noContent`). */
@@ -713,11 +766,15 @@ function kotlinSend(e: ExtExprIR, ctx: EmitContext, request: string): string {
 /** The Kotlin operation lambda — through `PyreonQueryCache.settleMutation` when the call invalidates queries. */
 function kotlinOperation(e: ExtExprIR, ctx: EmitContext, optimistic: boolean): string {
   const p = payloadOf(e)
-  if (p.invalidates === undefined) return `{ __r -> ${kotlinSend(e, ctx, '__r')} }`
-  const root = ctx.stringLiteral(p.invalidates)
-  if (!optimistic) return `{ __r -> PyreonQueryCache.settleMutation(${root}) { ${kotlinSend(e, ctx, '__r')} } }`
+  if (p.invalidates === undefined || p.invalidates.length === 0) return `{ __r -> ${kotlinSend(e, ctx, '__r')} }`
+  const settle = (inner: string, rollback: string | undefined): string =>
+    (p.invalidates as readonly string[]).reduceRight(
+      (body, root, i) => `PyreonQueryCache.settleMutation(${ctx.stringLiteral(root)}${i === 0 && rollback !== undefined ? `, ${rollback}` : ''}) { ${body} }`,
+      inner,
+    )
+  if (!optimistic) return `{ __r -> ${settle(kotlinSend(e, ctx, '__r'), undefined)} }`
 
-  return `{ __r -> PyreonQueryCache.settleMutation(${root}, __r.second) { ${kotlinSend(e, ctx, '__r.first')} } }`
+  return `{ __r -> ${settle(kotlinSend(e, ctx, '__r.first'), '__r.second')} }`
 }
 
 /** `PyreonQueryCache.shared.setQueryData(key, as: T.self, { … })` — evaluated at the call site, with the request. */
