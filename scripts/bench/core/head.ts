@@ -41,6 +41,11 @@
  * Usage: bun scripts/bench/core/head.ts [--repeat N]
  */
 
+// Type-only imports are erased, so they may precede the guard.
+import type { VNode } from '../../../packages/core/core/src/index'
+import type { HeadEntry, HeadTag } from '../../../packages/core/head/src/context'
+import type { ResolvableHead } from 'unhead/types'
+
 // ─── NODE_ENV self-re-exec guard (MUST precede every value import) ────────────
 // Value imports below are DYNAMIC so they evaluate ONLY in the prod-env child.
 if (process.env.NODE_ENV !== 'production') {
@@ -50,10 +55,6 @@ if (process.env.NODE_ENV !== 'production') {
   })
   process.exit(child.exitCode ?? 0)
 }
-
-import type { VNode } from '../../../packages/core/core/src/index'
-import type { HeadEntry, HeadTag } from '../../../packages/core/head/src/context'
-import type { ResolvableHead } from 'unhead/types'
 
 const { createHead } = await import('unhead/server')
 const { h } = await import('../../../packages/core/core/src/index')

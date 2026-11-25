@@ -38,6 +38,7 @@ function tscOver(files: Record<string, string>): string[] {
     }
     writeFileSync(join(dir, 'tsconfig.json'), TSCONFIG)
     const r = spawnSync('bunx', ['tsc', '-p', join(dir, 'tsconfig.json')], { encoding: 'utf8' })
+
     return tscDiagnostics(`${r.stdout}\n${r.stderr}`)
   } finally {
     rmSync(dir, { recursive: true, force: true })

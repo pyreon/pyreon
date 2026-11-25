@@ -103,6 +103,7 @@ describe('swift tool spawn policy', () => {
       const pkg: { scripts?: Record<string, string> } = JSON.parse(
         readFileSync(join(ROOT, f), 'utf8'),
       )
+
       return rawSwiftScripts(pkg.scripts ?? {}).map((name) => `${f} scripts.${name}`)
     })
     expect(
