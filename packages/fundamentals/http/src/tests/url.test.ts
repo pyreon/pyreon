@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createHttp } from '../client'
 import { bearer } from '../middleware'
 import { createFetchTransport } from '../transport'
-import { applyPathParams, buildQuery, buildUrl, encodePathParam, isAbsoluteUrl, joinUrl } from '../url'
+import { applyPathParams, buildQuery, buildUrl, encodePathParam, isAbsoluteUrl, joinPrefix, joinUrl, pathPartEnd, pathPartStart } from '../url'
 
 describe('isAbsoluteUrl', () => {
   it('recognises schemes', () => {
@@ -195,5 +195,119 @@ describe('query styles', () => {
     expect(dec(buildUrl('https://a.test', '/x', undefined, { ids: [1, 2] }, { ids: { style: 'form', explode: false } }))).toBe(
       'https://a.test/x?ids=1,2',
     )
+  })
+})
+
+// #4816: placeholders are read in the PATH part only — a colon in the query
+// string or fragment is sent as written, never demanded as a parameter.
+describe('applyPathParams — path part only', () => {
+  it('passes a colon in the query string / fragment through as written', () => {
+    expect(applyPathParams('/search?tag=a:b', undefined)).toBe('/search?tag=a:b')
+    expect(applyPathParams('/search?at=10:30', undefined)).toBe('/search?at=10:30')
+    expect(applyPathParams('/search?filter=type:open&q=x:y', undefined)).toBe('/search?filter=type:open&q=x:y')
+    expect(applyPathParams('/search#x:y', undefined)).toBe('/search#x:y')
+    expect(applyPathParams('/doc#a?b:c', undefined)).toBe('/doc#a?b:c')
+  })
+
+  it('still substitutes and requires placeholders BEFORE the query', () => {
+    expect(applyPathParams('/users/:id/search?tag=a:b', { id: 'u/1' })).toBe('/users/u%2F1/search?tag=a:b')
+    expect(() => applyPathParams('/users/:id?tag=a:b', undefined)).toThrow(/needs the parameter "id"/)
+  })
+
+  it('keeps reading the `\\:` escape after the cut (the pre-fix workaround still works)', () => {
+    expect(applyPathParams('/search?tag=a\\:b', undefined)).toBe('/search?tag=a:b')
+    expect(applyPathParams('/v1/:name\\:cancel?x=1:2', { name: 'n' })).toBe('/v1/n:cancel?x=1:2')
+  })
+
+  it('buildUrl sends the literal query and merges the `query` option after it', () => {
+    expect(buildUrl('https://api.test', '/search?tag=a:b', undefined, { page: 2 })).toBe(
+      'https://api.test/search?tag=a:b&page=2',
+    )
+  })
+
+  it('pathPartEnd cuts at the first `?` or `#`', () => {
+    expect(pathPartEnd('/a/b')).toBe(4)
+    expect(pathPartEnd('/a?b#c')).toBe(2)
+    expect(pathPartEnd('/a#b?c')).toBe(2)
+    expect(pathPartEnd('https://h.io:8080/a?x')).toBe(19)
+  })
+})
+
+// path + query + FRAGMENT: the `query` option goes before a template fragment —
+// after it, the query was part of the fragment and never reached the server.
+describe('buildUrl — query before fragment', () => {
+  it('inserts the query before a `#fragment`', () => {
+    expect(buildUrl(undefined, '/doc#x', undefined, { a: 1 })).toBe('/doc?a=1#x')
+    expect(buildUrl('https://h.io', '/doc#x:y', undefined, { a: 1 })).toBe('https://h.io/doc?a=1#x:y')
+  })
+
+  it('merges with an existing `?` in the template, still before the fragment', () => {
+    expect(buildUrl(undefined, '/doc?v=2#x', undefined, { a: 1 })).toBe('/doc?v=2&a=1#x')
+    expect(buildUrl(undefined, '/doc?v=2', undefined, { a: 1 })).toBe('/doc?v=2&a=1')
+  })
+
+  it('a `?` inside the fragment is not a query', () => {
+    expect(buildUrl(undefined, '/doc#frag?not=query', undefined, { a: 1 })).toBe('/doc?a=1#frag?not=query')
+  })
+
+  it('leaves a fragment alone when there is no query', () => {
+    expect(buildUrl(undefined, '/doc#x', undefined, undefined)).toBe('/doc#x')
+    expect(buildUrl(undefined, '/doc#x', undefined, { a: undefined })).toBe('/doc#x')
+  })
+})
+
+// The authority (`scheme://host`) is never read for placeholders either: a
+// port, an IPv6 literal or `user:password@` declares no parameter.
+describe('applyPathParams — never inside the authority', () => {
+  it('passes IPv6 literals, ports and userinfo through as written', () => {
+    expect(applyPathParams('http://[fe80::abcd]/x/:id', { id: '1' })).toBe('http://[fe80::abcd]/x/1')
+    expect(applyPathParams('http://[2001:db8::1]/x', undefined)).toBe('http://[2001:db8::1]/x')
+    expect(applyPathParams('http://[::1]:8080/x/:id', { id: '1' })).toBe('http://[::1]:8080/x/1')
+    expect(applyPathParams('https://u:secret@h/x', undefined)).toBe('https://u:secret@h/x')
+    expect(applyPathParams('//u:pw@h:81/x/:id', { id: 'a b' })).toBe('//u:pw@h:81/x/a%20b')
+    expect(applyPathParams('https://h:8080?q=a:b', undefined)).toBe('https://h:8080?q=a:b')
+  })
+
+  it('pathPartStart cuts after the authority', () => {
+    expect(pathPartStart('/a/:b')).toBe(0)
+    expect(pathPartStart('https://u:p@h:1/x')).toBe(15)
+    expect(pathPartStart('//h/x')).toBe(3)
+    expect(pathPartStart('https://h')).toBe(9)
+    expect(pathPartStart('https://h?x')).toBe(9)
+  })
+})
+
+describe('joinPrefix — what joinUrl puts in front of the path', () => {
+  it('agrees with joinUrl on every shape', () => {
+    const cases: [string | undefined, string][] = [
+      ['https://api.test/v1/', '/users'],
+      ['https://api.test/v1', 'users'],
+      ['https://api.test', 'https://other.test/x'],
+      ['', '/x'],
+      [undefined, 'x'],
+      ['/api/', 'x'],
+    ]
+    for (const [b, p] of cases) expect(joinPrefix(b, p) + p).toBe(joinUrl(b, p))
+    expect(joinUrl('https://api.test/v1/', '/users')).toBe('https://api.test/v1/users')
+    expect(joinUrl('https://api.test/v1', 'users')).toBe('https://api.test/v1/users')
+    expect(joinUrl('https://api.test', 'https://other.test/x')).toBe('https://other.test/x')
+  })
+})
+
+describe('a `:name` after the path part, with that name in params, warns in dev', () => {
+  it('warns once per such name, and never for a plain query colon', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(applyPathParams('/items?tenant=:tenant', { tenant: 't1' })).toBe('/items?tenant=:tenant')
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toMatch(/params\.tenant.*query string or fragment/)
+      warn.mockClear()
+      applyPathParams('/search?tag=a:b', undefined)
+      applyPathParams('/u/:id?tag=a:b', { id: 1 })
+      applyPathParams('/s?x=a\\:b', { b: 1 })
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

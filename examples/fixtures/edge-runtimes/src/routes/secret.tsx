@@ -8,8 +8,8 @@ export default function SecretPage() {
   const data = useLoaderData<{ secret: string; sawCookie: string }>()
   return (
     <div data-testid="secret-page">
-      <p data-testid="secret-value">{data?.secret ?? 'none'}</p>
-      <p data-testid="cookie-flag">{data?.sawCookie ?? 'unknown'}</p>
+      <p data-testid="secret-value">{data()?.secret ?? 'none'}</p>
+      <p data-testid="cookie-flag">{data()?.sawCookie ?? 'unknown'}</p>
     </div>
   )
 }

@@ -12,7 +12,11 @@ for (const errorComponent of [undefined, () => h('p', null, 'Loader error')]) {
         path: '/loaded',
         loader: () => data,
         ...(errorComponent ? { errorComponent } : {}),
-        component: () => h('h1', null, useLoaderData<{ title: string }>()?.title ?? 'Waiting'),
+        component: () => {
+          const data = useLoaderData<{ title: string } | undefined>()
+
+          return h('h1', null, () => data()?.title ?? 'Waiting')
+        },
       }],
     })
     const { container, unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, null)))

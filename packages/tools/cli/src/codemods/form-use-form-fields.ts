@@ -1,22 +1,10 @@
 /* oxlint-disable complexity, max-lines-per-function -- a codemod is one AST pass over shared per-file state (imports, scoped declarations, references, edits); splitting it means threading all of that through helpers */
-import { createRequire } from 'node:module'
+import { loadTs } from './load-ts'
 import type { Codemod } from './types'
 
-type TS = typeof import('typescript')
 type Node = import('typescript').Node
 type Expression = import('typescript').Expression
 type CallExpression = import('typescript').CallExpression
-
-/** TypeScript, loaded only when the codemod actually has a candidate file. */
-function loadTs(): TS {
-  try {
-    return createRequire(import.meta.url)('typescript') as TS
-  } catch {
-    throw new Error(
-      '[Pyreon] codemod form-use-form-fields needs the `typescript` package. Install it (it is a peer dependency of @pyreon/cli) and re-run `pyreon upgrade`.',
-    )
-  }
-}
 
 const MODULE = '@pyreon/form'
 const IDENT = /^[A-Za-z_$][\w$]*$/
@@ -58,7 +46,7 @@ export const formUseFormFields: Codemod = {
   matches: (p) => /\.[mc]?[jt]sx?$/.test(p),
   transform(source, relPath) {
     if (!source.includes(MODULE) || !/\bfields\b/.test(source)) return null
-    const ts = loadTs()
+    const ts = loadTs('form-use-form-fields')
     const kind = /\.[mc]?tsx$|\.jsx$/.test(relPath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     const sf = ts.createSourceFile(relPath, source, ts.ScriptTarget.ESNext, true, kind)
 
@@ -246,7 +234,10 @@ export const formUseFormFields: Codemod = {
         const named = spec.parent
         if (named.elements.length === 1) {
           const decl = named.parent.parent
-          if (named.parent.name === undefined) edits.push(lineRange(source, decl.getStart(sf), decl.getEnd()))
+          const defaultName = named.parent.name
+          // `import Form, { field }` keeps the default binding: `import Form from …`.
+          if (defaultName === undefined) edits.push(lineRange(source, decl.getStart(sf), decl.getEnd()))
+          else edits.push({ start: defaultName.getEnd(), end: named.getEnd(), text: '' })
         } else {
           const idx = named.elements.indexOf(spec)
           const next = named.elements[idx + 1]

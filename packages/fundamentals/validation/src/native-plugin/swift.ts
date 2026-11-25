@@ -3,11 +3,25 @@
 // Plugin-owned: the compiler core only calls `emitSwiftSchemaItem` through the item emitter.
 
 import { localBase, swiftCodingKeysLines, swiftIdent, swiftStr } from '@pyreon/native-compiler/plugin-api'
-import type { ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
+import type { EmailRule, ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
+import { EMAIL_RFC5322_MAX_LENGTH, emailPattern } from './email-rule'
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 
 /** zod's `.email()` rule, case-insensitive (see the options at the use site). */
 const EMAIL_PATTERN = String.raw`^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$`
+
+/**
+ * The Swift condition that is TRUE when `target` FAILS the authoring
+ * library's email rule (see `EmailRule`), not one rule for all.
+ */
+function swiftEmailFails(rule: EmailRule, target: string): string {
+  if (rule.kind === 'zod') {
+    return `${target}.range(of: ${swiftStr(EMAIL_PATTERN)}, options: [.regularExpression, .caseInsensitive]) == nil`
+  }
+  // `@pyreon/validate`'s grammar at its precision, IDN domains included.
+  const len = rule.precision === 'rfc5322' ? `${target}.utf16.count > ${EMAIL_RFC5322_MAX_LENGTH} || ` : ''
+  return `${len}${target}.range(of: ${swiftStr(emailPattern(rule.precision))}, options: [.regularExpression]) == nil`
+}
 
 /**
  * Gap 4 follow-up — `@pyreon/validation` Zod-schema v1 emit (Swift).
@@ -119,9 +133,7 @@ function emitSwiftScalarConstraints(
       lines.push(`${ind}}`)
     }
     if (c.email) {
-      lines.push(
-        `${ind}if ${targetName}.range(of: ${swiftStr(EMAIL_PATTERN)}, options: [.regularExpression, .caseInsensitive]) == nil {`,
-      )
+      lines.push(`${ind}if ${swiftEmailFails(c.email, targetName)} {`)
       lines.push(
         `${innerInd}throw PyreonSchemaError.constraintViolation(field: ${swiftStr(fieldName)}, rule: "email${ruleSuffix}")`,
       )

@@ -7,8 +7,11 @@ import { RedirectPage } from '../../../site/pages/RedirectPage'
 export const loader = (): Promise<WhyMeta> => loadWhyMeta()
 
 export default function WhyIndex() {
-  const meta = useLoaderData<WhyMeta | undefined>()
-  const first = meta?.order[0]
-  if (!meta || !first) return null
-  return <RedirectPage path="/why" to={`/why/${first.id}`} title={meta.template.index.title} label={fill(meta.template.index.label, { title: first.title })} />
+  const data = useLoaderData<WhyMeta | undefined>()
+  return () => {
+    const meta = data()
+    const first = meta?.order[0]
+    if (!meta || !first) return null
+    return <RedirectPage path="/why" to={`/why/${first.id}`} title={meta.template.index.title} label={fill(meta.template.index.label, { title: first.title })} />
+  }
 }

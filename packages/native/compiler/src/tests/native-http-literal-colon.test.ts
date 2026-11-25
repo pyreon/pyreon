@@ -38,3 +38,109 @@ describe('literal colon escape in an endpoint path', () => {
     })
   }
 })
+
+// #4816: `:name` placeholders are read in the PATH part only. A colon in a
+// written query string or fragment is sent as written on every target — the
+// native resolver cuts the template where the web's `applyPathParams` does
+// (`pathPartEnd`), so neither side demands a parameter the other ignores.
+describe('a colon after `?` or `#` is never a placeholder', () => {
+  const CASES: [template: string, args: string, params: Record<string, string> | undefined][] = [
+    ['/search?tag=a:b', '{}', undefined],
+    ['/search?at=10:30&f=type:open', '{}', undefined],
+    ['/search#x:y', '{}', undefined],
+    ['/users/:id/search?tag=a:b', "{ params: { id: 'u 1' } }", { id: 'u 1' }],
+    // The `\:` escape still reads as a colon after the cut (the old workaround).
+    ['/search?tag=a\\\\:b', '{}', undefined],
+  ]
+  for (const target of ['swift', 'kotlin'] as const) {
+    for (const [template, args, params] of CASES) {
+      it(`${target}: ${template} bakes the web's URL with no phantom parameter`, () => {
+        const out = transform(src(template, args), { target })
+        expect(out.warnings).toEqual([])
+        const web = buildUrl('https://api.test', template.replace('\\\\:', '\\:'), params, undefined)
+        expect(emittedUrl(out.code)).toBe(web)
+      })
+    }
+  }
+})
+
+// path + query + FRAGMENT: a `query` option goes BEFORE a `#fragment` written
+// in the template, as the web's `buildUrl` does — appended after it, the query
+// became part of the fragment and never reached the server (`/doc#x?a=1`).
+describe('the query option lands before a template fragment', () => {
+  const CASES: [template: string, query: Record<string, string>][] = [
+    ['/doc#x', { a: '1' }],
+    ['/doc?v=2#x:y', { a: '1' }],
+    ['/doc?v=2', { a: '1' }],
+    ['/doc#frag?not=query', { a: '1' }],
+  ]
+  for (const target of ['swift', 'kotlin'] as const) {
+    for (const [template, query] of CASES) {
+      it(`${target}: ${template} + query bakes the web's URL`, () => {
+        const out = transform(src(template, `{ query: ${JSON.stringify(query)} }`), { target })
+        expect(out.warnings).toEqual([])
+        const web = buildUrl('https://api.test', template, undefined, query)
+        expect(web.indexOf('a=1')).toBeLessThan(web.includes('#') ? web.indexOf('#') : Infinity)
+        expect(emittedUrl(out.code)).toBe(web)
+      })
+    }
+
+    it(`${target}: a RUNTIME query is built before the fragment too`, () => {
+      const code = transform(
+        `
+import { createHttp } from '@pyreon/http'
+import { useQuery } from '@pyreon/query'
+import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+const api = createHttp({ baseUrl: 'https://api.test' })
+const op = api.endpoint('GET /doc?v=2#x')
+export function S() {
+  const p = signal('1')
+  const u = useQuery<{ id: string }>(() => op.query({ query: { a: p() } }))
+  return <Stack><Text>{u.data()?.id ?? ''}</Text></Stack>
+}
+`,
+        { target },
+      ).code
+      const q = code.indexOf('PyreonURL.query(')
+      expect(q).toBeGreaterThan(-1)
+      // The fragment follows the runtime query call in the emitted URL template.
+      const line = code.slice(code.lastIndexOf('\n', q), code.indexOf('\n', q))
+      expect(line.indexOf('#x')).toBeGreaterThan(line.indexOf('PyreonURL.query('))
+      expect(line).toContain('https://api.test/doc?v=2')
+    })
+  }
+})
+
+// The base is JOINED like the web's `joinUrl` (one `/`, an absolute endpoint
+// URL ignores the base), and the authority is never scanned for placeholders.
+describe('base join and authority, as the web builds them', () => {
+  const app = (base: string, spec: string, args: string): string => `
+import { createHttp } from '@pyreon/http'
+import { useFetch } from '@pyreon/query'
+import { Stack, Text } from '@pyreon/primitives'
+const api = createHttp({ baseUrl: '${base}' })
+const op = api.endpoint('${spec}')
+export function S() {
+  const u = useFetch<{ id: string }>(op(${args}))
+  return <Stack><Text>{u.data()?.id ?? ''}</Text></Stack>
+}
+`
+  const CASES: [base: string, path: string, args: string, params: Record<string, string> | undefined][] = [
+    ['https://api.test/v1/', '/users', '{}', undefined],
+    ['https://api.test/v1', 'users', '{}', undefined],
+    ['https://api.test', 'https://other.test/x', '{}', undefined],
+    ['', 'http://[fe80::abcd]/x/:id', "{ params: { id: '1' } }", { id: '1' }],
+    ['', 'http://[2001:db8::1]/x', '{}', undefined],
+    ['', 'https://u:secret@h.test/x', '{}', undefined],
+  ]
+  for (const target of ['swift', 'kotlin'] as const) {
+    for (const [base, path, args, params] of CASES) {
+      it(`${target}: base "${base}" + ${path}`, () => {
+        const out = transform(app(base, `GET ${path}`, args), { target })
+        expect(out.warnings).toEqual([])
+        expect(emittedUrl(out.code)).toBe(buildUrl(base, path, params, undefined))
+      })
+    }
+  }
+})

@@ -12,7 +12,7 @@ export default function Home() {
   const clicks = signal(0)
   return (
     <main data-testid="app-page">
-      <h1>{data?.title}</h1>
+      <h1>{data()?.title}</h1>
       <button type="button" data-testid="app-button" onClick={() => clicks.set(clicks() + 1)}>
         app:{clicks()}
       </button>

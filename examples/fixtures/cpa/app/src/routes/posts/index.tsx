@@ -78,7 +78,7 @@ export default function PostsIndex() {
 
       <div class="posts-grid">
         <For
-          each={data.posts}
+          each={() => data().posts}
           by={(post) => post.id}
         >
           {(post) => (

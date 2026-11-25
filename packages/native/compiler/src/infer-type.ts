@@ -27,7 +27,7 @@ import type { ComponentIR, DeclIR, ExprIR, ExtDecl, ExtModuleItem, ModuleDeclIR,
 import { rootReceiverName } from './expr-lowering'
 import { ECMASCRIPT_MATH_CONSTANTS } from './math-lowering'
 import { isNumberGlobal, isNumberStatic } from './number-constants'
-import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginValueType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType, pluginResultTypeMember } from './registry-lookup'
+import { findFunctionLowering, pluginItemType, findService, pluginCallReadType, pluginDeclIsCallable, pluginValueType, pluginExprMemberType, pluginMemberReadType, pluginMethodReturnType, pluginExprSeedsModuleConst, pluginExprType, pluginResultTypeMember } from './registry-lookup'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -732,6 +732,22 @@ export function unwrapOptionalType(t: TypeIR): TypeIR {
   if (t.kind !== 'union') return t
   const nonNull = t.branches.filter((b) => b.kind !== 'null' && b.kind !== 'undefined')
   return nonNull.length === 1 ? nonNull[0]! : t
+}
+
+/**
+ * True when `value` is passed where a ZERO-ARGUMENT function is expected (`<C d={data} />` against `d: () => Post`) and
+ * names a web ACCESSOR whose native binding is the VALUE itself: a signal, a computed, or a non-callable plugin
+ * declaration its owner types by the bare call (`const data = useLoaderData<T>()`). The web passes the accessor; the
+ * native reference is the value, so passing it as written hands a `Post` to a `() -> Post` parameter, which fails to
+ * compile on both targets. The emitters wrap such a reference in a closure (`{ data }`) instead.
+ */
+export function isValueAccessorForFunction(value: ExprIR, expected: TypeIR | undefined, ctx: InferenceCtx): boolean {
+  if (expected === undefined || value.kind !== 'identifier') return false
+  const fn = unwrapOptionalType(expected)
+  if (fn.kind !== 'function' || fn.params.length !== 0) return false
+  if (ctx.signals.has(value.name) || ctx.computeds.has(value.name)) return true
+  const ext = ctx.extDecls?.get(value.name)
+  return ext !== undefined && !pluginDeclIsCallable(ext) && pluginValueType(ext) !== undefined
 }
 
 /** An annotation that is an inline object type, or an array of one: a shape with no declared name. */

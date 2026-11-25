@@ -73,6 +73,24 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     }
     expect(diagnoseError('useLoaderData() is undefined while the first loader is pending')).toBeNull()
   })
+
+  it('teaches the useLoaderData() accessor contract (#4814)', () => {
+    for (const message of [
+      'useLoaderData() returns a function instead of my data',
+      "TypeError: useLoaderData<Post[]>(...).map is not a function",
+      "useLoaderData result: Property 'title' does not exist on type '() => Post'.",
+      'useLoaderData value never updates after router.revalidate()',
+      'loader data does not update on revalidate while the page stays mounted',
+    ]) {
+      const result = diagnoseError(message)
+      expect(result, message).not.toBeNull()
+      expect(result!.cause, message).toContain('reactive accessor')
+      expect(result!.fix, message).toContain('{data().title}')
+    }
+    // An unrelated loader complaint is not this entry.
+    expect(diagnoseError('useLoaderData() is undefined while the first loader is pending')).toBeNull()
+    expect(diagnoseError('TypeError: items.map is not a function')?.cause ?? '').not.toContain('reactive accessor')
+  })
   it('teaches the cross-scope prop-alias leak (#3815) ahead of the generic `X is not defined` entry', () => {
     const result = diagnoseError('ReferenceError: props is not defined')
     expect(result?.cause).toContain('#3815')

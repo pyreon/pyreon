@@ -72,6 +72,9 @@
     "happy-dom": "^21.0.4",
     "luxon": "3.7.2"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

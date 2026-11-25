@@ -2761,7 +2761,7 @@ describe('useLoaderData', () => {
     const el = container()
     let capturedData: unknown
     const DataComp = () => {
-      capturedData = useLoaderData()
+      capturedData = useLoaderData()()
       return h('span', null, 'data')
     }
     const viewRoutes: RouteRecord[] = [
