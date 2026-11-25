@@ -1,9 +1,10 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import {
   findCiFailFastViolations,
   findCiSchedulingViolations,
   findCoverageConcurrencyViolations,
+  findDiffBaseViolations,
   findNativeCacheSnapshotViolations,
   parseJobBlocks,
 } from '../../../../../scripts/check-ci-fail-fast'
@@ -207,6 +208,56 @@ describe("native-validate restores the default branch store AND the ref's own", 
   })
 })
 
+describe('diff base: every selector reads scripts/diff-base.ts', () => {
+  const dir = new URL('../../../../../.github/workflows/', import.meta.url)
+  const read = (file: string) => readFileSync(new URL(file, dir), 'utf8')
+  const ci = read('ci.yml')
+  const resolveStep =
+    "      - name: Resolve the diff base\n        if: github.event_name == 'pull_request'\n        run: bun scripts/diff-base.ts --github-env\n"
+
+  it('accepts every real workflow', () => {
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.yml'))) {
+      expect(findDiffBaseViolations(read(file), file), file).toEqual([])
+    }
+  })
+
+  it("rejects the event's stale base.sha set workflow-wide (#4776)", () => {
+    const stale = ci.replace(
+      'env:\n  BOOTSTRAP_KEY',
+      'env:\n  CI_BASE: ${{ github.event.pull_request.base.sha }}\n  BOOTSTRAP_KEY',
+    )
+    expect(findDiffBaseViolations(stale, 'ci.yml')).toEqual([
+      'ci.yml: diff base from github.event.pull_request.base.sha; use scripts/diff-base.ts',
+      'ci.yml: CI_BASE must be exported per job by scripts/diff-base.ts, not set workflow-wide',
+    ])
+  })
+
+  it('rejects a hand-written HEAD^1 and a three-dot diff against a fetched origin/<base>', () => {
+    expect(findDiffBaseViolations(ci.replace('--ref="$CI_BASE"', "--ref='HEAD^1'"), 'ci.yml')).toEqual([
+      'ci.yml: diff base from a literal HEAD^1 / HEAD~1; use scripts/diff-base.ts',
+    ])
+    const native = read('native-device.yml').replace(
+      'FILES=$(bun scripts/diff-base.ts --files)',
+      'FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD")',
+    )
+    expect(findDiffBaseViolations(native, 'native-device.yml')).toEqual([
+      'native-device.yml: diff base from a three-dot diff against a fetched origin/<base>; use scripts/diff-base.ts',
+    ])
+  })
+
+  it('rejects a job that reads CI_BASE without the resolve step, or resolves on a depth-1 checkout', () => {
+    expect(ci).toContain(resolveStep)
+    expect(findDiffBaseViolations(ci.replace(resolveStep, ''), 'ci.yml')).toEqual([
+      'ci.yml: install reads CI_BASE without running `bun scripts/diff-base.ts --github-env` first',
+    ])
+    expect(
+      findDiffBaseViolations(ci.replace('fetch-depth: 2 # the advisory', 'fetch-depth: 1 # the advisory'), 'ci.yml'),
+    ).toEqual([
+      'ci.yml: release-build calls scripts/diff-base.ts on a checkout without its parents (fetch-depth 1); set fetch-depth: 2 or 0',
+    ])
+  })
+})
+
 describe('scheduling invariants', () => {
   const ci = readFileSync(
     new URL('../../../../../.github/workflows/ci.yml', import.meta.url),
@@ -221,13 +272,7 @@ describe('scheduling invariants', () => {
     expect(findCiSchedulingViolations(ci, setup)).toEqual([])
   })
 
-  it('rejects a moving base and a mismatched workload profile', () => {
-    expect(
-      findCiSchedulingViolations(
-        ci.replace('CI_BASE: ${{ github.event.pull_request.base.sha }}', 'CI_BASE: origin/main'),
-        setup,
-      ),
-    ).toContain('all PR selectors must share the immutable event base SHA')
+  it('rejects a mismatched workload profile', () => {
     expect(
       findCiSchedulingViolations(ci.replace('--profile=e2e', '--profile=test'), setup),
     ).toContain('missing workload-specific batching: --profile=e2e')

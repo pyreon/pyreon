@@ -127,10 +127,6 @@ jobs:
           bun-version-file: .bun-version
       - name: Detect native-path changes
         id: detect
-        env:
-          # Through env, never `${{ }}` inside the script: a context value
-          # interpolated into `run:` is spliced into the shell source.
-          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           all_lanes() {
@@ -148,13 +144,13 @@ jobs:
           # An edit to THIS file selects a platform only when that platform's own
           # job block (or the top-level env/permissions/defaults) changed, so a
           # Linux-only or Android-only edit leaves the iOS lane alone.
-          git fetch origin "$BASE_REF" || true
-          if FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD"); then
-            printf '%s\n' "$FILES" | bun scripts/native-surface-touched.ts --self=.github/workflows/native-device.yml --apps --ios-jobs=ios-build --android-jobs=android-build
-          else
-            all_lanes
-            echo "diff failed → every lane (fail-closed)"
-          fi
+          # The changed set and its base come from scripts/diff-base.ts (the
+          # merge commit's first parent), the same as every other workflow. A
+          # base this checkout cannot supply fails the step with a [Pyreon]
+          # message; a failed `changes` job runs every lane downstream.
+          FILES=$(bun scripts/diff-base.ts --files)
+          BASE=$(bun scripts/diff-base.ts)
+          printf '%s\n' "$FILES" | bun scripts/native-surface-touched.ts --base="$BASE" --self=.github/workflows/native-device.yml --apps --ios-jobs=ios-build --android-jobs=android-build
           # The `native-device` label is the manual "run everything" switch.
           # Appended LAST: a later GITHUB_OUTPUT line for the same key wins.
           if [ "${{ contains(github.event.pull_request.labels.*.name, 'native-device') }}" = "true" ]; then
@@ -201,7 +197,7 @@ jobs:
       android-apps: ${{ steps.compare.outputs.android-apps }}
     steps:
       # The PR merge commit and its first parent, the base tip it was merged
-      # onto — the same pair `changes` diffs.
+      # onto — the same pair `changes` diffs (scripts/diff-base.ts).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
@@ -228,7 +224,9 @@ jobs:
         run: |
           set -euo pipefail
           BASE="$RUNNER_TEMP/base"
-          git worktree add --detach "$BASE" HEAD^1
+          # The base is scripts/diff-base.ts's: the merge commit's first parent.
+          BASE_SHA=$(bun scripts/diff-base.ts)
+          git worktree add --detach "$BASE" "$BASE_SHA"
           (cd "$BASE" && PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile)
           # Seed the base with the head's built lib/ and its content-hash
           # manifest: bootstrap.ts rebuilds exactly the packages whose source

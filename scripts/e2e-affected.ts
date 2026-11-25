@@ -797,6 +797,11 @@ function main(): void {
     return
   }
 
+  if (!all && base === '') {
+    // See affected.ts: an empty base would select nothing, silently.
+    console.error('[Pyreon] e2e-affected.ts: --base is empty. In CI it is CI_BASE, exported by `bun scripts/diff-base.ts --github-env`; run that step first.')
+    process.exit(1)
+  }
   let changed: string[] | null
   if (all) {
     changed = null // ignored when all=true

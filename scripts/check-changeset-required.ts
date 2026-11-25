@@ -65,7 +65,9 @@
  *
  * ## Mechanics
  *
- * 1. Get changed-file list via `git diff origin/${BASE_REF}...HEAD`.
+ * 1. Get changed-file list via `git diff <base>...HEAD`. `<base>` is `--base=<rev>`
+ *    when given — CI passes CI_BASE from `scripts/diff-base.ts` (the merge
+ *    commit's first parent) — else `origin/${BASE_REF}` for a local run.
  * 2. Filter to files under a workspace that's PUBLISHED (not private,
  *    not in changeset `ignore` list). If none → exit 0.
  * 3. If `HAS_SKIP_LABEL=true` → exit 0 (deliberate bypass).
@@ -525,7 +527,7 @@ export function evaluateGate(inp: GateInputs): GateResult {
  * base branch, and any local run in a clone lacking the ref — i.e. exactly the
  * situations where a human is least likely to read the log.
  */
-function changedFiles(baseRef: string): string[] | null {
+function changedFiles(baseRev: string): string[] | null {
   // `git diff --name-only` requires the merge-base form
   // `<base>...HEAD` to compare only commits unique to HEAD, not the
   // union of both branches' changes since divergence. Use the
@@ -535,11 +537,11 @@ function changedFiles(baseRef: string): string[] | null {
     // `--no-renames`: with rename detection a `git mv` OUT of a published
     // package lists only the NEW path, so the source that LEFT the package
     // (a consumer-affecting change) was invisible to this classifier.
-    return gitChangedFilesZ(`origin/${baseRef}...HEAD`, { args: ['--no-renames', '--diff-filter=ACDMRTUXB'] })
+    return gitChangedFilesZ(`${baseRev}...HEAD`, { args: ['--no-renames', '--diff-filter=ACDMRTUXB'] })
   } catch (err) {
     // Loud, and NOT an empty diff.
     console.error(
-      `[check-changeset-required] could not compute the diff against origin/${baseRef}: ` +
+      `[check-changeset-required] could not compute the diff against ${baseRev}: ` +
         `${err instanceof Error ? err.message : String(err)}`,
     )
     return null
@@ -560,16 +562,23 @@ function main(): void {
   }
   const BASE_REF = RAW_BASE_REF
   const HAS_SKIP_LABEL = process.env['HAS_SKIP_LABEL'] === 'true'
+  // `--base=<rev>`: an explicit base commit (CI: CI_BASE from scripts/diff-base.ts).
+  const baseArg = process.argv.find((a) => a.startsWith('--base='))?.slice('--base='.length)
+  if (baseArg !== undefined && !/^[a-zA-Z0-9._/^~-]+$/.test(baseArg)) {
+    console.error(`[check-changeset-required] FAILED — --base "${baseArg}" is not a plain revision (an unset CI_BASE?).`)
+    process.exit(1)
+  }
+  const baseRev = baseArg ?? `origin/${BASE_REF}`
 
   const repoRoot = resolve(import.meta.dirname, '..')
-  const files = changedFiles(BASE_REF)
+  const files = changedFiles(baseRev)
   if (files === null) {
     // Fail CLOSED. A gate that cannot see the diff has verified nothing, and
     // this one is a pinned required check — reporting success here asserts a
     // fact about a diff that was never obtained.
     console.error(
       `[check-changeset-required] REFUSING to pass: the diff could not be computed, so this gate ` +
-        `verified NOTHING. Check that origin/${BASE_REF} exists in this clone ` +
+        `verified NOTHING. Check that ${baseRev} exists in this clone ` +
         `(CI uses fetch-depth: 0; a shallow clone or a renamed base branch will not have it).`,
     )
     process.exit(1)

@@ -155,8 +155,12 @@ jobs:
               NOTE="Whole-release delta — ${COUNT} PR(s) since \`${BASE_VER}\` → \`${HEAD_VER}\`."
             fi
           else
-            BASE_SHA=$(git rev-parse "origin/${BASE_REF}")
-            LABEL="base branch \`${BASE_REF}\`"
+            # The commit this merge ref was built on (scripts/diff-base.ts: the
+            # merge commit's first parent). NOT origin/<base> as fetched now:
+            # main may have moved since GitHub built the merge ref, and its
+            # newer commits would read as this PR's size delta, inverted.
+            BASE_SHA=$(bun scripts/diff-base.ts)
+            LABEL="base branch \`${BASE_REF}\` at \`$(git rev-parse --short "$BASE_SHA")\`"
             NOTE=''
           fi
           {
