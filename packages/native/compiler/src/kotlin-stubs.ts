@@ -843,6 +843,7 @@ object Icons {
     val Search: ImageVector = ImageVector()
     val Settings: ImageVector = ImageVector()
     val List: ImageVector = ImageVector()
+    val Info: ImageVector = ImageVector()
   }
 }
 
