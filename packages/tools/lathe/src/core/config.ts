@@ -219,9 +219,15 @@ export interface LatheSection {
   /**
    * What the generated client does with a response that does not match its
    * schema. `strict` (the default) rejects; `warn` logs and passes the raw body
-   * through, which is the usual choice in production when a backend may drift;
-   * `off` skips validation, which also skips its cost on large list responses.
-   * `configureApi({ validate })` switches it at runtime.
+   * through, which is the usual choice in production when a backend may drift.
+   * `configureApi({ validate })` switches between them at runtime.
+   *
+   * `off` declares the endpoints TYPES ONLY: response, error and stream-event
+   * bodies are typed from the model interfaces and no schema is referenced, so
+   * neither the schema modules nor the validator library ship with them. There
+   * is then nothing for a runtime `configureApi({ validate: 'strict' })` to
+   * check those endpoints against. `operations.<id>.responseValidation` decides
+   * the same per operation.
    *
    * Web client only. The native modules decode into typed structs, which is
    * validation in itself and is not configurable.

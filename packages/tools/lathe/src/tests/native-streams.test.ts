@@ -40,9 +40,9 @@ describe('stream operations reach native', () => {
     expect(out.reach.get('roomEvents')).toEqual({ reach: 'web+native' })
     expect(out.reach.get('exportRows')).toEqual({ reach: 'web+native' })
     expect(out.reach.get('tailLog')).toEqual({ reach: 'web+native' })
-    // A POST (here a dual JSON + stream response) stays web — its JSON form
-    // is a mutation, which PMTC does not lower.
-    expect(out.reach.get('createChat')?.reach).toBe('web-only')
+    // A POST with a dual JSON + stream response reaches native through its
+    // JSON form, as a mutation component (#4835).
+    expect(out.reach.get('createChat')?.reach).toBe('web+native')
   })
 
   it('a STREAM-ONLY POST reaches native as a TRIGGERED component (see native-triggered-streams)', () => {

@@ -96,7 +96,11 @@ describe('operations.<id>.hook', () => {
 describe('operations.<id>.responseValidation', () => {
   it('is declared on that endpoint only', () => {
     const r = gen({ operations: { listOrders: { responseValidation: 'off' } } })
-    expect(file(r, 'endpoints/store.ts')).toContain("validate: 'off'")
+    // `off` at generate time declares the endpoint types-only: no schema to
+    // skip, so no `validate` entry either (#4815).
+    expect(file(r, 'endpoints/store.ts')).toMatch(/export const listOrders = [^\n]*\(raw: unknown\) => /)
+    expect(file(r, 'endpoints/store.ts')).not.toMatch(/export const listOrders = [^\n]*response:/)
+    expect(file(r, 'endpoints/pets.ts')).not.toContain('(raw: unknown) =>')
     expect(file(r, 'endpoints/pets.ts')).not.toContain('validate:')
     expect(() => gen({ operations: { listOrders: { responseValidation: 'loose' as never } } })).toThrow(
       /must be strict, warn, off/,

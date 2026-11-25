@@ -27,7 +27,10 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Orphaned output is pruned: each run writes `lathe-manifest.json`, and the next `generate` removes files it no longer produces while `check` reports them stale -- only manifest-listed paths are ever removed
 - `target: 'multiplatform'` emits an additional self-contained module per tag — client, schemas, endpoints and calls sharing one top level — because PMTC resolves nothing across file boundaries; the web output is unchanged, so enabling it can never make the web build worse
 - The multiplatform claim is MEASURED: `verifyNative` runs the real `@pyreon/native-compiler` on both targets and asserts the positive marker plus the absence of leaked web-only symbols. A `does NOT compile` warning is treated as broken, not advisory, and an absent compiler SKIPS loudly rather than passing
-- Per-operation native reach with a reason in spec terms: a mutation, a relative base URL, or a read with no typed JSON response (there is no declared type for a native query to decode into) is reported `web-only` by name instead of silently degrading. A path parameter becomes a PROP of the native data component and lowers
+- Per-operation native reach with a reason in spec terms: a relative base URL, a read with no typed JSON response (there is no declared type for a native query to decode into), or a write it cannot send natively (a non-JSON body or response, a required query/header/cookie parameter) is reported `web-only` by name instead of silently degrading. A path parameter becomes a PROP of the native data component and lowers
+- Writes reach native too: a `POST` / `PUT` / `PATCH` / `DELETE` with a JSON body (or none) and a typed JSON response (or no content) gets a `<Op>Mutation` component in its tag's native module — `useMutation<T, E, Vars>(op.mutation())`, which `@pyreon/query`'s native plugin lowers to the `PyreonMutation` runtime. `children(mutate, data, isPending, error)` receives the trigger; path parameters and the JSON body are props, read when `mutate` is called
+- `responseValidation: 'off'` (project-wide or per operation) declares those endpoints TYPES ONLY: response, error and stream-event bodies are typed from the model interfaces and no schema is referenced, so neither the schema modules nor the validator ship with them (one nested GET: 21.9 KB → 6.8 KB gzipped). `err.matched` still comes from the status key
+- Every generated read hook takes the same `args` accessor first — optional for an operation without parameters — so per-call `meta` / `headers` / `timeout` reach the request, and `options.key` (`(base) => [...base, tenant]`) extends the cache key when headers change the result
 - Plugin selection is expanded along the IMPORT EDGES of the emitted code, not refused: `components` pulls in `queries` -&gt; `client` -&gt; `schemas` because `components.tsx` imports the hooks, and the report names what came along. Selecting a plugin without what its output imports previously produced files referencing modules that were never written - output that looks complete and does not resolve. `components` itself is independent of Atlas: the previews are ordinary Pyreon components over the generated hooks, so a project that wants them without a workbench gets exactly that
 - Every emitter is opt-in via `plugins` (`types`/`schemas`/`client`/`queries`/`mocks`/`faker`/`components`/`atlas`/`docs`/`mcp`) — schemas alone is a first-class use, and `target` is ADDITIVE on top of the selection rather than a separate output, so asking for schemas gets schemas on both targets
 - The output is a LAYERED graph, not one barrel: `index.ts` carries the production surface, `dev.ts` the fixtures/factories/previews, and `endpoints/index.ts` + `queries/index.ts` one layer each, so a consumer can take exactly the layer it needs. An emitted `package.json` declares the output side-effect-free (an ARRAY naming `atlas.wrapper.tsx`, which really does call `installMocks()` at module scope, rather than a blanket `false` that would be a lie) — and together with ONE SCHEMA MODULE PER MODEL (a `$ref` cycle shares one) and `/* @__PURE__ */` on every emitted call, one hook costs what it uses: measured with Vite 8 on GitHub's spec, one hook went from 94.4 KB to 2.8 KB gzipped of generated code, and the root barrel costs exactly what the per-tag import costs. Untagged operations are grouped by path (Stripe's single 612-endpoint `default` module became 79)
@@ -77,10 +80,7 @@ lathe generate · 1 project
     contract       1 breaking · 1 additive
       − breaking  field-removed  Book.pages  was integer (optional)
       + additive  field-added    Book.dueAt  date-time (optional)
-    native reach   3 of 4 operations · 1 web-only
-      ! web-only  1 operation: createBook
-        `POST` lowers through mutations, which PMTC does not yet recognise; GET operations on this
-        client DO reach native.
+    native reach   4 of 4 operations
     native verify  4 of 4 files lower
       ✓ lowers    authors.native.tsx    swift   compiled
       ✓ lowers    authors.native.tsx    kotlin  compiled
@@ -88,7 +88,7 @@ lathe generate · 1 project
       ✓ lowers    books.native.tsx      kotlin  compiled
       ✓ compiled  all modules together  swift
       ✓ compiled  all modules together  kotlin
-      markers  PyreonQuery< PyreonZodSchema_ PyreonSchemaError
+      markers  PyreonQuery< PyreonMutation< PyreonHttpRequest( PyreonZodSchema_ PyreonSchemaError
 
 ! wrote 6 of 29 files · 1 breaking change · 69 ms
 ```
@@ -177,7 +177,7 @@ const { files } = await generateAsync(specText, resolveConfig({ input: './openap
 resolveConfig(section: LatheSection | undefined): ResolvedConfig
 ```
 
-Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitters run — built-in names and `definePlugin` plugins), `filters` / `patches` / `operations` / `naming` / `format` (author control over the subset, the spec, per-operation hooks and validation, generated names, and formatting), `client` (`pyreon` | `fetch` | `axios` | `ky`), `validator` (`pyreon` | `zod`), `target` (`web` | `multiplatform`), `baseUrl`, `strictNative` and `responseValidation` (`strict` | `warn` | `off`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for `components` gets `queries`, `client` and `schemas` too, and the CLI report says what came along. Use `resolveProjects` instead when the config may declare `projects: [...]`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.
+Fills defaults and validates one project's settings, and is where the whole option surface lives: `plugins` (which emitters run — built-in names and `definePlugin` plugins), `filters` / `patches` / `operations` / `naming` / `format` (author control over the subset, the spec, per-operation hooks and validation, generated names, and formatting), `client` (`pyreon` | `fetch` | `axios` | `ky`), `validator` (`pyreon` | `zod`), `target` (`web` | `multiplatform`), `baseUrl`, `strictNative` and `responseValidation` (`strict` | `warn` | `off`, what the web client does with a response that does not match its schema; `off` emits those endpoints types-only, with no schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for `components` gets `queries`, `client` and `schemas` too, and the CLI report says what came along. Use `resolveProjects` instead when the config may declare `projects: [...]`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.
 
 **Example**
 

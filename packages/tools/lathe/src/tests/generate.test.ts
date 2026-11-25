@@ -205,14 +205,21 @@ describe('generate', () => {
     expect(src).toContain('...extra, enabled: extra.enabled !== false }')
   })
 
-  it('leaves a parameterless hook alone — nothing to be not-ready about', () => {
+  it('gives a parameterless hook the same args accessor, optional (#4841)', () => {
     const src = file(generate(SPEC, web), 'queries/books.ts')
-    expect(src).toContain(
-      "export function useListBooks<TData = Awaited<ReturnType<typeof listBooks>>>(options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof listBooks>>, Error, TData>, 'queryKey' | 'queryFn'>) {",
-    )
-    expect(src).toContain(
-      'return useQuery<Awaited<ReturnType<typeof listBooks>>, Error, TData>(() => ({ ...listBooks.query(), ...options?.() }))',
-    )
+    // The request options (`meta`, `headers`, `timeout`) reach the endpoint
+    // through it; before, the hook took only query options, so `meta` landed
+    // in TanStack's query meta and `headers` were dropped.
+    expect(src).toContain('export function useListBooks<TData = Awaited<ReturnType<typeof listBooks>>>(\n  args?: () => Parameters<typeof listBooks>[0] | undefined,')
+    expect(src).toContain('    const a = args ? args() : {}')
+    expect(src).toContain('    const q = listBooks.query(a)')
+  })
+
+  it('lets every read hook extend its key through `key`, starting from the endpoint key (#4841)', () => {
+    const src = file(generate(SPEC, web), 'queries/books.ts')
+    expect(src).toContain("'queryKey' | 'queryFn'> & { key?: ((base: readonly unknown[]) => readonly unknown[]) | undefined },")
+    expect(src).toContain('    const { key, ...extra } = options?.() ?? {}')
+    expect(src).toContain('return { ...q, queryKey: key ? key(q.queryKey) : q.queryKey, ...extra, enabled: extra.enabled !== false }')
   })
 
   it('reports per-operation reach with a reason', () => {
@@ -223,10 +230,14 @@ describe('generate', () => {
     // the generated component takes the param as a prop.
     expect(r.reach.get('getBook')?.reach).toBe('web+native')
     expect(r.reach.get('getBook')?.reason).toBeUndefined()
-    // The invariant this spec protects — a web-only op is REPORTED, with a
-    // reason a reader can act on — is unchanged, and a mutation still is one.
-    expect(r.reach.get('createBook')?.reach).toBe('web-only')
-    expect(r.reach.get('createBook')?.reason).toContain('mutations')
+    // A write with a JSON body reaches native through `useMutation` (#4835);
+    // it used to be reported web-only because "PMTC does not yet recognise"
+    // mutations, long after the query native plugin lowered them.
+    expect(r.reach.get('createBook')).toEqual({ reach: 'web+native' })
+    // A web-only op is still REPORTED, with a reason a reader can act on.
+    const off = generate(SPEC, { ...native, operations: { createBook: { hook: false } } } as never)
+    expect(off.reach.get('createBook')?.reach).toBe('web-only')
+    expect(off.reach.get('createBook')?.reason).toContain('hook is turned off')
   })
 
   it('marks every operation web-only when the baseUrl is not absolute', () => {

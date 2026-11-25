@@ -175,6 +175,7 @@ paths:
     post:
       operationId: createBook
       tags: [books]
+      requestBody: { content: { multipart/form-data: { schema: { type: object, properties: { cover: { type: string, format: binary } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/Book' } } } }
 components:
@@ -205,7 +206,7 @@ components:
     expect(out).toMatch(/native reach\s+\d+ of \d+ operations/)
     expect(out).toContain('createBook')
     // ...with the reason, so the reader can act rather than just be informed.
-    expect(out).toContain('mutations')
+    expect(out).toContain('a native mutation sends a JSON')
   })
 
   it('renders a per-file verdict with its positive markers', () => {

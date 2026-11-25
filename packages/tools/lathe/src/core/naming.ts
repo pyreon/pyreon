@@ -213,7 +213,7 @@ export function isWindowsDeviceName(stem: string): boolean {
  */
 const EMITTER_VALUES = new Set([
   // client + validator bindings in the endpoint modules
-  'api', 's', 'z', 'standardSchema', 'createHttp',
+  'api', 's', 'z', 'standardSchema', 'createHttp', 'unchecked',
   // exports of the generated entries
   'keys', 'configureApi', 'auth', 'optimisticUpdate', 'setDevTransport', 'installMocks', 'mockRoutes', 'mockRouteTable',
   'routes', 'mock', 'faker', 'mockOperation', 'resetMocks', 'mockCalls', 'apiBaseUrl', 'createMock',

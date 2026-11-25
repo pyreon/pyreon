@@ -18,6 +18,15 @@ import { childTypes } from '../core/walk'
 
 export type ModelTypes = ReadonlyMap<string, IrType>
 
+/**
+ * The `key` option every generated read hook adds to TanStack's: the
+ * endpoint's key in, the key to cache under out -- `(base) => [...base, tenant]`
+ * when headers or the caller change the result (#4841). The hook options omit
+ * `queryKey`, so this is the one way to extend it, and starting from `base`
+ * keeps invalidation by the endpoint's prefix matching.
+ */
+export const QUERY_HOOK_KEY_OPTION = '{ key?: ((base: readonly unknown[]) => readonly unknown[]) | undefined }'
+
 /** Does the operation SEND anything (params, query or a body)? */
 export function hasInput(op: IrOperation): boolean {
   return (

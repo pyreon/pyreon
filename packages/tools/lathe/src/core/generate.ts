@@ -20,7 +20,10 @@ import {
   emitClient,
   emitNativeModules,
   hasNativeDataComponent,
+  hasNativeMutationComponent,
   hasNativeStreamComponent,
+  isMutation,
+  nativeMutationBlocker,
   nativeStreamBlocker,
   emitWebEndpoints,
   emitWebQueries,
@@ -186,7 +189,7 @@ function* pipeline(
         responseValidation: config.responseValidation,
       }),
     );
-    for (const f of emitWebEndpoints(doc, config.validator, config.client))
+    for (const f of emitWebEndpoints(doc, config.validator, config.client, config.responseValidation))
       push(f);
   }
   if (has("queries")) {
@@ -600,10 +603,20 @@ function decide(
       reason: nativeStreamBlocker(op) ?? "no native stream component is generated for it.",
     };
   }
+  if (isMutation(op)) {
+    // A write lowers through `useMutation` to the native `PyreonMutation`
+    // runtime (#4835). Asked of the emitter, so the report and the native
+    // layout agree about which writes get a component.
+    if (hasNativeMutationComponent(op)) return { reach: "web+native" };
+    return {
+      reach: "web-only",
+      reason: nativeMutationBlocker(op) ?? "no native mutation component is generated for it.",
+    };
+  }
   if (op.method !== "GET") {
     return {
       reach: "web-only",
-      reason: `\`${op.method}\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.`,
+      reason: `\`${op.method}\` has no native component: a native read is a \`GET\` (\`useQuery\`) and a native write a \`POST\`, \`PUT\`, \`PATCH\` or \`DELETE\` (\`useMutation\`).`,
     };
   }
   if (op.hook === false) {

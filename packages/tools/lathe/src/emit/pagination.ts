@@ -15,7 +15,7 @@
 import type { IrOperation, IrPagination, IrType } from '../core/ir'
 import { hookOf, propKey } from '../core/naming'
 import type { ModelTypes } from './operation-types'
-import { errorTypeOf, resolve as resolveRef } from './operation-types'
+import { errorTypeOf, QUERY_HOOK_KEY_OPTION, resolve as resolveRef } from './operation-types'
 import { tsType } from './schema'
 import type { SourceFile } from './writer'
 
@@ -205,16 +205,19 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
     '',
     'Return `undefined` from `args` to hold the request until the arguments are ready.',
     `\`${p.param}\` is set per page; a value passed in \`args\` is overridden.`,
+    '`options.key`: `(base) => [...base, discriminator]` extends the cache key, as on the plain hook.',
     op.deprecated ? '' : undefined,
     op.deprecated ? '@deprecated The spec marks this operation deprecated.' : undefined,
   )
   f.line(`export function ${hook}(`)
   f.line(`  args: () => ${input} | undefined,`)
-  f.line(`  options?: () => Omit<${opts}, 'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'>,`)
+  f.line(
+    `  options?: () => Omit<${opts}, 'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'> & ${QUERY_HOOK_KEY_OPTION},`,
+  )
   f.line(') {')
   f.line(`  return useInfiniteQuery<${data}, ${err}, readonly unknown[], ${pp}>(() => {`)
   f.line('    const a = args()')
-  f.line('    const extra = options?.() ?? {}')
+  f.line('    const { key, ...extra } = options?.() ?? {}')
   f.line('    if (a === undefined) {')
   f.line('      return {')
   f.line(`        queryKey: [...${op.id}.key.prefix, 'infinite'],`)
@@ -225,7 +228,8 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   f.line('        enabled: false,')
   f.line('      }')
   f.line('    }')
-  f.line(`    return { ...${name}(a), ...extra, enabled: extra.enabled !== false }`)
+  f.line(`    const q = ${name}(a)`)
+  f.line('    return { ...q, queryKey: key ? key(q.queryKey) : q.queryKey, ...extra, enabled: extra.enabled !== false }')
   f.line('  })')
   f.line('}')
 }

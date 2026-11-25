@@ -161,7 +161,7 @@ export interface ListBooksPreviewProps {
  * Preview of `GET /books`.
  */
 export function ListBooksPreview(props: ListBooksPreviewProps) {
-  const q = useListBooks(() => ({ enabled: props.data === undefined }))
+  const q = useListBooks(() => (props.data === undefined ? {} : undefined))
   const live = () => props.data === undefined
   const pending = () => props.force === 'loading' || (live() && q.isPending())
   const failed = () => props.force === 'error' || (live() && q.isError())

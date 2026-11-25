@@ -10,7 +10,7 @@ description: "Generated client reference for Bookshelf 1.2.0."
 
 ## Reach
 
-3 of 4 operations lower to a native request on iOS and Android; the rest run on the web only. Each page states the reason per operation.
+4 of 4 operations lower to a native request on iOS and Android; the rest run on the web only. Each page states the reason per operation.
 
 ## Tags
 

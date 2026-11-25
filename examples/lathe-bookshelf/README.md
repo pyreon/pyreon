@@ -57,13 +57,17 @@ emits `books.native.tsx` / `authors.native.tsx` and then runs the **real**
 `@pyreon/native-compiler` over them:
 
 ```
-native reach  3/4 operations
-  web-only 1 op(s): createBook
-    POST lowers through mutations, which PMTC does not yet recognise.
-
-lowers books.native.tsx swift   [PyreonQuery< PyreonZodSchema_ PyreonSchemaError]
-lowers books.native.tsx kotlin  [PyreonQuery< PyreonZodSchema_ PyreonSchemaError]
+native reach   4 of 4 operations
+native verify  4 of 4 files lower
+  ✓ lowers    books.native.tsx      swift   compiled
+      PyreonQuery< PyreonMutation< PyreonHttpRequest( PyreonZodSchema_ PyreonSchemaError
+  ✓ lowers    books.native.tsx      kotlin  compiled
+      PyreonQuery< PyreonMutation< PyreonHttpRequest( PyreonZodSchema_ PyreonSchemaError
 ```
+
+`createBook` (a `POST`) reaches native as `CreateBookMutation`: it holds
+`useMutation(createBook.mutation())`, which PMTC lowers to the native
+`PyreonMutation` runtime, and hands `mutate` to its `children`.
 
 Note the `baseUrl` override in `pyreon.config.ts` stays **absolute**. PMTC bakes
 the request URL at compile time, so a relative base would make every operation

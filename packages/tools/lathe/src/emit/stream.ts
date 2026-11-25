@@ -18,7 +18,7 @@ import { responseKindOf } from '../core/media'
 import { typeIdent } from '../core/naming'
 import { usesBigInt } from '../core/walk'
 import type { ClientName } from './client-runtime'
-import { PURE, schemaExpr, schemaRefs, schemaSpecifierFor } from './schema'
+import { PURE, schemaExpr, schemaRefs, schemaSpecifierFor, tsType } from './schema'
 import { dialectOf, type ValidatorName } from './validator'
 import { q, relativeSpecifier, type SourceFile } from './writer'
 
@@ -109,6 +109,8 @@ export interface StreamEmitOptions {
   path: string
   doc: IrDocument
   validator: ValidatorName
+  /** Is response validation off for this operation? Its events are then typed, not parsed against a schema. */
+  unchecked?: ((op: IrOperation) => boolean) | undefined
   /** The spec literal, `<generics>` and `, { config }` of a `responseType: 'stream'` endpoint. */
   streamDecl: (op: IrOperation) => { spec: string; generics: string; config: string }
 }
@@ -130,17 +132,25 @@ export function emitStreamFunctions(f: SourceFile, ops: readonly IrOperation[], 
   if (formats.has('sse')) optionTypes.push('EventStreamOptions')
   if (formats.has('ndjson')) optionTypes.push('NdjsonStreamOptions')
   f.importType('@pyreon/http/stream', ...optionTypes)
-  if (streaming.some((o) => parsesEvent(o.stream as IrStream))) {
+  const unchecked = (op: IrOperation): boolean => opts.unchecked?.(op) ?? false
+  // Events of an operation whose validation is off are typed through their
+  // interface and never checked, so they name no schema (#4815).
+  const validated = (op: IrOperation): boolean => parsesEvent(op.stream as IrStream) && !unchecked(op)
+  if (streaming.some(validated)) {
     f.import(relativeSpecifier(opts.path, 'client.ts'), 'streamEvent')
   }
   const refs = new Set<string>()
+  const typeRefs = new Set<string>()
   for (const op of streaming) {
     const st = op.stream as IrStream
-    if (parsesEvent(st)) schemaRefs(st.event, refs)
+    if (parsesEvent(st)) schemaRefs(st.event, unchecked(op) ? typeRefs : refs)
   }
   for (const name of [...refs].sort()) f.import(schemaSpecifierFor(opts.path, name, opts.doc), name)
+  for (const name of [...typeRefs].sort()) {
+    if (!refs.has(name)) f.importType(schemaSpecifierFor(opts.path, name, opts.doc), name)
+  }
   // An inline event type is a composite schema expression over the binding.
-  if (streaming.some((o) => parsesEvent(o.stream as IrStream) && (o.stream as IrStream).event.kind !== 'ref')) {
+  if (streaming.some((o) => validated(o) && (o.stream as IrStream).event.kind !== 'ref')) {
     const dialect = dialectOf(opts.validator)
     f.import(dialect.module, dialect.binding)
   }
@@ -158,7 +168,11 @@ export function emitStreamFunctions(f: SourceFile, ops: readonly IrOperation[], 
       f.line(`const ${endpoint} = ${PURE}api.endpoint${d.generics}(${q(d.spec)}${d.config})`)
     }
     let parse = ''
-    if (parsesEvent(s)) {
+    if (parsesEvent(s) && unchecked(op)) {
+      const type = s.event.kind === 'ref' ? s.event.name : `${op.id}$event`
+      if (s.event.kind !== 'ref') f.line(`type ${type} = ${tsType(s.event)}`)
+      parse = `parse: (value: unknown) => value as ${type}, `
+    } else if (parsesEvent(s)) {
       if (s.event.kind === 'ref') {
         parse = `parse: streamEvent(${s.event.name}), `
       } else {
