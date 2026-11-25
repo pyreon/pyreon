@@ -12,14 +12,16 @@
 // swallowed or thrown out of `.set()`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  _resetRegistry,
-  _resetStorageListener,
   createStorage,
   removeStorage,
   useCookie,
   useSessionStorage,
   useStorage,
 } from '../index'
+import {
+  _resetRegistry,
+  _resetStorageListener,
+} from '../internal'
 
 /** Make every `setItem` on `area` throw the real quota error, leaving reads intact. */
 function fillUp(area: Storage): () => void {

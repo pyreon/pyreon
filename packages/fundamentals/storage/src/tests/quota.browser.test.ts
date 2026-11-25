@@ -12,15 +12,17 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  _resetDBCache,
-  _resetRegistry,
-  _resetStorageListener,
   removeStorage,
   useCookie,
   useIndexedDB,
   useSessionStorage,
   useStorage,
 } from '../index'
+import {
+  _resetDBCache,
+  _resetRegistry,
+  _resetStorageListener,
+} from '../internal'
 
 /** Write filler keys until Chromium refuses even one more character. */
 function fill(area: Storage): void {
