@@ -89,10 +89,11 @@ export function classifyNativeSurface(
       reasons.push(f + ' — co-located native source')
     else if (/^packages\/[^/]+\/[^/]+\/src\/native-plugin(?:\.[cm]?[jt]sx?$|\/)/.test(f))
       reasons.push(f + ' — package-owned native lowering')
-    else if (LATHE_NATIVE.test(f))
+    else if (LATHE_NATIVE.test(f)) {
       // lathe EMITS native modules; its tests compile them against the shipped
       // Swift/Kotlin runtimes, which only this workflow's toolchains can run.
       reasons.push(f + ' — lathe native emitter')
+    }
     else if (f.startsWith('scripts/check-native-') || f.startsWith('scripts/native-'))
       reasons.push(f + ' — native gate script')
     else if (pluginSurface?.has(f)) reasons.push(f + ' — native plugin dependency')

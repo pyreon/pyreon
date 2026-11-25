@@ -138,6 +138,7 @@ describe('a generated <Op>Mutation refreshes what the web hook refreshes', () =>
         lists++
         return new Response(JSON.stringify([{ id: 'n1', title: `v${lists}` }]), { headers: { 'content-type': 'application/json' } })
       }
+
       return new Response(JSON.stringify({ id: 'n1', title: 'x' }), { headers: { 'content-type': 'application/json' } })
     }) as typeof fetch
     let trigger: (() => void) | undefined

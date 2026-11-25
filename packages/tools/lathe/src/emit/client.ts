@@ -739,6 +739,7 @@ export function nativeDataBlocker(op: IrOperation, models: ReadonlyMap<string, I
   if (typedResponse(op) === undefined) {
     return "no typed JSON response (no content, or a media type Lathe cannot type) -- a native query decodes into a declared type, so there is nothing to lower it to.";
   }
+
   return undefined;
 }
 

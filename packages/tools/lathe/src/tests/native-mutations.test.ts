@@ -191,7 +191,8 @@ describe('a write is a native MUTATION component', () => {
   // CI runs this file with PYREON_REQUIRE_NATIVE_VALIDATE=1 on the runner that
   // installs kotlinc (native-validate.yml), where a missing toolchain FAILS.
   const REQUIRED = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
-  it.skipIf(!REQUIRED && !isKotlincAvailable())('Kotlin: compiles against the SHIPPED PyreonMutation.kt and PyreonQuery.kt', () => {
+  describe.skipIf(!REQUIRED && !isKotlincAvailable())('kotlinc (shipped runtime)', () => {
+  it('Kotlin: compiles against the SHIPPED PyreonMutation.kt and PyreonQuery.kt', () => {
     if (!isKotlincAvailable()) expect.fail('kotlinc is not on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).')
     // The shipped files stand in for their stubs (no `augment`): a signature the
     // stub got wrong fails here even though every stub gate passes.
@@ -203,6 +204,7 @@ describe('a write is a native MUTATION component', () => {
     const r = validateKotlinFiles([...modules, real('PyreonQuery.kt'), real('PyreonMutation.kt')], { augment: [] })
     expect(r.error ?? '').toBe('')
   }, 600_000)
+  })
   const CORE_SWIFT = join(__dirname, '../../../../native/runtime-swift/Sources/PyreonRuntime')
 
   it.skipIf(!isSwiftUIAvailable())('Swift: compiles against the real SDK and the SHIPPED mutation runtime', () => {
