@@ -58,8 +58,9 @@ public enum PyreonRedirect {
 /// The query of a callback URL, read by the web rule (`new URL(url).searchParams.get(name)`), held to
 /// the shared vectors in `native/tests/callback-vectors.json`: the part between the first `?` and the
 /// first `#`, split on `&`, `+` read as a space, percent-decoded, and the FIRST value of a repeated
-/// name wins — on every target. A malformed query (a bad `%` escape) reads as empty, so the callback
-/// fails as `unknownFlow`, the same as Kotlin.
+/// name wins — on every target. Decoding is URLSearchParams': a `%` not followed by two hex digits
+/// stays literal, and bytes that are not UTF-8 become U+FFFD — a stray bad escape in one parameter
+/// never empties the whole query.
 public enum PyreonCallbackQuery {
     public static func parse(_ url: String) -> [String: String] {
         let head = url.prefix { $0 != "#" }
@@ -67,12 +68,38 @@ public enum PyreonCallbackQuery {
         var out: [String: String] = [:]
         for part in head[head.index(after: q)...].split(separator: "&", omittingEmptySubsequences: true) {
             let eq = part.firstIndex(of: "=")
-            func decode(_ s: Substring) -> String? { s.replacingOccurrences(of: "+", with: " ").removingPercentEncoding }
-            guard let k = decode(eq.map { part[..<$0] } ?? part[...]),
-                  let v = eq.map({ decode(part[part.index(after: $0)...]) }) ?? "" else { return [:] }
+            let k = decode(eq.map { part[..<$0] } ?? part[...])
+            let v = eq.map { decode(part[part.index(after: $0)...]) } ?? ""
             if out[k] == nil { out[k] = v }
         }
         return out
+    }
+
+    /// application/x-www-form-urlencoded percent-decoding, as the WHATWG URL standard defines it.
+    static func decode(_ s: Substring) -> String {
+        let bytes = Array(s.replacingOccurrences(of: "+", with: " ").utf8)
+        func hex(_ b: UInt8) -> UInt8? {
+            switch b {
+            case 0x30...0x39: return b - 0x30
+            case 0x61...0x66: return b - 0x61 + 10
+            case 0x41...0x46: return b - 0x41 + 10
+            default: return nil
+            }
+        }
+        var out: [UInt8] = []
+        out.reserveCapacity(bytes.count)
+        var i = 0
+        while i < bytes.count {
+            if bytes[i] == 0x25, i + 2 < bytes.count, let h = hex(bytes[i + 1]), let l = hex(bytes[i + 2]) {
+                out.append(h * 16 + l)
+                i += 3
+            } else {
+                out.append(bytes[i])
+                i += 1
+            }
+        }
+        // Invalid UTF-8 becomes U+FFFD, as on the web.
+        return String(decoding: out, as: UTF8.self)
     }
 }
 

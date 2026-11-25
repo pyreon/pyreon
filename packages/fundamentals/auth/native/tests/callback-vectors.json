@@ -15,5 +15,12 @@
   ["https://app.example/cb?c%6Fde=c", "code", "c"],
   ["com.example.app:/oauth?code=c&state=s", "state", "s"],
   ["com.example.app:oauth?code=c&state=s", "code", "c"],
-  ["com.example.app:/oauth?error=access_denied&error=x", "error", "access_denied"]
+  ["com.example.app:/oauth?error=access_denied&error=x", "error", "access_denied"],
+  ["https://app.example/cb?code=c&state=S&x=%zz", "code", "c"],
+  ["https://app.example/cb?code=c&state=S&x=%zz", "x", "%zz"],
+  ["https://app.example/cb?x=a%2", "x", "a%2"],
+  ["https://app.example/cb?x=%%41", "x", "%A"],
+  ["https://app.example/cb?x=%FF", "x", "�"],
+  ["https://app.example/cb?x=a%FFb", "x", "a�b"],
+  ["https://app.example/cb?state=%zz", "state", "%zz"]
 ]

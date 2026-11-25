@@ -1,6 +1,5 @@
 package com.pyreon.runtime
 
-import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -189,8 +188,9 @@ public class PyreonRedirectToken internal constructor(
  * the shared vectors in `native/tests/callback-vectors.json`: the part between the first `?` and the
  * first `#`, split on `&`, `+` read as a space, percent-decoded, and the FIRST value of a repeated
  * name wins — on every target, so a callback that repeats `code` or `state` means the same thing
- * on the web, iOS and Android. A malformed query (a bad `%` escape) reads as empty, so the callback
- * fails as UnknownFlow, the same as Swift.
+ * on the web, iOS and Android. Decoding is URLSearchParams': a `%` not followed by two hex digits
+ * stays literal, and bytes that are not UTF-8 become U+FFFD — a stray bad escape in one parameter
+ * never empties the whole query.
  */
 public object PyreonCallbackQuery {
     public fun parse(url: String): Map<String, String> {
@@ -198,18 +198,40 @@ public object PyreonCallbackQuery {
         val q = head.indexOf('?')
         if (q < 0) return emptyMap()
         val out = LinkedHashMap<String, String>()
-        try {
-            for (part in head.substring(q + 1).split('&')) {
-                if (part.isEmpty()) continue
-                val i = part.indexOf('=')
-                val k = URLDecoder.decode(if (i < 0) part else part.substring(0, i), "UTF-8")
-                val v = if (i < 0) "" else URLDecoder.decode(part.substring(i + 1), "UTF-8")
-                out.putIfAbsent(k, v)
-            }
-        } catch (_: IllegalArgumentException) {
-            return emptyMap()
+        for (part in head.substring(q + 1).split('&')) {
+            if (part.isEmpty()) continue
+            val i = part.indexOf('=')
+            val k = decode(if (i < 0) part else part.substring(0, i))
+            val v = if (i < 0) "" else decode(part.substring(i + 1))
+            out.putIfAbsent(k, v)
         }
         return out
+    }
+
+    /** application/x-www-form-urlencoded percent-decoding, as the WHATWG URL standard defines it. */
+    internal fun decode(s: String): String {
+        val bytes = s.replace('+', ' ').toByteArray(Charsets.UTF_8)
+        val out = java.io.ByteArrayOutputStream(bytes.size)
+        var i = 0
+        while (i < bytes.size) {
+            val b = bytes[i]
+            if (b == '%'.code.toByte() && i + 2 < bytes.size && hex(bytes[i + 1]) >= 0 && hex(bytes[i + 2]) >= 0) {
+                out.write(hex(bytes[i + 1]) * 16 + hex(bytes[i + 2]))
+                i += 3
+            } else {
+                out.write(b.toInt())
+                i++
+            }
+        }
+        // The JVM decoder replaces malformed input with U+FFFD, as the web does.
+        return String(out.toByteArray(), Charsets.UTF_8)
+    }
+
+    private fun hex(b: Byte): Int = when (val c = b.toInt().toChar()) {
+        in '0'..'9' -> c - '0'
+        in 'a'..'f' -> c - 'a' + 10
+        in 'A'..'F' -> c - 'A' + 10
+        else -> -1
     }
 }
 

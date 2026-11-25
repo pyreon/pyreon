@@ -90,7 +90,9 @@ locally, and `error` says why (`revocation_failed`, `provider_unavailable`, `net
 `revokeTokens: false` to skip it. The provider session itself survives, so the next sign-in completes without a prompt;
 `auth.signOut({ endProviderSession: true, postLogoutRedirectUri })` also sends the user to the provider's
 `end_session_endpoint` with an `id_token_hint`, after the revocation (which waits at most 5 s). Native sign-out
-revokes the same way (always, when advertised) and signs out every other live container over the same stored session.
+revokes the same way (always, when advertised) and signs out every other live container over the same stored session,
+revoking every token any of them or the stored record holds. `revoked` covers the tokens held when `signOut()` was called; a sign-in or refresh still in flight is not
+covered: its token response, when it arrives, is discarded and revoked in the background (best effort, not reported).
 
 **On a server (backend-for-frontend)**, two things are yours to supply: a `FlowStore` all instances share, and a
 **browser binding**. The `state` travels in the callback URL, so on its own it cannot say which browser started the
@@ -300,7 +302,7 @@ on 2026-11-24, to be fixed after it):
 
 - **L1 — iOS Keychain backups.** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not `…ThisDeviceOnly`: an encrypted backup moves it to another device, and Keychain items survive an uninstall.
 - **L2 — OAuth2-only sign-in.** A sign-in with a provider that returns no ID token (GitHub, Facebook) has no verified identity until a refresh brings an ID token, and two such sessions in one app cannot be told apart, so native instances never adopt each other's refresh of one.
-- **L3 — a flow for another provider is consumed.** On native, a callback carrying a flow started for another provider is refused but the flow is consumed, so that sign-in has to be retried. (Callback parameters are read by one rule on every target — a repeated parameter means its first value — held to the shared vectors in `native/tests/callback-vectors.json`.)
+- **L3 — a flow for another provider is consumed.** On native, a callback carrying a flow started for another provider is refused but the flow is consumed, so that sign-in has to be retried. (Callback parameters are read by one rule on every target — URLSearchParams': a repeated parameter means its first value, a bad `%` escape stays literal, bytes that are not UTF-8 become U+FFFD — held to the shared vectors in `native/tests/callback-vectors.json`.)
 - **Native is unverified on a device against a real provider.** Native sign-in has never completed against a real provider. The native sources are compiled against the iOS and Android SDKs in CI and the `native-tasks` app runs on a simulator and an emulator, but only to the `network_error` path.
 - **Android custom schemes.** Another installed app can claim the scheme and receive the redirect (PKCE is then the only defence). The exported `PyreonAuthRedirectActivity` forwards only the answer to the sign-in in flight, so other apps can no longer cancel or feed one. Prefer a verified App Link (see the Android setup above).
 - **Sign-out propagation stops at the process.** Native sign-out signs out every live container over the same stored session in the process; another process (an app extension sharing the Keychain) keeps its in-memory session until it next reads the store. Token revocation (RFC 7009) happens only when the provider advertises a `revocation_endpoint`.

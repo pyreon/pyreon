@@ -29,6 +29,8 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
     /// Advertise an RFC 7009 revocation_endpoint answering with this status.
     var revocationStatus: Int?
     var revoked: [[String: String]] = []
+    /// Runs on the main actor while a token request is in flight, with its grant type (a sign-out racing it).
+    var duringToken: (@MainActor (String) -> Void)?
     private var codes: [String: (challenge: String, nonce: String)] = [:]
     private var refreshCount = 0
 
@@ -54,6 +56,10 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
         }
         let form = Dictionary(uniqueKeysWithValues: (URLComponents(string: "?" + String(decoding: r.body ?? Data(), as: UTF8.self))?
             .queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        if let g = form["grant_type"], let hook = duringToken {
+            duringToken = nil
+            await MainActor.run { hook(g) }
+        }
         if r.url.hasSuffix("/revoke") {
             revoked.append(form)
             return PyreonAuthResponse(status: revocationStatus ?? 404)
@@ -252,6 +258,7 @@ enum PyreonOidcFlowTests {
 
         // Sign-out revokes the refresh and then the access token when the provider advertises
         // revocation (RFC 7009); a refused revocation still signs out; none without the endpoint.
+        PyreonOidcInstances.reset()
         let rvp = FakeProvider(), rvb = FakeBrowser(rvp)
         rvp.revocationStatus = 200
         let rv = make(rvp, CountingStore(), rvb)
@@ -287,6 +294,54 @@ enum PyreonOidcFlowTests {
         await second.refreshNow()
         expect(second.status != PyreonOidcStatus.signedIn && shp.requests.filter { $0.hasSuffix("/token") }.count == soTokenPosts,
                "and cannot refresh back")
+
+        // A sibling refreshed (and rotated) the session: the instance signing out holds only the
+        // spent tokens; the live ones are in the sibling and the store, and are revoked too.
+        PyreonOidcInstances.reset()
+        let svp = FakeProvider(), svb = FakeBrowser(svp), svs = CountingStore()
+        svp.revocationStatus = 200
+        svp.rotateRefresh = true
+        let stale = make(svp, svs, svb)
+        await stale.signInNow()
+        let sib = make(svp, svs, svb)
+        await sib.refreshNow()
+        expect(sib.accessToken == "at-1", "the sibling refreshed (\(sib.error ?? ""))")
+        await stale.signOutNow()
+        expect(Set(svp.revoked.compactMap { $0["token"] }) == ["rt-0", "at-0", "rt-1", "at-1"],
+               "every instance's and the store's tokens revoked: \(svp.revoked)")
+        expect(sib.status == PyreonOidcStatus.signedOut, "the sibling signed out")
+        // The instance signing out holds nothing, a sibling does: still revoked (no early return).
+        PyreonOidcInstances.reset()
+        let hvp = FakeProvider(), hvs = CountingStore()
+        hvp.revocationStatus = 200
+        let emptyInst = make(hvp, hvs, FakeBrowser(hvp))
+        let holder = make(hvp, hvs, FakeBrowser(hvp))
+        await holder.signInNow()
+        await emptyInst.signOutNow()
+        expect(Set(hvp.revoked.compactMap { $0["token"] }) == ["rt-0", "at-0"], "revoked from the sibling: \(hvp.revoked)")
+        expect(holder.status == PyreonOidcStatus.signedOut, "the holder signed out")
+
+        // A code exchange in flight when the user signs out: its tokens are revoked, not dropped.
+        PyreonOidcInstances.reset()
+        let lxp = FakeProvider(), lxb = FakeBrowser(lxp)
+        lxp.revocationStatus = 200
+        let lx = make(lxp, CountingStore(), lxb)
+        lxp.duringToken = { _ in lx.signOut() }
+        await lx.signInNow()
+        for _ in 0..<500 where lx.pendingRevocations > 0 { await _Concurrency.Task.yield() }
+        expect(lx.status == PyreonOidcStatus.signedOut && lx.accessToken == nil, "the late sign-in is discarded")
+        expect(Set(lxp.revoked.compactMap { $0["token"] }) == ["rt-0", "at-0"], "its tokens revoked: \(lxp.revoked)")
+        // A refresh in flight: sign-out revokes what the session held, the refresh's tokens when they land.
+        let lrp = FakeProvider(), lrb = FakeBrowser(lrp)
+        lrp.revocationStatus = 200
+        lrp.rotateRefresh = true
+        let lr = make(lrp, CountingStore(), lrb)
+        await lr.signInNow()
+        lrp.duringToken = { _ in lr.signOut() }
+        await lr.refreshNow()
+        for _ in 0..<500 where lr.pendingRevocations > 0 || lrp.revoked.count < 4 { await _Concurrency.Task.yield() }
+        expect(lr.status == PyreonOidcStatus.signedOut && lr.accessToken == nil, "the late refresh is discarded")
+        expect(Set(lrp.revoked.compactMap { $0["token"] }) == ["rt-0", "at-0", "rt-1", "at-1"], "held and late tokens revoked: \(lrp.revoked)")
 
         // Concurrent refreshes share one request (rotating refresh tokens + reuse detection).
         let concP = FakeProvider(), concB = FakeBrowser(concP)

@@ -369,6 +369,75 @@ describe('createAuth — after sign-in', () => {
   })
 })
 
+describe('signOut overtaking a token response in flight', () => {
+  // No ID token, explicit metadata: the race is about the token endpoint alone.
+  function setup() {
+    const m: OidcMetadata = { issuer, authorization_endpoint: `${issuer}/auth`, token_endpoint: `${issuer}/token`, revocation_endpoint: `${issuer}/revoke` }
+    const revoked: string[] = []
+    let release = () => {}
+    let gate: Promise<void> | null = null
+    let n = 0
+    const f: FetchLike = async (u, init) => {
+      const body = new URLSearchParams(String(init?.body))
+      if (u.endsWith('/revoke')) {
+        revoked.push(body.get('token')!)
+
+        return new Response('', { status: 200 })
+      }
+      if (gate) await gate
+      n++
+      const rotated = body.get('grant_type') === 'refresh_token'
+
+      return json({ access_token: `at${n}`, token_type: 'Bearer', refresh_token: rotated ? `rt-rotated${n}` : `rt${n}` })
+    }
+    const redirects: string[] = []
+    const auth = createAuth({ metadata: m, client: { clientId: 'app', redirectUri: 'https://app.example/cb' }, flows: memoryFlowStore(), binding: 'b', redirect: (u) => redirects.push(u), fetch: f })
+    const hold = () => (gate = new Promise<void>((r) => (release = () => { gate = null; r() })))
+    const callback = async () => {
+      await auth.signIn()
+
+      return `https://app.example/cb?code=c&state=${new URL(redirects.at(-1)!).searchParams.get('state')}`
+    }
+
+    return { auth, revoked, hold, release: () => release(), callback }
+  }
+
+  it('a code exchange that lands after signOut is revoked, not dropped while valid', async () => {
+    const s = setup()
+    const cb = await s.callback()
+    s.hold()
+    const landing = s.auth.handleCallback(cb)
+    expect(await s.auth.signOut()).toEqual({ revoked: false, error: null }) // nothing held yet
+    s.release()
+    await landing
+    expect(s.auth.status()).toBe('signedOut')
+    expect(s.auth.tokens()).toBeNull()
+    await vi.waitFor(() => expect(s.revoked.sort()).toEqual(['at1', 'rt1']))
+  })
+
+  it('a refresh that lands after signOut has its new tokens revoked too', async () => {
+    const s = setup()
+    await s.auth.handleCallback(await s.callback())
+    s.hold()
+    const refreshing = s.auth.refresh()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(await s.auth.signOut()).toEqual({ revoked: true, error: null }) // the tokens it held: at1 / rt1
+    s.release()
+    await refreshing
+    expect(s.auth.tokens()).toBeNull()
+    await vi.waitFor(() => expect(s.revoked.sort()).toEqual(['at1', 'at2', 'rt-rotated2', 'rt1']))
+  })
+
+  it('a refresh that is committed revokes nothing', async () => {
+    const s = setup()
+    await s.auth.handleCallback(await s.callback())
+    await s.auth.refresh()
+    expect(s.auth.tokens()?.access_token).toBe('at2')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(s.revoked).toEqual([])
+  })
+})
+
 describe('session revocation', () => {
   const S = 's'.repeat(32)
   it('isRevoked rejects a revoked jti; every signed session carries one', async () => {
