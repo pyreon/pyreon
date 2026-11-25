@@ -277,9 +277,9 @@ export function resolveFromWorkspace(
  * A Vite/Rolldown plugin that resolves bare specifiers against the workspace.
  *
  * Exists because two places need the identical behaviour — the module loader
- * (so a root `atlas.config.ts` can import anything) and the static build (so the
- * generated entry, which lives in `node_modules/.atlas-build/`, can resolve the
- * framework). Writing it twice is how the two come to disagree.
+ * (so a root `atlas.config.ts` can import anything) and the workbench app (so
+ * Atlas's virtual modules, which have no file location to walk up from, can
+ * resolve the framework). Writing it twice is how the two come to disagree.
  *
  * `enforce: 'pre'` so it answers before ordinary resolution walks up to a repo
  * root that declares nothing. Returns undefined for anything the workspace does
@@ -314,10 +314,10 @@ export function workspaceResolvePlugin(root: string, extraBases: readonly string
       // rewrites `/tmp` to `/private/tmp` and produces the same divergence from
       // the other side. The axe-audit e2e caught both attempts.
       //
-      // So: claim nothing a project file imports. Atlas's generated entry and
-      // its virtual catalog are the only modules that genuinely cannot resolve
-      // on their own — they live in `node_modules/.atlas-build/` or nowhere at
-      // all — and they are the only ones this answers for.
+      // So: claim nothing a project file imports. Atlas's virtual modules (the
+      // catalog) and the config file are the only modules that genuinely
+      // cannot resolve on their own — the virtual ones live nowhere at all —
+      // and they are the only ones this answers for.
       if (!isAtlasGenerated(importer)) return undefined
       const found = resolveFromWorkspace(id, dirs)
       if (found) return found
@@ -327,12 +327,12 @@ export function workspaceResolvePlugin(root: string, extraBases: readonly string
       //
       // A package manager never links a package inside its own `node_modules`,
       // and nothing above it links it either unless some project declares it.
-      // So the generated entry — which is Atlas's UI code, and therefore
-      // imports `@pyreon/atlas/ui` — resolved every framework package (those
-      // sit in Atlas's own `node_modules`) and died on the workbench itself:
+      // So a generated module — which is Atlas's own code, and therefore
+      // imports `@pyreon/atlas/*` (the catalog imports `@pyreon/atlas/core`) —
+      // resolved every framework package (those sit in Atlas's own
+      // `node_modules`) and died on Atlas itself:
       //
-      //   Rolldown failed to resolve import "@pyreon/atlas/ui"
-      //     from ".../node_modules/.atlas-build/entry.js"
+      //   Rolldown failed to resolve import "@pyreon/atlas/core"
       //
       // The effect was that `atlas build` only worked against a project that
       // happened to declare `@pyreon/atlas` as a dependency. A component
@@ -362,7 +362,6 @@ function isAtlasGenerated(importer: string | undefined): boolean {
   return (
     importer.startsWith('\0') ||
     importer.includes('virtual:atlas') ||
-    importer.includes('.atlas-build') ||
     /[/\\](?:atlas|pyreon)\.config\.[cm]?[jt]sx?$/.test(importer)
   )
 }
@@ -375,7 +374,7 @@ function isAtlasGenerated(importer: string | undefined): boolean {
  */
 export function workspaceDirsFor(root: string): string[] {
   // Atlas's OWN directory is a base too, and it is the one that matters for the
-  // generated entry: that entry is Atlas's UI code, so it imports the framework
+  // generated modules: they are Atlas's code, so they import the framework
   // — and in a consumer install NO project package declares `@pyreon/runtime-dom`,
   // only Atlas does. Without this the build failed with `Rolldown failed to
   // resolve import "@pyreon/runtime-dom"` on an ordinary installed project.

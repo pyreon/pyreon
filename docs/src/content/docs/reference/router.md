@@ -27,7 +27,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - useTransition — reactive signal for route transition state
 - useMiddlewareData — read data set by route middleware chain
 - useLoaderData — access route loader results
-- View Transitions API — opt-in (`viewTransition: true` on the router or a route), awaits updateCallbackDone
+- View Transitions API — opt-in (`viewTransition: true` on the router or a route), never for a query/hash-only navigation, awaits updateCallbackDone
 - Named routes — typed navigation via &#123; name, params &#125;
 - Nested routes — recursive matching with child RouterView
 - Navigation guards — per-route and global beforeEnter/afterEach hooks
@@ -319,7 +319,7 @@ Declarative navigation link that renders an `<a>` element. Applies `activeClass`
 **Common mistakes**
 
 - `<a href="/about" onClick={() => router.push("/about")}>` — use `<RouterLink to="/about">` instead; it handles the anchor element, active class, and click interception
-- Plain internal `<a href="/about">` in a router app — triggers a FULL page reload (dev warns at the document level with the RouterLink replacement). Deliberate full-load links opt out via `target`, `download`, or `data-allow-reload`.
+- Plain internal `<a href="/about">` in a router app — triggers a FULL page reload (dev warns at the document level with the RouterLink replacement). Deliberate full-load links opt out via `target`, `download`, or `data-allow-reload` (on the anchor, or on an ancestor to opt out a whole region — embedded content, a component preview).
 - Rendering `<RouterLink>` with no `<RouterProvider>` ancestor (and no `setActiveRouter`) — the link degrades to a plain anchor: plain-path `href`, full page load on click (dev warns once per `to`). Wrap the tree in `<RouterProvider router={…}>` for client-side navigation.
 - Wrapping an external URL in a plain `<a>` to avoid router interception — unnecessary: `<RouterLink to="https://x.com">` already detects it as external, renders `target="_blank" rel="noopener noreferrer"`, and does NOT client-navigate. Override with `external` / `target` / `rel` props or the `createRouter({ links })` config.
 - `<RouterLink to={dynamicPath}>` without calling the signal — must call: `<RouterLink to={dynamicPath()}>` (or let the compiler handle it via `_rp()`)

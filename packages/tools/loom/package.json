@@ -55,6 +55,8 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "app",
+    "!app/.pyreon",
     "bin",
     "lib",
     "!lib/analysis",

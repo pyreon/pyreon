@@ -14,6 +14,7 @@
  * nothing in it).
  */
 import { catalogReplacer, componentKey, type ComponentIntelligence, type PropControl } from '../core'
+import { realpathSync } from 'node:fs'
 import { relative } from 'node:path'
 import type { WorkbenchControl } from '../ui/catalog'
 
@@ -362,12 +363,29 @@ export function generateCatalogModule(
   // Top-level await is fine here: this is an ESM module served by Vite, and
   // the imports were already blocking as static ones.
   lines.push('const __load = (p) => p.then((m) => m, (err) => ({ __atlasError: err }))')
+  // `let`, so an edited component module can be swapped in (see `__atlasHot`).
   lines.push(
-    `const [${ordered.map((_, i) => `__mod${i}`).join(', ')}] = await Promise.all([`,
+    `let [${ordered.map((_, i) => `__mod${i}`).join(', ')}] = await Promise.all([`,
   )
   ordered.forEach((entry) => {
     lines.push(`  __load(import(${lit(entry.file)})),`)
   })
+  lines.push('])')
+  // In-place HMR for component edits. Every render reads `__modN` when it
+  // runs, so replacing the binding with the module Vite re-evaluated — and
+  // re-mounting the preview — shows the edit with every control value kept.
+  // Keyed by the module's id as Vite reports it (the REAL path: Vite resolves
+  // symlinks, and `/tmp` is one on macOS), plus the path as written. The app
+  // shell installs the boundary (`app/src/hot.ts`); nothing reads this map in
+  // a build.
+  const hotKeys = new Map<string, number[]>()
+  ordered.forEach((entry, i) => {
+    for (const key of new Set([entry.file, realPath(entry.file)])) hotKeys.set(key, [...(hotKeys.get(key) ?? []), i])
+  })
+  lines.push('export const __atlasHot = new Map([')
+  for (const [key, indices] of hotKeys) {
+    lines.push(`  [${lit(key)}, (m) => { ${indices.map((i) => `__mod${i} = m`).join('; ')} }],`)
+  }
   lines.push('])')
   if (options.configPath) {
     lines.push(`import * as __config from ${lit(options.configPath)}`)
@@ -614,4 +632,13 @@ export function generateCatalogModule(
   }
   lines.push('')
   return lines.join('\n')
+}
+
+/** The real path of a file, or the path as given when it cannot be resolved. */
+function realPath(file: string): string {
+  try {
+    return realpathSync(file)
+  } catch {
+    return file
+  }
 }

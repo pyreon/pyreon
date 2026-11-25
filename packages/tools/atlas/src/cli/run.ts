@@ -726,7 +726,7 @@ Usage: atlas <command> [dir] [options]
                       first, so it must be new, empty, or a previous build
     --dir <path>      source directory to scan (default src)
     --title <text>    site title (wins over atlas.config.ts's \`title\`)
-    --base <path>     public base path for a subdirectory deploy,
+    --base <path>     ABSOLUTE public base path for a subdirectory deploy,
                       e.g. --base /my-repo/ for GitHub Pages
   atlas verify [Component] [--cwd <dir>]
                       re-check ONE component and report WHICH check failed and

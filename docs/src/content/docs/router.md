@@ -930,6 +930,12 @@ For a **deliberate** full-load link, opt out with any of:
 <a href="/print-view" target="_blank">Print view</a>
 ```
 
+`data-allow-reload` also works on an **ancestor**: every anchor inside the marked element is skipped. Use it for a region whose links are not your router's, such as embedded CMS HTML or a component preview:
+
+```html
+<div data-allow-reload>…third-party markup with its own links…</div>
+```
+
 #### External links
 
 `RouterLink` inspects `to` at runtime and only intercepts **internal** navigations. Anything else is left to the browser, with the right `<a>` attributes applied automatically:
@@ -2684,6 +2690,8 @@ const router = createRouter({ routes, viewTransition: true })
 With it on, a navigation runs inside `document.startViewTransition()` where the browser has the API, and CSS-driven transitions between pages work with no further code.
 
 They are off by default because a transition costs every navigation that runs one. The DOM swap waits for the browser to capture the old page, which happens on the next frame: the new route is in the DOM about 16 ms after the click instead of well under a millisecond. While the cross-fade runs (250 ms by default) the page is not hit-testable, so a click in that window reaches the transition overlay instead of the page. Measured in Chromium on the catalogue app (`examples/real-bench/app`): with transitions on, each route change took 14–17 ms from click to the new DOM; with them off, 0.2–1.6 ms.
+
+**Only when the page changes.** A navigation that moves only the query or the hash (`/products?page=2` → `/products?page=3`) is not animated: it is state bookkeeping — `@pyreon/url-state` through `setUrlRouter`, a filter, a form synced to the URL — that often runs per keystroke, and a transition would snapshot and cross-fade the whole document each time.
 
 **Reduced motion is respected automatically.** When the user's OS is set to *reduce motion* (`@media (prefers-reduced-motion: reduce)`), the router skips the View Transition and swaps the DOM synchronously instead — the navigation still happens, only the fade/slide animation is suppressed. This satisfies [WCAG 2.3.3 "Animation from Interactions"](https://www.w3.org/WAI/WCAG21/Understanding/animation-from-interactions.html) with no configuration. The preference is read per-navigation, so toggling it mid-session takes effect on the next route change.
 

@@ -162,6 +162,22 @@ describe('router hooks — happy paths under active router', () => {
 })
 
 describe('router._hmrSwap (dev+browser only)', () => {
+  it('the page router claims the global hook; a MEMORY router never takes it', () => {
+    // A memory router's routes are not the page's (a workbench preview, an
+    // embedded widget). Claiming the hook took route-component HMR away from
+    // the page's router: every edit fell back to a full reload.
+    const g = globalThis as { __pyreon_hmr_swap__?: unknown }
+    const page = createRouter({ routes: [{ path: '/x', component: () => null }], mode: 'history' }) as unknown as {
+      _hmrSwap?: unknown
+      destroy: () => void
+    }
+    expect(g.__pyreon_hmr_swap__).toBe(page._hmrSwap)
+    const inner = createRouter({ routes: [], mode: 'memory' }) as unknown as { destroy: () => void }
+    expect(g.__pyreon_hmr_swap__).toBe(page._hmrSwap)
+    inner.destroy()
+    page.destroy()
+  })
+
   it('returns false when fresh module has no default export', () => {
     const router = createRouter({
       routes: [{ path: '/x', component: () => null }],

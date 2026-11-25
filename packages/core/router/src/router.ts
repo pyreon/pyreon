@@ -51,7 +51,13 @@ const QUERY_EDIT: NavigateOptions = { scroll: false, viewTransition: false }
  * scrolls nor animates, and every other navigation scrolls. Whether it
  * animates is then up to the route's `meta.viewTransition` and the router's
  * `viewTransition` option (opt-in) — `undefined` here means "not decided by
- * this navigation".
+ * this navigation". One exception, even when the router opts in: NO
+ * navigation whose path stays put animates (a query- or hash-only push too).
+ * It is state bookkeeping (`@pyreon/url-state`, a filter, a component
+ * workbench syncing its controls, often per keystroke), and a View Transition
+ * snapshots and cross-fades the whole document for it; in a same-origin
+ * iframe that crashed the Chromium renderer outright (Atlas embedded in
+ * pyreon.dev, `Target crashed` on the A11y tab).
  */
 function navigationEffects(
   replace: boolean,
@@ -63,7 +69,7 @@ function navigationEffects(
   const inPlace = isInPlaceReplace(replace, fromBrowser, to, from)
   return {
     scroll: options?.scroll ?? !inPlace,
-    viewTransition: options?.viewTransition ?? (inPlace ? false : undefined),
+    viewTransition: options?.viewTransition ?? (inPlace || to.path === from.path ? false : undefined),
   }
 }
 
@@ -1007,7 +1013,7 @@ export function createRouter<TNames extends string = string>(
   // document bubble phase — `<RouterLink>` calls `preventDefault()` on the
   // internal clicks it handles, so `e.defaultPrevented` uniquely discriminates
   // framework-handled anchors from plain ones. Opt out via `target` / `download` /
-  // `data-allow-reload`. Applies in BOTH modes (a path-style href full-reloads a
+  // `data-allow-reload` (on the anchor or an ancestor region). Applies in BOTH modes (a path-style href full-reloads a
   // hash-mode app too; valid `#/x` hrefs classify as 'hash' and are skipped).
   // Registered ONCE per router and removed by identity in `destroy()` (leak D).
   // Not for a memory router: the page's anchors are its host's business.
@@ -1022,7 +1028,9 @@ export function createRouter<TNames extends string = string>(
             !a ||
             a.hasAttribute('download') ||
             a.hasAttribute('target') ||
-            a.hasAttribute('data-allow-reload')
+            // On the anchor or any ancestor: a host marks a REGION whose links
+            // are not this router's (embedded content, a component preview).
+            a.closest('[data-allow-reload]') !== null
           ) {
             return
           }
@@ -2271,7 +2279,12 @@ export function createRouter<TNames extends string = string>(
   // `@pyreon/router` (zero import coupling — same pattern as the perf-harness
   // counter sink). Last router wins; single-router apps (the norm, every
   // `@pyreon/zero` app) are unaffected. Dev+browser only.
-  if (process.env.NODE_ENV !== 'production' && isClient && router._hmrSwap) {
+  //
+  // Never a MEMORY router: its routes are not the page's (a component
+  // workbench's preview, an embedded widget, a test), and claiming the hook
+  // took route-component HMR away from the page's own router — every edit then
+  // fell back to a full reload.
+  if (process.env.NODE_ENV !== 'production' && isClient && router._hmrSwap && !memory) {
     // `_hmrSwap` closes over `currentRoute`/`componentCache`/`loadingSignal`
     // (not `this`), so the raw reference is safe to expose and to compare by
     // identity on `destroy()`.

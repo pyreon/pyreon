@@ -79,7 +79,7 @@ import { resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
 import { writeServiceWorker } from './pwa'
-import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
+import { buildSsrBundle, materializeEntry, renderSsrEntrySource, syntheticEntryPath } from './ssr-build-shared'
 import { serializeServerConfig } from './server-config'
 import { computeClientStartPreload, type ViteManifest } from './ssg-modulepreload'
 import type { ZeroConfig } from './types'
@@ -124,6 +124,8 @@ const SSR_OUT_SUBDIR = SSR_SERVER_SUBDIR
 export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   const config = resolveConfig(userConfig)
   let root = ''
+  // Vite's resolved cacheDir — where the synthetic entry is written.
+  let cacheDir = ''
   let distDir = ''
   // True when Vite is running a SERVER-target build (`build.ssr` set) rather
   // than the client build. A server build has NO client assets — no
@@ -201,6 +203,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
 
     configResolved(resolved) {
       root = resolved.root
+      cacheDir = resolved.cacheDir
       distDir = resolve(root, resolved.build.outDir)
       isSsrTargetBuild = Boolean(resolved.build.ssr)
       // Informational output honours `logLevel` (see ssg-plugin).
@@ -293,7 +296,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       const userEntryExists = existsSync(userEntryPath)
       const entryPath = userEntryExists
         ? userEntryPath
-        : join(root, SSR_ENTRY_FILENAME)
+        : syntheticEntryPath(cacheDir, SSR_ENTRY_FILENAME)
 
       // Materialize the synthetic entry only when the user hasn't
       // authored one. The synthetic delegates to `createServer({

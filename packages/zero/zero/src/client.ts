@@ -45,6 +45,8 @@ export interface StartClientOptions extends IslandsOnlyOptions {
   routes: RouteRecord[]
   /** Root layout component. */
   layout?: ComponentFn
+  /** Trailing-slash policy for the client router (see `CreateAppOptions.trailingSlash`). */
+  trailingSlash?: 'strip' | 'add' | 'ignore'
 }
 
 /**
@@ -142,6 +144,7 @@ export function startClient(options: StartClientOptions) {
     routerMode: 'history',
     ...(options.layout ? { layout: options.layout } : {}),
     ...(base ? { base } : {}),
+    trailingSlash: options.trailingSlash,
   })
 
   // A client-side navigation to an islands-only route becomes a full page

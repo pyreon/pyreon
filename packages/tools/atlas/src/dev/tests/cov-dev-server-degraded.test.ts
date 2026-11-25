@@ -90,7 +90,7 @@ describe('a scan pipeline that throws', () => {
       expect(handle.components).toBe(1)
       const res = await fetch(`http://localhost:${port}/`)
       expect(res.status).toBe(200)
-      expect(await res.text()).toContain('<div id="atlas-root">')
+      expect(await res.text()).toContain('/src/entry-client.ts')
     } finally {
       await handle?.close()
     }

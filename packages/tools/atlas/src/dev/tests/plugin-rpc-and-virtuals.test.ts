@@ -27,7 +27,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
-import { atlasDevPlugin, builtinMethods, CATALOG_ID, ENTRY_ID, RPC_PATH } from '../plugin'
+import { atlasDevPlugin, builtinMethods, CATALOG_ID, RPC_PATH, SHELL_ID } from '../plugin'
 
 let root: string
 
@@ -211,7 +211,7 @@ describe('the virtual modules the browser half loads', () => {
     // and break the app rather than the workbench.
     const p = plugin()
     expect(p.resolveId?.(CATALOG_ID)).toBeTruthy()
-    expect(p.resolveId?.(ENTRY_ID)).toBeTruthy()
+    expect(p.resolveId?.(SHELL_ID)).toBeTruthy()
     expect(p.resolveId?.('./real-module'), 'not ours').toBeUndefined()
     expect(p.resolveId?.('virtual:something-else')).toBeUndefined()
   })
@@ -224,21 +224,19 @@ describe('the virtual modules the browser half loads', () => {
     expect(code, 'the module exports something the entry can import').toContain('export')
   })
 
-  it('loads an entry module that mounts the workbench with the TITLE', () => {
+  it('loads a shell module that hands the workbench app the TITLE', () => {
     // The title is the one piece of the config a user sees immediately. A
-    // dropped title boots a workbench called "atlas" and looks like the
+    // dropped title boots a workbench called "Atlas" and looks like the
     // config did not load at all.
     const p = plugin()
-    const id = p.resolveId?.(ENTRY_ID) as string
-    const code = p.load?.(id) as string
-    expect(code).toContain('mount')
-    expect(code).toContain('My Workbench')
+    const code = p.load?.(p.resolveId?.(SHELL_ID) as string) as string
+    expect(code).toBe('export const title = "My Workbench"\n')
   })
 
   it('falls back to a default title when none is configured', () => {
     const p = plugin({ title: undefined })
-    const code = p.load?.(p.resolveId?.(ENTRY_ID) as string) as string
-    expect(code).toContain('atlas')
+    const code = p.load?.(p.resolveId?.(SHELL_ID) as string) as string
+    expect(code).toBe('export const title = "Atlas"\n')
   })
 
   it('never emits an optional config field as `undefined`', () => {

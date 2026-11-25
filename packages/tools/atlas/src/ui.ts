@@ -8,6 +8,7 @@
  * you can build the showcased components on the same rocketstyle design system.
  */
 export { Workbench, type WorkbenchProps } from './ui/Workbench'
+export type { WorkbenchRoute } from './ui/model'
 
 // canvas addons — the Storybook-inspired tools (viewport / backgrounds /
 // pseudo-states / outline), exported as DATA so a host can render its own

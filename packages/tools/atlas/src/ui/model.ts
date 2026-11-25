@@ -18,6 +18,7 @@ import {
 } from '@pyreon/reactivity'
 import { _rdNodeId } from '@pyreon/reactivity/internal'
 import { createLiveArgs, detached, type LiveArgs } from './live-args'
+import { previewRouterScope, type WorkbenchRoute } from './route'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundPreset, CanvasLayout, LocalePreset, PseudoId, ViewportPreset } from './addons'
@@ -31,11 +32,8 @@ import {
 } from './permission-sets'
 import { makeQueryResult, type FakeQueryResult, type QueryStateId } from './query-states'
 import {
-  componentFromPath,
-  componentUrl,
   editedArgs,
   parseUrlState,
-  pathBase,
   serializeUrlState,
   urlStateChanged,
   type UrlDefaults,
@@ -57,6 +55,8 @@ import {
 } from './hierarchy'
 import type { BrandTheme, ThemeTokens } from './theme'
 import { readThemeMode, THEMES, tokens, writeThemeMode } from './theme'
+
+export type { WorkbenchRoute } from './route'
 
 export type View = 'canvas' | 'docs' | 'lab'
 /**
@@ -364,7 +364,7 @@ function emptyScope(component: string): PreviewScope {
 
 export function createModel(
   catalog: WorkbenchCatalog,
-  opts: { title?: string | undefined; subtitle?: string | undefined },
+  opts: { title?: string | undefined; subtitle?: string | undefined; route?: WorkbenchRoute | undefined },
 ): WorkbenchModel {
   const groups = groupComponents(catalog)
   // ONE index. The ranked dialog search and the id-only sidebar filter read
@@ -410,22 +410,21 @@ export function createModel(
     isClient && typeof matchMedia === 'function' && matchMedia(COMPACT_QUERY).matches
   const embed = initial.embed === true
 
-  // Path URLs — `/atlas/button/` rather than `/atlas/?c=button`.
-  //
-  // Opt-in via a global the HOST sets, not something inferred, because writing
-  // a path is only safe where a page actually exists at it. `atlas build`
-  // emits a directory per component and sets this; `atlas dev` sets it too
-  // (its middleware already serves the shell for any extensionless GET). A
-  // workbench EMBEDDED in someone else's app sets nothing and keeps the
-  // query-string behaviour — writing `/button/` there would 404 on reload,
-  // because that app's router has never heard of the route.
-  const hasRoutes = isClient && (globalThis as { __ATLAS_ROUTES__?: boolean }).__ATLAS_ROUTES__ === true
-  const catalogIds = catalog.components.map((c) => c.id)
-  const pathId = hasRoutes ? componentFromPath(location.pathname, catalogIds) : undefined
-  // The path WINS over `?c=`. Both are only ever present together on a link
-  // written before this existed, and the path is the more specific statement.
-  if (pathId !== undefined) initial.c = pathId
-  const routeBase = hasRoutes ? pathBase(location.pathname, pathId) : ''
+  // Path URLs — `/atlas/button/` rather than `/atlas/?c=button` — when a host
+  // ROUTER owns them (see `WorkbenchRoute`). The route wins over `?c=`: both
+  // are only ever present together on a link written before path URLs
+  // existed, and the route is the more specific statement. A route naming no
+  // catalog component (a renamed component's old link, a path with extra
+  // segments) selects the default, and the URL write below then navigates the
+  // router to that component — never to a URL built by hand.
+  const route = opts.route
+  const isKnownId = (id: string | undefined): id is string =>
+    id !== undefined && catalog.components.some((c) => c.id === id)
+  if (route) {
+    const routeId = untrack(route.id)
+    if (isKnownId(routeId)) initial.c = routeId
+    else if (routeId !== undefined) delete initial.c
+  }
 
   const brandId = signal(initial.brand ?? prefs.brand ?? 'ember')
   // The chrome AND the preview follow the SHARED Pyreon theme preference
@@ -896,14 +895,19 @@ export function createModel(
     if (id !== undefined) ignored.add(id)
     return id
   }
+  // Every preview renders under a router of its OWN (see ./route).
+  const isolated = previewRouterScope()
+
   const preview = (appearance?: Appearance): VNodeChildAtom | VNodeChildAtom[] => {
     const entry = sel()
     if (!entry) return null
     if (appearance) {
-      return h(
-        PermissionsProvider,
-        { value: permissions().can },
-        entry.render(vals(), makeRenderCtx(appearance)) as VNodeChildAtom,
+      return isolated(
+        h(
+          PermissionsProvider,
+          { value: permissions().can },
+          entry.render(vals(), makeRenderCtx(appearance)) as VNodeChildAtom,
+        ),
       )
     }
     void mountEpoch()
@@ -937,13 +941,15 @@ export function createModel(
         context: scope.context,
       }
     }
-    return h(
-      PermissionsProvider,
-      { value: permissions().can },
-      h(MountMark, { at: () => (start = probe()) }),
-      out as VNodeChildAtom,
-      // Mounted LAST, after the component's whole subtree.
-      h(MountMark, { at: done }),
+    return isolated(
+      h(
+        PermissionsProvider,
+        { value: permissions().can },
+        h(MountMark, { at: () => (start = probe()) }),
+        out as VNodeChildAtom,
+        // Mounted LAST, after the component's whole subtree.
+        h(MountMark, { at: done }),
+      ),
     )
   }
   const previewMounts = signal(0)
@@ -997,10 +1003,12 @@ export function createModel(
     const recording = recordingPermissions(role)
     const entry = sel()
     const node: VNodeChildAtom = entry
-      ? h(
-          PermissionsProvider,
-          { value: recording.can },
-          entry.render(vals(), makeRenderCtx({}, recording)) as VNodeChildAtom,
+      ? isolated(
+          h(
+            PermissionsProvider,
+            { value: recording.can },
+            entry.render(vals(), makeRenderCtx({}, recording)) as VNodeChildAtom,
+          ),
         )
       : null
     return { node, recording }
@@ -1146,6 +1154,17 @@ export function createModel(
     hostObserver.observe(el, { childList: true })
   }
 
+  // The route moves the selection: Back / Forward, or any navigation the host
+  // router makes. An id the catalog does not have changes nothing here — the
+  // URL write below sends the router back to the selected component.
+  if (opts.route) {
+    const owner = opts.route
+    effect(() => {
+      const id = owner.id()
+      if (isKnownId(id) && id !== untrack(selId)) selId.set(id)
+    })
+  }
+
   // Keep the URL in step with the view, so a reload restores it and a link
   // shares it.
   //
@@ -1209,17 +1228,16 @@ export function createModel(
       // `exactOptionalPropertyTypes` an explicit `undefined` is not the same as
       // an absent optional property, and the spread does not typecheck.
       let forQuery: UrlState = next
-      if (hasRoutes) {
+      if (route) {
         forQuery = { ...next }
         delete forQuery.c
       }
       const nextQuery = serializeUrlState(forQuery, defaults)
-      if (hasRoutes) {
-        // An ABSOLUTE path, not the bare `?query` below. That form resolves
-        // against the current directory, so once the URL is `/atlas/button/`
-        // it would keep the stale segment and only swap the query — the exact
-        // disagreement this branch exists to prevent.
-        hist.replaceState(hist.state, '', componentUrl(routeBase, next.c ?? '', nextQuery))
+      if (route) {
+        // Untracked: `go` is a router navigation, which reads the router's
+        // own state (`currentRoute()`) — tracked here, every navigation
+        // re-ran this effect.
+        untrack(() => route.go(next.c ?? '', nextQuery))
         return
       }
       hist.replaceState(hist.state, '', nextQuery ? `?${nextQuery}` : loc.pathname)

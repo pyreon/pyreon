@@ -35,8 +35,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { resolveFromWorkspace, workspaceResolvePlugin } from '../workspace-packages'
 
 let root: string
-/** An importer Atlas owns — its generated build entry. */
-const ATLAS_IMPORTER = '/proj/node_modules/.atlas-build/entry.js'
+/** An importer Atlas owns — its generated catalog module. */
+const ATLAS_IMPORTER = '\0virtual:atlas/catalog'
 const write = (relative: string, source: string): void => {
   const path = join(root, relative)
   mkdirSync(join(path, '..'), { recursive: true })

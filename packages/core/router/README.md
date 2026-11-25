@@ -331,7 +331,7 @@ setTyped({ page: 2 }) // other query params and the hash are kept
 
 ## View Transitions
 
-Opt-in: `createRouter({ routes, viewTransition: true })` wraps route changes in `document.startViewTransition()` where supported; per route, `meta: { viewTransition: true | false }` overrides the router's setting (meta merges down the matched chain). Off by default because a transition defers the DOM swap to the next frame (~16 ms after the click instead of under 1 ms) and leaves the page un-hit-testable while the cross-fade runs (250 ms by default). Skipped under `prefers-reduced-motion: reduce` and in `mode: 'memory'`.
+Opt-in: `createRouter({ routes, viewTransition: true })` wraps route changes in `document.startViewTransition()` where supported; per route, `meta: { viewTransition: true | false }` overrides the router's setting (meta merges down the matched chain). Off by default because a transition defers the DOM swap to the next frame (~16 ms after the click instead of under 1 ms) and leaves the page un-hit-testable while the cross-fade runs (250 ms by default). Skipped under `prefers-reduced-motion: reduce`, in `mode: 'memory'`, and for a navigation that moves only the query or hash (state bookkeeping, often per keystroke) unless that navigation passes `{ viewTransition: true }` itself.
 
 **With transitions on, `await router.push()` / `.replace()` resolves on `updateCallbackDone`** — the DOM commit, NOT the full animation:
 

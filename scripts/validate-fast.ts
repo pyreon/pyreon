@@ -17,6 +17,7 @@
  *   - check-distribution    (sideEffects / source-map invariants)
  *   - check-declarations    (published .d.ts: imports declared + strict compile)
  *   - check-esm-only        (no CJS-enabling export condition)
+ *   - check-shipped-src-imports (no shipped file imports a src/ the publish strips)
  *   - check-export-entries  (subpath export has a build entry — release-build guard)
  *   - check-release-readiness (publishConfig.access / fixed-group coverage)
  *   - check-manifest-depth  (LOCKED package density regressed)
@@ -190,6 +191,7 @@ const GATES: Gate[] = [
   { name: 'check-declared-imports', cmd: 'bun scripts/check-declared-imports.ts' },
   { name: 'check-declarations', cmd: 'bun scripts/check-declarations.ts' },
   { name: 'check-esm-only', cmd: 'bun scripts/check-esm-only.ts' },
+  { name: 'check-shipped-src-imports', cmd: 'bun scripts/check-shipped-src-imports.ts' },
   { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },
   { name: 'check-tsconfig-presets', cmd: 'bun scripts/check-tsconfig-presets.ts' },
   { name: 'check-release-readiness', cmd: 'bun scripts/check-release-readiness.ts' },
