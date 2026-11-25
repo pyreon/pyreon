@@ -87,6 +87,9 @@
     "vue": "^3.5.45",
     "vue-i18n": "11.4.20"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },
