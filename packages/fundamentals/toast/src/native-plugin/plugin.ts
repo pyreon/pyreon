@@ -154,6 +154,8 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
         onDismiss = readOnDismiss(prop, ctx)
       } else if (key === 'icon') {
         ctx.report(`toast() \`icon\` has no native lowering yet — it is DROPPED on iOS/Android (the toast itself still shows).`)
+      } else if (key === 'dismissLabel') {
+        ctx.report(`toast() \`dismissLabel\` has no native lowering yet — the native dismiss button keeps its built-in label on iOS/Android.`)
       }
     }
   }
@@ -465,6 +467,14 @@ function toasterArgs(el: JsxElementIR, ctx: StaticReader): ToasterArgs {
       continue
     }
     out[name] = v
+  }
+  // The accessible names have no native lowering yet: name them instead of
+  // dropping them silently. (`nonce` / `injectStyles` are web stylesheet
+  // concerns with no native meaning, so they are ignored without a word.)
+  for (const name of ['label', 'dismissLabel'] as const) {
+    if (present.has(name)) {
+      ctx.warn(`[pyreon-native] <Toaster ${name}> has no native lowering yet — the native toaster keeps its built-in ${name === 'label' ? 'region' : 'dismiss'} label.`)
+    }
   }
   for (const a of el.attrs) {
     if (a.kind !== 'attr') ctx.warn('[pyreon-native] a spread on <Toaster> is not lowered — only literal position / max / gap / offset / duration props configure the native toaster.')
