@@ -67,6 +67,21 @@ function navigationEffects(
   }
 }
 
+/**
+ * Whether a navigation asks for a View Transition (they are opt-in). An
+ * explicit `false` — the navigation's own option, or the route's meta — always
+ * wins; an explicit `true` on the navigation opts that one navigation in;
+ * otherwise the route's meta, then the router's `viewTransition` option.
+ */
+function wantsViewTransition(
+  navigation: boolean | undefined,
+  meta: boolean | undefined,
+  routerDefault: boolean,
+): boolean {
+  if (navigation === false || meta === false) return false
+  return navigation === true || (meta ?? routerDefault)
+}
+
 /** The trailing, rarely-set arguments of one `navigate()` call. */
 interface NavigateCall {
   fromBrowser?: boolean
@@ -1549,9 +1564,7 @@ export function createRouter<TNames extends string = string>(
     // explicit `true` on the navigation opts that one navigation in.
     const useVT =
       ownsPage &&
-      effects.viewTransition !== false &&
-      to.meta.viewTransition !== false &&
-      (effects.viewTransition === true || (to.meta.viewTransition ?? viewTransition) === true) &&
+      wantsViewTransition(effects.viewTransition, to.meta.viewTransition, viewTransition) &&
       typeof (document as any).startViewTransition === 'function' &&
       !prefersReducedMotion()
 
