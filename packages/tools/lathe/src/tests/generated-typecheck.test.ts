@@ -23,7 +23,7 @@ import { ALL_PLUGINS, resolveConfig, type ClientName, type PluginName, type Vali
 import { generate } from '../core/generate'
 import { emitSchemaAgreement } from '../emit/schema'
 import { banner } from '../emit/writer'
-import { generatedDiagnostics, TYPECHECK_BUDGET } from './helpers/typecheck'
+import { createFixtureProgram, generatedDiagnostics, TYPECHECK_BUDGET } from './helpers/typecheck'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TC_ROOT = join(HERE, '.generated', 'typecheck')
@@ -292,7 +292,7 @@ function diagnose(
     paths: { '@pyreon/core': [CORE], '@pyreon/core/*': [join(dirname(CORE), '*')] },
   }
   const entries = files.map((f) => join(root, f.path))
-  const program = ts.createProgram(entries, options)
+  const program = createFixtureProgram(entries, options)
   // Only generated-file diagnostics were asserted before. Keep real module
   // resolution and imported types, without checking every framework source
   // again for each fixture (the workspace typecheck covers those files).

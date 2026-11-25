@@ -20,6 +20,57 @@ const CORE = join(HERE, '..', '..', '..', '..', '..', 'core', 'core', 'src')
 /** Real compiler fixtures retain a bounded budget under coverage load. */
 export const TYPECHECK_BUDGET = { timeout: 60_000 }
 
+/** Every fixture tree is written under here; nothing below it is ever cached. */
+const GENERATED = join(HERE, '..', '.generated')
+
+/**
+ * Parsed files that never change during a run — the `lib.*.d.ts` set and the
+ * `@pyreon/core` source the fixtures resolve to — keyed by the compiler
+ * options that shape a parse, then by file and parse options.
+ *
+ * Without it every `createProgram` re-parsed and re-bound `lib.dom.d.ts` and
+ * the framework source, which was most of a typecheck fixture's cost and,
+ * under V8 coverage instrumentation on a four-core runner, most of this
+ * package's coverage run (it reached the 600 s measurement deadline). Sharing
+ * a `SourceFile` between programs with the same options is what the
+ * language service's document registry does; the checker keeps its own links.
+ *
+ * Bounded by the files a fixture can reach outside `.generated/` (a fixed
+ * set), and it lives only as long as the test file's module: vitest isolates
+ * each file, so the cache is dropped with it.
+ */
+const stableFiles = new Map<string, Map<string, ts.SourceFile | undefined>>()
+
+/**
+ * `ts.createProgram` over generated fixture files, reusing the parse of every
+ * file that is NOT a fixture. Fixture files (under `.generated/`) are always
+ * read fresh, since a test rewrites them.
+ */
+export function createFixtureProgram(
+  entries: readonly string[],
+  options: ts.CompilerOptions,
+): ts.Program {
+  const host = ts.createCompilerHost(options, true)
+  const optionsKey = JSON.stringify(options)
+  let cache = stableFiles.get(optionsKey)
+  if (!cache) {
+    cache = new Map()
+    stableFiles.set(optionsKey, cache)
+  }
+  const parse = host.getSourceFile.bind(host)
+  const files = cache
+  host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile) => {
+    if (shouldCreateNewSourceFile || fileName.startsWith(GENERATED))
+      return parse(fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile)
+    const key = `${fileName}\0${JSON.stringify(languageVersionOrOptions)}`
+    if (files.has(key)) return files.get(key)
+    const file = parse(fileName, languageVersionOrOptions, onError)
+    files.set(key, file)
+    return file
+  }
+  return ts.createProgram(entries, options, host)
+}
+
 /** Check authored fixture files while still resolving all imported types. */
 export function generatedDiagnostics(
   program: ts.Program,
@@ -68,7 +119,7 @@ export function typecheckSpec(
   for (const f of files) write(f.path, f.contents)
   for (const [path, contents] of Object.entries(options.extra ?? {})) write(path, contents)
 
-  const program = ts.createProgram(written, {
+  const program = createFixtureProgram(written, {
     strict: true,
     exactOptionalPropertyTypes: true,
     noEmit: true,
