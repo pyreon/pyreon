@@ -56,6 +56,7 @@ export const WEBVIEW_ERROR_TYPE: TypeIR = {
 export function webViewErrorParamType(annotated: TypeIR | undefined): TypeIR {
   if (annotated === undefined) return WEBVIEW_ERROR_TYPE
   if (annotated.kind === 'typeRef' && annotated.name === 'WebViewError') return WEBVIEW_ERROR_TYPE
+
   return annotated
 }
 
@@ -83,6 +84,7 @@ export function lowerWebViewReloadKey(e: JsxElement, o: WebViewOptionEmit): stri
   const dyn = o.dynamicAttr(e, 'reloadKey')
   if (dyn === undefined) return undefined
   const text = o.emitExpr(dyn)
+
   return arg(o.target, 'reloadKey', o.target === 'swift' ? `"\\(${text})"` : `"\${${text}}"`)
 }
 
@@ -100,5 +102,6 @@ export function lowerWebViewBackNavigation(e: JsxElement, o: WebViewOptionEmit, 
   if (value === true) return arg(o.target, 'backNavigation', 'true')
   if (value === false) return undefined
   const dyn = o.dynamicAttr(e, 'backNavigation')
+
   return dyn === undefined ? undefined : arg(o.target, 'backNavigation', o.emitExpr(dyn))
 }
