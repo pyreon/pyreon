@@ -322,6 +322,30 @@ console.log(a()) // 5`,
       ],
     },
     {
+      name: 'resolvePageLayout',
+      kind: 'function',
+      signature:
+        'resolvePageLayout(args: { frontmatter: Record<string, unknown>; registry: ContentLayoutRegistry; defaultLayout: ContentLayout }): { layout: ContentLayout; fellBack: boolean; missingName?: string }',
+      summary:
+        'Pick the layout for one content page from its `layout:` frontmatter field. Pure and runtime-agnostic: call it from the route that renders the page, with a `registry` you build (usually from `import.meta.glob(\'./layouts/*.tsx\', { eager: true })`) and the route\'s default layout. No `layout` field (or an empty one) returns `defaultLayout`; a name missing from the registry also returns `defaultLayout`, with `fellBack: true` and the requested name in `missingName` so the route can warn. The plugin does not call it for you: per-page `layout:` only takes effect when the route does.',
+      example: `import { resolvePageLayout } from '@pyreon/zero-content'
+import DocsLayout from './layouts/docs'
+import LandingLayout from './layouts/landing'
+
+const { layout: Layout, fellBack, missingName } = resolvePageLayout({
+  frontmatter: page.frontmatter,          // e.g. { title: 'Home', layout: 'landing' }
+  registry: { landing: LandingLayout },
+  defaultLayout: DocsLayout,
+})
+if (fellBack) console.warn(\`[content] unknown layout "\${missingName}"\`)
+
+return <Layout>{page.content}</Layout>`,
+      mistakes: [
+        'Expecting `layout:` frontmatter to switch layouts on its own — nothing calls `resolvePageLayout` automatically; the rendering route must',
+        'Ignoring `fellBack` — a typo in `layout:` silently renders the default layout unless the route reports `missingName`',
+      ],
+    },
+    {
       name: 'Details',
       kind: 'component',
       signature: '<Details summary?="…" open? class? children>',

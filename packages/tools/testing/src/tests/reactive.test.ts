@@ -6,7 +6,8 @@
  * (the 49-file shape) to demonstrate the ergonomic win.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { computed, effect, signal, __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity'
+import { computed, effect, signal } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { expectEffect, expectSignal } from '../index'
 
 afterEach(() => __resetReactiveDevtoolsForTesting())

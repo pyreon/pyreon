@@ -2,7 +2,15 @@ import { createContext, onUnmount, useContext } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { batch, computed, isClient, signal } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
-import { buildNameIndex, buildPath, resolveLoaderNotFound, resolveRoute, stringifyQuery } from './match'
+import {
+  buildNameIndex,
+  buildPath,
+  resolveLoaderNotFound,
+  resolveRoute,
+  isInPlaceReplace,
+  stringifyQuery,
+} from './match'
+import { setLoaderData } from './loader-data-store'
 import { isNotFoundError } from './not-found'
 import { classifyRedirectTarget, getRedirectInfo, redirect as throwRedirect } from './redirect'
 import { ScrollManager } from './scroll'
@@ -20,6 +28,7 @@ import {
   type LoaderContext,
   type NavigationGuard,
   type NavigationGuardResult,
+  type NavigateOptions,
   type NavigationResult,
   type ResolvedRoute,
   type RouteMiddlewareContext,
@@ -28,6 +37,42 @@ import {
   type RouterInstance,
   type RouterOptions,
 } from './types'
+
+/**
+ * A search-param setter edits the current page: no scroll reset, no view
+ * transition (#4814). Explicit, so it holds even when the setter's navigation
+ * is not detected as in place (e.g. a hash that differs).
+ */
+const QUERY_EDIT: NavigateOptions = { scroll: false, viewTransition: false }
+
+/**
+ * What a commit does besides moving the route. An explicit option wins;
+ * otherwise an in-place replace (same page, only the query moved) neither
+ * scrolls nor animates, and every other navigation scrolls. Whether it
+ * animates is then up to the route's `meta.viewTransition` and the router's
+ * `viewTransition` option (opt-in) — `undefined` here means "not decided by
+ * this navigation".
+ */
+function navigationEffects(
+  replace: boolean,
+  fromBrowser: boolean,
+  to: ResolvedRoute,
+  from: ResolvedRoute,
+  options: NavigateOptions | undefined,
+): { scroll: boolean; viewTransition: boolean | undefined } {
+  const inPlace = isInPlaceReplace(replace, fromBrowser, to, from)
+  return {
+    scroll: options?.scroll ?? !inPlace,
+    viewTransition: options?.viewTransition ?? (inPlace ? false : undefined),
+  }
+}
+
+/** The trailing, rarely-set arguments of one `navigate()` call. */
+interface NavigateCall {
+  fromBrowser?: boolean
+  tabPlan?: TabPlan
+  options?: NavigateOptions
+}
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -445,7 +490,7 @@ export function useSearchParams<T extends Record<string, string>>(
   }
   const set = (updates: Partial<T>): Promise<NavigationResult> => {
     const merged = { ...get(), ...updates }
-    return router.replace(currentUrlWithQuery(router, merged as Record<string, string>))
+    return router.replace(currentUrlWithQuery(router, merged as Record<string, string>), QUERY_EDIT)
   }
 
   return [get, set]
@@ -510,7 +555,7 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
       else merged[k] = String(v)
     }
 
-    return router.replace(currentUrlWithQuery(router, merged))
+    return router.replace(currentUrlWithQuery(router, merged), QUERY_EDIT)
   }
 
   return [get, set]
@@ -872,7 +917,7 @@ export function createRouter<TNames extends string = string>(
     if (sameTab && target === (_pendingBrowserTarget ?? currentPath.peek())) return false
     _pendingBrowserTarget = target
     _pendingBrowserTab = poppedTab?.tab ?? tabCtl?.active.peek()
-    void navigate(target, true, 0, true, poppedTab ?? undefined)
+    void navigate(target, true, 0, { fromBrowser: true, ...(poppedTab ? { tabPlan: poppedTab } : {}) })
       .finally(() => {
         // Identity-guarded: a NEWER browser traversal may own the field now.
         if (_pendingBrowserTarget === target) _pendingBrowserTarget = null
@@ -1054,7 +1099,7 @@ export function createRouter<TNames extends string = string>(
     to: ResolvedRoute,
   ): GuardOutcome {
     if (result.status === 'fulfilled') {
-      router._loaderData.set(record, result.value)
+      setLoaderData(router, record, to, result.value)
       return { action: 'continue' }
     }
     if (ac.signal.aborted) return { action: 'continue' }
@@ -1067,7 +1112,7 @@ export function createRouter<TNames extends string = string>(
     // `notFound()` from a loader is flow control too: the navigation commits
     // into the not-found state (the fallback chain renders), not an error.
     if (isNotFoundError(result.reason)) {
-      router._loaderData.set(record, undefined)
+      setLoaderData(router, record, to, undefined)
       to._loaderNotFound = true
       return { action: 'continue' }
     }
@@ -1075,7 +1120,7 @@ export function createRouter<TNames extends string = string>(
       const cancel = router._onError(result.reason, to)
       if (cancel === false) return { action: 'cancel' }
     }
-    router._loaderData.set(record, undefined)
+    setLoaderData(router, record, to, undefined)
 
     return { action: 'continue' }
   }
@@ -1247,7 +1292,7 @@ export function createRouter<TNames extends string = string>(
       r.loader(loaderCtx)
         .then((data) => {
           if (!ac.signal.aborted) {
-            router._loaderData.set(r, data)
+            setLoaderData(router, r, to, data)
             // Update cache with fresh data
             const key = getCacheKey(r, loaderCtx)
             loaderCacheSet(key, data)
@@ -1375,7 +1420,7 @@ export function createRouter<TNames extends string = string>(
         // Only the records this navigation flagged as remote (hasServerLoader)
         // get applied; isomorphic loaders in the chain ran locally.
         if (r && records.includes(r) && String(i) in data) {
-          router._loaderData.set(r, data[String(i)])
+          setLoaderData(router, r, to, data[String(i)])
         }
       }
 
@@ -1394,8 +1439,13 @@ export function createRouter<TNames extends string = string>(
     from: ResolvedRoute,
     fromBrowser = false,
     tabPlan: TabPlan | null = null,
+    navOptions?: NavigateOptions,
   ): Promise<void> {
     scrollManager.save(from.path)
+    // Scroll and view transition: an in-place replace (same page, only the
+    // query moved — a search box, a filter) does neither by default (#4814);
+    // `options` decides explicitly. See `navigationEffects`.
+    const effects = navigationEffects(replace, fromBrowser, to, from, navOptions)
 
     const doCommit = () => {
       // Any committed navigation supersedes the initial one: the route on
@@ -1466,6 +1516,7 @@ export function createRouter<TNames extends string = string>(
       for (const record of router._loaderData.keys()) {
         if (!keep.has(record) && !record.staleWhileRevalidate) {
           router._loaderData.delete(record)
+          router._loaderDataKeys.delete(record)
         }
       }
     }
@@ -1487,14 +1538,20 @@ export function createRouter<TNames extends string = string>(
     // `typeof matchMedia === 'function' && matchMedia(...)` is NOT — the rule
     // wants an early-return guard at the function entry).
     const prefersReducedMotion = (): boolean => {
-      if (typeof matchMedia === 'undefined') return false
+      if (!isClient || typeof matchMedia === 'undefined') return false
       return matchMedia('(prefers-reduced-motion: reduce)').matches
     }
     // Not in memory mode: a view transition snapshots the WHOLE document and
     // skips any other transition in flight — the page router's included.
+    // An in-place edit keeps the page, so there is nothing to animate: a
+    // cross-fade per keystroke of a search box is a flicker. An explicit
+    // `false` (the navigation's option, or the route's meta) always wins; an
+    // explicit `true` on the navigation opts that one navigation in.
     const useVT =
       ownsPage &&
-      (to.meta.viewTransition ?? viewTransition) === true &&
+      effects.viewTransition !== false &&
+      to.meta.viewTransition !== false &&
+      (effects.viewTransition === true || (to.meta.viewTransition ?? viewTransition) === true) &&
       typeof (document as any).startViewTransition === 'function' &&
       !prefersReducedMotion()
 
@@ -1572,7 +1629,7 @@ export function createRouter<TNames extends string = string>(
     //     behavior. With an explicit behavior, native restoration is switched
     //     to 'manual' at router creation so the two never fight.
     // A memory router scrolls only when `scrollBehavior` is set (`scrollOnPush`).
-    if (isClient && (fromBrowser ? scrollBehavior !== undefined : scrollOnPush)) {
+    if (isClient && effects.scroll && (fromBrowser ? scrollBehavior !== undefined : scrollOnPush)) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
   }
@@ -1655,13 +1712,22 @@ export function createRouter<TNames extends string = string>(
     return navigate(c.url, replace, depth)
   }
 
+  /** A `push`/`replace` target (path or named location) as a sanitized path. */
+  function locationToPath(
+    location: string | { name: string; params?: Record<string, string>; query?: Record<string, string> },
+  ): string {
+    if (typeof location === 'string') return sanitizePath(resolveRelativePath(location, currentPath()))
+    return resolveNamedPath(location.name, location.params ?? {}, location.query ?? {}, nameIndex)
+  }
+
   async function navigate(
     rawPath: string,
     replace: boolean,
     redirectDepth = 0,
-    fromBrowser = false,
-    tabPlanIn?: TabPlan,
+    call: NavigateCall = {},
   ): Promise<NavigationResult> {
+    const fromBrowser = call.fromBrowser === true
+    const tabPlanIn = call.tabPlan
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.navigate')
     router._navigationStartTime = Date.now()
     if (redirectDepth > 10) {
@@ -1732,7 +1798,7 @@ export function createRouter<TNames extends string = string>(
       return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
-    await commitNavigation(path, replace, to, from, fromBrowser, tabPlan)
+    await commitNavigation(path, replace, to, from, fromBrowser, tabPlan, call.options)
     loadingSignal.update((n) => n - 1)
 
     return 'committed'
@@ -1905,6 +1971,7 @@ export function createRouter<TNames extends string = string>(
     _viewDepth: 0,
     _erroredChunks: new Set(),
     _loaderData: new Map(),
+    _loaderDataKeys: new Map(),
     _abortController: null,
     _blockers: new Set(),
     _readyResolve,
@@ -1918,6 +1985,7 @@ export function createRouter<TNames extends string = string>(
     _loaderCache: new SizedMap({ maxEntries: maxCacheSize }),
     _loaderInflight: new Map(),
     _executeLoader: (record, ctx) => executeLoader(record, ctx),
+    _loaderKeyOf: (record, route) => getCacheKey(record, route),
     _startInitialNavigation: startInitialNavigation,
     _initialGate: () => initialGate(),
 
@@ -1925,38 +1993,18 @@ export function createRouter<TNames extends string = string>(
       location:
         | string
         | { name: string; params?: Record<string, string>; query?: Record<string, string> },
+      navOptions?: NavigateOptions,
     ) {
-      if (typeof location === 'string') {
-        const resolved = resolveRelativePath(location, currentPath())
-        return navigate(sanitizePath(resolved), false)
-      }
-      const path = resolveNamedPath(
-        location.name,
-        location.params ?? {},
-        location.query ?? {},
-        nameIndex,
-      )
-
-      return navigate(path, false)
+      return navigate(locationToPath(location), false, 0, navOptions ? { options: navOptions } : {})
     },
 
     async replace(
       location:
         | string
         | { name: string; params?: Record<string, string>; query?: Record<string, string> },
+      navOptions?: NavigateOptions,
     ) {
-      if (typeof location === 'string') {
-        const resolved = resolveRelativePath(location, currentPath())
-        return navigate(sanitizePath(resolved), true)
-      }
-      const path = resolveNamedPath(
-        location.name,
-        location.params ?? {},
-        location.query ?? {},
-        nameIndex,
-      )
-
-      return navigate(path, true)
+      return navigate(locationToPath(location), true, 0, navOptions ? { options: navOptions } : {})
     },
 
     back() {
@@ -2083,7 +2131,7 @@ export function createRouter<TNames extends string = string>(
       if (next === null) return 'cancelled'
       if (next === 'committed') return 'committed'
 
-      return navigate(next[0], false, 0, false, next[1])
+      return navigate(next[0], false, 0, { tabPlan: next[1] })
     },
 
     tabStack: (name: string) => tabCtl?.stack(name) ?? [],
@@ -2129,6 +2177,7 @@ export function createRouter<TNames extends string = string>(
       router._blockers.clear()
       componentCache.clear()
       router._loaderData.clear()
+      router._loaderDataKeys.clear()
       router._loaderCache.clear()
       router._loaderInflight.clear()
       router._abortController?.abort()

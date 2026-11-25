@@ -6,8 +6,8 @@ Thanks for your interest in contributing to Pyreon! This guide will help you get
 
 ### Prerequisites
 
-- [Bun](https://bun.sh/) v1.1+
-- Node.js 20+ (for some tooling)
+- [Bun](https://bun.sh/): the version in `.bun-version` (the repository's toolchain; apps built with Pyreon need Bun 1.3 or later)
+- Node.js 22+ (for some tooling; the published packages declare `"engines": { "node": ">=22" }`, held by `scripts/check-support-matrix.ts`)
 
 ### Getting Started
 
@@ -146,7 +146,7 @@ When Pyreon goes 1.0, **remove BOTH the CI guard and the release-time cap in a s
 
 ### From 1.0: Stable and Experimental tiers
 
-The semver promise after 1.0 covers **Stable** packages only. Every published package declares its tier in `package.json` (`"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`); Experimental packages, and the experimental subpaths of Stable packages, may break in a minor release. A breaking change to a Stable package is a major release. Compiler-emitted runtime helpers (`_rp`, `_tpl`, …) are an additive-only ABI within 1.x; every other `_` export is internal. `scripts/check-stability-tier.ts` (in `validate-fast`) gates the tier field, README status lines, dependency direction, `@pyreon/meta` and `@deprecated` tags. The full policy, including deprecations, is [Stability, Versioning & Direction](https://pyreon.dev/docs/stability-and-direction).
+The semver promise after 1.0 covers **Stable** packages only. Every published package declares its tier in `package.json` (`"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"?: [...] }`); Experimental packages, and the experimental subpaths of Stable packages, may break in a minor release. A breaking change to a Stable package is a major release. Compiler-emitted runtime helpers (`_rp`, `_tpl`, …, listed in `COMPILER_ABI` in `scripts/check-stability-tier.ts`) are an additive-only ABI within 1.x and stay on the main entries. Every other `_` export is internal and goes on the package's `./internal` subpath export (`src/internal.ts`; `./internal-server` for Node-only internals; compat-layer plumbing on `@pyreon/core/compat`), never on a public entry: the gate fails a `_` runtime export on a public entry that is not in `COMPILER_ABI`. Adding a helper the compiler emits means adding it to `COMPILER_ABI` in the same PR. A non-`_` internal (a test seam, cross-package plumbing) gets a JSDoc `@internal` tag and goes on `./internal` too; the gate fails an `@internal`-tagged declaration reachable from a public entry, so public API never carries the tag. `scripts/check-stability-tier.ts` (in `validate-fast`) gates the tier field, README status lines, dependency direction, `@pyreon/meta` and `@deprecated` tags. The full policy, including deprecations, is [Stability, Versioning & Direction](https://pyreon.dev/docs/stability-and-direction).
 
 ### Release workflow
 

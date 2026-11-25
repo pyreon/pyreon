@@ -2761,7 +2761,7 @@ describe('useLoaderData', () => {
     const el = container()
     let capturedData: unknown
     const DataComp = () => {
-      capturedData = useLoaderData()
+      capturedData = useLoaderData()()
       return h('span', null, 'data')
     }
     const viewRoutes: RouteRecord[] = [
@@ -4717,6 +4717,29 @@ describe('View Transitions API', () => {
     await router.push('/plain')
     expect(startViewTransition).toHaveBeenCalledTimes(2)
 
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('push(path, { viewTransition: true }) opts ONE navigation in; meta false still wins', async () => {
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+    })
+    ;(document as any).startViewTransition = startViewTransition
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+        { path: '/no-vt', component: About, meta: { viewTransition: false } },
+      ],
+      url: '/',
+    })
+    await router.push('/about', { viewTransition: true })
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
+    await router.push('/')
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
+    await router.push('/no-vt', { viewTransition: true })
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
     delete (document as any).startViewTransition
     router.destroy()
   })

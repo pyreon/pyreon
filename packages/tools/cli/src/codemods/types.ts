@@ -13,6 +13,8 @@ export interface Codemod {
   id: string
   /** The package whose breaking change this migrates. */
   package: `@pyreon/${string}`
+  /** Further packages the same codemod migrates (one rewrite spanning several packages). */
+  alsoMigrates?: readonly `@pyreon/${string}`[]
   /** First version that carries the breaking change (`x.y.z`). */
   introducedIn: string
   /** One sentence: what the codemod rewrites and why that is safe. */

@@ -3702,22 +3702,22 @@
       "warnings": 1
     },
     "golden-fixture:http-46.tsx|swift": {
-      "sha": "00e5aa4ed203f927ceb24f4000c7131448990a83abb1b89c0b6180f779f719d7",
-      "bytes": 448,
-      "warnings": 0
+      "sha": "1a29180253db4a07f136f7bcbd687bcce5521f908158bffab81259cbb9c90330",
+      "bytes": 110,
+      "warnings": 1
     },
     "golden-fixture:http-46.tsx|kotlin": {
-      "sha": "e65c2100e519c5b4c2943441806190a7f904f7950e8917b090816c578179e5ba",
-      "bytes": 348,
-      "warnings": 0
+      "sha": "411b527da6d82addd4140e19f6773693d445ed068ea528b2215f999f71d4dead",
+      "bytes": 194,
+      "warnings": 1
     },
     "golden-fixture:http-47.tsx|swift": {
-      "sha": "d0a8ea3f8dba2a4d5eac72bac1ef786b8b42939da4ec909680790379893ec243",
+      "sha": "e106e173b751431c7cfe7cb9ae696050e3068d8459228e5fc6017f7b402763a2",
       "bytes": 110,
       "warnings": 1
     },
     "golden-fixture:http-47.tsx|kotlin": {
-      "sha": "40ba64f3c6ed5ec4e72902ba50694122750119dad3aae12eaa84e074618ec4ab",
+      "sha": "52a26b3283823098b3e419af472434734ab74393cb90900916f45b33da6bfeb8",
       "bytes": 194,
       "warnings": 1
     },
@@ -7502,13 +7502,13 @@
       "warnings": 0
     },
     "example:native-router-demo/RouterApp.tsx|swift": {
-      "sha": "be6b211c141490a82c549318a4ee3bf551cc2a4963a89643af1ecf2dbeede44d",
-      "bytes": 43679,
+      "sha": "9cc9bdc877062e5c03a29283db4d0b2819d98a87729d618aa9c61e5f847cfa43",
+      "bytes": 43514,
       "warnings": 1
     },
     "example:native-router-demo/RouterApp.tsx|kotlin": {
-      "sha": "9c34707263ea8f1f26b0451bb3874969e6fb62caac9f7b3fb9cfb019fdaecbc9",
-      "bytes": 37002,
+      "sha": "a0dbfeb3a29234fb0f161c88d9bb1159591a22fa91b7a2e8856c4ab35060e01d",
+      "bytes": 36871,
       "warnings": 1
     },
     "example:native-showcase/TodayApp.tsx|swift": {

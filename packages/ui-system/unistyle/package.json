@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@pyreon/styler": "workspace:^",
-    "@pyreon/ui-core": "workspace:^"
+    "@pyreon/ui-core": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
@@ -62,7 +62,7 @@
     "@vitus-labs/tools-rolldown": "^2.8.0"
   },
   "engines": {
-    "node": ">= 22"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

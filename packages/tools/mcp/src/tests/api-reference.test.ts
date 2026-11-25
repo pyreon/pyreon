@@ -487,7 +487,7 @@ describe('api-reference', () => {
     it('useRouter documents the View Transition await semantics', () => {
       const entry = API_REFERENCE['router/useRouter']
       expect(entry?.notes).toContain('updateCallbackDone')
-      expect(entry?.mistakes?.split('\n').length).toBe(3)
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
     })
 
     it('useIsActive documents segment-aware prefix matching', () => {

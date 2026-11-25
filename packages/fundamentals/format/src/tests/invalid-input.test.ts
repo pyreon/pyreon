@@ -1,7 +1,7 @@
 import * as core from '../core'
 import * as reactive from '../index'
 import { _resetWarnings } from '../warn'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 
 const en = { locale: 'en-US' }
 let warn: { mock: { calls: unknown[][] }; mockRestore(): void }
@@ -15,7 +15,7 @@ beforeEach(() => {
 afterEach(() => {
   warn.mockRestore()
   process.env.NODE_ENV = nodeEnv
-  _resetLocaleState()
+  resetLocaleState()
 })
 
 const CALLS: Array<[string, (v: unknown, fb: string) => string]> = [

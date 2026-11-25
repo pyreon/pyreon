@@ -40,6 +40,16 @@
       "import": "./lib/blog.js",
       "types": "./lib/types/blog.d.ts"
     },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
+    },
+    "./internal-server": {
+      "bun": "./src/internal-server.ts",
+      "import": "./lib/internal-server.js",
+      "types": "./lib/types/internal-server.d.ts"
+    },
     "./blog.css": "./styles/blog.css"
   },
   "files": [
@@ -94,6 +104,9 @@
     "mdast-util-directive": "^3.2.0",
     "mdast-util-mdx-jsx": "^3.2.1",
     "unist-util-visit": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

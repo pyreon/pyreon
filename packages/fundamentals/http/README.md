@@ -100,6 +100,18 @@ useMutation(createUser.mutation({ invalidates: [listUsers] }))
 `:placeholders`**, and its keys come from the path literal — so
 `{ params: { userId } }` against `/users/:id` is a compile error.
 
+Placeholders are read in the **path** only — after `scheme://authority` and
+before the first `?` or `#`. A port, an IPv6 literal (`http://[::1]:8080`) or
+`user:password@` is never a placeholder either. A colon in a query string or fragment you write out yourself
+(`/search?tag=a:b`, `/search?at=10:30`, `/doc#x:y`) is sent as written and
+declares no parameter, on the web and in the native lowering alike; structured
+query values belong in the `query` option. Inside the path, `\\:` writes a
+literal colon (`/v1/:name\\:cancel`). In development, a `:name` after the `?`
+whose name you ALSO passed in `params` logs a warning, since that value goes nowhere.
+A `query` option is merged into the written query and placed before any
+`#fragment`: `api.get('/doc?v=2#x', { query: { a: 1 } })` requests
+`/doc?v=2&a=1#x`.
+
 ## Request bodies
 
 One option per encoding; they are mutually exclusive, and passing two throws.

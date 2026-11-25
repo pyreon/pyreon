@@ -1496,6 +1496,46 @@ function mergeMeta(matched: RouteRecord[]): RouteMeta {
   return Object.freeze(meta) as RouteMeta
 }
 
+/** Same keys, same values. Route params are flat string maps. */
+export function sameParams(a: Record<string, string>, b: Record<string, string>): boolean {
+  if (a === b) return true
+  const keys = Object.keys(a)
+  if (keys.length !== Object.keys(b).length) return false
+  for (const k of keys) {
+    if (a[k] !== b[k] || !(k in b)) return false
+  }
+
+  return true
+}
+
+/**
+ * Two resolutions show the SAME page: the same matched records (by identity)
+ * with the same params. Only the query and the hash may differ. Such a
+ * navigation updates the route reactively; it never remounts the view (#4814).
+ */
+export function sameMatchedRoute(a: ResolvedRoute, b: ResolvedRoute): boolean {
+  if (a.matched.length !== b.matched.length) return false
+  for (let i = 0; i < a.matched.length; i++) {
+    if (a.matched[i] !== b.matched[i]) return false
+  }
+
+  return sameParams(a.params, b.params)
+}
+
+/**
+ * A PROGRAMMATIC `replace` that keeps the page (same records, same params, same
+ * hash; only the query moved) is an in-place edit of the current entry. A
+ * browser traversal is never one: Back/Forward keeps its scroll handling.
+ */
+export function isInPlaceReplace(
+  replace: boolean,
+  fromBrowser: boolean,
+  to: ResolvedRoute,
+  from: ResolvedRoute,
+): boolean {
+  return replace && !fromBrowser && to.hash === from.hash && sameMatchedRoute(to, from)
+}
+
 /** Build a path string from a named route's pattern and params */
 export function buildPath(pattern: string, params: Record<string, string>): string {
   const built = pattern.replace(/\/:([^/]+)\?/g, (_match, key) => {

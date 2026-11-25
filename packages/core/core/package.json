@@ -49,7 +49,20 @@
       "bun": "./src/native-plugin.ts",
       "import": "./lib/native-plugin.js",
       "types": "./lib/types/native-plugin.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
+    },
+    "./compat": {
+      "bun": "./src/compat.ts",
+      "import": "./lib/compat.js",
+      "types": "./lib/types/compat.d.ts"
     }
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"
@@ -70,7 +83,7 @@
   },
   "peerDependencies": {
     "@pyreon/native-compiler": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@pyreon/native-compiler": {

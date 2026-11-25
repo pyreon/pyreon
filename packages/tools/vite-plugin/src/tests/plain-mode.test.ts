@@ -17,7 +17,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import pyreonPlugin, { plainMarkerLocalNames, type PyreonPluginOptions } from '../index'
+import pyreonPlugin, { type PyreonPluginOptions } from '../index'
+import { plainMarkerLocalNames } from '../plain-markers'
 
 // A signal read compiles to `name()` in expression position and to the direct
 // `_bindText(name, …)` binding when it is the sole text child (`<div>{name}</div>`).

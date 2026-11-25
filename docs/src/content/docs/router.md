@@ -1559,7 +1559,7 @@ function Users() {
   const users = useLoaderData<User[]>()
   return (
     <ul>
-      {users.map(u => <li>{u.name}</li>)}
+      <For each={users} by={(u) => u.id}>{(u) => <li>{u.name}</li>}</For>
     </ul>
   )
 }
@@ -1579,7 +1579,7 @@ export const loader = async () => ({ posts: await fetchPosts() })
 
 function PostsPage() {
   const data = useLoaderData<LoaderData<typeof loader>>()
-  // data: { posts: Post[] } — inferred from the loader's return type, not
+  // data(): { posts: Post[] } — inferred from the loader's return type, not
   // hand-annotated, so a change to the loader's shape is a type error at
   // every consuming `useLoaderData<LoaderData<typeof loader>>()` call site
   // instead of a silent runtime mismatch.
@@ -1618,6 +1618,21 @@ loader: ({ request }) => {
 - **Cancellation:** When a new navigation starts, the previous navigation's AbortController is aborted. Loaders that check `signal.aborted` or pass `signal` to `fetch()` will be cancelled.
 - **Error handling:** If a loader throws and the route has an `errorComponent`, it is rendered instead of the route component. If no `errorComponent` is defined, the route component renders with `undefined` data.
 - **Data cleanup:** Loader data for routes no longer in the matched stack is pruned after each navigation.
+- **Remounting:** the page is remounted when its matched route, its params or its loader key (`loaderKey`, else path + params) change. A query- or hash-only navigation keeps it mounted. Data that changes under the same key (`router.revalidate()`, `staleWhileRevalidate`, `gcTime: 0`, a server loader) reaches the page in place: `useLoaderData()` returns an accessor, so read `data()` inside JSX, an `effect` or a `computed`. A value read once in the component body does not update.
+
+```tsx
+// A search page that keeps its input focused while its server loader re-runs per keystroke
+const Search = () => {
+  const data = useLoaderData<{ hits: Hit[] }>()
+  const q = useUrlState('q', '')
+  return (
+    <>
+      <input value={q()} onInput={(e) => q.set(e.currentTarget.value)} />
+      <For each={() => data().hits} by={(h) => h.id}>{(h) => <li>{h.title}</li>}</For>
+    </>
+  )
+}
+```
 
 ### Loaders with Route Params
 
@@ -1643,14 +1658,14 @@ const routes = [
 
 function UserProfile() {
   const user = useLoaderData<User>()
-  return <h1>{user.name}</h1>
+  return <h1>{user().name}</h1>
 }
 
 function SearchResults() {
   const results = useLoaderData<SearchResult[]>()
   return (
     <ul>
-      {results.map(r => <li>{r.title}</li>)}
+      <For each={results} by={(r) => r.id}>{(r) => <li>{r.title}</li>}</For>
     </ul>
   )
 }
@@ -1686,7 +1701,7 @@ function OrgLayout() {
   const org = useLoaderData<Organization>()
   return (
     <div>
-      <h1>{org.name}</h1>
+      <h1>{org().name}</h1>
       <RouterView />
     </div>
   )
@@ -1696,9 +1711,7 @@ function OrgMembers() {
   const members = useLoaderData<Member[]>()
   return (
     <ul>
-      {members.map((m) => (
-        <li>{m.name}</li>
-      ))}
+      <For each={members} by={(m) => m.id}>{(m) => <li>{m.name}</li>}</For>
     </ul>
   )
 }
@@ -1949,6 +1962,8 @@ lazy(() => import('./pages/Dashboard').then((m) => m.DashboardPage))
 ```
 
 ## Scroll Behavior
+
+A single navigation can opt out of scrolling and of the view transition: `router.push('/list?page=2', { scroll: false, viewTransition: false })`. A `replace()` that changes only the query (same route, params and hash) defaults to both off, and `@pyreon/url-state` and the `useSearchParams` setters pass both as `false`. With `scroll: false` the `scrollBehavior` below is not consulted.
 
 Control scroll position on navigation:
 
@@ -2841,7 +2856,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="useParams" type="hook" signature={"useParams<T extends Record<string, string>>(): T"} description="Snapshot of the current route's params (not reactive)." />
 
-<APICard name="useLoaderData" type="hook" signature={"useLoaderData<T>(): T"} description="Read data returned by the current route's loader function." />
+<APICard name="useLoaderData" type="hook" signature={"useLoaderData<T>(): () => T"} description="The current route's loader data as a reactive accessor; it updates in place when the data changes under the same loader key." />
 
 <APICard name="useSearchParams" type="hook" signature={"useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]"} description="Reactive read/write access to URL query parameters with optional defaults." />
 

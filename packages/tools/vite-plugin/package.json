@@ -22,6 +22,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [
@@ -54,6 +59,9 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "vite": "^8.3.8"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

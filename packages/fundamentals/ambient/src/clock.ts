@@ -455,7 +455,7 @@ export function _fireAll(): void {
 }
 
 /** Test hook: drop every ticker, the pin, the provide flag and the hand-over. */
-export function _resetClockState(): void {
+export function resetClockState(): void {
   for (const t of active) if (t.timer !== null) clearTimeout(t.timer)
   if (beat !== null) clearTimeout(beat)
   beat = null

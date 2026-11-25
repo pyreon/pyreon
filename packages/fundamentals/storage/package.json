@@ -27,6 +27,11 @@
       "bun": "./src/native-plugin.ts",
       "import": "./lib/native-plugin.js",
       "types": "./lib/types/native-plugin.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [
@@ -68,6 +73,9 @@
     "fake-indexeddb": "^6.2.8",
     "jotai": "^3.0.2",
     "zustand": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

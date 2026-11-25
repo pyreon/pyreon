@@ -6,7 +6,7 @@
  */
 import * as core from '../core'
 import * as reactive from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 
 const LOCALES = ['en-US', 'en-GB', 'cs', 'de', 'fr', 'ja', 'ar', 'hi', 'pt-BR', 'de-CH', 'ar-EG']
 const NUMBERS = [0, 1, -1, 0.5, 1234.5678, -98765.4321, 1_240_000, 1e12, 0.000123, 42n]
@@ -18,7 +18,7 @@ const ENTRIES = [
 ] as const
 
 describe.each(ENTRIES)('differential vs raw Intl (%s entry)', (_name, f) => {
-  afterEach(() => _resetLocaleState())
+  afterEach(() => resetLocaleState())
 
   describe.each(LOCALES)('%s', (locale) => {
     it('formatNumber', () => {
@@ -183,7 +183,7 @@ describe.each(ENTRIES)('differential vs raw Intl (%s entry)', (_name, f) => {
 })
 
 describe('the reactive entry follows the active locale', () => {
-  afterEach(() => _resetLocaleState())
+  afterEach(() => resetLocaleState())
 
   it.each(LOCALES)('%s: setLocale drives every formatter', (locale) => {
     reactive.setLocale(locale)

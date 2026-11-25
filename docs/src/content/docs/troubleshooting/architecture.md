@@ -44,7 +44,7 @@ Ui-core owns the `PyreonTheme` type and a slot (`theme-engine.ts`: `setThemeEngi
 
 ### Handling browser Back/Forward with a bare state sync instead of the navigation pipeline
 
-A popstate/hashchange handler that only sets `currentPath` skips loaders (loader data for the left route is pruned, so `useLoaderData()` returns `undefined`), guards, blockers, middleware, `afterEach` (route announcements), scroll and `meta.title`. `@pyreon/router` runs browser traversals through `navigate()` with replace-commit semantics:
+A popstate/hashchange handler that only sets `currentPath` skips loaders (loader data for the left route is pruned, so the `useLoaderData()` accessor reads `undefined`), guards, blockers, middleware, `afterEach` (route announcements), scroll and `meta.title`. `@pyreon/router` runs browser traversals through `navigate()` with replace-commit semantics:
   - A traversal cancelled by a guard or blocker restores URL and position via `history.go(-delta)` using the per-entry `history.state.__pyreonIdx` stamp (`replaceState` for unstamped entries). A superseded traversal restores nothing.
   - Only the owning router (`_navOwner`, the newest live instance) writes the URL back.
   - Browser traversals run the ScrollManager only when `scrollBehavior` is configured; otherwise native scroll restoration applies.
@@ -530,7 +530,7 @@ Use the host view's document and window: `view.dom.ownerDocument.createElement(.
 ### `node:*` imports reachable from a client-safe entry
 
 (gate: `check-client-bundle-node-imports`): any `node:*` import in the graph of a client-safe main entry (e.g. `@pyreon/zero`) breaks the browser bundle and hydration. Type-only imports are safe; dead-code elimination does not help, because static imports are evaluated for side effects. Fixes:
-  1. Split the Node code into a server-only module that registers through a setter on the client-safe module (`packages/zero/zero/src/i18n-routing-als.ts` + `_setLocaleStoreReader` in `i18n-routing.ts`).
+  1. Split the Node code into a server-only module that registers through a setter on the client-safe module (`packages/zero/zero/src/i18n-routing-als.ts` + `_setLocaleStoreReader` in `i18n-routing-state.ts`).
   2. Export server helpers from a `/server` subpath.
   3. A lazy `await import('./node-module')` still emits a client chunk (a build warning plus a dead chunk) if the import site is reachable from the client entry. Move the import site itself into a server-only module (`i18n-routing-plugin.ts`, exported from `@pyreon/zero/server`).
 

@@ -1,10 +1,11 @@
 import type { ComponentFn } from '@pyreon/core'
 import { h, isServer } from '@pyreon/core'
-import type { ResolvedRoute, RouteRecord } from '@pyreon/router'
-import { hydrateLoaderData, RouterProvider, stringifyQuery } from '@pyreon/router'
+import type { RouteRecord } from '@pyreon/router'
+import { hydrateLoaderData, RouterProvider } from '@pyreon/router'
 import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { createApp } from './app'
 import { type IslandsOnlyOptions, isIslandsOnlyPage, startIslandsOnlyPage } from './client-marker'
+import { islandsOnlyNavigation } from './islands-navigation'
 
 export type { IslandRootLoader, IslandsOnlyOptions, IslandsRegistry } from './client-marker'
 
@@ -38,28 +39,6 @@ declare const __ZERO_HYDRATE__: boolean | undefined
 declare const __ZERO_ISLANDS_ONLY__: boolean | undefined
 
 // ─── Client entry factory ───────────────────────────────────────────────────
-
-/**
- * The navigation guard that sends a client-side navigation TO an islands-only
- * route (`meta.hydrate === 'islands'`) to the server as a full page load.
- * Exported for its unit test; `assign` is the browser's `location.assign`.
- * @internal
- */
-export function islandsOnlyNavigation(
-  base: string,
-  assign: (href: string) => void = (href) => globalThis.location.assign(href),
-): (to: ResolvedRoute, from: ResolvedRoute) => boolean | undefined {
-  return (to, from) => {
-    if ((to.meta as { hydrate?: unknown }).hydrate !== 'islands') return undefined
-    // The route the app is already on (a cold start re-running loaders for
-    // the current URL) is rendered here, never reloaded: reloading it would
-    // loop when a static host served this app's shell at that URL.
-    if (to.path === from.path) return undefined
-    assign(`${base}${to.path}${stringifyQuery(to.query as Record<string, string>)}${to.hash ? `#${to.hash}` : ''}`)
-
-    return false
-  }
-}
 
 export interface StartClientOptions extends IslandsOnlyOptions {
   /** Route definitions. */
@@ -112,14 +91,14 @@ function guardIslandsOnlyRoutes(router: { beforeEach: (g: ReturnType<typeof isla
  * - **SPA cold start (no SSR content)**: no `__PYREON_LOADER_DATA__` was
  *   embedded, so we call `router.replace(currentPath)` after mount to
  *   trigger the loader pipeline for the initial route. The first render
- *   shows whatever the component displays for `useLoaderData() === undefined`
- *   (typically a loading state or fallback); once loaders resolve, the
- *   reactive `useLoaderData` re-renders with the data. This matches
+ *   shows whatever the component displays while its `useLoaderData()`
+ *   accessor reads `undefined` (typically a loading state or fallback); once
+ *   loaders resolve, the accessor's readers update with the data. This matches
  *   standard SPA loading behavior.
  *
  * Without this wiring, direct URL navigation to a loader-backed route
  * (e.g. `/posts/3`) showed the "Post not found" fallback indefinitely
- * because `useLoaderData()` returned `undefined` forever. The router
+ * because the loader data stayed `undefined` forever. The router
  * only ran loaders on in-app navigation (push/replace), not on initial
  * mount.
  *

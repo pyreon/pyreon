@@ -42,7 +42,7 @@ export function loaderKey(): string {
 
 export function layout() {
   // The loader already redirected when there is no session.
-  const { session } = useLoaderData<{ session: SessionInfo }>()
+  const data = useLoaderData<{ session: SessionInfo }>()
 
   return (
     <div class="app-shell">
@@ -78,7 +78,7 @@ export function layout() {
         </Link>
 
         <div class="app-sidebar-footer">
-          <div>{session.email}</div>
+          <div>{data().session.email}</div>
           <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center;">
             <form
               method="post"

@@ -60,7 +60,7 @@
     "@vitus-labs/tools-rolldown": "^2.8.0"
   },
   "engines": {
-    "node": ">= 22"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

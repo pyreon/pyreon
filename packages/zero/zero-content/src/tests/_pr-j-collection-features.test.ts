@@ -24,9 +24,8 @@
 //         the captured `slug` field.
 
 import { describe, expect, it } from 'vitest'
+import { _resetRegistryForTesting, _setRegistry } from '../internal'
 import {
-  _resetRegistryForTesting,
-  _setRegistry,
   getCollection,
   isReference,
   reference,
@@ -37,7 +36,7 @@ import {
 } from '../index'
 import { compileMarkdown } from '../pipeline/parse'
 import { dedupeSlug } from '../pipeline/emit-jsx'
-import { findCollectionForFileImpl } from '../plugin'
+import { findCollectionForFileImpl } from '../internal-server'
 
 // Helper — build a stub registry matching the CollectionRegistry shape.
 function buildRegistry(

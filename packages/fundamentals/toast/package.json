@@ -27,6 +27,11 @@
       "bun": "./src/native-plugin.ts",
       "import": "./lib/native-plugin.js",
       "types": "./lib/types/native-plugin.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [
@@ -70,6 +75,9 @@
     "react-dom": "^19.3.1",
     "react-hot-toast": "^2.6.1",
     "sonner": "^2.0.8"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

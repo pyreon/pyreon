@@ -1,4 +1,4 @@
-import { _enterCleanupFrame, _exitCleanupFrame } from '@pyreon/reactivity'
+import { _enterCleanupFrame, _exitCleanupFrame } from '@pyreon/reactivity/internal'
 import { _peekCurrentHooks, EMPTY_HOOKS, PENDING_HOOKS, setCurrentHooks } from './lifecycle'
 import type { ComponentFn, LifecycleHooks, VNodeChild } from './types'
 
@@ -15,6 +15,8 @@ export function defineComponent<P extends object>(fn: ComponentFn<P>): Component
  * registered inside it (onMount, onUnmount, onErrorCaptured, etc.) are captured.
  *
  * Called by the renderer — not intended for user code.
+ *
+ * @internal
  */
 export function runWithHooks<P extends object>(
   fn: ComponentFn<P>,
@@ -84,6 +86,8 @@ export function _takeHooks(): LifecycleHooks {
 /**
  * Walk up error handlers collected during component rendering.
  * Returns true if any handler marked the error as handled.
+ *
+ * @internal
  */
 export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
   if (!hooks.error) return false
@@ -138,6 +142,8 @@ export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
 /**
  * Dispatch an error to the nearest active ErrorBoundary.
  * Returns true if the boundary handled it, false if none was registered.
+ *
+ * @internal
  */
 export function dispatchToErrorBoundary(err: unknown): boolean {
   const handler = _ebStack[_ebStack.length - 1]

@@ -3,7 +3,7 @@ import { cpus } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
-import type { LintWorkerInput, LintWorkerOutput } from './lint-worker'
+import type { LintWorkerInput, LintWorkerOutput } from './lint-slice'
 import { _resolveRun, lint } from './lint'
 import type { ConfigDiagnostic, LintFileResult, LintOptions, LintResult } from './types'
 

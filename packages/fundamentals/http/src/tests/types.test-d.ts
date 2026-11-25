@@ -103,6 +103,17 @@ describe('endpoint typing', () => {
     expectTypeOf<PathParamNames<'/f/:a-:b'>>().toEqualTypeOf<'a' | 'b'>()
     // A parameter need not start its segment; `:8080` is not one.
     expectTypeOf<PathParamNames<'/f/file:id'>>().toEqualTypeOf<'id'>()
+    // #4816: a colon after `?` / `#` declares nothing — the runtime sends it as written.
+    expectTypeOf<PathParamNames<'/search?tag=a:b'>>().toEqualTypeOf<never>()
+    expectTypeOf<PathParamNames<'/search#x:y'>>().toEqualTypeOf<never>()
+    expectTypeOf<PathParamNames<'/users/:id/search?tag=a:b'>>().toEqualTypeOf<'id'>()
+    expectTypeOf<PathParamNames<'/u/:id#frag:x?q=:y'>>().toEqualTypeOf<'id'>()
+    // …nor in the authority: IPv6, port, userinfo.
+    expectTypeOf<PathParamNames<'http://[fe80::abcd]/x/:id'>>().toEqualTypeOf<'id'>()
+    expectTypeOf<PathParamNames<'http://[2001:db8::1]/x'>>().toEqualTypeOf<never>()
+    expectTypeOf<PathParamNames<'https://u:secret@h/x'>>().toEqualTypeOf<never>()
+    expectTypeOf<PathParamNames<'//u:pw@h:81/x/:id'>>().toEqualTypeOf<'id'>()
+    expectTypeOf<PathParamNames<'https://h:8080?q=a:b'>>().toEqualTypeOf<never>()
     expectTypeOf<PathParamNames<'/f/x:8080'>>().toEqualTypeOf<never>()
   })
 

@@ -1,4 +1,4 @@
-import { isNativeCompat } from '@pyreon/core'
+import { isNativeCompat } from '@pyreon/core/compat'
 import { mount } from '@pyreon/runtime-dom'
 import { QueryClient } from '@tanstack/query-core'
 import { QueryClientProvider } from '../index'

@@ -52,7 +52,7 @@
   "dependencies": {
     "@pyreon/sized-map": "workspace:*",
     "@pyreon/styler": "workspace:^",
-    "@pyreon/ui-core": "workspace:^"
+    "@pyreon/ui-core": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
@@ -67,7 +67,7 @@
     "oxc-parser": "^0.159.0"
   },
   "peerDependencies": {
-    "@pyreon/core": "workspace:^",
+    "@pyreon/core": "workspace:*",
     "@pyreon/native-compiler": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "oxc-parser": "^0.152.0"
@@ -81,7 +81,7 @@
     }
   },
   "engines": {
-    "node": ">= 22"
+    "node": ">=22"
   },
   "pyreon": {
     "stability": "stable",

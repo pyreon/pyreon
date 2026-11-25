@@ -60,7 +60,7 @@
   "after": {
    "label": "Pyreon",
    "caption": "Guards return `true`, `false` or a path. The loader types the component.",
-   "code": "import { signal } from '@pyreon/reactivity'\nimport { createRouter, useLoaderData, type LoaderData } from '@pyreon/router'\n\nconst signedIn = signal(false)\nconst loader = ({ params }: { params: Record<string, string> }) => fetchUser(params.id!)\n\nconst router = createRouter({\n  mode: 'history',\n  routes: [\n    { path: '/user/:id', component: User, loader },\n    { path: '/settings', component: Settings, beforeEnter: () => signedIn() || '/login' },\n  ],\n})\n\nfunction User() {\n  const user = useLoaderData<LoaderData<typeof loader>>()\n  return <h1>{user.name}</h1>\n}"
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { createRouter, useLoaderData, type LoaderData } from '@pyreon/router'\n\nconst signedIn = signal(false)\nconst loader = ({ params }: { params: Record<string, string> }) => fetchUser(params.id!)\n\nconst router = createRouter({\n  mode: 'history',\n  routes: [\n    { path: '/user/:id', component: User, loader },\n    { path: '/settings', component: Settings, beforeEnter: () => signedIn() || '/login' },\n  ],\n})\n\nfunction User() {\n  const user = useLoaderData<LoaderData<typeof loader>>()\n  return <h1>{user().name}</h1>\n}"
   }
  },
  "extraSectionsHtml": null,

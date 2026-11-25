@@ -90,7 +90,7 @@ export function generateActionManifest(root: string): {
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([id, file]) => `  ${jsStringLiteral(id)}: () => import(${jsStringLiteral(file)})`)
   const code = [
-    `import { _registerActionModules } from "@pyreon/zero/actions"`,
+    `import { _registerActionModules } from "@pyreon/zero/internal"`,
     `_registerActionModules({`,
     entries.join(',\n'),
     `})`,

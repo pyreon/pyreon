@@ -21,11 +21,11 @@ export default function PostPage() {
 
   return h('div', { 'data-testid': 'post-page' },
     h(Show, {
-      when: () => data != null,
+      when: () => data() != null,
       fallback: h('p', null, 'Post not found'),
     },
       () => {
-        const post = data as Post
+        const post = data() as Post
         return h('article', null,
           h('h1', { 'data-testid': 'post-title' }, post.title),
           h('p', { 'data-testid': 'post-body' }, post.body),

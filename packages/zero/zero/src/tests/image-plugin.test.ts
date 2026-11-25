@@ -4,11 +4,11 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   generatePlaceholder,
-  resolvePlaceholder,
   parseJpegDimensions,
   parseWebPDimensions,
+  resolvePlaceholder,
   resolveQuality,
-} from '../image-plugin'
+} from '../internal-server'
 
 describe('parseJpegDimensions', () => {
   function makeJpeg(width: number, height: number): Buffer {

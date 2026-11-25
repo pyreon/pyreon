@@ -127,6 +127,7 @@ export type {
   LoaderData,
   NavigationGuard,
   NavigationGuardResult,
+  NavigateOptions,
   NavigationResult,
   ResolvedRoute,
   RouteComponent,

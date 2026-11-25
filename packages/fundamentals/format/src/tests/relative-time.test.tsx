@@ -7,10 +7,11 @@ import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import { _resetClockState, _tickerStats } from '@pyreon/ambient/testing'
+import { _tickerStats } from '@pyreon/ambient/internal'
+import { resetClockState } from '@pyreon/ambient/testing'
 import { RelativeTime } from '../components'
 import { formatRelativeTo, relativeFormatter, useRelativeTime } from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { _resetWarnings } from '../warn'
 
 const T0 = Date.UTC(2026, 10, 18, 12, 0, 0, 400) // 12:00:00.400 UTC
@@ -48,8 +49,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  _resetClockState()
-  _resetLocaleState()
+  resetClockState()
+  resetLocaleState()
   vi.useRealTimers()
 })
 

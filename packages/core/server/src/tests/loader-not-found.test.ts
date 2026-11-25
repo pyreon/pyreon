@@ -13,7 +13,7 @@ const ITEMS: Record<string, string> = { '1': 'First item' }
 
 const Item: ComponentFn = () => {
   const data = useLoaderData<{ name: string } | undefined>()
-  return h('h1', { 'data-testid': 'item' }, data?.name ?? '')
+  return h('h1', { 'data-testid': 'item' }, () => data()?.name ?? '')
 }
 const NotFound: ComponentFn = () => h('h1', { 'data-testid': 'not-found' }, 'Page Not Found')
 const Layout: ComponentFn = () =>

@@ -52,6 +52,9 @@
     "@pyreon/vitest-config": "workspace:*",
     "vitest": "^5.1.0"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

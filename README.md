@@ -227,6 +227,13 @@ signal.set() -> re-run 1 effect -> update 1 DOM node
 
 Full documentation at [pyreon.dev](https://pyreon.dev) (Pyreon-native site in `docs/` — powered by @pyreon/zero + @pyreon/zero-content).
 
+- [Stability, Versioning & Direction](https://pyreon.dev/docs/stability-and-direction): the semver promise, the Stable and Experimental tiers, and the support matrix.
+- [Upgrading to 1.0](https://pyreon.dev/docs/upgrading-to-v1): every breaking change on the way to 1.0, with its `pyreon upgrade` codemod or the step you take by hand.
+
+## Requirements
+
+Node.js 22 or later, or Bun 1.3 or later. Browsers: Baseline 2024. Native targets: iOS 17 and Android minSdk 26 or later. Details are in the [support matrix](https://pyreon.dev/docs/stability-and-direction#support-matrix).
+
 ## Development
 
 ```bash
@@ -238,6 +245,10 @@ bun run typecheck          # typecheck all packages
 ```
 
 The monorepo uses Bun workspaces. 86 packages across 6 categories are published (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`, `packages/native/`), plus private internals. Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
+
+## Security
+
+Report vulnerabilities privately through [GitHub security advisories](https://github.com/pyreon/pyreon/security/advisories/new), never in a public issue. [SECURITY.md](SECURITY.md) lists the supported versions and what to expect after a report.
 
 ## License
 

@@ -94,6 +94,7 @@ const docs = await getCollection('docs')
 | [`Example`](#example-component) | component | The Pyreon-native replacement for iframe-sandboxed `<Playground>`. |
 | [`registerExamples`](#registerexamples-function) | function | Register the consumer's example files for `<Example file="./...">` lookups. |
 | [`getOrCreateSharedSignal`](#getorcreatesharedsignal-function) | function | Module-level registry of `Signal<T>` instances keyed by string. |
+| [`resolvePageLayout`](#resolvepagelayout-function) | function | Pick the layout for one content page from its `layout:` frontmatter field. |
 | [`Details`](#details-component) | component | Thin wrapper around native `<details>`/`<summary>` for a collapsible disclosure section. |
 | [`Tabs`](#tabs-component) | component | A generic tab strip with one active panel at a time — distinct from `<CodeGroup>` in that labels can be any string and… |
 | [`PropTable`](#proptable-component) | component | Renders a Markdown-style props reference table from a STATIC, author-supplied row list — no runtime introspection, so… |
@@ -460,6 +461,38 @@ console.log(a()) // 5
 - Disagreeing on `T` across two callers with the same key — both get the same runtime signal but mismatched compile-time types (author error, no runtime safeguard).
 - Calling `clearAllSharedSignals()` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).
 - Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.
+
+---
+
+### `resolvePageLayout` `function`
+
+```ts
+resolvePageLayout(args: { frontmatter: Record<string, unknown>; registry: ContentLayoutRegistry; defaultLayout: ContentLayout }): { layout: ContentLayout; fellBack: boolean; missingName?: string }
+```
+
+Pick the layout for one content page from its `layout:` frontmatter field. Pure and runtime-agnostic: call it from the route that renders the page, with a `registry` you build (usually from `import.meta.glob('./layouts/*.tsx', { eager: true })`) and the route's default layout. No `layout` field (or an empty one) returns `defaultLayout`; a name missing from the registry also returns `defaultLayout`, with `fellBack: true` and the requested name in `missingName` so the route can warn. The plugin does not call it for you: per-page `layout:` only takes effect when the route does.
+
+**Example**
+
+```tsx
+import { resolvePageLayout } from '@pyreon/zero-content'
+import DocsLayout from './layouts/docs'
+import LandingLayout from './layouts/landing'
+
+const { layout: Layout, fellBack, missingName } = resolvePageLayout({
+  frontmatter: page.frontmatter,          // e.g. { title: 'Home', layout: 'landing' }
+  registry: { landing: LandingLayout },
+  defaultLayout: DocsLayout,
+})
+if (fellBack) console.warn(`[content] unknown layout "${missingName}"`)
+
+return <Layout>{page.content}</Layout>
+```
+
+**Common mistakes**
+
+- Expecting `layout:` frontmatter to switch layouts on its own — nothing calls `resolvePageLayout` automatically; the rendering route must
+- Ignoring `fellBack` — a typo in `layout:` silently renders the default layout unless the route reports `missingName`
 
 ---
 

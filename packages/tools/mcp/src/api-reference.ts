@@ -1189,26 +1189,9 @@ export const RouterView = nativeCompat(function RouterView(props) {
   provide(RouterContext, ...)
   return <div>{children}</div>
 })`,
-    notes: `Mark a Pyreon framework component as "self-managing" so compat layers (\`@pyreon/{react,preact,vue,solid}-compat\`) skip their wrapping and route the component through Pyreon's mount path. Use on every \`@pyreon/*\` JSX component whose setup body uses \`provide()\` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (\`Symbol.for("pyreon:native-compat")\`), so framework and compat sides share it without an import dependency between them. See also: isNativeCompat, NATIVE_COMPAT_MARKER.`,
+    notes: `Mark a Pyreon framework component as "self-managing" so compat layers (\`@pyreon/{react,preact,vue,solid}-compat\`) skip their wrapping and route the component through Pyreon's mount path. Use on every \`@pyreon/*\` JSX component whose setup body uses \`provide()\` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (\`Symbol.for("pyreon:native-compat")\`), so framework and compat sides share it without an import dependency between them. The compat layers read it through \`isNativeCompat()\` from \`@pyreon/core/compat\`, an internal subpath with no semver promise. See also: createContext, provide.`,
     mistakes: `- Forgetting to mark a new framework JSX export — under compat mode, the component's \`provide()\` / \`onMount()\` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.
 - Marking user-app components — only \`@pyreon/*\` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).`,
-  },
-
-  'core/isNativeCompat': {
-    signature: '(fn: unknown) => boolean',
-    example: `// In a compat layer's jsx-runtime:
-if (isNativeCompat(type)) return h(type, props)
-return wrapCompatComponent(type)(props)`,
-    notes: 'Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. Compat `jsx()` calls this to decide whether to skip the React/Vue/Solid/Preact-style wrapping. Always returns `false` for non-function inputs. See also: nativeCompat, NATIVE_COMPAT_MARKER.',
-  },
-
-  'core/NATIVE_COMPAT_MARKER': {
-    signature: 'symbol',
-    example: `import { NATIVE_COMPAT_MARKER } from '@pyreon/core'
-
-// Equivalent to nativeCompat(MyComponent):
-;(MyComponent as Record<symbol, boolean>)[NATIVE_COMPAT_MARKER] = true`,
-    notes: 'The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framework component. Most callers should use `nativeCompat()` / `isNativeCompat()` instead of touching the symbol directly; exported for advanced cases (e.g., a compat layer that wants to inspect the property without going through the helper). See also: nativeCompat, isNativeCompat.',
   },
 
   'core/Defer': {
@@ -2008,10 +1991,10 @@ const Admin = () => (
     <RouterView />  {/* renders Settings, Users, etc. */}
   </div>
 )`,
-    notes: `Render the matched route's component. For nested routes, the parent route component includes a \`<RouterView />\` that renders the matched child. Each \`<RouterView>\` renders one level of the route tree. See also: RouterProvider, createRouter.`,
+    notes: `Render the matched route's component. For nested routes, the parent route component includes a \`<RouterView />\` that renders the matched child. Each \`<RouterView>\` renders one level of the route tree. The page component receives \`params\`, \`query\` and \`meta\` as live props (the page being replaced keeps its own params until it unmounts). It is remounted when its matched record, its params or its LOADER KEY (\`loaderKey\`, else path + params) change, and kept mounted through a navigation that changes only the query or the hash, so a search box or a filter written to the URL with \`router.replace\`, \`useSearchParams().set\` or \`@pyreon/url-state\` keeps its focus and local state. Loader data that changes under the same key (\`revalidate()\`, \`staleWhileRevalidate\`, \`gcTime: 0\`, a server loader) is delivered in place through the \`useLoaderData()\` accessor, never by a remount; the page being replaced never sees the next page's data. A route error boundary's \`errorComponent\` receives \`error\` and \`reset\`. A route error boundary showing its \`errorComponent\` is remounted on any navigation, so it recovers. A \`replace()\` that changes only the query neither scrolls nor starts a view transition; pass \`{ scroll, viewTransition }\` to \`push\`/\`replace\` to decide explicitly. See also: RouterProvider, createRouter.`,
     mistakes: `- SSR renders a BLANK page for a lazy route when the handler only ran \`prefetchLoaderData\` — that runs LOADERS ONLY, it does NOT resolve \`lazy()\` route components. \`renderToString\` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must call \`preloadRoute(router, path, req)\` (resolves lazy components into \`_componentCache\` AND runs the loaders) before rendering.
 - Forgetting the inner \`<RouterView />\` inside a LAYOUT component — nested child routes render by placing a SECOND \`<RouterView />\` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).
-- Expecting a param-only navigation (\`/user/1 → /user/2\`) to re-run the layout body — it does NOT. Each depth is a single atomic \`computed\` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth's own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.
+- Expecting a param-only navigation (\`/user/1 → /user/2\`) to re-run the layout body — it does NOT. Each depth is a single atomic \`computed\` keyed on (matched record, component, its own loader key); the leaf is ALSO keyed on the route params. It re-emits only when the matched RECORD or that depth's loader key changes, plus a param change at the leaf. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders. A query- or hash-only navigation (same records, same params) does not remount the page unless its loader key changes (a \`loaderKey\` that reads the query) or its route error boundary is showing the error page; new loader data under the same key arrives in place through the \`useLoaderData()\` accessor. The page reads the new query through its live \`props.query\` (in an accessor or effect — a value read once in the body is NOT refreshed), \`useRoute()\` or \`useSearchParams()\` (#4814). Do not put per-navigation side effects in a layout body expecting them to re-fire.
 - Passing the route component as a prop or child to \`<RouterView>\` — it takes none except \`router?\` (explicit router override; defaults to the context/active router) and \`announceRouteChanges\` (a11y live-region opt-out). It reads the matched chain from \`RouterContext\`; configure routes in \`createRouter\`, never on RouterView.
 - In a \`*-compat\` app, wrapping \`<RouterView>\` in your OWN layout helper that uses \`provide()\`/\`onMount()\`/\`effect()\` at body scope without marking it \`nativeCompat()\` — the compat jsx runtime relocates its setup into a wrapper accessor. RouterView itself ships \`nativeCompat\`-marked; your helpers around it must be too.
 - Passing \`layout\` to \`@pyreon/zero\`'s \`createApp\`/\`startClient\` when fs-router already emits \`_layout.tsx\` — the layout is a parent route in the matched chain that RouterView renders, so the explicit \`layout\` mounts it a SECOND time (two navbars / two providers). Let \`_layout.tsx\` be the canonical registration; do not also pass \`layout\`.`,
@@ -2036,11 +2019,13 @@ const Admin = () => (
 router.push("/settings")
 router.push({ name: "user", params: { id: "42" } })
 router.replace("/login")
+router.push("/list?page=2", { scroll: false, viewTransition: false }) // edit in place
 router.back()
 router.forward()
 router.go(-2)`,
     notes: `Access the router instance for programmatic navigation. Returns the \`Router\` object with \`push()\`, \`replace()\`, \`back()\`, \`forward()\`, \`go()\`. \`await router.push()\` resolves after the View Transition \`updateCallbackDone\` (DOM commit is complete, new route state is live), NOT after the animation finishes — and resolves WITH a \`NavigationResult\`: \`'committed'\` (route changed), \`'cancelled'\` (a blocker/guard/middleware refused), or \`'superseded'\` (a newer navigation won). Browser Back/Forward routes through the same pipeline (guards, blockers, loaders, afterEach, scroll, \`meta.title\`). On iOS and Android \`useRouter()\` lowers to a handle with \`push(path)\`, \`replace(path)\`, \`back()\` and \`forward()\` (string paths, no awaited result); the other members have no native counterpart and fail the native build. See also: useRoute, RouterLink, createRouter.`,
-    mistakes: `- \`router.push("/path")\` at the top level of a component body — this is synchronous imperative navigation during render, causing an infinite loop. Wrap in \`onMount\`, event handler, or \`effect\`
+    mistakes: `- Expecting a query-only \`push()\` to keep the scroll position — a push is a new entry and scrolls to the top (\`scrollBehavior\`). Pass \`router.push(path, { scroll: false })\`; add \`viewTransition: false\` to skip the view transition. A \`replace()\` that changes only the query (same route, params and hash) defaults to both off; \`{ scroll: true }\` turns scrolling back on. With \`scroll: false\` the \`scrollBehavior\` option is not consulted.
+- \`router.push("/path")\` at the top level of a component body — this is synchronous imperative navigation during render, causing an infinite loop. Wrap in \`onMount\`, event handler, or \`effect\`
 - \`await router.push("/path")\` expecting animation completion — \`push\` resolves after DOM commit (\`updateCallbackDone\`), not after View Transition animation finishes. Use the returned transition object's \`.finished\` if you need to wait for animation
 - Calling \`useRouter()\` outside a \`<RouterProvider>\` — throws because no router context exists`,
   },
@@ -2111,16 +2096,28 @@ const data = useMiddlewareData()
   },
 
   'router/useLoaderData': {
-    signature: 'useLoaderData<T>(): T',
+    signature: 'useLoaderData<T>(): () => T',
     example: `// Route: { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) }
-
 const User = () => {
   const data = useLoaderData<UserData>()
-  return <div>{data.name}</div>
+  return <h1>{data().name}</h1>
+}
+
+// A search page whose server loader re-runs on every keystroke keeps its input
+const Search = () => {
+  const data = useLoaderData<{ hits: Hit[] }>()
+  const q = useUrlState('q', '')
+  return (
+    <>
+      <input value={q()} onInput={(e) => q.set(e.currentTarget.value)} />
+      <For each={() => data().hits} by={(h) => h.id}>{(h) => <li>{h.title}</li>}</For>
+    </>
+  )
 }`,
-    notes: `Access the data returned by the current route's \`loader\` function. The loader runs before the route component mounts; its return value is cached and available synchronously via this hook. Generic over the loader return type. See also: useMiddlewareData, useRoute.`,
-    mistakes: `- Getting \`undefined\` when the route has NO \`loader\` — it reads \`LoaderDataContext\` (default \`undefined\`). The \`<T>\` generic is an unchecked CAST, not validation; \`data.name\` then throws on the undefined.
-- Wrapping \`useLoaderData()\` in an \`effect\` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS the route component on a real navigation, which re-runs the body and re-reads the hook; there is no signal to subscribe to.
+    notes: `The current route's loader data as a reactive accessor (like \`useRoute()\`). The loader runs before the route component mounts, so \`data()\` is available on the first render. Read it inside JSX, an \`effect\` or a \`computed\`: the page is not remounted when the data changes under the same loader key (\`router.revalidate()\`, a \`staleWhileRevalidate\` refresh, a \`gcTime: 0\` loader, a server loader re-run on a query-only navigation), so inputs keep their focus and local state survives while the data updates in place. A different loader key (\`loaderKey\`, else path + params) is a different resource and remounts the page. Generic over the loader return type. See also: useMiddlewareData, useRoute, RouterView.`,
+    mistakes: `- Reading \`data()\` ONCE in the component body (\`const user = useLoaderData<User>()()\`, or \`const { name } = data()\`) — that is a snapshot, and the page is not remounted when the data changes under the same key, so it goes stale. Read \`data()\` inside JSX, \`<For each={() => data().list}>\`, \`<Show when={() => data().x}>\`, an \`effect\` or a \`computed\`.
+- Destructuring the result (\`const { title } = useLoaderData()\`) — it is an accessor (#4814); bind it and read \`data().title\`.
+- Getting \`undefined\` when the route has NO \`loader\` — the accessor reads \`LoaderDataContext\` (default \`undefined\`). The \`<T>\` generic is an unchecked CAST, not validation; \`data().name\` then throws on the undefined.
 - SSR returning \`undefined\` at render time — loaders are async but \`renderToString\` is synchronous, so the handler must run loaders (\`preloadRoute\` or \`prefetchLoaderData\`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.
 - Calling it in a component NOT rendered by \`<RouterView>\` (a sibling inside \`<RouterProvider>\`, a portal outside the route tree) — no \`LoaderDataProvider\` wraps it, so the context is the default \`undefined\`.
 - Expecting a nested LAYOUT's \`useLoaderData()\` to return the child PAGE's data — each depth is wrapped with its OWN \`LoaderDataProvider\`, so a layout reads its own loader's data and the page reads the page's. The hook reads the nearest provider, not the leaf.`,
@@ -4944,7 +4941,7 @@ const messages = formatErrors(result.issues ?? [], t)`,
     example: `const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
 const { t } = useI18n()
 const form = useForm({
-  fields: [emailField, ageField],
+  initialValues: { email: '', age: 0 },
   schema: toFormValidator(schema, t),
   onSubmit,
 })`,
@@ -5243,7 +5240,7 @@ const parse = wrapStandardSchema(schema)
 const r = parse(input)
 if (r instanceof Promise) throw new Error('async schema unsupported')
 if (r.ok) use(r.value)`,
-    notes: 'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. @internal — most consumers go through extractParseFn. See also: extractParseFn, standardSchemaToValidator.',
+    notes: 'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. Most consumers go through extractParseFn; call this directly when building your own Standard-Schema-derived parser. See also: extractParseFn, standardSchemaToValidator.',
     mistakes: `- Treating it like standardSchemaToValidator — this returns a coerced-value ParseResult, not a form error record
 - Not probing for a Promise return — an async Standard Schema returns a Promise, which is not a valid sync ParseResult`,
   },
@@ -6077,7 +6074,7 @@ await api.post('/orders', { json: { id: 9007199254740993n } })`,
     signature: '(baseUrl: string | undefined, path: string, params: PathParams | undefined, query: QueryParams | undefined) => string',
     example: `buildUrl('/api', '/users/:id', { id: '1' }, { includeDeleted: true })
 // -> '/api/users/1?includeDeleted=true'`,
-    notes: 'The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes `:name` placeholders through `encodePathParam` — `encodeURIComponent`, so an id containing `/` cannot escape its segment, plus a value of exactly `.` / `..` encoded as `%252E` because the URL parser resolves both `..` and `%2E%2E` as dot segments and the request would reach another endpoint — throws on a missing param rather than leaving a literal `:id` in the URL) → `joinUrl` (base + path with exactly one slash between them; a PREFIX join, not `new URL(path, base)` — see the "baseUrl is a PREFIX" gotcha) → `buildQuery` (serializes a query object, DROPPING `undefined`/`null` entries so they never land in the URL as the literal text `"undefined"`, and repeating the key for array values). Each step is also individually exported (`applyPathParams`, `encodePathParam`, `joinUrl`, `buildQuery`, `isAbsoluteUrl`) for anything building URLs outside the client — a custom transport, a test assertion, a devtools panel. See also: createHttp.',
+    notes: 'The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes `:name` placeholders — read in the PATH part only, before the first `?` / `#`, so a colon in a written query string or fragment like `/search?tag=a:b` is sent as written; the type-level `PathParamNames` and the native lowering cut at the same point — through `encodePathParam` — `encodeURIComponent`, so an id containing `/` cannot escape its segment, plus a value of exactly `.` / `..` encoded as `%252E` because the URL parser resolves both `..` and `%2E%2E` as dot segments and the request would reach another endpoint — throws on a missing param rather than leaving a literal `:id` in the URL) → `joinUrl` (base + path with exactly one slash between them; a PREFIX join, not `new URL(path, base)` — see the "baseUrl is a PREFIX" gotcha) → `buildQuery` (serializes a query object, DROPPING `undefined`/`null` entries so they never land in the URL as the literal text `"undefined"`, and repeating the key for array values). Each step is also individually exported (`applyPathParams`, `encodePathParam`, `joinUrl`, `buildQuery`, `isAbsoluteUrl`, and `pathPartStart` / `pathPartEnd` — where the placeholder-bearing PATH part of a URL starts and ends, after `scheme://authority` and before the first `?` / `#`) for anything building URLs outside the client — a custom transport, a test assertion, a devtools panel. See also: createHttp.',
     mistakes: `- Interpolating a param into the path string yourself (\`\` \`/users/\${id}\` \`\`) instead of \`:id\` + \`params\` — that skips encoding, so an id containing \`/\` or \`?\` escapes its segment
 - Expecting \`joinUrl\` to follow WHATWG \`new URL(path, base)\` semantics — a leading slash does NOT discard the base path here; \`joinUrl('/api/v1', '/users')\` is \`/api/v1/users\`, never \`/users\`
 - Passing \`undefined\` in a query object and expecting it omitted only sometimes — it is ALWAYS dropped, on every value including array entries`,
@@ -10667,17 +10664,6 @@ HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text`,
     notes: `The two tag allowlists \`@pyreon/elements\`' Element/Text bases dispatch on: \`HTML_TAGS\` is every recognized host tag (used to validate/narrow a \`tag\` prop), \`HTML_TEXT_TAGS\` is the subset of TEXT-flavored tags (\`span\`, \`p\`, \`label\`, \`h1\`-\`h6\`, …) Text defaults \`component\` to when no explicit tag is given.`,
   },
 
-  'ui-core/getThemeEngine / setThemeEngine': {
-    signature: 'getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void',
-    example: `// User code never calls this — it's how @pyreon/unistyle wires itself into
-// <PyreonUI> without ui-core depending on unistyle. Documented here because
-// "theme isn't enriched" / "no CSS variables" debugging starts here: import
-// "@pyreon/unistyle" somewhere in your app to register the real engine.`,
-    notes: `@internal — the registration seam that breaks the \`ui-core ↔ unistyle\` dependency cycle. \`@pyreon/unistyle\` calls \`setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })\` at module load (a side effect its \`package.json\` marks \`sideEffects\` for, so tree-shaking can't drop the registration); \`<PyreonUI>\` reads it lazily via \`getThemeEngine()\` at each use-site, never eagerly at setup. When unistyle is NOT in the module graph (a bare \`@pyreon/rocketstyle\`-only app), \`getThemeEngine()\` returns a minimal FALLBACK — identity \`enrichTheme\`, no CSS vars, no CPSE — and dev-warns ONCE, so \`<PyreonUI>\` degrades instead of crashing. See also: PyreonUI.`,
-    mistakes: `- Seeing an un-enriched theme (missing default breakpoints/spacing, no CSS variables) and not realizing \`@pyreon/unistyle\` was never imported — every styled \`@pyreon\` UI package except bare \`@pyreon/rocketstyle\` pulls it in transitively, but a minimal custom setup can miss it
-- Calling \`setThemeEngine()\` from app code — it is for a THEME ENGINE PACKAGE to register itself (the unistyle precedent); overwriting it from an app silently replaces every consumer's theme resolution`,
-  },
-
   'ui-core/resolveCssVariables': {
     signature: 'resolveCssVariables(): { enabled: boolean; prefix: string; attribute: string }',
     example: `import { resolveCssVariables } from '@pyreon/ui-core'
@@ -11149,15 +11135,6 @@ hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")`,
     notes: 'The FNV-1a non-cryptographic hash styler uses for compact, deduped class names + rule keys. `hash(str)` is the one-shot form → a base-36 string. The streaming trio composes it: `hashUpdate(HASH_INIT, "ab")` folds bytes into a running 32-bit numeric state, `hashFinalize(state)` renders `(state >>> 0).toString(36)`, and `hashUpdate(hashUpdate(HASH_INIT, "ab"), "cd") === hash("abcd")`. Exported for tooling/consumers that need the SAME class-name hash styler emits (e.g. precomputing a class name before injection). Low-level — most apps never call it. See also: createSheet, styled.',
     mistakes: `- Using it for anything security-sensitive — FNV-1a is NON-cryptographic (fast, collision-cheap for CSS keys, NOT collision-resistant against adversarial input).
 - Feeding the base-36 STRING from \`hashFinalize\` back into \`hashUpdate\` — the streaming state is the 32-bit NUMBER; keep folding numbers with \`hashUpdate\` and call \`hashFinalize\` ONCE at the end.`,
-  },
-
-  'styler/setStyleExtraction': {
-    signature: 'setStyleExtraction(enabled: boolean, rewrite?: (cssText: string, varsOut: Record<string, string>) => string) => void',
-    example: `// Apps enable CPSE through ui-core, not this call:
-import { init } from "@pyreon/ui-core"
-init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood`,
-    notes: `Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). \`@pyreon/ui-core\`'s \`init({ styleExtraction: true })\` calls this to enable CPSE and inject the \`cpseRewrite\` function — which lives in \`@pyreon/unistyle\` (styler cannot import unistyle: dep direction), so it is threaded in at init time. When on, the static + SSR resolve path rewrites resolved CSS to hoist per-instance values into custom properties. Apps do NOT call this directly — enable CPSE via the \`@pyreon/ui-core\` init flag; it is exported only so ui-core can wire it. See also: styled, createSheet.`,
-    mistakes: '- Calling `setStyleExtraction(true)` directly to turn on CPSE — without the `rewrite` from `@pyreon/unistyle` (which `@pyreon/ui-core` supplies) it enables the branch with no rewriter. Use `init({ styleExtraction: true })` from `@pyreon/ui-core`.',
   },
   // <gen-docs:api-reference:end @pyreon/styler>
 
@@ -12482,9 +12459,13 @@ toast.promise(fetchData(), {
 
 // Dismiss:
 toast.dismiss(id)  // one
-toast.dismiss()    // all`,
-    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), and `.promise(promise, messages)` for async operation tracking. See also: Toaster.',
+toast.dismiss()    // all
+
+// Read the live queue reactively:
+<span>{() => toast.list().length} notifications</span>`,
+    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), `.promise(promise, messages)` for async operation tracking, and `.list()`, a reactive read of the live queue (`readonly Readonly<Toast>[]`, oldest first) for a notification count or a custom history view. See also: Toaster.',
     mistakes: `- Forgetting to render \`<Toaster />\` — toasts are created but have no visual container to render into
+- Mutating the array \`toast.list()\` returns — it is the queue's own snapshot; change the queue through \`toast()\` / \`toast.update\` / \`toast.dismiss\` / \`toast.remove\`
 - Calling \`toast.update()\` after the toast has been auto-dismissed — the ID is no longer valid, the update is silently ignored
 - Using \`toast.promise()\` with a function instead of a promise — pass the promise directly, not \`() => fetch(...)\`
 - Expecting \`toast.dismiss(id)\` to remove the toast synchronously — it is SOFT (plays the ~200ms leave animation first); reach for \`toast.remove(id)\` when you need it gone instantly
@@ -14264,6 +14245,25 @@ console.log(a()) // 5`,
     mistakes: `- Disagreeing on \`T\` across two callers with the same key — both get the same runtime signal but mismatched compile-time types (author error, no runtime safeguard).
 - Calling \`clearAllSharedSignals()\` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).
 - Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.`,
+  },
+
+  'zero-content/resolvePageLayout': {
+    signature: 'resolvePageLayout(args: { frontmatter: Record<string, unknown>; registry: ContentLayoutRegistry; defaultLayout: ContentLayout }): { layout: ContentLayout; fellBack: boolean; missingName?: string }',
+    example: `import { resolvePageLayout } from '@pyreon/zero-content'
+import DocsLayout from './layouts/docs'
+import LandingLayout from './layouts/landing'
+
+const { layout: Layout, fellBack, missingName } = resolvePageLayout({
+  frontmatter: page.frontmatter,          // e.g. { title: 'Home', layout: 'landing' }
+  registry: { landing: LandingLayout },
+  defaultLayout: DocsLayout,
+})
+if (fellBack) console.warn(\`[content] unknown layout "\${missingName}"\`)
+
+return <Layout>{page.content}</Layout>`,
+    notes: `Pick the layout for one content page from its \`layout:\` frontmatter field. Pure and runtime-agnostic: call it from the route that renders the page, with a \`registry\` you build (usually from \`import.meta.glob('./layouts/*.tsx', { eager: true })\`) and the route's default layout. No \`layout\` field (or an empty one) returns \`defaultLayout\`; a name missing from the registry also returns \`defaultLayout\`, with \`fellBack: true\` and the requested name in \`missingName\` so the route can warn. The plugin does not call it for you: per-page \`layout:\` only takes effect when the route does.`,
+    mistakes: `- Expecting \`layout:\` frontmatter to switch layouts on its own — nothing calls \`resolvePageLayout\` automatically; the rendering route must
+- Ignoring \`fellBack\` — a typo in \`layout:\` silently renders the default layout unless the route reports \`missingName\``,
   },
 
   'zero-content/Details': {

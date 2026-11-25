@@ -1,35 +1,29 @@
 ---
 title: "Form fields"
-summary: "Use field() + useForm({ fields: [...] }) + useField('name') inside <Form>."
+summary: "Declare the form once with useForm({ initialValues, validators }), then read fields from context with useField('name') inside <Form>."
 seeAlso: [controllable-state]
 ---
 
 ## The pattern
 
-Define fields with `field()` (pure data — name + default + validator), compose them with `useForm({ fields: [...] })`, and read them from context with `useField('name')`:
+Declare the whole form once with `useForm({ initialValues, validators })`, render it through `<Form of={form}>`, and let each input component read its own field from context with `useField('name')`:
 
 ```tsx
 // @check
-import { field, useForm, useField, Form, Submit } from '@pyreon/form'
+import { useForm, useField, Form, Submit } from '@pyreon/form'
 
 declare const api: { register(values: unknown): Promise<void> }
 declare function PasswordInput(): JSX.Element
 declare function ConfirmInput(): JSX.Element
 
-// 1. Field definitions — pure data, no rendering opinion.
-const email = field('email', '', (v) =>
-  !v.includes('@') ? 'Invalid email' : undefined,
-)
-const password = field('password', '', (v) =>
-  v.length < 8 ? 'Too short' : undefined,
-)
-const confirm = field('confirmPassword', '', (v, all) =>
-  v !== all.password ? 'Must match password' : undefined,
-)
-
-// 2. Compose — types inferred from the fields array.
+// 1. One declaration: initial values (which type the form) + per-field validators.
 const form = useForm({
-  fields: [email, password, confirm],
+  initialValues: { email: '', password: '', confirmPassword: '' },
+  validators: {
+    email: (v) => (!v.includes('@') ? 'Invalid email' : undefined),
+    password: (v) => (v.length < 8 ? 'Too short' : undefined),
+    confirmPassword: (v, all) => (v !== all.password ? 'Must match password' : undefined),
+  },
   onSubmit: async (values) => {
     // values is typed as { email: string; password: string; confirmPassword: string }
     await api.register(values)
@@ -60,16 +54,16 @@ const RegisterForm = () => (
 
 Key rules:
 
-- `field(name, default, validator?)` carries the field name as a string-literal type — the `useForm` generics infer the full `FormState<TValues>` shape from the fields array. No manual type annotation needed.
+- `initialValues` types the whole form: `FormState<TValues>`, every validator's `value` / `allValues`, and the names `useField` and `useWatch` accept are inferred from it. No manual type annotation needed.
 - `useField('name')` reads the form from the nearest `<Form>` / `<FormProvider>`. Accepts `useField<ValueType>('name')` for generic narrowing.
 - Validators are plain `(value, allValues) => string | undefined`. Cross-field access is free — see `confirm` above.
 - `f.showError()` is `touched() && hasError()` — gated on blur so users aren't scolded mid-keystroke.
 
 ## Why
 
-Separating field data (`field(...)`) from rendering (`useField('name')`) unlocks reuse: one set of field definitions can back multiple layouts (a mobile single-column, a desktop two-column) without duplicating the validators or the state keys. Context-based reads kill prop-drilling through deep nested forms.
+Separating the form's data (one `useForm` declaration) from its rendering (`useField('name')` in each input) unlocks reuse: one form can back multiple layouts (a mobile single-column, a desktop two-column) without duplicating the validators or the state keys. Context-based reads kill prop-drilling through deep nested forms.
 
-The old API (everything in `useForm({ initialValues, validators })`) is still supported for quick inline forms but doesn't compose.
+`useForm` has one option shape. The `field()` + `useForm({ fields: [...] })` shape that earlier versions also accepted was removed in 0.55; `pyreon upgrade` rewrites it (codemod `form-use-form-fields`).
 
 ## Anti-pattern
 
@@ -90,13 +84,13 @@ function EmailInput() {
 ```
 
 ```tsx
-// BROKEN — validator reads props.X at setup, captures the initial value
-const passwordField = field('password', '', (v) =>
-  v.length < props.minLength ? 'Too short' : undefined,    // props.minLength is undefined
-)
+// BROKEN — a module-level validator reads props.X, which is not in scope there
+const validators = {
+  password: (v: string) => (v.length < props.minLength ? 'Too short' : undefined), // props is not defined
+}
 ```
 
-Validators are pure functions called on every validation run. Read configuration through closure bindings that are final at field-definition time, or restructure to pull validators inside a component that has props in scope.
+Validators are pure functions called on every validation run. Read configuration through closure bindings that are final when the form is created, or create the form inside a component that has props in scope (read `props.minLength` inside the validator, so it stays live).
 
 ## Related
 

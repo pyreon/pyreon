@@ -32,6 +32,11 @@
       "bun": "./src/native-plugin.ts",
       "import": "./lib/native-plugin.js",
       "types": "./lib/types/native-plugin.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [
@@ -72,6 +77,9 @@
     "valibot": "^1.5.0",
     "zod": "^4.6.7",
     "@pyreon/native-compiler": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

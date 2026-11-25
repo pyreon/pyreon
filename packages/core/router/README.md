@@ -53,7 +53,7 @@ function User() {
   const route = useRoute<'/user/:id'>()
   const data = useLoaderData<{ name: string }>()
   const [search] = useTypedSearchParams({ page: 'number', q: 'string' })
-  return <h1>{data.name} (id={route().params.id}, page={search().page ?? 1})</h1>
+  return <h1>{data().name} (id={route().params.id}, page={search().page ?? 1})</h1>
 }
 
 mount(<App />, document.getElementById('app')!)
@@ -184,10 +184,11 @@ router.push({ name: 'typo' }) // ❌ TypeScript error
 
 Loaders run before the route renders. In-flight calls for the same `loaderKey` dedupe; cached results are served until `gcTime` expires. `router.invalidateLoader(key?)` clears entries. `<RouterLink prefetch>` (hover/viewport) routes through the SAME cache + in-flight dedup, so a prefetch and the click that follows share ONE loader run.
 
-Read loader data in the component:
+Read loader data in the component. `useLoaderData()` returns an accessor: read `data()` in JSX, an `effect` or a `computed`. The page stays mounted when the data changes under the same loader key (a `revalidate()`, an SWR refresh, a server loader re-run on a query-only navigation), and the accessor follows it; a value read once in the body does not.
 
 ```ts
 const data = useLoaderData<{ name: string }>()
+// <h1>{data().name}</h1>
 ```
 
 `LoaderContext.request?: Request` is populated on SSR (via `prefetchLoaderData(router, path, request)`) and for serverLoaders run by the data endpoint; `undefined` for isomorphic loaders running in the browser.
@@ -397,7 +398,7 @@ export const loader = async () => ({ posts: await fetchPosts() })
 
 function PostsPage() {
   const data = useLoaderData<LoaderData<typeof loader>>()
-  // data: { posts: Post[] } — follows the loader; no second annotation, no drift
+  // data(): { posts: Post[] } — follows the loader; no second annotation, no drift
 }
 ```
 
