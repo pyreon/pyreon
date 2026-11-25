@@ -37,6 +37,7 @@ import {
   compactSpec,
   currencyIn,
   currencyKind,
+  currencyOptions,
   currencySpec,
   numberIn,
   numberKind,
@@ -76,6 +77,8 @@ import type {
   ListOptions,
   ListPreset,
   NumberInput,
+  CurrencyInput,
+  MoneyLike,
   NumberOptions,
   NumberPreset,
   NumberRangeOptions,
@@ -116,7 +119,10 @@ export function formatNumber(value: NumberInput, options?: NumberOptions | Numbe
 }
 
 /**
- * Format money. `currency` is an ISO 4217 code; a malformed code returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`.
+ * Format money: a number, a bigint or a decimal string with an ISO 4217 `currency` code, or a Money (`{ amount, currency }`,
+ * the shape `@pyreon/money` produces) on its own. A decimal string and a Money amount are formatted exactly (no binary
+ * float, any size); a Money shows its own digits. A malformed code or value returns the `fallback` with a dev warning.
+ * Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`.
  *
  * Output uses the platform's non-breaking and thin spaces (U+00A0, U+2009, U+202F), not plain ones: compare with `===` only against `Intl`'s own output from the same process.
  *
@@ -124,10 +130,14 @@ export function formatNumber(value: NumberInput, options?: NumberOptions | Numbe
  * ```ts
  * formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // "€9.99"
  * formatCurrency(1234.5, 'EUR', { locale: 'de' }) // "1.234,50 €"
+ * formatCurrency('12345678901234567.89', 'EUR', { locale: 'en-US' }) // "€12,345,678,901,234,567.89"
+ * formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // "€9.99"
  * ```
  */
-export function formatCurrency(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset): string {
-  return currencyIn((localeOf(options) || locale()), value, currency, options)
+export function formatCurrency(value: MoneyLike, options?: CurrencyOptions | CurrencyPreset): string
+export function formatCurrency(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset): string
+export function formatCurrency(value: CurrencyInput, currencyOrOptions?: string | CurrencyOptions, options?: CurrencyOptions | CurrencyPreset): string {
+  return currencyIn((localeOf(currencyOptions(value, currencyOrOptions, options)) || locale()), value, currencyOrOptions, options)
 }
 
 /**
@@ -422,7 +432,7 @@ export function numberFormatter(options?: NumberOptions | NumberPreset): Formatt
  * price.from((cents: number) => cents / 100)(999) // "€9.99"
  * ```
  */
-export function currencyFormatter(currency: string, options?: CurrencyOptions | CurrencyPreset): Formatter<NumberInput, 'currency'> {
+export function currencyFormatter(currency: string, options?: CurrencyOptions | CurrencyPreset): Formatter<CurrencyInput, 'currency'> {
   return makeFormatter(currencyKind, currencySpec(currency, options), REACTIVE_ENV)
 }
 

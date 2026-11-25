@@ -1,6 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import { onMount } from '@pyreon/core'
 import { effect, effectScope, isClient, isServer, signal } from '@pyreon/reactivity'
+import { setInitThemeReset } from './theme-state'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -105,6 +106,14 @@ export function setTheme(t: Theme) {
 let _initRefCount = 0
 let _disposeShared: (() => void) | null = null
 
+// The test reset lives on `@pyreon/zero/internal` (via `theme-state.ts`), not
+// on this public entry; this module hands it the closure over its state.
+setInitThemeReset(() => {
+  if (_disposeShared) _disposeShared()
+  _initRefCount = 0
+  _disposeShared = null
+})
+
 function _setupShared(): () => void {
   // SSR guard: only ever called from `onMount` (browser-only), but make the
   // browser-only contract explicit so `localStorage` / `document` /
@@ -159,16 +168,6 @@ function _setupShared(): () => void {
     mq.removeEventListener('change', onChange)
     scope.stop()
   }
-}
-
-/**
- * Reset the refcount + shared teardown. Useful for tests.
- * @internal
- */
-export function _resetInitThemeForTests(): void {
-  if (_disposeShared) _disposeShared()
-  _initRefCount = 0
-  _disposeShared = null
 }
 
 /**

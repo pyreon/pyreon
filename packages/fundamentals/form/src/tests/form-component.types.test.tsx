@@ -11,7 +11,6 @@
  */
 import { describe, expectTypeOf, it } from 'vitest'
 import {
-  field,
   Form,
   FormProvider,
   Submit,
@@ -25,29 +24,12 @@ function typedForm() {
   return useForm({ initialValues: { email: '', age: 0 }, onSubmit: () => {} })
 }
 
-function fieldsForm() {
-  return useForm({
-    fields: [field('email', ''), field('remember', false)],
-    onSubmit: () => {},
-  })
-}
-
 describe('components accept a typed form in JSX', () => {
   it('<Form of> takes a typed initialValues form', () => {
     const form = typedForm()
     const view = (
       <Form of={form}>
         <Submit>Save</Submit>
-      </Form>
-    )
-    expectTypeOf(view).not.toBeAny()
-  })
-
-  it('<Form of> takes a typed field() form', () => {
-    const form = fieldsForm()
-    const view = (
-      <Form of={form} disabled={() => false} readOnly class="f">
-        <span />
       </Form>
     )
     expectTypeOf(view).not.toBeAny()

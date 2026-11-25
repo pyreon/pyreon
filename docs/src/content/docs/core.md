@@ -1896,7 +1896,7 @@ function createUniqueId(): string
 | `normalizeStyleValue`, `toKebabCase`, `CSS_UNITLESS` | The style normalization the renderer uses (number → `px` unless unitless). |
 | `reportError(ctx)` | Dispatches an `ErrorContext` to every handler registered with `registerErrorHandler`. |
 | `isUnsafeUrl`, `isUrlAttr`, `URL_ATTRS` | The URL guard used for `href`/`src`-like attributes. |
-| `nativeCompat`, `isNativeCompat` | Marks a component to bypass compat-mode wrapping. See [nativeCompat](/docs/native-compat). |
+| `nativeCompat` | Marks a component to bypass compat-mode wrapping. See [nativeCompat](/docs/native-compat). |
 
 ## Telemetry
 
@@ -2215,7 +2215,7 @@ const Accordion = defineComponent(
 
 ## Internal APIs
 
-These APIs are used by the renderer and are not intended for application code.
+These APIs are used by the renderer and are not intended for application code. They live on the internal `@pyreon/core/internal` subpath (no semver promise), together with `setContextStackProvider`, `getContextStackLength`, `removeContextFrame` and `REACTIVE_PROP`.
 
 ### runWithHooks
 

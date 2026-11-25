@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { fetchJwks, verifyIdToken } from '../index'
+import { verifyIdToken } from '../index'
+import { fetchJwks } from '../jwt'
 import type { OidcMetadata } from '../index'
 
 const meta: OidcMetadata = { issuer: 'https://idp.example', authorization_endpoint: 'https://idp.example/a', token_endpoint: 'https://idp.example/t', jwks_uri: 'https://idp.example/jwks' }
@@ -105,8 +106,10 @@ describe('verifyIdToken — hardening', () => {
     // signature segment that is not base64url
     const [h2, p2] = valid.split('.')
     expect(await code(verifyIdToken(`${h2}.${p2}.%%%`, [jwk], meta, opts))).toBe('bad_signature')
-    // a key that cannot be imported
-    expect(await code(verifyIdToken(valid, [{ ...jwk, n: 'not-a-modulus!!' }], meta, opts))).toBe('bad_signature')
+    // a key whose modulus cannot be read is not a >= 2048-bit RSA key, so it is never a candidate
+    expect(await code(verifyIdToken(valid, [{ ...jwk, n: 'not-a-modulus!!' }], meta, opts))).toBe('no_key')
+    // a key that passes selection but cannot be imported (an invalid exponent)
+    expect(await code(verifyIdToken(valid, [{ ...jwk, e: '!!' }], meta, opts))).toBe('bad_signature')
   })
   it('fetchJwks rejects a document without a keys array', async () => {
     const f = () => Promise.resolve(new Response(JSON.stringify({ nokeys: true })))

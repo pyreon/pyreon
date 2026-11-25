@@ -1,4 +1,4 @@
-import type { setStyleExtraction } from '@pyreon/styler'
+import type { setStyleExtraction } from '@pyreon/styler/internal'
 
 /**
  * The theme-normalization engine (`enrichTheme` / `themeToCssVars` /
@@ -78,21 +78,25 @@ const FALLBACK_ENGINE: ThemeEngine = {
 }
 
 /**
- * @internal Registers the theme engine. Called by `@pyreon/unistyle` at module
- * load — user code never calls this.
+ * Registers the theme engine. Called by `@pyreon/unistyle` at module load —
+ * user code never calls this. Reached through `@pyreon/ui-core/internal`.
+ *
+ * @internal
  */
 export function setThemeEngine(engine: ThemeEngine): void {
   _engine = engine
 }
 
 /**
- * @internal Reads the theme engine for `<PyreonUI>`. Returns the engine
+ * Reads the theme engine for `<PyreonUI>`. Returns the engine
  * `@pyreon/unistyle` registered at module load; if unistyle isn't in the graph,
  * returns a minimal FALLBACK (identity enrich, no CSS vars, no CPSE) + warns
  * ONCE in dev — so PyreonUI degrades gracefully rather than crashing. Import
  * `@pyreon/unistyle` for full theming (default breakpoints/spacing, CSS
  * variables, CPSE); every styled `@pyreon` UI package except bare rocketstyle
- * pulls it in transitively.
+ * pulls it in transitively. Reached through `@pyreon/ui-core/internal`.
+ *
+ * @internal
  */
 export function getThemeEngine(): ThemeEngine {
   if (_engine === null) {

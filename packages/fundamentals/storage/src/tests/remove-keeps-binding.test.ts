@@ -1,6 +1,7 @@
 import { effectScope } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { _resetRegistry, _resetStorageListener, useStorage } from '../index'
+import { useStorage } from '../index'
+import { _resetRegistry, _resetStorageListener } from '../internal'
 import { getEntry } from '../registry'
 
 /**

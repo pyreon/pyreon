@@ -1,4 +1,4 @@
-import { isNativeCompat } from '@pyreon/core'
+import { isNativeCompat } from '@pyreon/core/compat'
 import { describe, expect, it } from 'vitest'
 import { KeepAlive } from '../keep-alive'
 import { Transition } from '../transition'

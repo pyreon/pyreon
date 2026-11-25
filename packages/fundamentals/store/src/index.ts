@@ -51,10 +51,6 @@
 
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import {
-  _resumeSoleSubscriber,
-  _resumeSubscriber,
-  _suspendSoleSubscriber,
-  _suspendSubscriber,
   batch,
   type Computed,
   effectScope,
@@ -63,6 +59,12 @@ import {
   signal as createSignal,
   type Signal,
 } from '@pyreon/reactivity'
+import {
+  _resumeSoleSubscriber,
+  _resumeSubscriber,
+  _suspendSoleSubscriber,
+  _suspendSubscriber,
+} from '@pyreon/reactivity/internal'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/store
 // instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
@@ -88,13 +90,9 @@ import {
 } from '@pyreon/validation'
 
 export { setRegistryProvider as setStoreRegistryProvider } from './registry'
-export {
-  __clearStoreHydrationForTesting,
-  dehydrateStores,
-  hydrateStores,
-} from './hydration'
+export { dehydrateStores, hydrateStores } from './hydration'
 
-import { _notifyChange } from './devtools'
+import { _notifyChange } from './devtools-bus'
 import { getRegistry } from './registry'
 import { consumeHydration, markStoreSsrExcluded } from './hydration'
 

@@ -19,13 +19,12 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  _resetRegistry,
-  _resetStorageListener,
   useCookie,
   useMemoryStorage,
   useSessionStorage,
   useStorage,
 } from '../index'
+import { _resetRegistry, _resetStorageListener } from '../internal'
 
 interface SignalLike<T> {
   _v: T

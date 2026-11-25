@@ -1,4 +1,4 @@
-import { _noopDispose } from '@pyreon/reactivity'
+import { _noopDispose } from '@pyreon/reactivity/internal'
 import { _userCodeHook } from './parked-text'
 import { releaseRef } from './teardown'
 

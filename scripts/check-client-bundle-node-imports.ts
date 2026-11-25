@@ -93,6 +93,12 @@ const CLIENT_SAFE_PACKAGES: ReadonlyArray<{
   // (#4371), which dynamically imports the first. Both run in the browser.
   { pkg: '@pyreon/zero/client', dir: 'packages/zero/zero', subpath: './client' },
   { pkg: '@pyreon/zero/client-lazy', dir: 'packages/zero/zero', subpath: './client-lazy' },
+  // The `./internal` entries are imported by PLUGIN-GENERATED code that runs
+  // in the browser (the `defineAction` client stub, the routes module's i18n
+  // registration, zero-content's collections registry). Their Node-only
+  // siblings live on `./internal-server`.
+  { pkg: '@pyreon/zero/internal', dir: 'packages/zero/zero', subpath: './internal' },
+  { pkg: '@pyreon/zero-content/internal', dir: 'packages/zero/zero-content', subpath: './internal' },
 ]
 
 interface Finding {

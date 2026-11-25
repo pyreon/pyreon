@@ -13,7 +13,7 @@
  * investigation.
  */
 import { For, provide, Show } from '@pyreon/core'
-import { field, useForm } from '@pyreon/form'
+import { useForm } from '@pyreon/form'
 import { perfHarness } from '@pyreon/perf-harness'
 import { computed, signal } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
@@ -490,9 +490,10 @@ function LongFormSection() {
 function FormAtScale(props: { scale: number }) {
   // Generate field defs at component setup. useForm is called ONCE at this
   // setup with N fields → 6×N signals + N effects allocated eagerly.
-  const fieldDefs = Array.from({ length: props.scale }, (_, i) => field(`f${i}`, ''))
+  const initialValues: Record<string, string> = {}
+  for (let i = 0; i < props.scale; i++) initialValues[`f${i}`] = ''
   const form = useForm({
-    fields: fieldDefs,
+    initialValues,
     onSubmit: () => {},
   })
 

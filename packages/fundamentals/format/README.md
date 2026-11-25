@@ -41,7 +41,7 @@ The same function works in JSX and effects (it reads the active locale and time 
 | Function | Example (en-US) |
 | --- | --- |
 | `formatNumber(value, options?)` | `1,234.5` |
-| `formatCurrency(value, 'EUR', options?)` | `€9.99` |
+| `formatCurrency(value, 'EUR', options?)` / `formatCurrency(money, options?)` | `€9.99` |
 | `formatPercent(0.42)` | `42%` |
 | `formatCompact(1_240_000)` | `1.2M` |
 | `formatUnit(72, 'kilometer-per-hour')` | `72 km/h` |
@@ -73,6 +73,10 @@ measurementSystem('en-GB')                                               // "uk"
 Exact definitions, one combined factor. `gallon` and `fluid-ounce` are the US units; a kilobyte is 1000 bytes. See the docs page for the caveats.
 
 ## Spaces in output
+
+Number formatters take a number, a bigint or a decimal string (`'12345678901234567.89'`), which is formatted exactly. `formatCurrency` and `currencyFormatter` also take a Money (`{ amount, currency }`, from `@pyreon/money`) and show it with its own digits.
+
+Date ranges are the locale's CLDR interval pattern from `Intl` (Pyreon joins no text): Czech numeric dates give `21.10.2026 – 27.10.2026`, while `dateStyle: 'long'` collapses to `21.–27. 10. 2026`; engines with other CLDR versions can differ.
 
 `Intl` writes non-breaking and thin spaces (U+00A0, U+2009, U+202F) where a plain space would sit: `formatDateRange` puts U+2009 around the en dash, `formatTime` writes U+202F before `PM`, Czech and French group digits with U+00A0 and U+202F. The examples show them as plain spaces so they stay readable. Compare with `===` only against `Intl`'s own output from the same process, never against a typed literal.
 

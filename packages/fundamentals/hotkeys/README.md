@@ -178,13 +178,13 @@ window.addEventListener('keydown', (e) => {
 ## Testing
 
 ```ts
-import { _resetHotkeys } from '@pyreon/hotkeys'
+import { _resetHotkeys } from '@pyreon/hotkeys/internal'
 import { afterEach } from 'vitest'
 
 afterEach(_resetHotkeys)
 ```
 
-Clears every registered hotkey and active scope. Underscore-prefixed because it's only meant for test environments.
+Clears every registered hotkey and active scope. It lives on the `@pyreon/hotkeys/internal` subpath: internal, with no semver promise, and only meant for test environments.
 
 ## Gotchas
 

@@ -12,7 +12,8 @@ import type { CpseStyledProps, ResponsiveStyleTheme, ResponsiveValue } from './c
 import { cpseStyled } from './cpse-styled'
 import type { PyreonTheme } from './enrichTheme'
 import { enrichTheme } from './enrichTheme'
-import { context, setThemeEngine } from '@pyreon/ui-core'
+import { context } from '@pyreon/ui-core'
+import { setThemeEngine } from '@pyreon/ui-core/internal'
 
 // ── Register the theme engine with @pyreon/ui-core ──────────────────────────
 // `<PyreonUI>` (in the base @pyreon/ui-core) reads enrichTheme/themeToCssVars/

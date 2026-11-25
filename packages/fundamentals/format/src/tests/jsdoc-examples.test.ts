@@ -9,7 +9,7 @@ import * as convertModule from '../convert'
 import * as format from '../index'
 import * as unitsModule from '../units'
 import * as unitsCoreModule from '../units/core'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -27,7 +27,7 @@ function examplesOf(file: string): Array<{ name: string; lines: string[] }> {
   return out
 }
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 describe.each([['core.ts', 25], ['index.ts', 25], ['convert.ts', 3], ['units/core.ts', 1], ['units.ts', 3]] as const)('JSDoc examples in %s', (file, atLeast) => {
   const found = examplesOf(file)

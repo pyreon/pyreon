@@ -263,7 +263,7 @@ describe('per-request isolation', () => {
       expect(isolatedContext.getAmbientRequest()?.headers.get('cookie')).toBe('session=before-reset')
     })
 
-    isolatedServer._resetRequestSource()
+    isolatedContext._resetRequestSource()
 
     // After reset: even INSIDE an active scope, the accessor is gone —
     // the un-wired-server behaviour the client-safe half degrades to.

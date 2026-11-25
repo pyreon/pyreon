@@ -33,7 +33,7 @@ export const TOAST_PLUGIN_NAME = '@pyreon/toast'
 
 const NAMES_KEY = '@pyreon/toast:names'
 const PRESETS: ReadonlySet<string> = new Set(['success', 'error', 'warning', 'info', 'loading'])
-const REAL_UNLOWERED: ReadonlySet<string> = new Set(['update', 'remove', 'promise'])
+const REAL_UNLOWERED: ReadonlySet<string> = new Set(['update', 'remove', 'promise', 'list'])
 
 interface ToastPayload {
   readonly toastType: string

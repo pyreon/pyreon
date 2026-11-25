@@ -72,7 +72,7 @@ export const unitsTypeApi: ApiEntry[] = [
       name: "ConvertedUnitOptions",
       kind: "type",
       signature: "interface ConvertedUnitOptions extends UnitOptions { convertTo?: Unit; system?: 'auto' | 'metric' | 'us' | 'uk' }",
-      summary: "Options of `formatUnit` and `unitFormatter` from `@pyreon/format/units`: everything in `UnitOptions`, plus a conversion before formatting. `convertTo` names the unit; `system` picks the locale's own (`'auto'`, which follows the active locale in the reactive entry) or a fixed system. `convertTo` wins when both are given.",
+      summary: "Options of `formatUnit` and `unitFormatter` from `@pyreon/format/units`: everything in `UnitOptions`, plus a conversion before formatting. `convertTo` names the unit; `system` picks the locale's own (`'auto'`, which follows the active locale in the reactive entry) or a fixed system. `convertTo` wins when both are given. A conversion is arithmetic on a binary float (`Number(value)` times a factor), so a converted decimal string or bigint is no longer exact: `formatUnit('12345678901234567.89', 'meter', { convertTo: 'kilometer' })` shows about 17 significant digits. Without `convertTo` or `system`, a decimal string is formatted exactly.",
       example: `// formatUnit(100, 'kilometer', { system: 'auto', locale: 'en-US' })`,
       seeAlso: ["formatUnit", "convert"],
     },

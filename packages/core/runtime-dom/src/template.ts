@@ -1,5 +1,6 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { _childText, _isStructuralChild } from '@pyreon/core'
+import { _childText, _isStructuralChild } from '@pyreon/core/internal'
+import { getContextOwner } from '@pyreon/reactivity'
 import {
   _noopDispose,
   _rdCloseBindingFrame,
@@ -7,9 +8,8 @@ import {
   _rdLabelDirect,
   _rdNodeId,
   _rdOpenBindingFrame,
-  getContextOwner,
   _renderBind,
-} from '@pyreon/reactivity'
+} from '@pyreon/reactivity/internal'
 import { _tagTextBinding } from './binding-registry'
 import { _takeParkedRange, hasParkedRange, isMidSlotText, peekParkedRange } from './slot-brands'
 import {
@@ -756,26 +756,13 @@ export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
   _tplAdoptVerifier = v
 }
 
-/**
- * DECLARED ROOT DECORATION (#4382). A component that adds `class` / `style` to
- * a compiled child element (kinetic's per-item hidden state) does it on the
- * client at mount, and on the server to the root tag of the child's raw HTML
- * (`withRootAttrs`). The server element's root then carries attributes the
- * template's static skeleton does not, and the static-skeleton gate refused
- * it: the item was re-created at hydration instead of adopted.
- *
- * The decorating component declares the decoration on the item it receives,
- * and for that item ONLY the gate leaves the ROOT's `class` and `style` out of
- * the comparison: the declaring component owns them and re-applies them at
- * mount. Every other attribute and every descendant is still compared. Carried
- * on the item (leak class C: never a registry), read once by its adoption.
- */
-const ROOT_DECORATED: unique symbol = Symbol('pyreon.rootDecorated')
+// DECLARED ROOT DECORATION (#4382): the brand `_declareRootDecoration`
+// (`./root-decoration`, exported from `@pyreon/runtime-dom/internal`) sets on
+// an item whose root `class` / `style` its decorating component owns. Read
+// here through the same registry symbol, not an import, so the internal entry
+// shares no chunk with the main one.
+const ROOT_DECORATED: unique symbol = Symbol.for('pyreon.rootDecorated') as never
 type DecoratedItem = NativeItem & { [ROOT_DECORATED]?: true }
-
-export function _declareRootDecoration(item: NativeItem): void {
-  ;(item as DecoratedItem)[ROOT_DECORATED] = true
-}
 
 // The adoption frame's flag (see `_tplAdoptTarget`): set by `__adoptAt`,
 // consumed one-shot by the `buildTpl` it arms.
@@ -1219,7 +1206,7 @@ class RemountableItem {
   __adoptAt(domNode: Element): boolean {
     const inner = this.built()
     // A declaration made on this (outer) item belongs to the build it adopts.
-    if ((this as unknown as DecoratedItem)[ROOT_DECORATED] === true) _declareRootDecoration(inner)
+    if ((this as unknown as DecoratedItem)[ROOT_DECORATED] === true) (inner as DecoratedItem)[ROOT_DECORATED] = true
     return (inner as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
   }
 }

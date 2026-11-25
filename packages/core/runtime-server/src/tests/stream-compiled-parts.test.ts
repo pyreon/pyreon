@@ -11,7 +11,6 @@
 import type { ComponentFn, VNode, VNodeChild } from '@pyreon/core'
 import { Suspense, h } from '@pyreon/core'
 import {
-  _setStreamFlushBytes,
   _ssr,
   _ssrDeferred,
   _ssrNode,
@@ -19,6 +18,9 @@ import {
   renderToString,
   runWithRequestContext,
 } from '../index'
+import {
+  _setStreamFlushBytes,
+} from '../internal'
 
 async function chunks(s: ReadableStream<string>): Promise<string[]> {
   const reader = s.getReader()

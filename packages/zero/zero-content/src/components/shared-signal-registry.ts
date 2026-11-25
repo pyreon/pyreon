@@ -30,8 +30,6 @@ const registry = new Map<string, Signal<unknown>>()
  * Strongly typed: the caller asserts the value type via the generic.
  * If two callers disagree on T at the same key they'll get the same
  * runtime signal but mismatched compile-time types — author error.
- *
- * @internal exported for testing
  */
 export function getOrCreateSharedSignal<T>(
   key: string,

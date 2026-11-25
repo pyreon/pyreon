@@ -6,7 +6,6 @@
 import { h, type VNodeChildAtom } from '@pyreon/core'
 import { PermissionsProvider } from '@pyreon/permissions'
 import {
-  _rdNodeId,
   batch,
   computed,
   effect,
@@ -17,6 +16,7 @@ import {
   type Effect,
   type Signal,
 } from '@pyreon/reactivity'
+import { _rdNodeId } from '@pyreon/reactivity/internal'
 import { createLiveArgs, detached, type LiveArgs } from './live-args'
 import type { A11yReport } from './a11y'
 import { analyzeA11y } from './a11y'
