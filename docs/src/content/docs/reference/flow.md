@@ -669,7 +669,7 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })
 
 - Forgetting to `await` it — `computeLayout` returns a Promise even though the engine underneath is synchronous.
 - Expecting it to move your nodes — it does NOT mutate `nodes`; it returns only `{ id, position }` pairs (no width/height/data). Map the positions back onto your node objects (e.g. via `updateNode`).
-- Passing `direction` / `layerSpacing` / `edgeRouting` to a non-`layered` algorithm — those apply only to `layered` (and `direction` to `tree`); ELK silently ignores them (a dev-mode warning fires).
+- Passing `direction` / `layerSpacing` / `edgeRouting` to a non-`layered` algorithm — those apply only to `layered` (and `direction` to `tree`); the layout engine silently ignores them (a dev-mode warning fires).
 
 **See also:** `createFlow` · `useFlow`
 

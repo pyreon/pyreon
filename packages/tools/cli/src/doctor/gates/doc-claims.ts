@@ -23,7 +23,9 @@ import type { Finding, GateResult } from '../types'
 import { type ClaimSpec, SITE_LINT_CATEGORY_CLAIMS, SITE_HOOK_CLAIMS, SITE_LINT_RULE_CLAIMS, SITE_MCP_TOOL_CLAIMS } from './doc-claims-site'
 import { derivedClaimFindings, findUnknownPlaceholders, SITE_COUNT_CHECKS } from './doc-claims-site-counts'
 import { findUnscopedRunnerCommands } from './doc-claims-runner-commands'
+import { findUnknownDocumentFormats } from './doc-claims-document-formats'
 
+export { documentFormatIds, findUnknownDocumentFormats } from './doc-claims-document-formats'
 export {
   findUnscopedRunnerCommands,
   pyreonBins,
@@ -966,6 +968,7 @@ export const runDocClaimsGate = async (
   }
 
   findings.push(...findUnscopedRunnerCommands(opts.cwd))
+  findings.push(...findUnknownDocumentFormats(opts.cwd))
 
   return {
     gate: 'doc-claims',

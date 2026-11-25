@@ -34,7 +34,7 @@ describe('gen-docs — connector-document snapshot', () => {
       const docTree = extractDocumentTree(vnode)
       const pdf = await render(docTree, 'pdf')      // Buffer
       const docx = await render(docTree, 'docx')    // Buffer
-      const md = await render(docTree, 'markdown')  // string
+      const md = await render(docTree, 'md')        // string
 
       // Extraction is a SNAPSHOT — reactive accessors are resolved at extraction
       // time, not subscribed. Re-extract after a signal change for a fresh tree:
