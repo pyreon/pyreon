@@ -100,10 +100,13 @@ export interface ValidateSchemaInfo {
 
 // Regexes copied VERBATIM from `@pyreon/validate`'s `string.ts` so the emitted
 // verdict is byte-identical to the runtime (`email` is the strict standard
-// default — 2+ char TLD, no leading/consecutive dots). Emitted via `reExpr`
-// (`new RegExp(re.source, re.flags)`) so a literal can't drift in transcription.
+// default — 2+ char TLD, no leading/consecutive dots, both IDN forms so
+// `jan@müller.de` and `a@xn--e1afmkfd.xn--p1ai` pass). Locked equal to the
+// runtime's by `@pyreon/validate`'s `email-precision.test.ts`. Emitted via `reExpr`
+// (`new RegExp(re.source, re.flags)`) so a literal can't drift in transcription
+// — the `u` flag travels with it.
 const EMAIL_RE =
-  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
+  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([\p{L}\p{Nd}][\p{L}\p{M}\p{Nd}\u200C-\u200D-]*[.\u3002\uFF0E\uFF61])+(?:\p{L}[\p{L}\p{M}]+|[Xx][Nn]--[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)$/u
 const URL_RE = /^https?:\/\/[^\s/$.?#][^\s]*$/i
 const UUID_RE =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/i
