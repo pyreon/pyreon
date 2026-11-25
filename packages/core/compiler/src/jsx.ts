@@ -1348,6 +1348,26 @@ function toNativeCollapse(
 }
 
 /** JS fallback implementation — used when the native binary isn't available. */
+/**
+ * `<select … value=…>` or `<select {...spread}>` (a plain `select` tag with a
+ * `value` attribute, or a spread that may carry one — the compiler cannot see
+ * inside it). Mirrors Rust `has_select_value`.
+ */
+function isSelectWithValue(opening: N): boolean {
+  if (opening.name?.type !== 'JSXIdentifier' || opening.name.name !== 'select') return false
+  for (const a of opening.attributes ?? []) {
+    if (a.type === 'JSXSpreadAttribute') return true
+    if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === 'value') return true
+  }
+
+  return false
+}
+
+/** `<input>`, `<textarea>`, `<select>`: their `value` goes through the runtime `_setValue`. Mirrors Rust `is_value_control_tag`. */
+function isValueControlTag(tag: string): boolean {
+  return tag === 'input' || tag === 'textarea' || tag === 'select'
+}
+
 export function transformJSX_JS(
   code: string,
   filename = 'input.tsx',
@@ -1457,8 +1477,14 @@ export function transformJSX_JS(
   const parentMap = new WeakMap<object, N>()
   const childrenMap = new WeakMap<object, N[]>()
 
+  // A `<select value>` (or `<select {...spread}>`) anywhere in the module: the client emit turns on the
+  // runtime's late-option handling (`_selectWait()`, #4820), so apps without
+  // one never ship it. Mirrors Rust `has_select_value`.
+  let hasSelectValue = false
+
   /** Build parent pointers + cached children arrays for the entire AST. */
   function buildMaps(node: N): void {
+    if (node.type === 'JSXOpeningElement' && !hasSelectValue && isSelectWithValue(node)) hasSelectValue = true
     const kids: N[] = []
     const keys = Object.keys(node)
     for (let i = 0; i < keys.length; i++) {
@@ -5791,7 +5817,8 @@ export function transformJSX_JS(
 
   walkNode(program)
 
-  if (replacements.length === 0 && hoists.length === 0) {
+  const needsSelectWait = hasSelectValue && !ssr
+  if (replacements.length === 0 && hoists.length === 0 && !needsSelectWait) {
     return collectLens ? { code, warnings, reactivityLens } : { code, warnings }
   }
 
@@ -5820,6 +5847,10 @@ export function transformJSX_JS(
 
   if (hoists.length > 0) {
     preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text};\n`).join('') + preamble
+  }
+
+  if (needsSelectWait) {
+    preamble = `import { _selectWait } from "@pyreon/runtime-dom";\n_selectWait();\n` + preamble
   }
 
   if (needsTplImport) {
@@ -6857,15 +6888,15 @@ export function transformJSX_JS(
         needsSetHtml = true
         return `_setHtml(${varName}, ${expr})`
       }
-      // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
-      // (= applyValueProp), which assigns the property AND establishes
-      // `defaultValue` on the first application. A bare `el.value = v` sets only
-      // the property, and a property assignment never creates the `value`
-      // ATTRIBUTE that `form.reset()` restores from — so a client-mounted form
-      // cleared fields a hydrated one restored. Scoped by TAG: every other
-      // element that owns a `value` property (`<progress>`, `<option>`,
-      // `<select>`, custom elements) keeps the plain property assignment.
-      if (htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea')) {
+      // `<input>`/`<textarea>`/`<select>` `value`: delegate to the runtime
+      // `_setValue` (= applyValueProp). On input/textarea it assigns the
+      // property AND establishes `defaultValue` on the first application (a
+      // bare `el.value = v` never creates the `value` ATTRIBUTE that
+      // `form.reset()` restores from). On a select it records the controlled
+      // value, which the reconcilers re-apply when the options change (#4820).
+      // Scoped by TAG: every other element that owns a `value` property
+      // (`<progress>`, `<option>`, custom elements) keeps the plain assignment.
+      if (htmlAttrName === 'value' && isValueControlTag(tag)) {
         needsSetValue = true
         return `_setValue(${varName}, ${expr})`
       }
@@ -6950,7 +6981,7 @@ export function transformJSX_JS(
               ? ((needsSetStyle = true), `(v) => _setStyle(${varName}, v)`)
               : htmlAttrName === 'dangerouslySetInnerHTML'
                 ? ((needsSetHtml = true), `(v) => _setHtml(${varName}, v)`)
-                : htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea')
+                : htmlAttrName === 'value' && isValueControlTag(tag)
                   ? ((needsSetValue = true), `(v) => _setValue(${varName}, v)`)
                   : DOM_PROPS.has(htmlAttrName)
                     ? `(v) => { ${varName}.${htmlAttrName} = v }`

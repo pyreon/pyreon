@@ -97,31 +97,31 @@ describe('jsx.ts — static attribute value shapes (staticAttrToHtml)', () => {
 describe('jsx.ts — `value` on select / textarea is never baked (PZ-09)', () => {
   it('`<select value={"b"}>` routes to the DEFERRED property set, not a baked attribute', () => {
     const out = t('<select value={"b"}><option value="b">B</option></select>')
-    expect(out).toContain('__root.value = "b"')
+    expect(out).toContain('_setValue(__root, "b")')
     expect(out).not.toContain('<select value=')
   })
 
   it('`<select value={true}>` — the boolean arm is ALSO deferred, never baked bare', () => {
     const out = t('<select value={true}><option /></select>')
-    expect(out).toContain('__root.value = true')
+    expect(out).toContain('_setValue(__root, true)')
     expect(out).not.toContain('<select value>')
   })
 
   it('`<select value={1}>` — the numeric arm is deferred too', () => {
     const out = t('<select value={1}><option /></select>')
-    expect(out).toContain('__root.value = 1')
+    expect(out).toContain('_setValue(__root, 1)')
     expect(out).not.toContain('<select value=\\"1\\"')
   })
 
   it('`<select value={`b`}>` — the template-literal arm is deferred too', () => {
     const out = t('<select value={`b`}><option /></select>')
-    expect(out).toContain('__root.value')
+    expect(out).toContain('_setValue(__root, ')
     expect(out).not.toContain('<select value=\\"b\\"')
   })
 
   it('`<select value={-1}>` — the signed-numeric arm is deferred too', () => {
     const out = t('<select value={-1}><option /></select>')
-    expect(out).toContain('__root.value')
+    expect(out).toContain('_setValue(__root, ')
     expect(out).not.toContain('<select value=\\"-1\\"')
   })
 
