@@ -52,6 +52,7 @@ async function bundle(names: readonly string[]): Promise<string> {
     logLevel: 'silent',
     define: { 'process.env.NODE_ENV': '"production"' },
   })
+
   return r.outputFiles[0]!.text
 }
 
