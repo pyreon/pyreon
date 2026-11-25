@@ -116,8 +116,8 @@ function _isMountableTextValue(v: unknown): boolean {
 }
 
 /**
- * Replace `node`'s children with ONE text node holding `text` — the
- * `textContent =` write, except that a NUMBER reaches the DOM unconverted.
+ * Replace `node`'s children with ONE text node holding `text` — a
+ * `textContent =` write, with a NUMBER handed to the DOM unconverted.
  *
  * Why a number is never `String()`-ed here: JS-side Number→String of more than
  * ~200 distinct integers makes V8 grow its Number→String cache
@@ -126,12 +126,14 @@ function _isMountableTextValue(v: unknown): boolean {
  * `ToString`, so the characters are identical) does not touch that cache. A
  * `<For>` of rows rendering `{row.id}` paid the 64 KB once per page.
  *
- * Why not `textContent = n`: happy-dom writes `''` for a falsy number (`0`,
- * `NaN`). `replaceChildren(n)` converts per the spec in every environment.
+ * Why `textContent` and not `replaceChildren(n)` / `append(n)` /
+ * `createTextNode(n)`: it is the cheapest of them in Chromium, ~21 µs less per
+ * 1,000 row-id cells than `replaceChildren(n)` on the row board's create path.
+ * happy-dom writes `''` for `textContent = 0` / `NaN`; that is fixed in the
+ * test setup (`vitest.setup.ts`), never bent around here.
  */
 function _replaceText(node: Element, text: string | number): void {
-  if (typeof text === 'number') node.replaceChildren(text as unknown as string)
-  else node.textContent = text
+  node.textContent = text as string
 }
 
 /**
@@ -186,10 +188,9 @@ export function _setChild(node: Element, value: unknown): void {
     // skipped (`textContent =` would replace any children regardless).
     const fc = _freshBind ? null : node.firstChild
     // The shared child-text rule (`_childText`), never the DOM's own coercion:
-    // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`, and the
-    // DOM's handling of a number is not even uniform across implementations
-    // (happy-dom writes `''` for `0`). A string, the dominant value, skips the
-    // call. A NUMBER is handed to the DOM unconverted (see `_replaceText`).
+    // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`. A
+    // string, the dominant value, skips the call. A NUMBER is handed to the DOM
+    // unconverted (see `_replaceText`).
     const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below:

@@ -865,12 +865,17 @@ export function mountFor<T>(
     // whatever the row's template gives the ambient scope (`ownByScope`) to the
     // component's scope on the first render — kept with the removed row until
     // the component unmounted — and to NO scope on a later run, never disposed.
-    // Typed by assertion: TS does not see the callback assign them, and would
-    // narrow each to `null` after it.
-    let native = null as import('@pyreon/core').NativeItem | null
-    let priorLast = null as Node | null
-    let mounted = null as Cleanup | null
-    const { scope: rowScope } = runRowCallback(() => {
+    // The window is opened and closed inline rather than through a callback
+    // (`runRowCallback`): a closure here would capture the row's locals, so
+    // every row paid a closure plus a six-slot context and a result object.
+    const prevScope = _currentScope()
+    const collector = claimRowCollector()
+    setCurrentScope(collector)
+    const ownerFrame = _openOwnerFrame()
+    let native: import('@pyreon/core').NativeItem | null = null
+    let priorLast: Node | null = null
+    let mounted: Cleanup | null = null
+    try {
       const r = renderItem(item)
       // Optional-chained: `renderItem` may legitimately return null/undefined —
       // `{(r) => r.visible ? <Row/> : null}` is how a row is conditionally
@@ -888,7 +893,13 @@ export function mountFor<T>(
         priorLast = before ? before.previousSibling : container.lastChild
         mounted = mountChild(r as import('@pyreon/core').VNode, container, before)
       }
-    })
+    } catch (err) {
+      abortRowWindow(collector, ownerFrame)
+      throw err
+    } finally {
+      setCurrentScope(prevScope)
+    }
+    const rowScope = closeRowWindow(collector, ownerFrame)
     if (native !== null) {
       const nativeCleanup = withRowScope(rowScope, native.cleanup ?? null)
       cache.set(key, { anchor: native.el, cleanup: nativeCleanup, pos, end: null, seen: 0 })
@@ -1503,39 +1514,59 @@ let rowCollector: EffectScope | null = null
 
 function runRowCallback<R>(fn: () => R): { result: R; scope: EffectScope | null } {
   const prev = _currentScope()
-  // CLAIM the pooled collector for this row before its callback runs. A row
-  // can build another `<For>` whose rows run their callbacks inside this one;
-  // reading the shared slot there handed THIS row's collector to the inner
-  // list's first row, which then stopped it on removal: whatever the outer row
-  // had registered (an `effect()` in its callback, in 0.54 the inner `<For>`'s
-  // own effect) was disposed with an unrelated row (#4800). Only a REUSABLE
-  // collector goes back to the pool: nothing registered, and nobody holds it
-  // (`getCurrentScope()` pins it; the holder may register later, e.g.
-  // `scope.runInScope(...)` after an await, so the row keeps it).
-  const collector = rowCollector ?? effectScope()
-  rowCollector = null
+  const collector = claimRowCollector()
   setCurrentScope(collector)
-  // Template bindings the row builds are owned by the row's cleanup, not the
-  // collector; this frame owns them only if the callback throws.
   const ownerFrame = _openOwnerFrame()
   let result: R
   try {
     result = fn()
   } catch (err) {
-    _abortOwnerFrame(ownerFrame)
-    // A half-filled collector must never be handed to the next row: it is
-    // stopped and not returned to the pool.
-    collector.stop()
+    abortRowWindow(collector, ownerFrame)
     throw err
   } finally {
     setCurrentScope(prev)
   }
+  return { result, scope: closeRowWindow(collector, ownerFrame) }
+}
+
+/**
+ * CLAIM the pooled collector for a row before its callback runs. A row can
+ * build another `<For>` whose rows run their callbacks inside this one; reading
+ * the shared slot there handed THIS row's collector to the inner list's first
+ * row, which then stopped it on removal: whatever the outer row had registered
+ * (an `effect()` in its callback, in 0.54 the inner `<For>`'s own effect) was
+ * disposed with an unrelated row (#4800).
+ *
+ * The caller sets it as the current scope and opens an owner frame (template
+ * bindings the row builds are owned by the row's cleanup, not the collector;
+ * the frame owns them only if the callback throws), then ends the window with
+ * `closeRowWindow`, or `abortRowWindow` on a throw.
+ */
+function claimRowCollector(): EffectScope {
+  const collector = rowCollector ?? effectScope()
+  rowCollector = null
+  return collector
+}
+
+/**
+ * Close a row's window. Only a REUSABLE collector goes back to the pool:
+ * nothing registered, and nobody holds it (`getCurrentScope()` pins it; the
+ * holder may register later, e.g. `scope.runInScope(...)` after an await, so
+ * the row keeps it). Returns the scope the row keeps, or `null`.
+ */
+function closeRowWindow(collector: EffectScope, ownerFrame: ReturnType<typeof _openOwnerFrame>): EffectScope | null {
   _closeOwnerFrame(ownerFrame)
   if (collector._isDroppable()) {
     rowCollector = collector
-    return { result, scope: null }
+    return null
   }
-  return { result, scope: collector }
+  return collector
+}
+
+/** A row callback threw: a half-filled collector is stopped, never pooled. */
+function abortRowWindow(collector: EffectScope, ownerFrame: ReturnType<typeof _openOwnerFrame>): void {
+  _abortOwnerFrame(ownerFrame)
+  collector.stop()
 }
 
 /** Chain a row scope's stop in front of the row's own cleanup. */

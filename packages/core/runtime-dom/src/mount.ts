@@ -1556,10 +1556,9 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
         (typeof c === 'string' || typeof c === 'number') &&
         parent.firstChild === null
       ) {
-        // A number is appended unconverted (see the primitive branch of
-        // `mountChild`); `textContent = 0` writes `''` in happy-dom.
-        if (typeof c === 'number') (parent as ParentNode).append(c as unknown as string)
-        else (parent as HTMLElement).textContent = c
+        // A number is handed to the DOM unconverted (see the primitive branch
+        // of `mountChild`, and `_replaceText` in template.ts).
+        ;(parent as HTMLElement).textContent = c as string
         return noop
       }
 
