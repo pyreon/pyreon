@@ -3,8 +3,14 @@
  * page load to the provider and back, with only sessionStorage surviving in between.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { base64url, isRedirectFor, sessionStorageFlowStore, useOidc } from '../index'
+import { sessionStorageFlowStore, useOidc } from '../index'
+import { base64url } from '../pkce'
+import { isRedirectFor } from '../use-oidc'
 import type { FetchLike, Jwk, PendingFlow } from '../index'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 const issuer = 'https://idp.example'
 const enc = new TextEncoder()
@@ -142,14 +148,16 @@ describe('sessionStorageFlowStore', () => {
     state,
     nonce: 'n',
     codeVerifier: 'v',
-    redirectUri: 'https://app.example/cb',
     issuer,
+    clientId: 'app',
+    redirectUri: 'https://app.example/cb',
+    binding: 'b1',
     createdAt,
   })
 
   it('is single-use', () => {
     const s = sessionStorageFlowStore(new MemStorage())
-    s.save(flow('a', 1000))
+    s.save('a', flow('a', 1000))
     expect(s.take('a')).toMatchObject({ state: 'a' })
     expect(s.take('a')).toBeNull()
   })
@@ -158,10 +166,10 @@ describe('sessionStorageFlowStore', () => {
     const storage = new MemStorage()
     storage.setItem('app.other', 'x')
     const s = sessionStorageFlowStore(storage)
-    for (let i = 0; i < 5; i++) s.save(flow(`old${i}`, 0))
-    s.save(flow('fresh', 11 * 60_000))
+    for (let i = 0; i < 5; i++) s.save(`old${i}`, flow(`old${i}`, 0))
+    s.save('fresh', flow('fresh', 11 * 60_000))
     expect(storage.length).toBe(2) // the fresh flow + the app's own key
-    for (let i = 0; i < 30; i++) s.save(flow(`f${i}`, 11 * 60_000 + i))
+    for (let i = 0; i < 30; i++) s.save(`f${i}`, flow(`f${i}`, 11 * 60_000 + i))
     expect(storage.length).toBe(16 + 1)
     expect(storage.getItem('app.other')).toBe('x')
   })

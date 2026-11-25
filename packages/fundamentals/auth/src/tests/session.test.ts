@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createAuth, facebook, github, memoryFlowStore, sessionCookie, signSession, verifySession } from '../index'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 const A = 'a'.repeat(32)
 const B = 'b'.repeat(32)
@@ -24,6 +28,10 @@ describe('session', () => {
   })
   it('enforces secret length and the cookie size cap', async () => {
     await expect(signSession({ sub: 'u' }, { secrets: ['short'] })).rejects.toThrow(/32 characters/)
+    // Verifying throws too, rather than quietly returning null: a short secret is a setup error.
+    const v = await signSession({ sub: 'u' }, { secrets: [A] })
+    await expect(verifySession(v, { secrets: ['short'] })).rejects.toThrow(/32 characters/)
+    await expect(verifySession(v, { secrets: [A, 'short'] })).rejects.toThrow(/32 characters/)
     await expect(signSession({ sub: 'u', big: 'x'.repeat(5000) }, { secrets: [A] })).rejects.toThrow(/4096/)
   })
   it('a token without sub or exp is rejected even if validly signed', async () => {
@@ -48,6 +56,7 @@ describe('non-OIDC providers', () => {
       metadata: github,
       client: { clientId: 'x', redirectUri: 'https://app.example/cb' },
       flows: memoryFlowStore(),
+      binding: 'b1',
       redirect: (u) => out.push(u),
       fetch: () => Promise.reject(new Error('discovery must not run')),
     })

@@ -39,23 +39,38 @@ export const passkeyChallenge = (): string => randomToken(32)
 
 const unb64 = decodeBase64url
 
-/** DER ECDSA signature -> raw r||s (64 bytes) as WebCrypto expects. */
+/**
+ * Strict DER ECDSA-P256 signature -> raw r||s (64 bytes) as WebCrypto expects. Only the one
+ * canonical encoding is accepted (X.690 DER): a SEQUENCE whose short-form length covers exactly
+ * the rest of the input, two INTEGERs in minimal form (a leading zero only before a high bit),
+ * positive, non-zero and at most 32 bytes of value, and nothing after them. A lenient parser lets
+ * one signature be spelled many ways (signature malleability).
+ */
 export function derToRaw(der: Uint8Array): Uint8Array<ArrayBuffer> {
-  if (der[0] !== 0x30) throw new Error('[Pyreon] auth: bad DER signature')
-  let o = 2 + (der[1]! & 0x80 ? der[1]! & 0x7f : 0)
-  const read = () => {
-    if (der[o] !== 0x02) throw new Error('[Pyreon] auth: bad DER signature')
-    const len = der[o + 1]!
-    let v = der.slice(o + 2, o + 2 + len)
-    o += 2 + len
-    while (v.length > 32 && v[0] === 0) v = v.slice(1)
-    if (v.length > 32) throw new Error('[Pyreon] auth: bad DER signature')
+  const fail = (): never => {
+    throw new Error('[Pyreon] auth: bad DER signature')
+  }
+  // 30 len 02 l r 02 l s: at least 8 bytes; a P-256 signature is at most 72, so the length
+  // is always short form.
+  if (der.length < 8 || der[0] !== 0x30 || der[1]! & 0x80 || der[1] !== der.length - 2) fail()
+  let o = 2
+  const read = (): Uint8Array => {
+    if (der[o] !== 0x02) fail()
+    const len = der[o + 1]
+    if (len === undefined || len === 0 || len & 0x80 || o + 2 + len > der.length) fail()
+    const v = der.subarray(o + 2, o + 2 + len!)
+    o += 2 + len!
+    if (v[0]! & 0x80) fail() // negative
+    if (v[0] === 0 && (v.length === 1 || !(v[1]! & 0x80))) fail() // non-minimal, or zero
+    const value = v[0] === 0 ? v.subarray(1) : v
+    if (value.length > 32) fail()
     const out = new Uint8Array(32)
-    out.set(v, 32 - v.length)
+    out.set(value, 32 - value.length)
     return out
   }
   const r = read()
   const s = read()
+  if (o !== der.length) fail()
   const raw = new Uint8Array(64)
   raw.set(r, 0)
   raw.set(s, 32)

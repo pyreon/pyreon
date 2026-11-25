@@ -13,13 +13,13 @@
  * `location.assign`, and the return trip is staged with `history.replaceState`.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  base64url,
-  codeChallengeS256,
-  sessionStorageFlowStore,
-  useOidc,
-} from '../index'
+import { codeChallengeS256, sessionStorageFlowStore, useOidc } from '../index'
+import { base64url } from '../pkce'
 import type { FetchLike, Jwk } from '../index'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 const issuer = 'https://idp.example'
 const enc = new TextEncoder()
@@ -28,7 +28,10 @@ const json = (b: unknown, status = 200) => Promise.resolve(new Response(JSON.str
 const startUrl = location.href
 const redirectUri = `${location.origin}${location.pathname}`
 
-beforeEach(() => sessionStorage.clear())
+beforeEach(() => {
+  sessionStorage.clear()
+  localStorage.clear()
+})
 afterEach(() => {
   sessionStorage.clear()
   history.replaceState(null, '', startUrl)
@@ -75,7 +78,7 @@ describe('sessionStorageFlowStore on the real sessionStorage', () => {
   it('round-trips a pending flow once, then it is gone', () => {
     const store = sessionStorageFlowStore()
     const flow = { state: 's1', nonce: 'n', verifier: 'v', redirectUri, createdAt: Date.now() } as never
-    store.save(flow)
+    store.save('s1', flow)
     expect(sessionStorage.length).toBe(1)
     expect(store.take('s1')).toMatchObject({ state: 's1', verifier: 'v' })
     expect(sessionStorage.length).toBe(0)
@@ -113,6 +116,9 @@ describe('useOidc on a real page', () => {
     expect(auth.claim('email')).toBe('a@example.com')
     expect(auth.accessToken()).toBe('at')
     expect(sessionStorage.length).toBe(0) // the flow was consumed
+    // Tokens live in memory only: nothing reaches web storage, so a reload starts signed out.
+    expect(localStorage.length).toBe(0)
+    expect(useOidc(opts).status()).toBe('signedOut')
   })
 
   it('rejects an id_token whose nonce is not this sign-in, as the cross-target code', async () => {

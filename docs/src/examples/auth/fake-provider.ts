@@ -9,9 +9,16 @@
  * `mode` makes the provider misbehave in one specific way at a time, so a demo can show which
  * check catches which attack — the same checks a real provider is held to.
  */
-import { base64url, codeChallengeS256 } from '@pyreon/auth'
+import { codeChallengeS256 } from '@pyreon/auth'
 import type { FetchLike, Jwk } from '@pyreon/auth'
 import { signal, type Signal } from '@pyreon/reactivity'
+
+/** base64url without padding (RFC 4648 §5) — the provider's own encoder. */
+const base64url = (bytes: Uint8Array): string => {
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
 
 export const ISSUER = 'https://id.example.dev'
 export const CLIENT_ID = 'docs-demo'

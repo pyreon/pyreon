@@ -1,5 +1,5 @@
 import { effect } from '@pyreon/reactivity'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   getBezierPath,
   getEdgePath,
@@ -18,6 +18,18 @@ import { computeLayout } from '../layout'
 import '../layout-engine'
 import { flowStyles } from '../styles'
 import { Position } from '../types'
+
+// A test that starts a real (happy-dom) animation frame loop and returns
+// leaves the loop running into the NEXT tests: happy-dom drives rAF through
+// setImmediate, so a 300 ms viewport tween keeps re-requesting frames for
+// 300 ms of wall clock — far longer under machine load. A later test that
+// mocks requestAnimationFrame and awaits (the animated-layout test below)
+// then records the leaked loop's frame as one of its own and fails with
+// "expected 2 to be 1". Cancelling every async task a test left behind
+// makes each test start with no foreign frames in flight, whatever the load.
+afterEach(async () => {
+  await (globalThis as { happyDOM?: { abort(): Promise<void> } }).happyDOM?.abort()
+})
 
 // ─── Graph Queries ─────────────────────────────────────────────────────────
 
@@ -1664,6 +1676,7 @@ describe('focusNode', () => {
     })
     flow.focusNode('1')
     expect(flow.selectedNodes()).toEqual(['1'])
+    flow.dispose() // stop the 300 ms viewport tween focusNode started
   })
 
   it('does nothing for missing node', () => {
@@ -2216,6 +2229,27 @@ describe('animateViewport — branch coverage', () => {
     expect(rafCalls.length).toBeGreaterThanOrEqual(2)
 
     vi.restoreAllMocks()
+  })
+})
+
+// Locks the file-level afterEach: these two tests run in order, the first
+// leaving a real frame loop behind exactly as a load-delayed focusNode tween
+// would. Without the abort, the loop's next frame lands in the second test.
+describe('a frame loop never outlives its test', () => {
+  it('leaves a long real-rAF viewport tween running', () => {
+    const flow = createFlow({ nodes: [{ id: '1', position: { x: 0, y: 0 }, data: {} }] })
+    flow.animateViewport({ zoom: 2 }, 60_000)
+  })
+
+  it('the next test sees no frame request it did not make', async () => {
+    const spy = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => 0)
+    try {
+      // Several macrotask turns: a leaked setImmediate-driven frame would fire here.
+      for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0))
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      vi.restoreAllMocks()
+    }
   })
 })
 
