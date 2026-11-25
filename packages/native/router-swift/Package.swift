@@ -9,7 +9,7 @@
 // API the web side ships, different runtime under it.
 //
 // Per the PMTC plan: SwiftUI's `NavigationStack` IS the routing
-// primitive on iOS 16+. This package is the small adapter layer that
+// primitive on iOS. This package is the small adapter layer that
 // matches @pyreon/router's component vocabulary so the SAME source
 // compiles to web (history API) AND iOS (NavigationStack).
 
@@ -18,11 +18,13 @@ import PackageDescription
 let package = Package(
     name: "PyreonRouter",
     platforms: [
-        // iOS 16 = NavigationStack. Below 16 would need NavigationView
-        // (deprecated, single-back-stack semantics, not worth shimming).
-        // macOS 13 mirrored for parity.
-        .iOS(.v16),
-        .macOS(.v13),
+        // iOS 17 / macOS 14: Pyreon's supported floor (the support matrix
+        // on the stability page, held by scripts/check-support-matrix.ts),
+        // the same as @pyreon/native-runtime-swift. The router's public
+        // types already required it (`@available(iOS 17.0, macOS 14.0, *)`
+        // for `@Observable`).
+        .iOS(.v17),
+        .macOS(.v14),
     ],
     products: [
         .library(

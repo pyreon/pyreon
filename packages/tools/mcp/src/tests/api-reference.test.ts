@@ -226,8 +226,9 @@ describe('api-reference', () => {
 
     it('useFieldArray documents the stable-key contract', () => {
       const entry = API_REFERENCE['form/useFieldArray']
-      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
       expect(entry?.mistakes).toContain('index-based keys')
+      expect(entry?.mistakes).toContain('untrack(() => tags.values())')
       expect(entry?.notes).toContain('stable keys')
     })
   })
@@ -487,7 +488,7 @@ describe('api-reference', () => {
     it('useRouter documents the View Transition await semantics', () => {
       const entry = API_REFERENCE['router/useRouter']
       expect(entry?.notes).toContain('updateCallbackDone')
-      expect(entry?.mistakes?.split('\n').length).toBe(3)
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
     })
 
     it('useIsActive documents segment-aware prefix matching', () => {

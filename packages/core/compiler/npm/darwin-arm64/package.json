@@ -23,7 +23,7 @@
     "typecheck": "echo 'no source — platform binary package'"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

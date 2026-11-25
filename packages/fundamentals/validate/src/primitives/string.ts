@@ -30,19 +30,68 @@ import { Schema as SchemaBase, attachCheck, makeCheckIssue, type Schema } from '
 //                  consecutive dots.
 //   - 'rfc5322'  — 'standard' + RFC 5321 length limits (local <=64,
 //                  domain <=255, total <=254). For server-authoritative checks.
+//
+// INTERNATIONALISED DOMAINS (IDN) pass at every tier, in BOTH forms:
+//   - Unicode (`jan@müller.de`, `a@пример.рф`): wherever a tier's ASCII grammar
+//     admits a letter or digit, a domain label also admits any Unicode letter
+//     (`\p{L}`) or decimal digit (`\p{Nd}`); a combining mark (`\p{M}`) and the
+//     joiners ZWNJ / ZWJ (U+200C / U+200D) are admitted anywhere except the
+//     start of a label. The IDNA label separators U+3002 `。`, U+FF0E `．` and
+//     U+FF61 `｡` separate labels like `.` (UTS 46 maps them to `.`).
+//   - punycode / A-label (`jan@xn--mller-kva.de`, `a@xn--e1afmkfd.xn--p1ai`) —
+//     what Chromium's `<input type=email>.value` returns for an IDN. A label
+//     already admitted `xn--…`; the TLD now admits an A-label too
+//     (`xn--` + alnum, `-` inside, not trailing), beside the 2+ letter TLD.
+// Approximations, documented rather than hidden: the CONTEXTJ rule (a joiner
+// only after a virama) and the bidi rules of IDNA 2008 are not checked — the
+// grammar is a SUPERSET of valid IDNs, never stricter. DNS length limits are
+// checked on the label as WRITTEN (`rfc5322`: every label ≤ 63 code points,
+// exact for an ASCII / punycode label; a Unicode label's punycode form can be
+// longer than its code-point count, so an overlong IDN label may pass).
+// The LOCAL part stays ASCII (an SMTPUTF8 mailbox name is out of scope).
+//
+// On all-ASCII input the only verdict changes against the pre-IDN grammar are
+// listed and locked in `email-scan-equivalence.test.ts`: a punycode TLD now
+// passes (`standard` / `rfc5322`), and `rfc5322` refuses a label over 63
+// characters. The same grammar is lowered verbatim to Swift and Kotlin
+// (`@pyreon/validation`'s native plugin, `email-rule.ts`) and to the compiled
+// validator emit (`@pyreon/compiler`'s `validate-emit.ts`, locked equal by
+// `email-precision.test.ts`).
 export type EmailPrecision = 'html5' | 'standard' | 'rfc5322'
 
-/** HTML5 `<input type=email>` WHATWG pattern — lenient (allows 1-char TLD). */
+/**
+ * HTML5 `<input type=email>` WHATWG pattern — lenient (allows 1-char TLD) —
+ * with Unicode domain labels and IDNA separators (see the IDN note above).
+ */
 export const EMAIL_HTML5_RE =
-  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+  /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[\p{L}\p{Nd}](?:[\p{L}\p{M}\p{Nd}\u200C-\u200D-]{0,61}[\p{L}\p{M}\p{Nd}])?(?:[.\u3002\uFF0E\uFF61][\p{L}\p{Nd}](?:[\p{L}\p{M}\p{Nd}\u200C-\u200D-]{0,61}[\p{L}\p{M}\p{Nd}])?)*$/u
 
 // Email RFC 5322 isn't fully parseable by regex; the 'standard' default
 // below is the modern consensus (Zod 4 / Valibot) — requires a 2+ char
 // alpha TLD, forbids leading / consecutive dots. Replaces the pre-2026-06
 // loose `^[^\s@]+@[^\s@]+\.[^\s@]+$`, which wrongly accepted `a@b.c` (and
-// most garbage) — looser than every other major validator.
+// most garbage) — looser than every other major validator. Domain labels,
+// separators and the TLD admit both IDN forms (see the IDN note above).
 export const EMAIL_RE =
-  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
+  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([\p{L}\p{Nd}][\p{L}\p{M}\p{Nd}\u200C-\u200D-]*[.\u3002\uFF0E\uFF61])+(?:\p{L}[\p{L}\p{M}]+|[Xx][Nn]--[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)$/u
+
+/** The IDNA label separators (`.` and the three full stops UTS 46 maps to it). */
+const EMAIL_LABEL_SEP_RE = /[.\u3002\uFF0E\uFF61]/
+
+/**
+ * A punycode (A-label) TLD at `v[start..]`: `xn--` (any case), then an alnum,
+ * then alnum / `-`, not ending in `-`. The caller has already checked every
+ * char is alnum or `-`.
+ */
+function isPunycodeTld(v: string, start: number): boolean {
+  const len = v.length
+  if (len - start < 5) return false
+  const x = v.charCodeAt(start) | 32
+  const n = v.charCodeAt(start + 1) | 32
+  if (x !== 120 /* x */ || n !== 110 /* n */) return false
+  if (v.charCodeAt(start + 2) !== 45 || v.charCodeAt(start + 3) !== 45) return false
+  return v.charCodeAt(start + 4) !== 45 && v.charCodeAt(len - 1) !== 45
+}
 
 // ─── Table-driven email scanner (the hot 'standard' path) ─────────────────
 // Byte-identical verdict to EMAIL_RE (locked by the exhaustive + fuzz
@@ -67,9 +116,12 @@ EMAIL_CT[39] = 1 // '
  * Linear-scan equivalent of `EMAIL_RE.test(value)` — same grammar:
  * local part = `[A-Za-z0-9_'+-.]` runs with no leading/consecutive dots,
  * last char before `@` in `[A-Za-z0-9_+-]`; domain = 1+ labels
- * (`[A-Za-z0-9][A-Za-z0-9-]*` + `.`) then an alpha TLD of 2+ chars.
- * A charcode > 127 indexes past the table -> `undefined & flag` is falsy ->
- * reject (matches the regex: no non-ASCII anywhere).
+ * (`[A-Za-z0-9][A-Za-z0-9-]*` + `.`) then an alpha TLD of 2+ chars or a
+ * punycode `xn--` TLD.
+ * A charcode > 127 indexes past the table -> `undefined & flag` is falsy: in
+ * the LOCAL part that rejects (the local part is ASCII-only, as in the regex);
+ * in the DOMAIN it hands the whole verdict to EMAIL_RE, whose Unicode label
+ * classes decide an internationalised domain.
  */
 function isEmailStandard(v: string): boolean {
   const len = v.length
@@ -103,14 +155,21 @@ function isEmailStandard(v: string): boolean {
       seg = 4
     } else {
       const f = EMAIL_CT[c]! as number
-      if (!(f & 16)) return false // label char: alnum | -
+      if (!(f & 16)) {
+        // A non-ASCII domain char: an internationalised label (`müller.de`).
+        // The Unicode grammar lives in EMAIL_RE; the ASCII hot path above
+        // never reaches this branch, so it pays nothing for IDN support.
+        if (c > 127) return EMAIL_RE.test(v)
+        return false // label char: alnum | -
+      }
       if (i === segStart && !(f & 8)) return false // label starts alnum
       seg &= f
     }
   }
   if (lastDot === -1) return false // at least one dot in the domain
   if (len - segStart < 2) return false // TLD >= 2 chars
-  return (seg & 4) !== 0 // TLD alpha-only
+  // TLD alpha-only, or a punycode A-label (`xn--p1ai`).
+  return (seg & 4) !== 0 || isPunycodeTld(v, segStart)
 }
 
 /**
@@ -125,6 +184,11 @@ export function validateEmail(value: string, precision: EmailPrecision = 'standa
     const at = value.lastIndexOf('@')
     if (at > 64) return false // local part > 64 chars
     if (value.length - at - 1 > 255) return false // domain > 255 chars
+    // DNS: every label ≤ 63 (code points of the label as written — exact for
+    // an ASCII / punycode label, see the IDN note).
+    for (const label of value.slice(at + 1).split(EMAIL_LABEL_SEP_RE)) {
+      if (label.length > 63 && [...label].length > 63) return false
+    }
   }
   return true
 }

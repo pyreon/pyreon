@@ -29,7 +29,11 @@ export interface UseFieldArrayResult<T> {
   swap: (indexA: number, indexB: number) => void
   /** Replace all items. */
   replace: (values: T[]) => void
-  /** Get all current values as a plain array. */
+  /**
+   * All current values as a plain array. Reactive: reads `items()` and each
+   * item's `value()`, so a computed/effect over it re-runs on any change.
+   * Use `untrack(() => arr.values())` for a one-off snapshot inside an effect.
+   */
   values: () => T[]
 }
 
@@ -113,8 +117,11 @@ export function useFieldArray<T>(initial: T[] = []): UseFieldArrayResult<T> {
       items.set(values.map(makeItem))
     },
 
+    // Tracked: reads `items()` and every `item.value()`, so a computed/effect
+    // over `values()` re-runs on append/remove/move/replace AND on an item's
+    // `value.set(...)` / `update(...)` — the same contract as `form.values()`.
     values() {
-      return items.peek().map((item) => item.value.peek())
+      return items().map((item) => item.value())
     },
   }
 }

@@ -8,7 +8,7 @@ description: SolidJS-compatible reactive API that runs on Pyreon's reactive engi
 <PackageBadge name="@pyreon/solid-compat" href="/docs/solid-compat" />
 
 :::note
-The compat layer is at **near-full public-API parity** with Solid, not complete parity, and Pyreon is pre-1.0. Check the differences and unsupported APIs on this page before migrating a large app.
+The compat layer is at **near-full public-API parity** with Solid, not complete parity, and it is [Experimental](/docs/stability-and-direction#two-tiers-stable-and-experimental), so it can change in a minor release. Check the differences and unsupported APIs on this page before migrating a large app.
 :::
 
 ## Installation

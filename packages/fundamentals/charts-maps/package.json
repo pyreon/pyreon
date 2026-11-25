@@ -50,6 +50,9 @@
     "lint": "oxlint .",
     "build:data": "bun scripts/build-data.ts"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

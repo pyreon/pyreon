@@ -71,6 +71,8 @@ const stop = watchValid(emailSchema, $email, (valid) => {
 | `formatErrorsByPath(issues, t?, options?)` | Build a per-field error map keyed by the issue's path. Compatible with `@pyreon/form`'s `Errors` shape. |
 | `toJsonSchema(schema, opts?)` | Emit a JSON Schema (draft 2020-12) document from an `s` schema — from the `@pyreon/validate/json-schema` subpath so the main entry stays lean. Unrepresentable kinds (`date`/`bigint`/`map`/…) throw by default, or emit `{}` with `{ unrepresentable: 'any' }`. |
 
+`t` is a `TFn`: `@pyreon/i18n`'s `t` (including a key-typed instance's `t`) passes as-is, as does any `(key, params?) => string` translate function.
+
 ## Client / server validation
 
 One shared schema, a thin client and a heavy server — without shipping the heavy code to the browser.
@@ -116,6 +118,8 @@ Notes:
 ### String format checks (`s.string()`)
 
 `email` (3 precision tiers) · `url` · `uuid` · `ip` · `cidr` · `phone` · `e164` · `creditCard` · `cuid` · `cuid2` · `ulid` · `nanoid` · `emoji` · `base64` · `base64url` · `jwt` · `duration` · `.iso.date()` / `.iso.dateTime()` / `.iso.time()` — plus `regex` / `startsWith` / `endsWith` / `includes`.
+
+`email()` accepts an internationalised domain at every precision (`html5`, `standard`, `rfc5322`), in both forms: written in its own letters (`jan@müller.de`, `a@пример.рф`) or in punycode (`a@xn--e1afmkfd.xn--p1ai`, which is what a browser's `<input type=email>` returns), including a punycode TLD. A domain label may use any Unicode letter or decimal digit, plus combining marks and the joiners ZWNJ / ZWJ after its first character, and the ideographic full stops `。` `．` `｡` separate labels like `.`. The IDNA context and bidi rules are not checked, so the check is a superset of valid IDNs; `rfc5322` limits each label to 63 characters as written (exact for ASCII and punycode labels). The label and TLD shape rules are unchanged (no leading hyphen, no empty label, a 2+ letter TLD outside `html5`), so invalid shapes are still refused, and an all-ASCII address gets exactly the verdict it always did. The local part stays ASCII. The same grammar lowers to Swift and Kotlin for native targets and to the compiled validator emit.
 
 `url()` accepts `http:` / `https:` URLs with a host, and that default is deliberate: a URL field is usually a link that gets rendered, and accepting every scheme would let `javascript:` and `data:` through code that relied on the check. Pass `protocol` — the same option, with the same meaning, as zod 4's `z.url({ protocol })` — to accept any RFC 3986 absolute URI whose scheme matches: `s.string().url({ protocol: /^[a-z][a-z0-9+.-]*$/i })` accepts `mailto:a@b.co` and `urn:isbn:0451`. The two forms route through different registry names (`url`, `uri`), and an installed `uri` validator is applied under the scheme filter, never instead of it.
 

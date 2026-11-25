@@ -59,6 +59,9 @@
     "rxjs": "^7.8.2",
     "solid-js": "^1.9.19"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

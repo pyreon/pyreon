@@ -5,7 +5,7 @@
   "date": "2026-11-11"
  },
  "current": {
-  "pageCount": 250,
+  "pageCount": 251,
   "pages": [
    {
     "path": "a11y.md",
@@ -1018,6 +1018,11 @@
     "href": "/docs/stability-and-direction"
    },
    {
+    "path": "upgrading-to-v1.md",
+    "title": "Upgrading to 1.0",
+    "href": "/docs/upgrading-to-v1"
+   },
+   {
     "path": "state-tree.md",
     "title": "State Tree",
     "href": "/docs/state-tree"
@@ -1724,6 +1729,10 @@
     {
      "title": "Stability and direction",
      "href": "/docs/stability-and-direction"
+    },
+    {
+     "title": "Upgrading to 1.0",
+     "href": "/docs/upgrading-to-v1"
     },
     {
      "title": "Benchmarks",
@@ -2895,6 +2904,12 @@
     "title": "Stability, Versioning & Direction",
     "placedIn": "Get started",
     "note": "Status policy; source of the \"Experimental\" label."
+   },
+   {
+    "path": "upgrading-to-v1.md",
+    "title": "Upgrading to 1.0",
+    "placedIn": "Get started",
+    "note": "0.54 → 1.0 breaking changes with their codemods; linked from the stability page."
    },
    {
     "path": "benchmarks.md",

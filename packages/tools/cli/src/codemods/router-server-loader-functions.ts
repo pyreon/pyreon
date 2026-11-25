@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module'
+import { loadTs } from './load-ts'
 import type { Codemod } from './types'
 
 type TS = typeof import('typescript')
@@ -6,17 +6,6 @@ type Node = import('typescript').Node
 type Expression = import('typescript').Expression
 type SourceFile = import('typescript').SourceFile
 type Edit = { start: number; end: number; text: string }
-
-/** TypeScript, loaded only when the codemod actually has a candidate file. */
-function loadTs(): TS {
-  try {
-    return createRequire(import.meta.url)('typescript') as TS
-  } catch {
-    throw new Error(
-      '[Pyreon] codemod router-server-loader-functions needs the `typescript` package. Install it (it is a peer dependency of @pyreon/cli) and re-run `pyreon upgrade`.',
-    )
-  }
-}
 
 const SOURCES = ['@pyreon/router', '@pyreon/zero', '@pyreon/server', '@pyreon/testing']
 
@@ -124,7 +113,7 @@ export const routerServerLoaderFunctions: Codemod = {
   transform(source, relPath) {
     if (!/\.(preload|runServerLoaders)\s*\(/.test(source)) return null
     if (!SOURCES.some((s) => source.includes(s))) return null
-    const ts = loadTs()
+    const ts = loadTs('router-server-loader-functions')
     const kind = /\.[mc]?tsx$|\.jsx$/.test(relPath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     const sf = ts.createSourceFile(relPath, source, ts.ScriptTarget.ESNext, true, kind)
     const edits: Edit[] = []

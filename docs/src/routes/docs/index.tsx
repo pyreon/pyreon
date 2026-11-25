@@ -25,10 +25,19 @@ export async function loader(): Promise<HomeLoaderData> {
 /** `/docs` — the docs home (`_docs-home.json`), in the same reading frame as every page. */
 export default function DocsIndexRoute() {
   // Undefined only on a client-only cold start (`vite dev`): zero runs the
-  // loader right after mount and re-renders. Prerendered pages always have it.
+  // loader right after mount. Prerendered pages always have it. The accessor
+  // re-renders the home with the data when it arrives (the provided page data
+  // is a plain context value, so the provider must remount to change it).
   const data = useLoaderData<HomeLoaderData | undefined>()
-  provide(DocsDataContext, data?.page ?? EMPTY_PAGE_DATA)
-  useHead(docsHead({ path: '/docs', title: HOME.meta.title, description: HOME.meta.description }, data?.cards))
+  return () => {
+    const current = data()
+    return <DocsHomeView page={current?.page ?? EMPTY_PAGE_DATA} cards={current?.cards} />
+  }
+}
+
+function DocsHomeView(props: { page: DocsPageData; cards: DocsShareCards | undefined }) {
+  provide(DocsDataContext, props.page)
+  useHead(docsHead({ path: '/docs', title: HOME.meta.title, description: HOME.meta.description }, props.cards))
   return (
     <DocsPage path="/docs" title={HOME.meta.title} headings={HOME_HEADINGS} ownTitle>
       <DocsHome />

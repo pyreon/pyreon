@@ -64,6 +64,9 @@
     "pdfmake": "^0.3.14",
     "pptxgenjs": "^4.0.1"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },
