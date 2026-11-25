@@ -128,7 +128,9 @@ export function resolveDistTag(
   // The registry response is untrusted: only a plain semver version may flow on into
   // file paths, install specs and the job summary.
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
-    throw new Error(`${pkg}@${tag} resolved to a value that is not a semver version: ${JSON.stringify(version)}`)
+    throw new Error(
+      `${pkg}@${tag} resolved to a value that is not a semver version: ${JSON.stringify(version)}`,
+    )
   }
   if (expectVersion !== undefined && version !== expectVersion) {
     throw new Error(
@@ -752,10 +754,22 @@ function report(args: Args, version: string, cells: Cell[], failures: StepError[
     }
   }
   if (process.env.GITHUB_STEP_SUMMARY) {
-    // The summary FILE gets only text this script controls: the resolved
-    // version comes from the registry response, so it stays in the log above
-    // (CodeQL js/http-to-file-access) and the file header names just the tag.
-    const summary = [`## Post-publish smoke — dist-tag \`${args.tag}\``, ...lines.slice(1)]
+    // The summary FILE gets only text this script controls (CodeQL
+    // js/http-to-file-access): the tag argument, the cell names it defines and
+    // a pass/fail bit. The resolved version and the failing step and message
+    // can carry registry or install output, so they stay in the log above.
+    const summary = [
+      `## Post-publish smoke — dist-tag \`${args.tag}\``,
+      '',
+      '| cell | verdict |',
+      '| --- | --- |',
+      ...(version
+        ? cells.map(
+            (c) =>
+              `| ${c.name} | ${failures.some((x) => x.cell === c.name) ? 'FAILED (see the log)' : 'passed'} |`,
+          )
+        : ['| registry | FAILED (see the log) |']),
+    ]
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary.join('\n')}\n`)
   }
   if (failures.length > 0) {
