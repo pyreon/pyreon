@@ -439,7 +439,8 @@ describe('real repo', () => {
   // their in-process fixture specs above; this is the smoke test, so it asserts
   // the exit status only, and stderr (the failure list) is the message.
   it('holds every rule (the gate is green on this tree)', () => {
-    const r = spawnSync('bun', [join(REPO, 'scripts/check-stability-tier.ts')], { cwd: REPO, encoding: 'utf8' })
-    expect(r.status, r.error?.message ?? r.stderr).toBe(0)
+    // Killed inside the 60 s test budget, so a hang reports as one.
+    const r = spawnSync('bun', [join(REPO, 'scripts/check-stability-tier.ts')], { cwd: REPO, encoding: 'utf8', timeout: 55_000 })
+    expect(r.status, `signal=${r.signal ?? 'none'} error=${r.error?.message ?? 'none'}\n${r.stderr}`).toBe(0)
   }, 60_000)
 })

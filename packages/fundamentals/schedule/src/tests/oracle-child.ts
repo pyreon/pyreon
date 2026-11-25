@@ -69,7 +69,10 @@ export function oracleInChild(kind: OracleKind, count: number): Promise<(string[
   const output = join(dir, 'out.json')
 
   return new Promise<(string[] | null)[]>((resolve, reject) => {
-    execFile('bun', [__filename, kind, String(count), output], { encoding: 'utf8' }, (error, _stdout, stderr) => {
+    // Killed below the specs' 120 s budget, so a hung oracle fails as one and
+    // the temp dir is still removed (the callback runs on the kill too).
+    const options = { encoding: 'utf8' as const, timeout: 110_000, killSignal: 'SIGKILL' as const }
+    execFile('bun', [__filename, kind, String(count), output], options, (error, _stdout, stderr) => {
       try {
         if (error) reject(new Error(`[schedule tests] the ${kind} oracle child failed: ${error.message} ${stderr}`))
         else resolve(JSON.parse(readFileSync(output, 'utf8')) as (string[] | null)[])
