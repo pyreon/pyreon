@@ -1295,13 +1295,16 @@ if (isProcessEntry()) {
     // there is 0 and pulling the palette into this entry would buy nothing.
     const message = err instanceof Error ? err.message : String(err)
     const stack = err instanceof Error && err.stack ? err.stack.split('\n').filter((l) => /^\s+at /.test(l)) : []
-    console.error(
-      [
+    // Exit from the write's callback, not straight after it: a client reads
+    // stderr through a pipe, where the write is asynchronous and an immediate
+    // `process.exit` drops what is still queued (#4799).
+    process.stderr.write(
+      `${[
         `✗ pyreon-mcp · server error: ${message}`,
         '   fix: this is a bug in @pyreon/mcp: report it with the stack below at https://github.com/pyreon/pyreon/issues',
         ...stack.map((l) => `   ${l.trim()}`),
-      ].join('\n'),
+      ].join('\n')}\n`,
+      () => process.exit(1),
     )
-    process.exit(1)
   })
 }

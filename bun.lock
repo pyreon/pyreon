@@ -2642,7 +2642,7 @@
       "name": "@pyreon/cli",
       "version": "0.54.0",
       "bin": {
-        "pyreon": "./lib/index.js",
+        "pyreon": "./bin/pyreon.js",
       },
       "dependencies": {
         "@pyreon/compiler": "workspace:^",
@@ -2651,6 +2651,7 @@
       "devDependencies": {
         "@pyreon/ansi": "workspace:*",
         "@pyreon/native-compiler": "workspace:*",
+        "@pyreon/test-utils": "workspace:*",
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
       },

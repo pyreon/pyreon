@@ -1,5 +1,6 @@
 import { reportFailure } from './report'
 import { resolve } from 'node:path'
+import { exitAfterFlush } from '@pyreon/ansi'
 
 export interface ContextOptions {
   out?: string
@@ -15,6 +16,6 @@ export async function context(root: string | undefined, options: ContextOptions)
     })
   } catch (error) {
     reportFailure('zero context', 'Context generation failed', error)
-    process.exit(1)
+    await exitAfterFlush(1)
   }
 }

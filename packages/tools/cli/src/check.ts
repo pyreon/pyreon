@@ -35,6 +35,7 @@ import {
   plural,
   type Term,
   verdict,
+  writeOut,
 } from '@pyreon/ansi'
 
 export interface CheckOptions {
@@ -177,9 +178,9 @@ export async function check(opts: CheckOptions): Promise<number> {
 
   if (files.length === 0) {
     if (opts.json) {
-      console.log(JSON.stringify({ findings: [], fileCount: 0, findingCount: 0, fixedCount: 0 }, null, 2))
+      await writeOut(JSON.stringify({ findings: [], fileCount: 0, findingCount: 0, fixedCount: 0 }, null, 2))
     } else if (!opts.gha) {
-      console.log(renderCheckEmpty(createTerm(), fromGit))
+      await writeOut(renderCheckEmpty(createTerm(), fromGit))
     }
     return 0
   }
@@ -228,16 +229,16 @@ export async function check(opts: CheckOptions): Promise<number> {
   findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column)
 
   if (opts.json) {
-    console.log(JSON.stringify({ findings, fileCount: files.length, findingCount: findings.length, fixedCount }, null, 2))
+    await writeOut(JSON.stringify({ findings, fileCount: files.length, findingCount: findings.length, fixedCount }, null, 2))
     return findings.length > 0 ? 1 : 0
   }
 
   if (opts.gha) {
-    console.log(renderCheckGha(findings))
+    await writeOut(renderCheckGha(findings))
     return findings.length > 0 ? 1 : 0
   }
 
-  console.log(
+  await writeOut(
     renderCheckText(createTerm(), {
       findings,
       fileCount: files.length,

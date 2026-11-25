@@ -9,12 +9,15 @@
 // (scripts/build-ios.sh, scripts/build-android.sh), so Node — not Bun — is
 // the runtime that has to work.
 import { mainWithPlugins } from '../lib/index.js'
+import { exitAfterFlush } from '../lib/internal.js'
 
 const argv = process.argv.slice(2)
 const code = await mainWithPlugins(argv)
 
 // Long-running modes keep themselves alive via their own listeners; exiting
 // here would tear them down. Setup failures must still exit unsuccessfully.
+// `exitAfterFlush`, not `process.exit`: on a pipe stdout is written
+// asynchronously, and an immediate exit cut piped output off at 64 KiB (#4799).
 if (code !== 0 || (!argv.includes('--lsp') && !argv.includes('--watch'))) {
-  process.exit(code)
+  await exitAfterFlush(code)
 }
