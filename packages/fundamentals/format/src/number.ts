@@ -6,6 +6,7 @@
  * locale) so the hot path is one table lookup and one `format()` call.
  */
 import { clearTable, construct, createTable, guarded, resolve, tableStats, type Table } from './cache'
+import { exactRange, greater } from './exact'
 import type { Core, KindDef } from './formatter'
 import { describe, programmerError, quote, warnInvalid, warnOnce } from './warn'
 import type {
@@ -13,9 +14,11 @@ import type {
   BytesOptions,
   CompactOptions,
   CompactPreset,
+  CurrencyInput,
   CurrencyOptions,
   CurrencyPreset,
   KindInfo,
+  MoneyLike,
   NumberInput,
   NumberOptions,
   NumberPreset,
@@ -106,17 +109,32 @@ const numberTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, _var
   make('formatNumber', locale, { signDisplay: 'negative', ...optionsOf<Opts>(options, NUMBER_PRESETS, 'formatNumber') }),
 )
 
-/** Invalid: not a number, not a bigint, not NaN. Nullish is "missing", not invalid. */
+const EXPECTED_NUMBER = 'a number, a bigint or a decimal string such as "-1234.5" within the double range (NaN is not a number)'
+
+/** Invalid: not a number, not a bigint, not a decimal string, or NaN. Nullish is "missing", not invalid. */
 export function badNumber(fn: string, value: unknown, fallback: string): string {
   if (value != null) {
-    if (process.env.NODE_ENV !== 'production') warnInvalid(fn, value, 'a number or bigint (NaN is not a number)')
+    if (process.env.NODE_ENV !== 'production') warnInvalid(fn, value, EXPECTED_NUMBER)
   }
 
   return fallback
 }
 
-export function isUsable(value: unknown): value is number | bigint {
-  return typeof value === 'bigint' || (typeof value === 'number' && value === value)
+/**
+ * A decimal string: an optional `-`, digits, and an optional `.` followed by digits (`"9.99"`, `"-12345678901234567.89"`).
+ * `Intl` formats it exactly, at any size. Anything else `Intl` would read as a string number (`""` is 0, `"1e3"`,
+ * `" 12 "`, `"Infinity"`, `"0x1F"`) is rejected: such text is almost always a bug, never an amount.
+ */
+export function isDecimal(value: string): boolean {
+  return /^-?\d+(?:\.\d+)?$/.test(value)
+}
+
+/**
+ * A value `Intl.NumberFormat` formats exactly: a number (not NaN), a bigint, or a decimal string within the double range
+ * (any precision, but beyond about 1.8e308 every engine prints `∞`, so such a string is invalid rather than shown wrong).
+ */
+export function isUsable(value: unknown): value is number | bigint | `${number}` {
+  return typeof value === 'bigint' || (typeof value === 'number' && value === value) || (typeof value === 'string' && isDecimal(value) && Number.isFinite(Number(value)))
 }
 
 export function numberIn(locale: string, value: NumberInput, options: NumberOptions | NumberPreset | undefined): string {
@@ -149,8 +167,8 @@ export function numberRangeIn(
 ): string {
   if (!isUsable(start) || !isUsable(end)) {
     if (process.env.NODE_ENV !== 'production') {
-      if (start != null && !isUsable(start)) warnInvalid('formatNumberRange', start, 'a number or bigint')
-      if (end != null && !isUsable(end)) warnInvalid('formatNumberRange', end, 'a number or bigint')
+      if (start != null && !isUsable(start)) warnInvalid('formatNumberRange', start, EXPECTED_NUMBER)
+      if (end != null && !isUsable(end)) warnInvalid('formatNumberRange', end, EXPECTED_NUMBER)
     }
 
     return fallbackOf(options)
@@ -159,7 +177,7 @@ export function numberRangeIn(
   // A range picker mid-selection produces reversed pairs: order them.
   const range = resolve(rangeTable, locale, '', options)
 
-  return start > end ? range.formatRange(end, start) : range.formatRange(start, end)
+  return greater(start, end) ? exactRange(range, end, start) : exactRange(range, start, end)
 }
 
 // ─── formatCurrency ──────────────────────────────────────────────────────────
@@ -172,14 +190,38 @@ const CURRENCY_PRESETS: Record<CurrencyPreset, Opts> = {
   accounting: { currencySign: 'accounting' },
 }
 
-const currencyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, currency, options) =>
-  make('formatCurrency', locale, {
+const DIGIT_OPTIONS = ['minimumFractionDigits', 'maximumFractionDigits', 'minimumSignificantDigits', 'maximumSignificantDigits', 'roundingIncrement'] as const
+
+/** The most fraction digits `Intl.NumberFormat` takes (ES2023; older engines stop at 20). */
+const MAX_SCALE = 100
+
+/**
+ * Currency formats with a variant of the code and, for a Money, its digits. A Money is shown with its own digits (the
+ * amount's scale), not the platform's display digits for the currency, so it is never rounded: a currency given other
+ * digits with `defineCurrency` (ISK in hundredths) shows them. Options that set digits themselves win.
+ *
+ * Variants: `"EUR"` (the currency's own digits), `"EUR2"` (ISO code, 2 digits), `"#2"` / `"#"` (a custom code such as `USDT`, which `Intl` rejects: formatted
+ * as the placeholder `XXX` shown as a code, which {@link relabel} replaces, so the locale's own pattern places the code).
+ */
+const currencyTable = /* @__PURE__ */ createTable<Intl.NumberFormat>((locale, variant, options) => {
+  const own = optionsOf<Opts>(options, CURRENCY_PRESETS, 'formatCurrency')
+  const custom = variant.charCodeAt(0) === 35
+  const digitText = custom ? variant.slice(1) : variant.slice(3)
+  const digits = Number(digitText)
+  const setsDigits = digitText === '' || (own !== undefined && DIGIT_OPTIONS.some((key) => (own as Record<string, unknown>)[key] !== undefined))
+
+  return make('formatCurrency', locale, {
     signDisplay: 'negative',
-    ...optionsOf<Opts>(options, CURRENCY_PRESETS, 'formatCurrency'),
+    ...(setsDigits ? undefined : { minimumFractionDigits: digits, maximumFractionDigits: digits }),
+    ...own,
+    ...(custom ? { currencyDisplay: 'code' } : undefined),
     style: 'currency',
-    currency,
-  }),
-)
+    currency: custom ? PLACEHOLDER : variant.slice(0, 3),
+  })
+})
+
+/** The ISO "no currency" code: the stand-in for a custom code, displayed as a code and then relabelled. */
+const PLACEHOLDER = 'XXX'
 
 /** A currency code is three ASCII letters (ISO 4217 shape); `Intl` rejects anything else. */
 export function isCurrencyCode(c: unknown): c is string {
@@ -192,19 +234,101 @@ export function isCurrencyCode(c: unknown): c is string {
   return true
 }
 
-export function currencyIn(
-  locale: string,
-  value: NumberInput,
-  currency: string,
-  options: CurrencyOptions | CurrencyPreset | undefined,
-): string {
-  if (!isUsable(value)) return badNumber('formatCurrency', value, fallbackOf(options))
-  if (!isCurrencyCode(currency)) {
-    if (process.env.NODE_ENV !== 'production') warnInvalid('formatCurrency', currency, 'a three-letter ISO 4217 currency code such as "EUR"')
-    return fallbackOf(options)
-  }
+/**
+ * A custom currency code `Intl` cannot take: 2 to 12 upper-case letters or digits starting with a letter, not three
+ * letters (what `defineCurrency` in `@pyreon/money` registers: `USDT`, `PTS1`, `LOYALTY`).
+ */
+function isCustomCode(c: unknown): c is string {
+  return typeof c === 'string' && !isCurrencyCode(c) && /^[A-Z][A-Z0-9]{1,11}$/.test(c)
+}
 
-  return resolve(currencyTable, locale, currency, options).format(value)
+/** Text of a custom-code format: the placeholder code replaced by the real one. */
+function relabel(text: string, code: string): string {
+  return code === PLACEHOLDER ? text : text.replaceAll(PLACEHOLDER, code)
+}
+
+function relabelParts(parts: Intl.NumberFormatPart[], code: string): Intl.NumberFormatPart[] {
+  return parts.map((part) => (part.type === 'currency' && part.value === PLACEHOLDER ? { type: 'currency', value: code } : part))
+}
+
+/** The structural shape of a `@pyreon/money` Money: `{ amount: "9.99", currency: "EUR" }` (no dependency on that package). */
+export function isMoneyLike(value: unknown): value is MoneyLike {
+  return typeof value === 'object' && value !== null && typeof (value as MoneyLike).amount === 'string' && typeof (value as MoneyLike).currency === 'string'
+}
+
+/** The fraction digits of a decimal string. */
+function scaleOf(amount: string): number {
+  const dot = amount.indexOf('.')
+
+  return dot === -1 ? 0 : amount.length - dot - 1
+}
+
+/** The options of `formatCurrency`'s two forms: `(money, options?)` and `(value, currency, options?)`. */
+export function currencyOptions(value: unknown, a: unknown, b: unknown): CurrencyOptions | CurrencyPreset | undefined {
+  return (isMoneyLike(value) ? a : b) as CurrencyOptions | CurrencyPreset | undefined
+}
+
+const EXPECTED_CODE = 'an ISO 4217 code such as "EUR", or a custom code of 2 to 12 upper-case letters or digits such as "USDT"'
+
+function badCurrency(fn: string, currency: unknown, fallback: string): string {
+  if (process.env.NODE_ENV !== 'production') warnInvalid(fn, currency, EXPECTED_CODE)
+
+  return fallback
+}
+
+/** A known code shape: ISO (three letters) or custom. */
+function isCode(c: unknown): c is string {
+  return isCurrencyCode(c) || isCustomCode(c)
+}
+
+/**
+ * The format of `code` with `digits` forced (`undefined`: the currency's own), or `undefined` when the engine cannot show
+ * that many digits (more than {@link MAX_SCALE}, or more than 20 on an engine without ES2023 `Intl`): data never throws.
+ */
+function currencyFormat(fn: string, locale: string, code: string, digits: number | undefined, options: CurrencyOptions | CurrencyPreset | undefined): Intl.NumberFormat | undefined {
+  const variant = (isCustomCode(code) ? '#' : code) + (digits === undefined ? '' : String(digits))
+  if (digits === undefined || digits <= 20) return resolve(currencyTable, locale, variant, options)
+  try {
+    if (digits <= MAX_SCALE) return resolve(currencyTable, locale, variant, options)
+  } catch {
+    // An engine before ES2023 Intl takes at most 20 fraction digits.
+  }
+  if (process.env.NODE_ENV !== 'production') warnInvalid(fn, digits, `an amount with at most ${MAX_SCALE} fraction digits (at most 20 on engines before ES2023 Intl)`)
+
+  return undefined
+}
+
+/** Format a Money with its own digits; `expected` (a currency formatter's code) must match its currency. */
+function moneyText(fn: string, locale: string, m: MoneyLike, options: CurrencyOptions | CurrencyPreset | undefined, expected: string | undefined): string {
+  const fallback = fallbackOf(options)
+  if (!isUsable(m.amount)) return badNumber(fn, m.amount, fallback)
+  if (!isCode(m.currency)) return badCurrency(fn, m.currency, fallback)
+  if (expected !== undefined && m.currency !== expected) {
+    if (process.env.NODE_ENV !== 'production') {
+      warnInvalid(fn, m, `a Money in ${expected} (this formatter is for ${expected}; use formatCurrency(m) for any currency)`)
+    }
+
+    return fallback
+  }
+  const format = currencyFormat(fn, locale, m.currency, scaleOf(m.amount), options)
+
+  return format === undefined ? fallback : relabel(format.format(m.amount as `${number}`), m.currency)
+}
+
+export function currencyIn(locale: string, value: CurrencyInput, a: unknown, b: unknown): string {
+  if (isMoneyLike(value)) {
+    if (typeof a === 'string' && isCode(a) && !Object.hasOwn(CURRENCY_PRESETS, a)) {
+      throw programmerError('formatCurrency', `a Money carries its currency: call formatCurrency(m) or formatCurrency(m, options), not formatCurrency(m, ${quote(a)}).`)
+    }
+    const options = a as CurrencyOptions | CurrencyPreset | undefined
+
+    return moneyText('formatCurrency', locale, value, options, undefined)
+  }
+  const options = b as CurrencyOptions | CurrencyPreset | undefined
+  if (!isUsable(value)) return badNumber('formatCurrency', value, fallbackOf(options))
+  if (!isCode(a)) return badCurrency('formatCurrency', a, fallbackOf(options))
+
+  return relabel((currencyFormat('formatCurrency', locale, a, undefined, options) as Intl.NumberFormat).format(value), a)
 }
 
 // ─── formatPercent ───────────────────────────────────────────────────────────
@@ -439,9 +563,9 @@ function bytesText(pack: BytesPack, format: Intl.NumberFormat): string {
 /** A finite byte count, or `undefined` (with a dev warning for non-nullish input). */
 function bytesValue(bytes: NumberInput): number | undefined {
   if (bytes == null) return undefined
-  const value = typeof bytes === 'bigint' ? Number(bytes) : bytes
+  const value = typeof bytes === 'bigint' || (typeof bytes === 'string' && isDecimal(bytes)) ? Number(bytes) : bytes
   if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (process.env.NODE_ENV !== 'production') warnInvalid('formatBytes', bytes, 'a finite number of bytes')
+  if (process.env.NODE_ENV !== 'production') warnInvalid('formatBytes', bytes, 'a finite number of bytes (a number, a bigint or a decimal string)')
 
   return undefined
 }
@@ -525,7 +649,7 @@ function numberCore(
       const l = locale()
       if (!isUsable(start) || !isUsable(end)) return fb
 
-      return start > end ? get(l).formatRange(end, start) : get(l).formatRange(start, end)
+      return greater(start, end) ? exactRange(get(l), end, start) : exactRange(get(l), start, end)
     },
   }
 }
@@ -536,19 +660,56 @@ export const numberKind: KindDef<'number'> = {
 
 export const currencyKind: KindDef<'currency'> = {
   create(spec, locale) {
-    if (isCurrencyCode(spec.currency)) return numberCore(currencyTable, 'currencyFormatter', spec.currency, spec, locale)
     const fb = fallbackText(spec.fallback)
+    const code = spec.currency
+    if (!isCode(code)) {
+      return {
+        call: () => {
+          locale()
+
+          return badCurrency('currencyFormatter', code, fb)
+        },
+        parts: () => [],
+        range: () => fb,
+      }
+    }
+    const fn = 'currencyFormatter'
+    /** A Money in another currency or with a malformed amount: warn (dev) and give the fallback. */
+    const wrong = (m: MoneyLike): boolean => m.currency !== code || !isUsable(m.amount)
+    /** The format for a value (a Money uses its digits); `undefined` for too many digits. */
+    const formatFor = (l: string, digits: number | undefined): Intl.NumberFormat | undefined => currencyFormat(fn, l, code, digits, spec)
 
     return {
-      call: (value) => {
-        locale()
-        if (process.env.NODE_ENV !== 'production') warnInvalid('currencyFormatter', spec.currency, 'a three-letter ISO 4217 currency code such as "EUR"')
-        void value
+      call: (v) => {
+        if (isMoneyLike(v)) return moneyText(fn, locale(), v, spec, code)
+        const l = locale()
+        if (!isUsable(v)) return badNumber(fn, v, fb)
 
-        return fb
+        return relabel((formatFor(l, undefined) as Intl.NumberFormat).format(v), code)
       },
-      parts: () => [],
-      range: () => fb,
+      parts: (v) => {
+        const l = locale()
+        const money = isMoneyLike(v)
+        if (money ? wrong(v) : !isUsable(v)) return []
+        const format = formatFor(l, money ? scaleOf(v.amount) : undefined)
+
+        return format === undefined ? [] : relabelParts(format.formatToParts((money ? v.amount : v) as `${number}`), code)
+      },
+      range: (start, end) => {
+        const l = locale()
+        if (isMoneyLike(start) && wrong(start)) return moneyText(fn, l, start, spec, code)
+        if (isMoneyLike(end) && wrong(end)) return moneyText(fn, l, end, spec, code)
+        // A range with a Money shows the Money's digits (the larger scale when both are Money).
+        const a = isMoneyLike(start) ? start.amount : start
+        const b = isMoneyLike(end) ? end.amount : end
+        if (!isUsable(a) || !isUsable(b)) return fb
+        const money = isMoneyLike(start) || isMoneyLike(end)
+        const digits = Math.max(isMoneyLike(start) ? scaleOf(start.amount) : 0, isMoneyLike(end) ? scaleOf(end.amount) : 0)
+        const format = formatFor(l, money ? digits : undefined)
+        if (format === undefined) return fb
+
+        return relabel(greater(a, b) ? exactRange(format, b, a) : exactRange(format, a, b), code)
+      },
     }
   },
 }
