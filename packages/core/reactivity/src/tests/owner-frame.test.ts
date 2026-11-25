@@ -7,17 +7,19 @@
  * nest by mark, and nothing is recorded outside a frame.
  */
 import {
-  _abortOwnerFrame,
   _bind,
-  _closeOwnerFrame,
-  _openOwnerFrame,
-  _renderBind,
   effectScope,
   getCurrentScope,
   renderEffect,
   setCurrentScope,
   signal,
 } from '../index'
+import {
+  _abortOwnerFrame,
+  _closeOwnerFrame,
+  _openOwnerFrame,
+  _renderBind,
+} from '../internal'
 
 const subs = (s: { debug(): { subscriberCount: number } }) => s.debug().subscriberCount
 

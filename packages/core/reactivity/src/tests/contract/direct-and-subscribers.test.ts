@@ -8,16 +8,18 @@
  * names/signatures").
  */
 import {
-  _hasSubscribers,
-  _resumeSoleSubscriber,
-  _resumeSubscriber,
-  _suspendSoleSubscriber,
-  _suspendSubscriber,
   batch,
   computed,
   effect,
   signal,
 } from '../../index'
+import {
+  _hasSubscribers,
+  _resumeSoleSubscriber,
+  _resumeSubscriber,
+  _suspendSoleSubscriber,
+  _suspendSubscriber,
+} from '../../internal'
 
 describe('C8 — direct updaters', () => {
   test("C8: a signal's direct updater fires synchronously on an unbatched write", () => {

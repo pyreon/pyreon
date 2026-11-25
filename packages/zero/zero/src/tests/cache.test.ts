@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { cacheMiddleware, matchGlob } from '../cache'
+import { cacheMiddleware } from '../cache'
+import { matchGlob } from '../internal-server'
 
 describe('cache header logic', () => {
   const HASHED_ASSET = /\.[a-f0-9]{8,}\.\w+$/

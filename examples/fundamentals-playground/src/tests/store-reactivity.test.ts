@@ -10,7 +10,8 @@
  * even express.
  */
 import { afterEach, describe, it } from 'vitest'
-import { effect, signal, __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity'
+import { effect, signal } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { expectEffect, expectSignal } from '@pyreon/testing'
 import { useCounter } from '../demos/StoreDemo'
 

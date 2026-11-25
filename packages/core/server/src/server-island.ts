@@ -161,7 +161,10 @@ const registry: Map<string, RegisteredServerIsland> = sharedRegistry()
  */
 let configuredBase = ''
 
-/** @internal Fragment endpoint allowlist lookup. */
+/**
+ * The registered server islands, keyed by name: the fragment endpoint's name
+ * allowlist (`renderServerIslandFragment` answers `not-found` for any other name).
+ */
 export function getRegisteredServerIslands(): Map<string, RegisteredServerIsland> {
   return registry
 }

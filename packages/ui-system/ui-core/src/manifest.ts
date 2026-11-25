@@ -309,22 +309,6 @@ HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text`,
       seeAlso: [],
     },
     {
-      name: 'getThemeEngine / setThemeEngine',
-      kind: 'function',
-      signature: 'getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void',
-      summary:
-        "@internal — the registration seam that breaks the `ui-core ↔ unistyle` dependency cycle. `@pyreon/unistyle` calls `setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })` at module load (a side effect its `package.json` marks `sideEffects` for, so tree-shaking can't drop the registration); `<PyreonUI>` reads it lazily via `getThemeEngine()` at each use-site, never eagerly at setup. When unistyle is NOT in the module graph (a bare `@pyreon/rocketstyle`-only app), `getThemeEngine()` returns a minimal FALLBACK — identity `enrichTheme`, no CSS vars, no CPSE — and dev-warns ONCE, so `<PyreonUI>` degrades instead of crashing.",
-      example: `// User code never calls this — it's how @pyreon/unistyle wires itself into
-// <PyreonUI> without ui-core depending on unistyle. Documented here because
-// "theme isn't enriched" / "no CSS variables" debugging starts here: import
-// "@pyreon/unistyle" somewhere in your app to register the real engine.`,
-      mistakes: [
-        'Seeing an un-enriched theme (missing default breakpoints/spacing, no CSS variables) and not realizing `@pyreon/unistyle` was never imported — every styled `@pyreon` UI package except bare `@pyreon/rocketstyle` pulls it in transitively, but a minimal custom setup can miss it',
-        "Calling `setThemeEngine()` from app code — it is for a THEME ENGINE PACKAGE to register itself (the unistyle precedent); overwriting it from an app silently replaces every consumer's theme resolution",
-      ],
-      seeAlso: ['PyreonUI'],
-    },
-    {
       name: 'resolveCssVariables',
       kind: 'function',
       signature: 'resolveCssVariables(): { enabled: boolean; prefix: string; attribute: string }',
@@ -373,6 +357,10 @@ hoistNonReactStatics(Wrapped, Original)`,
     {
       label: 'System-mode subscription',
       note: '`mode="system"` lazily creates a `matchMedia(\'(prefers-color-scheme: dark)\')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.',
+    },
+    {
+      label: 'Un-enriched theme means unistyle is not loaded',
+      note: '`@pyreon/unistyle` registers the theme engine (theme enrichment with default breakpoints/spacing, CSS variables, CPSE) into ui-core at module load, so ui-core carries no unistyle dependency. Without it in the module graph — a bare `@pyreon/rocketstyle`-only setup — `<PyreonUI>` falls back to an identity engine and dev-warns once. Missing default breakpoints/spacing or no CSS variables: `import \'@pyreon/unistyle\'` somewhere reachable from the app (every styled `@pyreon` UI package except bare rocketstyle pulls it in transitively).',
     },
     {
       label: 'Low-level Provider / context',

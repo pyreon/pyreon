@@ -2,8 +2,19 @@ import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import { _resetClockState, _tickerStats, clockAttributes, clockScript, MAX_SHARED_TICKERS, now, provideClock, releaseClock, setClock, useNow } from '../clock'
-import { _resetLocaleState, setTimeZone } from '../locale'
+import {
+  resetClockState,
+  _tickerStats,
+  clockAttributes,
+  clockScript,
+  MAX_SHARED_TICKERS,
+  now,
+  provideClock,
+  releaseClock,
+  setClock,
+  useNow,
+} from '../clock'
+import { resetLocaleState, setTimeZone } from '../locale'
 
 const T0 = Date.UTC(2026, 10, 18, 12, 0, 0, 400) // 12:00:00.400
 
@@ -33,8 +44,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  _resetClockState()
-  _resetLocaleState()
+  resetClockState()
+  resetLocaleState()
   vi.useRealTimers()
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
 })

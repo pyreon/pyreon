@@ -212,7 +212,7 @@ describe('svelte gets the same core jsx-runtime redirect as its siblings', () =>
     // Five frameworks, one repetitive table — the shape where a missing
     // entry is noticed only by that framework's users, because their JSX
     // silently compiles against Pyreon's own runtime instead of the shim.
-    const { _getCompatTarget } = await import('../index')
+    const { _getCompatTarget } = await import('../internal')
     expect(_getCompatTarget('svelte' as never, '@pyreon/core/jsx-runtime')).toBe(
       '@pyreon/svelte-compat/jsx-runtime',
     )

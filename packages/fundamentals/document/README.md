@@ -149,7 +149,7 @@ await render(doc, 'sap-idoc' as never) // user-extended format
 unregisterRenderer('sap-idoc')
 ```
 
-For tests: `_resetRenderers()` restores the built-in registry.
+For tests: `_resetRenderers()` from `@pyreon/document/internal` restores the built-in registry (internal, no semver promise).
 
 ## Reactive metadata via `@pyreon/document-primitives`
 

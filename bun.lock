@@ -1238,7 +1238,7 @@
       },
       "peerDependencies": {
         "@pyreon/native-compiler": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/reactivity": "workspace:*",
       },
       "optionalPeers": [
         "@pyreon/native-compiler",
@@ -1262,7 +1262,7 @@
         "parse5": "^8.1.1",
       },
       "peerDependencies": {
-        "@pyreon/core": "workspace:^",
+        "@pyreon/core": "workspace:*",
         "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
@@ -1356,8 +1356,8 @@
         "vite": "^8.3.8",
       },
       "peerDependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
       },
     },
     "packages/core/runtime-server": {
@@ -1372,8 +1372,8 @@
         "parse5": "^8.1.1",
       },
       "peerDependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
       },
     },
     "packages/core/server": {
@@ -1394,7 +1394,7 @@
         "parse5": "^8.1.1",
       },
       "peerDependencies": {
-        "@pyreon/core": "workspace:^",
+        "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
       },
@@ -2197,7 +2197,7 @@
       },
       "peerDependencies": {
         "@pyreon/native-compiler": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/reactivity": "workspace:*",
       },
       "optionalPeers": [
         "@pyreon/native-compiler",
@@ -2948,11 +2948,11 @@
         "@pyreon/form": "workspace:^",
         "@pyreon/i18n": "workspace:^",
         "@pyreon/query": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/store": "workspace:^",
-        "@pyreon/toast": "workspace:^",
+        "@pyreon/toast": "workspace:*",
         "@pyreon/ui-core": "workspace:^",
         "@testing-library/jest-dom": "^6.0.0 || ^7.0.0",
         "vitest": "^5.0.0",
@@ -3139,7 +3139,7 @@
         "@vitus-labs/tools-rolldown": "^2.8.0",
       },
       "peerDependencies": {
-        "@pyreon/core": "workspace:^",
+        "@pyreon/core": "workspace:*",
         "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
       },
@@ -3173,7 +3173,7 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:*",
       },
       "optionalPeers": [
         "@pyreon/native-compiler",
@@ -3204,7 +3204,7 @@
       "dependencies": {
         "@pyreon/sized-map": "workspace:*",
         "@pyreon/styler": "workspace:^",
-        "@pyreon/ui-core": "workspace:^",
+        "@pyreon/ui-core": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
@@ -3219,7 +3219,7 @@
         "oxc-parser": "^0.159.0",
       },
       "peerDependencies": {
-        "@pyreon/core": "workspace:^",
+        "@pyreon/core": "workspace:*",
         "@pyreon/native-compiler": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "oxc-parser": "^0.152.0",
@@ -3246,9 +3246,9 @@
         "oxc-parser": "^0.159.0",
       },
       "peerDependencies": {
-        "@pyreon/core": "workspace:^",
+        "@pyreon/core": "workspace:*",
         "@pyreon/native-compiler": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/reactivity": "workspace:*",
         "oxc-parser": "^0.152.0",
       },
       "optionalPeers": [
@@ -3260,7 +3260,7 @@
       "name": "@pyreon/ui-core",
       "version": "0.54.0",
       "dependencies": {
-        "@pyreon/styler": "workspace:^",
+        "@pyreon/styler": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
@@ -3287,7 +3287,7 @@
       "version": "0.54.0",
       "dependencies": {
         "@pyreon/styler": "workspace:^",
-        "@pyreon/ui-core": "workspace:^",
+        "@pyreon/ui-core": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",

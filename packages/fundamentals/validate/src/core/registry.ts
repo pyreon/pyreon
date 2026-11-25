@@ -111,13 +111,22 @@ const serverChecks = new Map<string, ServerCheckFn>()
 
 /**
  * Install a server-only check under `key` (called from
- * `@pyreon/validate/server` via `registerServerCheck`). Idempotent.
+ * `@pyreon/validate/server` via `registerServerCheck`). Idempotent. Apps use
+ * `registerServerCheck`; tests reach this through `@pyreon/validate/internal`.
+ *
+ * @internal
  */
 export function installServerCheck(key: string, fn: ServerCheckFn): void {
   serverChecks.set(key, fn)
 }
 
-/** The installed server check for `key`, or `undefined` (→ client no-op + pending). */
+/**
+ * The installed server check for `key`, or `undefined` (→ client no-op +
+ * pending). Read by the `.serverCheck` op; tests reach it through
+ * `@pyreon/validate/internal`.
+ *
+ * @internal
+ */
 export function getServerCheck(key: string): ServerCheckFn | undefined {
   return serverChecks.get(key)
 }

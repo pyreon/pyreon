@@ -391,7 +391,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// derive the locale from the URL in production SSR, SSG and on
 			// the client — not only under the dev middleware's ALS store.
 			return config.i18n
-				? `${routeModule}\nimport { _registerI18nConfig as __zeroRegisterI18n } from "@pyreon/zero";\n__zeroRegisterI18n(${JSON.stringify(config.i18n)});\n`
+				? `${routeModule}\nimport { _registerI18nConfig as __zeroRegisterI18n } from "@pyreon/zero/internal";\n__zeroRegisterI18n(${JSON.stringify(config.i18n)});\n`
 				: routeModule;
 		} catch (err) {
 			// A [Pyreon] diagnostic (invalid route file, loader + server
@@ -965,11 +965,12 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// index — to `<nested-dir>/client`, bypassing the package's exports
 			// map and failing import-analysis with "Does the file exist?" (caught
 			// by the zero-hmr e2e; the main-entry alias must never swallow
-			// subpath imports). `@pyreon/runtime-server` keeps the string form —
-			// it has no subpath consumers and the prefix shape has shipped fine.
+			// subpath imports). `@pyreon/runtime-server` is anchored the same way:
+			// it now has a `./internal` subpath, which a prefix alias would
+			// rewrite to `<nested-dir>/internal`.
 			const pyreonServerAliases = [
 				...(runtimeServerAlias
-					? [{ find: "@pyreon/runtime-server", replacement: runtimeServerAlias }]
+					? [{ find: /^@pyreon\/runtime-server$/, replacement: runtimeServerAlias }]
 					: []),
 				...(serverPkgAlias
 					? [{ find: /^@pyreon\/server$/, replacement: serverPkgAlias }]

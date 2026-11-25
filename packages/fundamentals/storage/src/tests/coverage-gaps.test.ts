@@ -5,10 +5,11 @@
 // actually fire. `/auto` can't override happy-dom's non-configurable global, so
 // assign the factory explicitly before the module under test reads it.
 import { IDBFactory } from 'fake-indexeddb'
+import { _resetDBCache, _resetRegistry } from '../internal'
 globalThis.indexedDB = new IDBFactory()
 
 import { afterEach, describe, expect, it } from 'vitest'
-import { _resetDBCache, _resetRegistry, useCookie, useIndexedDB } from '../index'
+import { useCookie, useIndexedDB } from '../index'
 
 afterEach(() => {
   _resetRegistry()

@@ -8,14 +8,14 @@ import { fileURLToPath } from 'node:url'
 import * as components from '../components'
 import * as unitsModule from '../units'
 import * as format from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 
 const PAGE = join(dirname(fileURLToPath(import.meta.url)), '../../../../../docs/src/content/docs/format.md')
 const page = readFileSync(PAGE, 'utf8')
 const norm = (v: unknown): unknown => (typeof v === 'string' ? v.replace(/[   ]/g, ' ') : Array.isArray(v) ? v.map(norm) : v)
 const strip = (t: string): string => t.replace(/\((\w+): [^)=]+\)/g, '($1)')
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 describe('docs/format.md examples', () => {
   const blocks = [...page.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => (m[1] as string).split('\n'))

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _resetHotkeys, registerHotkey } from '../index'
+import { registerHotkey } from '../index'
+import { _resetHotkeys } from '../internal'
 
 function fireKey(key: string): KeyboardEvent {
   const event = new KeyboardEvent('keydown', {

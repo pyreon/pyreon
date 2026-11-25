@@ -176,6 +176,8 @@ public enum PyreonOidcClient {
             headers: ["content-type": "application/x-www-form-urlencoded", "accept": "application/json"],
             body: Data(body.utf8))
         let res = try await send(transport, req)
+        // 429 and 5xx are the provider being unavailable (retry later); anything else is a refusal.
+        if res.status == 429 || res.status >= 500 { throw PyreonAuthError("provider_unavailable", "token endpoint returned \(res.status)") }
         if !res.isOK { throw PyreonAuthError("token_exchange_failed", "token endpoint returned \(res.status)") }
         guard let t = json(res) else { throw PyreonAuthError("bad_token_response", "token response is not a JSON object") }
         guard let access = t["access_token"] as? String, !access.isEmpty,

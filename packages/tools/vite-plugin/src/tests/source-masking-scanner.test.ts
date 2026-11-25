@@ -28,7 +28,7 @@
  * tracked, because an interpolation can hold an object literal.
  */
 import { describe, expect, it } from 'vitest'
-import { _maskStringsAndComments as mask } from '../index'
+import { _maskStringsAndComments as mask } from '../internal'
 
 /** Every masked output must preserve length and line structure. */
 const invariants = (src: string): string => {

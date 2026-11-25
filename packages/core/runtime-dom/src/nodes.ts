@@ -1,4 +1,16 @@
 import type { VNode, VNodeChild } from '@pyreon/core'
+import {
+  _abortOwnerFrame,
+  _closeOwnerFrame,
+  _frameReads,
+  _openOwnerFrame,
+  _rdDropBinding,
+  _rdLabelBinding,
+  _releaseRun,
+  _replayReads,
+  _currentScope,
+  _effectOwned,
+} from '@pyreon/reactivity/internal'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
@@ -19,7 +31,7 @@ export interface FirstRun<T> {
 }
 
 import type { EffectScope, RunCapture, SubscriberHost } from '@pyreon/reactivity'
-import { _abortOwnerFrame, _closeOwnerFrame, _currentScope, _effectOwned, _frameReads, _openOwnerFrame, _rdDropBinding, _rdLabelBinding, _releaseRun, _replayReads, effectScope, getContextOwner, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
+import { effectScope, getContextOwner, runUntracked, runWithContextOwner, setCurrentScope } from '@pyreon/reactivity'
 
 
 /**
@@ -50,6 +62,22 @@ import { _abortOwnerFrame, _closeOwnerFrame, _currentScope, _effectOwned, _frame
  * an outer row) save and RESTORE the outer parent, never reset it.
  */
 let bulkDetachParent: Node | null = null
+
+/**
+ * Run `fn` (a teardown) with `parent` declared as leaving as a unit, so every
+ * removal of a node inside it through `detachNode` is skipped. Used by a
+ * claimed #4599 region (`claimRegion` in hydrate.ts): its element leaves with
+ * its template, and a bind that throws keeps its server markup.
+ */
+export function _detachAsUnit(parent: Node, fn: () => void): void {
+  const prev = bulkDetachParent
+  bulkDetachParent = parent
+  try {
+    fn()
+  } finally {
+    bulkDetachParent = prev
+  }
+}
 
 /** Remove `node` from its parent, unless a bulk detach makes it redundant. */
 export function detachNode(node: Node): void {

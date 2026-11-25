@@ -40,11 +40,15 @@ public fun PyreonRouteLoader(
     content: @Composable () -> Unit,
 ) {
     val router = LocalPyreonRouter.current
-    LaunchedEffect(path) {
+    // Keyed by the route, query excluded: the emit passes `currentPath`, and
+    // a url-state write (query only) must not restart the effect or miss the
+    // stored data.
+    val key = PyreonRouter.loaderKey(path)
+    LaunchedEffect(key) {
         // Idempotent: only run the loader if this route has no stored
         // data yet (a recomposition must not re-run it).
-        if (router != null && router.loaderData.value[path] == null) {
-            router.setLoaderData(path, load())
+        if (router != null && router.loaderData.value[key] == null) {
+            router.setLoaderData(key, load())
         }
     }
     content()

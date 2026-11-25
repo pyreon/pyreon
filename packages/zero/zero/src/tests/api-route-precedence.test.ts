@@ -14,10 +14,10 @@ import { dirname, join } from 'node:path'
 import type { MiddlewareContext } from '@pyreon/server'
 import {
   type ApiRouteEntry,
-  compareApiRoutePatterns,
   createApiMiddleware,
   generateApiRouteModule,
 } from '../api-routes'
+import { compareApiRoutePatterns } from '../internal-server'
 
 // Deliberately the WORST order: catch-all first, dynamic before static.
 const FILES = [

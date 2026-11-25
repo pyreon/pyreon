@@ -577,7 +577,7 @@ describe('generateMiddlewareModule', () => {
       ['a_shared', join(dirname(mwTmp), 'features/shared.ts')],
     ])
     const code = generateMiddlewareModule(['admin/[id].tsx', 'admin/index.tsx', 'admin/_layout.tsx'], mwTmp, actions)
-    expect(code).toContain('import { _registerActionRoutes } from "@pyreon/zero/actions"')
+    expect(code).toContain('import { _registerActionRoutes } from "@pyreon/zero/internal"')
     expect(code).toContain('"a_page": "/admin"')
     expect(code).toContain('"a_dynamic_server": "/admin/:id"')
     expect(code).not.toContain('a_layout')

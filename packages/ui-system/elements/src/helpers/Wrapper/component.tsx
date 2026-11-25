@@ -4,7 +4,8 @@
  * fix (parent + child Styled) because these HTML elements do not natively
  * support `display: flex` consistently across browsers.
  */
-import { _mergePropsExcept, _pickProps, h } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import { _mergePropsExcept, _pickProps } from '@pyreon/core/internal'
 import { getShouldBeEmpty } from '../../Element/utils'
 import { hasGetterProps, IS_DEVELOPMENT } from '../../utils'
 import { internElementBundle } from '../internElementBundle'

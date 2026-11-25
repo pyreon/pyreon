@@ -1,5 +1,4 @@
 import {
-  _setRequestOwnerReader,
   computed,
   effect,
   effectScope,
@@ -7,6 +6,9 @@ import {
   renderEffect,
   signal,
 } from '../index'
+import {
+  _setRequestOwnerReader,
+} from '../internal'
 
 /**
  * `_setRequestOwnerReader` is how a server renderer owns the nodes a component

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { compressResponse, isCompressible } from '../compression'
+import { compressResponse } from '../compression'
+import { isCompressible } from '../internal-server'
 
 describe('compressResponse', () => {
   it('compresses text/html above threshold', async () => {

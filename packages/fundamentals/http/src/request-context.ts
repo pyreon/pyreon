@@ -75,3 +75,13 @@ export function resolveAgainstAmbientOrigin(url: string): string {
     return url
   }
 }
+
+/**
+ * Detach the accessor `@pyreon/http/server` registers. Only useful in tests
+ * that assert the un-wired behaviour; production never needs it.
+ *
+ * @internal
+ */
+export function _resetRequestSource(): void {
+  _setRequestSource(null)
+}

@@ -369,9 +369,11 @@ function readDisposed<T>(read: ComputedFn<T>, fn: () => T, first: boolean): T {
   return read._value
 }
 
-function evalThrew<T>(read: ComputedFn<T>, err: unknown): T {
+function evalThrew<T>(read: ComputedFn<T>, err: unknown, recompute: () => void): T {
   _errorHandler(err)
+  if (read._disposed) cleanupLocalDeps(read._deps, recompute)
   read._dirty = 0
+
   return read._value
 }
 
@@ -511,8 +513,12 @@ function createComputed<T>(
         next = runVerify(recompute, read._deps, fn)
       } catch (err) {
         initialized = true
-        return evalThrew(read, err) // keep the previous value on a throwing eval
+        return evalThrew(read, err, recompute) // keep the previous value on a throwing eval
       }
+      // Disposed DURING this evaluation: reads after the dispose re-linked it.
+      // Unlink; the evaluation still settles as the final value. (Not a
+      // `finally`: it grows this frame, and deep chains pull recursively.)
+      if (read._disposed) cleanupLocalDeps(read._deps, recompute)
       read._dirty = 0
       initialized = true
       // Value gate: keep the OLD value (stable reference — the memo semantic)

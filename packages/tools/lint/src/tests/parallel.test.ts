@@ -12,7 +12,7 @@ import {
   planRun,
   workerCountFor,
 } from '../parallel'
-import { lintSlice } from '../lint-worker'
+import { lintSlice } from '../lint-slice'
 import { getPreset } from '../config/presets'
 import { hasBuiltLib } from '@pyreon/test-utils/built-lib'
 
@@ -201,9 +201,10 @@ describe('the BUILT worker actually spawns', () => {
   // for. Mirrors `bin-invokes-cli.test.ts`: exercise the artifact a consumer
   // gets, and fail loudly if it is missing rather than skipping quietly.
   const LIB_WORKER = join(import.meta.dirname, '..', '..', 'lib', 'lint-worker.js')
-  const LIB_INDEX = join(import.meta.dirname, '..', '..', 'lib', 'index.js')
+  // `_workerEntry` lives on the `./internal` subpath, not the public entry.
+  const LIB_INTERNAL = join(import.meta.dirname, '..', '..', 'lib', 'internal.js')
 
-  it.skipIf(!hasBuiltLib(LIB_INDEX, "the BUILT _workerEntry()'s resolution"))(
+  it.skipIf(!hasBuiltLib(LIB_INTERNAL, "the BUILT _workerEntry()'s resolution"))(
     'the BUILT _workerEntry() resolves to a file that exists',
     async () => {
       // THE spec that catches the real bug. Under `src` the relative guess
@@ -211,7 +212,7 @@ describe('the BUILT worker actually spawns', () => {
       // only exists in the BUNDLED layout, where `parallel.ts` lives in
       // `lib/_chunks/` and a relative path lands one directory too deep.
       // Import the built artifact so the test sees what a consumer sees.
-      const built = (await import(LIB_INDEX)) as { _workerEntry?: () => string }
+      const built = (await import(LIB_INTERNAL)) as { _workerEntry?: () => string }
       expect(typeof built._workerEntry).toBe('function')
       const entry = built._workerEntry!()
       expect(existsSync(entry), `built _workerEntry() -> ${entry}`).toBe(true)
