@@ -17,7 +17,11 @@ import {
   pastDeadline,
   quietSince,
   releaseLock,
-  renderCommand,
+  ALLOWED_PROGRAMS,
+  allowedProgram,
+  quoteArgv,
+  renderArgv,
+  resolveInside,
   requiredGapMs,
   resolveDeadline,
   runInvalidReasons,
@@ -311,16 +315,26 @@ describe('foreign processes', () => {
   it('a foreign bench is a matching process outside this runner’s tree (ancestors and descendants excluded)', () => {
     expect(
       foreignProcesses(ps, 11, [
-        'bench-fair\\.ts',
-        'bench-scenarios\\.ts',
-        'scripts/bench/ab/run\\.ts',
+        /bench-fair\.ts/,
+        /bench-scenarios\.ts/,
+        /scripts\/bench\/ab\/run\.ts/,
       ]),
     ).toEqual(['20 bun bench-fair.ts --repeat 1', '21 bun scripts/bench/ab/run.ts other.json'])
   })
 
   it('builds and test suites are not foreign benches (the load rule covers them)', () => {
-    expect(foreignProcesses(ps, 11, ['vitest']).length).toBe(1)
-    expect(foreignProcesses(ps, 11, ['bench-fair\\.ts'])).not.toContain('22 bunx vitest run')
+    expect(foreignProcesses(ps, 11, [/vitest/]).length).toBe(1)
+    expect(foreignProcesses(ps, 11, [/bench-fair\.ts/])).not.toContain('22 bunx vitest run')
+  })
+
+  it('extra markers from the command line are literal substrings, never regular expressions', () => {
+    // A user-supplied `(a+)+$`-style pattern would be ReDoS-able and `.` would
+    // match anything; as a substring it only matches itself.
+    expect(foreignProcesses(ps, 11, [], ['.*'])).toEqual([])
+    expect(foreignProcesses(ps, 11, [], ['(a+)+$'])).toEqual([])
+    expect(foreignProcesses(ps, 11, [], ['bench-fair.ts --repeat'])).toEqual([
+      '20 bun bench-fair.ts --repeat 1',
+    ])
   })
 })
 
@@ -336,7 +350,16 @@ const JOBS: JobsFile = {
     {
       label: 'tree',
       cwd: 'examples/benchmark',
-      command: 'bun bench-scenarios.ts --pass-offset {pass} --raw-out {out}',
+      argv: [
+        'bun',
+        'bench-scenarios.ts',
+        '--only',
+        'Pyreon,SolidJS',
+        '--pass-offset',
+        '{pass}',
+        '--raw-out',
+        '{out}',
+      ],
     },
   ],
   runs: 2,
@@ -357,15 +380,41 @@ describe('schedule and arm identity', () => {
     ])
   })
 
-  it('renders placeholders', () => {
+  it('renders placeholders inside each argument, never re-splitting a value', () => {
+    const v = { out: '/tmp/o $(touch x); rm -rf ~.json', pass: 3, run: 2, arm: 'B' }
     expect(
-      renderCommand('x --pass-offset {pass} --raw-out {out} {arm} r{run}', {
-        out: '/o.json',
-        pass: 3,
-        run: 2,
-        arm: 'B',
-      }),
-    ).toBe('x --pass-offset 3 --raw-out /o.json B r2')
+      renderArgv(
+        ['bun', 'x.ts', '--pass-offset', '{pass}', '--raw-out', '{out}', '{arm}-r{run}'],
+        v,
+      ),
+    ).toEqual([
+      'bun',
+      'x.ts',
+      '--pass-offset',
+      '3',
+      '--raw-out',
+      '/tmp/o $(touch x); rm -rf ~.json',
+      'B-r2',
+    ])
+    // The log rendering quotes it, so a copy-pasted command is still one argument.
+    expect(quoteArgv(['bun', "it's", '/a b'])).toBe("bun 'it'\\''s' '/a b'")
+  })
+
+  it('runs only allow-listed programs, without a shell', () => {
+    expect(ALLOWED_PROGRAMS).toEqual(['bun', 'bunx', 'node'])
+    expect(allowedProgram('bun')).toBe('bun')
+    for (const bad of ['/bin/bash', 'sh', 'bun; rm -rf /', '../bun', '', undefined]) {
+      expect(allowedProgram(bad)).toBeNull()
+    }
+  })
+
+  it('keeps working directories inside the arm dir', () => {
+    expect(resolveInside('/tmp/wt', 'examples/benchmark')).toBe('/tmp/wt/examples/benchmark')
+    expect(resolveInside('/tmp/wt', undefined)).toBe('/tmp/wt')
+    expect(resolveInside('/tmp/wt', '../other')).toBeNull()
+    expect(resolveInside('/tmp/wt', 'a/../../x')).toBeNull()
+    expect(resolveInside('/tmp/wt', '/etc')).toBeNull()
+    expect(resolveInside('/tmp/wt', '../wt2')).toBeNull()
   })
 
   it('hashes content, not names, and flags arms that are the same build', () => {
@@ -393,8 +442,9 @@ describe('schedule and arm identity', () => {
       name: 'a b',
       arms: { A: { dir: 'rel', entry: [] }, 'B/': { dir: '/b', entry: ['x'], build: {} } },
       jobs: [
-        { label: 'j', command: 'no output' },
-        { label: 'j', command: '{out}' },
+        { label: 'j', argv: ['bun', 'no-output.ts'] },
+        { label: 'j', argv: ['/bin/bash', '-c', 'x > {out}'] },
+        { label: 'k', argv: 'bun x.ts {out}', cwd: '../escape' },
       ],
       runs: 0,
     })
@@ -403,9 +453,12 @@ describe('schedule and arm identity', () => {
       'arm "A": "dir" must be an absolute path',
       'arm "A": "entry" needs at least one glob',
       'arm id "B/" must match [A-Za-z0-9._-]+',
-      'arm "B/": "build.command" must be a string',
-      'job "j": "command" must write its result to {out}',
+      'arm "B/" build: "argv" must be a non-empty array of strings',
+      'job "j": "argv" must write its result to {out}',
       'duplicate job label "j"',
+      'job "j": argv[0] must be one of bun, bunx, node (got "/bin/bash")',
+      'job "k": "argv" must be a non-empty array of strings',
+      'job "k": "cwd" must be a relative path inside the arm dir',
       '"runs" must be a positive integer',
     ])
     expect(validateJobsFile({ name: 'x', arms: {}, jobs: [] })).toEqual([

@@ -18,6 +18,7 @@
  *    quanta has no verdict; anything else is a tie.
  */
 import { createHash } from 'node:crypto'
+import { resolve as resolvePath, sep } from 'node:path'
 import { clusterBootstrapCI95, medianOf } from '../../../examples/benchmark/cluster-bootstrap.ts'
 
 // ─── Jobs file ───────────────────────────────────────────────────────────────
@@ -32,7 +33,30 @@ export interface ArmSpec {
    */
   entry: string[]
   /** Optional preflight build, run in `dir/<build.cwd>` before anything is timed. */
-  build?: { cwd?: string; command: string }
+  build?: { cwd?: string; argv: string[] }
+}
+
+/**
+ * Programs a job or build may start. Commands are argv arrays run WITHOUT a
+ * shell, and the executable is one of these names, so a jobs file cannot
+ * smuggle shell syntax or start an arbitrary binary.
+ */
+export const ALLOWED_PROGRAMS = ['bun', 'bunx', 'node'] as const
+export type AllowedProgram = (typeof ALLOWED_PROGRAMS)[number]
+
+/** The allow-listed program `argv[0]` names, or null. */
+export function allowedProgram(argv0: unknown): AllowedProgram | null {
+  return ALLOWED_PROGRAMS.find((p) => p === argv0) ?? null
+}
+
+/**
+ * Resolve `rel` inside `root`; null when it escapes `root` (absolute paths,
+ * `..` segments that climb out).
+ */
+export function resolveInside(root: string, rel: string | undefined): string | null {
+  const base = resolvePath(root)
+  const full = resolvePath(base, rel ?? '.')
+  return full === base || full.startsWith(base + sep) ? full : null
 }
 
 export interface JobSpec {
@@ -41,10 +65,12 @@ export interface JobSpec {
   /** Working directory relative to the arm's `dir`. Default `.`. */
   cwd?: string
   /**
-   * Shell command. Placeholders: `{out}` (absolute path the job must write its
-   * JSON to), `{pass}` (global pass index, 1-based), `{run}`, `{arm}`.
+   * Program and arguments, run without a shell; `argv[0]` must be one of
+   * `ALLOWED_PROGRAMS`. Placeholders inside any argument: `{out}` (absolute
+   * path the job must write its JSON to), `{pass}` (global pass index,
+   * 1-based), `{run}`, `{arm}`.
    */
-  command: string
+  argv: string[]
 }
 
 export interface JobsFile {
@@ -69,10 +95,28 @@ function armErrors(id: string, a: Partial<ArmSpec> | undefined): string[] {
   if (!Array.isArray(a?.entry) || a.entry.length === 0) {
     errs.push(`arm "${id}": "entry" needs at least one glob`)
   }
-  if (a?.build !== undefined && typeof a.build.command !== 'string') {
-    errs.push(`arm "${id}": "build.command" must be a string`)
+  if (a?.build !== undefined) {
+    errs.push(...argvErrors(`arm "${id}" build`, a.build.argv))
+    if (a.build.cwd !== undefined && !relativeInside(a.build.cwd)) {
+      errs.push(`arm "${id}": "build.cwd" must be a relative path inside the arm dir`)
+    }
   }
   return errs
+}
+
+/** A relative path that cannot climb out of the directory it is joined to. */
+function relativeInside(rel: string): boolean {
+  return !rel.startsWith('/') && resolveInside('/r', rel) !== null
+}
+
+function argvErrors(what: string, argv: unknown): string[] {
+  if (!Array.isArray(argv) || argv.length === 0 || !argv.every((x) => typeof x === 'string')) {
+    return [`${what}: "argv" must be a non-empty array of strings`]
+  }
+  if (allowedProgram(argv[0]) === null) {
+    return [`${what}: argv[0] must be one of ${ALLOWED_PROGRAMS.join(', ')} (got "${argv[0]}")`]
+  }
+  return []
 }
 
 function jobErrors(jobs: readonly Partial<JobSpec>[]): string[] {
@@ -87,8 +131,13 @@ function jobErrors(jobs: readonly Partial<JobSpec>[]): string[] {
     } else {
       seen.add(label)
     }
-    if (typeof job?.command !== 'string' || !job.command.includes('{out}')) {
-      errs.push(`job "${label}": "command" must write its result to {out}`)
+    const argvErr = argvErrors(`job "${label}"`, job?.argv)
+    errs.push(...argvErr)
+    if (argvErr.length === 0 && !(job.argv as string[]).some((a) => a.includes('{out}'))) {
+      errs.push(`job "${label}": "argv" must write its result to {out}`)
+    }
+    if (job?.cwd !== undefined && !relativeInside(job.cwd)) {
+      errs.push(`job "${label}": "cwd" must be a relative path inside the arm dir`)
     }
   }
   return errs
@@ -152,16 +201,28 @@ export function expandSchedule(f: JobsFile): ScheduledJob[] {
   return out
 }
 
-/** Substitute `{out}`, `{pass}`, `{run}`, `{arm}` in a job command. */
-export function renderCommand(
-  command: string,
+/**
+ * Substitute `{out}`, `{pass}`, `{run}`, `{arm}` in each argument. Each value
+ * stays inside its own argument: nothing is re-split or shell-interpreted.
+ */
+export function renderArgv(
+  argv: readonly string[],
   v: { out: string; pass: number; run: number; arm: string },
-): string {
-  return command
-    .replaceAll('{out}', v.out)
-    .replaceAll('{pass}', String(v.pass))
-    .replaceAll('{run}', String(v.run))
-    .replaceAll('{arm}', v.arm)
+): string[] {
+  return argv.map((a) =>
+    a
+      .replaceAll('{out}', v.out)
+      .replaceAll('{pass}', String(v.pass))
+      .replaceAll('{run}', String(v.run))
+      .replaceAll('{arm}', v.arm),
+  )
+}
+
+/** Human-readable (copy-pasteable) rendering of an argv for logs. */
+export function quoteArgv(argv: readonly string[]): string {
+  return argv
+    .map((a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replaceAll("'", "'\\''")}'`))
+    .join(' ')
 }
 
 // ─── Arm identity ────────────────────────────────────────────────────────────
@@ -446,30 +507,33 @@ export function parsePs(out: string): PsRow[] {
  * Builds, test suites and simulators are NOT on this list — their cost shows
  * up in the load average, which the load rule already gates on.
  */
-export const DEFAULT_FOREIGN_PATTERNS: readonly string[] = [
-  'bench-fair\\.ts',
-  'bench-scenarios\\.ts',
-  'bench-crossover\\.ts',
-  'bench-hydration[\\w-]*\\.ts',
-  'bench-apppage[\\w-]*\\.ts',
-  'bench-ssr\\.ts',
-  'bench-tree\\w*\\.ts',
-  'bench-\\w*profile\\.ts',
-  'scripts/bench/core/\\w+\\.ts',
-  'scripts/bench/dom(-micro)?\\.ts',
-  'scripts/bench/ab/run\\.ts',
-  'treeheap',
-  'mlheap',
+export const DEFAULT_FOREIGN_PATTERNS: readonly RegExp[] = [
+  /bench-fair\.ts/,
+  /bench-scenarios\.ts/,
+  /bench-crossover\.ts/,
+  /bench-hydration[\w-]*\.ts/,
+  /bench-apppage[\w-]*\.ts/,
+  /bench-ssr\.ts/,
+  /bench-tree\w*\.ts/,
+  /bench-\w*profile\.ts/,
+  /scripts\/bench\/core\/\w+\.ts/,
+  /scripts\/bench\/dom(-micro)?\.ts/,
+  /scripts\/bench\/ab\/run\.ts/,
+  /treeheap/,
+  /mlheap/,
 ]
 
 /**
- * Processes matching `patterns` that are NOT `selfPid` or one of its
- * descendants. Returns `"<pid> <command>"` strings (command truncated).
+ * Processes whose command line matches one of `patterns` or contains one of
+ * the literal `substrings` (the CLI's `--foreign-match`, never compiled into a
+ * regular expression), excluding `selfPid`, its ancestors and descendants.
+ * Returns `"<pid> <command>"` strings (command truncated).
  */
 export function foreignProcesses(
   rows: readonly PsRow[],
   selfPid: number,
-  patterns: readonly string[],
+  patterns: readonly RegExp[],
+  substrings: readonly string[] = [],
 ): string[] {
   const children = new Map<number, number[]>()
   for (const r of rows) children.set(r.ppid, [...(children.get(r.ppid) ?? []), r.pid])
@@ -489,9 +553,10 @@ export function foreignProcesses(
       }
     }
   }
-  const re = new RegExp(patterns.join('|'))
+  const matches = (cmd: string) =>
+    patterns.some((re) => re.test(cmd)) || substrings.some((x) => cmd.includes(x))
   return rows
-    .filter((r) => !own.has(r.pid) && re.test(r.command) && !/\bps -axo\b/.test(r.command))
+    .filter((r) => !own.has(r.pid) && matches(r.command) && !/\bps -axo\b/.test(r.command))
     .map((r) => `${r.pid} ${r.command.slice(0, 120)}`)
 }
 

@@ -5,7 +5,7 @@
  *
  *   bun scripts/bench/ab/run.ts <jobs.json> [--out DIR] [--deadline SPEC]
  *     [--max-load 4] [--quiet-for 30] [--attempts 3] [--yield 5]
- *     --lock PATH (or PYREON_BENCH_LOCK) [--foreign-pattern REGEX]… [--dry-run]
+ *     --lock PATH (or PYREON_BENCH_LOCK) [--foreign-match TEXT]… [--dry-run]
  *
  * What it does, in order:
  *  1. Validates the jobs file and expands the schedule (runs → passes → jobs →
@@ -17,7 +17,7 @@
  *     swapping `lib/` alone builds identical bundles).
  *  3. For each scheduled job: waits until the lock is free and the 1-minute
  *     load has stayed below `--max-load` for `--quiet-for` seconds, takes the
- *     lock atomically, runs the command with `NODE_ENV=production`, samples
+ *     lock atomically, runs the job's argv (no shell; `bun`, `bunx` or `node`) with `NODE_ENV=production`, samples
  *     the load every second and the process table every 5 s (and both at the
  *     start and the end), releases the
  *     lock, re-hashes the arm's entry, and writes a structured attempt record.
@@ -64,7 +64,11 @@ import {
   pastDeadline,
   quietSince,
   releaseLock,
-  renderCommand,
+  renderArgv,
+  quoteArgv,
+  resolveInside,
+  allowedProgram,
+  ALLOWED_PROGRAMS,
   resolveDeadline,
   runInvalidReasons,
   tryAcquireLock,
@@ -108,7 +112,9 @@ if (!lockArg) {
   process.exit(2)
 }
 const LOCK = resolve(lockArg)
-const FOREIGN = [...DEFAULT_FOREIGN_PATTERNS, ...flags('--foreign-pattern')]
+const FOREIGN = DEFAULT_FOREIGN_PATTERNS
+/** Extra foreign-bench markers, matched as LITERAL substrings of a command line. */
+const FOREIGN_MATCH = flags('--foreign-match')
 const DRY = argv.includes('--dry-run')
 const startedAt = new Date()
 const deadlineSpec = flag('--deadline')
@@ -203,7 +209,7 @@ function foreignNow(): string[] {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
   })
-  return foreignProcesses(parsePs(ps.stdout ?? ''), process.pid, FOREIGN)
+  return foreignProcesses(parsePs(ps.stdout ?? ''), process.pid, FOREIGN, FOREIGN_MATCH)
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** The process-table scan (`ps`, ~20–50 ms of CPU) runs every PS_EVERY load samples. */
@@ -222,11 +228,21 @@ function entryHash(arm: string): string | null {
   return files.length === 0 ? null : hashFiles(files)
 }
 
-function runShell(command: string, cwd: string, logPath: string): Promise<number | null> {
+/**
+ * Run an argv WITHOUT a shell. The executable is the allow-listed constant
+ * (`allowedProgram`), never a string taken from the jobs file, and every
+ * argument is passed as-is, so no value can be re-split or shell-interpreted.
+ */
+function runArgv(cmd: readonly string[], cwd: string, logPath: string): Promise<number | null> {
+  const program = allowedProgram(cmd[0])
+  if (program === null) {
+    throw new Error(`[bench-ab] refusing to run "${cmd[0]}": not in ${ALLOWED_PROGRAMS.join(', ')}`)
+  }
   return new Promise((done) => {
     const fd = openSync(logPath, 'a')
-    const child = spawn('/bin/bash', ['-c', command], {
+    const child = spawn(program, cmd.slice(1), {
       cwd,
+      shell: false,
       env: { ...process.env, NODE_ENV: 'production' },
       stdio: ['ignore', fd, fd],
     })
@@ -240,6 +256,13 @@ function runShell(command: string, cwd: string, logPath: string): Promise<number
       done(null)
     })
   })
+}
+
+/** `rel` resolved inside `dir`; the jobs file was validated, so a miss is a bug. */
+function insideOrDie(dir: string, rel: string | undefined): string {
+  const p = resolveInside(dir, rel)
+  if (p === null) throw new Error(`[bench-ab] "${rel}" escapes ${dir}`)
+  return p
 }
 
 // ─── Lock acquisition with the quiet-stretch gate ────────────────────────────
@@ -295,12 +318,8 @@ try {
   for (const [arm, spec] of Object.entries(jobs.arms)) {
     if (spec.build) {
       const logPath = join(OUT, `preflight-${arm}.log`)
-      log(`preflight build ${arm}: ${spec.build.command}`)
-      const code = await runShell(
-        spec.build.command,
-        resolve(spec.dir, spec.build.cwd ?? '.'),
-        logPath,
-      )
+      log(`preflight build ${arm}: ${quoteArgv(spec.build.argv)}`)
+      const code = await runArgv(spec.build.argv, insideOrDie(spec.dir, spec.build.cwd), logPath)
       if (code !== 0) {
         throw new Error(`[bench-ab] preflight build of arm ${arm} exited ${code} (see ${logPath})`)
       }
@@ -341,7 +360,7 @@ writeFileSync(
         attempts: ATTEMPTS,
         yieldMs: YIELD_MS,
         lock: LOCK,
-        foreign: FOREIGN,
+        foreign: [...FOREIGN.map(String), ...FOREIGN_MATCH.map((m) => JSON.stringify(m))],
       },
     },
     null,
@@ -363,8 +382,9 @@ outer: for (const s of schedule) {
     if (!(await acquireWhenQuiet(s.id))) break outer
     const base = join(OUT, `${s.id}.a${attempt}`)
     const out = `${base}.data.json`
-    const cwd = resolve(arm.dir, job.cwd ?? '.')
-    const command = renderCommand(job.command, { out, pass: s.pass, run: s.run, arm: s.arm })
+    const cwd = insideOrDie(arm.dir, job.cwd)
+    const argvRendered = renderArgv(job.argv, { out, pass: s.pass, run: s.run, arm: s.arm })
+    const command = quoteArgv(argvRendered)
     const samples: LoadSample[] = []
     const foreign: string[] = []
     const t0 = Date.now()
@@ -378,7 +398,7 @@ outer: for (const s of schedule) {
     let exitCode: number | null
     try {
       writeFileSync(`${base}.log`, `$ (cd ${cwd} && ${command})\n`)
-      exitCode = await runShell(command, cwd, `${base}.log`)
+      exitCode = await runArgv(argvRendered, cwd, `${base}.log`)
     } finally {
       clearInterval(timer)
     }
@@ -408,6 +428,7 @@ outer: for (const s of schedule) {
           status,
           reasons,
           command,
+          argv: argvRendered,
           cwd,
           startedAt: new Date(t0).toISOString(),
           endedAt: new Date(t1).toISOString(),

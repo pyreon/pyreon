@@ -4,7 +4,7 @@
  * guide's A/B verdict rule (`.agents/guides/benchmarks/README.md`,
  * "Interleaved A/B runner").
  *
- *   bun scripts/bench/ab/analyze.ts <results-dir> [--base A] [--rows REGEX] [--json FILE]
+ *   bun scripts/bench/ab/analyze.ts <results-dir> [--base A] [--rows TEXT] [--json FILE]
  *
  * Reads `manifest.json` and every attempt record, keeps only VALID attempts,
  * pools each run's passes per row (op × framework, or section × library for
@@ -37,7 +37,7 @@ const flag = (name: string): string | undefined => {
 const dir = argv.find((a, i) => !a.startsWith('--') && (i === 0 || !argv[i - 1]?.startsWith('--')))
 if (!dir) {
   console.error(
-    'usage: bun scripts/bench/ab/analyze.ts <results-dir> [--base ARM] [--rows REGEX] [--json FILE]',
+    'usage: bun scripts/bench/ab/analyze.ts <results-dir> [--base ARM] [--rows TEXT] [--json FILE]',
   )
   process.exit(2)
 }
@@ -52,7 +52,8 @@ if (!arms.includes(base)) {
   console.error(`[bench-ab] --base ${base} is not an arm (${arms.join(', ')})`)
   process.exit(2)
 }
-const rowFilter = new RegExp(flag('--rows') ?? '.')
+/** `--rows TEXT`: keep rows whose name contains TEXT (a literal substring, not a pattern). */
+const rowFilter = flag('--rows') ?? ''
 
 interface Attempt extends ScheduledJob {
   attempt: number
@@ -115,7 +116,7 @@ for (const [job, byRun] of pools) {
   }
   console.log(`\n══ ${job} ${'═'.repeat(Math.max(0, 70 - job.length))}`)
   for (const cand of arms.filter((a) => a !== base)) {
-    for (const row of [...rowNames].filter((r) => rowFilter.test(r))) {
+    for (const row of [...rowNames].filter((r) => r.includes(rowFilter))) {
       const perRun: { run: number; a: Cell; b: Cell }[] = []
       const lines: string[] = []
       for (const r of runs) {
