@@ -22,6 +22,6 @@ export default function HybridStaticPage() {
     'div',
     { 'data-testid': 'hybrid-static-page' },
     h('h1', null, 'Hybrid static'),
-    h('p', { 'data-testid': 'hybrid-static-stamp' }, () => String(data?.renderedAt ?? 'none')),
+    h('p', { 'data-testid': 'hybrid-static-stamp' }, () => String(data()?.renderedAt ?? 'none')),
   )
 }

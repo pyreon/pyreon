@@ -312,8 +312,8 @@ describe('router in real browser', () => {
     const seen: string[] = []
     const Profile = () => {
       const data = useLoaderData<{ user: string }>()
-      seen.push(`render:${data.user}`)
-      return h('div', { id: 'profile' }, () => `User: ${data.user}`)
+      seen.push(`render:${data().user}`)
+      return h('div', { id: 'profile' }, () => `User: ${data().user}`)
     }
     const loaderRoutes = [
       { path: '/', component: Home },
@@ -649,7 +649,7 @@ describe('browser traversal runs the navigation pipeline (real history)', () => 
     let loaderRuns = 0
     const Posts = () => {
       const data = useLoaderData<{ n: number } | undefined>()
-      return h('div', { id: 'posts' }, `posts:${data ? data.n : 'MISSING'}`)
+      return h('div', { id: 'posts' }, () => `posts:${data() ? data()!.n : 'MISSING'}`)
     }
     const backRoutes = [
       { path: '/', component: Home },

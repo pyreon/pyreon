@@ -44,9 +44,9 @@ describe('LoaderData — derive resolved data from the loader fn', () => {
     // oxlint-disable-next-line no-unused-vars
     function _contract() {
       const data = useLoaderData<Data>()
-      expectTypeOf(data.n).toEqualTypeOf<number>()
+      expectTypeOf(data().n).toEqualTypeOf<number>()
       // @ts-expect-error — 'missing' is not on the loader's data
-      const _missing = data.missing
+      const _missing = data().missing
     }
   })
 })

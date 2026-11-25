@@ -1,18 +1,5 @@
-import { createRequire } from 'node:module'
+import { loadTs } from './load-ts'
 import type { Codemod } from './types'
-
-type TS = typeof import('typescript')
-
-/** TypeScript, loaded only when the codemod actually has a candidate file. */
-function loadTs(): TS {
-  try {
-    return createRequire(import.meta.url)('typescript') as TS
-  } catch {
-    throw new Error(
-      '[Pyreon] codemod zero-placeholder-color needs the `typescript` package. Install it (it is a peer dependency of @pyreon/cli) and re-run `pyreon upgrade`.',
-    )
-  }
-}
 
 /**
  * `@pyreon/zero` 0.54 removed the `'dominant-color'` image placeholder
@@ -31,7 +18,7 @@ export const zeroPlaceholderColor: Codemod = {
   matches: (p) => /\.[mc]?[jt]sx?$/.test(p),
   transform(source, relPath) {
     if (!source.includes('dominant-color') || !/\bplaceholder\b/.test(source)) return null
-    const ts = loadTs()
+    const ts = loadTs('zero-placeholder-color')
     const kind = /\.[mc]?tsx$|\.jsx$/.test(relPath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     const sf = ts.createSourceFile(relPath, source, ts.ScriptTarget.ESNext, true, kind)
     const edits: { start: number; end: number; text: string }[] = []

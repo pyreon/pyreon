@@ -22,7 +22,7 @@
  * For string fields:
  *   - min: minimum length
  *   - max: maximum length
- *   - email: rough RFC-5322 email regex check
+ *   - email: the authoring library's email rule (see `EmailRule`)
  *   - url: the authoring library's URL rule (see `UrlRule`)
  *   - uuid: UUID-format check
  *
@@ -47,10 +47,23 @@ export type UrlRule =
   | { kind: 'http' }
   | { kind: 'protocol'; source: string; ignoreCase: boolean }
 
+/**
+ * Which email rule a `.email()` lowers to — read off the library that authored
+ * the schema, like `UrlRule`:
+ *
+ * - `zod`: zod's `.email()` approximation (ASCII, case-insensitive), as before.
+ * - `pyreon`: `@pyreon/validate`'s grammar at the given `precision`, exactly
+ *   (`email-rule.ts`) — including internationalised domains (`jan@müller.de`),
+ *   which the web accepts at every precision.
+ */
+export type EmailRule =
+  | { kind: 'zod' }
+  | { kind: 'pyreon'; precision: 'html5' | 'standard' | 'rfc5322' }
+
 export interface ZodFieldConstraints {
   min?: number
   max?: number
-  email?: boolean
+  email?: EmailRule
   url?: UrlRule
   uuid?: boolean
   /**

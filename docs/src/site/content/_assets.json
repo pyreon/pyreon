@@ -4922,7 +4922,7 @@
     "/status"
    ],
    "slot": "og",
-   "alt": "Pyreon Status: Pyreon is pre-1.0.",
+   "alt": "Pyreon Status: This page says how Pyreon versions change, which packages are Stable and covered by semver, which are Experimental, and which directions are under consideration.",
    "theme": "dark",
    "width": 1200,
    "height": 630
