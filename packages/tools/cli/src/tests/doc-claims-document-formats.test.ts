@@ -52,6 +52,12 @@ describe('document format ids in render() examples', () => {
     expect(found[0]!.code).toBe('doc-claims/unknown-document-format')
   })
 
+  it('reads a backtick-quoted literal format, but not an interpolated template', () => {
+    put('docs/src/content/docs/tpl.md', 'await render(tree, `markdown`)\n')
+    put('docs/src/content/docs/interp.md', 'await render(tree, `${fmt}`)\n')
+    expect(messages()).toEqual([expect.stringContaining("tpl.md:1: `render(…, 'markdown')`")])
+  })
+
   it('accepts built-in formats, formats registered in the same file, placeholders, methods and non-string formats', () => {
     put(
       'docs/src/content/docs/ok.md',

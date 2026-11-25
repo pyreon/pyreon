@@ -4,7 +4,7 @@
 
 Single-import barrel — the full Pyreon fundamentals + UI-system ecosystem from one package.
 
-Re-exports 33 `@pyreon/*` packages so apps can write `import { signal, useQuery, useForm, styled, PyreonUI } from '@pyreon/meta'` instead of remembering subpackages. Tree-shake-safe by construction: meta itself and every re-exported package declare `"sideEffects": false`, so modern bundlers (Vite/Rolldown, Webpack/Next.js, esbuild, Rollup, Parcel, Bun) only pull the subgraphs you actually import. Heavy renderers stay lazy at the source — `@pyreon/document` lazy-loads PDF/DOCX/XLSX/PPTX chunks inside `render()`, and `@pyreon/charts` / `@pyreon/code` / `@pyreon/flow` lazy-load ECharts / CodeMirror grammars / elkjs inside their consumer hooks.
+Re-exports 33 `@pyreon/*` packages so apps can write `import { signal, useQuery, useForm, styled, PyreonUI } from '@pyreon/meta'` instead of remembering subpackages. Tree-shake-safe by construction: meta itself and every re-exported package declare `"sideEffects": false`, so modern bundlers (Vite/Rolldown, Webpack/Next.js, esbuild, Rollup, Parcel, Bun) only pull the subgraphs you actually import. Heavy renderers stay lazy at the source — `@pyreon/document` lazy-loads PDF/DOCX/XLSX/PPTX chunks inside `render()`, and `@pyreon/charts` and `@pyreon/code` lazy-load ECharts and CodeMirror grammars inside their consumer hooks, and `@pyreon/flow` lazy-loads its built-in layout engine.
 
 ## Install
 
