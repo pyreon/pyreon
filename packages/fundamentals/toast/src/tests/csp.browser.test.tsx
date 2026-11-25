@@ -51,6 +51,7 @@ async function mountToaster(props: ToasterProps): Promise<HTMLElement> {
   dispose = mount(h(Toaster, { ...props }), host)
   toast('Saved', { duration: 0 })
   await settle()
+
   return document.querySelector('.pyreon-toast-container') as HTMLElement
 }
 

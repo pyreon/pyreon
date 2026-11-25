@@ -55,6 +55,7 @@ async function mountEditor(config: RichTextConfig): Promise<HTMLElement> {
   if (editor.view() === null) throw new Error('editor view never mounted')
   await flush()
   await new Promise((r) => setTimeout(r, 100))
+
   return query<HTMLElement>(container, '.is-editor-empty')
 }
 
