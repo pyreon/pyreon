@@ -59,7 +59,7 @@ book.title
 
 const query = useGetBook(() => ({ params: { bookId: '1' } }))
 query.data()?.title
-useListBooks(() => ({ staleTime: 30_000 })).data()
+useListBooks(undefined, () => ({ staleTime: 30_000 })).data()
 ```
 
 ## 3. Mutations

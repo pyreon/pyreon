@@ -82,7 +82,8 @@ book.data()?.title
 ```
 
 Query options (orval's `query: { … }` override, or a per-call options object)
-are the hook's second accessor: `useListBooks(() => ({ staleTime: 60_000 }))`.
+are the hook's second accessor; the first is the request (optional when the
+operation has no parameters): `useListBooks(undefined, () => ({ staleTime: 60_000 }))`.
 
 ## 3. Mutations
 
