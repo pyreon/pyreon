@@ -16,6 +16,31 @@ const DEFAULT_IMAGE = `${SITE_ORIGIN}/media/${shareDefault.file}`
 const DEFAULT_IMAGE_ALT = shareDefault.alt
 
 /**
+ * Every page on the site, marketing and docs (and the 404, which renders
+ * under this layout too), is static HTML with islands: Zero's islands-only
+ * hydration (#4371). The server marks each page
+ * `<meta name="pyreon-hydrate" content="islands">` and leaves out the loader
+ * data and the route preloads; in the browser `entry-client.ts` hydrates the
+ * `<pyreon-island>` elements and nothing else, and because no page starts the
+ * app, the production client build carries no router or route code at all.
+ *
+ * Consequences for anyone adding to a page:
+ *   - Server-rendered content never runs in the browser. Anything interactive
+ *     (a button with a handler, a signal that changes, a demo) must be an
+ *     island: `island(() => import('./Thing'), { name, hydrate })` from
+ *     `@pyreon/zero`. A handler outside an island silently does nothing.
+ *   - An island that renders kit components needs the UI system's context in
+ *     the browser: root it in `KitScope` (`site/kit/scope.tsx`); `DemoGrid`
+ *     does it for product demos.
+ *   - Links are plain links (a full page load between pages; the docs
+ *     prefetch the next docs page with Speculation Rules).
+ *   - Nothing here or in a page runs in the browser: `useHead` and
+ *     `useFollowSystemMode` below only shape the server HTML (the client entry
+ *     calls `followSystemMode()` itself).
+ */
+export const hydrate = 'islands'
+
+/**
  * Root layout — every page renders through it:
  *
  *   - Site-wide head defaults (title, description, Open Graph, feed link).

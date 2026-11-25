@@ -81,6 +81,7 @@ import { getActiveRouter } from '@pyreon/router'
 import { encodeIslandProps } from './island-codec'
 import { useRequestLocals } from './middleware'
 import { isIslandName } from './island-name'
+import { _resetServerIslandBase, configuredServerIslandBase } from './fragment-base'
 import { isRoutePath } from './route-path'
 
 /**
@@ -155,13 +156,6 @@ function sharedRegistry(): Map<string, RegisteredServerIsland> {
 const registry: Map<string, RegisteredServerIsland> = sharedRegistry()
 
 /**
- * The base set with `setServerIslandBase`. Module scope, not `globalThis`:
- * trusted configuration must not live where injected markup can shadow it
- * (`<a id="…">` on Window), and only the browser bundle — one instance — reads it.
- */
-let configuredBase = ''
-
-/**
  * The registered server islands, keyed by name: the fragment endpoint's name
  * allowlist (`renderServerIslandFragment` answers `not-found` for any other name).
  */
@@ -172,30 +166,10 @@ export function getRegisteredServerIslands(): Map<string, RegisteredServerIsland
 /** @internal Test isolation. */
 export function _resetServerIslands(): void {
   registry.clear()
-  configuredBase = ''
+  _resetServerIslandBase()
 }
 
-/**
- * Set the route base server-island markers fetch their fragments under when
- * no router is around them — an islands-only page starts none. `@pyreon/zero`
- * calls it with its build-time base. Must be a root-relative path (`/sub/`);
- * anything else is refused (dev warning) and leaves the base unset. Same
- * `globalThis` slot reasoning as the registry above.
- */
-export function setServerIslandBase(base: string): void {
-  if (base === '' || base === '/' || isRoutePath(base)) {
-    configuredBase = base
-    return
-  }
-  if (process.env.NODE_ENV !== 'production') {
-    // oxlint-disable-next-line no-console
-    console.warn(`[Pyreon] setServerIslandBase: "${base}" is not a root-relative path such as "/sub/"; ignored.`)
-  }
-}
-
-function configuredServerIslandBase(): string {
-  return configuredBase
-}
+export { setServerIslandBase } from './fragment-base'
 
 /**
  * Declare a server island. Returns a component that renders ONLY a marker

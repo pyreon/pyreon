@@ -76,7 +76,8 @@ declare module '*.mdx' {
 }
 
 // `@pyreon/vite-plugin` (islands: true): every `island()` declaration in the
-// app, for `hydrateIslandsAuto()` on static pages (site/static-client.ts).
+// app, for `startClientLazy({ islands })` in entry-client.ts (every page is
+// islands-only, routes/_layout.tsx).
 declare module 'virtual:pyreon/islands-registry' {
   import type { ComponentFn } from '@pyreon/core'
   export const __pyreonIslandRegistry: Record<string, () => Promise<{ default: ComponentFn } | ComponentFn>>

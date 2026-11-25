@@ -74,9 +74,9 @@ export function useFollowSystemMode(): void {
 }
 
 /**
- * The same as `useFollowSystemMode`, outside a component: static marketing
- * pages (no root layout runs in the browser) call it from
- * `static-client.ts`. Returns the cleanup.
+ * The same as `useFollowSystemMode`, outside a component: on the site's
+ * islands-only pages no root layout runs in the browser, so `entry-client.ts`
+ * calls it. Returns the cleanup.
  */
 export function followSystemMode(): () => void {
   if (!isClient || typeof matchMedia !== 'function') return () => {}

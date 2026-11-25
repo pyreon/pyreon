@@ -107,6 +107,17 @@ describe('islands-only pages — built SSG output', () => {
     expect([...files].some((f) => f.startsWith('islands-runtime-'))).toBe(true)
   })
 
+  it('an islands-only page with no server island declares no server-island activation code', () => {
+    // `/_pyreon/fragment` is the fragment URL the marker activation builds
+    // (`@pyreon/server`'s server-island.ts). The islands runtime loads it only
+    // on a page with a server island; inside the runtime group, every
+    // islands-only page downloaded it (#4765 follow-up, pyreon.dev).
+    const activation = holding('_pyreon/fragment')
+    expect(activation.length).toBeGreaterThan(0)
+    const files = declared(page('/static'))
+    for (const chunk of activation) expect(files).not.toContain(chunk)
+  })
+
   it('an islands-only page with no islands declares nothing but the entry', () => {
     const html = page('/empty')
     expect(html).toContain('<meta name="pyreon-hydrate" content="islands">')

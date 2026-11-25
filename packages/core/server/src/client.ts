@@ -1038,6 +1038,7 @@ export function activateServerIslands(base?: string): () => void {
   return () => {}
 }
 
-export { activateServerIslandElement, serverIsland, setServerIslandBase } from './server-island'
+export { activateServerIslandElement, serverIsland } from './server-island'
+export { setServerIslandBase } from './fragment-base'
 export { isIslandName, isRoutePath } from './paths'
 export type { ServerIslandOptions } from './server-island'
