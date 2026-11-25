@@ -6263,6 +6263,13 @@ export function transformJSX_JS(
     let dispIdx = 0
     let placeholderIdx = 0
     const reactiveBindExprs: string[] = []
+    // The template's REF TAIL (#4764): every ref line, in post-order (an
+    // element's after its children's), emitted after the attribute effects
+    // below, so a ref sees its element's content and computed attributes, as
+    // `mountElement` shows it.
+    const refTail: string[] = []
+    // The disposer the last spread attribute captured (its deferred ref).
+    let spreadDisp = ''
     // Attr expressions whose dependency set is NOT provably stable (#3782):
     // emitted as individual `renderEffect`s (verify-mode dep re-collection).
     const reactiveEffectExprs: string[] = []
@@ -7146,12 +7153,14 @@ export function transformJSX_JS(
           // via `_bindSpread`, which disposes each pass's cleanup before the
           // next AND on unmount.
           needsBindSpreadImport = true
-          bindLines.push(`const ${d} = _bindSpread(${varName}, () => (${expr}))`)
+          bindLines.push(`const ${d} = _bindSpread(${varName}, () => (${expr}), 1)`)
         } else {
           // Static spread (`{...props}`) applies once — capture its disposer.
           needsApplyPropsImport = true
-          bindLines.push(`const ${d} = _applyProps(${varName}, ${expr})`)
+          bindLines.push(`const ${d} = _applyProps(${varName}, ${expr}, 1)`)
         }
+        // The spread's `ref` is applied from the ref tail (`.r()`), #4764.
+        spreadDisp = d
 
         return ''
       }
@@ -7163,7 +7172,13 @@ export function transformJSX_JS(
       return attrInitializerToHtml(attr, JSX_TO_HTML_ATTR[attrName] ?? attrName, varName, tag)
     }
 
-    function processAttrs(el: N, varName: string, tag: string, deferredLines: string[]): string {
+    function processAttrs(
+      el: N,
+      varName: string,
+      tag: string,
+      deferredLines: string[],
+      refOut: string[],
+    ): string {
       // Duplicate plain attributes: JSX object semantics — the LAST value
       // wins (`<p id="a" id="b">` ≡ props `{id:"a", id:"b"}` → "b"). The
       // template path must dedupe explicitly: baking both into the HTML
@@ -7180,6 +7195,14 @@ export function transformJSX_JS(
         if (nm) lastPlainIdx.set(nm, i)
       }
       let htmlAttrs = ''
+      // `ref` lines (a literal `ref` and a spread's `.r()`) go to `refOut`,
+      // which joins the template's ref tail after this element's children
+      // (#4764). The h() path calls a ref once the element's children are
+      // mounted (`mountElement`), so a ref that clears or fills its element
+      // runs over the same content in both renderers. Run first, it removed
+      // the `<!>` / `' '` placeholders the children lines then wrote against
+      // (a client mount threw), and a static `_setChild` overwrote what the
+      // ref added.
       for (let i = 0; i < attrs.length; i++) {
         const a = attrs[i]!
         if (a.type === 'JSXAttribute' && jsxAttrName(a)) {
@@ -7210,8 +7233,18 @@ export function transformJSX_JS(
             if (bindLines.length > before) deferredLines.push(...bindLines.splice(before))
             continue
           }
+          if (name === 'ref') {
+            const before = bindLines.length
+            htmlAttrs += processOneAttr(a, varName, tag)
+            if (bindLines.length > before) refOut.push(...bindLines.splice(before))
+            continue
+          }
         }
         htmlAttrs += processOneAttr(a, varName, tag)
+        if (spreadDisp !== '') {
+          refOut.push(`const ${nextDisp()} = ${spreadDisp}.r()`)
+          spreadDisp = ''
+        }
       }
 
       return htmlAttrs
@@ -7914,7 +7947,8 @@ export function transformJSX_JS(
       // `<select value>` — see processAttrs). Appended AFTER processChildren
       // so a `_mountSlot`-mounted option list exists before `el.value` runs.
       const deferredLines: string[] = []
-      const htmlAttrs = processAttrs(el, varName, tag, deferredLines)
+      const elementRefs: string[] = []
+      const htmlAttrs = processAttrs(el, varName, tag, deferredLines, elementRefs)
       // Children are processed BEFORE the opening tag is assembled, because
       // whether this element is a mount hole is only known once its children
       // are classified. Bind-line ORDER is unaffected — `processAttrs` has
@@ -7939,6 +7973,7 @@ export function transformJSX_JS(
       const isHtmlEl = hasDsi && childHtml === '' && !isHole
       let html = `<${tag}${htmlAttrs}${isHole ? ` ${TPL_HOLE_ATTR}` : ''}${isHtmlEl ? ` ${TPL_HTML_ATTR}` : ''}>${childHtml}`
       if (deferredLines.length > 0) bindLines.push(...deferredLines)
+      if (elementRefs.length > 0) refTail.push(...elementRefs)
       if (!VOID_ELEMENTS.has(tag)) html += `</${tag}>`
 
       return html
@@ -7978,6 +8013,7 @@ export function transformJSX_JS(
       needsRenderEffectImportGlobal = true
       bindLines.push(`const ${nextDisp()} = renderEffect(() => { ${body} })`)
     }
+    if (refTail.length > 0) bindLines.push(...refTail)
 
     if (holesOut) holesOut.push(...holeNodes)
 

@@ -280,16 +280,65 @@ function nextReal(node: ChildNode): ChildNode | null {
  * Hydrate a single VNodeChild against the DOM subtree starting at `domNode`.
  * Returns [cleanup, nextDomSibling].
  */
-/** Insert a comment marker before domNode (or append if domNode is null). */
-function insertMarker(parent: Node, domNode: ChildNode | null, text: string): Comment {
+/**
+ * Insert a comment marker before `ref`. Callers pass `domNode ?? anchor`: with
+ * no cursor left the insertion point is the range's END (`anchor`), never the
+ * end of the parent, which lies past the range (#4764).
+ */
+function insertMarker(parent: Node, ref: Node | null, text: string): Comment {
   const marker = document.createComment(text)
-  if (domNode) {
-    parent.insertBefore(marker, domNode)
-  } else {
-    parent.appendChild(marker)
-  }
+  parent.insertBefore(marker, ref)
 
   return marker
+}
+
+/**
+ * The server node a static child's divergence left at the cursor (#4764). The
+ * tag and text recoveries mount the client's node before it and offer it to the
+ * next sibling, which often adopts it. A sibling whose server output OPENS WITH
+ * A MARKER (an accessor's `<!--$-->`, a `<For>`'s `<!--pyreon-for-->`) cannot,
+ * and without this it took the stale node as its own content: the For mounted
+ * fresh over the rest of the parent, re-creating every later sibling. One slot,
+ * compared by identity, emptied on every walk entry and exit (`setHydrating`).
+ */
+let refused: ChildNode | null = null
+
+/**
+ * When `domNode` is the node a divergence refused, skip to where this child's
+ * server output starts, dropping the stale nodes before it: the marker comment
+ * `key` (an accessor's `$`, a `<For>`'s `pyreon-for`), or, with `tag`, the
+ * first element named `key`. The search never passes a comment or the range
+ * end: the stale run is the previous child's server elements and text, and this
+ * child's output follows it.
+ *
+ * It does not prove the target is THIS child's: a `$` after the stale run may
+ * be a later accessor's when the server rendered this one without markers
+ * (#4448), and the first `<b>` may be a later `<b>`'s. Either way the walk
+ * that follows repairs what differs, as it does for any divergence.
+ */
+function skipRefused(
+  domNode: ChildNode | null,
+  anchor: Node | null,
+  key: string,
+  tag?: true,
+): ChildNode | null {
+  if (domNode === null || domNode !== refused) return domNode
+  let n: ChildNode | null = domNode
+  for (; n !== null && n !== anchor; n = n.nextSibling) {
+    if (n.nodeType === 8) {
+      if (tag || (n as Comment).data !== key) return domNode
+      break
+    }
+    if (tag && n.nodeType === 1 && (n as Element).localName === key) break
+  }
+  if (n === null || n === anchor) return domNode
+  while (domNode !== n) {
+    const nx: ChildNode | null = domNode.nextSibling
+    domNode.remove()
+    domNode = nx as ChildNode
+  }
+
+  return n
 }
 
 /**
@@ -597,8 +646,13 @@ function adoptReactiveRange(
     return keyed
   }
 
-  const startMarker = document.createComment('pyreon')
-  parent.insertBefore(startMarker, rangeFirst)
+  // NO start marker (#4764): the adopted range ends up shaped exactly like a
+  // fresh mount's (content, then `mountReactive`'s boundary), so user code that
+  // counts or positions by child nodes (a ref inserting "in the middle") sees
+  // the same list on both paths. The range's start is the node before it, read
+  // once here: the `<!--$-->` open marker (its caller removes it only after
+  // this returns) or, for a marker-less sole range, the parent's start.
+  const before = rangeFirst.previousSibling
   const cleanup = mountReactive(child, parent, end, (value, p, a) => {
     if (hydrated) return mountOwned(value, p, a)
     hydrated = true
@@ -620,37 +674,35 @@ function adoptReactiveRange(
     // boundary and the accessor can never render again.
     const stale: ChildNode[] = []
     for (let n: ChildNode | null = rangeFirst; n && n !== a && n !== end; n = n.nextSibling) stale.push(n)
-    const [disposeBindings, nextCursor] = hydrateChild(value, cursor, p, a, `${path} > reactive`)
-    // Everything the walk consumed sits before the cursor it returned; a
-    // snapshotted node at or after that cursor is unclaimed. Walk from the
-    // STABLE start marker, not from the cursor the walk began at: a nested
-    // accessor's hydration removes its own `$` markers as it adopts, so the
-    // starting cursor may already be detached (its `nextSibling` is null and
-    // a walk from it claims nothing — the first cut swept every adopted node
-    // after a nested range). Freshly mounted nodes are never in the snapshot.
-    const claimed = new Set<ChildNode>()
-    for (let n = startMarker.nextSibling; n && n !== nextCursor && n !== a; n = n.nextSibling) claimed.add(n)
-    for (const n of stale) if (!claimed.has(n)) n.remove()
-    // CONTRACT BRIDGE. `hydrateChild`'s cleanups DISPOSE bindings; they do not
-    // remove the nodes, because hydrateRoot tears the whole container down.
-    // `mountReactive` needs the opposite: its per-run cleanup is what clears the
-    // previous render before the next one mounts, so anything left behind
-    // survives every future flip. (The parity fuzzer caught exactly this — an
-    // adopted text node stayed put after the accessor flipped to an element,
-    // 5/300 seeds diverging post-flip.)
-    //
-    // Clear the LIVE range at teardown (start marker → mountReactive's anchor),
-    // not a list frozen now: the adopted subtree's own bindings may add or drop
-    // top-level nodes while it is mounted.
-    return () => {
-      disposeBindings()
-      let c = startMarker.nextSibling
-      while (c && c !== a) {
-        const nx: ChildNode | null = c.nextSibling
-        detachNode(c)
-        c = nx
+    // The walk is bounded by `end`, not by `a`: the cursor skips plain
+    // comments, `a` among them, and stops only at a structural marker, so a
+    // value with more nodes than the range reached `end` PAST the boundary. Its
+    // recoveries then mounted outside the range, and a `<For>` there swept the
+    // parent from `end` on, later siblings included (#4764). Recoveries land
+    // before `end`; the boundary then moves after them.
+    const [disposeBindings, nextCursor] = hydrateChild(value, cursor, p, end, `${path} > reactive`)
+    if ((a as ChildNode).nextSibling !== end) p.insertBefore(a as ChildNode, end)
+    // Everything the walk consumed or mounted sits between the range's start
+    // and the cursor it returned; a snapshotted node at or after that cursor is
+    // unclaimed. Start from the node BEFORE the range, not from the cursor the
+    // walk began at: a nested accessor's hydration removes its own `$` markers
+    // as it adopts, so the starting cursor may already be detached.
+    {
+      const claimed = new Set<ChildNode>()
+      for (let n = before ? before.nextSibling : p.firstChild; n && n !== nextCursor && n !== a; n = n.nextSibling) {
+        claimed.add(n)
       }
+      for (const n of stale) if (!claimed.has(n)) n.remove()
     }
+    // CONTRACT BRIDGE. `mountReactive`'s per-run cleanup is what clears the
+    // previous render before the next one mounts. The walk's cleanups remove
+    // what they own (adopted texts, elements, ranges, templates, and anything
+    // the adopted subtree's own bindings added later), exactly as a fresh
+    // mount's per-node removers do, so the run's cleanup is theirs alone. The
+    // claimed set above lives only for the stale filter: kept for the
+    // teardown it would pin every adopted top-level node for the accessor's
+    // whole life (#4764 review, leak class H).
+    return disposeBindings
   })
   // The accessor's initial value may be null/false, in which case mountReactive
   // never called the mount fn — the server region is then stale content the
@@ -665,35 +717,15 @@ function adoptReactiveRange(
     // accessor (`{err() && <span/>}`, a toast list, a conditional row) is that
     // shape, which is why it fails loudly and everywhere rather than subtly.
     const boundary = end.previousSibling
-    let c = startMarker.nextSibling
+    let c: ChildNode | null = rangeFirst
     while (c && c !== boundary && c !== end) {
       const nx: ChildNode | null = c.nextSibling
       c.remove()
       c = nx
     }
   }
-  // `startMarker` is the STABLE origin every walk above starts from — the
-  // per-run cleanup and the claimed-set scan both need it to survive each
-  // re-render, so it must NOT be removed there (do that and the walk's
-  // `nextSibling` is null, it clears nothing, and the previous render is left
-  // on screen under the new one). `cleanup` is `mountReactive`'s FINAL
-  // disposer, and after it runs nothing walks from here again — so this is the
-  // one place the marker can go. Mirrors `mountReactive`'s own
-  // `marker.parentNode?.removeChild(marker)`, tolerance for an
-  // already-detached marker included.
-  //
-  // HONEST SCOPE: this is hygiene, not an observable fix, and it ships without
-  // a regression test on purpose rather than with one that cannot fail. The
-  // only consumer of this cleanup today is `hydrateRoot`'s dispose, which tears
-  // down the whole container — so the marker's parent is removed with it and no
-  // public-API assertion can tell the two versions apart (verified in both
-  // directions). It is kept because the marker is otherwise a permanent
-  // artifact of adoption in a live document, and because a future consumer that
-  // disposes a range WITHOUT destroying its parent would leak one per range.
-  return () => {
-    cleanup()
-    detachNode(startMarker)
-  }
+
+  return cleanup
 }
 
 /**
@@ -737,6 +769,7 @@ function hydrateReactiveChild(
   const primed = primeAccessor(child)
   const { initial } = primed
   child = primed.acc
+  domNode = skipRefused(domNode, anchor, '$')
 
   // Range-marked accessor output: the SSR renderer wraps every function child's
   // output in `<!--$-->…<!--/$-->`, giving this accessor's EXACT DOM extent —
@@ -843,7 +876,7 @@ function hydrateReactiveChild(
 
   // Legacy SSR output (no range markers — older @pyreon/runtime-server).
   if (initial == null || typeof initial === 'boolean') {
-    const marker = insertMarker(parent, domNode, 'pyreon')
+    const marker = insertMarker(parent, domNode ?? anchor, 'pyreon')
     const cleanup = mountReactive(child, parent, marker, mountOwned)
     return [cleanup, domNode]
   }
@@ -1039,6 +1072,7 @@ function hydrateVNode(
   }
 
   if (vnode.type === ForSymbol) {
+    domNode = skipRefused(domNode, anchor, 'pyreon-for')
     // SSR emits a fully-bounded block for a <For>:
     //   <!--pyreon-for-->  el… xL  <!--k:KEY-->row… xM  <!--/pyreon-for:K0 … KL-1-->
     // A LEADING run of single-element rows ships bare, with their keys on the
@@ -1320,12 +1354,16 @@ function hydrateVNode(
     // this same parent, so a "remove until end" walk afterwards would delete
     // what was just mounted (the same ordering trap `adoptReactiveRange`'s
     // keyed branch documents).
+    //
+    // "The rest" ends at `anchor` (#4764): inside a reactive range that is the
+    // range's own boundary marker, and deleting past it took the boundary and
+    // every later sibling with it (the next insert then threw).
     const stale: ChildNode[] = []
-    for (let n: ChildNode | null = domNode; n; n = n.nextSibling) stale.push(n)
+    for (let n: ChildNode | null = domNode; n && n !== anchor; n = n.nextSibling) stale.push(n)
     // The marker is only the insertion point: the mounted list brings its own
     // boundaries, so it goes once the list is in. Left in place it was a
     // stray `<!--pyreon-for-->` a fresh render does not have.
-    const marker = insertMarker(parent, domNode, 'pyreon-for')
+    const marker = insertMarker(parent, domNode ?? anchor, 'pyreon-for')
     const cleanup = mountChild(vnode, parent, marker)
     marker.remove()
     for (const n of stale) {
@@ -1449,13 +1487,11 @@ function claimRegion(children: VNodeChild | VNodeChild[], el: Element, region: N
     }
     el.appendChild(region)
   }
-  const cleanup = hydrateWholeList(children, el, slotPath, true)
-
-  // The element leaves with its template, so the region's own removals are
-  // redundant: inside the window `detachNode` skips them (O(1): no node is
-  // detached or re-inserted) and only effects are disposed. A bind that throws
-  // later keeps the adopted server markup the same way.
-  return () => _detachAsUnit(el, cleanup)
+  // The element leaves with its template: `_setChild` asks for a unit cleanup
+  // (`hydrateMountSlot`), so the region's own removals are skipped (O(1): no
+  // node is detached or re-inserted) and only effects are disposed. A bind
+  // that throws later keeps the adopted server markup the same way.
+  return hydrateWholeList(children, el, slotPath, true)
 }
 
 /**
@@ -1471,7 +1507,23 @@ function claimRegion(children: VNodeChild | VNodeChild[], el: Element, region: N
  * install, so it is walked against the range directly and the markers removed
  * here.
  */
-function hydrateMountSlot(children: VNodeChild | VNodeChild[], parent: Node, open: Comment | null): Cleanup {
+function hydrateMountSlot(
+  children: VNodeChild | VNodeChild[],
+  parent: Node,
+  open: Comment | null,
+  unit?: 1,
+): Cleanup {
+  const cleanup = hydrateSlot(children, parent, open)
+  // `unit`: a STATIC slot (`_setChild`, `_setChildAt`), whose content leaves
+  // with its template element, as the fresh path's `mountChildAsUnit` content
+  // does. Its scope-owned cleanup then disposes effects and removes nothing
+  // (`detachNode` skips every removal inside the window): a bind that throws
+  // later (a ref in the tail, #4764) keeps the adopted server markup, as the
+  // h() path keeps it, and an unmount detaches nothing node by node.
+  return unit ? () => _detachAsUnit(parent, cleanup) : cleanup
+}
+
+function hydrateSlot(children: VNodeChild | VNodeChild[], parent: Node, open: Comment | null): Cleanup {
   // Dev: mismatch paths below run from the hydration root through the slot's
   // element (`root > div > reactive > b`), as the h() walk spells them; in
   // production they keep the bare `slot` prefix.
@@ -1508,7 +1560,11 @@ function hydrateMountSlot(children: VNodeChild | VNodeChild[], parent: Node, ope
   }
   const first = open.nextSibling
   const cursor = first === close ? null : first!.nodeType === 1 ? first : firstReal(first)
-  const [cleanup] = hydrateChild(children, cursor, parent, close, slotPath)
+  const [cleanup, rest] = hydrateChild(children, cursor, parent, close, slotPath)
+  // The range is the extent: what the walk left unclaimed before the close
+  // marker is server DOM the value does not render (#4764: `[<i>]` over the
+  // server's `[<b>, <b>]` kept both `<b>`s beside the client's `<i>`).
+  sweepUnclaimed(parent, rest, open.nextSibling, close, rendersNothing(children) ? slotPath : undefined)
   open.remove()
   close.remove()
 
@@ -1622,6 +1678,7 @@ function hydrateChild(
     // order survives the mismatch.
     const tn = document.createTextNode(expected)
     parent.insertBefore(tn, domNode ?? anchor)
+    refused = domNode
 
     return [() => detachNode(tn), domNode]
   }
@@ -1719,8 +1776,21 @@ function hydrateChild(
  * own `$` markers as it adopts) — a walk from a detached node claims the wrong
  * chain, so decline rather than guess.
  */
-function sweepUnclaimed(parent: Node, cursor: ChildNode | null): void {
-  if (cursor === null || cursor.parentNode !== parent) return
+/** A child that renders nothing without running code: nullish, a boolean, `''`, or an array of those. */
+function rendersNothing(v: unknown): boolean {
+  return v == null || typeof v === 'boolean' || v === '' || (Array.isArray(v) && v.every(rendersNothing))
+}
+
+function sweepUnclaimed(
+  parent: Node,
+  cursor: ChildNode | null,
+  first: ChildNode | null = parent.firstChild as ChildNode | null,
+  end: Node | null = null,
+  emptyPath?: string,
+): void {
+  // `first`/`end` bound a RANGE (a marked slot, an async component's range):
+  // the same rule, from the range's first node to its close marker.
+  if (cursor === null || cursor === end || cursor.parentNode !== parent) return
   // DEGRADE, DON'T DESTROY. If nothing at all precedes the cursor, the client
   // neither adopted nor mounted anything here — which is not a divergence, it
   // is hydration not having HAPPENED. `hydrateComponent` catches a setup throw
@@ -1735,9 +1805,21 @@ function sweepUnclaimed(parent: Node, cursor: ChildNode | null): void {
   // client's own node before the cursor (recovery mounts AT it), so this
   // declines exactly the nothing-happened case and nothing else. The scan runs
   // only once the cursor is non-null, i.e. on the divergence path.
-  if (firstReal(parent.firstChild as ChildNode | null) === cursor) return
+  //
+  // `emptyPath` (#4764): the client value renders NOTHING statically (nullish,
+  // a boolean, `''`, or an array of those: no function, no component), so it
+  // cannot have thrown. Nothing claimed is then a real divergence: sweep it
+  // and report the first server node it drops (`tag`, expected nothing).
+  if (emptyPath !== undefined) {
+    warnHydrationMismatch(
+      'tag',
+      '',
+      cursor.nodeType === 1 ? (cursor as Element).localName : cursor.nodeType,
+      emptyPath,
+    )
+  } else if (firstReal(first) === cursor) return
   let n: ChildNode | null = cursor
-  while (n) {
+  while (n && n !== end) {
     const nx: ChildNode | null = n.nextSibling
     n.remove()
     n = nx
@@ -1759,6 +1841,7 @@ function hydrateElement(
   // dev-rare. In production pass the parent's path ref through unchanged.
   const elPath =
     process.env.NODE_ENV !== 'production' ? `${path} > ${vnode.type as string}` : path
+  domNode = skipRefused(domNode, anchor, vnode.type as string, true)
 
   // Check if existing DOM node matches. `localName`, never `tagName.toLowerCase()`:
   // the HTML parser case-adjusts SVG names (`linearGradient`, `clipPath`,
@@ -1819,7 +1902,7 @@ function hydrateElement(
       // both that shape. A childless vnode over server children therefore
       // keeps today's behavior; the sweep is for divergence INSIDE a walked
       // child list, which is where every reported cell lives.
-      if (kids.length > 0) sweepUnclaimed(el, residual[1])
+      if (kids.length > 0) sweepUnclaimed(el, residual[1], undefined, null, rendersNothing(kids) ? elPath : undefined)
     }
 
     // The cleanup slots are statically known (props / children / select-value /
@@ -1863,6 +1946,7 @@ function hydrateElement(
   // client's node to the end and reordered everything after it, while every
   // node-level assertion still passed.
   const cleanup = mountChild(vnode, parent, domNode ?? anchor)
+  refused = domNode
   // The server node is deliberately NOT removed here: it is offered to the
   // NEXT sibling, which frequently adopts it (client [<b>, <i>] against
   // server [<i>] — the <i> still matches). Whatever no sibling claims is swept
@@ -1914,8 +1998,14 @@ function hydrateChildren(
  * cursor) and core's (`<Suspense>` renders its child, not its fallback, over
  * server content). Returns the previous state for the caller to RESTORE —
  * never reset to a constant: walks nest (islands, deferred lazy ranges).
+ *
+ * Every walk entry and exit (the root, a deferred lazy's and an async
+ * component's continuation) also empties `refused`: a refusal is consumed by
+ * the very next sibling, never across a walk boundary, so no walk can leave a
+ * detached server node pinned in it (#4764).
  */
 function setHydrating(v: boolean): boolean {
+  refused = null
   _setSuspenseHydrating(v)
   return _setHydrationActive(v)
 }
@@ -2096,19 +2186,7 @@ function hydrateSyncOutputInAsyncRange(
     // marker is server DOM the client did not claim. Declined when nothing
     // precedes the cursor inside the range — the client neither adopted nor
     // mounted anything, i.e. hydration did not happen (`sweepUnclaimed`'s rule).
-    if (
-      next !== null &&
-      next !== end &&
-      next.parentNode === parent &&
-      firstReal(start.nextSibling) !== next
-    ) {
-      let n: ChildNode | null = next
-      while (n !== null && n !== end) {
-        const nx: ChildNode | null = n.nextSibling
-        n.remove()
-        n = nx
-      }
-    }
+    sweepUnclaimed(parent, next, start.nextSibling, end)
   }
   const after = end.nextSibling
 

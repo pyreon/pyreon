@@ -204,11 +204,32 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] A recovery that is not bounded by the range it runs in
+
+(#4764). Four shapes of one class, all after a server/client divergence:
+  - A `<For>` with no block at its cursor claimed "the rest of the parent" and deleted to the parent's end: inside a reactive range that took the range's own boundary marker and every later sibling (`<App> threw during hydration: … insertBefore … not a child`). With no cursor it inserted at the parent's end, past `anchor`. Delete up to `anchor`, insert before `domNode ?? anchor` (`insertMarker` takes the reference node).
+  - The cursor skips plain comments and stops only at structural markers, so a walk inside `adoptReactiveRange` reached the range's `<!--/$-->` PAST `mountReactive`'s boundary comment. Walk with the structural `end` as the anchor, then move the boundary after what the walk mounted (`adoptUnmarkedRange` already did this).
+  - A static child's tag/text recovery leaves the server node at the cursor for the next sibling. A sibling whose server output opens with a MARKER cannot claim it and took it as content: no row adopted, later siblings re-created; a later static element was re-created too (typed input lost). `skipRefused` (one identity slot, emptied on every walk entry and exit in `setHydrating`) skips the stale element/text run up to that marker, or up to the first element with the static sibling's tag, and drops it; it never passes a comment or `anchor`. It does not prove the target is this child's (an unmarked #4448 accessor can take the next accessor's range); the walk that follows repairs any difference.
+  - A compiled literal slot in a marked range (`_setChildAt`) never swept what its value left unclaimed before the close marker: `sweepUnclaimed(parent, cursor, first, end)` is now the one bounded sweep (the async-range sweep uses it too), keeping its "nothing claimed, keep the markup" rule.
+  - The SSR emit does not bracket static children in an h()-rendered parent, by choice (bytes per child): the recovery is the client's.
+  - An adopted reactive range carries no start marker (`adoptReactiveRange`): content plus `mountReactive`'s boundary, exactly a fresh mount's shape, so user code that positions by child index (a ref inserting "in the middle") gets the same result on both paths. Its start is the node before the range, read once. The run's cleanup is the walk's own cleanups (they remove what they own); the claimed set lives only for the adoption-time stale filter, because keeping it for teardown pinned every adopted top-level node for the accessor's life (leak class H; `hydration-recovery-4764.test.tsx` GC test).
+  - A static slot's scope-owned cleanup (`_setChild`, `_setChildAt`) runs inside `_detachAsUnit`: a ref that throws from the ref tail stops the scope after the slots adopted, and must dispose effects without removing server nodes, as the h() path keeps them.
+  - Tests: `runtime-dom/src/tests/hydration-recovery-4764.test.tsx` + `.browser`.
+
+---
+
+### [FIXED, 2026-11] Compiled refs ran before their element's children
+
+(#4764): the compiler emitted `_ref` at the attribute's position, and `_applyProps` / `_bindSpread` applied a spread's `ref` there too, before the slot lines and before the template's attribute effects. A ref that cleared its element removed the `<!>` / `' '` placeholders, and a client MOUNT threw (`_setChildAt`, `_textSlot`, `mountElement` insertBefore); a static `_setChild` overwrote what a ref added; a ref read an empty computed `class`; during hydration a ref saw server content before it was claimed (false mismatch reports). The h() path calls a ref after the element's children and props. Rule: every ref that reaches a template element (literal or spread-carried) runs from one post-order ref tail after every other bind line, in BOTH backends; never patch the slot helpers to tolerate a detached placeholder. Tests: `hydration-recovery-4764.test.tsx` (literal / spread / dynamic-spread ref x child-shape matrix, mount and hydrate), compiler `jsx.test.ts`, `native-equivalence.test.ts`.
+
+---
+
 ### Unclaimed server DOM must be removed before `hydrateRoot` returns
 
 The hydration barrier promises everything on screen is live. Otherwise a warm-server/cold-client divergence (rows vs "Loading…") shows both, and the server rows have no handlers.
   - `adoptReactiveRange` snapshots the server range before the walk and removes every unclaimed node in the first render. Stop the snapshot at `mountReactive`'s own anchor (it sits inside the range), or the boundary is swept and the accessor never renders again.
   - `hydrateElement` and `hydrateRoot` sweep from the residual cursor to the element/container end. The sweep is skipped when nothing precedes the cursor, so a component whose setup throws keeps its inert server markup instead of going blank (matching a degraded page, not destroying it).
+  - That guard is for code that can throw: a client value that renders nothing statically (nullish, boolean, `''`, or an array of those: `rendersNothing`) sweeps and reports (`tag`, expected nothing), on `hydrateElement` and on a compiled marked slot (#4764). An `h()` element whose only child is `[]` is flattened to no children and keeps the old behaviour.
   - A static-text mismatch replaces the stale node and advances, so the next sibling adopts its own server node.
   - Parity fuzz cannot see this (its oracle is zero mismatches). Tests: `runtime-dom/src/tests/hydrate-mismatch-sweeps-server-range.test.tsx`, `hydrate-boundary-sweep.test.tsx` (hydrate-vs-cold-mount oracle). Compiled-emit test harnesses must provide every helper the emit imports (`_setChild`, `_setChildAt`, `_fuse`) and assert that they do.
 

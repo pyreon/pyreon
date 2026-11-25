@@ -371,8 +371,9 @@ describe('#4599: a real divergence in this shape is still reported and repaired'
 })
 
 /**
- * Every bind line that runs before `_setChild` can change an empty element's
- * children: a `ref`, a spread (`_applyProps`). The compiler emits them first.
+ * User code that reaches an empty element: a spread (`_applyProps`) runs before
+ * `_setChild` and can change its children; a `ref` (literal or a spread's) runs
+ * from the template's ref tail, after the claim (#4764).
  * Same source on both sides; the hydrated DOM must equal a fresh client render,
  * and the server nodes that render keeps must be adopted, not re-created.
  */
@@ -429,8 +430,14 @@ describe('#4599: bind-time writers to an empty `_setChild` element', () => {
     const src = 'const App = () => <div><span ref={read}>{vNested}</span></div>'
     seen = null
     const r = await roundTrip(compile(src, s, 'h').App, compile(src, s, 'client').App)
-    // A compiled ref fires before the content lines, on an empty element.
-    expect(seen).toBe('')
+    // A compiled ref fires from the template's ref tail (#4764), after the
+    // content is adopted: it reads what a fresh render's ref reads.
+    const fresh = document.createElement('div')
+    seen = null
+    dom.mount(h(compile(src, s, 'client').App as never, null), fresh)
+    expect(seen).toBe(query(fresh, 'span').innerHTML)
+    expect(seen).not.toBe('')
+    expect(r.html).toBe(r.freshHtml)
     expect(r.replaced).toEqual([])
   })
 
@@ -451,8 +458,10 @@ describe('#4599: bind-time writers to an empty `_setChild` element', () => {
     const s = { ...scope(), prepend }
     const src = 'const App = () => <div><span ref={prepend}>{vArrLive}</span></div>'
     const r = await roundTrip(compile(src, s, 'h').App, compile(src, s, 'client').App)
-    // The fallback: the server's `<i>x</i>` is re-created; the span is kept.
-    expect(r.replaced).toEqual(['i'])
+    // The ref runs after the claim (#4764): every server node is adopted and
+    // the ref's node lands where a fresh render puts it.
+    expect(r.replaced).toEqual([])
+    expect(r.html).toBe(r.freshHtml)
     expect(r.html).toBe('<div><span><i></i>tL<i>x</i></span></div>')
     live.set('P')
     expect(r.host.querySelector('span')?.textContent).toBe('tPx')
@@ -607,10 +616,10 @@ describe('a throwing bind keeps the server content', () => {
  * production did not, so a later throw left different DOM). A HIDDEN region
  * gets its server nodes back on the throw, ahead of the client's text; a
  * region whose nodes the write itself replaced has nothing left to restore.
- * KNOWN, ACCEPTED: the result therefore depends on whether a ref on an
- * ancestor hid the region (`<b>n</b>str` with it, `str` without). Releasing a
- * hidden region on a text write would make both `str`, at +16 B on every
- * client-only app, for a throw-only case.
+ * An ancestor ref no longer decides the result (#4764): refs run from the
+ * template's ref tail, after every content line, so a bind that throws before
+ * the tail never ran the ref, nothing was hidden, and the rows with a ref give
+ * what the rows without one give (`str`, empty).
  */
 describe('a text write over a region, then a throw: dev and production agree', () => {
   const okC = { cell: h('i', null, 'c') }
@@ -621,10 +630,10 @@ describe('a text write over a region, then a throw: dev and production agree', (
   }
   const R = () => {}
   const CASES: [string, string, unknown, string][] = [
-    ['hidden region, text value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', 'str', '<div><span><b>n</b>str</span><em><i>c</i></em></div>'],
+    ['ancestor ref, text value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', 'str', '<div><span>str</span><em><i>c</i></em></div>'],
     ['unhidden region, text value', 'const App = () => <div><span>{c.v}</span><em>{bad.cell}</em></div>', 'str', '<div><span>str</span><em><i>c</i></em></div>'],
     ['unhidden region, null value', 'const App = () => <div><span>{c.v}</span><em>{bad.cell}</em></div>', null, '<div><span></span><em><i>c</i></em></div>'],
-    ['hidden region, null value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', null, '<div><span><b>n</b></span><em><i>c</i></em></div>'],
+    ['ancestor ref, null value', 'const App = () => <div ref={R}><span>{c.v}</span><em>{bad.cell}</em></div>', null, '<div><span></span><em><i>c</i></em></div>'],
   ]
   for (const [name, src, v, want] of CASES) {
     for (const mode of ['development', 'production']) {
@@ -940,14 +949,16 @@ describe('user code is the only trigger for hiding server content', () => {
     expect(m).toMatchObject({ hides: 0, fragments: 0, records: 20, replaced: [] })
   })
 
-  it('one ref in a row template: exactly one hide per row build, adoption kept', async () => {
+  it('one ref in a row template: the ref runs after the claim, hides nothing, adoption kept', async () => {
     const mark = (el: Element | null) => {
       if (el !== null) el.setAttribute('data-r', '1')
     }
     const s = { ...scope(), mark, sRows: rows(5, (i) => h('b', null, `s${i}`)) }
     const src = 'const App = () => <ul><For each={sRows} by={(r) => r.id}>{(r) => <li ref={mark}>{r.cell}</li>}</For></ul>'
     const m = await measure(src, s)
-    expect(m).toMatchObject({ hides: 5, fragments: 5, records: 5, replaced: [] })
+    // Refs run from the ref tail, after `_setChild` claimed each region
+    // (#4764): there is nothing left to hide.
+    expect(m).toMatchObject({ hides: 0, fragments: 0, records: 5, replaced: [] })
   })
 })
 

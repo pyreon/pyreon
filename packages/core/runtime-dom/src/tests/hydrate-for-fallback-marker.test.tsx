@@ -1,7 +1,9 @@
 /**
  * A `<For>` whose hydration cursor is not its own `<!--pyreon-for-->` block
- * (here: a divergent fixed sibling before it left the cursor on a stale server
- * node) mounts fresh before an inserted marker. That marker is only the
+ * (here: the server rendered no list at all, and a divergent fixed sibling
+ * before it left the cursor on a stale server node) mounts fresh before an
+ * inserted marker. (When the server DID render the block after the stale node,
+ * the `<For>` skips to it and adopts it: #4764, `hydration-recovery-4764`.) That marker is only the
  * insertion point; it used to stay in the DOM as a stray `<!--pyreon-for-->` a
  * fresh render does not have. The list must stay live after the marker goes.
  *
@@ -58,6 +60,7 @@ afterEach(() => {
 })
 
 const SRC = 'const App = () => <div>{v}<For each={() => rows()} by={(r) => r}>{(r) => <li>{r}</li>}</For></div>'
+const SERVER_SRC = 'const App = () => <div>{v}</div>'
 
 describe('a <For> mounted over an unreadable block leaves no stray marker', () => {
   for (const client of ['compiled', 'compiled, tcc', 'h()'] as const) {
@@ -66,7 +69,7 @@ describe('a <For> mounted over an unreadable block leaves no stray marker', () =
       document.body.appendChild(host)
       hosts.push(host)
       host.innerHTML = await renderToString(
-        h(build(SRC, { rows: signal([1, 2]), v: [h('b', null, '1'), h('b', null, '2')] }, 'server') as never, null) as never,
+        h(build(SERVER_SRC, { v: [h('b', null, '1'), h('b', null, '2')] }, 'server') as never, null) as never,
       )
       const rows = signal([1, 2])
       const clientScope = { rows, v: [h('i', null, '1')] }

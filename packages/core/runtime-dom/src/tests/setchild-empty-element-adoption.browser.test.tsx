@@ -11,7 +11,7 @@
  */
 import { _fuse, For, Fragment, h } from '@pyreon/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { _applyProps, _mountChild, _ref, _setChild, _tpl, hydrateRoot, mount, onHydrationMismatch } from '../index'
+import { _applyProps, _dispose2, _mountChild, _ref, _setChild, _tpl, hydrateRoot, mount, onHydrationMismatch } from '../index'
 import { SETCHILD_EMPTY_CASES, type SetChildEmptyCase } from './_setchild-empty-cases'
 
 const SCOPE = {
@@ -38,7 +38,7 @@ const SCOPE = {
   ],
 }
 
-const DEPS = { _applyProps, _fuse, _mountChild, _ref, _setChild, _tpl, For, Fragment, h, ...SCOPE }
+const DEPS = { _applyProps, _dispose2, _fuse, _mountChild, _ref, _setChild, _tpl, For, Fragment, h, ...SCOPE }
 
 function compiledApp(code: string): () => unknown {
   return new Function(...Object.keys(DEPS), `${code}\nreturn App`)(...Object.values(DEPS)) as () => unknown
@@ -87,12 +87,13 @@ describe('an empty `_setChild` element adopts the server structure in Chromium (
   for (const c of SETCHILD_EMPTY_CASES) {
     it(c.name, () => {
       const r = hydrate(c, c.server)
-      // A ref or spread that puts nodes in the element (prepend, append,
-      // innerHTML) makes the value mount fresh after them; a clearing ref
-      // leaves it empty, so the server's nodes are put back and adopted.
-      if (/prepends/.test(c.name)) expect(r.replaced).toEqual(['b'])
+      // Refs run from the template's ref tail, after the content is claimed
+      // (#4764): a prepending or appending ref costs no adoption, and a
+      // clearing ref removes the adopted `<b>` itself, as it removes the fresh
+      // one. A spread writing `innerHTML` still runs before the claim, so the
+      // value mounts fresh after its content.
+      if (/clears/.test(c.name)) expect(r.replaced).toEqual(['b'])
       else if (/dangerouslySetInnerHTML/.test(c.name)) expect(r.replaced).toEqual(['i'])
-      else if (/appends/.test(c.name)) expect(r.replaced).toEqual(['b', 'b'])
       else expect(r.replaced).toEqual([])
       expect(r.reports).toEqual([])
       expect(r.html).toBe(r.freshHtml)

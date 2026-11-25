@@ -9569,6 +9569,11 @@ struct TemplateBuilder {
     disposer_names: Vec<String>,
     reactive_bind_exprs: Vec<String>,
     reactive_effect_exprs: Vec<String>,
+    /// The template's REF TAIL (#4764), post-order, emitted after the attribute
+    /// effects. Mirrors `jsx.ts:refTail`.
+    ref_tail: Vec<String>,
+    /// The disposer the last spread attribute captured. Mirrors `jsx.ts:spreadDisp`.
+    spread_disp: Option<String>,
     var_idx: u32,
     disp_idx: u32,
     placeholder_idx: u32,
@@ -9616,6 +9621,8 @@ impl TemplateBuilder {
             disposer_names: Vec::new(),
             reactive_bind_exprs: Vec::new(),
             reactive_effect_exprs: Vec::new(),
+            ref_tail: Vec::new(),
+            spread_disp: None,
             var_idx: 0,
             disp_idx: 0,
             placeholder_idx: 0,
@@ -9856,6 +9863,8 @@ fn build_template_call(
         tb.bind_lines
             .push(format!("const {} = renderEffect(() => {{ {} }})", name, body));
     }
+    let mut ref_tail = std::mem::take(&mut tb.ref_tail);
+    tb.bind_lines.append(&mut ref_tail);
 
     if tb.needs_bind {
         ctx.needs_bind_import = true;
@@ -10112,7 +10121,8 @@ fn process_element(
     // so a `_mountSlot`-mounted option list exists before `el.value` runs.
     // Mirrors jsx.ts:processElement.
     let mut deferred_lines: Vec<String> = Vec::new();
-    let html_attrs = process_attrs(el, &var_name, tag, &mut deferred_lines, tb, ctx);
+    let mut element_refs: Vec<String> = Vec::new();
+    let html_attrs = process_attrs(el, &var_name, tag, &mut deferred_lines, &mut element_refs, tb, ctx);
     // Children are processed BEFORE the opening tag is assembled, because
     // whether this element is a mount hole is only known once its children are
     // classified. Bind-line ORDER is unaffected — `process_attrs` has already
@@ -10138,6 +10148,7 @@ fn process_element(
         child_html
     );
     tb.bind_lines.append(&mut deferred_lines);
+    tb.ref_tail.append(&mut element_refs);
     if !is_void_element(tag) {
         html.push_str(&format!("</{}>", tag));
     }
@@ -10149,6 +10160,7 @@ fn process_attrs(
     var_name: &str,
     tag: &str,
     deferred_lines: &mut Vec<String>,
+    ref_out: &mut Vec<String>,
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> String {
@@ -10167,6 +10179,8 @@ fn process_attrs(
         }
     }
     let mut html_attrs = String::new();
+    // `ref` lines (a literal `ref` and a spread's `.r()`) go to `ref_out`, the
+    // template's ref tail (#4764). Mirrors jsx.ts:processAttrs.
     for (i, attr) in attrs.iter().enumerate() {
         if let JSXAttributeItem::Attribute(a) = attr {
             {
@@ -10204,9 +10218,21 @@ fn process_attrs(
                     }
                     continue;
                 }
+                if attr_name.as_ref() == "ref" {
+                    let before = tb.bind_lines.len();
+                    html_attrs.push_str(&process_one_attr(attr, var_name, tag, tb, ctx));
+                    if tb.bind_lines.len() > before {
+                        ref_out.extend(tb.bind_lines.drain(before..));
+                    }
+                    continue;
+                }
             }
         }
         html_attrs.push_str(&process_one_attr(attr, var_name, tag, tb, ctx));
+        if let Some(sd) = tb.spread_disp.take() {
+            let d = tb.next_disp();
+            ref_out.push(format!("const {} = {}.r()", d, sd));
+        }
     }
     html_attrs
 }
@@ -10233,13 +10259,15 @@ fn process_one_attr(
                 // next AND on unmount.
                 tb.needs_bind_spread = true;
                 tb.bind_lines
-                    .push(format!("const {} = _bindSpread({}, () => ({}))", d, var_name, expr_text));
+                    .push(format!("const {} = _bindSpread({}, () => ({}), 1)", d, var_name, expr_text));
             } else {
                 // Static spread runs once at mount — capture its disposer.
                 tb.needs_apply_props = true;
                 tb.bind_lines
-                    .push(format!("const {} = _applyProps({}, {})", d, var_name, expr_text));
+                    .push(format!("const {} = _applyProps({}, {}, 1)", d, var_name, expr_text));
             }
+            // The spread's `ref` is applied from the ref tail (`.r()`), #4764.
+            tb.spread_disp = Some(d);
             String::new()
         }
         JSXAttributeItem::Attribute(a) => {
