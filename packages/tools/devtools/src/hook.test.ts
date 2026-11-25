@@ -378,4 +378,24 @@ describe('detecting the framework hook', () => {
     expect(detect()).toBe(false)
     expect(isPyreonDevtools(undefined)).toBe(false)
   })
+
+  // `<iframe name="__PYREON_DEVTOOLS__" src="https://other.example">` makes the
+  // global a cross-origin WindowProxy, and reading any key of it throws
+  // SecurityError. happy-dom has no cross-origin frames: a Proxy whose `get`
+  // throws stands in for it.
+  it('refuses, without throwing, a global whose key reads throw (a cross-origin frame)', () => {
+    const crossOrigin = new Proxy(
+      {},
+      {
+        get() {
+          throw new DOMException('Blocked a frame from accessing a cross-origin frame.', 'SecurityError')
+        },
+      },
+    )
+    g.__PYREON_DEVTOOLS__ = crossOrigin
+    expect(() => isPyreonDevtools(crossOrigin)).not.toThrow()
+    expect(isPyreonDevtools(crossOrigin)).toBe(false)
+    const detect = new Function(`return ${DETECT_PYREON_EXPRESSION}`) as () => boolean
+    expect(detect()).toBe(false)
+  })
 })

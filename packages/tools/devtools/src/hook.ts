@@ -83,20 +83,24 @@ function compactCause(cause: UpdateCause | null): UpdateCause | null {
 /**
  * Whether the page's `window.__PYREON_DEVTOOLS__` is the framework's hook.
  * Truthiness is not enough: on a page without it, markup with
- * `id="__PYREON_DEVTOOLS__"` makes the global that element (named access on
- * Window). The panel's detection (`DETECT_PYREON_EXPRESSION`) applies the
- * same test inside the inspected page.
+ * `id="__PYREON_DEVTOOLS__"` (or `<iframe name="__PYREON_DEVTOOLS__">`, and
+ * the other named elements) makes the global that element or frame (named
+ * access on Window). Never throws: reading a key of a cross-origin frame's
+ * WindowProxy throws SecurityError. The panel's detection
+ * (`DETECT_PYREON_EXPRESSION`) applies the same test inside the inspected page.
  */
 export function isPyreonDevtools(value: unknown): value is PyreonDevtools {
-  return (
-    typeof value === 'object'
-    && value !== null
-    && typeof (value as { getComponentTree?: unknown }).getComponentTree === 'function'
-  )
+  if (typeof value !== 'object' || value === null) return false
+  try {
+    return typeof (value as { getComponentTree?: unknown }).getComponentTree === 'function'
+  } catch {
+    return false
+  }
 }
 
 /** {@link isPyreonDevtools} as an expression `chrome.devtools.inspectedWindow.eval` runs in the page. */
-export const DETECT_PYREON_EXPRESSION = "typeof window.__PYREON_DEVTOOLS__?.getComponentTree === 'function'"
+export const DETECT_PYREON_EXPRESSION =
+  "(() => { try { return typeof window.__PYREON_DEVTOOLS__?.getComponentTree === 'function' } catch { return false } })()"
 
 export function createHook(devtools: PyreonDevtools, opts: HookOptions): Hook {
   const { emit } = opts

@@ -1784,7 +1784,7 @@ hydrateLoaderData(router, window.__PYREON_LOADER_DATA__)
 mount(<App />, document.getElementById('app')!)
 ```
 
-`serializeLoaderData` uses route path patterns as keys (stable across server and client). `hydrateLoaderData` populates the router's internal `_loaderData` map so the initial render uses server-fetched data without re-running loaders. Pass the global as it is: `hydrateLoaderData` applies only a plain record and returns `false` otherwise, so run the loaders then (`router.replace(location.pathname)`). On a page whose inline script was not written, markup with `id="__PYREON_LOADER_DATA__"` makes the global that element (named access on Window), which `?? {}` does not catch.
+`serializeLoaderData` uses route path patterns as keys (stable across server and client). `hydrateLoaderData` populates the router's internal `_loaderData` map so the initial render uses server-fetched data without re-running loaders. Pass the global as it is: `hydrateLoaderData` applies only an object literal and returns `false` otherwise, so run the loaders then (`router.replace(location.pathname)`). On a page whose inline script was not written, markup with `id="__PYREON_LOADER_DATA__"` makes the global that element (named access on Window), which `?? {}` does not catch.
 
 ### Server loaders + single-fetch
 

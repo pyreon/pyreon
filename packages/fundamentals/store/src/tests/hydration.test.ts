@@ -53,15 +53,25 @@ describe('@pyreon/store — SSR hydration', () => {
   // In a browser, markup with `id="__PYREON_STORE_STATE__"` makes the global
   // that element (named access on Window) on a page whose inline script was not
   // written. An element is an object and can carry an own property named like a
-  // store. Only a plain record (what the inline script evaluates to) is state.
-  it('hydrateStores ignores an object that is not a plain record (window named access)', () => {
+  // store. Only an object literal (what the inline script evaluates to) is state.
+  it('hydrateStores ignores an object that is not an object literal (window named access)', () => {
     const useCart = defineStore('cart', () => ({ count: signal(0) }))
     const shadow = Object.assign(document.createElement('div'), { cart: { count: 7 } })
 
     hydrateStores(shadow)
     expect(useCart().store.count.peek()).toBe(0)
 
-    hydrateStores(Object.assign(Object.create(null) as Record<string, unknown>, { cart: { count: 8 } }))
+    // A cross-origin frame's WindowProxy (`<iframe name="__PYREON_STORE_STATE__">`)
+    // reports prototype `null` and throws on key reads: refused before any read.
+    const crossOrigin = new Proxy(Object.create(null) as object, {
+      ownKeys() {
+        throw new DOMException('Blocked a frame from accessing a cross-origin frame.', 'SecurityError')
+      },
+    })
+    expect(() => hydrateStores(crossOrigin)).not.toThrow()
+    expect(useCart().store.count.peek()).toBe(0)
+
+    hydrateStores({ cart: { count: 8 } })
     expect(useCart().store.count.peek()).toBe(8)
   })
 

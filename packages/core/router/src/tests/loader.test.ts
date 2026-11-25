@@ -64,9 +64,9 @@ describe('loader data serialization — edge cases', () => {
   // In a browser, markup with `id="__PYREON_LOADER_DATA__"` makes the global
   // that element (named access on Window) on a page whose inline script was not
   // written. An element is an object, and can carry an own property under a
-  // route path. Only a plain record (what the inline script evaluates to) is
-  // loader data.
-  test('hydrate ignores an object that is not a plain record (window named access)', () => {
+  // route path. Only an object literal (what the inline script evaluates to)
+  // is loader data.
+  test('hydrate ignores an object that is not an object literal (window named access)', () => {
     const routes: RouteRecord[] = [{ path: '/page', component: About, loader: async () => 'client' }]
     const router = createRouter({ routes, url: '/page' }) as RouterInstance
     const shadow = Object.assign(document.createElement('div'), { '/page': 'from-element' })
@@ -76,16 +76,35 @@ describe('loader data serialization — edge cases', () => {
     expect(router._loaderData.size).toBe(0)
   })
 
-  test('hydrate accepts an object literal and a null-prototype record, and says so', () => {
+  test('hydrate accepts an object literal, and says so', () => {
     const routes: RouteRecord[] = [{ path: '/page', component: About, loader: async () => 'client' }]
     const literal = createRouter({ routes, url: '/page' }) as RouterInstance
     expect(hydrateLoaderData(literal, { '/page': 'server' })).toBe(true)
     expect(literal._loaderData.size).toBe(1)
+  })
 
-    const bare = createRouter({ routes, url: '/page' }) as RouterInstance
-    const record = Object.assign(Object.create(null) as Record<string, unknown>, { '/page': 'server' })
-    expect(hydrateLoaderData(bare, record)).toBe(true)
-    expect(bare._loaderData.size).toBe(1)
+  // `<iframe name="__PYREON_LOADER_DATA__" src="https://other.example">` makes
+  // the global a cross-origin WindowProxy: its prototype reads as `null` and
+  // reading any key throws SecurityError, so the app never hydrated. happy-dom
+  // has no cross-origin frames; a null-prototype Proxy whose key reads throw
+  // stands in (`client-named-access.browser.test.ts` uses a real one).
+  test('hydrate refuses, without throwing, a null-prototype object (a cross-origin frame)', () => {
+    const routes: RouteRecord[] = [{ path: '/page', component: About, loader: async () => 'client' }]
+    const router = createRouter({ routes, url: '/page' }) as RouterInstance
+    const securityError = () => {
+      throw new DOMException('Blocked a frame from accessing a cross-origin frame.', 'SecurityError')
+    }
+    const crossOrigin = new Proxy(Object.create(null) as object, {
+      get: securityError,
+      getOwnPropertyDescriptor: securityError,
+      has: securityError,
+    })
+    const throwingProto = new Proxy({}, { getPrototypeOf: securityError })
+
+    expect(hydrateLoaderData(router, crossOrigin)).toBe(false)
+    expect(hydrateLoaderData(router, throwingProto)).toBe(false)
+    expect(hydrateLoaderData(router, Object.assign(Object.create(null) as object, { '/page': 'x' }))).toBe(false)
+    expect(router._loaderData.size).toBe(0)
   })
 
   test('round-trip with complex data types', async () => {

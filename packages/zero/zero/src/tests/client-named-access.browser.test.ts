@@ -9,7 +9,9 @@ import { startClient } from '../client'
  * assigned here; the elements alone shadow the hand-over globals, as on a page
  * whose inline scripts were not written. An element taken for
  * `__PYREON_LOADER_DATA__` used to skip the initial loader run, so the page
- * rendered without its data. happy-dom has no named access
+ * rendered without its data. A cross-origin frame with a matching `name`
+ * passed a null-prototype check, then threw SecurityError on the first key
+ * read, so the app never started. happy-dom has no named access
  * (`client-named-access.test.ts` assigns the element instead).
  */
 const planted: Element[] = []
@@ -41,6 +43,26 @@ function shadow(names: string[]): HTMLElement {
   planted.push(container)
 
   return container
+}
+
+/**
+ * Plant `<iframe name>` with an opaque origin (sandboxed `srcdoc`), so the
+ * global of that name is a CROSS-ORIGIN WindowProxy: its prototype reads as
+ * `null`, and reading any other key throws SecurityError.
+ */
+async function crossOriginFrame(name: string): Promise<void> {
+  const frame = document.createElement('iframe')
+  frame.name = name
+  frame.setAttribute('sandbox', '')
+  frame.srcdoc = '<p>other origin</p>'
+  const loaded = new Promise<void>((resolve) => frame.addEventListener('load', () => resolve(), { once: true }))
+  document.body.appendChild(frame)
+  planted.push(frame)
+  await loaded
+  const proxy = (window as unknown as Record<string, unknown>)[name] as Record<string, unknown>
+  expect(proxy).toBe(frame.contentWindow)
+  expect(Object.getPrototypeOf(proxy), 'the precondition: an opaque prototype').toBeNull()
+  expect(() => proxy.anyKey, 'the precondition: key reads throw').toThrow()
 }
 
 function startWithLoader(): { stop: () => void; loads: () => number } {
@@ -79,5 +101,36 @@ it('does not call a store bridge that page markup shadows', async () => {
     await expect.poll(() => container.querySelector('h1')?.textContent).toBe('From the loader')
   } finally {
     stop()
+  }
+})
+
+it('runs the loaders when a cross-origin frame named __PYREON_LOADER_DATA__ shadows the global', async () => {
+  await crossOriginFrame('__PYREON_LOADER_DATA__')
+  const container = shadow([])
+  const { stop, loads } = startWithLoader()
+  try {
+    await expect.poll(() => container.querySelector('h1')?.textContent).toBe('From the loader')
+    expect(loads()).toBe(1)
+  } finally {
+    stop()
+  }
+})
+
+it('does not hand a cross-origin frame named __PYREON_STORE_STATE__ to the store bridge', async () => {
+  await crossOriginFrame('__PYREON_STORE_STATE__')
+  const seen: unknown[] = []
+  const g = globalThis as Record<string, unknown>
+  g.__PYREON_HYDRATE_STORES__ = (d: unknown) => seen.push(d)
+  try {
+    const container = shadow([])
+    const { stop } = startWithLoader()
+    try {
+      await expect.poll(() => container.querySelector('h1')?.textContent).toBe('From the loader')
+      expect(seen).toEqual([])
+    } finally {
+      stop()
+    }
+  } finally {
+    delete g.__PYREON_HYDRATE_STORES__
   }
 })

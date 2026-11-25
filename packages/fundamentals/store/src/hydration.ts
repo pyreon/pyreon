@@ -20,7 +20,7 @@
 // exactly once (boot-time one-shot); a later `resetStore` + re-create starts
 // from the store's own `setup()` initial values, not stale boot state.
 
-import { isPlainObject } from './plain-object'
+import { isObjectLiteral } from './plain-object'
 import { getRegistry } from './registry'
 
 // Minimal structural type — avoids a circular import of `StoreApi` from
@@ -105,17 +105,17 @@ export function dehydrateStores(
  * (no flash of default state). Stores that already exist are patched in place;
  * stores not yet created are seeded on their first use.
  *
- * Pass the global as it is. Anything that is not a plain record is ignored:
- * no script was written, or (on such a page) markup with
- * `id="__PYREON_STORE_STATE__"` makes the global an element through named
- * access on Window.
+ * Pass the global as it is. Anything that is not an object literal is
+ * ignored: no script was written, or (on such a page) markup with
+ * `id="__PYREON_STORE_STATE__"` (or a frame with that `name`) makes the global
+ * an element or a WindowProxy through named access on Window.
  *
  * @example
  * // client entry, before mount:
  * hydrateStores(window.__PYREON_STORE_STATE__)
  */
 export function hydrateStores(data: unknown): void {
-  if (!isPlainObject(data)) return
+  if (!isObjectLiteral(data)) return
   // Each entry is one store's `.state` snapshot, as `dehydrateStores` wrote it.
   const snapshot = data as Record<string, Record<string, unknown>>
   // Merge into any existing stash so repeated calls are idempotent.

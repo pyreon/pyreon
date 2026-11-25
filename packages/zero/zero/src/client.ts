@@ -6,7 +6,7 @@ import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { createApp } from './app'
 import { type IslandsOnlyOptions, isIslandsOnlyPage, startIslandsOnlyPage } from './client-marker'
 import { islandsOnlyNavigation } from './islands-navigation'
-import { isPlainRecord } from './plain-record'
+import { isObjectLiteral } from './object-literal'
 
 export type { IslandRootLoader, IslandsOnlyOptions, IslandsRegistry } from './client-marker'
 
@@ -157,12 +157,12 @@ export function startClient(options: StartClientOptions) {
   // If the server embedded loader data, hydrate it BEFORE mounting so the
   // initial render sees the same data the SSR pass produced. This avoids
   // hydration mismatches and eliminates the flash-of-fallback.
-  // Only a plain record is server data: on a page whose inline script was not
+  // Only an object literal is server data: on a page whose inline script was not
   // written, markup with `id="__PYREON_LOADER_DATA__"` makes the global an
   // element (named access on Window). Taking that for server data skipped the
   // initial loaders, and the page rendered without its data.
   const ssrLoaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
-  const hasSSRLoaderData = !isStaticFallback && isPlainRecord(ssrLoaderData)
+  const hasSSRLoaderData = !isStaticFallback && isObjectLiteral(ssrLoaderData)
   if (hasSSRLoaderData) {
     // `router` is the public Router<> type; hydrateLoaderData uses the
     // internal RouterInstance shape. The cast is safe because they're
@@ -181,7 +181,7 @@ export function startClient(options: StartClientOptions) {
   const hydrateStores = (globalThis as { __PYREON_HYDRATE_STORES__?: unknown }).__PYREON_HYDRATE_STORES__
   if (typeof hydrateStores === 'function') {
     const ssrStoreState = (window as unknown as Record<string, unknown>).__PYREON_STORE_STATE__
-    if (isPlainRecord(ssrStoreState)) hydrateStores(ssrStoreState)
+    if (isObjectLiteral(ssrStoreState)) hydrateStores(ssrStoreState)
   }
 
   // PR-S1: App is router-AGNOSTIC; supply the RouterProvider at this call
